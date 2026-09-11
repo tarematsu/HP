@@ -1,5 +1,6 @@
-// Low-peak TVer episode policy. Playback state is maintained from DOM/media
-// events; the native watchdog is only a low-frequency trusted-input fallback.
+// Low-peak TVer episode policy. Playback state is maintained from media events
+// and a narrowly scoped player observer. Native trusted input is woken only when
+// a state transition needs recovery; there is no page-wide polling/DOM observer.
 namespace {
 constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] =
 LR"JS(
@@ -12,6 +13,8 @@ LR"JS(
   const playbackRate = 1.75;
   const targetVolume = 1.0;
   const postrollGraceMs = 12000;
+  const qualityProbeIntervalMs = 5000;
+  const qualityProbeLimit = 4;
   const seriesPathKey = '__homePanelTverSeriesPath';
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visibleRect = element => {
@@ -57,8 +60,7 @@ LR"JS(
     try {
       if (video.muted) video.muted = false;
       if (video.volume !== targetVolume) video.volume = targetVolume;
-    } catch (_) {
-    }
+    } catch (_) {}
   };
   const storedSeriesPath = () => {
     try {
@@ -86,9 +88,18 @@ LR"JS(
         return true;
       }
       sessionStorage.removeItem(key);
-    } catch (_) {
-    }
+    } catch (_) {}
     return false;
+  };
+
+  let wakeAt = 0;
+  const wakeNative = () => {
+    const now = Date.now();
+    if (now - wakeAt < 250) return;
+    wakeAt = now;
+    try {
+      window.chrome?.webview?.postMessage('homepanel:tver-wake');
+    } catch (_) {}
   };
 )JS"
 LR"JS(
@@ -127,9 +138,6 @@ LR"JS(
       const mediaChanged = state.adVideo !== video ||
           (state.adIdentity && identity && state.adIdentity !== identity);
       if (mediaChanged) {
-        // Consecutive ads can replace the media element before metadata arrives.
-        // Keep the ad pod latched from media facts first; scan the player DOM
-        // only if the replacement already looks like long-form content.
         if (!duration || shortAdLength) return true;
         return explicitAdMarker(video);
       }
@@ -149,12 +157,51 @@ LR"JS(
   };
 
   let ensureTimer = 0;
-  const scheduleEnsure = (delay = 250) => {
+  const scheduleEnsure = (delay = 100) => {
     if (ensureTimer) return;
     ensureTimer = window.setTimeout(() => {
       ensureTimer = 0;
       ensure();
     }, delay);
+  };
+
+  let observedPlayerRoot = null;
+  let playerObserver = null;
+  const interestingPlayerSelector = [
+    'video',
+    '[aria-label*="スキップ"]', '[title*="スキップ"]',
+    '[aria-label*="skip" i]', '[title*="skip" i]',
+    '[aria-label*="広告"]', '[title*="広告"]',
+    '[aria-label*="CM"]', '[title*="CM"]',
+    '[data-testid*="ad" i]', '[class*="advert" i]',
+    '[class*="commercial" i]',
+    '[aria-label*="全画面"]', '[title*="全画面"]',
+    '[aria-label*="fullscreen" i]', '[title*="fullscreen" i]',
+    '[role="menuitem"]', '[role="radio"]', '[role="option"]',
+    '[role="dialog"]', '[aria-modal="true"]'
+  ].join(',');
+  const bindPlayerObserver = video => {
+    const root = playerRootFor(video);
+    if (!root || root === observedPlayerRoot || typeof MutationObserver !== 'function') {
+      return;
+    }
+    try { playerObserver?.disconnect(); } catch (_) {}
+    observedPlayerRoot = root;
+    playerObserver = new MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
+          const element = node;
+          if (element.matches?.(interestingPlayerSelector) ||
+              element.querySelector?.(interestingPlayerSelector)) {
+            scheduleEnsure(40);
+            return;
+          }
+        }
+      }
+    });
+    playerObserver.observe(root, { childList: true, subtree: true });
+    window.__homePanelTverEpisodeObserver = playerObserver;
   };
 
   const bindVideoEvents = (video, state) => {
@@ -168,7 +215,7 @@ LR"JS(
       if (Number.isFinite(video.duration)) {
         state.maxDuration = Math.max(state.maxDuration, video.duration);
       }
-    });
+    }, { passive: true });
     video.addEventListener('ratechange', () => {
       if (window.__homePanelSakuraMeetsState !== state || state.adActive ||
           window.__homePanelTverAdActive) return;
@@ -188,9 +235,10 @@ LR"JS(
       if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
       state.endCandidateAt = Date.now();
       window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
-    });
-    for (const eventName of ['play', 'pause', 'loadedmetadata', 'emptied']) {
-      video.addEventListener(eventName, scheduleEnsure);
+    }, { passive: true });
+    for (const eventName of [
+        'play', 'pause', 'loadedmetadata', 'emptied', 'durationchange']) {
+      video.addEventListener(eventName, () => scheduleEnsure(40), { passive: true });
     }
   };
 )JS"
@@ -208,6 +256,8 @@ LR"JS(
           maxTime: 0,
           endCandidateAt: 0,
           lowQualitySet: false,
+          qualityProbeAt: 0,
+          qualityProbeAttempts: 0,
           playbackSettingsApplied: false,
           fullscreenDirty: true,
           restartRequested: false,
@@ -222,6 +272,7 @@ LR"JS(
 
       const video = currentVideo();
       bindVideoEvents(video, state);
+      bindPlayerObserver(video);
       const advertisementActive = detectAd(video, state);
       if (advertisementActive) {
         const identity = mediaIdentity(video);
@@ -239,11 +290,14 @@ LR"JS(
           state.maxDuration = 0;
           state.maxTime = 0;
           state.lowQualitySet = false;
+          state.qualityProbeAt = 0;
+          state.qualityProbeAttempts = 0;
           state.playbackSettingsApplied = false;
           state.fullscreenDirty = true;
           state.restartRequested = false;
         }
         window.__homePanelTverAdActive = true;
+        wakeNative();
         return;
       }
 
@@ -258,6 +312,8 @@ LR"JS(
         state.maxTime = 0;
         state.endCandidateAt = 0;
         state.lowQualitySet = false;
+        state.qualityProbeAt = 0;
+        state.qualityProbeAttempts = 0;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
         state.restartRequested = false;
@@ -266,6 +322,7 @@ LR"JS(
         if (completedPostroll) {
           if (advanceEpisodeOrSeries()) return;
           state.restartRequested = true;
+          wakeNative();
           return;
         }
       } else {
@@ -275,11 +332,14 @@ LR"JS(
       if (state.video !== video) {
         state.video = video;
         state.lowQualitySet = false;
+        state.qualityProbeAt = 0;
+        state.qualityProbeAttempts = 0;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
       }
       if (!video) return;
       bindVideoEvents(video, state);
+      bindPlayerObserver(video);
       enforceVolume(video);
 
       if (!state.playbackSettingsApplied) {
@@ -308,10 +368,18 @@ LR"JS(
       if (stableEnd && completedItem) {
         if (advanceEpisodeOrSeries()) return;
         state.restartRequested = true;
+        wakeNative();
         return;
       }
 
-      if (!state.lowQualitySet) {
+      // Quality discovery is bounded and rate-limited. If TVer's control is not
+      // materialized, stop after a few probes instead of rescanning the player
+      // on every unrelated DOM mutation for the rest of the episode.
+      const now = Date.now();
+      if (!state.lowQualitySet && state.qualityProbeAttempts < qualityProbeLimit &&
+          now - state.qualityProbeAt >= qualityProbeIntervalMs) {
+        state.qualityProbeAt = now;
+        ++state.qualityProbeAttempts;
         const root = playerRootFor(video);
         if (root) {
           const qualityChoices = [];
@@ -338,19 +406,33 @@ LR"JS(
             state.lowQualitySet = true;
           }
         }
+        if (!state.lowQualitySet && state.qualityProbeAttempts < qualityProbeLimit) {
+          window.setTimeout(scheduleEnsure, qualityProbeIntervalMs + 20);
+        }
       }
-    } catch (_) {
-    }
+
+      if (video.paused && !video.ended) wakeNative();
+      const browserFullscreen = document.fullscreenElement ||
+          document.webkitFullscreenElement || document.msFullscreenElement;
+      if (!browserFullscreen) wakeNative();
+    } catch (_) {}
   };
 
-  const root = document.documentElement || document.body;
-  if (root && typeof MutationObserver === 'function') {
-    const observer = new MutationObserver(scheduleEnsure);
-    observer.observe(root, { childList: true, subtree: true });
-    window.__homePanelTverEpisodeObserver = observer;
+  // Capture media events so a newly replaced <video> can be discovered without
+  // observing the whole document. Only media events schedule a state pass.
+  for (const eventName of ['play', 'pause', 'loadedmetadata', 'emptied']) {
+    document.addEventListener(eventName, event => {
+      if (event.target instanceof HTMLMediaElement) scheduleEnsure(40);
+    }, true);
   }
-  document.addEventListener('fullscreenchange', scheduleEnsure, true);
-  document.addEventListener('webkitfullscreenchange', scheduleEnsure, true);
+  document.addEventListener('fullscreenchange', () => {
+    scheduleEnsure(40);
+    wakeNative();
+  }, true);
+  document.addEventListener('webkitfullscreenchange', () => {
+    scheduleEnsure(40);
+    wakeNative();
+  }, true);
   ensure();
   return true;
 })()
