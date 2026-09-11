@@ -27,7 +27,15 @@ test('all fallback catalog entries keep direct Spotify track routes', () => {
   assert.equal(entries.length, declaredSize);
   const ids = entries.map((entry) => entry[1]);
   assert.equal(new Set(ids).size, ids.length);
-  assert.ok(ids.includes('3GdsVS4jIJ7RBiasVZlWul'));
+  for (const id of [
+    '3GdsVS4jIJ7RBiasVZlWul',
+    '0LyOFxPXWLw2k0q4y9pFM3',
+    '3rLKZOGLGRwMQ9XX4aECfN',
+    '4OTvaYkw60M6YNZ59vlx0R',
+    '04nk2Ee7qSnNwn6OG2hl3Q',
+  ]) {
+    assert.ok(ids.includes(id));
+  }
 });
 
 test('cloud track routes are validated as direct open.spotify.com track ids', () => {
