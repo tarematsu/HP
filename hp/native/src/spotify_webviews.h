@@ -226,6 +226,7 @@ class SpotifyWebViews final {
   bool started_ = false;
   bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
+  bool inlineTalkAboutRotation_ = false;
   bool podcastScheduleLoaded_ = false;
 };
 
