@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { WORKFLOW_HEALTH_BY_KEY } from '../.github/scripts/workflow-health-policy.mjs';
+
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 
@@ -32,10 +34,11 @@ test('Pages read models rerun when their Cloudflare account dependency changes',
 test('runtime maintenance freshness is diagnostic after the runner warning', () => {
   const config = JSON.parse(read('site/wrangler.jsonc'));
   const healthSource = read('site/functions/lib/health-other.js');
-  const runnerPolicy = read('.github/scripts/github-actions-runner-health.mjs');
+  const runtimePolicy = WORKFLOW_HEALTH_BY_KEY.runtime;
 
   assert.equal(config.vars.OTHER_CRON_STALE_MS, 90 * 60_000);
   assert.match(healthSource, /75 \* 60_000/);
   assert.match(healthSource, /ok: Boolean\(row\) && !failed/);
-  assert.match(runnerPolicy, /name: 'Runtime offline maintenance'[\s\S]*?staleAfterMinutes: 75/);
+  assert.equal(runtimePolicy.name, 'Runtime offline maintenance');
+  assert.equal(runtimePolicy.staleAfterMinutes, 75);
 });

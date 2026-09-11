@@ -1,24 +1,10 @@
+import { ACTIONS_RUNNER_TARGETS } from './workflow-health-policy.mjs';
+
+export { ACTIONS_RUNNER_TARGETS };
+
 export const ACTIONS_RUNNER_HEALTH_START = '<!-- github-actions-runner-health:start -->';
 export const ACTIONS_RUNNER_HEALTH_END = '<!-- github-actions-runner-health:end -->';
 export const MAX_ACTIONS_HEALTH_SUMMARY_CHARS = 4_000;
-
-export const ACTIONS_RUNNER_TARGETS = Object.freeze([
-  Object.freeze({
-    name: 'Pages read models',
-    workflow: 'run-pages-read-model-rebuild.yml',
-    cadenceMinutes: 15,
-    staleAfterMinutes: 40,
-    stalledAfterMinutes: 25,
-    ignoreExpectedWorkflowRunSkips: true,
-  }),
-  Object.freeze({
-    name: 'Runtime offline maintenance',
-    workflow: 'run-runtime-offline-maintenance.yml',
-    cadenceMinutes: 30,
-    staleAfterMinutes: 75,
-    stalledAfterMinutes: 25,
-  }),
-]);
 
 const FAILURE_CONCLUSIONS = new Set([
   'action_required',

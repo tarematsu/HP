@@ -1,13 +1,8 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { RECOVERY_WORKFLOWS } from './workflow-health-policy.mjs';
 
-export const WORKFLOWS = Object.freeze({
-  pages: Object.freeze({ file: 'run-pages-read-model-rebuild.yml', staleAfterMs: 45 * 60_000 }),
-  runtime: Object.freeze({ file: 'run-runtime-offline-maintenance.yml', staleAfterMs: 45 * 60_000 }),
-  metadata: Object.freeze({ file: 'run-track-metadata-repair.yml', staleAfterMs: 45 * 60_000 }),
-  localMinute: Object.freeze({ file: 'run-local-minute-facts-rebuild.yml', staleAfterMs: 30 * 60_000 }),
-  observability: Object.freeze({ file: 'sh-observability.yml', staleAfterMs: 60 * 60_000 }),
-});
+export const WORKFLOWS = RECOVERY_WORKFLOWS;
 
 const OBSERVABILITY_REFRESH_WORKFLOW = Object.freeze({ file: 'refresh-cloudflare-observability.yml' });
 const ACTIVE_STATUSES = new Set(['queued', 'in_progress', 'waiting', 'pending', 'requested']);
@@ -17,7 +12,7 @@ function startedAt(run) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-export function workflowRunState(runs, { now = Date.now(), staleAfterMs } = {}) {
+export function workflowRunState(runs, { now = Date.now(), recoverAfterMs } = {}) {
   const latest = [...(Array.isArray(runs) ? runs : [])]
     .map((run) => ({ run, timestamp: startedAt(run) }))
     .filter(({ timestamp }) => timestamp != null)
@@ -33,7 +28,7 @@ export function workflowRunState(runs, { now = Date.now(), staleAfterMs } = {}) 
 
   if (ACTIVE_STATUSES.has(status)) return { state: 'active', ...common };
   if (conclusion !== 'success') return { state: 'failed', ...common, conclusion };
-  if (ageMs >= staleAfterMs) return { state: 'stale', ...common };
+  if (ageMs >= recoverAfterMs) return { state: 'stale', ...common };
   return { state: 'fresh', ...common };
 }
 
@@ -80,12 +75,15 @@ async function listWorkflowRuns(repository, definition, token, request) {
   return listing?.workflow_runs || [];
 }
 
-async function dispatchWorkflow(repository, definition, token, request) {
+async function dispatchWorkflow(repository, definition, token, request, inputs = null) {
   const base = workflowBase(repository, definition.file);
   await request(`${base}/dispatches`, {
     token,
     method: 'POST',
-    body: { ref: 'main' },
+    body: {
+      ref: 'main',
+      ...(inputs ? { inputs } : {}),
+    },
   });
 }
 
@@ -99,23 +97,30 @@ export async function recoverMaintenanceWorkflows({
 
   const entries = await Promise.all(Object.entries(WORKFLOWS).map(async ([key, definition]) => {
     const runs = await listWorkflowRuns(repository, definition, token, request);
-    return [key, workflowRunState(runs, { now, staleAfterMs: definition.staleAfterMs })];
+    return [key, workflowRunState(runs, { now, recoverAfterMs: definition.recoverAfterMs })];
   }));
   const states = Object.fromEntries(entries);
   const dispatched = [];
 
-  // Pages recovery already owns missing/stale Pages runs. If Pages is currently
-  // active or itself needs recovery, avoid starting Runtime in parallel because
-  // a successful Pages completion is already an upstream Runtime trigger.
+  // Keep the dependency chain in one place: Pages -> Runtime -> downstream.
+  // Missing/stale Pages is recovered first. Active/failed Pages stays visible
+  // and blocks Runtime recovery rather than allowing dependent work to pile up.
+  if (shouldRecover(states.pages.state)) {
+    await dispatchWorkflow(
+      repository,
+      WORKFLOWS.pages,
+      token,
+      request,
+      { force_all: 'false' },
+    );
+    dispatched.push('pages');
+    return { ok: true, dispatched, states, reason: 'pages-recovered' };
+  }
+  if (states.pages.state !== 'fresh') {
+    return { ok: true, dispatched, states, reason: `pages-${states.pages.state}` };
+  }
+
   if (shouldRecover(states.runtime.state)) {
-    if (states.pages.state === 'active' || shouldRecover(states.pages.state)) {
-      return {
-        ok: true,
-        dispatched,
-        states,
-        reason: 'runtime-waits-for-pages-recovery',
-      };
-    }
     await dispatchWorkflow(repository, WORKFLOWS.runtime, token, request);
     dispatched.push('runtime');
     return { ok: true, dispatched, states, reason: 'runtime-recovered' };
@@ -135,7 +140,7 @@ export async function recoverMaintenanceWorkflows({
 
   // A failed full diagnostic is safe to retry only when Runtime has recovered
   // after that failure. Stale/missing diagnostics are also refreshed. Reuse the
-  // existing lightweight dispatcher instead of duplicating the full workflow API contract.
+  // lightweight dispatcher instead of duplicating the full workflow API contract.
   if (shouldRefreshObservability(states)) {
     await dispatchWorkflow(repository, OBSERVABILITY_REFRESH_WORKFLOW, token, request);
     dispatched.push('observabilityRefresh');

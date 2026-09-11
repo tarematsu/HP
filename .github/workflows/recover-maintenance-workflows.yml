@@ -14,6 +14,7 @@ on:
     paths:
       - '.github/workflows/recover-maintenance-workflows.yml'
       - '.github/scripts/recover-maintenance-workflows.mjs'
+      - '.github/scripts/workflow-health-policy.mjs'
       - '.github/workflows/run-pages-read-model-rebuild.yml'
       - '.github/workflows/run-runtime-offline-maintenance.yml'
       - '.github/workflows/run-track-metadata-repair.yml'
