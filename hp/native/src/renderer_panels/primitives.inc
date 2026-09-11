@@ -5,7 +5,7 @@ namespace hp {
 namespace {
 constexpr int kNativeSideId = 101;
 constexpr int kNativeMainId = 102;
-constexpr int kNativeRadarId = 108;
+constexpr int kNativeMediaId = 108;
 
 constexpr COLORREF kWidgetBackground = kNativeDashboardBackground;
 constexpr COLORREF kWidgetSurface = RGB(20, 26, 36);
@@ -365,9 +365,9 @@ struct SidebarSections {
 SidebarSections SplitSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
-  const int radarHeight = height * 600 / 1000;
+  const int mediaHeight = height * 600 / 1000;
   const int mainGap = std::max(6, height * 18 / 1000);
-  const int mainHeight = std::max(1, height - radarHeight - mainGap);
+  const int mainHeight = std::max(1, height - mediaHeight - mainGap);
   const int targetControlsHeight = std::max(1, mainHeight * 270 / 1000);
   const int availableForCards = std::max(3, height - gap * 3);
   const int controlsHeight = std::clamp(targetControlsHeight, 1, std::max(1, availableForCards - 2));
@@ -385,8 +385,8 @@ SidebarSections SplitSidebarSections(const RECT& client) {
 }
 
 struct MainSections {
-  RECT music{};
-  RECT air{};
+  RECT radar{};
+  RECT energy{};
   RECT news{};
 };
 
@@ -396,13 +396,13 @@ MainSections SplitMainSections(const RECT& client) {
   const int gapX = std::max(8, width * 16 / 1000);
   const int gapY = std::max(6, height * 45 / 1000);
   const int newsHeight = height * 270 / 1000;
-  const int musicWidth = width * 480 / 1000;
+  const int radarWidth = width * 480 / 1000;
   MainSections sections;
   sections.news = RECT{client.left, client.bottom - newsHeight, client.right, client.bottom};
   const LONG rowBottom = std::max(client.top + 1, sections.news.top - gapY);
-  sections.music = RECT{client.left, client.top, client.left + musicWidth, rowBottom};
-  sections.air = RECT{sections.music.right + gapX, client.top, client.right, rowBottom};
-  if (sections.air.right <= sections.air.left) sections.air.right = sections.air.left + 1;
+  sections.radar = RECT{client.left, client.top, client.left + radarWidth, rowBottom};
+  sections.energy = RECT{sections.radar.right + gapX, client.top, client.right, rowBottom};
+  if (sections.energy.right <= sections.energy.left) sections.energy.right = sections.energy.left + 1;
   return sections;
 }
 
