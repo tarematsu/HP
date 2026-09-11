@@ -157,9 +157,7 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
-  // Hard upper bound starts before navigation. Browser failures therefore never
-  // make one cloud-configured track occupy a slot for more than four minutes.
-  slot.timedPlaybackStartTick = GetTickCount64();
+  slot.timedPlaybackStartTick = 0;
 }
 
 void SpotifyWebViews::InitializeTimedRotationSlot(
@@ -223,8 +221,8 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   if (!slot.timedRotationActive || slot.podcastBreakActive) return;
 
   // A cloud-sync change never cuts the currently playing song. At its next
-  // normal ended/4-minute boundary, discard the old prebuilt cycle and start
-  // the newly synchronized rotation from its first configured block.
+  // natural ended boundary, discard the old prebuilt cycle and start the newly
+  // synchronized rotation from its first configured block.
   if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
     slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
@@ -248,19 +246,6 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   staggerSlotValidated_ = false;
   RefreshSpotifyHostLayout();
   NavigateActiveTimedSlot(slot);
-}
-
-bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
-  for (Slot& slot : slots_) {
-    if (!slot.timedRotationActive || slot.podcastBreakActive ||
-        slot.timedPlaybackStartTick == 0 ||
-        now - slot.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs) {
-      continue;
-    }
-    AdvanceTimedRotationSlot(slot, now);
-    return true;
-  }
-  return false;
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
