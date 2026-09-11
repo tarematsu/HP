@@ -33,6 +33,10 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
 
 void SpotifyWebViews::Start() noexcept {
   if (started_ || !parentWindow_ || !IsWindow(parentWindow_)) return;
+
+  // Every start owns a fresh async generation. Reusing the old atomic and
+  // toggling it back to true would revive callbacks captured before Shutdown().
+  alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
   robustSchedulerStarted_ = false;
   staggerSlotIndex_ = 0;
@@ -42,7 +46,6 @@ void SpotifyWebViews::Start() noexcept {
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
   hostLayoutAuthenticationSlot_ = kAccountCount;
-  alive_->store(true, std::memory_order_release);
 
   for (Slot& slot : slots_) {
     slot.state = SlotState::NotCreated;
@@ -68,11 +71,13 @@ void SpotifyWebViews::Start() noexcept {
     };
     slot.timedRotationActive = false;
     slot.podcastBreakActive = false;
+    slot.shuffleOffVerified = false;
+    slot.repeatOffVerified = false;
     if (!CreateHost(slot)) continue;
   }
 
-  // Controller creation is serialized. Slot 0 starts immediately; the single
-  // scheduler creates slots 1-4 when their 40-second turn arrives.
+  // Controller creation is serialized. Slot 0 starts immediately; the scheduler
+  // creates the remaining accounts when each 40-second start offset arrives.
   if (!slots_.empty() && slots_[0].hostWindow) {
     CreateController(slots_[0]);
   }
@@ -149,6 +154,8 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.loginPage = false;
   slot.timedObserverReady = false;
   slot.timedObserverInstallInFlight = false;
+  slot.shuffleOffVerified = false;
+  slot.repeatOffVerified = false;
 }
 
 void SpotifyWebViews::Shutdown() noexcept {
