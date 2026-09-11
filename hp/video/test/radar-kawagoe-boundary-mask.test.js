@@ -15,7 +15,7 @@ const prepareAssets = readFileSync(
   'utf8',
 );
 
-test('cloud radar keeps rain visible and draws only the Kawagoe outside mask above it', () => {
+test('cloud radar keeps rain visible and draws only the Kawagoe outside mask above wet panels', () => {
   assert.match(browserRadar, /city\/geojson\/latest\/11201\.geojson/);
   assert.match(browserRadar, /fetchKawagoeBoundary/);
   assert.match(browserRadar, /context\.fill\("evenodd"\)/);
@@ -47,11 +47,20 @@ test('Kawagoe mask uses the exact same world-pixel viewport as rain tiles', () =
   assert.doesNotMatch(browserRadar, /tileReference/);
 });
 
-test('a render with zero fetched rain tiles cannot replace the representative PNG', () => {
-  assert.match(browserRadar, /let loadedRainTiles = 0;/);
-  assert.match(browserRadar, /loadedRainTiles \+= 1;/);
-  assert.match(browserRadar, /if \(loadedRainTiles === 0\)/);
-  assert.match(browserRadar, /radar rain tiles were not fetched for any panel/);
+test('each dry radar panel independently becomes gray with the forecast sunny icon', () => {
+  assert.match(browserRadar, /const SUNNY_ICON_ASSET_PATH = "\/radar-cloud\/weather-sunny\.png";/);
+  assert.match(prepareAssets, /weather-icons\/100_day\.png/);
+  assert.match(prepareAssets, /weather-sunny\.png/);
+  assert.match(browserRadar, /let panelRainTiles = 0;/);
+  assert.match(browserRadar, /panelRainTiles \+= 1;/);
+  assert.match(browserRadar, /if \(panelRainTiles === 0\)/);
+  assert.match(browserRadar, /await drawNoRainPanel\(panelX\)/);
+  assert.match(browserRadar, /rgba\(96,96,96,0\.72\)/);
+  assert.match(browserRadar, /context\.fillRect\(panelX, 0, panelWidth, payload\.outputHeight\)/);
+  assert.match(browserRadar, /Math\.min\(panelWidth \* 0\.56, payload\.outputHeight \* 0\.30\)/);
+  assert.match(browserRadar, /context\.drawImage\(icon, iconX, iconY, iconSize, iconSize\)/);
+  assert.match(browserRadar, /sunnyIconUrl: `\$\{publicOrigin\}\$\{SUNNY_ICON_ASSET_PATH\}`/);
+  assert.doesNotMatch(browserRadar, /loadedRainTiles|radar rain tiles were not fetched for any panel/);
 });
 
 test('missing boundary data never falls back to the opaque legacy map', () => {
