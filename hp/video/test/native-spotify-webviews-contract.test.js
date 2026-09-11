@@ -4,10 +4,9 @@ import test from 'node:test';
 
 const spotify = [
   'spotify_webviews.cpp',
-  'spotify_webviews_core_part1.inc',
-  'spotify_webviews_core_part2.inc',
-  'spotify_webviews_core_part3.inc',
-  'spotify_webviews_core_part4.inc',
+  'spotify_webview_foundation.inc',
+  'spotify_host_lifecycle.inc',
+  'spotify_controller_lifecycle.inc',
 ].map(name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
 const header = readFileSync(new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
 const wrapper = readFileSync(new URL('../../native/src/spotify_webviews.inc', import.meta.url), 'utf8');
@@ -39,6 +38,13 @@ test('six Spotify accounts share the WebView2 environment while using isolated p
   assert.match(spotify, /put_ProfileName\(profileName\.c_str\(\)\)/);
   assert.match(spotify, /CreateCoreWebView2ControllerWithOptions/);
   assert.doesNotMatch(spotify, /CreateCoreWebView2EnvironmentWithOptions/);
+});
+
+test('WebView implementation is composed by responsibility instead of numbered source shards', () => {
+  assert.match(spotify, /SpotifyWebViews::SpotifyWebViews/);
+  assert.match(spotify, /void SpotifyWebViews::Start\(\)/);
+  assert.match(spotify, /void SpotifyWebViews::CreateController/);
+  assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
 test('authentication and recovery geometry are owned by the low-peak layout module', () => {
