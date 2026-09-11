@@ -47,11 +47,15 @@ test('dashboard sections use source versions and reuse unchanged materialized da
   assert.match(parser, /json::Number\(object, L"__version", -1\)/);
   assert.match(parser, /previous->weatherHours/);
   assert.match(parser, /previous->octopusProfile/);
+  assert.match(parser, /previous->octopusRender/);
   assert.match(parser, /previous->switchBotDevices/);
+  assert.match(parser, /BuildOctopusRenderProjection\(next\)/);
+  assert.match(parser, /bool ParseSwitchBotDevices/);
   assert.match(parser, /Compatibility fallback for old cached dashboard files/);
   assert.doesNotMatch(parser, /SectionRevision\(/);
   assert.match(dashboardHeader, /uint64_t octopus = 0;/);
   assert.match(dashboardHeader, /uint64_t switchbot = 0;/);
+  assert.match(dashboardHeader, /struct OctopusRenderProjection/);
   assert.doesNotMatch(dashboardHeader, /uint64_t energy = 0;/);
   assert.match(dashboardLoader, /ParseDashboardSnapshot\(text, snapshot, nullptr, previous\)/);
 });
@@ -74,21 +78,23 @@ test('air sensor values and five-minute history update renderer independently', 
   assert.match(panelWindows, /RearrangedAirGraphRectFromCard\(sections\.controls\)/);
 });
 
-test('dashboard loader owns exact invalidation without a second revision layer', () => {
+test('Octopus and SwitchBot own independent invalidation paths', () => {
   assert.match(
     dashboardLoader,
     /if \(weatherChanged\) \{\s*InvalidatePanelSection\(nativeSideWindow_, PanelSection::Weather\);/s,
   );
   assert.match(
     dashboardLoader,
-    /if \(octopusChanged \|\| plugLayoutChanged\) \{\s*InvalidatePanelSection\(nativeMainWindow_, PanelSection::Energy\);/s,
+    /if \(octopusChanged\) \{\s*InvalidatePanelSection\(nativeMainWindow_, PanelSection::Energy\);/s,
   );
+  assert.match(dashboardLoader, /bool Renderer::LoadSwitchBot/);
+  assert.match(dashboardLoader, /ParseSwitchBotDevices\(text, devices, nullptr\)/);
   assert.match(
     dashboardLoader,
-    /else if \(switchbotChanged\) \{\s*InvalidatePanelSection\(nativeMainWindow_, PanelSection::EnergySwitchBot\);/s,
+    /previousRows == nextRows \? PanelSection::EnergySwitchBot : PanelSection::Energy/s,
   );
+  assert.match(panelState, /LoadSwitchBot\(dataDir_ \/ L"switchbot\.json"\)/);
   assert.doesNotMatch(rendererHeader, /renderedDashboardRevisions_|dashboardRevisions_/);
-  assert.doesNotMatch(panelState, /weatherChanged|octopusChanged|switchbotChanged/);
 });
 
 test('SwitchBot-only paint skips Octopus chart execution', () => {
@@ -101,12 +107,27 @@ test('SwitchBot-only paint skips Octopus chart execution', () => {
   assert.match(layout, /RECT EnergySwitchBotRectFromCard/);
 });
 
-test('section bitmap cache is removed in favor of dirty-region back buffers', () => {
+test('energy card uses a revision and size keyed bitmap while panel back buffers remain dirty-region based', () => {
+  assert.match(rendererHeader, /struct EnergyBitmapCache/);
+  assert.match(rendererHeader, /EnergyBitmapCache energyBitmapCache_/);
+  assert.match(energy, /void Renderer::DrawEnergySectionUncached/);
+  assert.match(energy, /energyBitmapCache_\.octopusRevision != revision/);
+  assert.match(energy, /BitBlt\(dc, card\.left, card\.top, width, height/);
+  assert.match(bitmapCache, /if \(energyBitmapCache_\.bitmap\) DeleteObject\(energyBitmapCache_\.bitmap\)/);
+  assert.match(bitmapCache, /energyBitmapCache_ = \{\};/);
   assert.doesNotMatch(rendererHeader, /PanelBitmapCache|nativeSectionBitmaps_|DrawCachedPanelSection/);
-  assert.doesNotMatch(bitmapCache, /DrawCachedPanelSection|nativeSectionBitmaps_/);
-  assert.doesNotMatch(panelWindows, /DrawCachedPanelSection|dashboardRevisions_/);
   assert.match(rendererHeader, /std::map<HWND, PanelBackBuffer> nativeBackBuffers_/);
   assert.match(panelWindows, /IntersectClipRect\(dc, dirty\.left, dirty\.top, dirty\.right, dirty\.bottom\)/);
+});
+
+test('Octopus chart aggregation and GDI pen allocation happen only during cache rebuild', () => {
+  assert.match(parser, /projection\.currentWeekUsage \+= item\.currentTotal/);
+  assert.match(parser, /projection\.previousWeekUsage \+= item\.previousTotal/);
+  assert.match(parser, /projection\.maximum = std::max/);
+  assert.match(energy, /nativeDashboard_\.octopusRender\.maximum/);
+  assert.match(energy, /HPEN dottedPen = CreatePen/);
+  assert.equal((energy.match(/CreatePen\(PS_DOT/g) ?? []).length, 1);
+  assert.equal((energy.match(/DeleteObject\(dottedPen\)/g) ?? []).length, 1);
 });
 
 test('clock paint consumes cached network-clock strings', () => {
