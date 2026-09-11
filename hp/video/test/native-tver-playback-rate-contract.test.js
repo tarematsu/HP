@@ -2,57 +2,48 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const tverStatic = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url),
-  'utf8',
-);
+const episode = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
+const watchdog = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
 
-test('TVer program playback settings are state-driven and event-driven', () => {
-  assert.match(tverStatic, /const playbackRate = 1\.75/);
-  assert.doesNotMatch(tverStatic, /window\.setInterval\(ensure, 4000\)/);
-  assert.match(tverStatic, /new MutationObserver\(scheduleEnsure\)/);
-  assert.match(tverStatic, /window\.setTimeout\([\s\S]*ensure\(\);[\s\S]*250/);
-  assert.match(tverStatic, /'play', 'pause', 'ended', 'ratechange', 'loadedmetadata', 'emptied'/);
-  assert.match(tverStatic, /playbackSettingsApplied/);
-  assert.match(tverStatic, /if \(!state\.playbackSettingsApplied\)/);
-  assert.match(tverStatic, /state\.playbackSettingsApplied = true/);
-  assert.match(tverStatic, /addEventListener\('ratechange'/);
-  assert.match(
-    tverStatic,
-    /activeState\.adActive[\s\S]*window\.__homePanelTverAdActive[\s\S]*return/,
-  );
-  assert.match(tverStatic, /video\.defaultPlaybackRate = playbackRate/);
-  assert.match(tverStatic, /video\.playbackRate = playbackRate/);
+test('TVer program playback settings are dirty-state and event driven', () => {
+  assert.match(episode, /const playbackRate = 1\.75/);
+  assert.match(episode, /const targetVolume = 1\.0/);
+  assert.doesNotMatch(episode, /setInterval\(ensure/);
+  assert.match(episode, /playbackSettingsApplied/);
+  assert.match(episode, /if \(!state\.playbackSettingsApplied\)/);
+  assert.match(episode, /video\.defaultPlaybackRate = playbackRate/);
+  assert.match(episode, /video\.playbackRate = playbackRate/);
+  assert.match(episode, /addEventListener\('ratechange'/);
+  assert.match(episode, /addEventListener\('volumechange'/);
 });
 
-test('TVer fullscreen recovery is dirty-state driven', () => {
-  assert.match(tverStatic, /fullscreenDirty/);
-  assert.match(tverStatic, /addEventListener\('fullscreenchange'/);
-  assert.match(tverStatic, /activeState\.fullscreenDirty = !fullscreen/);
-  assert.match(tverStatic, /state && state\.fullscreenDirty === false/);
-  assert.match(tverStatic, /if \(state\) state\.fullscreenDirty = false/);
+test('TVer quality discovery is rate limited and bounded', () => {
+  assert.match(episode, /qualityProbeIntervalMs = 5000/);
+  assert.match(episode, /qualityProbeLimit = 4/);
+  assert.match(episode, /state\.qualityProbeAttempts < qualityProbeLimit/);
+  assert.match(episode, /now - state\.qualityProbeAt >= qualityProbeIntervalMs/);
+  assert.match(episode, /const root = playerRootFor\(video\)/);
 });
 
-test('TVer ads restore native speed and release HomePanel fullscreen at the boundary', () => {
-  assert.match(tverStatic, /const adMediaChanged = state\.adVideo !== video \|\| state\.adIdentity !== identity/);
-  assert.match(tverStatic, /if \(!state\.adActive \|\| adMediaChanged\)/);
-  assert.match(tverStatic, /video\.defaultPlaybackRate = 1\.0/);
-  assert.match(tverStatic, /video\.playbackRate = 1\.0/);
-  assert.match(tverStatic, /document\.exitFullscreen/);
-  assert.match(tverStatic, /state\.playbackSettingsApplied = false/);
-  assert.match(tverStatic, /state\.fullscreenDirty = true/);
+test('TVer ads do not receive program speed, volume or recovery mutation', () => {
+  const adStart = episode.indexOf('if (advertisementActive) {');
+  const adEnd = episode.indexOf('if (state.adActive) {', adStart);
+  assert.ok(adStart >= 0 && adEnd > adStart);
+  const adBranch = episode.slice(adStart, adEnd);
+  assert.match(adBranch, /window\.__homePanelTverAdActive = true/);
+  assert.match(adBranch, /wakeNative\(\)/);
+  assert.doesNotMatch(adBranch, /video\.playbackRate/);
+  assert.doesNotMatch(adBranch, /video\.volume/);
+  assert.doesNotMatch(adBranch, /video\.play\(/);
+  assert.match(watchdog, /During ads the watchdog may only click Skip or the fullscreen control/);
 });
 
-test('TVer ad state ends when the media identity changes', () => {
-  assert.match(tverStatic, /const mediaIdentity = video =>/);
-  assert.match(tverStatic, /video\.currentSrc \|\| video\.src/);
-  assert.match(tverStatic, /state\.adIdentity && identity && state\.adIdentity !== identity/);
-  assert.match(tverStatic, /state\.adIdentity = identity/);
-  assert.match(tverStatic, /state\.adIdentity = ''/);
-});
-
-test('TVer static script contains no runtime source rewriting helpers', () => {
-  assert.doesNotMatch(tverStatic, /InsertNativeMediaSnippet|ReplaceNativeMediaSnippet/);
-  assert.doesNotMatch(tverStatic, /RewriteNativeMediaExecuteScript/);
-  assert.doesNotMatch(tverStatic, /std::wstring value/);
+test('TVer ad identity is tracked across a complete ad pod', () => {
+  assert.match(episode, /const mediaIdentity = video =>/);
+  assert.match(episode, /video\.currentSrc \|\| video\.src/);
+  assert.match(episode, /state\.adIdentity && identity && state\.adIdentity !== identity/);
+  assert.match(episode, /state\.adIdentity = identity/);
+  assert.match(episode, /state\.adIdentity = ''/);
 });
