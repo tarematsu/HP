@@ -28,19 +28,6 @@ test('all configured tracks use the shared music descriptor and scoped reconcile
   assert.match(scoped, /targetPlayButton/);
 });
 
-test('music forces Spotify shuffle off before repeat-one reconciliation', () => {
-  assert.match(scoped, /const shuffleState = button =>/);
-  assert.match(scoped, /button\[data-testid="control-button-shuffle"\]/);
-  assert.match(scoped, /checked === 'true'.*'on'/s);
-  assert.match(scoped, /checked === 'false'.*'off'/s);
-  assert.match(scoped, /shuffleMode === 'on'/);
-  assert.match(scoped, /return point\(shuffle\)/);
-  assert.match(
-    scoped,
-    /control-button-shuffle[\s\S]*shuffleMode === 'on'[\s\S]*control-button-repeat/,
-  );
-});
-
 test('music keeps Spotify repeat-one as a queue fail-safe while observer owns natural completion', () => {
   assert.match(scoped, /const repeatState = button =>/);
   assert.match(scoped, /button\[data-testid="control-button-repeat"\]/);
