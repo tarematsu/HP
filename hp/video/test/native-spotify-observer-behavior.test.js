@@ -183,7 +183,7 @@ test('production observer prefers direct Track ID over title fallback', () => {
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f7']);
 });
 
-test('production observer ends immediately, blocks the old queue, then starts the new generation', () => {
+test('natural end posts completion without pausing, then old-generation autoplay is quarantined', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f7');
   h.setTrack('/track/A', 'Target A');
@@ -194,12 +194,12 @@ test('production observer ends immediately, blocks the old queue, then starts th
   h.media.ended = true;
   h.dispatch('ended');
   assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f7');
-  const pausedAfterEnd = h.media.pauseCalls;
+  assert.equal(h.media.pauseCalls, 0);
 
   h.media.ended = false;
   h.media.paused = false;
   h.dispatch('play');
-  assert.equal(h.media.pauseCalls, pausedAfterEnd + 1);
+  assert.equal(h.media.pauseCalls, 1);
   assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-started')).length, 1);
 
   h.window.__homePanelSpotifyNativeTarget = {
@@ -216,7 +216,7 @@ test('production observer ends immediately, blocks the old queue, then starts th
   assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f8');
 });
 
-test('shared target checks stop a recommendation and request native recovery once', () => {
+test('wrong-track detection requests native recovery without pausing active media', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f11');
   h.setTrack('/track/A', 'Target A');
@@ -230,8 +230,8 @@ test('shared target checks stop a recommendation and request native recovery onc
   assert.equal(h.media.pauseCalls, 0);
   h.runTimers();
 
-  assert.equal(h.media.pauseCalls, 1);
-  assert.equal(h.media.paused, true);
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.media.paused, false);
   assert.equal(h.messages.at(-1), 'spotify:not-playing\x1f11');
   assert.equal(h.messages.filter(m => m === 'spotify:not-playing\x1f11').length, 1);
 });
@@ -252,7 +252,7 @@ test('shared target checks tolerate stale UI until the requested identity appear
   assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
 });
 
-test('heartbeat fallback stops a recommendation if source-change events are missed', () => {
+test('heartbeat fallback requests recovery without pausing a wrong recommendation', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f13');
   h.setTrack('/track/A', 'Target A');
@@ -264,7 +264,8 @@ test('heartbeat fallback stops a recommendation if source-change events are miss
   h.media.paused = false;
   h.runHeartbeat();
 
-  assert.equal(h.media.pauseCalls, 1);
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.media.paused, false);
   assert.equal(h.messages.at(-1), 'spotify:not-playing\x1f13');
 });
 
@@ -300,7 +301,7 @@ test('production heartbeat stays healthy while media currentTime advances', () =
   assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
 });
 
-test('production observer waits for natural track end before advancing', () => {
+test('production observer waits for natural track end before advancing and does not pause on end', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f14');
   h.setTrack('/track/A', 'Target A');
@@ -318,7 +319,8 @@ test('production observer waits for natural track end before advancing', () => {
   h.media.ended = true;
   h.dispatch('ended');
 
-  assert.equal(h.media.paused, true);
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.media.paused, false);
   assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f14');
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 1);
 });
@@ -333,6 +335,7 @@ test('completed generation quarantines same-media recommendation without a new p
   h.media.ended = true;
   h.dispatch('ended');
   const pausedAfterEnd = h.media.pauseCalls;
+  assert.equal(pausedAfterEnd, 0);
 
   h.media.ended = false;
   h.media.paused = false;
