@@ -134,13 +134,33 @@ LR"JS(
     ];
   };
 
+  let video = null;
+  for (const candidate of document.querySelectorAll('video')) {
+    if (visible(candidate)) {
+      video = candidate;
+      break;
+    }
+    if (!video) video = candidate;
+  }
+  const playerRootFor = media => {
+    if (!media) return document.body || document.documentElement;
+    let root = media.parentElement;
+    let best = root || media;
+    for (let depth = 0; root && root !== document.body && depth < 5; ++depth) {
+      best = root;
+      root = root.parentElement;
+    }
+    return best || document.body || document.documentElement;
+  };
+
   const state = window.__homePanelSakuraMeetsState;
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
   if (adActive) {
     // During ads the watchdog may only click Skip or the fullscreen control.
-    // Do not dismiss surveys, change volume/rate/quality, or recover playback.
-    const adControls = Array.from(document.querySelectorAll(
-        'button, [role="button"], a, [aria-label], [title]'));
+    // Keep lookup inside the active player; if no media exists, do nothing.
+    const adRoot = video ? playerRootFor(video) : null;
+    const adControls = adRoot ? Array.from(adRoot.querySelectorAll(
+        'button, [role="button"], a, [aria-label], [title]')) : [];
     const skipButton = adControls.find(element => {
       if (!visible(element)) return false;
       const label = labelOf(element);
@@ -186,15 +206,6 @@ LR"JS(
 
   if (state && state.restartRequested) return 'restart';
 
-  let video = null;
-  for (const candidate of document.querySelectorAll('video')) {
-    if (visible(candidate)) {
-      video = candidate;
-      break;
-    }
-    if (!video) video = candidate;
-  }
-
   if (video) {
     try {
       if (video.muted) video.muted = false;
@@ -203,16 +214,6 @@ LR"JS(
     }
   }
 
-  const playerRootFor = media => {
-    if (!media) return document.body || document.documentElement;
-    let root = media.parentElement;
-    let best = root || media;
-    for (let depth = 0; root && root !== document.body && depth < 5; ++depth) {
-      best = root;
-      root = root.parentElement;
-    }
-    return best || document.body || document.documentElement;
-  };
   let cachedPlayerControls = null;
   const playerControls = () => {
     if (cachedPlayerControls) return cachedPlayerControls;
