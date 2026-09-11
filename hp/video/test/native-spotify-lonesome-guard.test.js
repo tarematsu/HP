@@ -30,15 +30,8 @@ test('all configured tracks use the shared music descriptor and scoped reconcile
   assert.match(scoped, /targetPlayButton/);
 });
 
-test('music keeps Spotify repeat-one as a queue fail-safe while observer owns natural completion', () => {
-  assert.match(scoped, /const repeatState = button =>/);
-  assert.match(scoped, /button\[data-testid="control-button-repeat"\]/);
-  assert.match(scoped, /checked === 'false'.*'off'/s);
-  assert.match(scoped, /checked === 'true'.*'context'/s);
-  assert.match(scoped, /checked === 'mixed'.*'one'/s);
-  assert.match(scoped, /repeatMode !== 'one' && repeatMode !== 'unknown'/);
-  assert.match(scoped, /return point\(repeat\)/);
-  assert.doesNotMatch(scoped, /repeat\.click\(\)/);
+test('track reconcile never forces repeat-one and observer owns natural completion', () => {
+  assert.doesNotMatch(scoped, /repeatState|control-button-repeat|repeatMode/);
   assert.match(runtime, /post\('spotify:timed-started'\)/);
   assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
