@@ -120,6 +120,8 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
             } else {
               continue;
             }
+            group.includeTalkAbout =
+                source.GetNamedBoolean(L"includeTalkAbout", false);
 
             const JsonArray tracks =
                 source.GetNamedArray(L"tracks", JsonArray{});
