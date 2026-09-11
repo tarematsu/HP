@@ -195,6 +195,8 @@ void Renderer::ReleaseNativePanelSurfaces() noexcept {
 
 void Renderer::ResetNativeBitmapCaches() noexcept {
   ReleaseNativePanelSurfaces();
+  if (energyBitmapCache_.bitmap) DeleteObject(energyBitmapCache_.bitmap);
+  energyBitmapCache_ = {};
   const auto deleteBitmaps = [](auto& entries) {
     for (auto& item : entries) {
       if (item.second.bitmap) DeleteObject(item.second.bitmap);
