@@ -65,7 +65,9 @@ test('G mixes the short-song pool with latest TALKABOUT and disables the old int
   assert.match(recent, /SpotifyPodcastTargetReady\(\)/);
   assert.match(recent, /SpotifyPodcastUrl\(\)/);
   assert.match(recent, /SpotifyPodcastPath\(\)/);
-  assert.match(rotation, /if \(inlineTalkAboutRotation_\) return false/);
+  assert.match(rotation, /cloudRotationGroups_\.begin\(\), cloudRotationGroups_\.end\(\)/);
+  assert.match(rotation, /group\.includeTalkAbout/);
+  assert.match(rotation, /inlineTalkAboutRotation_ \|\| inlineConfigured/);
   assert.match(rotation, /target\.path == SpotifyPodcastPath\(\)/);
   assert.match(rotation, /TimedSpotifyTarget::TalkAbout/);
 });
