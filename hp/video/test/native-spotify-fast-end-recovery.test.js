@@ -94,32 +94,33 @@ test('direct track path is preferred over MediaSession title when both exist', (
   assert.match(runtime, /value\.endsWith\(expected\)/);
 });
 
-test('target changes and ended gaps cannot play an item from the old queue', () => {
+test('start and recovery are non-destructive while completed-generation autoplay is quarantined', () => {
+  assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
+  assert.doesNotMatch(scripts, /if \(changed\)[\s\S]*media\.pause\(\)/);
+  assert.doesNotMatch(runtime, /media\.pause\(/);
+  assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript|media\.pause\(/);
+  assert.doesNotMatch(timed, /kSpotifyStaticStopPlaybackScript|media\.pause\(/);
+  assert.doesNotMatch(rotation, /StopTimedOneShotPlayback|kSpotifyStaticStopPlaybackScript/);
+
   assert.match(
-    scripts,
-    /if \(changed\) \{[\s\S]*document\.querySelectorAll\('audio, video'\)[\s\S]*media\.pause\(\)/,
+    events,
+    /const quarantineCompletedGeneration = media =>[\s\S]*!state\.endedPosted[\s\S]*quarantineMedia\(media\)/,
   );
   assert.match(
     events,
-    /const quarantineCompletedGeneration = media =>[\s\S]*!state\.endedPosted[\s\S]*stopMedia\(media\)/,
+    /state\.endedPosted = true;[\s\S]*post\('spotify:timed-ended'\)/,
   );
-  assert.match(
-    events,
-    /state\.endedPosted = true;[\s\S]*stopAllMedia\(\)[\s\S]*post\('spotify:timed-ended'\)/,
-  );
+  const finishStart = events.indexOf('const finishTarget = media =>');
+  const playListener = events.indexOf("document.addEventListener('play'", finishStart);
+  const finishTarget = events.slice(finishStart, playListener);
+  assert.doesNotMatch(finishTarget, /pause\(|quarantineMedia|stopAllMedia/);
   assert.match(events, /document\.addEventListener\('ended'[\s\S]*finishTarget\(event\.target\)/);
   assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
-  assert.match(
-    timed,
-    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(SpotifyPodcastUrl\(\)\)/,
-  );
-  assert.match(
-    music,
-    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(target\.url\)/,
-  );
+  assert.match(music, /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*Navigate\(target\.url\)/);
+  assert.match(timed, /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*Navigate\(SpotifyPodcastUrl\(\)\)/);
 });
 
-test('pause, waiting, stalled, and silent media-clock freezes recover playback', () => {
+test('pause, waiting, stalled, and silent media-clock freezes recover playback without forced stop', () => {
   assert.match(events, /document\.addEventListener\('pause'/);
   assert.match(events, /\['waiting', 'stalled'\]/);
   assert.match(events, /scheduleRecovery\(event\.target, 600, true\)/);
@@ -130,6 +131,7 @@ test('pause, waiting, stalled, and silent media-clock freezes recover playback',
   assert.match(heartbeat, /requestRecovery\(media\)/);
   assert.match(runtime, /post\('spotify:not-playing'\)/);
   assert.match(rotation, /const bool stopped =[\s\S]*spotify:not-playing/);
+  assert.doesNotMatch(runtime, /media\.pause\(/);
 });
 
 test('observer injection is generation-fenced and a lost callback expires', () => {
