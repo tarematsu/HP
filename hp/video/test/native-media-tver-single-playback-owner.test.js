@@ -12,7 +12,8 @@ const routingKeys = readFileSync(
 test('TVer event policy never owns program playback recovery', () => {
   assert.doesNotMatch(episode, /video\.play\s*\(/);
   assert.doesNotMatch(episode, /playButton\.click\s*\(/);
-  assert.match(episode, /if \(video\.paused && !video\.ended\) wakeNative\(\)/);
+  assert.match(episode, /if \(video\.paused && !video\.ended\) recoveryFlags\.push\('paused'\)/);
+  assert.match(episode, /wakeNative\('recovery:' \+ recoveryFlags\.join\('\+'\)/);
 });
 
 test('paused TVer playback is recovered only by the trusted watchdog', () => {
