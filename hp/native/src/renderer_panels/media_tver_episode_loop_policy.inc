@@ -15,7 +15,7 @@ LR"JS(
   const postrollGraceMs = 12000;
   const qualityProbeIntervalMs = 5000;
   const qualityProbeLimit = 4;
-  const seriesPathKey = '__homePanelTverSeriesPath';
+  const episodeQueueKey = '__homePanelTverEpisodeQueue';
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visibleRect = element => {
     if (!element) return null;
@@ -62,32 +62,24 @@ LR"JS(
       if (video.volume !== targetVolume) video.volume = targetVolume;
     } catch (_) {}
   };
-  const storedSeriesPath = () => {
+  const advanceEpisode = () => {
     try {
-      const path = sessionStorage.getItem(seriesPathKey) || '';
-      return /^\/series\/[a-zA-Z0-9]+$/.test(path) ? path : '/series/srx97ftk3w';
-    } catch (_) {
-      return '/series/srx97ftk3w';
-    }
-  };
-  const episodeQueueKey = seriesPath => '__homePanelTverEpisodeQueue:' + seriesPath;
-  const advanceEpisodeOrSeries = () => {
-    const seriesPath = storedSeriesPath();
-    try {
-      const key = episodeQueueKey(seriesPath);
-      const queue = JSON.parse(sessionStorage.getItem(key) || 'null');
+      const queue = JSON.parse(sessionStorage.getItem(episodeQueueKey) || 'null');
       if (!queue || !Array.isArray(queue.hrefs) || !queue.hrefs.length) return false;
       const currentIndex = queue.hrefs.findIndex(href => {
         try { return new URL(href, location.href).pathname === location.pathname; }
         catch (_) { return false; }
       });
-      const nextIndex = (currentIndex >= 0 ? currentIndex : queue.index) + 1;
+      const storedIndex = Number.isInteger(queue.index) ? queue.index : -1;
+      const nextIndex = (currentIndex >= 0 ? currentIndex : storedIndex) + 1;
       if (nextIndex >= 0 && nextIndex < queue.hrefs.length) {
-        sessionStorage.setItem(key, JSON.stringify({ hrefs: queue.hrefs, index: nextIndex }));
+        sessionStorage.setItem(
+            episodeQueueKey,
+            JSON.stringify({ hrefs: queue.hrefs, index: nextIndex }));
         location.replace(queue.hrefs[nextIndex]);
         return true;
       }
-      sessionStorage.removeItem(key);
+      sessionStorage.removeItem(episodeQueueKey);
     } catch (_) {}
     return false;
   };
@@ -320,7 +312,7 @@ LR"JS(
         state.postrollAfterProgram = false;
         window.__homePanelTverAdActive = false;
         if (completedPostroll) {
-          if (advanceEpisodeOrSeries()) return;
+          if (advanceEpisode()) return;
           state.restartRequested = true;
           wakeNative();
           return;
@@ -366,7 +358,7 @@ LR"JS(
       const stableEnd = state.endCandidateAt > 0 &&
           Date.now() - state.endCandidateAt >= postrollGraceMs;
       if (stableEnd && completedItem) {
-        if (advanceEpisodeOrSeries()) return;
+        if (advanceEpisode()) return;
         state.restartRequested = true;
         wakeNative();
         return;
