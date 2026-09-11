@@ -28,7 +28,7 @@ test('all configured tracks use the shared music descriptor and scoped reconcile
   assert.match(scoped, /targetPlayButton/);
 });
 
-test('music keeps Spotify repeat-one as a queue fail-safe while observer owns completion', () => {
+test('music keeps Spotify repeat-one as a queue fail-safe while observer owns natural completion', () => {
   assert.match(scoped, /const repeatState = button =>/);
   assert.match(scoped, /button\[data-testid="control-button-repeat"\]/);
   assert.match(scoped, /checked === 'false'.*'off'/s);
@@ -38,9 +38,9 @@ test('music keeps Spotify repeat-one as a queue fail-safe while observer owns co
   assert.match(scoped, /return point\(repeat\)/);
   assert.doesNotMatch(scoped, /repeat\.click\(\)/);
   assert.match(runtime, /post\('spotify:timed-started'\)/);
-  assert.match(events, /const finishLeadSeconds = 2\.0/);
   assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
 });
 
 test('returned Spotify control points flow through the single CDP trusted-click module', () => {
