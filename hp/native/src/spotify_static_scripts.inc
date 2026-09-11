@@ -227,15 +227,18 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
   }
 
   const control = playerControl();
-  if (buttonShowsPlaying(control)) {
+  const episodeButton = playButtonIn(document);
+  if (buttonShowsPlaying(episodeButton) ||
+      (oneShot.started && buttonShowsPlaying(control))) {
     oneShot.started = true;
     report(true);
     return true;
   }
 
+  // Never use the global footer Play button to start TALKABOUT. It can resume
+  // the previous music queue. Only the direct episode page's own Play starts it.
   report(false);
-  const button = visible(control) ? control : playButtonIn(document);
-  return point(button);
+  return point(episodeButton);
 })()
 )JS";
 
