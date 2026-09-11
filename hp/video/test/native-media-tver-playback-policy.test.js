@@ -107,8 +107,8 @@ test('TVer program volume stays at 100 percent while ads remain untouched', () =
 
 test('event policy wakes native recovery on pause, ad, fullscreen loss and restart', () => {
   assert.match(episodeLoop, /homepanel:tver-wake/);
-  assert.match(episodeLoop, /if \(video\.paused && !video\.ended\) wakeNative\(\)/);
-  assert.match(episodeLoop, /window\.__homePanelTverAdActive = true;[\s\S]*wakeNative\(\)/);
-  assert.match(episodeLoop, /fullscreenchange[\s\S]*wakeNative\(\)/);
-  assert.match(episodeLoop, /restartRequested = true;[\s\S]*wakeNative\(\)/);
+  assert.match(episodeLoop, /if \(video\.paused && !video\.ended\) recoveryFlags\.push\('paused'\)/);
+  assert.match(episodeLoop, /window\.__homePanelTverAdActive = true;[\s\S]*wakeNative\('ad:'/);
+  assert.match(episodeLoop, /fullscreenchange[\s\S]*wakeNative\('fullscreen-change:'/);
+  assert.match(episodeLoop, /restartRequested = true;[\s\S]*wakeNative\('restart:'/);
 });
