@@ -48,9 +48,7 @@ void StretchRadarIntoLowPeak(
 }
 }  // namespace
 
-// The large radar bitmap is painted by windows.inc and media_section.inc. Keep
-// their existing call sites but route this translation unit through the cheaper
-// renderer above.
+// The large radar bitmap is painted only by the lower main-row radar section.
 #define StretchRadarInto StretchRadarIntoLowPeak
 
 #include "renderer_panels/layout_overrides.inc"
@@ -103,15 +101,15 @@ HWND FindNativeMediaRootWindow() noexcept {
 #include "renderer_panels/media_section.inc"
 
 namespace {
-HWND NativeMediaRadarWindow() noexcept {
+HWND NativeMediaContainerWindow() noexcept {
   const HWND root = FindNativeMediaRootWindow();
-  return root && IsWindow(root) ? GetDlgItem(root, kNativeRadarId) : nullptr;
+  return root && IsWindow(root) ? GetDlgItem(root, kNativeMediaId) : nullptr;
 }
 
-HWND FindNativeMediaHostWindow(HWND radarWindow) noexcept {
-  if (!radarWindow || !IsWindow(radarWindow)) return nullptr;
+HWND FindNativeMediaHostWindow(HWND mediaWindow) noexcept {
+  if (!mediaWindow || !IsWindow(mediaWindow)) return nullptr;
   return FindWindowExW(
-      radarWindow, nullptr, kNativeMvPanelHostClass, nullptr);
+      mediaWindow, nullptr, kNativeMvPanelHostClass, nullptr);
 }
 }  // namespace
 
@@ -119,9 +117,9 @@ void SetNativeMediaPanelMuted(bool muted) noexcept {
   if (gNativeMediaMuted == muted) return;
   gNativeMediaMuted = muted;
 
-  const HWND radarWindow = NativeMediaRadarWindow();
-  if (!radarWindow || !IsWindow(radarWindow)) return;
-  const HWND hostWindow = FindNativeMediaHostWindow(radarWindow);
+  const HWND mediaWindow = NativeMediaContainerWindow();
+  if (!mediaWindow || !IsWindow(mediaWindow)) return;
+  const HWND hostWindow = FindNativeMediaHostWindow(mediaWindow);
   if (!hostWindow || !IsWindow(hostWindow)) return;
   auto* host = reinterpret_cast<NativeMediaPanelHost*>(
       GetWindowLongPtrW(hostWindow, GWLP_USERDATA));
