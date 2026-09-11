@@ -40,17 +40,12 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
     }
   };
   const guardSeriesEpisode = () => {
-    // A successful guard is document-local. The queue cannot legitimately drop
-    // the current episode without a navigation, so avoid reparsing JSON every
-    // four-second watchdog pass on the steady path.
     if (window[guardedEpisodePathKey] === location.pathname) return true;
 
     let seriesPath = '';
     try { seriesPath = sessionStorage.getItem(seriesPathKey) || ''; }
     catch (_) {}
     if (!/^\/series\/[a-zA-Z0-9]+$/.test(seriesPath)) {
-      // The cloud launcher arrives directly on an episode, so establish the
-      // legacy queue namespace without ever visiting its /series/ document.
       if (!directLaunch) return requestRestart();
       seriesPath = '/series/srx97ftk3w';
       try { sessionStorage.setItem(seriesPathKey, seriesPath); }
@@ -77,8 +72,6 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
         window[guardedEpisodePathKey] = location.pathname;
         return true;
       }
-      // A TVer recommendation/autoplay outside the cloud queue is never
-      // accepted. Only the explicit cloud-launch marker may rebase the queue.
       if (!directLaunch) return requestRestart();
     }
 
@@ -140,9 +133,6 @@ LR"JS(
     ];
   };
 
-  // Survey detection is intentionally bounded to modal/survey roots. The old
-  // policy enumerated every button/link on the TVer document every four seconds,
-  // which produced visible CPU peaks on low-end devices.
   const surveyRoots = Array.from(document.querySelectorAll(
       '[role="dialog"], [aria-modal="true"], [data-testid*="survey" i], '
       + '[class*="survey" i], [class*="questionnaire" i]'));
@@ -165,7 +155,6 @@ LR"JS(
 
   const state = window.__homePanelSakuraMeetsState;
   if (state && state.restartRequested) return 'restart';
-  if ((state && state.adActive) || window.__homePanelTverAdActive) return null;
 
   let video = null;
   for (const candidate of document.querySelectorAll('video')) {
@@ -174,6 +163,14 @@ LR"JS(
       break;
     }
     if (!video) video = candidate;
+  }
+
+  if (video) {
+    try {
+      if (video.muted) video.muted = false;
+      if (video.volume !== 1.0) video.volume = 1.0;
+    } catch (_) {
+    }
   }
 
   const playerRootFor = media => {
@@ -204,9 +201,6 @@ LR"JS(
 )JS"
 LR"JS(
 
-  // Recovery is idempotent first: play() can only move a paused video toward
-  // playback. Only build the player-control list after a rejected play() or when
-  // no video exists, keeping the common healthy pass small.
   if (!video) {
     const playButton = findPlayButton();
     return playButton ? point(playButton) : null;
@@ -233,15 +227,16 @@ LR"JS(
   }
   video.__homePanelTverResumeBlocked = false;
 
-  // Playback recovery takes precedence over fullscreen. Once stable playback is
-  // confirmed, a clean fullscreen state exits before any player-control scan.
-  if (state && state.fullscreenDirty === false) return null;
+  // Ads use the same fullscreen recovery path as program playback. TVer can
+  // leave fullscreen while swapping media, so trust the actual browser state
+  // rather than a stale cached flag.
   const browserFullscreen = document.fullscreenElement ||
       document.webkitFullscreenElement || document.msFullscreenElement;
   if (browserFullscreen) {
     if (state) state.fullscreenDirty = false;
     return null;
   }
+  if (state) state.fullscreenDirty = true;
 
   const controls = playerControls();
   const exitFullscreenControl = controls.some(element => {
@@ -260,7 +255,52 @@ LR"JS(
     if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
     return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
   });
-  return fullscreenButton ? point(fullscreenButton) : null;
+  return fullscreenButton ? point(fullscreenButton) : point(video);
+})()
+)JS";
+
+// Invoked immediately after a trusted TVer click. Unlike the legacy ad-safe
+// helper, ads are intentionally eligible so pre/mid/post-roll media remains
+// fullscreen through TVer's media-element swaps.
+constexpr wchar_t kNativeMediaTverForceFullscreenAnyMediaScript[] = LR"JS(
+(() => {
+  if (window.__homePanelTverFullscreenPending) return;
+  window.__homePanelTverFullscreenPending = true;
+  window.setTimeout(async () => {
+    window.__homePanelTverFullscreenPending = false;
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement ||
+          document.msFullscreenElement) return;
+      const visible = element => {
+        if (!element) return false;
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' &&
+               rect.width > 0 && rect.height > 0;
+      };
+      const videos = Array.from(document.querySelectorAll('video'));
+      const video = videos.find(visible) || videos[0] || null;
+      if (!video) return;
+      const candidates = [video, video.parentElement].filter(Boolean);
+      for (const target of candidates) {
+        const request = target.requestFullscreen || target.webkitRequestFullscreen ||
+            target.msRequestFullscreen;
+        if (typeof request !== 'function') continue;
+        try {
+          const result = request.call(target);
+          if (result && typeof result.then === 'function') await result;
+          if (document.fullscreenElement || document.webkitFullscreenElement ||
+              document.msFullscreenElement) {
+            const state = window.__homePanelSakuraMeetsState;
+            if (state) state.fullscreenDirty = false;
+            return;
+          }
+        } catch (_) {
+        }
+      }
+    } catch (_) {
+    }
+  }, 180);
 })()
 )JS";
 }  // namespace
