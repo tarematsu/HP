@@ -30,7 +30,8 @@ constexpr wchar_t kSpotifyLonesomeRabbitTitle[] = L"lonesome rabbit";
 }  // namespace
 
 bool SpotifyWebViews::SlotMatchesPodcastTarget(const Slot& slot) const noexcept {
-  if (!slot.webview || slot.timedTarget != TimedSpotifyTarget::TalkAbout) {
+  if (!slot.webview || slot.timedTarget != TimedSpotifyTarget::TalkAbout ||
+      !SpotifyPodcastTargetReady()) {
     return false;
   }
   LPWSTR rawSource = nullptr;
@@ -38,12 +39,14 @@ bool SpotifyWebViews::SlotMatchesPodcastTarget(const Slot& slot) const noexcept 
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
   return IsSpotifyOpenSource(source) &&
-         (source.find(SpotifyPodcastPath()) != std::wstring::npos ||
-          source.find(L"/episode/") != std::wstring::npos);
+         source.find(SpotifyPodcastPath()) != std::wstring::npos;
 }
 
 void SpotifyWebViews::NavigatePodcastSlot(Slot& slot) noexcept {
-  if (!slot.webview || slot.timedTarget != TimedSpotifyTarget::TalkAbout) return;
+  if (!slot.webview || slot.timedTarget != TimedSpotifyTarget::TalkAbout ||
+      !SpotifyPodcastTargetReady()) {
+    return;
+  }
 
   slot.lastModeNavigateTick = GetTickCount64();
   SetSlotState(slot, SlotState::Navigating);
@@ -60,7 +63,10 @@ void SpotifyWebViews::NavigatePodcastSlot(Slot& slot) noexcept {
 }
 
 void SpotifyWebViews::ReconcilePodcastSlot(Slot& slot) noexcept {
-  if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
+  if (!slot.hostWindow || !IsWindow(slot.hostWindow) ||
+      !SpotifyPodcastTargetReady()) {
+    return;
+  }
   if (!slot.webview) {
     BeginControllerCreate(slot);
     return;
