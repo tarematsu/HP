@@ -67,7 +67,7 @@ inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
 struct NativeDashboardLayout {
   RECT side{};
-  RECT radar{};
+  RECT media{};
   RECT main{};
 };
 
@@ -94,16 +94,16 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int innerWidth = std::max(1L, inner.right - inner.left);
   const int innerHeight = std::max(1L, inner.bottom - inner.top);
   const int sideWidth = innerWidth * 285 / 1000;
-  const int radarHeight = innerHeight * 600 / 1000;
+  const int mediaHeight = innerHeight * 600 / 1000;
 
   NativeDashboardLayout layout;
   layout.side = RECT{inner.left, inner.top, inner.left + sideWidth, inner.bottom};
-  layout.radar = RECT{inner.left + sideWidth + gapX, inner.top, inner.right,
-                      inner.top + radarHeight};
+  layout.media = RECT{inner.left + sideWidth + gapX, inner.top, inner.right,
+                      inner.top + mediaHeight};
   layout.main = RECT{inner.left + sideWidth + gapX,
-                     inner.top + radarHeight + gapY, inner.right, inner.bottom};
-  if (layout.radar.right <= layout.radar.left) {
-    layout.radar.right = layout.radar.left + 1;
+                     inner.top + mediaHeight + gapY, inner.right, inner.bottom};
+  if (layout.media.right <= layout.media.left) {
+    layout.media.right = layout.media.left + 1;
   }
   if (layout.main.right <= layout.main.left) {
     layout.main.right = layout.main.left + 1;
@@ -232,7 +232,7 @@ class Renderer {
     AirStats,
     AirGraph,
     Weather,
-    Music,
+    Radar,
     Energy,
     EnergySwitchBot
   };
@@ -240,12 +240,12 @@ class Renderer {
   void InvalidatePanelSection(HWND window, PanelSection section);
   void PaintNativeSide(HWND hwnd);
   void PaintNativeMain(HWND hwnd);
-  void PaintNativeRadar(HWND hwnd);
+  void PaintNativeMedia(HWND hwnd);
   void DrawClockSection(HDC dc, const RECT& card);
   void DrawAirSection(HDC dc, const RECT& card);
   void DrawWeatherSection(HDC dc, const RECT& card);
   void DrawControlsSection(HDC dc, const RECT& card);
-  void DrawMusicSection(HDC dc, const RECT& card);
+  void DrawRadarSection(HDC dc, const RECT& card);
   void DrawEnergySection(HDC dc, const RECT& card);
   void DrawEnergySwitchBotSection(HDC dc, const RECT& card);
   void RebuildNativeAirGraph(int64_t nowMs);
@@ -286,7 +286,7 @@ class Renderer {
   HWND window_{};
   HWND nativeSideWindow_{};
   HWND nativeMainWindow_{};
-  HWND nativeRadarWindow_{};
+  HWND nativeMediaWindow_{};
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;
   AirGraphProjection nativeAirGraph_{};
