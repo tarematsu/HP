@@ -123,28 +123,29 @@ LR"JS(
     const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
     const shortAdLength = duration >= 5 && duration <= 65;
     const identity = mediaIdentity(video);
-    const explicitMarker = explicitAdMarker(video);
     if (state.adActive) {
       const mediaChanged = state.adVideo !== video ||
           (state.adIdentity && identity && state.adIdentity !== identity);
       if (mediaChanged) {
         // Consecutive ads can replace the media element before metadata arrives.
-        // Keep the ad pod latched until a clearly long non-ad item appears.
-        if (!duration || shortAdLength || explicitMarker) return true;
-        return false;
+        // Keep the ad pod latched from media facts first; scan the player DOM
+        // only if the replacement already looks like long-form content.
+        if (!duration || shortAdLength) return true;
+        return explicitAdMarker(video);
       }
       if (shortAdLength && !video.ended) return true;
       if (video.ended) {
         if (!state.adEndedAt) state.adEndedAt = Date.now();
         if (Date.now() - state.adEndedAt < 4000) return true;
       }
-      return explicitMarker;
+      return explicitAdMarker(video);
     }
     const replacementVideo = state.video && state.video !== video &&
         state.maxTime >= 5 && shortAdLength;
     const sameVideoReset = state.video === video && state.maxTime >= 10 &&
         shortAdLength && currentTime < 5 && video.playbackRate <= 1.05;
-    return replacementVideo || sameVideoReset || explicitMarker;
+    if (replacementVideo || sameVideoReset) return true;
+    return explicitAdMarker(video);
   };
 
   let ensureTimer = 0;
