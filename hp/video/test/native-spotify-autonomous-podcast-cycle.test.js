@@ -38,7 +38,8 @@ test('each account gets restart-safe TALKABOUT no later than its cloud interval 
   assert.match(rotation, /StartOverduePodcastBreak/);
   assert.match(rotation, /now < slot\.podcastDueTick/);
   assert.match(rotation, /lastPodcastDispatchTick_[\s\S]*kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /StartOverduePodcastBreak\(now\)[\s\S]*AdvanceExpiredTimedRotation\(now\)/);
+  assert.match(schedule, /StartOverduePodcastBreak\(now\)/);
+  assert.doesNotMatch(schedule, /AdvanceExpiredTimedRotation/);
   assert.doesNotMatch(rotation, /kSpotifyPodcastBreakEveryCycles/);
   assert.doesNotMatch(rotation, /timedRotationCycle %/);
 });
@@ -60,9 +61,9 @@ test('the next deadline is persisted only after TALKABOUT is confirmed playing',
   assert.match(rotation, /CompletePodcastBreak[\s\S]*timedRotationPosition = 0[\s\S]*PrepareTimedRotationCycle\(slot\)[\s\S]*ApplyTimedRotationTarget\(slot\)/);
 });
 
-test('music keeps one shared four-minute deadline while podcast break is exempt', () => {
-  assert.match(header, /kSpotifyMusicTrackDeadlineMs =\s*4ULL \* 60ULL \* 1000ULL/);
-  assert.match(rotation, /now - slot\.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs/);
-  assert.match(rotation, /BeginPodcastBreak[\s\S]*timedPlaybackStartTick = 0/);
-  assert.match(rotation, /podcastBreakActive \|\|[\s\S]*timedPlaybackStartTick == 0/);
+test('music has no wall-clock deadline while TALKABOUT keeps its independent deadline', () => {
+  assert.doesNotMatch(header, /kSpotifyMusicTrackDeadlineMs/);
+  assert.doesNotMatch(rotation + schedule, /AdvanceExpiredTimedRotation|kSpotifyMusicTrackDeadlineMs/);
+  assert.match(rotation, /BeginPodcastBreak[\s\S]*timedTarget = TimedSpotifyTarget::TalkAbout/);
+  assert.match(schedule, /StartOverduePodcastBreak\(now\)/);
 });
