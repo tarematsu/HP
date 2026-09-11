@@ -29,10 +29,26 @@ export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
   ["なぜ　恋をして来なかったんだろう？ -OFF VOCAL ver.-", "5TaAgmUQuhJw4bGW4dg3KI"],
 ] as const;
 
+// Additional verified vocal tracks at or below 3:30. Keep these separate so the
+// pre-existing managed pool remains an exact prefix for safe device migration.
+export const ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS = [
+  ["恋は向いてない", "44sj7vChwZRYQ0Oz9AFyP2"],
+  ["摩擦係数", "5vOABxcejLNdoyLh7JRtjM"],
+  ["もう一曲　欲しいのかい？", "3CzKqb5U3GlxUhoJGv1BZf"],
+  ["一瞬の馬", "7jLbrfs3YtWO232XEU3iD1"],
+  ["条件反射で泣けて来る", "5z8xkccoi9bnA8SGf2VQnk"],
+  ["油を注せ！", "6oZVLkbhLB3qyikq0eNlEy"],
+  ["泣かせて　Hold me tight!", "31vLfN5bNOpasgULiqSbLx"],
+  ["ジャマイカビール", "37h3M4ZYJgSRy0cXArsH59"],
+  ["承認欲求", "59G1ePHebLtol0u5upRFSZ"],
+  ["なぜ　恋をして来なかったんだろう？", "2K6uY7BaeOfuPwJNOVF3ht"],
+] as const;
+
 // E/F/G use the complete short music pool. Instrumentals stay exclusive to C.
 export const SHORT_SPOTIFY_ROTATION_TRACKS = [
   ...SHORT_SPOTIFY_RANDOM_TRACKS,
   ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
+  ...ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS,
 ] as const;
 
 // Keep newly discovered instrumental tracks appended after the existing managed
@@ -61,6 +77,7 @@ export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
   ...INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
   ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
   ...ADDITIONAL_INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
+  ...ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS,
 ] as const;
 
 export const MANAGED_SPOTIFY_RANDOM_TRACK_IDS =
