@@ -111,6 +111,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 }
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
+  (void)nowMs;
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
 
   StationheadRevisionCache& revisions = StationheadRevisionsFor(this);
