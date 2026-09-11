@@ -15,6 +15,13 @@ LEFT JOIN sh_minute_fact_pending_age pending_age ON pending_age.id=stats.id
 WHERE stats.id='global'
 LIMIT 1`;
 
+const LIVE_INBOX_DETAIL_SQL = `SELECT
+  COALESCE(SUM(status='processing'),0) AS live_processing_count,
+  COALESCE(SUM(status='dead'),0) AS live_dead_count,
+  MIN(CASE WHEN status='pending' THEN updated_at END) AS oldest_live_pending_minute
+FROM sh_minute_fact_jobs INDEXED BY idx_sh_minute_fact_jobs_status_kind_minute
+WHERE job_kind='live' AND status IN ('pending','processing','dead')`;
+
 const LEGACY_SQL = `SELECT
   task_name,last_started_at,last_success_at,last_failure_at,last_duration_ms,
   last_error,runs_total,succeeded_total,failed_total,processed_total,
@@ -25,6 +32,7 @@ WHERE task_name IN ('derive','recovery','rebuild')
 ORDER BY task_name`;
 
 function integer(value, fallback = null) {
+  if (value == null || value === '') return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
@@ -65,6 +73,7 @@ function hasAllRuntimeTasks(tasks) {
 
 function inboxRuntimeRows(row = {}) {
   const updatedAt = integer(row.updated_at, Date.now());
+  const livePendingCount = nonNegative(row.live_pending_count ?? row.pending_count);
   const derive = {
     task_name: 'derive',
     source: 'inbox',
@@ -81,10 +90,10 @@ function inboxRuntimeRows(row = {}) {
     job_failures_total: 0,
     last_processed_count: 0,
     last_failed_count: 0,
-    pending_count: nonNegative(row.pending_count),
-    processing_count: nonNegative(row.processing_count),
-    dead_count: nonNegative(row.dead_count),
-    oldest_pending_minute: integer(row.oldest_pending_minute),
+    pending_count: livePendingCount,
+    processing_count: nonNegative(row.live_processing_count),
+    dead_count: nonNegative(row.live_dead_count),
+    oldest_pending_minute: integer(row.oldest_live_pending_minute),
     updated_at: updatedAt,
   };
   const retired = (taskName) => ({
@@ -171,13 +180,44 @@ export function minuteTaskHealth(row, now, env = {}) {
   };
 }
 
+async function liveInboxDetails(env, inbox, policy) {
+  const livePendingCount = nonNegative(inbox?.live_pending_count);
+  const possibleLiveState = livePendingCount >= policy.count
+    || nonNegative(inbox?.processing_count) > 0
+    || nonNegative(inbox?.dead_count) > 0;
+  if (!possibleLiveState) return null;
+  try {
+    return await env.MINUTE_DB.prepare(LIVE_INBOX_DETAIL_SQL).first();
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: 'pages_minute_live_inbox_detail_failed',
+      error: String(error?.message || error).slice(0, 500),
+    }));
+    return null;
+  }
+}
+
 export async function readMinuteHealth(env, now = Date.now()) {
   if (!env?.MINUTE_DB?.prepare) throw new Error('MINUTE_DB binding missing');
   let rows = null;
 
   try {
     const inbox = await env.MINUTE_DB.prepare(INBOX_SQL).first();
-    if (inbox) rows = inboxRuntimeRows(inbox);
+    if (inbox) {
+      const livePendingCount = nonNegative(inbox.live_pending_count);
+      const detail = await liveInboxDetails(env, inbox, pendingPolicy(env));
+      const allPendingAreLive = nonNegative(inbox.pending_count) === livePendingCount;
+      rows = inboxRuntimeRows({
+        ...inbox,
+        live_pending_count: livePendingCount,
+        live_processing_count: nonNegative(detail?.live_processing_count),
+        live_dead_count: nonNegative(detail?.live_dead_count),
+        oldest_live_pending_minute: integer(
+          detail?.oldest_live_pending_minute,
+          allPendingAreLive ? integer(inbox.oldest_pending_minute) : null,
+        ),
+      });
+    }
   } catch (error) {
     console.warn(JSON.stringify({
       event: 'pages_minute_inbox_health_failed',
