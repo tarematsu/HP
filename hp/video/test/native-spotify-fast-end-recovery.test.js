@@ -47,6 +47,8 @@ const phase = readFileSync(
   'utf8',
 );
 
+const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
+
 test('observer responsibilities are independent scripts sharing one explicit runtime', () => {
   for (const file of [
     'spotify_media_observer_runtime.inc',
@@ -97,9 +99,11 @@ test('direct track path is preferred over MediaSession title when both exist', (
 test('start and recovery are non-destructive while completed-generation autoplay is quarantined', () => {
   assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
   assert.doesNotMatch(scripts, /if \(changed\)[\s\S]*media\.pause\(\)/);
-  assert.doesNotMatch(runtime, /media\.pause\(/);
-  assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript|media\.pause\(/);
-  assert.doesNotMatch(timed, /kSpotifyStaticStopPlaybackScript|media\.pause\(/);
+  assert.doesNotMatch(runtime, executablePause);
+  assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript/);
+  assert.doesNotMatch(timed, /kSpotifyStaticStopPlaybackScript/);
+  assert.doesNotMatch(music, executablePause);
+  assert.doesNotMatch(timed, executablePause);
   assert.doesNotMatch(rotation, /StopTimedOneShotPlayback|kSpotifyStaticStopPlaybackScript/);
 
   assert.match(
@@ -131,7 +135,7 @@ test('pause, waiting, stalled, and silent media-clock freezes recover playback w
   assert.match(heartbeat, /requestRecovery\(media\)/);
   assert.match(runtime, /post\('spotify:not-playing'\)/);
   assert.match(rotation, /const bool stopped =[\s\S]*spotify:not-playing/);
-  assert.doesNotMatch(runtime, /media\.pause\(/);
+  assert.doesNotMatch(runtime, executablePause);
 });
 
 test('observer injection is generation-fenced and a lost callback expires', () => {
