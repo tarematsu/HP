@@ -36,6 +36,14 @@ test('Spotify music converges both shuffle and repeat to off before playback rec
 
 test('repeat guard requires explicit off and treats context and repeat-one as active', () => {
   assert.match(guards, /kSpotifyRepeatOffProbeScript/);
+  assert.match(guards, /if \(!button\) return false;/);
   assert.match(guards, /if \(checked === 'false'\) return true;/);
   assert.match(guards, /checked !== 'true' && checked !== 'mixed'/);
+});
+
+test('unmounted controls stay pending instead of being falsely marked off or unhealthy', () => {
+  assert.doesNotMatch(guards, /if \(!button\) return true;/);
+  assert.match(guards, /if \(!button\) return false;/);
+  assert.match(guards, /if \(value == L"false"\)/);
+  assert.match(guards, /ArmRobustScheduler\(\);[\s\S]*return S_OK;/);
 });
