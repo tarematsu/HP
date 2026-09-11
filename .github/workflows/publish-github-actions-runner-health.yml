@@ -16,6 +16,7 @@ on:
       - '.github/workflows/run-track-metadata-repair.yml'
       - '.github/workflows/run-local-minute-facts-rebuild.yml'
       - '.github/workflows/sh-observability.yml'
+      - '.github/scripts/workflow-health-policy.mjs'
       - '.github/scripts/github-actions-runner-health.mjs'
       - '.github/scripts/github-actions-runner-health-current.mjs'
       - '.github/scripts/publish-github-actions-runner-health.mjs'
