@@ -100,6 +100,9 @@ HWND FindNativeMediaRootWindow() noexcept {
 // renderer-level two-series alternation no longer participates in navigation.
 #include "renderer_panels/media_section.inc"
 
+// Rain-radar rendering is intentionally separate from the media/WebView module.
+#include "renderer_panels/radar_section.inc"
+
 namespace {
 HWND NativeMediaContainerWindow() noexcept {
   const HWND root = FindNativeMediaRootWindow();
