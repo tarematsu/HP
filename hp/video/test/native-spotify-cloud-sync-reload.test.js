@@ -14,6 +14,8 @@ const cloudSync = readFileSync(
   new URL('../../native/src/cloud_client_sync.cpp', import.meta.url), 'utf8');
 const admin = readFileSync(
   new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
+const randomCatalog = readFileSync(
+  new URL('../../cloud/src/spotify_random_catalog.ts', import.meta.url), 'utf8');
 
 test('Spotify watches the same device config cache replaced by CloudClient sync', () => {
   assert.match(cloudSync, /deviceConfigPath = dataDir_ \/ L"device-config\.json"/);
@@ -69,14 +71,15 @@ test('admin describes sync-time application rather than restart-time application
   assert.doesNotMatch(admin, /次回HomePanel再起動時にSpotify設定を適用/);
 });
 
-test('managed legacy and short random pools migrate to the instrumental catalog', () => {
-  assert.match(admin, /const spotifyRandomPool=\[/);
+test('admin embeds the shared managed random catalog and upgrades managed prefixes', () => {
+  assert.match(admin, /MANAGED_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(admin, /MANAGED_SPOTIFY_RANDOM_TRACK_IDS/);
   assert.match(admin, /running time is 3:30 or shorter/);
-  assert.match(admin, /legacySpotifyRandomTrackIds/);
-  assert.match(admin, /shortSpotifyRandomTrackIds/);
+  assert.match(admin, /managedSpotifyRandomTrackIds/);
+  assert.match(admin, /isManagedPrefix/);
   assert.match(admin, /random\.tracks=structuredClone\(spotifyRandomPool\)/);
-  assert.match(admin, /spotifyTrack\("Sunny side up"/);
-  assert.match(admin, /spotifyTrack\("Nightmare症候群"/);
-  assert.match(admin, /spotifyTrack\("Interlude #1"/);
-  assert.match(admin, /spotifyTrack\("Interlude #6"/);
+  assert.match(randomCatalog, /Sunny side up/);
+  assert.match(randomCatalog, /Nightmare症候群/);
+  assert.match(randomCatalog, /Interlude #1/);
+  assert.match(randomCatalog, /Interlude #6/);
 });

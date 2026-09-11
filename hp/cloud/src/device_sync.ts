@@ -12,6 +12,11 @@ import {
   type StateRow,
 } from "./snapshot";
 import { normalizeDeviceSyncVersions } from "./device_sync_versions";
+import {
+  MANAGED_SPOTIFY_RANDOM_TRACK_IDS,
+  MANAGED_SPOTIFY_RANDOM_TRACKS,
+  SHORT_SPOTIFY_RANDOM_TRACKS,
+} from "./spotify_random_catalog";
 import type { Env } from "./sources";
 import { stationheadHealthPayload } from "./stationhead_health";
 import {
@@ -71,30 +76,6 @@ const LEGACY_SPOTIFY_RANDOM_TRACK_IDS = [
   "2meBhRDzQpf0ltQH11HbWG",
 ] as const;
 
-const SHORT_SPOTIFY_RANDOM_TRACKS = [
-  ["Sunny side up", "5xUQGRuP4LPk4ESl1xbmFs"],
-  ["キスが苦い", "4PaLKbIU8NvguxcrjMvHXh"],
-  ["やるしかないじゃん", "6GF0ZgT8wlksWrlLTfGmlU"],
-  ["恋愛無双", "5vRGSkQiKlJudkJ2vUKIOe"],
-  ["死んだふり", "6QmAwjzLQy6SjUyvGzSCG4"],
-  ["Make or Break", "7vvZ1QHTdkoEXBiOBdxdIo"],
-  ["行かないで", "3HdmFZGqZLNiCAfiNj4N84"],
-  ["ドライフルーツ", "5DrxCKjopmd7UL1pJWqBHK"],
-  ["Nightmare症候群", "2hi8kIoKC8tRMDajdkoYFL"],
-] as const;
-
-const INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
-  ["Interlude #1", "1N339Ccfo6kqPHtS5ueJ0J"],
-  ["Interlude #2", "57MZ2hsDSJMp9nzFIRFd0S"],
-  ["Interlude #4", "4K3nO9hBA3UE62Dspjx19d"],
-  ["Interlude #6", "3IceOend8QYv0mJLCfrxQq"],
-] as const;
-
-const MANAGED_SPOTIFY_RANDOM_TRACKS = [
-  ...SHORT_SPOTIFY_RANDOM_TRACKS,
-  ...INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
-] as const;
-
 function spotifyTrackId(value: unknown): string {
   const track = objectOrNull(value);
   const url = typeof track?.url === "string" ? track.url : "";
@@ -111,8 +92,11 @@ function migrateLegacySpotifyRandomPool(config: JsonRecord): boolean {
   const ids = tracks.map(spotifyTrackId);
   const isManagedPool = (expected: readonly string[]) =>
     ids.length === expected.length && ids.every((id, index) => id === expected[index]);
-  const shortTrackIds = SHORT_SPOTIFY_RANDOM_TRACKS.map(([, id]) => id);
-  if (!isManagedPool(LEGACY_SPOTIFY_RANDOM_TRACK_IDS) && !isManagedPool(shortTrackIds)) {
+  const isManagedPrefix =
+    ids.length >= SHORT_SPOTIFY_RANDOM_TRACKS.length &&
+    ids.length <= MANAGED_SPOTIFY_RANDOM_TRACK_IDS.length &&
+    ids.every((id, index) => id === MANAGED_SPOTIFY_RANDOM_TRACK_IDS[index]);
+  if (!isManagedPool(LEGACY_SPOTIFY_RANDOM_TRACK_IDS) && !isManagedPrefix) {
     return false;
   }
   random.tracks = MANAGED_SPOTIFY_RANDOM_TRACKS.map(([title, id]) => ({
