@@ -19,7 +19,7 @@ test('active music reconcile is routed through the now-playing-scoped script', (
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.match(
     wrapper,
-    /#define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript[\s\S]*#include "spotify_timed_sequence\.inc"[\s\S]*#include "spotify_recent_catalog\.inc"[\s\S]*#undef kSpotifyStaticTrackReconcileScript/,
+    /#define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript[\s\S]*#include "spotify_timed_sequence\.inc"[\s\S]*#include "spotify_music_target\.inc"[\s\S]*#undef kSpotifyStaticTrackReconcileScript/,
   );
 });
 
