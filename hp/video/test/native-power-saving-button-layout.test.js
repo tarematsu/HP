@@ -53,21 +53,25 @@ test('power-saving controller composes focused responsibilities without a thread
   assert.match(overlay, /void PowerSavingController::PaintOverlay/);
 });
 
-test('power saving and media mute controls share a compact two-row clock footer stack', () => {
+test('power saving and media mute controls share one enlarged horizontal clock footer row', () => {
+  assert.match(overlay, /const int upperMediaHeight = sideHeight \* 600 \/ 1000/);
+  assert.match(overlay, /compactAvailable \* 55 \/ 100/);
   assert.match(overlay, /contentHeight \* 790 \/ 1000/);
-  assert.match(overlay, /contentWidth \* 220 \/ 1000, 78, 112/);
-  assert.match(overlay, /ParentControlStackRect\(\)/);
-  assert.match(overlay, /ControlButtonRect\(stack, false\)/);
-  assert.match(overlay, /ControlButtonRect\(stack, true\)/);
+  assert.match(overlay, /contentWidth \* 245 \/ 1000, 92, 132/);
+  assert.match(overlay, /ControlButtonGap\(contentWidth\)/);
+  assert.match(overlay, /ControlButtonRect\(row, false\)/);
+  assert.match(overlay, /ControlButtonRect\(row, true\)/);
+  assert.match(overlay, /button\.bottom - button\.top\) \* 42 \/ 100/);
   assert.match(overlay, /L"省電力 ON" : L"省電力"/);
   assert.match(overlay, /L"ミュート ON" : L"ミュート"/);
   assert.match(header, /bool mediaMuted_ = false/);
   assert.match(layout, /SpanY\(hpClockContent, 780\)/);
   assert.match(layout, /SpanY\(hpClockContent, 790\)/);
-  assert.match(layout, /hpControlButtonWidth/);
+  assert.match(layout, /hpControlButtonWidth = std::clamp\(SpanX\(hpStatusRect, 245\), 92, 132\)/);
+  assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 2 \+ hpControlButtonGap/);
 });
 
-test('compact overlay clips the complete two-button control stack', () => {
+test('compact overlay clips the complete two-button control row', () => {
   assert.match(overlay, /const bool compact = !powerSaving_ \|\| mvStartupInputPass_/);
   assert.match(overlay, /if \(compact\) target = ParentControlStackRect\(\)/);
   assert.match(overlay, /CreateRoundRectRgn\(/);
@@ -93,6 +97,6 @@ test('mute changes only WebView audio state and keeps playback alive', () => {
 test('MV startup input pass keeps both overlay controls in local coordinates', () => {
   assert.match(
     overlay,
-    /if \(powerSaving_ && !mvStartupInputPass_\) \{[\s\S]*stack = ParentControlStackRect\(\);[\s\S]*\} else \{[\s\S]*GetClientRect\(overlay_, &stack\)/,
+    /if \(powerSaving_ && !mvStartupInputPass_\) \{[\s\S]*row = ParentControlStackRect\(\);[\s\S]*\} else \{[\s\S]*GetClientRect\(overlay_, &row\)/,
   );
 });
