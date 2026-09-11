@@ -49,13 +49,15 @@ test('TVer direct launch or trusted action seeds a one-item queue', () => {
   assert.match(policy, /JSON\.stringify\(\{ hrefs: \[currentHref\], index: 0 \}\)/);
 });
 
-test('TVer survey scan stays inside modal or survey roots', () => {
+test('TVer ad branch runs before survey and program recovery', () => {
   const guardIndex = policy.indexOf('if (!guardSeriesEpisode()) {');
+  const adIndex = policy.indexOf('if (adActive) {');
   const surveyIndex = policy.indexOf('const surveyRoots = Array.from');
-  const stateIndex = policy.indexOf('const state = window.__homePanelSakuraMeetsState');
+  const pausedIndex = policy.indexOf('if (video.paused && !video.ended)');
   assert.ok(guardIndex >= 0);
-  assert.ok(surveyIndex > guardIndex);
-  assert.ok(stateIndex > surveyIndex);
+  assert.ok(adIndex > guardIndex);
+  assert.ok(surveyIndex > adIndex);
+  assert.ok(pausedIndex > surveyIndex);
   assert.match(policy, /\[role="dialog"\], \[aria-modal="true"\]/);
   assert.match(policy, /root\.querySelectorAll\(/);
   assert.match(policy, /閉じる\|とじる\|close\|dismiss/);
@@ -63,16 +65,32 @@ test('TVer survey scan stays inside modal or survey roots', () => {
   assert.match(policy, /if \(surveyClose\) return point\(surveyClose\)/);
 });
 
-test('paused TVer media recovers idempotently during programs and ads', () => {
+test('TVer ads expose only skip and fullscreen trusted actions', () => {
+  const adIndex = policy.indexOf('if (adActive) {');
+  const surveyIndex = policy.indexOf('const surveyRoots = Array.from');
+  const adBranch = policy.slice(adIndex, surveyIndex);
+  assert.match(adBranch, /const skipButton = adControls\.find/);
+  assert.match(adBranch, /広告\|CM/);
+  assert.match(adBranch, /if \(skipButton\) return point\(skipButton\)/);
+  assert.match(adBranch, /const browserFullscreen = document\.fullscreenElement/);
+  assert.match(adBranch, /const fullscreenButton = adControls\.find/);
+  assert.match(adBranch, /return fullscreenButton \? point\(fullscreenButton\) : null/);
+  assert.doesNotMatch(adBranch, /video\.play\(/);
+  assert.doesNotMatch(adBranch, /video\.volume/);
+  assert.doesNotMatch(adBranch, /playbackRate/);
+  assert.doesNotMatch(adBranch, /surveyClose/);
+  assert.doesNotMatch(adBranch, /point\(video\)/);
+});
+
+test('paused TVer program media still recovers idempotently', () => {
   const pausedIndex = policy.indexOf('if (video.paused && !video.ended)');
-  const fullscreenIndex = policy.indexOf('const browserFullscreen');
+  const fullscreenIndex = policy.lastIndexOf('const browserFullscreen');
   assert.ok(pausedIndex >= 0);
   assert.ok(fullscreenIndex > pausedIndex);
   assert.match(policy, /const findPlayButton = \(\) => playerControls\(\)\.find/);
   assert.match(policy, /const pending = video\.play\(\)/);
   assert.match(policy, /video\.__homePanelTverResumeBlocked/);
   assert.match(policy, /const playButton = findPlayButton\(\)/);
-  assert.doesNotMatch(policy, /if \(\(state && state\.adActive\) \|\| window\.__homePanelTverAdActive\) return null/);
   assert.doesNotMatch(policy, /video\.pause\(/);
 });
 
@@ -80,7 +98,7 @@ test('TVer keeps actual browser fullscreen authoritative and allows ads fullscre
   assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
   assert.match(policy, /if \(browserFullscreen\)[\s\S]*state\.fullscreenDirty = false/);
   assert.match(policy, /if \(state\) state\.fullscreenDirty = true/);
-  assert.match(policy, /fullscreenButton \? point\(fullscreenButton\) : point\(video\)/);
+  assert.match(policy, /fullscreenButton \? point\(fullscreenButton\) : null/);
   assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
   assert.doesNotMatch(
     policy,
@@ -104,16 +122,26 @@ test('TVer holds program completion long enough for post-roll and drains the ful
   assert.match(episodeLoop, /Date\.now\(\) - state\.endCandidateAt >= postrollGraceMs/);
 });
 
-test('TVer program and ad media are pinned to full player volume', () => {
+test('TVer program volume stays at 100 percent but ads are not mutated', () => {
   assert.match(episodeLoop, /const targetVolume = 1\.0/);
   assert.match(episodeLoop, /const enforceVolume = video =>/);
   assert.match(episodeLoop, /if \(video\.muted\) video\.muted = false/);
   assert.match(episodeLoop, /video\.volume !== targetVolume/);
-  assert.match(episodeLoop, /addEventListener\('volumechange'/);
+  assert.match(
+    episodeLoop,
+    /addEventListener\('volumechange'[\s\S]*state\.adActive \|\|[\s\S]*window\.__homePanelTverAdActive\) return/,
+  );
+  const adStart = episodeLoop.indexOf('if (advertisementActive) {');
+  const adEnd = episodeLoop.indexOf('if (state.adActive) {', adStart);
+  const adBranch = episodeLoop.slice(adStart, adEnd);
+  assert.doesNotMatch(adBranch, /enforceVolume\(/);
+  assert.doesNotMatch(adBranch, /video\.volume/);
+  assert.doesNotMatch(adBranch, /video\.muted/);
+  assert.doesNotMatch(adBranch, /video\.playbackRate/);
   assert.match(policy, /if \(video\.volume !== 1\.0\) video\.volume = 1\.0/);
 });
 
-test('episode-page restart and fullscreen recovery remain intact', () => {
+test('episode-page restart and program fullscreen recovery remain intact', () => {
   assert.match(policy, /state && state\.restartRequested/);
   assert.match(policy, /window\.__homePanelSakuraMeetsState/);
   assert.match(policy, /fullscreenButton \? point\(fullscreenButton\) : point\(video\)/);
