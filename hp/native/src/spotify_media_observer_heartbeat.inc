@@ -1,32 +1,48 @@
 namespace hp {
 namespace {
 
-// Detects silent stalls and provides a low-frequency fallback when Spotify
-// changes source without a useful media event.
+// Detects silent stalls only while a confirmed music target is actively playing.
+// Idle, completed, paused, podcast, and recovery states own no interval timer.
 constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
 (() => {
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
   if (!runtime) return false;
-  if (runtime.heartbeatTimer) return true;
+  if (typeof runtime.startHeartbeat === 'function' &&
+      typeof runtime.stopHeartbeat === 'function') {
+    return true;
+  }
 
-  runtime.heartbeatTimer = setInterval(() => {
+  const stopHeartbeat = () => {
+    if (!runtime.heartbeatTimer) return;
+    clearInterval(runtime.heartbeatTimer);
+    runtime.heartbeatTimer = 0;
+  };
+
+  const heartbeat = () => {
     const { state, syncTarget, isMedia, enforceTarget, requestRecovery } = runtime;
     const target = syncTarget();
-    if (!target || target.kind !== 'music' || state.endedPosted) return;
+    if (!target || target.kind !== 'music' || state.endedPosted ||
+        state.recoveryPosted || !state.started) {
+      stopHeartbeat();
+      return;
+    }
 
-    const media = isMedia(state.targetMedia)
-        ? state.targetMedia
-        : Array.from(document.querySelectorAll('audio, video'))
-            .find(candidate => isMedia(candidate) &&
-                !candidate.paused && !candidate.ended) || null;
-    if (!isMedia(media) || media.ended) return;
-
-    if (enforceTarget(media) === 'wrong') return;
-    if (state.recoveryPosted || !state.started || state.targetMedia !== media) {
+    const media = isMedia(state.targetMedia) ? state.targetMedia : null;
+    if (!isMedia(media) || media.ended) {
+      stopHeartbeat();
       return;
     }
     if (media.paused) {
       requestRecovery(media);
+      stopHeartbeat();
+      return;
+    }
+    if (enforceTarget(media) === 'wrong') {
+      stopHeartbeat();
+      return;
+    }
+    if (state.recoveryPosted || !state.started || state.targetMedia !== media) {
+      stopHeartbeat();
       return;
     }
 
@@ -39,7 +55,25 @@ constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
     }
     ++state.heartbeatMisses;
     if (state.heartbeatMisses >= 2) requestRecovery(media);
-  }, 10000);
+  };
+
+  const startHeartbeat = () => {
+    if (runtime.heartbeatTimer) return true;
+    const { state, syncTarget, isMedia } = runtime;
+    const target = syncTarget();
+    const media = isMedia(state.targetMedia) ? state.targetMedia : null;
+    if (!target || target.kind !== 'music' || !state.started ||
+        state.endedPosted || state.recoveryPosted || !isMedia(media) ||
+        media.paused || media.ended) {
+      return false;
+    }
+    runtime.heartbeatTimer = setInterval(heartbeat, 10000);
+    return true;
+  };
+
+  runtime.startHeartbeat = startHeartbeat;
+  runtime.stopHeartbeat = stopHeartbeat;
+  startHeartbeat();
   return true;
 })()
 )JS";
