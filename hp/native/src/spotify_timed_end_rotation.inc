@@ -101,6 +101,10 @@ void SpotifyWebViews::SavePodcastScheduleState() noexcept {
 }
 
 bool SpotifyWebViews::StartOverduePodcastBreak(ULONGLONG now) noexcept {
+  // The managed seven-slot rotation owns TALKABOUT as the G-slot candidate.
+  // Suppress the legacy independent two-hour interrupt to avoid double plays.
+  if (inlineTalkAboutRotation_) return false;
+
   EnsurePodcastScheduleLoaded(now);
   // The cloud owns episode selection. Keep music running and leave the deadline
   // overdue until a synchronized direct /episode/ URL is available.
@@ -151,15 +155,27 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
     return;
   }
   slot.timedRotationPosition %= slot.timedCycleTracks.size();
-  slot.timedTarget = TimedSpotifyTarget::Music;
+  const ManagedTrack& target = slot.timedCycleTracks[slot.timedRotationPosition];
+  const bool inlinePodcast =
+      inlineTalkAboutRotation_ && SpotifyPodcastTargetReady() &&
+      target.path == SpotifyPodcastPath();
+  slot.podcastBreakActive = inlinePodcast;
+  slot.podcastPlaybackRecorded = false;
+  slot.timedTarget = inlinePodcast
+      ? TimedSpotifyTarget::TalkAbout
+      : TimedSpotifyTarget::Music;
   BumpSpotifyTargetGeneration(slot);
   slot.unhealthySinceTick = 0;
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
-  // Hard upper bound starts before navigation. Browser failures therefore never
-  // make one cloud-configured track occupy a slot for more than four minutes.
-  slot.timedPlaybackStartTick = GetTickCount64();
+  // The four-minute hard bound applies to music. An inline TALKABOUT episode
+  // uses its completion detector instead of the music watchdog.
+  if (inlinePodcast) {
+    slot.timedPlaybackStartTick = 0;
+  } else {
+    slot.timedPlaybackStartTick = GetTickCount64();
+  }
 }
 
 void SpotifyWebViews::InitializeTimedRotationSlot(
@@ -205,8 +221,8 @@ void SpotifyWebViews::CompletePodcastBreak(
   StopTimedOneShotPlayback(slot);
   slot.podcastBreakActive = false;
   slot.podcastPlaybackRecorded = false;
-  // A podcast deadline may interrupt any position. Build a fresh cloud-defined
-  // cycle and resume from its first block/track.
+  // Both an independent podcast break and the managed G-slot TALKABOUT finish
+  // by rebuilding the next cycle at A.
   slot.timedRotationPosition = 0;
   PrepareTimedRotationCycle(slot);
   slot.timedCloudRotationRevision = cloudRotationRevision_;
