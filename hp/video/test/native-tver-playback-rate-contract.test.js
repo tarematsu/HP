@@ -33,7 +33,7 @@ test('TVer ads do not receive program speed, volume or recovery mutation', () =>
   assert.ok(adStart >= 0 && adEnd > adStart);
   const adBranch = episode.slice(adStart, adEnd);
   assert.match(adBranch, /window\.__homePanelTverAdActive = true/);
-  assert.match(adBranch, /wakeNative\(\)/);
+  assert.match(adBranch, /wakeNative\('ad:' \+ identity/);
   assert.doesNotMatch(adBranch, /video\.playbackRate/);
   assert.doesNotMatch(adBranch, /video\.volume/);
   assert.doesNotMatch(adBranch, /video\.play\(/);

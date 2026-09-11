@@ -53,14 +53,22 @@ HRESULT ExecuteNativeMediaPolicyScript(
 #include "media_tver_cloud_queue_refresh.inc"
 
 namespace {
+bool NativeMediaReadWebViewSource(
+    ICoreWebView2* webview, std::wstring& source) noexcept {
+  source.clear();
+  if (!webview) return false;
+  LPWSTR rawSource = nullptr;
+  if (FAILED(webview->get_Source(&rawSource)) || !rawSource) return false;
+  source.assign(rawSource);
+  CoTaskMemFree(rawSource);
+  return true;
+}
+
 bool NativeMediaWebViewSourceContains(
     ICoreWebView2* webview, std::wstring_view needle) noexcept {
-  if (!webview) return false;
-  LPWSTR source = nullptr;
-  if (FAILED(webview->get_Source(&source)) || !source) return false;
-  const std::wstring value(source);
-  CoTaskMemFree(source);
-  return value.find(needle) != std::wstring::npos;
+  std::wstring source;
+  return NativeMediaReadWebViewSource(webview, source) &&
+         source.find(needle) != std::wstring::npos;
 }
 
 void NativeMediaEnsureEventWakeBridge(
@@ -102,14 +110,22 @@ void NativeMediaEnsureEventWakeBridge(
             const std::wstring message(rawMessage);
             CoTaskMemFree(rawMessage);
 
+            // A wake message is already page-local and fixed. Read the WebView
+            // source once, then validate every route against that single value
+            // instead of crossing the COM boundary once per substring check.
+            std::wstring source;
+            if (!NativeMediaReadWebViewSource(sender, source)) return S_OK;
+            const auto sourceContains = [&source](std::wstring_view needle) {
+              return source.find(needle) != std::wstring::npos;
+            };
+
             if (message == L"homepanel:youtube-wake" &&
-                NativeMediaWebViewSourceContains(sender, L"youtube.com/watch") &&
-                NativeMediaWebViewSourceContains(sender, L"list=PLMWqSdpIVl30")) {
+                sourceContains(L"youtube.com/watch") &&
+                sourceContains(L"list=PLMWqSdpIVl30")) {
               PostMessageW(hostWindow, WM_TIMER,
                            kNativeMediaYoutubeWatchdogTimer, 0);
             } else if (message == L"homepanel:tver-wake" &&
-                       NativeMediaWebViewSourceContains(
-                           sender, L"tver.jp/episodes/")) {
+                       sourceContains(L"tver.jp/episodes/")) {
               PostMessageW(hostWindow, WM_TIMER, kNativeMediaTverWatchdogTimer, 0);
             }
             return S_OK;
@@ -130,10 +146,8 @@ void NativeMediaEnsureYoutubeTrustedAction(
   if (!webview) return;
   NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
 
-  LPWSTR rawSource = nullptr;
-  if (FAILED(webview->get_Source(&rawSource)) || !rawSource) return;
-  const std::wstring source(rawSource);
-  CoTaskMemFree(rawSource);
+  std::wstring source;
+  if (!NativeMediaReadWebViewSource(webview, source)) return;
   if (!force && installedWebview == webview && installedSource == source) return;
 
   const HRESULT trustedStarted = webview->ExecuteScript(
@@ -155,8 +169,12 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     return kNativeMediaPhaseOverlaySuppressionScript;
   }
   if (script == kNativeMediaYoutubeCleanPlayerScript) {
+    // The static presentation policy is already installed by
+    // AddScriptToExecuteOnDocumentCreated. Navigation completion refreshes only
+    // the source-scoped trusted/event controller. Force this refresh so a
+    // same-URL document reload cannot retain a stale native-side source cache.
     NativeMediaEnsureYoutubeTrustedAction(webview, hostWindow, alive, true);
-    return script;
+    return kNativeMediaNoopScript;
   }
   if (script == kNativeMediaTverLoopScript) {
     NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
