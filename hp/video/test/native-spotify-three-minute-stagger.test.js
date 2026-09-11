@@ -121,7 +121,7 @@ test('TALKABOUT direct episode, interval, and playback rate are cloud-managed', 
 });
 
 test('recent fallback catalog still excludes fixed songs and unwanted variants', () => {
-  assert.match(recent, /std::array<SpotifyFallbackCatalogTrack, 34>/);
+  assert.match(recent, /std::array<SpotifyFallbackCatalogTrack, 9>/);
   const catalogSection = recent.slice(
     recent.indexOf('kSpotifyFallbackCatalogTracks = {{'),
     recent.indexOf('}};', recent.indexOf('kSpotifyFallbackCatalogTracks = {{')),
@@ -132,6 +132,11 @@ test('recent fallback catalog still excludes fixed songs and unwanted variants',
     '2UHNvd8SjNGoEI6jXa2afx',
   ]) assert.doesNotMatch(catalogSection, new RegExp(fixedId));
   assert.doesNotMatch(catalogSection, /愛MUST BE|OFF VOCAL|Interlude|Remix/);
+  for (const shortTrack of [
+    'Sunny side up', 'キスが苦い', 'やるしかないじゃん', '恋愛無双',
+    '死んだふり', 'Make or Break', '行かないで', 'ドライフルーツ',
+    'Nightmare症候群',
+  ]) assert.match(catalogSection, new RegExp(shortTrack));
 });
 
 test('direct tracks are passed to the scoped reconcile script without runtime script rewriting', () => {

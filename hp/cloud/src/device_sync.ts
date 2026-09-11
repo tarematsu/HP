@@ -56,6 +56,58 @@ function objectOrNull(value: unknown): JsonRecord | null {
     : null;
 }
 
+const LEGACY_SPOTIFY_RANDOM_TRACK_IDS = [
+  "4ljk3qMzdU81kWzxcNix3F", "2hi8kIoKC8tRMDajdkoYFL", "2kiCcs4rC55nlHQ1djMTt6",
+  "3HdmFZGqZLNiCAfiNj4N84", "145bvRRC27wMYn9GNtTg57", "6GF0ZgT8wlksWrlLTfGmlU",
+  "4HCPWhwMu93z1jnpxw5OGM", "7vvZ1QHTdkoEXBiOBdxdIo", "6QmAwjzLQy6SjUyvGzSCG4",
+  "3SOOYBTDQBUe9vkavji2ZI", "5vRGSkQiKlJudkJ2vUKIOe", "4YUoggoqC3KIxts61kmlqw",
+  "6ZOaQShLJdbZYvPoi1xOdE", "0yv01vKbOmS1UMS9XyN5ar", "6O3XAkrjMG1T4x8jvdpbrp",
+  "4J2JsdELLCewlR7kISsw70", "6jxiPZV3Aopxbi33i09uFQ", "12YgUwcZKUCnYWccet8qJq",
+  "4AZXBU2rt8yCcEA1pttXLB", "6ncW1pJ5bHOum76AL2P08a", "6whOTYjcMh396LLbqig8jq",
+  "49cxVtrML7Xo63UFaaJrUR", "2MPm0NrgPoMr6ee7je9afe", "5DrxCKjopmd7UL1pJWqBHK",
+  "4PaLKbIU8NvguxcrjMvHXh", "6J8Vaiow1E75EQs9RnMfZp", "5xUQGRuP4LPk4ESl1xbmFs",
+  "11KKagWroMV5UXbK50hZxZ", "33liCluqUasE65nMv3KLLm", "5QnQ7m9OxSoFeSPSz8grqX",
+  "2ze5Hu3eRRe6HxJTfuZaA0", "4IfRFec7SNKOWw1HzpiqHQ", "2CMSkSwIfnNQR7bTNFFeB5",
+  "2meBhRDzQpf0ltQH11HbWG",
+] as const;
+
+const SHORT_SPOTIFY_RANDOM_TRACKS = [
+  ["Sunny side up", "5xUQGRuP4LPk4ESl1xbmFs"],
+  ["キスが苦い", "4PaLKbIU8NvguxcrjMvHXh"],
+  ["やるしかないじゃん", "6GF0ZgT8wlksWrlLTfGmlU"],
+  ["恋愛無双", "5vRGSkQiKlJudkJ2vUKIOe"],
+  ["死んだふり", "6QmAwjzLQy6SjUyvGzSCG4"],
+  ["Make or Break", "7vvZ1QHTdkoEXBiOBdxdIo"],
+  ["行かないで", "3HdmFZGqZLNiCAfiNj4N84"],
+  ["ドライフルーツ", "5DrxCKjopmd7UL1pJWqBHK"],
+  ["Nightmare症候群", "2hi8kIoKC8tRMDajdkoYFL"],
+] as const;
+
+function spotifyTrackId(value: unknown): string {
+  const track = objectOrNull(value);
+  const url = typeof track?.url === "string" ? track.url : "";
+  return url.match(/\/track\/([A-Za-z0-9]{22})(?:[/?#]|$)/)?.[1] ?? "";
+}
+
+function migrateLegacySpotifyRandomPool(config: JsonRecord): boolean {
+  const spotify = objectOrNull(config.spotify);
+  const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
+  const group = rotation.find(candidate => objectOrNull(candidate)?.mode === "random");
+  const random = objectOrNull(group);
+  if (!random) return false;
+  const tracks = Array.isArray(random?.tracks) ? random.tracks : [];
+  if (tracks.length !== LEGACY_SPOTIFY_RANDOM_TRACK_IDS.length ||
+      !tracks.every((track, index) =>
+        spotifyTrackId(track) === LEGACY_SPOTIFY_RANDOM_TRACK_IDS[index])) {
+    return false;
+  }
+  random.tracks = SHORT_SPOTIFY_RANDOM_TRACKS.map(([title, id]) => ({
+    title,
+    url: `https://open.spotify.com/track/${id}`,
+  }));
+  return true;
+}
+
 export async function readDeviceSyncManifest(env: Env): Promise<DeviceSyncManifestRow> {
   const row = await env.DB.prepare(
     `SELECT manifest.dashboard_version,
@@ -113,7 +165,7 @@ async function deviceSpecificSnapshot(
   };
 }
 
-async function refreshManagedTalkAboutEpisode(
+async function refreshManagedSpotifyConfig(
   env: Env,
   deviceId: string,
   snapshot: DeviceSyncSnapshotRow,
@@ -130,26 +182,25 @@ async function refreshManagedTalkAboutEpisode(
     return snapshot;
   }
 
+  let changed = migrateLegacySpotifyRandomPool(config);
   const spotify = objectOrNull(config.spotify);
   const talkAbout = objectOrNull(spotify?.talkAbout);
   const showUrl = normalizeSpotifyShowUrl(talkAbout?.url);
-  if (!spotify || !talkAbout || !showUrl) return snapshot;
-
-  let episodeUrl = "";
-  try {
-    episodeUrl = await resolveLatestSpotifyTalkAboutEpisode(env, showUrl, { now });
-  } catch (error) {
-    console.warn("spotify-talkabout-latest-resolve-failed", {
-      deviceId,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return snapshot;
+  if (spotify && talkAbout && showUrl) {
+    try {
+      const episodeUrl = await resolveLatestSpotifyTalkAboutEpisode(env, showUrl, { now });
+      if (episodeUrl && normalizeSpotifyEpisodeUrl(talkAbout.episodeUrl) !== episodeUrl) {
+        talkAbout.episodeUrl = episodeUrl;
+        changed = true;
+      }
+    } catch (error) {
+      console.warn("spotify-talkabout-latest-resolve-failed", {
+        deviceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
-  if (!episodeUrl || normalizeSpotifyEpisodeUrl(talkAbout.episodeUrl) === episodeUrl) {
-    return snapshot;
-  }
-
-  talkAbout.episodeUrl = episodeUrl;
+  if (!changed) return snapshot;
   const payload = JSON.stringify(config);
   if (payload.length > 32_000) {
     console.warn("spotify-talkabout-config-update-skipped", {
@@ -209,7 +260,7 @@ export async function buildDeviceSyncPayloadForDevice(
     deviceSpecificSnapshot(env, deviceId, now),
     readR2EnvironmentState(env),
   ]);
-  const snapshot = await refreshManagedTalkAboutEpisode(
+  const snapshot = await refreshManagedSpotifyConfig(
     env, deviceId, initialSnapshot, now,
   );
   const versions = normalizeDeviceSyncVersions(manifest);
