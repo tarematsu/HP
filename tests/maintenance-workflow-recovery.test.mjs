@@ -64,6 +64,13 @@ test('generic state preserves active and failed runs instead of retrying them', 
   assert.equal(failed.startedAtMs, now - 80 * 60_000);
 });
 
+test('recovery thresholds leave headroom before runner-health stale windows', () => {
+  assert.equal(WORKFLOWS.pages.staleAfterMs, 45 * 60_000);
+  assert.equal(WORKFLOWS.runtime.staleAfterMs, 45 * 60_000);
+  assert.equal(WORKFLOWS.metadata.staleAfterMs, 45 * 60_000);
+  assert.equal(WORKFLOWS.localMinute.staleAfterMs, 30 * 60_000);
+});
+
 test('stale Runtime is recovered when Pages is fresh', async () => {
   const fixture = requestFor({ pages: 10, runtime: 80, metadata: 80, localMinute: 80 });
   const result = await recoverMaintenanceWorkflows({
@@ -94,7 +101,7 @@ test('stale Runtime waits when Pages itself needs recovery', async () => {
 });
 
 test('fresh Runtime independently recovers stale metadata and local minute workflows', async () => {
-  const fixture = requestFor({ pages: 10, runtime: 10, metadata: 80, localMinute: 80 });
+  const fixture = requestFor({ pages: 10, runtime: 10, metadata: 50, localMinute: 35 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token',
     repository: 'tarematsu/HP',
@@ -169,7 +176,9 @@ test('maintenance watchdog is independent, offset, and has no Cloudflare credent
   const script = read('.github/scripts/recover-maintenance-workflows.mjs');
 
   assert.match(workflow, /Publish GitHub Actions runner health/);
-  assert.match(workflow, /cron: '18,48 \* \* \* \*'/);
+  assert.match(workflow, /cron: '10,25,40,55 \* \* \* \*'/);
+  assert.match(workflow, /actions\/checkout@v7/);
+  assert.match(workflow, /actions\/setup-node@v7/);
   assert.match(workflow, /actions: write/);
   assert.match(workflow, /maintenance-workflow-recovery/);
   assert.doesNotMatch(workflow, /CLOUDFLARE|wrangler|d1 execute/i);
