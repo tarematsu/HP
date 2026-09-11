@@ -17,7 +17,7 @@ test('HomePanel video runtime is integrated and bounded', async () => {
 
   expectAll(unifiedEntry, [
     "import videoWorker from '../../video/src/entry.js'",
-    "export { VideoFeedCoordinator } from '../../video/src/entry.js'",
+    "export { VideoFeedCoordinator } from './tver_feed_refresh_coordinator.js'",
     'SCHEDULER_COORDINATOR: env?.VIDEO_FEED_COORDINATOR',
     'videoWorker.fetch(',
     'videoWorker.queue(',
