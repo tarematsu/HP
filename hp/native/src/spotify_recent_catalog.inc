@@ -7,19 +7,7 @@ struct SpotifyFallbackCatalogTrack {
   const wchar_t* path;
 };
 
-// 2025-2026 releases whose running time is 3:30 or shorter.
-constexpr std::array<SpotifyFallbackCatalogTrack, 9>
-    kSpotifyFallbackCatalogTracks = {{
-    {L"Sunny side up", L"https://open.spotify.com/track/5xUQGRuP4LPk4ESl1xbmFs", L"/track/5xUQGRuP4LPk4ESl1xbmFs"},
-    {L"キスが苦い", L"https://open.spotify.com/track/4PaLKbIU8NvguxcrjMvHXh", L"/track/4PaLKbIU8NvguxcrjMvHXh"},
-    {L"やるしかないじゃん", L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU", L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
-    {L"恋愛無双", L"https://open.spotify.com/track/5vRGSkQiKlJudkJ2vUKIOe", L"/track/5vRGSkQiKlJudkJ2vUKIOe"},
-    {L"死んだふり", L"https://open.spotify.com/track/6QmAwjzLQy6SjUyvGzSCG4", L"/track/6QmAwjzLQy6SjUyvGzSCG4"},
-    {L"Make or Break", L"https://open.spotify.com/track/7vvZ1QHTdkoEXBiOBdxdIo", L"/track/7vvZ1QHTdkoEXBiOBdxdIo"},
-    {L"行かないで", L"https://open.spotify.com/track/3HdmFZGqZLNiCAfiNj4N84", L"/track/3HdmFZGqZLNiCAfiNj4N84"},
-    {L"ドライフルーツ", L"https://open.spotify.com/track/5DrxCKjopmd7UL1pJWqBHK", L"/track/5DrxCKjopmd7UL1pJWqBHK"},
-    {L"Nightmare症候群", L"https://open.spotify.com/track/2hi8kIoKC8tRMDajdkoYFL", L"/track/2hi8kIoKC8tRMDajdkoYFL"},
-}};
+#include "spotify_fallback_catalog.inc"
 
 }  // namespace
 

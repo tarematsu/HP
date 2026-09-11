@@ -8,6 +8,7 @@ const core1 = readFileSync(new URL('../../native/src/spotify_webviews_core_part1
 const schedule = readFileSync(new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 const timed = readFileSync(new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const recent = readFileSync(new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
+const fallback = readFileSync(new URL('../../native/src/spotify_fallback_catalog.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const scripts = readFileSync(new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
 const scoped = readFileSync(new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
@@ -120,22 +121,24 @@ test('TALKABOUT direct episode, interval, and playback rate are cloud-managed', 
   assert.match(schedule, /StartOverduePodcastBreak\(now\)[\s\S]*AdvanceExpiredTimedRotation\(now\)/);
 });
 
-test('recent fallback catalog still excludes fixed songs and unwanted variants', () => {
-  assert.match(recent, /std::array<SpotifyFallbackCatalogTrack, 9>/);
-  const catalogSection = recent.slice(
-    recent.indexOf('kSpotifyFallbackCatalogTracks = {{'),
-    recent.indexOf('}};', recent.indexOf('kSpotifyFallbackCatalogTracks = {{')),
+test('recent fallback catalog excludes fixed songs and unsupported variants', () => {
+  assert.match(fallback, /std::array<SpotifyFallbackCatalogTrack, \d+>/);
+  const catalogSection = fallback.slice(
+    fallback.indexOf('kSpotifyFallbackCatalogTracks = {{'),
+    fallback.indexOf('}};', fallback.indexOf('kSpotifyFallbackCatalogTracks = {{')),
   );
   for (const fixedId of [
     '6Vy6hCA2CZwZalGqaX6Sew', '5EjWZuODqEPQ9eq7XCmITh',
     '6VIY7OFy8g5ZyLSgQEi8lV', '0rUT5nQpBjkg4SPY8jPjcO',
     '2UHNvd8SjNGoEI6jXa2afx',
   ]) assert.doesNotMatch(catalogSection, new RegExp(fixedId));
-  assert.doesNotMatch(catalogSection, /愛MUST BE|OFF VOCAL|Interlude|Remix/);
+  assert.doesNotMatch(catalogSection, /愛MUST BE|Remix/);
   for (const shortTrack of [
     'Sunny side up', 'キスが苦い', 'やるしかないじゃん', '恋愛無双',
     '死んだふり', 'Make or Break', '行かないで', 'ドライフルーツ',
     'Nightmare症候群',
+    'Interlude #1', 'Interlude #2', 'Interlude #4', 'Interlude #6',
+    'Overture',
   ]) assert.match(catalogSection, new RegExp(shortTrack));
 });
 

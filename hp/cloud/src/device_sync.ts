@@ -12,6 +12,11 @@ import {
   type StateRow,
 } from "./snapshot";
 import { normalizeDeviceSyncVersions } from "./device_sync_versions";
+import {
+  MANAGED_SPOTIFY_RANDOM_TRACK_IDS,
+  MANAGED_SPOTIFY_RANDOM_TRACKS,
+  SHORT_SPOTIFY_RANDOM_TRACKS,
+} from "./spotify_random_catalog";
 import type { Env } from "./sources";
 import { stationheadHealthPayload } from "./stationhead_health";
 import {
@@ -71,18 +76,6 @@ const LEGACY_SPOTIFY_RANDOM_TRACK_IDS = [
   "2meBhRDzQpf0ltQH11HbWG",
 ] as const;
 
-const SHORT_SPOTIFY_RANDOM_TRACKS = [
-  ["Sunny side up", "5xUQGRuP4LPk4ESl1xbmFs"],
-  ["キスが苦い", "4PaLKbIU8NvguxcrjMvHXh"],
-  ["やるしかないじゃん", "6GF0ZgT8wlksWrlLTfGmlU"],
-  ["恋愛無双", "5vRGSkQiKlJudkJ2vUKIOe"],
-  ["死んだふり", "6QmAwjzLQy6SjUyvGzSCG4"],
-  ["Make or Break", "7vvZ1QHTdkoEXBiOBdxdIo"],
-  ["行かないで", "3HdmFZGqZLNiCAfiNj4N84"],
-  ["ドライフルーツ", "5DrxCKjopmd7UL1pJWqBHK"],
-  ["Nightmare症候群", "2hi8kIoKC8tRMDajdkoYFL"],
-] as const;
-
 function spotifyTrackId(value: unknown): string {
   const track = objectOrNull(value);
   const url = typeof track?.url === "string" ? track.url : "";
@@ -96,12 +89,17 @@ function migrateLegacySpotifyRandomPool(config: JsonRecord): boolean {
   const random = objectOrNull(group);
   if (!random) return false;
   const tracks = Array.isArray(random?.tracks) ? random.tracks : [];
-  if (tracks.length !== LEGACY_SPOTIFY_RANDOM_TRACK_IDS.length ||
-      !tracks.every((track, index) =>
-        spotifyTrackId(track) === LEGACY_SPOTIFY_RANDOM_TRACK_IDS[index])) {
+  const ids = tracks.map(spotifyTrackId);
+  const isManagedPool = (expected: readonly string[]) =>
+    ids.length === expected.length && ids.every((id, index) => id === expected[index]);
+  const isManagedPrefix =
+    ids.length >= SHORT_SPOTIFY_RANDOM_TRACKS.length &&
+    ids.length <= MANAGED_SPOTIFY_RANDOM_TRACK_IDS.length &&
+    ids.every((id, index) => id === MANAGED_SPOTIFY_RANDOM_TRACK_IDS[index]);
+  if (!isManagedPool(LEGACY_SPOTIFY_RANDOM_TRACK_IDS) && !isManagedPrefix) {
     return false;
   }
-  random.tracks = SHORT_SPOTIFY_RANDOM_TRACKS.map(([title, id]) => ({
+  random.tracks = MANAGED_SPOTIFY_RANDOM_TRACKS.map(([title, id]) => ({
     title,
     url: `https://open.spotify.com/track/${id}`,
   }));

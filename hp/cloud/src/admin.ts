@@ -1,3 +1,20 @@
+import {
+  MANAGED_SPOTIFY_RANDOM_TRACK_IDS,
+  MANAGED_SPOTIFY_RANDOM_TRACKS,
+  SHORT_SPOTIFY_RANDOM_TRACKS,
+} from "./spotify_random_catalog";
+
+const spotifyRandomPoolJson = JSON.stringify(
+  MANAGED_SPOTIFY_RANDOM_TRACKS.map(([title, id]) => ({
+    title,
+    url: `https://open.spotify.com/track/${id}`,
+  })),
+);
+const shortSpotifyRandomTrackIdsJson = JSON.stringify(
+  SHORT_SPOTIFY_RANDOM_TRACKS.map(([, id]) => id),
+);
+const managedSpotifyRandomTrackIdsJson = JSON.stringify(MANAGED_SPOTIFY_RANDOM_TRACK_IDS);
+
 const PAGE = String.raw`<!doctype html>
 <html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>HomePanel Cloud Settings</title>
@@ -11,14 +28,15 @@ const PAGE = String.raw`<!doctype html>
 <section><h2>遠隔操作</h2><div class="row" id="commands"><button data-command="check_update">更新確認</button></div></section>
 </main><script>
 const spotifyTrack=(title,id)=>({title,url:"https://open.spotify.com/track/"+id});
-// 2025-2026 releases whose running time is 3:30 or shorter.
-const spotifyRandomPool=[
-spotifyTrack("Sunny side up","5xUQGRuP4LPk4ESl1xbmFs"),spotifyTrack("キスが苦い","4PaLKbIU8NvguxcrjMvHXh"),spotifyTrack("やるしかないじゃん","6GF0ZgT8wlksWrlLTfGmlU"),spotifyTrack("恋愛無双","5vRGSkQiKlJudkJ2vUKIOe"),spotifyTrack("死んだふり","6QmAwjzLQy6SjUyvGzSCG4"),spotifyTrack("Make or Break","7vvZ1QHTdkoEXBiOBdxdIo"),spotifyTrack("行かないで","3HdmFZGqZLNiCAfiNj4N84"),spotifyTrack("ドライフルーツ","5DrxCKjopmd7UL1pJWqBHK"),spotifyTrack("Nightmare症候群","2hi8kIoKC8tRMDajdkoYFL")];
+// Official Spotify releases whose running time is 3:30 or shorter.
+const spotifyRandomPool=${spotifyRandomPoolJson};
+const shortSpotifyRandomTrackIds=${shortSpotifyRandomTrackIdsJson};
+const managedSpotifyRandomTrackIds=${managedSpotifyRandomTrackIdsJson};
 const legacySpotifyRandomTrackIds=["4ljk3qMzdU81kWzxcNix3F","2hi8kIoKC8tRMDajdkoYFL","2kiCcs4rC55nlHQ1djMTt6","3HdmFZGqZLNiCAfiNj4N84","145bvRRC27wMYn9GNtTg57","6GF0ZgT8wlksWrlLTfGmlU","4HCPWhwMu93z1jnpxw5OGM","7vvZ1QHTdkoEXBiOBdxdIo","6QmAwjzLQy6SjUyvGzSCG4","3SOOYBTDQBUe9vkavji2ZI","5vRGSkQiKlJudkJ2vUKIOe","4YUoggoqC3KIxts61kmlqw","6ZOaQShLJdbZYvPoi1xOdE","0yv01vKbOmS1UMS9XyN5ar","6O3XAkrjMG1T4x8jvdpbrp","4J2JsdELLCewlR7kISsw70","6jxiPZV3Aopxbi33i09uFQ","12YgUwcZKUCnYWccet8qJq","4AZXBU2rt8yCcEA1pttXLB","6ncW1pJ5bHOum76AL2P08a","6whOTYjcMh396LLbqig8jq","49cxVtrML7Xo63UFaaJrUR","2MPm0NrgPoMr6ee7je9afe","5DrxCKjopmd7UL1pJWqBHK","4PaLKbIU8NvguxcrjMvHXh","6J8Vaiow1E75EQs9RnMfZp","5xUQGRuP4LPk4ESl1xbmFs","11KKagWroMV5UXbK50hZxZ","33liCluqUasE65nMv3KLLm","5QnQ7m9OxSoFeSPSz8grqX","2ze5Hu3eRRe6HxJTfuZaA0","4IfRFec7SNKOWw1HzpiqHQ","2CMSkSwIfnNQR7bTNFFeB5","2meBhRDzQpf0ltQH11HbWG"];
 const defaults={cloudPollSeconds:1800,telemetryMinutes:240,screen:{width:1920,height:1280},co2:{serialPort:"",temperatureOffset:-4.5},stationhead:{url:"https://www.stationhead.com/sakuramankai",fallbackUrl:"https://www.stationhead.com/buddy46",healthCheckIntervalSeconds:60,restartAfterHealthMisses:3,blockImages:true,blockFonts:true,lowMemoryMode:true,memoryLimitMb:450,secondary:{enabled:true,url:"https://www.stationhead.com/sakuramankai"}},spotify:{rotation:[{mode:"fixed",tracks:[spotifyTrack("lonesome rabbit","6Vy6hCA2CZwZalGqaX6Sew")]},{mode:"shuffle",tracks:[spotifyTrack("放課後BitterBlue","5EjWZuODqEPQ9eq7XCmITh"),spotifyTrack("紋白蝶が確か飛んでた","6VIY7OFy8g5ZyLSgQEi8lV"),spotifyTrack("無念","0rUT5nQpBjkg4SPY8jPjcO"),spotifyTrack("On my way","2UHNvd8SjNGoEI6jXa2afx")]},{mode:"random",count:1,tracks:spotifyRandomPool}],talkAbout:{url:"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed",intervalMinutes:120,playbackRate:3}},updates:{manifestUrl:location.origin+"/v1/update/manifest"}};
 const byId=id=>document.getElementById(id),status=message=>{byId("status").textContent=message};let loadedDeviceId="",loadedVersion=null;
 const merge=(base,extra)=>{const output=structuredClone(base);if(!extra||typeof extra!=="object"||Array.isArray(extra))return output;for(const [key,value] of Object.entries(extra)){if(value&&typeof value==="object"&&!Array.isArray(value)&&output[key]&&typeof output[key]==="object")output[key]=merge(output[key],value);else output[key]=value}output.cloudPollSeconds=1800;output.telemetryMinutes=240;return output};
-const migrate=config=>{const output=structuredClone(config||{}),station=output.stationhead;if(station&&typeof station==="object"&&!Array.isArray(station)){if(!Object.hasOwn(station,"blockImages")&&Object.hasOwn(station,"blockImagesAfterPlayback"))station.blockImages=station.blockImagesAfterPlayback;if(!Object.hasOwn(station,"blockFonts")&&Object.hasOwn(station,"blockFontsAfterPlayback"))station.blockFonts=station.blockFontsAfterPlayback;delete station.blockImagesAfterPlayback;delete station.blockFontsAfterPlayback;delete station.hideChatAfterPlayback}const random=output.spotify?.rotation?.find(group=>group?.mode==="random"),tracks=Array.isArray(random?.tracks)?random.tracks:[],ids=tracks.map(track=>String(track?.url||"").match(/\/track\/([A-Za-z0-9]{22})(?:[/?#]|$)/)?.[1]||"");if(ids.length===legacySpotifyRandomTrackIds.length&&ids.every((id,index)=>id===legacySpotifyRandomTrackIds[index]))random.tracks=structuredClone(spotifyRandomPool);return output};
+const migrate=config=>{const output=structuredClone(config||{}),station=output.stationhead;if(station&&typeof station==="object"&&!Array.isArray(station)){if(!Object.hasOwn(station,"blockImages")&&Object.hasOwn(station,"blockImagesAfterPlayback"))station.blockImages=station.blockImagesAfterPlayback;if(!Object.hasOwn(station,"blockFonts")&&Object.hasOwn(station,"blockFontsAfterPlayback"))station.blockFonts=station.blockFontsAfterPlayback;delete station.blockImagesAfterPlayback;delete station.blockFontsAfterPlayback;delete station.hideChatAfterPlayback}const random=output.spotify?.rotation?.find(group=>group?.mode==="random"),tracks=Array.isArray(random?.tracks)?random.tracks:[],ids=tracks.map(track=>String(track?.url||"").match(/\/track\/([A-Za-z0-9]{22})(?:[/?#]|$)/)?.[1]||""),isManagedPool=pool=>ids.length===pool.length&&ids.every((id,index)=>id===pool[index]),isManagedPrefix=ids.length>=shortSpotifyRandomTrackIds.length&&ids.length<=managedSpotifyRandomTrackIds.length&&ids.every((id,index)=>id===managedSpotifyRandomTrackIds[index]);if(isManagedPool(legacySpotifyRandomTrackIds)||isManagedPrefix)random.tracks=structuredClone(spotifyRandomPool);return output};
 const credentials=()=>{const token=byId("token").value.trim(),deviceId=byId("deviceId").value.trim();if(!token)throw new Error("管理トークンを入力してください");if(!/^[A-Za-z0-9._-]{1,100}$/.test(deviceId))throw new Error("Device IDが不正です");sessionStorage.setItem("homepanelToken",token);localStorage.setItem("homepanelDeviceId",deviceId);return{token,deviceId}};
 const call=async(path,options={})=>{const{token}=credentials();const response=await fetch(path,{...options,headers:{Authorization:"Bearer "+token,"Content-Type":"application/json",...(options.headers||{})}});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||("HTTP "+response.status));return body};
 async function load(){try{status("読み込み中...");const{deviceId}=credentials(),body=await call("/v1/device/config?deviceId="+encodeURIComponent(deviceId));loadedDeviceId=deviceId;loadedVersion=Number(body.version||0);byId("config").value=JSON.stringify(merge(defaults,migrate(body.config)),null,2);status("クラウド設定を読み込みました。version "+loadedVersion)}catch(error){status(error.message||String(error))}}
