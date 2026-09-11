@@ -21,7 +21,7 @@ const youtubeAgent = readFileSync(
 
 test('media cadence remains 60 minutes per YouTube/TVer phase', () => {
   assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
-  assert.match(mediaWrapper, /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/);
+  assert.match(mediaHost, /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/);
   assert.doesNotMatch(composition, /PhaseOverrideMs/);
 });
 
@@ -33,12 +33,14 @@ test('TVer old static implementation is reduced to routing keys', () => {
   assert.doesNotMatch(tverKeys, /MutationObserver|querySelectorAll|playbackRate/);
 });
 
-test('TVer episode queue is cloud-owned and completion requests a restart only after exhaustion', () => {
-  assert.match(tverEpisode, /__homePanelTverEpisodeQueue:/);
-  assert.match(tverEpisode, /const advanceEpisodeOrSeries = \(\) =>/);
+test('TVer uses one cloud queue and restarts only after queue exhaustion', () => {
+  assert.match(tverEpisode, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
+  assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue:/);
+  assert.match(tverEpisode, /const advanceEpisode = \(\) =>/);
   assert.match(tverEpisode, /nextIndex < queue\.hrefs\.length/);
   assert.match(tverEpisode, /state\.restartRequested = true/);
   assert.match(mediaHost, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
+  assert.doesNotMatch(composition, /AdvanceNativeMediaTverSeries|gNativeMediaTverUseDeathGame/);
 });
 
 test('TVer is event driven and player-local', () => {
@@ -54,7 +56,7 @@ test('TVer is event driven and player-local', () => {
 
 test('hidden YouTube and TVer share one WebView2 trusted-input path', () => {
   assert.match(mediaWrapper, /#include "media_trusted_input\.inc"/);
-  assert.match(mediaWrapper, /NativeMediaDispatchTrustedInput/);
+  assert.match(mediaHost, /NativeMediaDispatchTrustedInput/);
   assert.match(trustedInput, /CallDevToolsProtocolMethod/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
   assert.doesNotMatch(trustedInput, /::SendInput\(/);
