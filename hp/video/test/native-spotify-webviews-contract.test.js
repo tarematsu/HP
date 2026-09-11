@@ -18,7 +18,9 @@ const scripts = readFileSync(new URL('../../native/src/spotify_static_scripts.in
 const scoped = readFileSync(new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
 const observerBundle = readFileSync(new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url), 'utf8');
 const timed = readFileSync(new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
-const recent = readFileSync(new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
+const cycle = readFileSync(new URL('../../native/src/spotify_rotation_cycle.inc', import.meta.url), 'utf8');
+const music = readFileSync(new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
+const routing = readFileSync(new URL('../../native/src/spotify_target_routing.inc', import.meta.url), 'utf8');
 const cloud = readFileSync(new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
 const click = readFileSync(new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 const lifecycle = readFileSync(new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url), 'utf8');
@@ -57,12 +59,15 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
 
-test('Spotify browser behavior uses scoped music reconcile and responsibility-split observer modules', () => {
+test('Spotify browser behavior uses responsibility-split playback modules', () => {
   for (const file of [
     'spotify_static_scripts.inc', 'spotify_scoped_track_reconcile.inc',
     'spotify_media_observer_runtime.inc', 'spotify_media_observer_events.inc',
     'spotify_media_observer_heartbeat.inc', 'spotify_cloud_playlist.inc',
+    'spotify_shuffle_off.inc', 'spotify_rotation_cycle.inc',
+    'spotify_music_target.inc', 'spotify_target_routing.inc',
   ]) assert.match(wrapper, new RegExp(`#include "${file.replace('.', '\\.')}"`));
+  assert.doesNotMatch(wrapper, /spotify_recent_catalog\.inc/);
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
   assert.match(scripts, /kSpotifyStaticPodcastReconcileScript\[\]/);
   assert.match(scoped, /kSpotifyScopedTrackReconcileScript/);
@@ -71,7 +76,7 @@ test('Spotify browser behavior uses scoped music reconcile and responsibility-sp
   assert.match(observerBundle, /kSpotifyMediaObserverHeartbeatScript/);
   assert.match(scripts, /window\.chrome\.webview\.addEventListener\('message'/);
   assert.match(scripts, /spotify:target/);
-  assert.match(recent, /spotify:generation/);
+  assert.match(routing, /spotify:generation/);
   assert.doesNotMatch(wrapper, /#define ExecuteScript|RewriteSpotify|spotify_viewport_recovery\.inc|spotify_lonesome_guard\.inc/);
 });
 
@@ -121,18 +126,28 @@ test('music is a generic cloud-managed descriptor while podcast stays separate',
   assert.match(cloud, /GetNamedArray\(L"rotation"\)/);
   assert.match(cloud, /GetNamedObject\(L"talkAbout"\)/);
   assert.match(header, /struct MusicTargetDescriptor/);
-  assert.match(recent, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
-  assert.match(recent, /TimedSpotifyTarget::Music/);
-  assert.match(recent, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
-  assert.match(recent, /void SpotifyWebViews::ReconcileMusicTarget/);
+  assert.match(music, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
+  assert.match(music, /TimedSpotifyTarget::Music/);
+  assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
+  assert.match(music, /void SpotifyWebViews::ReconcileMusicTarget/);
   assert.match(timed, /void SpotifyWebViews::ReconcilePodcastSlot/);
-  assert.match(recent, /kind = L"music"/);
-  assert.match(recent, /kind = L"podcast"/);
+  assert.match(routing, /kind = L"music"/);
+  assert.match(routing, /kind = L"podcast"/);
   assert.match(wrapper, /#define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript/);
   assert.match(timed, /kSpotifyStaticPodcastReconcileScript/);
   assert.match(scripts, /target && target\.playbackRate/);
   assert.match(scripts, /__homePanelSpotifyPodcastOneShot/);
   assert.doesNotMatch(scripts, /__homePanelLonesomeRabbitLoop|ensureRepeatOne/);
+});
+
+test('rotation construction is isolated from music navigation and target routing', () => {
+  assert.match(cycle, /PrepareTimedRotationCycle/);
+  assert.doesNotMatch(cycle, /NavigateMusicTarget|PostSpotifyTargetDescriptorForSlot/);
+  assert.match(music, /NavigateMusicTarget/);
+  assert.doesNotMatch(music, /PrepareTimedRotationCycle|kind = L"podcast"/);
+  assert.match(routing, /NavigateActiveTimedSlot/);
+  assert.match(routing, /PostSpotifyTargetDescriptorForSlot/);
+  assert.doesNotMatch(routing, /PrepareTimedRotationCycle|ReconcileMusicTarget\(Slot& slot\)/);
 });
 
 test('trusted recovery input is fully owned by the background click module', () => {
