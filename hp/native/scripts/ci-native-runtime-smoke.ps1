@@ -182,7 +182,7 @@ try {
   Write-Host "Main native HWND created: $mainWindow"
 
   $requiredPanels = @(
-    "HomePanelNativeRadar",
+    "HomePanelNativeMedia",
     "HomePanelNativeSide",
     "HomePanelNativeMain"
   )

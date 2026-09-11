@@ -7,7 +7,7 @@ const entry = readFileSync(
   'utf8',
 );
 const radarSection = readFileSync(
-  new URL('../../native/src/renderer_panels/media_radar_section.inc', import.meta.url),
+  new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url),
   'utf8',
 );
 const panel = readFileSync(
@@ -29,11 +29,11 @@ const messagePolicy = readFileSync(
 
 test('the compiled media panel uses the integrated YouTube and TVer surface', () => {
   assert.match(entry, /HomePanelNativeMvPanel/);
-  assert.match(radarSection, /void Renderer::DrawMusicSection/);
+  assert.match(radarSection, /void Renderer::DrawRadarSection/);
   assert.match(entry, /kNativeMediaYoutubeUrl/);
   assert.match(entry, /kNativeMediaTverUrl/);
   assert.match(entry, /#include "media_host\.inc"/);
-  assert.match(entry, /#include "media_radar_section\.inc"/);
+  assert.doesNotMatch(entry, /radar_section\.inc/);
   assert.doesNotMatch(entry, /#include "mv_section\.inc"/);
   assert.doesNotMatch(entry, /media_section_v2\.inc/);
 });

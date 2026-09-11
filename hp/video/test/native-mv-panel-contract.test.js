@@ -8,8 +8,8 @@ const mediaHost = readFileSync(
   new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 const mediaWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
-const mediaRadar = readFileSync(
-  new URL('../../native/src/renderer_panels/media_radar_section.inc', import.meta.url), 'utf8');
+const radarSection = readFileSync(
+  new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url), 'utf8');
 const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const youtubeClean = readFileSync(
@@ -34,20 +34,28 @@ const webviewEnvironment = readFileSync(
 test('native dashboard keeps one active media controller on the shared WebView2 environment', () => {
   assert.match(composition, /#include "renderer_panels\/media_section\.inc"/);
   assert.match(mediaBase, /HomePanelNativeMvPanel/);
-  assert.match(mediaRadar, /EnsureNativeMvPanel\(nativeRadarWindow_, dataDir_, mediaBounds\)/);
+  assert.match(nativeWindows, /EnsureNativeMvPanel\(nativeMediaWindow_, dataDir_, mediaBounds\)/);
   assert.match(mediaHost, /webview2-youtube-mv/);
   assert.match(mediaHost, /CreateCoreWebView2ControllerWithOptions/);
   assert.match(mediaHost, /CloseController\(\)/);
   assert.doesNotMatch(mediaHost, /environment_->CreateCoreWebView2Controller\(/);
 });
 
-test('media source composition separates host, HWND plumbing, and radar drawing', () => {
+test('media source composition stays separate from radar drawing', () => {
   assert.match(mediaBase, /#include "media_host\.inc"/);
   assert.match(mediaBase, /#include "media_host_window\.inc"/);
-  assert.match(mediaBase, /#include "media_radar_section\.inc"/);
+  assert.doesNotMatch(mediaBase, /radar_section\.inc/);
+  assert.match(composition, /#include "renderer_panels\/radar_section\.inc"/);
   assert.match(mediaHost, /class NativeMediaPanelHost final/);
   assert.match(mediaWindow, /LRESULT CALLBACK NativeMediaPanelWndProc/);
-  assert.match(mediaRadar, /void Renderer::DrawMusicSection/);
+  assert.match(radarSection, /void Renderer::DrawRadarSection/);
+  assert.doesNotMatch(radarSection, /EnsureNativeMvPanel/);
+});
+
+test('media container never paints the rain radar behind WebView2', () => {
+  const mediaPaint = nativeWindows.slice(nativeWindows.indexOf('void Renderer::PaintNativeMedia'));
+  assert.match(mediaPaint, /BLACK_BRUSH/);
+  assert.doesNotMatch(mediaPaint, /StretchRadarInto|radarFrameBitmap_|雨雲レーダー/);
 });
 
 test('YouTube and TVer reuse one profile and navigate the same controller', () => {
@@ -140,7 +148,7 @@ test('normal media resources remain enabled and power saving keeps media WebView
   assert.match(mediaHost, /put_IsScriptEnabled\(TRUE\)/);
   assert.match(mediaHost, /put_AreDevToolsEnabled\(FALSE\)/);
   assert.doesNotMatch(lifecycle, /StopNativeMvPlayback/);
-  assert.match(nativeWindows, /nativeDashboardVisible_ && nativeRadarWindow_/);
+  assert.match(nativeWindows, /nativeDashboardVisible_ && nativeMediaWindow_/);
 });
 
 test('event bridge is the only immediate wake path for media state transitions', () => {

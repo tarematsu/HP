@@ -526,7 +526,6 @@ void Renderer::NativePlaybackLoop() {
       }
     }
 
-    bool musicChanged = false;
     {
       std::lock_guard lock(nativePlaybackMutex_);
       NativePlaybackUpdate& update = nativePlaybackUpdate_;
@@ -536,13 +535,6 @@ void Renderer::NativePlaybackLoop() {
         const bool nextPlayable = ProjectionHasPlayableTrack(projection, fetchedAt);
         const bool queueChanged =
             update.payloadSignature != projectionSignature;
-        musicChanged = !update.hasPayload || queueChanged ||
-            update.projection.available != projection.available ||
-            update.projection.playing != projection.playing ||
-            update.projection.stale != projection.stale ||
-            update.projection.ended != projection.ended ||
-            update.projection.setupRequired != projection.setupRequired ||
-            update.projection.currentIndex != projection.currentIndex;
         const bool advanceContentRevision = !update.hasPayload ||
             (nextPlayable && (!previousPlayable || queueChanged));
         update.payloadSignature = projectionSignature;
@@ -561,9 +553,6 @@ void Renderer::NativePlaybackLoop() {
       nativeMinuteFacts_ = statusProjection;
     }
 
-    if (musicChanged) {
-      InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
-    }
     std::unique_lock waitLock(nativePlaybackWakeMutex_);
     nativePlaybackWake_.wait_for(
         waitLock, std::chrono::milliseconds(kDashboardPollIntervalMs),

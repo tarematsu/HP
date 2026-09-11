@@ -1,4 +1,4 @@
-// Native media composition: shared constants/scripts plus focused host/window/radar modules.
+// Native media composition: shared constants/scripts plus focused host/window modules.
 namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMediaYoutubeUrl[] =
@@ -116,5 +116,3 @@ LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 #include "media_host_window.inc"
 
 }  // namespace
-
-#include "media_radar_section.inc"

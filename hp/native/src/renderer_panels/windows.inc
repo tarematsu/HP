@@ -9,8 +9,8 @@ UINT NativePanelTickDelayToNextSecond() noexcept {
 
 const std::array<Renderer::NativePanelSlot, 3>& Renderer::NativePanelSlots() {
   static const std::array<NativePanelSlot, 3> slots{{
-      {&Renderer::nativeRadarWindow_, &NativeDashboardLayout::radar,
-       L"HomePanelNativeRadar", kNativeRadarId},
+      {&Renderer::nativeMediaWindow_, &NativeDashboardLayout::media,
+       L"HomePanelNativeMedia", kNativeMediaId},
       {&Renderer::nativeSideWindow_, &NativeDashboardLayout::side,
        L"HomePanelNativeSide", kNativeSideId},
       {&Renderer::nativeMainWindow_, &NativeDashboardLayout::main,
@@ -130,13 +130,13 @@ bool Renderer::EnsureNativeStaticWindows() {
     }
   }
 
-  // Do not create or navigate the YouTube WebView while power saving hides the
-  // dashboard. Once normal mode returns, DrawMusicSection creates it on demand.
-  if (nativeDashboardVisible_ && nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
-    RECT mvBounds{};
-    GetClientRect(nativeRadarWindow_, &mvBounds);
-    if (mvBounds.right > mvBounds.left && mvBounds.bottom > mvBounds.top) {
-      allCreated = EnsureNativeMvPanel(nativeRadarWindow_, dataDir_, mvBounds) && allCreated;
+  // Do not create or navigate the YouTube/TVer WebView while power saving hides
+  // the dashboard. The media container exists only to host that WebView.
+  if (nativeDashboardVisible_ && nativeMediaWindow_ && IsWindow(nativeMediaWindow_)) {
+    RECT mediaBounds{};
+    GetClientRect(nativeMediaWindow_, &mediaBounds);
+    if (mediaBounds.right > mediaBounds.left && mediaBounds.bottom > mediaBounds.top) {
+      allCreated = EnsureNativeMvPanel(nativeMediaWindow_, dataDir_, mediaBounds) && allCreated;
     }
   }
   return allCreated;
@@ -181,14 +181,11 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
   } else if (window == nativeMainWindow_) {
     const MainSections sections = SplitMainSections(client);
     switch (section) {
-      case PanelSection::Music: rect = sections.music; break;
-      case PanelSection::PlaybackProgress:
-        rect = MusicProgressRectFromBody(CardBodyRect(CardContentRect(sections.music)));
-        break;
-      case PanelSection::Energy: rect = sections.air; break;
+      case PanelSection::Radar: rect = sections.radar; break;
+      case PanelSection::Energy: rect = sections.energy; break;
       case PanelSection::EnergySwitchBot:
         rect = EnergySwitchBotRectFromCard(
-            sections.air, nativeDashboard_.switchBotDevices.size());
+            sections.energy, nativeDashboard_.switchBotDevices.size());
         break;
       default: break;
     }
@@ -240,32 +237,14 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
           return 0;
         }
         break;
-      case WM_LBUTTONUP: {
-        const int id = GetDlgCtrlID(hwnd);
-        if (id == kNativeSideId) return 0;
-        if (id == kNativeMainId) {
-          RECT client{};
-          GetClientRect(hwnd, &client);
-          const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-          const MainSections sections = SplitMainSections(client);
-          const RECT musicBody = CardBodyRect(CardContentRect(sections.music));
-          const MusicRowRects musicRects = MusicRowFromBody(musicBody);
-          if (PtInRect(&musicRects.button, point)) {
-            QueueAction(UiAction::StationheadAudioToggle);
-            return 0;
-          }
-          if (PtInRect(&musicRects.muteButton, point)) {
-            QueueAction(UiAction::StationheadAudioMute);
-            return 0;
-          }
-          return 0;
-        }
-        break;
-      }
+      case WM_LBUTTONUP:
+        // Main and side cards are display-only. Interactive power/mute controls
+        // are owned by PowerSavingController's overlay, not these panels.
+        return 0;
       case WM_PAINT:
         if (GetDlgCtrlID(hwnd) == kNativeSideId) PaintNativeSide(hwnd);
         else if (GetDlgCtrlID(hwnd) == kNativeMainId) PaintNativeMain(hwnd);
-        else PaintNativeRadar(hwnd);
+        else PaintNativeMedia(hwnd);
         return 0;
       case WM_NCDESTROY:
         if (hwnd == nativeMainWindow_) nativePanelTimerActive_ = false;
@@ -309,84 +288,33 @@ void Renderer::PaintNativeMain(HWND hwnd) {
   if (!scope.Valid()) return;
   const MainSections sections = SplitMainSections(scope.bounds);
   RECT overlap{};
-  if (IntersectRect(&overlap, &scope.dirty, &sections.music)) {
-    DrawMusicSection(scope.dc, sections.music);
+  if (IntersectRect(&overlap, &scope.dirty, &sections.radar)) {
+    DrawRadarSection(scope.dc, sections.radar);
   }
-  if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
+  if (IntersectRect(&overlap, &scope.dirty, &sections.energy)) {
     const RECT switchBotRect = EnergySwitchBotRectFromCard(
-        sections.air, nativeDashboard_.switchBotDevices.size());
+        sections.energy, nativeDashboard_.switchBotDevices.size());
     const bool switchBotOnly =
         scope.dirty.left >= switchBotRect.left &&
         scope.dirty.top >= switchBotRect.top &&
         scope.dirty.right <= switchBotRect.right &&
         scope.dirty.bottom <= switchBotRect.bottom;
-    if (!switchBotOnly) DrawEnergySection(scope.dc, sections.air);
+    if (!switchBotOnly) DrawEnergySection(scope.dc, sections.energy);
 
     RECT switchBotOverlap{};
     if (IntersectRect(&switchBotOverlap, &scope.dirty, &switchBotRect)) {
-      DrawEnergySwitchBotSection(scope.dc, sections.air);
+      DrawEnergySwitchBotSection(scope.dc, sections.energy);
     }
   }
 }
 
-void Renderer::PaintNativeRadar(HWND hwnd) {
+void Renderer::PaintNativeMedia(HWND hwnd) {
   NativePanelPaintScope scope(*this, hwnd);
   if (!scope.Valid()) return;
-  const RECT& bounds = scope.bounds;
-  const int radius = CardRadius(bounds);
-  HRGN rounded = CreateRoundRectRgn(bounds.left, bounds.top, bounds.right + 1,
-                                    bounds.bottom + 1, radius, radius);
-  ExtSelectClipRgn(scope.dc, rounded, RGN_AND);
-  DeleteObject(rounded);
 
-  bool hasFrame = false;
-  std::wstring timeText;
-  {
-    std::lock_guard lock(radarFrameMutex_);
-    hasFrame = radarFrameBitmap_ != nullptr;
-    timeText = radarTimeText_;
-    if (hasFrame) StretchRadarInto(scope.dc, bounds, radarFrameBitmap_);
-  }
-  const bool noRain = hasFrame && timeText == L"しばらく雨は降りません";
-  if (!hasFrame) {
-    HBRUSH surface = CreateSolidBrush(kWidgetSurface);
-    FillRect(scope.dc, &bounds, surface);
-    DeleteObject(surface);
-    HGDIOBJ previousFont = SelectObject(scope.dc, TierFont(FontTier::Small));
-    SetTextColor(scope.dc, kWidgetMuted);
-    DrawTextInRect(scope.dc, L"レーダー画像を準備中", bounds,
-                   DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    SelectObject(scope.dc, previousFont);
-  } else if (noRain) {
-    FillRoundRectTranslucent(scope.dc, bounds, RGB(0, 0, 0), radius, 165);
-    const RECT messageBounds = NormalizeInsetRect(
-        bounds, SpanX(bounds, 45), SpanY(bounds, 120),
-        SpanX(bounds, 45), SpanY(bounds, 90));
-    HGDIOBJ previousFont = SelectObject(scope.dc, TierFont(FontTier::Large));
-    SetTextColor(scope.dc, kWidgetText);
-    DrawTextInRect(scope.dc, L"しばらく雨は降りません", messageBounds,
-                   DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    SelectObject(scope.dc, previousFont);
-  }
-
-  HGDIOBJ previousFont = SelectObject(scope.dc, TierFont(FontTier::Small));
-  const std::wstring chipText = noRain
-      ? L"雨雲レーダー"
-      : L"雨雲レーダー " + (timeText.empty() ? L"--:--" : timeText);
-  RECT measure{};
-  DrawTextW(scope.dc, chipText.c_str(), -1, &measure,
-            DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
-  const int chipPadX = std::max(8, SpanX(bounds, 8));
-  const int chipPadY = std::max(4, SpanY(bounds, 8));
-  const int chipMargin = std::max(10, SpanY(bounds, 25));
-  const RECT chip{bounds.left + chipMargin, bounds.top + chipMargin,
-                  bounds.left + chipMargin + (measure.right - measure.left) + chipPadX * 2,
-                  bounds.top + chipMargin + (measure.bottom - measure.top) + chipPadY * 2};
-  FillRoundRectTranslucent(scope.dc, chip, RGB(0, 0, 0), chip.bottom - chip.top, 150);
-  SetTextColor(scope.dc, kWidgetText);
-  DrawTextInRect(scope.dc, chipText, chip, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-  SelectObject(scope.dc, previousFont);
-
-  SelectClipRgn(scope.dc, nullptr);
-  DrawCardOutline(scope.dc, bounds, radius);
+  // This parent is only a WebView host. Never paint the rain-radar bitmap here:
+  // if WebView2 is momentarily unavailable during mute/navigation/controller
+  // transitions, the fallback must stay black instead of exposing the radar.
+  FillRect(scope.dc, &scope.bounds,
+           static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
 }

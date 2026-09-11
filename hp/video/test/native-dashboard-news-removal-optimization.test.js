@@ -161,10 +161,8 @@ test('dashboard response JSON is parsed once for playback and status', () => {
   assert.match(nativePlayback, /ParseDashboardPayload\(\s*dataDir_, payload, fetchedAt, &projection, &statusProjection, &error\)/s);
 });
 
-test('unchanged playback polls do not invalidate the full Music panel', () => {
-  assert.match(nativePlayback, /bool musicChanged = false;/);
-  assert.match(nativePlayback, /if \(musicChanged\) \{\s*InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\);/s);
-  assert.doesNotMatch(nativePlayback, /\n    InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\);\n    std::unique_lock/);
+test('playback polling does not invalidate the unrelated radar panel', () => {
+  assert.doesNotMatch(nativePlayback, /PanelSection::Radar|PanelSection::Music/);
 });
 
 test('playback update storage is reduced to one native source', () => {
@@ -253,7 +251,7 @@ test('single radar performs no local frame snapshot serialization', () => {
 });
 
 test('radar updates invalidate only the relocated radar section', () => {
-  assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\);/);
+  assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Radar\);/);
   assert.doesNotMatch(radarUi, /InvalidateRadarWindow\(nativeRadarWindow_\);/);
   assert.doesNotMatch(radarUi, /InvalidateAllNativePanels\(\)/);
   assert.doesNotMatch(radarUi, /CachedRadarSourceDc|BlendBitmap|CreateCompatibleDC/);
@@ -287,9 +285,7 @@ test('News drawing function and paint branches are removed', () => {
   assert.doesNotMatch(layout, /sections\.news/);
 });
 
-test('playback projection runs only while the main panel is visible', () => {
-  assert.match(
-    panelState,
-    /if \(nativeMainWindow_ && IsWindow\(nativeMainWindow_\) &&\s*IsWindowVisible\(nativeMainWindow_\)\) \{\s*const NativePlaybackTickState playbackState = NativePlaybackTickStateFor\(nowMs\);/s,
-  );
+test('playback projection does not repaint the unrelated radar panel', () => {
+  assert.doesNotMatch(panelState, /NativePlaybackTickStateFor\(nowMs\)/);
+  assert.doesNotMatch(panelState, /PanelSection::PlaybackProgress/);
 });

@@ -169,6 +169,6 @@ void Renderer::ComposeRadarFrame() {
     radarSignature_ = signature;
   }
   if (previous) DeleteObject(previous);
-  InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+  InvalidatePanelSection(nativeMainWindow_, PanelSection::Radar);
 }
 }  // namespace hp
