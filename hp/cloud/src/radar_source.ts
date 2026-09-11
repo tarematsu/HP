@@ -1,7 +1,6 @@
 import { fetchJson } from "./http";
 import {
   KAWAGOE_MASK_KEY,
-  KAWAGOE_MASK_PATH,
   renderRepresentativeRadarFrame,
   type BrowserRadarPanelRequest,
   type BrowserRadarTile,
@@ -231,29 +230,19 @@ async function panelRequest(
 export async function radarFrameResponse(pathname: string, env: Env): Promise<Response> {
   if (!env.UPDATE_BUCKET) return new Response(null, { status: 404 });
   const representative = pathname === RADAR_FRAME_PATH;
-  const kawagoeMask = pathname === KAWAGOE_MASK_PATH;
   const legacy = pathname.match(RADAR_LEGACY_FRAME_PATH);
   const key = representative
     ? representativeFrameKey()
-    : kawagoeMask
-      ? KAWAGOE_MASK_KEY
-      : legacy
-        ? `${RADAR_LEGACY_FRAME_PREFIX}${legacy[1]}/${legacy[2]}.webp`
-        : "";
+    : legacy
+      ? `${RADAR_LEGACY_FRAME_PREFIX}${legacy[1]}/${legacy[2]}.webp`
+      : "";
   if (!key) return new Response(null, { status: 404 });
   const object = await env.UPDATE_BUCKET.get(key);
   if (!object?.body) return new Response(null, { status: 404 });
   const headers = new Headers();
   object.writeHttpMetadata(headers);
-  headers.set("Content-Type", representative || kawagoeMask ? "image/png" : "image/webp");
-  headers.set(
-    "Cache-Control",
-    kawagoeMask
-      ? "public, max-age=31536000, immutable"
-      : representative
-        ? "private, no-cache"
-        : "private, max-age=10800, immutable",
-  );
+  headers.set("Content-Type", representative ? "image/png" : "image/webp");
+  headers.set("Cache-Control", representative ? "private, no-cache" : "private, max-age=10800, immutable");
   if (object.httpEtag) headers.set("ETag", object.httpEtag);
   return new Response(object.body, { headers });
 }
