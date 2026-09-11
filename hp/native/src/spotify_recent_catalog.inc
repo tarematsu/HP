@@ -83,6 +83,9 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
   };
 
   for (const RotationGroup& group : cloudRotationGroups_) appendGroup(group);
+  inlineTalkAboutRotation_ = std::any_of(
+      slots_.begin(), slots_.end(),
+      [](const Slot& candidate) { return candidate.timedCycleIncludesTalkAbout; });
   if (!slot.timedCycleTracks.empty()) return;
 
   // Fail-safe preserves the previous A + shuffled B-E + one random F behavior
