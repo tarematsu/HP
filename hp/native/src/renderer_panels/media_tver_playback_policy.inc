@@ -1,6 +1,7 @@
 // TVer episode-page policy. This script owns dismissing blocking survey UI on
-// an episode page, recovering playback without toggle races, restart signaling,
-// and fullscreen entry. Series navigation lives in media_tver_series_policy.inc.
+// an episode page, recovering program playback without toggle races, restart
+// signaling, and fullscreen entry. During ads it only exposes Skip and
+// fullscreen actions; all other media/UI mutations are left to TVer.
 namespace {
 constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
 (() => {
@@ -133,6 +134,36 @@ LR"JS(
     ];
   };
 
+  const state = window.__homePanelSakuraMeetsState;
+  const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
+  if (adActive) {
+    // During ads the watchdog may only click Skip or the fullscreen control.
+    // Do not dismiss surveys, change volume/rate/quality, or recover playback.
+    const adControls = Array.from(document.querySelectorAll(
+        'button, [role="button"], a, [aria-label], [title]'));
+    const skipButton = adControls.find(element => {
+      if (!visible(element)) return false;
+      const label = labelOf(element);
+      return /(?:広告|CM).{0,12}スキップ|^スキップ$|skip\s+(?:this\s+)?ads?/i.test(label);
+    }) || null;
+    if (skipButton) return point(skipButton);
+
+    const browserFullscreen = document.fullscreenElement ||
+        document.webkitFullscreenElement || document.msFullscreenElement;
+    if (browserFullscreen) {
+      if (state) state.fullscreenDirty = false;
+      return null;
+    }
+    if (state) state.fullscreenDirty = true;
+    const fullscreenButton = adControls.find(element => {
+      if (!visible(element)) return false;
+      const label = labelOf(element).toLowerCase();
+      if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
+      return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
+    }) || null;
+    return fullscreenButton ? point(fullscreenButton) : null;
+  }
+
   const surveyRoots = Array.from(document.querySelectorAll(
       '[role="dialog"], [aria-modal="true"], [data-testid*="survey" i], '
       + '[class*="survey" i], [class*="questionnaire" i]'));
@@ -153,7 +184,6 @@ LR"JS(
   })();
   if (surveyClose) return point(surveyClose);
 
-  const state = window.__homePanelSakuraMeetsState;
   if (state && state.restartRequested) return 'restart';
 
   let video = null;
@@ -227,9 +257,6 @@ LR"JS(
   }
   video.__homePanelTverResumeBlocked = false;
 
-  // Ads use the same fullscreen recovery path as program playback. TVer can
-  // leave fullscreen while swapping media, so trust the actual browser state
-  // rather than a stale cached flag.
   const browserFullscreen = document.fullscreenElement ||
       document.webkitFullscreenElement || document.msFullscreenElement;
   if (browserFullscreen) {
@@ -259,9 +286,8 @@ LR"JS(
 })()
 )JS";
 
-// Invoked immediately after a trusted TVer click. Unlike the legacy ad-safe
-// helper, ads are intentionally eligible so pre/mid/post-roll media remains
-// fullscreen through TVer's media-element swaps.
+// Invoked immediately after a trusted TVer click. Ads are eligible because the
+// only trusted ad clicks returned above are Skip or the fullscreen control.
 constexpr wchar_t kNativeMediaTverForceFullscreenAnyMediaScript[] = LR"JS(
 (() => {
   if (window.__homePanelTverFullscreenPending) return;
