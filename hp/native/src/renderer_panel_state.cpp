@@ -1,10 +1,31 @@
 #include "web_renderer.h"
 #include "stationhead_native_stats.h"
 #include "winhttp_helpers.h"
+#include <cmath>
 
 namespace hp {
 namespace {
 constexpr int64_t kAirGraphWindowMs = 24LL * 60 * 60 * 1000;
+constexpr int kAirStatsCo2InvalidateDeltaPpm = 5;
+constexpr double kAirStatsTemperatureInvalidateDeltaC = 0.1;
+constexpr double kAirStatsHumidityInvalidateDeltaPercent = 1.0;
+
+bool ValidAirGraphSample(const AirHistorySample& sample, int64_t cutoff) noexcept {
+  return sample.timestamp >= cutoff && sample.co2 >= 250 && sample.co2 <= 10000 &&
+      sample.temperature >= -40 && sample.temperature <= 85 &&
+      sample.humidity >= 0 && sample.humidity <= 100;
+}
+
+bool AirStatsNeedRepaint(const SensorSnapshot& previous,
+                         const SensorSnapshot& next) noexcept {
+  if (previous.co2Connected != next.co2Connected) return true;
+  if (!next.co2Connected) return false;
+  return std::abs(next.co2 - previous.co2) >= kAirStatsCo2InvalidateDeltaPpm ||
+      std::abs(next.temperatureCorrected - previous.temperatureCorrected) >=
+          kAirStatsTemperatureInvalidateDeltaC ||
+      std::abs(next.humidityCorrected - previous.humidityCorrected) >=
+          kAirStatsHumidityInvalidateDeltaPercent;
+}
 
 struct StationheadRevisionCache {
   const Renderer* owner = nullptr;
@@ -49,11 +70,7 @@ void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
   double humidityMin = std::numeric_limits<double>::max();
   double humidityMax = std::numeric_limits<double>::lowest();
   for (const auto& sample : nativeAirHistory_) {
-    if (sample.timestamp < next.cutoff || sample.co2 < 250 || sample.co2 > 10000 ||
-        sample.temperature < -40 || sample.temperature > 85 ||
-        sample.humidity < 0 || sample.humidity > 100) {
-      continue;
-    }
+    if (!ValidAirGraphSample(sample, next.cutoff)) continue;
     next.samples.push_back(sample);
     co2Min = std::min(co2Min, static_cast<double>(sample.co2));
     co2Max = std::max(co2Max, static_cast<double>(sample.co2));
@@ -75,19 +92,104 @@ void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
 
 void Renderer::UpdateSensors(const SensorSnapshot& sensors) {
   if (nativeSensors_ == sensors) return;
-  nativeSensors_ = sensors;
-  if (!nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;
+
+  // Keep the air values at the last painted baseline until the visible value has
+  // moved enough to matter. Non-air state still advances immediately so this
+  // optimization cannot make SwitchBot/telemetry state stale inside Renderer.
+  const bool repaintAirStats = AirStatsNeedRepaint(nativeSensors_, sensors);
+  if (repaintAirStats) {
+    nativeSensors_ = sensors;
+  } else {
+    nativeSensors_.observedAt = sensors.observedAt;
+    nativeSensors_.presence = sensors.presence;
+    nativeSensors_.light = sensors.light;
+    nativeSensors_.motion = sensors.motion;
+    nativeSensors_.doorOpen = sensors.doorOpen;
+    nativeSensors_.outboxCount = sensors.outboxCount;
+    nativeSensors_.lastError = sensors.lastError;
+  }
+
+  if (!repaintAirStats || !nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;
   InvalidatePanelSection(nativeSideWindow_, PanelSection::AirStats);
 }
 
 void Renderer::UpdateAirHistory(const std::vector<AirHistorySample>& history) {
   if (nativeAirHistory_ == history) return;
-  nativeAirHistory_ = history;
+
+  const bool appended = history.size() == nativeAirHistory_.size() + 1 &&
+      std::equal(nativeAirHistory_.begin(), nativeAirHistory_.end(), history.begin());
+  const bool rolled = history.size() == nativeAirHistory_.size() &&
+      history.size() > 1 && nativeAirHistory_.size() > 1 &&
+      std::equal(nativeAirHistory_.begin() + 1, nativeAirHistory_.end(), history.begin());
+  const bool incremental = appended || rolled;
+
+  if (appended) {
+    nativeAirHistory_.push_back(history.back());
+  } else if (rolled) {
+    nativeAirHistory_.erase(nativeAirHistory_.begin());
+    nativeAirHistory_.push_back(history.back());
+  } else {
+    nativeAirHistory_ = history;
+  }
+
   if (!nativeDashboardVisible_) {
     nativeAirGraph_ = {};
     return;
   }
-  RebuildNativeAirGraph(UnixMillis());
+
+  const int64_t nowMs = UnixMillis();
+  if (!incremental || nativeAirGraph_.samples.empty()) {
+    RebuildNativeAirGraph(nowMs);
+  } else {
+    // History normally advances by one five-minute bucket. Update only that
+    // delta instead of rebuilding/copying the complete 24-hour projection.
+    const int64_t cutoff = nowMs - kAirGraphWindowMs;
+    nativeAirGraph_.cutoff = cutoff;
+    const auto retained = std::lower_bound(
+        nativeAirGraph_.samples.begin(), nativeAirGraph_.samples.end(), cutoff,
+        [](const AirHistorySample& sample, int64_t value) {
+          return sample.timestamp < value;
+        });
+    if (retained != nativeAirGraph_.samples.begin()) {
+      nativeAirGraph_.samples.erase(nativeAirGraph_.samples.begin(), retained);
+    }
+    if (!history.empty() && ValidAirGraphSample(history.back(), cutoff) &&
+        (nativeAirGraph_.samples.empty() ||
+         nativeAirGraph_.samples.back().timestamp < history.back().timestamp)) {
+      nativeAirGraph_.samples.push_back(history.back());
+    }
+
+    if (nativeAirGraph_.samples.empty()) {
+      nativeAirGraph_.co2Min = 0;
+      nativeAirGraph_.co2Max = 0;
+      nativeAirGraph_.temperatureMin = 0;
+      nativeAirGraph_.temperatureMax = 0;
+      nativeAirGraph_.humidityMin = 0;
+      nativeAirGraph_.humidityMax = 0;
+    } else {
+      double co2Min = std::numeric_limits<double>::max();
+      double co2Max = std::numeric_limits<double>::lowest();
+      double temperatureMin = std::numeric_limits<double>::max();
+      double temperatureMax = std::numeric_limits<double>::lowest();
+      double humidityMin = std::numeric_limits<double>::max();
+      double humidityMax = std::numeric_limits<double>::lowest();
+      for (const auto& sample : nativeAirGraph_.samples) {
+        co2Min = std::min(co2Min, static_cast<double>(sample.co2));
+        co2Max = std::max(co2Max, static_cast<double>(sample.co2));
+        temperatureMin = std::min(temperatureMin, sample.temperature);
+        temperatureMax = std::max(temperatureMax, sample.temperature);
+        humidityMin = std::min(humidityMin, sample.humidity);
+        humidityMax = std::max(humidityMax, sample.humidity);
+      }
+      nativeAirGraph_.co2Min = co2Min;
+      nativeAirGraph_.co2Max = co2Max;
+      nativeAirGraph_.temperatureMin = temperatureMin;
+      nativeAirGraph_.temperatureMax = temperatureMax;
+      nativeAirGraph_.humidityMin = humidityMin;
+      nativeAirGraph_.humidityMax = humidityMax;
+    }
+  }
+
   if (!EnsureNativeStaticWindows()) return;
   InvalidatePanelSection(nativeSideWindow_, PanelSection::AirGraph);
 }
