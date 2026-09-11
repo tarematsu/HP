@@ -13,7 +13,6 @@ import {
 import {
   ACTIONS_RUNNER_HEALTH_END,
   ACTIONS_RUNNER_HEALTH_START,
-  ACTIONS_RUNNER_TARGETS,
   MAX_ACTIONS_HEALTH_SUMMARY_CHARS,
   collectActionsRunnerHealth,
   extractActionsRunnerHealthBlock,
@@ -27,14 +26,6 @@ const CLIPPED_TEXT_SUFFIX_CHARS = '\n\n…truncated…'.length;
 const RUNNER_HEALTH_BLOCK_OVERHEAD = ACTIONS_RUNNER_HEALTH_START.length
   + ACTIONS_RUNNER_HEALTH_END.length
   + 2;
-
-export function publisherActionsRunnerTargets(targets = ACTIONS_RUNNER_TARGETS) {
-  return (Array.isArray(targets) ? targets : []).map((target) => (
-    target.workflow === 'run-pages-read-model-rebuild.yml'
-      ? { ...target, staleAfterMinutes: Math.max(Number(target.staleAfterMinutes) || 0, 60) }
-      : { ...target }
-  ));
-}
 
 export function buildActionsRunnerHealthIssueBody(issueBody, summary) {
   const baseBody = String(issueBody || '');
@@ -68,7 +59,7 @@ export async function publishActionsRunnerHealthFromEnvironment() {
   const request = createGitHubRequest('github-actions-runner-health');
   const now = Date.now();
   const [results, mainSha] = await Promise.all([
-    collectActionsRunnerHealth(request, { now, targets: publisherActionsRunnerTargets() }),
+    collectActionsRunnerHealth(request, { now }),
     resolveObservabilityMainSha(request),
   ]);
   const summary = renderActionsRunnerHealthSummary(results, { now });
