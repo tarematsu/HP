@@ -180,7 +180,8 @@ LR"JS(
       }
     });
     video.addEventListener('volumechange', () => {
-      if (window.__homePanelSakuraMeetsState !== state) return;
+      if (window.__homePanelSakuraMeetsState !== state || state.adActive ||
+          window.__homePanelTverAdActive) return;
       enforceVolume(video);
     });
     video.addEventListener('ended', () => {
@@ -221,7 +222,6 @@ LR"JS(
 
       const video = currentVideo();
       bindVideoEvents(video, state);
-      enforceVolume(video);
       const advertisementActive = detectAd(video, state);
       if (advertisementActive) {
         const identity = mediaIdentity(video);
@@ -242,13 +242,6 @@ LR"JS(
           state.playbackSettingsApplied = false;
           state.fullscreenDirty = true;
           state.restartRequested = false;
-          if (video) {
-            try {
-              video.defaultPlaybackRate = 1.0;
-              if (video.playbackRate !== 1.0) video.playbackRate = 1.0;
-            } catch (_) {}
-            enforceVolume(video);
-          }
         }
         window.__homePanelTverAdActive = true;
         return;
