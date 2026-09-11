@@ -10,6 +10,7 @@ test('TVer runtime routes only episode pages to the active policies', () => {
   assert.match(wrapper, /#include "media_tver_playback_policy\.inc"/);
   assert.doesNotMatch(wrapper, /#include "media_tver_series_dom_policy\.inc"/);
   assert.doesNotMatch(wrapper, /#include "media_tver_series_policy\.inc"/);
+  assert.doesNotMatch(wrapper, /#include "media_tver_native_series_resolver\.inc"/);
   assert.doesNotMatch(wrapper, /PrepareNativeMediaTverSeriesResolution\(/);
   assert.doesNotMatch(wrapper, /NativeMediaTverNavigationPendingFor\(/);
   assert.match(wrapper, /tver\.jp\/episodes\//);
@@ -38,8 +39,8 @@ test('event wake bridge accepts only fixed messages and revalidates current sour
   assert.match(wrapper, /PostMessageW\(hostWindow, WM_TIMER/);
 });
 
-test('TVer cloud refresh remains native while series-page resolution is not routed', () => {
-  assert.match(wrapper, /#include "media_tver_native_series_resolver\.inc"/);
+test('TVer cloud refresh uses the dedicated native cloud-feed client', () => {
+  assert.match(wrapper, /#include "media_tver_cloud_feed_native\.inc"/);
   assert.match(wrapper, /#include "media_tver_cloud_queue_refresh\.inc"/);
   assert.match(wrapper, /PrepareNativeMediaTverCloudQueueRefresh\(webview, hostWindow, alive\)/);
   assert.doesNotMatch(wrapper, /NativeMediaTverSeriesWatchdogPolicyScript/);
