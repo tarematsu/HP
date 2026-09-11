@@ -29,6 +29,12 @@ export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
   ["なぜ　恋をして来なかったんだろう？ -OFF VOCAL ver.-", "5TaAgmUQuhJw4bGW4dg3KI"],
 ] as const;
 
+// E/F/G use the complete short music pool. Instrumentals stay exclusive to C.
+export const SHORT_SPOTIFY_ROTATION_TRACKS = [
+  ...SHORT_SPOTIFY_RANDOM_TRACKS,
+  ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
+] as const;
+
 // Keep newly discovered instrumental tracks appended after the existing managed
 // pool so older device configs remain an exact prefix and migrate safely.
 export const ADDITIONAL_INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
@@ -69,7 +75,7 @@ const rotationTracks = (tracks: readonly (readonly [string, string])[]) =>
   tracks.map(([title, id]) => spotifyRotationTrack(title, id));
 
 export function managedSpotifySevenSlotRotation() {
-  const shortSongs = rotationTracks(SHORT_SPOTIFY_RANDOM_TRACKS);
+  const shortSongs = rotationTracks(SHORT_SPOTIFY_ROTATION_TRACKS);
   return [
     {
       mode: "fixed",

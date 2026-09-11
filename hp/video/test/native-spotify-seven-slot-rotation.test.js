@@ -25,6 +25,7 @@ test('cloud owns the requested seven-position Spotify rotation', () => {
   assert.match(catalog, /放課後BitterBlue/);
   assert.match(catalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(catalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
+  assert.match(catalog, /SHORT_SPOTIFY_ROTATION_TRACKS/);
   assert.match(catalog, /shortSongs\.map/);
   assert.match(catalog, /includeTalkAbout: true/);
   assert.match(admin, /rotation:structuredClone\(managedSpotifyRotation\)/);
@@ -49,6 +50,26 @@ test('C slot includes Overture and all seven Interludes', () => {
   for (let index = 1; index <= 7; ++index) {
     assert.match(catalog, new RegExp(`Interlude #${index}`));
   }
+});
+
+test('E/F/G short-song pool includes every verified short OFF VOCAL track', () => {
+  assert.match(
+    catalog,
+    /SHORT_SPOTIFY_ROTATION_TRACKS\s*=\s*\[\s*\.\.\.SHORT_SPOTIFY_RANDOM_TRACKS,\s*\.\.\.OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,/s,
+  );
+  assert.match(
+    catalog,
+    /const shortSongs = rotationTracks\(SHORT_SPOTIFY_ROTATION_TRACKS\)/,
+  );
+  for (const id of [
+    '04nk2Ee7qSnNwn6OG2hl3Q',
+    '4hVECXakmpdqigQq1mJwNg',
+    '51nXGT2UTljN9BdOgn0Utw',
+    '1R5rm05YeYZSJiGzZPZx8l',
+    '17PV1rxc1KbMOTRKSRt2hd',
+    '54VmTDaOAl0LVlOmYOFuFi',
+    '5TaAgmUQuhJw4bGW4dg3KI',
+  ]) assert.match(catalog, new RegExp(id));
 });
 
 test('native enforces no duplicate Spotify path inside one cycle', () => {
