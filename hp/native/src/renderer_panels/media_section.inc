@@ -170,10 +170,10 @@ const wchar_t* ResolveNativeMediaPolicyScript(
   }
   if (script == kNativeMediaYoutubeCleanPlayerScript) {
     // The static presentation policy is already installed by
-    // AddScriptToExecuteOnDocumentCreated. Navigation completion only needs to
-    // refresh the source-scoped trusted/event controller, not inject the same
-    // clean-player CSS again.
-    NativeMediaEnsureYoutubeTrustedAction(webview, hostWindow, alive);
+    // AddScriptToExecuteOnDocumentCreated. Navigation completion refreshes only
+    // the source-scoped trusted/event controller. Force this refresh so a
+    // same-URL document reload cannot retain a stale native-side source cache.
+    NativeMediaEnsureYoutubeTrustedAction(webview, hostWindow, alive, true);
     return kNativeMediaNoopScript;
   }
   if (script == kNativeMediaTverLoopScript) {
