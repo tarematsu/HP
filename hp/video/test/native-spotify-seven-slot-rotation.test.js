@@ -16,6 +16,8 @@ const recent = readFileSync(
   new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
+const schedule = readFileSync(
+  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 
 test('cloud owns the requested seven-position Spotify rotation', () => {
   assert.match(catalog, /function managedSpotifySevenSlotRotation/);
@@ -57,17 +59,13 @@ test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(recent, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
-test('G mixes the short-song pool with latest TALKABOUT and disables the old interrupt', () => {
+test('G mixes short songs with latest TALKABOUT and no timed interrupt remains', () => {
   assert.match(header, /bool includeTalkAbout = false/);
-  assert.match(header, /bool inlineTalkAboutRotation_ = false/);
   assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
-  assert.match(recent, /if \(group\.includeTalkAbout\)/);
-  assert.match(recent, /SpotifyPodcastTargetReady\(\)/);
+  assert.match(recent, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
   assert.match(recent, /SpotifyPodcastUrl\(\)/);
   assert.match(recent, /SpotifyPodcastPath\(\)/);
-  assert.match(rotation, /cloudRotationGroups_\.begin\(\), cloudRotationGroups_\.end\(\)/);
-  assert.match(rotation, /group\.includeTalkAbout/);
-  assert.match(rotation, /inlineTalkAboutRotation_ \|\| inlineConfigured/);
   assert.match(rotation, /target\.path == SpotifyPodcastPath\(\)/);
   assert.match(rotation, /TimedSpotifyTarget::TalkAbout/);
+  assert.doesNotMatch(header + cloud + rotation + schedule, /StartOverduePodcastBreak|podcastDueTick|intervalMinutes/);
 });
