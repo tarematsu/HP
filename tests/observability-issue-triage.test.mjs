@@ -95,6 +95,25 @@ test('collection failure does not duplicate a healthy telemetry policy incident'
   assert.match(triage, /\| Current-deployment telemetry policy \| \*\*OK\*\* \| No failure reported\./);
 });
 
+test('telemetry triage prefers a non-zero CPU violation over zero error invocations', () => {
+  const telemetry = [
+    '## Current deployment telemetry',
+    '- CPU coverage: `OK`',
+    '- CPU violations: `1`',
+    '- Error invocations: `0`',
+  ].join('\n');
+  const triage = buildObservabilityTriage({
+    outcomes: { ...allSuccessfulOutcomes, telemetry: 'failure' },
+    summaries: {
+      publicHealth: summaries.publicHealth,
+      telemetry,
+    },
+    activeDeployments: deployments,
+  });
+  assert.match(triage, /Highest priority: \*\*Current-deployment telemetry policy\*\* — - CPU violations: `1`/);
+  assert.doesNotMatch(triage, /Highest priority:[^\n]*Error invocations: `0`/);
+});
+
 test('deployment signal fails closed for unavailable or incomplete inventory', () => {
   assert.equal(deploymentSignal({
     worker: { status: 'unavailable', deployment_id: '', version_ids: [] },
