@@ -24,6 +24,7 @@ export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
   ["Make or Break -OFF VOCAL ver.-", "51nXGT2UTljN9BdOgn0Utw"],
   ["死んだふり -OFF VOCAL ver.-", "1R5rm05YeYZSJiGzZPZx8l"],
   ["承認欲求 -OFF VOCAL ver.-", "17PV1rxc1KbMOTRKSRt2hd"],
+  ["もう一曲　欲しいのかい？ -OFF VOCAL ver.-", "54VmTDaOAl0LVlOmYOFuFi"],
 ] as const;
 
 export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
