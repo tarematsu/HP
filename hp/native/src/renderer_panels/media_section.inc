@@ -9,7 +9,10 @@
 #include "media_tver_series_dom_policy.inc"
 #include "media_tver_series_policy.inc"
 #include "media_tver_playback_policy.inc"
+#define kNativeMediaTverForceFullscreenAdSafeScript \
+  kNativeMediaTverForceFullscreenAnyMediaScript
 #include "media_trusted_input.inc"
+#undef kNativeMediaTverForceFullscreenAdSafeScript
 #include "media_youtube_policy.inc"
 #include "media_youtube_trusted_action.inc"
 #include "media_youtube_control_recovery.inc"
