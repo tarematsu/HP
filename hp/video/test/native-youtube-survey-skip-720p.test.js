@@ -85,14 +85,19 @@ test('YouTube ad skip reaches the real verified control and never falls through 
   assert.doesNotMatch(trustedInput, /::SendInput/);
 });
 
-test('YouTube fullscreen is delegated to the real YouTube control with a trusted click', () => {
+test('YouTube fullscreen uses the real trusted control for both ads and content', () => {
   assert.match(recovery, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
   assert.match(recovery, /全画面\|fullscreen\|full screen/i);
-  assert.match(recovery, /return trusted\.arm\(target, 'fullscreen', 1200\)/);
+  assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
+  assert.match(recovery, /if \(adShowing && !trusted\.fullscreen\(\)\)/);
   assert.match(trustedAction, /document\.fullscreenElement/);
   assert.match(
     trustedAction,
-    /action === 'fullscreen' && \(ad\(\) \|\| fullscreen\(\) \|\| !player\(\)\)/,
+    /action === 'fullscreen' && \(fullscreen\(\) \|\| !player\(\)\)/,
+  );
+  assert.doesNotMatch(
+    trustedAction,
+    /action === 'fullscreen' && \(ad\(\) \|\| fullscreen\(\)/,
   );
   assert.match(trustedAction, /real YouTube control/);
   assert.match(trustedAction, /isTrusted click/);

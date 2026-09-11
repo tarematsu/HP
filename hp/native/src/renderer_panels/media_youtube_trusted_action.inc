@@ -72,12 +72,13 @@ constexpr wchar_t kNativeMediaYoutubeTrustedActionBootstrapScript[] = LR"JS(
         const video = player()?.querySelector('video');
         if (ad() || !video || video.ended || !video.paused) return reject(event);
       }
-      if (action === 'fullscreen' && (ad() || fullscreen() || !player())) {
+      if (action === 'fullscreen' && (fullscreen() || !player())) {
         return reject(event);
       }
       // Keep the accepted event untouched. It is the real YouTube control that
       // receives the CDP-generated isTrusted click, so YouTube owns the action
       // semantics and its internal fullscreen/ad state remains consistent.
+      // Fullscreen is intentionally valid during ads as well as content.
       setTimeout(cleanup, 0);
     }
 
