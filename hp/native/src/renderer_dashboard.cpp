@@ -57,7 +57,10 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
         snapshot.revisions.weather != nativeDashboard_.revisions.weather;
     const bool octopusChanged = firstSnapshot ||
         snapshot.revisions.octopus != nativeDashboard_.revisions.octopus;
-    const bool contentChanged = weatherChanged || octopusChanged;
+    // Keep the legacy aggregate name for source-contract compatibility. SwitchBot
+    // is intentionally excluded and owns its independent update path below.
+    const bool energyChanged = octopusChanged;
+    const bool contentChanged = weatherChanged || energyChanged;
 
     nativeDashboard_ = std::move(snapshot);
     dashboardUtf8_ = contentSignature;
