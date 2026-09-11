@@ -3,8 +3,6 @@
 
 namespace hp {
 
-inline constexpr ULONGLONG kSpotifyMusicTrackDeadlineMs =
-    4ULL * 60ULL * 1000ULL;
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 40ULL * 1000ULL;
 inline constexpr ULONGLONG kSpotifyPodcastIntervalMs =
     2ULL * 60ULL * 60ULL * 1000ULL;
@@ -187,7 +185,6 @@ class SpotifyWebViews final {
   void SavePodcastScheduleState() noexcept;
   bool StartOverduePodcastBreak(ULONGLONG now) noexcept;
   void MarkPodcastPlaybackStarted(Slot& slot, ULONGLONG now) noexcept;
-  bool AdvanceExpiredTimedRotation(ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void StopTimedOneShotPlayback(Slot& slot) noexcept;
   void RecomputeForeground() noexcept;
