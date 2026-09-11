@@ -47,10 +47,9 @@ HRESULT ExecuteNativeMediaPolicyScript(
 
 #include "media_section_base.inc"
 
-// The cloud queue refresher reuses the bounded WinHTTP/JSON helpers currently
-// hosted in the native resolver module. Series-page resolution itself is no
-// longer routed at runtime; TVer playback starts from the cloud episode feed.
-#include "media_tver_native_series_resolver.inc"
+// TVer playback consumes only the cloud-owned episode feed. Keep the bounded
+// native feed client and queue refresher beside the host after timer IDs exist.
+#include "media_tver_cloud_feed_native.inc"
 #include "media_tver_cloud_queue_refresh.inc"
 
 namespace {
