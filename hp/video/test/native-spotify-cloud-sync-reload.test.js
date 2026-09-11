@@ -44,7 +44,7 @@ test('only Spotify rotation changes advance the rotation revision', () => {
 
 test('a synchronized rotation starts at the next track boundary without cutting the current track', () => {
   const advanceStart = rotation.indexOf('void SpotifyWebViews::AdvanceTimedRotationSlot');
-  const advanceEnd = rotation.indexOf('bool SpotifyWebViews::AdvanceExpiredTimedRotation', advanceStart);
+  const advanceEnd = rotation.indexOf('void SpotifyWebViews::ArmTimedEndObserver', advanceStart);
   assert.ok(advanceStart >= 0 && advanceEnd > advanceStart);
   const advance = rotation.slice(advanceStart, advanceEnd);
   assert.match(advance, /timedCloudRotationRevision != cloudRotationRevision_/);

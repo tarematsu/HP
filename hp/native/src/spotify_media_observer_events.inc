@@ -12,7 +12,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery } = runtime;
-  const finishLeadSeconds = 2.0;
 
   const stopMedia = media => {
     try { if (isMedia(media) && !media.paused) media.pause(); } catch (_) {}
@@ -78,19 +77,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     const media = event.target;
     if (!isMedia(media) || media.ended || media.paused) return;
     if (quarantineCompletedGeneration(media)) return;
-    if (enforceTarget(media) !== 'playing') return;
-
-    // Do not let Spotify reach the natural end of a direct-track page. Cutting
-    // the final two seconds prevents its autoplay queue from getting a chance
-    // to start a recommendation before native navigation reaches the next
-    // requested A-F target.
-    const duration = Number(media.duration);
-    const currentTime = Number(media.currentTime);
-    if (Number.isFinite(duration) && duration > 0 &&
-        Number.isFinite(currentTime) && currentTime >= 0 &&
-        currentTime >= duration - finishLeadSeconds) {
-      finishTarget(media);
-    }
+    enforceTarget(media);
   }, true);
 
   document.addEventListener('pause', event => {
@@ -105,6 +92,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }, true);
   }
 
+  // A music target advances only after the browser reports its natural end.
   document.addEventListener('ended', event => {
     finishTarget(event.target);
   }, true);

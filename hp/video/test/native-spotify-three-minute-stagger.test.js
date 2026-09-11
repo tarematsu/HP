@@ -53,21 +53,19 @@ test('cloud rotation supports arbitrary fixed, shuffle, and random block lengths
   assert.doesNotMatch(rotation, /% 6U|position <= 4U/);
 });
 
-test('cycle advances immediately on ended or no later than the shared four-minute deadline', () => {
+test('cycle advances only after the requested track reaches its natural end', () => {
   assert.match(rotation, /\+\+slot\.timedRotationPosition/);
   assert.match(rotation, /slot\.timedRotationPosition >= slot\.timedCycleTracks\.size\(\)/);
   assert.match(rotation, /PrepareTimedRotationCycle\(slot\)/);
   assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(events, /spotify:timed-ended/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
-  assert.match(header, /kSpotifyMusicTrackDeadlineMs =\s*4ULL \* 60ULL \* 1000ULL/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
+  assert.doesNotMatch(header + rotation + schedule, /kSpotifyMusicTrackDeadlineMs|AdvanceExpiredTimedRotation/);
   assert.match(runtime, /spotify:timed-started/);
   assert.match(runtime, /navigator\.mediaSession/);
   assert.match(runtime, /const enforceTarget = media =>/);
   assert.match(runtime, /!matchesTarget\(target, identity\)/);
-  assert.match(rotation, /timedPlaybackStartTick = GetTickCount64\(\)/);
-  assert.match(rotation, /now - slot\.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs/);
-  assert.match(schedule, /AdvanceExpiredTimedRotation\(now\)/);
 });
 
 test('every cloud song shares one native music descriptor and scoped reconcile path', () => {
@@ -118,7 +116,8 @@ test('TALKABOUT direct episode, interval, and playback rate are cloud-managed', 
   assert.match(rotation, /SpotifyPodcastTargetReady\(\)/);
   assert.match(rotation, /SpotifyPodcastIntervalMs\(\)/);
   assert.match(rotation, /slot\.timedTarget = TimedSpotifyTarget::TalkAbout/);
-  assert.match(schedule, /StartOverduePodcastBreak\(now\)[\s\S]*AdvanceExpiredTimedRotation\(now\)/);
+  assert.match(schedule, /StartOverduePodcastBreak\(now\)/);
+  assert.doesNotMatch(schedule, /AdvanceExpiredTimedRotation/);
 });
 
 test('recent fallback catalog excludes fixed songs and unsupported variants', () => {
