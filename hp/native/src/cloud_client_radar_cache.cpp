@@ -94,7 +94,7 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(
     const int width = static_cast<int>(root.GetNamedNumber(L"width", 0));
     const int height = static_cast<int>(root.GetNamedNumber(L"height", 0));
     const JsonArray frames = root.GetNamedArray(L"frames", JsonArray{});
-    if (width != 1920 || height != 1280 || frames.Size() != 1 ||
+    if (width != 1440 || height != 960 || frames.Size() != 1 ||
         frames.GetAt(0).ValueType() != JsonValueType::Object) {
       throw std::runtime_error("precomposed radar payload shape invalid");
     }
