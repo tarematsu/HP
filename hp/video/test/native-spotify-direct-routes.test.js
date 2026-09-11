@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const catalog = readFileSync(
-  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
+  new URL('../../native/src/spotify_fallback_catalog.inc', import.meta.url),
   'utf8',
 );
 const cloud = readFileSync(

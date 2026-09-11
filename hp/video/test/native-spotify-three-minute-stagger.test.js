@@ -8,6 +8,7 @@ const core1 = readFileSync(new URL('../../native/src/spotify_webviews_core_part1
 const schedule = readFileSync(new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 const timed = readFileSync(new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const recent = readFileSync(new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
+const fallback = readFileSync(new URL('../../native/src/spotify_fallback_catalog.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const scripts = readFileSync(new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
 const scoped = readFileSync(new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
@@ -121,10 +122,10 @@ test('TALKABOUT direct episode, interval, and playback rate are cloud-managed', 
 });
 
 test('recent fallback catalog excludes fixed songs and unsupported variants', () => {
-  assert.match(recent, /std::array<SpotifyFallbackCatalogTrack, \d+>/);
-  const catalogSection = recent.slice(
-    recent.indexOf('kSpotifyFallbackCatalogTracks = {{'),
-    recent.indexOf('}};', recent.indexOf('kSpotifyFallbackCatalogTracks = {{')),
+  assert.match(fallback, /std::array<SpotifyFallbackCatalogTrack, \d+>/);
+  const catalogSection = fallback.slice(
+    fallback.indexOf('kSpotifyFallbackCatalogTracks = {{'),
+    fallback.indexOf('}};', fallback.indexOf('kSpotifyFallbackCatalogTracks = {{')),
   );
   for (const fixedId of [
     '6Vy6hCA2CZwZalGqaX6Sew', '5EjWZuODqEPQ9eq7XCmITh',
