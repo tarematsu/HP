@@ -12,6 +12,9 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
   const pendingEpisodeKey = seriesPath =>
       '__homePanelTverAcceptNextEpisode:' + seriesPath;
   const guardedEpisodePathKey = '__homePanelTverGuardedEpisodePath';
+  const guardRestartKey = '__homePanelTverGuardRestart';
+  const launcherParam = 'homepanel_launch';
+  const directLaunch = new URLSearchParams(location.search).get(launcherParam) === '1';
   const normalizeEpisodeHref = href => {
     try {
       const url = new URL(href, location.href);
@@ -21,6 +24,19 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
       return url.href;
     } catch (_) {
       return '';
+    }
+  };
+  const requestRestart = () => {
+    window[guardRestartKey] = true;
+    return false;
+  };
+  const clearLauncherMarker = () => {
+    if (!directLaunch) return;
+    try {
+      const url = new URL(location.href);
+      url.searchParams.delete(launcherParam);
+      history.replaceState(null, '', url.pathname + url.search + url.hash);
+    } catch (_) {
     }
   };
   const guardSeriesEpisode = () => {
@@ -33,8 +49,12 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
     try { seriesPath = sessionStorage.getItem(seriesPathKey) || ''; }
     catch (_) {}
     if (!/^\/series\/[a-zA-Z0-9]+$/.test(seriesPath)) {
-      location.replace('https://tver.jp/series/srx97ftk3w');
-      return false;
+      // The cloud launcher arrives directly on an episode, so establish the
+      // legacy queue namespace without ever visiting its /series/ document.
+      if (!directLaunch) return requestRestart();
+      seriesPath = '/series/srx97ftk3w';
+      try { sessionStorage.setItem(seriesPathKey, seriesPath); }
+      catch (_) { return requestRestart(); }
     }
 
     const key = episodeQueueKey(seriesPath);
@@ -46,17 +66,20 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
         ? queue.hrefs.map(normalizeEpisodeHref).filter(Boolean)
         : [];
     if (hrefs.length) {
-      try { sessionStorage.removeItem(pendingKey); } catch (_) {}
       const currentAllowed = hrefs.some(href => {
         try { return new URL(href).pathname === location.pathname; }
         catch (_) { return false; }
       });
       if (currentAllowed) {
+        try { sessionStorage.removeItem(pendingKey); } catch (_) {}
+        clearLauncherMarker();
+        window[guardRestartKey] = false;
         window[guardedEpisodePathKey] = location.pathname;
         return true;
       }
-      location.replace('https://tver.jp' + seriesPath);
-      return false;
+      // A TVer recommendation/autoplay outside the cloud queue is never
+      // accepted. Only the explicit cloud-launch marker may rebase the queue.
+      if (!directLaunch) return requestRestart();
     }
 
     let acceptNextEpisode = false;
@@ -65,21 +88,24 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
       sessionStorage.removeItem(pendingKey);
     } catch (_) {
     }
-    const currentHref = normalizeEpisodeHref(location.href);
-    if (acceptNextEpisode && currentHref) {
-      try {
-        sessionStorage.setItem(
-            key, JSON.stringify({ hrefs: [currentHref], index: 0 }));
-      } catch (_) {
-      }
-      window[guardedEpisodePathKey] = location.pathname;
-      return true;
-    }
+    if (!directLaunch && !acceptNextEpisode) return requestRestart();
 
-    location.replace('https://tver.jp' + seriesPath);
-    return false;
+    clearLauncherMarker();
+    const currentHref = normalizeEpisodeHref(location.href);
+    if (!currentHref) return requestRestart();
+    try {
+      sessionStorage.setItem(
+          key, JSON.stringify({ hrefs: [currentHref], index: 0 }));
+    } catch (_) {
+      return requestRestart();
+    }
+    window[guardRestartKey] = false;
+    window[guardedEpisodePathKey] = location.pathname;
+    return true;
   };
-  if (!guardSeriesEpisode()) return null;
+  if (!guardSeriesEpisode()) {
+    return window[guardRestartKey] ? 'restart' : null;
+  }
 )JS"
 LR"JS(
 

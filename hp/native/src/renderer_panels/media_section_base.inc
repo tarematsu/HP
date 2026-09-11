@@ -3,8 +3,11 @@ namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMediaYoutubeUrl[] =
     L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
+// TVer starts from the cloud-owned episode feed. The tiny data document stays
+// black, retries transient feed failures in-place, and navigates straight to the
+// selected /episodes/ URL; the native app never needs to render a /series/ page.
 constexpr wchar_t kNativeMediaTverUrl[] =
-    L"https://tver.jp/series/srx97ftk3w";
+    L"data:text/html;charset=utf-8,%3C%21doctype%20html%3E%3Cmeta%20charset%3Dutf-8%3E%3Cstyle%3Ehtml%2Cbody%7Bmargin%3A0%3Bbackground%3A%23000%7D%3C%2Fstyle%3E%3Cscript%3Econst%20f%3D%27https%3A%2F%2Fhomepanel-cloud.tarematsu.workers.dev%2Fv1%2Fnative%2Ftver-feed%27%3Bconst%20go%3Dasync%28%29%3D%3E%7Btry%7Bconst%20r%3Dawait%20fetch%28f%2C%7Bcache%3A%27no-store%27%7D%29%3Bif%28%21r.ok%29throw%200%3Bconst%20d%3Dawait%20r.json%28%29%3Bconst%20u%3DArray.isArray%28d%3F.episodes%29%3Fd.episodes.map%28x%3D%3EString%28x%3F.url%7C%7C%27%27%29%29.find%28x%3D%3E%2F%5Ehttps%3A%5C%2F%5C%2Ftver%5C.jp%5C%2Fepisodes%5C%2F%5BA-Za-z0-9_-%5D%2B%24%2F.test%28x%29%29%3A%27%27%3Bif%28u%29%7Blocation.replace%28u%2B%27%3Fhomepanel_launch%3D1%27%29%3Breturn%7D%7Dcatch%28_%29%7B%7DsetTimeout%28go%2C3000%29%7D%3Bgo%28%29%3C%2Fscript%3E";
 constexpr wchar_t kNativeMediaProfile[] = L"media-youtube";
 constexpr UINT_PTR kNativeMediaPhaseTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMediaPlayAllTimer = 0x4D560002;
