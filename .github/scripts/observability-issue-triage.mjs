@@ -91,8 +91,20 @@ function firstDiagnosticLine(text) {
     .filter((line) => !/^#{1,6}\s/.test(line))
     .filter((line) => !/^<\/?details|^<summary>/i.test(line))
     .filter((line) => !/^\|?\s*:?-{3,}/.test(line));
-  const actionable = lines.find((line) => /\b(?:violation|fail(?:ed|ure)?|error|unhealthy|stale|exceed(?:ed|s)?)\b/i.test(line));
-  return compact(actionable || lines[0] || 'No diagnostic evidence was captured.', 220);
+  const nonZeroMetric = lines.find((line) => {
+    const cpuViolations = metricCount(line, 'CPU violations');
+    const errorInvocations = metricCount(line, 'Error invocations');
+    return (cpuViolations !== null && cpuViolations > 0)
+      || (errorInvocations !== null && errorInvocations > 0);
+  });
+  const missingCoverage = lines.find((line) => /CPU coverage:\s*`?MISSING\b/i.test(line));
+  const actionable = lines.find((line) => {
+    if (metricCount(line, 'CPU violations') === 0 || metricCount(line, 'Error invocations') === 0) {
+      return false;
+    }
+    return /\b(?:violations?|fail(?:ed|ure)?|error|unhealthy|stale|exceed(?:ed|s)?)\b/i.test(line);
+  });
+  return compact(nonZeroMetric || missingCoverage || actionable || lines[0] || 'No diagnostic evidence was captured.', 220);
 }
 
 export function publicHealthSignal(summary) {
