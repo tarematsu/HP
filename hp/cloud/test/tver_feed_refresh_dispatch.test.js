@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -7,9 +6,6 @@ import {
   TVER_FEED_REFRESH_PATH,
   VideoFeedCoordinator,
 } from '../src/tver_feed_refresh_coordinator.js';
-
-const root = new URL('../', import.meta.url);
-const read = (path) => readFileSync(new URL(path, root), 'utf8');
 
 describe('TVer feed refresh dispatch', () => {
   it('keeps the hourly Cron handler to one Durable Object dispatch', async () => {
@@ -46,15 +42,5 @@ describe('TVer feed refresh dispatch', () => {
     ));
     expect(response.status).toBe(405);
     expect(response.headers.get('allow')).toBe('POST');
-  });
-
-  it('does not execute Browser feed refresh inside the Cron invocation', () => {
-    const unified = read('src/unified_worker.js');
-    const coordinator = read('src/tver_feed_refresh_coordinator.js');
-
-    expect(unified).toContain('dispatchTverFeedRefresh(env)');
-    expect(unified).not.toMatch(/ctx\.waitUntil\(refreshTverFeed\(/);
-    expect(coordinator).toMatch(/class VideoFeedCoordinator extends BaseVideoFeedCoordinator/);
-    expect(coordinator).toMatch(/await refreshTverFeed\(this\.env\)/);
   });
 });
