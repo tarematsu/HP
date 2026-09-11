@@ -64,22 +64,22 @@ test('TALKABOUT interval shortening is applied on sync without postponing earlie
   assert.doesNotMatch(loader, /slot\.podcastDueUnixMs < maxFuture/);
 });
 
-test('admin describes sync-time application rather than restart-time application', () => {
+test('admin describes cloud-sync application and inline TALKABOUT groups', () => {
   assert.match(admin, /端末への反映は次回クラウド同期時です/);
-  assert.match(admin, /ローテーション変更は次の曲から反映します/);
+  assert.match(admin, /includeTalkAbout:true/);
   assert.match(admin, /次回クラウド同期でSpotify設定を反映します/);
   assert.doesNotMatch(admin, /次回HomePanel再起動時にSpotify設定を適用/);
 });
 
-test('admin embeds the shared managed random catalog and upgrades managed prefixes', () => {
-  assert.match(admin, /MANAGED_SPOTIFY_RANDOM_TRACKS/);
+test('admin embeds the shared seven-slot managed rotation and migrates the old shape', () => {
+  assert.match(admin, /managedSpotifySevenSlotRotation/);
   assert.match(admin, /MANAGED_SPOTIFY_RANDOM_TRACK_IDS/);
-  assert.match(admin, /running time is 3:30 or shorter/);
   assert.match(admin, /managedSpotifyRandomTrackIds/);
-  assert.match(admin, /isManagedPrefix/);
-  assert.match(admin, /random\.tracks=structuredClone\(spotifyRandomPool\)/);
-  assert.match(randomCatalog, /Sunny side up/);
-  assert.match(randomCatalog, /Nightmare症候群/);
-  assert.match(randomCatalog, /Interlude #1/);
-  assert.match(randomCatalog, /Interlude #6/);
+  assert.match(admin, /managedSpotifyRotation/);
+  assert.match(admin, /managedRandomPool/);
+  assert.match(admin, /structuredClone\(managedSpotifyRotation\)/);
+  assert.match(randomCatalog, /SHORT_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
+  assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
+  assert.match(randomCatalog, /includeTalkAbout: true/);
 });
