@@ -1,8 +1,6 @@
 // Media-panel composition wrapper. Playback policies remain fixed constexpr
 // scripts while this layer provides trusted WebView2 input, page-specific
 // routing and event-driven wakeups for the low-frequency native watchdogs.
-#undef SetTimer
-#undef SendInput
 #include "media_tver_ad_guard.inc"
 #include "media_tver_episode_loop_policy.inc"
 #include "media_tver_playback_policy.inc"
@@ -36,41 +34,18 @@ constexpr wchar_t kNativeMediaPhaseOverlaySuppressionScript[] = LR"JS(
   return null;
 })()
 )JS";
+
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
+HRESULT ExecuteNativeMediaPolicyScript(
+    ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive,
+    const wchar_t* script,
+    ICoreWebView2ExecuteScriptCompletedHandler* handler) noexcept;
 }  // namespace
 
-#define SetTimer(hwnd, timerId, interval, callback)                              \
-  (((timerId) == kNativeMediaPhaseTimer                                         \
-        ? (SetSpotifyMediaPhase(phase_ == Phase::Tver), 0)                     \
-        : 0),                                                                   \
-   ((timerId) == kNativeMediaTverWatchdogTimer                                  \
-        ? ArmNativeMediaTrustedWakeTimer(                                       \
-              (hwnd), webview_.Get(), controller_.Get(),                       \
-              (timerId), (interval))                                            \
-        : ::SetTimer((hwnd), (timerId), (interval), (callback))))
-
-#define SendInput(count, inputs, inputSize)                                     \
-  NativeMediaDispatchTrustedInput(                                              \
-      phase_ == Phase::Tver, webview_.Get(), controller_.Get(), hostWindow_,   \
-      (count), (inputs), (inputSize))
-
-#define ExecuteScript(script, handler)                                          \
-  ExecuteScript(ResolveNativeMediaPolicyScript((script), webview_.Get(), hostWindow_, alive_), \
-                (handler))
-
-// The base host already retries failed top-level navigations after three
-// seconds. Keep WebView2's built-in network error document out of the visible
-// media panel while that retry is armed.
-#define put_IsBuiltInErrorPageEnabled(value) put_IsBuiltInErrorPageEnabled(FALSE)
-
 #include "media_section_base.inc"
-
-#undef put_IsBuiltInErrorPageEnabled
-#undef ExecuteScript
-#undef SendInput
-#undef SetTimer
 
 // The cloud queue refresher reuses the bounded WinHTTP/JSON helpers currently
 // hosted in the native resolver module. Series-page resolution itself is no
@@ -208,5 +183,16 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     return kNativeMediaYoutubeControlRecoveryScript;
   }
   return script;
+}
+
+HRESULT ExecuteNativeMediaPolicyScript(
+    ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive,
+    const wchar_t* script,
+    ICoreWebView2ExecuteScriptCompletedHandler* handler) noexcept {
+  if (!webview || !script) return E_POINTER;
+  const wchar_t* resolved =
+      ResolveNativeMediaPolicyScript(script, webview, hostWindow, alive);
+  return resolved ? webview->ExecuteScript(resolved, handler) : E_POINTER;
 }
 }  // namespace
