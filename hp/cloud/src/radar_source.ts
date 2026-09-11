@@ -1,5 +1,7 @@
 import { fetchJson } from "./http";
 import {
+  KAWAGOE_MASK_KEY,
+  KAWAGOE_MASK_PATH,
   renderRepresentativeRadarFrame,
   type BrowserRadarPanelRequest,
   type BrowserRadarTile,
@@ -17,8 +19,9 @@ const RADAR_PANEL_SOURCE_WIDTH = 320;
 const RADAR_PANEL_SOURCE_HEIGHT = 640;
 const RADAR_BASE_CROP_WIDTH = 640;
 const RADAR_BASE_CROP_HEIGHT = 1280;
-const RADAR_OUTPUT_WIDTH = 1920;
-const RADAR_OUTPUT_HEIGHT = 1280;
+const RADAR_OUTPUT_WIDTH = 1440;
+const RADAR_OUTPUT_HEIGHT = 960;
+const RADAR_COMPOSITION_VERSION = "radar-frame-v2-1440x960-static-mask";
 const RADAR_LEGEND = [0, 1, 2, 4, 8, 16, 32, 64] as const;
 const RADAR_FRAME_PATH = "/v1/radar/frame/representative/latest.png";
 const RADAR_LEGACY_FRAME_PREFIX = "radar/frames/";
@@ -69,9 +72,6 @@ export function selectRadarForecastEntries(
     hasElement(entry, "hrpns") && jmaTimestampToMillis(entry.validtime) > 0
   ));
 
-  // N1 observations and N2 forecasts can roll over their basetime at slightly
-  // different moments. Match by valid time instead of requiring equal basetimes,
-  // while still requiring a true +60 minute endpoint for the chosen observation.
   for (const current of observedAvailable) {
     const currentAt = jmaTimestampToMillis(current.validtime);
     const forecastEnd = currentAt + RADAR_FORECAST_WINDOW_MS;
@@ -168,6 +168,22 @@ function representativeFramePath(): string {
   return RADAR_FRAME_PATH;
 }
 
+function radarCompositionKey(
+  current: RadarTimeEntry,
+  oneHour: RadarTimeEntry,
+  latest: RadarTimeEntry,
+): string {
+  return [
+    RADAR_COMPOSITION_VERSION,
+    current.basetime,
+    current.validtime,
+    oneHour.basetime,
+    oneHour.validtime,
+    latest.basetime,
+    latest.validtime,
+  ].join("|");
+}
+
 async function signedBrowserTiles(
   env: Env,
   product: RadarProduct,
@@ -215,19 +231,29 @@ async function panelRequest(
 export async function radarFrameResponse(pathname: string, env: Env): Promise<Response> {
   if (!env.UPDATE_BUCKET) return new Response(null, { status: 404 });
   const representative = pathname === RADAR_FRAME_PATH;
+  const kawagoeMask = pathname === KAWAGOE_MASK_PATH;
   const legacy = pathname.match(RADAR_LEGACY_FRAME_PATH);
   const key = representative
     ? representativeFrameKey()
-    : legacy
-      ? `${RADAR_LEGACY_FRAME_PREFIX}${legacy[1]}/${legacy[2]}.webp`
-      : "";
+    : kawagoeMask
+      ? KAWAGOE_MASK_KEY
+      : legacy
+        ? `${RADAR_LEGACY_FRAME_PREFIX}${legacy[1]}/${legacy[2]}.webp`
+        : "";
   if (!key) return new Response(null, { status: 404 });
   const object = await env.UPDATE_BUCKET.get(key);
   if (!object?.body) return new Response(null, { status: 404 });
   const headers = new Headers();
   object.writeHttpMetadata(headers);
-  headers.set("Content-Type", representative ? "image/png" : "image/webp");
-  headers.set("Cache-Control", representative ? "private, no-cache" : "private, max-age=10800, immutable");
+  headers.set("Content-Type", representative || kawagoeMask ? "image/png" : "image/webp");
+  headers.set(
+    "Cache-Control",
+    kawagoeMask
+      ? "public, max-age=31536000, immutable"
+      : representative
+        ? "private, no-cache"
+        : "private, max-age=10800, immutable",
+  );
   if (object.httpEtag) headers.set("ETag", object.httpEtag);
   return new Response(object.body, { headers });
 }
@@ -247,34 +273,45 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   }
   if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
 
-  // Keep every geospatial layer on one exact z9 world-pixel viewport. The
-  // satellite uses the corresponding centered z10 crop, while rain and the
-  // Kawagoe boundary consume these world bounds directly without tile rounding.
-  const center = RADAR_CENTER;
-  const viewport = radarViewport(
-    center.lat, center.lon, RADAR_DISPLAY_ZOOM, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT,
-  );
-  const displayLayout = radarTileLayout(viewport, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT);
-  const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
-  const panels = await Promise.all([
-    panelRequest(env, "現在", "jma", currentEntry, displayLayout, viewport, expires),
-    panelRequest(env, "1時間後", "jma", oneHourEntry, displayLayout, viewport, expires),
-    panelRequest(env, "取得可能な最後", "rasrf", latestEntry, displayLayout, viewport, expires),
-  ]) as [
-    BrowserRadarPanelRequest,
-    BrowserRadarPanelRequest,
-    BrowserRadarPanelRequest,
-  ];
+  const panelMetadata = [
+    { title: "現在", validTimeText: jstTimeText(currentEntry) },
+    { title: "1時間後", validTimeText: jstTimeText(oneHourEntry) },
+    { title: "取得可能な最後", validTimeText: jstTimeText(latestEntry) },
+  ] as const;
+  const compositionKey = radarCompositionKey(currentEntry, oneHourEntry, latestEntry);
+  const existingFrame = await env.UPDATE_BUCKET.head(representativeFrameKey());
+  const shouldRender = existingFrame?.customMetadata?.radarCompositionKey !== compositionKey;
 
-  const rendered = await renderRepresentativeRadarFrame(env, {
-    publicUrl: publicWorkerUrl(env),
-    outputWidth: RADAR_OUTPUT_WIDTH,
-    outputHeight: RADAR_OUTPUT_HEIGHT,
-    panels,
-  });
-  await env.UPDATE_BUCKET.put(representativeFrameKey(), rendered.png, {
-    httpMetadata: { contentType: "image/png" },
-  });
+  if (shouldRender) {
+    const center = RADAR_CENTER;
+    const viewport = radarViewport(
+      center.lat, center.lon, RADAR_DISPLAY_ZOOM, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT,
+    );
+    const displayLayout = radarTileLayout(
+      viewport, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT,
+    );
+    const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
+    const panels = await Promise.all([
+      panelRequest(env, panelMetadata[0].title, "jma", currentEntry, displayLayout, viewport, expires),
+      panelRequest(env, panelMetadata[1].title, "jma", oneHourEntry, displayLayout, viewport, expires),
+      panelRequest(env, panelMetadata[2].title, "rasrf", latestEntry, displayLayout, viewport, expires),
+    ]) as [
+      BrowserRadarPanelRequest,
+      BrowserRadarPanelRequest,
+      BrowserRadarPanelRequest,
+    ];
+
+    const rendered = await renderRepresentativeRadarFrame(env, {
+      publicUrl: publicWorkerUrl(env),
+      outputWidth: RADAR_OUTPUT_WIDTH,
+      outputHeight: RADAR_OUTPUT_HEIGHT,
+      panels,
+    });
+    await env.UPDATE_BUCKET.put(representativeFrameKey(), rendered.png, {
+      httpMetadata: { contentType: "image/png" },
+      customMetadata: { radarCompositionKey: compositionKey },
+    });
+  }
 
   const frame = {
     baseTime: currentEntry.basetime,
@@ -293,15 +330,11 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
       height: RADAR_OUTPUT_HEIGHT,
       outputWidth: RADAR_OUTPUT_WIDTH,
       outputHeight: RADAR_OUTPUT_HEIGHT,
-      center,
+      center: RADAR_CENTER,
       zoom: RADAR_DISPLAY_ZOOM,
       forecastWindowMs: RADAR_FORECAST_WINDOW_MS,
       frames: [frame],
-      panels: [
-        { title: panels[0].title, ...rendered.panels[0] },
-        { title: panels[1].title, ...rendered.panels[1] },
-        { title: panels[2].title, ...rendered.panels[2] },
-      ],
+      panels: panelMetadata.map(panel => ({ ...panel })),
       legend: RADAR_LEGEND,
     },
   };
