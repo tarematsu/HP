@@ -22,6 +22,14 @@ const mediaSection = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
+const mediaPanel = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
+  'utf8',
+);
+const playbackPolicy = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url),
+  'utf8',
+);
 
 test('cloud collects Sakurazaka TVer episodes from dedicated sources and preserves last good feed', () => {
   assert.match(cloudFeed, /TVER_ORIGIN = 'https:\/\/tver\.jp'/);
@@ -66,6 +74,23 @@ test('native resolver prefers the cloud feed but retains the current series API 
   assert.match(nativeResolver, /callSeriesSeasons/);
   assert.match(nativeResolver, /callSeasonEpisodes/);
   assert.match(nativeResolver, /sessionStorage\.setItem\('__homePanelTverEpisodeQueue:/);
+});
+
+test('native TVer phase launches a cloud-selected episode without rendering a series page', () => {
+  assert.match(mediaPanel, /kNativeMediaTverUrl\[\][\s\S]*data:text\/html;charset=utf-8/);
+  assert.match(mediaPanel, /homepanel-cloud\.tarematsu\.workers\.dev%2Fv1%2Fnative%2Ftver-feed/);
+  assert.match(mediaPanel, /homepanel_launch%3D1/);
+  assert.doesNotMatch(
+    mediaPanel,
+    /kNativeMediaTverUrl\[\][\s\S]{0,120}https:\/\/tver\.jp\/series\//,
+  );
+  assert.match(playbackPolicy, /launcherParam = 'homepanel_launch'/);
+  assert.match(playbackPolicy, /if \(!directLaunch\) return requestRestart\(\)/);
+  assert.match(playbackPolicy, /seriesPath = '\/series\/srx97ftk3w'/);
+  assert.match(playbackPolicy, /JSON\.stringify\(\{ hrefs: \[currentHref\], index: 0 \}\)/);
+  assert.match(playbackPolicy, /return window\[guardRestartKey\] \? 'restart' : null/);
+  assert.doesNotMatch(playbackPolicy, /location\.replace\('https:\/\/tver\.jp\/series\//);
+  assert.doesNotMatch(playbackPolicy, /location\.replace\('https:\/\/tver\.jp' \+ seriesPath\)/);
 });
 
 test('native TVer refreshes an active queue from newer cloud feeds without interrupting the current episode', () => {
