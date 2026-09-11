@@ -101,9 +101,12 @@ void SpotifyWebViews::SavePodcastScheduleState() noexcept {
 }
 
 bool SpotifyWebViews::StartOverduePodcastBreak(ULONGLONG now) noexcept {
-  // The managed seven-slot rotation owns TALKABOUT as the G-slot candidate.
-  // Suppress the legacy independent two-hour interrupt to avoid double plays.
-  if (inlineTalkAboutRotation_) return false;
+  // A configured inline TALKABOUT group owns podcast playback from process
+  // startup, even before the first account has built its A-G cycle.
+  const bool inlineConfigured = std::any_of(
+      cloudRotationGroups_.begin(), cloudRotationGroups_.end(),
+      [](const RotationGroup& group) { return group.includeTalkAbout; });
+  if (inlineTalkAboutRotation_ || inlineConfigured) return false;
 
   EnsurePodcastScheduleLoaded(now);
   // The cloud owns episode selection. Keep music running and leave the deadline
