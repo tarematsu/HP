@@ -25,6 +25,7 @@ export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
   ["死んだふり -OFF VOCAL ver.-", "1R5rm05YeYZSJiGzZPZx8l"],
   ["承認欲求 -OFF VOCAL ver.-", "17PV1rxc1KbMOTRKSRt2hd"],
   ["もう一曲　欲しいのかい？ -OFF VOCAL ver.-", "54VmTDaOAl0LVlOmYOFuFi"],
+  ["なぜ　恋をして来なかったんだろう？ -OFF VOCAL ver.-", "5TaAgmUQuhJw4bGW4dg3KI"],
 ] as const;
 
 export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
