@@ -3,8 +3,6 @@
 
 namespace hp {
 
-inline constexpr ULONGLONG kSpotifyMusicTrackDeadlineMs =
-    4ULL * 60ULL * 1000ULL;
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 40ULL * 1000ULL;
 inline constexpr ULONGLONG kSpotifyPodcastIntervalMs =
     2ULL * 60ULL * 60ULL * 1000ULL;
@@ -64,7 +62,6 @@ class SpotifyWebViews final {
     Mode mode = Mode::Fixed;
     std::vector<ManagedTrack> tracks;
     size_t count = 0;
-    bool includeTalkAbout = false;
   };
 
   struct Slot {
@@ -120,7 +117,6 @@ class SpotifyWebViews final {
     bool timedObserverReady = false;
     bool timedObserverInstallInFlight = false;
     bool timedRotationActive = false;
-    bool timedCycleIncludesTalkAbout = false;
     bool podcastBreakActive = false;
     bool podcastPlaybackRecorded = false;
     bool hostLayoutApplied = false;
@@ -189,7 +185,6 @@ class SpotifyWebViews final {
   void SavePodcastScheduleState() noexcept;
   bool StartOverduePodcastBreak(ULONGLONG now) noexcept;
   void MarkPodcastPlaybackStarted(Slot& slot, ULONGLONG now) noexcept;
-  bool AdvanceExpiredTimedRotation(ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void StopTimedOneShotPlayback(Slot& slot) noexcept;
   void RecomputeForeground() noexcept;
@@ -226,7 +221,6 @@ class SpotifyWebViews final {
   bool started_ = false;
   bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
-  bool inlineTalkAboutRotation_ = false;
   bool podcastScheduleLoaded_ = false;
 };
 

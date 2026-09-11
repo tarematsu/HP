@@ -107,11 +107,8 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
     events,
     /state\.endedPosted = true;[\s\S]*stopAllMedia\(\)[\s\S]*post\('spotify:timed-ended'\)/,
   );
-  assert.match(events, /const finishLeadSeconds = 2\.0;/);
-  assert.match(
-    events,
-    /currentTime >= duration - finishLeadSeconds[\s\S]*finishTarget\(media\)/,
-  );
+  assert.match(events, /document\.addEventListener\('ended'[\s\S]*finishTarget\(event\.target\)/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
   assert.match(
     timed,
     /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(SpotifyPodcastUrl\(\)\)/,
@@ -150,9 +147,10 @@ test('observer injection is generation-fenced and a lost callback expires', () =
   assert.match(phase, /slot\.timedObserverInstallInFlight[\s\S]*kSpotifyAsyncOperationTimeoutMs/);
 });
 
-test('four-minute hard deadline remains one native constant independent of observer health', () => {
-  assert.match(header, /kSpotifyMusicTrackDeadlineMs =\s*4ULL \* 60ULL \* 1000ULL/);
-  assert.match(rotation, /AdvanceExpiredTimedRotation/);
-  assert.match(rotation, /kSpotifyMusicTrackDeadlineMs/);
-  assert.match(phase, /kSpotifyMusicTrackDeadlineMs/);
+test('music rotation has no time-based forced advance', () => {
+  assert.doesNotMatch(header, /kSpotifyMusicTrackDeadlineMs/);
+  assert.doesNotMatch(rotation, /AdvanceExpiredTimedRotation|kSpotifyMusicTrackDeadlineMs/);
+  assert.doesNotMatch(phase, /kSpotifyMusicTrackDeadlineMs/);
+  assert.match(events, /document\.addEventListener\('ended'/);
+  assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
 });

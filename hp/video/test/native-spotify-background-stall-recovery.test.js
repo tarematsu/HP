@@ -96,18 +96,12 @@ test('lost ExecuteScript callbacks expire instead of wedging a slot forever', ()
   assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
 });
 
-test('rotation hard deadline is armed before browser playback state is known', () => {
-  assert.match(
-    rotation,
-    /ApplyTimedRotationTarget\(Slot& slot\)[\s\S]*slot\.timedPlaybackStartTick = GetTickCount64\(\)/,
-  );
-  assert.match(header, /kSpotifyMusicTrackDeadlineMs =\s*4ULL \* 60ULL \* 1000ULL/);
-  assert.match(
-    phase,
-    /slot\.timedPlaybackStartTick != 0[\s\S]*kSpotifyMusicTrackDeadlineMs - age/,
-  );
-  assert.match(rotation, /now - slot\.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs/);
-  assert.doesNotMatch(phase, /timedPlaybackStartTick = GetTickCount64\(\)/);
+test('stall recovery retries the same track instead of skipping it on a deadline', () => {
+  assert.doesNotMatch(header, /kSpotifyMusicTrackDeadlineMs/);
+  assert.doesNotMatch(phase + schedule + rotation, /AdvanceExpiredTimedRotation|kSpotifyMusicTrackDeadlineMs/);
+  assert.match(runtime, /post\('spotify:not-playing'\)/);
+  assert.match(rotation, /if \(stopped\)[\s\S]*MarkSlotRecovering\(\*target, now\)/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
 });
 
 test('advertisements cannot complete or start a requested song', () => {

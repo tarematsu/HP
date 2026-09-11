@@ -300,7 +300,7 @@ test('production heartbeat stays healthy while media currentTime advances', () =
   assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
 });
 
-test('production observer preempts Spotify autoplay before natural track end', () => {
+test('production observer waits for natural track end before advancing', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f14');
   h.setTrack('/track/A', 'Target A');
@@ -311,6 +311,12 @@ test('production observer preempts Spotify autoplay before natural track end', (
 
   h.media.currentTime = 179.4;
   h.dispatch('timeupdate');
+
+  assert.equal(h.media.paused, false);
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 0);
+
+  h.media.ended = true;
+  h.dispatch('ended');
 
   assert.equal(h.media.paused, true);
   assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f14');

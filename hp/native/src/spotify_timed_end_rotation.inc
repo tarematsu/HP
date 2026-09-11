@@ -101,13 +101,6 @@ void SpotifyWebViews::SavePodcastScheduleState() noexcept {
 }
 
 bool SpotifyWebViews::StartOverduePodcastBreak(ULONGLONG now) noexcept {
-  // A configured inline TALKABOUT group owns podcast playback from process
-  // startup, even before the first account has built its A-G cycle.
-  const bool inlineConfigured = std::any_of(
-      cloudRotationGroups_.begin(), cloudRotationGroups_.end(),
-      [](const RotationGroup& group) { return group.includeTalkAbout; });
-  if (inlineTalkAboutRotation_ || inlineConfigured) return false;
-
   EnsurePodcastScheduleLoaded(now);
   // The cloud owns episode selection. Keep music running and leave the deadline
   // overdue until a synchronized direct /episode/ URL is available.
@@ -158,27 +151,13 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
     return;
   }
   slot.timedRotationPosition %= slot.timedCycleTracks.size();
-  const ManagedTrack& target = slot.timedCycleTracks[slot.timedRotationPosition];
-  const bool inlinePodcast =
-      inlineTalkAboutRotation_ && SpotifyPodcastTargetReady() &&
-      target.path == SpotifyPodcastPath();
-  slot.podcastBreakActive = inlinePodcast;
-  slot.podcastPlaybackRecorded = false;
-  slot.timedTarget = inlinePodcast
-      ? TimedSpotifyTarget::TalkAbout
-      : TimedSpotifyTarget::Music;
+  slot.timedTarget = TimedSpotifyTarget::Music;
   BumpSpotifyTargetGeneration(slot);
   slot.unhealthySinceTick = 0;
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
-  // The four-minute hard bound applies to music. An inline TALKABOUT episode
-  // uses its completion detector instead of the music watchdog.
-  if (inlinePodcast) {
-    slot.timedPlaybackStartTick = 0;
-  } else {
-    slot.timedPlaybackStartTick = GetTickCount64();
-  }
+  slot.timedPlaybackStartTick = 0;
 }
 
 void SpotifyWebViews::InitializeTimedRotationSlot(
@@ -224,8 +203,8 @@ void SpotifyWebViews::CompletePodcastBreak(
   StopTimedOneShotPlayback(slot);
   slot.podcastBreakActive = false;
   slot.podcastPlaybackRecorded = false;
-  // Both an independent podcast break and the managed G-slot TALKABOUT finish
-  // by rebuilding the next cycle at A.
+  // A podcast deadline may interrupt any position. Build a fresh cloud-defined
+  // cycle and resume from its first block/track.
   slot.timedRotationPosition = 0;
   PrepareTimedRotationCycle(slot);
   slot.timedCloudRotationRevision = cloudRotationRevision_;
@@ -242,8 +221,8 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   if (!slot.timedRotationActive || slot.podcastBreakActive) return;
 
   // A cloud-sync change never cuts the currently playing song. At its next
-  // normal ended/4-minute boundary, discard the old prebuilt cycle and start
-  // the newly synchronized rotation from its first configured block.
+  // natural ended boundary, discard the old prebuilt cycle and start the newly
+  // synchronized rotation from its first configured block.
   if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
     slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
@@ -267,19 +246,6 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   staggerSlotValidated_ = false;
   RefreshSpotifyHostLayout();
   NavigateActiveTimedSlot(slot);
-}
-
-bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
-  for (Slot& slot : slots_) {
-    if (!slot.timedRotationActive || slot.podcastBreakActive ||
-        slot.timedPlaybackStartTick == 0 ||
-        now - slot.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs) {
-      continue;
-    }
-    AdvanceTimedRotationSlot(slot, now);
-    return true;
-  }
-  return false;
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {

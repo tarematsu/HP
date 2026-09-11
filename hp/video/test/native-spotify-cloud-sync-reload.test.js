@@ -44,7 +44,7 @@ test('only Spotify rotation changes advance the rotation revision', () => {
 
 test('a synchronized rotation starts at the next track boundary without cutting the current track', () => {
   const advanceStart = rotation.indexOf('void SpotifyWebViews::AdvanceTimedRotationSlot');
-  const advanceEnd = rotation.indexOf('bool SpotifyWebViews::AdvanceExpiredTimedRotation', advanceStart);
+  const advanceEnd = rotation.indexOf('void SpotifyWebViews::ArmTimedEndObserver', advanceStart);
   assert.ok(advanceStart >= 0 && advanceEnd > advanceStart);
   const advance = rotation.slice(advanceStart, advanceEnd);
   assert.match(advance, /timedCloudRotationRevision != cloudRotationRevision_/);
@@ -64,22 +64,22 @@ test('TALKABOUT interval shortening is applied on sync without postponing earlie
   assert.doesNotMatch(loader, /slot\.podcastDueUnixMs < maxFuture/);
 });
 
-test('admin describes cloud-sync application and inline TALKABOUT groups', () => {
+test('admin describes sync-time application rather than restart-time application', () => {
   assert.match(admin, /端末への反映は次回クラウド同期時です/);
-  assert.match(admin, /includeTalkAbout:true/);
+  assert.match(admin, /ローテーション変更は次の曲から反映します/);
   assert.match(admin, /次回クラウド同期でSpotify設定を反映します/);
   assert.doesNotMatch(admin, /次回HomePanel再起動時にSpotify設定を適用/);
 });
 
-test('admin embeds the shared seven-slot managed rotation and migrates the old shape', () => {
-  assert.match(admin, /managedSpotifySevenSlotRotation/);
+test('admin embeds the shared managed random catalog and upgrades managed prefixes', () => {
+  assert.match(admin, /MANAGED_SPOTIFY_RANDOM_TRACKS/);
   assert.match(admin, /MANAGED_SPOTIFY_RANDOM_TRACK_IDS/);
+  assert.match(admin, /running time is 3:30 or shorter/);
   assert.match(admin, /managedSpotifyRandomTrackIds/);
-  assert.match(admin, /managedSpotifyRotation/);
-  assert.match(admin, /managedRandomPool/);
-  assert.match(admin, /structuredClone\(managedSpotifyRotation\)/);
-  assert.match(randomCatalog, /SHORT_SPOTIFY_RANDOM_TRACKS/);
-  assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
-  assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
-  assert.match(randomCatalog, /includeTalkAbout: true/);
+  assert.match(admin, /isManagedPrefix/);
+  assert.match(admin, /random\.tracks=structuredClone\(spotifyRandomPool\)/);
+  assert.match(randomCatalog, /Sunny side up/);
+  assert.match(randomCatalog, /Nightmare症候群/);
+  assert.match(randomCatalog, /Interlude #1/);
+  assert.match(randomCatalog, /Interlude #6/);
 });
