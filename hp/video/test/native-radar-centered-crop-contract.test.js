@@ -50,7 +50,8 @@ test('cloud radar renders a z9-equivalent 1920x1280 three-panel image', () => {
   assert.match(browserRadar, /payload\.outputWidth \/ payload\.panels\.length/);
   assert.match(browserRadar, /const cropWidth = panel\.baseCropWidth as number/);
   assert.match(browserRadar, /const cropHeight = panel\.baseCropHeight as number/);
-  assert.match(browserRadar, /satellite\.width !== map\.width \|\| satellite\.height !== map\.height/);
+  assert.match(browserRadar, /drawKawagoeMask\(panel, panelX\)/);
+  assert.doesNotMatch(browserRadar, /MAP_ASSET_PATH|drawBase\(map/);
   assert.match(browserRadar, /divider < payload\.panels\.length/);
   assert.doesNotMatch(browserRadar, /const panelAspect = panelWidth \/ payload\.outputHeight/);
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_WIDTH/);

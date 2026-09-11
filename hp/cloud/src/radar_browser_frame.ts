@@ -45,11 +45,27 @@ type BrowserBindingEnv = Env & { BROWSER?: Fetcher };
 
 const RENDER_PAGE_PATH = "/radar-cloud/render.html";
 const SATELLITE_ASSET_PATH = "/radar-cloud/radar-satellite.png";
-const MAP_ASSET_PATH = "/radar-cloud/radar-map.png";
+const KAWAGOE_BOUNDARY_URL = "https://geoshape.ex.nii.ac.jp/city/geojson/latest/11201.geojson";
 
 function originUrl(value: string): string {
   const url = new URL(value);
   return `${url.protocol}//${url.host}`;
+}
+
+async function fetchKawagoeBoundary(): Promise<unknown | null> {
+  try {
+    const response = await fetch(KAWAGOE_BOUNDARY_URL, {
+      headers: { "User-Agent": "HomePanel-Cloud/2.6" },
+      cf: { cacheEverything: true, cacheTtl: 86_400 },
+    } as RequestInit);
+    if (!response.ok) {
+      await response.body?.cancel();
+      return null;
+    }
+    return await response.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function renderRepresentativeRadarFrame(
@@ -59,6 +75,7 @@ export async function renderRepresentativeRadarFrame(
   const browserBinding = (env as BrowserBindingEnv).BROWSER;
   if (!browserBinding) throw new Error("Cloudflare Browser Run binding is unavailable");
   const publicOrigin = originUrl(request.publicUrl);
+  const boundary = await fetchKawagoeBoundary();
   const browser = await puppeteer.launch(browserBinding);
   try {
     const page = await browser.newPage();
@@ -108,18 +125,10 @@ export async function renderRepresentativeRadarFrame(
         return g.createImageBitmap(await response.blob());
       };
       const satellite = await loadRequired(payload.satelliteUrl);
-      const map = await loadRequired(payload.mapUrl);
-      if (satellite.width !== map.width || satellite.height !== map.height) {
-        throw new Error(
-          `radar static layer dimensions differ: satellite=${satellite.width}x${satellite.height}, map=${map.width}x${map.height}`,
-        );
-      }
 
       const drawBase = (bitmap: any, panel: any, panelX: number) => {
-        // Satellite and the pre-generated Kawagoe gray-mask map are both z10
-        // layers centered on the same coordinate. Crop the exact z10 pixel
-        // extent corresponding to the z9 rain source instead of inferring the
-        // crop from image aspect ratio.
+        // The bundled satellite is a z10 layer centered on Kawagoe. Crop the
+        // exact z10 pixel extent corresponding to the z9 rain source.
         const cropWidth = panel.baseCropWidth as number;
         const cropHeight = panel.baseCropHeight as number;
         if (bitmap.width < cropWidth || bitmap.height < cropHeight) {
@@ -140,6 +149,111 @@ export async function renderRepresentativeRadarFrame(
           panelWidth,
           payload.outputHeight,
         );
+      };
+
+      const boundary = payload.boundary as any;
+      const boundaryGeometries: any[] = (() => {
+        if (!boundary || typeof boundary !== "object") return [];
+        if (boundary.type === "FeatureCollection") {
+          return Array.isArray(boundary.features)
+            ? boundary.features.map((feature: any) => feature?.geometry).filter(Boolean)
+            : [];
+        }
+        if (boundary.type === "Feature") return boundary.geometry ? [boundary.geometry] : [];
+        return [boundary];
+      })();
+      const boundaryPolygons: any[] = boundaryGeometries.flatMap((geometry: any) => (
+        geometry?.type === "Polygon"
+          ? [geometry.coordinates]
+          : geometry?.type === "MultiPolygon" && Array.isArray(geometry.coordinates)
+            ? geometry.coordinates
+            : []
+      ));
+
+      const tileReference = (panel: any) => {
+        const tile = panel.tiles?.[0];
+        if (!tile?.url) return null;
+        try {
+          const parts = String(tile.url).split("?", 1)[0]!.split("/").filter(Boolean);
+          if (parts.length < 3) return null;
+          const zoom = Number(parts.at(-3));
+          const tileX = Number(parts.at(-2));
+          const tileY = Number(String(parts.at(-1)).replace(/\.png$/, ""));
+          if (![zoom, tileX, tileY].every(Number.isFinite)) return null;
+          return { zoom, tileX, tileY, destX: tile.destX, destY: tile.destY };
+        } catch {
+          return null;
+        }
+      };
+      const worldPixel = (lon: number, lat: number, zoom: number) => {
+        const scale = 2 ** zoom * 256;
+        const safeLat = Math.max(-85.05112878, Math.min(85.05112878, lat));
+        const radians = safeLat * Math.PI / 180;
+        return {
+          x: (lon + 180) / 360 * scale,
+          y: (1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2 * scale,
+        };
+      };
+      const addBoundaryPath = (panel: any, panelX: number) => {
+        if (!boundaryPolygons.length) return false;
+        const reference = tileReference(panel);
+        if (!reference) return false;
+        const scaleX = panelWidth / panel.sourceWidth;
+        const scaleY = payload.outputHeight / panel.sourceHeight;
+        let drewPoint = false;
+        for (const polygon of boundaryPolygons) {
+          if (!Array.isArray(polygon)) continue;
+          for (const ring of polygon) {
+            if (!Array.isArray(ring) || ring.length < 2) continue;
+            let first = true;
+            for (const coordinate of ring) {
+              if (!Array.isArray(coordinate) || coordinate.length < 2) continue;
+              const lon = Number(coordinate[0]);
+              const lat = Number(coordinate[1]);
+              if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+              const world = worldPixel(lon, lat, reference.zoom);
+              const sourceX = reference.destX + world.x - reference.tileX * 256;
+              const sourceY = reference.destY + world.y - reference.tileY * 256;
+              const x = panelX + sourceX * scaleX;
+              const y = sourceY * scaleY;
+              if (first) {
+                context.moveTo(x, y);
+                first = false;
+              } else {
+                context.lineTo(x, y);
+              }
+              drewPoint = true;
+            }
+            if (!first) context.closePath();
+          }
+        }
+        return drewPoint;
+      };
+      const drawKawagoeMask = (panel: any, panelX: number) => {
+        context.save();
+        context.beginPath();
+        context.rect(panelX, 0, panelWidth, payload.outputHeight);
+        if (!addBoundaryPath(panel, panelX)) {
+          context.restore();
+          return false;
+        }
+        context.fillStyle = "rgba(96,96,96,0.68)";
+        context.fill("evenodd");
+        context.restore();
+
+        context.save();
+        context.beginPath();
+        if (!addBoundaryPath(panel, panelX)) {
+          context.restore();
+          return false;
+        }
+        context.strokeStyle = "rgba(255,255,255,0.98)";
+        context.lineWidth = 5;
+        context.lineJoin = "round";
+        context.lineCap = "round";
+        context.stroke();
+        context.restore();
+        return true;
       };
 
       const drawPanelLabel = (panel: any, panelX: number) => {
@@ -173,7 +287,7 @@ export async function renderRepresentativeRadarFrame(
         const panel = payload.panels[panelIndex]!;
         const panelX = panelIndex * panelWidth;
 
-        // Fixed compositing order: satellite -> rain -> pre-generated gray map.
+        // Fixed compositing order: satellite -> rain -> Kawagoe-only mask.
         drawBase(satellite, panel, panelX);
         const scaleX = panelWidth / panel.sourceWidth;
         const scaleY = payload.outputHeight / panel.sourceHeight;
@@ -189,18 +303,19 @@ export async function renderRepresentativeRadarFrame(
           );
           bitmap.close?.();
         }
-        drawBase(map, panel, panelX);
+        // Never fall back to the legacy radar-map.png here: it is an opaque,
+        // pre-Kawagoe map layer and can hide the rain tiles beneath it.
+        drawKawagoeMask(panel, panelX);
       }
 
       satellite.close?.();
-      map.close?.();
 
       context.fillStyle = "rgba(0,0,0,0.92)";
       for (let divider = 1; divider < payload.panels.length; divider += 1) {
         context.fillRect(divider * panelWidth - 2, 0, 4, payload.outputHeight);
       }
 
-      // Labels are a final pass so no rain/map tile can ever cover the time.
+      // Labels are a final pass so no rain/mask layer can ever cover the time.
       for (let panelIndex = 0; panelIndex < payload.panels.length; panelIndex += 1) {
         const panel = payload.panels[panelIndex]!;
         const panelX = panelIndex * panelWidth;
@@ -211,7 +326,7 @@ export async function renderRepresentativeRadarFrame(
       outputHeight: request.outputHeight,
       panels: panelResults,
       satelliteUrl: `${publicOrigin}${SATELLITE_ASSET_PATH}`,
-      mapUrl: `${publicOrigin}${MAP_ASSET_PATH}`,
+      boundary,
     });
 
     const screenshot = await page.screenshot({
