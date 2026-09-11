@@ -70,7 +70,7 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
     'spotify_static_scripts.inc', 'spotify_scoped_track_reconcile.inc',
     'spotify_media_observer_runtime.inc', 'spotify_media_observer_events.inc',
     'spotify_media_observer_heartbeat.inc', 'spotify_cloud_playlist.inc',
-    'spotify_shuffle_off.inc', 'spotify_rotation_cycle.inc',
+    'spotify_playback_mode_guards.inc', 'spotify_rotation_cycle.inc',
     'spotify_music_target.inc', 'spotify_target_routing.inc',
   ]) assert.match(wrapper, new RegExp(`#include "${file.replace('.', '\\.')}"`));
   assert.doesNotMatch(wrapper, /spotify_recent_catalog\.inc/);
