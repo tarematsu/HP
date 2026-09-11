@@ -85,10 +85,6 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     }
   }
 
-  // TALKABOUT owns an independent restart-safe cloud-configured deadline. Music
-  // itself advances only from the natural ended event.
-  if (StartOverduePodcastBreak(now)) return;
-
   const ULONGLONG elapsed = now - scheduleStartTick_;
 
   staggerSlotIndex_ %= slots_.size();
