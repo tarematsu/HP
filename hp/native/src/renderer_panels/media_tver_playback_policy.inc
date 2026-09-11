@@ -1,7 +1,6 @@
-// TVer episode-page policy. This script owns dismissing blocking survey UI on
-// an episode page, recovering program playback without toggle races, restart
-// signaling, and fullscreen entry. During ads it only exposes Skip and
-// fullscreen actions; all other media/UI mutations are left to TVer.
+// TVer episode-page watchdog. The page-local event policy owns ordinary state;
+// this low-frequency fallback only performs trusted recovery actions. During ads
+// it exposes Skip and fullscreen only; all other media/UI mutation is forbidden.
 namespace {
 constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
 (() => {
@@ -37,8 +36,7 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
       const url = new URL(location.href);
       url.searchParams.delete(launcherParam);
       history.replaceState(null, '', url.pathname + url.search + url.hash);
-    } catch (_) {
-    }
+    } catch (_) {}
   };
   const guardSeriesEpisode = () => {
     if (window[guardedEpisodePathKey] === location.pathname) return true;
@@ -80,8 +78,7 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
     try {
       acceptNextEpisode = sessionStorage.getItem(pendingKey) === '1';
       sessionStorage.removeItem(pendingKey);
-    } catch (_) {
-    }
+    } catch (_) {}
     if (!directLaunch && !acceptNextEpisode) return requestRestart();
 
     clearLauncherMarker();
@@ -143,21 +140,20 @@ LR"JS(
     if (!video) video = candidate;
   }
   const playerRootFor = media => {
-    if (!media) return document.body || document.documentElement;
+    if (!media) return null;
     let root = media.parentElement;
     let best = root || media;
     for (let depth = 0; root && root !== document.body && depth < 5; ++depth) {
       best = root;
       root = root.parentElement;
     }
-    return best || document.body || document.documentElement;
+    return best;
   };
 
   const state = window.__homePanelSakuraMeetsState;
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
   if (adActive) {
     // During ads the watchdog may only click Skip or the fullscreen control.
-    // Keep lookup inside the active player; if no media exists, do nothing.
     const adRoot = video ? playerRootFor(video) : null;
     const adControls = adRoot ? Array.from(adRoot.querySelectorAll(
         'button, [role="button"], a, [aria-label], [title]')) : [];
@@ -184,10 +180,15 @@ LR"JS(
     return fullscreenButton ? point(fullscreenButton) : null;
   }
 
-  const surveyRoots = Array.from(document.querySelectorAll(
-      '[role="dialog"], [aria-modal="true"], [data-testid*="survey" i], '
-      + '[class*="survey" i], [class*="questionnaire" i]'));
-  const surveyClose = (() => {
+  if (state && state.restartRequested) return 'restart';
+
+  // Survey discovery is relatively expensive and page-wide by necessity. Only
+  // do it when playback is absent/paused; healthy playing content never scans
+  // unrelated page dialogs.
+  if (!video || video.paused) {
+    const surveyRoots = Array.from(document.querySelectorAll(
+        '[role="dialog"], [aria-modal="true"], [data-testid*="survey" i], '
+        + '[class*="survey" i], [class*="questionnaire" i]'));
     for (const root of surveyRoots) {
       if (!/(?:アンケート|ご回答|回答する|誕生年|誕生月|性別)/.test(
           normalize(root.textContent))) continue;
@@ -196,30 +197,25 @@ LR"JS(
       for (const element of candidates) {
         if (!visible(element)) continue;
         if (/(?:閉じる|とじる|close|dismiss)/i.test(labelOf(element))) {
-          return element;
+          return point(element);
         }
       }
     }
-    return null;
-  })();
-  if (surveyClose) return point(surveyClose);
-
-  if (state && state.restartRequested) return 'restart';
-
-  if (video) {
-    try {
-      if (video.muted) video.muted = false;
-      if (video.volume !== 1.0) video.volume = 1.0;
-    } catch (_) {
-    }
   }
+
+  if (!video) return null;
+
+  try {
+    if (video.muted) video.muted = false;
+    if (video.volume !== 1.0) video.volume = 1.0;
+  } catch (_) {}
 
   let cachedPlayerControls = null;
   const playerControls = () => {
     if (cachedPlayerControls) return cachedPlayerControls;
     const root = playerRootFor(video);
-    cachedPlayerControls = Array.from(root.querySelectorAll(
-        'button, [role="button"], a, [aria-label], [title]'));
+    cachedPlayerControls = root ? Array.from(root.querySelectorAll(
+        'button, [role="button"], a, [aria-label], [title]')) : [];
     return cachedPlayerControls;
   };
   const findPlayButton = () => playerControls().find(element => {
@@ -229,13 +225,7 @@ LR"JS(
     return /(?:^|\s)(?:動画を)?再生(?:する)?(?:\s|$)/.test(label) ||
            /(?:^|\s)play(?: video)?(?:\s|$)/i.test(label);
   }) || null;
-)JS"
-LR"JS(
 
-  if (!video) {
-    const playButton = findPlayButton();
-    return playButton ? point(playButton) : null;
-  }
   if (video.paused && !video.ended) {
     if (video.__homePanelTverResumeBlocked) {
       video.__homePanelTverResumeBlocked = false;
@@ -322,11 +312,9 @@ constexpr wchar_t kNativeMediaTverForceFullscreenAnyMediaScript[] = LR"JS(
             if (state) state.fullscreenDirty = false;
             return;
           }
-        } catch (_) {
-        }
+        } catch (_) {}
       }
-    } catch (_) {
-    }
+    } catch (_) {}
   }, 180);
 })()
 )JS";
