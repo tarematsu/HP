@@ -47,20 +47,25 @@ test('Kawagoe mask uses the exact same world-pixel viewport as rain tiles', () =
   assert.doesNotMatch(browserRadar, /tileReference/);
 });
 
-test('each dry radar panel independently becomes gray with the forecast sunny icon', () => {
+test('each dry radar panel independently becomes gray only when visible rain pixels are absent', () => {
   assert.match(browserRadar, /const SUNNY_ICON_ASSET_PATH = "\/radar-cloud\/weather-sunny\.png";/);
   assert.match(prepareAssets, /weather-icons\/100_day\.png/);
   assert.match(prepareAssets, /weather-sunny\.png/);
-  assert.match(browserRadar, /let panelRainTiles = 0;/);
-  assert.match(browserRadar, /panelRainTiles \+= 1;/);
-  assert.match(browserRadar, /if \(panelRainTiles === 0\)/);
+  assert.match(browserRadar, /const rainCanvas = g\.document\.createElement\("canvas"\)/);
+  assert.match(browserRadar, /rainContext\.getImageData\(0, 0, panel\.sourceWidth, panel\.sourceHeight\)/);
+  assert.match(browserRadar, /if \(rainPixels\[offset\] > 8\)/);
+  assert.match(browserRadar, /if \(!hasRain\)/);
   assert.match(browserRadar, /await drawNoRainPanel\(panelX\)/);
   assert.match(browserRadar, /rgba\(96,96,96,0\.72\)/);
   assert.match(browserRadar, /context\.fillRect\(panelX, 0, panelWidth, payload\.outputHeight\)/);
   assert.match(browserRadar, /Math\.min\(panelWidth \* 0\.56, payload\.outputHeight \* 0\.30\)/);
   assert.match(browserRadar, /context\.drawImage\(icon, iconX, iconY, iconSize, iconSize\)/);
   assert.match(browserRadar, /sunnyIconUrl: `\$\{publicOrigin\}\$\{SUNNY_ICON_ASSET_PATH\}`/);
-  assert.doesNotMatch(browserRadar, /loadedRainTiles|radar rain tiles were not fetched for any panel/);
+  assert.doesNotMatch(browserRadar, /panelRainTiles|loadedRainTiles|radar rain tiles were not fetched for any panel/);
+});
+
+test('radar panel labels are placed below the native center-crop safe area', () => {
+  assert.match(browserRadar, /const chipTop = 240;/);
 });
 
 test('missing boundary data never falls back to the opaque legacy map', () => {
