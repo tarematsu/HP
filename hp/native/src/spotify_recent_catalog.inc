@@ -31,7 +31,7 @@ ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
 
 void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
   slot.timedCycleTracks.clear();
-  inlineTalkAboutRotation_ = false;
+  slot.timedCycleIncludesTalkAbout = false;
 
   // A track/episode path may appear in more than one cloud group (E/F/G share
   // the same short-song pool). Keep one common used set so every position in a
@@ -50,10 +50,11 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
     return true;
   };
 
-  const auto appendGroup = [this, &appendUnique](const RotationGroup& group) {
+  const auto appendGroup = [this, &slot, &appendUnique](
+                               const RotationGroup& group) {
     std::vector<ManagedTrack> candidates = group.tracks;
     if (group.includeTalkAbout) {
-      inlineTalkAboutRotation_ = true;
+      slot.timedCycleIncludesTalkAbout = true;
       if (SpotifyPodcastTargetReady()) {
         candidates.push_back(
             {L"櫻坂46の「さ」Talk about", SpotifyPodcastUrl(),
