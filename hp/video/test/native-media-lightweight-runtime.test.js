@@ -32,6 +32,23 @@ test('TVer uses media events plus a player-local observer, never a document-wide
   assert.match(tverEpisode, /homepanel:tver-wake/);
 });
 
+test('TVer progress sampling backs off during steady playback and tightens only near the end', () => {
+  assert.match(tverEpisode, /progressSteadyIntervalMs = 2000/);
+  assert.match(tverEpisode, /progressNearEndIntervalMs = 500/);
+  assert.match(tverEpisode, /progressFinalIntervalMs = 200/);
+  assert.match(tverEpisode, /if \(remaining <= 3\) return progressFinalIntervalMs/);
+  assert.match(tverEpisode, /if \(remaining <= 15\) return progressNearEndIntervalMs/);
+  assert.match(tverEpisode, /video\.addEventListener\('timeupdate',[\s\S]*sampleProgress\(video, state\)/);
+});
+
+test('TVer event bridge suppresses duplicate native wakeups for unchanged recovery state', () => {
+  assert.match(tverEpisode, /lastWakeSignature/);
+  assert.match(tverEpisode, /pendingWakeSignature/);
+  assert.match(tverEpisode, /signature === lastWakeSignature/);
+  assert.match(tverEpisode, /recoveryFlags\.join\('\+'\)/);
+  assert.match(tverEpisode, /wakeNative\('ui:' \+ playerUiRevision\)/);
+});
+
 test('YouTube uses event wakeups with a 30-second steady watchdog backstop', () => {
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
@@ -45,6 +62,26 @@ test('YouTube uses event wakeups with a 30-second steady watchdog backstop', () 
   assert.doesNotMatch(mediaPanel, /kNativeMediaPlaybackHealthTimer|ProbeYoutubeHealth/);
 });
 
+test('YouTube coalesces DOM bursts before crossing the WebView2 native boundary', () => {
+  assert.match(youtubeAgent, /lastWakeSignature/);
+  assert.match(youtubeAgent, /pendingWakeSignature/);
+  assert.match(youtubeAgent, /nextSignature === state\.lastWakeSignature/);
+  assert.match(youtubeAgent, /250 - \(Date\.now\(\) - state\.wakeAt\)/);
+  assert.match(mediaWrapper, /NativeMediaReadWebViewSource\(sender, source\)/);
+  assert.doesNotMatch(
+    mediaWrapper,
+    /message == L"homepanel:youtube-wake"[\s\S]{0,400}NativeMediaWebViewSourceContains\(sender/,
+  );
+});
+
+test('YouTube static presentation policy is not reinjected after navigation completes', () => {
+  assert.match(mediaHost, /AddScriptToExecuteOnDocumentCreated\([\s\S]*kNativeMediaYoutubeCleanPlayerScript/);
+  assert.match(
+    mediaWrapper,
+    /script == kNativeMediaYoutubeCleanPlayerScript[\s\S]*NativeMediaEnsureYoutubeTrustedAction[\s\S]*return kNativeMediaNoopScript/,
+  );
+});
+
 test('YouTube applies 480p per video instead of on every healthy watchdog pass', () => {
   assert.match(youtubeRecovery, /videoKey/);
   assert.match(youtubeRecovery, /qualityApplied: false/);
@@ -52,6 +89,12 @@ test('YouTube applies 480p per video instead of on every healthy watchdog pass',
   assert.match(youtubeRecovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
   assert.match(youtubeRecovery, /setPlaybackQuality\(preferredQuality\)/);
   assert.doesNotMatch(mediaBase, /setPlaybackQualityRange\('large', 'large'\)/);
+});
+
+test('active YouTube and TVer hot paths stay free of high-frequency diagnostic logging', () => {
+  const hotPath = [tverEpisode, youtubeAgent, youtubeRecovery, mediaWrapper].join('\n');
+  assert.doesNotMatch(hotPath, /console\.(?:log|debug|info)\s*\(/);
+  assert.doesNotMatch(hotPath, /OutputDebugString|std::cout|std::cerr/);
 });
 
 test('playlist startup still has one bounded native fallback', () => {
