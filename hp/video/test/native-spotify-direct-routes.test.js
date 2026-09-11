@@ -11,35 +11,23 @@ const cloud = readFileSync(
   'utf8',
 );
 
-test('all short fallback catalog entries keep direct Spotify track routes', () => {
+test('all fallback catalog entries keep direct Spotify track routes', () => {
   assert.doesNotMatch(catalog, /spotify_recent_direct_routes\.inc/);
+  const declaredSize = Number(
+    catalog.match(/std::array<SpotifyFallbackCatalogTrack, (\d+)>/)?.[1] ?? 0,
+  );
   const start = catalog.indexOf('kSpotifyFallbackCatalogTracks = {{');
   const end = catalog.indexOf('}};', start);
   assert.ok(start >= 0 && end > start);
   const section = catalog.slice(start, end);
-  assert.equal(
-    (section.match(/https:\/\/open\.spotify\.com\/track\//g) || []).length,
-    13,
-  );
-  assert.equal((section.match(/L"\/track\//g) || []).length, 13);
-
-  for (const id of [
-    '5xUQGRuP4LPk4ESl1xbmFs',
-    '4PaLKbIU8NvguxcrjMvHXh',
-    '6GF0ZgT8wlksWrlLTfGmlU',
-    '5vRGSkQiKlJudkJ2vUKIOe',
-    '6QmAwjzLQy6SjUyvGzSCG4',
-    '7vvZ1QHTdkoEXBiOBdxdIo',
-    '3HdmFZGqZLNiCAfiNj4N84',
-    '5DrxCKjopmd7UL1pJWqBHK',
-    '2hi8kIoKC8tRMDajdkoYFL',
-    '1N339Ccfo6kqPHtS5ueJ0J',
-    '57MZ2hsDSJMp9nzFIRFd0S',
-    '4K3nO9hBA3UE62Dspjx19d',
-    '3IceOend8QYv0mJLCfrxQq',
-  ]) {
-    assert.equal((section.match(new RegExp(id, 'g')) || []).length, 2);
-  }
+  const entries = [...section.matchAll(
+    /\{L"[^"]+", L"https:\/\/open\.spotify\.com\/track\/([A-Za-z0-9]{22})", L"\/track\/\1"\}/g,
+  )];
+  assert.ok(declaredSize > 0);
+  assert.equal(entries.length, declaredSize);
+  const ids = entries.map((entry) => entry[1]);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(ids.includes('3GdsVS4jIJ7RBiasVZlWul'));
 });
 
 test('cloud track routes are validated as direct open.spotify.com track ids', () => {
