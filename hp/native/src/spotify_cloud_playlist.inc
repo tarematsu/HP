@@ -2,10 +2,6 @@ namespace hp {
 namespace {
 
 constexpr wchar_t kSpotifyCloudConfigFile[] = L"device-config.json";
-constexpr wchar_t kSpotifyDefaultPodcastUrl[] =
-    L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
-constexpr wchar_t kSpotifyDefaultPodcastPath[] =
-    L"/show/2ZQy2mlwQodabAILwZ02Ed";
 constexpr double kSpotifyDefaultPodcastPlaybackRate = 3.0;
 constexpr int kSpotifyMinPodcastIntervalMinutes = 15;
 constexpr int kSpotifyMaxPodcastIntervalMinutes = 120;
@@ -18,7 +14,10 @@ constexpr wchar_t kSpotifyDefaultPodcastFingerprint[] = L"<default>";
 std::wstring ManagedSpotifyPathFromUrl(
     const std::wstring& url, std::wstring_view segment) {
   constexpr std::wstring_view host = L"https://open.spotify.com";
-  if (!StartsWithInsensitive(url, host)) return {};
+  if (!StartsWithInsensitive(url, host) ||
+      (url.size() > host.size() && url[host.size()] != L'/')) {
+    return {};
+  }
   const size_t begin = url.find(segment, host.size());
   if (begin == std::wstring::npos) return {};
   const size_t idBegin = begin + segment.size();
@@ -173,13 +172,13 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
 
         try {
           const JsonObject talkAbout = spotify.GetNamedObject(L"talkAbout");
-          const std::wstring url =
-              talkAbout.GetNamedString(L"url", L"").c_str();
-          const std::wstring showPath =
-              ManagedSpotifyPathFromUrl(url, L"/show/");
-          if (!showPath.empty()) {
-            nextPodcastUrl = url;
-            nextPodcastPath = showPath;
+          const std::wstring episodeUrl =
+              talkAbout.GetNamedString(L"episodeUrl", L"").c_str();
+          const std::wstring episodePath =
+              ManagedSpotifyPathFromUrl(episodeUrl, L"/episode/");
+          if (!episodePath.empty()) {
+            nextPodcastUrl = episodeUrl;
+            nextPodcastPath = episodePath;
           }
 
           double minutesValue =
@@ -201,11 +200,11 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
           }
           nextPodcastFingerprint = talkAbout.Stringify().c_str();
         } catch (...) {
-          // Invalid TALKABOUT settings deliberately use safe defaults.
+          // No valid direct episode URL means TALKABOUT waits for cloud sync.
         }
       }
     } catch (...) {
-      // A malformed synchronized file uses the built-in safe defaults.
+      // A malformed synchronized file leaves the safe defaults active.
     }
   }
 
@@ -259,13 +258,15 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
 }
 
 const wchar_t* SpotifyWebViews::SpotifyPodcastUrl() const noexcept {
-  return cloudPodcastUrl_.empty() ? kSpotifyDefaultPodcastUrl
-                                  : cloudPodcastUrl_.c_str();
+  return cloudPodcastUrl_.c_str();
 }
 
 const wchar_t* SpotifyWebViews::SpotifyPodcastPath() const noexcept {
-  return cloudPodcastPath_.empty() ? kSpotifyDefaultPodcastPath
-                                   : cloudPodcastPath_.c_str();
+  return cloudPodcastPath_.c_str();
+}
+
+bool SpotifyWebViews::SpotifyPodcastTargetReady() const noexcept {
+  return !cloudPodcastUrl_.empty() && !cloudPodcastPath_.empty();
 }
 
 ULONGLONG SpotifyWebViews::SpotifyPodcastIntervalMs() const noexcept {
