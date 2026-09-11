@@ -8,8 +8,8 @@ const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
 const guard = readFileSync(
   new URL('../../native/src/spotify_shuffle_off.inc', import.meta.url), 'utf8');
-const recent = readFileSync(
-  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
+const music = readFileSync(
+  new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
 
 test('Spotify music verifies native Web Player shuffle is off before playback reconcile', () => {
   assert.match(wrapper, /#include "spotify_shuffle_off\.inc"/);
@@ -19,10 +19,10 @@ test('Spotify music verifies native Web Player shuffle is off before playback re
   assert.match(guard, /getAttribute\('aria-checked'\) !== 'true'/);
   assert.match(guard, /ClickSlotNormalizedPoint\(\*target, x, y\)/);
   assert.doesNotMatch(guard, /\.click\(\)/);
-  assert.match(recent, /slot\.shuffleOffVerified = false;/);
-  assert.match(recent, /if \(!EnsureShuffleOff\(slot\)\) return;/);
+  assert.match(music, /slot\.shuffleOffVerified = false;/);
+  assert.match(music, /if \(!EnsureShuffleOff\(slot\)\) return;/);
   assert.match(
-    recent,
+    music,
     /EnsureShuffleOff\(slot\)[\s\S]*kSpotifyStaticTrackReconcileScript/,
   );
 });
