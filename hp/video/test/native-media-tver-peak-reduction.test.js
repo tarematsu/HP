@@ -3,52 +3,50 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const wrapper = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const loop = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
 const watchdog = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
 
-test('episode pages replace the legacy global TVer loop with the bounded policy', () => {
+test('episode pages route to one bounded TVer event policy', () => {
   assert.match(wrapper, /#include "media_tver_episode_loop_policy\.inc"/);
-  assert.match(
-    wrapper,
-    /script == kNativeMediaTverLoopScript &&[\s\S]*tver\.jp\/episodes\/[\s\S]*return kNativeMediaTverEpisodeLoopPolicyScript/,
-  );
+  assert.match(wrapper, /kNativeMediaTverEpisodeLoopPolicyScript/);
+  assert.doesNotMatch(wrapper, /media_tver_series_dom_policy/);
 });
 
 test('TVer episode ad detection is bounded to the player subtree', () => {
   assert.match(loop, /const playerRootFor = video =>/);
   assert.match(loop, /depth < 5/);
   assert.match(loop, /root\.querySelectorAll\(selectors\.join\(','\)\)/);
-  assert.doesNotMatch(
-    loop,
-    /document\.querySelectorAll\(selectors\.join\(','\)\)/,
-  );
+  assert.doesNotMatch(loop, /document\.querySelectorAll\(selectors\.join\(','\)\)/);
 });
 
-test('known TVer ads use media facts before any DOM marker scan', () => {
+test('TVer player observer filters relevant added nodes only', () => {
+  assert.match(loop, /const interestingPlayerSelector = \[/);
+  assert.match(loop, /for \(const node of mutation\.addedNodes\)/);
+  assert.match(loop, /element\.matches\?\.\(interestingPlayerSelector\)/);
+  assert.match(loop, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
+  assert.doesNotMatch(loop, /observe\(document\.(?:documentElement|body)/);
+});
+
+test('known TVer ads use media facts before fallback DOM marker scan', () => {
   const activeIndex = loop.indexOf('if (state.adActive)');
   const markerIndex = loop.indexOf('return explicitAdMarker(video)', activeIndex);
-  assert.ok(activeIndex >= 0);
-  assert.ok(markerIndex > activeIndex);
+  assert.ok(activeIndex >= 0 && markerIndex > activeIndex);
   assert.match(loop, /if \(shortAdLength && !video\.ended\) return true/);
 });
 
-test('TVer quality control discovery is one-shot and player-local', () => {
-  assert.match(loop, /if \(!state\.lowQualitySet\)/);
+test('TVer quality discovery is bounded, delayed and player-local', () => {
+  assert.match(loop, /qualityProbeLimit = 4/);
+  assert.match(loop, /qualityProbeIntervalMs = 5000/);
+  assert.match(loop, /state\.qualityProbeAttempts < qualityProbeLimit/);
   assert.match(loop, /const root = playerRootFor\(video\)/);
   assert.match(loop, /for \(const element of root\.querySelectorAll\(/);
 });
 
 test('healthy TVer watchdog avoids page-wide control enumeration', () => {
-  assert.match(watchdog, /const surveyRoots = Array\.from\(document\.querySelectorAll/);
+  assert.match(watchdog, /if \(!video \|\| video\.paused\)/);
   assert.match(watchdog, /const playerControls = \(\) =>/);
   assert.match(watchdog, /const root = playerRootFor\(video\)/);
   assert.doesNotMatch(
