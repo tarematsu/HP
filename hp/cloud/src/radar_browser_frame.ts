@@ -14,6 +14,9 @@ export interface BrowserRadarPanelRequest {
   sourceHeight: number;
   baseCropWidth: number;
   baseCropHeight: number;
+  worldLeft: number;
+  worldTop: number;
+  zoom: number;
   validTimeText: string;
 }
 
@@ -98,6 +101,9 @@ export async function renderRepresentativeRadarFrame(
       sourceHeight: panel.sourceHeight,
       baseCropWidth: panel.baseCropWidth,
       baseCropHeight: panel.baseCropHeight,
+      worldLeft: panel.worldLeft,
+      worldTop: panel.worldTop,
+      zoom: panel.zoom,
     }));
 
     await page.evaluate(async (payload) => {
@@ -170,21 +176,6 @@ export async function renderRepresentativeRadarFrame(
             : []
       ));
 
-      const tileReference = (panel: any) => {
-        const tile = panel.tiles?.[0];
-        if (!tile?.url) return null;
-        try {
-          const parts = String(tile.url).split("?", 1)[0]!.split("/").filter(Boolean);
-          if (parts.length < 3) return null;
-          const zoom = Number(parts.at(-3));
-          const tileX = Number(parts.at(-2));
-          const tileY = Number(String(parts.at(-1)).replace(/\.png$/, ""));
-          if (![zoom, tileX, tileY].every(Number.isFinite)) return null;
-          return { zoom, tileX, tileY, destX: tile.destX, destY: tile.destY };
-        } catch {
-          return null;
-        }
-      };
       const worldPixel = (lon: number, lat: number, zoom: number) => {
         const scale = 2 ** zoom * 256;
         const safeLat = Math.max(-85.05112878, Math.min(85.05112878, lat));
@@ -196,8 +187,9 @@ export async function renderRepresentativeRadarFrame(
       };
       const addBoundaryPath = (panel: any, panelX: number) => {
         if (!boundaryPolygons.length) return false;
-        const reference = tileReference(panel);
-        if (!reference) return false;
+        if (!Number.isFinite(panel.worldLeft)
+            || !Number.isFinite(panel.worldTop)
+            || !Number.isFinite(panel.zoom)) return false;
         const scaleX = panelWidth / panel.sourceWidth;
         const scaleY = payload.outputHeight / panel.sourceHeight;
         let drewPoint = false;
@@ -211,9 +203,9 @@ export async function renderRepresentativeRadarFrame(
               const lon = Number(coordinate[0]);
               const lat = Number(coordinate[1]);
               if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-              const world = worldPixel(lon, lat, reference.zoom);
-              const sourceX = reference.destX + world.x - reference.tileX * 256;
-              const sourceY = reference.destY + world.y - reference.tileY * 256;
+              const world = worldPixel(lon, lat, panel.zoom);
+              const sourceX = world.x - panel.worldLeft;
+              const sourceY = world.y - panel.worldTop;
               const x = panelX + sourceX * scaleX;
               const y = sourceY * scaleY;
               if (first) {
@@ -283,6 +275,7 @@ export async function renderRepresentativeRadarFrame(
         context.fillText(timeText, panelX + chipLeft + chipHorizontalPadding, chipTop + 81);
       };
 
+      let loadedRainTiles = 0;
       for (let panelIndex = 0; panelIndex < payload.panels.length; panelIndex += 1) {
         const panel = payload.panels[panelIndex]!;
         const panelX = panelIndex * panelWidth;
@@ -294,6 +287,7 @@ export async function renderRepresentativeRadarFrame(
         for (const tile of panel.tiles as Array<{ url: string; destX: number; destY: number }>) {
           const bitmap = await loadRain(tile.url);
           if (!bitmap) continue;
+          loadedRainTiles += 1;
           context.drawImage(
             bitmap,
             panelX + Math.round(tile.destX * scaleX),
@@ -308,6 +302,9 @@ export async function renderRepresentativeRadarFrame(
         drawKawagoeMask(panel, panelX);
       }
 
+      if (loadedRainTiles === 0) {
+        throw new Error("radar rain tiles were not fetched for any panel");
+      }
       satellite.close?.();
 
       context.fillStyle = "rgba(0,0,0,0.92)";
