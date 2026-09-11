@@ -101,7 +101,8 @@ test('YouTube clean player renders content video while preserving Skip Ad', () =
 test('TVer episode playback is 1.75x, cloud-queue based and player-local', () => {
   assert.match(tverEpisode, /const playbackRate = 1\.75/);
   assert.match(tverEpisode, /const targetVolume = 1\.0/);
-  assert.match(tverEpisode, /__homePanelTverEpisodeQueue:/);
+  assert.match(tverEpisode, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
+  assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue:/);
   assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
