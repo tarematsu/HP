@@ -10,8 +10,8 @@ const unifiedWorker = readFileSync(
   new URL('../../cloud/src/unified_worker.js', import.meta.url),
   'utf8',
 );
-const nativeResolver = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_native_series_resolver.inc', import.meta.url),
+const nativeFeed = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_cloud_feed_native.inc', import.meta.url),
   'utf8',
 );
 const cloudQueueRefresh = readFileSync(
@@ -43,7 +43,7 @@ test('cloud collects Sakurazaka TVer episodes from dedicated sources and preserv
   assert.match(cloudFeed, /ageMs > MAX_FEED_AGE_MS/);
 });
 
-test('cloud refresh runs every hour and feed endpoint is exposed without coupling it to video admin auth', () => {
+test('cloud refresh runs every hour and feed endpoint is exposed without video admin auth', () => {
   assert.match(cloudFeed, /return date\.getUTCMinutes\(\) === 0;/);
   assert.doesNotMatch(cloudFeed, /getUTCHours\(\) % 3/);
   assert.match(unifiedWorker, /TVER_FEED_PATH = '\/v1\/native\/tver-feed'/);
@@ -61,19 +61,14 @@ test('cloud drops episodes that expire before the next hourly refresh', () => {
   assert.match(cloudFeed, /episodeCount: episodes\.length/);
 });
 
-test('native resolver prefers the cloud feed but retains the current series API resolver as fallback', () => {
-  const cloudIndex = nativeResolver.indexOf('kNativeMediaTverCloudFeedUrl');
-  const cloudRequestIndex = nativeResolver.indexOf('NativeMediaTverCloudFeedEpisodeIds(cloudFeed)');
-  const fallbackIndex = nativeResolver.indexOf('callSeriesSeasons');
-  assert.ok(cloudIndex >= 0);
-  assert.ok(cloudRequestIndex > cloudIndex);
-  assert.ok(fallbackIndex > cloudRequestIndex);
-  assert.match(nativeResolver, /https:\/\/homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/tver-feed/);
-  assert.match(nativeResolver, /if \(!resolution\.episodeIds\.empty\(\)\)[\s\S]*resolution\.success = true;[\s\S]*return resolution/);
-  assert.match(nativeResolver, /catch \(\.\.\.\) \{[\s\S]*resolution\.episodeIds\.clear\(\);[\s\S]*\}[\s\S]*kApiHeaders/);
-  assert.match(nativeResolver, /callSeriesSeasons/);
-  assert.match(nativeResolver, /callSeasonEpisodes/);
-  assert.match(nativeResolver, /sessionStorage\.setItem\('__homePanelTverEpisodeQueue:/);
+test('native playback uses the cloud feed as its only discovery source', () => {
+  assert.match(nativeFeed, /kNativeMediaTverCloudFeedUrl/);
+  assert.match(nativeFeed, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/tver-feed/);
+  assert.match(nativeFeed, /NativeMediaTverFetchCloudFeed/);
+  assert.match(nativeFeed, /NativeMediaTverCloudFeedEpisodeIds/);
+  assert.doesNotMatch(nativeFeed, /callSeriesSeasons|callSeasonEpisodes|platform_users\/browser\/create/);
+  assert.match(mediaSection, /#include "media_tver_cloud_feed_native\.inc"/);
+  assert.doesNotMatch(mediaSection, /media_tver_native_series_resolver\.inc/);
 });
 
 test('native TVer phase launches a cloud-selected episode without rendering a series page', () => {
@@ -85,20 +80,23 @@ test('native TVer phase launches a cloud-selected episode without rendering a se
     /kNativeMediaTverUrl\[\][\s\S]{0,120}https:\/\/tver\.jp\/series\//,
   );
   assert.match(playbackPolicy, /launcherParam = 'homepanel_launch'/);
-  assert.match(playbackPolicy, /if \(!directLaunch\) return requestRestart\(\)/);
-  assert.match(playbackPolicy, /seriesPath = '\/series\/srx97ftk3w'/);
-  assert.match(playbackPolicy, /JSON\.stringify\(\{ hrefs: \[currentHref\], index: 0 \}\)/);
+  assert.match(playbackPolicy, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
+  assert.match(
+    playbackPolicy,
+    /JSON\.stringify\(\{ hrefs: \[currentHref\], index: 0 \}\)/,
+  );
   assert.match(playbackPolicy, /return window\[guardRestartKey\] \? 'restart' : null/);
-  assert.doesNotMatch(playbackPolicy, /location\.replace\('https:\/\/tver\.jp\/series\//);
-  assert.doesNotMatch(playbackPolicy, /location\.replace\('https:\/\/tver\.jp' \+ seriesPath\)/);
+  assert.doesNotMatch(playbackPolicy, /__homePanelTverSeriesPath|__homePanelTverEpisodeQueue:/);
 });
 
-test('native TVer refreshes an active queue from newer cloud feeds without interrupting the current episode', () => {
+test('native TVer refreshes active queue from newer cloud feeds without interrupting current episode', () => {
   assert.match(cloudQueueRefresh, /kNativeMediaTverCloudQueueRefreshMs =\s*30ULL \* 60ULL \* 1000ULL/);
-  assert.match(cloudQueueRefresh, /NativeMediaTverHttpRequest\([\s\S]*kNativeMediaTverCloudFeedUrl/);
+  assert.match(cloudQueueRefresh, /NativeMediaTverFetchCloudFeed\(\)/);
+  assert.match(cloudQueueRefresh, /NativeMediaTverParseCloudFeed/);
   assert.match(cloudQueueRefresh, /GetNamedString\(L"generatedAt"/);
   assert.match(cloudQueueRefresh, /result\.generatedAt <= state\.appliedGeneratedAt/);
-  assert.match(cloudQueueRefresh, /slice\(0, currentIndex \+ 1\)/);
+  assert.match(cloudQueueRefresh, /const queueKey = '__homePanelTverEpisodeQueue'/);
+  assert.match(cloudQueueRefresh, /previous\.slice\(0, currentIndex \+ 1\)/);
   assert.match(cloudQueueRefresh, /const remaining = \[\][\s\S]*seen\.has\(normalized\)/);
   assert.match(cloudQueueRefresh, /JSON\.stringify\(\{ hrefs, index: prefix\.length - 1 \}\)/);
   assert.doesNotMatch(cloudQueueRefresh, /\bfetch\s*\(/);
