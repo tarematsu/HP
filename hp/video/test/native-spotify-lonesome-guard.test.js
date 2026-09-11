@@ -10,17 +10,19 @@ const runtime = readFileSync(
   new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
-const recent = readFileSync(
-  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
+const music = readFileSync(
+  new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
+const routing = readFileSync(
+  new URL('../../native/src/spotify_target_routing.inc', import.meta.url), 'utf8');
 const click = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 
 test('all configured tracks use the shared music descriptor and scoped reconcile implementation', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_lonesome_guard\.inc|RewriteSpotify|#define ExecuteScript/);
-  assert.match(recent, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
-  assert.match(recent, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
-  assert.match(recent, /kind = L"music"/);
+  assert.match(music, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
+  assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
+  assert.match(routing, /kind = L"music"/);
   assert.match(scoped, /now-playing-widget/);
   assert.match(scoped, /now-playing-bar/);
   assert.match(scoped, /navigator\.mediaSession/);
@@ -56,5 +58,5 @@ test('wrong queue items are corrected only from the requested track or direct tr
   assert.match(scoped, /tracklist-row/);
   assert.match(scoped, /onTargetPage\(\)/);
   assert.match(scoped, /spotify:not-playing/);
-  assert.match(recent, /track\.path\.c_str\(\)/);
+  assert.match(music, /track\.path\.c_str\(\)/);
 });
