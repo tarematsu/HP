@@ -61,8 +61,8 @@ struct NativeMinuteFactsProjection {
   int64_t fetchedAt = 0;
 };
 
-inline constexpr int kRadarCanvasWidth = 1920;
-inline constexpr int kRadarCanvasHeight = 1280;
+inline constexpr int kRadarCanvasWidth = 1440;
+inline constexpr int kRadarCanvasHeight = 960;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
 struct NativeDashboardLayout {
@@ -349,6 +349,7 @@ class Renderer {
   HBITMAP radarFrameBitmap_ = nullptr;
   std::wstring radarTimeText_ = L"--:--";
   std::wstring radarSignature_;
+  std::string radarJsonStamp_;
   std::map<std::wstring, int64_t> radarFailedTiles_;
   std::map<std::wstring, BitmapCacheEntry> nativeRadarBitmaps_;
   uint64_t nativeRadarBitmapUseCounter_ = 0;

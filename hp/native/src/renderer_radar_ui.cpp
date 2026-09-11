@@ -21,6 +21,11 @@ struct ScopedRadarComApartment {
   }
 };
 
+fs::path RepresentativeRadarLocalPath(const fs::path& dataDir) {
+  return dataDir / L"radar-cache" / L"v1" / L"radar" / L"frame" /
+         L"representative" / L"latest.png";
+}
+
 std::optional<fs::path> RepresentativeRadarFramePath(
     const fs::path& dataDir, const JsonObject& root) noexcept {
   try {
@@ -68,8 +73,14 @@ std::optional<fs::path> RepresentativeRadarFramePath(
 
 std::wstring RepresentativeRadarSignature(
     const fs::path& path, const std::string& stamp) {
-  return L"native-radar-single-v1|1920x1280|" + path.wstring() + L"|" +
+  return std::wstring(L"native-radar-single-v2|") +
+         std::to_wstring(kRadarCanvasWidth) + L"x" +
+         std::to_wstring(kRadarCanvasHeight) + L"|" + path.wstring() + L"|" +
          Utf8ToWide(stamp);
+}
+
+bool InvalidStamp(const std::string& stamp) {
+  return stamp.empty() || stamp == "missing" || stamp == "invalid";
 }
 
 }  // namespace
@@ -129,27 +140,44 @@ void Renderer::RadarComposeLoop() {
 }
 
 void Renderer::ComposeRadarFrame() {
-  JsonObject root;
-  try {
-    std::ifstream input(dataDir_ / L"radar.json", std::ios::binary);
-    if (!input) return;
-    const std::string text((std::istreambuf_iterator<char>(input)), {});
-    if (text.empty()) return;
-    root = JsonObject::Parse(Utf8ToWide(text));
-  } catch (...) {
-    return;
+  const fs::path radarJsonPath = dataDir_ / L"radar.json";
+  const std::string jsonStamp = file::Stamp(radarJsonPath);
+  if (InvalidStamp(jsonStamp)) return;
+
+  bool jsonUnchanged = false;
+  {
+    std::lock_guard lock(radarFrameMutex_);
+    jsonUnchanged = radarFrameBitmap_ && radarJsonStamp_ == jsonStamp;
   }
 
-  const std::optional<fs::path> framePath =
-      RepresentativeRadarFramePath(dataDir_, root);
-  if (!framePath) return;
+  std::optional<fs::path> framePath;
+  if (jsonUnchanged) {
+    framePath = RepresentativeRadarLocalPath(dataDir_);
+  } else {
+    JsonObject root;
+    try {
+      std::ifstream input(radarJsonPath, std::ios::binary);
+      if (!input) return;
+      const std::string text((std::istreambuf_iterator<char>(input)), {});
+      if (text.empty()) return;
+      root = JsonObject::Parse(Utf8ToWide(text));
+    } catch (...) {
+      return;
+    }
+    framePath = RepresentativeRadarFramePath(dataDir_, root);
+    if (!framePath) return;
+  }
+
   const std::string stamp = file::Stamp(*framePath);
-  if (stamp.empty() || stamp == "missing" || stamp == "invalid") return;
+  if (InvalidStamp(stamp)) return;
   const std::wstring signature = RepresentativeRadarSignature(*framePath, stamp);
 
   {
     std::lock_guard lock(radarFrameMutex_);
-    if (radarFrameBitmap_ && radarSignature_ == signature) return;
+    if (radarFrameBitmap_ && radarSignature_ == signature) {
+      radarJsonStamp_ = jsonStamp;
+      return;
+    }
   }
 
   HBITMAP decoded = DecodeImageFileToBitmap(
@@ -160,6 +188,7 @@ void Renderer::ComposeRadarFrame() {
   {
     std::lock_guard lock(radarFrameMutex_);
     if (radarFrameBitmap_ && radarSignature_ == signature) {
+      radarJsonStamp_ = jsonStamp;
       DeleteObject(decoded);
       return;
     }
@@ -167,6 +196,7 @@ void Renderer::ComposeRadarFrame() {
     radarFrameBitmap_ = decoded;
     radarTimeText_.clear();
     radarSignature_ = signature;
+    radarJsonStamp_ = jsonStamp;
   }
   if (previous) DeleteObject(previous);
   InvalidatePanelSection(nativeMainWindow_, PanelSection::Radar);
