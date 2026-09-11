@@ -14,8 +14,8 @@ const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const cloud = readFileSync(
   new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
-const recent = readFileSync(
-  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
+const cycle = readFileSync(
+  new URL('../../native/src/spotify_rotation_cycle.inc', import.meta.url), 'utf8');
 
 test('Spotify playback state is autonomous from YouTube/TVer phase', () => {
   assert.match(header, /scheduleStartTick_ = 0/);
@@ -42,8 +42,8 @@ test('legacy two-hour TALKABOUT scheduler is removed completely', () => {
 test('TALKABOUT is eligible only through an inline rotation group', () => {
   assert.match(header, /bool includeTalkAbout = false/);
   assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
-  assert.match(recent, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
-  assert.match(recent, /SpotifyPodcastPath\(\)/);
+  assert.match(cycle, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
+  assert.match(cycle, /SpotifyPodcastPath\(\)/);
   assert.match(rotation, /target\.path == SpotifyPodcastPath\(\)/);
   assert.match(rotation, /TimedSpotifyTarget::TalkAbout/);
   assert.doesNotMatch(schedule, /PodcastBreak|TALKABOUT owns an independent/);
