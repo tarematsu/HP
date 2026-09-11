@@ -147,6 +147,14 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
           (centerY / window.innerHeight) * 10000)))
     ];
   };
+  const mediaPlaybackState = () => {
+    const media = Array.from(document.querySelectorAll('audio, video'));
+    const active = media.find(candidate => !candidate.ended && !candidate.paused);
+    if (active) return { known: true, playing: true };
+    const pending = media.find(candidate => !candidate.ended) || null;
+    if (pending) return { known: true, playing: false };
+    return { known: false, playing: false };
+  };
 
   if (location.hostname !== 'open.spotify.com' || !onTargetPage()) {
     report(false);
@@ -156,9 +164,16 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const current = currentTrack();
   const control = playerControl();
   const button = targetPlayButton();
+  const mediaState = mediaPlaybackState();
+  const uiShowsPlaying =
+      (targetMatches(current) && buttonShowsPlaying(control)) ||
+      buttonShowsPlaying(button);
 
-  if ((targetMatches(current) && buttonShowsPlaying(control)) ||
-      buttonShowsPlaying(button)) {
+  // Spotify can flip the control label to "Pause" before the audio element has
+  // actually left its paused 0-second state. When a media element exists, its
+  // paused/ended state is authoritative; otherwise keep the UI fallback for
+  // player builds that do not expose an HTMLMediaElement.
+  if (uiShowsPlaying && (!mediaState.known || mediaState.playing)) {
     report(true);
     return true;
   }
