@@ -18,9 +18,14 @@ export const INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
   ["Overture", "3GdsVS4jIJ7RBiasVZlWul"],
 ] as const;
 
+export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
+  ["やるしかないじゃん -OFF VOCAL ver.-", "04nk2Ee7qSnNwn6OG2hl3Q"],
+] as const;
+
 export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
   ...SHORT_SPOTIFY_RANDOM_TRACKS,
   ...INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
+  ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
 ] as const;
 
 export const MANAGED_SPOTIFY_RANDOM_TRACK_IDS =
