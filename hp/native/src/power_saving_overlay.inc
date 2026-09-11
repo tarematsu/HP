@@ -12,21 +12,21 @@ RECT ShrinkRect(RECT rect, int inset) {
   return rect;
 }
 
-int ControlStackGap(int height) noexcept {
-  return std::clamp(height * 8 / 100, 3, 6);
+int ControlButtonGap(int extent) noexcept {
+  return std::clamp(extent * 20 / 1000, 6, 12);
 }
 
-RECT ControlButtonRect(const RECT& stack, bool bottom) noexcept {
-  const int height = std::max(1L, stack.bottom - stack.top);
-  const int gap = ControlStackGap(height);
-  const int buttonHeight = std::max(1, (height - gap) / 2);
-  if (!bottom) {
-    return RECT{stack.left, stack.top, stack.right,
-                std::min<LONG>(stack.bottom, stack.top + buttonHeight)};
+RECT ControlButtonRect(const RECT& row, bool second) noexcept {
+  const int width = std::max(1L, row.right - row.left);
+  const int gap = ControlButtonGap(width);
+  const int buttonWidth = std::max(1, (width - gap) / 2);
+  if (!second) {
+    return RECT{row.left, row.top,
+                std::min<LONG>(row.right, row.left + buttonWidth), row.bottom};
   }
-  return RECT{stack.left,
-              std::min<LONG>(stack.bottom, stack.top + buttonHeight + gap),
-              stack.right, stack.bottom};
+  return RECT{
+      std::min<LONG>(row.right, row.left + buttonWidth + gap),
+      row.top, row.right, row.bottom};
 }
 }  // namespace
 
@@ -161,8 +161,11 @@ RECT PowerSavingController::ParentControlStackRect() const {
   const int sideWidth = std::max(1L, side.right - side.left);
   const int sideHeight = std::max(1L, side.bottom - side.top);
   const int gap = std::max(6, sideHeight * 18 / 1000);
-  const int available = std::max(3, sideHeight - gap * 2);
-  const int clockHeight = std::max(1, available * 27 / 100);
+  const int upperMediaHeight = sideHeight * 600 / 1000;
+  const int weatherHeight = std::max(1, sideHeight - upperMediaHeight - gap);
+  const int compactAvailable =
+      std::max(2, sideHeight - weatherHeight - gap * 2);
+  const int clockHeight = std::max(1, compactAvailable * 55 / 100);
   const RECT clock{side.left, side.top, side.right, side.top + clockHeight};
   const int pad = std::clamp(
       std::min(sideWidth, clockHeight) * 10 / 100, 8, 26);
@@ -172,40 +175,41 @@ RECT PowerSavingController::ParentControlStackRect() const {
   const LONG statusTop = content.top + contentHeight * 790 / 1000;
   const RECT status{content.left, statusTop, content.right, content.bottom};
   const int statusHeight = std::max(1L, status.bottom - status.top);
-  const int buttonWidth = std::clamp(contentWidth * 220 / 1000, 78, 112);
-  const int buttonGap = ControlStackGap(statusHeight);
+  const int buttonGap = ControlButtonGap(contentWidth);
+  const int buttonWidth = std::clamp(contentWidth * 245 / 1000, 92, 132);
   const int buttonHeight = std::min(
-      26, std::max(1, (statusHeight - buttonGap) / 2));
-  const int stackHeight = buttonHeight * 2 + buttonGap;
+      statusHeight,
+      std::clamp(statusHeight * 70 / 100, 28, 34));
+  const int rowWidth = buttonWidth * 2 + buttonGap;
   const LONG top =
-      status.top + std::max(0, (statusHeight - stackHeight) / 2);
+      status.top + std::max(0, (statusHeight - buttonHeight) / 2);
   return RECT{
-      status.right - buttonWidth,
+      status.right - rowWidth,
       top,
       status.right,
-      top + stackHeight};
+      top + buttonHeight};
 }
 
 RECT PowerSavingController::LocalPowerButtonRect() const {
   if (!overlay_) return RECT{0, 0, 1, 1};
-  RECT stack{};
+  RECT row{};
   if (powerSaving_ && !mvStartupInputPass_) {
-    stack = ParentControlStackRect();
+    row = ParentControlStackRect();
   } else {
-    GetClientRect(overlay_, &stack);
+    GetClientRect(overlay_, &row);
   }
-  return ControlButtonRect(stack, false);
+  return ControlButtonRect(row, false);
 }
 
 RECT PowerSavingController::LocalMuteButtonRect() const {
   if (!overlay_) return RECT{0, 0, 1, 1};
-  RECT stack{};
+  RECT row{};
   if (powerSaving_ && !mvStartupInputPass_) {
-    stack = ParentControlStackRect();
+    row = ParentControlStackRect();
   } else {
-    GetClientRect(overlay_, &stack);
+    GetClientRect(overlay_, &row);
   }
-  return ControlButtonRect(stack, true);
+  return ControlButtonRect(row, true);
 }
 
 void PowerSavingController::PaintOverlay(HWND window) {
@@ -240,7 +244,7 @@ void PowerSavingController::PaintOverlay(HWND window) {
     DeleteObject(brush);
 
     const int fontHeight = std::clamp(
-        static_cast<int>((button.bottom - button.top) * 38 / 100), 10, 15);
+        static_cast<int>((button.bottom - button.top) * 42 / 100), 11, 17);
     HFONT font = CreateFontW(
         -fontHeight, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
