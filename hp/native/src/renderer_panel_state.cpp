@@ -108,7 +108,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 
   if (!nativeDashboardVisible_ || (!stationheadChanged && !historyChanged)) return;
   if (!EnsureNativeStaticWindows()) return;
-  InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+  InvalidatePanelSection(nativeMainWindow_, PanelSection::Radar);
 }
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
@@ -173,7 +173,7 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
     const bool playbackChanged = playbackState != nativePlaybackTickState_;
     nativePlaybackTickState_ = playbackState;
     if (nativeStatsChanged || playbackChanged) {
-      InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+      InvalidatePanelSection(nativeMainWindow_, PanelSection::Radar);
     } else if (playbackState.active) {
       InvalidatePanelSection(nativeMainWindow_, PanelSection::PlaybackProgress);
     }
