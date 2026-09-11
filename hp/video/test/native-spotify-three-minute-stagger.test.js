@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const wrapper = readFileSync(new URL('../../native/src/spotify_webviews.inc', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
-const core1 = readFileSync(new URL('../../native/src/spotify_webviews_core_part1.inc', import.meta.url), 'utf8');
+const hostLifecycle = readFileSync(new URL('../../native/src/spotify_host_lifecycle.inc', import.meta.url), 'utf8');
 const schedule = readFileSync(new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 const timed = readFileSync(new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const cycle = readFileSync(new URL('../../native/src/spotify_rotation_cycle.inc', import.meta.url), 'utf8');
@@ -31,7 +31,7 @@ test('Spotify startup keeps one shared 40-second account offset with one direct 
 test('Spotify schedule starts autonomously and loads cloud playlist before rotation', () => {
   assert.match(header, /scheduleStartTick_ = 0/);
   assert.match(header, /void StartAutonomousSchedule\(ULONGLONG now\) noexcept/);
-  assert.match(core1, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
+  assert.match(hostLifecycle, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
   assert.match(schedule, /EnsureCloudPlaylistLoaded\(\)[\s\S]*robustSchedulerStarted_ = true/);
   assert.match(schedule, /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot, now\)/);
