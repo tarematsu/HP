@@ -3,19 +3,25 @@ namespace {
 SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
-  const int available = std::max(3, height - gap * 2);
-  const int clockHeight = available * 27 / 100;
-  const int remainingHeight = std::max(2, available - clockHeight);
-  const int weatherHeight = remainingHeight / 2;
-  const int airHeight = std::max(1, remainingHeight - weatherHeight);
+  // The radar window occupies 60% of the dashboard inner height. The side
+  // window spans that same inner height, so using the same ratio here keeps
+  // the weather card exactly the same pixel height as the radar card.
+  const int weatherHeight = std::max(1, height * 600 / 1000);
+  const int compactAvailable =
+      std::max(2, height - weatherHeight - gap * 2);
+  const int clockHeight = std::max(1, compactAvailable * 55 / 100);
+  const int airHeight = std::max(1, compactAvailable - clockHeight);
 
   SidebarSections sections;
   int top = client.top;
   sections.clock = RECT{client.left, top, client.right, top + clockHeight};
   top = sections.clock.bottom + gap;
-  sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
-  top = sections.weather.bottom + gap;
+  // Air and Weather intentionally trade their previous positions. Keep Air in
+  // the compact middle slot and reserve the full radar-height lower slot for
+  // the 12-hour weather forecast.
   sections.controls = RECT{client.left, top, client.right, top + airHeight};
+  top = sections.controls.bottom + gap;
+  sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
   // Electricity moved beside Music in the main column. Keep the legacy slot
   // outside the side client so old section plumbing cannot paint it twice.
   sections.energy = RECT{client.right, client.bottom, client.right + 1, client.bottom + 1};
