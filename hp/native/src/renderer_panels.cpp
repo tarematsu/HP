@@ -105,33 +105,10 @@ fs::path NativeMediaDataDir() {
 }
 }  // namespace
 
-namespace {
-constexpr wchar_t kNativeMediaSakuraMeetsSeriesUrl[] =
-    L"https://tver.jp/series/srx97ftk3w";
-constexpr wchar_t kNativeMediaDeathGameSeriesUrl[] =
-    L"https://tver.jp/series/srkzm5wbvp";
-bool gNativeMediaTverUseDeathGame = false;
-
-const wchar_t* ResolveNativeMediaNavigateUrl(const wchar_t* url) noexcept {
-  if (!url) return url;
-  if (wcscmp(url, kNativeMediaSakuraMeetsSeriesUrl) != 0 &&
-      wcscmp(url, kNativeMediaDeathGameSeriesUrl) != 0) {
-    return url;
-  }
-  return gNativeMediaTverUseDeathGame ? kNativeMediaDeathGameSeriesUrl
-                                      : kNativeMediaSakuraMeetsSeriesUrl;
-}
-
-void AdvanceNativeMediaTverSeries() noexcept {
-  gNativeMediaTverUseDeathGame = !gNativeMediaTverUseDeathGame;
-}
-}  // namespace
-
-// The media panel owns cadence, static playback scripts, series advancement and
-// trusted input. This composition layer only resolves the active TVer series URL.
-#define Navigate(url) Navigate(ResolveNativeMediaNavigateUrl((url)))
+// The media panel owns phase cadence, navigation, event-driven playback policy
+// and trusted WebView2 input. TVer episode choice is cloud-queue based; the old
+// renderer-level two-series alternation no longer participates in navigation.
 #include "renderer_panels/media_section.inc"
-#undef Navigate
 
 namespace {
 HWND NativeMediaRadarWindow() noexcept {
