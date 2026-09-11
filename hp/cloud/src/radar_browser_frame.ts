@@ -48,6 +48,7 @@ type BrowserBindingEnv = Env & { BROWSER?: Fetcher };
 
 const RENDER_PAGE_PATH = "/radar-cloud/render.html";
 const SATELLITE_ASSET_PATH = "/radar-cloud/radar-satellite.png";
+const SUNNY_ICON_ASSET_PATH = "/radar-cloud/weather-sunny.png";
 const KAWAGOE_BOUNDARY_URL = "https://geoshape.ex.nii.ac.jp/city/geojson/latest/11201.geojson";
 
 function originUrl(value: string): string {
@@ -131,6 +132,11 @@ export async function renderRepresentativeRadarFrame(
         return g.createImageBitmap(await response.blob());
       };
       const satellite = await loadRequired(payload.satelliteUrl);
+      let sunnyIcon: any | null = null;
+      const getSunnyIcon = async () => {
+        if (!sunnyIcon) sunnyIcon = await loadRequired(payload.sunnyIconUrl);
+        return sunnyIcon;
+      };
 
       const drawBase = (bitmap: any, panel: any, panelX: number) => {
         // The bundled satellite is a z10 layer centered on Kawagoe. Crop the
@@ -248,6 +254,21 @@ export async function renderRepresentativeRadarFrame(
         return true;
       };
 
+      const drawNoRainPanel = async (panelX: number) => {
+        // A dry panel is intentionally distinct from the normal Kawagoe mask:
+        // gray the whole map and place the same daytime clear-weather icon used
+        // by the forecast panel in the visual center of this panel only.
+        context.save();
+        context.fillStyle = "rgba(96,96,96,0.72)";
+        context.fillRect(panelX, 0, panelWidth, payload.outputHeight);
+        context.restore();
+        const icon = await getSunnyIcon();
+        const iconSize = Math.round(Math.min(panelWidth * 0.56, payload.outputHeight * 0.30));
+        const iconX = panelX + Math.round((panelWidth - iconSize) / 2);
+        const iconY = Math.round((payload.outputHeight - iconSize) / 2);
+        context.drawImage(icon, iconX, iconY, iconSize, iconSize);
+      };
+
       const drawPanelLabel = (panel: any, panelX: number) => {
         const title = panel.title as string;
         const timeText = panel.validTimeText as string;
@@ -275,19 +296,20 @@ export async function renderRepresentativeRadarFrame(
         context.fillText(timeText, panelX + chipLeft + chipHorizontalPadding, chipTop + 81);
       };
 
-      let loadedRainTiles = 0;
       for (let panelIndex = 0; panelIndex < payload.panels.length; panelIndex += 1) {
         const panel = payload.panels[panelIndex]!;
         const panelX = panelIndex * panelWidth;
 
-        // Fixed compositing order: satellite -> rain -> Kawagoe-only mask.
+        // Each panel independently chooses either the normal radar composition
+        // or the explicit no-rain presentation.
         drawBase(satellite, panel, panelX);
         const scaleX = panelWidth / panel.sourceWidth;
         const scaleY = payload.outputHeight / panel.sourceHeight;
+        let panelRainTiles = 0;
         for (const tile of panel.tiles as Array<{ url: string; destX: number; destY: number }>) {
           const bitmap = await loadRain(tile.url);
           if (!bitmap) continue;
-          loadedRainTiles += 1;
+          panelRainTiles += 1;
           context.drawImage(
             bitmap,
             panelX + Math.round(tile.destX * scaleX),
@@ -297,14 +319,16 @@ export async function renderRepresentativeRadarFrame(
           );
           bitmap.close?.();
         }
-        // Never fall back to the legacy radar-map.png here: it is an opaque,
-        // pre-Kawagoe map layer and can hide the rain tiles beneath it.
-        drawKawagoeMask(panel, panelX);
+        if (panelRainTiles === 0) {
+          await drawNoRainPanel(panelX);
+        } else {
+          // Never fall back to the legacy radar-map.png here: it is an opaque,
+          // pre-Kawagoe map layer and can hide the rain tiles beneath it.
+          drawKawagoeMask(panel, panelX);
+        }
       }
 
-      if (loadedRainTiles === 0) {
-        throw new Error("radar rain tiles were not fetched for any panel");
-      }
+      sunnyIcon?.close?.();
       satellite.close?.();
 
       context.fillStyle = "rgba(0,0,0,0.92)";
@@ -312,7 +336,7 @@ export async function renderRepresentativeRadarFrame(
         context.fillRect(divider * panelWidth - 2, 0, 4, payload.outputHeight);
       }
 
-      // Labels are a final pass so no rain/mask layer can ever cover the time.
+      // Labels are a final pass so no rain/mask/fallback layer can ever cover the time.
       for (let panelIndex = 0; panelIndex < payload.panels.length; panelIndex += 1) {
         const panel = payload.panels[panelIndex]!;
         const panelX = panelIndex * panelWidth;
@@ -323,6 +347,7 @@ export async function renderRepresentativeRadarFrame(
       outputHeight: request.outputHeight,
       panels: panelResults,
       satelliteUrl: `${publicOrigin}${SATELLITE_ASSET_PATH}`,
+      sunnyIconUrl: `${publicOrigin}${SUNNY_ICON_ASSET_PATH}`,
       boundary,
     });
 
