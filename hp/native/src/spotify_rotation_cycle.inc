@@ -9,6 +9,18 @@ struct SpotifyFallbackCatalogTrack {
 
 #include "spotify_fallback_catalog.inc"
 
+ULONGLONG MixSpotifyRotationSeed(ULONGLONG value) noexcept {
+  value += 0x9E3779B97F4A7C15ULL;
+  value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ULL;
+  value = (value ^ (value >> 27)) * 0x94D049BB133111EBULL;
+  return value ^ (value >> 31);
+}
+
+ULONGLONG NextSpotifySeededRandom(ULONGLONG& state) noexcept {
+  state = MixSpotifyRotationSeed(state);
+  return state;
+}
+
 }  // namespace
 
 ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
@@ -48,7 +60,10 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
     return true;
   };
 
-  const auto appendGroup = [this, &appendUnique](const RotationGroup& group) {
+  size_t groupIndex = 0;
+  const auto appendGroup =
+      [this, &slot, &appendUnique, &groupIndex](const RotationGroup& group) {
+    const size_t currentGroupIndex = groupIndex++;
     std::vector<ManagedTrack> candidates = group.tracks;
     if (group.includeTalkAbout && SpotifyPodcastTargetReady()) {
       candidates.push_back(
@@ -57,17 +72,49 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
     }
     if (candidates.empty()) return;
 
-    if (group.mode != RotationGroup::Mode::Fixed) {
-      for (size_t remaining = candidates.size(); remaining > 1; --remaining) {
-        const size_t swapIndex =
-            static_cast<size_t>(NextTimedRandom() % remaining);
-        std::swap(candidates[remaining - 1], candidates[swapIndex]);
-      }
-    }
-
     const size_t take = group.mode == RotationGroup::Mode::Random
         ? std::min(group.count, candidates.size())
         : candidates.size();
+
+    if (group.mode != RotationGroup::Mode::Fixed) {
+      // Every account derives the same base permutation for the same app
+      // session, cloud revision, cycle, and rotation group. slot.index is
+      // intentionally excluded from this seed; per-window diversity comes from
+      // the lane rotation below, so no extra polling, DOM work, or network work
+      // is needed to coordinate the six WebViews.
+      ULONGLONG shuffleState = MixSpotifyRotationSeed(
+          scheduleStartTick_ ^
+          (cloudRotationRevision_ * 0x9E3779B97F4A7C15ULL) ^
+          ((slot.timedRotationCycle + 1ULL) * 0xBF58476D1CE4E5B9ULL) ^
+          ((static_cast<ULONGLONG>(currentGroupIndex) + 1ULL) *
+           0x94D049BB133111EBULL) ^
+          static_cast<ULONGLONG>(reinterpret_cast<ULONG_PTR>(this)));
+      for (size_t remaining = candidates.size(); remaining > 1; --remaining) {
+        const size_t swapIndex = static_cast<size_t>(
+            NextSpotifySeededRandom(shuffleState) % remaining);
+        std::swap(candidates[remaining - 1], candidates[swapIndex]);
+      }
+
+      // Give each account a different lane through that shared permutation.
+      // Random groups reserve count-sized lanes, which makes their selected
+      // blocks disjoint whenever the pool is large enough. Shuffle groups use
+      // one-step lanes so their first/current song differs across windows while
+      // retaining every candidate in each account's cycle. If a pool contains
+      // fewer than six candidates, the modulo wrap gives the minimum possible
+      // duplication rather than adding retries or cross-window coordination.
+      const size_t laneWidth = group.mode == RotationGroup::Mode::Random
+          ? std::max<size_t>(1, take)
+          : 1;
+      const size_t laneStart =
+          (currentGroupIndex * kAccountCount + slot.index * laneWidth) %
+          candidates.size();
+      if (laneStart != 0) {
+        std::rotate(
+            candidates.begin(), candidates.begin() + laneStart,
+            candidates.end());
+      }
+    }
+
     size_t appended = 0;
     for (ManagedTrack& candidate : candidates) {
       if (!appendUnique(std::move(candidate))) continue;
