@@ -42,21 +42,23 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const labelOf = element => normalize(
       (element && (element.getAttribute('aria-label') ||
                    element.getAttribute('title'))) || '').toLowerCase();
-  const buttonShowsPlaying = button => {
+  const buttonIntent = button => {
     const label = labelOf(button);
-    return label.includes('pause') || label.includes('一時停止');
+    if (!label) return 'unknown';
+    if (label.includes('pause') || label.includes('一時停止')) return 'pause';
+    if (label === 'play' || label === '再生' ||
+        label.startsWith('play ') || label.endsWith('を再生')) {
+      return 'play';
+    }
+    return 'unknown';
   };
   const playerControl = () => {
     const primary = document.querySelector(
         'button[data-testid="control-button-playpause"]');
     if (visible(primary)) return primary;
     return Array.from(document.querySelectorAll('button, [role="button"]'))
-        .find(button => {
-          if (!visible(button)) return false;
-          const label = labelOf(button);
-          return label === 'play' || label === 'pause' ||
-                 label === '再生' || label === '一時停止';
-        }) || null;
+        .find(button => visible(button) && buttonIntent(button) !== 'unknown') ||
+        null;
   };
   const currentTrack = () => {
     const selectors = [
@@ -110,10 +112,10 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
             'button[data-testid="play-button"], button, [role="button"]'));
         const button = buttons.find(candidate => {
           if (!visible(candidate)) return false;
+          const intent = buttonIntent(candidate);
+          if (intent !== 'unknown') return true;
           const label = labelOf(candidate);
-          return label === 'play' || label === 'pause' ||
-                 label === '再生' || label === '一時停止' ||
-                 (!!target.title && label.includes(target.title));
+          return !!target.title && label.includes(target.title);
         });
         if (button) return button;
       }
@@ -150,10 +152,22 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const mediaPlaybackState = () => {
     const media = Array.from(document.querySelectorAll('audio, video'));
     const active = media.find(candidate => !candidate.ended && !candidate.paused);
-    if (active) return { known: true, playing: true };
+    if (active) {
+      return {
+        known: true,
+        playing: true,
+        currentTime: Number(active.currentTime) || 0
+      };
+    }
     const pending = media.find(candidate => !candidate.ended) || null;
-    if (pending) return { known: true, playing: false };
-    return { known: false, playing: false };
+    if (pending) {
+      return {
+        known: true,
+        playing: false,
+        currentTime: Number(pending.currentTime) || 0
+      };
+    }
+    return { known: false, playing: false, currentTime: 0 };
   };
 
   if (location.hostname !== 'open.spotify.com' || !onTargetPage()) {
@@ -162,25 +176,32 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   }
 
   const current = currentTrack();
+  const currentMatchesTarget = targetMatches(current);
   const control = playerControl();
   const button = targetPlayButton();
+  const controlIntent = buttonIntent(control);
+  const buttonIntentValue = buttonIntent(button);
   const mediaState = mediaPlaybackState();
-  const uiShowsPlaying =
-      (targetMatches(current) && buttonShowsPlaying(control)) ||
-      buttonShowsPlaying(button);
 
-  // Spotify can flip the control label to "Pause" before the audio element has
-  // actually left its paused 0-second state. When a media element exists, its
-  // paused/ended state is authoritative; otherwise keep the UI fallback for
-  // player builds that do not expose an HTMLMediaElement.
-  if (uiShowsPlaying && (!mediaState.known || mediaState.playing)) {
+  // Playback truth comes from an active media element plus target identity.
+  // A Pause-labelled UI while media is still paused at zero is a transitional
+  // state, not a command to click. Returning "settling" makes native wait and,
+  // if the transition never resolves, recover by navigation rather than by
+  // toggling the ambiguous play/pause control.
+  if (currentMatchesTarget && mediaState.known && mediaState.playing) {
     report(true);
     return true;
   }
+  if (controlIntent === 'pause' || buttonIntentValue === 'pause') {
+    report(false);
+    return 'settling';
+  }
 
   report(false);
-  if (targetMatches(current) && visible(control)) return point(control);
-  return point(button);
+  if (buttonIntentValue === 'play') return point(button);
+  if (currentMatchesTarget && controlIntent === 'play') return point(control);
+  if (currentMatchesTarget || mediaState.known) return 'settling';
+  return null;
 })()
 )JS";
 
