@@ -109,7 +109,10 @@ export async function renderRepresentativeRadarFrame(
 
     await page.evaluate(async (payload) => {
       const g = globalThis as unknown as {
-        document: { getElementById(id: string): any };
+        document: {
+          getElementById(id: string): any;
+          createElement(tagName: string): any;
+        };
         createImageBitmap(blob: Blob): Promise<any>;
       };
       const canvas = g.document.getElementById("radar-frame");
@@ -215,7 +218,7 @@ export async function renderRepresentativeRadarFrame(
               const x = panelX + sourceX * scaleX;
               const y = sourceY * scaleY;
               if (first) {
-                context.moveTo(x, y);
+                context.moveTo(x, y, nullptr);
                 first = false;
               } else {
                 context.lineTo(x, y);
@@ -273,7 +276,9 @@ export async function renderRepresentativeRadarFrame(
         const title = panel.title as string;
         const timeText = panel.validTimeText as string;
         const chipLeft = 24;
-        const chipTop = 72;
+        // The native renderer center-crops this 3:2 source into a wider card.
+        // Keep labels below that crop boundary so the title and timestamp remain visible.
+        const chipTop = 240;
         const chipHorizontalPadding = 27;
         const chipHeight = 112;
         context.font = "600 42px sans-serif";
@@ -301,31 +306,55 @@ export async function renderRepresentativeRadarFrame(
         const panelX = panelIndex * panelWidth;
 
         // Each panel independently chooses either the normal radar composition
-        // or the explicit no-rain presentation.
+        // or the explicit no-rain presentation. Determine rain from the actual
+        // visible alpha pixels, not merely from whether a tile HTTP request succeeded.
         drawBase(satellite, panel, panelX);
         const scaleX = panelWidth / panel.sourceWidth;
         const scaleY = payload.outputHeight / panel.sourceHeight;
-        let panelRainTiles = 0;
+        const rainCanvas = g.document.createElement("canvas");
+        rainCanvas.width = panel.sourceWidth;
+        rainCanvas.height = panel.sourceHeight;
+        const rainContext = rainCanvas.getContext("2d");
+        if (!rainContext) throw new Error("radar rain analysis canvas unavailable");
+        rainContext.clearRect(0, 0, panel.sourceWidth, panel.sourceHeight);
+
+        const rainLayers: Array<{
+          bitmap: any;
+          tile: { url: string; destX: number; destY: number };
+        }> = [];
         for (const tile of panel.tiles as Array<{ url: string; destX: number; destY: number }>) {
           const bitmap = await loadRain(tile.url);
           if (!bitmap) continue;
-          panelRainTiles += 1;
-          context.drawImage(
-            bitmap,
-            panelX + Math.round(tile.destX * scaleX),
-            Math.round(tile.destY * scaleY),
-            Math.ceil(256 * scaleX),
-            Math.ceil(256 * scaleY),
-          );
-          bitmap.close?.();
+          rainContext.drawImage(bitmap, tile.destX, tile.destY, 256, 256);
+          rainLayers.push({ bitmap, tile });
         }
-        if (panelRainTiles === 0) {
+
+        const rainPixels = rainContext.getImageData(0, 0, panel.sourceWidth, panel.sourceHeight).data;
+        let hasRain = false;
+        for (let offset = 3; offset < rainPixels.length; offset += 4) {
+          if (rainPixels[offset] > 8) {
+            hasRain = true;
+            break;
+          }
+        }
+
+        if (!hasRain) {
           await drawNoRainPanel(panelX);
         } else {
+          for (const { bitmap, tile } of rainLayers) {
+            context.drawImage(
+              bitmap,
+              panelX + Math.round(tile.destX * scaleX),
+              Math.round(tile.destY * scaleY),
+              Math.ceil(256 * scaleX),
+              Math.ceil(256 * scaleY),
+            );
+          }
           // Never fall back to the legacy radar-map.png here: it is an opaque,
           // pre-Kawagoe map layer and can hide the rain tiles beneath it.
           drawKawagoeMask(panel, panelX);
         }
+        for (const { bitmap } of rainLayers) bitmap.close?.();
       }
 
       sunnyIcon?.close?.();
