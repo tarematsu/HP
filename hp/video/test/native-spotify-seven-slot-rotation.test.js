@@ -12,8 +12,8 @@ const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
 const cloud = readFileSync(
   new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
-const recent = readFileSync(
-  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
+const cycle = readFileSync(
+  new URL('../../native/src/spotify_rotation_cycle.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const schedule = readFileSync(
@@ -93,19 +93,19 @@ test('E/F/G short-song pool includes the ten additional verified vocal tracks', 
 });
 
 test('native enforces no duplicate Spotify path inside one cycle', () => {
-  assert.match(recent, /std::vector<std::wstring> usedPaths/);
-  assert.match(recent, /std::find\(usedPaths\.begin\(\), usedPaths\.end\(\), track\.path\)/);
-  assert.match(recent, /usedPaths\.push_back\(track\.path\)/);
-  assert.match(recent, /size_t appended = 0/);
-  assert.match(recent, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
+  assert.match(cycle, /std::vector<std::wstring> usedPaths/);
+  assert.match(cycle, /std::find\(usedPaths\.begin\(\), usedPaths\.end\(\), track\.path\)/);
+  assert.match(cycle, /usedPaths\.push_back\(track\.path\)/);
+  assert.match(cycle, /size_t appended = 0/);
+  assert.match(cycle, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
 test('G mixes short songs with latest TALKABOUT and no timed interrupt remains', () => {
   assert.match(header, /bool includeTalkAbout = false/);
   assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
-  assert.match(recent, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
-  assert.match(recent, /SpotifyPodcastUrl\(\)/);
-  assert.match(recent, /SpotifyPodcastPath\(\)/);
+  assert.match(cycle, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
+  assert.match(cycle, /SpotifyPodcastUrl\(\)/);
+  assert.match(cycle, /SpotifyPodcastPath\(\)/);
   assert.match(rotation, /target\.path == SpotifyPodcastPath\(\)/);
   assert.match(rotation, /TimedSpotifyTarget::TalkAbout/);
   assert.doesNotMatch(header + cloud + rotation + schedule, /StartOverduePodcastBreak|podcastDueTick|intervalMinutes/);
