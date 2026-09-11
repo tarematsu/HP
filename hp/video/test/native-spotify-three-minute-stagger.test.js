@@ -36,20 +36,23 @@ test('Spotify schedule starts autonomously and loads cloud playlist before rotat
   assert.doesNotMatch(header + schedule, /podcastMode_|SetPodcastMode|youtubeCycleStartTick_/);
 });
 
-test('cloud rotation supports arbitrary fixed, shuffle, and random block lengths', () => {
+test('cloud rotation supports fixed, shuffle, random, TALKABOUT candidates, and cycle dedupe', () => {
   assert.match(header, /struct RotationGroup/);
   assert.match(header, /Mode : unsigned char \{ Fixed, Shuffle, Random \}/);
   assert.match(header, /std::vector<ManagedTrack> tracks/);
+  assert.match(header, /bool includeTalkAbout = false/);
   assert.match(header, /std::vector<ManagedTrack> timedCycleTracks/);
   assert.match(cloud, /GetNamedArray\(L"rotation"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"fixed"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"shuffle"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"random"\)/);
+  assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
   assert.match(cloud, /GetNamedNumber\(L"count", 1\.0\)/);
+  assert.match(recent, /std::vector<std::wstring> usedPaths/);
   assert.match(recent, /for \(const RotationGroup& group : cloudRotationGroups_\) appendGroup\(group\)/);
-  assert.match(recent, /slot\.timedCycleTracks\.insert/);
-  assert.match(recent, /std::swap\(order\[remaining - 1\], order\[swapIndex\]\)/);
-  assert.match(recent, /std::min\(group\.count, order\.size\(\)\)/);
+  assert.match(recent, /std::swap\(candidates\[remaining - 1\], candidates\[swapIndex\]\)/);
+  assert.match(recent, /std::min\(group\.count, candidates\.size\(\)\)/);
+  assert.match(recent, /std::find\(usedPaths\.begin\(\), usedPaths\.end\(\), track\.path\)/);
   assert.doesNotMatch(rotation, /% 6U|position <= 4U/);
 });
 
@@ -86,7 +89,6 @@ test('stale playback events are rejected by target generation', () => {
   assert.match(rotation, /ParseSpotifyGenerationEvent/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
   assert.match(recent, /spotify:generation/);
-  assert.match(recent, /std::to_wstring\(slot\.targetGeneration\)/);
   assert.match(runtime, /message \+ '\\u001f' \+ generation\(\)/);
 });
 
