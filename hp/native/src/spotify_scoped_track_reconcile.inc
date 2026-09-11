@@ -46,6 +46,21 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
     const label = labelOf(button);
     return label.includes('pause') || label.includes('一時停止');
   };
+  const repeatState = button => {
+    if (!button) return 'unknown';
+    const checked = button.getAttribute('aria-checked');
+    if (checked === 'false') return 'off';
+    if (checked === 'true') return 'context';
+    if (checked === 'mixed') return 'one';
+    const label = labelOf(button);
+    if (label.includes('enable repeat') || label.includes('リピートを有効')) {
+      return 'off';
+    }
+    if (label.includes('disable repeat') || label.includes('リピートを無効')) {
+      return 'one';
+    }
+    return 'unknown';
+  };
   const playerControl = () => {
     const primary = document.querySelector(
         'button[data-testid="control-button-playpause"]');
@@ -156,6 +171,21 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const current = currentTrack();
   const control = playerControl();
   const button = targetPlayButton();
+
+  // Keep Spotify's own queue in repeat-one while music is active. The media
+  // observer still cuts the requested track two seconds before its natural end,
+  // but repeat-one is a fail-safe for background/event throttling: if that end
+  // guard is ever missed, Spotify repeats the requested song instead of starting
+  // an autoplay recommendation. Use the existing native trusted-click path and
+  // advance Off -> Context -> One over successive reconcile passes.
+  const repeat = document.querySelector(
+      'button[data-testid="control-button-repeat"]');
+  const repeatMode = repeatState(repeat);
+  if (visible(repeat) && repeatMode !== 'one' && repeatMode !== 'unknown') {
+    report(false);
+    return point(repeat);
+  }
+
   if ((targetMatches(current) && buttonShowsPlaying(control)) ||
       buttonShowsPlaying(button)) {
     report(true);
