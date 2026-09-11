@@ -32,6 +32,8 @@ export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
 // pool so older device configs remain an exact prefix and migrate safely.
 export const ADDITIONAL_INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
   ["Interlude #3", "0LyOFxPXWLw2k0q4y9pFM3"],
+  ["Interlude #5", "3rLKZOGLGRwMQ9XX4aECfN"],
+  ["Interlude #7", "4OTvaYkw60M6YNZ59vlx0R"],
 ] as const;
 
 export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
