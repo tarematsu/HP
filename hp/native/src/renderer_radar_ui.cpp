@@ -22,8 +22,8 @@ struct ScopedRadarComApartment {
 };
 
 fs::path RepresentativeRadarLocalPath(const fs::path& dataDir) {
-  return dataDir / L"v1" / L"radar" / L"frame" / L"representative" /
-         L"latest.png";
+  return dataDir / L"radar-cache" / L"v1" / L"radar" / L"frame" /
+         L"representative" / L"latest.png";
 }
 
 std::optional<fs::path> RepresentativeRadarFramePath(
