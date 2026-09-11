@@ -218,7 +218,7 @@ export async function renderRepresentativeRadarFrame(
               const x = panelX + sourceX * scaleX;
               const y = sourceY * scaleY;
               if (first) {
-                context.moveTo(x, y, nullptr);
+                context.moveTo(x, y);
                 first = false;
               } else {
                 context.lineTo(x, y);
