@@ -73,6 +73,39 @@ std::wstring DeviceState(const JsonObject& item) {
   }
   return state;
 }
+
+std::wstring FixedOne(double value) {
+  wchar_t buffer[64]{};
+  swprintf_s(buffer, L"%.1f", value);
+  return buffer;
+}
+
+void BuildOctopusRenderProjection(DashboardSnapshot& snapshot) {
+  OctopusRenderProjection projection;
+  projection.currentWeekComplete = snapshot.octopusProfile.size() == 7;
+  projection.previousWeekComplete = projection.currentWeekComplete;
+
+  for (const auto& item : snapshot.octopusProfile) {
+    if (item.currentComplete && std::isfinite(item.currentTotal)) {
+      projection.currentWeekUsage += item.currentTotal;
+      projection.maximum = std::max(projection.maximum, item.currentTotal);
+    } else {
+      projection.currentWeekComplete = false;
+    }
+    if (item.previousComplete && std::isfinite(item.previousTotal)) {
+      projection.previousWeekUsage += item.previousTotal;
+      projection.maximum = std::max(projection.maximum, item.previousTotal);
+    } else {
+      projection.previousWeekComplete = false;
+    }
+  }
+  projection.maximum *= 1.1;
+  projection.currentLegend = snapshot.currentEnergyLabel + L" " +
+      (projection.currentWeekComplete ? FixedOne(projection.currentWeekUsage) : L"--.-");
+  projection.previousLegend = snapshot.previousEnergyLabel + L" " +
+      (projection.previousWeekComplete ? FixedOne(projection.previousWeekUsage) : L"--.-");
+  snapshot.octopusRender = std::move(projection);
+}
 }  // namespace
 
 bool ParseDashboardSnapshot(
@@ -135,6 +168,7 @@ bool ParseDashboardSnapshot(
       next.currentEnergyLabel = previous->currentEnergyLabel;
       next.previousEnergyLabel = previous->previousEnergyLabel;
       next.octopusProfile = previous->octopusProfile;
+      next.octopusRender = previous->octopusRender;
     } else {
       next.lastMonthUsage = NumberOrNaN(json::Object(octopus, L"lastMonth"), L"usage");
       next.projectedUsage =
@@ -164,32 +198,15 @@ bool ParseDashboardSnapshot(
         } catch (...) {
         }
       }
+      BuildOctopusRenderProjection(next);
     }
 
-    const JsonObject switchbot = json::Object(root, L"switchbot");
-    next.revisions.switchbot = SourceRevision(switchbot);
-    if (CanReuseSection(previous, &DashboardSectionRevisions::switchbot,
-                        next.revisions.switchbot)) {
+    // SwitchBot is synchronized through switchbot.json and is intentionally not
+    // materialized from dashboard.json. Preserve an already-loaded independent
+    // snapshot while dashboard weather/Octopus revisions are replaced.
+    if (previous) {
+      next.revisions.switchbot = previous->revisions.switchbot;
       next.switchBotDevices = previous->switchBotDevices;
-    } else {
-      const JsonArray devices = json::Array(switchbot, L"devices");
-      next.switchBotDevices.reserve(8);
-      for (uint32_t index = 0;
-           index < devices.Size() && next.switchBotDevices.size() < 8; ++index) {
-        try {
-          const auto value = devices.GetAt(index);
-          if (value.ValueType() != JsonValueType::Object) continue;
-          const JsonObject item = value.GetObject();
-          const std::wstring type = json::Text(item, L"deviceType");
-          if (type.find(L"Plug") == std::wstring::npos) continue;
-          next.switchBotDevices.push_back({
-              json::Text(item, L"deviceName",
-                         json::Text(item, L"deviceId", L"SwitchBot")),
-              DeviceState(item),
-          });
-        } catch (...) {
-        }
-      }
     }
 
     output = std::move(next);
@@ -201,6 +218,46 @@ bool ParseDashboardSnapshot(
     if (error) *error = Utf8ToWide(exception.what());
   } catch (...) {
     if (error) *error = L"unknown dashboard parse error";
+  }
+  return false;
+}
+
+bool ParseSwitchBotDevices(const std::string& text,
+                           std::vector<SwitchBotDeviceData>& output,
+                           std::wstring* error) {
+  try {
+    if (text.empty()) {
+      if (error) *error = L"switchbot.json is empty";
+      return false;
+    }
+    const JsonObject root = JsonObject::Parse(Utf8ToWide(text));
+    const JsonArray devices = json::Array(root, L"devices");
+    std::vector<SwitchBotDeviceData> next;
+    next.reserve(4);
+    for (uint32_t index = 0; index < devices.Size() && next.size() < 4; ++index) {
+      try {
+        const auto value = devices.GetAt(index);
+        if (value.ValueType() != JsonValueType::Object) continue;
+        const JsonObject item = value.GetObject();
+        const std::wstring type = json::Text(item, L"deviceType");
+        if (type.find(L"Plug") == std::wstring::npos) continue;
+        next.push_back({
+            json::Text(item, L"deviceName",
+                       json::Text(item, L"deviceId", L"SwitchBot")),
+            DeviceState(item),
+        });
+      } catch (...) {
+      }
+    }
+    output = std::move(next);
+    if (error) error->clear();
+    return true;
+  } catch (const winrt::hresult_error& exception) {
+    if (error) *error = exception.message().c_str();
+  } catch (const std::exception& exception) {
+    if (error) *error = Utf8ToWide(exception.what());
+  } catch (...) {
+    if (error) *error = L"unknown SwitchBot parse error";
   }
   return false;
 }
