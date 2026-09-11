@@ -10,8 +10,8 @@ const randomCatalog = readFileSync(
   new URL('../../cloud/src/spotify_random_catalog.ts', import.meta.url), 'utf8');
 const nativeCloud = readFileSync(
   new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
-const recent = readFileSync(
-  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
+const cycle = readFileSync(
+  new URL('../../native/src/spotify_rotation_cycle.inc', import.meta.url), 'utf8');
 const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
@@ -58,7 +58,7 @@ test('G omits TALKABOUT when no direct latest episode is synchronized', () => {
   assert.doesNotMatch(scripts, /latestEpisodeButton|a\[href\*="\/episode\/"\]/);
   assert.match(scripts, /target\.pagePath\.startsWith\('\/episode\/'\)/);
   assert.match(scripts, /location\.pathname !== target\.pagePath/);
-  assert.match(recent, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
+  assert.match(cycle, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
   assert.match(rotation, /SpotifyPodcastTargetReady\(\) && target\.path == SpotifyPodcastPath\(\)/);
   assert.doesNotMatch(rotation, /StartOverduePodcastBreak|podcastDueTick/);
 });
