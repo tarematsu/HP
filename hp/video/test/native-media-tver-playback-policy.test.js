@@ -6,6 +6,14 @@ const policy = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url),
   'utf8',
 );
+const episodeLoop = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url),
+  'utf8',
+);
+const mediaSection = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  'utf8',
+);
 
 test('TVer playback policy is scoped to episode pages', () => {
   assert.match(policy, /kNativeMediaTverPlaybackWatchdogPolicyScript/);
@@ -53,40 +61,59 @@ test('TVer survey scan stays inside modal or survey roots', () => {
   assert.match(policy, /閉じる\|とじる\|close\|dismiss/);
   assert.match(policy, /アンケート\|ご回答\|回答する\|誕生年\|誕生月\|性別/);
   assert.match(policy, /if \(surveyClose\) return point\(surveyClose\)/);
-  assert.doesNotMatch(
-    policy,
-    /const controls = Array\.from\(document\.querySelectorAll\(\s*'button, \[role="button"\], a, \[aria-label\], \[title\]'/,
-  );
 });
 
-test('paused TVer episodes recover idempotently before building control lists', () => {
+test('paused TVer media recovers idempotently during programs and ads', () => {
   const pausedIndex = policy.indexOf('if (video.paused && !video.ended)');
-  const fullscreenIndex = policy.indexOf('state && state.fullscreenDirty === false');
+  const fullscreenIndex = policy.indexOf('const browserFullscreen');
   assert.ok(pausedIndex >= 0);
   assert.ok(fullscreenIndex > pausedIndex);
   assert.match(policy, /const findPlayButton = \(\) => playerControls\(\)\.find/);
   assert.match(policy, /const pending = video\.play\(\)/);
   assert.match(policy, /video\.__homePanelTverResumeBlocked/);
   assert.match(policy, /const playButton = findPlayButton\(\)/);
-  assert.doesNotMatch(policy, /return point\(video\)/);
+  assert.doesNotMatch(policy, /if \(\(state && state\.adActive\) \|\| window\.__homePanelTverAdActive\) return null/);
   assert.doesNotMatch(policy, /video\.pause\(/);
 });
 
-test('healthy TVer playback exits before a player-wide control scan', () => {
-  const cleanFullscreenIndex = policy.indexOf(
-    'if (state && state.fullscreenDirty === false) return null',
+test('TVer keeps actual browser fullscreen authoritative and allows ads fullscreen', () => {
+  assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
+  assert.match(policy, /if \(browserFullscreen\)[\s\S]*state\.fullscreenDirty = false/);
+  assert.match(policy, /if \(state\) state\.fullscreenDirty = true/);
+  assert.match(policy, /fullscreenButton \? point\(fullscreenButton\) : point\(video\)/);
+  assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
+  assert.doesNotMatch(
+    policy,
+    /kNativeMediaTverForceFullscreenAnyMediaScript[\s\S]*adActive[\s\S]*return/,
   );
-  const controlsIndex = policy.indexOf('const controls = playerControls()');
-  assert.ok(cleanFullscreenIndex >= 0);
-  assert.ok(controlsIndex > cleanFullscreenIndex);
-  assert.match(policy, /depth < 5/);
-  assert.match(policy, /root\.querySelectorAll\(/);
+  assert.match(
+    mediaSection,
+    /#define kNativeMediaTverForceFullscreenAdSafeScript[\s\S]*kNativeMediaTverForceFullscreenAnyMediaScript[\s\S]*#include "media_trusted_input\.inc"/,
+  );
 });
 
-test('episode-page restart, ad, and fullscreen guards remain intact', () => {
+test('TVer holds program completion long enough for post-roll and drains the full ad pod', () => {
+  assert.match(episodeLoop, /postrollGraceMs = 12000/);
+  assert.match(episodeLoop, /postrollAfterProgram: false/);
+  assert.match(episodeLoop, /const completedProgram = state\.endCandidateAt > 0/);
+  assert.match(episodeLoop, /if \(!state\.adActive\) state\.postrollAfterProgram = completedProgram/);
+  assert.match(episodeLoop, /if \(!duration \|\| shortAdLength \|\| explicitMarker\) return true/);
+  assert.match(episodeLoop, /const completedPostroll = state\.postrollAfterProgram/);
+  assert.match(episodeLoop, /if \(completedPostroll\)[\s\S]*advanceEpisodeOrSeries\(\)/);
+  assert.match(episodeLoop, /Date\.now\(\) - state\.endCandidateAt >= postrollGraceMs/);
+});
+
+test('TVer program and ad media are pinned to full player volume', () => {
+  assert.match(episodeLoop, /const targetVolume = 1\.0/);
+  assert.match(episodeLoop, /const enforceVolume = video =>/);
+  assert.match(episodeLoop, /if \(video\.muted\) video\.muted = false/);
+  assert.match(episodeLoop, /video\.volume !== targetVolume/);
+  assert.match(episodeLoop, /addEventListener\('volumechange'/);
+  assert.match(policy, /if \(video\.volume !== 1\.0\) video\.volume = 1\.0/);
+});
+
+test('episode-page restart and fullscreen recovery remain intact', () => {
   assert.match(policy, /state && state\.restartRequested/);
-  assert.match(policy, /state && state\.adActive/);
-  assert.match(policy, /window\.__homePanelTverAdActive/);
-  assert.match(policy, /state && state\.fullscreenDirty === false/);
-  assert.match(policy, /fullscreenButton \? point\(fullscreenButton\) : null/);
+  assert.match(policy, /window\.__homePanelSakuraMeetsState/);
+  assert.match(policy, /fullscreenButton \? point\(fullscreenButton\) : point\(video\)/);
 });
