@@ -12,10 +12,9 @@ const scripts = readFileSync(
 );
 const spotify = [
   'spotify_webviews.cpp',
-  'spotify_webviews_core_part1.inc',
-  'spotify_webviews_core_part2.inc',
-  'spotify_webviews_core_part3.inc',
-  'spotify_webviews_core_part4.inc',
+  'spotify_webview_foundation.inc',
+  'spotify_host_lifecycle.inc',
+  'spotify_controller_lifecycle.inc',
 ].map(name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
 const layout = readFileSync(

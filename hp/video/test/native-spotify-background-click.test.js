@@ -18,8 +18,8 @@ const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url),
   'utf8',
 );
-const core = readFileSync(
-  new URL('../../native/src/spotify_webviews_core_part4.inc', import.meta.url),
+const hostLifecycle = readFileSync(
+  new URL('../../native/src/spotify_host_lifecycle.inc', import.meta.url),
   'utf8',
 );
 
@@ -57,8 +57,8 @@ test('Spotify trusted click uses one target-scoped eight-second gate', () => {
 test('target changes and WebView rebuilds invalidate old trusted click chains', () => {
   assert.match(helper, /target->targetGeneration != targetGeneration/);
   assert.match(helper, /target->webview\.Get\(\) != view\.Get\(\)/);
-  assert.match(core, /slot\.trustedClickTargetGeneration = 0/);
-  assert.match(core, /slot\.trustedClickBlockedUntilTick = 0/);
+  assert.match(hostLifecycle, /slot\.trustedClickTargetGeneration = 0/);
+  assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
 test('parked Spotify surfaces are playback-only and recovery gets a desktop-like viewport', () => {
