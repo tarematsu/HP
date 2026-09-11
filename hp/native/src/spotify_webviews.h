@@ -64,6 +64,7 @@ class SpotifyWebViews final {
     Mode mode = Mode::Fixed;
     std::vector<ManagedTrack> tracks;
     size_t count = 0;
+    bool includeTalkAbout = false;
   };
 
   struct Slot {
