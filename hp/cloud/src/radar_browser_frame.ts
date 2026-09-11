@@ -50,7 +50,6 @@ const RENDER_PAGE_PATH = "/radar-cloud/render.html";
 const SATELLITE_ASSET_PATH = "/radar-cloud/radar-satellite.png";
 const SUNNY_ICON_ASSET_PATH = "/radar-cloud/weather-sunny.png";
 const KAWAGOE_BOUNDARY_URL = "https://geoshape.ex.nii.ac.jp/city/geojson/latest/11201.geojson";
-export const KAWAGOE_MASK_PATH = "/v1/radar/frame/mask/kawagoe-v1.png";
 export const KAWAGOE_MASK_KEY = "radar/assets/kawagoe-mask-v1-480x960.png";
 const RAIN_ANALYSIS_WIDTH = 80;
 const RAIN_ANALYSIS_HEIGHT = 160;
@@ -90,6 +89,15 @@ function decodePngDataUrl(value: string): Uint8Array {
   return output;
 }
 
+function encodePngDataUrl(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return `data:image/png;base64,${btoa(binary)}`;
+}
+
 export async function renderRepresentativeRadarFrame(
   env: Env,
   request: BrowserRadarRenderRequest,
@@ -98,8 +106,11 @@ export async function renderRepresentativeRadarFrame(
   if (!browserBinding) throw new Error("Cloudflare Browser Run binding is unavailable");
   const publicOrigin = originUrl(request.publicUrl);
   const storedMask = env.UPDATE_BUCKET
-    ? await env.UPDATE_BUCKET.head(KAWAGOE_MASK_KEY)
+    ? await env.UPDATE_BUCKET.get(KAWAGOE_MASK_KEY)
     : null;
+  const storedMaskDataUrl = storedMask
+    ? encodePngDataUrl(new Uint8Array(await storedMask.arrayBuffer()))
+    : "";
   const boundary = storedMask ? null : await fetchKawagoeBoundary();
   if (!storedMask && !boundary) {
     throw new Error("Kawagoe boundary is unavailable for static radar mask warmup");
@@ -253,8 +264,8 @@ export async function renderRepresentativeRadarFrame(
       };
 
       let generatedMaskDataUrl: string | null = null;
-      let kawagoeMask: any | null = payload.kawagoeMaskUrl
-        ? await loadRequired(payload.kawagoeMaskUrl)
+      let kawagoeMask: any | null = payload.kawagoeMaskDataUrl
+        ? await loadRequired(payload.kawagoeMaskDataUrl)
         : null;
       if (!kawagoeMask && boundaryPolygons.length) {
         const maskCanvas = g.document.createElement("canvas");
@@ -387,7 +398,7 @@ export async function renderRepresentativeRadarFrame(
 
       sunnyIcon?.close?.();
       satellite.close?.();
-      if (payload.kawagoeMaskUrl) kawagoeMask.close?.();
+      if (payload.kawagoeMaskDataUrl) kawagoeMask.close?.();
 
       context.fillStyle = "rgba(0,0,0,0.92)";
       for (let divider = 1; divider < payload.panels.length; divider += 1) {
@@ -406,7 +417,7 @@ export async function renderRepresentativeRadarFrame(
       panels: panelResults,
       satelliteUrl: `${publicOrigin}${SATELLITE_ASSET_PATH}`,
       sunnyIconUrl: `${publicOrigin}${SUNNY_ICON_ASSET_PATH}`,
-      kawagoeMaskUrl: storedMask ? `${publicOrigin}${KAWAGOE_MASK_PATH}` : "",
+      kawagoeMaskDataUrl: storedMaskDataUrl,
       boundary,
       analysisWidth: RAIN_ANALYSIS_WIDTH,
       analysisHeight: RAIN_ANALYSIS_HEIGHT,
