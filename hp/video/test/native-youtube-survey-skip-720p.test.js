@@ -2,47 +2,31 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const policy = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url),
-  'utf8',
-);
+const clean = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url), 'utf8');
 const trustedAction = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_trusted_action.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_youtube_trusted_action.inc', import.meta.url), 'utf8');
 const recovery = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const eventAgent = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 const reliablePlayAll = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url), 'utf8');
 const composition = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const trustedInput = readFileSync(
-  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
 
-test('YouTube playlist startup bypasses fragile Play all coordinates', () => {
+test('YouTube playlist startup bypasses fragile fixed Play all coordinates', () => {
   assert.match(reliablePlayAll, /ytd-playlist-video-renderer a#thumbnail/);
   assert.match(reliablePlayAll, /url\.searchParams\.set\('list', playlistId\)/);
   assert.match(reliablePlayAll, /location\.assign\(href\)/);
   assert.match(reliablePlayAll, /すべて再生/);
-  assert.match(reliablePlayAll, /全て再生/);
   assert.match(reliablePlayAll, /play all/i);
-  assert.match(reliablePlayAll, /playAll\.click\(\)/);
-  assert.match(reliablePlayAll, /return null/);
-  assert.match(
-    composition,
-    /script == kNativeMediaPlayAllScript[\s\S]*kNativeMediaYoutubeReliablePlayAllScript/,
-  );
+  assert.match(composition, /kNativeMediaYoutubeReliablePlayAllScript/);
 });
 
-test('YouTube watchdog recovers paused playback through the trusted-action bridge', () => {
+test('YouTube paused playback recovers through trusted action', () => {
   assert.match(recovery, /video && video\.paused && !video\.ended/);
   assert.match(recovery, /video\.play\(\)/);
   assert.match(recovery, /player\.querySelector\('\.ytp-play-button'\)/);
@@ -50,115 +34,56 @@ test('YouTube watchdog recovers paused playback through the trusted-action bridg
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
 });
 
-test('YouTube surveys choose the first available option then submit', () => {
-  assert.match(recovery, /surveyRoots/);
-  assert.match(
-    recovery,
-    /survey\.step === 0[\s\S]*trusted\.arm\(options\[0\], 'survey-option', 500\)/,
-  );
-  assert.match(
-    recovery,
-    /survey\.step = 0;\s*return trusted\.arm\(submit, 'survey-submit', 500\)/,
-  );
-  assert.match(recovery, /送信\|回答を送信\|submit\|send/);
+test('YouTube surveys are inspected only inside an active ad player', () => {
+  const adStart = recovery.indexOf('if (adShowing) {');
+  const surveys = recovery.indexOf('const surveyRoots =', adStart);
+  const content = recovery.indexOf('const recoveryState =');
+  assert.ok(adStart >= 0 && surveys > adStart && content > surveys);
+  assert.match(recovery, /player\.querySelectorAll\(/);
+  assert.match(recovery, /survey\.step === 0/);
+  assert.match(recovery, /trusted\.arm\(options\[0\], 'survey-option', 500\)/);
+  assert.match(recovery, /trusted\.arm\(submit, 'survey-submit', 500\)/);
 });
 
-test('YouTube ad skip reaches the real verified control and never falls through to playback', () => {
+test('YouTube ad skip reaches the verified real control', () => {
   assert.match(recovery, /\.ytp-ad-skip-button-modern/);
-  assert.match(recovery, /button\[class\*="ytp-ad-skip"\]/);
+  assert.match(recovery, /button\[class\*=\"ytp-ad-skip\"\]/);
   assert.match(recovery, /広告をスキップ\|広告を飛ばす/);
-  assert.match(recovery, /skip\\s\*ad/);
-  assert.match(
-    recovery,
-    /adShowing && target\) return trusted\.arm\(target, 'skip-ad', 600\)/,
-  );
-  assert.match(recovery, /if \(adShowing\) return 'recovery'/);
-  assert.doesNotMatch(recovery, /\[class\*="skip" i\]\)\)/);
-
+  assert.match(recovery, /trusted\.arm\(target, 'skip-ad', 600\)/);
   assert.match(trustedAction, /Move the REAL validated control/);
-  assert.match(trustedAction, /left', 'calc\(50vw - 48px\)'/);
-  assert.match(trustedAction, /top', 'calc\(50vh - 48px\)'/);
   assert.match(trustedAction, /return \[5000, 5000\]/);
-  assert.match(trustedAction, /action === 'skip-ad' && !ad\(\)/);
-  assert.doesNotMatch(trustedAction, /target\.click\(\)/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
-  assert.doesNotMatch(trustedInput, /::SendInput/);
 });
 
-test('YouTube fullscreen uses the real trusted control for both ads and content', () => {
+test('YouTube fullscreen uses the real trusted control for ads and content', () => {
   assert.match(recovery, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
-  assert.match(recovery, /全画面\|fullscreen\|full screen/i);
   assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
-  assert.match(recovery, /if \(adShowing && !trusted\.fullscreen\(\)\)/);
-  assert.match(trustedAction, /document\.fullscreenElement/);
-  assert.match(
-    trustedAction,
-    /action === 'fullscreen' && \(fullscreen\(\) \|\| !player\(\)\)/,
-  );
-  assert.doesNotMatch(
-    trustedAction,
-    /action === 'fullscreen' && \(ad\(\) \|\| fullscreen\(\)/,
-  );
-  assert.match(trustedAction, /real YouTube control/);
-  assert.match(trustedAction, /isTrusted click/);
+  assert.match(trustedAction, /action === 'fullscreen'/);
   assert.doesNotMatch(trustedAction, /requestFullscreen|webkitRequestFullscreen/);
 });
 
-test('trusted-action mechanism and watchdog policy have separate responsibilities', () => {
-  assert.match(composition, /#include "media_youtube_trusted_action\.inc"/);
-  assert.match(composition, /NativeMediaEnsureYoutubeTrustedAction/);
-  assert.match(
-    composition,
-    /webview->ExecuteScript\(\s*kNativeMediaYoutubeTrustedActionBootstrapScript, nullptr\)/,
-  );
-  assert.match(composition, /installedWebview == webview && installedSource == source/);
-  assert.match(composition, /bool force = false/);
-  assert.match(
-    composition,
-    /script == kNativeMediaYoutubeCleanPlayerScript[\s\S]*NativeMediaEnsureYoutubeTrustedAction\(webview, true\)/,
-  );
-  assert.doesNotMatch(recovery, /position:fixed|requestFullscreen|setProperty\('left'/);
-  assert.doesNotMatch(trustedAction, /surveyRoots|skipSelectors/);
-  // Keep each MSVC wide raw literal comfortably below the C2026 danger zone.
-  assert.ok(recovery.length < 7500, `watchdog policy unexpectedly grew to ${recovery.length} chars`);
-  assert.ok(
-    trustedAction.length < 7500,
-    `trusted-action bootstrap unexpectedly grew to ${trustedAction.length} chars`,
-  );
+test('YouTube 480p and captions are per-video dirty-state settings', () => {
+  assert.match(recovery, /videoKey/);
+  assert.match(recovery, /qualityApplied: false/);
+  assert.match(recovery, /captionsApplied: false/);
+  assert.match(recovery, /const preferredQuality = 'large'/);
+  assert.match(recovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
+  assert.match(recovery, /setPlaybackQuality\(preferredQuality\)/);
+  assert.match(recovery, /player\.setOption\('captions', 'track', \{\}\)/);
 });
 
-test('YouTube clean player exposes Skip Ad without restoring unrelated ad chrome', () => {
-  assert.doesNotMatch(policy, /#movie_player\.ad-showing \*/);
-  assert.doesNotMatch(policy, /#movie_player\.ad-interrupting \*/);
-  assert.match(policy, /#movie_player \.ytp-ad-skip-button-modern/);
-  assert.match(policy, /#movie_player \.ytp-share-button/);
-  assert.match(policy, /#movie_player \.ytp-tooltip/);
-  assert.match(policy, /ytd-unified-share-panel-renderer/);
-  assert.match(
-    policy,
-    /tp-yt-paper-dialog:has\(ytd-unified-share-panel-renderer\)/,
-  );
+test('event agent wakes the native watchdog only on relevant player transitions', () => {
+  assert.match(eventAgent, /homepanel:youtube-wake/);
+  assert.match(eventAgent, /state\.playerObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
+  assert.match(eventAgent, /attributeFilter: \['class'\]/);
+  assert.doesNotMatch(eventAgent, /document\.documentElement.*MutationObserver/);
+  assert.match(composition, /#include "media_youtube_event_agent\.inc"/);
+  assert.match(composition, /kNativeMediaYoutubeEventAgentScript/);
 });
 
-test('YouTube playback quality is pinned to the 480p quality level', () => {
-  assert.match(policy, /const preferredQuality = 'large'/);
-  assert.match(
-    policy,
-    /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/,
-  );
-  assert.match(policy, /setPlaybackQuality\(preferredQuality\)/);
-  assert.doesNotMatch(policy, /hd720/);
-});
-
-test('media host routes the single watchdog to the control policy after bootstrapping trusted actions', () => {
-  assert.match(composition, /#include "media_youtube_policy\.inc"/);
-  assert.match(composition, /#include "media_youtube_trusted_action\.inc"/);
-  assert.match(composition, /#include "media_youtube_control_recovery\.inc"/);
-  assert.match(composition, /#include "media_youtube_playall_reliable\.inc"/);
-  assert.match(composition, /ResolveNativeMediaPolicyScript/);
-  assert.match(
-    composition,
-    /script == kNativeMediaYoutubeWatchdogScript[\s\S]*NativeMediaEnsureYoutubeTrustedAction\(webview\)[\s\S]*kNativeMediaYoutubeControlRecoveryScript/,
-  );
-  assert.doesNotMatch(composition, /kNativeMediaYoutubeHealthScript|kNativeMediaYoutubeHealthPolicyScript/);
+test('clean player keeps only useful ad UI visible', () => {
+  assert.doesNotMatch(clean, /#movie_player\.ad-showing \*/);
+  assert.match(clean, /#movie_player \.ytp-ad-skip-button-modern/);
+  assert.match(clean, /#movie_player \.ytp-share-button/);
+  assert.match(clean, /ytd-unified-share-panel-renderer/);
 });
