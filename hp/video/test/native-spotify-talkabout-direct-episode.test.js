@@ -10,6 +10,8 @@ const randomCatalog = readFileSync(
   new URL('../../cloud/src/spotify_random_catalog.ts', import.meta.url), 'utf8');
 const nativeCloud = readFileSync(
   new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
+const recent = readFileSync(
+  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
 const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
@@ -28,19 +30,18 @@ test('cloud resolves TALKABOUT latest episode and persists it into normal device
   assert.match(deviceSync, /WHERE device_id=\?1 AND version=\?5/);
 });
 
-test('device sync migrates legacy pools and any managed catalog prefix', () => {
+test('device sync migrates the managed legacy Spotify rotation to seven slots', () => {
   assert.match(deviceSync, /LEGACY_SPOTIFY_RANDOM_TRACK_IDS/);
-  assert.match(deviceSync, /SHORT_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(deviceSync, /LEGACY_SPOTIFY_MIDDLE_TRACK_IDS/);
   assert.match(deviceSync, /MANAGED_SPOTIFY_RANDOM_TRACK_IDS/);
-  assert.match(deviceSync, /MANAGED_SPOTIFY_RANDOM_TRACKS/);
-  assert.match(deviceSync, /isManagedPrefix/);
-  assert.match(deviceSync, /ids\.length >= SHORT_SPOTIFY_RANDOM_TRACKS\.length/);
-  assert.match(deviceSync, /ids\.every\(\(id, index\) => id === MANAGED_SPOTIFY_RANDOM_TRACK_IDS\[index\]\)/);
-  assert.match(deviceSync, /migrateLegacySpotifyRandomPool\(config\)/);
-  assert.match(deviceSync, /random\.tracks = MANAGED_SPOTIFY_RANDOM_TRACKS\.map/);
-  assert.match(randomCatalog, /INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS/);
-  assert.match(randomCatalog, /Interlude #1/);
-  assert.match(randomCatalog, /Interlude #6/);
+  assert.match(deviceSync, /SHORT_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(deviceSync, /isManagedRandomPool/);
+  assert.match(deviceSync, /migrateManagedSpotifyRotation\(config\)/);
+  assert.match(deviceSync, /spotify\.rotation = managedSpotifySevenSlotRotation\(\)/);
+  assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
+  assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
+  assert.match(randomCatalog, /includeTalkAbout: true/);
+  assert.match(randomCatalog, /managedSpotifySevenSlotRotation/);
 });
 
 test('native consumes only the cloud-resolved direct episode URL', () => {
@@ -53,12 +54,13 @@ test('native consumes only the cloud-resolved direct episode URL', () => {
   assert.doesNotMatch(timed, /source\.find\(L"\/episode\/"\)/);
 });
 
-test('native never searches a show page for an episode and waits if cloud target is absent', () => {
+test('G omits TALKABOUT when no direct latest episode is synchronized', () => {
   assert.doesNotMatch(scripts, /latestEpisodeButton|a\[href\*="\/episode\/"\]/);
   assert.match(scripts, /target\.pagePath\.startsWith\('\/episode\/'\)/);
   assert.match(scripts, /location\.pathname !== target\.pagePath/);
-  assert.match(rotation, /if \(!SpotifyPodcastTargetReady\(\)\) return false/);
-  assert.match(rotation, /if \(!slot\.timedRotationActive \|\| !SpotifyPodcastTargetReady\(\)\) return/);
+  assert.match(recent, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
+  assert.match(rotation, /SpotifyPodcastTargetReady\(\) && target\.path == SpotifyPodcastPath\(\)/);
+  assert.doesNotMatch(rotation, /StartOverduePodcastBreak|podcastDueTick/);
 });
 
 test('native Spotify URL validation rejects lookalike hosts', () => {

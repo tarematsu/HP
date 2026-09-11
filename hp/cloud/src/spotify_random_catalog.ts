@@ -37,6 +37,19 @@ export const ADDITIONAL_INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
   ["Interlude #7", "4OTvaYkw60M6YNZ59vlx0R"],
 ] as const;
 
+export const SPOTIFY_B_ROTATION_TRACKS = [
+  ["What's \"KAZOKU\"?", "33liCluqUasE65nMv3KLLm"],
+  ["コインランドリー", "5QnQ7m9OxSoFeSPSz8grqX"],
+  ["We got your back", "2ze5Hu3eRRe6HxJTfuZaA0"],
+  ["各駅停車", "2CMSkSwIfnNQR7bTNFFeB5"],
+  ["恵まれ過ぎて", "2meBhRDzQpf0ltQH11HbWG"],
+] as const;
+
+export const ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS = [
+  ...INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
+  ...ADDITIONAL_INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
+] as const;
+
 export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
   ...SHORT_SPOTIFY_RANDOM_TRACKS,
   ...INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
@@ -46,3 +59,43 @@ export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
 
 export const MANAGED_SPOTIFY_RANDOM_TRACK_IDS =
   MANAGED_SPOTIFY_RANDOM_TRACKS.map(([, id]) => id);
+
+const spotifyRotationTrack = (title: string, id: string) => ({
+  title,
+  url: `https://open.spotify.com/track/${id}`,
+});
+
+const rotationTracks = (tracks: readonly (readonly [string, string])[]) =>
+  tracks.map(([title, id]) => spotifyRotationTrack(title, id));
+
+export function managedSpotifySevenSlotRotation() {
+  const shortSongs = rotationTracks(SHORT_SPOTIFY_RANDOM_TRACKS);
+  return [
+    {
+      mode: "fixed",
+      tracks: [spotifyRotationTrack("Lonesome Rabbit", "6Vy6hCA2CZwZalGqaX6Sew")],
+    },
+    {
+      mode: "random",
+      count: 1,
+      tracks: rotationTracks(SPOTIFY_B_ROTATION_TRACKS),
+    },
+    {
+      mode: "random",
+      count: 1,
+      tracks: rotationTracks(ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS),
+    },
+    {
+      mode: "fixed",
+      tracks: [spotifyRotationTrack("放課後BitterBlue", "5EjWZuODqEPQ9eq7XCmITh")],
+    },
+    { mode: "random", count: 1, tracks: shortSongs.map(track => ({ ...track })) },
+    { mode: "random", count: 1, tracks: shortSongs.map(track => ({ ...track })) },
+    {
+      mode: "random",
+      count: 1,
+      includeTalkAbout: true,
+      tracks: shortSongs.map(track => ({ ...track })),
+    },
+  ];
+}

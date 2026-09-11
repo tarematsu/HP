@@ -3,8 +3,6 @@ namespace {
 
 constexpr wchar_t kSpotifyCloudConfigFile[] = L"device-config.json";
 constexpr double kSpotifyDefaultPodcastPlaybackRate = 3.0;
-constexpr int kSpotifyMinPodcastIntervalMinutes = 15;
-constexpr int kSpotifyMaxPodcastIntervalMinutes = 120;
 constexpr size_t kSpotifyMaxRotationGroups = 32;
 constexpr size_t kSpotifyMaxTracksPerGroup = 256;
 constexpr size_t kSpotifyMaxTracksPerCycle = 512;
@@ -44,8 +42,7 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
 
   if (cloudPlaylistLoaded_) {
     // CloudClient replaces this cache atomically. If the file is momentarily
-    // unavailable during replacement, keep the last applied Spotify settings
-    // instead of falling back and causing a spurious rotation revision.
+    // unavailable during replacement, keep the last applied Spotify settings.
     if (!fileAvailable) return;
     if (cloudPlaylistWriteTimeKnown_ && writeTime == cloudPlaylistWriteTime_) {
       return;
@@ -57,7 +54,6 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
   std::wstring nextPodcastPath;
   std::wstring nextRotationFingerprint = kSpotifyFallbackRotationFingerprint;
   std::wstring nextPodcastFingerprint = kSpotifyDefaultPodcastFingerprint;
-  ULONGLONG nextPodcastIntervalMs = kSpotifyPodcastIntervalMs;
   double nextPodcastPlaybackRate = kSpotifyDefaultPodcastPlaybackRate;
 
   if (fileAvailable) {
@@ -120,6 +116,8 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
             } else {
               continue;
             }
+            group.includeTalkAbout =
+                source.GetNamedBoolean(L"includeTalkAbout", false);
 
             const JsonArray tracks =
                 source.GetNamedArray(L"tracks", JsonArray{});
@@ -142,19 +140,23 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
                 if (!duplicate) group.tracks.push_back(std::move(*track));
               }
             }
-            if (group.tracks.empty()) continue;
+
+            const size_t configuredCandidateCount =
+                group.tracks.size() + (group.includeTalkAbout ? 1U : 0U);
+            if (configuredCandidateCount == 0) continue;
 
             if (group.mode == RotationGroup::Mode::Random) {
               double requested = source.GetNamedNumber(L"count", 1.0);
               if (!std::isfinite(requested)) requested = 1.0;
               requested = std::clamp(
-                  requested, 0.0, static_cast<double>(group.tracks.size()));
+                  requested, 0.0,
+                  static_cast<double>(configuredCandidateCount));
               group.count = static_cast<size_t>(std::floor(requested));
               if (group.count == 0) continue;
               maximumCycleTracks += group.count;
             } else {
-              group.count = group.tracks.size();
-              maximumCycleTracks += group.tracks.size();
+              group.count = configuredCandidateCount;
+              maximumCycleTracks += configuredCandidateCount;
             }
 
             if (maximumCycleTracks > kSpotifyMaxTracksPerCycle) break;
@@ -181,18 +183,6 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
             nextPodcastPath = episodePath;
           }
 
-          double minutesValue =
-              talkAbout.GetNamedNumber(L"intervalMinutes", 120.0);
-          if (std::isfinite(minutesValue)) {
-            minutesValue = std::clamp(
-                minutesValue,
-                static_cast<double>(kSpotifyMinPodcastIntervalMinutes),
-                static_cast<double>(kSpotifyMaxPodcastIntervalMinutes));
-            const int minutes = static_cast<int>(std::llround(minutesValue));
-            nextPodcastIntervalMs =
-                static_cast<ULONGLONG>(minutes) * 60ULL * 1000ULL;
-          }
-
           const double rate = talkAbout.GetNamedNumber(
               L"playbackRate", kSpotifyDefaultPodcastPlaybackRate);
           if (std::isfinite(rate)) {
@@ -200,7 +190,7 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
           }
           nextPodcastFingerprint = talkAbout.Stringify().c_str();
         } catch (...) {
-          // No valid direct episode URL means TALKABOUT waits for cloud sync.
+          // No valid direct episode URL means the G slot samples music only.
         }
       }
     } catch (...) {
@@ -226,35 +216,10 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
   }
 
   if (!podcastChanged) return;
-
   cloudPodcastUrl_ = std::move(nextPodcastUrl);
   cloudPodcastPath_ = std::move(nextPodcastPath);
   cloudPodcastFingerprint_ = std::move(nextPodcastFingerprint);
-  podcastIntervalMs_ = nextPodcastIntervalMs;
   podcastPlaybackRate_ = nextPodcastPlaybackRate;
-
-  // A shorter synchronized TALKABOUT interval takes effect immediately without
-  // postponing an already-earlier deadline when the interval is lengthened.
-  if (podcastScheduleLoaded_) {
-    const ULONGLONG now = GetTickCount64();
-    const int64_t wallNow = UnixMillis();
-    const int64_t maxFuture =
-        wallNow + static_cast<int64_t>(podcastIntervalMs_);
-    bool dirty = false;
-    for (Slot& slot : slots_) {
-      if (slot.podcastDueUnixMs <= 0) continue;
-      if (slot.podcastDueUnixMs > maxFuture) {
-        slot.podcastDueUnixMs = maxFuture;
-        dirty = true;
-      }
-      const int64_t remainingWallMs =
-          std::max<int64_t>(0, slot.podcastDueUnixMs - wallNow);
-      slot.podcastDueTick = now + static_cast<ULONGLONG>(
-          std::min<int64_t>(remainingWallMs,
-                            static_cast<int64_t>(podcastIntervalMs_)));
-    }
-    if (dirty) SavePodcastScheduleState();
-  }
 }
 
 const wchar_t* SpotifyWebViews::SpotifyPodcastUrl() const noexcept {
@@ -267,10 +232,6 @@ const wchar_t* SpotifyWebViews::SpotifyPodcastPath() const noexcept {
 
 bool SpotifyWebViews::SpotifyPodcastTargetReady() const noexcept {
   return !cloudPodcastUrl_.empty() && !cloudPodcastPath_.empty();
-}
-
-ULONGLONG SpotifyWebViews::SpotifyPodcastIntervalMs() const noexcept {
-  return podcastIntervalMs_;
 }
 
 double SpotifyWebViews::SpotifyPodcastPlaybackRate() const noexcept {

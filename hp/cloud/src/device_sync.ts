@@ -13,8 +13,8 @@ import {
 } from "./snapshot";
 import { normalizeDeviceSyncVersions } from "./device_sync_versions";
 import {
+  managedSpotifySevenSlotRotation,
   MANAGED_SPOTIFY_RANDOM_TRACK_IDS,
-  MANAGED_SPOTIFY_RANDOM_TRACKS,
   SHORT_SPOTIFY_RANDOM_TRACKS,
 } from "./spotify_random_catalog";
 import type { Env } from "./sources";
@@ -76,33 +76,63 @@ const LEGACY_SPOTIFY_RANDOM_TRACK_IDS = [
   "2meBhRDzQpf0ltQH11HbWG",
 ] as const;
 
+const LEGACY_SPOTIFY_MIDDLE_TRACK_IDS = [
+  "5EjWZuODqEPQ9eq7XCmITh",
+  "6VIY7OFy8g5ZyLSgQEi8lV",
+  "0rUT5nQpBjkg4SPY8jPjcO",
+  "2UHNvd8SjNGoEI6jXa2afx",
+] as const;
+
 function spotifyTrackId(value: unknown): string {
   const track = objectOrNull(value);
   const url = typeof track?.url === "string" ? track.url : "";
   return url.match(/\/track\/([A-Za-z0-9]{22})(?:[/?#]|$)/)?.[1] ?? "";
 }
 
-function migrateLegacySpotifyRandomPool(config: JsonRecord): boolean {
-  const spotify = objectOrNull(config.spotify);
-  const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
-  const group = rotation.find(candidate => objectOrNull(candidate)?.mode === "random");
-  const random = objectOrNull(group);
-  if (!random) return false;
-  const tracks = Array.isArray(random?.tracks) ? random.tracks : [];
-  const ids = tracks.map(spotifyTrackId);
-  const isManagedPool = (expected: readonly string[]) =>
-    ids.length === expected.length && ids.every((id, index) => id === expected[index]);
+function spotifyGroupTrackIds(value: unknown): string[] {
+  const group = objectOrNull(value);
+  const tracks = Array.isArray(group?.tracks) ? group.tracks : [];
+  return tracks.map(spotifyTrackId);
+}
+
+function sameTrackSet(actual: readonly string[], expected: readonly string[]): boolean {
+  return actual.length === expected.length &&
+    expected.every(id => actual.includes(id));
+}
+
+function isManagedRandomPool(ids: readonly string[]): boolean {
+  const isLegacy = ids.length === LEGACY_SPOTIFY_RANDOM_TRACK_IDS.length &&
+    ids.every((id, index) => id === LEGACY_SPOTIFY_RANDOM_TRACK_IDS[index]);
   const isManagedPrefix =
     ids.length >= SHORT_SPOTIFY_RANDOM_TRACKS.length &&
     ids.length <= MANAGED_SPOTIFY_RANDOM_TRACK_IDS.length &&
     ids.every((id, index) => id === MANAGED_SPOTIFY_RANDOM_TRACK_IDS[index]);
-  if (!isManagedPool(LEGACY_SPOTIFY_RANDOM_TRACK_IDS) && !isManagedPrefix) {
+  return isLegacy || isManagedPrefix;
+}
+
+function migrateManagedSpotifyRotation(config: JsonRecord): boolean {
+  const spotify = objectOrNull(config.spotify);
+  const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
+  if (!spotify || rotation.length !== 3) return false;
+
+  const first = objectOrNull(rotation[0]);
+  const middle = objectOrNull(rotation[1]);
+  const random = objectOrNull(rotation[2]);
+  if (first?.mode !== "fixed" || middle?.mode !== "shuffle" ||
+      random?.mode !== "random" || Number(random.count ?? 1) !== 1) {
     return false;
   }
-  random.tracks = MANAGED_SPOTIFY_RANDOM_TRACKS.map(([title, id]) => ({
-    title,
-    url: `https://open.spotify.com/track/${id}`,
-  }));
+
+  const firstIds = spotifyGroupTrackIds(first);
+  const middleIds = spotifyGroupTrackIds(middle);
+  const randomIds = spotifyGroupTrackIds(random);
+  if (firstIds.length !== 1 || firstIds[0] !== "6Vy6hCA2CZwZalGqaX6Sew" ||
+      !sameTrackSet(middleIds, LEGACY_SPOTIFY_MIDDLE_TRACK_IDS) ||
+      !isManagedRandomPool(randomIds)) {
+    return false;
+  }
+
+  spotify.rotation = managedSpotifySevenSlotRotation();
   return true;
 }
 
@@ -180,7 +210,7 @@ async function refreshManagedSpotifyConfig(
     return snapshot;
   }
 
-  let changed = migrateLegacySpotifyRandomPool(config);
+  let changed = migrateManagedSpotifyRotation(config);
   const spotify = objectOrNull(config.spotify);
   const talkAbout = objectOrNull(spotify?.talkAbout);
   const showUrl = normalizeSpotifyShowUrl(talkAbout?.url);

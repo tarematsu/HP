@@ -4,8 +4,6 @@
 namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 40ULL * 1000ULL;
-inline constexpr ULONGLONG kSpotifyPodcastIntervalMs =
-    2ULL * 60ULL * 60ULL * 1000ULL;
 
 class SpotifyWebViews final {
  public:
@@ -62,6 +60,7 @@ class SpotifyWebViews final {
     Mode mode = Mode::Fixed;
     std::vector<ManagedTrack> tracks;
     size_t count = 0;
+    bool includeTalkAbout = false;
   };
 
   struct Slot {
@@ -95,8 +94,6 @@ class SpotifyWebViews final {
     ULONGLONG trustedClickTargetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
     ULONGLONG authenticationBadgeTick = 0;
-    ULONGLONG podcastDueTick = 0;
-    int64_t podcastDueUnixMs = 0;
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
     ULONGLONG timedCloudRotationRevision = 0;
@@ -118,7 +115,6 @@ class SpotifyWebViews final {
     bool timedObserverInstallInFlight = false;
     bool timedRotationActive = false;
     bool podcastBreakActive = false;
-    bool podcastPlaybackRecorded = false;
     bool hostLayoutApplied = false;
     bool hostLayoutReducedZoomApplied = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
@@ -163,7 +159,6 @@ class SpotifyWebViews final {
   const wchar_t* SpotifyPodcastUrl() const noexcept;
   const wchar_t* SpotifyPodcastPath() const noexcept;
   bool SpotifyPodcastTargetReady() const noexcept;
-  ULONGLONG SpotifyPodcastIntervalMs() const noexcept;
   double SpotifyPodcastPlaybackRate() const noexcept;
   bool SlotMatchesPodcastTarget(const Slot& slot) const noexcept;
   void NavigatePodcastSlot(Slot& slot) noexcept;
@@ -179,12 +174,7 @@ class SpotifyWebViews final {
   void ApplyTimedRotationTarget(Slot& slot) noexcept;
   void InitializeTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
-  void BeginPodcastBreak(Slot& slot, ULONGLONG now) noexcept;
   void CompletePodcastBreak(Slot& slot, ULONGLONG now) noexcept;
-  void EnsurePodcastScheduleLoaded(ULONGLONG now) noexcept;
-  void SavePodcastScheduleState() noexcept;
-  bool StartOverduePodcastBreak(ULONGLONG now) noexcept;
-  void MarkPodcastPlaybackStarted(Slot& slot, ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void StopTimedOneShotPlayback(Slot& slot) noexcept;
   void RecomputeForeground() noexcept;
@@ -203,7 +193,6 @@ class SpotifyWebViews final {
   std::wstring cloudPodcastFingerprint_;
   fs::file_time_type cloudPlaylistWriteTime_{};
   ULONGLONG cloudRotationRevision_ = 1;
-  ULONGLONG podcastIntervalMs_ = kSpotifyPodcastIntervalMs;
   double podcastPlaybackRate_ = 3.0;
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
@@ -211,7 +200,6 @@ class SpotifyWebViews final {
   ULONGLONG staggerSlotStartTick_ = 0;
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
-  ULONGLONG lastPodcastDispatchTick_ = 0;
   bool cloudPlaylistLoaded_ = false;
   bool cloudPlaylistWriteTimeKnown_ = false;
   bool staggerSlotValidated_ = false;
@@ -221,7 +209,6 @@ class SpotifyWebViews final {
   bool started_ = false;
   bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
-  bool podcastScheduleLoaded_ = false;
 };
 
 // Spotify runs independently from the YouTube/TVer media phase. Each account

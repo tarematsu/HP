@@ -36,20 +36,22 @@ test('Spotify schedule starts autonomously and loads cloud playlist before rotat
   assert.doesNotMatch(header + schedule, /podcastMode_|SetPodcastMode|youtubeCycleStartTick_/);
 });
 
-test('cloud rotation supports arbitrary fixed, shuffle, and random block lengths', () => {
+test('cloud rotation supports fixed, shuffle, random, TALKABOUT candidates, and cycle dedupe', () => {
   assert.match(header, /struct RotationGroup/);
   assert.match(header, /Mode : unsigned char \{ Fixed, Shuffle, Random \}/);
   assert.match(header, /std::vector<ManagedTrack> tracks/);
+  assert.match(header, /bool includeTalkAbout = false/);
   assert.match(header, /std::vector<ManagedTrack> timedCycleTracks/);
   assert.match(cloud, /GetNamedArray\(L"rotation"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"fixed"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"shuffle"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"random"\)/);
+  assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
   assert.match(cloud, /GetNamedNumber\(L"count", 1\.0\)/);
+  assert.match(recent, /std::vector<std::wstring> usedPaths/);
   assert.match(recent, /for \(const RotationGroup& group : cloudRotationGroups_\) appendGroup\(group\)/);
-  assert.match(recent, /slot\.timedCycleTracks\.insert/);
-  assert.match(recent, /std::swap\(order\[remaining - 1\], order\[swapIndex\]\)/);
-  assert.match(recent, /std::min\(group\.count, order\.size\(\)\)/);
+  assert.match(recent, /std::swap\(candidates\[remaining - 1\], candidates\[swapIndex\]\)/);
+  assert.match(recent, /std::min\(group\.count, candidates\.size\(\)\)/);
   assert.doesNotMatch(rotation, /% 6U|position <= 4U/);
 });
 
@@ -88,8 +90,8 @@ test('stale playback events are rejected by target generation', () => {
   assert.match(runtime, /message \+ '\\u001f' \+ generation\(\)/);
 });
 
-test('invalid or absent cloud rotation falls back to the former six-song behavior', () => {
-  assert.match(recent, /Fail-safe preserves the previous A \+ shuffled B-E \+ one random F behavior/);
+test('invalid or absent cloud rotation retains the former six-song fallback', () => {
+  assert.match(recent, /Fail-safe preserves the former six-song behavior/);
   for (const id of [
     '6Vy6hCA2CZwZalGqaX6Sew', '5EjWZuODqEPQ9eq7XCmITh',
     '6VIY7OFy8g5ZyLSgQEi8lV', '0rUT5nQpBjkg4SPY8jPjcO',
@@ -99,25 +101,21 @@ test('invalid or absent cloud rotation falls back to the former six-song behavio
   assert.match(recent, /kSpotifyFallbackCatalogTracks\.size\(\)/);
 });
 
-test('TALKABOUT direct episode, interval, and playback rate are cloud-managed', () => {
+test('TALKABOUT direct episode and playback rate are cloud-managed without a timed interval', () => {
   assert.match(cloud, /GetNamedObject\(L"talkAbout"\)/);
   assert.match(cloud, /GetNamedString\(L"episodeUrl", L""\)/);
   assert.match(cloud, /ManagedSpotifyPathFromUrl\(episodeUrl, L"\/episode\/"\)/);
   assert.match(cloud, /SpotifyPodcastTargetReady\(\) const noexcept/);
-  assert.match(cloud, /GetNamedNumber\(L"intervalMinutes", 120\.0\)/);
-  assert.match(cloud, /kSpotifyMaxPodcastIntervalMinutes = 120/);
   assert.match(cloud, /GetNamedNumber\([\s\S]*L"playbackRate"/);
+  assert.doesNotMatch(cloud + header + schedule + rotation, /intervalMinutes|SpotifyPodcastIntervalMs|StartOverduePodcastBreak/);
   assert.match(recent, /SpotifyPodcastPlaybackRate\(\)/);
   assert.match(scripts, /target && target\.playbackRate/);
   assert.match(scripts, /Math\.max\(0\.5, Math\.min\(4\.0, requestedRate\)\)/);
   assert.match(timed, /SpotifyPodcastPath\(\)/);
   assert.match(timed, /SpotifyPodcastUrl\(\)/);
   assert.doesNotMatch(timed, /source\.find\(L"\/episode\/"\)/);
-  assert.match(rotation, /SpotifyPodcastTargetReady\(\)/);
-  assert.match(rotation, /SpotifyPodcastIntervalMs\(\)/);
-  assert.match(rotation, /slot\.timedTarget = TimedSpotifyTarget::TalkAbout/);
-  assert.match(schedule, /StartOverduePodcastBreak\(now\)/);
-  assert.doesNotMatch(schedule, /AdvanceExpiredTimedRotation/);
+  assert.match(rotation, /target\.path == SpotifyPodcastPath\(\)/);
+  assert.match(rotation, /TimedSpotifyTarget::TalkAbout/);
 });
 
 test('recent fallback catalog excludes fixed songs and unsupported variants', () => {
