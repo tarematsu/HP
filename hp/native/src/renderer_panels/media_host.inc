@@ -54,8 +54,8 @@ class NativeMediaPanelHost final {
     }
     if (timerId == kNativeMediaYoutubeWatchdogTimer) {
       if (hostWindow_ && IsWindow(hostWindow_)) {
-        SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
-                 kNativeMediaYoutubeWatchdogHealthyMs, nullptr);
+        ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                 kNativeMediaYoutubeWatchdogHealthyMs);
       }
       ProbeYoutubeWatchdog();
       return true;
@@ -100,6 +100,33 @@ class NativeMediaPanelHost final {
  private:
   enum class Phase { YouTube, Tver };
   static constexpr ULONGLONG kYoutubeWatchdogTimeoutMs = 5ULL * 1000ULL;
+
+  UINT_PTR ArmTimer(UINT_PTR timerId, UINT intervalMs) noexcept {
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return 0;
+    if (timerId == kNativeMediaPhaseTimer) {
+      SetSpotifyMediaPhase(phase_ == Phase::Tver);
+    }
+    if (timerId == kNativeMediaTverWatchdogTimer) {
+      return ArmNativeMediaTrustedWakeTimer(
+          hostWindow_, webview_.Get(), controller_.Get(), timerId, intervalMs);
+    }
+    return ::SetTimer(hostWindow_, timerId, intervalMs, nullptr);
+  }
+
+  HRESULT ExecutePolicyScript(
+      ICoreWebView2* view, const wchar_t* script,
+      ICoreWebView2ExecuteScriptCompletedHandler* handler) noexcept {
+    if (!view) return E_POINTER;
+    return ExecuteNativeMediaPolicyScript(
+        view, hostWindow_, alive_, script, handler);
+  }
+
+  UINT DispatchTrustedInput(
+      UINT count, LPINPUT inputs, int inputSize) noexcept {
+    return NativeMediaDispatchTrustedInput(
+        phase_ == Phase::Tver, webview_.Get(), controller_.Get(), hostWindow_,
+        count, inputs, inputSize);
+  }
 
   void CapturePhaseTimes() noexcept {
     FILETIME startUtc{};
@@ -161,7 +188,9 @@ class NativeMediaPanelHost final {
   void ShowPhaseOverlay() noexcept {
     if (!webview_) return;
     const std::wstring script = BuildPhaseOverlayScript();
-    if (!script.empty()) webview_->ExecuteScript(script.c_str(), nullptr);
+    if (!script.empty()) {
+      ExecutePolicyScript(webview_.Get(), script.c_str(), nullptr);
+    }
   }
 
   const wchar_t* CurrentProfileName() const noexcept {
@@ -269,7 +298,7 @@ class NativeMediaPanelHost final {
         settings->put_IsStatusBarEnabled(FALSE);
         settings->put_AreHostObjectsAllowed(FALSE);
         settings->put_IsZoomControlEnabled(FALSE);
-        settings->put_IsBuiltInErrorPageEnabled(TRUE);
+        settings->put_IsBuiltInErrorPageEnabled(FALSE);
         ComPtr<ICoreWebView2Settings3> settings3;
         if (SUCCEEDED(settings.As(&settings3)) && settings3) {
           settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
@@ -305,12 +334,13 @@ class NativeMediaPanelHost final {
                 failed_ = false;
                 StopNavigationRetry();
                 if (phase_ == Phase::YouTube) {
-                  webview_->ExecuteScript(
-                      kNativeMediaYoutubeCleanPlayerScript, nullptr);
+                  ExecutePolicyScript(
+                      webview_.Get(), kNativeMediaYoutubeCleanPlayerScript, nullptr);
                 }
                 if (phase_ == Phase::Tver && IsTverPage()) {
                   StopYoutubeMonitors();
-                  webview_->ExecuteScript(kNativeMediaTverLoopScript, nullptr);
+                  ExecutePolicyScript(
+                      webview_.Get(), kNativeMediaTverLoopScript, nullptr);
                   BeginTverPlaybackMonitor();
                 } else if (phase_ == Phase::YouTube && IsYoutubePlaylistPage()) {
                   StopTverPlaybackMonitor();
@@ -340,8 +370,7 @@ class NativeMediaPanelHost final {
   void ArmPhaseTimer() noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return;
     KillTimer(hostWindow_, kNativeMediaPhaseTimer);
-    if (SetTimer(hostWindow_, kNativeMediaPhaseTimer,
-                 kNativeMediaPhaseMs, nullptr) == 0) {
+    if (ArmTimer(kNativeMediaPhaseTimer, kNativeMediaPhaseMs) == 0) {
       Fail();
     }
   }
@@ -413,8 +442,8 @@ class NativeMediaPanelHost final {
   bool ScheduleNavigationRetry() noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return false;
     KillTimer(hostWindow_, kNativeMediaNavigationRetryTimer);
-    return SetTimer(hostWindow_, kNativeMediaNavigationRetryTimer,
-                    kNativeMediaNavigationRetryMs, nullptr) != 0;
+    return ArmTimer(kNativeMediaNavigationRetryTimer,
+                    kNativeMediaNavigationRetryMs) != 0;
   }
 
   void StopNavigationRetry() noexcept {
@@ -428,8 +457,7 @@ class NativeMediaPanelHost final {
     playAllProbeAttempts_ = 0;
     playAllProbeInFlight_ = false;
     if (!hostWindow_ || !IsWindow(hostWindow_)) return;
-    SetTimer(hostWindow_, kNativeMediaPlayAllTimer,
-             kNativeMediaPlayAllRetryMs, nullptr);
+    ArmTimer(kNativeMediaPlayAllTimer, kNativeMediaPlayAllRetryMs);
     ProbePlayAll();
   }
 
@@ -453,8 +481,8 @@ class NativeMediaPanelHost final {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return;
     InvalidateYoutubeWatchdog();
     KillTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer);
-    SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
-             kNativeMediaYoutubeWatchdogHealthyMs, nullptr);
+    ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+             kNativeMediaYoutubeWatchdogHealthyMs);
     ProbeYoutubeWatchdog();
   }
 
@@ -474,8 +502,7 @@ class NativeMediaPanelHost final {
     if (!hostWindow_ || !IsWindow(hostWindow_) || tverRestarting_) return;
     tverWatchdogInFlight_ = false;
     KillTimer(hostWindow_, kNativeMediaTverWatchdogTimer);
-    SetTimer(hostWindow_, kNativeMediaTverWatchdogTimer,
-             kNativeMediaTverWatchdogMs, nullptr);
+    ArmTimer(kNativeMediaTverWatchdogTimer, kNativeMediaTverWatchdogMs);
     ProbeTverWatchdog();
   }
 
@@ -498,7 +525,6 @@ class NativeMediaPanelHost final {
     if (phase_ != Phase::Tver || !webview_ || tverRestarting_) return;
     tverRestarting_ = true;
     StopTverPlaybackMonitor();
-    AdvanceNativeMediaTverSeries();
     CompleteTverRestart();
   }
 
@@ -536,8 +562,8 @@ class NativeMediaPanelHost final {
     ++playAllProbeAttempts_;
     playAllProbeInFlight_ = true;
     const auto alive = alive_;
-    const HRESULT started = webview_->ExecuteScript(
-        kNativeMediaPlayAllScript,
+    const HRESULT started = ExecutePolicyScript(
+        webview_.Get(), kNativeMediaPlayAllScript,
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
               if (!alive->load(std::memory_order_acquire)) return S_OK;
@@ -576,13 +602,13 @@ class NativeMediaPanelHost final {
     youtubeWatchdogInFlight_ = true;
     youtubeWatchdogStartedTick_ = now;
     if (hostWindow_ && IsWindow(hostWindow_)) {
-      SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
-               static_cast<UINT>(kYoutubeWatchdogTimeoutMs), nullptr);
+      ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+               static_cast<UINT>(kYoutubeWatchdogTimeoutMs));
     }
     const auto alive = alive_;
     ComPtr<ICoreWebView2> requestView = webview_;
-    const HRESULT started = requestView->ExecuteScript(
-        kNativeMediaYoutubeWatchdogScript,
+    const HRESULT started = ExecutePolicyScript(
+        requestView.Get(), kNativeMediaYoutubeWatchdogScript,
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive, requestView, requestGeneration](
                 HRESULT result, LPCWSTR json) -> HRESULT {
@@ -595,8 +621,8 @@ class NativeMediaPanelHost final {
               youtubeWatchdogStartedTick_ = 0;
               if (phase_ != Phase::YouTube || !IsYoutubeWatchPage()) return S_OK;
               if (hostWindow_ && IsWindow(hostWindow_)) {
-                SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
-                         kNativeMediaYoutubeWatchdogHealthyMs, nullptr);
+                ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                         kNativeMediaYoutubeWatchdogHealthyMs);
               }
               if (SUCCEEDED(result) && json &&
                   std::wstring_view(json) == L"\"reload\"") {
@@ -608,8 +634,8 @@ class NativeMediaPanelHost final {
               if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
                 ClickNormalizedPoint(x, y);
                 if (hostWindow_ && IsWindow(hostWindow_)) {
-                  SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
-                           kNativeMediaYoutubeWatchdogRecoveryMs, nullptr);
+                  ArmTimer(kNativeMediaYoutubeWatchdogTimer,
+                           kNativeMediaYoutubeWatchdogRecoveryMs);
                 }
               }
               return S_OK;
@@ -627,8 +653,8 @@ class NativeMediaPanelHost final {
         tverRestarting_ || !IsTverPage()) return;
     tverWatchdogInFlight_ = true;
     const auto alive = alive_;
-    const HRESULT started = webview_->ExecuteScript(
-        kNativeMediaTverWatchdogScript,
+    const HRESULT started = ExecutePolicyScript(
+        webview_.Get(), kNativeMediaTverWatchdogScript,
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
               if (!alive->load(std::memory_order_acquire)) return S_OK;
@@ -698,7 +724,7 @@ class NativeMediaPanelHost final {
       setMove(&inputs[3], previous);
       count = 4;
     }
-    SendInput(count, inputs, sizeof(INPUT));
+    DispatchTrustedInput(count, inputs, sizeof(INPUT));
   }
 
   void Fail() noexcept {
