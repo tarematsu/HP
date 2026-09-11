@@ -29,6 +29,7 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
 
   slot.lastModeNavigateTick = GetTickCount64();
   slot.shuffleOffVerified = false;
+  slot.repeatOffVerified = false;
   SetSlotState(slot, SlotState::Navigating);
   SetSpotifyOutputMuted(slot.webview);
   PostSpotifyTargetDescriptorForSlot(slot);
@@ -64,7 +65,8 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
   }
 
   slot.lastModeNavigateTick = 0;
-  if (!EnsureShuffleOff(slot)) return;
+  if (!EnsurePlaybackModeOff(slot, PlaybackModeGuard::Shuffle)) return;
+  if (!EnsurePlaybackModeOff(slot, PlaybackModeGuard::Repeat)) return;
   if (slot.reconcileInFlight) return;
 
   PostSpotifyTargetDescriptorForSlot(slot);
