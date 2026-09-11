@@ -14,8 +14,14 @@ import {
 import { normalizeDeviceSyncVersions } from "./device_sync_versions";
 import type { Env } from "./sources";
 import { stationheadHealthPayload } from "./stationhead_health";
+import {
+  normalizeSpotifyEpisodeUrl,
+  normalizeSpotifyShowUrl,
+  resolveLatestSpotifyTalkAboutEpisode,
+} from "./spotify_talkabout_latest";
 
 type SyncSourceName = typeof DASHBOARD_SOURCE_NAMES[number] | "radar" | "stationhead_health";
+type JsonRecord = Record<string, unknown>;
 
 export interface DeviceSyncManifestRow {
   dashboard_version: number;
@@ -42,6 +48,12 @@ function requestedVersion(value: unknown): number {
 function optionalRequestedVersion(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   return requestedVersion(value);
+}
+
+function objectOrNull(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as JsonRecord
+    : null;
 }
 
 export async function readDeviceSyncManifest(env: Env): Promise<DeviceSyncManifestRow> {
@@ -101,6 +113,72 @@ async function deviceSpecificSnapshot(
   };
 }
 
+async function refreshManagedTalkAboutEpisode(
+  env: Env,
+  deviceId: string,
+  snapshot: DeviceSyncSnapshotRow,
+  now: number,
+): Promise<DeviceSyncSnapshotRow> {
+  if (!snapshot.config_payload) return snapshot;
+
+  let config: JsonRecord;
+  try {
+    const parsed = objectOrNull(JSON.parse(snapshot.config_payload));
+    if (!parsed) return snapshot;
+    config = parsed;
+  } catch {
+    return snapshot;
+  }
+
+  const spotify = objectOrNull(config.spotify);
+  const talkAbout = objectOrNull(spotify?.talkAbout);
+  const showUrl = normalizeSpotifyShowUrl(talkAbout?.url);
+  if (!spotify || !talkAbout || !showUrl) return snapshot;
+
+  let episodeUrl = "";
+  try {
+    episodeUrl = await resolveLatestSpotifyTalkAboutEpisode(env, showUrl, { now });
+  } catch (error) {
+    console.warn("spotify-talkabout-latest-resolve-failed", {
+      deviceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return snapshot;
+  }
+  if (!episodeUrl || normalizeSpotifyEpisodeUrl(talkAbout.episodeUrl) === episodeUrl) {
+    return snapshot;
+  }
+
+  talkAbout.episodeUrl = episodeUrl;
+  const payload = JSON.stringify(config);
+  if (payload.length > 32_000) {
+    console.warn("spotify-talkabout-config-update-skipped", {
+      deviceId,
+      reason: "config-too-large",
+    });
+    return snapshot;
+  }
+
+  const nextVersion = snapshot.config_version + 1;
+  const updated = await env.DB.prepare(
+    `UPDATE device_configs
+        SET version=?2,payload=?3,updated_at=?4
+      WHERE device_id=?1 AND version=?5`,
+  ).bind(deviceId, nextVersion, payload, now, snapshot.config_version).run();
+  if (Number(updated.meta.changes ?? 0) !== 1) {
+    // An admin save won the race. Never overwrite it; the next device sync will
+    // resolve the latest episode against that newer configuration.
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    config_version: nextVersion,
+    config_updated_at: now,
+    config_payload: payload,
+  };
+}
+
 function preferredEnvironmentState(
   manifest: DeviceSyncManifestRow,
   r2: StateRow | null,
@@ -126,11 +204,14 @@ export async function buildDeviceSyncPayloadForDevice(
     config: requestedVersion(clientVersions.config),
   };
   const now = Date.now();
-  const [manifest, snapshot, r2Environment] = await Promise.all([
+  const [manifest, initialSnapshot, r2Environment] = await Promise.all([
     manifestOverride ? Promise.resolve(manifestOverride) : readDeviceSyncManifest(env),
     deviceSpecificSnapshot(env, deviceId, now),
     readR2EnvironmentState(env),
   ]);
+  const snapshot = await refreshManagedTalkAboutEpisode(
+    env, deviceId, initialSnapshot, now,
+  );
   const versions = normalizeDeviceSyncVersions(manifest);
   const environmentState = preferredEnvironmentState(manifest, r2Environment);
   const d1EnvironmentVersion = Number(manifest.environment_version ?? 0);
