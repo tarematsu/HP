@@ -1,15 +1,5 @@
-// Radar-card rendering. The MV child remains hosted in the radar window, but
-// bitmap presentation is a Renderer responsibility rather than a WebView host concern.
-void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
-  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
-    RECT mediaBounds{};
-    GetClientRect(nativeRadarWindow_, &mediaBounds);
-    if (mediaBounds.right > mediaBounds.left &&
-        mediaBounds.bottom > mediaBounds.top) {
-      EnsureNativeMvPanel(nativeRadarWindow_, dataDir_, mediaBounds);
-    }
-  }
-
+// Rain-radar card rendering for the lower main-row radar region.
+void Renderer::DrawRadarSection(HDC dc, const RECT& card) {
   const RECT& bounds = card;
   const int radius = CardRadius(bounds);
   HRGN rounded = CreateRoundRectRgn(
