@@ -1,9 +1,6 @@
 namespace hp {
 namespace {
 
-constexpr wchar_t kSpotifyPodcastScheduleFile[] =
-    L"spotify-talkabout-schedule.txt";
-
 bool ParseSpotifyGenerationEvent(
     LPCWSTR rawMessage, std::wstring_view eventName,
     ULONGLONG* generation) noexcept {
@@ -25,117 +22,6 @@ bool ParseSpotifyGenerationEvent(
 
 }  // namespace
 
-void SpotifyWebViews::EnsurePodcastScheduleLoaded(ULONGLONG now) noexcept {
-  if (podcastScheduleLoaded_) return;
-  podcastScheduleLoaded_ = true;
-
-  const ULONGLONG interval = SpotifyPodcastIntervalMs();
-  const int64_t wallNow = UnixMillis();
-  std::array<int64_t, kAccountCount> persisted{};
-  bool complete = false;
-  try {
-    std::ifstream input(userDataFolder_.parent_path() /
-                        kSpotifyPodcastScheduleFile);
-    complete = static_cast<bool>(input);
-    for (size_t i = 0; complete && i < persisted.size(); ++i) {
-      complete = static_cast<bool>(input >> persisted[i]);
-    }
-  } catch (...) {
-    complete = false;
-  }
-
-  bool dirty = !complete;
-  for (size_t i = 0; i < slots_.size(); ++i) {
-    Slot& slot = slots_[i];
-    int64_t due = complete ? persisted[i] : 0;
-    if (due <= 0) {
-      due = wallNow + static_cast<int64_t>(
-          static_cast<ULONGLONG>(i) * kSpotifyAccountStartOffsetMs);
-      dirty = true;
-    }
-
-    // A corrupt file or backwards wall-clock adjustment must not postpone the
-    // podcast beyond the cloud-configured interval (which is capped at 2h).
-    const int64_t maxFuture = wallNow + static_cast<int64_t>(interval);
-    if (due > maxFuture) {
-      due = maxFuture;
-      dirty = true;
-    }
-
-    slot.podcastDueUnixMs = due;
-    const int64_t remainingWallMs = std::max<int64_t>(0, due - wallNow);
-    const ULONGLONG remaining = static_cast<ULONGLONG>(std::min<int64_t>(
-        remainingWallMs, static_cast<int64_t>(interval)));
-    slot.podcastDueTick = now + remaining;
-    slot.podcastPlaybackRecorded = false;
-  }
-
-  if (dirty) SavePodcastScheduleState();
-}
-
-void SpotifyWebViews::SavePodcastScheduleState() noexcept {
-  try {
-    const fs::path path =
-        userDataFolder_.parent_path() / kSpotifyPodcastScheduleFile;
-    std::error_code error;
-    fs::create_directories(path.parent_path(), error);
-
-    fs::path temporary = path;
-    temporary += L".tmp";
-    {
-      std::ofstream output(temporary, std::ios::trunc);
-      if (!output) return;
-      for (const Slot& slot : slots_) output << slot.podcastDueUnixMs << '\n';
-      output.flush();
-      if (!output) return;
-    }
-
-    if (!MoveFileExW(temporary.c_str(), path.c_str(),
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-      fs::remove(temporary, error);
-    }
-  } catch (...) {
-    // Persistence failure may cause an extra replay after restart, but must
-    // never block the in-memory deadline.
-  }
-}
-
-bool SpotifyWebViews::StartOverduePodcastBreak(ULONGLONG now) noexcept {
-  EnsurePodcastScheduleLoaded(now);
-  // The cloud owns episode selection. Keep music running and leave the deadline
-  // overdue until a synchronized direct /episode/ URL is available.
-  if (!SpotifyPodcastTargetReady()) return false;
-
-  if (lastPodcastDispatchTick_ != 0 &&
-      now - lastPodcastDispatchTick_ < kSpotifyAccountStartOffsetMs) {
-    return false;
-  }
-
-  for (Slot& slot : slots_) {
-    if (!slot.timedRotationActive || slot.podcastBreakActive ||
-        slot.podcastDueTick == 0 || now < slot.podcastDueTick ||
-        !slot.webview || SlotIsLoginPage(slot)) {
-      continue;
-    }
-
-    lastPodcastDispatchTick_ = now;
-    BeginPodcastBreak(slot, now);
-    return true;
-  }
-  return false;
-}
-
-void SpotifyWebViews::MarkPodcastPlaybackStarted(
-    Slot& slot, ULONGLONG now) noexcept {
-  if (!slot.podcastBreakActive || slot.podcastPlaybackRecorded) return;
-
-  const ULONGLONG interval = SpotifyPodcastIntervalMs();
-  slot.podcastPlaybackRecorded = true;
-  slot.podcastDueTick = now + interval;
-  slot.podcastDueUnixMs = UnixMillis() + static_cast<int64_t>(interval);
-  SavePodcastScheduleState();
-}
-
 void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
   if (!slot.webview) return;
   slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
@@ -150,13 +36,21 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
     slot.timedPlaybackStartTick = 0;
     return;
   }
+
   slot.timedRotationPosition %= slot.timedCycleTracks.size();
-  slot.timedTarget = TimedSpotifyTarget::Music;
+  const ManagedTrack& target = slot.timedCycleTracks[slot.timedRotationPosition];
+  const bool talkAboutTarget =
+      SpotifyPodcastTargetReady() && target.path == SpotifyPodcastPath();
+  slot.podcastBreakActive = talkAboutTarget;
+  slot.timedTarget = talkAboutTarget
+      ? TimedSpotifyTarget::TalkAbout
+      : TimedSpotifyTarget::Music;
   BumpSpotifyTargetGeneration(slot);
   slot.unhealthySinceTick = 0;
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
+  // Music and TALKABOUT both advance by their natural completion signal only.
   slot.timedPlaybackStartTick = 0;
 }
 
@@ -164,7 +58,6 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   slot.timedRotationActive = true;
   slot.podcastBreakActive = false;
-  slot.podcastPlaybackRecorded = false;
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
@@ -177,52 +70,21 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   NavigateActiveTimedSlot(slot);
 }
 
-void SpotifyWebViews::BeginPodcastBreak(
-    Slot& slot, ULONGLONG now) noexcept {
-  if (!slot.timedRotationActive || !SpotifyPodcastTargetReady()) return;
-  slot.podcastBreakActive = true;
-  slot.podcastPlaybackRecorded = false;
-  slot.timedTarget = TimedSpotifyTarget::TalkAbout;
-  slot.timedCatalogIndex = kNoTimedCatalogIndex;
-  slot.timedPlaybackStartTick = 0;
-  slot.lastModeNavigateTick = 0;
-  slot.lastTimedReconcileTick = 0;
-  slot.unhealthySinceTick = 0;
-  BumpSpotifyTargetGeneration(slot);
-  SetSlotState(slot, SlotState::WaitingTarget);
-  staggerSlotIndex_ = slot.index;
-  staggerSlotStartTick_ = now;
-  staggerSlotValidated_ = false;
-  RefreshSpotifyHostLayout();
-  NavigateActiveTimedSlot(slot);
-}
-
 void SpotifyWebViews::CompletePodcastBreak(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || !slot.podcastBreakActive) return;
   StopTimedOneShotPlayback(slot);
   slot.podcastBreakActive = false;
-  slot.podcastPlaybackRecorded = false;
-  // A podcast deadline may interrupt any position. Build a fresh cloud-defined
-  // cycle and resume from its first block/track.
-  slot.timedRotationPosition = 0;
-  PrepareTimedRotationCycle(slot);
-  slot.timedCloudRotationRevision = cloudRotationRevision_;
-  ApplyTimedRotationTarget(slot);
-  staggerSlotIndex_ = slot.index;
-  staggerSlotStartTick_ = now;
-  staggerSlotValidated_ = false;
-  RefreshSpotifyHostLayout();
-  NavigateActiveTimedSlot(slot);
+  AdvanceTimedRotationSlot(slot, now);
 }
 
 void SpotifyWebViews::AdvanceTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || slot.podcastBreakActive) return;
 
-  // A cloud-sync change never cuts the currently playing song. At its next
-  // natural ended boundary, discard the old prebuilt cycle and start the newly
-  // synchronized rotation from its first configured block.
+  // A cloud-sync change never cuts the currently playing item. At its next
+  // natural completion boundary, discard the old prebuilt cycle and start the
+  // synchronized rotation from A.
   if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
     slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
