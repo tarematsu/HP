@@ -6,6 +6,10 @@ const browserRadar = readFileSync(
   new URL('../../cloud/src/radar_browser_frame.ts', import.meta.url),
   'utf8',
 );
+const cloudRadar = readFileSync(
+  new URL('../../cloud/src/radar_source.ts', import.meta.url),
+  'utf8',
+);
 const prepareAssets = readFileSync(
   new URL('../../scripts/prepare-radar-cloud-assets.mjs', import.meta.url),
   'utf8',
@@ -30,6 +34,24 @@ test('cloud radar keeps rain visible and draws only the Kawagoe outside mask abo
   assert.ok(rain > satellite, 'rain must be drawn after satellite');
   assert.ok(mask > rain, 'Kawagoe mask must be drawn after rain');
   assert.ok(label > mask, 'date/time label must be drawn after the mask');
+});
+
+test('Kawagoe mask uses the exact same world-pixel viewport as rain tiles', () => {
+  assert.match(cloudRadar, /type RadarViewport = \{ worldLeft: number; worldTop: number; zoom: number \}/);
+  assert.match(cloudRadar, /worldLeft: viewport\.worldLeft/);
+  assert.match(cloudRadar, /worldTop: viewport\.worldTop/);
+  assert.match(cloudRadar, /zoom: viewport\.zoom/);
+  assert.match(browserRadar, /const sourceX = world\.x - panel\.worldLeft;/);
+  assert.match(browserRadar, /const sourceY = world\.y - panel\.worldTop;/);
+  assert.match(browserRadar, /worldPixel\(lon, lat, panel\.zoom\)/);
+  assert.doesNotMatch(browserRadar, /tileReference/);
+});
+
+test('a render with zero fetched rain tiles cannot replace the representative PNG', () => {
+  assert.match(browserRadar, /let loadedRainTiles = 0;/);
+  assert.match(browserRadar, /loadedRainTiles \+= 1;/);
+  assert.match(browserRadar, /if \(loadedRainTiles === 0\)/);
+  assert.match(browserRadar, /radar rain tiles were not fetched for any panel/);
 });
 
 test('missing boundary data never falls back to the opaque legacy map', () => {
