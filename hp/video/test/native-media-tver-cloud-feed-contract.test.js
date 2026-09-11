@@ -49,7 +49,8 @@ test('cloud refresh runs every hour and feed endpoint is exposed without video a
   assert.match(unifiedWorker, /TVER_FEED_PATH = '\/v1\/native\/tver-feed'/);
   assert.match(unifiedWorker, /pathname === TVER_FEED_PATH[\s\S]*tverFeedResponse\(env, ctx\)/);
   assert.match(unifiedWorker, /shouldRefreshTverFeed\(controller\?\.scheduledTime\)/);
-  assert.match(unifiedWorker, /ctx\.waitUntil\(refreshTverFeed\(env\)/);
+  assert.match(unifiedWorker, /ctx\.waitUntil\(dispatchTverFeedRefresh\(env\)/);
+  assert.doesNotMatch(unifiedWorker, /ctx\.waitUntil\(refreshTverFeed\(env\)/);
 });
 
 test('cloud drops episodes that expire before the next hourly refresh', () => {
