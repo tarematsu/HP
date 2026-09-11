@@ -28,10 +28,17 @@ export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
   ["なぜ　恋をして来なかったんだろう？ -OFF VOCAL ver.-", "5TaAgmUQuhJw4bGW4dg3KI"],
 ] as const;
 
+// Keep newly discovered instrumental tracks appended after the existing managed
+// pool so older device configs remain an exact prefix and migrate safely.
+export const ADDITIONAL_INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
+  ["Interlude #3", "0LyOFxPXWLw2k0q4y9pFM3"],
+] as const;
+
 export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
   ...SHORT_SPOTIFY_RANDOM_TRACKS,
   ...INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
   ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
+  ...ADDITIONAL_INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
 ] as const;
 
 export const MANAGED_SPOTIFY_RANDOM_TRACK_IDS =
