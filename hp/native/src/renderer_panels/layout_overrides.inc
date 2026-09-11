@@ -3,9 +3,9 @@ namespace {
 SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
-  // NativeDashboardLayout::radar is the upper media/WebView host. The visible
-  // rain-radar card is in the lower main row, whose exact height is the full
-  // side height minus that 60% media host and the inter-row gap.
+  // NativeDashboardLayout::media is the upper YouTube/TVer WebView host. The
+  // visible rain-radar card is in the lower main row, whose exact height is the
+  // full side height minus that 60% media host and the inter-row gap.
   const int upperMediaHeight = height * 600 / 1000;
   const int weatherHeight =
       std::max(1, height - upperMediaHeight - gap);
@@ -23,8 +23,8 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   sections.controls = RECT{client.left, top, client.right, top + airHeight};
   top = sections.controls.bottom + gap;
   sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
-  // Electricity moved beside Music in the main column. Keep the legacy slot
-  // outside the side client so old section plumbing cannot paint it twice.
+  // Electricity moved beside the radar in the main column. Keep the legacy
+  // sidebar slot outside the client so old section plumbing cannot paint twice.
   sections.energy = RECT{client.right, client.bottom, client.right + 1, client.bottom + 1};
   return sections;
 }
@@ -40,22 +40,18 @@ RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
   const int leftWidth = std::max(1, rowWidth * 65 / 100);
 
   RearrangedMainLayout layout;
-  // The waste summary now lives below the clock. Keep the rain radar filling
-  // the complete left column that previously also hosted the waste calendar.
-  layout.sections.music =
+  layout.sections.radar =
       RECT{client.left, client.top, client.left + leftWidth, client.bottom};
-  // MainSections::air is the right-hand slot. The rearranged dashboard uses it
-  // for Electricity while Air occupies the expanded side-card slot.
-  layout.sections.air =
-      RECT{layout.sections.music.right + gapX, client.top, client.right, client.bottom};
-  if (layout.sections.music.right <= layout.sections.music.left) {
-    layout.sections.music.right = layout.sections.music.left + 1;
+  layout.sections.energy =
+      RECT{layout.sections.radar.right + gapX, client.top, client.right, client.bottom};
+  if (layout.sections.radar.right <= layout.sections.radar.left) {
+    layout.sections.radar.right = layout.sections.radar.left + 1;
   }
-  if (layout.sections.music.bottom <= layout.sections.music.top) {
-    layout.sections.music.bottom = layout.sections.music.top + 1;
+  if (layout.sections.radar.bottom <= layout.sections.radar.top) {
+    layout.sections.radar.bottom = layout.sections.radar.top + 1;
   }
-  if (layout.sections.air.right <= layout.sections.air.left) {
-    layout.sections.air.right = layout.sections.air.left + 1;
+  if (layout.sections.energy.right <= layout.sections.energy.left) {
+    layout.sections.energy.right = layout.sections.energy.left + 1;
   }
   return layout;
 }
