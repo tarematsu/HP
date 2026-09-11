@@ -10,6 +10,8 @@ const randomCatalog = readFileSync(
   new URL('../../cloud/src/spotify_random_catalog.ts', import.meta.url), 'utf8');
 const nativeCloud = readFileSync(
   new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
+const recent = readFileSync(
+  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
 const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
@@ -52,12 +54,13 @@ test('native consumes only the cloud-resolved direct episode URL', () => {
   assert.doesNotMatch(timed, /source\.find\(L"\/episode\/"\)/);
 });
 
-test('native never searches a show page for an episode and waits if cloud target is absent', () => {
+test('G omits TALKABOUT when no direct latest episode is synchronized', () => {
   assert.doesNotMatch(scripts, /latestEpisodeButton|a\[href\*="\/episode\/"\]/);
   assert.match(scripts, /target\.pagePath\.startsWith\('\/episode\/'\)/);
   assert.match(scripts, /location\.pathname !== target\.pagePath/);
-  assert.match(rotation, /if \(!SpotifyPodcastTargetReady\(\)\) return false/);
-  assert.match(rotation, /if \(!slot\.timedRotationActive \|\| !SpotifyPodcastTargetReady\(\)\) return/);
+  assert.match(recent, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
+  assert.match(rotation, /SpotifyPodcastTargetReady\(\) && target\.path == SpotifyPodcastPath\(\)/);
+  assert.doesNotMatch(rotation, /StartOverduePodcastBreak|podcastDueTick/);
 });
 
 test('native Spotify URL validation rejects lookalike hosts', () => {
