@@ -28,19 +28,18 @@ test('cloud resolves TALKABOUT latest episode and persists it into normal device
   assert.match(deviceSync, /WHERE device_id=\?1 AND version=\?5/);
 });
 
-test('device sync migrates legacy pools and any managed catalog prefix', () => {
+test('device sync migrates the managed legacy Spotify rotation to seven slots', () => {
   assert.match(deviceSync, /LEGACY_SPOTIFY_RANDOM_TRACK_IDS/);
-  assert.match(deviceSync, /SHORT_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(deviceSync, /LEGACY_SPOTIFY_MIDDLE_TRACK_IDS/);
   assert.match(deviceSync, /MANAGED_SPOTIFY_RANDOM_TRACK_IDS/);
-  assert.match(deviceSync, /MANAGED_SPOTIFY_RANDOM_TRACKS/);
-  assert.match(deviceSync, /isManagedPrefix/);
-  assert.match(deviceSync, /ids\.length >= SHORT_SPOTIFY_RANDOM_TRACKS\.length/);
-  assert.match(deviceSync, /ids\.every\(\(id, index\) => id === MANAGED_SPOTIFY_RANDOM_TRACK_IDS\[index\]\)/);
-  assert.match(deviceSync, /migrateLegacySpotifyRandomPool\(config\)/);
-  assert.match(deviceSync, /random\.tracks = MANAGED_SPOTIFY_RANDOM_TRACKS\.map/);
-  assert.match(randomCatalog, /INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS/);
-  assert.match(randomCatalog, /Interlude #1/);
-  assert.match(randomCatalog, /Interlude #6/);
+  assert.match(deviceSync, /SHORT_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(deviceSync, /isManagedRandomPool/);
+  assert.match(deviceSync, /migrateManagedSpotifyRotation\(config\)/);
+  assert.match(deviceSync, /spotify\.rotation = managedSpotifySevenSlotRotation\(\)/);
+  assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
+  assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
+  assert.match(randomCatalog, /includeTalkAbout: true/);
+  assert.match(randomCatalog, /managedSpotifySevenSlotRotation/);
 });
 
 test('native consumes only the cloud-resolved direct episode URL', () => {
