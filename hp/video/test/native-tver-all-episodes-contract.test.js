@@ -7,15 +7,16 @@ const episode = readFileSync(
 const refresh = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 
-test('TVer advances only through the cloud-owned episode queue', () => {
-  assert.match(episode, /episodeQueueKey = seriesPath/);
-  assert.match(episode, /__homePanelTverEpisodeQueue:/);
-  assert.match(episode, /const advanceEpisodeOrSeries = \(\) =>/);
+test('TVer advances only through the single cloud-owned episode queue', () => {
+  assert.match(episode, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
+  assert.doesNotMatch(episode, /__homePanelTverEpisodeQueue:/);
+  assert.match(episode, /const advanceEpisode = \(\) =>/);
   assert.match(episode, /nextIndex < queue\.hrefs\.length/);
   assert.match(episode, /location\.replace\(queue\.hrefs\[nextIndex\]\)/);
+  assert.match(refresh, /const queueKey = '__homePanelTverEpisodeQueue'/);
   assert.match(refresh, /const fresh = \[/);
   assert.match(refresh, /prefix\.concat\(remaining\)/);
-  assert.doesNotMatch(episode, /あなたにおすすめ|関連番組|ランキング/);
+  assert.doesNotMatch(episode, /あなたにおすすめ|関連番組|ランキング|SeriesPath/);
 });
 
 test('TVer completed program waits for post-roll before advancing', () => {
@@ -26,7 +27,7 @@ test('TVer completed program waits for post-roll before advancing', () => {
   assert.match(episode, /postrollAfterProgram/);
   assert.match(
     episode,
-    /if \(completedPostroll\)[\s\S]*advanceEpisodeOrSeries\(\)[\s\S]*restartRequested = true/,
+    /if \(completedPostroll\)[\s\S]*advanceEpisode\(\)[\s\S]*restartRequested = true/,
   );
 });
 
