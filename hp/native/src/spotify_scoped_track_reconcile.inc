@@ -46,6 +46,26 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
     const label = labelOf(button);
     return label.includes('pause') || label.includes('一時停止');
   };
+  const shuffleState = button => {
+    if (!button) return 'unknown';
+    const checked = button.getAttribute('aria-checked');
+    if (checked === 'true') return 'on';
+    if (checked === 'false') return 'off';
+    const label = labelOf(button);
+    if (label.includes('disable shuffle') ||
+        label.includes('turn off shuffle') ||
+        label.includes('シャッフルを無効') ||
+        label.includes('シャッフルをオフ')) {
+      return 'on';
+    }
+    if (label.includes('enable shuffle') ||
+        label.includes('turn on shuffle') ||
+        label.includes('シャッフルを有効') ||
+        label.includes('シャッフルをオン')) {
+      return 'off';
+    }
+    return 'unknown';
+  };
   const repeatState = button => {
     if (!button) return 'unknown';
     const checked = button.getAttribute('aria-checked');
@@ -172,12 +192,23 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const control = playerControl();
   const button = targetPlayButton();
 
-  // Keep Spotify's own queue in repeat-one while music is active. The media
-  // observer still cuts the requested track two seconds before its natural end,
-  // but repeat-one is a fail-safe for background/event throttling: if that end
-  // guard is ever missed, Spotify repeats the requested song instead of starting
-  // an autoplay recommendation. Use the existing native trusted-click path and
-  // advance Off -> Context -> One over successive reconcile passes.
+  // Keep Spotify's own shuffle setting OFF. The native rotation owns all
+  // randomization, so Spotify must never reorder or inject queue choices itself.
+  // Return the trusted-click point only when the standard Spotify control is
+  // positively identified as enabled; unknown state is left untouched.
+  const shuffle = document.querySelector(
+      'button[data-testid="control-button-shuffle"]');
+  const shuffleMode = shuffleState(shuffle);
+  if (visible(shuffle) && shuffleMode === 'on') {
+    report(false);
+    return point(shuffle);
+  }
+
+  // Keep Spotify's own queue in repeat-one while music is active. Repeat-one is
+  // a fail-safe for background/event throttling: if the natural end boundary is
+  // ever missed, Spotify repeats the requested song instead of starting a
+  // recommendation. Use the existing native trusted-click path and advance
+  // Off -> Context -> One over successive reconcile passes.
   const repeat = document.querySelector(
       'button[data-testid="control-button-repeat"]');
   const repeatMode = repeatState(repeat);
