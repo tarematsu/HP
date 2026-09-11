@@ -97,7 +97,8 @@ test('TVer holds program completion long enough for post-roll and drains the ful
   assert.match(episodeLoop, /postrollAfterProgram: false/);
   assert.match(episodeLoop, /const completedProgram = state\.endCandidateAt > 0/);
   assert.match(episodeLoop, /if \(!state\.adActive\) state\.postrollAfterProgram = completedProgram/);
-  assert.match(episodeLoop, /if \(!duration \|\| shortAdLength \|\| explicitMarker\) return true/);
+  assert.match(episodeLoop, /if \(!duration \|\| shortAdLength\) return true/);
+  assert.match(episodeLoop, /return explicitAdMarker\(video\)/);
   assert.match(episodeLoop, /const completedPostroll = state\.postrollAfterProgram/);
   assert.match(episodeLoop, /if \(completedPostroll\)[\s\S]*advanceEpisodeOrSeries\(\)/);
   assert.match(episodeLoop, /Date\.now\(\) - state\.endCandidateAt >= postrollGraceMs/);
