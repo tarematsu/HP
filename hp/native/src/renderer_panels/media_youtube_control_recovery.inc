@@ -51,6 +51,24 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
 
   const adShowing = trusted.ad();
+  let target = null;
+
+  // Ads share the same fullscreen requirement as content. Enter fullscreen
+  // before mutating any other ad control so even unskippable ads stay in the
+  // dedicated full-screen playback surface.
+  if (adShowing && !trusted.fullscreen()) {
+    target = player.querySelector('.ytp-fullscreen-button');
+    if (!trusted.valid(target)) {
+      const fullscreenPattern = /(全画面|fullscreen|full screen)/i;
+      target = Array.from(player.querySelectorAll(
+          'button, [role="button"], [aria-label], [title]'))
+          .find(element => trusted.valid(element) &&
+              fullscreenPattern.test(trusted.text(element))) || null;
+    }
+    const fullscreenAction = trusted.arm(target, 'fullscreen', 1200);
+    if (fullscreenAction) return fullscreenAction;
+  }
+
   const skipSelectors = [
     '.ytp-ad-skip-button', '.ytp-ad-skip-button-modern',
     '.ytp-skip-ad-button', '.videoAdUiSkipButton',
@@ -65,7 +83,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     '[role="button"][aria-label*="Skip ad" i]',
     '[role="button"][aria-label*="広告をスキップ"]'
   ];
-  let target = Array.from(player.querySelectorAll(skipSelectors.join(',')))
+  target = Array.from(player.querySelectorAll(skipSelectors.join(',')))
       .find(element => trusted.valid(element)) || null;
   if (!target && adShowing) {
     const skipPattern = /(広告をスキップ|広告を飛ばす|(?:^|\s)スキップ(?:\s|$)|skip\s*ad(?:s)?)/i;
@@ -77,7 +95,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (adShowing && target) return trusted.arm(target, 'skip-ad', 600);
 
   // An unskippable ad must never fall through to content recovery or quality
-  // changes. Re-check soon through the adaptive native cadence instead.
+  // changes. Fullscreen recovery above is the only allowed non-ad mutation.
   if (adShowing) return 'recovery';
 
   try {
