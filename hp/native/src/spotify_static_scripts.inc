@@ -148,21 +148,6 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
                  label.startsWith('play ') || label.endsWith('を再生');
         }) || null;
   };
-  const latestEpisodeButton = () => {
-    const links = Array.from(document.querySelectorAll('a[href*="/episode/"]'))
-        .filter(visible);
-    if (links.length) {
-      const latest = links[0];
-      try { latest.scrollIntoView({ block: 'center', inline: 'nearest' }); }
-      catch (_) {}
-      const container = latest.closest(
-          '[data-testid="episode-item"], [data-testid="episode-row"], '
-          + '[role="row"], li') || latest.parentElement?.parentElement;
-      const button = playButtonIn(container);
-      if (visible(button)) return button;
-    }
-    return playButtonIn(document);
-  };
   const point = element => {
     if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
       return null;
@@ -230,13 +215,9 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
     }, { passive: true });
   });
 
-  if (location.hostname !== 'open.spotify.com') {
-    report(false);
-    return null;
-  }
-  const onShow = location.pathname === target.pagePath;
-  const onEpisode = location.pathname.includes('/episode/');
-  if (!onShow && !onEpisode) {
+  if (location.hostname !== 'open.spotify.com' ||
+      !target.pagePath.startsWith('/episode/') ||
+      location.pathname !== target.pagePath) {
     report(false);
     return null;
   }
@@ -246,15 +227,18 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
   }
 
   const control = playerControl();
-  if (buttonShowsPlaying(control)) {
+  const episodeButton = playButtonIn(document);
+  if (buttonShowsPlaying(episodeButton) ||
+      (oneShot.started && buttonShowsPlaying(control))) {
     oneShot.started = true;
     report(true);
     return true;
   }
 
+  // Never use the global footer Play button to start TALKABOUT. It can resume
+  // the previous music queue. Only the direct episode page's own Play starts it.
   report(false);
-  const button = onShow ? latestEpisodeButton() : control;
-  return point(visible(button) ? button : latestEpisodeButton());
+  return point(episodeButton);
 })()
 )JS";
 

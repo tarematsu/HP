@@ -102,6 +102,9 @@ void SpotifyWebViews::SavePodcastScheduleState() noexcept {
 
 bool SpotifyWebViews::StartOverduePodcastBreak(ULONGLONG now) noexcept {
   EnsurePodcastScheduleLoaded(now);
+  // The cloud owns episode selection. Keep music running and leave the deadline
+  // overdue until a synchronized direct /episode/ URL is available.
+  if (!SpotifyPodcastTargetReady()) return false;
 
   if (lastPodcastDispatchTick_ != 0 &&
       now - lastPodcastDispatchTick_ < kSpotifyAccountStartOffsetMs) {
@@ -178,7 +181,7 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
 
 void SpotifyWebViews::BeginPodcastBreak(
     Slot& slot, ULONGLONG now) noexcept {
-  if (!slot.timedRotationActive) return;
+  if (!slot.timedRotationActive || !SpotifyPodcastTargetReady()) return;
   slot.podcastBreakActive = true;
   slot.podcastPlaybackRecorded = false;
   slot.timedTarget = TimedSpotifyTarget::TalkAbout;

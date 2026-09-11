@@ -100,9 +100,11 @@ test('invalid or absent cloud rotation falls back to the former six-song behavio
   assert.match(recent, /kSpotifyFallbackCatalogTracks\.size\(\)/);
 });
 
-test('TALKABOUT URL, interval, and playback rate are cloud-managed with a two-hour ceiling', () => {
+test('TALKABOUT direct episode, interval, and playback rate are cloud-managed', () => {
   assert.match(cloud, /GetNamedObject\(L"talkAbout"\)/);
-  assert.match(cloud, /ManagedSpotifyPathFromUrl\(url, L"\/show\/"\)/);
+  assert.match(cloud, /GetNamedString\(L"episodeUrl", L""\)/);
+  assert.match(cloud, /ManagedSpotifyPathFromUrl\(episodeUrl, L"\/episode\/"\)/);
+  assert.match(cloud, /SpotifyPodcastTargetReady\(\) const noexcept/);
   assert.match(cloud, /GetNamedNumber\(L"intervalMinutes", 120\.0\)/);
   assert.match(cloud, /kSpotifyMaxPodcastIntervalMinutes = 120/);
   assert.match(cloud, /GetNamedNumber\([\s\S]*L"playbackRate"/);
@@ -111,6 +113,8 @@ test('TALKABOUT URL, interval, and playback rate are cloud-managed with a two-ho
   assert.match(scripts, /Math\.max\(0\.5, Math\.min\(4\.0, requestedRate\)\)/);
   assert.match(timed, /SpotifyPodcastPath\(\)/);
   assert.match(timed, /SpotifyPodcastUrl\(\)/);
+  assert.doesNotMatch(timed, /source\.find\(L"\/episode\/"\)/);
+  assert.match(rotation, /SpotifyPodcastTargetReady\(\)/);
   assert.match(rotation, /SpotifyPodcastIntervalMs\(\)/);
   assert.match(rotation, /slot\.timedTarget = TimedSpotifyTarget::TalkAbout/);
   assert.match(schedule, /StartOverduePodcastBreak\(now\)[\s\S]*AdvanceExpiredTimedRotation\(now\)/);

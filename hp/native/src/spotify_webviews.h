@@ -164,6 +164,7 @@ class SpotifyWebViews final {
   void EnsureCloudPlaylistLoaded() noexcept;
   const wchar_t* SpotifyPodcastUrl() const noexcept;
   const wchar_t* SpotifyPodcastPath() const noexcept;
+  bool SpotifyPodcastTargetReady() const noexcept;
   ULONGLONG SpotifyPodcastIntervalMs() const noexcept;
   double SpotifyPodcastPlaybackRate() const noexcept;
   bool SlotMatchesPodcastTarget(const Slot& slot) const noexcept;
@@ -228,9 +229,8 @@ class SpotifyWebViews final {
 
 // Spotify runs independently from the YouTube/TVer media phase. Each account
 // starts 40 seconds apart and builds its cycle from cloud deviceConfig.spotify
-// rotation blocks. Block count, track count, fixed/shuffle/random behavior and
-// TALKABOUT policy are cloud-managed; safe built-in defaults remain available
-// when cloud data is missing or invalid.
+// rotation blocks. TALKABOUT playback only uses the cloud-resolved direct
+// episodeUrl; the native app never chooses an episode from the show page.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 
