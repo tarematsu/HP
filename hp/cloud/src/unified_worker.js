@@ -1,6 +1,7 @@
 import homePanelWorker from './worker_core.ts';
 import { requestFamily } from './unified_routes.js';
-import { refreshTverFeed, shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
+import { shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
+import { dispatchTverFeedRefresh } from './tver_feed_refresh_coordinator.js';
 import { tverFeedObservability } from './tver_feed_observability.js';
 import videoWorker from '../../video/src/entry.js';
 
@@ -8,7 +9,7 @@ export { SchedulerCoordinator } from './scheduler_coordinator.ts';
 export { DeviceSyncCoordinator } from './device_sync_coordinator.ts';
 export { DeviceExchangeCoordinator } from './device_exchange_coordinator.ts';
 export { RadarBundleCoordinator } from './radar_bundle_coordinator.ts';
-export { VideoFeedCoordinator } from '../../video/src/entry.js';
+export { VideoFeedCoordinator } from './tver_feed_refresh_coordinator.js';
 export { requestFamily } from './unified_routes.js';
 
 const INTERNAL_SERVICE_HEADER = 'X-HomePanel-Internal-Service';
@@ -204,8 +205,8 @@ export default {
   scheduled(controller, env, ctx) {
     const result = videoWorker.scheduled(controller, videoRuntimeEnv(env), ctx);
     if (shouldRefreshTverFeed(controller?.scheduledTime)) {
-      ctx.waitUntil(refreshTverFeed(env).catch((error) => {
-        console.error('tver-feed-refresh-failed', {
+      ctx.waitUntil(dispatchTverFeedRefresh(env).catch((error) => {
+        console.error('tver-feed-refresh-dispatch-failed', {
           error: error instanceof Error ? error.message : String(error)
         });
       }));
