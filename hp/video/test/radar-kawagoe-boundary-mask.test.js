@@ -14,6 +14,9 @@ const prepareAssets = readFileSync(
   new URL('../../scripts/prepare-radar-cloud-assets.mjs', import.meta.url),
   'utf8',
 );
+const radarSunny = readFileSync(
+  new URL('../../native/scripts/ui/radar-sunny.png', import.meta.url),
+);
 
 test('cloud radar persists one Kawagoe mask PNG and draws it above wet panels', () => {
   assert.match(browserRadar, /city\/geojson\/latest\/11201\.geojson/);
@@ -52,10 +55,12 @@ test('Kawagoe mask warmup uses the exact same world-pixel viewport as rain tiles
   assert.doesNotMatch(browserRadar, /tileReference/);
 });
 
-test('each dry radar panel independently becomes gray after low-resolution alpha analysis', () => {
+test('each dry radar panel independently becomes gray and uses an aspect-safe sunny icon', () => {
   assert.match(browserRadar, /const SUNNY_ICON_ASSET_PATH = "\/radar-cloud\/weather-sunny\.png";/);
-  assert.match(prepareAssets, /weather-icons\/100_day\.png/);
+  assert.match(prepareAssets, /resolve\(sourceDirectory, "radar-sunny\.png"\)/);
   assert.match(prepareAssets, /weather-sunny\.png/);
+  assert.doesNotMatch(prepareAssets, /weather-icons\/100_day\.png/);
+  assert.equal(radarSunny.readUInt32BE(16), radarSunny.readUInt32BE(20));
   assert.match(browserRadar, /const RAIN_ANALYSIS_WIDTH = 80;/);
   assert.match(browserRadar, /const RAIN_ANALYSIS_HEIGHT = 160;/);
   assert.match(browserRadar, /const rainCanvas = g\.document\.createElement\("canvas"\)/);
