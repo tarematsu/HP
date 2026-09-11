@@ -177,6 +177,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
 
   const current = currentTrack();
   const currentMatchesTarget = targetMatches(current);
+  const currentIdentified = !!current.path || !!current.title;
   const control = playerControl();
   const button = targetPlayButton();
   const controlIntent = buttonIntent(control);
@@ -184,14 +185,23 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const mediaState = mediaPlaybackState();
 
   // Playback truth comes from an active media element plus target identity.
-  // A Pause-labelled UI while media is still paused at zero is a transitional
-  // state, not a command to click. Returning "settling" makes native wait and,
-  // if the transition never resolves, recover by navigation rather than by
-  // toggling the ambiguous play/pause control.
   if (currentMatchesTarget && mediaState.known && mediaState.playing) {
     report(true);
     return true;
   }
+
+  // A genuinely active different track is not a settling UI race. Tell native
+  // to replace it immediately by navigating back to the requested target; do
+  // not toggle or pause the current media in JavaScript.
+  if (mediaState.known && mediaState.playing && currentIdentified &&
+      !currentMatchesTarget) {
+    report(false);
+    return 'wrong';
+  }
+
+  // A Pause-labelled UI while media is still paused at zero is transitional,
+  // not a command to click. Native waits and, if necessary, retries by clean
+  // navigation rather than toggling the ambiguous play/pause control.
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') {
     report(false);
     return 'settling';
