@@ -15,6 +15,9 @@ LR"JS(
   const postrollGraceMs = 12000;
   const qualityProbeIntervalMs = 5000;
   const qualityProbeLimit = 4;
+  const progressSteadyIntervalMs = 2000;
+  const progressNearEndIntervalMs = 500;
+  const progressFinalIntervalMs = 200;
   const episodeQueueKey = '__homePanelTverEpisodeQueue';
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visibleRect = element => {
@@ -85,13 +88,60 @@ LR"JS(
   };
 
   let wakeAt = 0;
-  const wakeNative = () => {
-    const now = Date.now();
-    if (now - wakeAt < 250) return;
-    wakeAt = now;
+  let wakeTimer = 0;
+  let lastWakeSignature = '';
+  let pendingWakeSignature = '';
+  const postWake = signature => {
+    wakeAt = Date.now();
+    lastWakeSignature = signature;
+    pendingWakeSignature = '';
     try {
       window.chrome?.webview?.postMessage('homepanel:tver-wake');
     } catch (_) {}
+  };
+  const wakeNative = (signature = 'state', force = false) => {
+    if (!force && signature === lastWakeSignature && !wakeTimer) return;
+    pendingWakeSignature = signature;
+    const delay = Math.max(0, 250 - (Date.now() - wakeAt));
+    if (delay === 0) {
+      if (wakeTimer) {
+        clearTimeout(wakeTimer);
+        wakeTimer = 0;
+      }
+      if (force || signature !== lastWakeSignature) postWake(signature);
+      return;
+    }
+    if (wakeTimer) return;
+    wakeTimer = setTimeout(() => {
+      wakeTimer = 0;
+      const pending = pendingWakeSignature;
+      if (pending && pending !== lastWakeSignature) postWake(pending);
+    }, delay);
+  };
+
+  const progressIntervalFor = video => {
+    if (!video || !Number.isFinite(video.duration) ||
+        !Number.isFinite(video.currentTime) || video.duration <= 0) {
+      return progressSteadyIntervalMs;
+    }
+    const remaining = Math.max(0, video.duration - video.currentTime);
+    if (remaining <= 3) return progressFinalIntervalMs;
+    if (remaining <= 15) return progressNearEndIntervalMs;
+    return progressSteadyIntervalMs;
+  };
+  const sampleProgress = (video, state, force = false) => {
+    if (!video || !state) return;
+    const now = Date.now();
+    const interval = progressIntervalFor(video);
+    if (!force && state.progressSampleAt &&
+        now - state.progressSampleAt < interval) return;
+    state.progressSampleAt = now;
+    if (Number.isFinite(video.currentTime)) {
+      state.maxTime = Math.max(state.maxTime, video.currentTime);
+    }
+    if (Number.isFinite(video.duration)) {
+      state.maxDuration = Math.max(state.maxDuration, video.duration);
+    }
   };
 )JS"
 LR"JS(
@@ -159,6 +209,7 @@ LR"JS(
 
   let observedPlayerRoot = null;
   let playerObserver = null;
+  let playerUiRevision = 0;
   const interestingPlayerSelector = [
     'video',
     '[aria-label*="スキップ"]', '[title*="スキップ"]',
@@ -186,6 +237,8 @@ LR"JS(
           const element = node;
           if (element.matches?.(interestingPlayerSelector) ||
               element.querySelector?.(interestingPlayerSelector)) {
+            ++playerUiRevision;
+            wakeNative('ui:' + playerUiRevision);
             scheduleEnsure(40);
             return;
           }
@@ -201,12 +254,7 @@ LR"JS(
     video.__homePanelTverEventState = state;
     video.addEventListener('timeupdate', () => {
       if (window.__homePanelSakuraMeetsState !== state) return;
-      if (Number.isFinite(video.currentTime)) {
-        state.maxTime = Math.max(state.maxTime, video.currentTime);
-      }
-      if (Number.isFinite(video.duration)) {
-        state.maxDuration = Math.max(state.maxDuration, video.duration);
-      }
+      sampleProgress(video, state);
     }, { passive: true });
     video.addEventListener('ratechange', () => {
       if (window.__homePanelSakuraMeetsState !== state || state.adActive ||
@@ -225,12 +273,18 @@ LR"JS(
     });
     video.addEventListener('ended', () => {
       if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
+      sampleProgress(video, state, true);
       state.endCandidateAt = Date.now();
       window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
     }, { passive: true });
-    for (const eventName of [
-        'play', 'pause', 'loadedmetadata', 'emptied', 'durationchange']) {
+    for (const eventName of ['play', 'pause', 'emptied']) {
       video.addEventListener(eventName, () => scheduleEnsure(40), { passive: true });
+    }
+    for (const eventName of ['loadedmetadata', 'durationchange']) {
+      video.addEventListener(eventName, () => {
+        sampleProgress(video, state, true);
+        scheduleEnsure(40);
+      }, { passive: true });
     }
   };
 )JS"
@@ -246,6 +300,7 @@ LR"JS(
           video: null,
           maxDuration: 0,
           maxTime: 0,
+          progressSampleAt: 0,
           endCandidateAt: 0,
           lowQualitySet: false,
           qualityProbeAt: 0,
@@ -281,6 +336,7 @@ LR"JS(
           state.endCandidateAt = 0;
           state.maxDuration = 0;
           state.maxTime = 0;
+          state.progressSampleAt = 0;
           state.lowQualitySet = false;
           state.qualityProbeAt = 0;
           state.qualityProbeAttempts = 0;
@@ -289,7 +345,9 @@ LR"JS(
           state.restartRequested = false;
         }
         window.__homePanelTverAdActive = true;
-        wakeNative();
+        const adFullscreen = !!(document.fullscreenElement ||
+            document.webkitFullscreenElement || document.msFullscreenElement);
+        wakeNative('ad:' + identity + ':' + (adFullscreen ? 'fs' : 'window'));
         return;
       }
 
@@ -302,6 +360,7 @@ LR"JS(
         state.video = null;
         state.maxDuration = 0;
         state.maxTime = 0;
+        state.progressSampleAt = 0;
         state.endCandidateAt = 0;
         state.lowQualitySet = false;
         state.qualityProbeAt = 0;
@@ -314,7 +373,7 @@ LR"JS(
         if (completedPostroll) {
           if (advanceEpisode()) return;
           state.restartRequested = true;
-          wakeNative();
+          wakeNative('restart:' + location.pathname, true);
           return;
         }
       } else {
@@ -323,6 +382,7 @@ LR"JS(
 
       if (state.video !== video) {
         state.video = video;
+        state.progressSampleAt = 0;
         state.lowQualitySet = false;
         state.qualityProbeAt = 0;
         state.qualityProbeAttempts = 0;
@@ -342,12 +402,7 @@ LR"JS(
         enforceVolume(video);
         state.playbackSettingsApplied = true;
       }
-      if (Number.isFinite(video.duration)) {
-        state.maxDuration = Math.max(state.maxDuration, video.duration);
-      }
-      if (Number.isFinite(video.currentTime)) {
-        state.maxTime = Math.max(state.maxTime, video.currentTime);
-      }
+      sampleProgress(video, state, true);
 
       if (video.ended && !state.endCandidateAt) {
         state.endCandidateAt = Date.now();
@@ -360,7 +415,7 @@ LR"JS(
       if (stableEnd && completedItem) {
         if (advanceEpisode()) return;
         state.restartRequested = true;
-        wakeNative();
+        wakeNative('restart:' + location.pathname, true);
         return;
       }
 
@@ -403,10 +458,14 @@ LR"JS(
         }
       }
 
-      if (video.paused && !video.ended) wakeNative();
       const browserFullscreen = document.fullscreenElement ||
           document.webkitFullscreenElement || document.msFullscreenElement;
-      if (!browserFullscreen) wakeNative();
+      const recoveryFlags = [];
+      if (video.paused && !video.ended) recoveryFlags.push('paused');
+      if (!browserFullscreen) recoveryFlags.push('fullscreen');
+      if (recoveryFlags.length) {
+        wakeNative('recovery:' + recoveryFlags.join('+') + ':' + mediaIdentity(video));
+      }
     } catch (_) {}
   };
 
@@ -419,11 +478,15 @@ LR"JS(
   }
   document.addEventListener('fullscreenchange', () => {
     scheduleEnsure(40);
-    wakeNative();
+    const fullscreen = !!(document.fullscreenElement ||
+        document.webkitFullscreenElement || document.msFullscreenElement);
+    wakeNative('fullscreen-change:' + (fullscreen ? '1' : '0'));
   }, true);
   document.addEventListener('webkitfullscreenchange', () => {
     scheduleEnsure(40);
-    wakeNative();
+    const fullscreen = !!(document.fullscreenElement ||
+        document.webkitFullscreenElement || document.msFullscreenElement);
+    wakeNative('fullscreen-change:' + (fullscreen ? '1' : '0'));
   }, true);
   ensure();
   return true;
