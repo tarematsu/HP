@@ -18,10 +18,13 @@ test('Spotify music converges both shuffle and repeat to off before playback rec
   assert.match(header, /bool shuffleOffVerified = false;/);
   assert.match(header, /bool repeatOffVerified = false;/);
   assert.match(header, /bool EnsurePlaybackModeOff\(/);
+  assert.match(guards, /kSpotifyPlaybackModesOffProbeScript/);
   assert.match(guards, /control-button-shuffle/);
   assert.match(guards, /control-button-repeat/);
   assert.match(guards, /checked === 'false'/);
-  assert.match(guards, /checked !== 'true' && checked !== 'mixed'/);
+  assert.match(guards, /\['true', 'mixed'\]/);
+  assert.match(guards, /target->shuffleOffVerified = true;/);
+  assert.match(guards, /target->repeatOffVerified = true;/);
   assert.match(guards, /ClickSlotNormalizedPoint\(\*target, x, y\)/);
   assert.doesNotMatch(guards, /\.click\(\)/);
   assert.match(music, /slot\.shuffleOffVerified = false;/);
@@ -34,16 +37,19 @@ test('Spotify music converges both shuffle and repeat to off before playback rec
   );
 });
 
-test('repeat guard requires explicit off and treats context and repeat-one as active', () => {
-  assert.match(guards, /kSpotifyRepeatOffProbeScript/);
-  assert.match(guards, /if \(!button\) return false;/);
-  assert.match(guards, /if \(checked === 'false'\) return true;/);
-  assert.match(guards, /checked !== 'true' && checked !== 'mixed'/);
+test('shuffle and repeat are inspected in one JavaScript round trip', () => {
+  assert.equal(
+    (guards.match(/ExecuteScript\(\s*kSpotifyPlaybackModesOffProbeScript/g) || []).length,
+    1,
+  );
+  assert.doesNotMatch(guards, /kSpotifyShuffleOffProbeScript|kSpotifyRepeatOffProbeScript/);
+  assert.match(guards, /const shuffle = inspect\('control-button-shuffle', \['true'\]\)/);
+  assert.match(guards, /const repeat = inspect\('control-button-repeat', \['true', 'mixed'\]\)/);
+  assert.match(guards, /return shuffle\.off && repeat\.off/);
 });
 
 test('unmounted controls stay pending instead of being falsely marked off or unhealthy', () => {
-  assert.doesNotMatch(guards, /if \(!button\) return true;/);
-  assert.match(guards, /if \(!button\) return false;/);
+  assert.match(guards, /if \(!button\) return \{ off: false, point: null \}/);
   assert.match(guards, /if \(value == L"false"\)/);
   assert.match(guards, /ArmRobustScheduler\(\);[\s\S]*return S_OK;/);
 });

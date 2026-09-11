@@ -1,53 +1,38 @@
 namespace hp {
 namespace {
 
-constexpr wchar_t kSpotifyShuffleOffProbeScript[] = LR"JS(
+constexpr wchar_t kSpotifyPlaybackModesOffProbeScript[] = LR"JS(
 (() => {
-  const button = document.querySelector(
-      'button[data-testid="control-button-shuffle"]');
-  if (!button) return false;
-  const checked = button.getAttribute('aria-checked');
-  if (checked === 'false') return true;
-  if (checked !== 'true') return false;
-  const style = window.getComputedStyle(button);
-  const rect = button.getBoundingClientRect();
-  if (button.disabled || button.getAttribute('aria-disabled') === 'true' ||
-      style.display === 'none' || style.visibility === 'hidden' ||
-      style.pointerEvents === 'none' || rect.width <= 0 || rect.height <= 0 ||
-      window.innerWidth <= 0 || window.innerHeight <= 0) {
-    return false;
-  }
-  return [
-    Math.max(0, Math.min(10000, Math.round(
-        ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
-    Math.max(0, Math.min(10000, Math.round(
-        ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
-  ];
-})()
-)JS";
+  const inspect = (testId, activeStates) => {
+    const button = document.querySelector(`button[data-testid="${testId}"]`);
+    if (!button) return { off: false, point: null };
+    const checked = button.getAttribute('aria-checked');
+    if (checked === 'false') return { off: true, point: null };
+    if (!activeStates.includes(checked)) return { off: false, point: null };
+    const style = window.getComputedStyle(button);
+    const rect = button.getBoundingClientRect();
+    if (button.disabled || button.getAttribute('aria-disabled') === 'true' ||
+        style.display === 'none' || style.visibility === 'hidden' ||
+        style.pointerEvents === 'none' || rect.width <= 0 || rect.height <= 0 ||
+        window.innerWidth <= 0 || window.innerHeight <= 0) {
+      return { off: false, point: null };
+    }
+    return {
+      off: false,
+      point: [
+        Math.max(0, Math.min(10000, Math.round(
+            ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
+        Math.max(0, Math.min(10000, Math.round(
+            ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
+      ]
+    };
+  };
 
-constexpr wchar_t kSpotifyRepeatOffProbeScript[] = LR"JS(
-(() => {
-  const button = document.querySelector(
-      'button[data-testid="control-button-repeat"]');
-  if (!button) return false;
-  const checked = button.getAttribute('aria-checked');
-  if (checked === 'false') return true;
-  if (checked !== 'true' && checked !== 'mixed') return false;
-  const style = window.getComputedStyle(button);
-  const rect = button.getBoundingClientRect();
-  if (button.disabled || button.getAttribute('aria-disabled') === 'true' ||
-      style.display === 'none' || style.visibility === 'hidden' ||
-      style.pointerEvents === 'none' || rect.width <= 0 || rect.height <= 0 ||
-      window.innerWidth <= 0 || window.innerHeight <= 0) {
-    return false;
-  }
-  return [
-    Math.max(0, Math.min(10000, Math.round(
-        ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
-    Math.max(0, Math.min(10000, Math.round(
-        ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
-  ];
+  const shuffle = inspect('control-button-shuffle', ['true']);
+  const repeat = inspect('control-button-repeat', ['true', 'mixed']);
+  if (shuffle.point) return shuffle.point;
+  if (repeat.point) return repeat.point;
+  return shuffle.off && repeat.off;
 })()
 )JS";
 
@@ -55,16 +40,11 @@ constexpr wchar_t kSpotifyRepeatOffProbeScript[] = LR"JS(
 
 bool SpotifyWebViews::EnsurePlaybackModeOff(
     Slot& slot, PlaybackModeGuard mode) noexcept {
-  bool& verified = mode == PlaybackModeGuard::Shuffle
-                       ? slot.shuffleOffVerified
-                       : slot.repeatOffVerified;
-  if (verified) return true;
+  const bool requestedVerified = mode == PlaybackModeGuard::Shuffle
+      ? slot.shuffleOffVerified
+      : slot.repeatOffVerified;
+  if (requestedVerified) return true;
   if (!slot.webview || slot.reconcileInFlight) return false;
-
-  const wchar_t* const probeScript =
-      mode == PlaybackModeGuard::Shuffle
-          ? kSpotifyShuffleOffProbeScript
-          : kSpotifyRepeatOffProbeScript;
 
   ++slot.reconcileRequestGeneration;
   if (slot.reconcileRequestGeneration == 0) ++slot.reconcileRequestGeneration;
@@ -77,10 +57,10 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
   ComPtr<ICoreWebView2> requestedView = slot.webview;
   const auto alive = alive_;
   const HRESULT started = requestedView->ExecuteScript(
-      probeScript,
+      kSpotifyPlaybackModesOffProbeScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
           [this, alive, target, requestedView, requestedGeneration,
-           requestGeneration, mode](HRESULT result, LPCWSTR json) -> HRESULT {
+           requestGeneration](HRESULT result, LPCWSTR json) -> HRESULT {
             if (!alive->load(std::memory_order_acquire)) return S_OK;
             if (target->reconcileRequestGeneration != requestGeneration ||
                 target->webview.Get() != requestedView.Get()) {
@@ -96,17 +76,13 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
             if (SUCCEEDED(result) && json) {
               const std::wstring_view value(json);
               if (value == L"true") {
-                if (mode == PlaybackModeGuard::Shuffle) {
-                  target->shuffleOffVerified = true;
-                } else {
-                  target->repeatOffVerified = true;
-                }
+                target->shuffleOffVerified = true;
+                target->repeatOffVerified = true;
                 ArmRobustScheduler();
                 return S_OK;
               }
-              // The player controls may not be mounted yet. Treat an explicit
-              // false as pending rather than a playback failure; the scheduler
-              // will probe again without marking the slot unhealthy.
+              // Missing or not-yet-mounted controls remain pending. Do not mark
+              // the slot unhealthy while Spotify is still mounting its player.
               if (value == L"false") {
                 ArmRobustScheduler();
                 return S_OK;

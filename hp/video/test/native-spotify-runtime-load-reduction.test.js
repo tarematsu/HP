@@ -1,0 +1,49 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const source = name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+
+const runtime = source('spotify_media_observer_runtime.inc');
+const events = source('spotify_media_observer_events.inc');
+const heartbeat = source('spotify_media_observer_heartbeat.inc');
+const guards = source('spotify_playback_mode_guards.inc');
+const phase = source('spotify_phase_sync.inc');
+
+test('timeupdate target identity work is throttled to about once per playback second', () => {
+  assert.match(runtime, /lastIdentityCheckTime: -1/);
+  assert.match(events, /currentTime - state\.lastIdentityCheckTime < 1/);
+  assert.match(events, /state\.lastIdentityCheckTime = currentTime;[\s\S]*enforceTarget\(media\)/);
+  assert.match(events, /loadedmetadata[\s\S]*durationchange[\s\S]*state\.lastIdentityCheckTime = -1/);
+});
+
+test('heartbeat owns no interval while Spotify music is idle or paused', () => {
+  assert.match(heartbeat, /const startHeartbeat = \(\) =>/);
+  assert.match(heartbeat, /const stopHeartbeat = \(\) =>/);
+  assert.match(heartbeat, /clearInterval\(runtime\.heartbeatTimer\)/);
+  assert.match(heartbeat, /runtime\.heartbeatTimer = setInterval\(heartbeat, 10000\)/);
+  assert.match(heartbeat, /!state\.started[\s\S]*media\.paused \|\| media\.ended/);
+  assert.doesNotMatch(heartbeat, /Array\.from\(document\.querySelectorAll/);
+  assert.match(events, /document\.addEventListener\('pause'[\s\S]*stopHeartbeat\(\)/);
+  assert.match(events, /state\.endedPosted = true;[\s\S]*stopHeartbeat\(\);[\s\S]*stopAllMedia\(\)/);
+  assert.match(runtime, /state\.recoveryPosted = true;[\s\S]*stopHeartbeatIfAvailable\(\);[\s\S]*post\('spotify:not-playing'\)/);
+});
+
+test('shuffle and repeat mode verification shares one DOM probe and ExecuteScript round trip', () => {
+  assert.match(guards, /kSpotifyPlaybackModesOffProbeScript/);
+  assert.match(guards, /control-button-shuffle/);
+  assert.match(guards, /control-button-repeat/);
+  assert.equal(
+    (guards.match(/ExecuteScript\(\s*kSpotifyPlaybackModesOffProbeScript/g) || []).length,
+    1,
+  );
+  assert.match(guards, /target->shuffleOffVerified = true;/);
+  assert.match(guards, /target->repeatOffVerified = true;/);
+});
+
+test('healthy native Spotify reconciliation sleeps up to 60 seconds', () => {
+  assert.match(phase, /kSpotifyRobustHealthyTickMs = 60U \* 1000U/);
+  assert.match(phase, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
+  assert.match(phase, /nextDeadlineMs = std::min\(nextDeadlineMs, boundary - elapsed\)/);
+});

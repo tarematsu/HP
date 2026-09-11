@@ -25,7 +25,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     targetMedia: null,
     stallTimer: 0,
     heartbeatTime: -1,
-    heartbeatMisses: 0
+    heartbeatMisses: 0,
+    lastIdentityCheckTime: -1
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
@@ -36,12 +37,27 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       }
     } catch (_) {}
   };
+  const heartbeatRuntime = () =>
+      window.__homePanelSpotifyMediaObserverRuntime || null;
+  const startHeartbeatIfAvailable = () => {
+    const runtime = heartbeatRuntime();
+    if (runtime && typeof runtime.startHeartbeat === 'function') {
+      runtime.startHeartbeat();
+    }
+  };
+  const stopHeartbeatIfAvailable = () => {
+    const runtime = heartbeatRuntime();
+    if (runtime && typeof runtime.stopHeartbeat === 'function') {
+      runtime.stopHeartbeat();
+    }
+  };
   const targetKey = target => target
       ? [target.pagePath, target.trackPath, normalize(target.title),
          target.kind, generation()].join('|')
       : '';
   const resetState = key => {
     clearTimeout(state.stallTimer);
+    stopHeartbeatIfAvailable();
     state.key = key;
     state.started = false;
     state.startPosted = false;
@@ -51,6 +67,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.stallTimer = 0;
     state.heartbeatTime = -1;
     state.heartbeatMisses = 0;
+    state.lastIdentityCheckTime = -1;
   };
   const syncTarget = () => {
     const target = window.__homePanelSpotifyNativeTarget;
@@ -101,10 +118,12 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       // previous document. Only enforce after this generation started once.
       if (!state.startPosted) return 'unknown';
       try { if (!media.paused) media.pause(); } catch (_) {}
+      stopHeartbeatIfAvailable();
       state.started = false;
       state.targetMedia = null;
       state.heartbeatTime = -1;
       state.heartbeatMisses = 0;
+      state.lastIdentityCheckTime = -1;
       if (!state.recoveryPosted) {
         state.recoveryPosted = true;
         post('spotify:not-playing');
@@ -112,12 +131,16 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       return 'wrong';
     }
 
-    if (media.paused) return 'target';
+    if (media.paused) {
+      stopHeartbeatIfAvailable();
+      return 'target';
+    }
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
     if (!state.started || state.targetMedia !== media) {
       state.heartbeatTime = Number(media.currentTime) || 0;
       state.heartbeatMisses = 0;
+      state.lastIdentityCheckTime = -1;
     }
     state.started = true;
     state.recoveryPosted = false;
@@ -126,6 +149,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       state.startPosted = true;
       post('spotify:timed-started');
     }
+    startHeartbeatIfAvailable();
     return 'playing';
   };
 
@@ -140,6 +164,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       return false;
     }
     state.recoveryPosted = true;
+    stopHeartbeatIfAvailable();
     post('spotify:not-playing');
     return true;
   };
@@ -190,7 +215,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     scheduleTargetChecks,
     scheduleRecovery,
     eventsInstalled: false,
-    heartbeatTimer: 0
+    heartbeatTimer: 0,
+    startHeartbeat: null,
+    stopHeartbeat: null
   };
   window.__homePanelSpotifyMediaObserverRuntime = runtime;
 
