@@ -13,7 +13,7 @@ await Promise.all([
     resolve(destinationDirectory, "radar-satellite.png"),
   ),
   copyFile(
-    resolve(sourceDirectory, "weather-icons/100_day.png"),
+    resolve(sourceDirectory, "radar-sunny.png"),
     resolve(destinationDirectory, "weather-sunny.png"),
   ),
 ]);
