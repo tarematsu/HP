@@ -1,5 +1,5 @@
 // Official Spotify releases whose running time is 3:30 or shorter.
-constexpr std::array<SpotifyFallbackCatalogTrack, 17>
+constexpr std::array<SpotifyFallbackCatalogTrack, 18>
     kSpotifyFallbackCatalogTracks = {{
     {L"Sunny side up", L"https://open.spotify.com/track/5xUQGRuP4LPk4ESl1xbmFs", L"/track/5xUQGRuP4LPk4ESl1xbmFs"},
     {L"キスが苦い", L"https://open.spotify.com/track/4PaLKbIU8NvguxcrjMvHXh", L"/track/4PaLKbIU8NvguxcrjMvHXh"},
@@ -18,4 +18,5 @@ constexpr std::array<SpotifyFallbackCatalogTrack, 17>
     {L"やるしかないじゃん -OFF VOCAL ver.-", L"https://open.spotify.com/track/04nk2Ee7qSnNwn6OG2hl3Q", L"/track/04nk2Ee7qSnNwn6OG2hl3Q"},
     {L"Nightmare症候群 -OFF VOCAL ver.-", L"https://open.spotify.com/track/4hVECXakmpdqigQq1mJwNg", L"/track/4hVECXakmpdqigQq1mJwNg"},
     {L"Make or Break -OFF VOCAL ver.-", L"https://open.spotify.com/track/51nXGT2UTljN9BdOgn0Utw", L"/track/51nXGT2UTljN9BdOgn0Utw"},
+    {L"死んだふり -OFF VOCAL ver.-", L"https://open.spotify.com/track/1R5rm05YeYZSJiGzZPZx8l", L"/track/1R5rm05YeYZSJiGzZPZx8l"},
 }};
