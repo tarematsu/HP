@@ -124,11 +124,6 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
       nextDeadlineMs = std::min(
           nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
     }
-
-    if (slot.podcastDueTick != 0 && !slot.podcastBreakActive) {
-      if (now >= slot.podcastDueTick) return kSpotifyRobustUrgentTickMs;
-      nextDeadlineMs = std::min(nextDeadlineMs, slot.podcastDueTick - now);
-    }
   }
 
   if (scheduleStartTick_ != 0 && now >= scheduleStartTick_) {
