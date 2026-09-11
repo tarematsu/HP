@@ -159,11 +159,11 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetText); \
   DrawTextInRect((dc), hpWasteText, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
-  std::wstring hpVersionText = L"アプリバージョン "; \
-  hpVersionText += kVersion; \
-  const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 300), 86, 150); \
-  const int hpControlButtonGap = std::max(6, SpanX(hpStatusRect, 20)); \
-  const LONG hpStatusTextRight = std::max<LONG>(hpStatusRect.left + 1, hpStatusRect.right - hpControlButtonWidth - hpControlButtonGap); \
+  const std::wstring hpVersionText = kVersion; \
+  const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 245), 92, 132); \
+  const int hpControlButtonGap = std::clamp(SpanX(hpStatusRect, 20), 6, 12); \
+  const int hpControlRowWidth = hpControlButtonWidth * 2 + hpControlButtonGap; \
+  const LONG hpStatusTextRight = std::max<LONG>(hpStatusRect.left + 1, hpStatusRect.right - hpControlRowWidth - hpControlButtonGap); \
   RECT hpVersionRect = hpStatusRect; hpVersionRect.right = hpStatusTextRight; \
   SelectObject((dc), TierFont(FontTier::Small)); \
   SetTextColor((dc), kWidgetMuted); \
