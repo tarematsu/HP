@@ -9,6 +9,22 @@ struct SpotifyFallbackCatalogTrack {
 
 #include "spotify_fallback_catalog.inc"
 
+constexpr std::array<SpotifyFallbackCatalogTrack, 5> kSpotifyBSlotTracks = {{
+    {L"What's \"KAZOKU\"?", L"https://open.spotify.com/track/33liCluqUasE65nMv3KLLm", L"/track/33liCluqUasE65nMv3KLLm"},
+    {L"コインランドリー", L"https://open.spotify.com/track/5QnQ7m9OxSoFeSPSz8grqX", L"/track/5QnQ7m9OxSoFeSPSz8grqX"},
+    {L"We got your back", L"https://open.spotify.com/track/2ze5Hu3eRRe6HxJTfuZaA0", L"/track/2ze5Hu3eRRe6HxJTfuZaA0"},
+    {L"各駅停車", L"https://open.spotify.com/track/2CMSkSwIfnNQR7bTNFFeB5", L"/track/2CMSkSwIfnNQR7bTNFFeB5"},
+    {L"恵まれ過ぎて", L"https://open.spotify.com/track/2meBhRDzQpf0ltQH11HbWG", L"/track/2meBhRDzQpf0ltQH11HbWG"},
+}};
+
+bool IsSpotifyInstrumentalRotationTrack(std::wstring_view title) noexcept {
+  return title == L"Overture" || title.rfind(L"Interlude #", 0) == 0;
+}
+
+bool IsSpotifyOffVocalRotationTrack(std::wstring_view title) noexcept {
+  return title.find(L"OFF VOCAL") != std::wstring_view::npos;
+}
+
 }  // namespace
 
 ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
@@ -31,6 +47,133 @@ ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
 
 void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
   slot.timedCycleTracks.clear();
+  inlineTalkAboutRotation_ = false;
+
+  // The managed cloud configuration historically exposes one fixed Lonesome
+  // block plus one random catalog block. Preserve that cloud-managed catalog as
+  // the source of truth, but assemble the requested seven positions natively:
+  // A Lonesome / B five-song pool / C Overture+Interludes / D BitterBlue /
+  // E-F short-song pool / G short-song pool + latest TALKABOUT. Every appended
+  // path is unique inside a cycle.
+  const RotationGroup* managedPool = nullptr;
+  if (!cloudRotationGroups_.empty()) {
+    const RotationGroup& first = cloudRotationGroups_.front();
+    const bool managedLonesome =
+        first.mode == RotationGroup::Mode::Fixed &&
+        std::any_of(first.tracks.begin(), first.tracks.end(),
+                    [](const ManagedTrack& track) {
+                      return track.path == kSpotifyLonesomeRabbitPath;
+                    });
+    if (managedLonesome) {
+      for (const RotationGroup& group : cloudRotationGroups_) {
+        if (group.mode != RotationGroup::Mode::Random || group.count != 1 ||
+            group.tracks.size() < 9) {
+          continue;
+        }
+        const bool hasShortSong = std::any_of(
+            group.tracks.begin(), group.tracks.end(),
+            [](const ManagedTrack& track) {
+              return !IsSpotifyInstrumentalRotationTrack(track.title) &&
+                     !IsSpotifyOffVocalRotationTrack(track.title);
+            });
+        const bool hasInstrumental = std::any_of(
+            group.tracks.begin(), group.tracks.end(),
+            [](const ManagedTrack& track) {
+              return IsSpotifyInstrumentalRotationTrack(track.title);
+            });
+        if (hasShortSong && hasInstrumental &&
+            (!managedPool || group.tracks.size() > managedPool->tracks.size())) {
+          managedPool = &group;
+        }
+      }
+    }
+  }
+
+  if (managedPool) {
+    inlineTalkAboutRotation_ = true;
+    std::vector<std::wstring> usedPaths;
+    usedPaths.reserve(7);
+
+    const auto appendUnique = [&slot, &usedPaths](ManagedTrack track) {
+      if (track.path.empty() ||
+          std::find(usedPaths.begin(), usedPaths.end(), track.path) !=
+              usedPaths.end()) {
+        return false;
+      }
+      usedPaths.push_back(track.path);
+      slot.timedCycleTracks.push_back(std::move(track));
+      return true;
+    };
+
+    const auto pickOne = [this, &appendUnique](
+                             std::vector<ManagedTrack> candidates) {
+      for (size_t remaining = candidates.size(); remaining > 1; --remaining) {
+        const size_t swapIndex =
+            static_cast<size_t>(NextTimedRandom() % remaining);
+        std::swap(candidates[remaining - 1], candidates[swapIndex]);
+      }
+      for (ManagedTrack& candidate : candidates) {
+        if (appendUnique(std::move(candidate))) return true;
+      }
+      return false;
+    };
+
+    // A: fixed Lonesome Rabbit.
+    appendUnique({kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,
+                  kSpotifyLonesomeRabbitPath});
+
+    // B: one shuffled selection from the five requested songs.
+    std::vector<ManagedTrack> bCandidates;
+    bCandidates.reserve(kSpotifyBSlotTracks.size());
+    for (const auto& candidate : kSpotifyBSlotTracks) {
+      bCandidates.push_back({candidate.title, candidate.url, candidate.path});
+    }
+    pickOne(std::move(bCandidates));
+
+    // C: one shuffled selection from Overture and every Interlude available in
+    // the synchronized managed catalog.
+    std::vector<ManagedTrack> instrumentalCandidates;
+    for (const ManagedTrack& track : managedPool->tracks) {
+      if (IsSpotifyInstrumentalRotationTrack(track.title)) {
+        instrumentalCandidates.push_back(track);
+      }
+    }
+    pickOne(std::move(instrumentalCandidates));
+
+    // D: fixed 放課後BitterBlue.
+    appendUnique({kSpotifyBitterBlueTitle, kSpotifyBitterBlueUrl,
+                  kSpotifyBitterBluePath});
+
+    // E/F: independent shuffled selections from the <=3:30 Sakurazaka song
+    // pool. Instrumental and OFF VOCAL entries live in the managed catalog too,
+    // but are deliberately excluded from this song pool.
+    std::vector<ManagedTrack> shortSongCandidates;
+    for (const ManagedTrack& track : managedPool->tracks) {
+      if (!IsSpotifyInstrumentalRotationTrack(track.title) &&
+          !IsSpotifyOffVocalRotationTrack(track.title)) {
+        shortSongCandidates.push_back(track);
+      }
+    }
+    pickOne(shortSongCandidates);
+    pickOne(shortSongCandidates);
+
+    // G: the same short-song pool plus the cloud-resolved latest TALKABOUT
+    // episode. The common used-path filter prevents a same-cycle song repeat.
+    std::vector<ManagedTrack> gCandidates = shortSongCandidates;
+    if (SpotifyPodcastTargetReady()) {
+      gCandidates.push_back(
+          {L"櫻坂46の「さ」Talk about", SpotifyPodcastUrl(),
+           SpotifyPodcastPath()});
+    }
+    pickOne(std::move(gCandidates));
+
+    if (slot.timedCycleTracks.size() == 7) return;
+
+    // A malformed/incomplete managed catalog must not strand a slot. Fall back
+    // to the generic cloud behavior below instead of publishing a partial cycle.
+    slot.timedCycleTracks.clear();
+    inlineTalkAboutRotation_ = false;
+  }
 
   const auto appendGroup = [this, &slot](const RotationGroup& group) {
     if (group.tracks.empty()) return;
