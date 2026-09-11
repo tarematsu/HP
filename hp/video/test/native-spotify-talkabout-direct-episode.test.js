@@ -19,11 +19,19 @@ test('cloud resolves TALKABOUT latest episode and persists it into normal device
   assert.match(cloudResolver, /resolveLatestSpotifyTalkAboutEpisode/);
   assert.match(cloudResolver, /\/v1\/shows\/\$\{showId\}\/episodes/);
   assert.match(cloudResolver, /latestEpisodeFromSpotifyHtml/);
-  assert.match(deviceSync, /refreshManagedTalkAboutEpisode/);
+  assert.match(deviceSync, /refreshManagedSpotifyConfig/);
   assert.match(deviceSync, /resolveLatestSpotifyTalkAboutEpisode\(env, showUrl/);
   assert.match(deviceSync, /talkAbout\.episodeUrl = episodeUrl/);
   assert.match(deviceSync, /SET version=\?2,payload=\?3,updated_at=\?4/);
   assert.match(deviceSync, /WHERE device_id=\?1 AND version=\?5/);
+});
+
+test('device sync migrates only the exact legacy random pool', () => {
+  assert.match(deviceSync, /LEGACY_SPOTIFY_RANDOM_TRACK_IDS/);
+  assert.match(deviceSync, /SHORT_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(deviceSync, /tracks\.every\(\(track, index\)/);
+  assert.match(deviceSync, /migrateLegacySpotifyRandomPool\(config\)/);
+  assert.match(deviceSync, /random\.tracks = SHORT_SPOTIFY_RANDOM_TRACKS\.map/);
 });
 
 test('native consumes only the cloud-resolved direct episode URL', () => {

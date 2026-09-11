@@ -7,42 +7,18 @@ struct SpotifyFallbackCatalogTrack {
   const wchar_t* path;
 };
 
-constexpr std::array<SpotifyFallbackCatalogTrack, 34>
+// 2025-2026 releases whose running time is 3:30 or shorter.
+constexpr std::array<SpotifyFallbackCatalogTrack, 9>
     kSpotifyFallbackCatalogTracks = {{
-    {L"UDAGAWA GENERATION", L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F", L"/track/4ljk3qMzdU81kWzxcNix3F"},
-    {L"Nightmare症候群", L"https://open.spotify.com/track/2hi8kIoKC8tRMDajdkoYFL", L"/track/2hi8kIoKC8tRMDajdkoYFL"},
-    {L"Nothing special", L"https://open.spotify.com/track/2kiCcs4rC55nlHQ1djMTt6", L"/track/2kiCcs4rC55nlHQ1djMTt6"},
-    {L"行かないで", L"https://open.spotify.com/track/3HdmFZGqZLNiCAfiNj4N84", L"/track/3HdmFZGqZLNiCAfiNj4N84"},
-    {L"ULTRAVIOLET", L"https://open.spotify.com/track/145bvRRC27wMYn9GNtTg57", L"/track/145bvRRC27wMYn9GNtTg57"},
-    {L"やるしかないじゃん", L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU", L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
-    {L"Addiction", L"https://open.spotify.com/track/4HCPWhwMu93z1jnpxw5OGM", L"/track/4HCPWhwMu93z1jnpxw5OGM"},
-    {L"Make or Break", L"https://open.spotify.com/track/7vvZ1QHTdkoEXBiOBdxdIo", L"/track/7vvZ1QHTdkoEXBiOBdxdIo"},
-    {L"死んだふり", L"https://open.spotify.com/track/6QmAwjzLQy6SjUyvGzSCG4", L"/track/6QmAwjzLQy6SjUyvGzSCG4"},
-    {L"港区パセリ", L"https://open.spotify.com/track/3SOOYBTDQBUe9vkavji2ZI", L"/track/3SOOYBTDQBUe9vkavji2ZI"},
-    {L"恋愛無双", L"https://open.spotify.com/track/5vRGSkQiKlJudkJ2vUKIOe", L"/track/5vRGSkQiKlJudkJ2vUKIOe"},
-    {L"真夏の大統領", L"https://open.spotify.com/track/4YUoggoqC3KIxts61kmlqw", L"/track/4YUoggoqC3KIxts61kmlqw"},
-    {L"君のことを想いながら", L"https://open.spotify.com/track/6ZOaQShLJdbZYvPoi1xOdE", L"/track/6ZOaQShLJdbZYvPoi1xOdE"},
-    {L"ノンアルコール", L"https://open.spotify.com/track/0yv01vKbOmS1UMS9XyN5ar", L"/track/0yv01vKbOmS1UMS9XyN5ar"},
-    {L"Unhappy birthday構文", L"https://open.spotify.com/track/6O3XAkrjMG1T4x8jvdpbrp", L"/track/6O3XAkrjMG1T4x8jvdpbrp"},
-    {L"Alter ego", L"https://open.spotify.com/track/4J2JsdELLCewlR7kISsw70", L"/track/4J2JsdELLCewlR7kISsw70"},
-    {L"木枯らしは泣かない", L"https://open.spotify.com/track/6jxiPZV3Aopxbi33i09uFQ", L"/track/6jxiPZV3Aopxbi33i09uFQ"},
-    {L"青空が見えるまで", L"https://open.spotify.com/track/12YgUwcZKUCnYWccet8qJq", L"/track/12YgUwcZKUCnYWccet8qJq"},
-    {L"I will be", L"https://open.spotify.com/track/4AZXBU2rt8yCcEA1pttXLB", L"/track/4AZXBU2rt8yCcEA1pttXLB"},
-    {L"Buddies (English Version)", L"https://open.spotify.com/track/6ncW1pJ5bHOum76AL2P08a", L"/track/6ncW1pJ5bHOum76AL2P08a"},
-    {L"夜空で一番輝いてる星の名前を僕は知らない", L"https://open.spotify.com/track/6whOTYjcMh396LLbqig8jq", L"/track/6whOTYjcMh396LLbqig8jq"},
-    {L"The growing up train", L"https://open.spotify.com/track/49cxVtrML7Xo63UFaaJrUR", L"/track/49cxVtrML7Xo63UFaaJrUR"},
-    {L"光源", L"https://open.spotify.com/track/2MPm0NrgPoMr6ee7je9afe", L"/track/2MPm0NrgPoMr6ee7je9afe"},
-    {L"ドライフルーツ", L"https://open.spotify.com/track/5DrxCKjopmd7UL1pJWqBHK", L"/track/5DrxCKjopmd7UL1pJWqBHK"},
-    {L"キスが苦い", L"https://open.spotify.com/track/4PaLKbIU8NvguxcrjMvHXh", L"/track/4PaLKbIU8NvguxcrjMvHXh"},
-    {L"くらげらしく", L"https://open.spotify.com/track/6J8Vaiow1E75EQs9RnMfZp", L"/track/6J8Vaiow1E75EQs9RnMfZp"},
     {L"Sunny side up", L"https://open.spotify.com/track/5xUQGRuP4LPk4ESl1xbmFs", L"/track/5xUQGRuP4LPk4ESl1xbmFs"},
-    {L"僕は向いてない", L"https://open.spotify.com/track/11KKagWroMV5UXbK50hZxZ", L"/track/11KKagWroMV5UXbK50hZxZ"},
-    {L"What's \"KAZOKU\"?", L"https://open.spotify.com/track/33liCluqUasE65nMv3KLLm", L"/track/33liCluqUasE65nMv3KLLm"},
-    {L"コインランドリー", L"https://open.spotify.com/track/5QnQ7m9OxSoFeSPSz8grqX", L"/track/5QnQ7m9OxSoFeSPSz8grqX"},
-    {L"We got your back", L"https://open.spotify.com/track/2ze5Hu3eRRe6HxJTfuZaA0", L"/track/2ze5Hu3eRRe6HxJTfuZaA0"},
-    {L"狼たちよ", L"https://open.spotify.com/track/4IfRFec7SNKOWw1HzpiqHQ", L"/track/4IfRFec7SNKOWw1HzpiqHQ"},
-    {L"各駅停車", L"https://open.spotify.com/track/2CMSkSwIfnNQR7bTNFFeB5", L"/track/2CMSkSwIfnNQR7bTNFFeB5"},
-    {L"恵まれ過ぎて", L"https://open.spotify.com/track/2meBhRDzQpf0ltQH11HbWG", L"/track/2meBhRDzQpf0ltQH11HbWG"},
+    {L"キスが苦い", L"https://open.spotify.com/track/4PaLKbIU8NvguxcrjMvHXh", L"/track/4PaLKbIU8NvguxcrjMvHXh"},
+    {L"やるしかないじゃん", L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU", L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
+    {L"恋愛無双", L"https://open.spotify.com/track/5vRGSkQiKlJudkJ2vUKIOe", L"/track/5vRGSkQiKlJudkJ2vUKIOe"},
+    {L"死んだふり", L"https://open.spotify.com/track/6QmAwjzLQy6SjUyvGzSCG4", L"/track/6QmAwjzLQy6SjUyvGzSCG4"},
+    {L"Make or Break", L"https://open.spotify.com/track/7vvZ1QHTdkoEXBiOBdxdIo", L"/track/7vvZ1QHTdkoEXBiOBdxdIo"},
+    {L"行かないで", L"https://open.spotify.com/track/3HdmFZGqZLNiCAfiNj4N84", L"/track/3HdmFZGqZLNiCAfiNj4N84"},
+    {L"ドライフルーツ", L"https://open.spotify.com/track/5DrxCKjopmd7UL1pJWqBHK", L"/track/5DrxCKjopmd7UL1pJWqBHK"},
+    {L"Nightmare症候群", L"https://open.spotify.com/track/2hi8kIoKC8tRMDajdkoYFL", L"/track/2hi8kIoKC8tRMDajdkoYFL"},
 }};
 
 }  // namespace

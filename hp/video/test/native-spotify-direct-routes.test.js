@@ -11,7 +11,7 @@ const cloud = readFileSync(
   'utf8',
 );
 
-test('all 34 fallback catalog entries keep direct Spotify track routes', () => {
+test('all nine short fallback catalog entries keep direct Spotify track routes', () => {
   assert.doesNotMatch(catalog, /spotify_recent_direct_routes\.inc/);
   const start = catalog.indexOf('kSpotifyFallbackCatalogTracks = {{');
   const end = catalog.indexOf('}};', start);
@@ -19,15 +19,20 @@ test('all 34 fallback catalog entries keep direct Spotify track routes', () => {
   const section = catalog.slice(start, end);
   assert.equal(
     (section.match(/https:\/\/open\.spotify\.com\/track\//g) || []).length,
-    34,
+    9,
   );
-  assert.equal((section.match(/L"\/track\//g) || []).length, 34);
+  assert.equal((section.match(/L"\/track\//g) || []).length, 9);
 
   for (const id of [
-    '33liCluqUasE65nMv3KLLm',
-    '5QnQ7m9OxSoFeSPSz8grqX',
-    '2CMSkSwIfnNQR7bTNFFeB5',
-    '2meBhRDzQpf0ltQH11HbWG',
+    '5xUQGRuP4LPk4ESl1xbmFs',
+    '4PaLKbIU8NvguxcrjMvHXh',
+    '6GF0ZgT8wlksWrlLTfGmlU',
+    '5vRGSkQiKlJudkJ2vUKIOe',
+    '6QmAwjzLQy6SjUyvGzSCG4',
+    '7vvZ1QHTdkoEXBiOBdxdIo',
+    '3HdmFZGqZLNiCAfiNj4N84',
+    '5DrxCKjopmd7UL1pJWqBHK',
+    '2hi8kIoKC8tRMDajdkoYFL',
   ]) {
     assert.equal((section.match(new RegExp(id, 'g')) || []).length, 2);
   }
