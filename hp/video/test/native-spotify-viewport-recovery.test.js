@@ -28,8 +28,10 @@ test('Spotify reconcile scripts scroll offscreen controls before returning norma
   }
 });
 
-test('TALKABOUT episode rows and music target rows are revealed before trusted recovery clicks', () => {
-  assert.match(scripts, /const latest = links\[0\];[\s\S]*latest\.scrollIntoView/);
+test('TALKABOUT uses only the direct episode page while music still reveals target rows', () => {
+  assert.match(scripts, /target\.pagePath\.startsWith\('\/episode\/'\)/);
+  assert.match(scripts, /location\.pathname !== target\.pagePath/);
+  assert.doesNotMatch(scripts, /latestEpisodeButton|a\[href\*="\/episode\/"\]/);
   assert.match(scoped, /const link = targetLink\(\);[\s\S]*link\.scrollIntoView/);
   assert.match(click, /ClickSlotNormalizedPoint/);
   assert.match(click, /RefreshSpotifyHostLayout\(\)/);
