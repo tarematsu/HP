@@ -23,6 +23,7 @@ export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
   ["Nightmare症候群 -OFF VOCAL ver.-", "4hVECXakmpdqigQq1mJwNg"],
   ["Make or Break -OFF VOCAL ver.-", "51nXGT2UTljN9BdOgn0Utw"],
   ["死んだふり -OFF VOCAL ver.-", "1R5rm05YeYZSJiGzZPZx8l"],
+  ["承認欲求 -OFF VOCAL ver.-", "17PV1rxc1KbMOTRKSRt2hd"],
 ] as const;
 
 export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
