@@ -13,11 +13,11 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery } = runtime;
 
-  const stopMedia = media => {
+  // The only direct pause retained in music playback is a narrow quarantine for
+  // autoplay that begins after a confirmed target has naturally ended but before
+  // native has installed the next generation. Start/recovery logic never pauses.
+  const quarantineMedia = media => {
     try { if (isMedia(media) && !media.paused) media.pause(); } catch (_) {}
-  };
-  const stopAllMedia = () => {
-    document.querySelectorAll('audio, video').forEach(stopMedia);
   };
   const stopHeartbeat = () => {
     if (typeof runtime.stopHeartbeat === 'function') runtime.stopHeartbeat();
@@ -29,7 +29,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       return false;
     }
     stopHeartbeat();
-    stopMedia(media);
+    quarantineMedia(media);
     return true;
   };
   const finishTarget = media => {
@@ -40,11 +40,10 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
-    // Mark completion before pausing so the resulting pause event cannot arm
-    // recovery for the old generation.
+    // The browser has already ended this media. Mark completion and notify
+    // native without issuing a redundant pause that could race another element.
     state.endedPosted = true;
     stopHeartbeat();
-    stopAllMedia();
     post('spotify:timed-ended');
     return true;
   };
