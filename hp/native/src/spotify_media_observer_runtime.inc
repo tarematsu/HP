@@ -102,8 +102,10 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   };
   const isMedia = value => value instanceof HTMLMediaElement;
 
-  // Single playback invariant: after the requested target has been confirmed,
-  // an identifiable different track is stopped and native recovery is requested.
+  // Observer responsibility is detection only. Once the requested generation
+  // has really started, a different identifiable track requests native recovery
+  // but never calls media.pause(). Navigation owns target replacement, so media
+  // observation cannot race a new start and freeze it at currentTime=0.
   const enforceTarget = media => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || !target.pagePath ||
@@ -117,7 +119,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       // During initial navigation the now-playing surface may still show the
       // previous document. Only enforce after this generation started once.
       if (!state.startPosted) return 'unknown';
-      try { if (!media.paused) media.pause(); } catch (_) {}
       stopHeartbeatIfAvailable();
       state.started = false;
       state.targetMedia = null;

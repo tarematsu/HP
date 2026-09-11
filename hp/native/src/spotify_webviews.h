@@ -184,7 +184,6 @@ class SpotifyWebViews final {
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void CompletePodcastBreak(Slot& slot, ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
-  void StopTimedOneShotPlayback(Slot& slot) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;

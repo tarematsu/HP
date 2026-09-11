@@ -33,8 +33,12 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   SetSlotState(slot, SlotState::Navigating);
   SetSpotifyOutputMuted(slot.webview);
   PostSpotifyTargetDescriptorForSlot(slot);
-  slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
   RecomputeForeground();
+
+  // Navigation is the only music target-transition actuator. Do not issue an
+  // independent media.pause() before it: target messages and media lifecycle
+  // events are asynchronous, so a generic stop can race the new target's first
+  // play event and freeze it at currentTime=0.
   const HRESULT result = slot.webview->Navigate(target.url);
   if (FAILED(result)) {
     slot.lastModeNavigateTick = 0;
@@ -109,9 +113,9 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              // The DOM control can briefly report "Pause" before the actual
-              // media clock starts. Only the generation-tagged observer may
-              // promote a slot to Playing after confirmed media playback.
+              // Only the generation-tagged media observer may promote music to
+              // Playing. Reconcile can observe a healthy surface but does not
+              // own playback truth.
               if (target->state != SlotState::Playing) {
                 SetSlotState(*target, SlotState::WaitingTarget);
               }
@@ -120,9 +124,37 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
+            if (json && std::wstring_view(json) == L"\"wrong\"") {
+              // A different identifiable track is actively playing. Recovery is
+              // target replacement by navigation, never a pause/toggle click.
+              MarkSlotRecovering(*target, now);
+              target->lastModeNavigateTick = 0;
+              NavigateMusicTarget(*target);
+              return S_OK;
+            }
+
+            if (json && std::wstring_view(json) == L"\"settling\"") {
+              // Spotify sometimes renders Pause before its media clock starts.
+              // This is intentionally non-actionable: never click an ambiguous
+              // toggle. Retry at the recovery cadence and fall back to a clean
+              // navigation only if the state remains unresolved long enough.
+              SetSlotState(*target, SlotState::WaitingTarget);
+              if (target->unhealthySinceTick == 0) target->unhealthySinceTick = now;
+              if (ShouldRenavigateUnhealthySlot(*target, now)) {
+                NavigateMusicTarget(*target);
+              } else {
+                RecomputeForeground();
+                ArmRobustScheduler();
+              }
+              return S_OK;
+            }
+
             int x = 0;
             int y = 0;
             if (ParseNormalizedPoint(json, &x, &y)) {
+              // The JS side returns coordinates only for an explicitly
+              // Play-labelled target control. Pause-labelled controls never
+              // enter this trusted-click path.
               if (target->unhealthySinceTick == 0) target->unhealthySinceTick = now;
               if (ShouldRenavigateUnhealthySlot(*target, now)) {
                 NavigateMusicTarget(*target);

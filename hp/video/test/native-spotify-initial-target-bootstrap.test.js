@@ -71,23 +71,21 @@ test('first target message initializes a fresh Spotify document without pausing 
   assert.equal(harness.window.__homePanelSpotifyNativeTarget.trackPath, '/track/first');
 });
 
-test('same target is idempotent while a real in-document target change still stops old media', () => {
+test('all target messages are declarative and never pause media in the page bridge', () => {
   const harness = createBootstrapHarness();
   harness.sendTarget('/track/first', 'first');
   harness.sendTarget('/track/first', 'first');
-  assert.equal(harness.media.pauseCalls, 0);
-
   harness.sendTarget('/track/second', 'second');
-  assert.equal(harness.media.pauseCalls, 1);
+
+  assert.equal(harness.media.pauseCalls, 0);
+  assert.equal(harness.window.__homePanelSpotifyNativeTarget.trackPath, '/track/second');
+  assert.doesNotMatch(bootstrap, /\.pause\s*\(/);
 });
 
-test('navigation paths still stop the previous document explicitly before changing Spotify targets', () => {
-  assert.match(
-    music,
-    /ExecuteScript\(kSpotifyStaticStopPlaybackScript, nullptr\);[\s\S]*Navigate\(target\.url\)/,
-  );
-  assert.match(
-    timed,
-    /ExecuteScript\(kSpotifyStaticStopPlaybackScript, nullptr\);[\s\S]*Navigate\(SpotifyPodcastUrl\(\)\)/,
-  );
+test('music and podcast transitions use navigation as the sole target actuator', () => {
+  assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
+  assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript/);
+  assert.doesNotMatch(timed, /kSpotifyStaticStopPlaybackScript/);
+  assert.match(music, /Navigate\(target\.url\)/);
+  assert.match(timed, /Navigate\(SpotifyPodcastUrl\(\)\)/);
 });

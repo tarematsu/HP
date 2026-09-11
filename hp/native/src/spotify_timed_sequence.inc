@@ -52,8 +52,11 @@ void SpotifyWebViews::NavigatePodcastSlot(Slot& slot) noexcept {
   SetSlotState(slot, SlotState::Navigating);
   SetSpotifyOutputMuted(slot.webview);
   PostSpotifyTargetDescriptorForSlot(slot);
-  slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
   RecomputeForeground();
+
+  // Podcast transitions follow the same single-actuator rule as music: the
+  // navigation replaces the old target. A separate media.pause() can arrive
+  // after the new item has begun and is therefore deliberately forbidden.
   const HRESULT result = slot.webview->Navigate(SpotifyPodcastUrl());
   if (FAILED(result)) {
     slot.lastModeNavigateTick = 0;
@@ -136,15 +139,31 @@ void SpotifyWebViews::ReconcilePodcastSlot(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
+              // Podcast reconcile only returns true after a real play event and
+              // an active media element, so this is a confirmed start.
               SetSlotState(*target, SlotState::Playing);
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
             }
 
+            if (json && std::wstring_view(json) == L"\"settling\"") {
+              SetSlotState(*target, SlotState::WaitingTarget);
+              if (target->unhealthySinceTick == 0) target->unhealthySinceTick = now;
+              if (ShouldRenavigateUnhealthySlot(*target, now)) {
+                NavigatePodcastSlot(*target);
+              } else {
+                RecomputeForeground();
+                ArmRobustScheduler();
+              }
+              return S_OK;
+            }
+
             int x = 0;
             int y = 0;
             if (ParseNormalizedPoint(json, &x, &y)) {
+              // Coordinates are emitted only for an explicit Play-labelled
+              // episode control (or a repeat-mode correction), never Pause.
               if (target->unhealthySinceTick == 0) target->unhealthySinceTick = now;
               if (ShouldRenavigateUnhealthySlot(*target, now)) {
                 NavigatePodcastSlot(*target);

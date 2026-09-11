@@ -75,18 +75,14 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
            previous.kind !== next.kind ||
            previous.playbackRate !== next.playbackRate);
       window.__homePanelSpotifyNativeTarget = next;
-      // A new Spotify document starts with no native target. Its first target
-      // message is initialization, not a playback transition: pausing here can
-      // stop Spotify's freshly started media at exactly 0 seconds. Real target
-      // transitions still stop the old media, while navigation also has its
-      // explicit pre-navigation stop script.
+
+      // Target messages describe intent only. They never stop media. Playback
+      // ownership belongs to the media observer, while target transitions are
+      // performed by navigation. Keeping the bridge non-destructive removes the
+      // race where an asynchronous target message pauses a freshly started item
+      // at currentTime=0.
       if (!previous || changed) {
         window.__homePanelSpotifyPodcastOneShot = null;
-      }
-      if (changed) {
-        document.querySelectorAll('audio, video').forEach(media => {
-          try { media.pause(); } catch (_) {}
-        });
       }
     });
   }
@@ -125,21 +121,23 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
   const labelOf = element => normalize(
       (element && (element.getAttribute('aria-label') ||
                    element.getAttribute('title'))) || '').toLowerCase();
-  const buttonShowsPlaying = button => {
+  const buttonIntent = button => {
     const label = labelOf(button);
-    return label.includes('pause') || label.includes('一時停止');
+    if (!label) return 'unknown';
+    if (label.includes('pause') || label.includes('一時停止')) return 'pause';
+    if (label === 'play' || label === '再生' ||
+        label.startsWith('play ') || label.endsWith('を再生')) {
+      return 'play';
+    }
+    return 'unknown';
   };
   const playerControl = () => {
     const primary = document.querySelector(
         'button[data-testid="control-button-playpause"]');
     if (visible(primary)) return primary;
     return Array.from(document.querySelectorAll('button, [role="button"]'))
-        .find(button => {
-          if (!visible(button)) return false;
-          const label = labelOf(button);
-          return label === 'play' || label === 'pause' ||
-                 label === '再生' || label === '一時停止';
-        }) || null;
+        .find(button => visible(button) && buttonIntent(button) !== 'unknown') ||
+        null;
   };
   const playButtonIn = root => {
     if (!root) return null;
@@ -151,8 +149,7 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
           if (!visible(button)) return false;
           const label = labelOf(button);
           if (/speed|速度/.test(label)) return false;
-          return label === 'play' || label === '再生' ||
-                 label.startsWith('play ') || label.endsWith('を再生');
+          return buttonIntent(button) !== 'unknown';
         }) || null;
   };
   const point = element => {
@@ -193,7 +190,8 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
     return point(repeat);
   }
 
-  document.querySelectorAll('audio, video').forEach(media => {
+  const mediaElements = Array.from(document.querySelectorAll('audio, video'));
+  mediaElements.forEach(media => {
     try {
       if (!media.__homePanelSpotifyPodcastRateBound) {
         media.__homePanelSpotifyPodcastRateBound = true;
@@ -212,7 +210,7 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
         completed: false,
         media: new WeakSet()
       });
-  document.querySelectorAll('audio, video').forEach(media => {
+  mediaElements.forEach(media => {
     if (oneShot.media.has(media)) return;
     oneShot.media.add(media);
     media.addEventListener('play', () => { oneShot.started = true; },
@@ -235,26 +233,30 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
 
   const control = playerControl();
   const episodeButton = playButtonIn(document);
-  if (buttonShowsPlaying(episodeButton) ||
-      (oneShot.started && buttonShowsPlaying(control))) {
-    oneShot.started = true;
+  const controlIntent = buttonIntent(control);
+  const episodeIntent = buttonIntent(episodeButton);
+  const activeMedia = mediaElements.find(media => !media.ended && !media.paused) || null;
+
+  // A Pause label is not proof that audio started. Spotify can flip its UI
+  // before the media clock leaves zero. Only a real play event plus active media
+  // confirms podcast playback; otherwise this is a settling state and must not
+  // be clicked because that would turn the pending start into an explicit pause.
+  if (oneShot.started && activeMedia &&
+      (episodeIntent === 'pause' || controlIntent === 'pause')) {
     report(true);
     return true;
   }
+  if (episodeIntent === 'pause' || controlIntent === 'pause' || oneShot.started) {
+    report(false);
+    return 'settling';
+  }
 
   // Never use the global footer Play button to start TALKABOUT. It can resume
-  // the previous music queue. Only the direct episode page's own Play starts it.
+  // the previous music queue. Only an explicitly Play-labelled direct episode
+  // control is eligible for a trusted click.
   report(false);
-  return point(episodeButton);
-})()
-)JS";
-
-constexpr wchar_t kSpotifyStaticStopPlaybackScript[] = LR"JS(
-(() => {
-  document.querySelectorAll('audio, video').forEach(media => {
-    try { media.pause(); } catch (_) {}
-  });
-  return true;
+  if (episodeIntent === 'play') return point(episodeButton);
+  return 'settling';
 })()
 )JS";
 
