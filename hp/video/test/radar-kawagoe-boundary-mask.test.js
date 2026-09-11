@@ -11,18 +11,30 @@ const prepareAssets = readFileSync(
   'utf8',
 );
 
-test('cloud radar always uses the pre-generated Kawagoe gray-mask map as the top map layer', () => {
-  assert.match(browserRadar, /const MAP_ASSET_PATH = "\/radar-cloud\/radar-map\.png";/);
-  assert.match(prepareAssets, /"radar-map\.png"/);
-  assert.doesNotMatch(browserRadar, /11201\.geojson|fetchKawagoeBoundary|drawKawagoeMask|fill\("evenodd"\)/);
+test('cloud radar keeps rain visible and draws only the Kawagoe outside mask above it', () => {
+  assert.match(browserRadar, /city\/geojson\/latest\/11201\.geojson/);
+  assert.match(browserRadar, /fetchKawagoeBoundary/);
+  assert.match(browserRadar, /context\.fill\("evenodd"\)/);
+  assert.match(browserRadar, /rgba\(96,96,96,0\.68\)/);
+  assert.match(browserRadar, /rgba\(255,255,255,0\.98\)/);
+  assert.match(browserRadar, /context\.lineWidth = 5/);
+  assert.doesNotMatch(browserRadar, /MAP_ASSET_PATH|mapUrl|drawBase\(map/);
+  assert.doesNotMatch(prepareAssets, /"radar-map\.png"/);
 
   const satellite = browserRadar.indexOf('drawBase(satellite, panel, panelX);');
   const rain = browserRadar.indexOf('for (const tile of panel.tiles');
-  const map = browserRadar.indexOf('drawBase(map, panel, panelX);');
+  const mask = browserRadar.indexOf('drawKawagoeMask(panel, panelX);');
   const label = browserRadar.indexOf('drawPanelLabel(panel, panelX);');
 
   assert.ok(satellite >= 0, 'satellite layer draw is missing');
   assert.ok(rain > satellite, 'rain must be drawn after satellite');
-  assert.ok(map > rain, 'pre-generated gray map must be drawn after rain');
-  assert.ok(label > map, 'date/time label must be drawn after every image layer');
+  assert.ok(mask > rain, 'Kawagoe mask must be drawn after rain');
+  assert.ok(label > mask, 'date/time label must be drawn after the mask');
+});
+
+test('missing boundary data never falls back to the opaque legacy map', () => {
+  assert.match(browserRadar, /if \(!addBoundaryPath\(panel, panelX\)\)/);
+  assert.match(browserRadar, /return false;/);
+  assert.match(browserRadar, /drawKawagoeMask\(panel, panelX\);/);
+  assert.doesNotMatch(browserRadar, /if \(!drawKawagoeMask/);
 });
