@@ -3,9 +3,9 @@ import { fileURLToPath } from 'node:url';
 
 export const WORKFLOWS = Object.freeze({
   pages: Object.freeze({ file: 'run-pages-read-model-rebuild.yml', staleAfterMs: 45 * 60_000 }),
-  runtime: Object.freeze({ file: 'run-runtime-offline-maintenance.yml', staleAfterMs: 60 * 60_000 }),
-  metadata: Object.freeze({ file: 'run-track-metadata-repair.yml', staleAfterMs: 60 * 60_000 }),
-  localMinute: Object.freeze({ file: 'run-local-minute-facts-rebuild.yml', staleAfterMs: 45 * 60_000 }),
+  runtime: Object.freeze({ file: 'run-runtime-offline-maintenance.yml', staleAfterMs: 45 * 60_000 }),
+  metadata: Object.freeze({ file: 'run-track-metadata-repair.yml', staleAfterMs: 45 * 60_000 }),
+  localMinute: Object.freeze({ file: 'run-local-minute-facts-rebuild.yml', staleAfterMs: 30 * 60_000 }),
   observability: Object.freeze({ file: 'sh-observability.yml', staleAfterMs: 60 * 60_000 }),
 });
 
