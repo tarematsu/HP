@@ -164,6 +164,14 @@ class Renderer {
     int height = 0;
   };
 
+  struct WeatherPanelCache {
+    HBITMAP bitmap = nullptr;
+    int width = 0;
+    int height = 0;
+    uint64_t revision = 0;
+    bool outage = false;
+  };
+
   struct AirGraphProjection {
     std::vector<AirHistorySample> samples;
     int64_t cutoff = 0;
@@ -250,6 +258,8 @@ class Renderer {
   void RebuildNativeAirGraph(int64_t nowMs);
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
+  bool DrawCachedWeatherPanel(HDC dc, const RECT& card);
+  void CaptureWeatherPanel(HDC dc, const RECT& card);
   void ReleaseNativePanelSurfaces() noexcept;
   void ResetNativeBitmapCaches() noexcept;
   void QueueAction(UiAction action);
@@ -264,6 +274,7 @@ class Renderer {
   HBITMAP NativeWeatherIconBitmap(
       const std::wstring& icon, bool night, int width, int height);
   HBITMAP CacheNativeImageBitmap(const std::wstring& key, HBITMAP bitmap);
+  HBITMAP CacheNativeWeatherIconBitmap(const std::wstring& key, HBITMAP bitmap);
   HBITMAP CachedRadarBitmap(
       const std::wstring& key, const fs::path& path,
       const std::string& fileStamp, int width, int height);
@@ -323,7 +334,10 @@ class Renderer {
   NativePlaybackTickState nativePlaybackTickState_{};
   std::map<std::wstring, BitmapCacheEntry> nativeImageBitmaps_;
   uint64_t nativeImageUseCounter_ = 0;
+  std::map<std::wstring, BitmapCacheEntry> nativeWeatherIconBitmaps_;
+  uint64_t nativeWeatherIconUseCounter_ = 0;
   std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
+  WeatherPanelCache weatherPanelCache_{};
   std::atomic<bool> nativePlaybackStarted_{false};
   std::atomic<bool> nativePlaybackStopping_{false};
   mutable std::mutex nativeMinuteFactsMutex_;
