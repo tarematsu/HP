@@ -31,22 +31,10 @@ const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url),
   'utf8',
 );
-const spotifyHeader = readFileSync(
-  new URL('../../native/src/spotify_webviews.h', import.meta.url),
+const mediaHost = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
   'utf8',
 );
-const spotifyNetwork = readFileSync(
-  new URL('../../native/src/spotify_network_block.inc', import.meta.url),
-  'utf8',
-);
-const spotifyWebviews = [
-  'spotify_webviews.cpp',
-  'spotify_webviews_core_part1.inc',
-  'spotify_webviews_core_part2.inc',
-  'spotify_webviews_core_part3.inc',
-  'spotify_webviews_core_part4.inc',
-].map((name) => readFileSync(
-  new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
 const layout = readFileSync(
   new URL('../../native/src/renderer_panels/layout_overrides.inc', import.meta.url),
   'utf8',
@@ -87,29 +75,19 @@ test('compact overlay clips the complete two-button control stack', () => {
   assert.match(overlay, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
 });
 
-test('mute destroys media WebViews and unmute recreates and navigates them', () => {
+test('mute changes only WebView audio state and keeps playback alive', () => {
   assert.match(overlay, /ApplyMediaMute\(!controller->mediaMuted_\)/);
   assert.match(schedule, /SetNativeMediaPanelMuted\(enabled\)/);
-  assert.match(composition, /SuspendNativeMediaPanelWebView\(\)/);
-  assert.match(composition, /DestroyWindow\(hostWindow\)/);
-  assert.match(composition, /CreateNativeMediaPlaceholderHost/);
-  assert.match(composition, /Deliberately do not call Start\(\)/);
-  assert.match(composition, /ResumeNativeMediaPanelWebView\(\)/);
-  assert.match(composition, /if \(host\) host->Start\(\)/);
-  assert.match(composition, /EnsureNativeMvPanel\(radarWindow, NativeMediaDataDir\(\), bounds\)/);
-  assert.doesNotMatch(composition, /gNativeMediaNetworkBlocked/);
-  assert.doesNotMatch(composition, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL/);
-  assert.doesNotMatch(composition, /CreateWebResourceResponse\([\s\S]*503, L"Media Blocked"/);
-  assert.doesNotMatch(composition, /kNativeMediaPlaybackBlockScript/);
-  assert.doesNotMatch(composition, /->Reload\(\)/);
-
-  assert.match(composition, /SetSpotifyMediaNetworkBlocked\(muted\)/);
-  assert.match(spotifyHeader, /void SetSpotifyMediaNetworkBlocked\(bool blocked\) noexcept/);
-  assert.match(spotifyNetwork, /if \(blocked\)[\s\S]*for \(Slot& slot : slots_\) CloseSlot\(slot\)/);
-  assert.match(spotifyNetwork, /alive_ = std::make_shared<std::atomic<bool>>\(true\)/);
-  assert.match(spotifyNetwork, /CreateController\(slots_\[0\]\)/);
-  assert.match(spotifyWebviews, /slot\.controller->Close\(\)/);
-  assert.match(spotifyWebviews, /DestroyWindow\(slot\.hostWindow\)/);
+  assert.match(mediaHost, /void SetMuted\(bool muted\) noexcept/);
+  assert.match(mediaHost, /ComPtr<ICoreWebView2_8> audio/);
+  assert.match(mediaHost, /audio->put_IsMuted\(muted \? TRUE : FALSE\)/);
+  assert.match(mediaHost, /SetMuted\(muted_\)/);
+  assert.match(composition, /if \(host\) host->SetMuted\(muted\)/);
+  assert.doesNotMatch(composition, /SuspendNativeMediaPanelWebView/);
+  assert.doesNotMatch(composition, /ResumeNativeMediaPanelWebView/);
+  assert.doesNotMatch(composition, /CreateNativeMediaPlaceholderHost/);
+  assert.doesNotMatch(composition, /DestroyWindow\(hostWindow\)/);
+  assert.doesNotMatch(composition, /SetSpotifyMediaNetworkBlocked\(muted\)/);
 });
 
 test('MV startup input pass keeps both overlay controls in local coordinates', () => {
