@@ -22,7 +22,6 @@ const recent = readFileSync(new URL('../../native/src/spotify_recent_catalog.inc
 const cloud = readFileSync(new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
 const click = readFileSync(new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 const lifecycle = readFileSync(new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url), 'utf8');
-const mediaWrapper = readFileSync(new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const mediaPanel = readFileSync(new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const mediaHost = readFileSync(new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 
@@ -87,7 +86,7 @@ test('Spotify player pages reduce decorative work without blocking audio/media r
 
 test('YouTube/TVer phase notification cannot mutate Spotify playback state', () => {
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
-  assert.match(mediaWrapper, /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/);
+  assert.match(mediaHost, /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/);
   assert.match(lifecycle, /void SetSpotifyMediaPhase\(bool\) noexcept \{[\s\S]*Spotify intentionally ignores YouTube\/TVer phase changes/);
   assert.doesNotMatch(lifecycle + header + schedule, /gSpotifyTverPhase|SetPodcastMode|podcastMode_/);
   assert.match(spotify, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
