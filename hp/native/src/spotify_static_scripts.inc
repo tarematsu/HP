@@ -68,18 +68,25 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
             ? requestedRate : 3.0
       };
       const previous = window.__homePanelSpotifyNativeTarget;
-      const changed = !previous ||
-          previous.pagePath !== next.pagePath ||
-          previous.trackPath !== next.trackPath ||
-          previous.title !== next.title ||
-          previous.kind !== next.kind ||
-          previous.playbackRate !== next.playbackRate;
+      const changed = !!previous &&
+          (previous.pagePath !== next.pagePath ||
+           previous.trackPath !== next.trackPath ||
+           previous.title !== next.title ||
+           previous.kind !== next.kind ||
+           previous.playbackRate !== next.playbackRate);
       window.__homePanelSpotifyNativeTarget = next;
+      // A new Spotify document starts with no native target. Its first target
+      // message is initialization, not a playback transition: pausing here can
+      // stop Spotify's freshly started media at exactly 0 seconds. Real target
+      // transitions still stop the old media, while navigation also has its
+      // explicit pre-navigation stop script.
+      if (!previous || changed) {
+        window.__homePanelSpotifyPodcastOneShot = null;
+      }
       if (changed) {
         document.querySelectorAll('audio, video').forEach(media => {
           try { media.pause(); } catch (_) {}
         });
-        window.__homePanelSpotifyPodcastOneShot = null;
       }
     });
   }
