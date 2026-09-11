@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const tverStatic = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url),
-  'utf8',
-);
+const episode = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
+const refresh = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 
-test('Death Youth Game follows the published series-item queue', () => {
-  assert.match(tverStatic, /deathGameSeriesPath = '\/series\/srkzm5wbvp'/);
-  assert.match(tverStatic, /rememberSeriesPath\(seriesPath\)/);
-  assert.match(tverStatic, /writeEpisodeQueue\(seriesPath, hrefs, 0\)/);
-  assert.match(tverStatic, /location\.replace\(hrefs\[0\]\)/);
-  assert.doesNotMatch(tverStatic, /const isPreview = link/);
+test('TVer playback does not special-case a series page or recommended episode', () => {
+  assert.match(episode, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
+  assert.doesNotMatch(episode, /__homePanelTverEpisodeQueue:/);
+  assert.match(episode, /location\.replace\(queue\.hrefs\[nextIndex\]\)/);
+  assert.doesNotMatch(episode, /deathGameSeriesPath|findSeriesEpisodeContainer|おすすめ/);
+  assert.match(refresh, /for \(const href of fresh\)/);
+  assert.match(refresh, /if \(!normalized \|\| seen\.has\(normalized\)\) continue/);
 });

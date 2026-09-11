@@ -1,13 +1,8 @@
-// Media-panel composition wrapper. Playback scripts are fixed constexpr strings;
-// this layer routes hidden-window input through WebView2 CDP, applies the current
-// YouTube/TVer page-specific policies, and keeps Spotify aligned with the media
-// phase.
-#undef SetTimer
-#undef SendInput
+// Media-panel composition wrapper. Playback policies remain fixed constexpr
+// scripts while this layer provides trusted WebView2 input, page-specific
+// routing and event-driven wakeups for the low-frequency native watchdogs.
 #include "media_tver_ad_guard.inc"
 #include "media_tver_episode_loop_policy.inc"
-#include "media_tver_series_dom_policy.inc"
-#include "media_tver_series_policy.inc"
 #include "media_tver_playback_policy.inc"
 #define kNativeMediaTverForceFullscreenAdSafeScript \
   kNativeMediaTverForceFullscreenAnyMediaScript
@@ -15,12 +10,14 @@
 #undef kNativeMediaTverForceFullscreenAdSafeScript
 #include "media_youtube_policy.inc"
 #include "media_youtube_trusted_action.inc"
+#include "media_youtube_event_agent.inc"
 #include "media_youtube_control_recovery.inc"
 #include "media_youtube_playall_reliable.inc"
 
 namespace {
-constexpr wchar_t kNativeMediaTverNavigationPendingScript[] = L"null";
-constexpr ULONGLONG kNativeMediaTverNavigationPendingMaxMs = 8ULL * 1000ULL;
+constexpr wchar_t kNativeMediaNoopScript[] = L"null";
+constexpr wchar_t kNativeMediaTverUnexpectedPageScript[] =
+    LR"JS((() => 'restart')())JS";
 constexpr wchar_t kNativeMediaPhaseOverlaySuppressionScript[] = LR"JS(
 (() => {
   const badge = document.getElementById('__homePanelMediaPhaseTime');
@@ -37,47 +34,22 @@ constexpr wchar_t kNativeMediaPhaseOverlaySuppressionScript[] = LR"JS(
   return null;
 })()
 )JS";
+
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
+HRESULT ExecuteNativeMediaPolicyScript(
+    ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive,
+    const wchar_t* script,
+    ICoreWebView2ExecuteScriptCompletedHandler* handler) noexcept;
 }  // namespace
-
-#define SetTimer(hwnd, timerId, interval, callback)                              \
-  (((timerId) == kNativeMediaPhaseTimer                                         \
-        ? (SetSpotifyMediaPhase(phase_ == Phase::Tver), 0)                     \
-        : 0),                                                                   \
-   ((timerId) == kNativeMediaTverWatchdogTimer                                  \
-        ? ArmNativeMediaTrustedWakeTimer(                                       \
-              (hwnd), webview_.Get(), controller_.Get(),                       \
-              (timerId), (interval))                                            \
-        : ::SetTimer((hwnd), (timerId), (interval), (callback))))
-
-#define SendInput(count, inputs, inputSize)                                     \
-  NativeMediaDispatchTrustedInput(                                              \
-      phase_ == Phase::Tver, webview_.Get(), controller_.Get(), hostWindow_,   \
-      (count), (inputs), (inputSize))
-
-#define ExecuteScript(script, handler)                                          \
-  ExecuteScript(ResolveNativeMediaPolicyScript((script), webview_.Get(), hostWindow_, alive_), \
-                (handler))
-
-// The base host already retries failed top-level navigations after three
-// seconds. Keep WebView2's built-in network error document out of the visible
-// media panel while that retry is armed; otherwise users briefly see
-// "このページは表示できません" even though recovery is already in progress.
-#define put_IsBuiltInErrorPageEnabled(value) put_IsBuiltInErrorPageEnabled(FALSE)
 
 #include "media_section_base.inc"
 
-#undef put_IsBuiltInErrorPageEnabled
-#undef ExecuteScript
-#undef SendInput
-#undef SetTimer
-
-// Native TVer discovery needs the timer IDs declared by media_section_base.inc,
-// while the base host only needs the resolver declaration above. Keep the API
-// implementation on this side of the composition boundary.
-#include "media_tver_native_series_resolver.inc"
+// TVer playback consumes only the cloud-owned episode feed. Keep the bounded
+// native feed client and queue refresher beside the host after timer IDs exist.
+#include "media_tver_cloud_feed_native.inc"
 #include "media_tver_cloud_queue_refresh.inc"
 
 namespace {
@@ -91,14 +63,72 @@ bool NativeMediaWebViewSourceContains(
   return value.find(needle) != std::wstring::npos;
 }
 
+void NativeMediaEnsureEventWakeBridge(
+    ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
+  static ComPtr<ICoreWebView2> installedWebview;
+  static EventRegistrationToken installedToken{};
+  if (!webview || !hostWindow || !IsWindow(hostWindow) || !alive) return;
+  if (installedWebview.Get() == webview && installedToken.value != 0) return;
+
+  if (installedWebview && installedToken.value != 0) {
+    installedWebview->remove_WebMessageReceived(installedToken);
+  }
+  installedWebview.Reset();
+  installedToken = {};
+
+  ComPtr<ICoreWebView2Settings> settings;
+  if (FAILED(webview->get_Settings(&settings)) || !settings ||
+      FAILED(settings->put_IsWebMessageEnabled(TRUE))) {
+    return;
+  }
+
+  EventRegistrationToken token{};
+  const auto safeAlive = alive;
+  const HRESULT registered = webview->add_WebMessageReceived(
+      Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+          [hostWindow, safeAlive](
+              ICoreWebView2* sender,
+              ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+            if (!safeAlive->load(std::memory_order_acquire) || !sender || !args ||
+                !hostWindow || !IsWindow(hostWindow)) {
+              return S_OK;
+            }
+            LPWSTR rawMessage = nullptr;
+            if (FAILED(args->TryGetWebMessageAsString(&rawMessage)) ||
+                !rawMessage) {
+              return S_OK;
+            }
+            const std::wstring message(rawMessage);
+            CoTaskMemFree(rawMessage);
+
+            if (message == L"homepanel:youtube-wake" &&
+                NativeMediaWebViewSourceContains(sender, L"youtube.com/watch") &&
+                NativeMediaWebViewSourceContains(sender, L"list=PLMWqSdpIVl30")) {
+              PostMessageW(hostWindow, WM_TIMER,
+                           kNativeMediaYoutubeWatchdogTimer, 0);
+            } else if (message == L"homepanel:tver-wake" &&
+                       NativeMediaWebViewSourceContains(
+                           sender, L"tver.jp/episodes/")) {
+              PostMessageW(hostWindow, WM_TIMER, kNativeMediaTverWatchdogTimer, 0);
+            }
+            return S_OK;
+          }).Get(),
+      &token);
+  if (SUCCEEDED(registered)) {
+    installedWebview = webview;
+    installedToken = token;
+  }
+}
+
 void NativeMediaEnsureYoutubeTrustedAction(
-    ICoreWebView2* webview, bool force = false) noexcept {
-  // The helper belongs to the current JavaScript document. Cache by WebView and
-  // URL for the watchdog, but force reinjection from the clean-player
-  // NavigationCompleted path so a same-URL document reload cannot lose it.
+    ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive,
+    bool force = false) noexcept {
   static ICoreWebView2* installedWebview = nullptr;
   static std::wstring installedSource;
   if (!webview) return;
+  NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
 
   LPWSTR rawSource = nullptr;
   if (FAILED(webview->get_Source(&rawSource)) || !rawSource) return;
@@ -106,59 +136,14 @@ void NativeMediaEnsureYoutubeTrustedAction(
   CoTaskMemFree(rawSource);
   if (!force && installedWebview == webview && installedSource == source) return;
 
-  const HRESULT started = webview->ExecuteScript(
+  const HRESULT trustedStarted = webview->ExecuteScript(
       kNativeMediaYoutubeTrustedActionBootstrapScript, nullptr);
-  if (SUCCEEDED(started)) {
+  const HRESULT agentStarted = webview->ExecuteScript(
+      kNativeMediaYoutubeEventAgentScript, nullptr);
+  if (SUCCEEDED(trustedStarted) && SUCCEEDED(agentStarted)) {
     installedWebview = webview;
     installedSource = source;
   }
-}
-
-bool NativeMediaTverNavigationPendingFor(ICoreWebView2* webview) noexcept {
-  static ICoreWebView2* observedWebview = nullptr;
-  static std::wstring observedSeriesId;
-  static uint64_t observedGeneration = 0;
-  static ULONGLONG observedAt = 0;
-
-  const auto resetObservation = [&]() noexcept {
-    observedWebview = nullptr;
-    observedSeriesId.clear();
-    observedGeneration = 0;
-    observedAt = 0;
-  };
-
-  const auto seriesId = NativeMediaTverSeriesIdFromWebView(webview);
-  if (!seriesId) {
-    resetObservation();
-    return false;
-  }
-  auto& state = NativeMediaTverSeriesResolver();
-  std::lock_guard lock(state.mutex);
-  if (state.webviewIdentity != webview || state.seriesId != *seriesId ||
-      !state.navigationPending) {
-    resetObservation();
-    return false;
-  }
-
-  const ULONGLONG now = GetTickCount64();
-  if (observedWebview != webview || observedSeriesId != *seriesId ||
-      observedGeneration != state.generation || observedAt == 0) {
-    observedWebview = webview;
-    observedSeriesId = *seriesId;
-    observedGeneration = state.generation;
-    observedAt = now;
-    return true;
-  }
-  if (now - observedAt < kNativeMediaTverNavigationPendingMaxMs) return true;
-
-  // Navigate() returning S_OK only means the navigation was accepted. The page
-  // can still cancel it, redirect back to /series/, or an ExecuteScript callback
-  // can be lost. Never let that transient state suppress the rendered-page
-  // episode fallback forever.
-  state.navigationPending = false;
-  state.failedAt = now;
-  resetObservation();
-  return false;
 }
 
 const wchar_t* ResolveNativeMediaPolicyScript(
@@ -170,34 +155,43 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     return kNativeMediaPhaseOverlaySuppressionScript;
   }
   if (script == kNativeMediaYoutubeCleanPlayerScript) {
-    NativeMediaEnsureYoutubeTrustedAction(webview, true);
+    NativeMediaEnsureYoutubeTrustedAction(webview, hostWindow, alive, true);
     return script;
   }
-  if (script == kNativeMediaTverLoopScript &&
-      NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
-    return kNativeMediaTverEpisodeLoopPolicyScript;
+  if (script == kNativeMediaTverLoopScript) {
+    NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
+    return NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")
+        ? kNativeMediaTverEpisodeLoopPolicyScript
+        : kNativeMediaNoopScript;
   }
   if (script == kNativeMediaTverWatchdogScript) {
-    if (NativeMediaWebViewSourceContains(webview, L"tver.jp/series/")) {
-      PrepareNativeMediaTverSeriesResolution(webview, hostWindow, alive);
-      if (NativeMediaTverNavigationPendingFor(webview)) {
-        return kNativeMediaTverNavigationPendingScript;
-      }
-      return NativeMediaTverSeriesWatchdogPolicyScript();
-    }
+    NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
       PrepareNativeMediaTverCloudQueueRefresh(webview, hostWindow, alive);
       return kNativeMediaTverPlaybackWatchdogPolicyScript;
     }
-    return kNativeMediaTverWatchdogStaticScript;
+    return NativeMediaWebViewSourceContains(webview, L"tver.jp/")
+        ? kNativeMediaTverUnexpectedPageScript
+        : kNativeMediaNoopScript;
   }
   if (script == kNativeMediaPlayAllScript) {
     return kNativeMediaYoutubeReliablePlayAllScript;
   }
   if (script == kNativeMediaYoutubeWatchdogScript) {
-    NativeMediaEnsureYoutubeTrustedAction(webview);
+    NativeMediaEnsureYoutubeTrustedAction(webview, hostWindow, alive);
     return kNativeMediaYoutubeControlRecoveryScript;
   }
   return script;
+}
+
+HRESULT ExecuteNativeMediaPolicyScript(
+    ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive,
+    const wchar_t* script,
+    ICoreWebView2ExecuteScriptCompletedHandler* handler) noexcept {
+  if (!webview || !script) return E_POINTER;
+  const wchar_t* resolved =
+      ResolveNativeMediaPolicyScript(script, webview, hostWindow, alive);
+  return resolved ? webview->ExecuteScript(resolved, handler) : E_POINTER;
 }
 }  // namespace

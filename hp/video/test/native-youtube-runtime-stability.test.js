@@ -3,17 +3,17 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const reliablePlayAll = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url),
-  'utf8',
-);
-const youtubePolicy = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url), 'utf8');
+const recovery = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const trustedAction = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_trusted_action.inc', import.meta.url), 'utf8');
+const eventAgent = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
+const host = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 const trustedInput = readFileSync(
-  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
 
 test('YouTube playlist startup can resolve the first video before Polymer DOM settles', () => {
   assert.match(reliablePlayAll, /window\.ytInitialData/);
@@ -21,36 +21,36 @@ test('YouTube playlist startup can resolve the first video before Polymer DOM se
   assert.match(reliablePlayAll, /playlistPanelVideoRenderer/);
   assert.match(reliablePlayAll, /navigateVideoId\(renderer\.videoId\)/);
   assert.match(reliablePlayAll, /visited < 5000/);
-  assert.match(reliablePlayAll, /values\.length - 1/);
   assert.match(reliablePlayAll, /url\.searchParams\.set\('list', playlistId\)/);
 });
 
-test('a playlist that survives the legacy fixed-coordinate fallback is reloaded', () => {
+test('playlist startup remains bounded and native fallback reloads if watch never starts', () => {
   assert.match(reliablePlayAll, /__homePanelYoutubePlaylistStartupState/);
-  assert.match(youtubePolicy, /location\.pathname\.startsWith\('\/playlist'\)/);
-  assert.match(youtubePolicy, /__homePanelYoutubePlaylistStartupState/);
-  assert.match(youtubePolicy, /Date\.now\(\) - since >= 8000/);
-  assert.match(youtubePolicy, /return true/);
+  assert.match(host, /kNativeMediaPlayAllRetryLimit/);
+  assert.match(host, /ReloadYoutubePlaylist\(\)/);
+  assert.match(host, /IsYoutubeWatchPage\(\)/);
 });
 
-test('repeated YouTube toggle actions have per-action settle windows', () => {
-  assert.match(youtubePolicy, /const guardedPoint =/);
-  assert.match(youtubePolicy, /guardedPoint\(target, 'skip-ad', 750, true\)/);
-  assert.match(youtubePolicy, /guardedPoint\(target, 'play', 2000\)/);
-  assert.match(youtubePolicy, /guardedPoint\(target, 'fullscreen', 2500, true\)/);
+test('repeated YouTube trusted actions have per-action settle windows', () => {
+  assert.match(trustedAction, /const reserve = \(action, cooldownMs\) =>/);
+  assert.match(recovery, /trusted\.arm\(target, 'skip-ad', 600\)/);
+  assert.match(recovery, /trusted\.arm\(play, 'play', 1500\)/);
+  assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
 });
 
-test('transparent clean-player chrome does not block fullscreen recovery', () => {
-  assert.match(
-    youtubePolicy,
-    /const isClickable = \(element, allowTransparent = false\) =>/,
-  );
-  assert.match(
-    youtubePolicy,
-    /guardedPoint\(target, 'fullscreen', 2500, true\)/,
-  );
-  assert.match(youtubePolicy, /classList\.contains\('ad-interrupting'\)/);
-  assert.doesNotMatch(youtubePolicy, /isVisible\(adOverlay\)/);
+test('transparent clean-player chrome still supports trusted fullscreen recovery', () => {
+  assert.match(recovery, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
+  assert.match(trustedAction, /visibility', 'visible'/);
+  assert.match(trustedAction, /pointer-events', 'auto'/);
+  assert.match(trustedAction, /opacity', '0'/);
+  assert.match(trustedAction, /return \[5000, 5000\]/);
+});
+
+test('YouTube event agent is player-local and coalesces wake notifications', () => {
+  assert.match(eventAgent, /now - state\.wakeAt < 250/);
+  assert.match(eventAgent, /state\.playerObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
+  assert.match(eventAgent, /attributeFilter: \['class'\]/);
+  assert.doesNotMatch(eventAgent, /observe\(document\.(?:documentElement|body)/);
 });
 
 test('trusted CDP clicks are serialized and stale locks recover', () => {
