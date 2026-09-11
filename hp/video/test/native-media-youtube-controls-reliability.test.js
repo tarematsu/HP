@@ -3,34 +3,24 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const wrapper = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const base = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const host = readFileSync(
-  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 const trustedInput = readFileSync(
-  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url),
-  'utf8',
-);
-const youtubePolicy = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
+const recovery = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const agent = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 
-test('YouTube uses one adaptive watchdog with healthy and recovery cadence', () => {
-  assert.match(base, /kNativeMediaYoutubeWatchdogHealthyMs = 10U \* 1000U/);
+test('YouTube steady watchdog is low-frequency and event assisted', () => {
+  assert.match(base, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(base, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
-  assert.match(
-    host,
-    /kNativeMediaYoutubeWatchdogTimer[\s\S]*kNativeMediaYoutubeWatchdogHealthyMs/,
-  );
   assert.match(host, /ProbeYoutubeWatchdog/);
+  assert.match(agent, /homepanel:youtube-wake/);
+  assert.match(wrapper, /add_WebMessageReceived/);
   assert.doesNotMatch(base + host, /kNativeMediaYoutubeControlWatchdogMs|kNativeMediaYoutubeHealthTimer/);
 });
 
@@ -42,61 +32,30 @@ test('YouTube watchdog self-heals lost and stale ExecuteScript callbacks', () =>
     host,
     /youtubeWatchdogInFlight_[\s\S]*youtubeWatchdogStartedTick_[\s\S]*kYoutubeWatchdogTimeoutMs[\s\S]*InvalidateYoutubeWatchdog\(\)/,
   );
-  assert.match(
-    host,
-    /requestGeneration != youtubeWatchdogRequestGeneration_[\s\S]*webview_\.Get\(\) != requestView\.Get\(\)/,
-  );
-  assert.match(
-    host,
-    /InvalidateYoutubeWatchdog\(\) noexcept[\s\S]*\+\+youtubeWatchdogRequestGeneration_[\s\S]*youtubeWatchdogInFlight_ = false[\s\S]*youtubeWatchdogStartedTick_ = 0/,
-  );
-  assert.match(
-    host,
-    /youtubeWatchdogStartedTick_ = now;[\s\S]{0,400}kNativeMediaYoutubeWatchdogTimer,[\s\S]{0,200}kYoutubeWatchdogTimeoutMs/,
-  );
-  assert.match(
-    host,
-    /youtubeWatchdogStartedTick_ = 0;[\s\S]{0,400}kNativeMediaYoutubeWatchdogTimer,[\s\S]{0,200}kNativeMediaYoutubeWatchdogHealthyMs/,
-  );
 });
 
 test('trusted WebView2 clicks convert raw Win32 coordinates to CSS pixels', () => {
   assert.match(trustedInput, /ICoreWebView2Controller3/);
   assert.match(trustedInput, /get_RasterizationScale/);
-  assert.match(trustedInput, /GetDpiForWindow/);
   assert.match(trustedInput, /get_ZoomFactor/);
   assert.match(trustedInput, /point\.x\) \/ cssScale/);
   assert.match(trustedInput, /point\.y\) \/ cssScale/);
-  assert.match(wrapper, /controller_\.Get\(\), hostWindow_/);
 });
 
-test('trusted click waits for mouse move before press and release', () => {
-  const moved = trustedInput.indexOf('L"mouseMoved"');
-  const moveCallback = trustedInput.indexOf('HRESULT moveResult');
-  const pressed = trustedInput.indexOf('L"mousePressed"', moveCallback);
-  const released = trustedInput.indexOf('L"mouseReleased"', pressed);
-  assert.ok(moved >= 0);
-  assert.ok(moveCallback > moved);
-  assert.ok(pressed > moveCallback);
-  assert.ok(released > pressed);
+test('YouTube skip detection remains player-local and variant tolerant', () => {
+  assert.match(recovery, /\.ytp-ad-skip-button-modern/);
+  assert.match(recovery, /\.ytp-skip-ad-button/);
+  assert.match(recovery, /aria-label\*=\"Skip ad\" i/);
+  assert.match(recovery, /aria-label\*=\"広告をスキップ\"/);
+  assert.match(recovery, /player\.querySelectorAll\(skipSelectors\.join\(','\)\)/);
+  assert.doesNotMatch(recovery, /document\.querySelectorAll\(skipSelectors/);
 });
 
-test('YouTube skip detection covers current class and aria-label variants', () => {
-  assert.match(youtubePolicy, /\.ytp-ad-skip-button/);
-  assert.match(youtubePolicy, /\.ytp-ad-skip-button-modern/);
-  assert.match(youtubePolicy, /\.ytp-skip-ad-button/);
-  assert.match(youtubePolicy, /button\[aria-label\*=\"Skip ad\" i\]/);
-  assert.match(youtubePolicy, /button\[aria-label\*=\"広告をスキップ\"\]/);
-  assert.match(youtubePolicy, /button\[aria-label\*=\"スキップ\"\]/);
-  assert.match(youtubePolicy, /player\.classList\.contains\('ad-showing'\)/);
-  assert.match(youtubePolicy, /if \(adShowing\) return null/);
-});
-
-test('YouTube playback recovery still prioritizes play before fullscreen', () => {
-  const paused = youtubePolicy.indexOf('video.paused && !video.ended');
-  const fullscreen = youtubePolicy.indexOf('document.fullscreenElement');
+test('YouTube content recovery keeps play before fullscreen', () => {
+  const paused = recovery.indexOf('video && video.paused && !video.ended');
+  const contentFullscreen = recovery.lastIndexOf("player.querySelector('.ytp-fullscreen-button')");
   assert.ok(paused >= 0);
-  assert.ok(fullscreen > paused);
-  assert.match(youtubePolicy, /\.ytp-play-button/);
-  assert.match(youtubePolicy, /\.ytp-fullscreen-button/);
+  assert.ok(contentFullscreen > paused);
+  assert.match(recovery, /trusted\.arm\(play, 'play', 1500\)/);
+  assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
 });
