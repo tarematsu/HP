@@ -31,12 +31,10 @@ ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
 
 void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
   slot.timedCycleTracks.clear();
-  slot.timedCycleIncludesTalkAbout = false;
 
-  // A track/episode path may appear in more than one cloud group (E/F/G share
-  // the same short-song pool). Keep one common used set so every position in a
-  // cycle is unique while each random group still samples independently from
-  // its remaining eligible candidates.
+  // E/F/G intentionally share the same short-song pool, so keep one common
+  // used-path set across all groups. A song selected earlier in the same cycle
+  // is skipped and the group continues through its shuffled candidates.
   std::vector<std::wstring> usedPaths;
   usedPaths.reserve(kSpotifyMaxTracksPerCycle);
   const auto appendUnique = [&slot, &usedPaths](ManagedTrack track) {
@@ -50,16 +48,12 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
     return true;
   };
 
-  const auto appendGroup = [this, &slot, &appendUnique](
-                               const RotationGroup& group) {
+  const auto appendGroup = [this, &appendUnique](const RotationGroup& group) {
     std::vector<ManagedTrack> candidates = group.tracks;
-    if (group.includeTalkAbout) {
-      slot.timedCycleIncludesTalkAbout = true;
-      if (SpotifyPodcastTargetReady()) {
-        candidates.push_back(
-            {L"櫻坂46の「さ」Talk about", SpotifyPodcastUrl(),
-             SpotifyPodcastPath()});
-      }
+    if (group.includeTalkAbout && SpotifyPodcastTargetReady()) {
+      candidates.push_back(
+          {L"櫻坂46の「さ」Talk about", SpotifyPodcastUrl(),
+           SpotifyPodcastPath()});
     }
     if (candidates.empty()) return;
 
@@ -83,13 +77,10 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
   };
 
   for (const RotationGroup& group : cloudRotationGroups_) appendGroup(group);
-  inlineTalkAboutRotation_ = std::any_of(
-      slots_.begin(), slots_.end(),
-      [](const Slot& candidate) { return candidate.timedCycleIncludesTalkAbout; });
   if (!slot.timedCycleTracks.empty()) return;
 
-  // Fail-safe preserves the previous A + shuffled B-E + one random F behavior
-  // only when cloud rotation is missing or invalid.
+  // Fail-safe preserves the former six-song behavior only when cloud rotation
+  // is missing or invalid.
   slot.timedCycleTracks.push_back(
       {kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,
        kSpotifyLonesomeRabbitPath});
