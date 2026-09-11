@@ -10,6 +10,8 @@ LR"JS(
   window.__homePanelTverEpisodePolicyInstalled = true;
 
   const playbackRate = 1.75;
+  const targetVolume = 1.0;
+  const postrollGraceMs = 12000;
   const seriesPathKey = '__homePanelTverSeriesPath';
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visibleRect = element => {
@@ -49,6 +51,14 @@ LR"JS(
         ? Math.round(video.duration * 10) / 10 : 0;
     return source ? source + '|' + duration
                   : (duration > 0 ? 'duration:' + duration : '');
+  };
+  const enforceVolume = video => {
+    if (!video) return;
+    try {
+      if (video.muted) video.muted = false;
+      if (video.volume !== targetVolume) video.volume = targetVolume;
+    } catch (_) {
+    }
   };
   const storedSeriesPath = () => {
     try {
@@ -113,21 +123,28 @@ LR"JS(
     const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
     const shortAdLength = duration >= 5 && duration <= 65;
     const identity = mediaIdentity(video);
+    const explicitMarker = explicitAdMarker(video);
     if (state.adActive) {
-      if (state.adVideo !== video) return false;
-      if (state.adIdentity && identity && state.adIdentity !== identity) return false;
+      const mediaChanged = state.adVideo !== video ||
+          (state.adIdentity && identity && state.adIdentity !== identity);
+      if (mediaChanged) {
+        // Consecutive ads can replace the media element before metadata arrives.
+        // Keep the ad pod latched until a clearly long non-ad item appears.
+        if (!duration || shortAdLength || explicitMarker) return true;
+        return false;
+      }
       if (shortAdLength && !video.ended) return true;
       if (video.ended) {
         if (!state.adEndedAt) state.adEndedAt = Date.now();
         if (Date.now() - state.adEndedAt < 4000) return true;
       }
-      return explicitAdMarker(video);
+      return explicitMarker;
     }
     const replacementVideo = state.video && state.video !== video &&
         state.maxTime >= 5 && shortAdLength;
     const sameVideoReset = state.video === video && state.maxTime >= 10 &&
         shortAdLength && currentTime < 5 && video.playbackRate <= 1.05;
-    return replacementVideo || sameVideoReset || explicitAdMarker(video);
+    return replacementVideo || sameVideoReset || explicitMarker;
   };
 
   let ensureTimer = 0;
@@ -161,11 +178,14 @@ LR"JS(
         } catch (_) {}
       }
     });
+    video.addEventListener('volumechange', () => {
+      if (window.__homePanelSakuraMeetsState !== state) return;
+      enforceVolume(video);
+    });
     video.addEventListener('ended', () => {
       if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
       state.endCandidateAt = Date.now();
-      const stableEndDelayMs = state.maxDuration < 600 ? 8000 : 2500;
-      window.setTimeout(scheduleEnsure, stableEndDelayMs + 100);
+      window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
     });
     for (const eventName of ['play', 'pause', 'loadedmetadata', 'emptied']) {
       video.addEventListener(eventName, scheduleEnsure);
@@ -193,29 +213,40 @@ LR"JS(
           adVideo: null,
           adIdentity: '',
           adEndedAt: 0,
+          postrollAfterProgram: false,
         };
         window.__homePanelSakuraMeetsState = state;
       }
 
       const video = currentVideo();
       bindVideoEvents(video, state);
+      enforceVolume(video);
       const advertisementActive = detectAd(video, state);
       if (advertisementActive) {
         const identity = mediaIdentity(video);
-        if (!state.adActive || state.adVideo !== video || state.adIdentity !== identity) {
+        const adMediaChanged = state.adVideo !== video || state.adIdentity !== identity;
+        if (!state.adActive || adMediaChanged) {
+          const completedProgram = state.endCandidateAt > 0 &&
+              state.maxDuration >= 5 &&
+              state.maxTime >= Math.max(3, state.maxDuration - 10);
+          if (!state.adActive) state.postrollAfterProgram = completedProgram;
           state.adActive = true;
           state.adVideo = video || null;
           state.adIdentity = identity;
           state.adEndedAt = 0;
           state.endCandidateAt = 0;
+          state.maxDuration = 0;
+          state.maxTime = 0;
           state.lowQualitySet = false;
           state.playbackSettingsApplied = false;
+          state.fullscreenDirty = true;
           state.restartRequested = false;
           if (video) {
             try {
               video.defaultPlaybackRate = 1.0;
               if (video.playbackRate !== 1.0) video.playbackRate = 1.0;
             } catch (_) {}
+            enforceVolume(video);
           }
         }
         window.__homePanelTverAdActive = true;
@@ -223,6 +254,7 @@ LR"JS(
       }
 
       if (state.adActive) {
+        const completedPostroll = state.postrollAfterProgram;
         state.adActive = false;
         state.adVideo = null;
         state.adIdentity = '';
@@ -235,8 +267,16 @@ LR"JS(
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
         state.restartRequested = false;
+        state.postrollAfterProgram = false;
+        window.__homePanelTverAdActive = false;
+        if (completedPostroll) {
+          if (advanceEpisodeOrSeries()) return;
+          state.restartRequested = true;
+          return;
+        }
+      } else {
+        window.__homePanelTverAdActive = false;
       }
-      window.__homePanelTverAdActive = false;
 
       if (state.video !== video) {
         state.video = video;
@@ -246,14 +286,14 @@ LR"JS(
       }
       if (!video) return;
       bindVideoEvents(video, state);
+      enforceVolume(video);
 
       if (!state.playbackSettingsApplied) {
         try {
           video.defaultPlaybackRate = playbackRate;
           if (video.playbackRate !== playbackRate) video.playbackRate = playbackRate;
-          video.muted = false;
-          if (video.volume === 0) video.volume = 1;
         } catch (_) {}
+        enforceVolume(video);
         state.playbackSettingsApplied = true;
       }
       if (Number.isFinite(video.duration)) {
@@ -265,14 +305,12 @@ LR"JS(
 
       if (video.ended && !state.endCandidateAt) {
         state.endCandidateAt = Date.now();
-        const stableEndDelayMs = state.maxDuration < 600 ? 8000 : 2500;
-        window.setTimeout(scheduleEnsure, stableEndDelayMs + 100);
+        window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
       }
       const completedItem = state.maxDuration >= 5 &&
           state.maxTime >= Math.max(3, state.maxDuration - 10);
-      const stableEndDelayMs = state.maxDuration < 600 ? 8000 : 2500;
       const stableEnd = state.endCandidateAt > 0 &&
-          Date.now() - state.endCandidateAt >= stableEndDelayMs;
+          Date.now() - state.endCandidateAt >= postrollGraceMs;
       if (stableEnd && completedItem) {
         if (advanceEpisodeOrSeries()) return;
         state.restartRequested = true;
