@@ -18,6 +18,7 @@ export const INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
   ["Overture", "3GdsVS4jIJ7RBiasVZlWul"],
 ] as const;
 
+// Spotify-streamable OFF VOCAL editions at or below the short-track cutoff.
 export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
   ["やるしかないじゃん -OFF VOCAL ver.-", "04nk2Ee7qSnNwn6OG2hl3Q"],
   ["Nightmare症候群 -OFF VOCAL ver.-", "4hVECXakmpdqigQq1mJwNg"],
