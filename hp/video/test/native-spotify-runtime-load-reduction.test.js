@@ -18,7 +18,7 @@ test('timeupdate target identity work is throttled to about once per playback se
   assert.match(events, /loadedmetadata[\s\S]*durationchange[\s\S]*state\.lastIdentityCheckTime = -1/);
 });
 
-test('heartbeat owns no interval while Spotify music is idle or paused', () => {
+test('heartbeat owns no interval while Spotify music is idle, paused, or naturally ended', () => {
   assert.match(heartbeat, /const startHeartbeat = \(\) =>/);
   assert.match(heartbeat, /const stopHeartbeat = \(\) =>/);
   assert.match(heartbeat, /clearInterval\(runtime\.heartbeatTimer\)/);
@@ -26,7 +26,15 @@ test('heartbeat owns no interval while Spotify music is idle or paused', () => {
   assert.match(heartbeat, /!state\.started[\s\S]*media\.paused \|\| media\.ended/);
   assert.doesNotMatch(heartbeat, /Array\.from\(document\.querySelectorAll/);
   assert.match(events, /document\.addEventListener\('pause'[\s\S]*stopHeartbeat\(\)/);
-  assert.match(events, /state\.endedPosted = true;[\s\S]*stopHeartbeat\(\);[\s\S]*stopAllMedia\(\)/);
+  assert.match(
+    events,
+    /state\.endedPosted = true;[\s\S]*stopHeartbeat\(\);[\s\S]*post\('spotify:timed-ended'\)/,
+  );
+  assert.match(
+    events,
+    /const quarantineCompletedGeneration = media =>[\s\S]*quarantineMedia\(media\)/,
+  );
+  assert.doesNotMatch(events, /stopAllMedia/);
   assert.match(runtime, /state\.recoveryPosted = true;[\s\S]*stopHeartbeatIfAvailable\(\);[\s\S]*post\('spotify:not-playing'\)/);
 });
 
