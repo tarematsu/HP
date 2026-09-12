@@ -21,7 +21,10 @@ constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
-constexpr int kNativeMediaPlayAllRetryLimit = 20;
+// The playlist fallback returns to the cloud resolver after 7 seconds. Keep the
+// obsolete coordinate backstop beyond the resolver's 8-second network timeout,
+// so normal and fallback startup can never reach it.
+constexpr int kNativeMediaPlayAllRetryLimit = 60;
 constexpr int kNativeMediaFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMediaFallbackPlayAllYTenThousandths = 4250;
 
