@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
-const episode = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
-const playbackPolicy = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
+const episode = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const playbackPolicy = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 const routingKeys = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url), 'utf8');
 
@@ -25,8 +26,9 @@ test('paused TVer playback recovery is idempotent and never toggles the video su
   assert.doesNotMatch(playbackPolicy, /__homePanelTverResumeBlocked/);
 });
 
-test('TVer fullscreen recovery only targets an explicit fullscreen control', () => {
+test('TVer fullscreen recovery only targets an explicit fullscreen control once', () => {
   assert.match(playbackPolicy, /return fullscreenButton \? point\(fullscreenButton\) : null/);
+  assert.match(playbackPolicy, /if \(state && state\.fullscreenDirty === false\) return null/);
   assert.doesNotMatch(playbackPolicy, /fullscreenButton \? point\(fullscreenButton\) : point\(video\)/);
 });
 
