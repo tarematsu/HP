@@ -42,13 +42,18 @@ test('only Spotify rotation changes advance the rotation revision', () => {
   assert.match(loader, /if \(rotationChanged\)[\s\S]*\+\+cloudRotationRevision_/);
 });
 
-test('a synchronized rotation starts at the next natural completion boundary', () => {
+test('a synchronized rotation starts at the next natural completion boundary without replaying the completed path', () => {
   const advanceStart = rotation.indexOf('void SpotifyWebViews::AdvanceTimedRotationSlot');
   const advanceEnd = rotation.indexOf('void SpotifyWebViews::ArmTimedEndObserver', advanceStart);
   assert.ok(advanceStart >= 0 && advanceEnd > advanceStart);
   const advance = rotation.slice(advanceStart, advanceEnd);
+  assert.match(advance, /std::wstring completedPath/);
   assert.match(advance, /timedCloudRotationRevision != cloudRotationRevision_/);
   assert.match(advance, /timedRotationPosition = 0[\s\S]*PrepareTimedRotationCycle\(slot\)[\s\S]*timedCloudRotationRevision = cloudRotationRevision_/);
+  assert.match(
+    advance,
+    /timedCycleTracks\[slot\.timedRotationPosition\]\.path == completedPath[\s\S]*std::find_if\([\s\S]*track\.path != completedPath[\s\S]*timedRotationPosition = static_cast<size_t>/,
+  );
   assert.ok(
     advance.indexOf('timedCloudRotationRevision != cloudRotationRevision_') <
       advance.indexOf('++slot.timedRotationPosition'),
