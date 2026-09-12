@@ -203,26 +203,13 @@ LR"JS(
   }) || null;
 
   if (video.paused && !video.ended) {
-    if (video.__homePanelTverResumeBlocked) {
-      video.__homePanelTverResumeBlocked = false;
-      const playButton = findPlayButton();
-      return playButton ? point(playButton) : null;
-    }
-    try {
-      const pending = video.play();
-      if (pending && typeof pending.catch === 'function') {
-        pending.catch(() => {
-          if (video.paused && !video.ended) {
-            video.__homePanelTverResumeBlocked = true;
-          }
-        });
-      }
-    } catch (_) {
-      video.__homePanelTverResumeBlocked = true;
-    }
-    return null;
+    // Do not call HTMLMediaElement.play() for TVer recovery. TVer's player can
+    // transiently accept that untrusted programmatic start and immediately
+    // restore its own paused state, leaving the clock at 0:00. Recovery must be
+    // a real trusted click on an explicitly Play-labelled control instead.
+    const playButton = findPlayButton();
+    return playButton ? point(playButton) : null;
   }
-  video.__homePanelTverResumeBlocked = false;
 
   const browserFullscreen = document.fullscreenElement ||
       document.webkitFullscreenElement || document.msFullscreenElement;
