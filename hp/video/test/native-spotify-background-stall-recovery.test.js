@@ -104,7 +104,10 @@ test('playback anomalies recover the current target while only natural completio
 
   const endedStart = rotation.indexOf('if (ended) {');
   const stoppedStart = rotation.indexOf('if (stopped) {', endedStart);
-  const stoppedEnd = rotation.indexOf('\n              return S_OK;\n              }', stoppedStart);
+  const stoppedEnd = rotation.indexOf(
+    '\n              }\n\n              return S_OK;',
+    stoppedStart,
+  );
   assert.ok(endedStart >= 0 && stoppedStart > endedStart && stoppedEnd > stoppedStart);
   const endedBranch = rotation.slice(endedStart, stoppedStart);
   const stoppedBranch = rotation.slice(stoppedStart, stoppedEnd);
