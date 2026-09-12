@@ -65,6 +65,30 @@ jobs:
                 .replace(/```/g, '`\u200b``');
             }
 
+            function failureContext(lines) {
+              const failurePattern = /\bnot ok\b|AssertionError|ERR_ASSERTION|ERR_TEST_FAILURE|^\s*error[: ]|^\s*#\s*fail\b|^npm error\b/i;
+              const selected = new Set();
+
+              lines.forEach((line, index) => {
+                if (!failurePattern.test(line)) return;
+                const start = Math.max(0, index - 6);
+                const end = Math.min(lines.length, index + 17);
+                for (let i = start; i < end; i += 1) selected.add(i);
+              });
+
+              if (selected.size === 0) return '';
+
+              const ordered = [...selected].sort((a, b) => a - b);
+              const excerpt = [];
+              let previous = -2;
+              for (const index of ordered) {
+                if (index > previous + 1) excerpt.push('…');
+                excerpt.push(lines[index]);
+                previous = index;
+              }
+              return excerpt.join('\n').slice(0, 16000);
+            }
+
             const sections = [];
             for (const job of failedJobs) {
               try {
@@ -73,8 +97,15 @@ jobs:
                   { owner, repo, job_id: job.id },
                 );
                 const lines = sanitize(toText(response.data)).split(/\r?\n/);
-                const excerpt = lines.slice(-160).join('\n').slice(-14000);
-                sections.push(`#### ${job.name}\n\n\`\`\`text\n${excerpt}\n\`\`\``);
+                const contextExcerpt = failureContext(lines);
+                const tail = lines.slice(-80).join('\n').slice(-6000);
+                const details = [
+                  contextExcerpt
+                    ? `**Failure context**\n\n\`\`\`text\n${contextExcerpt}\n\`\`\``
+                    : null,
+                  `**Log tail**\n\n\`\`\`text\n${tail}\n\`\`\``,
+                ].filter(Boolean).join('\n\n');
+                sections.push(`#### ${job.name}\n\n${details}`);
               } catch (error) {
                 sections.push(
                   `#### ${job.name}\n\nLog download failed in the reporter: ${sanitize(String(error.message || error))}`,
