@@ -144,14 +144,12 @@ void NativeMediaEnsureEventWakeBridge(
                            kNativeMediaTverWatchdogTimer, 0);
             } else if (message == L"homepanel:tver-ended" &&
                        sourceContains(L"tver.jp/episodes/")) {
-              if (!NativeMediaTverAdvanceEpisode(source)) return S_OK;
-              const std::wstring next =
-                  NativeMediaTverCurrentEpisodeUrl(hostWindow, safeAlive);
-              if (!next.empty() && SUCCEEDED(sender->Navigate(next.c_str()))) {
-                NativeMediaTverMarkNavigationStarted(next);
-              } else {
+              if (NativeMediaTverAdvanceEpisode(source)) {
+                // Keep all WebView navigation in NativeMediaPanelHost. This
+                // immediate host message reuses the existing navigation path,
+                // timer cancellation and startup-deadline arming.
                 PostMessageW(hostWindow, WM_TIMER,
-                             kNativeMediaTverWatchdogTimer, 0);
+                             kNativeMediaNavigationRetryTimer, 0);
               }
             } else if (message == L"homepanel:tver-wake" &&
                        sourceContains(L"tver.jp/episodes/")) {
