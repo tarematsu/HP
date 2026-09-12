@@ -29,7 +29,7 @@ test('trusted start is generation scoped, short lived, and cannot override wrong
   assert.match(runtime, /clearTrustedStart\(\);[\s\S]*if \(!state\.startPosted\) return 'unknown'/);
 });
 
-test('once trusted media is adopted, missing Spotify metadata cannot drop its completion ownership', () => {
+test('once trusted media is adopted, missing Spotify metadata cannot drop start ownership', () => {
   assert.match(
     runtime,
     /const ownsTrustedMedia = state\.started && state\.targetMedia === media/,
@@ -38,5 +38,6 @@ test('once trusted media is adopted, missing Spotify metadata cannot drop its co
     runtime,
     /if \(!identity\.path && !identity\.title\) \{[\s\S]*if \(!ownsTrustedMedia\)/,
   );
-  assert.match(runtime, /post\('spotify:timed-started'\)/);
+  assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.match(runtime, /state\.startPosted = true/);
 });
