@@ -21,7 +21,7 @@ describe('YouTube playlist cloud startup', () => {
     expect(firstYoutubePlaylistVideoId(html)).toBe('AAA111bbb22');
   });
 
-  it('resolves directly to watch while preserving playlist context', async () => {
+  it('resolves directly to watch without sending a Referer upstream', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -37,6 +37,9 @@ describe('YouTube playlist cloud startup', () => {
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fetchImpl.mock.calls[0][0]).toBe(YOUTUBE_PLAYLIST_URL);
+    const requestHeaders = fetchImpl.mock.calls[0][1]?.headers || {};
+    expect(Object.keys(requestHeaders).map((key) => key.toLowerCase()))
+      .not.toContain('referer');
     expect(result.videoId).toBe('AbCdEfGhI12');
     expect(result.playlistId).toBe(YOUTUBE_PLAYLIST_ID);
     expect(result.url).toBe(
@@ -44,7 +47,7 @@ describe('YouTube playlist cloud startup', () => {
     );
   });
 
-  it('returns an HTTP redirect to the completed watch URL', async () => {
+  it('returns a no-referrer redirect to the completed watch URL', async () => {
     const response = await youtubePlaylistStartResponse({
       fetchImpl: async () => ({
         ok: true,
@@ -59,10 +62,11 @@ describe('YouTube playlist cloud startup', () => {
     expect(response.headers.get('location')).toBe(
       `https://www.youtube.com/watch?v=ZyXwVuTsR98&list=${YOUTUBE_PLAYLIST_ID}`,
     );
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
     expect(response.headers.get('x-homepanel-youtube-start')).toBe('cloud-resolved');
   });
 
-  it('falls back to the playlist page without exposing a broken startup', async () => {
+  it('falls back to the playlist page with no referrer', async () => {
     const response = await youtubePlaylistStartResponse({
       fetchImpl: async () => ({
         ok: true,
@@ -74,6 +78,7 @@ describe('YouTube playlist cloud startup', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe(YOUTUBE_PLAYLIST_URL);
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
     expect(response.headers.get('x-homepanel-youtube-start')).toBe('native-fallback');
   });
 });
