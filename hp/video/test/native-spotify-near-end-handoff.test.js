@@ -180,8 +180,6 @@ test('a delayed completion probe treats a post-end rewind as completion', () => 
   h.media.currentTime = 0;
   h.dispatch('playing');
 
-  // Simulate a throttled WebView: native's probe is delivered only after the
-  // original 180-second playthrough ended and Spotify rewound the same element.
   h.advanceWall(180_100);
   h.media.currentTime = 0.1;
   h.hostMessage('spotify:completion-probe\x1f25');
@@ -193,9 +191,42 @@ test('a delayed completion probe treats a post-end rewind as completion', () => 
   assert.equal(h.media.paused, true);
 });
 
-test('pause away from the end clears the native deadline before recovery', () => {
+test('a repeat rewind cannot erase a completion deadline before native probes', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f26');
+  h.media.paused = false;
+  h.media.currentTime = 0;
+  h.dispatch('playing');
+
+  h.advanceWall(179_000);
+  h.media.currentTime = 0.2;
+  h.dispatch('seeking');
+
+  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f26');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f26').length, 1);
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-plan\x1f26')).length, 1);
+  assert.equal(h.media.pauseCalls, 1);
+});
+
+test('an expired completion probe wins even if Spotify has already paused', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f27');
+  h.media.paused = false;
+  h.media.currentTime = 0;
+  h.dispatch('playing');
+
+  h.advanceWall(180_100);
+  h.media.currentTime = 0.1;
+  h.media.paused = true;
+  h.hostMessage('spotify:completion-probe\x1f27');
+
+  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f27');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f27').length, 1);
+});
+
+test('pause away from the end clears the native deadline before recovery', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f28');
   h.media.paused = false;
   h.media.currentTime = 60;
   h.dispatch('playing');
@@ -204,7 +235,7 @@ test('pause away from the end clears the native deadline before recovery', () =>
   h.media.paused = true;
   h.dispatch('pause');
 
-  assert.equal(h.messages.at(-1), 'spotify:timed-plan-clear\x1f26');
-  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f26').length, 0);
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan-clear\x1f28');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f28').length, 0);
   assert.equal(h.timers.size, 1);
 });
