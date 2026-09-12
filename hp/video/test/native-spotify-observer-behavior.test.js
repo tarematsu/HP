@@ -132,8 +132,8 @@ function createHarness() {
     for (const fn of pending) fn();
   };
   const runHeartbeat = () => {
-    const heartbeat = [...intervals.values()].find(({ delay }) => delay === 10000);
-    assert.ok(heartbeat, '10-second media heartbeat not installed');
+    const heartbeat = [...intervals.values()].find(({ delay }) => delay === 20000);
+    assert.ok(heartbeat, '20-second media heartbeat not installed');
     heartbeat.fn();
   };
 
