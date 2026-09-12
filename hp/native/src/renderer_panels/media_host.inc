@@ -30,7 +30,6 @@ class NativeMediaPanelHost final {
             }
             environment_ = environment;
             phase_ = Phase::YouTube;
-            CapturePhaseTimes();
             CreateControllerForCurrentPhase();
             ArmPhaseTimer();
           });
@@ -90,7 +89,7 @@ class NativeMediaPanelHost final {
 
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
-    tverRestarting_ = false;
+    NativeMediaTverEndQueuePhase();
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
     StopNavigationRetry();
@@ -131,71 +130,6 @@ class NativeMediaPanelHost final {
     return NativeMediaDispatchTrustedInput(
         phase_ == Phase::Tver, webview_.Get(), controller_.Get(), hostWindow_,
         count, inputs, inputSize);
-  }
-
-  void CapturePhaseTimes() noexcept {
-    FILETIME startUtc{};
-    GetSystemTimeAsFileTime(&startUtc);
-    ULARGE_INTEGER endTicks{};
-    endTicks.LowPart = startUtc.dwLowDateTime;
-    endTicks.HighPart = startUtc.dwHighDateTime;
-    endTicks.QuadPart += static_cast<ULONGLONG>(kNativeMediaPhaseMs) * 10000ULL;
-    FILETIME endUtc{};
-    endUtc.dwLowDateTime = endTicks.LowPart;
-    endUtc.dwHighDateTime = endTicks.HighPart;
-    phaseStartText_ = FormatNativeMediaLocalHourMinute(startUtc);
-    phaseEndText_ = FormatNativeMediaLocalHourMinute(endUtc);
-  }
-
-  std::wstring BuildPhaseOverlayScript() const {
-    if (phaseStartText_.empty() || phaseEndText_.empty()) return {};
-    std::wstring script = LR"JS(
-(() => {
-  const id = '__homePanelMediaPhaseTime';
-  const cursorStyleId = '__homePanelMediaCursorStyle';
-  const text = ')JS";
-    script += phase_ == Phase::YouTube ? L"YouTube " : L"TVer ";
-    script += phaseStartText_;
-    script += L"–";
-    script += phaseEndText_;
-    script += LR"JS(';
-  const mount = () => {
-    const styleRoot = document.head || document.documentElement;
-    if (styleRoot && !document.getElementById(cursorStyleId)) {
-      const cursorStyle = document.createElement('style');
-      cursorStyle.id = cursorStyleId;
-      cursorStyle.textContent = '* { cursor:none !important; }';
-      styleRoot.appendChild(cursorStyle);
-    }
-    const player = document.querySelector('#movie_player');
-    const root = player || document.body || document.documentElement;
-    if (!root) return;
-    let badge = document.getElementById(id);
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.id = id;
-    }
-    badge.textContent = text;
-    badge.style.cssText =
-        (player ? 'position:absolute;' : 'position:fixed;') +
-        'top:8px;right:8px;z-index:2147483647;' +
-        'padding:0;border:0;border-radius:0;background:transparent;' +
-        'color:rgba(176,176,176,.58);font:600 12px/1.2 "Segoe UI",sans-serif;' +
-        'letter-spacing:.2px;white-space:nowrap;pointer-events:none;';
-    if (badge.parentElement !== root) root.appendChild(badge);
-  };
-  mount();
-})()
-)JS";
-    return script;
-  }
-
-  void ShowPhaseOverlay() noexcept {
-    if (!webview_) return;
-    const std::wstring script = BuildPhaseOverlayScript();
-    if (!script.empty()) {
-      ExecutePolicyScript(webview_.Get(), script.c_str(), nullptr);
-    }
   }
 
   const wchar_t* CurrentProfileName() const noexcept {
@@ -352,6 +286,8 @@ class NativeMediaPanelHost final {
 
       webview_->AddScriptToExecuteOnDocumentCreated(
           kNativeMediaYoutubeCleanPlayerScript, nullptr);
+      webview_->AddScriptToExecuteOnDocumentCreated(
+          kNativeMediaCursorSuppressionScript, nullptr);
 
       webview_->add_NavigationCompleted(
           Callback<ICoreWebView2NavigationCompletedEventHandler>(
@@ -388,7 +324,6 @@ class NativeMediaPanelHost final {
                   StopYoutubeMonitors();
                   StopTverPlaybackMonitor();
                 }
-                ShowPhaseOverlay();
                 return S_OK;
               }).Get(),
           &navigationCompletedToken_);
@@ -411,8 +346,7 @@ class NativeMediaPanelHost final {
 
   void SwitchToYouTube() noexcept {
     phase_ = Phase::YouTube;
-    tverRestarting_ = false;
-    CapturePhaseTimes();
+    NativeMediaTverEndQueuePhase();
     failed_ = false;
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
@@ -423,12 +357,11 @@ class NativeMediaPanelHost final {
 
   void SwitchToTver() noexcept {
     phase_ = Phase::Tver;
-    tverRestarting_ = false;
-    CapturePhaseTimes();
     failed_ = false;
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
     StopNavigationRetry();
+    NativeMediaTverBeginQueuePhase(hostWindow_, alive_);
     NavigateCurrentPhase();
     ArmPhaseTimer();
   }
@@ -439,9 +372,27 @@ class NativeMediaPanelHost final {
       ScheduleNavigationRetry();
       return;
     }
-    const wchar_t* url =
-        phase_ == Phase::YouTube ? kNativeMediaYoutubeUrl : kNativeMediaTverUrl;
-    if (FAILED(webview_->Navigate(url))) ScheduleNavigationRetry();
+    if (phase_ == Phase::YouTube) {
+      if (FAILED(webview_->Navigate(kNativeMediaYoutubeUrl))) {
+        ScheduleNavigationRetry();
+      }
+      return;
+    }
+
+    const std::wstring url =
+        NativeMediaTverCurrentEpisodeUrl(hostWindow_, alive_);
+    if (url.empty()) {
+      ScheduleNavigationRetry();
+      return;
+    }
+    if (FAILED(webview_->Navigate(url.c_str()))) {
+      ScheduleNavigationRetry();
+      return;
+    }
+    NativeMediaTverMarkNavigationStarted(url);
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      ArmTimer(kNativeMediaTverWatchdogTimer, kNativeMediaTverWatchdogMs);
+    }
   }
 
   void ReloadYoutubePlaylist() noexcept {
@@ -521,7 +472,7 @@ class NativeMediaPanelHost final {
   }
 
   void BeginTverPlaybackMonitor() noexcept {
-    if (!hostWindow_ || !IsWindow(hostWindow_) || tverRestarting_) return;
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
     tverWatchdogInFlight_ = false;
     KillTimer(hostWindow_, kNativeMediaTverWatchdogTimer);
     ArmTimer(kNativeMediaTverWatchdogTimer, kNativeMediaTverWatchdogMs);
@@ -533,21 +484,6 @@ class NativeMediaPanelHost final {
       KillTimer(hostWindow_, kNativeMediaTverWatchdogTimer);
     }
     tverWatchdogInFlight_ = false;
-  }
-
-  void CompleteTverRestart() noexcept {
-    if (!tverRestarting_) return;
-    tverRestarting_ = false;
-    if (phase_ != Phase::Tver || !hostWindow_ || !IsWindow(hostWindow_)) return;
-    StopNavigationRetry();
-    NavigateCurrentPhase();
-  }
-
-  void RestartTverAfterPlayback() noexcept {
-    if (phase_ != Phase::Tver || !webview_ || tverRestarting_) return;
-    tverRestarting_ = true;
-    StopTverPlaybackMonitor();
-    CompleteTverRestart();
   }
 
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept {
@@ -640,8 +576,29 @@ class NativeMediaPanelHost final {
   }
 
   void ProbeTverWatchdog() noexcept {
-    if (phase_ != Phase::Tver || !webview_ || tverWatchdogInFlight_ ||
-        tverRestarting_ || !IsTverPage()) return;
+    if (phase_ != Phase::Tver || !webview_ || tverWatchdogInFlight_) return;
+    if (!IsTverPage()) {
+      NavigateCurrentPhase();
+      return;
+    }
+
+    LPWSTR rawSource = nullptr;
+    std::wstring source;
+    if (SUCCEEDED(webview_->get_Source(&rawSource)) && rawSource) {
+      source.assign(rawSource);
+      CoTaskMemFree(rawSource);
+    }
+    ULONGLONG now = GetTickCount64();
+    if (now == 0) now = 1;
+    if (!source.empty() && NativeMediaTverStartupExpired(source, now)) {
+      if (NativeMediaTverAdvanceEpisode(source)) {
+        NavigateCurrentPhase();
+      } else {
+        ScheduleNavigationRetry();
+      }
+      return;
+    }
+
     tverWatchdogInFlight_ = true;
     const auto alive = alive_;
     const HRESULT started = ExecutePolicyScript(
@@ -653,7 +610,7 @@ class NativeMediaPanelHost final {
               if (phase_ != Phase::Tver || !IsTverPage()) return S_OK;
               if (SUCCEEDED(result) && json &&
                   std::wstring_view(json) == L"\"restart\"") {
-                RestartTverAfterPlayback();
+                NavigateCurrentPhase();
                 return S_OK;
               }
               int x = 0;
@@ -720,7 +677,7 @@ class NativeMediaPanelHost final {
 
   void Fail() noexcept {
     failed_ = true;
-    tverRestarting_ = false;
+    NativeMediaTverEndQueuePhase();
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
     StopNavigationRetry();
@@ -740,15 +697,12 @@ class NativeMediaPanelHost final {
   EventRegistrationToken navigationCompletedToken_{};
   EventRegistrationToken webResourceRequestedToken_{};
   Phase phase_ = Phase::YouTube;
-  std::wstring phaseStartText_;
-  std::wstring phaseEndText_;
   uint64_t controllerGeneration_ = 0;
   uint64_t youtubeWatchdogRequestGeneration_ = 0;
   ULONGLONG youtubeWatchdogStartedTick_ = 0;
   bool controllerCreating_ = false;
   bool youtubeWatchdogInFlight_ = false;
   bool tverWatchdogInFlight_ = false;
-  bool tverRestarting_ = false;
   bool muted_ = false;
   bool failed_ = false;
 };

@@ -56,7 +56,7 @@ LR"JS(
   // Once playback and fullscreen have been configured for the current video,
   // healthy watchdog passes do not verify or reapply those settings.
   const trackedVideo = state && state.video;
-  if (state && !adActive && !state.restartRequested &&
+  if (state && !adActive &&
       state.playbackSettingsApplied && state.fullscreenDirty === false &&
       trackedVideo instanceof HTMLMediaElement &&
       !trackedVideo.paused && !trackedVideo.ended && !trackedVideo.error &&
@@ -92,6 +92,4 @@ LR"JS(
     if (fullscreenButton && state) state.fullscreenDirty = false;
     return fullscreenButton ? point(fullscreenButton) : null;
   }
-
-  if (state && state.restartRequested) return 'restart';
 )JS"

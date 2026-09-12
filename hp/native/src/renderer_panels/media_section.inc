@@ -18,22 +18,35 @@ namespace {
 constexpr wchar_t kNativeMediaNoopScript[] = L"null";
 constexpr wchar_t kNativeMediaTverUnexpectedPageScript[] =
     LR"JS((() => 'restart')())JS";
-constexpr wchar_t kNativeMediaPhaseOverlaySuppressionScript[] = LR"JS(
+constexpr wchar_t kNativeMediaCursorSuppressionScript[] = LR"JS(
 (() => {
-  const badge = document.getElementById('__homePanelMediaPhaseTime');
-  if (badge) badge.remove();
-
-  const cursorStyleId = '__homePanelMediaCursorStyle';
-  const styleRoot = document.head || document.documentElement;
-  if (styleRoot && !document.getElementById(cursorStyleId)) {
-    const cursorStyle = document.createElement('style');
-    cursorStyle.id = cursorStyleId;
-    cursorStyle.textContent = '* { cursor:none !important; }';
-    styleRoot.appendChild(cursorStyle);
+  const id = '__homePanelMediaCursorStyle';
+  const root = document.head || document.documentElement;
+  if (root && !document.getElementById(id)) {
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = '* { cursor:none !important; }';
+    root.appendChild(style);
   }
-  return null;
+  return true;
 })()
 )JS";
+
+void NativeMediaTverBeginQueuePhase(
+    HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
+void NativeMediaTverEndQueuePhase() noexcept;
+std::wstring NativeMediaTverCurrentEpisodeUrl(
+    HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
+void NativeMediaTverMarkNavigationStarted(std::wstring_view url) noexcept;
+void NativeMediaTverMarkMediaReady(std::wstring_view source) noexcept;
+bool NativeMediaTverStartupExpired(
+    std::wstring_view source, ULONGLONG now) noexcept;
+bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept;
+void PrepareNativeMediaTverCloudQueueRefresh(
+    ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
 
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
@@ -47,8 +60,8 @@ HRESULT ExecuteNativeMediaPolicyScript(
 
 #include "media_section_base.inc"
 
-// TVer playback consumes only the cloud-owned episode feed. Keep the bounded
-// native feed client and queue refresher beside the host after timer IDs exist.
+// TVer playback consumes only the cloud-owned episode feed. Network retrieval,
+// episode ordering and queue progression are native-owned.
 #include "media_tver_cloud_feed_native.inc"
 #include "media_tver_cloud_queue_refresh.inc"
 
@@ -111,8 +124,7 @@ void NativeMediaEnsureEventWakeBridge(
             CoTaskMemFree(rawMessage);
 
             // A wake message is already page-local and fixed. Read the WebView
-            // source once, then validate every route against that single value
-            // instead of crossing the COM boundary once per substring check.
+            // source once, then validate every route against that single value.
             std::wstring source;
             if (!NativeMediaReadWebViewSource(sender, source)) return S_OK;
             const auto sourceContains = [&source](std::wstring_view needle) {
@@ -126,12 +138,23 @@ void NativeMediaEnsureEventWakeBridge(
                            kNativeMediaYoutubeWatchdogTimer, 0);
             } else if (message == L"homepanel:tver-media-init" &&
                        sourceContains(L"tver.jp/episodes/")) {
+              NativeMediaTverMarkMediaReady(source);
               NativeMediaTrustedWake(hostWindow, sender, nullptr);
               PostMessageW(hostWindow, WM_TIMER,
                            kNativeMediaTverWatchdogTimer, 0);
+            } else if (message == L"homepanel:tver-ended" &&
+                       sourceContains(L"tver.jp/episodes/")) {
+              if (NativeMediaTverAdvanceEpisode(source)) {
+                // Keep all WebView navigation in NativeMediaPanelHost. This
+                // immediate host message reuses the existing navigation path,
+                // timer cancellation and startup-deadline arming.
+                PostMessageW(hostWindow, WM_TIMER,
+                             kNativeMediaNavigationRetryTimer, 0);
+              }
             } else if (message == L"homepanel:tver-wake" &&
                        sourceContains(L"tver.jp/episodes/")) {
-              PostMessageW(hostWindow, WM_TIMER, kNativeMediaTverWatchdogTimer, 0);
+              PostMessageW(hostWindow, WM_TIMER,
+                           kNativeMediaTverWatchdogTimer, 0);
             }
             return S_OK;
           }).Get(),
@@ -168,11 +191,6 @@ void NativeMediaEnsureYoutubeTrustedAction(
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
-  if (script &&
-      std::wstring_view(script).find(L"__homePanelMediaPhaseTime") !=
-          std::wstring_view::npos) {
-    return kNativeMediaPhaseOverlaySuppressionScript;
-  }
   if (script == kNativeMediaYoutubeCleanPlayerScript) {
     // The static presentation policy is already installed by
     // AddScriptToExecuteOnDocumentCreated. Navigation completion refreshes only

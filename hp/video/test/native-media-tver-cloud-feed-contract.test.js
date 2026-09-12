@@ -27,6 +27,10 @@ const mediaPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
 );
+const mediaHost = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
+  'utf8',
+);
 const playbackPolicy = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 
@@ -71,38 +75,32 @@ test('native playback uses the cloud feed as its only discovery source', () => {
   assert.doesNotMatch(mediaSection, /media_tver_native_series_resolver\.inc/);
 });
 
-test('native TVer phase launches a cloud-selected episode without rendering a series page', () => {
-  assert.match(mediaPanel, /kNativeMediaTverUrl\[\][\s\S]*data:text\/html;charset=utf-8/);
-  assert.match(mediaPanel, /homepanel-cloud\.tarematsu\.workers\.dev%2Fv1%2Fnative%2Ftver-feed/);
-  assert.match(mediaPanel, /homepanel_launch%3D1/);
-  assert.doesNotMatch(
-    mediaPanel,
-    /kNativeMediaTverUrl\[\][\s\S]{0,120}https:\/\/tver\.jp\/series\//,
-  );
-  assert.match(playbackPolicy, /launcherParam = 'homepanel_launch'/);
-  assert.match(playbackPolicy, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
-  assert.match(
-    playbackPolicy,
-    /JSON\.stringify\(\{ hrefs: \[currentHref\], index: 0 \}\)/,
-  );
-  assert.match(playbackPolicy, /return window\[guardRestartKey\] \? 'restart' : null/);
-  assert.doesNotMatch(playbackPolicy, /__homePanelTverSeriesPath|__homePanelTverEpisodeQueue:/);
+test('native TVer phase selects and navigates an episode without a data-page bootstrap', () => {
+  assert.doesNotMatch(mediaPanel, /kNativeMediaTverUrl|data:text\/html|homepanel_launch/);
+  assert.match(mediaHost, /NativeMediaTverBeginQueuePhase\(hostWindow_, alive_\)/);
+  assert.match(mediaHost, /NativeMediaTverCurrentEpisodeUrl\(hostWindow_, alive_\)/);
+  assert.match(mediaHost, /webview_->Navigate\(url\.c_str\(\)\)/);
+  assert.match(mediaHost, /NativeMediaTverMarkNavigationStarted\(url\)/);
+  assert.doesNotMatch(playbackPolicy, /launcherParam|episodeQueueKey|sessionStorage/);
+  assert.doesNotMatch(playbackPolicy, /location\.replace\(/);
 });
 
-test('native TVer refreshes active queue without interrupting a still-valid current episode', () => {
+test('native TVer refresh preserves current selection and consumed state without page injection', () => {
   assert.match(cloudQueueRefresh, /kNativeMediaTverCloudQueueRefreshMs =\s*30ULL \* 60ULL \* 1000ULL/);
+  assert.match(cloudQueueRefresh, /kNativeMediaTverStartupTimeoutMs = 30ULL \* 1000ULL/);
   assert.match(cloudQueueRefresh, /NativeMediaTverFetchCloudFeed\(\)/);
   assert.match(cloudQueueRefresh, /NativeMediaTverParseCloudFeed/);
   assert.match(cloudQueueRefresh, /GetNamedString\(L"generatedAt"/);
-  assert.match(cloudQueueRefresh, /result\.generatedAt < state\.appliedGeneratedAt/);
-  assert.match(cloudQueueRefresh, /result\.generatedAt == state\.appliedGeneratedAt[\s\S]*source == state\.appliedSource/);
-  assert.match(cloudQueueRefresh, /const queueKey = '__homePanelTverEpisodeQueue'/);
-  assert.match(cloudQueueRefresh, /previous\.slice\(0, currentIndex \+ 1\)/);
-  assert.match(cloudQueueRefresh, /const remaining = \[\][\s\S]*seen\.has\(href\)/);
-  assert.match(cloudQueueRefresh, /JSON\.stringify\(\{ hrefs, index: prefix\.length - 1 \}\)/);
-  assert.match(cloudQueueRefresh, /if \(!currentStillFresh\)[\s\S]*location\.replace\(resumeEpisodes\[0\]\)/);
-  assert.match(cloudQueueRefresh, /missingVideoGuardMs = 30000[\s\S]*location\.replace\(latestHrefs\[nextIndex\]\)/);
-  assert.doesNotMatch(cloudQueueRefresh, /\bfetch\s*\(/);
+  assert.match(cloudQueueRefresh, /struct NativeMediaTverNativeQueueState/);
+  assert.match(cloudQueueRefresh, /latestEpisodeIds/);
+  assert.match(cloudQueueRefresh, /queueEpisodeIds/);
+  assert.match(cloudQueueRefresh, /consumedEpisodeIds/);
+  assert.match(cloudQueueRefresh, /Never interrupt an episode that is already selected/);
+  assert.match(cloudQueueRefresh, /Queue exhaustion starts a fresh cycle/);
+  assert.doesNotMatch(
+    cloudQueueRefresh,
+    /ExecuteScript\s*\(|sessionStorage\s*\.|location\.replace\s*\(|\bfetch\s*\(/,
+  );
   assert.match(
     mediaSection,
     /tver\.jp\/episodes\/[\s\S]*PrepareNativeMediaTverCloudQueueRefresh\(webview, hostWindow, alive\)[\s\S]*kNativeMediaTverPlaybackWatchdogPolicyScript/,

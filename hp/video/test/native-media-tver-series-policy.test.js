@@ -18,7 +18,7 @@ test('legacy TVer series policies are absent from runtime composition', () => {
   assert.doesNotMatch(wrapper, /NativeMediaTverNavigationPendingFor\(/);
 });
 
-test('unexpected TVer non-episode pages fail back to the cloud launcher', () => {
+test('unexpected TVer non-episode pages fail back to native navigation', () => {
   assert.match(wrapper, /kNativeMediaTverUnexpectedPageScript/);
   assert.match(wrapper, /tver\.jp\/episodes\//);
   assert.match(wrapper, /NativeMediaWebViewSourceContains\(webview, L"tver\.jp\/"\)/);
@@ -36,9 +36,13 @@ test('native cloud feed client is bounded and contains no series API fallback', 
   assert.doesNotMatch(wrapper + refresh, /ResolveNativeMediaTverSeries|__homePanelTverSeriesPath/);
 });
 
-test('cloud refresh operates on the single episode queue', () => {
-  assert.match(refresh, /const queueKey = '__homePanelTverEpisodeQueue'/);
-  assert.doesNotMatch(refresh, /__homePanelTverEpisodeQueue:/);
+test('cloud refresh operates on the single native episode queue', () => {
+  assert.match(refresh, /struct NativeMediaTverNativeQueueState/);
+  assert.match(refresh, /latestEpisodeIds/);
+  assert.match(refresh, /queueEpisodeIds/);
+  assert.match(refresh, /consumedEpisodeIds/);
+  assert.match(refresh, /currentEpisodeId/);
   assert.match(refresh, /NativeMediaTverFetchCloudFeed\(\)/);
   assert.match(refresh, /NativeMediaTverParseCloudFeed/);
+  assert.doesNotMatch(refresh, /__homePanelTverEpisodeQueue\s*[:=]/);
 });

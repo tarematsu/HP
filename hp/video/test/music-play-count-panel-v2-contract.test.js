@@ -31,7 +31,7 @@ test('the compiled media panel uses the integrated YouTube and TVer surface', ()
   assert.match(entry, /HomePanelNativeMvPanel/);
   assert.match(radarSection, /void Renderer::DrawRadarSection/);
   assert.match(entry, /kNativeMediaYoutubeUrl/);
-  assert.match(entry, /kNativeMediaTverUrl/);
+  assert.doesNotMatch(entry, /kNativeMediaTverUrl|data:text\/html/);
   assert.match(entry, /#include "media_host\.inc"/);
   assert.doesNotMatch(entry, /radar_section\.inc/);
   assert.doesNotMatch(entry, /#include "mv_section\.inc"/);
