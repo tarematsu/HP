@@ -11,7 +11,6 @@ LR"JS(
   const progressSteadyIntervalMs = 2000;
   const progressNearEndIntervalMs = 500;
   const progressFinalIntervalMs = 200;
-  const episodeQueueKey = '__homePanelTverEpisodeQueue';
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visibleRect = element => {
     if (!element) return null;
@@ -58,26 +57,16 @@ LR"JS(
       if (video.volume !== targetVolume) video.volume = targetVolume;
     } catch (_) {}
   };
-  const advanceEpisode = () => {
+  const postEpisodeEnded = state => {
+    if (!state) return false;
+    if (state.endReported) return true;
     try {
-      const queue = JSON.parse(sessionStorage.getItem(episodeQueueKey) || 'null');
-      if (!queue || !Array.isArray(queue.hrefs) || !queue.hrefs.length) return false;
-      const currentIndex = queue.hrefs.findIndex(href => {
-        try { return new URL(href, location.href).pathname === location.pathname; }
-        catch (_) { return false; }
-      });
-      const storedIndex = Number.isInteger(queue.index) ? queue.index : -1;
-      const nextIndex = (currentIndex >= 0 ? currentIndex : storedIndex) + 1;
-      if (nextIndex >= 0 && nextIndex < queue.hrefs.length) {
-        sessionStorage.setItem(
-            episodeQueueKey,
-            JSON.stringify({ hrefs: queue.hrefs, index: nextIndex }));
-        location.replace(queue.hrefs[nextIndex]);
-        return true;
-      }
-      sessionStorage.removeItem(episodeQueueKey);
-    } catch (_) {}
-    return false;
+      window.chrome?.webview?.postMessage('homepanel:tver-ended');
+      state.endReported = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
   };
 
   let wakeAt = 0;

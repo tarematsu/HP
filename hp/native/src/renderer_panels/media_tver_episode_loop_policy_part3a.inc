@@ -14,10 +14,10 @@ LR"JS(
           maxTime: 0,
           progressSampleAt: 0,
           endCandidateAt: 0,
+          endReported: false,
           lowQualitySet: false,
           playbackSettingsApplied: false,
           fullscreenDirty: true,
-          restartRequested: false,
           adActive: false,
           adVideo: null,
           adIdentity: '',
@@ -51,7 +51,6 @@ LR"JS(
           state.lowQualitySet = false;
           state.playbackSettingsApplied = false;
           state.fullscreenDirty = true;
-          state.restartRequested = false;
         }
         window.__homePanelTverAdActive = true;
         const adFullscreen = !!(document.fullscreenElement ||
@@ -74,13 +73,11 @@ LR"JS(
         state.lowQualitySet = false;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
-        state.restartRequested = false;
         state.postrollAfterProgram = false;
         window.__homePanelTverAdActive = false;
         if (completedPostroll) {
-          if (advanceEpisode()) return;
-          state.restartRequested = true;
-          wakeNative('restart:' + location.pathname, true);
+          if (postEpisodeEnded(state)) return;
+          wakeNative('ended-post-failed:' + location.pathname, true);
           return;
         }
       } else {
@@ -119,9 +116,8 @@ LR"JS(
       const stableEnd = state.endCandidateAt > 0 &&
           Date.now() - state.endCandidateAt >= postrollGraceMs;
       if (stableEnd && completedItem) {
-        if (advanceEpisode()) return;
-        state.restartRequested = true;
-        wakeNative('restart:' + location.pathname, true);
+        if (postEpisodeEnded(state)) return;
+        wakeNative('ended-post-failed:' + location.pathname, true);
         return;
       }
 )JS"

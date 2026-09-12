@@ -17,6 +17,8 @@ const tverKeys = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url), 'utf8');
 const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const tverQueue = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const youtubeAgent = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 
@@ -34,13 +36,13 @@ test('TVer old static implementation is reduced to routing keys', () => {
   assert.doesNotMatch(tverKeys, /MutationObserver|querySelectorAll|playbackRate/);
 });
 
-test('TVer uses one cloud queue and restarts only after queue exhaustion', () => {
-  assert.match(tverEpisode, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
-  assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue:/);
-  assert.match(tverEpisode, /const advanceEpisode = \(\) =>/);
-  assert.match(tverEpisode, /nextIndex < queue\.hrefs\.length/);
-  assert.match(tverEpisode, /state\.restartRequested = true/);
-  assert.match(mediaHost, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
+test('TVer queue, progression and cycle restart are native-owned', () => {
+  assert.match(tverQueue, /struct NativeMediaTverNativeQueueState/);
+  assert.match(tverQueue, /NativeMediaTverRebuildQueueLocked/);
+  assert.match(tverQueue, /NativeMediaTverAdvanceEpisode/);
+  assert.match(tverQueue, /Queue exhaustion starts a fresh cycle/);
+  assert.match(mediaWrapper, /homepanel:tver-ended/);
+  assert.doesNotMatch(tverEpisode, /episodeQueueKey|advanceEpisode|sessionStorage|location\.replace/);
   assert.doesNotMatch(composition, /AdvanceNativeMediaTverSeries|gNativeMediaTverUseDeathGame/);
 });
 
@@ -50,6 +52,7 @@ test('TVer is event driven and player-local', () => {
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
   assert.match(tverEpisode, /event\.target instanceof HTMLMediaElement/);
   assert.match(tverEpisode, /homepanel:tver-media-init/);
+  assert.match(tverEpisode, /homepanel:tver-ended/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverEpisode, /setInterval\(ensure/);
   assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
@@ -85,10 +88,8 @@ test('YouTube health uses a 30-second backstop plus event wakeups', () => {
   assert.doesNotMatch(mediaWrapper, /kNativeMediaYoutubeHealthScript|kNativeMediaYoutubeHealthPolicyScript/);
 });
 
-test('TVer restart keeps the existing controller and profile', () => {
-  assert.match(
-    mediaHost,
-    /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
-  );
+test('TVer episode navigation keeps the existing controller and profile', () => {
+  assert.match(mediaHost, /NativeMediaTverCurrentEpisodeUrl\(hostWindow_, alive_\)/);
+  assert.match(mediaHost, /webview_->Navigate\(url\.c_str\(\)\)/);
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });

@@ -25,6 +25,8 @@ const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const tverWatchdog = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
+const tverQueue = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const nativeWindows = readFileSync(
   new URL('../../native/src/renderer_panels/windows.inc', import.meta.url), 'utf8');
 const lifecycle = readFileSync(
@@ -74,13 +76,12 @@ test('YouTube and TVer reuse one profile and navigate the same controller', () =
   );
 });
 
-test('phase overlay is event mounted without a one-second clock loop', () => {
-  assert.match(mediaBase, /FormatNativeMediaLocalHourMinute/);
-  assert.match(mediaHost, /__homePanelMediaPhaseTime/);
-  assert.match(mediaHost, /cursor:none !important/);
+test('phase clock is removed while cursor hiding remains', () => {
+  assert.doesNotMatch(mediaBase + mediaHost + mediaWrapper, /__homePanelMediaPhaseTime/);
+  assert.doesNotMatch(mediaBase + mediaHost, /FormatNativeMediaLocalHourMinute|CapturePhaseTimes/);
+  assert.match(mediaWrapper, /kNativeMediaCursorSuppressionScript/);
+  assert.match(mediaWrapper, /cursor:none !important/);
   assert.match(mediaWindow, /windowClass\.hCursor = nullptr/);
-  assert.doesNotMatch(mediaBase + mediaHost, /__homePanelMediaPhaseClockTimer/);
-  assert.doesNotMatch(mediaBase + mediaHost, /setInterval\(mount, 1000\)/);
 });
 
 test('YouTube preserves playlist playback, one-shot 480p, captions off, skip and fullscreen', () => {
@@ -111,14 +112,16 @@ test('YouTube clean player renders content video while preserving Skip Ad', () =
   assert.match(youtubeClean, /opacity: 1 !important/);
 });
 
-test('TVer episode playback is one-shot 1.75x, cloud-queue based and player-local', () => {
+test('TVer episode playback is one-shot 1.75x, native-queue based and player-local', () => {
   assert.match(tverEpisode, /const playbackRate = 1\.75/);
   assert.match(tverEpisode, /const targetVolume = 1\.0/);
-  assert.match(tverEpisode, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
-  assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue:/);
+  assert.match(tverQueue, /struct NativeMediaTverNativeQueueState/);
+  assert.match(tverQueue, /queueEpisodeIds/);
+  assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue|sessionStorage|location\.replace/);
   assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
   assert.match(tverEpisode, /homepanel:tver-media-init/);
+  assert.match(tverEpisode, /homepanel:tver-ended/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
   assert.doesNotMatch(tverEpisode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
@@ -129,6 +132,7 @@ test('TVer episode playback is one-shot 1.75x, cloud-queue based and player-loca
 
 test('TVer media initialization performs one pointer wake without burst polling', () => {
   assert.match(mediaWrapper, /message == L"homepanel:tver-media-init"/);
+  assert.match(mediaWrapper, /NativeMediaTverMarkMediaReady\(source\)/);
   assert.match(mediaWrapper, /NativeMediaTrustedWake\(hostWindow, sender, nullptr\)/);
   assert.match(trustedInput, /NativeMediaDispatchTrustedMove\(webview, x, y\)/);
   assert.match(trustedInput, /return ::SetTimer\(hwnd, timerId, steadyIntervalMs, nullptr\)/);
@@ -140,20 +144,19 @@ test('TVer media initialization performs one pointer wake without burst polling'
 
 test('TVer ads are isolated to Skip and one-shot fullscreen automation', () => {
   const adStart = tverWatchdog.indexOf('if (adActive) {');
-  const restart = tverWatchdog.indexOf('if (state && state.restartRequested)');
-  const branch = tverWatchdog.slice(adStart, restart);
+  const survey = tverWatchdog.indexOf('const surveyRoots = Array.from', adStart);
+  const branch = tverWatchdog.slice(adStart, survey);
   assert.match(branch, /skipButton/);
   assert.match(branch, /fullscreenButton/);
   assert.match(branch, /fullscreenDirty === false/);
   assert.doesNotMatch(branch, /video\.play\(|video\.volume|playbackRate|surveyRoots/);
 });
 
-test('TVer completion reuses the existing controller without cache/profile churn', () => {
-  assert.match(mediaHost, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
-  assert.match(
-    mediaHost,
-    /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
-  );
+test('TVer completion reuses the existing controller with native next-episode navigation', () => {
+  assert.match(mediaWrapper, /message == L"homepanel:tver-ended"/);
+  assert.match(mediaWrapper, /NativeMediaTverAdvanceEpisode\(source\)/);
+  assert.match(mediaWrapper, /sender->Navigate\(next\.c_str\(\)\)/);
+  assert.match(mediaHost, /NativeMediaTverCurrentEpisodeUrl\(hostWindow_, alive_\)/);
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });
 
@@ -204,6 +207,7 @@ test('event bridge is the only immediate wake path for media state transitions',
   assert.match(mediaWrapper, /add_WebMessageReceived/);
   assert.match(mediaWrapper, /homepanel:youtube-wake/);
   assert.match(mediaWrapper, /homepanel:tver-media-init/);
+  assert.match(mediaWrapper, /homepanel:tver-ended/);
   assert.match(mediaWrapper, /homepanel:tver-wake/);
   assert.match(mediaWrapper, /PostMessageW\(hostWindow, WM_TIMER/);
 });

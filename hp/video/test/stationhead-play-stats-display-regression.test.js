@@ -65,7 +65,7 @@ test('captured API fixture produces the expected UTC period totals', () => {
 test('the compiled media entry is the integrated YouTube and TVer panel', () => {
   assert.match(mediaEntry, /HomePanelNativeMvPanel/);
   assert.match(mediaEntry, /kNativeMediaYoutubeUrl/);
-  assert.match(mediaEntry, /kNativeMediaTverUrl/);
+  assert.doesNotMatch(mediaEntry, /kNativeMediaTverUrl|data:text\/html/);
   assert.doesNotMatch(mediaEntry, /#include "mv_section\.inc"/);
   assert.doesNotMatch(mediaEntry, /media_section_v2\.inc/);
 });
