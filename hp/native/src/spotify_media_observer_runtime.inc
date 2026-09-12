@@ -32,6 +32,13 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     lastCompletionPlanRate: -1
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
+  const post = message => {
+    try {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(message + '\u001f' + generation());
+      }
+    } catch (_) {}
+  };
   const postFields = (message, ...fields) => {
     try {
       if (window.chrome && window.chrome.webview) {
@@ -40,7 +47,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       }
     } catch (_) {}
   };
-  const post = message => postFields(message);
   const heartbeatRuntime = () =>
       window.__homePanelSpotifyMediaObserverRuntime || null;
   const startHeartbeatIfAvailable = () => {
