@@ -14,15 +14,22 @@ const reliablePlayAll = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url), 'utf8');
 const composition = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
+const mediaBase = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
 
-test('YouTube playlist startup bypasses fragile fixed Play all coordinates', () => {
+test('YouTube startup resolves item 1 in cloud and normally lands directly on watch', () => {
+  assert.match(mediaBase, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/youtube-start/);
+  assert.doesNotMatch(
+    mediaBase,
+    /kNativeMediaYoutubeUrl\[\][\s\S]{0,120}youtube\.com\/playlist/,
+  );
   assert.match(reliablePlayAll, /ytd-playlist-video-renderer a#thumbnail/);
   assert.match(reliablePlayAll, /url\.searchParams\.set\('list', playlistId\)/);
   assert.match(reliablePlayAll, /location\.assign\(href\)/);
-  assert.match(reliablePlayAll, /すべて再生/);
-  assert.match(reliablePlayAll, /play all/i);
+  assert.match(reliablePlayAll, /v1\/native\/youtube-start/);
+  assert.doesNotMatch(reliablePlayAll, /\.click\(\)|すべて再生|play all/i);
   assert.match(composition, /kNativeMediaYoutubeReliablePlayAllScript/);
 });
 
