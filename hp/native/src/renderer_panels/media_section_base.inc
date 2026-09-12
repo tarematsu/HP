@@ -2,7 +2,7 @@
 namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMediaYoutubeUrl[] =
-    L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
+    L"https://homepanel-cloud.tarematsu.workers.dev/v1/native/youtube-start";
 // TVer starts from the cloud-owned episode feed. The tiny data document stays
 // black, retries transient feed failures in-place, and navigates straight to the
 // selected /episodes/ URL; the native app never needs to render a /series/ page.
