@@ -16,6 +16,21 @@ function sourceNames(value) {
   return output.slice(0, 8);
 }
 
+function episodeDetails(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((episode) => {
+      const url = String(episode?.url || '').trim();
+      if (!url) return null;
+      const title = String(episode?.title || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300);
+      return { url, title: title || null };
+    })
+    .filter(Boolean);
+}
+
 function failure(status, checkedAt, extra = {}) {
   return {
     ok: false,
@@ -25,6 +40,7 @@ function failure(status, checkedAt, extra = {}) {
     ageSeconds: Number.isFinite(extra.ageSeconds) ? extra.ageSeconds : null,
     episodeCount: Number.isFinite(extra.episodeCount) ? extra.episodeCount : 0,
     sources: Array.isArray(extra.sources) ? extra.sources : [],
+    episodes: Array.isArray(extra.episodes) ? extra.episodes : [],
     ...(extra.error ? { error: String(extra.error).slice(0, 200) } : {}),
   };
 }
@@ -52,18 +68,19 @@ export async function tverFeedObservability(env, now = new Date()) {
 
     const lastSuccessAt = String(feed?.generatedAt || metadataGeneratedAt || '');
     const generatedAtMs = Date.parse(lastSuccessAt);
+    const episodes = episodeDetails(feed?.episodes);
     const episodeCount = Number.isInteger(feed?.episodeCount)
       ? feed.episodeCount
-      : (Array.isArray(feed?.episodes) ? feed.episodes.length : 0);
+      : episodes.length;
     const sources = sourceNames(feed?.sources);
 
     if (!Number.isFinite(generatedAtMs)) {
-      return failure('invalid-generated-at', checkedAt, { episodeCount, sources });
+      return failure('invalid-generated-at', checkedAt, { episodeCount, sources, episodes });
     }
 
     const ageMs = now.getTime() - generatedAtMs;
     const ageSeconds = Math.max(0, Math.round(ageMs / 1000));
-    const common = { lastSuccessAt, ageSeconds, episodeCount, sources };
+    const common = { lastSuccessAt, ageSeconds, episodeCount, sources, episodes };
 
     if (ageMs < -MAX_FUTURE_SKEW_MS) return failure('future-dated', checkedAt, common);
     if (episodeCount <= 0) return failure('empty', checkedAt, common);
