@@ -96,6 +96,52 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
 }
 
+void CALLBACK SpotifyWebViews::CompletionDeadlineTimerProc(
+    PTP_CALLBACK_INSTANCE, PVOID context, PTP_TIMER) {
+  auto* owner = static_cast<SpotifyWebViews*>(context);
+  if (!owner || owner->slots_.empty()) return;
+  HWND host = owner->slots_[0].hostWindow;
+  if (!host || !IsWindow(host)) return;
+  PostMessageW(host, kSpotifyCompletionDeadlineMessage, 0, 0);
+}
+
+void SpotifyWebViews::ArmCompletionDeadlineTimer() noexcept {
+  if (!started_ || slots_.empty()) return;
+
+  if (!completionDeadlineTimer_) {
+    completionDeadlineTimer_ = CreateThreadpoolTimer(
+        &SpotifyWebViews::CompletionDeadlineTimerProc, this, nullptr);
+    if (!completionDeadlineTimer_) return;
+  }
+
+  ULONGLONG earliest = 0;
+  for (const Slot& slot : slots_) {
+    if (slot.timedCompletionDeadlineTick == 0 ||
+        slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
+        slot.timedTarget != TimedSpotifyTarget::Music ||
+        !slot.timedRotationActive) {
+      continue;
+    }
+    if (earliest == 0 || slot.timedCompletionDeadlineTick < earliest) {
+      earliest = slot.timedCompletionDeadlineTick;
+    }
+  }
+
+  if (earliest == 0) {
+    SetThreadpoolTimer(completionDeadlineTimer_, nullptr, 0, 0);
+    return;
+  }
+
+  const ULONGLONG now = GetTickCount64();
+  const ULONGLONG delayMs = earliest <= now ? 1ULL : earliest - now;
+  LARGE_INTEGER relativeDue{};
+  relativeDue.QuadPart = -static_cast<LONGLONG>(delayMs * 10000ULL);
+  FILETIME due{};
+  due.dwLowDateTime = relativeDue.LowPart;
+  due.dwHighDateTime = relativeDue.HighPart;
+  SetThreadpoolTimer(completionDeadlineTimer_, &due, 0, 0);
+}
+
 UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
   if (!robustSchedulerStarted_) return kSpotifyRobustUrgentTickMs;
@@ -111,6 +157,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
           nextDeadlineMs, kSpotifyRobustUrgentTickMs);
     }
 
+    // The threadpool timer is the primary completion wake-up. Keep this
+    // low-priority WM_TIMER path only as a safety net if the native dispatch is
+    // unavailable or the UI thread was blocked past the deadline.
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         slot.timedTarget == TimedSpotifyTarget::Music) {
