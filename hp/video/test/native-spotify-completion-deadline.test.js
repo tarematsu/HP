@@ -23,34 +23,52 @@ test('each Spotify slot owns a generation-fenced completion deadline', () => {
   assert.match(rotation, /timedCompletionDeadlineGeneration = eventGeneration/);
 });
 
-test('WebView publishes remaining time and native probes near the deadline', () => {
+test('WebView publishes remaining time and native arms an authoritative deadline', () => {
   assert.match(completion, /postFields\('spotify:timed-plan', String\(remainingMs\)\)/);
-  assert.match(completion, /lastCompletionPlanDeadlineAt = Date\.now\(\) \+ remainingMs/);
-  assert.match(completion, /const completionPlanExpired = \(\) =>/);
-  assert.match(completion, /spotify:completion-probe/);
-  assert.match(events, /runtime\.probeCompletion = \(\) =>/);
-  assert.match(events, /completionPlanExpired\(\)/);
-  assert.match(events, /return postCompletionPlan\(media, true\)/);
-  assert.match(rotation, /kSpotifyCompletionProbeLeadMs/);
-  assert.match(rotation, /remainingMs - kSpotifyCompletionProbeLeadMs/);
-  assert.match(rotation, /spotify:completion-probe/);
+  assert.match(rotation, /const ULONGLONG candidateDeadline =\s*now \+ std::max<ULONGLONG>\(remainingMs, 1ULL\)/);
+  assert.match(rotation, /target->timedCompletionDeadlineTick == 0/);
+  assert.match(rotation, /candidateDeadline < target->timedCompletionDeadlineTick/);
+  assert.doesNotMatch(rotation, /kSpotifyCompletionProbeLeadMs/);
+  assert.doesNotMatch(phase, /kSpotifyCompletionProbeLeadMs/);
 });
 
-test('deadline expiry cannot truncate a still-playing track', () => {
-  const probeStart = events.indexOf('runtime.probeCompletion = () =>');
-  const probeEnd = events.indexOf('\n  };', probeStart);
-  assert.ok(probeStart >= 0 && probeEnd > probeStart);
-  const probe = events.slice(probeStart, probeEnd + '\n  };'.length);
+test('due native deadline advances the rotation without asking Spotify again', () => {
+  const dueStart = rotation.indexOf(
+    'void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept');
+  const dueEnd = rotation.indexOf(
+    '\nvoid SpotifyWebViews::ArmTimedEndObserver', dueStart);
+  assert.ok(dueStart >= 0 && dueEnd > dueStart);
+  const due = rotation.slice(dueStart, dueEnd);
 
-  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
-  assert.match(probe, /if \(media\.ended\) return finishTarget\(media\)/);
-  assert.match(probe, /finishPausedAtEnd\(media\)/);
-  assert.match(probe, /finishProjectedWrap\(media\)/);
-  assert.match(probe, /return postCompletionPlan\(media, true\)/);
-  assert.doesNotMatch(
-    probe,
-    /completionPlanExpired\(\)[\s\S]{0,180}finishTarget\(media\)/,
-  );
+  assert.match(due, /timedCompletionDeadlineTick > now/);
+  assert.match(due, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.doesNotMatch(due, /spotify:completion-probe/);
+  assert.doesNotMatch(due, /PostWebMessageAsString/);
+  assert.doesNotMatch(due, /slot\.webview/);
+});
+
+test('same-generation repeat rewind cannot postpone A to B', () => {
+  const planStart = rotation.indexOf('if (planned) {');
+  const planEnd = rotation.indexOf('\n              if (planCleared)', planStart);
+  assert.ok(planStart >= 0 && planEnd > planStart);
+  const plan = rotation.slice(planStart, planEnd);
+
+  assert.match(plan, /candidateDeadline < target->timedCompletionDeadlineTick/);
+  assert.match(plan, /timedCompletionDeadlineTick = candidateDeadline/);
+  assert.doesNotMatch(plan, /timedCompletionDeadlineTick = now \+ remainingMs/);
+
+  const clearStart = rotation.indexOf('if (planCleared) {');
+  const clearEnd = rotation.indexOf('\n              if (started)', clearStart);
+  assert.ok(clearStart >= 0 && clearEnd > clearStart);
+  const clear = rotation.slice(clearStart, clearEnd);
+  assert.doesNotMatch(clear, /timedCompletionDeadlineTick = 0/);
+  assert.doesNotMatch(clear, /timedCompletionDeadlineGeneration = 0/);
+});
+
+test('real ended remains an early fallback but is not required for progress', () => {
+  assert.match(events, /document\.addEventListener\('ended'/);
+  assert.match(rotation, /if \(ended\) \{[\s\S]*AdvanceTimedRotationSlot\(\*target, now\)/);
+  assert.match(rotation, /first valid playback plan[\s\S]*authoritative[\s\S]*completion clock/i);
 });
 
 test('one shared adaptive timer wakes for the earliest of six independent deadlines', () => {
@@ -61,12 +79,4 @@ test('one shared adaptive timer wakes for the earliest of six independent deadli
   assert.match(schedule, /ProbeDueTimedCompletions\(now\)/);
   assert.doesNotMatch(rotation, /SetTimer\(/);
   assert.doesNotMatch(schedule, /SetTimer\(/);
-});
-
-test('pause, seek and stall invalidate stale completion deadlines', () => {
-  assert.match(events, /document\.addEventListener\('pause'[\s\S]*clearCompletionPlan\(\)/);
-  assert.match(events, /document\.addEventListener\('seeking'[\s\S]*clearCompletionPlan\(\)/);
-  assert.match(events, /\['waiting', 'stalled'\][\s\S]*clearCompletionPlan\(\)/);
-  assert.match(completion, /post\('spotify:timed-plan-clear'\)/);
-  assert.match(rotation, /if \(planCleared\)[\s\S]*timedCompletionDeadlineTick = 0/);
 });

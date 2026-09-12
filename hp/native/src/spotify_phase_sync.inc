@@ -5,7 +5,6 @@ constexpr UINT_PTR kSpotifyRobustReconcileTimer = 0x53505243;
 constexpr UINT kSpotifyRobustUrgentTickMs = 2U * 1000U;
 constexpr UINT kSpotifyRobustHealthyTickMs = 60U * 1000U;
 constexpr UINT kSpotifyCompletionTimerFloorMs = 100U;
-constexpr ULONGLONG kSpotifyCompletionProbeLeadMs = 1500ULL;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
