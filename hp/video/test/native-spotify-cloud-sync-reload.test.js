@@ -26,6 +26,17 @@ test('Spotify watches the same device config cache replaced by CloudClient sync'
   assert.match(schedule, /RunStaggeredReconcile\(\)[\s\S]*EnsureCloudPlaylistLoaded\(\)/);
 });
 
+test('device config cache identity/version mismatch forces a full cloud refresh', () => {
+  assert.match(cloudSync, /const auto requestedDeviceConfigVersion = \[&\]\(\)/);
+  assert.match(cloudSync, /GetNamedNumber\(L"version", -1\.0\)/);
+  assert.match(cloudSync, /GetNamedString\(L"deviceId", L""\)/);
+  assert.match(cloudSync, /static_cast<int>\(version\) != deviceConfigVersion_/);
+  assert.match(cloudSync, /deviceId != config_\.deviceId/);
+  assert.match(cloudSync, /GetNamedValue\(L"config"\)\.ValueType\(\) != JsonValueType::Object/);
+  assert.match(cloudSync, /forcing refresh/);
+  assert.match(cloudSync, /L"&configVersion=" \+[\s\S]*requestedDeviceConfigVersion\(\)/);
+});
+
 test('temporary cache absence keeps the last synchronized Spotify settings', () => {
   assert.match(loader, /if \(cloudPlaylistLoaded_\)[\s\S]*if \(!fileAvailable\) return/);
   assert.match(header, /cloudPlaylistWriteTimeKnown_ = false/);
@@ -42,13 +53,18 @@ test('only Spotify rotation changes advance the rotation revision', () => {
   assert.match(loader, /if \(rotationChanged\)[\s\S]*\+\+cloudRotationRevision_/);
 });
 
-test('a synchronized rotation starts at the next natural completion boundary', () => {
+test('a synchronized rotation starts at the next natural completion boundary without replaying the completed path', () => {
   const advanceStart = rotation.indexOf('void SpotifyWebViews::AdvanceTimedRotationSlot');
   const advanceEnd = rotation.indexOf('void SpotifyWebViews::ArmTimedEndObserver', advanceStart);
   assert.ok(advanceStart >= 0 && advanceEnd > advanceStart);
   const advance = rotation.slice(advanceStart, advanceEnd);
+  assert.match(advance, /std::wstring completedPath/);
   assert.match(advance, /timedCloudRotationRevision != cloudRotationRevision_/);
   assert.match(advance, /timedRotationPosition = 0[\s\S]*PrepareTimedRotationCycle\(slot\)[\s\S]*timedCloudRotationRevision = cloudRotationRevision_/);
+  assert.match(
+    advance,
+    /timedCycleTracks\[slot\.timedRotationPosition\]\.path == completedPath[\s\S]*std::find_if\([\s\S]*track\.path != completedPath[\s\S]*timedRotationPosition = static_cast<size_t>/,
+  );
   assert.ok(
     advance.indexOf('timedCloudRotationRevision != cloudRotationRevision_') <
       advance.indexOf('++slot.timedRotationPosition'),

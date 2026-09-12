@@ -74,6 +74,40 @@ void CloudClient::Synchronize() {
     std::error_code error;
     return fs::exists(path, error) ? version : -1;
   };
+  const auto requestedDeviceConfigVersion = [&]() {
+    std::error_code existsError;
+    if (deviceConfigVersion_ < 0 ||
+        !fs::exists(deviceConfigPath, existsError) || existsError) {
+      return -1;
+    }
+
+    try {
+      std::ifstream input(deviceConfigPath, std::ios::binary);
+      const std::string text((std::istreambuf_iterator<char>(input)), {});
+      if (text.empty()) throw std::runtime_error("empty cache");
+      const JsonObject envelope = JsonObject::Parse(Utf8ToWide(text));
+      const double version = envelope.GetNamedNumber(L"version", -1.0);
+      const std::wstring deviceId =
+          envelope.GetNamedString(L"deviceId", L"").c_str();
+      if (!std::isfinite(version) || version < 0.0 ||
+          version > static_cast<double>(std::numeric_limits<int>::max()) ||
+          std::floor(version) != version ||
+          static_cast<int>(version) != deviceConfigVersion_ ||
+          deviceId != config_.deviceId ||
+          !envelope.HasKey(L"config") ||
+          envelope.GetNamedValue(L"config").ValueType() != JsonValueType::Object) {
+        throw std::runtime_error("cache envelope mismatch");
+      }
+      return deviceConfigVersion_;
+    } catch (...) {
+      // Metadata and payload are one logical cache. If their versions or device
+      // identity disagree, advertise -1 so the next response is forced to carry
+      // a fresh deviceConfig instead of trusting an existing-but-stale file.
+      log_.Warn(
+          L"Device config cache did not match cached metadata; forcing refresh");
+      return -1;
+    }
+  };
   const fs::path representativeRadarPath = dataDir_ / L"radar-cache" /
       L"v1" / L"radar" / L"frame" / L"representative" / L"latest.png";
   const auto requestedRadarVersion = [&]() {
@@ -103,7 +137,7 @@ void CloudClient::Synchronize() {
         requestedVersion(stationheadHealthPath, stationheadHealthVersion_));
   }
   path += L"&configVersion=" +
-      std::to_wstring(requestedVersion(deviceConfigPath, deviceConfigVersion_));
+      std::to_wstring(requestedDeviceConfigVersion());
 
   const auto response = Request(L"GET", path, deviceToken_);
   if (response.status != 200) {
