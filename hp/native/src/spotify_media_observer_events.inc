@@ -12,7 +12,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery, postCompletionPlan,
-          clearCompletionPlan } = runtime;
+          clearCompletionPlan, completionPlanExpired } = runtime;
   const finishLeadSeconds = 1.5;
 
   // The only direct pause retained in music playback is a narrow quarantine for
@@ -102,9 +102,20 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       clearCompletionPlan();
       return false;
     }
+    // A native probe is scheduled 1.5 seconds before the projected physical end.
+    // If WebView execution is throttled until after that projected end, Spotify
+    // may already have rewound the same element to zero. The old implementation
+    // mistook that replay for an early probe and armed another whole-track plan.
+    // The generation-fenced wall deadline proves this playthrough is complete.
+    if (typeof completionPlanExpired === 'function' && completionPlanExpired()) {
+      if (!finishTarget(media)) return false;
+      quarantineMedia(media);
+      return true;
+    }
     // Playback may have stalled or the native timer may have fired slightly
-    // before the media clock. One fresh plan re-arms native; no polling loop.
-    return postCompletionPlan(media);
+    // before the media clock. Always publish one fresh plan for this probe; the
+    // normal dedupe path must not swallow the only native re-arm message.
+    return postCompletionPlan(media, true);
   };
 
   document.addEventListener('play', event => {
