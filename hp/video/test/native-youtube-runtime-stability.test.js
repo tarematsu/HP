@@ -48,7 +48,9 @@ test('transparent clean-player chrome still supports trusted fullscreen recovery
 
 test('YouTube event agent is player-local and coalesces wake notifications', () => {
   assert.match(eventAgent, /lastWakeSignature/);
-  assert.match(eventAgent, /pendingWakeSignature/);
+  assert.match(eventAgent, /pendingWakeDirty/);
+  assert.match(eventAgent, /if \(!state\.pendingWakeDirty\) return/);
+  assert.match(eventAgent, /const pending = signature\(\)/);
   assert.match(eventAgent, /250 - \(Date\.now\(\) - state\.wakeAt\)/);
   assert.match(eventAgent, /nextSignature === state\.lastWakeSignature/);
   assert.match(eventAgent, /state\.playerObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);

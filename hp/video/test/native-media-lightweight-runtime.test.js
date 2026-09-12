@@ -64,7 +64,9 @@ test('YouTube uses event wakeups with a 30-second steady watchdog backstop', () 
 
 test('YouTube coalesces DOM bursts before crossing the WebView2 native boundary', () => {
   assert.match(youtubeAgent, /lastWakeSignature/);
-  assert.match(youtubeAgent, /pendingWakeSignature/);
+  assert.match(youtubeAgent, /pendingWakeDirty/);
+  assert.match(youtubeAgent, /if \(!state\.pendingWakeDirty\) return/);
+  assert.match(youtubeAgent, /const pending = signature\(\)/);
   assert.match(youtubeAgent, /nextSignature === state\.lastWakeSignature/);
   assert.match(youtubeAgent, /250 - \(Date\.now\(\) - state\.wakeAt\)/);
   assert.match(mediaWrapper, /NativeMediaReadWebViewSource\(sender, source\)/);

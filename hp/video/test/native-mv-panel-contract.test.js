@@ -139,12 +139,43 @@ test('TVer completion reuses the existing controller without cache/profile churn
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });
 
-test('normal media resources remain enabled and power saving keeps media WebView alive', () => {
+test('media WebView blocks image and font requests without touching playback resources', () => {
   assert.match(
     mediaHost,
     /SharedWebViewEnvironment::Instance\(\)\.Acquire\(\s*userDataFolder_, false, false,/,
   );
-  assert.match(webviewEnvironment, /if \(!blockImages && !blockFonts\) return \{\};/);
+  assert.match(
+    mediaHost,
+    /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\)/,
+  );
+  assert.match(
+    mediaHost,
+    /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\)/,
+  );
+  assert.doesNotMatch(
+    mediaHost,
+    /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA\)/,
+  );
+  assert.match(
+    mediaHost,
+    /CreateWebResourceResponse\(\s*nullptr, 204, L"No Content"/,
+  );
+  assert.match(mediaHost, /remove_WebResourceRequested\(webResourceRequestedToken_\)/);
+
+  const fullResourceStart = webviewEnvironment.indexOf(
+    'constexpr wchar_t kFullResourceWebView2Arguments[]',
+  );
+  const stationheadStart = webviewEnvironment.indexOf(
+    'constexpr wchar_t kStationheadWebView2Arguments[]',
+  );
+  assert.ok(fullResourceStart >= 0 && stationheadStart > fullResourceStart);
+  const fullResourceArguments = webviewEnvironment.slice(fullResourceStart, stationheadStart);
+  assert.match(fullResourceArguments, /MediaRouter/);
+  assert.match(fullResourceArguments, /Translate/);
+  assert.match(fullResourceArguments, /OptimizationGuideModelDownloading/);
+  assert.match(fullResourceArguments, /AutofillServerCommunication/);
+  assert.doesNotMatch(fullResourceArguments, /BackForwardCache|HardwareSecureDecryption/);
+
   assert.match(mediaHost, /put_IsScriptEnabled\(TRUE\)/);
   assert.match(mediaHost, /put_AreDevToolsEnabled\(FALSE\)/);
   assert.doesNotMatch(lifecycle, /StopNativeMvPlayback/);
