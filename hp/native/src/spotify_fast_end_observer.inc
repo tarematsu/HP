@@ -2,22 +2,19 @@ namespace hp {
 namespace {
 
 // Assemble independently valid observer responsibilities into one ExecuteScript
-// call. The scripts communicate only through the explicit window runtime object;
-// they do not depend on concatenated lexical scope or arbitrary literal splits.
+// call. Playback recovery/heartbeat is intentionally absent; the observer only
+// tracks target identity and natural completion.
 const std::wstring kSpotifyFastEndObserverScriptStorage = [] {
   std::wstring script;
   script.reserve(
       std::size(kSpotifyMediaObserverRuntimeScript) +
       std::size(kSpotifyMediaObserverCompletionScript) +
-      std::size(kSpotifyMediaObserverEventsScript) +
-      std::size(kSpotifyMediaObserverHeartbeatScript) + 6U);
+      std::size(kSpotifyMediaObserverEventsScript) + 4U);
   script.append(kSpotifyMediaObserverRuntimeScript);
   script.append(L";\n");
   script.append(kSpotifyMediaObserverCompletionScript);
   script.append(L";\n");
   script.append(kSpotifyMediaObserverEventsScript);
-  script.append(L";\n");
-  script.append(kSpotifyMediaObserverHeartbeatScript);
   script.push_back(L';');
   return script;
 }();
