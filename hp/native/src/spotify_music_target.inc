@@ -58,6 +58,17 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
 
   if (SlotIsLoginPage(slot) || !ResolveMusicTarget(slot).url) return;
 
+  // The media observer owns generation-tagged start/completion truth. Never
+  // start a target before that observer has been installed for this document;
+  // otherwise Spotify can begin playback while the observer still has the
+  // default generation 0, causing native to reject the only start/deadline
+  // events and leaving the slot able to repeat A or stop at currentTime=0.
+  if (!slot.timedObserverReady) {
+    ArmTimedEndObserver(slot);
+    ArmRobustScheduler();
+    return;
+  }
+
   if (!SlotMatchesMusicTarget(slot)) {
     const ULONGLONG now = GetTickCount64();
     MarkSlotRecovering(slot, now);
