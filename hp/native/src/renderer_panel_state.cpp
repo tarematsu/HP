@@ -217,7 +217,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   // renders it. Do not repaint the unrelated rain-radar card when it changes.
 }
 
-void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
+void Renderer::TickNativePanels(int64_t, bool timerDriven) {
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
 
   StationheadRevisionCache& revisions = StationheadRevisionsFor(this);
