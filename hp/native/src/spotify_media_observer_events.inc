@@ -13,7 +13,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery, postCompletionPlan,
           clearCompletionPlan } = runtime;
-  const completionProbeWindowSeconds = 1.5;
+  const finishLeadSeconds = 1.5;
 
   // The only direct pause retained in music playback is a narrow quarantine for
   // a completed generation while native installs the next target. Start/recovery
@@ -52,8 +52,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     const currentTime = Number(media.currentTime);
     const duration = Number(media.duration);
     if (!Number.isFinite(currentTime) || !Number.isFinite(duration) ||
-        duration < 10 ||
-        currentTime < Math.max(0, duration - completionProbeWindowSeconds)) {
+        duration < 10 || currentTime < Math.max(0, duration - finishLeadSeconds)) {
       return false;
     }
     if (!finishTarget(media)) return false;
@@ -103,8 +102,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       clearCompletionPlan();
       return false;
     }
-    // Playback may have stalled or the browser timer may have fired early. A
-    // single fresh plan re-arms native from the actual media clock; no polling.
+    // Playback may have stalled or the native timer may have fired slightly
+    // before the media clock. One fresh plan re-arms native; no polling loop.
     return postCompletionPlan(media);
   };
 
@@ -130,8 +129,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   // Spotify can reuse one media element while changing its internal queue. A
   // recommended/autoplay track therefore does not always emit a fresh play or
   // playing event. durationchange gives us an early transition signal. The
-  // browser's timeupdate event remains an identity fallback, but completion is
-  // scheduled from the native side instead of depending on a narrow event window.
+  // browser's timeupdate event remains an identity and opportunistic completion
+  // fallback; native owns the reliable deadline path.
   for (const eventName of ['loadedmetadata', 'durationchange']) {
     document.addEventListener(eventName, event => {
       if (!isMedia(event.target) || event.target.ended) return;
@@ -171,6 +170,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     const media = event.target;
     if (!isMedia(media) || media.ended || media.paused) return;
     if (quarantineCompletedGeneration(media)) return;
+    if (finishNearEnd(media)) return;
     if (detectRepeatWrap(media)) return;
     const currentTime = Number(media.currentTime) || 0;
     if (state.lastIdentityCheckTime >= 0 &&
