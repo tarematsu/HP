@@ -1,9 +1,9 @@
 namespace hp {
 namespace {
 
-// Owns target identity and observer state. Playback recovery is intentionally
-// excluded: this observer only recognizes the requested target and reports
-// start/completion events.
+// Owns target identity and observer state. Playback recovery and completion
+// detection are intentionally excluded: this observer only recognizes the
+// requested target and reports one validated start with its remaining duration.
 constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverRuntime) return true;
@@ -21,7 +21,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     key: '',
     started: false,
     startPosted: false,
-    endedPosted: false,
     targetMedia: null,
     lastIdentityCheckTime: -1,
     trustedStartKey: '',
@@ -36,6 +35,14 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       if (window.chrome && window.chrome.webview) {
         window.chrome.webview.postMessage(
             message + '\u001f' + generation());
+      }
+    } catch (_) {}
+  };
+  const postFields = (message, ...fields) => {
+    try {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(
+            [message, generation(), ...fields].join('\u001f'));
       }
     } catch (_) {}
   };
@@ -54,7 +61,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.key = key;
     state.started = false;
     state.startPosted = false;
-    state.endedPosted = false;
     state.targetMedia = null;
     state.lastIdentityCheckTime = -1;
     state.trustedStartKey = '';
@@ -92,6 +98,19 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     return !!target.title && track.title === normalize(target.title);
   };
   const isMedia = value => value instanceof HTMLMediaElement;
+  const remainingDurationMs = media => {
+    if (!isMedia(media)) return 0;
+    const duration = Number(media.duration);
+    const currentTime = Number(media.currentTime);
+    const playbackRate = Number(media.playbackRate);
+    if (!Number.isFinite(duration) || !Number.isFinite(currentTime) ||
+        !Number.isFinite(playbackRate) || duration < 10 || currentTime < 0 ||
+        duration <= currentTime || playbackRate <= 0) {
+      return 0;
+    }
+    return Math.max(1, Math.ceil(
+        ((duration - currentTime) / playbackRate) * 1000));
+  };
   const armTrustedStart = requestedGeneration => {
     const target = syncTarget();
     const requested = String(requestedGeneration || '0');
@@ -125,7 +144,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   const enforceTarget = media => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || !target.pagePath ||
-        state.endedPosted || !isMedia(media) || media.ended) {
+        !isMedia(media) || media.ended) {
       return 'ignore';
     }
 
@@ -136,14 +155,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
         if (media.paused || !consumeTrustedStart(target)) return 'unknown';
       }
     } else if (!matchesTarget(target, identity)) {
-      // Any concrete contradictory identity cancels the one-shot trust. This
-      // prevents a stale/wrong Spotify item from later becoming trusted merely
-      // because the now-playing UI disappears.
       clearTrustedStart();
       if (!state.startPosted) return 'unknown';
-      state.started = false;
-      state.targetMedia = null;
-      state.lastIdentityCheckTime = -1;
       return 'wrong';
     }
 
@@ -151,20 +164,16 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.started = true;
     state.targetMedia = media;
     if (!state.startPosted) {
-      state.startPosted = true;
-      post('spotify:timed-started');
+      const remainingMs = remainingDurationMs(media);
+      if (remainingMs > 0) {
+        state.startPosted = true;
+        postFields('spotify:timed-started', String(remainingMs));
+      }
     }
     return 'playing';
   };
 
-  const checkTarget = media => {
-    const status = enforceTarget(media);
-    if (status === 'playing' &&
-        typeof runtime.postCompletionPlan === 'function') {
-      runtime.postCompletionPlan(media);
-    }
-    return status;
-  };
+  const checkTarget = media => enforceTarget(media);
   const scheduleTargetChecks = media => {
     const status = checkTarget(media);
     if (status === 'playing' || status === 'ignore') {
@@ -197,9 +206,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     armTrustedStart,
     enforceTarget,
     scheduleTargetChecks,
-    postCompletionPlan: () => false,
-    clearCompletionPlan: () => false,
-    probeCompletion: null,
     eventsInstalled: false
   };
   window.__homePanelSpotifyMediaObserverRuntime = runtime;
