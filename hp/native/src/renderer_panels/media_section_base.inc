@@ -40,62 +40,9 @@ std::wstring FormatNativeMediaLocalHourMinute(const FILETIME& utcFileTime) noexc
   return value;
 }
 
-constexpr wchar_t kNativeMediaPlayAllScript[] = LR"JS(
-(() => {
-  const styleId = 'homepanel-youtube-clean-player';
-  if (!document.getElementById(styleId)) {
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-      .html5-video-player .ytp-chrome-top,
-      .html5-video-player .ytp-gradient-top,
-      .html5-video-player .ytp-chrome-bottom,
-      .html5-video-player .ytp-gradient-bottom {
-        opacity: 0 !important;
-        transition: none !important;
-      }
-      .html5-video-player .ytp-title,
-      .html5-video-player .ytp-fullscreen-quick-actions,
-      .html5-video-player .ytp-overlay-top-left,
-      .html5-video-player .ytp-overlay-bottom-right,
-      .html5-video-player yt-player-overlay-video-details-renderer,
-      .html5-video-player .ytp-fullscreen-grid,
-      .html5-video-player .ytp-fullscreen-grid-stills-container,
-      .html5-video-player .ytp-fullscreen-grid-expand-button,
-      .html5-video-player .ytp-caption-window-container {
-        display: none !important;
-      }
-      ytd-watch-flexy #below,
-      ytd-watch-flexy #secondary {
-        content-visibility: hidden !important;
-        contain-intrinsic-size: 1px 1px !important;
-      }
-    `;
-    const parent = document.head || document.documentElement;
-    if (parent) parent.appendChild(style);
-  }
-
-  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-  const candidates = Array.from(document.querySelectorAll(
-      'button, a, tp-yt-paper-button, [role="button"]'));
-  const target = candidates.find(element => {
-    const label = normalize(element.getAttribute('aria-label'));
-    const text = normalize(element.textContent);
-    return label === 'すべて再生' || text === 'すべて再生' ||
-           /^Play all(?:\s|$)/i.test(label) ||
-           /^Play all(?:\s|$)/i.test(text);
-  });
-  if (!target || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
-  const rect = target.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
-  return [
-    Math.max(0, Math.min(10000, Math.round(
-        ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
-    Math.max(0, Math.min(10000, Math.round(
-        ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
-  ];
-})()
-)JS";
+// Routing sentinel only. Playlist fallback resolution lives in
+// media_youtube_playall_reliable.inc and never searches or clicks a play control.
+constexpr wchar_t kNativeMediaPlayAllScript[] = L"null";
 
 // Legacy symbol retained as a routing key for media_host.inc. The wrapper
 // resolves it to the event-aware policy in media_youtube_control_recovery.inc.
