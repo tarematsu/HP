@@ -16,6 +16,7 @@ function rawScript(file, symbol) {
 
 const observerScript = [
   rawScript('spotify_media_observer_runtime.inc', 'kSpotifyMediaObserverRuntimeScript'),
+  rawScript('spotify_media_observer_completion.inc', 'kSpotifyMediaObserverCompletionScript'),
   rawScript('spotify_media_observer_events.inc', 'kSpotifyMediaObserverEventsScript'),
 ].join(';\n');
 
