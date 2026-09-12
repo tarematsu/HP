@@ -224,6 +224,29 @@ test('an expired completion probe wins even if Spotify has already paused', () =
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f27').length, 1);
 });
 
+test('pre-rewind waiting cannot turn natural completion into same-track recovery', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f29');
+  h.media.paused = false;
+  h.media.currentTime = 0;
+  h.dispatch('playing');
+
+  h.advanceWall(177_000);
+  h.media.currentTime = 177;
+  h.dispatch('waiting');
+
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-plan-clear\x1f29').length, 0);
+
+  h.media.currentTime = 0.2;
+  h.media.paused = true;
+  h.dispatch('pause');
+
+  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f29');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f29').length, 1);
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.timers.size, 0);
+});
+
 test('pause away from the end clears the native deadline before recovery', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f28');
