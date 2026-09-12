@@ -27,9 +27,12 @@ test('YouTube startup resolves item 1 in cloud and normally lands directly on wa
   );
   assert.match(reliablePlayAll, /ytd-playlist-video-renderer a#thumbnail/);
   assert.match(reliablePlayAll, /url\.searchParams\.set\('list', playlistId\)/);
-  assert.match(reliablePlayAll, /location\.assign\(href\)/);
+  assert.match(reliablePlayAll, /navigateNoReferrer\(href\)/);
+  assert.match(reliablePlayAll, /referrerPolicy = 'no-referrer'/);
+  assert.match(reliablePlayAll, /rel = 'noreferrer'/);
+  assert.match(reliablePlayAll, /meta\[name=\"referrer\"\]/);
   assert.match(reliablePlayAll, /v1\/native\/youtube-start/);
-  assert.doesNotMatch(reliablePlayAll, /\.click\(\)|すべて再生|play all/i);
+  assert.doesNotMatch(reliablePlayAll, /すべて再生|play all/i);
   assert.match(composition, /kNativeMediaYoutubeReliablePlayAllScript/);
 });
 
