@@ -57,7 +57,7 @@ test('power-saving controller composes focused responsibilities without a thread
   assert.match(overlay, /void PowerSavingController::PaintOverlay/);
 });
 
-test('update, power saving and media mute controls share one horizontal clock footer row', () => {
+test('update, monitor and media mute controls share one horizontal clock footer row', () => {
   assert.match(overlay, /constexpr size_t kControlButtonCount = 3/);
   assert.match(overlay, /const int upperMediaHeight = sideHeight \* 600 \/ 1000/);
   assert.match(overlay, /compactAvailable \* 55 \/ 100/);
@@ -69,7 +69,7 @@ test('update, power saving and media mute controls share one horizontal clock fo
   assert.match(overlay, /ControlButtonRect\(row, 2\)/);
   assert.match(overlay, /button\.bottom - button\.top\) \* 42 \/ 100/);
   assert.match(overlay, /L"更新"/);
-  assert.match(overlay, /L"省電力 ON" : L"省電力"/);
+  assert.match(overlay, /L"モニター ON" : L"モニター"/);
   assert.match(overlay, /L"ミュート ON" : L"ミュート"/);
   assert.match(header, /RECT LocalUpdateButtonRect\(\) const/);
   assert.match(header, /bool mediaMuted_ = false/);
