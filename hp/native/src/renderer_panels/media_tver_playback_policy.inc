@@ -128,6 +128,21 @@ LR"JS(
 
   const state = window.__homePanelSakuraMeetsState;
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
+
+  // Healthy program playback is maintained by the page-local event policy.
+  // Avoid rescanning controls/styles on every 30-second watchdog pass when the
+  // tracked video is already playing with the requested audio and fullscreen.
+  const trackedVideo = state && state.video;
+  const healthyFullscreen = !!(document.fullscreenElement ||
+      document.webkitFullscreenElement || document.msFullscreenElement);
+  if (state && !adActive && !state.restartRequested &&
+      state.playbackSettingsApplied && state.fullscreenDirty === false &&
+      trackedVideo instanceof HTMLMediaElement &&
+      !trackedVideo.paused && !trackedVideo.ended && !trackedVideo.error &&
+      !trackedVideo.muted && trackedVideo.volume === 1.0 && healthyFullscreen) {
+    return null;
+  }
+
   if (adActive) {
     // During ads the watchdog may only click Skip or the fullscreen control.
     const adRoot = video ? playerRootFor(video) : null;
