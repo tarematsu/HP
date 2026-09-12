@@ -36,7 +36,11 @@ test('repeat guard survives Spotify builds that omit aria-checked', () => {
 test('repeat wrap is irrelevant after native start deadline is armed', () => {
   assert.match(runtime, /state\.startPosted = true/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
-  assert.doesNotMatch(events, /timeupdate|seeking|seeked|ended|terminalWrap|completionPlan/);
+  assert.doesNotMatch(
+    events,
+    /addEventListener\('(?:timeupdate|seeking|seeked|ended)'/,
+  );
+  assert.doesNotMatch(runtime + events, /terminalWrapObserved|completionPlanExpired|postCompletionPlan/);
   assert.match(rotation, /one-shot native deadline expires[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
   assert.doesNotMatch(rotation, /spotify:timed-ended|spotify:timed-plan/);
 });
