@@ -7,7 +7,7 @@ const source = name => readFileSync(
 
 const runtime = source('spotify_media_observer_runtime.inc');
 const events = source('spotify_media_observer_events.inc');
-const heartbeat = source('spotify_media_observer_heartbeat.inc');
+const bundle = source('spotify_fast_end_observer.inc');
 const guards = source('spotify_playback_mode_guards.inc');
 const phase = source('spotify_phase_sync.inc');
 
@@ -22,24 +22,18 @@ test('timeupdate keeps only numeric post-end checks and performs no DOM identity
   assert.match(runtime, /const enforceTarget = media =>/);
 });
 
-test('heartbeat owns no interval while Spotify music is idle, paused, or naturally ended', () => {
-  assert.match(heartbeat, /const startHeartbeat = \(\) =>/);
-  assert.match(heartbeat, /const stopHeartbeat = \(\) =>/);
-  assert.match(heartbeat, /clearInterval\(runtime\.heartbeatTimer\)/);
-  assert.match(heartbeat, /runtime\.heartbeatTimer = setInterval\(heartbeat, 20000\)/);
-  assert.match(heartbeat, /!state\.started[\s\S]*media\.paused \|\| media\.ended/);
-  assert.doesNotMatch(heartbeat, /Array\.from\(document\.querySelectorAll/);
-  assert.match(events, /document\.addEventListener\('pause'[\s\S]*stopHeartbeat\(\)/);
-  assert.match(
-    events,
-    /state\.endedPosted = true;[\s\S]*stopHeartbeat\(\);[\s\S]*post\('spotify:timed-ended'\)/,
-  );
+test('timed music observer contains no playback recovery or heartbeat loop', () => {
+  assert.doesNotMatch(runtime, /requestRecovery|scheduleRecovery|recoveryPosted|restartPending/);
+  assert.doesNotMatch(runtime, /heartbeatTimer|heartbeatMisses|startHeartbeat|stopHeartbeat/);
+  assert.doesNotMatch(runtime, /spotify:not-playing/);
+  assert.doesNotMatch(events, /scheduleRecovery|requestRecovery|spotify:not-playing/);
+  assert.doesNotMatch(events, /setInterval|startHeartbeat|stopHeartbeat/);
+  assert.doesNotMatch(bundle, /kSpotifyMediaObserverHeartbeatScript/);
   assert.match(
     events,
     /const quarantineCompletedGeneration = media =>[\s\S]*quarantineMedia\(media\)/,
   );
   assert.doesNotMatch(events, /stopAllMedia/);
-  assert.match(runtime, /state\.recoveryPosted = true;[\s\S]*stopHeartbeatIfAvailable\(\);[\s\S]*post\('spotify:not-playing'\)/);
 });
 
 test('shuffle and repeat mode verification shares one DOM probe and ExecuteScript round trip', () => {
