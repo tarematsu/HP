@@ -8,6 +8,31 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
       location.hostname !== 'youtube.com') return null;
   if (!location.pathname.startsWith('/playlist')) return null;
 
+  let referrerMeta = document.querySelector('meta[name="referrer"]');
+  if (!referrerMeta) {
+    referrerMeta = document.createElement('meta');
+    referrerMeta.name = 'referrer';
+    (document.head || document.documentElement).appendChild(referrerMeta);
+  }
+  referrerMeta.content = 'no-referrer';
+
+  const navigateNoReferrer = href => {
+    if (!href) return false;
+    try {
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.referrerPolicy = 'no-referrer';
+      anchor.rel = 'noreferrer';
+      anchor.style.display = 'none';
+      (document.body || document.documentElement).appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
   const playlistId = new URL(location.href).searchParams.get('list') || '';
   const startupState = window.__homePanelYoutubePlaylistStartupState ||
       (window.__homePanelYoutubePlaylistStartupState = {
@@ -34,8 +59,7 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
       const url = new URL('/watch', location.origin);
       url.searchParams.set('v', videoId);
       if (playlistId) url.searchParams.set('list', playlistId);
-      location.assign(url.href);
-      return true;
+      return navigateNoReferrer(url.href);
     } catch (_) {
       return false;
     }
@@ -48,10 +72,7 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
       .find(element => normalizeWatchHref(element.href));
   if (firstItem) {
     const href = normalizeWatchHref(firstItem.href);
-    if (href) {
-      location.assign(href);
-      return null;
-    }
+    if (href && navigateNoReferrer(href)) return null;
   }
 
   const now = Date.now();
@@ -81,7 +102,7 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
   // fallback page cannot expose item 1, return to the cloud resolver before the
   // legacy coordinate backstop could become relevant.
   if (now - Number(startupState.since || now) >= 7000) {
-    location.assign(
+    navigateNoReferrer(
         'https://homepanel-cloud.tarematsu.workers.dev/v1/native/youtube-start');
   }
   return null;
