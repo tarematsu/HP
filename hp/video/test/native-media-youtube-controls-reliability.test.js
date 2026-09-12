@@ -57,6 +57,7 @@ test('YouTube message dialogs auto-close explicit Close controls only', () => {
   assert.match(agent, /state\.popupObserver\.observe\(popupContainer/);
   assert.match(agent, /close\.click\(\)/);
   assert.match(agent, /isSurveyDialog/);
+  assert.match(agent, /root\?\.querySelector\?\.\(surveyDialogMarkerSelector\)/);
   assert.doesNotMatch(agent, /popupObserver\.observe\(document\.(?:documentElement|body)/);
 });
 
