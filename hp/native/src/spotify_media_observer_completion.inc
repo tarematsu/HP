@@ -128,7 +128,9 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
     const remainingMs = Math.max(
         0, Math.round(((duration - currentTime) / playbackRate) * 1000));
     state.lastCompletionPlanDeadlineAt = Date.now() + remainingMs;
-    postFields('spotify:timed-plan', String(remainingMs));
+    postFields(
+        'spotify:timed-plan', String(remainingMs),
+        String(state.lastCompletionPlanDeadlineAt));
     return true;
   };
   const completionPlanDue = (leadMs = 0) => {
