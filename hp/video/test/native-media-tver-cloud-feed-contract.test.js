@@ -90,18 +90,20 @@ test('native TVer phase launches a cloud-selected episode without rendering a se
   assert.doesNotMatch(playbackPolicy, /__homePanelTverSeriesPath|__homePanelTverEpisodeQueue:/);
 });
 
-test('native TVer refreshes active queue from newer cloud feeds without interrupting current episode', () => {
+test('native TVer refreshes active queue without interrupting a still-valid current episode', () => {
   assert.match(cloudQueueRefresh, /kNativeMediaTverCloudQueueRefreshMs =\s*30ULL \* 60ULL \* 1000ULL/);
   assert.match(cloudQueueRefresh, /NativeMediaTverFetchCloudFeed\(\)/);
   assert.match(cloudQueueRefresh, /NativeMediaTverParseCloudFeed/);
   assert.match(cloudQueueRefresh, /GetNamedString\(L"generatedAt"/);
-  assert.match(cloudQueueRefresh, /result\.generatedAt <= state\.appliedGeneratedAt/);
+  assert.match(cloudQueueRefresh, /result\.generatedAt < state\.appliedGeneratedAt/);
+  assert.match(cloudQueueRefresh, /result\.generatedAt == state\.appliedGeneratedAt[\s\S]*source == state\.appliedSource/);
   assert.match(cloudQueueRefresh, /const queueKey = '__homePanelTverEpisodeQueue'/);
   assert.match(cloudQueueRefresh, /previous\.slice\(0, currentIndex \+ 1\)/);
-  assert.match(cloudQueueRefresh, /const remaining = \[\][\s\S]*seen\.has\(normalized\)/);
+  assert.match(cloudQueueRefresh, /const remaining = \[\][\s\S]*seen\.has\(href\)/);
   assert.match(cloudQueueRefresh, /JSON\.stringify\(\{ hrefs, index: prefix\.length - 1 \}\)/);
+  assert.match(cloudQueueRefresh, /if \(!currentStillFresh\)[\s\S]*location\.replace\(resumeEpisodes\[0\]\)/);
+  assert.match(cloudQueueRefresh, /missingVideoGuardMs = 30000[\s\S]*location\.replace\(latestHrefs\[nextIndex\]\)/);
   assert.doesNotMatch(cloudQueueRefresh, /\bfetch\s*\(/);
-  assert.doesNotMatch(cloudQueueRefresh, /location\.(?:replace|assign)|location\.href\s*=/);
   assert.match(
     mediaSection,
     /tver\.jp\/episodes\/[\s\S]*PrepareNativeMediaTverCloudQueueRefresh\(webview, hostWindow, alive\)[\s\S]*kNativeMediaTverPlaybackWatchdogPolicyScript/,

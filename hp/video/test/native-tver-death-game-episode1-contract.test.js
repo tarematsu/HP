@@ -12,6 +12,6 @@ test('TVer playback does not special-case a series page or recommended episode',
   assert.doesNotMatch(episode, /__homePanelTverEpisodeQueue:/);
   assert.match(episode, /location\.replace\(queue\.hrefs\[nextIndex\]\)/);
   assert.doesNotMatch(episode, /deathGameSeriesPath|findSeriesEpisodeContainer|おすすめ/);
-  assert.match(refresh, /for \(const href of fresh\)/);
-  assert.match(refresh, /if \(!normalized \|\| seen\.has\(normalized\)\) continue/);
+  assert.match(refresh, /for \(const href of freshEpisodes\)/);
+  assert.match(refresh, /if \(!href \|\| seen\.has\(href\)\) continue/);
 });
