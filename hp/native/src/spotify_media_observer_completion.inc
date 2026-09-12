@@ -12,7 +12,7 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
 
   const { state, syncTarget, isMedia, post } = runtime;
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
-  const terminalWitnessWindowSeconds = 5;
+  const terminalWitnessWindowSeconds = 2;
   const terminalWrapSeconds = 1.5;
   const resetDeadlineState = () => {
     state.lastCompletionPlanTime = -1;
