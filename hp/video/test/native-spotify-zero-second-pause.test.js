@@ -34,6 +34,17 @@ test('zero-second target media is resumed directly before Pause UI is treated as
   assert.doesNotMatch(startBranch, /point\(/);
 });
 
+test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
+  const start = music.indexOf('slot.lastModeNavigateTick = 0;');
+  const reconcile = music.indexOf('kSpotifyStaticTrackReconcileScript', start);
+  assert.ok(start >= 0 && reconcile > start);
+  const startup = music.slice(start, reconcile);
+  const playingGate = startup.indexOf('if (slot.state == SlotState::Playing)');
+  const shuffle = startup.indexOf('PlaybackModeGuard::Shuffle');
+  const repeat = startup.indexOf('PlaybackModeGuard::Repeat');
+  assert.ok(playingGate >= 0 && shuffle > playingGate && repeat > shuffle);
+});
+
 test('native starting and settling states wait or renavigate without ambiguous toggle clicks', () => {
   const start = music.indexOf(
     'if (json && (std::wstring_view(json) == L"\\"starting\\""',
