@@ -10,6 +10,8 @@ const guards = readFileSync(
   new URL('../../native/src/spotify_playback_mode_guards.inc', import.meta.url), 'utf8');
 const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
+const layout = readFileSync(
+  new URL('../../native/src/spotify_host_layout.inc', import.meta.url), 'utf8');
 
 test('Spotify starts target before post-start shuffle/repeat convergence', () => {
   assert.match(wrapper, /#include "spotify_playback_mode_guards\.inc"/);
@@ -38,6 +40,21 @@ test('Spotify starts target before post-start shuffle/repeat convergence', () =>
   const reconcile = music.indexOf('kSpotifyStaticTrackReconcileScript', repeat);
   assert.ok(
     playingGate >= 0 && shuffle > playingGate && repeat > shuffle && reconcile > repeat,
+  );
+});
+
+test('healthy music stays renderable until shuffle and repeat are verified off', () => {
+  assert.match(
+    layout,
+    /suppressHealthyMusicRendering =[\s\S]*slot\.shuffleOffVerified && slot\.repeatOffVerified/,
+  );
+  assert.match(
+    layout,
+    /put_IsVisible\(\s*suppressHealthyMusicRendering \? FALSE : TRUE\s*\)/,
+  );
+  assert.match(
+    guards,
+    /target->shuffleOffVerified = true;[\s\S]*target->repeatOffVerified = true;[\s\S]*RefreshSpotifyHostLayout\(\)/,
   );
 });
 
