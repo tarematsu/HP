@@ -20,10 +20,23 @@ bool ParseSpotifyGenerationEvent(
   return true;
 }
 
+ULONGLONG SpotifySystemUnixMillisecondsNow() noexcept {
+  FILETIME fileTime{};
+  GetSystemTimeAsFileTime(&fileTime);
+  ULARGE_INTEGER ticks{};
+  ticks.LowPart = fileTime.dwLowDateTime;
+  ticks.HighPart = fileTime.dwHighDateTime;
+  constexpr ULONGLONG kWindowsToUnixEpoch100ns = 116444736000000000ULL;
+  if (ticks.QuadPart <= kWindowsToUnixEpoch100ns) return 0;
+  return (ticks.QuadPart - kWindowsToUnixEpoch100ns) / 10000ULL;
+}
+
 bool ParseSpotifyCompletionPlanEvent(
     LPCWSTR rawMessage, ULONGLONG* generation,
-    ULONGLONG* remainingMs) noexcept {
-  if (!rawMessage || !generation || !remainingMs) return false;
+    ULONGLONG* remainingMs, ULONGLONG* projectedEndUnixMs) noexcept {
+  if (!rawMessage || !generation || !remainingMs || !projectedEndUnixMs) {
+    return false;
+  }
   constexpr std::wstring_view eventName = L"spotify:timed-plan";
   const std::wstring_view value(rawMessage);
   if (value.size() <= eventName.size() ||
@@ -32,28 +45,51 @@ bool ParseSpotifyCompletionPlanEvent(
     return false;
   }
   const size_t generationStart = eventName.size() + 1;
-  const size_t separator = value.find(kSpotifyMessageSeparator, generationStart);
-  if (separator == std::wstring_view::npos || separator == generationStart ||
-      separator + 1 >= value.size()) {
+  const size_t firstSeparator =
+      value.find(kSpotifyMessageSeparator, generationStart);
+  if (firstSeparator == std::wstring_view::npos ||
+      firstSeparator == generationStart || firstSeparator + 1 >= value.size()) {
     return false;
   }
+  const size_t secondSeparator =
+      value.find(kSpotifyMessageSeparator, firstSeparator + 1);
+  const size_t remainingEnd =
+      secondSeparator == std::wstring_view::npos ? value.size() : secondSeparator;
+  if (remainingEnd <= firstSeparator + 1) return false;
 
   const std::wstring generationText(
-      value.substr(generationStart, separator - generationStart));
-  const std::wstring remainingText(value.substr(separator + 1));
+      value.substr(generationStart, firstSeparator - generationStart));
+  const std::wstring remainingText(
+      value.substr(firstSeparator + 1, remainingEnd - firstSeparator - 1));
+  const std::wstring projectedEndText =
+      secondSeparator == std::wstring_view::npos
+          ? std::wstring{}
+          : std::wstring(value.substr(secondSeparator + 1));
+
   wchar_t* generationEnd = nullptr;
-  wchar_t* remainingEnd = nullptr;
+  wchar_t* remainingEndPtr = nullptr;
   const unsigned long long parsedGeneration =
       wcstoull(generationText.c_str(), &generationEnd, 10);
   const unsigned long long parsedRemaining =
-      wcstoull(remainingText.c_str(), &remainingEnd, 10);
+      wcstoull(remainingText.c_str(), &remainingEndPtr, 10);
   if (!generationEnd || *generationEnd != L'\0' ||
-      !remainingEnd || *remainingEnd != L'\0' ||
+      !remainingEndPtr || *remainingEndPtr != L'\0' ||
       parsedRemaining > 24ULL * 60ULL * 60ULL * 1000ULL) {
     return false;
   }
+
+  ULONGLONG parsedProjectedEnd = 0;
+  if (!projectedEndText.empty()) {
+    wchar_t* projectedEndPtr = nullptr;
+    const unsigned long long parsed =
+        wcstoull(projectedEndText.c_str(), &projectedEndPtr, 10);
+    if (!projectedEndPtr || *projectedEndPtr != L'\0') return false;
+    parsedProjectedEnd = static_cast<ULONGLONG>(parsed);
+  }
+
   *generation = static_cast<ULONGLONG>(parsedGeneration);
   *remainingMs = static_cast<ULONGLONG>(parsedRemaining);
+  *projectedEndUnixMs = parsedProjectedEnd;
   return true;
 }
 
@@ -183,6 +219,7 @@ void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
     slot.timedPlaybackStartTick = 0;
     AdvanceTimedRotationSlot(slot, now);
   }
+  ArmCompletionDeadlineTimer();
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
@@ -210,8 +247,10 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
               ULONGLONG eventGeneration = 0;
               ULONGLONG remainingMs = 0;
+              ULONGLONG projectedEndUnixMs = 0;
               const bool planned = ParseSpotifyCompletionPlanEvent(
-                  rawMessage, &eventGeneration, &remainingMs);
+                  rawMessage, &eventGeneration, &remainingMs,
+                  &projectedEndUnixMs);
               const bool planCleared = !planned && ParseSpotifyGenerationEvent(
                   rawMessage, L"spotify:timed-plan-clear", &eventGeneration);
               const bool started = !planned && !planCleared &&
@@ -251,8 +290,25 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                     !target->timedRotationActive) {
                   return S_OK;
                 }
+
+                ULONGLONG effectiveRemainingMs =
+                    std::max<ULONGLONG>(remainingMs, 1ULL);
+                if (projectedEndUnixMs != 0) {
+                  const ULONGLONG wallNow = SpotifySystemUnixMillisecondsNow();
+                  if (wallNow != 0) {
+                    const ULONGLONG wallRemaining =
+                        projectedEndUnixMs <= wallNow
+                            ? 1ULL
+                            : projectedEndUnixMs - wallNow;
+                    // Never let transport or wall-clock skew extend the plan.
+                    // The WebView-computed remaining time is the upper bound.
+                    effectiveRemainingMs =
+                        std::min(effectiveRemainingMs, wallRemaining);
+                  }
+                }
+
                 const ULONGLONG candidateDeadline =
-                    now + std::max<ULONGLONG>(remainingMs, 1ULL);
+                    now + std::max<ULONGLONG>(effectiveRemainingMs, 1ULL);
                 if (target->timedCompletionDeadlineTick == 0 ||
                     target->timedCompletionDeadlineGeneration != eventGeneration ||
                     candidateDeadline < target->timedCompletionDeadlineTick) {
@@ -261,6 +317,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                   // full new duration, so it cannot postpone A -> B.
                   target->timedCompletionDeadlineTick = candidateDeadline;
                   target->timedCompletionDeadlineGeneration = eventGeneration;
+                  ArmCompletionDeadlineTimer();
                   ArmRobustScheduler();
                 }
                 return S_OK;
@@ -287,6 +344,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               target->timedCompletionDeadlineTick = 0;
               target->timedCompletionDeadlineGeneration = 0;
               target->timedPlaybackStartTick = 0;
+              ArmCompletionDeadlineTimer();
               if (!target->timedRotationActive || target->podcastBreakActive) {
                 return S_OK;
               }
@@ -295,6 +353,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 // A real ended event may advance slightly before the native
                 // deadline. Generation fencing makes the later timer harmless.
                 AdvanceTimedRotationSlot(*target, now);
+                ArmCompletionDeadlineTimer();
                 return S_OK;
               }
 
