@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const observerModules = [
   ['spotify_media_observer_runtime.inc', 'kSpotifyMediaObserverRuntimeScript'],
+  ['spotify_media_observer_completion.inc', 'kSpotifyMediaObserverCompletionScript'],
   ['spotify_media_observer_events.inc', 'kSpotifyMediaObserverEventsScript'],
   ['spotify_media_observer_heartbeat.inc', 'kSpotifyMediaObserverHeartbeatScript'],
 ].map(([file, symbol]) => ({
