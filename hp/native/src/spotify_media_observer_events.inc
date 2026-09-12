@@ -14,6 +14,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
           scheduleTargetChecks, scheduleRecovery, postCompletionPlan,
           clearCompletionPlan } = runtime;
   const finishLeadSeconds = 1.5;
+  const identityCheckIntervalSeconds = 10;
 
   // The only direct pause retained in music playback is a narrow quarantine for
   // a completed generation while native installs the next target. Start/recovery
@@ -179,7 +180,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     const currentTime = Number(media.currentTime) || 0;
     if (state.lastIdentityCheckTime >= 0 &&
         currentTime >= state.lastIdentityCheckTime &&
-        currentTime - state.lastIdentityCheckTime < 1) {
+        currentTime - state.lastIdentityCheckTime < identityCheckIntervalSeconds) {
       return;
     }
     state.lastIdentityCheckTime = currentTime;
