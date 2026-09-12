@@ -101,7 +101,7 @@ test('active YouTube and TVer hot paths stay free of high-frequency diagnostic l
 
 test('playlist startup still has one bounded native fallback', () => {
   assert.match(mediaBase, /kNativeMediaPlayAllRetryMs = 500U/);
-  assert.match(mediaBase, /kNativeMediaPlayAllRetryLimit = 20/);
+  assert.match(mediaBase, /kNativeMediaPlayAllRetryLimit = 60/);
   assert.match(
     mediaHost,
     /playAllProbeAttempts_ >= kNativeMediaPlayAllRetryLimit[\s\S]*ClickNormalizedPoint\(kNativeMediaFallbackPlayAllXTenThousandths/,

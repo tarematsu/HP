@@ -3,6 +3,7 @@ import { requestFamily } from './unified_routes.js';
 import { shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
 import { dispatchTverFeedRefresh } from './tver_feed_refresh_coordinator.js';
 import { tverFeedObservability } from './tver_feed_observability.js';
+import { youtubePlaylistStartResponse } from './youtube_playlist_start.js';
 import videoWorker from '../../video/src/entry.js';
 
 export { SchedulerCoordinator } from './scheduler_coordinator.ts';
@@ -16,6 +17,7 @@ const INTERNAL_SERVICE_HEADER = 'X-HomePanel-Internal-Service';
 const INTERNAL_SERVICE_VALUE = 'homepanel-cloud';
 const ADMIN_TOKEN_COOKIE = 'video_scraper_admin_token';
 const TVER_FEED_PATH = '/v1/native/tver-feed';
+const YOUTUBE_START_PATH = '/v1/native/youtube-start';
 const TVER_FEED_HEALTH_PATH = '/api/health/tver-feed';
 
 function cookieValue(request, name) {
@@ -163,6 +165,16 @@ export default {
         });
       }
       return tverFeedResponse(env, ctx);
+    }
+
+    if (pathname === YOUTUBE_START_PATH) {
+      if (request.method !== 'GET') {
+        return new Response(null, {
+          status: 405,
+          headers: { Allow: 'GET', 'Cache-Control': 'no-store' }
+        });
+      }
+      return youtubePlaylistStartResponse();
     }
 
     if (requestFamily(pathname) === 'homepanel') {
