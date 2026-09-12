@@ -71,11 +71,22 @@ test('YouTube ad skip reaches the verified real control', () => {
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
 });
 
-test('YouTube fullscreen uses the real trusted control for ads and content', () => {
+test('YouTube fullscreen waits for player settle, then uses the real trusted control', () => {
+  assert.match(recovery, /const fullscreenSettleMs = 1500/);
+  assert.match(recovery, /fullscreenReadyAt/);
+  assert.match(
+    recovery,
+    /Date\.now\(\) >= Number\(adRecoveryState\.fullscreenReadyAt \|\| 0\)/,
+  );
+  assert.match(
+    recovery,
+    /Date\.now\(\) < Number\(recoveryState\.fullscreenReadyAt \|\| 0\)/,
+  );
   assert.match(recovery, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
   assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
   assert.match(trustedAction, /action === 'fullscreen'/);
   assert.doesNotMatch(trustedAction, /requestFullscreen|webkitRequestFullscreen/);
+  assert.doesNotMatch(recovery, /setTimeout\s*\(/);
 });
 
 test('YouTube content settings are one-shot per video', () => {
