@@ -61,9 +61,9 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('parked Spotify surfaces are playback-only and recovery gets a desktop-like viewport', () => {
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+test('parked Spotify surfaces are compact and recovery gets a desktop-like viewport', () => {
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.match(
