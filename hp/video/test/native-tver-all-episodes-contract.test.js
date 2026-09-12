@@ -31,6 +31,19 @@ test('TVer completed program waits for post-roll before advancing', () => {
   );
 });
 
+test('TVer skips cloud-stale and unplayable episode pages', () => {
+  assert.match(refresh, /const currentStillFresh = freshEpisodes\.some/);
+  assert.match(refresh, /if \(!currentStillFresh\)[\s\S]*location\.replace\(freshEpisodes\[0\]\)/);
+  assert.match(refresh, /const missingVideoGuardMs = 30000/);
+  assert.match(refresh, /document\.querySelectorAll\('video'\)/);
+  assert.match(refresh, /video\.readyState >= 1 \|\| duration > 0/);
+  assert.match(refresh, /nextIndex < latestHrefs\.length/);
+  assert.match(refresh, /location\.replace\(latestHrefs\[nextIndex\]\)/);
+  assert.match(refresh, /sessionStorage\.removeItem\(queueKey\)/);
+  assert.match(refresh, /postMessage\('homepanel:tver-wake'\)/);
+  assert.doesNotMatch(refresh, /setInterval\(/);
+});
+
 test('TVer player observation is bounded rather than document-wide', () => {
   assert.match(episode, /const bindPlayerObserver = video =>/);
   assert.match(episode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
