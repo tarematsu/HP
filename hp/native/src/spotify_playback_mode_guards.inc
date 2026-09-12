@@ -114,10 +114,12 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
               if (value == L"true") {
                 target->shuffleOffVerified = true;
                 target->repeatOffVerified = true;
-                // The layout deliberately remains renderable until both mode
-                // guards are verified. Collapse rendering immediately after the
-                // successful probe instead of waiting for a later healthy tick.
-                RefreshSpotifyHostLayout();
+                // RefreshSpotifyHostLayout() can legitimately early-return when
+                // only these verification flags changed. PlaceHosts() is a
+                // one-shot geometry/visibility reconciliation here so the just-
+                // verified healthy player is hidden immediately without adding
+                // any steady polling.
+                PlaceHosts();
                 ArmRobustScheduler();
                 return S_OK;
               }
