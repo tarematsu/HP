@@ -8,13 +8,13 @@ LR"JS(
         state = {
           path: location.pathname,
           video: null,
+          nativeWakeVideo: null,
+          nativeWakeSource: '',
           maxDuration: 0,
           maxTime: 0,
           progressSampleAt: 0,
           endCandidateAt: 0,
           lowQualitySet: false,
-          qualityProbeAt: 0,
-          qualityProbeAttempts: 0,
           playbackSettingsApplied: false,
           fullscreenDirty: true,
           restartRequested: false,
@@ -28,6 +28,7 @@ LR"JS(
       }
 
       const video = currentVideo();
+      requestNativeMediaInit(video, state);
       bindVideoEvents(video, state);
       bindPlayerObserver(video);
       const advertisementActive = detectAd(video, state);
@@ -48,8 +49,6 @@ LR"JS(
           state.maxTime = 0;
           state.progressSampleAt = 0;
           state.lowQualitySet = false;
-          state.qualityProbeAt = 0;
-          state.qualityProbeAttempts = 0;
           state.playbackSettingsApplied = false;
           state.fullscreenDirty = true;
           state.restartRequested = false;
@@ -73,8 +72,6 @@ LR"JS(
         state.progressSampleAt = 0;
         state.endCandidateAt = 0;
         state.lowQualitySet = false;
-        state.qualityProbeAt = 0;
-        state.qualityProbeAttempts = 0;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
         state.restartRequested = false;
@@ -94,8 +91,6 @@ LR"JS(
         state.video = video;
         state.progressSampleAt = 0;
         state.lowQualitySet = false;
-        state.qualityProbeAt = 0;
-        state.qualityProbeAttempts = 0;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
       }

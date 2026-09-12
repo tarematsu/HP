@@ -124,6 +124,11 @@ void NativeMediaEnsureEventWakeBridge(
                 sourceContains(L"list=PLMWqSdpIVl30")) {
               PostMessageW(hostWindow, WM_TIMER,
                            kNativeMediaYoutubeWatchdogTimer, 0);
+            } else if (message == L"homepanel:tver-media-init" &&
+                       sourceContains(L"tver.jp/episodes/")) {
+              NativeMediaTrustedWake(hostWindow, sender, nullptr);
+              PostMessageW(hostWindow, WM_TIMER,
+                           kNativeMediaTverWatchdogTimer, 0);
             } else if (message == L"homepanel:tver-wake" &&
                        sourceContains(L"tver.jp/episodes/")) {
               PostMessageW(hostWindow, WM_TIMER, kNativeMediaTverWatchdogTimer, 0);

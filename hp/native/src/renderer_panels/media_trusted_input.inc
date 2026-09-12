@@ -2,14 +2,7 @@
 // The native media panel stays alive, so input is dispatched directly to WebView2
 // without moving the real Windows cursor or depending on a visible top-level HWND.
 namespace {
-constexpr UINT kNativeMediaTrustedWakeIntervalMs = 350U;
-constexpr UINT kNativeMediaTrustedWakeAttempts = 10U;
 constexpr ULONGLONG kNativeMediaTrustedClickStaleMs = 3000ULL;
-HWND gNativeMediaTrustedWakeWindow = nullptr;
-ComPtr<ICoreWebView2> gNativeMediaTrustedWakeWebView;
-ComPtr<ICoreWebView2Controller> gNativeMediaTrustedWakeController;
-UINT gNativeMediaTrustedWakeCount = 0;
-UINT gNativeMediaTrustedSteadyIntervalMs = 4000U;
 std::atomic<ULONGLONG> gNativeMediaTrustedClickStartedAt{0};
 
 ULONGLONG NativeMediaAcquireTrustedClick() noexcept {
@@ -209,39 +202,19 @@ void NativeMediaTrustedWake(
   const LONG width = client.right - client.left;
   const LONG height = client.bottom - client.top;
   if (width <= 0 || height <= 0) return;
-  const UINT attempt = gNativeMediaTrustedWakeCount++;
   const double cssScale = NativeMediaTrustedCssScale(controller, hwnd);
   const double x = static_cast<double>(width) / 2.0 / cssScale;
-  const double y = static_cast<double>(height) *
-      static_cast<double>(35U + (attempt % 3U) * 10U) / 100.0 / cssScale;
+  const double y = static_cast<double>(height) / 2.0 / cssScale;
   NativeMediaDispatchTrustedMove(webview, x, y);
 }
 
-void CALLBACK NativeMediaTrustedWakeTimerProc(
-    HWND hwnd, UINT, UINT_PTR timerId, DWORD) noexcept {
-  if (hwnd && IsWindow(hwnd) && gNativeMediaTrustedWakeWindow == hwnd &&
-      gNativeMediaTrustedWakeWebView &&
-      gNativeMediaTrustedWakeCount < kNativeMediaTrustedWakeAttempts) {
-    NativeMediaTrustedWake(
-        hwnd, gNativeMediaTrustedWakeWebView.Get(),
-        gNativeMediaTrustedWakeController.Get());
-  }
-  if (!hwnd || !IsWindow(hwnd)) return;
-  PostMessageW(hwnd, WM_TIMER, timerId, 0);
-  if (gNativeMediaTrustedWakeCount >= kNativeMediaTrustedWakeAttempts) {
-    ::SetTimer(hwnd, timerId, gNativeMediaTrustedSteadyIntervalMs, nullptr);
-  }
-}
-
+// TVer steady health checks are ordinary low-frequency timers. Media-specific
+// pointer wakeups are dispatched separately by the event bridge exactly when a
+// new video/source is detected.
 UINT_PTR ArmNativeMediaTrustedWakeTimer(
-    HWND hwnd, ICoreWebView2* webview, ICoreWebView2Controller* controller,
+    HWND hwnd, ICoreWebView2*, ICoreWebView2Controller*,
     UINT_PTR timerId, UINT steadyIntervalMs) noexcept {
-  gNativeMediaTrustedWakeWindow = hwnd;
-  gNativeMediaTrustedWakeWebView = webview;
-  gNativeMediaTrustedWakeController = controller;
-  gNativeMediaTrustedWakeCount = 0;
-  gNativeMediaTrustedSteadyIntervalMs = steadyIntervalMs;
-  return ::SetTimer(hwnd, timerId, kNativeMediaTrustedWakeIntervalMs,
-                    NativeMediaTrustedWakeTimerProc);
+  if (!hwnd || !IsWindow(hwnd)) return 0;
+  return ::SetTimer(hwnd, timerId, steadyIntervalMs, nullptr);
 }
 }  // namespace

@@ -1,12 +1,8 @@
 LR"JS(
 
-      // Quality discovery is bounded and rate-limited. Once low quality is set,
-      // state.lowQualitySet prevents any further setting attempts for this video.
-      const now = Date.now();
-      if (!state.lowQualitySet && state.qualityProbeAttempts < qualityProbeLimit &&
-          now - state.qualityProbeAt >= qualityProbeIntervalMs) {
-        state.qualityProbeAt = now;
-        ++state.qualityProbeAttempts;
+      // Quality discovery is event driven and player-local. Once low quality is
+      // set, state.lowQualitySet prevents further setting attempts for this video.
+      if (!state.lowQualitySet) {
         const root = playerRootFor(video);
         if (root) {
           const qualityChoices = [];
@@ -32,9 +28,6 @@ LR"JS(
             }
             state.lowQualitySet = true;
           }
-        }
-        if (!state.lowQualitySet && state.qualityProbeAttempts < qualityProbeLimit) {
-          window.setTimeout(scheduleEnsure, qualityProbeIntervalMs + 20);
         }
       }
 

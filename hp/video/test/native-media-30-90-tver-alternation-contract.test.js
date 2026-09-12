@@ -49,11 +49,11 @@ test('TVer is event driven and player-local', () => {
   assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
   assert.match(tverEpisode, /event\.target instanceof HTMLMediaElement/);
+  assert.match(tverEpisode, /homepanel:tver-media-init/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverEpisode, /setInterval\(ensure/);
   assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
-  assert.match(tverEpisode, /qualityProbeLimit = 4/);
-  assert.match(tverEpisode, /qualityProbeIntervalMs = 5000/);
+  assert.doesNotMatch(tverEpisode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
 });
 
 test('hidden YouTube and TVer share one WebView2 trusted-input path', () => {
@@ -62,6 +62,17 @@ test('hidden YouTube and TVer share one WebView2 trusted-input path', () => {
   assert.match(trustedInput, /CallDevToolsProtocolMethod/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
   assert.doesNotMatch(trustedInput, /::SendInput\(/);
+});
+
+test('TVer media wake is one-shot and the steady watchdog stays low frequency', () => {
+  assert.match(mediaWrapper, /homepanel:tver-media-init/);
+  assert.match(mediaWrapper, /NativeMediaTrustedWake\(hostWindow, sender, nullptr\)/);
+  assert.match(trustedInput, /return ::SetTimer\(hwnd, timerId, steadyIntervalMs, nullptr\)/);
+  assert.doesNotMatch(
+    trustedInput,
+    /kNativeMediaTrustedWakeIntervalMs|kNativeMediaTrustedWakeAttempts|NativeMediaTrustedWakeTimerProc/,
+  );
+  assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
 });
 
 test('YouTube health uses a 30-second backstop plus event wakeups', () => {

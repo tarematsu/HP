@@ -13,6 +13,8 @@ const radarSection = readFileSync(
   new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url), 'utf8');
 const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
+const trustedInput = readFileSync(
+  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
 const youtubeClean = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url), 'utf8');
 const youtubeRecovery = readExpandedNativeSource(
@@ -116,13 +118,24 @@ test('TVer episode playback is one-shot 1.75x, cloud-queue based and player-loca
   assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue:/);
   assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
+  assert.match(tverEpisode, /homepanel:tver-media-init/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
-  assert.match(tverEpisode, /qualityProbeLimit = 4/);
-  assert.match(tverEpisode, /qualityProbeIntervalMs = 5000/);
+  assert.doesNotMatch(tverEpisode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
   assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
   assert.match(mediaHost, /BeginTverPlaybackMonitor\(\)/);
   assert.match(mediaHost, /ProbeTverWatchdog\(\)/);
+});
+
+test('TVer media initialization performs one pointer wake without burst polling', () => {
+  assert.match(mediaWrapper, /message == L"homepanel:tver-media-init"/);
+  assert.match(mediaWrapper, /NativeMediaTrustedWake\(hostWindow, sender, nullptr\)/);
+  assert.match(trustedInput, /NativeMediaDispatchTrustedMove\(webview, x, y\)/);
+  assert.match(trustedInput, /return ::SetTimer\(hwnd, timerId, steadyIntervalMs, nullptr\)/);
+  assert.doesNotMatch(
+    trustedInput,
+    /kNativeMediaTrustedWakeIntervalMs|kNativeMediaTrustedWakeAttempts|NativeMediaTrustedWakeTimerProc/,
+  );
 });
 
 test('TVer ads are isolated to Skip and one-shot fullscreen automation', () => {
@@ -190,6 +203,7 @@ test('media WebView blocks image and font requests without touching playback res
 test('event bridge is the only immediate wake path for media state transitions', () => {
   assert.match(mediaWrapper, /add_WebMessageReceived/);
   assert.match(mediaWrapper, /homepanel:youtube-wake/);
+  assert.match(mediaWrapper, /homepanel:tver-media-init/);
   assert.match(mediaWrapper, /homepanel:tver-wake/);
   assert.match(mediaWrapper, /PostMessageW\(hostWindow, WM_TIMER/);
 });
