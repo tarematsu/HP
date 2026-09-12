@@ -16,6 +16,7 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
     state.lastCompletionPlanTime = -1;
     state.lastCompletionPlanDuration = -1;
     state.lastCompletionPlanRate = -1;
+    state.lastCompletionPlanDeadlineAt = -1;
   };
   const postFields = (message, ...fields) => {
     try {
@@ -34,7 +35,7 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
     post('spotify:timed-plan-clear');
     return true;
   };
-  const postCompletionPlan = media => {
+  const postCompletionPlan = (media, force = false) => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || state.endedPosted ||
         !state.started || state.targetMedia !== media || !isMedia(media) ||
@@ -50,24 +51,31 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
         duration < 10 || currentTime < 0 || currentTime > duration + 1) {
       return false;
     }
-    if (Math.abs(state.lastCompletionPlanTime - currentTime) < 0.05 &&
+    const unchanged =
+        Math.abs(state.lastCompletionPlanTime - currentTime) < 0.05 &&
         Math.abs(state.lastCompletionPlanDuration - duration) < 0.05 &&
-        Math.abs(state.lastCompletionPlanRate - playbackRate) < 0.001) {
-      return true;
-    }
+        Math.abs(state.lastCompletionPlanRate - playbackRate) < 0.001;
+    if (unchanged && !force) return true;
 
     state.lastCompletionPlanTime = currentTime;
     state.lastCompletionPlanDuration = duration;
     state.lastCompletionPlanRate = playbackRate;
     const remainingMs = Math.max(
         0, Math.round(((duration - currentTime) / playbackRate) * 1000));
+    state.lastCompletionPlanDeadlineAt = Date.now() + remainingMs;
     postFields('spotify:timed-plan', String(remainingMs));
     return true;
+  };
+  const completionPlanExpired = () => {
+    const deadlineAt = Number(state.lastCompletionPlanDeadlineAt);
+    return Number.isFinite(deadlineAt) && deadlineAt >= 0 &&
+        Date.now() >= deadlineAt;
   };
 
   resetPlanState();
   runtime.postCompletionPlan = postCompletionPlan;
   runtime.clearCompletionPlan = clearCompletionPlan;
+  runtime.completionPlanExpired = completionPlanExpired;
   runtime.probeCompletion = null;
 
   if (window.chrome && window.chrome.webview) {

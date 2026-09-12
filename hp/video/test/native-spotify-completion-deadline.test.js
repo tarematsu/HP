@@ -23,11 +23,14 @@ test('each Spotify slot owns a generation-fenced completion deadline', () => {
   assert.match(rotation, /timedCompletionDeadlineGeneration = eventGeneration/);
 });
 
-test('WebView publishes remaining time once and native probes near the deadline', () => {
+test('WebView publishes remaining time and native probes near the deadline', () => {
   assert.match(completion, /postFields\('spotify:timed-plan', String\(remainingMs\)\)/);
+  assert.match(completion, /lastCompletionPlanDeadlineAt = Date\.now\(\) \+ remainingMs/);
+  assert.match(completion, /const completionPlanExpired = \(\) =>/);
   assert.match(completion, /spotify:completion-probe/);
   assert.match(events, /runtime\.probeCompletion = \(\) =>/);
-  assert.match(events, /return postCompletionPlan\(media\)/);
+  assert.match(events, /completionPlanExpired\(\)/);
+  assert.match(events, /return postCompletionPlan\(media, true\)/);
   assert.match(rotation, /kSpotifyCompletionProbeLeadMs/);
   assert.match(rotation, /remainingMs - kSpotifyCompletionProbeLeadMs/);
   assert.match(rotation, /spotify:completion-probe/);
