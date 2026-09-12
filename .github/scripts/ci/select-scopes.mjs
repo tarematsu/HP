@@ -69,6 +69,10 @@ export function selectHomePanelScopes(files, { all = false } = {}) {
     }
     if (/^hp\/video\/(?:src|public)\//.test(file)
       || file === 'hp/video/package.json') scopes.bundle = true;
+    if (file === 'hp/video/.ci-full-trigger') {
+      scopes.video = true;
+      scopes.bundle = true;
+    }
     if (/^hp\/cloud\/(?:package(?:-lock)?\.json|wrangler[^/]*\.jsonc)$/.test(file)
       || file === 'hp/cloud/src/unified_worker.js') scopes.bundle = true;
     if (/^hp\/cloud\/test\/.*\.integration\.test\.ts$/.test(file)) scopes.integration = true;
