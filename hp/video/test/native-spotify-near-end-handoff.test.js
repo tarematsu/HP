@@ -113,7 +113,7 @@ function createHarness() {
   return { media, messages, dispatch, hostMessage, advanceWall, timers };
 }
 
-test('music start publishes one remaining-time plan for native scheduling', () => {
+test('music start publishes one projected deadline plan for native scheduling', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f21');
   h.media.paused = false;
@@ -121,7 +121,7 @@ test('music start publishes one remaining-time plan for native scheduling', () =
   h.dispatch('playing');
 
   assert.equal(h.messages[0], 'spotify:timed-started\x1f21');
-  assert.equal(h.messages[1], 'spotify:timed-plan\x1f21\x1f80000');
+  assert.equal(h.messages[1], 'spotify:timed-plan\x1f21\x1f80000\x1f1080000');
   assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-plan\x1f21')).length, 1);
 });
 
@@ -136,7 +136,7 @@ test('native completion probe near end re-arms instead of truncating playback', 
   h.hostMessage('spotify:completion-probe\x1f22');
 
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f22').length, 0);
-  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f22\x1f1200');
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f22\x1f1200\x1f1001200');
   assert.equal(h.media.pauseCalls, 0);
   assert.equal(h.media.paused, false);
 
@@ -158,7 +158,7 @@ test('an early native probe re-arms from the actual media clock instead of advan
   h.hostMessage('spotify:completion-probe\x1f23');
 
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f23').length, 0);
-  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f23\x1f10000');
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f23\x1f10000\x1f1010000');
   assert.equal(h.media.pauseCalls, 0);
 });
 
@@ -171,7 +171,10 @@ test('an early probe always returns a plan even when the media clock is unchange
 
   h.hostMessage('spotify:completion-probe\x1f24');
 
-  assert.equal(h.messages.filter(m => m === 'spotify:timed-plan\x1f24\x1f80000').length, 2);
+  assert.equal(
+    h.messages.filter(m => m === 'spotify:timed-plan\x1f24\x1f80000\x1f1080000').length,
+    2,
+  );
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f24').length, 0);
 });
 
@@ -203,7 +206,7 @@ test('a witnessed terminal rewind completes even before the projected deadline e
   h.advanceWall(178_500);
   h.media.currentTime = 178.8;
   h.hostMessage('spotify:completion-probe\x1f26');
-  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f26\x1f1200');
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f26\x1f1200\x1f1179700');
 
   h.advanceWall(300);
   h.media.currentTime = 0.2;
