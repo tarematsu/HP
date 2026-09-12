@@ -67,11 +67,11 @@ test('healthy playing TVer content avoids page-wide survey scanning', () => {
   assert.match(policy, /const root = playerRootFor\(video\)/);
 });
 
-test('paused TVer program recovery is idempotent', () => {
+test('paused TVer program recovery uses trusted playback controls', () => {
   assert.match(policy, /if \(video\.paused && !video\.ended\)/);
-  assert.match(policy, /const pending = video\.play\(\)/);
-  assert.match(policy, /video\.__homePanelTverResumeBlocked/);
   assert.match(policy, /const playButton = findPlayButton\(\)/);
+  assert.match(policy, /return playButton \? point\(playButton\) : point\(video\)/);
+  assert.doesNotMatch(policy, /video\.play\(/);
   assert.doesNotMatch(policy, /video\.pause\(/);
 });
 
