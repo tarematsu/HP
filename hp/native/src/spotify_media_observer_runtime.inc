@@ -26,24 +26,14 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     stallTimer: 0,
     heartbeatTime: -1,
     heartbeatMisses: 0,
-    lastIdentityCheckTime: -1,
-    lastCompletionPlanTime: -1,
-    lastCompletionPlanDuration: -1,
-    lastCompletionPlanRate: -1
+    lastIdentityCheckTime: -1
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
     try {
       if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage(message + '\u001f' + generation());
-      }
-    } catch (_) {}
-  };
-  const postFields = (message, ...fields) => {
-    try {
-      if (window.chrome && window.chrome.webview) {
         window.chrome.webview.postMessage(
-            [message, generation(), ...fields].join('\u001f'));
+            message + '\u001f' + generation());
       }
     } catch (_) {}
   };
@@ -65,11 +55,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       ? [target.pagePath, target.trackPath, normalize(target.title),
          target.kind, generation()].join('|')
       : '';
-  const resetCompletionPlanState = () => {
-    state.lastCompletionPlanTime = -1;
-    state.lastCompletionPlanDuration = -1;
-    state.lastCompletionPlanRate = -1;
-  };
   const resetState = key => {
     clearTimeout(state.stallTimer);
     stopHeartbeatIfAvailable();
@@ -83,7 +68,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.heartbeatTime = -1;
     state.heartbeatMisses = 0;
     state.lastIdentityCheckTime = -1;
-    resetCompletionPlanState();
   };
   const syncTarget = () => {
     const target = window.__homePanelSpotifyNativeTarget;
@@ -117,46 +101,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     return !!target.title && track.title === normalize(target.title);
   };
   const isMedia = value => value instanceof HTMLMediaElement;
-  const clearCompletionPlan = () => {
-    if (state.lastCompletionPlanTime < 0 &&
-        state.lastCompletionPlanDuration < 0) {
-      return false;
-    }
-    resetCompletionPlanState();
-    post('spotify:timed-plan-clear');
-    return true;
-  };
-  const postCompletionPlan = media => {
-    const target = syncTarget();
-    if (!target || target.kind !== 'music' || state.endedPosted ||
-        !state.started || state.targetMedia !== media || !isMedia(media) ||
-        media.paused || media.ended) {
-      return false;
-    }
-
-    const currentTime = Number(media.currentTime);
-    const duration = Number(media.duration);
-    const rawRate = Number(media.playbackRate);
-    const playbackRate = Number.isFinite(rawRate) && rawRate > 0 ? rawRate : 1;
-    if (!Number.isFinite(currentTime) || !Number.isFinite(duration) ||
-        duration < 10 || currentTime < 0 || currentTime > duration + 1) {
-      return false;
-    }
-
-    if (Math.abs(state.lastCompletionPlanTime - currentTime) < 0.05 &&
-        Math.abs(state.lastCompletionPlanDuration - duration) < 0.05 &&
-        Math.abs(state.lastCompletionPlanRate - playbackRate) < 0.001) {
-      return true;
-    }
-
-    state.lastCompletionPlanTime = currentTime;
-    state.lastCompletionPlanDuration = duration;
-    state.lastCompletionPlanRate = playbackRate;
-    const remainingMs = Math.max(
-        0, Math.round(((duration - currentTime) / playbackRate) * 1000));
-    postFields('spotify:timed-plan', String(remainingMs));
-    return true;
-  };
 
   // Observer responsibility is detection only. Once the requested generation
   // has really started, a different identifiable track requests native recovery
@@ -176,7 +120,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       // previous document. Only enforce after this generation started once.
       if (!state.startPosted) return 'unknown';
       stopHeartbeatIfAvailable();
-      clearCompletionPlan();
       state.started = false;
       state.targetMedia = null;
       state.heartbeatTime = -1;
@@ -206,7 +149,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     if (!state.startPosted) {
       state.startPosted = true;
       post('spotify:timed-started');
-      postCompletionPlan(media);
     }
     startHeartbeatIfAvailable();
     return 'playing';
@@ -223,7 +165,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       return false;
     }
     state.recoveryPosted = true;
-    clearCompletionPlan();
     stopHeartbeatIfAvailable();
     post('spotify:not-playing');
     return true;
@@ -274,9 +215,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     requestRecovery,
     scheduleTargetChecks,
     scheduleRecovery,
-    postCompletionPlan,
-    clearCompletionPlan,
-    probeCompletion: null,
     eventsInstalled: false,
     heartbeatTimer: 0,
     startHeartbeat: null,
@@ -293,11 +231,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
         syncTarget();
       } else if (fields[0] === 'spotify:target') {
         syncTarget();
-      } else if (fields[0] === 'spotify:completion-probe' &&
-                 (fields[1] || '0') === generation()) {
-        if (typeof runtime.probeCompletion === 'function') {
-          runtime.probeCompletion();
-        }
       }
     });
   }
