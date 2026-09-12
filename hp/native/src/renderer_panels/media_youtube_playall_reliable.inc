@@ -1,8 +1,6 @@
-// Reliable YouTube playlist startup. The visible Play all control is not a
-// stable API and can be delayed or reshaped by YouTube experiments, so startup
-// navigates the first item while preserving the playlist context. Returning
-// null intentionally keeps the native 500 ms probe alive until navigation to
-// /watch completes.
+// Exceptional fallback for YouTube playlist startup. Normal startup is resolved
+// in the cloud and lands directly on /watch. If the cloud cannot resolve the
+// playlist, this page-local fallback navigates item 1 without clicking Play all.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
 (() => {
@@ -10,22 +8,12 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
       location.hostname !== 'youtube.com') return null;
   if (!location.pathname.startsWith('/playlist')) return null;
 
-  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const playlistId = new URL(location.href).searchParams.get('list') || '';
   const startupState = window.__homePanelYoutubePlaylistStartupState ||
       (window.__homePanelYoutubePlaylistStartupState = {
         since: Date.now(),
         initialDataScanAt: 0,
       });
-  const visible = element => {
-    if (!element || element.disabled ||
-        element.getAttribute('aria-disabled') === 'true' ||
-        element.getAttribute('aria-hidden') === 'true') return false;
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
-  };
   const normalizeWatchHref = href => {
     if (!href) return '';
     try {
@@ -53,8 +41,6 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
     }
   };
 
-  // The playlist item link is materially more stable than the Play all button.
-  // Starting item 1 with the same list parameter has the same playback result.
   const firstItem = Array.from(document.querySelectorAll(
       'ytd-playlist-video-renderer a#thumbnail[href*="/watch"], '
       + 'ytd-playlist-video-renderer a#video-title[href*="/watch"], '
@@ -68,10 +54,6 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
     }
   }
 
-  // On slower machines Polymer can take several seconds to materialize the
-  // playlist DOM even though ytInitialData already contains the playlist item.
-  // Scan that bootstrap data at most once every 1.5 seconds and navigate by
-  // video id so startup does not depend on layout/viewport timing.
   const now = Date.now();
   if (window.ytInitialData &&
       now - Number(startupState.initialDataScanAt || 0) >= 1500) {
@@ -95,25 +77,12 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
     } catch (_) {}
   }
 
-  // During very early rendering the item list may not exist yet. Nudge the
-  // semantic Play all control if it is already present, but never treat finding
-  // it as success; the native probe keeps retrying until /watch.
-  const textOf = element => normalize([
-    element?.getAttribute?.('aria-label'),
-    element?.getAttribute?.('title'),
-    element?.textContent
-  ].filter(Boolean).join(' '));
-  const playAll = Array.from(document.querySelectorAll(
-      'button, a, tp-yt-paper-button, yt-button-shape button, [role="button"]'))
-      .find(element => {
-        if (!visible(element)) return false;
-        const text = textOf(element);
-        return /(?:^|\s)(?:すべて再生(?:する)?|全て再生(?:する)?)(?:\s|$|[:：])/i
-                   .test(text) ||
-               /(?:^|\s)play all(?:\s|$|[:：])/i.test(text);
-      }) || null;
-  if (playAll) {
-    try { playAll.click(); } catch (_) {}
+  // Never press a layout-dependent Play all control. If this exceptional
+  // fallback page cannot expose item 1, return to the cloud resolver before the
+  // native fixed-coordinate legacy backstop can fire.
+  if (now - Number(startupState.since || now) >= 7000) {
+    location.assign(
+        'https://homepanel-cloud.tarematsu.workers.dev/v1/native/youtube-start');
   }
   return null;
 })()
