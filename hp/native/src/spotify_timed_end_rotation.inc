@@ -167,28 +167,21 @@ void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
     if (slot.timedCompletionDeadlineTick == 0) continue;
     if (slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
         slot.timedTarget != TimedSpotifyTarget::Music ||
-        !slot.timedRotationActive || !slot.webview) {
+        !slot.timedRotationActive) {
       slot.timedCompletionDeadlineTick = 0;
       slot.timedCompletionDeadlineGeneration = 0;
       continue;
     }
     if (slot.timedCompletionDeadlineTick > now) continue;
 
-    std::wstring message = L"spotify:completion-probe";
-    message.push_back(kSpotifyMessageSeparator);
-    message.append(std::to_wstring(slot.targetGeneration));
-    const HRESULT posted = slot.webview->PostWebMessageAsString(message.c_str());
-    if (SUCCEEDED(posted)) {
-      // The WebView either confirms completion or sends one fresh remaining-time
-      // plan. Clearing first prevents a hot retry loop while that message is in
-      // transit through WebView2.
-      slot.timedCompletionDeadlineTick = 0;
-      slot.timedCompletionDeadlineGeneration = 0;
-    } else {
-      // A failed cross-process post is retried by the same shared scheduler, not
-      // by a new per-slot timer.
-      slot.timedCompletionDeadlineTick = now + 1000ULL;
-    }
+    // The first valid playback plan for this generation is the authoritative
+    // native completion clock. Do not ask Spotify whether it considers the
+    // track ended: the Web Player can recycle the same media element back to
+    // zero and begin A again before emitting a reliable terminal event.
+    slot.timedCompletionDeadlineTick = 0;
+    slot.timedCompletionDeadlineGeneration = 0;
+    slot.timedPlaybackStartTick = 0;
+    AdvanceTimedRotationSlot(slot, now);
   }
 }
 
@@ -243,25 +236,33 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                     !target->timedRotationActive) {
                   return S_OK;
                 }
-                const ULONGLONG untilProbe = remainingMs > kSpotifyCompletionProbeLeadMs
-                    ? remainingMs - kSpotifyCompletionProbeLeadMs
-                    : 0ULL;
-                target->timedCompletionDeadlineTick = now + untilProbe;
-                target->timedCompletionDeadlineGeneration = eventGeneration;
-                ArmRobustScheduler();
+                const ULONGLONG candidateDeadline =
+                    now + std::max<ULONGLONG>(remainingMs, 1ULL);
+                if (target->timedCompletionDeadlineTick == 0 ||
+                    target->timedCompletionDeadlineGeneration != eventGeneration ||
+                    candidateDeadline < target->timedCompletionDeadlineTick) {
+                  // Arm from the first plan and only allow a later observation
+                  // to move the deadline earlier. A repeat rewind to 0 reports a
+                  // full new duration, so it cannot postpone A -> B.
+                  target->timedCompletionDeadlineTick = candidateDeadline;
+                  target->timedCompletionDeadlineGeneration = eventGeneration;
+                  ArmRobustScheduler();
+                }
                 return S_OK;
               }
 
               if (planCleared) {
-                target->timedCompletionDeadlineTick = 0;
-                target->timedCompletionDeadlineGeneration = 0;
-                ArmRobustScheduler();
+                // Pause/seek/stall only invalidates the WebView's local estimate.
+                // Once native has armed this generation, its completion clock is
+                // intentionally never cleared by Spotify lifecycle events.
                 return S_OK;
               }
 
               if (started) {
                 SetSlotState(*target, SlotState::Playing);
-                target->timedPlaybackStartTick = now;
+                if (target->timedPlaybackStartTick == 0) {
+                  target->timedPlaybackStartTick = now;
+                }
                 target->unhealthySinceTick = 0;
                 RecomputeForeground();
                 ArmRobustScheduler();
@@ -276,6 +277,8 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               }
 
               if (ended) {
+                // A real ended event may advance slightly before the native
+                // deadline. Generation fencing makes the later timer harmless.
                 AdvanceTimedRotationSlot(*target, now);
                 return S_OK;
               }
