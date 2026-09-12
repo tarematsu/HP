@@ -14,6 +14,8 @@ const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
+const lifecycle = readFileSync(
+  new URL('../../native/src/spotify_host_lifecycle.inc', import.meta.url), 'utf8');
 
 test('each Spotify slot owns a generation-fenced completion deadline', () => {
   assert.match(header, /ULONGLONG timedCompletionDeadlineTick = 0/);
@@ -23,13 +25,18 @@ test('each Spotify slot owns a generation-fenced completion deadline', () => {
   assert.match(rotation, /timedCompletionDeadlineGeneration = eventGeneration/);
 });
 
-test('WebView publishes remaining time and native arms an authoritative deadline', () => {
-  assert.match(completion, /postFields\('spotify:timed-plan', String\(remainingMs\)\)/);
-  assert.match(rotation, /const ULONGLONG candidateDeadline =\s*now \+ std::max<ULONGLONG>\(remainingMs, 1ULL\)/);
+test('WebView publishes a projected end time and native compensates delivery delay', () => {
+  assert.match(
+    completion,
+    /postFields\([\s\S]*'spotify:timed-plan',[\s\S]*String\(remainingMs\),[\s\S]*String\(state\.lastCompletionPlanDeadlineAt\)/,
+  );
+  assert.match(rotation, /ULONGLONG projectedEndUnixMs = 0/);
+  assert.match(rotation, /SpotifySystemUnixMillisecondsNow\(\)/);
+  assert.match(rotation, /projectedEndUnixMs <= wallNow/);
+  assert.match(rotation, /std::min\(effectiveRemainingMs, wallRemaining\)/);
+  assert.match(rotation, /const ULONGLONG candidateDeadline =\s*now \+ std::max<ULONGLONG>\(effectiveRemainingMs, 1ULL\)/);
   assert.match(rotation, /target->timedCompletionDeadlineTick == 0/);
   assert.match(rotation, /candidateDeadline < target->timedCompletionDeadlineTick/);
-  assert.doesNotMatch(rotation, /kSpotifyCompletionProbeLeadMs/);
-  assert.doesNotMatch(phase, /kSpotifyCompletionProbeLeadMs/);
 });
 
 test('due native deadline advances the rotation without asking Spotify again', () => {
@@ -42,6 +49,7 @@ test('due native deadline advances the rotation without asking Spotify again', (
 
   assert.match(due, /timedCompletionDeadlineTick > now/);
   assert.match(due, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(due, /ArmCompletionDeadlineTimer\(\)/);
   assert.doesNotMatch(due, /spotify:completion-probe/);
   assert.doesNotMatch(due, /PostWebMessageAsString/);
   assert.doesNotMatch(due, /slot\.webview/);
@@ -55,6 +63,7 @@ test('same-generation repeat rewind cannot postpone A to B', () => {
 
   assert.match(plan, /candidateDeadline < target->timedCompletionDeadlineTick/);
   assert.match(plan, /timedCompletionDeadlineTick = candidateDeadline/);
+  assert.match(plan, /ArmCompletionDeadlineTimer\(\)/);
   assert.doesNotMatch(plan, /timedCompletionDeadlineTick = now \+ remainingMs/);
 
   const clearStart = rotation.indexOf('if (planCleared) {');
@@ -71,10 +80,21 @@ test('real ended remains an early fallback but is not required for progress', ()
   assert.match(rotation, /first valid playback plan[\s\S]*authoritative[\s\S]*completion clock/i);
 });
 
-test('one shared adaptive timer wakes for the earliest of six independent deadlines', () => {
+test('threadpool timer is the primary completion wake-up under six-WebView load', () => {
+  assert.match(header, /PTP_TIMER completionDeadlineTimer_ = nullptr/);
+  assert.match(header, /CompletionDeadlineTimerProc/);
+  assert.match(phase, /CreateThreadpoolTimer/);
+  assert.match(phase, /SetThreadpoolTimer\(completionDeadlineTimer_, &due, 0, 0\)/);
+  assert.match(phase, /PostMessageW\(host, kSpotifyCompletionDeadlineMessage, 0, 0\)/);
+  assert.match(lifecycle, /message == kSpotifyCompletionDeadlineMessage/);
+  assert.match(lifecycle, /ProbeDueTimedCompletions\(GetTickCount64\(\)\)/);
+  assert.match(lifecycle, /WaitForThreadpoolTimerCallbacks\(completionDeadlineTimer_, TRUE\)/);
+  assert.match(lifecycle, /CloseThreadpoolTimer\(completionDeadlineTimer_\)/);
+});
+
+test('WM_TIMER remains only a fallback scheduler, not the sole completion clock', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(phase, /slot\.timedCompletionDeadlineTick - now/);
-  assert.match(phase, /std::min\([\s\S]*timedCompletionDeadlineTick - now/);
+  assert.match(phase, /threadpool timer is the primary completion wake-up/i);
   assert.match(phase, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
   assert.match(schedule, /ProbeDueTimedCompletions\(now\)/);
   assert.doesNotMatch(rotation, /SetTimer\(/);

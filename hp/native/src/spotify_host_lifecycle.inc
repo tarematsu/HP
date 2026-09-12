@@ -62,6 +62,8 @@ void SpotifyWebViews::Start() noexcept {
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
     slot.timedPlaybackStartTick = 0;
+    slot.timedCompletionDeadlineTick = 0;
+    slot.timedCompletionDeadlineGeneration = 0;
     slot.timedRandomFIndex = kNoTimedCatalogIndex;
     slot.timedMiddleOrder = {
         TimedSpotifyTarget::BitterBlue,
@@ -148,6 +150,8 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.timedObserverInstallStartedTick = 0;
   slot.trustedClickTargetGeneration = 0;
   slot.trustedClickBlockedUntilTick = 0;
+  slot.timedCompletionDeadlineTick = 0;
+  slot.timedCompletionDeadlineGeneration = 0;
   slot.state = SlotState::NotCreated;
   slot.unhealthySinceTick = 0;
   slot.playerPage = false;
@@ -161,6 +165,12 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
 void SpotifyWebViews::Shutdown() noexcept {
   if (!started_) return;
   started_ = false;
+  if (completionDeadlineTimer_) {
+    SetThreadpoolTimer(completionDeadlineTimer_, nullptr, 0, 0);
+    WaitForThreadpoolTimerCallbacks(completionDeadlineTimer_, TRUE);
+    CloseThreadpoolTimer(completionDeadlineTimer_);
+    completionDeadlineTimer_ = nullptr;
+  }
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
   robustSchedulerStarted_ = false;
@@ -178,6 +188,15 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(slot));
   }
   if (slot) {
+    if (message == kSpotifyCompletionDeadlineMessage && slot->index == 0 &&
+        slot->owner) {
+      SpotifyWebViews* const owner = slot->owner;
+      if (owner->started_) {
+        owner->ProbeDueTimedCompletions(GetTickCount64());
+        owner->ArmRobustScheduler();
+      }
+      return 0;
+    }
     if (message == WM_SIZE && slot->controller) {
       RECT client{};
       GetClientRect(hwnd, &client);
