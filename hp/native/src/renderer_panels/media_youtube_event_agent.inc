@@ -17,6 +17,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   if (existing) {
     try { existing.playerObserver?.disconnect(); } catch (_) {}
     try { existing.classObserver?.disconnect(); } catch (_) {}
+    try { existing.popupObserver?.disconnect(); } catch (_) {}
     try { if (existing.wakeTimer) clearTimeout(existing.wakeTimer); } catch (_) {}
   }
 
@@ -29,6 +30,8 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     pendingWakeSignature: '',
     playerObserver: null,
     classObserver: null,
+    popupObserver: null,
+    dialogCloseAt: 0,
   };
   window.__homePanelYoutubeEventAgent = state;
 
@@ -50,6 +53,50 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     'ytd-survey-renderer',
     '[role="dialog"]'
   ].join(',');
+  const messageDialogSelector = [
+    'tp-yt-paper-dialog[opened]',
+    '[role="dialog"]:not([aria-hidden="true"])',
+    'yt-confirm-dialog-renderer',
+    'ytd-confirm-dialog-renderer'
+  ].join(',');
+  const messageControlSelector =
+      'button, tp-yt-paper-button, [role="button"], [aria-label], [title]';
+  const closePattern = /^(閉じる|close)$/i;
+  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+  const controlText = element => {
+    for (const value of [
+        element?.getAttribute?.('aria-label'),
+        element?.getAttribute?.('title'),
+        element?.textContent]) {
+      const normalized = normalize(value);
+      if (normalized) return normalized;
+    }
+    return '';
+  };
+  const isSurveyDialog = root => Boolean(
+      root?.matches?.('.ytp-ad-survey, .ytp-ad-feedback-dialog, '
+          + 'yt-survey-renderer, ytd-survey-renderer') ||
+      root?.closest?.('.ytp-ad-survey, .ytp-ad-feedback-dialog, '
+          + 'yt-survey-renderer, ytd-survey-renderer'));
+  const dismissMessageDialog = () => {
+    const now = Date.now();
+    if (now - state.dialogCloseAt < 500) return false;
+    const scopes = [player, document.querySelector('ytd-popup-container')]
+        .filter(Boolean);
+    for (const scope of scopes) {
+      for (const root of scope.querySelectorAll(messageDialogSelector)) {
+        if (!root.getClientRects().length || isSurveyDialog(root)) continue;
+        const close = Array.from(root.querySelectorAll(messageControlSelector))
+            .find(element => element.getClientRects().length &&
+                closePattern.test(controlText(element)));
+        if (!close) continue;
+        state.dialogCloseAt = now;
+        try { close.click(); } catch (_) {}
+        return true;
+      }
+    }
+    return false;
+  };
 
   const signature = () => {
     const video = state.video || player.querySelector('video');
@@ -115,7 +162,8 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   const interestingSelector = [
     'video',
     skipSelector,
-    surveySelector
+    surveySelector,
+    messageDialogSelector
   ].join(',');
 
   if (typeof MutationObserver === 'function') {
@@ -135,7 +183,8 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
       }
       if (!interesting) return;
       bindVideo();
-      wake();
+      if (dismissMessageDialog()) wake(true);
+      else wake();
     });
     state.playerObserver.observe(player, { childList: true, subtree: true });
 
@@ -146,12 +195,28 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
       attributes: true,
       attributeFilter: ['class']
     });
+
+    // Message windows are rendered in YouTube's dedicated popup host. Observe
+    // only that host; do not add a page-wide MutationObserver.
+    const popupContainer = document.querySelector('ytd-popup-container');
+    if (popupContainer) {
+      state.popupObserver = new MutationObserver(() => {
+        if (dismissMessageDialog()) wake(true);
+      });
+      state.popupObserver.observe(popupContainer, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['opened', 'aria-hidden']
+      });
+    }
   }
 
   document.addEventListener('fullscreenchange', () => wake(), true);
   document.addEventListener('webkitfullscreenchange', () => wake(), true);
   bindVideo();
-  wake(true);
+  if (dismissMessageDialog()) wake(true);
+  else wake(true);
   return true;
 })()
 )JS";
