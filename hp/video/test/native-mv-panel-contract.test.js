@@ -152,11 +152,16 @@ test('TVer ads are isolated to Skip and one-shot fullscreen automation', () => {
   assert.doesNotMatch(branch, /video\.play\(|video\.volume|playbackRate|surveyRoots/);
 });
 
-test('TVer completion reuses the existing controller with native next-episode navigation', () => {
+test('TVer completion reuses the existing controller through the host navigation path', () => {
   assert.match(mediaWrapper, /message == L"homepanel:tver-ended"/);
   assert.match(mediaWrapper, /NativeMediaTverAdvanceEpisode\(source\)/);
-  assert.match(mediaWrapper, /sender->Navigate\(next\.c_str\(\)\)/);
+  assert.match(
+    mediaWrapper,
+    /PostMessageW\(hostWindow, WM_TIMER,\s*kNativeMediaNavigationRetryTimer, 0\)/,
+  );
   assert.match(mediaHost, /NativeMediaTverCurrentEpisodeUrl\(hostWindow_, alive_\)/);
+  assert.match(mediaHost, /webview_->Navigate\(url\.c_str\(\)\)/);
+  assert.doesNotMatch(mediaWrapper, /sender->Navigate/);
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });
 
