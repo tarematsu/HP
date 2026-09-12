@@ -14,29 +14,28 @@ const rotation = source('spotify_timed_end_rotation.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
-test('zero-second target media observes real play() settlement before UI fallback', () => {
+test('zero-second recovery uses only explicit Spotify Play-labelled controls', () => {
   assert.match(scoped, /const mediaPlaybackState = \(\) =>/);
   assert.match(scoped, /candidate\.tagName === 'AUDIO'/);
-  assert.match(scoped, /const requestMediaStart = media =>/);
-  assert.match(scoped, /__homePanelSpotifyPlayAttempt/);
-  assert.match(scoped, /const promise = media\.play\(\)/);
-  assert.match(scoped, /promise\.then\(\(\) =>/);
-  assert.match(scoped, /\.catch\(\(\) =>/);
-  assert.match(scoped, /attempt\.state = 'rejected'/);
-  assert.match(scoped, /now - attempt\.at < 15000/);
+  assert.doesNotMatch(scoped, /requestMediaStart|__homePanelSpotifyPlayAttempt/);
+  assert.doesNotMatch(scoped, /\.play\s*\(/);
+  assert.match(scoped, /HTMLMediaElement\.play\(\) bypasses Spotify's own state machine/);
 
-  const directStart = scoped.indexOf(
-    'if (currentMatchesTarget && mediaState.known && !mediaState.playing) {',
-  );
   const pauseUi = scoped.indexOf(
     "if (controlIntent === 'pause' || buttonIntentValue === 'pause')",
   );
-  assert.ok(directStart >= 0 && pauseUi > directStart);
-  const startBranch = scoped.slice(directStart, pauseUi);
-  assert.match(startBranch, /const mediaStart = requestMediaStart\(mediaState\.media\)/);
-  assert.match(startBranch, /mediaStart === 'pending'/);
-  assert.match(startBranch, /return 'starting'/);
-  assert.doesNotMatch(startBranch, /return 'starting'[\s\S]*mediaStart === 'rejected'/);
+  const rowPlay = scoped.indexOf(
+    "if (buttonIntentValue === 'play') return point(button);",
+    pauseUi,
+  );
+  const playerPlay = scoped.indexOf(
+    "if (currentMatchesTarget && controlIntent === 'play') return point(control);",
+    rowPlay,
+  );
+  assert.ok(pauseUi >= 0 && rowPlay > pauseUi && playerPlay > rowPlay);
+  const recovery = scoped.slice(pauseUi, playerPlay + 100);
+  assert.match(recovery, /return 'settling'/);
+  assert.doesNotMatch(recovery, /media\.play|\.click\(\)/);
 });
 
 test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
@@ -50,7 +49,7 @@ test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
   assert.ok(playingGate >= 0 && shuffle > playingGate && repeat > shuffle);
 });
 
-test('native starting and settling states wait or renavigate without ambiguous toggle clicks', () => {
+test('native settling recovery waits or renavigates without ambiguous toggle clicks', () => {
   const start = music.indexOf(
     'if (json && (std::wstring_view(json) == L"\\"starting\\""',
   );
