@@ -14,9 +14,17 @@ function jobSection(source, name, nextName) {
   return source.slice(start, end);
 }
 
+function triggerPaths(source, name, nextName) {
+  const trigger = source.slice(0, source.indexOf('\npermissions:'));
+  const start = trigger.indexOf(`  ${name}:\n`);
+  assert.notEqual(start, -1, `${name} trigger must exist`);
+  const end = trigger.indexOf(`  ${nextName}:\n`, start + 1);
+  assert.notEqual(end, -1, `${nextName} trigger must exist after ${name}`);
+  return [...trigger.slice(start, end).matchAll(/^      - '([^']+)'$/gm)].map((match) => match[1]);
+}
+
 const ci = workflow('ci.yml');
 const homePanelCi = workflow('homepanel-unified-ci.yml');
-const videoCi = workflow('video-ci.yml');
 const nativeBuild = workflow('native-windows-build.yml');
 const productionDeploy = workflow('deploy-split-pipeline.yml');
 const d1Usage = workflow('fetch-cloudflare-d1-usage.yml');
@@ -84,14 +92,23 @@ test('CI trigger paths stay inside the Stationhead boundary', () => {
   assert.doesNotMatch(trigger, /hp\/\*\*/);
 });
 
-test('HomePanel CI selects folder-scoped checks and keeps full validation off the PR path', () => {
+test('HomePanel CI uses the same scoped checks on pull requests and main', () => {
   const trigger = homePanelCi.slice(0, homePanelCi.indexOf('\npermissions:'));
+  assert.match(trigger, /^  push:\n/m);
+  assert.match(trigger, /^    branches:\n      - main$/m);
+  assert.match(trigger, /^  pull_request:\n/m);
+  assert.deepEqual(
+    triggerPaths(homePanelCi, 'push', 'pull_request'),
+    triggerPaths(homePanelCi, 'pull_request', 'workflow_dispatch'),
+  );
   assert.match(trigger, /hp\/cloud\/src\/\*\*/);
   assert.match(trigger, /hp\/cloud\/test\/\*\*/);
   assert.match(trigger, /hp\/video\/src\/\*\*/);
+  assert.match(trigger, /hp\/video\/migrations\/\*\*/);
+  assert.match(trigger, /hp\/video\/test\/\*\*/);
+  assert.match(trigger, /hp\/video\/scripts\/\*\*/);
   assert.match(trigger, /tests\/cloudflare-\*\.test\.mjs/);
   assert.doesNotMatch(trigger, /hp\/cloud\/\*\*/);
-  assert.doesNotMatch(trigger, /^  push:\n/m);
 
   assert.match(homePanelCi, /^  changes:\n/m);
   assert.match(homePanelCi, /needs\.changes\.outputs\.cloud == 'true'/);
@@ -100,23 +117,16 @@ test('HomePanel CI selects folder-scoped checks and keeps full validation off th
   assert.match(homePanelCi, /needs\.changes\.outputs\.contracts == 'true'/);
   assert.match(homePanelCi, /needs\.changes\.outputs\.integration == 'true'/);
   assert.match(homePanelCi, /needs\.changes\.outputs\.migrations == 'true'/);
+  assert.match(homePanelCi, /github\.event\.pull_request\.base\.sha \|\| github\.event\.before/);
   assert.match(homePanelCi, /\.github\/scripts\/ci\/select-scopes\.mjs homepanel/);
+  assert.match(homePanelCi, /npm run check --workspace video/);
+  assert.match(homePanelCi, /npm test --workspace video/);
   assert.match(homePanelCi, /npm run test:ci/);
   assert.match(homePanelCi, /github\.event_name == 'workflow_dispatch'/);
   assert.equal(
     homePanelPackage.scripts['test:ci'],
     "vitest run --exclude='test/**/*.integration.test.ts' --reporter=dot",
   );
-});
-
-test('Video CI ignores documentation-only changes', () => {
-  const trigger = videoCi.slice(0, videoCi.indexOf('\npermissions:'));
-  assert.match(trigger, /hp\/video\/src\/\*\*/);
-  assert.match(trigger, /hp\/video\/public\/\*\*/);
-  assert.match(trigger, /hp\/video\/migrations\/\*\*/);
-  assert.match(trigger, /hp\/video\/test\/\*\*/);
-  assert.match(trigger, /hp\/video\/scripts\/\*\*/);
-  assert.doesNotMatch(trigger, /hp\/video\/\*\*/);
 });
 
 test('Native main releases queue without pending-run replacement', () => {

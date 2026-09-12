@@ -53,6 +53,22 @@ test('HomePanel video and contract changes stay in separate scopes', () => {
     integration: false,
     migrations: false,
   });
+  assert.deepEqual(selectHomePanelScopes(['hp/video/migrations/0001_example.sql']), {
+    cloud: false,
+    video: true,
+    bundle: false,
+    contracts: false,
+    integration: false,
+    migrations: false,
+  });
+  assert.deepEqual(selectHomePanelScopes(['hp/video/.ci-full-trigger']), {
+    cloud: false,
+    video: true,
+    bundle: true,
+    contracts: false,
+    integration: false,
+    migrations: false,
+  });
   assert.deepEqual(selectHomePanelScopes(['.github/scripts/audit-cloudflare-daily-usage.py']), {
     cloud: false,
     video: false,

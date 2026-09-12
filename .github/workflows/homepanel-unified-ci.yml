@@ -1,6 +1,51 @@
 name: HomePanel unified Worker CI
+# Pull requests and main intentionally use the same path filters and validation job.
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'hp/package.json'
+      - 'hp/package-lock.json'
+      - 'hp/cloud/src/**'
+      - 'hp/cloud/test/**'
+      - 'hp/cloud/migrations/**'
+      - 'hp/cloud/scripts/**'
+      - 'hp/cloud/package.json'
+      - 'hp/cloud/tsconfig.json'
+      - 'hp/cloud/vitest.config.ts'
+      - 'hp/cloud/wrangler.jsonc'
+      - 'hp/cloud/wrangler.test.jsonc'
+      - 'hp/cloud/.ci-full-trigger'
+      - 'hp/video/src/**'
+      - 'hp/video/public/**'
+      - 'hp/video/migrations/**'
+      - 'hp/video/test/**'
+      - 'hp/video/scripts/**'
+      - 'hp/video/package.json'
+      - 'hp/video/.ci-full-trigger'
+      - '.github/actions/cloudflare-context/action.yml'
+      - '.github/actions/cloudflare-observability-diagnostics/action.yml'
+      - '.github/scripts/audit-cloudflare-daily-usage.py'
+      - '.github/scripts/audit-cloudflare-d1-history.py'
+      - '.github/scripts/audit-cloudflare-free-tier.py'
+      - '.github/scripts/audit-observability-budget-gates.py'
+      - '.github/scripts/audit-cloudflare-telemetry.py'
+      - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
+      - '.github/scripts/query-cloudflare-d1-costs.py'
+      - '.github/scripts/resolve-cloudflare-account.mjs'
+      - '.github/scripts/resolve-cloudflare-config.mjs'
+      - '.github/scripts/observability-*.mjs'
+      - '.github/scripts/publish-cloudflare-observability-status.mjs'
+      - '.github/workflows/cloud-deploy.yml'
+      - '.github/workflows/sh-observability.yml'
+      - '.github/workflows/homepanel-unified-ci.yml'
+      - '.github/scripts/ci/select-scopes.mjs'
+      - 'tests/cloudflare-*.test.mjs'
+      - 'tests/helpers/source-contract.mjs'
+      - 'tests/homepanel-*.test.mjs'
+      - 'tests/observability-*.test.mjs'
   pull_request:
     paths:
       - 'hp/package.json'
@@ -17,7 +62,11 @@ on:
       - 'hp/cloud/.ci-full-trigger'
       - 'hp/video/src/**'
       - 'hp/video/public/**'
+      - 'hp/video/migrations/**'
+      - 'hp/video/test/**'
+      - 'hp/video/scripts/**'
       - 'hp/video/package.json'
+      - 'hp/video/.ci-full-trigger'
       - '.github/actions/cloudflare-context/action.yml'
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
@@ -70,15 +119,22 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
             node .github/scripts/ci/select-scopes.mjs homepanel --all
           else
-            git diff --name-only "$BASE_SHA" "$HEAD_SHA" |
-              node .github/scripts/ci/select-scopes.mjs homepanel
+            if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+              BASE_SHA="$(git rev-parse "$HEAD_SHA^" 2>/dev/null || true)"
+            fi
+            if [[ -z "$BASE_SHA" ]]; then
+              node .github/scripts/ci/select-scopes.mjs homepanel --all
+            else
+              git diff --name-only "$BASE_SHA" "$HEAD_SHA" |
+                node .github/scripts/ci/select-scopes.mjs homepanel
+            fi
           fi
 
   validate:
@@ -119,6 +175,17 @@ jobs:
         if: needs.changes.outputs.cloud == 'true' || needs.changes.outputs.video == 'true'
         working-directory: hp
         run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Validate HomePanel video
+        if: needs.changes.outputs.video == 'true'
+        working-directory: hp
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            npm run check --workspace video
+            npm test --workspace video
+          } 2>&1 | tee video/validation.log
 
       - name: Check HomePanel sources
         if: needs.changes.outputs.cloud == 'true'
@@ -169,6 +236,7 @@ jobs:
           name: homepanel-unified-validation-output-${{ github.run_id }}
           path: |
             observability-contracts.log
+            hp/video/validation.log
             hp/cloud/source-check.log
             hp/cloud/test.log
             hp/cloud/d1-validation.log
