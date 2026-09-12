@@ -66,15 +66,18 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
     postFields('spotify:timed-plan', String(remainingMs));
     return true;
   };
-  const completionPlanExpired = () => {
+  const completionPlanDue = (leadMs = 0) => {
     const deadlineAt = Number(state.lastCompletionPlanDeadlineAt);
+    const lead = Number(leadMs);
     return Number.isFinite(deadlineAt) && deadlineAt >= 0 &&
-        Date.now() >= deadlineAt;
+        Date.now() + (Number.isFinite(lead) && lead > 0 ? lead : 0) >= deadlineAt;
   };
+  const completionPlanExpired = () => completionPlanDue();
 
   resetPlanState();
   runtime.postCompletionPlan = postCompletionPlan;
   runtime.clearCompletionPlan = clearCompletionPlan;
+  runtime.completionPlanDue = completionPlanDue;
   runtime.completionPlanExpired = completionPlanExpired;
   runtime.probeCompletion = null;
 
