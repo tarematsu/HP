@@ -30,16 +30,21 @@ test('cloud resolves TALKABOUT latest episode and persists it into normal device
   assert.match(deviceSync, /WHERE device_id=\?1 AND version=\?5/);
 });
 
-test('device sync migrates the managed legacy Spotify rotation to seven slots', () => {
+test('device sync migrates managed Spotify rotations to the six-slot layout', () => {
   assert.match(deviceSync, /LEGACY_SPOTIFY_RANDOM_TRACK_IDS/);
   assert.match(deviceSync, /LEGACY_SPOTIFY_MIDDLE_TRACK_IDS/);
   assert.match(deviceSync, /MANAGED_SPOTIFY_RANDOM_TRACK_IDS/);
   assert.match(deviceSync, /SHORT_SPOTIFY_RANDOM_TRACKS/);
   assert.match(deviceSync, /isManagedRandomPool/);
+  assert.match(deviceSync, /isManagedSevenSlotRotation/);
+  assert.match(deviceSync, /SPOTIFY_B_ROTATION_TRACKS/);
+  assert.match(deviceSync, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
+  assert.match(deviceSync, /SHORT_SPOTIFY_ROTATION_TRACKS/);
   assert.match(deviceSync, /migrateManagedSpotifyRotation\(config\)/);
   assert.match(deviceSync, /spotify\.rotation = managedSpotifySevenSlotRotation\(\)/);
   assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
+  assert.match(randomCatalog, /紋白蝶が確か飛んでた/);
   assert.match(randomCatalog, /includeTalkAbout: true/);
   assert.match(randomCatalog, /managedSpotifySevenSlotRotation/);
 });
@@ -54,7 +59,7 @@ test('native consumes only the cloud-resolved direct episode URL', () => {
   assert.doesNotMatch(timed, /source\.find\(L"\/episode\/"\)/);
 });
 
-test('G omits TALKABOUT when no direct latest episode is synchronized', () => {
+test('F omits TALKABOUT when no direct latest episode is synchronized', () => {
   assert.doesNotMatch(scripts, /latestEpisodeButton|a\[href\*="\/episode\/"\]/);
   assert.match(scripts, /target\.pagePath\.startsWith\('\/episode\/'\)/);
   assert.match(scripts, /location\.pathname !== target\.pagePath/);

@@ -19,10 +19,12 @@ const rotation = readFileSync(
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 
-test('cloud owns the requested seven-position Spotify rotation', () => {
+test('cloud owns the requested six-position Spotify rotation', () => {
   assert.match(catalog, /function managedSpotifySevenSlotRotation/);
   assert.match(catalog, /Lonesome Rabbit/);
   assert.match(catalog, /放課後BitterBlue/);
+  assert.match(catalog, /紋白蝶が確か飛んでた/);
+  assert.match(catalog, /6VIY7OFy8g5ZyLSgQEi8lV/);
   assert.match(catalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(catalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.match(catalog, /SHORT_SPOTIFY_ROTATION_TRACKS/);
@@ -52,7 +54,7 @@ test('C slot includes Overture and all seven Interludes', () => {
   }
 });
 
-test('E/F/G short-song pool includes every verified short OFF VOCAL track', () => {
+test('F short-song pool includes every verified short OFF VOCAL track', () => {
   assert.match(
     catalog,
     /SHORT_SPOTIFY_ROTATION_TRACKS\s*=\s*\[\s*\.\.\.SHORT_SPOTIFY_RANDOM_TRACKS,\s*\.\.\.OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,/s,
@@ -72,7 +74,7 @@ test('E/F/G short-song pool includes every verified short OFF VOCAL track', () =
   ]) assert.match(catalog, new RegExp(id));
 });
 
-test('E/F/G short-song pool includes the ten additional verified vocal tracks', () => {
+test('F short-song pool includes the ten additional verified vocal tracks', () => {
   assert.match(catalog, /ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS/);
   assert.match(
     catalog,
@@ -100,7 +102,7 @@ test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(cycle, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
-test('G mixes short songs with latest TALKABOUT and no timed interrupt remains', () => {
+test('F mixes short songs with latest TALKABOUT and no timed interrupt remains', () => {
   assert.match(header, /bool includeTalkAbout = false/);
   assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
   assert.match(cycle, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
