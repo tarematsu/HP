@@ -70,8 +70,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const finishProjectedWrap = media => {
     const currentTime = Number(media.currentTime);
     if (!Number.isFinite(currentTime) || currentTime > 1.5 ||
-        typeof completionPlanDue !== 'function' ||
-        !completionPlanDue(completionGraceMs)) {
+        typeof completionPlanExpired !== 'function' ||
+        !completionPlanExpired()) {
       return false;
     }
     if (!finishTarget(media)) return false;
