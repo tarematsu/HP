@@ -64,8 +64,11 @@ LR"JS(
     return 'recovery';
   }
 
-  // Fullscreen is requested at most once per content video. If the page later
-  // leaves fullscreen, do not re-enter it until the video identity changes.
+  // Fullscreen remains a one-shot preference after YouTube confirms entry, but
+  // merely arming a trusted click is not success. The initial control can exist
+  // before YouTube is ready to accept the click, so leave fullscreenApplied
+  // false until the page actually reports fullscreen and let the 2-second
+  // recovery watchdog retry the real control when the first click is ignored.
   if (trusted.fullscreen()) {
     recoveryState.fullscreenApplied = true;
     return null;
@@ -79,8 +82,6 @@ LR"JS(
         .find(element => trusted.valid(element) &&
             fullscreenPattern.test(trusted.text(element))) || null;
   }
-  const fullscreenAction = trusted.arm(target, 'fullscreen', 1200);
-  if (fullscreenAction) recoveryState.fullscreenApplied = true;
-  return fullscreenAction;
+  return trusted.arm(target, 'fullscreen', 1200);
 })()
 )JS"
