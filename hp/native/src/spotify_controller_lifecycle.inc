@@ -154,10 +154,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                                   ICoreWebView2NavigationStartingEventArgs* args)
                 -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
-              // Navigation creates a new document generation. Any observer,
-              // reconcile result, or trusted click still arriving from the
-              // previous document must not mutate the new one.
-              BumpSpotifyTargetGeneration(*target);
+              // Navigation replaces the page document, not the requested
+              // rotation target. Keep targetGeneration stable so a Spotify
+              // redirect/reload cannot invalidate the native A -> B completion
+              // deadline. Only invalidate async work tied to the old document.
               ++target->reconcileRequestGeneration;
               if (target->reconcileRequestGeneration == 0) {
                 ++target->reconcileRequestGeneration;
@@ -169,6 +169,12 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 ++target->timedObserverInstallGeneration;
               }
               target->timedObserverInstallStartedTick = 0;
+              ++target->trustedClickGeneration;
+              if (target->trustedClickGeneration == 0) {
+                ++target->trustedClickGeneration;
+              }
+              target->trustedClickTargetGeneration = 0;
+              target->trustedClickBlockedUntilTick = 0;
               target->playerPage = false;
               target->loginPage = false;
               target->authenticationBadgeTick = 0;
