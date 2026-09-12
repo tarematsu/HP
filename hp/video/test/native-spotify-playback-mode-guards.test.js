@@ -54,8 +54,9 @@ test('healthy music stays renderable until shuffle and repeat are verified off',
   );
   assert.match(
     guards,
-    /target->shuffleOffVerified = true;[\s\S]*target->repeatOffVerified = true;[\s\S]*RefreshSpotifyHostLayout\(\)/,
+    /target->shuffleOffVerified = true;[\s\S]*target->repeatOffVerified = true;[\s\S]*PlaceHosts\(\)/,
   );
+  assert.match(guards, /RefreshSpotifyHostLayout\(\) can legitimately early-return/);
 });
 
 test('shuffle and repeat are inspected in one JavaScript round trip', () => {
