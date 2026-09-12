@@ -16,13 +16,18 @@ test('TVer event policy never owns program playback recovery', () => {
   assert.match(episode, /wakeNative\('recovery:' \+ recoveryFlags\.join\('\+'\)/);
 });
 
-test('paused TVer playback recovers through one trusted player click without direct media play', () => {
+test('paused TVer playback recovery is idempotent and never toggles the video surface', () => {
   assert.match(playbackPolicy, /if \(video\.paused && !video\.ended\)/);
-  assert.match(playbackPolicy, /const playButton = findPlayButton\(\)/);
-  assert.match(playbackPolicy, /return playButton \? point\(playButton\) : point\(video\)/);
-  assert.doesNotMatch(playbackPolicy, /video\.play\s*\(/);
-  assert.doesNotMatch(playbackPolicy, /__homePanelTverResumeBlocked/);
+  assert.match(playbackPolicy, /const pending = video\.play\(\)/);
+  assert.match(playbackPolicy, /pending\.catch\(\(\) => \{\}\)/);
+  assert.doesNotMatch(playbackPolicy, /point\(video\)/);
   assert.doesNotMatch(playbackPolicy, /video\.pause\s*\(/);
+  assert.doesNotMatch(playbackPolicy, /__homePanelTverResumeBlocked/);
+});
+
+test('TVer fullscreen recovery only targets an explicit fullscreen control', () => {
+  assert.match(playbackPolicy, /return fullscreenButton \? point\(fullscreenButton\) : null/);
+  assert.doesNotMatch(playbackPolicy, /fullscreenButton \? point\(fullscreenButton\) : point\(video\)/);
 });
 
 test('legacy TVer static module contains routing keys only', () => {

@@ -1,6 +1,6 @@
 // TVer episode-page watchdog. The page-local event policy owns ordinary state;
-// this low-frequency fallback only performs trusted recovery actions. During ads
-// it exposes Skip and fullscreen only; all other media/UI mutation is forbidden.
+// this low-frequency fallback only performs recovery actions. During ads it
+// exposes Skip and fullscreen only; all other media/UI mutation is forbidden.
 namespace {
 constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
 (() => {
@@ -194,22 +194,16 @@ LR"JS(
         'button, [role="button"], a, [aria-label], [title]')) : [];
     return cachedPlayerControls;
   };
-  const findPlayButton = () => playerControls().find(element => {
-    if (!visible(element) || !element.matches('button, [role="button"]')) return false;
-    const label = labelOf(element).toLowerCase();
-    if (/(?:一時停止|pause)/i.test(label)) return false;
-    return /(?:^|\s)(?:動画を)?再生(?:する)?(?:\s|$)/.test(label) ||
-           /(?:^|\s)play(?: video)?(?:\s|$)/i.test(label);
-  }) || null;
 
   if (video.paused && !video.ended) {
-    // Do not call HTMLMediaElement.play() for TVer recovery. TVer's player can
-    // transiently accept that untrusted programmatic start and immediately
-    // restore its own paused state, leaving the clock at 0:00. Prefer an
-    // explicitly Play-labelled control when present; otherwise use one trusted
-    // click on the paused video surface, which is TVer's normal play gesture.
-    const playButton = findPlayButton();
-    return playButton ? point(playButton) : point(video);
+    // Playback recovery must be idempotent. A video-surface click is a play/pause
+    // toggle, so a delayed trusted click can pause TVer after playback has already
+    // started. Calling play() again on an already-playing media element is safe.
+    try {
+      const pending = video.play();
+      if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+    } catch (_) {}
+    return null;
   }
 
   const browserFullscreen = document.fullscreenElement ||
@@ -237,7 +231,9 @@ LR"JS(
     if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
     return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
   });
-  return fullscreenButton ? point(fullscreenButton) : point(video);
+  // Never use the video surface as a fullscreen fallback. TVer treats it as a
+  // play/pause toggle, so a stale fullscreen recovery click can stop playback.
+  return fullscreenButton ? point(fullscreenButton) : null;
 })()
 )JS";
 
