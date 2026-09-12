@@ -20,6 +20,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     key: '',
     started: false,
     startPosted: false,
+    restartPending: false,
     endedPosted: false,
     recoveryPosted: false,
     targetMedia: null,
@@ -61,6 +62,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.key = key;
     state.started = false;
     state.startPosted = false;
+    state.restartPending = false;
     state.endedPosted = false;
     state.recoveryPosted = false;
     state.targetMedia = null;
@@ -127,6 +129,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       state.lastIdentityCheckTime = -1;
       if (!state.recoveryPosted) {
         state.recoveryPosted = true;
+        state.restartPending = true;
         post('spotify:not-playing');
       }
       return 'wrong';
@@ -146,8 +149,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.started = true;
     state.recoveryPosted = false;
     state.targetMedia = media;
-    if (!state.startPosted) {
+    if (!state.startPosted || state.restartPending) {
       state.startPosted = true;
+      state.restartPending = false;
       post('spotify:timed-started');
     }
     startHeartbeatIfAvailable();
@@ -165,6 +169,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       return false;
     }
     state.recoveryPosted = true;
+    state.restartPending = true;
     stopHeartbeatIfAvailable();
     post('spotify:not-playing');
     return true;
