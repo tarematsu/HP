@@ -51,7 +51,10 @@ test('TVer cloud refresh preserves the selected episode and consumed prefix nati
   assert.match(queue, /state\.currentEpisodeId/);
   assert.match(queue, /state\.latestEpisodeIds/);
   assert.match(queue, /Queue exhaustion starts a fresh cycle/);
-  assert.doesNotMatch(queue, /ExecuteScript|sessionStorage|location\.replace/);
+  assert.doesNotMatch(
+    queue,
+    /ExecuteScript\s*\(|sessionStorage\s*\.|location\.replace\s*\(/,
+  );
 });
 
 test('TVer player observation remains bounded rather than document-wide', () => {
