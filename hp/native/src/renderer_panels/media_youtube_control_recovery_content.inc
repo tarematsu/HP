@@ -3,7 +3,7 @@ LR"JS(
   const recoveryState = window.__homePanelYoutubeRecoveryState ||
       (window.__homePanelYoutubeRecoveryState = {
         videoKey: '', qualityApplied: false, captionsApplied: false,
-        fullscreenApplied: false
+        fullscreenApplied: false, fullscreenReadyAt: Date.now() + fullscreenSettleMs
       });
   let videoKey = '';
   try {
@@ -15,6 +15,7 @@ LR"JS(
     recoveryState.qualityApplied = false;
     recoveryState.captionsApplied = false;
     recoveryState.fullscreenApplied = false;
+    recoveryState.fullscreenReadyAt = Date.now() + fullscreenSettleMs;
   }
 
   // 480p is a per-content preference. Set it once for a new video. The page is
@@ -65,15 +66,18 @@ LR"JS(
   }
 
   // Fullscreen remains a one-shot preference after YouTube confirms entry, but
-  // merely arming a trusted click is not success. The initial control can exist
-  // before YouTube is ready to accept the click, so leave fullscreenApplied
-  // false until the page actually reports fullscreen and let the 2-second
-  // recovery watchdog retry the real control when the first click is ignored.
+  // merely arming a trusted click is not success. The control can appear before
+  // YouTube is ready to accept fullscreen, so suppress the initial click for
+  // 1.5 seconds and let the existing recovery watchdog make the first attempt
+  // after the player has settled. No extra timer or polling loop is introduced.
   if (trusted.fullscreen()) {
     recoveryState.fullscreenApplied = true;
     return null;
   }
   if (recoveryState.fullscreenApplied) return null;
+  if (Date.now() < Number(recoveryState.fullscreenReadyAt || 0)) {
+    return 'recovery';
+  }
   target = player.querySelector('.ytp-fullscreen-button');
   if (!trusted.valid(target)) {
     const fullscreenPattern = /(全画面|fullscreen|full screen)/i;
