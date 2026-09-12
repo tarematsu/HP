@@ -100,10 +100,15 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.hostLayoutReducedZoomApplied = false;
     }
 
+    // Playback-mode convergence uses real Spotify controls. Keep the parked
+    // WebView renderable until Shuffle and Repeat have both been verified OFF;
+    // hiding it earlier can make those controls unavailable and leave Repeat
+    // active for the whole generation.
     const bool suppressHealthyMusicRendering =
         SlotStateIsHealthy(slot.state) &&
         slot.timedTarget == TimedSpotifyTarget::Music &&
-        slot.playerPage && !slot.loginPage;
+        slot.playerPage && !slot.loginPage &&
+        slot.shuffleOffVerified && slot.repeatOffVerified;
     slot.controller->put_IsVisible(
         suppressHealthyMusicRendering ? FALSE : TRUE);
 

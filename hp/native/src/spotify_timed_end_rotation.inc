@@ -278,10 +278,29 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 return S_OK;
               }
 
-              // Playback anomalies are fail-forward events. Retrying the same
-              // target can revive Spotify's post-end 0s rewind and create a
-              // same-song loop; the next generation is the safer recovery.
-              AdvanceTimedRotationSlot(*target, now);
+              if (ended) {
+                // Only an actual terminal signal owns rotation advancement.
+                // This keeps natural completion distinct from a temporary stall,
+                // hidden-WebView clock pause, or other recoverable anomaly.
+                AdvanceTimedRotationSlot(*target, now);
+                return S_OK;
+              }
+
+              if (stopped) {
+                // Recover the same generation in place. Reconcile will use only
+                // an explicit Spotify Play control; if the page remains unhealthy
+                // long enough, the existing bounded renavigation path reloads the
+                // same target instead of silently skipping to the next song.
+                MarkSlotRecovering(*target, now);
+                target->lastTimedReconcileTick = 0;
+                staggerSlotIndex_ = target->index;
+                staggerSlotStartTick_ = now;
+                staggerSlotValidated_ = false;
+                RecomputeForeground();
+                ArmRobustScheduler();
+                return S_OK;
+              }
+
               return S_OK;
             }).Get(),
         &token);

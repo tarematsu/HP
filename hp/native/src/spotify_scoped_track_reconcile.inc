@@ -154,13 +154,12 @@ LR"JS(
       return {
         known: true,
         playing: true,
-        currentTime: Number(active.currentTime) || 0,
-        media: active
+        currentTime: Number(active.currentTime) || 0
       };
     }
-    // Spotify's music clock is carried by audio. Prefer a usable audio element
-    // before any auxiliary video node so a zero-second recovery never sends
-    // play() to an unrelated decorative/advertising media element.
+    // Media elements are observation-only here. Starting playback by calling
+    // HTMLMediaElement.play() bypasses Spotify's own state machine and can be
+    // immediately countermanded by Spotify with a pause at currentTime=0.
     const pending =
         media.find(candidate => candidate.tagName === 'AUDIO' &&
             !candidate.ended && candidate.readyState >= 1) ||
@@ -172,70 +171,13 @@ LR"JS(
       return {
         known: true,
         playing: false,
-        currentTime: Number(pending.currentTime) || 0,
-        media: pending
+        currentTime: Number(pending.currentTime) || 0
       };
     }
-    return { known: false, playing: false, currentTime: 0, media: null };
+    return { known: false, playing: false, currentTime: 0 };
   };
 )JS"
 LR"JS(
-  const requestMediaStart = media => {
-    if (!media || media.ended || !media.paused) return 'unneeded';
-    const now = Date.now();
-    const attempt = media.__homePanelSpotifyPlayAttempt ||
-        (media.__homePanelSpotifyPlayAttempt = {
-          token: 0,
-          state: 'idle',
-          at: 0
-        });
-
-    if (attempt.state === 'pending') {
-      if (now - attempt.at < 2000) return 'pending';
-      attempt.state = 'rejected';
-      attempt.at = now;
-      return 'rejected';
-    }
-    if (attempt.state === 'fulfilled' && media.paused) {
-      // play() can resolve and Spotify can immediately pause the underlying
-      // element. Treat that as a failed start instead of looping on play().
-      attempt.state = 'rejected';
-      attempt.at = now;
-      return 'rejected';
-    }
-    if (attempt.state === 'rejected' && now - attempt.at < 15000) {
-      return 'rejected';
-    }
-
-    attempt.token += 1;
-    if (!attempt.token) attempt.token = 1;
-    const token = attempt.token;
-    attempt.state = 'pending';
-    attempt.at = now;
-    try {
-      const promise = media.play();
-      if (promise && typeof promise.then === 'function') {
-        promise.then(() => {
-          if (attempt.token !== token) return;
-          attempt.state = 'fulfilled';
-          attempt.at = Date.now();
-        }).catch(() => {
-          if (attempt.token !== token) return;
-          attempt.state = 'rejected';
-          attempt.at = Date.now();
-        });
-      } else {
-        attempt.state = 'fulfilled';
-        attempt.at = Date.now();
-      }
-      return 'pending';
-    } catch (_) {
-      attempt.state = 'rejected';
-      attempt.at = Date.now();
-      return 'rejected';
-    }
-  };
-
   if (location.hostname !== 'open.spotify.com' || !onTargetPage()) {
     report(false);
     return null;
@@ -261,17 +203,10 @@ LR"JS(
     return 'wrong';
   }
 
-  // Direct media start remains the first choice, but only while its real
-  // promise is still pending. A rejected or immediately re-paused attempt falls
-  // through to the explicitly Play-labelled trusted UI path below.
-  if (currentMatchesTarget && mediaState.known && !mediaState.playing) {
-    const mediaStart = requestMediaStart(mediaState.media);
-    if (mediaStart === 'pending') {
-      report(false);
-      return 'starting';
-    }
-  }
-
+  // Playback starts only through an explicitly Play-labelled Spotify control.
+  // Never call media.play() on Spotify's internal audio element: that bypasses
+  // Spotify's queue/device state and is a known path to an immediate 0-second
+  // re-pause. Pause-labelled controls remain settling and are never toggled.
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') {
     report(false);
     return 'settling';
