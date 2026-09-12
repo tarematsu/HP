@@ -160,9 +160,9 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   SetTextColor((dc), kWidgetText); \
   DrawTextInRect((dc), hpWasteText, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   const std::wstring hpVersionText = kVersion; \
-  const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 245), 92, 132); \
+  const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 205), 74, 110); \
   const int hpControlButtonGap = std::clamp(SpanX(hpStatusRect, 20), 6, 12); \
-  const int hpControlRowWidth = hpControlButtonWidth * 2 + hpControlButtonGap; \
+  const int hpControlRowWidth = hpControlButtonWidth * 3 + hpControlButtonGap * 2; \
   const LONG hpStatusTextRight = std::max<LONG>(hpStatusRect.left + 1, hpStatusRect.right - hpControlRowWidth - hpControlButtonGap); \
   RECT hpVersionRect = hpStatusRect; hpVersionRect.right = hpStatusTextRight; \
   SelectObject((dc), TierFont(FontTier::Small)); \
