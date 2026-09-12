@@ -119,8 +119,9 @@ test('start and recovery are non-destructive while completed-generation autoplay
   assert.ok(finishStart >= 0 && finishEnd > finishStart);
   const finishTarget = events.slice(finishStart, finishEnd + '\n  };'.length);
   assert.doesNotMatch(finishTarget, /pause\(|quarantineMedia|stopAllMedia/);
-  assert.match(events, /const finishLeadSeconds = 1\.5/);
-  assert.match(events, /duration - finishLeadSeconds/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
+  assert.match(events, /const finishPausedAtEnd = media =>/);
+  assert.match(events, /completionPlanExpired\(\)/);
   assert.match(events, /document\.addEventListener\('ended'[\s\S]*finishTarget\(event\.target\)/);
   assert.match(music, /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*Navigate\(target\.url\)/);
   assert.match(timed, /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*Navigate\(SpotifyPodcastUrl\(\)\)/);
@@ -159,6 +160,7 @@ test('music rotation has no time-based forced advance', () => {
   assert.doesNotMatch(header, /kSpotifyMusicTrackDeadlineMs/);
   assert.doesNotMatch(rotation, /AdvanceExpiredTimedRotation|kSpotifyMusicTrackDeadlineMs/);
   assert.doesNotMatch(phase, /kSpotifyMusicTrackDeadlineMs/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
   assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
 });
