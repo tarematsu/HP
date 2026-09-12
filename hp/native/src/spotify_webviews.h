@@ -88,6 +88,8 @@ class SpotifyWebViews final {
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG timedRotationCycle = 0;
     ULONGLONG timedPlaybackStartTick = 0;
+    ULONGLONG timedCompletionDeadlineTick = 0;
+    ULONGLONG timedCompletionDeadlineGeneration = 0;
     ULONGLONG lastTimedReconcileTick = 0;
     ULONGLONG unhealthySinceTick = 0;
     ULONGLONG reconcileRequestGeneration = 0;
@@ -184,6 +186,7 @@ class SpotifyWebViews final {
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void CompletePodcastBreak(Slot& slot, ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
+  void ProbeDueTimedCompletions(ULONGLONG now) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;
