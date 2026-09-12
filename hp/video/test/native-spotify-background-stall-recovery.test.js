@@ -76,7 +76,7 @@ test('track completion stays event driven while media progress has a low-frequen
   assert.match(events, /document\.addEventListener\('play'/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
   assert.match(runtime, /spotify:generation/);
-  assert.match(heartbeat, /setInterval\([\s\S]*10000\)/);
+  assert.match(heartbeat, /setInterval\([\s\S]*20000\)/);
   assert.match(heartbeat, /heartbeatMisses >= 2/);
   assert.match(heartbeat, /currentTime > state\.heartbeatTime \+ 0\.05/);
   assert.match(heartbeat, /requestRecovery\(media\)/);

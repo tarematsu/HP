@@ -11,18 +11,22 @@ const heartbeat = source('spotify_media_observer_heartbeat.inc');
 const guards = source('spotify_playback_mode_guards.inc');
 const phase = source('spotify_phase_sync.inc');
 
-test('timeupdate target identity work is throttled to about once per playback second', () => {
-  assert.match(runtime, /lastIdentityCheckTime: -1/);
-  assert.match(events, /currentTime - state\.lastIdentityCheckTime < 1/);
-  assert.match(events, /state\.lastIdentityCheckTime = currentTime;[\s\S]*enforceTarget\(media\)/);
-  assert.match(events, /loadedmetadata[\s\S]*durationchange[\s\S]*state\.lastIdentityCheckTime = -1/);
+test('timeupdate keeps only numeric completion checks and performs no DOM identity scan', () => {
+  const start = events.indexOf("document.addEventListener('timeupdate'");
+  const end = events.indexOf("document.addEventListener('pause'", start);
+  assert.ok(start >= 0 && end > start);
+  const timeupdate = events.slice(start, end);
+  assert.match(timeupdate, /finishNearEnd\(media\)/);
+  assert.match(timeupdate, /finishProjectedWrap\(media\)/);
+  assert.doesNotMatch(timeupdate, /enforceTarget|lastIdentityCheckTime|querySelector/);
+  assert.match(runtime, /const enforceTarget = media =>/);
 });
 
 test('heartbeat owns no interval while Spotify music is idle, paused, or naturally ended', () => {
   assert.match(heartbeat, /const startHeartbeat = \(\) =>/);
   assert.match(heartbeat, /const stopHeartbeat = \(\) =>/);
   assert.match(heartbeat, /clearInterval\(runtime\.heartbeatTimer\)/);
-  assert.match(heartbeat, /runtime\.heartbeatTimer = setInterval\(heartbeat, 10000\)/);
+  assert.match(heartbeat, /runtime\.heartbeatTimer = setInterval\(heartbeat, 20000\)/);
   assert.match(heartbeat, /!state\.started[\s\S]*media\.paused \|\| media\.ended/);
   assert.doesNotMatch(heartbeat, /Array\.from\(document\.querySelectorAll/);
   assert.match(events, /document\.addEventListener\('pause'[\s\S]*stopHeartbeat\(\)/);

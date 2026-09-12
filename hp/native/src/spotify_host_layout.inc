@@ -2,8 +2,8 @@ namespace hp {
 namespace {
 
 constexpr double kSpotifySerializedRecoveryZoom = 0.80;
-constexpr int kSpotifyParkedPlaybackWidth = 320;
-constexpr int kSpotifyParkedPlaybackHeight = 180;
+constexpr int kSpotifyParkedPlaybackWidth = 160;
+constexpr int kSpotifyParkedPlaybackHeight = 90;
 constexpr int kSpotifyParkedPlaybackGap = 8;
 constexpr int kSpotifyRecoveryInteractionWidth = 720;
 constexpr int kSpotifyRecoveryInteractionHeight = 480;
@@ -99,6 +99,13 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.hostLayoutController = slot.controller.Get();
       slot.hostLayoutReducedZoomApplied = false;
     }
+
+    const bool suppressHealthyMusicRendering =
+        SlotStateIsHealthy(slot.state) &&
+        slot.timedTarget == TimedSpotifyTarget::Music &&
+        slot.playerPage && !slot.loginPage;
+    slot.controller->put_IsVisible(
+        suppressHealthyMusicRendering ? FALSE : TRUE);
 
     const bool reducedZoom = authentication || recovery;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {

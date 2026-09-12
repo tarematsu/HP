@@ -163,14 +163,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     if (quarantineCompletedGeneration(media)) return;
     if (finishNearEnd(media)) return;
     if (finishProjectedWrap(media)) return;
-    const currentTime = Number(media.currentTime) || 0;
-    if (state.lastIdentityCheckTime >= 0 &&
-        currentTime >= state.lastIdentityCheckTime &&
-        currentTime - state.lastIdentityCheckTime < 1) {
-      return;
-    }
-    state.lastIdentityCheckTime = currentTime;
-    enforceTarget(media);
+    // Keep this hot event path numeric-only. Target identity is validated by
+    // playing/metadata/seek/rate events and the low-frequency heartbeat.
   }, true);
 
   document.addEventListener('pause', event => {
