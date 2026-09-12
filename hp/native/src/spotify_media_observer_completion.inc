@@ -12,11 +12,23 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
 
   const { state, syncTarget, isMedia, post } = runtime;
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
-  const resetPlanState = () => {
+  const terminalWitnessWindowSeconds = 2;
+  const terminalWrapSeconds = 1.5;
+  const resetDeadlineState = () => {
     state.lastCompletionPlanTime = -1;
     state.lastCompletionPlanDuration = -1;
     state.lastCompletionPlanRate = -1;
     state.lastCompletionPlanDeadlineAt = -1;
+  };
+  const resetCompletionWitness = () => {
+    state.completionWitnessMedia = null;
+    state.completionWitnessDuration = -1;
+    state.completionHighWaterTime = -1;
+    state.completionNearEndArmed = false;
+  };
+  const resetPlanState = () => {
+    resetDeadlineState();
+    resetCompletionWitness();
   };
   const postFields = (message, ...fields) => {
     try {
@@ -26,12 +38,64 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
       }
     } catch (_) {}
   };
+  const observeCompletionProgress = media => {
+    const target = syncTarget();
+    if (!target || target.kind !== 'music' || state.endedPosted ||
+        !state.started || state.targetMedia !== media || !isMedia(media)) {
+      return false;
+    }
+
+    const currentTime = Number(media.currentTime);
+    const duration = Number(media.duration);
+    if (!Number.isFinite(currentTime) || !Number.isFinite(duration) ||
+        duration < 10 || currentTime < 0 || currentTime > duration + 1) {
+      return false;
+    }
+
+    if (state.completionWitnessMedia !== media ||
+        !Number.isFinite(state.completionWitnessDuration) ||
+        Math.abs(state.completionWitnessDuration - duration) > 1) {
+      resetCompletionWitness();
+      state.completionWitnessMedia = media;
+      state.completionWitnessDuration = duration;
+    }
+
+    state.completionWitnessDuration = duration;
+    if (currentTime > state.completionHighWaterTime) {
+      state.completionHighWaterTime = currentTime;
+    }
+    if (state.completionHighWaterTime >=
+        Math.max(0, duration - terminalWitnessWindowSeconds)) {
+      state.completionNearEndArmed = true;
+    }
+    return true;
+  };
+  const terminalWrapObserved = media => {
+    const currentTime = Number(media && media.currentTime);
+    const duration = Number(media && media.duration);
+    if (!Number.isFinite(currentTime) || !Number.isFinite(duration) ||
+        duration < 10 || currentTime < 0 || currentTime > duration + 1) {
+      return false;
+    }
+
+    const sameWitness = state.completionWitnessMedia === media &&
+        Number.isFinite(state.completionWitnessDuration) &&
+        Math.abs(state.completionWitnessDuration - duration) <= 1;
+    const wrapped = sameWitness && state.completionNearEndArmed &&
+        currentTime <= terminalWrapSeconds &&
+        state.completionHighWaterTime - currentTime >= terminalWitnessWindowSeconds;
+    if (!wrapped) observeCompletionProgress(media);
+    return wrapped;
+  };
   const clearCompletionPlan = () => {
     if (state.lastCompletionPlanTime < 0 &&
         state.lastCompletionPlanDuration < 0) {
       return false;
     }
-    resetPlanState();
+    // Deadline invalidation must not erase terminal evidence. Spotify can rewind
+    // the same media element to 0 before the projected wall-clock deadline; the
+    // high-water witness survives pause/seek/stall events until generation end.
+    resetDeadlineState();
     post('spotify:timed-plan-clear');
     return true;
   };
@@ -51,6 +115,7 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
         duration < 10 || currentTime < 0 || currentTime > duration + 1) {
       return false;
     }
+    observeCompletionProgress(media);
     const unchanged =
         Math.abs(state.lastCompletionPlanTime - currentTime) < 0.05 &&
         Math.abs(state.lastCompletionPlanDuration - duration) < 0.05 &&
@@ -77,6 +142,8 @@ constexpr wchar_t kSpotifyMediaObserverCompletionScript[] = LR"JS(
   resetPlanState();
   runtime.postCompletionPlan = postCompletionPlan;
   runtime.clearCompletionPlan = clearCompletionPlan;
+  runtime.observeCompletionProgress = observeCompletionProgress;
+  runtime.terminalWrapObserved = terminalWrapObserved;
   runtime.completionPlanDue = completionPlanDue;
   runtime.completionPlanExpired = completionPlanExpired;
   runtime.probeCompletion = null;

@@ -197,26 +197,47 @@ test('a delayed completion probe treats a post-end rewind as completion', () => 
   assert.equal(h.media.paused, true);
 });
 
-test('a repeat rewind cannot complete until the projected natural deadline has expired', () => {
+test('a witnessed terminal rewind completes even before the projected deadline expires', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f26');
   h.media.paused = false;
   h.media.currentTime = 0;
   h.dispatch('playing');
 
-  h.advanceWall(179_000);
+  h.advanceWall(178_500);
+  h.media.currentTime = 178.8;
+  h.hostMessage('spotify:completion-probe\x1f26');
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f26\x1f1200');
+
+  // Spotify can reset its media clock a fraction early. The old design waited
+  // for wall-clock expiry, then accepted the new 0-second playback as a fresh
+  // plan. The terminal high-water witness must instead close this generation.
+  h.advanceWall(300);
   h.media.currentTime = 0.2;
   h.dispatch('seeking');
 
-  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f26').length, 0);
-  assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-plan\x1f26')).length, 1);
-  assert.equal(h.media.pauseCalls, 0);
-
-  h.advanceWall(1_100);
-  h.hostMessage('spotify:completion-probe\x1f26');
   assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f26');
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f26').length, 1);
   assert.equal(h.media.pauseCalls, 1);
+  assert.equal(h.media.paused, true);
+});
+
+test('a rewind without a terminal high-water witness is not completion', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f30');
+  h.media.paused = false;
+  h.media.currentTime = 0;
+  h.dispatch('playing');
+
+  h.advanceWall(60_000);
+  h.media.currentTime = 60;
+  h.dispatch('timeupdate');
+  h.media.currentTime = 0.2;
+  h.dispatch('seeking');
+
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f30').length, 0);
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan-clear\x1f30');
 });
 
 test('an expired completion probe wins even if Spotify has already paused', () => {

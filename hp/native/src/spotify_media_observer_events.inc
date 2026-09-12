@@ -12,7 +12,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery, postCompletionPlan,
-          clearCompletionPlan, completionPlanDue, completionPlanExpired } = runtime;
+          clearCompletionPlan, terminalWrapObserved,
+          completionPlanDue, completionPlanExpired } = runtime;
   const completionGraceMs = 5000;
 
   const quarantineMedia = media => {
@@ -63,17 +64,21 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }
     return finishTarget(media);
   };
-  // Some Spotify repeat/autoplay transitions can reuse the same media element
-  // and wrap its clock to zero without delivering a dependable ended event.
-  // This fallback runs only after the projected natural deadline, so it cannot
-  // truncate the requested song. The wrapped old generation is then quarantined.
+  // Spotify may recycle the same media element and move its clock from the end
+  // back to 0 before the projected wall-clock deadline. A generation-scoped
+  // high-water witness proves that the same target was already in its terminal
+  // window, so this rewind is completion even when `ended` is missing or early.
+  // Deadline expiry remains a fallback for cases where the terminal witness was
+  // not observed (for example, a delayed background callback).
   const finishProjectedWrap = media => {
-    const currentTime = Number(media.currentTime);
-    if (!Number.isFinite(currentTime) || currentTime > 1.5 ||
-        typeof completionPlanExpired !== 'function' ||
-        !completionPlanExpired()) {
-      return false;
-    }
+    const currentTime = Number(media && media.currentTime);
+    if (!Number.isFinite(currentTime)) return false;
+    const witnessedWrap = typeof terminalWrapObserved === 'function' &&
+        terminalWrapObserved(media);
+    const deadlineWrap = currentTime <= 1.5 &&
+        typeof completionPlanExpired === 'function' &&
+        completionPlanExpired();
+    if (!witnessedWrap && !deadlineWrap) return false;
     if (!finishTarget(media)) return false;
     quarantineMedia(media);
     return true;
@@ -100,7 +105,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       return false;
     }
     // Expiry alone is never completion. Re-project from the live media clock and
-    // keep waiting for ended, an actual post-end wrap, or a paused-at-duration
+    // keep waiting for ended, an observed terminal rewind, or a paused-at-duration
     // terminal state.
     return postCompletionPlan(media, true);
   };
@@ -130,6 +135,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     document.addEventListener(eventName, event => {
       if (!isMedia(event.target) || event.target.ended) return;
       if (quarantineCompletedGeneration(event.target)) return;
+      if (finishProjectedWrap(event.target)) return;
       state.lastIdentityCheckTime = -1;
       scheduleTargetChecks(event.target);
       if (!event.target.paused && state.started &&
@@ -159,6 +165,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('ratechange', event => {
     if (!isMedia(event.target) || event.target.ended || event.target.paused) return;
     if (quarantineCompletedGeneration(event.target)) return;
+    if (finishProjectedWrap(event.target)) return;
     if (enforceTarget(event.target) === 'playing') {
       postCompletionPlan(event.target);
     }
@@ -169,9 +176,9 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     if (!isMedia(media) || media.ended || media.paused) return;
     if (quarantineCompletedGeneration(media)) return;
     if (finishProjectedWrap(media)) return;
-    // Never infer completion from proximity to duration. Target identity stays
-    // on lifecycle events plus the low-frequency heartbeat; completion waits for
-    // a natural terminal signal.
+    // The completion module records only an in-process high-water mark here.
+    // It does not post cross-process messages or add polling, so normal
+    // timeupdate traffic stays cheap while preserving terminal evidence.
   }, true);
 
   document.addEventListener('pause', event => {
