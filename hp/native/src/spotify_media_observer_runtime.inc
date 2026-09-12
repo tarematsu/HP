@@ -111,7 +111,13 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 
   const scheduleTargetChecks = media => {
     [0, 250, 1000, 2500, 5000].forEach(delay => {
-      setTimeout(() => enforceTarget(media), delay);
+      setTimeout(() => {
+        const status = enforceTarget(media);
+        if (status === 'playing' &&
+            typeof runtime.postCompletionPlan === 'function') {
+          runtime.postCompletionPlan(media);
+        }
+      }, delay);
     });
   };
 
