@@ -81,7 +81,7 @@ test('phase overlay is event mounted without a one-second clock loop', () => {
 });
 
 test('YouTube preserves playlist playback, 480p, captions off, skip and fullscreen with low steady load', () => {
-  assert.match(mediaBase, /youtube\.com\/playlist\?list=PLMWqSdpIVl30/);
+  assert.match(mediaBase, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/youtube-start/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(youtubeRecovery, /const preferredQuality = 'large'/);
