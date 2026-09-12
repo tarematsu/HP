@@ -30,13 +30,14 @@ test('all configured tracks use the shared music descriptor and scoped reconcile
   assert.match(scoped, /targetPlayButton/);
 });
 
-test('track reconcile never forces repeat-one and observer waits for natural completion', () => {
+test('track reconcile never forces repeat-one and completion is native timed', () => {
   assert.doesNotMatch(scoped, /repeatState|control-button-repeat|repeatMode/);
-  assert.match(runtime, /post\('spotify:timed-started'\)/);
-  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
-  assert.match(events, /document\.addEventListener\('ended'/);
-  assert.match(events, /const finishPausedAtEnd = media =>/);
-  assert.match(events, /post\('spotify:timed-ended'\)/);
+  assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.doesNotMatch(
+    events,
+    /addEventListener\('(?:ended|timeupdate|seeking|seeked|waiting|stalled|pause)'/,
+  );
+  assert.doesNotMatch(runtime + events, /spotify:timed-ended|spotify:timed-plan/);
 });
 
 test('returned Spotify control points flow through the single CDP trusted-click module', () => {
