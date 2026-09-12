@@ -44,6 +44,7 @@ void SpotifyWebViews::Start() noexcept {
   scheduleStartTick_ = 0;
   staggerSlotValidated_ = false;
   hostLayoutMask_ = ~0u;
+  hostLowPowerMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
   hostLayoutAuthenticationSlot_ = kAccountCount;
 
@@ -73,6 +74,8 @@ void SpotifyWebViews::Start() noexcept {
     slot.podcastBreakActive = false;
     slot.shuffleOffVerified = false;
     slot.repeatOffVerified = false;
+    slot.hostMemoryTargetApplied = false;
+    slot.hostMemoryTargetLow = false;
     if (!CreateHost(slot)) continue;
   }
 
@@ -91,6 +94,7 @@ void SpotifyWebViews::RecomputeForeground() noexcept {
 
 void SpotifyWebViews::Resize() noexcept {
   hostLayoutMask_ = ~0u;
+  hostLowPowerMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
   hostLayoutAuthenticationSlot_ = kAccountCount;
   RefreshSpotifyHostLayout();
@@ -131,6 +135,8 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.hostLayoutInsertAfter = nullptr;
   slot.hostLayoutApplied = false;
   slot.hostLayoutReducedZoomApplied = false;
+  slot.hostMemoryTargetApplied = false;
+  slot.hostMemoryTargetLow = false;
   slot.authenticationBadgeTick = 0;
   slot.environment.Reset();
   if (slot.hostWindow && IsWindow(slot.hostWindow)) DestroyWindow(slot.hostWindow);
