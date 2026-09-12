@@ -139,6 +139,15 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     window.chrome.webview.addEventListener('message', event => {
       if (typeof event.data !== 'string') return;
       const fields = event.data.split('\u001f');
+      if (fields[0] === 'spotify:observer-sync') {
+        window.__homePanelSpotifyGeneration = fields[1] || '0';
+        syncTarget();
+        document.querySelectorAll('audio, video').forEach(media => {
+          if (!media.paused && !media.ended) scheduleTargetChecks(media);
+        });
+        post('spotify:observer-synced');
+        return;
+      }
       if (fields[0] === 'spotify:generation') {
         window.__homePanelSpotifyGeneration = fields[1] || '0';
         syncTarget();
