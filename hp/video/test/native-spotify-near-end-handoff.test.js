@@ -24,6 +24,7 @@ class FakeMedia {
   ended = false;
   currentTime = 0;
   duration = 180;
+  playbackRate = 1;
   pauseCalls = 0;
 
   pause() {
@@ -84,6 +85,7 @@ function createHarness() {
     Number,
     Array,
     String,
+    Math,
     setTimeout(fn) {
       const id = nextTimer++;
       timers.set(id, fn);
@@ -102,46 +104,68 @@ function createHarness() {
   const dispatch = type => {
     for (const handler of listeners.get(type) || []) handler({ target: media });
   };
-  const generation = value => {
-    for (const handler of webviewListeners) handler({ data: `spotify:generation\x1f${value}` });
+  const hostMessage = data => {
+    for (const handler of webviewListeners) handler({ data });
   };
 
-  return { media, messages, dispatch, generation, timers };
+  return { media, messages, dispatch, hostMessage, timers };
 }
 
-test('music advances inside the final 1.5 seconds without waiting for ended', () => {
+test('music start publishes one remaining-time plan for native scheduling', () => {
   const h = createHarness();
-  h.generation(21);
+  h.hostMessage('spotify:generation\x1f21');
   h.media.paused = false;
   h.media.currentTime = 100;
   h.dispatch('playing');
-  assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f21');
 
-  h.media.currentTime = 178.4;
-  h.dispatch('timeupdate');
-  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f21').length, 0);
-  assert.equal(h.media.pauseCalls, 0);
-
-  h.media.currentTime = 178.6;
-  h.dispatch('timeupdate');
-  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f21');
-  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f21').length, 1);
-  assert.equal(h.media.pauseCalls, 1);
-  assert.equal(h.media.paused, true);
+  assert.equal(h.messages[0], 'spotify:timed-started\x1f21');
+  assert.equal(h.messages[1], 'spotify:timed-plan\x1f21\x1f80000');
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-plan\x1f21')).length, 1);
 });
 
-test('a near-end pause is completion rather than recovery', () => {
+test('native completion probe finishes near end without needing timeupdate', () => {
   const h = createHarness();
-  h.generation(22);
+  h.hostMessage('spotify:generation\x1f22');
   h.media.paused = false;
   h.media.currentTime = 120;
   h.dispatch('playing');
 
-  h.media.currentTime = 179.2;
+  h.media.currentTime = 178.8;
+  h.hostMessage('spotify:completion-probe\x1f22');
+
+  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f22');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f22').length, 1);
+  assert.equal(h.media.pauseCalls, 1);
+  assert.equal(h.media.paused, true);
+});
+
+test('an early native probe re-arms from the actual media clock instead of advancing', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f23');
+  h.media.paused = false;
+  h.media.currentTime = 100;
+  h.dispatch('playing');
+
+  h.media.currentTime = 170;
+  h.hostMessage('spotify:completion-probe\x1f23');
+
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f23').length, 0);
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f23\x1f10000');
+  assert.equal(h.media.pauseCalls, 0);
+});
+
+test('pause away from the end clears the native deadline before recovery', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f24');
+  h.media.paused = false;
+  h.media.currentTime = 60;
+  h.dispatch('playing');
+
+  h.media.currentTime = 90;
   h.media.paused = true;
   h.dispatch('pause');
 
-  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f22');
-  assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
-  assert.equal(h.timers.size, 0);
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan-clear\x1f24');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f24').length, 0);
+  assert.equal(h.timers.size, 1);
 });
