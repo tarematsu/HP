@@ -104,11 +104,8 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
     return false;
   };
 
-  let lastInitialData = null;
-  const tryInitialData = force => {
+  const tryInitialData = () => {
     if (finished || !window.ytInitialData) return false;
-    if (!force && lastInitialData === window.ytInitialData) return false;
-    lastInitialData = window.ytInitialData;
     try {
       const stack = [window.ytInitialData];
       let visited = 0;
@@ -147,7 +144,7 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
   function onYoutubeData() {
     if (finished) return;
     if (tryDomRoot(document)) return;
-    if (tryInitialData(true)) return;
+    if (tryInitialData()) return;
     bindPlaylistObserver();
   }
 
@@ -155,8 +152,8 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
   document.addEventListener('yt-navigate-finish', onYoutubeData);
 
   // One initial pass handles an already-hydrated playlist. After this point,
-  // only YouTube events / player-local DOM additions can trigger discovery.
-  if (!tryDomRoot(document) && !tryInitialData(true)) {
+  // only YouTube events / playlist-local DOM additions can trigger discovery.
+  if (!tryDomRoot(document) && !tryInitialData()) {
     bindPlaylistObserver();
     fallbackTimer = window.setTimeout(() => {
       if (!finished) navigateNoReferrer(cloudResolver);
