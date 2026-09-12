@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url), 'utf8');
@@ -14,10 +15,10 @@ const radarSection = readFileSync(
   new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url), 'utf8');
 const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
-const tverEpisode = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
-const youtubeRecovery = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const tverEpisode = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const youtubeRecovery = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 const youtubeAgent = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 const mediaPanel = [mediaBase, mediaHost, mediaWindow].join('\n');
@@ -90,6 +91,7 @@ test('YouTube applies 480p per video instead of on every healthy watchdog pass',
   assert.match(youtubeRecovery, /if \(!recoveryState\.qualityApplied\)/);
   assert.match(youtubeRecovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
   assert.match(youtubeRecovery, /setPlaybackQuality\(preferredQuality\)/);
+  assert.doesNotMatch(youtubeRecovery, /getPlaybackQuality\(\)/);
   assert.doesNotMatch(mediaBase, /setPlaybackQualityRange\('large', 'large'\)/);
 });
 
