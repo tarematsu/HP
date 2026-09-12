@@ -93,13 +93,16 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.trustedStartUntil = Date.now() + 15000;
     return true;
   };
+  const clearTrustedStart = () => {
+    state.trustedStartKey = '';
+    state.trustedStartUntil = 0;
+  };
   const consumeTrustedStart = target => {
     if (!target || state.trustedStartKey !== targetKey(target) ||
         state.trustedStartUntil < Date.now()) {
       return false;
     }
-    state.trustedStartKey = '';
-    state.trustedStartUntil = 0;
+    clearTrustedStart();
     return true;
   };
 
@@ -123,6 +126,10 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
         if (media.paused || !consumeTrustedStart(target)) return 'unknown';
       }
     } else if (!matchesTarget(target, identity)) {
+      // Any concrete contradictory identity cancels the one-shot trust. This
+      // prevents a stale/wrong Spotify item from later becoming trusted merely
+      // because the now-playing UI disappears.
+      clearTrustedStart();
       if (!state.startPosted) return 'unknown';
       state.started = false;
       state.targetMedia = null;
