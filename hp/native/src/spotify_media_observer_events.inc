@@ -13,7 +13,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery, postCompletionPlan,
           clearCompletionPlan, completionPlanDue, completionPlanExpired } = runtime;
-  const finishLeadSeconds = 1.5;
   const completionGraceMs = 5000;
 
   const quarantineMedia = media => {
@@ -46,22 +45,33 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     post('spotify:timed-ended');
     return true;
   };
-  const finishNearEnd = media => {
+  // A completion deadline is only a wake-up hint. It must never end a track
+  // before Spotify/HTMLMediaElement has naturally reached its terminal state.
+  // If an ended event is lost, a paused media clock pinned at the real duration
+  // is an acceptable post-end fallback because no playback is interrupted.
+  const finishPausedAtEnd = media => {
+    if (!isMedia(media) || !media.paused || media.ended ||
+        typeof completionPlanExpired !== 'function' ||
+        !completionPlanExpired()) {
+      return false;
+    }
     const currentTime = Number(media.currentTime);
     const duration = Number(media.duration);
     if (!Number.isFinite(currentTime) || !Number.isFinite(duration) ||
-        duration < 10 || currentTime < Math.max(0, duration - finishLeadSeconds)) {
+        duration < 10 || currentTime < Math.max(0, duration - 0.05)) {
       return false;
     }
-    if (!finishTarget(media)) return false;
-    quarantineMedia(media);
-    return true;
+    return finishTarget(media);
   };
+  // Some Spotify repeat/autoplay transitions can reuse the same media element
+  // and wrap its clock to zero without delivering a dependable ended event.
+  // This fallback runs only after the projected natural deadline, so it cannot
+  // truncate the requested song. The wrapped old generation is then quarantined.
   const finishProjectedWrap = media => {
     const currentTime = Number(media.currentTime);
     if (!Number.isFinite(currentTime) || currentTime > 1.5 ||
-        typeof completionPlanDue !== 'function' ||
-        !completionPlanDue(completionGraceMs)) {
+        typeof completionPlanExpired !== 'function' ||
+        !completionPlanExpired()) {
       return false;
     }
     if (!finishTarget(media)) return false;
@@ -83,17 +93,15 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     const media = state.targetMedia;
     if (!isMedia(media) || state.endedPosted) return false;
     if (media.ended) return finishTarget(media);
-    if (finishNearEnd(media)) return true;
+    if (finishPausedAtEnd(media)) return true;
     if (finishProjectedWrap(media)) return true;
-    if (typeof completionPlanExpired === 'function' && completionPlanExpired()) {
-      if (!finishTarget(media)) return false;
-      quarantineMedia(media);
-      return true;
-    }
     if (media.paused) {
       clearCompletionPlan();
       return false;
     }
+    // Expiry alone is never completion. Re-project from the live media clock and
+    // keep waiting for ended, an actual post-end wrap, or a paused-at-duration
+    // terminal state.
     return postCompletionPlan(media, true);
   };
 
@@ -134,7 +142,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('seeking', event => {
     if (!isMedia(event.target) || event.target.ended) return;
     if (quarantineCompletedGeneration(event.target)) return;
-    if (finishNearEnd(event.target)) return;
     if (finishProjectedWrap(event.target)) return;
     if (deferNearEndRecovery(event.target, 2500, false)) return;
     clearCompletionPlan();
@@ -161,15 +168,15 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     const media = event.target;
     if (!isMedia(media) || media.ended || media.paused) return;
     if (quarantineCompletedGeneration(media)) return;
-    if (finishNearEnd(media)) return;
     if (finishProjectedWrap(media)) return;
-    // Keep this hot event path numeric-only. Target identity is validated by
-    // playing/metadata/seek/rate events and the low-frequency heartbeat.
+    // Never infer completion from proximity to duration. Target identity stays
+    // on lifecycle events plus the low-frequency heartbeat; completion waits for
+    // a natural terminal signal.
   }, true);
 
   document.addEventListener('pause', event => {
     if (!isMedia(event.target)) return;
-    if (finishNearEnd(event.target)) return;
+    if (finishPausedAtEnd(event.target)) return;
     if (finishProjectedWrap(event.target)) return;
     if (deferNearEndRecovery(event.target, 600, true)) return;
     clearCompletionPlan();
@@ -180,7 +187,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   for (const eventName of ['waiting', 'stalled']) {
     document.addEventListener(eventName, event => {
       if (!isMedia(event.target)) return;
-      if (finishNearEnd(event.target)) return;
+      if (finishPausedAtEnd(event.target)) return;
       if (finishProjectedWrap(event.target)) return;
       if (deferNearEndRecovery(event.target, 2500, false)) return;
       clearCompletionPlan();

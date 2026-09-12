@@ -29,15 +29,20 @@ test('repeat guard survives Spotify builds that omit aria-checked', () => {
   );
 });
 
-test('repeat wrap is fenced by the projected completion deadline', () => {
+test('repeat wrap is fenced only after the projected natural completion deadline', () => {
   assert.match(completion, /const completionPlanDue = \(leadMs = 0\) =>/);
-  assert.match(completion, /runtime\.completionPlanDue = completionPlanDue/);
-  assert.match(events, /const finishLeadSeconds = 1\.5/);
+  assert.match(completion, /const completionPlanExpired = \(\) => completionPlanDue\(\)/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration\s*-\s*finishLeadSeconds/);
   assert.match(events, /const completionGraceMs = 5000/);
-  assert.match(events, /duration\s*-\s*finishLeadSeconds/);
   assert.match(events, /const finishProjectedWrap = media =>/);
   assert.match(events, /currentTime > 1\.5/);
-  assert.match(events, /completionPlanDue\(completionGraceMs\)/);
+  const wrapStart = events.indexOf('const finishProjectedWrap = media =>');
+  const wrapEnd = events.indexOf('\n  };', wrapStart);
+  assert.ok(wrapStart >= 0 && wrapEnd > wrapStart);
+  const wrap = events.slice(wrapStart, wrapEnd + '\n  };'.length);
+  assert.match(wrap, /completionPlanExpired\(\)/);
+  assert.doesNotMatch(wrap, /completionPlanDue\(completionGraceMs\)/);
+  assert.match(events, /const finishPausedAtEnd = media =>/);
   assert.match(events, /document\.addEventListener\('seeking'/);
   assert.match(events, /if \(finishProjectedWrap\(event\.target\)\) return;/);
   assert.match(events, /document\.addEventListener\('pause'/);

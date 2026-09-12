@@ -129,7 +129,7 @@ test('music start publishes one remaining-time plan for native scheduling', () =
   assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-plan\x1f21')).length, 1);
 });
 
-test('native completion probe finishes near end without needing timeupdate', () => {
+test('native completion probe near end re-arms instead of truncating playback', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f22');
   h.media.paused = false;
@@ -139,10 +139,16 @@ test('native completion probe finishes near end without needing timeupdate', () 
   h.media.currentTime = 178.8;
   h.hostMessage('spotify:completion-probe\x1f22');
 
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f22').length, 0);
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f22\x1f1200');
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.media.paused, false);
+
+  h.media.ended = true;
+  h.dispatch('ended');
   assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f22');
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f22').length, 1);
-  assert.equal(h.media.pauseCalls, 1);
-  assert.equal(h.media.paused, true);
+  assert.equal(h.media.pauseCalls, 0);
 });
 
 test('an early native probe re-arms from the actual media clock instead of advancing', () => {
@@ -191,7 +197,7 @@ test('a delayed completion probe treats a post-end rewind as completion', () => 
   assert.equal(h.media.paused, true);
 });
 
-test('a repeat rewind cannot erase a completion deadline before native probes', () => {
+test('a repeat rewind cannot complete until the projected natural deadline has expired', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f26');
   h.media.paused = false;
@@ -202,9 +208,14 @@ test('a repeat rewind cannot erase a completion deadline before native probes', 
   h.media.currentTime = 0.2;
   h.dispatch('seeking');
 
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f26').length, 0);
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-plan\x1f26')).length, 1);
+  assert.equal(h.media.pauseCalls, 0);
+
+  h.advanceWall(1_100);
+  h.hostMessage('spotify:completion-probe\x1f26');
   assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f26');
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f26').length, 1);
-  assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-plan\x1f26')).length, 1);
   assert.equal(h.media.pauseCalls, 1);
 });
 
@@ -241,6 +252,12 @@ test('pre-rewind waiting cannot turn natural completion into same-track recovery
   h.media.paused = true;
   h.dispatch('pause');
 
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f29').length, 0);
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.timers.size, 1);
+
+  h.advanceWall(3_100);
+  h.hostMessage('spotify:completion-probe\x1f29');
   assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f29');
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f29').length, 1);
   assert.equal(h.media.pauseCalls, 0);

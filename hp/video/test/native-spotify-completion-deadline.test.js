@@ -36,6 +36,23 @@ test('WebView publishes remaining time and native probes near the deadline', () 
   assert.match(rotation, /spotify:completion-probe/);
 });
 
+test('deadline expiry cannot truncate a still-playing track', () => {
+  const probeStart = events.indexOf('runtime.probeCompletion = () =>');
+  const probeEnd = events.indexOf('\n  };', probeStart);
+  assert.ok(probeStart >= 0 && probeEnd > probeStart);
+  const probe = events.slice(probeStart, probeEnd + '\n  };'.length);
+
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
+  assert.match(probe, /if \(media\.ended\) return finishTarget\(media\)/);
+  assert.match(probe, /finishPausedAtEnd\(media\)/);
+  assert.match(probe, /finishProjectedWrap\(media\)/);
+  assert.match(probe, /return postCompletionPlan\(media, true\)/);
+  assert.doesNotMatch(
+    probe,
+    /completionPlanExpired\(\)[\s\S]{0,180}finishTarget\(media\)/,
+  );
+});
+
 test('one shared adaptive timer wakes for the earliest of six independent deadlines', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
   assert.match(phase, /slot\.timedCompletionDeadlineTick - now/);
