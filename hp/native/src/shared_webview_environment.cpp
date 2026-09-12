@@ -5,11 +5,14 @@ namespace hp {
 namespace {
 
 // Native media surfaces intentionally remain alive while parked outside the
-// dashboard or hidden by power-saving UI. Apply only the Chromium occlusion
-// lifecycle exception to every shared environment; full-resource surfaces such
-// as YouTube otherwise keep stock browser/resource behavior.
+// dashboard or hidden by power-saving UI. They are autonomous playback
+// surfaces, so every shared media environment also permits programmatic media
+// start without requiring a foreground user gesture. Keeping autoplay policy in
+// the shared arguments is important because Spotify/YouTube/TVer use the
+// full-resource path and never consume the Stationhead-only arguments below.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
-    L"--disable-backgrounding-occluded-windows";
+    L"--disable-backgrounding-occluded-windows "
+    L"--autoplay-policy=no-user-gesture-required";
 
 constexpr wchar_t kStationheadWebView2Arguments[] =
     L"--disable-domain-reliability "
@@ -17,7 +20,6 @@ constexpr wchar_t kStationheadWebView2Arguments[] =
     L"--disable-extensions "
     L"--disable-sync "
     L"--metrics-recording-only "
-    L"--autoplay-policy=no-user-gesture-required "
     // Keep page-state restoration disabled across Stationhead navigations. HTTP
     // cache is enabled during a live controller session and is explicitly reset
     // when each playback controller is created or recreated.
@@ -25,8 +27,8 @@ constexpr wchar_t kStationheadWebView2Arguments[] =
 
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
   // Resource-policy arguments remain empty for full-resource surfaces such as
-  // YouTube/TVer/Spotify. The shared lifecycle argument is appended separately
-  // when the environment is created.
+  // YouTube/TVer/Spotify. The shared lifecycle/autoplay arguments are appended
+  // separately when the environment is created.
   if (!blockImages && !blockFonts) return {};
 
   std::wstring arguments = kStationheadWebView2Arguments;

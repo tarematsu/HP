@@ -133,11 +133,11 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
-            if (json && std::wstring_view(json) == L"\"settling\"") {
-              // Spotify sometimes renders Pause before its media clock starts.
-              // This is intentionally non-actionable: never click an ambiguous
-              // toggle. Retry at the recovery cadence and fall back to a clean
-              // navigation only if the state remains unresolved long enough.
+            if (json && (std::wstring_view(json) == L"\"starting\"" ||
+                         std::wstring_view(json) == L"\"settling\"")) {
+              // starting means the requested media element received play()
+              // directly; settling means Spotify has not exposed a safe start
+              // actuator yet. Neither state clicks an ambiguous Pause control.
               SetSlotState(*target, SlotState::WaitingTarget);
               if (target->unhealthySinceTick == 0) target->unhealthySinceTick = now;
               if (ShouldRenavigateUnhealthySlot(*target, now)) {
