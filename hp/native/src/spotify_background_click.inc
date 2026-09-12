@@ -43,7 +43,58 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   }
 
   SetSlotState(slot, SlotState::WaitingTarget);
-  DispatchSpotifyDevToolsClick(slot, xTenThousandths, yTenThousandths);
+
+  // The point was measured asynchronously. Spotify can switch a Play-labelled
+  // control to Pause before native input reaches it. Revalidate both playback
+  // state and the element currently under the point immediately before CDP
+  // input; a stale point is discarded instead of becoming an accidental pause.
+  std::wstring preflight = L"(() => {";
+  preflight += L"const nx=" + std::to_wstring(xTenThousandths) + L";";
+  preflight += L"const ny=" + std::to_wstring(yTenThousandths) + L";";
+  preflight +=
+      L"const media=Array.from(document.querySelectorAll('audio, video'));"
+      L"if(media.some(m=>!m.ended&&!m.paused))return false;"
+      L"if(window.innerWidth<=0||window.innerHeight<=0)return false;"
+      L"const x=window.innerWidth*nx/10000;"
+      L"const y=window.innerHeight*ny/10000;"
+      L"const hit=document.elementFromPoint(x,y);"
+      L"const button=hit&&hit.closest?hit.closest('button,[role=\"button\"]'):null;"
+      L"if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return false;"
+      L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
+      L"if(!label||label.includes('pause')||label.includes('一時停止'))return false;"
+      L"return label==='play'||label==='再生'||label.startsWith('play ')||label.endsWith('を再生');"
+      L"})()";
+
+  const ULONGLONG targetGeneration = slot.targetGeneration;
+  Slot* const target = &slot;
+  ComPtr<ICoreWebView2> requestedView = slot.webview;
+  const auto alive = alive_;
+  const HRESULT started = requestedView->ExecuteScript(
+      preflight.c_str(),
+      Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+          [this, alive, target, requestedView, targetGeneration,
+           xTenThousandths, yTenThousandths](HRESULT result, LPCWSTR json)
+              -> HRESULT {
+            if (!alive->load(std::memory_order_acquire) ||
+                target->targetGeneration != targetGeneration ||
+                target->webview.Get() != requestedView.Get()) {
+              return S_OK;
+            }
+
+            if (target->state == SlotState::Playing) {
+              ArmRobustScheduler();
+              return S_OK;
+            }
+
+            if (SUCCEEDED(result) && json &&
+                std::wstring_view(json) == L"true") {
+              DispatchSpotifyDevToolsClick(
+                  *target, xTenThousandths, yTenThousandths);
+            }
+            ArmRobustScheduler();
+            return S_OK;
+          }).Get());
+  if (FAILED(started)) ArmRobustScheduler();
 }
 
 UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(

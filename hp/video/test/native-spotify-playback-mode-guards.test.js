@@ -11,7 +11,7 @@ const guards = readFileSync(
 const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
 
-test('Spotify music converges both shuffle and repeat to off before playback reconcile', () => {
+test('Spotify starts target before post-start shuffle/repeat convergence', () => {
   assert.match(wrapper, /#include "spotify_playback_mode_guards\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_shuffle_off\.inc/);
   assert.match(header, /enum class PlaybackModeGuard/);
@@ -25,15 +25,19 @@ test('Spotify music converges both shuffle and repeat to off before playback rec
   assert.match(guards, /\['true', 'mixed'\]/);
   assert.match(guards, /target->shuffleOffVerified = true;/);
   assert.match(guards, /target->repeatOffVerified = true;/);
-  assert.match(guards, /ClickSlotNormalizedPoint\(\*target, x, y\)/);
+  assert.match(guards, /DispatchSpotifyDevToolsClick\(\*target, x, y\)/);
+  assert.doesNotMatch(guards, /ClickSlotNormalizedPoint/);
+  assert.doesNotMatch(guards, /MarkSlotRecovering|RecomputeForeground/);
   assert.doesNotMatch(guards, /\.click\(\)/);
   assert.match(music, /slot\.shuffleOffVerified = false;/);
   assert.match(music, /slot\.repeatOffVerified = false;/);
-  assert.match(music, /PlaybackModeGuard::Shuffle/);
-  assert.match(music, /PlaybackModeGuard::Repeat/);
-  assert.match(
-    music,
-    /PlaybackModeGuard::Shuffle[\s\S]*PlaybackModeGuard::Repeat[\s\S]*kSpotifyStaticTrackReconcileScript/,
+
+  const playingGate = music.indexOf('if (slot.state == SlotState::Playing)');
+  const shuffle = music.indexOf('PlaybackModeGuard::Shuffle', playingGate);
+  const repeat = music.indexOf('PlaybackModeGuard::Repeat', shuffle);
+  const reconcile = music.indexOf('kSpotifyStaticTrackReconcileScript', repeat);
+  assert.ok(
+    playingGate >= 0 && shuffle > playingGate && repeat > shuffle && reconcile > repeat,
   );
 });
 
@@ -48,8 +52,9 @@ test('shuffle and repeat are inspected in one JavaScript round trip', () => {
   assert.match(guards, /return shuffle\.off && repeat\.off/);
 });
 
-test('unmounted controls stay pending instead of being falsely marked off or unhealthy', () => {
+test('unmounted controls stay pending without demoting confirmed playback', () => {
   assert.match(guards, /if \(!button\) return \{ off: false, point: null \}/);
   assert.match(guards, /if \(value == L"false"\)/);
   assert.match(guards, /ArmRobustScheduler\(\);[\s\S]*return S_OK;/);
+  assert.doesNotMatch(guards, /MarkSlotRecovering|RecomputeForeground/);
 });

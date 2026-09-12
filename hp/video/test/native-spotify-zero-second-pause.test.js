@@ -14,24 +14,40 @@ const rotation = source('spotify_timed_end_rotation.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
-test('zero-second target media is resumed directly before Pause UI is treated as settling', () => {
+test('zero-second target media observes real play() settlement before UI fallback', () => {
   assert.match(scoped, /const mediaPlaybackState = \(\) =>/);
-  assert.match(scoped, /media: pending/);
+  assert.match(scoped, /candidate\.tagName === 'AUDIO'/);
   assert.match(scoped, /const requestMediaStart = media =>/);
+  assert.match(scoped, /__homePanelSpotifyPlayAttempt/);
   assert.match(scoped, /const promise = media\.play\(\)/);
-  assert.match(scoped, /now - last < 3000/);
+  assert.match(scoped, /promise\.then\(\(\) =>/);
+  assert.match(scoped, /\.catch\(\(\) =>/);
+  assert.match(scoped, /attempt\.state = 'rejected'/);
+  assert.match(scoped, /now - attempt\.at < 15000/);
 
   const directStart = scoped.indexOf(
-    'if (currentMatchesTarget && mediaState.known && !mediaState.playing &&',
+    'if (currentMatchesTarget && mediaState.known && !mediaState.playing) {',
   );
   const pauseUi = scoped.indexOf(
     "if (controlIntent === 'pause' || buttonIntentValue === 'pause')",
   );
   assert.ok(directStart >= 0 && pauseUi > directStart);
   const startBranch = scoped.slice(directStart, pauseUi);
-  assert.match(startBranch, /requestMediaStart\(mediaState\.media\)/);
+  assert.match(startBranch, /const mediaStart = requestMediaStart\(mediaState\.media\)/);
+  assert.match(startBranch, /mediaStart === 'pending'/);
   assert.match(startBranch, /return 'starting'/);
-  assert.doesNotMatch(startBranch, /point\(/);
+  assert.doesNotMatch(startBranch, /return 'starting'[\s\S]*mediaStart === 'rejected'/);
+});
+
+test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
+  const start = music.indexOf('slot.lastModeNavigateTick = 0;');
+  const reconcile = music.indexOf('kSpotifyStaticTrackReconcileScript', start);
+  assert.ok(start >= 0 && reconcile > start);
+  const startup = music.slice(start, reconcile);
+  const playingGate = startup.indexOf('if (slot.state == SlotState::Playing)');
+  const shuffle = startup.indexOf('PlaybackModeGuard::Shuffle');
+  const repeat = startup.indexOf('PlaybackModeGuard::Repeat');
+  assert.ok(playingGate >= 0 && shuffle > playingGate && repeat > shuffle);
 });
 
 test('native starting and settling states wait or renavigate without ambiguous toggle clicks', () => {

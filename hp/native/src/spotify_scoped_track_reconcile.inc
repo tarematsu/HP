@@ -158,7 +158,16 @@ LR"JS(
         media: active
       };
     }
-    const pending = media.find(candidate => !candidate.ended) || null;
+    // Spotify's music clock is carried by audio. Prefer a usable audio element
+    // before any auxiliary video node so a zero-second recovery never sends
+    // play() to an unrelated decorative/advertising media element.
+    const pending =
+        media.find(candidate => candidate.tagName === 'AUDIO' &&
+            !candidate.ended && candidate.readyState >= 1) ||
+        media.find(candidate => candidate.tagName === 'AUDIO' &&
+            !candidate.ended) ||
+        media.find(candidate => !candidate.ended && candidate.readyState >= 1) ||
+        media.find(candidate => !candidate.ended) || null;
     if (pending) {
       return {
         known: true,
@@ -172,19 +181,58 @@ LR"JS(
 )JS"
 LR"JS(
   const requestMediaStart = media => {
-    if (!media || media.ended || !media.paused) return false;
+    if (!media || media.ended || !media.paused) return 'unneeded';
     const now = Date.now();
-    const last = Number(media.__homePanelSpotifyPlayRequestAt) || 0;
-    if (now - last < 3000) return true;
-    media.__homePanelSpotifyPlayRequestAt = now;
+    const attempt = media.__homePanelSpotifyPlayAttempt ||
+        (media.__homePanelSpotifyPlayAttempt = {
+          token: 0,
+          state: 'idle',
+          at: 0
+        });
+
+    if (attempt.state === 'pending') {
+      if (now - attempt.at < 2000) return 'pending';
+      attempt.state = 'rejected';
+      attempt.at = now;
+      return 'rejected';
+    }
+    if (attempt.state === 'fulfilled' && media.paused) {
+      // play() can resolve and Spotify can immediately pause the underlying
+      // element. Treat that as a failed start instead of looping on play().
+      attempt.state = 'rejected';
+      attempt.at = now;
+      return 'rejected';
+    }
+    if (attempt.state === 'rejected' && now - attempt.at < 15000) {
+      return 'rejected';
+    }
+
+    attempt.token += 1;
+    if (!attempt.token) attempt.token = 1;
+    const token = attempt.token;
+    attempt.state = 'pending';
+    attempt.at = now;
     try {
       const promise = media.play();
-      if (promise && typeof promise.catch === 'function') {
-        promise.catch(() => {});
+      if (promise && typeof promise.then === 'function') {
+        promise.then(() => {
+          if (attempt.token !== token) return;
+          attempt.state = 'fulfilled';
+          attempt.at = Date.now();
+        }).catch(() => {
+          if (attempt.token !== token) return;
+          attempt.state = 'rejected';
+          attempt.at = Date.now();
+        });
+      } else {
+        attempt.state = 'fulfilled';
+        attempt.at = Date.now();
       }
-      return true;
+      return 'pending';
     } catch (_) {
-      return false;
+      attempt.state = 'rejected';
+      attempt.at = Date.now();
+      return 'rejected';
     }
   };
 
@@ -213,15 +261,15 @@ LR"JS(
     return 'wrong';
   }
 
-  // Once Spotify has loaded the requested media element, the element itself is
-  // the least ambiguous start actuator. This covers the failure mode where the
-  // UI already flips to Pause while the actual media clock remains at 0. Native
-  // WebView autoplay policy allows this play() request; observer 'playing' is
-  // still the only authority that promotes the slot to Playing.
-  if (currentMatchesTarget && mediaState.known && !mediaState.playing &&
-      requestMediaStart(mediaState.media)) {
-    report(false);
-    return 'starting';
+  // Direct media start remains the first choice, but only while its real
+  // promise is still pending. A rejected or immediately re-paused attempt falls
+  // through to the explicitly Play-labelled trusted UI path below.
+  if (currentMatchesTarget && mediaState.known && !mediaState.playing) {
+    const mediaStart = requestMediaStart(mediaState.media);
+    if (mediaStart === 'pending') {
+      report(false);
+      return 'starting';
+    }
   }
 
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') {
