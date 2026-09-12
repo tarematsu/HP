@@ -119,7 +119,7 @@ void PowerSavingController::EnsureOverlay() {
   overlay_ = CreateWindowExW(
       WS_EX_NOPARENTNOTIFY,
       kOverlayWindowClass,
-      L"更新 / 省電力 / ミュート",
+      L"更新 / モニター / ミュート",
       WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
       0,
       0,
@@ -286,7 +286,7 @@ void PowerSavingController::PaintOverlay(HWND window) {
       updateButton, false, RGB(40, 73, 112), RGB(84, 145, 211), L"更新");
   drawButton(
       powerButton, powerSaving_, RGB(30, 92, 55), RGB(74, 180, 105),
-      powerSaving_ ? L"省電力 ON" : L"省電力");
+      powerSaving_ ? L"モニター ON" : L"モニター");
   drawButton(
       muteButton, mediaMuted_, RGB(88, 43, 47), RGB(190, 92, 102),
       mediaMuted_ ? L"ミュート ON" : L"ミュート");
