@@ -51,8 +51,8 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
@@ -61,7 +61,8 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(layout, /if \(placementChanged\)/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
-  assert.doesNotMatch(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(layout, /suppressHealthyMusicRendering/);
+  assert.match(layout, /put_IsVisible\(\s*suppressHealthyMusicRendering \? FALSE : TRUE\s*\)/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
 
