@@ -89,3 +89,29 @@ test('generation-tagged observer remains the authority for confirmed music playb
   );
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
 });
+
+test('music playback waits until the observer acknowledges the current generation', () => {
+  assert.match(
+    music,
+    /if \(!slot\.timedObserverReady\) \{[\s\S]*ArmTimedEndObserver\(slot\);[\s\S]*return;/,
+  );
+  assert.match(runtime, /fields\[0\] === 'spotify:observer-sync'/);
+  assert.match(runtime, /post\('spotify:observer-synced'\)/);
+  assert.match(rotation, /L"spotify:observer-sync"/);
+  assert.match(rotation, /L"spotify:observer-synced"/);
+  assert.match(
+    rotation,
+    /if \(observerSynced\) \{[\s\S]*timedObserverReady = true;[\s\S]*ReconcileActiveTimedSlot\(\*target\)/,
+  );
+});
+
+test('observer adoption of already-playing media also regenerates the native completion plan', () => {
+  assert.match(
+    runtime,
+    /const status = enforceTarget\(media\);[\s\S]*status === 'playing'[\s\S]*runtime\.postCompletionPlan\(media\)/,
+  );
+  assert.match(
+    runtime,
+    /spotify:observer-sync[\s\S]*document\.querySelectorAll\('audio, video'\)[\s\S]*scheduleTargetChecks\(media\)/,
+  );
+});
