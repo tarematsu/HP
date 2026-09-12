@@ -145,9 +145,14 @@ function isManagedLegacySpotifyRotation(rotation: unknown[]): boolean {
 
 function isManagedSevenSlotRotation(rotation: unknown[]): boolean {
   if (rotation.length !== 7) return false;
-  const groups = rotation.map(objectOrNull);
-  if (groups.some(group => !group)) return false;
-  const [a, b, c, d, e, f, g] = groups as JsonRecord[];
+  const a = objectOrNull(rotation[0]);
+  const b = objectOrNull(rotation[1]);
+  const c = objectOrNull(rotation[2]);
+  const d = objectOrNull(rotation[3]);
+  const e = objectOrNull(rotation[4]);
+  const f = objectOrNull(rotation[5]);
+  const g = objectOrNull(rotation[6]);
+  if (!a || !b || !c || !d || !e || !f || !g) return false;
   if (a.mode !== "fixed" || b.mode !== "random" || c.mode !== "random" ||
       d.mode !== "fixed" || e.mode !== "random" || f.mode !== "random" ||
       g.mode !== "random" || Number(b.count ?? 1) !== 1 ||
