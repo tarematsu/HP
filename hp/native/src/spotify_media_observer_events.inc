@@ -137,7 +137,11 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       if (quarantineCompletedGeneration(event.target)) return;
       state.lastIdentityCheckTime = -1;
       scheduleTargetChecks(event.target);
-      if (!event.target.paused && enforceTarget(event.target) === 'playing') {
+      // Metadata can arrive while Spotify's now-playing DOM still shows the
+      // previous item. Reuse the already-confirmed media for deadline planning;
+      // delayed target checks own identity rejection once the UI settles.
+      if (!event.target.paused && state.started &&
+          state.targetMedia === event.target && !state.endedPosted) {
         postCompletionPlan(event.target);
       }
     }, true);
