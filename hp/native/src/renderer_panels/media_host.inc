@@ -52,10 +52,6 @@ class NativeMediaPanelHost final {
       phase_ == Phase::YouTube ? SwitchToTver() : SwitchToYouTube();
       return true;
     }
-    if (timerId == kNativeMediaPlayAllTimer) {
-      ProbePlayAll();
-      return true;
-    }
     if (timerId == kNativeMediaNavigationRetryTimer) {
       StopNavigationRetry();
       NavigateCurrentPhase();
@@ -384,10 +380,9 @@ class NativeMediaPanelHost final {
                 } else if (phase_ == Phase::YouTube && IsYoutubePlaylistPage()) {
                   StopTverPlaybackMonitor();
                   StopYoutubePlaybackMonitors();
-                  BeginPlayAllProbe();
+                  BeginYoutubePlaylistFallback();
                 } else if (phase_ == Phase::YouTube && IsYoutubeWatchPage()) {
                   StopTverPlaybackMonitor();
-                  StopPlayAllProbe();
                   BeginYoutubePlaybackMonitors();
                 } else {
                   StopYoutubeMonitors();
@@ -491,20 +486,9 @@ class NativeMediaPanelHost final {
     }
   }
 
-  void BeginPlayAllProbe() noexcept {
-    StopPlayAllProbe();
-    playAllProbeAttempts_ = 0;
-    playAllProbeInFlight_ = false;
-    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
-    ArmTimer(kNativeMediaPlayAllTimer, kNativeMediaPlayAllRetryMs);
-    ProbePlayAll();
-  }
-
-  void StopPlayAllProbe() noexcept {
-    if (hostWindow_ && IsWindow(hostWindow_)) {
-      KillTimer(hostWindow_, kNativeMediaPlayAllTimer);
-    }
-    playAllProbeInFlight_ = false;
+  void BeginYoutubePlaylistFallback() noexcept {
+    if (phase_ != Phase::YouTube || !webview_ || !IsYoutubePlaylistPage()) return;
+    ExecutePolicyScript(webview_.Get(), kNativeMediaPlayAllScript, nullptr);
   }
 
   void InvalidateYoutubeWatchdog() noexcept {
@@ -533,7 +517,6 @@ class NativeMediaPanelHost final {
   }
 
   void StopYoutubeMonitors() noexcept {
-    StopPlayAllProbe();
     StopYoutubePlaybackMonitors();
   }
 
@@ -587,37 +570,6 @@ class NativeMediaPanelHost final {
     } catch (...) {
       return false;
     }
-  }
-
-  void ProbePlayAll() noexcept {
-    if (phase_ != Phase::YouTube || !webview_ || playAllProbeInFlight_) return;
-    if (playAllProbeAttempts_ >= kNativeMediaPlayAllRetryLimit) {
-      StopPlayAllProbe();
-      ClickNormalizedPoint(kNativeMediaFallbackPlayAllXTenThousandths,
-                           kNativeMediaFallbackPlayAllYTenThousandths);
-      BeginYoutubePlaybackMonitors();
-      return;
-    }
-    ++playAllProbeAttempts_;
-    playAllProbeInFlight_ = true;
-    const auto alive = alive_;
-    const HRESULT started = ExecutePolicyScript(
-        webview_.Get(), kNativeMediaPlayAllScript,
-        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-            [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire)) return S_OK;
-              playAllProbeInFlight_ = false;
-              if (phase_ != Phase::YouTube) return S_OK;
-              int x = 0;
-              int y = 0;
-              if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
-                StopPlayAllProbe();
-                ClickNormalizedPoint(x, y);
-                BeginYoutubePlaybackMonitors();
-              }
-              return S_OK;
-            }).Get());
-    if (FAILED(started)) playAllProbeInFlight_ = false;
   }
 
   void ProbeYoutubeWatchdog() noexcept {
@@ -793,9 +745,7 @@ class NativeMediaPanelHost final {
   uint64_t controllerGeneration_ = 0;
   uint64_t youtubeWatchdogRequestGeneration_ = 0;
   ULONGLONG youtubeWatchdogStartedTick_ = 0;
-  int playAllProbeAttempts_ = 0;
   bool controllerCreating_ = false;
-  bool playAllProbeInFlight_ = false;
   bool youtubeWatchdogInFlight_ = false;
   bool tverWatchdogInFlight_ = false;
   bool tverRestarting_ = false;
