@@ -41,7 +41,10 @@ test('track reconcile never forces repeat-one and observer owns natural completi
 test('returned Spotify control points flow through the single CDP trusted-click module', () => {
   assert.match(click, /bool SpotifyWebViews::ParseNormalizedPoint/);
   assert.match(click, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
-  assert.match(click, /DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\)/);
+  assert.match(
+    click,
+    /DispatchSpotifyDevToolsClick\(\s*(?:slot|\*target),\s*xTenThousandths,\s*yTenThousandths\)/,
+  );
   assert.match(click, /Input\.dispatchMouseEvent/);
   assert.doesNotMatch(click, /SendInput|MOUSEEVENTF_/);
 });
