@@ -250,21 +250,14 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
               target->timedCompletionDeadlineTick = 0;
               target->timedCompletionDeadlineGeneration = 0;
-              if (stopped) {
-                MarkSlotRecovering(*target, now);
-                target->lastTimedReconcileTick = 0;
-                staggerSlotIndex_ = target->index;
-                staggerSlotStartTick_ = now >= 2000ULL ? now - 2000ULL : now;
-                staggerSlotValidated_ = false;
-                RecomputeForeground();
-                ArmRobustScheduler();
-                return S_OK;
-              }
-
               target->timedPlaybackStartTick = 0;
               if (!target->timedRotationActive || target->podcastBreakActive) {
                 return S_OK;
               }
+
+              // Playback anomalies are fail-forward events. Retrying the same
+              // target can revive Spotify's post-end 0s rewind and create a
+              // same-song loop; the next generation is the safer recovery.
               AdvanceTimedRotationSlot(*target, now);
               return S_OK;
             }).Get(),
