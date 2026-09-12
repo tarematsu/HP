@@ -8,8 +8,6 @@ LR"JS(
   const playbackRate = 1.75;
   const targetVolume = 1.0;
   const postrollGraceMs = 12000;
-  const qualityProbeIntervalMs = 5000;
-  const qualityProbeLimit = 4;
   const progressSteadyIntervalMs = 2000;
   const progressNearEndIntervalMs = 500;
   const progressFinalIntervalMs = 200;
@@ -112,6 +110,24 @@ LR"JS(
       const pending = pendingWakeSignature;
       if (pending && pending !== lastWakeSignature) postWake(pending);
     }, delay);
+  };
+  const requestNativeMediaInit = (video, state) => {
+    if (!video || !state) return;
+    const source = normalize(video.currentSrc || video.src || '');
+    if (state.nativeWakeVideo !== video) {
+      state.nativeWakeVideo = video;
+      state.nativeWakeSource = source;
+    } else {
+      if (!source || !state.nativeWakeSource) {
+        if (source) state.nativeWakeSource = source;
+        return;
+      }
+      if (state.nativeWakeSource === source) return;
+      state.nativeWakeSource = source;
+    }
+    try {
+      window.chrome?.webview?.postMessage('homepanel:tver-media-init');
+    } catch (_) {}
   };
 
   const progressIntervalFor = video => {
