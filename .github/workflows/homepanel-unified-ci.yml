@@ -1,4 +1,5 @@
 name: HomePanel unified Worker CI
+# Pull requests and main intentionally use the same path filters and validation job.
 
 on:
   push:
