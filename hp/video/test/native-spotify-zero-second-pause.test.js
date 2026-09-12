@@ -83,10 +83,9 @@ test('DOM reconcile cannot promote a music slot to Playing by itself', () => {
 });
 
 test('generation-tagged observer remains the authority for confirmed music playback start', () => {
-  assert.match(
-    rotation,
-    /if \(started\) \{[\s\S]*SetSlotState\(\*target, SlotState::Playing\)/,
-  );
+  assert.match(rotation, /ParseSpotifyStartedEvent/);
+  assert.match(rotation, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(rotation, /timedCompletionDeadlineTick = now \+ remainingMs/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
 });
 
@@ -105,13 +104,12 @@ test('music playback waits until the observer acknowledges the current generatio
   );
 });
 
-test('observer adoption of already-playing media also regenerates the native completion plan', () => {
-  assert.match(
-    runtime,
-    /const status = enforceTarget\(media\);[\s\S]*status === 'playing'[\s\S]*runtime\.postCompletionPlan\(media\)/,
-  );
+test('observer adoption of already-playing media emits one start deadline', () => {
   assert.match(
     runtime,
     /spotify:observer-sync[\s\S]*document\.querySelectorAll\('audio, video'\)[\s\S]*scheduleTargetChecks\(media\)/,
   );
+  assert.match(runtime, /const remainingMs = remainingDurationMs\(media\)/);
+  assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.doesNotMatch(runtime, /postCompletionPlan/);
 });
