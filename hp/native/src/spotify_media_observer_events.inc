@@ -11,7 +11,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   runtime.eventsInstalled = true;
 
   const { state, post, syncTarget, isMedia, enforceTarget,
-          scheduleTargetChecks, scheduleRecovery } = runtime;
+          scheduleTargetChecks, scheduleRecovery, postCompletionPlan,
+          clearCompletionPlan } = runtime;
   const finishLeadSeconds = 1.5;
 
   // The only direct pause retained in music playback is a narrow quarantine for
@@ -42,6 +43,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
     state.endedPosted = true;
+    clearCompletionPlan();
     stopHeartbeat();
     post('spotify:timed-ended');
     return true;
@@ -54,10 +56,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       return false;
     }
     if (!finishTarget(media)) return false;
-
-    // Do not depend on Spotify emitting `ended`. Once the requested track enters
-    // the final 1.5 seconds, hand ownership to native and stop the old generation
-    // so autoplay/repeat cannot win the transition race.
     quarantineMedia(media);
     return true;
   };
@@ -85,14 +83,28 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       return false;
     }
 
-    // Fallback for a heavily throttled WebView that skips the near-end
-    // timeupdate entirely and rewinds the same media element to zero.
+    // Fallback for a heavily throttled WebView that skips the native deadline
+    // probe and rewinds the same media element to zero.
     const wrapped = previousTime >= Math.max(0, duration - 3) &&
         currentTime <= 1.5 && previousTime - currentTime >= 2;
     if (!wrapped || !finishTarget(media)) return false;
 
     quarantineMedia(media);
     return true;
+  };
+
+  runtime.probeCompletion = () => {
+    const media = state.targetMedia;
+    if (!isMedia(media) || state.endedPosted) return false;
+    if (media.ended) return finishTarget(media);
+    if (finishNearEnd(media)) return true;
+    if (media.paused) {
+      clearCompletionPlan();
+      return false;
+    }
+    // Playback may have stalled or the native timer may have fired slightly
+    // before the media clock. One fresh plan re-arms native; no polling loop.
+    return postCompletionPlan(media);
   };
 
   document.addEventListener('play', event => {
@@ -109,29 +121,53 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('playing', event => {
     if (!isMedia(event.target)) return;
     if (quarantineCompletedGeneration(event.target)) return;
-    enforceTarget(event.target);
+    if (enforceTarget(event.target) === 'playing') {
+      postCompletionPlan(event.target);
+    }
   }, true);
 
   // Spotify can reuse one media element while changing its internal queue. A
   // recommended/autoplay track therefore does not always emit a fresh play or
   // playing event. durationchange gives us an early transition signal. The
-  // browser's timeupdate event remains a fallback, but DOM identity checks are
-  // limited to roughly once per playback second per slot.
+  // browser's timeupdate event remains an identity and opportunistic completion
+  // fallback; native owns the reliable deadline path.
   for (const eventName of ['loadedmetadata', 'durationchange']) {
     document.addEventListener(eventName, event => {
       if (!isMedia(event.target) || event.target.ended) return;
       if (quarantineCompletedGeneration(event.target)) return;
       state.lastIdentityCheckTime = -1;
       scheduleTargetChecks(event.target);
+      // Metadata can arrive while Spotify's now-playing DOM still shows the
+      // previous item. Reuse the already-confirmed media for deadline planning;
+      // delayed target checks own identity rejection once the UI settles.
+      if (!event.target.paused && state.started &&
+          state.targetMedia === event.target && !state.endedPosted) {
+        postCompletionPlan(event.target);
+      }
     }, true);
   }
 
-  // A repeat rewind normally emits seeking before the first replayed audio
-  // frame. Detect it here for the fastest fallback handoff.
   document.addEventListener('seeking', event => {
     if (!isMedia(event.target) || event.target.ended) return;
     if (quarantineCompletedGeneration(event.target)) return;
-    detectRepeatWrap(event.target);
+    if (detectRepeatWrap(event.target)) return;
+    clearCompletionPlan();
+  }, true);
+
+  document.addEventListener('seeked', event => {
+    if (!isMedia(event.target) || event.target.ended || event.target.paused) return;
+    if (quarantineCompletedGeneration(event.target)) return;
+    if (enforceTarget(event.target) === 'playing') {
+      postCompletionPlan(event.target);
+    }
+  }, true);
+
+  document.addEventListener('ratechange', event => {
+    if (!isMedia(event.target) || event.target.ended || event.target.paused) return;
+    if (quarantineCompletedGeneration(event.target)) return;
+    if (enforceTarget(event.target) === 'playing') {
+      postCompletionPlan(event.target);
+    }
   }, true);
 
   document.addEventListener('timeupdate', event => {
@@ -153,6 +189,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('pause', event => {
     if (!isMedia(event.target)) return;
     if (finishNearEnd(event.target)) return;
+    clearCompletionPlan();
     stopHeartbeat();
     scheduleRecovery(event.target, 600, true);
   }, true);
@@ -160,12 +197,13 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   for (const eventName of ['waiting', 'stalled']) {
     document.addEventListener(eventName, event => {
       if (!isMedia(event.target)) return;
+      clearCompletionPlan();
       scheduleRecovery(event.target, 2500, false);
     }, true);
   }
 
-  // `ended` remains a fallback when the browser reports natural completion
-  // before the near-end timeupdate path gets a chance to run.
+  // Browser end remains a zero-cost fallback if it arrives before the native
+  // completion probe, for example after a long timer delay under system load.
   document.addEventListener('ended', event => {
     finishTarget(event.target);
   }, true);

@@ -20,11 +20,50 @@ bool ParseSpotifyGenerationEvent(
   return true;
 }
 
+bool ParseSpotifyCompletionPlanEvent(
+    LPCWSTR rawMessage, ULONGLONG* generation,
+    ULONGLONG* remainingMs) noexcept {
+  if (!rawMessage || !generation || !remainingMs) return false;
+  constexpr std::wstring_view eventName = L"spotify:timed-plan";
+  const std::wstring_view value(rawMessage);
+  if (value.size() <= eventName.size() ||
+      value.substr(0, eventName.size()) != eventName ||
+      value[eventName.size()] != kSpotifyMessageSeparator) {
+    return false;
+  }
+  const size_t generationStart = eventName.size() + 1;
+  const size_t separator = value.find(kSpotifyMessageSeparator, generationStart);
+  if (separator == std::wstring_view::npos || separator == generationStart ||
+      separator + 1 >= value.size()) {
+    return false;
+  }
+
+  const std::wstring generationText(
+      value.substr(generationStart, separator - generationStart));
+  const std::wstring remainingText(value.substr(separator + 1));
+  wchar_t* generationEnd = nullptr;
+  wchar_t* remainingEnd = nullptr;
+  const unsigned long long parsedGeneration =
+      wcstoull(generationText.c_str(), &generationEnd, 10);
+  const unsigned long long parsedRemaining =
+      wcstoull(remainingText.c_str(), &remainingEnd, 10);
+  if (!generationEnd || *generationEnd != L'\0' ||
+      !remainingEnd || *remainingEnd != L'\0' ||
+      parsedRemaining > 24ULL * 60ULL * 60ULL * 1000ULL) {
+    return false;
+  }
+  *generation = static_cast<ULONGLONG>(parsedGeneration);
+  *remainingMs = static_cast<ULONGLONG>(parsedRemaining);
+  return true;
+}
+
 }  // namespace
 
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.podcastBreakActive = false;
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
+  slot.timedCompletionDeadlineTick = 0;
+  slot.timedCompletionDeadlineGeneration = 0;
   if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
   if (slot.timedCycleTracks.empty()) {
     slot.timedTarget = TimedSpotifyTarget::None;
@@ -45,7 +84,6 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
-  // Music and TALKABOUT both advance by their natural completion signal only.
   slot.timedPlaybackStartTick = 0;
 }
 
@@ -68,8 +106,6 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
 void SpotifyWebViews::CompletePodcastBreak(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || !slot.podcastBreakActive) return;
-  // Completion means the episode has already ended. Do not issue another
-  // generic pause before advancing; navigation owns the next target transition.
   slot.podcastBreakActive = false;
   AdvanceTimedRotationSlot(slot, now);
 }
@@ -78,9 +114,6 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || slot.podcastBreakActive) return;
 
-  // A cloud-sync change never cuts the currently playing item. At its next
-  // natural completion boundary, discard the old prebuilt cycle and start the
-  // synchronized rotation from A.
   if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
     slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
@@ -104,6 +137,36 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   staggerSlotValidated_ = false;
   RefreshSpotifyHostLayout();
   NavigateActiveTimedSlot(slot);
+}
+
+void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
+  for (Slot& slot : slots_) {
+    if (slot.timedCompletionDeadlineTick == 0) continue;
+    if (slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
+        slot.timedTarget != TimedSpotifyTarget::Music ||
+        !slot.timedRotationActive || !slot.webview) {
+      slot.timedCompletionDeadlineTick = 0;
+      slot.timedCompletionDeadlineGeneration = 0;
+      continue;
+    }
+    if (slot.timedCompletionDeadlineTick > now) continue;
+
+    std::wstring message = L"spotify:completion-probe";
+    message.push_back(kSpotifyMessageSeparator);
+    message.append(std::to_wstring(slot.targetGeneration));
+    const HRESULT posted = slot.webview->PostWebMessageAsString(message.c_str());
+    if (SUCCEEDED(posted)) {
+      // The WebView either confirms completion or sends one fresh remaining-time
+      // plan. Clearing first prevents a hot retry loop while that message is in
+      // transit through WebView2.
+      slot.timedCompletionDeadlineTick = 0;
+      slot.timedCompletionDeadlineGeneration = 0;
+    } else {
+      // A failed cross-process post is retried by the same shared scheduler, not
+      // by a new per-slot timer.
+      slot.timedCompletionDeadlineTick = now + 1000ULL;
+    }
+  }
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
@@ -130,15 +193,24 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               }
 
               ULONGLONG eventGeneration = 0;
-              const bool started = ParseSpotifyGenerationEvent(
-                  rawMessage, L"spotify:timed-started", &eventGeneration);
-              const bool ended = !started && ParseSpotifyGenerationEvent(
-                  rawMessage, L"spotify:timed-ended", &eventGeneration);
-              const bool stopped = !started && !ended &&
+              ULONGLONG remainingMs = 0;
+              const bool planned = ParseSpotifyCompletionPlanEvent(
+                  rawMessage, &eventGeneration, &remainingMs);
+              const bool planCleared = !planned && ParseSpotifyGenerationEvent(
+                  rawMessage, L"spotify:timed-plan-clear", &eventGeneration);
+              const bool started = !planned && !planCleared &&
                   ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:timed-started", &eventGeneration);
+              const bool ended = !planned && !planCleared && !started &&
+                  ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:timed-ended", &eventGeneration);
+              const bool stopped = !planned && !planCleared && !started &&
+                  !ended && ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:not-playing", &eventGeneration);
               CoTaskMemFree(rawMessage);
-              if (!started && !ended && !stopped) return S_OK;
+              if (!planned && !planCleared && !started && !ended && !stopped) {
+                return S_OK;
+              }
 
               if (eventGeneration == 0 ||
                   eventGeneration != target->targetGeneration) {
@@ -146,14 +218,38 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               }
 
               const ULONGLONG now = GetTickCount64();
+              if (planned) {
+                if (target->timedTarget != TimedSpotifyTarget::Music ||
+                    !target->timedRotationActive) {
+                  return S_OK;
+                }
+                const ULONGLONG untilProbe = remainingMs > kSpotifyCompletionProbeLeadMs
+                    ? remainingMs - kSpotifyCompletionProbeLeadMs
+                    : 0ULL;
+                target->timedCompletionDeadlineTick = now + untilProbe;
+                target->timedCompletionDeadlineGeneration = eventGeneration;
+                ArmRobustScheduler();
+                return S_OK;
+              }
+
+              if (planCleared) {
+                target->timedCompletionDeadlineTick = 0;
+                target->timedCompletionDeadlineGeneration = 0;
+                ArmRobustScheduler();
+                return S_OK;
+              }
+
               if (started) {
                 SetSlotState(*target, SlotState::Playing);
+                target->timedPlaybackStartTick = now;
                 target->unhealthySinceTick = 0;
                 RecomputeForeground();
                 ArmRobustScheduler();
                 return S_OK;
               }
 
+              target->timedCompletionDeadlineTick = 0;
+              target->timedCompletionDeadlineGeneration = 0;
               if (stopped) {
                 MarkSlotRecovering(*target, now);
                 target->lastTimedReconcileTick = 0;

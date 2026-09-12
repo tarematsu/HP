@@ -8,9 +8,12 @@ const std::wstring kSpotifyFastEndObserverScriptStorage = [] {
   std::wstring script;
   script.reserve(
       std::size(kSpotifyMediaObserverRuntimeScript) +
+      std::size(kSpotifyMediaObserverCompletionScript) +
       std::size(kSpotifyMediaObserverEventsScript) +
-      std::size(kSpotifyMediaObserverHeartbeatScript) + 4U);
+      std::size(kSpotifyMediaObserverHeartbeatScript) + 6U);
   script.append(kSpotifyMediaObserverRuntimeScript);
+  script.append(L";\n");
+  script.append(kSpotifyMediaObserverCompletionScript);
   script.append(L";\n");
   script.append(kSpotifyMediaObserverEventsScript);
   script.append(L";\n");

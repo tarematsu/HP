@@ -34,8 +34,8 @@ void CALLBACK SpotifyWebViews::StaggeredReconcileTimerProc(
   SpotifyWebViews* const owner = slot->owner;
   owner->RunStaggeredReconcile();
   // SetTimer is intentionally re-armed after each pass so healthy operation can
-  // sleep at the adaptive cadence while a recovery event immediately returns it
-  // to the two-second cadence.
+  // sleep at the adaptive cadence while recovery and completion deadlines wake
+  // the same single native timer only when needed.
   owner->ArmRobustScheduler();
 }
 
@@ -68,6 +68,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const ULONGLONG now = GetTickCount64();
   if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
+
+  // Completion deadlines are independent per WebView, including the 40-second
+  // startup staggering. Probe every due slot before selecting the one account
+  // that owns heavier DOM reconciliation for this scheduler turn.
+  ProbeDueTimedCompletions(now);
 
   // device-config.json is atomically replaced by the existing CloudClient sync.
   // A timestamp check is cheap and makes Spotify consume the synchronized

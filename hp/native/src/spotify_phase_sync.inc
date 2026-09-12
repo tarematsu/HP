@@ -4,6 +4,8 @@ namespace {
 constexpr UINT_PTR kSpotifyRobustReconcileTimer = 0x53505243;
 constexpr UINT kSpotifyRobustUrgentTickMs = 2U * 1000U;
 constexpr UINT kSpotifyRobustHealthyTickMs = 60U * 1000U;
+constexpr UINT kSpotifyCompletionTimerFloorMs = 100U;
+constexpr ULONGLONG kSpotifyCompletionProbeLeadMs = 1500ULL;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
@@ -105,24 +107,42 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
         SlotStateNeedsRecovery(slot.state) &&
         (slot.timedTarget != TimedSpotifyTarget::None ||
          slot.loginPage || slot.controllerCreating);
-    if (relevantRecovery) return kSpotifyRobustUrgentTickMs;
+    if (relevantRecovery) {
+      nextDeadlineMs = std::min<ULONGLONG>(
+          nextDeadlineMs, kSpotifyRobustUrgentTickMs);
+    }
+
+    if (slot.timedCompletionDeadlineTick != 0 &&
+        slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
+        slot.timedTarget == TimedSpotifyTarget::Music) {
+      if (slot.timedCompletionDeadlineTick <= now) {
+        nextDeadlineMs = 0;
+      } else {
+        nextDeadlineMs = std::min(
+            nextDeadlineMs, slot.timedCompletionDeadlineTick - now);
+      }
+    }
 
     if (slot.reconcileInFlight && slot.reconcileStartedTick != 0) {
       const ULONGLONG age = now - slot.reconcileStartedTick;
       if (age >= kSpotifyAsyncOperationTimeoutMs) {
-        return kSpotifyRobustUrgentTickMs;
+        nextDeadlineMs = std::min<ULONGLONG>(
+            nextDeadlineMs, kSpotifyRobustUrgentTickMs);
+      } else {
+        nextDeadlineMs = std::min(
+            nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
       }
-      nextDeadlineMs = std::min(
-          nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
     }
     if (slot.timedObserverInstallInFlight &&
         slot.timedObserverInstallStartedTick != 0) {
       const ULONGLONG age = now - slot.timedObserverInstallStartedTick;
       if (age >= kSpotifyAsyncOperationTimeoutMs) {
-        return kSpotifyRobustUrgentTickMs;
+        nextDeadlineMs = std::min<ULONGLONG>(
+            nextDeadlineMs, kSpotifyRobustUrgentTickMs);
+      } else {
+        nextDeadlineMs = std::min(
+            nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
       }
-      nextDeadlineMs = std::min(
-          nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
     }
   }
 
@@ -139,7 +159,7 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   }
 
   return static_cast<UINT>(std::max<ULONGLONG>(
-      1000ULL, std::min<ULONGLONG>(
+      kSpotifyCompletionTimerFloorMs, std::min<ULONGLONG>(
           kSpotifyRobustHealthyTickMs, nextDeadlineMs)));
 }
 
