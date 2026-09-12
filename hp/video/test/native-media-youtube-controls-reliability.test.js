@@ -62,12 +62,24 @@ test('YouTube message dialogs auto-close explicit Close controls only', () => {
   assert.doesNotMatch(agent, /popupObserver\.observe\(document\.(?:documentElement|body)/);
 });
 
-test('YouTube content recovery keeps play before the one-shot fullscreen setup', () => {
+test('YouTube content recovery retries fullscreen until actual entry is confirmed', () => {
   const paused = recovery.indexOf('video && video.paused && !video.ended');
+  const confirmed = recovery.lastIndexOf('if (trusted.fullscreen())');
   const contentFullscreen = recovery.lastIndexOf("player.querySelector('.ytp-fullscreen-button')");
+  const arm = recovery.lastIndexOf("trusted.arm(target, 'fullscreen', 1200)");
   assert.ok(paused >= 0);
-  assert.ok(contentFullscreen > paused);
+  assert.ok(confirmed > paused);
+  assert.ok(contentFullscreen > confirmed);
+  assert.ok(arm > contentFullscreen);
   assert.match(recovery, /trusted\.arm\(play, 'play', 1500\)/);
+  assert.match(
+    recovery,
+    /if \(trusted\.fullscreen\(\)\) \{\s*recoveryState\.fullscreenApplied = true;\s*return null;/,
+  );
   assert.match(recovery, /if \(recoveryState\.fullscreenApplied\) return null/);
-  assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
+  assert.doesNotMatch(
+    recovery,
+    /fullscreenAction[\s\S]{0,160}recoveryState\.fullscreenApplied = true/,
+  );
+  assert.match(recovery, /return trusted\.arm\(target, 'fullscreen', 1200\)/);
 });
