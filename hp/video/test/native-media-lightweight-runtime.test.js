@@ -21,6 +21,8 @@ const youtubeRecovery = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 const youtubeAgent = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
+const youtubePlaylistFallback = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url), 'utf8');
 const mediaPanel = [mediaBase, mediaHost, mediaWindow].join('\n');
 
 test('TVer uses media events plus a player-local observer, never a document-wide loop', () => {
@@ -101,13 +103,19 @@ test('active YouTube and TVer hot paths stay free of high-frequency diagnostic l
   assert.doesNotMatch(hotPath, /OutputDebugString|std::cout|std::cerr/);
 });
 
-test('playlist startup still has one bounded native fallback', () => {
-  assert.match(mediaBase, /kNativeMediaPlayAllRetryMs = 500U/);
-  assert.match(mediaBase, /kNativeMediaPlayAllRetryLimit = 60/);
-  assert.match(
-    mediaHost,
-    /playAllProbeAttempts_ >= kNativeMediaPlayAllRetryLimit[\s\S]*ClickNormalizedPoint\(kNativeMediaFallbackPlayAllXTenThousandths/,
+test('playlist startup fallback is event driven with one seven-second escape hatch', () => {
+  assert.match(mediaHost, /BeginYoutubePlaylistFallback\(\)/);
+  assert.match(mediaHost, /ExecutePolicyScript\(webview_\.Get\(\), kNativeMediaPlayAllScript, nullptr\)/);
+  assert.doesNotMatch(
+    mediaBase + mediaHost,
+    /kNativeMediaPlayAllTimer|kNativeMediaPlayAllRetryMs|kNativeMediaPlayAllRetryLimit|playAllProbeAttempts_|ProbePlayAll/,
   );
+  assert.match(youtubePlaylistFallback, /new MutationObserver\(mutations =>/);
+  assert.match(youtubePlaylistFallback, /observer\.observe\(root, \{ childList: true, subtree: true \}\)/);
+  assert.match(youtubePlaylistFallback, /addEventListener\('yt-page-data-updated'/);
+  assert.match(youtubePlaylistFallback, /addEventListener\('yt-navigate-finish'/);
+  assert.match(youtubePlaylistFallback, /window\.setTimeout\([\s\S]*7000\)/);
+  assert.doesNotMatch(youtubePlaylistFallback, /setInterval\(/);
 });
 
 test('media responsibilities remain separate from radar rendering', () => {
