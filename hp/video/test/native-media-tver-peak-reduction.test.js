@@ -68,13 +68,13 @@ test('TVer playback rate is initialized once per current video', () => {
   assert.doesNotMatch(loop, /addEventListener\('ratechange'/);
 });
 
-test('TVer quality discovery is bounded, delayed and player-local', () => {
-  assert.match(loop, /qualityProbeLimit = 4/);
-  assert.match(loop, /qualityProbeIntervalMs = 5000/);
-  assert.match(loop, /state\.qualityProbeAttempts < qualityProbeLimit/);
+test('TVer quality discovery is event driven and player-local', () => {
+  assert.doesNotMatch(loop, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
+  assert.match(loop, /if \(!state\.lowQualitySet\)/);
   assert.match(loop, /const root = playerRootFor\(video\)/);
   assert.match(loop, /for \(const element of root\.querySelectorAll\(/);
   assert.match(loop, /state\.lowQualitySet = true/);
+  assert.match(loop, /scheduleEnsure\(40\)/);
 });
 
 test('TVer fullscreen is consumed once per current video', () => {
