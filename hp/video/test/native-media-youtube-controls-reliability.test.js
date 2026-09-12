@@ -51,6 +51,15 @@ test('YouTube skip detection remains player-local and variant tolerant', () => {
   assert.doesNotMatch(recovery, /document\.querySelectorAll\(skipSelectors/);
 });
 
+test('YouTube message dialogs auto-close explicit Close controls only', () => {
+  assert.match(agent, /closePattern = \/\^\(閉じる\|close\)\$\/i/);
+  assert.match(agent, /document\.querySelector\('ytd-popup-container'\)/);
+  assert.match(agent, /state\.popupObserver\.observe\(popupContainer/);
+  assert.match(agent, /close\.click\(\)/);
+  assert.match(agent, /isSurveyDialog/);
+  assert.doesNotMatch(agent, /popupObserver\.observe\(document\.(?:documentElement|body)/);
+});
+
 test('YouTube content recovery keeps play before fullscreen', () => {
   const paused = recovery.indexOf('video && video.paused && !video.ended');
   const contentFullscreen = recovery.lastIndexOf("player.querySelector('.ytp-fullscreen-button')");
