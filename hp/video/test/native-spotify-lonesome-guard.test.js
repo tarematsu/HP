@@ -30,12 +30,12 @@ test('all configured tracks use the shared music descriptor and scoped reconcile
   assert.match(scoped, /targetPlayButton/);
 });
 
-test('track reconcile never forces repeat-one and observer owns near-end completion', () => {
+test('track reconcile never forces repeat-one and observer waits for natural completion', () => {
   assert.doesNotMatch(scoped, /repeatState|control-button-repeat|repeatMode/);
   assert.match(runtime, /post\('spotify:timed-started'\)/);
-  assert.match(events, /const finishLeadSeconds = 1\.5/);
-  assert.match(events, /duration - finishLeadSeconds/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
   assert.match(events, /document\.addEventListener\('ended'/);
+  assert.match(events, /const finishPausedAtEnd = media =>/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
 });
 
