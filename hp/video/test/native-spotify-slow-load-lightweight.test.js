@@ -85,7 +85,7 @@ test('healthy ownership handoff does not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('authentication and recovery are visible while healthy music rendering is suppressed', () => {
+test('authentication and recovery are visible while healthy playback rendering is suppressed', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
@@ -102,8 +102,8 @@ test('authentication and recovery are visible while healthy music rendering is s
     layout,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
   );
-  assert.match(layout, /suppressHealthyMusicRendering/);
-  assert.match(layout, /put_IsVisible\(\s*suppressHealthyMusicRendering \? FALSE : TRUE\s*\)/);
+  assert.match(layout, /suppressHealthyRendering/);
+  assert.match(layout, /put_IsVisible\(suppressHealthyRendering \? FALSE : TRUE\)/);
   assert.match(layout, /x = client\.right \+ 32/);
   assert.match(layout, /insertAfter = HWND_TOP/);
 });
