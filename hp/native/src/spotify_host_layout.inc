@@ -4,6 +4,8 @@ namespace {
 constexpr double kSpotifySerializedRecoveryZoom = 0.80;
 constexpr int kSpotifyParkedPlaybackWidth = 320;
 constexpr int kSpotifyParkedPlaybackHeight = 180;
+constexpr int kSpotifyLowPowerPlaybackWidth = 96;
+constexpr int kSpotifyLowPowerPlaybackHeight = 54;
 constexpr int kSpotifyParkedPlaybackGap = 8;
 constexpr int kSpotifyRecoveryInteractionWidth = 720;
 constexpr int kSpotifyRecoveryInteractionHeight = 480;
@@ -38,12 +40,19 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool recovery =
         i == hostLayoutActiveSlot_ && !authentication &&
         SlotStateNeedsRecovery(slot.state);
+    const bool lowPowerPlayback =
+        !authentication && !recovery && slot.state == SlotState::Playing &&
+        slot.timedTarget == TimedSpotifyTarget::Music &&
+        slot.shuffleOffVerified && slot.repeatOffVerified &&
+        !slot.reconcileInFlight;
 
     int x = client.right + 32 + static_cast<int>(i) *
         (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
     int y = client.top;
-    int width = kSpotifyParkedPlaybackWidth;
-    int height = kSpotifyParkedPlaybackHeight;
+    int width = lowPowerPlayback
+        ? kSpotifyLowPowerPlaybackWidth : kSpotifyParkedPlaybackWidth;
+    int height = lowPowerPlayback
+        ? kSpotifyLowPowerPlaybackHeight : kSpotifyParkedPlaybackHeight;
     HWND insertAfter = HWND_BOTTOM;
     if (authentication) {
       x = client.left + (clientWidth - activeWidth) / 2;
@@ -90,6 +99,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     if (!slot.controller) {
       slot.hostLayoutController = nullptr;
       slot.hostLayoutReducedZoomApplied = false;
+      slot.hostMemoryTargetApplied = false;
+      slot.hostMemoryTargetLow = false;
       continue;
     }
 
@@ -98,6 +109,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       // to remember the new controller and notify it of the parent position.
       slot.hostLayoutController = slot.controller.Get();
       slot.hostLayoutReducedZoomApplied = false;
+      slot.hostMemoryTargetApplied = false;
+      slot.hostMemoryTargetLow = false;
     }
 
     const bool reducedZoom = authentication || recovery;
@@ -106,6 +119,24 @@ void SpotifyWebViews::PlaceHosts() noexcept {
           reducedZoom ? kSpotifySerializedRecoveryZoom : 1.0);
       if (SUCCEEDED(zoomResult)) {
         slot.hostLayoutReducedZoomApplied = reducedZoom;
+      }
+    }
+
+    // LOW keeps scripts/networking alive but lets WebView2 discard inactive
+    // renderer memory. Recovery/authentication immediately restore NORMAL.
+    if (slot.webview &&
+        (!slot.hostMemoryTargetApplied ||
+         slot.hostMemoryTargetLow != lowPowerPlayback)) {
+      ComPtr<ICoreWebView2_19> memoryView;
+      if (SUCCEEDED(slot.webview.As(&memoryView)) && memoryView) {
+        const HRESULT memoryResult = memoryView->put_MemoryUsageTargetLevel(
+            lowPowerPlayback
+                ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+        if (SUCCEEDED(memoryResult)) {
+          slot.hostMemoryTargetApplied = true;
+          slot.hostMemoryTargetLow = lowPowerPlayback;
+        }
       }
     }
 
@@ -129,11 +160,19 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
           ? activeIndex
           : slots_.size();
   unsigned mask = 0;
+  unsigned lowPowerMask = 0;
   size_t foregroundAuthenticationIndex = slots_.size();
   for (size_t i = 0; i < slots_.size(); ++i) {
-    if (!SlotStateIsHealthy(slots_[i].state)) mask |= (1u << i);
-    if (foregroundAuthenticationIndex == slots_.size() && slots_[i].webview &&
-        SlotIsLoginPage(slots_[i])) {
+    const Slot& slot = slots_[i];
+    if (!SlotStateIsHealthy(slot.state)) mask |= (1u << i);
+    if (slot.state == SlotState::Playing &&
+        slot.timedTarget == TimedSpotifyTarget::Music &&
+        slot.shuffleOffVerified && slot.repeatOffVerified &&
+        !slot.reconcileInFlight) {
+      lowPowerMask |= (1u << i);
+    }
+    if (foregroundAuthenticationIndex == slots_.size() && slot.webview &&
+        SlotIsLoginPage(slot)) {
       foregroundAuthenticationIndex = i;
     }
   }
@@ -185,12 +224,14 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
         if (FAILED(started)) slot.authenticationBadgeTick = 0;
       };
 
-  if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == recoveryIndex &&
+  if (hostLayoutMask_ == mask && hostLowPowerMask_ == lowPowerMask &&
+      hostLayoutActiveSlot_ == recoveryIndex &&
       hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex) {
     maintainAuthenticationForeground(false);
     return;
   }
   hostLayoutMask_ = mask;
+  hostLowPowerMask_ = lowPowerMask;
   hostLayoutActiveSlot_ = recoveryIndex;
   hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex;
   PlaceHosts();
