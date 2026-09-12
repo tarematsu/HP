@@ -17,8 +17,10 @@ test('observer generation sync completes before music reconcile may start playba
   assert.match(rotation, /L"spotify:observer-synced"/);
 });
 
-test('already-playing media is adopted with a fresh completion plan', () => {
+test('already-playing media is adopted with one fresh start deadline', () => {
   assert.match(runtime, /document\.querySelectorAll\('audio, video'\)/);
-  assert.match(runtime, /const status = enforceTarget\(media\)/);
-  assert.match(runtime, /runtime\.postCompletionPlan\(media\)/);
+  assert.match(runtime, /scheduleTargetChecks\(media\)/);
+  assert.match(runtime, /const remainingMs = remainingDurationMs\(media\)/);
+  assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.doesNotMatch(runtime, /postCompletionPlan/);
 });
