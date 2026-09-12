@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url), 'utf8');
@@ -14,8 +15,8 @@ const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
 const tverKeys = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url), 'utf8');
-const tverEpisode = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
+const tverEpisode = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const youtubeAgent = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 
@@ -50,6 +51,7 @@ test('TVer is event driven and player-local', () => {
   assert.match(tverEpisode, /event\.target instanceof HTMLMediaElement/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverEpisode, /setInterval\(ensure/);
+  assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
   assert.match(tverEpisode, /qualityProbeLimit = 4/);
   assert.match(tverEpisode, /qualityProbeIntervalMs = 5000/);
 });
