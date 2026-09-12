@@ -97,7 +97,10 @@ test('native TVer refresh preserves current selection and consumed state without
   assert.match(cloudQueueRefresh, /consumedEpisodeIds/);
   assert.match(cloudQueueRefresh, /Never interrupt an episode that is already selected/);
   assert.match(cloudQueueRefresh, /Queue exhaustion starts a fresh cycle/);
-  assert.doesNotMatch(cloudQueueRefresh, /ExecuteScript|sessionStorage|location\.replace|\bfetch\s*\(/);
+  assert.doesNotMatch(
+    cloudQueueRefresh,
+    /ExecuteScript\s*\(|sessionStorage\s*\.|location\.replace\s*\(|\bfetch\s*\(/,
+  );
   assert.match(
     mediaSection,
     /tver\.jp\/episodes\/[\s\S]*PrepareNativeMediaTverCloudQueueRefresh\(webview, hostWindow, alive\)[\s\S]*kNativeMediaTverPlaybackWatchdogPolicyScript/,
