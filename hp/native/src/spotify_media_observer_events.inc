@@ -15,9 +15,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
           clearCompletionPlan, completionPlanExpired } = runtime;
   const finishLeadSeconds = 1.5;
 
-  // The only direct pause retained in music playback is a narrow quarantine for
-  // a completed generation while native installs the next target. Start/recovery
-  // logic never pauses active playback.
   const quarantineMedia = media => {
     try { if (isMedia(media) && !media.paused) media.pause(); } catch (_) {}
   };
@@ -83,8 +80,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       return false;
     }
 
-    // Fallback for a heavily throttled WebView that skips the native deadline
-    // probe and rewinds the same media element to zero.
     const wrapped = previousTime >= Math.max(0, duration - 3) &&
         currentTime <= 1.5 && previousTime - currentTime >= 2;
     if (!wrapped || !finishTarget(media)) return false;
@@ -102,19 +97,11 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       clearCompletionPlan();
       return false;
     }
-    // A native probe is scheduled 1.5 seconds before the projected physical end.
-    // If WebView execution is throttled until after that projected end, Spotify
-    // may already have rewound the same element to zero. The old implementation
-    // mistook that replay for an early probe and armed another whole-track plan.
-    // The generation-fenced wall deadline proves this playthrough is complete.
     if (typeof completionPlanExpired === 'function' && completionPlanExpired()) {
       if (!finishTarget(media)) return false;
       quarantineMedia(media);
       return true;
     }
-    // Playback may have stalled or the native timer may have fired slightly
-    // before the media clock. Always publish one fresh plan for this probe; the
-    // normal dedupe path must not swallow the only native re-arm message.
     return postCompletionPlan(media, true);
   };
 
@@ -137,20 +124,12 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }
   }, true);
 
-  // Spotify can reuse one media element while changing its internal queue. A
-  // recommended/autoplay track therefore does not always emit a fresh play or
-  // playing event. durationchange gives us an early transition signal. The
-  // browser's timeupdate event remains an identity and opportunistic completion
-  // fallback; native owns the reliable deadline path.
   for (const eventName of ['loadedmetadata', 'durationchange']) {
     document.addEventListener(eventName, event => {
       if (!isMedia(event.target) || event.target.ended) return;
       if (quarantineCompletedGeneration(event.target)) return;
       state.lastIdentityCheckTime = -1;
       scheduleTargetChecks(event.target);
-      // Metadata can arrive while Spotify's now-playing DOM still shows the
-      // previous item. Reuse the already-confirmed media for deadline planning;
-      // delayed target checks own identity rejection once the UI settles.
       if (!event.target.paused && state.started &&
           state.targetMedia === event.target && !state.endedPosted) {
         postCompletionPlan(event.target);
@@ -213,8 +192,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }, true);
   }
 
-  // Browser end remains a zero-cost fallback if it arrives before the native
-  // completion probe, for example after a long timer delay under system load.
   document.addEventListener('ended', event => {
     finishTarget(event.target);
   }, true);
