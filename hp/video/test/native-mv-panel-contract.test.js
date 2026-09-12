@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const mediaBase = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
@@ -14,14 +15,14 @@ const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const youtubeClean = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url), 'utf8');
-const youtubeRecovery = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const youtubeRecovery = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 const youtubeAgent = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
-const tverEpisode = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
-const tverWatchdog = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
+const tverEpisode = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const tverWatchdog = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 const nativeWindows = readFileSync(
   new URL('../../native/src/renderer_panels/windows.inc', import.meta.url), 'utf8');
 const lifecycle = readFileSync(
@@ -80,15 +81,17 @@ test('phase overlay is event mounted without a one-second clock loop', () => {
   assert.doesNotMatch(mediaBase + mediaHost, /setInterval\(mount, 1000\)/);
 });
 
-test('YouTube preserves playlist playback, 480p, captions off, skip and fullscreen with low steady load', () => {
+test('YouTube preserves playlist playback, one-shot 480p, captions off, skip and fullscreen', () => {
   assert.match(mediaBase, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/youtube-start/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(youtubeRecovery, /const preferredQuality = 'large'/);
   assert.match(youtubeRecovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
+  assert.doesNotMatch(youtubeRecovery, /getPlaybackQuality\(\)/);
   assert.match(youtubeRecovery, /setOption\('captions', 'track', \{\}\)/);
   assert.match(youtubeRecovery, /\.ytp-ad-skip-button-modern/);
   assert.match(youtubeRecovery, /\.ytp-fullscreen-button/);
+  assert.match(youtubeRecovery, /fullscreenApplied: false/);
   assert.match(youtubeAgent, /homepanel:youtube-wake/);
   assert.match(youtubeAgent, /attributeFilter: \['class'\]/);
   assert.doesNotMatch(youtubeAgent, /document\.documentElement.*observe/);
@@ -106,7 +109,7 @@ test('YouTube clean player renders content video while preserving Skip Ad', () =
   assert.match(youtubeClean, /opacity: 1 !important/);
 });
 
-test('TVer episode playback is 1.75x, cloud-queue based and player-local', () => {
+test('TVer episode playback is one-shot 1.75x, cloud-queue based and player-local', () => {
   assert.match(tverEpisode, /const playbackRate = 1\.75/);
   assert.match(tverEpisode, /const targetVolume = 1\.0/);
   assert.match(tverEpisode, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
@@ -114,6 +117,7 @@ test('TVer episode playback is 1.75x, cloud-queue based and player-local', () =>
   assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
+  assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
   assert.match(tverEpisode, /qualityProbeLimit = 4/);
   assert.match(tverEpisode, /qualityProbeIntervalMs = 5000/);
   assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
@@ -121,12 +125,13 @@ test('TVer episode playback is 1.75x, cloud-queue based and player-local', () =>
   assert.match(mediaHost, /ProbeTverWatchdog\(\)/);
 });
 
-test('TVer ads are isolated to Skip and fullscreen automation', () => {
+test('TVer ads are isolated to Skip and one-shot fullscreen automation', () => {
   const adStart = tverWatchdog.indexOf('if (adActive) {');
   const restart = tverWatchdog.indexOf('if (state && state.restartRequested)');
   const branch = tverWatchdog.slice(adStart, restart);
   assert.match(branch, /skipButton/);
   assert.match(branch, /fullscreenButton/);
+  assert.match(branch, /fullscreenDirty === false/);
   assert.doesNotMatch(branch, /video\.play\(|video\.volume|playbackRate|surveyRoots/);
 });
 
