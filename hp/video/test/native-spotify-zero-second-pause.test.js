@@ -18,7 +18,8 @@ test('zero-second recovery uses only explicit Spotify Play-labelled controls', (
   assert.match(scoped, /const mediaPlaybackState = \(\) =>/);
   assert.match(scoped, /candidate\.tagName === 'AUDIO'/);
   assert.doesNotMatch(scoped, /requestMediaStart|__homePanelSpotifyPlayAttempt/);
-  assert.doesNotMatch(scoped, /\.play\s*\(/);
+  const executableScoped = scoped.replace(/\/\/.*$/gm, '');
+  assert.doesNotMatch(executableScoped, /\.play\s*\(/);
   assert.match(scoped, /HTMLMediaElement\.play\(\) bypasses Spotify's own state machine/);
 
   const pauseUi = scoped.indexOf(
