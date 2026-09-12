@@ -114,11 +114,34 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || slot.podcastBreakActive) return;
 
+  std::wstring completedPath;
+  if (slot.timedRotationPosition < slot.timedCycleTracks.size()) {
+    completedPath = slot.timedCycleTracks[slot.timedRotationPosition].path;
+  }
+
   if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
     slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
     slot.timedCloudRotationRevision = cloudRotationRevision_;
     if (slot.timedCycleTracks.empty()) return;
+
+    // A cloud revision becomes active only at this natural completion boundary.
+    // Never let the revision reset replay the track that just completed: if the
+    // rebuilt cycle starts with the same path, move to the first different
+    // target. This also makes repeated config refreshes fail forward instead of
+    // pinning a slot to position zero forever.
+    if (!completedPath.empty() &&
+        slot.timedCycleTracks[slot.timedRotationPosition].path == completedPath) {
+      const auto next = std::find_if(
+          slot.timedCycleTracks.begin() + 1, slot.timedCycleTracks.end(),
+          [&completedPath](const ManagedTrack& track) {
+            return track.path != completedPath;
+          });
+      if (next != slot.timedCycleTracks.end()) {
+        slot.timedRotationPosition = static_cast<size_t>(
+            std::distance(slot.timedCycleTracks.begin(), next));
+      }
+    }
   } else {
     if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
     if (slot.timedCycleTracks.empty()) return;
