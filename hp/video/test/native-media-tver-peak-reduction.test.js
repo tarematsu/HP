@@ -20,8 +20,18 @@ const loop = [
   readFileSync(
     new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part3b.inc', import.meta.url), 'utf8'),
 ].join('\n');
-const watchdog = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
+const watchdog = [
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy_guard.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy_main1.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy_main2.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy_force_fullscreen.inc', import.meta.url), 'utf8'),
+].join('\n');
 
 test('episode pages route to one bounded TVer event policy', () => {
   assert.match(wrapper, /#include "media_tver_episode_loop_policy\.inc"/);
@@ -65,6 +75,12 @@ test('TVer quality discovery is bounded, delayed and player-local', () => {
   assert.match(loop, /const root = playerRootFor\(video\)/);
   assert.match(loop, /for \(const element of root\.querySelectorAll\(/);
   assert.match(loop, /state\.lowQualitySet = true/);
+});
+
+test('TVer fullscreen is consumed once per current video', () => {
+  assert.match(watchdog, /if \(state && state\.fullscreenDirty === false\) return null/);
+  assert.match(watchdog, /if \(fullscreenButton && state\) state\.fullscreenDirty = false/);
+  assert.match(watchdog, /Failure is intentionally not retried until the media identity changes/);
 });
 
 test('healthy TVer watchdog avoids page-wide control enumeration', () => {
