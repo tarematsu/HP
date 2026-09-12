@@ -4,13 +4,11 @@
 namespace hp {
 namespace {
 
-// Native media surfaces intentionally remain alive while parked outside the
-// dashboard or hidden by power-saving UI. They are autonomous playback
-// surfaces, so every shared media environment also permits programmatic media
-// start without requiring a foreground user gesture. Cheap browser services
-// that do not participate in playback are disabled for every shared environment.
+// Full-resource media surfaces still need autonomous playback, but they no
+// longer opt out of Chromium's occlusion/background throttling. Audio/video
+// playback remains active while an off-screen renderer is allowed to reduce
+// visual work. Disable browser services that the appliance runtime never uses.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
-    L"--disable-backgrounding-occluded-windows "
     L"--autoplay-policy=no-user-gesture-required "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
