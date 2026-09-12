@@ -15,11 +15,19 @@ LR"JS(
 
   const adShowing = trusted.ad();
   let target = null;
+  const adRecoveryState = window.__homePanelYoutubeAdRecoveryState ||
+      (window.__homePanelYoutubeAdRecoveryState = {
+        active: false, fullscreenApplied: false
+      });
 
   // Surveys are part of YouTube's ad surface. Resolve them only while an ad is
   // active and only inside the player, avoiding a document-wide dialog scan on
   // every healthy content watchdog pass.
   if (adShowing) {
+    if (!adRecoveryState.active) {
+      adRecoveryState.active = true;
+      adRecoveryState.fullscreenApplied = false;
+    }
     const submitPattern = /^(送信|回答を送信|submit|send)$/i;
     const surveyRoots = Array.from(player.querySelectorAll(
         '.ytp-ad-survey, .ytp-ad-feedback-dialog, yt-survey-renderer, '
@@ -51,9 +59,12 @@ LR"JS(
       return trusted.arm(submit, 'survey-submit', 500);
     }
 
-    // Fullscreen is allowed during ads and is restored before Skip so an
-    // unskippable ad remains in the dedicated playback surface as well.
-    if (!trusted.fullscreen()) {
+    // Fullscreen is one-shot for each contiguous ad period. Once fullscreen is
+    // observed or one trusted request is issued, watchdog passes do not reapply
+    // it until the player returns to content and a later ad period begins.
+    if (trusted.fullscreen()) {
+      adRecoveryState.fullscreenApplied = true;
+    } else if (!adRecoveryState.fullscreenApplied) {
       target = player.querySelector('.ytp-fullscreen-button');
       if (!trusted.valid(target)) {
         const fullscreenPattern = /(全画面|fullscreen|full screen)/i;
@@ -63,7 +74,10 @@ LR"JS(
                 fullscreenPattern.test(trusted.text(element))) || null;
       }
       const fullscreenAction = trusted.arm(target, 'fullscreen', 1200);
-      if (fullscreenAction) return fullscreenAction;
+      if (fullscreenAction) {
+        adRecoveryState.fullscreenApplied = true;
+        return fullscreenAction;
+      }
     }
 
     const skipSelectors = [
@@ -94,5 +108,9 @@ LR"JS(
     // Never let an unskippable ad fall through to content playback, quality or
     // caption mutation.
     return 'recovery';
+  }
+  if (adRecoveryState.active) {
+    adRecoveryState.active = false;
+    adRecoveryState.fullscreenApplied = false;
   }
 )JS"
