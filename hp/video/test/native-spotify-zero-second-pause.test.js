@@ -14,33 +14,38 @@ const rotation = source('spotify_timed_end_rotation.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
-test('Pause-labelled Spotify UI at zero is a settling state, never a trusted click', () => {
-  assert.match(scoped, /const buttonIntent = button =>/);
-  assert.match(scoped, /includes\('pause'\).*return 'pause'/s);
+test('zero-second target media is resumed directly before Pause UI is treated as settling', () => {
   assert.match(scoped, /const mediaPlaybackState = \(\) =>/);
-  assert.match(scoped, /!candidate\.ended && !candidate\.paused/);
-  assert.match(
-    scoped,
-    /if \(controlIntent === 'pause' \|\| buttonIntentValue === 'pause'\) \{[\s\S]*return 'settling';/,
+  assert.match(scoped, /media: pending/);
+  assert.match(scoped, /const requestMediaStart = media =>/);
+  assert.match(scoped, /const promise = media\.play\(\)/);
+  assert.match(scoped, /now - last < 3000/);
+
+  const directStart = scoped.indexOf(
+    'if (currentMatchesTarget && mediaState.known && !mediaState.playing &&',
   );
-  assert.match(scoped, /if \(buttonIntentValue === 'play'\) return point\(button\)/);
-  assert.match(
-    scoped,
-    /if \(currentMatchesTarget && controlIntent === 'play'\) return point\(control\)/,
+  const pauseUi = scoped.indexOf(
+    "if (controlIntent === 'pause' || buttonIntentValue === 'pause')",
   );
+  assert.ok(directStart >= 0 && pauseUi > directStart);
+  const startBranch = scoped.slice(directStart, pauseUi);
+  assert.match(startBranch, /requestMediaStart\(mediaState\.media\)/);
+  assert.match(startBranch, /return 'starting'/);
+  assert.doesNotMatch(startBranch, /point\(/);
 });
 
-test('native settling branch waits or renavigates and cannot click the ambiguous toggle', () => {
-  const settlingStart = music.indexOf(
-    'if (json && std::wstring_view(json) == L"\\"settling\\"")',
+test('native starting and settling states wait or renavigate without ambiguous toggle clicks', () => {
+  const start = music.indexOf(
+    'if (json && (std::wstring_view(json) == L"\\"starting\\""',
   );
-  const pointStart = music.indexOf('int x = 0;', settlingStart);
-  assert.ok(settlingStart >= 0 && pointStart > settlingStart);
-  const settlingBranch = music.slice(settlingStart, pointStart);
-  assert.match(settlingBranch, /SlotState::WaitingTarget/);
-  assert.match(settlingBranch, /ShouldRenavigateUnhealthySlot/);
-  assert.match(settlingBranch, /NavigateMusicTarget/);
-  assert.doesNotMatch(settlingBranch, /ClickSlotNormalizedPoint/);
+  const pointStart = music.indexOf('int x = 0;', start);
+  assert.ok(start >= 0 && pointStart > start);
+  const waitBranch = music.slice(start, pointStart);
+  assert.match(waitBranch, /SlotState::WaitingTarget/);
+  assert.match(waitBranch, /ShouldRenavigateUnhealthySlot/);
+  assert.match(waitBranch, /NavigateMusicTarget/);
+  assert.match(waitBranch, /\\"settling\\"/);
+  assert.doesNotMatch(waitBranch, /ClickSlotNormalizedPoint/);
 });
 
 test('startup and target-transition paths contain no executable generic media stop actuator', () => {
@@ -55,7 +60,7 @@ test('startup and target-transition paths contain no executable generic media st
 test('DOM reconcile cannot promote a music slot to Playing by itself', () => {
   const trueBranch = music.slice(
     music.indexOf('if (json && std::wstring_view(json) == L"true")'),
-    music.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
+    music.indexOf('if (json && std::wstring_view(json) == L"\\"wrong\\"")'),
   );
   assert.match(trueBranch, /SlotState::WaitingTarget/);
   assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
