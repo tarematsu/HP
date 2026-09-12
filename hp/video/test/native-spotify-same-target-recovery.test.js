@@ -23,6 +23,8 @@ class FakeMedia {
   paused = false;
   ended = false;
   currentTime = 12;
+  duration = 180;
+  playbackRate = 1;
 }
 
 test('same-generation pause and resume never requests recovery or reposts start', () => {
@@ -65,7 +67,9 @@ test('same-generation pause and resume never requests recovery or reposts start'
     URL,
     String,
     Number,
+    Math,
     setTimeout() { return 1; },
+    clearTimeout() {},
   });
   vm.runInContext(rawRuntimeScript(), context);
 
@@ -76,7 +80,7 @@ test('same-generation pause and resume never requests recovery or reposts start'
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
   assert.ok(runtime);
   assert.equal(runtime.enforceTarget(media), 'playing');
-  assert.equal(messages.at(-1), 'spotify:timed-started\x1f41');
+  assert.equal(messages.at(-1), 'spotify:timed-started\x1f41\x1f168000');
   assert.equal(runtime.requestRecovery, undefined);
   assert.equal(runtime.scheduleRecovery, undefined);
 
@@ -86,7 +90,7 @@ test('same-generation pause and resume never requests recovery or reposts start'
   assert.equal(runtime.enforceTarget(media), 'playing');
 
   assert.equal(
-    messages.filter(message => message === 'spotify:timed-started\x1f41').length,
+    messages.filter(message => message === 'spotify:timed-started\x1f41\x1f168000').length,
     1,
   );
   assert.equal(messages.some(message => message.startsWith('spotify:not-playing')), false);

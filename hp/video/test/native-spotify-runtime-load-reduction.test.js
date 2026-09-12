@@ -11,29 +11,26 @@ const bundle = source('spotify_fast_end_observer.inc');
 const guards = source('spotify_playback_mode_guards.inc');
 const phase = source('spotify_phase_sync.inc');
 
-test('timeupdate keeps only numeric post-end checks and performs no DOM identity scan', () => {
-  const start = events.indexOf("document.addEventListener('timeupdate'");
-  const end = events.indexOf("document.addEventListener('pause'", start);
-  assert.ok(start >= 0 && end > start);
-  const timeupdate = events.slice(start, end);
-  assert.doesNotMatch(timeupdate, /finishNearEnd|finishLeadSeconds|duration\s*-/);
-  assert.match(timeupdate, /finishProjectedWrap\(media\)/);
-  assert.doesNotMatch(timeupdate, /enforceTarget|lastIdentityCheckTime|querySelector/);
+test('timed music observer installs no periodic or completion lifecycle probe', () => {
+  assert.match(events, /document\.addEventListener\('play'/);
+  assert.match(events, /document\.addEventListener\('playing'/);
+  assert.match(events, /document\.addEventListener\('loadedmetadata'/);
+  assert.match(events, /document\.addEventListener\('durationchange'/);
+  assert.doesNotMatch(
+    events,
+    /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause|ended)'/,
+  );
+  assert.doesNotMatch(events, /setInterval|MutationObserver/);
   assert.match(runtime, /const enforceTarget = media =>/);
 });
 
-test('timed music observer contains no playback recovery or heartbeat loop', () => {
+test('timed music observer contains no playback recovery heartbeat or completion loop', () => {
   assert.doesNotMatch(runtime, /requestRecovery|scheduleRecovery|recoveryPosted|restartPending/);
   assert.doesNotMatch(runtime, /heartbeatTimer|heartbeatMisses|startHeartbeat|stopHeartbeat/);
-  assert.doesNotMatch(runtime, /spotify:not-playing/);
+  assert.doesNotMatch(runtime, /spotify:not-playing|postCompletionPlan|clearCompletionPlan|probeCompletion/);
   assert.doesNotMatch(events, /scheduleRecovery|requestRecovery|spotify:not-playing/);
-  assert.doesNotMatch(events, /setInterval|startHeartbeat|stopHeartbeat/);
-  assert.doesNotMatch(bundle, /kSpotifyMediaObserverHeartbeatScript/);
-  assert.match(
-    events,
-    /const quarantineCompletedGeneration = media =>[\s\S]*quarantineMedia\(media\)/,
-  );
-  assert.doesNotMatch(events, /stopAllMedia/);
+  assert.doesNotMatch(events, /setInterval|startHeartbeat|stopHeartbeat|quarantineCompletedGeneration/);
+  assert.doesNotMatch(bundle, /kSpotifyMediaObserverHeartbeatScript|kSpotifyMediaObserverCompletionScript/);
 });
 
 test('shuffle and repeat mode verification shares one DOM probe and ExecuteScript round trip', () => {

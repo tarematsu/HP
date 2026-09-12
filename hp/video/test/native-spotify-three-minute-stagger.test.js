@@ -57,17 +57,19 @@ test('cloud rotation supports fixed, shuffle, random, TALKABOUT candidates, and 
   assert.doesNotMatch(rotation, /% 6U|position <= 4U/);
 });
 
-test('cycle advances only at the requested track natural completion boundary', () => {
+test('cycle advances only at the native deadline armed by requested-track start', () => {
   assert.match(rotation, /\+\+slot\.timedRotationPosition/);
   assert.match(rotation, /slot\.timedRotationPosition >= slot\.timedCycleTracks\.size\(\)/);
   assert.match(rotation, /PrepareTimedRotationCycle\(slot\)/);
-  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
-  assert.match(events, /document\.addEventListener\('ended'/);
-  assert.match(events, /const finishPausedAtEnd = media =>/);
-  assert.match(events, /spotify:timed-ended/);
-  assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
+  assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.match(rotation, /timedCompletionDeadlineTick = now \+ remainingMs/);
+  assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.doesNotMatch(
+    events,
+    /addEventListener\('(?:ended|timeupdate|seeking|seeked|waiting|stalled|pause)'/,
+  );
+  assert.doesNotMatch(runtime + events + rotation, /spotify:timed-ended|spotify:timed-plan/);
   assert.doesNotMatch(header + rotation + schedule, /kSpotifyMusicTrackDeadlineMs|AdvanceExpiredTimedRotation/);
-  assert.match(runtime, /spotify:timed-started/);
   assert.match(runtime, /navigator\.mediaSession/);
   assert.match(runtime, /const enforceTarget = media =>/);
   assert.match(runtime, /!matchesTarget\(target, identity\)/);
