@@ -205,10 +205,11 @@ LR"JS(
   if (video.paused && !video.ended) {
     // Do not call HTMLMediaElement.play() for TVer recovery. TVer's player can
     // transiently accept that untrusted programmatic start and immediately
-    // restore its own paused state, leaving the clock at 0:00. Recovery must be
-    // a real trusted click on an explicitly Play-labelled control instead.
+    // restore its own paused state, leaving the clock at 0:00. Prefer an
+    // explicitly Play-labelled control when present; otherwise use one trusted
+    // click on the paused video surface, which is TVer's normal play gesture.
     const playButton = findPlayButton();
-    return playButton ? point(playButton) : null;
+    return playButton ? point(playButton) : point(video);
   }
 
   const browserFullscreen = document.fullscreenElement ||
