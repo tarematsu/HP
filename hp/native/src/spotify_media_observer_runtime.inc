@@ -170,8 +170,11 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     return true;
   };
 
+  // Keep startup reconciliation bounded. The media lifecycle events and native
+  // deadline own the steady state, so only three identity checks are needed
+  // while Spotify's now-playing DOM settles after a transition.
   const scheduleTargetChecks = media => {
-    [0, 250, 1000, 2500, 5000].forEach(delay => {
+    [0, 1500, 5000].forEach(delay => {
       setTimeout(() => enforceTarget(media), delay);
     });
   };
