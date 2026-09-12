@@ -4,11 +4,13 @@
 namespace hp {
 namespace {
 
-// Full-resource media surfaces still need autonomous playback, but they no
-// longer opt out of Chromium's occlusion/background throttling. Audio/video
-// playback remains active while an off-screen renderer is allowed to reduce
-// visual work. Disable browser services that the appliance runtime never uses.
+// Native media surfaces intentionally remain alive while parked outside the
+// dashboard or hidden by power-saving UI. They are autonomous playback
+// surfaces, so every shared media environment also permits programmatic media
+// start without requiring a foreground user gesture. Cheap browser services
+// that do not participate in playback are disabled for every shared environment.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
+    L"--disable-backgrounding-occluded-windows "
     L"--autoplay-policy=no-user-gesture-required "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
@@ -16,17 +18,24 @@ constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--disable-sync "
     L"--metrics-recording-only";
 
+// Full-resource playback surfaces keep DRM/media plumbing intact while turning
+// off browser subsystems that are unrelated to YouTube/TVer/Spotify playback.
+constexpr wchar_t kFullResourceWebView2Arguments[] =
+    L"--disable-features=MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
+
 constexpr wchar_t kStationheadWebView2Arguments[] =
     // Keep page-state restoration disabled across Stationhead navigations. HTTP
     // cache is enabled during a live controller session and is explicitly reset
-    // when each playback controller is created or recreated.
+    // when each playback controller is created or recreated. Stationhead alone
+    // keeps its historical hardware-decryption switches; full-resource media
+    // surfaces intentionally do not inherit them.
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
 
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
-  // Resource-policy arguments remain empty for full-resource surfaces such as
-  // YouTube/TVer/Spotify. The shared lifecycle/autoplay arguments are appended
-  // separately when the environment is created.
-  if (!blockImages && !blockFonts) return {};
+  // YouTube/TVer/Spotify use the full-resource path and only receive safe
+  // browser-service reductions here. Resource blocking remains per-WebView so
+  // Spotify authentication is not affected by media-panel image/font policy.
+  if (!blockImages && !blockFonts) return kFullResourceWebView2Arguments;
 
   std::wstring arguments = kStationheadWebView2Arguments;
   arguments += L" --blink-settings=";

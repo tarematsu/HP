@@ -49,21 +49,31 @@ test('resource filter reduction is the final resource PCH layer', () => {
   );
 });
 
-test('shared media environments permit autonomous playback while allowing occlusion throttling', () => {
+test('shared media environments stay active and permit autonomous playback', () => {
   assert.match(environmentSource, /kSharedWebView2LifecycleArguments/);
-  assert.doesNotMatch(environmentSource, /--disable-backgrounding-occluded-windows/);
+  assert.match(environmentSource, /--disable-backgrounding-occluded-windows/);
   assert.match(environmentSource, /--autoplay-policy=no-user-gesture-required/);
   const sharedStart = environmentSource.indexOf(
     'constexpr wchar_t kSharedWebView2LifecycleArguments[]',
   );
+  const fullResourceStart = environmentSource.indexOf(
+    'constexpr wchar_t kFullResourceWebView2Arguments[]',
+  );
   const stationheadStart = environmentSource.indexOf(
     'constexpr wchar_t kStationheadWebView2Arguments[]',
   );
-  const sharedArguments = environmentSource.slice(sharedStart, stationheadStart);
+  assert.ok(sharedStart >= 0 && fullResourceStart > sharedStart);
+  assert.ok(stationheadStart > fullResourceStart);
+  const sharedArguments = environmentSource.slice(sharedStart, fullResourceStart);
+  const fullResourceArguments = environmentSource.slice(fullResourceStart, stationheadStart);
   assert.match(sharedArguments, /--autoplay-policy=no-user-gesture-required/);
   assert.match(sharedArguments, /--disable-domain-reliability/);
+  assert.match(sharedArguments, /--disable-breakpad/);
   assert.match(sharedArguments, /--disable-extensions/);
   assert.match(sharedArguments, /--disable-sync/);
+  assert.match(fullResourceArguments, /MediaRouter/);
+  assert.match(fullResourceArguments, /Translate/);
+  assert.doesNotMatch(fullResourceArguments, /BackForwardCache|HardwareSecureDecryption/);
   assert.match(
     environmentSource,
     /std::wstring webView2Arguments = kSharedWebView2LifecycleArguments/,
@@ -84,7 +94,10 @@ test('Blink rejects image loading and cached image decoding before navigation', 
     'std::wstring BuildWebView2Arguments(',
     'void InvokeEnvironmentCompletionNoexcept(',
   );
-  assert.match(argumentsBuilder, /if \(!blockImages && !blockFonts\) return \{\};/);
+  assert.match(
+    argumentsBuilder,
+    /if \(!blockImages && !blockFonts\) return kFullResourceWebView2Arguments;/,
+  );
   assert.match(argumentsBuilder, /kStationheadWebView2Arguments/);
   assert.match(argumentsBuilder, /imagesEnabled=false,loadsImagesAutomatically=false/);
   assert.match(argumentsBuilder, /downloadableBinaryFontsEnabled=false/);

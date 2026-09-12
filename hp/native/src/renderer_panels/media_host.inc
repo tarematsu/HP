@@ -216,9 +216,13 @@ class NativeMediaPanelHost final {
       if (newWindowToken_.value != 0) {
         webview_->remove_NewWindowRequested(newWindowToken_);
       }
+      if (webResourceRequestedToken_.value != 0) {
+        webview_->remove_WebResourceRequested(webResourceRequestedToken_);
+      }
     }
     navigationCompletedToken_ = {};
     newWindowToken_ = {};
+    webResourceRequestedToken_ = {};
     webview_.Reset();
     if (controller_) controller_->Close();
     controller_.Reset();
@@ -315,6 +319,32 @@ class NativeMediaPanelHost final {
         }
       }
 
+      const auto alive = alive_;
+      webview_->AddWebResourceRequestedFilter(
+          L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
+      webview_->AddWebResourceRequestedFilter(
+          L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
+      ComPtr<ICoreWebView2Environment> requestEnvironment = environment_;
+      webview_->add_WebResourceRequested(
+          Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+              [alive, requestEnvironment](
+                  ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args)
+                  -> HRESULT {
+                if (!alive->load(std::memory_order_acquire) || !args ||
+                    !requestEnvironment) {
+                  return S_OK;
+                }
+                ComPtr<ICoreWebView2WebResourceResponse> response;
+                if (SUCCEEDED(requestEnvironment->CreateWebResourceResponse(
+                        nullptr, 204, L"No Content",
+                        L"Cache-Control: no-store\r\n", &response)) &&
+                    response) {
+                  args->put_Response(response.Get());
+                }
+                return S_OK;
+              }).Get(),
+          &webResourceRequestedToken_);
+
       webview_->add_NewWindowRequested(
           Callback<ICoreWebView2NewWindowRequestedEventHandler>(
               [](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args)
@@ -327,7 +357,6 @@ class NativeMediaPanelHost final {
       webview_->AddScriptToExecuteOnDocumentCreated(
           kNativeMediaYoutubeCleanPlayerScript, nullptr);
 
-      const auto alive = alive_;
       webview_->add_NavigationCompleted(
           Callback<ICoreWebView2NavigationCompletedEventHandler>(
               [this, alive](ICoreWebView2*,
@@ -757,6 +786,7 @@ class NativeMediaPanelHost final {
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken navigationCompletedToken_{};
+  EventRegistrationToken webResourceRequestedToken_{};
   Phase phase_ = Phase::YouTube;
   std::wstring phaseStartText_;
   std::wstring phaseEndText_;
