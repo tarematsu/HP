@@ -96,13 +96,24 @@ test('lost ExecuteScript callbacks expire instead of wedging a slot forever', ()
   assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
 });
 
-test('playback anomalies fail forward to the next track instead of retrying the same target', () => {
+test('playback anomalies recover the current target while only natural completion advances', () => {
   assert.doesNotMatch(header, /kSpotifyMusicTrackDeadlineMs/);
   assert.doesNotMatch(phase + schedule + rotation, /AdvanceExpiredTimedRotation|kSpotifyMusicTrackDeadlineMs/);
   assert.match(runtime, /post\('spotify:not-playing'\)/);
   assert.match(rotation, /const bool stopped =[\s\S]*spotify:not-playing/);
-  assert.doesNotMatch(rotation, /if \(stopped\)[\s\S]{0,500}MarkSlotRecovering\(\*target, now\)/);
-  assert.match(rotation, /Playback anomalies are fail-forward events[\s\S]*AdvanceTimedRotationSlot\(\*target, now\)/);
+
+  const endedStart = rotation.indexOf('if (ended) {');
+  const stoppedStart = rotation.indexOf('if (stopped) {', endedStart);
+  const stoppedEnd = rotation.indexOf('\n              return S_OK;\n              }', stoppedStart);
+  assert.ok(endedStart >= 0 && stoppedStart > endedStart && stoppedEnd > stoppedStart);
+  const endedBranch = rotation.slice(endedStart, stoppedStart);
+  const stoppedBranch = rotation.slice(stoppedStart, stoppedEnd);
+
+  assert.match(endedBranch, /AdvanceTimedRotationSlot\(\*target, now\)/);
+  assert.match(stoppedBranch, /MarkSlotRecovering\(\*target, now\)/);
+  assert.match(stoppedBranch, /RecomputeForeground\(\)/);
+  assert.match(stoppedBranch, /ArmRobustScheduler\(\)/);
+  assert.doesNotMatch(stoppedBranch, /AdvanceTimedRotationSlot/);
   assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
   assert.match(events, /document\.addEventListener\('ended'/);
 });
