@@ -67,7 +67,9 @@ constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
         media.paused || media.ended) {
       return false;
     }
-    runtime.heartbeatTimer = setInterval(heartbeat, 10000);
+    // Media lifecycle events and the native completion deadline own normal
+    // playback. This low-frequency heartbeat is only a silent-stall fallback.
+    runtime.heartbeatTimer = setInterval(heartbeat, 30000);
     return true;
   };
 
