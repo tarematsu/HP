@@ -13,9 +13,12 @@ import {
 } from "./snapshot";
 import { normalizeDeviceSyncVersions } from "./device_sync_versions";
 import {
+  ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS,
   managedSpotifySevenSlotRotation,
   MANAGED_SPOTIFY_RANDOM_TRACK_IDS,
   SHORT_SPOTIFY_RANDOM_TRACKS,
+  SHORT_SPOTIFY_ROTATION_TRACKS,
+  SPOTIFY_B_ROTATION_TRACKS,
 } from "./spotify_random_catalog";
 import type { Env } from "./sources";
 import { stationheadHealthPayload } from "./stationhead_health";
@@ -83,6 +86,12 @@ const LEGACY_SPOTIFY_MIDDLE_TRACK_IDS = [
   "2UHNvd8SjNGoEI6jXa2afx",
 ] as const;
 
+const MANAGED_SPOTIFY_B_TRACK_IDS = SPOTIFY_B_ROTATION_TRACKS.map(([, id]) => id);
+const MANAGED_SPOTIFY_INSTRUMENTAL_TRACK_IDS =
+  ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS.map(([, id]) => id);
+const MANAGED_SPOTIFY_SHORT_ROTATION_TRACK_IDS =
+  SHORT_SPOTIFY_ROTATION_TRACKS.map(([, id]) => id);
+
 function spotifyTrackId(value: unknown): string {
   const track = objectOrNull(value);
   const url = typeof track?.url === "string" ? track.url : "";
@@ -110,11 +119,14 @@ function isManagedRandomPool(ids: readonly string[]): boolean {
   return isLegacy || isManagedPrefix;
 }
 
-function migrateManagedSpotifyRotation(config: JsonRecord): boolean {
-  const spotify = objectOrNull(config.spotify);
-  const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
-  if (!spotify || rotation.length !== 3) return false;
+function isManagedShortRotationPool(ids: readonly string[]): boolean {
+  return ids.length >= SHORT_SPOTIFY_RANDOM_TRACKS.length &&
+    ids.length <= MANAGED_SPOTIFY_SHORT_ROTATION_TRACK_IDS.length &&
+    ids.every((id, index) => id === MANAGED_SPOTIFY_SHORT_ROTATION_TRACK_IDS[index]);
+}
 
+function isManagedLegacySpotifyRotation(rotation: unknown[]): boolean {
+  if (rotation.length !== 3) return false;
   const first = objectOrNull(rotation[0]);
   const middle = objectOrNull(rotation[1]);
   const random = objectOrNull(rotation[2]);
@@ -126,9 +138,46 @@ function migrateManagedSpotifyRotation(config: JsonRecord): boolean {
   const firstIds = spotifyGroupTrackIds(first);
   const middleIds = spotifyGroupTrackIds(middle);
   const randomIds = spotifyGroupTrackIds(random);
-  if (firstIds.length !== 1 || firstIds[0] !== "6Vy6hCA2CZwZalGqaX6Sew" ||
-      !sameTrackSet(middleIds, LEGACY_SPOTIFY_MIDDLE_TRACK_IDS) ||
-      !isManagedRandomPool(randomIds)) {
+  return firstIds.length === 1 && firstIds[0] === "6Vy6hCA2CZwZalGqaX6Sew" &&
+    sameTrackSet(middleIds, LEGACY_SPOTIFY_MIDDLE_TRACK_IDS) &&
+    isManagedRandomPool(randomIds);
+}
+
+function isManagedSevenSlotRotation(rotation: unknown[]): boolean {
+  if (rotation.length !== 7) return false;
+  const groups = rotation.map(objectOrNull);
+  if (groups.some(group => !group)) return false;
+  const [a, b, c, d, e, f, g] = groups as JsonRecord[];
+  if (a.mode !== "fixed" || b.mode !== "random" || c.mode !== "random" ||
+      d.mode !== "fixed" || e.mode !== "random" || f.mode !== "random" ||
+      g.mode !== "random" || Number(b.count ?? 1) !== 1 ||
+      Number(c.count ?? 1) !== 1 || Number(e.count ?? 1) !== 1 ||
+      Number(f.count ?? 1) !== 1 || Number(g.count ?? 1) !== 1 ||
+      g.includeTalkAbout !== true) {
+    return false;
+  }
+
+  const aIds = spotifyGroupTrackIds(a);
+  const bIds = spotifyGroupTrackIds(b);
+  const cIds = spotifyGroupTrackIds(c);
+  const dIds = spotifyGroupTrackIds(d);
+  const eIds = spotifyGroupTrackIds(e);
+  const fIds = spotifyGroupTrackIds(f);
+  const gIds = spotifyGroupTrackIds(g);
+  return aIds.length === 1 && aIds[0] === "6Vy6hCA2CZwZalGqaX6Sew" &&
+    sameTrackSet(bIds, MANAGED_SPOTIFY_B_TRACK_IDS) &&
+    sameTrackSet(cIds, MANAGED_SPOTIFY_INSTRUMENTAL_TRACK_IDS) &&
+    dIds.length === 1 && dIds[0] === "5EjWZuODqEPQ9eq7XCmITh" &&
+    isManagedShortRotationPool(eIds) &&
+    isManagedShortRotationPool(fIds) &&
+    isManagedShortRotationPool(gIds);
+}
+
+function migrateManagedSpotifyRotation(config: JsonRecord): boolean {
+  const spotify = objectOrNull(config.spotify);
+  const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
+  if (!spotify ||
+      (!isManagedLegacySpotifyRotation(rotation) && !isManagedSevenSlotRotation(rotation))) {
     return false;
   }
 
