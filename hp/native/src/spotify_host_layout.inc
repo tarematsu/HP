@@ -4,6 +4,8 @@ namespace {
 constexpr double kSpotifySerializedRecoveryZoom = 0.80;
 constexpr int kSpotifyParkedPlaybackWidth = 160;
 constexpr int kSpotifyParkedPlaybackHeight = 90;
+constexpr int kSpotifyLowPowerPlaybackWidth = 96;
+constexpr int kSpotifyLowPowerPlaybackHeight = 54;
 constexpr int kSpotifyParkedPlaybackGap = 8;
 constexpr int kSpotifyRecoveryInteractionWidth = 720;
 constexpr int kSpotifyRecoveryInteractionHeight = 480;
@@ -38,12 +40,23 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool recovery =
         i == hostLayoutActiveSlot_ && !authentication &&
         SlotStateNeedsRecovery(slot.state);
+    const bool healthyMusicReadyToHide =
+        slot.timedTarget == TimedSpotifyTarget::Music &&
+        slot.shuffleOffVerified && slot.repeatOffVerified;
+    const bool healthyPodcastReadyToHide =
+        slot.timedTarget == TimedSpotifyTarget::TalkAbout;
+    const bool lowPowerPlayback =
+        !authentication && !recovery && SlotStateIsHealthy(slot.state) &&
+        slot.playerPage && !slot.loginPage &&
+        (healthyMusicReadyToHide || healthyPodcastReadyToHide);
 
     int x = client.right + 32 + static_cast<int>(i) *
         (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
     int y = client.top;
-    int width = kSpotifyParkedPlaybackWidth;
-    int height = kSpotifyParkedPlaybackHeight;
+    int width = lowPowerPlayback
+        ? kSpotifyLowPowerPlaybackWidth : kSpotifyParkedPlaybackWidth;
+    int height = lowPowerPlayback
+        ? kSpotifyLowPowerPlaybackHeight : kSpotifyParkedPlaybackHeight;
     HWND insertAfter = HWND_BOTTOM;
     if (authentication) {
       x = client.left + (clientWidth - activeWidth) / 2;
@@ -104,15 +117,20 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     // until Shuffle and Repeat have both been verified OFF because those real
     // controls are required for convergence. Podcast playback has no equivalent
     // steady-state control dependency, so hide it as soon as playback is healthy.
-    const bool healthyMusicReadyToHide =
-        slot.timedTarget == TimedSpotifyTarget::Music &&
-        slot.shuffleOffVerified && slot.repeatOffVerified;
-    const bool healthyPodcastReadyToHide =
-        slot.timedTarget == TimedSpotifyTarget::TalkAbout;
-    const bool suppressHealthyRendering =
-        SlotStateIsHealthy(slot.state) && slot.playerPage && !slot.loginPage &&
-        (healthyMusicReadyToHide || healthyPodcastReadyToHide);
-    slot.controller->put_IsVisible(suppressHealthyRendering ? FALSE : TRUE);
+    slot.controller->put_IsVisible(lowPowerPlayback ? FALSE : TRUE);
+
+    // WebView2 LOW keeps scripts, networking and audio alive while allowing the
+    // renderer to shed inactive memory. Authentication/recovery and any
+    // non-healthy player immediately return to NORMAL.
+    if (slot.webview) {
+      ComPtr<ICoreWebView2_19> memoryView;
+      if (SUCCEEDED(slot.webview.As(&memoryView)) && memoryView) {
+        memoryView->put_MemoryUsageTargetLevel(
+            lowPowerPlayback
+                ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+      }
+    }
 
     const bool reducedZoom = authentication || recovery;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {

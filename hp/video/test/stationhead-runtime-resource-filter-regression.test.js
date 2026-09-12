@@ -49,9 +49,9 @@ test('resource filter reduction is the final resource PCH layer', () => {
   );
 });
 
-test('shared media environments stay active and permit autonomous playback', () => {
+test('shared media environments permit autonomous playback with occlusion throttling', () => {
   assert.match(environmentSource, /kSharedWebView2LifecycleArguments/);
-  assert.match(environmentSource, /--disable-backgrounding-occluded-windows/);
+  assert.doesNotMatch(environmentSource, /--disable-backgrounding-occluded-windows/);
   assert.match(environmentSource, /--autoplay-policy=no-user-gesture-required/);
   const sharedStart = environmentSource.indexOf(
     'constexpr wchar_t kSharedWebView2LifecycleArguments[]',
