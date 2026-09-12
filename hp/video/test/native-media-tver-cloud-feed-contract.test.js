@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const cloudFeed = readFileSync(
   new URL('../../cloud/src/tver_feed.js', import.meta.url),
@@ -26,10 +27,8 @@ const mediaPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
 );
-const playbackPolicy = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url),
-  'utf8',
-);
+const playbackPolicy = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 
 test('cloud collects Sakurazaka TVer episodes from dedicated sources and preserves last good feed', () => {
   assert.match(cloudFeed, /TVER_ORIGIN = 'https:\/\/tver\.jp'/);

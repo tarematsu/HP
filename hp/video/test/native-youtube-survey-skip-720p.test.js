@@ -6,8 +6,14 @@ const clean = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url), 'utf8');
 const trustedAction = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_trusted_action.inc', import.meta.url), 'utf8');
-const recovery = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const recovery = [
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_youtube_control_recovery_ad.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_youtube_control_recovery_content.inc', import.meta.url), 'utf8'),
+].join('\n');
 const eventAgent = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 const reliablePlayAll = readFileSync(
@@ -72,14 +78,17 @@ test('YouTube fullscreen uses the real trusted control for ads and content', () 
   assert.doesNotMatch(trustedAction, /requestFullscreen|webkitRequestFullscreen/);
 });
 
-test('YouTube 480p and captions are per-video dirty-state settings', () => {
+test('YouTube content settings are one-shot per video', () => {
   assert.match(recovery, /videoKey/);
   assert.match(recovery, /qualityApplied: false/);
   assert.match(recovery, /captionsApplied: false/);
+  assert.match(recovery, /fullscreenApplied: false/);
   assert.match(recovery, /const preferredQuality = 'large'/);
   assert.match(recovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
   assert.match(recovery, /setPlaybackQuality\(preferredQuality\)/);
   assert.match(recovery, /player\.setOption\('captions', 'track', \{\}\)/);
+  assert.match(recovery, /if \(recoveryState\.fullscreenApplied\) return null/);
+  assert.doesNotMatch(recovery, /getPlaybackQuality\(\)/);
 });
 
 test('event agent wakes the native watchdog only on relevant player transitions', () => {

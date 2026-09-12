@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
-const recovery = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const recovery = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
 test('YouTube ad branch is isolated from content mutation', () => {
   const adStart = recovery.indexOf('if (adShowing) {');
@@ -19,13 +19,13 @@ test('YouTube ad branch is isolated from content mutation', () => {
   assert.doesNotMatch(adBranch, /setOption\('captions'/);
 });
 
-test('YouTube content quality is state-driven and never touched during ads', () => {
+test('YouTube content quality is one-shot and never touched during ads', () => {
   const contentState = recovery.indexOf('const recoveryState =');
   const preferred = recovery.indexOf("const preferredQuality = 'large'", contentState);
   assert.ok(contentState >= 0 && preferred > contentState);
   assert.match(recovery, /qualityApplied: false/);
   assert.match(recovery, /if \(!recoveryState\.qualityApplied\)/);
-  assert.match(recovery, /player\.getPlaybackQuality\(\) !== preferredQuality/);
+  assert.doesNotMatch(recovery, /getPlaybackQuality\(\)/);
 });
 
 test('YouTube error discovery is player-local', () => {

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const wrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
@@ -10,8 +11,8 @@ const host = readFileSync(
   new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
-const recovery = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const recovery = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 const agent = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 
@@ -61,11 +62,12 @@ test('YouTube message dialogs auto-close explicit Close controls only', () => {
   assert.doesNotMatch(agent, /popupObserver\.observe\(document\.(?:documentElement|body)/);
 });
 
-test('YouTube content recovery keeps play before fullscreen', () => {
+test('YouTube content recovery keeps play before the one-shot fullscreen setup', () => {
   const paused = recovery.indexOf('video && video.paused && !video.ended');
   const contentFullscreen = recovery.lastIndexOf("player.querySelector('.ytp-fullscreen-button')");
   assert.ok(paused >= 0);
   assert.ok(contentFullscreen > paused);
   assert.match(recovery, /trusted\.arm\(play, 'play', 1500\)/);
+  assert.match(recovery, /if \(recoveryState\.fullscreenApplied\) return null/);
   assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
 });

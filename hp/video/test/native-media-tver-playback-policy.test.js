@@ -2,10 +2,34 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const policy = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
-const episodeLoop = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
+const policy = [
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy_guard.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy_main1.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy_main2.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_playback_policy_force_fullscreen.inc', import.meta.url), 'utf8'),
+].join('\n');
+const episodeLoop = [
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part1.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2a.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2b_observer.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2b_events.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part3a.inc', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part3b.inc', import.meta.url), 'utf8'),
+].join('\n');
 const mediaSection = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 
@@ -77,8 +101,11 @@ test('paused TVer program recovery is idempotent and never toggles the video sur
   assert.doesNotMatch(policy, /findPlayButton/);
 });
 
-test('TVer keeps browser fullscreen authoritative and allows ads fullscreen', () => {
+test('TVer fullscreen setup is one-shot and still uses the trusted path', () => {
   assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
+  assert.match(policy, /if \(state && state\.fullscreenDirty === false\) return null/);
+  assert.match(policy, /if \(fullscreenButton && state\) state\.fullscreenDirty = false/);
+  assert.match(policy, /Failure is intentionally not retried until the media identity changes/);
   assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
   assert.match(
     mediaSection,
@@ -107,9 +134,10 @@ test('TVer program volume stays at 100 percent while ads remain untouched', () =
   assert.match(policy, /video\.volume !== 1\.0/);
 });
 
-test('event policy wakes native recovery on pause, ad, fullscreen loss and restart', () => {
+test('event policy wakes native recovery only while fullscreen remains pending', () => {
   assert.match(episodeLoop, /homepanel:tver-wake/);
   assert.match(episodeLoop, /if \(video\.paused && !video\.ended\) recoveryFlags\.push\('paused'\)/);
+  assert.match(episodeLoop, /!browserFullscreen && state\.fullscreenDirty/);
   assert.match(episodeLoop, /window\.__homePanelTverAdActive = true;[\s\S]*wakeNative\('ad:'/);
   assert.match(episodeLoop, /fullscreenchange[\s\S]*wakeNative\('fullscreen-change:'/);
   assert.match(episodeLoop, /restartRequested = true;[\s\S]*wakeNative\('restart:'/);

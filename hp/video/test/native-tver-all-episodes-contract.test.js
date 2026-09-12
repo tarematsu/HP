@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
-const episode = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
+const episode = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const refresh = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 
