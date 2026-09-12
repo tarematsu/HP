@@ -33,10 +33,11 @@ test('repeat wrap is fenced by the projected completion deadline', () => {
   assert.match(completion, /const completionPlanDue = \(leadMs = 0\) =>/);
   assert.match(completion, /runtime\.completionPlanDue = completionPlanDue/);
   assert.match(events, /const finishLeadSeconds = 1\.5/);
+  assert.match(events, /const completionGraceMs = 5000/);
   assert.match(events, /duration\s*-\s*finishLeadSeconds/);
   assert.match(events, /const finishProjectedWrap = media =>/);
   assert.match(events, /currentTime > 1\.5/);
-  assert.match(events, /completionPlanDue\(2000\)/);
+  assert.match(events, /completionPlanDue\(completionGraceMs\)/);
   assert.match(events, /document\.addEventListener\('seeking'/);
   assert.match(events, /if \(finishProjectedWrap\(event\.target\)\) return;/);
   assert.match(events, /document\.addEventListener\('pause'/);
