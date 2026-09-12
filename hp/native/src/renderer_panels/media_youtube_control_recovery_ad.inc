@@ -14,10 +14,11 @@ LR"JS(
   }
 
   const adShowing = trusted.ad();
+  const fullscreenSettleMs = 1500;
   let target = null;
   const adRecoveryState = window.__homePanelYoutubeAdRecoveryState ||
       (window.__homePanelYoutubeAdRecoveryState = {
-        active: false, fullscreenApplied: false
+        active: false, fullscreenApplied: false, fullscreenReadyAt: 0
       });
 
   // Surveys are part of YouTube's ad surface. Resolve them only while an ad is
@@ -27,6 +28,7 @@ LR"JS(
     if (!adRecoveryState.active) {
       adRecoveryState.active = true;
       adRecoveryState.fullscreenApplied = false;
+      adRecoveryState.fullscreenReadyAt = Date.now() + fullscreenSettleMs;
     }
     const submitPattern = /^(送信|回答を送信|submit|send)$/i;
     const surveyRoots = Array.from(player.querySelectorAll(
@@ -59,12 +61,15 @@ LR"JS(
       return trusted.arm(submit, 'survey-submit', 500);
     }
 
-    // Fullscreen is one-shot for each contiguous ad period. Once fullscreen is
-    // observed or one trusted request is issued, watchdog passes do not reapply
-    // it until the player returns to content and a later ad period begins.
+    // Fullscreen is one-shot for each contiguous ad period. Do not issue the
+    // trusted click during the first 1.5 seconds of a new ad period: YouTube can
+    // expose the control before the player is ready to accept fullscreen. The
+    // existing recovery watchdog retries after this settle window without an
+    // extra timer or polling loop.
     if (trusted.fullscreen()) {
       adRecoveryState.fullscreenApplied = true;
-    } else if (!adRecoveryState.fullscreenApplied) {
+    } else if (!adRecoveryState.fullscreenApplied &&
+               Date.now() >= Number(adRecoveryState.fullscreenReadyAt || 0)) {
       target = player.querySelector('.ytp-fullscreen-button');
       if (!trusted.valid(target)) {
         const fullscreenPattern = /(全画面|fullscreen|full screen)/i;
