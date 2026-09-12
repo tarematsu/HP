@@ -220,8 +220,13 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               const bool ended = !planned && !planCleared && !started &&
                   ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:timed-ended", &eventGeneration);
+              const bool observerSynced =
+                  !planned && !planCleared && !started && !ended &&
+                  ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:observer-synced", &eventGeneration);
               CoTaskMemFree(rawMessage);
-              if (!planned && !planCleared && !started && !ended) {
+              if (!planned && !planCleared && !started && !ended &&
+                  !observerSynced) {
                 return S_OK;
               }
 
@@ -231,6 +236,16 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               }
 
               const ULONGLONG now = GetTickCount64();
+              if (observerSynced) {
+                target->timedObserverInstallInFlight = false;
+                target->timedObserverInstallStartedTick = 0;
+                target->timedObserverReady = true;
+                target->lastTimedReconcileTick = 0;
+                ReconcileActiveTimedSlot(*target);
+                ArmRobustScheduler();
+                return S_OK;
+              }
+
               if (planned) {
                 if (target->timedTarget != TimedSpotifyTarget::Music ||
                     !target->timedRotationActive) {
@@ -300,6 +315,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
   }
   const ULONGLONG observerInstallGeneration =
       slot.timedObserverInstallGeneration;
+  const ULONGLONG observerTargetGeneration = slot.targetGeneration;
   slot.timedObserverInstallInFlight = true;
   slot.timedObserverInstallStartedTick = GetTickCount64();
   Slot* const observerTarget = &slot;
@@ -309,22 +325,45 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
       kSpotifyFastEndObserverScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
           [this, observerAlive, observerTarget, observerView,
-           observerInstallGeneration](HRESULT result, LPCWSTR json) -> HRESULT {
+           observerInstallGeneration, observerTargetGeneration](
+              HRESULT result, LPCWSTR json) -> HRESULT {
             if (!observerAlive->load(std::memory_order_acquire) ||
                 observerTarget->timedObserverInstallGeneration !=
                     observerInstallGeneration ||
+                observerTarget->targetGeneration != observerTargetGeneration ||
                 observerTarget->webview.Get() != observerView.Get()) {
               return S_OK;
             }
-            observerTarget->timedObserverInstallInFlight = false;
-            observerTarget->timedObserverInstallStartedTick = 0;
-            observerTarget->timedObserverReady =
+            const bool installed =
                 SUCCEEDED(result) && json &&
                 std::wstring_view(json) == L"true";
-            if (!observerTarget->timedObserverReady) {
+            if (!installed) {
+              observerTarget->timedObserverInstallInFlight = false;
+              observerTarget->timedObserverInstallStartedTick = 0;
+              observerTarget->timedObserverReady = false;
               MarkSlotRecovering(*observerTarget, GetTickCount64());
               ArmRobustScheduler();
+              return S_OK;
             }
+
+            // The page-context generation message can be emitted before this
+            // observer exists. Synchronize again after installation and wait for
+            // an acknowledgement from the observer itself before allowing any
+            // playback reconcile. This removes the generation-0 start race.
+            std::wstring syncMessage = L"spotify:observer-sync";
+            syncMessage.push_back(kSpotifyMessageSeparator);
+            syncMessage.append(std::to_wstring(observerTargetGeneration));
+            if (FAILED(observerView->PostWebMessageAsString(syncMessage.c_str()))) {
+              observerTarget->timedObserverInstallInFlight = false;
+              observerTarget->timedObserverInstallStartedTick = 0;
+              observerTarget->timedObserverReady = false;
+              MarkSlotRecovering(*observerTarget, GetTickCount64());
+              ArmRobustScheduler();
+              return S_OK;
+            }
+            observerTarget->timedObserverReady = false;
+            observerTarget->timedObserverInstallStartedTick = GetTickCount64();
+            ArmRobustScheduler();
             return S_OK;
           }).Get());
   if (FAILED(installStarted)) {
