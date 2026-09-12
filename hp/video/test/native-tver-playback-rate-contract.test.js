@@ -19,13 +19,12 @@ test('TVer program playback settings are one-shot and event driven', () => {
   assert.match(episode, /addEventListener\('volumechange'/);
 });
 
-test('TVer quality discovery is rate limited and bounded', () => {
-  assert.match(episode, /qualityProbeIntervalMs = 5000/);
-  assert.match(episode, /qualityProbeLimit = 4/);
-  assert.match(episode, /state\.qualityProbeAttempts < qualityProbeLimit/);
-  assert.match(episode, /now - state\.qualityProbeAt >= qualityProbeIntervalMs/);
+test('TVer quality discovery is event driven and player-local', () => {
+  assert.doesNotMatch(episode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
+  assert.match(episode, /if \(!state\.lowQualitySet\)/);
   assert.match(episode, /const root = playerRootFor\(video\)/);
   assert.match(episode, /state\.lowQualitySet = true/);
+  assert.match(episode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
 });
 
 test('TVer ads do not receive program speed, volume or recovery mutation', () => {
