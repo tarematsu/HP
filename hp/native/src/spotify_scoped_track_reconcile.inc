@@ -121,9 +121,6 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
       }
     }
 
-    // A direct track page can render its main play control without a target
-    // track link. Only permit this fallback while the document itself is the
-    // requested track; never choose the first play button from an arbitrary page.
     if (target.trackPath && onTargetPage()) {
       return Array.from(document.querySelectorAll(
           'button[data-testid="play-button"]')).find(visible) || null;
@@ -156,7 +153,8 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
       return {
         known: true,
         playing: true,
-        currentTime: Number(active.currentTime) || 0
+        currentTime: Number(active.currentTime) || 0,
+        media: active
       };
     }
     const pending = media.find(candidate => !candidate.ended) || null;
@@ -164,10 +162,27 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
       return {
         known: true,
         playing: false,
-        currentTime: Number(pending.currentTime) || 0
+        currentTime: Number(pending.currentTime) || 0,
+        media: pending
       };
     }
-    return { known: false, playing: false, currentTime: 0 };
+    return { known: false, playing: false, currentTime: 0, media: null };
+  };
+  const requestMediaStart = media => {
+    if (!media || media.ended || !media.paused) return false;
+    const now = Date.now();
+    const last = Number(media.__homePanelSpotifyPlayRequestAt) || 0;
+    if (now - last < 3000) return true;
+    media.__homePanelSpotifyPlayRequestAt = now;
+    try {
+      const promise = media.play();
+      if (promise && typeof promise.catch === 'function') {
+        promise.catch(() => {});
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
   };
 
   if (location.hostname !== 'open.spotify.com' || !onTargetPage()) {
@@ -184,24 +199,28 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const buttonIntentValue = buttonIntent(button);
   const mediaState = mediaPlaybackState();
 
-  // Playback truth comes from an active media element plus target identity.
   if (currentMatchesTarget && mediaState.known && mediaState.playing) {
     report(true);
     return true;
   }
 
-  // A genuinely active different track is not a settling UI race. Tell native
-  // to replace it immediately by navigating back to the requested target; do
-  // not toggle or pause the current media in JavaScript.
   if (mediaState.known && mediaState.playing && currentIdentified &&
       !currentMatchesTarget) {
     report(false);
     return 'wrong';
   }
 
-  // A Pause-labelled UI while media is still paused at zero is transitional,
-  // not a command to click. Native waits and, if necessary, retries by clean
-  // navigation rather than toggling the ambiguous play/pause control.
+  // Once Spotify has loaded the requested media element, the element itself is
+  // the least ambiguous start actuator. This covers the failure mode where the
+  // UI already flips to Pause while the actual media clock remains at 0. Native
+  // WebView autoplay policy allows this play() request; observer 'playing' is
+  // still the only authority that promotes the slot to Playing.
+  if (currentMatchesTarget && mediaState.known && !mediaState.playing &&
+      requestMediaStart(mediaState.media)) {
+    report(false);
+    return 'starting';
+  }
+
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') {
     report(false);
     return 'settling';
