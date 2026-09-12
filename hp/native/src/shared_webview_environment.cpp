@@ -4,22 +4,19 @@
 namespace hp {
 namespace {
 
-// Native media surfaces intentionally remain alive while parked outside the
-// dashboard or hidden by power-saving UI. They are autonomous playback
-// surfaces, so every shared media environment also permits programmatic media
-// start without requiring a foreground user gesture. Keeping autoplay policy in
-// the shared arguments is important because Spotify/YouTube/TVer use the
-// full-resource path and never consume the Stationhead-only arguments below.
+// Full-resource media surfaces still need autonomous playback, but they no
+// longer opt out of Chromium's occlusion/background throttling. Audio/video
+// playback remains active while an off-screen renderer is allowed to reduce
+// visual work. Disable browser services that the appliance runtime never uses.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
-    L"--disable-backgrounding-occluded-windows "
-    L"--autoplay-policy=no-user-gesture-required";
-
-constexpr wchar_t kStationheadWebView2Arguments[] =
+    L"--autoplay-policy=no-user-gesture-required "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "
     L"--disable-sync "
-    L"--metrics-recording-only "
+    L"--metrics-recording-only";
+
+constexpr wchar_t kStationheadWebView2Arguments[] =
     // Keep page-state restoration disabled across Stationhead navigations. HTTP
     // cache is enabled during a live controller session and is explicitly reset
     // when each playback controller is created or recreated.
