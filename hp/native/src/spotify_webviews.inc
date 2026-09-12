@@ -4,7 +4,6 @@
 #include "spotify_static_scripts.inc"
 #include "spotify_scoped_track_reconcile.inc"
 #include "spotify_media_observer_runtime.inc"
-#include "spotify_media_observer_completion.inc"
 #include "spotify_media_observer_events.inc"
 #include "spotify_fast_end_observer.inc"
 #include "spotify_auth_badge.inc"
