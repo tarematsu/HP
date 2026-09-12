@@ -1,5 +1,6 @@
 import { VideoFeedCoordinator as BaseVideoFeedCoordinator } from '../../video/src/video-feed-coordinator.js';
 import { refreshTverFeed } from './tver_feed.js';
+import { enrichTverFeedEpisodeTitles } from './tver_feed_titles.js';
 
 const COORDINATOR_NAME = 'tver-feed-refresh';
 const REFRESH_PATH = '/tver-feed-refresh-run';
@@ -30,12 +31,16 @@ export class VideoFeedCoordinator extends BaseVideoFeedCoordinator {
       });
     }
 
-    const feed = await refreshTverFeed(this.env);
+    const collectedFeed = await refreshTverFeed(this.env);
+    const feed = await enrichTverFeedEpisodeTitles(this.env, collectedFeed);
     return Response.json({
       ok: true,
       generatedAt: feed.generatedAt,
       episodeCount: feed.episodeCount,
       sources: feed.sources,
+      titledEpisodeCount: Array.isArray(feed.episodes)
+        ? feed.episodes.filter((episode) => String(episode?.title || '').trim()).length
+        : 0,
     });
   }
 }
