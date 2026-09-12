@@ -1,6 +1,7 @@
 // Power-saving overlay HWND, geometry and painting.
 namespace {
 constexpr wchar_t kOverlayWindowClass[] = L"HomePanelPowerSavingOverlay";
+constexpr size_t kControlButtonCount = 3;
 
 RECT ShrinkRect(RECT rect, int inset) {
   rect.left += inset;
@@ -16,17 +17,19 @@ int ControlButtonGap(int extent) noexcept {
   return std::clamp(extent * 20 / 1000, 6, 12);
 }
 
-RECT ControlButtonRect(const RECT& row, bool second) noexcept {
+RECT ControlButtonRect(const RECT& row, size_t index) noexcept {
   const int width = std::max(1L, row.right - row.left);
   const int gap = ControlButtonGap(width);
-  const int buttonWidth = std::max(1, (width - gap) / 2);
-  if (!second) {
-    return RECT{row.left, row.top,
-                std::min<LONG>(row.right, row.left + buttonWidth), row.bottom};
-  }
-  return RECT{
-      std::min<LONG>(row.right, row.left + buttonWidth + gap),
-      row.top, row.right, row.bottom};
+  const int totalGap = gap * static_cast<int>(kControlButtonCount - 1);
+  const int buttonWidth = std::max(
+      1, (width - totalGap) / static_cast<int>(kControlButtonCount));
+  const LONG left = std::min<LONG>(
+      row.right,
+      row.left + static_cast<LONG>(index) * (buttonWidth + gap));
+  const LONG right = index + 1 >= kControlButtonCount
+      ? row.right
+      : std::min<LONG>(row.right, left + buttonWidth);
+  return RECT{left, row.top, std::max<LONG>(left + 1, right), row.bottom};
 }
 }  // namespace
 
@@ -55,9 +58,16 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
       break;
     case WM_LBUTTONUP: {
       const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+      const RECT updateButton = controller->LocalUpdateButtonRect();
       const RECT powerButton = controller->LocalPowerButtonRect();
       const RECT muteButton = controller->LocalMuteButtonRect();
-      if (PtInRect(&powerButton, point)) {
+      if (PtInRect(&updateButton, point)) {
+        if (controller->parent_ && IsWindow(controller->parent_)) {
+          PostMessageW(
+              controller->parent_, kRendererActionMessage,
+              static_cast<WPARAM>(UiAction::AppUpdate), 0);
+        }
+      } else if (PtInRect(&powerButton, point)) {
         controller->ApplyMode(!controller->powerSaving_);
       } else if (PtInRect(&muteButton, point)) {
         controller->ApplyMediaMute(!controller->mediaMuted_);
@@ -109,7 +119,7 @@ void PowerSavingController::EnsureOverlay() {
   overlay_ = CreateWindowExW(
       WS_EX_NOPARENTNOTIFY,
       kOverlayWindowClass,
-      L"省電力 / ミュート",
+      L"更新 / 省電力 / ミュート",
       WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
       0,
       0,
@@ -176,11 +186,11 @@ RECT PowerSavingController::ParentControlStackRect() const {
   const RECT status{content.left, statusTop, content.right, content.bottom};
   const int statusHeight = std::max(1L, status.bottom - status.top);
   const int buttonGap = ControlButtonGap(contentWidth);
-  const int buttonWidth = std::clamp(contentWidth * 245 / 1000, 92, 132);
+  const int buttonWidth = std::clamp(contentWidth * 205 / 1000, 74, 110);
   const int buttonHeight = std::min(
       statusHeight,
       std::clamp(statusHeight * 70 / 100, 28, 34));
-  const int rowWidth = buttonWidth * 2 + buttonGap;
+  const int rowWidth = buttonWidth * 3 + buttonGap * 2;
   const LONG top =
       status.top + std::max(0, (statusHeight - buttonHeight) / 2);
   return RECT{
@@ -188,6 +198,17 @@ RECT PowerSavingController::ParentControlStackRect() const {
       top,
       status.right,
       top + buttonHeight};
+}
+
+RECT PowerSavingController::LocalUpdateButtonRect() const {
+  if (!overlay_) return RECT{0, 0, 1, 1};
+  RECT row{};
+  if (powerSaving_ && !mvStartupInputPass_) {
+    row = ParentControlStackRect();
+  } else {
+    GetClientRect(overlay_, &row);
+  }
+  return ControlButtonRect(row, 0);
 }
 
 RECT PowerSavingController::LocalPowerButtonRect() const {
@@ -198,7 +219,7 @@ RECT PowerSavingController::LocalPowerButtonRect() const {
   } else {
     GetClientRect(overlay_, &row);
   }
-  return ControlButtonRect(row, false);
+  return ControlButtonRect(row, 1);
 }
 
 RECT PowerSavingController::LocalMuteButtonRect() const {
@@ -209,7 +230,7 @@ RECT PowerSavingController::LocalMuteButtonRect() const {
   } else {
     GetClientRect(overlay_, &row);
   }
-  return ControlButtonRect(row, true);
+  return ControlButtonRect(row, 2);
 }
 
 void PowerSavingController::PaintOverlay(HWND window) {
@@ -223,6 +244,7 @@ void PowerSavingController::PaintOverlay(HWND window) {
       dc, &client,
       reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
 
+  const RECT updateButton = LocalUpdateButtonRect();
   const RECT powerButton = LocalPowerButtonRect();
   const RECT muteButton = LocalMuteButtonRect();
   auto drawButton = [&](const RECT& button, bool active,
@@ -260,6 +282,8 @@ void PowerSavingController::PaintOverlay(HWND window) {
     DeleteObject(font);
   };
 
+  drawButton(
+      updateButton, false, RGB(40, 73, 112), RGB(84, 145, 211), L"更新");
   drawButton(
       powerButton, powerSaving_, RGB(30, 92, 55), RGB(74, 180, 105),
       powerSaving_ ? L"省電力 ON" : L"省電力");
