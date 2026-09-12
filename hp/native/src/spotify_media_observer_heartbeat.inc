@@ -67,7 +67,7 @@ constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
         media.paused || media.ended) {
       return false;
     }
-    runtime.heartbeatTimer = setInterval(heartbeat, 10000);
+    runtime.heartbeatTimer = setInterval(heartbeat, 20000);
     return true;
   };
 
