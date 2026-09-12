@@ -23,7 +23,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     startPosted: false,
     endedPosted: false,
     targetMedia: null,
-    lastIdentityCheckTime: -1
+    lastIdentityCheckTime: -1,
+    trustedStartKey: '',
+    trustedStartUntil: 0
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
@@ -45,6 +47,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.endedPosted = false;
     state.targetMedia = null;
     state.lastIdentityCheckTime = -1;
+    state.trustedStartKey = '';
+    state.trustedStartUntil = 0;
   };
   const syncTarget = () => {
     const target = window.__homePanelSpotifyNativeTarget;
@@ -78,10 +82,36 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     return !!target.title && track.title === normalize(target.title);
   };
   const isMedia = value => value instanceof HTMLMediaElement;
+  const armTrustedStart = requestedGeneration => {
+    const target = syncTarget();
+    const requested = String(requestedGeneration || '0');
+    if (requested === '0' || requested !== generation() ||
+        !target || target.kind !== 'music' || !target.pagePath) {
+      return false;
+    }
+    state.trustedStartKey = targetKey(target);
+    state.trustedStartUntil = Date.now() + 15000;
+    return true;
+  };
+  const clearTrustedStart = () => {
+    state.trustedStartKey = '';
+    state.trustedStartUntil = 0;
+  };
+  const consumeTrustedStart = target => {
+    if (!target || state.trustedStartKey !== targetKey(target) ||
+        state.trustedStartUntil < Date.now()) {
+      return false;
+    }
+    clearTrustedStart();
+    return true;
+  };
 
-  // Identity validation never attempts to repair playback. A mismatch simply
-  // disarms completion tracking for the current media element; navigation owns
-  // target changes and the next generation will establish a new target.
+  // Identity validation normally requires the now-playing surface or
+  // MediaSession metadata. Immediately after native has verified and clicked an
+  // explicit Play-labelled target control, however, Spotify can begin the
+  // correct audio before either identity surface is populated. That single
+  // transition is accepted through a generation-scoped, short-lived trusted
+  // start token. An explicitly identified wrong track is never trusted.
   const enforceTarget = media => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || !target.pagePath ||
@@ -90,8 +120,16 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     }
 
     const identity = currentTrack();
-    if (!identity.path && !identity.title) return 'unknown';
-    if (!matchesTarget(target, identity)) {
+    const ownsTrustedMedia = state.started && state.targetMedia === media;
+    if (!identity.path && !identity.title) {
+      if (!ownsTrustedMedia) {
+        if (media.paused || !consumeTrustedStart(target)) return 'unknown';
+      }
+    } else if (!matchesTarget(target, identity)) {
+      // Any concrete contradictory identity cancels the one-shot trust. This
+      // prevents a stale/wrong Spotify item from later becoming trusted merely
+      // because the now-playing UI disappears.
+      clearTrustedStart();
       if (!state.startPosted) return 'unknown';
       state.started = false;
       state.targetMedia = null;
@@ -126,6 +164,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     post,
     syncTarget,
     isMedia,
+    armTrustedStart,
     enforceTarget,
     scheduleTargetChecks,
     postCompletionPlan: () => false,

@@ -43,11 +43,15 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   }
 
   SetSlotState(slot, SlotState::WaitingTarget);
+  const ULONGLONG targetGeneration = slot.targetGeneration;
 
   // The point was measured asynchronously. Spotify can switch a Play-labelled
   // control to Pause before native input reaches it. Revalidate both playback
   // state and the element currently under the point immediately before CDP
   // input; a stale point is discarded instead of becoming an accidental pause.
+  // For music, arm the generation-scoped trusted start inside this same script
+  // before returning success. That guarantees the observer is ready before the
+  // subsequent native click can produce a play/playing event.
   std::wstring preflight = L"(() => {";
   preflight += L"const nx=" + std::to_wstring(xTenThousandths) + L";";
   preflight += L"const ny=" + std::to_wstring(yTenThousandths) + L";";
@@ -62,10 +66,17 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
       L"if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return false;"
       L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
       L"if(!label||label.includes('pause')||label.includes('一時停止'))return false;"
-      L"return label==='play'||label==='再生'||label.startsWith('play ')||label.endsWith('を再生');"
-      L"})()";
+      L"const trustedPlay=label==='play'||label==='再生'||label.startsWith('play ')||label.endsWith('を再生');"
+      L"if(!trustedPlay)return false;";
+  if (slot.timedTarget == TimedSpotifyTarget::Music) {
+    preflight +=
+        L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
+        L"if(!runtime||typeof runtime.armTrustedStart!=='function')return false;"
+        L"if(!runtime.armTrustedStart('" + std::to_wstring(targetGeneration) +
+        L"'))return false;";
+  }
+  preflight += L"return true;})()";
 
-  const ULONGLONG targetGeneration = slot.targetGeneration;
   Slot* const target = &slot;
   ComPtr<ICoreWebView2> requestedView = slot.webview;
   const auto alive = alive_;

@@ -301,3 +301,44 @@ test('completed generation quarantines same-media recommendation without a new p
   assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f15').length, 1);
 });
+
+test('trusted native Play establishes start and deadline when Spotify identity is temporarily absent', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f21');
+  const runtime = h.window.__homePanelSpotifyMediaObserverRuntime;
+  assert.equal(runtime.armTrustedStart('21'), true);
+
+  h.setTrack(null, '');
+  h.navigator.mediaSession.metadata.title = '';
+  h.media.currentTime = 1;
+  h.media.duration = 181;
+  h.media.paused = false;
+  h.dispatch('playing');
+
+  assert.equal(
+    h.messages.filter(m => m === 'spotify:timed-started\x1f21').length,
+    1,
+  );
+  assert.ok(h.messages.some(m => m.startsWith('spotify:timed-plan\x1f21\x1f')));
+  assert.equal(runtime.state.started, true);
+  assert.equal(runtime.state.targetMedia, h.media);
+});
+
+test('trusted native Play never overrides a concrete wrong-track identity', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f22');
+  const runtime = h.window.__homePanelSpotifyMediaObserverRuntime;
+  assert.equal(runtime.armTrustedStart('22'), true);
+
+  h.setTrack('/track/B', 'Wrong B');
+  h.media.currentTime = 1;
+  h.media.duration = 180;
+  h.media.paused = false;
+  h.dispatch('playing');
+  assert.equal(h.messages.some(m => m.startsWith('spotify:timed-started')), false);
+
+  h.setTrack(null, '');
+  h.dispatch('playing');
+  assert.equal(h.messages.some(m => m.startsWith('spotify:timed-started')), false);
+  assert.equal(runtime.state.started, false);
+});
