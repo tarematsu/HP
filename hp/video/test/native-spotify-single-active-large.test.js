@@ -36,9 +36,9 @@ test('serialized Spotify shows authentication while normal recovery remains offs
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
 });
 
-test('inactive Spotify playback hosts never collapse to 1x1', () => {
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+test('inactive Spotify playback hosts retain a small nonzero viewport', () => {
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
   assert.match(layout, /static_cast<int>\(i\) \*[\s\S]*kSpotifyParkedPlaybackWidth \+ kSpotifyParkedPlaybackGap/);
   assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
 });
