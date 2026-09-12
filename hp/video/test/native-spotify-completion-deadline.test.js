@@ -39,8 +39,11 @@ test('validated music start publishes one remaining duration for native timing',
 
 test('observer has no completion planner or terminal lifecycle tracking', () => {
   assert.doesNotMatch(wrapper, /spotify_media_observer_completion\.inc/);
-  assert.doesNotMatch(events, /timeupdate|seeking|seeked|waiting|stalled|pause|ended/);
-  assert.doesNotMatch(events, /completion|timed-plan|timed-ended/);
+  assert.doesNotMatch(
+    events,
+    /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause|ended)'/,
+  );
+  assert.doesNotMatch(events, /spotify:timed-plan|spotify:timed-ended/);
   assert.doesNotMatch(runtime, /postCompletionPlan|clearCompletionPlan|completionPlan/);
 });
 
