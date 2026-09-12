@@ -61,6 +61,9 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   ].join(',');
   const messageControlSelector =
       'button, tp-yt-paper-button, [role="button"], [aria-label], [title]';
+  const surveyDialogMarkerSelector =
+      '.ytp-ad-survey, .ytp-ad-feedback-dialog, '
+      + 'yt-survey-renderer, ytd-survey-renderer';
   const closePattern = /^(閉じる|close)$/i;
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const controlText = element => {
@@ -74,10 +77,9 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     return '';
   };
   const isSurveyDialog = root => Boolean(
-      root?.matches?.('.ytp-ad-survey, .ytp-ad-feedback-dialog, '
-          + 'yt-survey-renderer, ytd-survey-renderer') ||
-      root?.closest?.('.ytp-ad-survey, .ytp-ad-feedback-dialog, '
-          + 'yt-survey-renderer, ytd-survey-renderer'));
+      root?.matches?.(surveyDialogMarkerSelector) ||
+      root?.closest?.(surveyDialogMarkerSelector) ||
+      root?.querySelector?.(surveyDialogMarkerSelector));
   const dismissMessageDialog = () => {
     const now = Date.now();
     if (now - state.dialogCloseAt < 500) return false;
