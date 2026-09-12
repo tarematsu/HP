@@ -115,8 +115,9 @@ test('start and recovery are non-destructive while completed-generation autoplay
     /state\.endedPosted = true;[\s\S]*post\('spotify:timed-ended'\)/,
   );
   const finishStart = events.indexOf('const finishTarget = media =>');
-  const playListener = events.indexOf("document.addEventListener('play'", finishStart);
-  const finishTarget = events.slice(finishStart, playListener);
+  const finishEnd = events.indexOf('\n  };', finishStart);
+  assert.ok(finishStart >= 0 && finishEnd > finishStart);
+  const finishTarget = events.slice(finishStart, finishEnd + '\n  };'.length);
   assert.doesNotMatch(finishTarget, /pause\(|quarantineMedia|stopAllMedia/);
   assert.match(events, /document\.addEventListener\('ended'[\s\S]*finishTarget\(event\.target\)/);
   assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);

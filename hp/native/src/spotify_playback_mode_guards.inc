@@ -3,12 +3,48 @@ namespace {
 
 constexpr wchar_t kSpotifyPlaybackModesOffProbeScript[] = LR"JS(
 (() => {
+  const normalize = value =>
+      (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const inspect = (testId, activeStates) => {
     const button = document.querySelector(`button[data-testid="${testId}"]`);
     if (!button) return { off: false, point: null };
     const checked = button.getAttribute('aria-checked');
-    if (checked === 'false') return { off: true, point: null };
-    if (!activeStates.includes(checked)) return { off: false, point: null };
+    const label = normalize(
+        button.getAttribute('aria-label') || button.getAttribute('title'));
+
+    // Spotify does not consistently expose aria-checked on every player build.
+    // Fall back to the action label, but distinguish "Enable repeat one" from
+    // plain "Enable repeat": the former means repeat-context is already active.
+    let labelOff = false;
+    let labelActive = false;
+    if (testId === 'control-button-repeat') {
+      labelActive =
+          label.includes('repeat one') ||
+          label.includes('disable repeat') ||
+          (label.includes('リピート') &&
+           (label.includes('オフ') || label.includes('無効') ||
+            label.includes('1曲') || label.includes('1 曲')));
+      labelOff = !labelActive &&
+          ((label.includes('enable repeat') && !label.includes('repeat one')) ||
+           (label.includes('リピート') &&
+            (label.includes('オン') || label.includes('有効'))));
+    } else if (testId === 'control-button-shuffle') {
+      labelActive =
+          label.includes('disable shuffle') ||
+          (label.includes('シャッフル') &&
+           (label.includes('オフ') || label.includes('無効')));
+      labelOff = !labelActive &&
+          (label.includes('enable shuffle') ||
+           (label.includes('シャッフル') &&
+            (label.includes('オン') || label.includes('有効'))));
+    }
+
+    if (checked === 'false' || (checked === null && labelOff)) {
+      return { off: true, point: null };
+    }
+    const active = activeStates.includes(checked) ||
+        (checked === null && labelActive);
+    if (!active) return { off: false, point: null };
     const style = window.getComputedStyle(button);
     const rect = button.getBoundingClientRect();
     if (button.disabled || button.getAttribute('aria-disabled') === 'true' ||

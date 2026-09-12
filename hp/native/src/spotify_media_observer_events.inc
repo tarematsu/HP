@@ -40,11 +40,50 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
-    // The browser has already ended this media. Mark completion and notify
-    // native without issuing a redundant pause that could race another element.
+    // The requested media has completed. Mark completion and notify native
+    // without pausing an already-ended element. Repeat-wrap quarantine below
+    // pauses only if Spotify has already restarted the old generation.
     state.endedPosted = true;
     stopHeartbeat();
     post('spotify:timed-ended');
+    return true;
+  };
+  const detectRepeatWrap = media => {
+    const target = syncTarget();
+    if (!target || target.kind !== 'music' || !isMedia(media) ||
+        !state.started || state.endedPosted || state.targetMedia !== media) {
+      return false;
+    }
+
+    const currentTime = Number(media.currentTime) || 0;
+    const duration = Number(media.duration);
+    const marker = media.__homePanelSpotifyPlaybackMark ||
+        (media.__homePanelSpotifyPlaybackMark = { key: '', time: -1 });
+    if (marker.key !== state.key) {
+      marker.key = state.key;
+      marker.time = currentTime;
+      return false;
+    }
+
+    const previousTime = Number(marker.time);
+    marker.time = currentTime;
+    if (!Number.isFinite(previousTime) || !Number.isFinite(duration) ||
+        duration < 10) {
+      return false;
+    }
+
+    // Spotify repeat modes can rewind the same media element to zero without an
+    // `ended` event. Only treat a backward jump as completion after this target
+    // was observed within the final three seconds, so ordinary startup/recovery
+    // seeks cannot advance the rotation. This happens after the full track has
+    // elapsed; it is not an early end-of-track cutoff.
+    const wrapped = previousTime >= Math.max(0, duration - 3) &&
+        currentTime <= 1.5 && previousTime - currentTime >= 2;
+    if (!wrapped || !finishTarget(media)) return false;
+
+    // The old generation has already restarted, so quarantine it immediately
+    // while native advances A -> B (or the corresponding next rotation slot).
+    quarantineMedia(media);
     return true;
   };
 
@@ -79,10 +118,19 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }, true);
   }
 
+  // A repeat rewind normally emits seeking before the first replayed audio
+  // frame. Detect it here for the fastest handoff, with timeupdate as fallback.
+  document.addEventListener('seeking', event => {
+    if (!isMedia(event.target) || event.target.ended) return;
+    if (quarantineCompletedGeneration(event.target)) return;
+    detectRepeatWrap(event.target);
+  }, true);
+
   document.addEventListener('timeupdate', event => {
     const media = event.target;
     if (!isMedia(media) || media.ended || media.paused) return;
     if (quarantineCompletedGeneration(media)) return;
+    if (detectRepeatWrap(media)) return;
     const currentTime = Number(media.currentTime) || 0;
     if (state.lastIdentityCheckTime >= 0 &&
         currentTime >= state.lastIdentityCheckTime &&
@@ -106,7 +154,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }, true);
   }
 
-  // A music target advances only after the browser reports its natural end.
+  // A music target advances only after the browser reports its natural end, or
+  // after the same media has demonstrably wrapped from the physical end to zero.
   document.addEventListener('ended', event => {
     finishTarget(event.target);
   }, true);
