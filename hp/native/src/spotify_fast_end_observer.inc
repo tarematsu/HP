@@ -1,18 +1,15 @@
 namespace hp {
 namespace {
 
-// Assemble independently valid observer responsibilities into one ExecuteScript
-// call. Playback recovery/heartbeat is intentionally absent; the observer only
-// tracks target identity and natural completion.
+// Assemble the target observer and its minimal event bindings into one
+// ExecuteScript call. Completion detection is intentionally absent: native owns
+// the one-shot completion deadline after the validated start event.
 const std::wstring kSpotifyFastEndObserverScriptStorage = [] {
   std::wstring script;
   script.reserve(
       std::size(kSpotifyMediaObserverRuntimeScript) +
-      std::size(kSpotifyMediaObserverCompletionScript) +
-      std::size(kSpotifyMediaObserverEventsScript) + 4U);
+      std::size(kSpotifyMediaObserverEventsScript) + 3U);
   script.append(kSpotifyMediaObserverRuntimeScript);
-  script.append(L";\n");
-  script.append(kSpotifyMediaObserverCompletionScript);
   script.append(L";\n");
   script.append(kSpotifyMediaObserverEventsScript);
   script.push_back(L';');
