@@ -12,7 +12,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery, postCompletionPlan,
-          clearCompletionPlan, completionPlanExpired } = runtime;
+          clearCompletionPlan, completionPlanDue, completionPlanExpired } = runtime;
   const finishLeadSeconds = 1.5;
 
   const quarantineMedia = media => {
@@ -56,34 +56,13 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     quarantineMedia(media);
     return true;
   };
-  const detectRepeatWrap = media => {
-    const target = syncTarget();
-    if (!target || target.kind !== 'music' || !isMedia(media) ||
-        !state.started || state.endedPosted || state.targetMedia !== media) {
+  const finishProjectedWrap = media => {
+    const currentTime = Number(media.currentTime);
+    if (!Number.isFinite(currentTime) || currentTime > 1.5 ||
+        typeof completionPlanDue !== 'function' || !completionPlanDue(2000)) {
       return false;
     }
-
-    const currentTime = Number(media.currentTime) || 0;
-    const duration = Number(media.duration);
-    const marker = media.__homePanelSpotifyPlaybackMark ||
-        (media.__homePanelSpotifyPlaybackMark = { key: '', time: -1 });
-    if (marker.key !== state.key) {
-      marker.key = state.key;
-      marker.time = currentTime;
-      return false;
-    }
-
-    const previousTime = Number(marker.time);
-    marker.time = currentTime;
-    if (!Number.isFinite(previousTime) || !Number.isFinite(duration) ||
-        duration < 10) {
-      return false;
-    }
-
-    const wrapped = previousTime >= Math.max(0, duration - 3) &&
-        currentTime <= 1.5 && previousTime - currentTime >= 2;
-    if (!wrapped || !finishTarget(media)) return false;
-
+    if (!finishTarget(media)) return false;
     quarantineMedia(media);
     return true;
   };
@@ -93,14 +72,14 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     if (!isMedia(media) || state.endedPosted) return false;
     if (media.ended) return finishTarget(media);
     if (finishNearEnd(media)) return true;
-    if (media.paused) {
-      clearCompletionPlan();
-      return false;
-    }
     if (typeof completionPlanExpired === 'function' && completionPlanExpired()) {
       if (!finishTarget(media)) return false;
       quarantineMedia(media);
       return true;
+    }
+    if (media.paused) {
+      clearCompletionPlan();
+      return false;
     }
     return postCompletionPlan(media, true);
   };
@@ -108,6 +87,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('play', event => {
     if (!isMedia(event.target)) return;
     if (quarantineCompletedGeneration(event.target)) return;
+    if (finishProjectedWrap(event.target)) return;
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
     state.heartbeatTime = Number(event.target.currentTime) || 0;
@@ -119,6 +99,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('playing', event => {
     if (!isMedia(event.target)) return;
     if (quarantineCompletedGeneration(event.target)) return;
+    if (finishProjectedWrap(event.target)) return;
     if (enforceTarget(event.target) === 'playing') {
       postCompletionPlan(event.target);
     }
@@ -140,13 +121,14 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('seeking', event => {
     if (!isMedia(event.target) || event.target.ended) return;
     if (quarantineCompletedGeneration(event.target)) return;
-    if (detectRepeatWrap(event.target)) return;
+    if (finishProjectedWrap(event.target)) return;
     clearCompletionPlan();
   }, true);
 
   document.addEventListener('seeked', event => {
     if (!isMedia(event.target) || event.target.ended || event.target.paused) return;
     if (quarantineCompletedGeneration(event.target)) return;
+    if (finishProjectedWrap(event.target)) return;
     if (enforceTarget(event.target) === 'playing') {
       postCompletionPlan(event.target);
     }
@@ -165,7 +147,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     if (!isMedia(media) || media.ended || media.paused) return;
     if (quarantineCompletedGeneration(media)) return;
     if (finishNearEnd(media)) return;
-    if (detectRepeatWrap(media)) return;
+    if (finishProjectedWrap(media)) return;
     const currentTime = Number(media.currentTime) || 0;
     if (state.lastIdentityCheckTime >= 0 &&
         currentTime >= state.lastIdentityCheckTime &&
@@ -179,6 +161,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('pause', event => {
     if (!isMedia(event.target)) return;
     if (finishNearEnd(event.target)) return;
+    if (finishProjectedWrap(event.target)) return;
     clearCompletionPlan();
     stopHeartbeat();
     scheduleRecovery(event.target, 600, true);
@@ -187,6 +170,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   for (const eventName of ['waiting', 'stalled']) {
     document.addEventListener(eventName, event => {
       if (!isMedia(event.target)) return;
+      if (finishProjectedWrap(event.target)) return;
       clearCompletionPlan();
       scheduleRecovery(event.target, 2500, false);
     }, true);

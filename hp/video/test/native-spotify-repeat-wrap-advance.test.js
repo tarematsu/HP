@@ -6,6 +6,10 @@ const guards = readFileSync(
   new URL('../../native/src/spotify_playback_mode_guards.inc', import.meta.url),
   'utf8',
 );
+const completion = readFileSync(
+  new URL('../../native/src/spotify_media_observer_completion.inc', import.meta.url),
+  'utf8',
+);
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url),
   'utf8',
@@ -25,16 +29,15 @@ test('repeat guard survives Spotify builds that omit aria-checked', () => {
   );
 });
 
-test('same-media repeat wrap remains a fallback after near-end completion', () => {
+test('repeat wrap is fenced by the projected completion deadline', () => {
+  assert.match(completion, /const completionPlanDue = \(leadMs = 0\) =>/);
+  assert.match(completion, /runtime\.completionPlanDue = completionPlanDue/);
   assert.match(events, /const finishLeadSeconds = 1\.5/);
   assert.match(events, /duration\s*-\s*finishLeadSeconds/);
-  assert.match(events, /const detectRepeatWrap = media =>/);
-  assert.match(events, /marker\.key !== state\.key/);
-  assert.match(events, /previousTime >= Math\.max\(0, duration - 3\)/);
-  assert.match(events, /currentTime <= 1\.5/);
-  assert.match(events, /previousTime - currentTime >= 2/);
-  assert.match(events, /if \(!wrapped \|\| !finishTarget\(media\)\) return false;/);
-  assert.match(events, /quarantineMedia\(media\);[\s\S]*return true;/);
+  assert.match(events, /const finishProjectedWrap = media =>/);
+  assert.match(events, /currentTime > 1\.5/);
+  assert.match(events, /completionPlanDue\(2000\)/);
   assert.match(events, /document\.addEventListener\('seeking'/);
-  assert.match(events, /if \(detectRepeatWrap\(media\)\) return;/);
+  assert.match(events, /if \(finishProjectedWrap\(event\.target\)\) return;/);
+  assert.match(events, /document\.addEventListener\('pause'/);
 });
