@@ -12,10 +12,11 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery } = runtime;
+  const finishLeadSeconds = 1.5;
 
   // The only direct pause retained in music playback is a narrow quarantine for
-  // autoplay that begins after a confirmed target has naturally ended but before
-  // native has installed the next generation. Start/recovery logic never pauses.
+  // a completed generation while native installs the next target. Start/recovery
+  // logic never pauses active playback.
   const quarantineMedia = media => {
     try { if (isMedia(media) && !media.paused) media.pause(); } catch (_) {}
   };
@@ -40,12 +41,24 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
-    // The requested media has completed. Mark completion and notify native
-    // without pausing an already-ended element. Repeat-wrap quarantine below
-    // pauses only if Spotify has already restarted the old generation.
     state.endedPosted = true;
     stopHeartbeat();
     post('spotify:timed-ended');
+    return true;
+  };
+  const finishNearEnd = media => {
+    const currentTime = Number(media.currentTime);
+    const duration = Number(media.duration);
+    if (!Number.isFinite(currentTime) || !Number.isFinite(duration) ||
+        duration < 10 || currentTime < Math.max(0, duration - finishLeadSeconds)) {
+      return false;
+    }
+    if (!finishTarget(media)) return false;
+
+    // Do not depend on Spotify emitting `ended`. Once the requested track enters
+    // the final 1.5 seconds, hand ownership to native and stop the old generation
+    // so autoplay/repeat cannot win the transition race.
+    quarantineMedia(media);
     return true;
   };
   const detectRepeatWrap = media => {
@@ -72,17 +85,12 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       return false;
     }
 
-    // Spotify repeat modes can rewind the same media element to zero without an
-    // `ended` event. Only treat a backward jump as completion after this target
-    // was observed within the final three seconds, so ordinary startup/recovery
-    // seeks cannot advance the rotation. This happens after the full track has
-    // elapsed; it is not an early end-of-track cutoff.
+    // Fallback for a heavily throttled WebView that skips the near-end
+    // timeupdate entirely and rewinds the same media element to zero.
     const wrapped = previousTime >= Math.max(0, duration - 3) &&
         currentTime <= 1.5 && previousTime - currentTime >= 2;
     if (!wrapped || !finishTarget(media)) return false;
 
-    // The old generation has already restarted, so quarantine it immediately
-    // while native advances A -> B (or the corresponding next rotation slot).
     quarantineMedia(media);
     return true;
   };
@@ -119,7 +127,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   }
 
   // A repeat rewind normally emits seeking before the first replayed audio
-  // frame. Detect it here for the fastest handoff, with timeupdate as fallback.
+  // frame. Detect it here for the fastest fallback handoff.
   document.addEventListener('seeking', event => {
     if (!isMedia(event.target) || event.target.ended) return;
     if (quarantineCompletedGeneration(event.target)) return;
@@ -130,6 +138,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     const media = event.target;
     if (!isMedia(media) || media.ended || media.paused) return;
     if (quarantineCompletedGeneration(media)) return;
+    if (finishNearEnd(media)) return;
     if (detectRepeatWrap(media)) return;
     const currentTime = Number(media.currentTime) || 0;
     if (state.lastIdentityCheckTime >= 0 &&
@@ -143,6 +152,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   document.addEventListener('pause', event => {
     if (!isMedia(event.target)) return;
+    if (finishNearEnd(event.target)) return;
     stopHeartbeat();
     scheduleRecovery(event.target, 600, true);
   }, true);
@@ -154,8 +164,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     }, true);
   }
 
-  // A music target advances only after the browser reports its natural end, or
-  // after the same media has demonstrably wrapped from the physical end to zero.
+  // `ended` remains a fallback when the browser reports natural completion
+  // before the near-end timeupdate path gets a chance to run.
   document.addEventListener('ended', event => {
     finishTarget(event.target);
   }, true);
