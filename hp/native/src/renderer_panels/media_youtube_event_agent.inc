@@ -27,7 +27,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     wakeAt: 0,
     wakeTimer: 0,
     lastWakeSignature: '',
-    pendingWakeSignature: '',
+    pendingWakeDirty: false,
     playerObserver: null,
     classObserver: null,
     popupObserver: null,
@@ -118,33 +118,45 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   const postWake = nextSignature => {
     state.wakeAt = Date.now();
     state.lastWakeSignature = nextSignature;
-    state.pendingWakeSignature = '';
+    state.pendingWakeDirty = false;
     try {
       window.chrome?.webview?.postMessage('homepanel:youtube-wake');
     } catch (_) {}
   };
 
   // Coalesce bursts into one trailing notification and suppress an unchanged
-  // state entirely. The native 30-second watchdog remains the recovery backstop.
+  // state entirely. If a trailing wake is already armed, avoid rescanning the
+  // player for every mutation; compute the expensive signature once at flush.
   const wake = (force = false) => {
+    const delay = Math.max(0, 250 - (Date.now() - state.wakeAt));
+    if (!force && delay > 0 && state.wakeTimer) {
+      state.pendingWakeDirty = true;
+      return;
+    }
+
     const nextSignature = signature();
     if (!force && nextSignature === state.lastWakeSignature && !state.wakeTimer) {
       return;
     }
-    state.pendingWakeSignature = nextSignature;
-    const delay = Math.max(0, 250 - (Date.now() - state.wakeAt));
+    state.pendingWakeDirty = true;
     if (delay === 0) {
       if (state.wakeTimer) {
         clearTimeout(state.wakeTimer);
         state.wakeTimer = 0;
       }
-      if (force || nextSignature !== state.lastWakeSignature) postWake(nextSignature);
+      if (force || nextSignature !== state.lastWakeSignature) {
+        postWake(nextSignature);
+      } else {
+        state.pendingWakeDirty = false;
+      }
       return;
     }
     if (state.wakeTimer) return;
     state.wakeTimer = setTimeout(() => {
       state.wakeTimer = 0;
-      const pending = state.pendingWakeSignature || signature();
+      if (!state.pendingWakeDirty) return;
+      const pending = signature();
+      state.pendingWakeDirty = false;
       if (pending !== state.lastWakeSignature) postWake(pending);
     }, delay);
   };
