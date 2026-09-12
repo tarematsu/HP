@@ -103,8 +103,8 @@ test('playback anomalies fail forward to the next track instead of retrying the 
   assert.match(rotation, /const bool stopped =[\s\S]*spotify:not-playing/);
   assert.doesNotMatch(rotation, /if \(stopped\)[\s\S]{0,500}MarkSlotRecovering\(\*target, now\)/);
   assert.match(rotation, /Playback anomalies are fail-forward events[\s\S]*AdvanceTimedRotationSlot\(\*target, now\)/);
-  assert.match(events, /const finishLeadSeconds = 1\.5/);
-  assert.match(events, /duration - finishLeadSeconds/);
+  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
+  assert.match(events, /document\.addEventListener\('ended'/);
 });
 
 test('advertisements cannot complete or start a requested song', () => {
