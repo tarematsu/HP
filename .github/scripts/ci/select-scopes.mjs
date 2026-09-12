@@ -63,7 +63,7 @@ export function selectHomePanelScopes(files, { all = false } = {}) {
       scopes.bundle = true;
     }
     if (file.startsWith('hp/cloud/')) scopes.cloud = true;
-    if (/^hp\/video\/(?:src|public|test|scripts)\//.test(file)
+    if (/^hp\/video\/(?:src|public|migrations|test|scripts)\//.test(file)
       || file === 'hp/video/package.json') {
       scopes.video = true;
     }
