@@ -38,6 +38,7 @@ class SpotifyWebViews final {
 
  private:
   static constexpr size_t kAccountCount = 6;
+  static constexpr UINT kSpotifyCompletionDeadlineMessage = WM_APP + 0x53;
 
   enum class SlotState : unsigned char {
     NotCreated,
@@ -137,6 +138,8 @@ class SpotifyWebViews final {
 
   static LRESULT CALLBACK HostWndProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+  static void CALLBACK CompletionDeadlineTimerProc(
+      PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_TIMER timer);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
   static bool IsSpotifyLoginUri(const wchar_t* uri) noexcept;
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept;
@@ -148,6 +151,7 @@ class SpotifyWebViews final {
   void CreateController(Slot& slot) noexcept;
   void Configure(Slot& slot) noexcept;
   void ArmRobustScheduler() noexcept;
+  void ArmCompletionDeadlineTimer() noexcept;
   UINT NextRobustSchedulerDelayMs(ULONGLONG now) const noexcept;
   void BeginControllerCreate(Slot& slot) noexcept;
   bool SlotIsLoginPage(const Slot& slot) const noexcept;
@@ -206,6 +210,7 @@ class SpotifyWebViews final {
   double podcastPlaybackRate_ = 3.0;
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
+  PTP_TIMER completionDeadlineTimer_ = nullptr;
   size_t staggerSlotIndex_ = 0;
   ULONGLONG staggerSlotStartTick_ = 0;
   ULONGLONG scheduleStartTick_ = 0;
