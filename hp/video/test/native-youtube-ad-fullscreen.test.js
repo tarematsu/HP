@@ -8,10 +8,10 @@ const recovery = readExpandedNativeSource(
 const trusted = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_trusted_action.inc', import.meta.url), 'utf8');
 
-test('YouTube ads restore fullscreen before skip lookup', () => {
+test('YouTube ads request fullscreen once before skip lookup', () => {
   const adState = recovery.indexOf('const adShowing = trusted.ad()');
   const adBranch = recovery.indexOf('if (adShowing) {');
-  const fullscreen = recovery.indexOf('if (!trusted.fullscreen())', adBranch);
+  const fullscreen = recovery.indexOf('else if (!adRecoveryState.fullscreenApplied)', adBranch);
   const skip = recovery.indexOf('const skipSelectors = [', adBranch);
   const guard = recovery.indexOf("return 'recovery';", adBranch);
   assert.ok(adState >= 0);
@@ -19,9 +19,10 @@ test('YouTube ads restore fullscreen before skip lookup', () => {
   assert.ok(fullscreen > adBranch);
   assert.ok(skip > fullscreen);
   assert.ok(guard > skip);
+  assert.match(recovery, /active: false, fullscreenApplied: false/);
   assert.match(
     recovery,
-    /const fullscreenAction = trusted\.arm\(target, 'fullscreen', 1200\)[\s\S]*if \(fullscreenAction\) return fullscreenAction/,
+    /const fullscreenAction = trusted\.arm\(target, 'fullscreen', 1200\)[\s\S]*adRecoveryState\.fullscreenApplied = true;[\s\S]*return fullscreenAction/,
   );
 });
 
