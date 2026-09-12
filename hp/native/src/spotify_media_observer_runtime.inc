@@ -25,7 +25,10 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     targetMedia: null,
     lastIdentityCheckTime: -1,
     trustedStartKey: '',
-    trustedStartUntil: 0
+    trustedStartUntil: 0,
+    identityFallbackTimer: 0,
+    identityFallbackMedia: null,
+    identityFallbackKey: ''
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
@@ -40,7 +43,14 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       ? [target.pagePath, target.trackPath, normalize(target.title),
          target.kind, generation()].join('|')
       : '';
+  const clearIdentityFallback = () => {
+    if (state.identityFallbackTimer) clearTimeout(state.identityFallbackTimer);
+    state.identityFallbackTimer = 0;
+    state.identityFallbackMedia = null;
+    state.identityFallbackKey = '';
+  };
   const resetState = key => {
+    clearIdentityFallback();
     state.key = key;
     state.started = false;
     state.startPosted = false;
@@ -147,16 +157,36 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     return 'playing';
   };
 
+  const checkTarget = media => {
+    const status = enforceTarget(media);
+    if (status === 'playing' &&
+        typeof runtime.postCompletionPlan === 'function') {
+      runtime.postCompletionPlan(media);
+    }
+    return status;
+  };
   const scheduleTargetChecks = media => {
-    [0, 250, 1000, 2500, 5000].forEach(delay => {
-      setTimeout(() => {
-        const status = enforceTarget(media);
-        if (status === 'playing' &&
-            typeof runtime.postCompletionPlan === 'function') {
-          runtime.postCompletionPlan(media);
-        }
-      }, delay);
-    });
+    const status = checkTarget(media);
+    if (status === 'playing' || status === 'ignore') {
+      clearIdentityFallback();
+      return;
+    }
+
+    // Spotify normally supplies identity from the same media lifecycle event.
+    // Keep only one coalesced delayed fallback for the short window where the
+    // now-playing surface and MediaSession metadata lag behind audio start.
+    clearIdentityFallback();
+    state.identityFallbackMedia = media;
+    state.identityFallbackKey = state.key;
+    state.identityFallbackTimer = setTimeout(() => {
+      const expectedMedia = state.identityFallbackMedia;
+      const expectedKey = state.identityFallbackKey;
+      state.identityFallbackTimer = 0;
+      state.identityFallbackMedia = null;
+      state.identityFallbackKey = '';
+      if (expectedMedia !== media || expectedKey !== state.key) return;
+      checkTarget(media);
+    }, 1500);
   };
 
   const runtime = {

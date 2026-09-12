@@ -61,8 +61,8 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(layout, /if \(placementChanged\)/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
-  assert.match(layout, /suppressHealthyMusicRendering/);
-  assert.match(layout, /put_IsVisible\(\s*suppressHealthyMusicRendering \? FALSE : TRUE\s*\)/);
+  assert.match(layout, /suppressHealthyRendering/);
+  assert.match(layout, /put_IsVisible\(suppressHealthyRendering \? FALSE : TRUE\)/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
 
