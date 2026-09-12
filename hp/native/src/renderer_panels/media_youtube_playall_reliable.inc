@@ -1,6 +1,6 @@
 // Exceptional fallback for YouTube playlist startup. Normal startup is resolved
 // in the cloud and lands directly on /watch. If the cloud cannot resolve the
-// playlist, this page-local fallback navigates item 1 without clicking Play all.
+// playlist, this page-local fallback navigates item 1 without pressing controls.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
 (() => {
@@ -77,9 +77,9 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
     } catch (_) {}
   }
 
-  // Never press a layout-dependent Play all control. If this exceptional
+  // Never press layout-dependent playlist controls. If this exceptional
   // fallback page cannot expose item 1, return to the cloud resolver before the
-  // native fixed-coordinate legacy backstop can fire.
+  // legacy coordinate backstop could become relevant.
   if (now - Number(startupState.since || now) >= 7000) {
     location.assign(
         'https://homepanel-cloud.tarematsu.workers.dev/v1/native/youtube-start');
