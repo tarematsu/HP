@@ -87,8 +87,24 @@ test('trusted click remeasures after responsive recovery layout instead of using
     helper,
     /if \(!recoveryViewportReady\) \{[\s\S]*MarkSlotRecovering\(slot, now\)[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*ArmRobustScheduler\(\);[\s\S]*return;/,
   );
+});
+
+test('recovery revalidates a Play-labelled point immediately before CDP input', () => {
+  const preflight = helper.slice(
+    helper.indexOf('std::wstring preflight'),
+    helper.indexOf('UINT SpotifyWebViews::DispatchSpotifyDevToolsClick'),
+  );
+  assert.match(preflight, /document\.querySelectorAll\('audio, video'\)/);
+  assert.match(preflight, /!m\.ended&&!m\.paused/);
+  assert.match(preflight, /document\.elementFromPoint\(x,y\)/);
+  assert.match(preflight, /label\.includes\('pause'\)/);
+  assert.match(preflight, /label\.includes\('一時停止'\)/);
+  assert.match(preflight, /label==='play'/);
+  assert.match(preflight, /label==='再生'/);
+  assert.match(preflight, /ExecuteScript\(/);
+  assert.match(preflight, /target->state == SlotState::Playing/);
   assert.match(
-    helper,
-    /SetSlotState\(slot, SlotState::WaitingTarget\);\s*DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\);/,
+    preflight,
+    /std::wstring_view\(json\) == L"true"[\s\S]*DispatchSpotifyDevToolsClick/,
   );
 });
