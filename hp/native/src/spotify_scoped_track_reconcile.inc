@@ -5,7 +5,8 @@ namespace {
 // now-playing surface before MediaSession fallback. Track-list rows may be used
 // to locate the requested target, but an unrelated global play button is never
 // treated as that target.
-constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
+constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
+LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
   const report = playing => {
@@ -168,6 +169,8 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
     }
     return { known: false, playing: false, currentTime: 0, media: null };
   };
+)JS"
+LR"JS(
   const requestMediaStart = media => {
     if (!media || media.ended || !media.paused) return false;
     const now = Date.now();
