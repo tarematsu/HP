@@ -49,9 +49,18 @@ test('resource filter reduction is the final resource PCH layer', () => {
   );
 });
 
-test('shared media environments stay out of Chromium occlusion backgrounding', () => {
+test('shared media environments stay active and permit autonomous playback', () => {
   assert.match(environmentSource, /kSharedWebView2LifecycleArguments/);
   assert.match(environmentSource, /--disable-backgrounding-occluded-windows/);
+  assert.match(environmentSource, /--autoplay-policy=no-user-gesture-required/);
+  const sharedStart = environmentSource.indexOf(
+    'constexpr wchar_t kSharedWebView2LifecycleArguments[]',
+  );
+  const stationheadStart = environmentSource.indexOf(
+    'constexpr wchar_t kStationheadWebView2Arguments[]',
+  );
+  const sharedArguments = environmentSource.slice(sharedStart, stationheadStart);
+  assert.match(sharedArguments, /--autoplay-policy=no-user-gesture-required/);
   assert.match(
     environmentSource,
     /std::wstring webView2Arguments = kSharedWebView2LifecycleArguments/,
