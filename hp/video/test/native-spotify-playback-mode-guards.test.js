@@ -46,11 +46,15 @@ test('Spotify starts target before post-start shuffle/repeat convergence', () =>
 test('healthy music stays renderable until shuffle and repeat are verified off', () => {
   assert.match(
     layout,
-    /suppressHealthyMusicRendering =[\s\S]*slot\.shuffleOffVerified && slot\.repeatOffVerified/,
+    /const bool healthyMusicReadyToHide =[\s\S]*TimedSpotifyTarget::Music[\s\S]*slot\.shuffleOffVerified && slot\.repeatOffVerified/,
   );
   assert.match(
     layout,
-    /put_IsVisible\(\s*suppressHealthyMusicRendering \? FALSE : TRUE\s*\)/,
+    /const bool suppressHealthyRendering =[\s\S]*\(healthyMusicReadyToHide \|\| healthyPodcastReadyToHide\)/,
+  );
+  assert.match(
+    layout,
+    /put_IsVisible\(suppressHealthyRendering \? FALSE : TRUE\)/,
   );
   assert.match(
     guards,
