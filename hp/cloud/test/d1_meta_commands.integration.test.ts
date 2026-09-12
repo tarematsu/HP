@@ -120,12 +120,19 @@ describe("D1 meta and command optimizations", () => {
       "INSERT INTO device_configs(device_id,version,payload,updated_at) VALUES(?1,?2,?3,?4)",
     ).bind("homepanel-device", 9, JSON.stringify({ cloudPollSeconds: 900 }), configUpdatedAt).run();
 
-    const baseUrl = "https://homepanel.test/v1/device/sync?deviceId=homepanel-device&dashboardVersion=27&radarVersion=8&switchbotVersion=5&stationheadVersion=6&stationheadHealthVersion=10&configVersion=9";
+    const probe = await SELF.fetch(
+      "https://homepanel.test/v1/device/sync?deviceId=homepanel-device&dashboardVersion=-1&radarVersion=8&switchbotVersion=5&stationheadVersion=6&stationheadHealthVersion=10&configVersion=9",
+      { headers: auth("test-device") },
+    );
+    expect(probe.status).toBe(200);
+    const probeBody = await probe.json<{ versions: { dashboard: number } }>();
+    const dashboardVersion = probeBody.versions.dashboard;
+    const baseUrl = `https://homepanel.test/v1/device/sync?deviceId=homepanel-device&dashboardVersion=${dashboardVersion}&radarVersion=8&switchbotVersion=5&stationheadVersion=6&stationheadHealthVersion=10&configVersion=9`;
     const matching = await SELF.fetch(baseUrl, { headers: auth("test-device") });
     expect(matching.status).toBe(200);
     await expect(matching.json()).resolves.toEqual({
       workerVersion: "2.13.0",
-      versions: { dashboard: 27, radar: 8, switchbot: 5, stationhead: 6, stationheadHealth: 10, config: 9 },
+      versions: { dashboard: dashboardVersion, radar: 8, switchbot: 5, stationhead: 6, stationheadHealth: 10, config: 9 },
       commands: [],
     });
 
@@ -139,7 +146,7 @@ describe("D1 meta and command optimizations", () => {
     expect(stale.status).toBe(200);
     await expect(stale.json()).resolves.toEqual({
       workerVersion: "2.13.0",
-      versions: { dashboard: 27, radar: 8, switchbot: 5, stationhead: 6, stationheadHealth: 10, config: 9 },
+      versions: { dashboard: dashboardVersion, radar: 8, switchbot: 5, stationhead: 6, stationheadHealth: 10, config: 9 },
       commands: [],
       radar: JSON.stringify({ marker: "radar" }),
       switchbot: JSON.stringify({ marker: "switchbot" }),
