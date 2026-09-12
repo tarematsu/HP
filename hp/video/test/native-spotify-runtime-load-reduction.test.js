@@ -11,12 +11,12 @@ const heartbeat = source('spotify_media_observer_heartbeat.inc');
 const guards = source('spotify_playback_mode_guards.inc');
 const phase = source('spotify_phase_sync.inc');
 
-test('timeupdate keeps only numeric completion checks and performs no DOM identity scan', () => {
+test('timeupdate keeps only numeric post-end checks and performs no DOM identity scan', () => {
   const start = events.indexOf("document.addEventListener('timeupdate'");
   const end = events.indexOf("document.addEventListener('pause'", start);
   assert.ok(start >= 0 && end > start);
   const timeupdate = events.slice(start, end);
-  assert.match(timeupdate, /finishNearEnd\(media\)/);
+  assert.doesNotMatch(timeupdate, /finishNearEnd|finishLeadSeconds|duration\s*-/);
   assert.match(timeupdate, /finishProjectedWrap\(media\)/);
   assert.doesNotMatch(timeupdate, /enforceTarget|lastIdentityCheckTime|querySelector/);
   assert.match(runtime, /const enforceTarget = media =>/);
