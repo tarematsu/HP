@@ -114,6 +114,10 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
               if (value == L"true") {
                 target->shuffleOffVerified = true;
                 target->repeatOffVerified = true;
+                // The layout deliberately remains renderable until both mode
+                // guards are verified. Collapse rendering immediately after the
+                // successful probe instead of waiting for a later healthy tick.
+                RefreshSpotifyHostLayout();
                 ArmRobustScheduler();
                 return S_OK;
               }
