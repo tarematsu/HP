@@ -39,6 +39,10 @@ const layout = readFileSync(
   new URL('../../native/src/renderer_panels/layout_overrides.inc', import.meta.url),
   'utf8',
 );
+const app = readFileSync(
+  new URL('../../native/src/app.cpp', import.meta.url),
+  'utf8',
+);
 
 test('power-saving controller composes focused responsibilities without a thread-wide hook', () => {
   assert.match(controller, /#include "power_saving_brightness\.inc"/);
@@ -53,25 +57,37 @@ test('power-saving controller composes focused responsibilities without a thread
   assert.match(overlay, /void PowerSavingController::PaintOverlay/);
 });
 
-test('power saving and media mute controls share one enlarged horizontal clock footer row', () => {
+test('update, power saving and media mute controls share one horizontal clock footer row', () => {
+  assert.match(overlay, /constexpr size_t kControlButtonCount = 3/);
   assert.match(overlay, /const int upperMediaHeight = sideHeight \* 600 \/ 1000/);
   assert.match(overlay, /compactAvailable \* 55 \/ 100/);
   assert.match(overlay, /contentHeight \* 790 \/ 1000/);
-  assert.match(overlay, /contentWidth \* 245 \/ 1000, 92, 132/);
+  assert.match(overlay, /contentWidth \* 205 \/ 1000, 74, 110/);
   assert.match(overlay, /ControlButtonGap\(contentWidth\)/);
-  assert.match(overlay, /ControlButtonRect\(row, false\)/);
-  assert.match(overlay, /ControlButtonRect\(row, true\)/);
+  assert.match(overlay, /ControlButtonRect\(row, 0\)/);
+  assert.match(overlay, /ControlButtonRect\(row, 1\)/);
+  assert.match(overlay, /ControlButtonRect\(row, 2\)/);
   assert.match(overlay, /button\.bottom - button\.top\) \* 42 \/ 100/);
+  assert.match(overlay, /L"更新"/);
   assert.match(overlay, /L"省電力 ON" : L"省電力"/);
   assert.match(overlay, /L"ミュート ON" : L"ミュート"/);
+  assert.match(header, /RECT LocalUpdateButtonRect\(\) const/);
   assert.match(header, /bool mediaMuted_ = false/);
   assert.match(layout, /SpanY\(hpClockContent, 780\)/);
   assert.match(layout, /SpanY\(hpClockContent, 790\)/);
-  assert.match(layout, /hpControlButtonWidth = std::clamp\(SpanX\(hpStatusRect, 245\), 92, 132\)/);
-  assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 2 \+ hpControlButtonGap/);
+  assert.match(layout, /hpControlButtonWidth = std::clamp\(SpanX\(hpStatusRect, 205\), 74, 110\)/);
+  assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 3 \+ hpControlButtonGap \* 2/);
 });
 
-test('compact overlay clips the complete two-button control row', () => {
+test('update button routes through the existing verified app-update action', () => {
+  assert.match(
+    overlay,
+    /PostMessageW\([\s\S]*kRendererActionMessage,[\s\S]*static_cast<WPARAM>\(UiAction::AppUpdate\)/,
+  );
+  assert.match(app, /case UiAction::AppUpdate:[\s\S]*CheckForUpdateAsync\(true\)/);
+});
+
+test('compact overlay clips the complete three-button control row', () => {
   assert.match(overlay, /const bool compact = !powerSaving_ \|\| mvStartupInputPass_/);
   assert.match(overlay, /if \(compact\) target = ParentControlStackRect\(\)/);
   assert.match(overlay, /CreateRoundRectRgn\(/);
@@ -94,7 +110,7 @@ test('mute changes only WebView audio state and keeps playback alive', () => {
   assert.doesNotMatch(composition, /SetSpotifyMediaNetworkBlocked\(muted\)/);
 });
 
-test('MV startup input pass keeps both overlay controls in local coordinates', () => {
+test('MV startup input pass keeps all overlay controls in local coordinates', () => {
   assert.match(
     overlay,
     /if \(powerSaving_ && !mvStartupInputPass_\) \{[\s\S]*row = ParentControlStackRect\(\);[\s\S]*\} else \{[\s\S]*GetClientRect\(overlay_, &row\)/,

@@ -55,6 +55,7 @@ class PowerSavingController {
   void LayoutOverlay();
   void PaintOverlay(HWND window);
   RECT ParentControlStackRect() const;
+  RECT LocalUpdateButtonRect() const;
   RECT LocalPowerButtonRect() const;
   RECT LocalMuteButtonRect() const;
 
