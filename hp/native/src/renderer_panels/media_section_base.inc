@@ -10,23 +10,15 @@ constexpr wchar_t kNativeMediaTverUrl[] =
     L"data:text/html;charset=utf-8,%3C%21doctype%20html%3E%3Cmeta%20charset%3Dutf-8%3E%3Cstyle%3Ehtml%2Cbody%7Bmargin%3A0%3Bbackground%3A%23000%7D%3C%2Fstyle%3E%3Cscript%3Econst%20f%3D%27https%3A%2F%2Fhomepanel-cloud.tarematsu.workers.dev%2Fv1%2Fnative%2Ftver-feed%27%3Bconst%20go%3Dasync%28%29%3D%3E%7Btry%7Bconst%20r%3Dawait%20fetch%28f%2C%7Bcache%3A%27no-store%27%7D%29%3Bif%28%21r.ok%29throw%200%3Bconst%20d%3Dawait%20r.json%28%29%3Bconst%20u%3DArray.isArray%28d%3F.episodes%29%3Fd.episodes.map%28x%3D%3EString%28x%3F.url%7C%7C%27%27%29%29.find%28x%3D%3E%2F%5Ehttps%3A%5C%2F%5C%2Ftver%5C.jp%5C%2Fepisodes%5C%2F%5BA-Za-z0-9_-%5D%2B%24%2F.test%28x%29%29%3A%27%27%3Bif%28u%29%7Blocation.replace%28u%2B%27%3Fhomepanel_launch%3D1%27%29%3Breturn%7D%7Dcatch%28_%29%7B%7DsetTimeout%28go%2C3000%29%7D%3Bgo%28%29%3C%2Fscript%3E";
 constexpr wchar_t kNativeMediaProfile[] = L"media-youtube";
 constexpr UINT_PTR kNativeMediaPhaseTimer = 0x4D560001;
-constexpr UINT_PTR kNativeMediaPlayAllTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMediaNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
 constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
-constexpr UINT kNativeMediaPlayAllRetryMs = 500U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 // Healthy YouTube playback is event-driven; the timer is only a backstop.
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
-// The playlist fallback returns to the cloud resolver after 7 seconds. Keep the
-// obsolete coordinate backstop beyond the resolver's 8-second network timeout,
-// so normal and fallback startup can never reach it.
-constexpr int kNativeMediaPlayAllRetryLimit = 60;
-constexpr int kNativeMediaFallbackPlayAllXTenThousandths = 5850;
-constexpr int kNativeMediaFallbackPlayAllYTenThousandths = 4250;
 
 std::wstring FormatNativeMediaLocalHourMinute(const FILETIME& utcFileTime) noexcept {
   SYSTEMTIME utc{};
@@ -43,8 +35,8 @@ std::wstring FormatNativeMediaLocalHourMinute(const FILETIME& utcFileTime) noexc
   return value;
 }
 
-// Routing sentinel only. Playlist fallback resolution lives in
-// media_youtube_playall_reliable.inc and never searches or clicks a play control.
+// Routing sentinel only. The exceptional /playlist fallback installs one
+// event-driven resolver in media_youtube_playall_reliable.inc.
 constexpr wchar_t kNativeMediaPlayAllScript[] = L"null";
 
 // Legacy symbol retained as a routing key for media_host.inc. The wrapper

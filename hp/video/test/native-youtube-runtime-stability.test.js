@@ -25,9 +25,17 @@ test('YouTube playlist startup can resolve the first video before Polymer DOM se
   assert.match(reliablePlayAll, /url\.searchParams\.set\('list', playlistId\)/);
 });
 
-test('playlist startup remains bounded and native fallback reloads if watch never starts', () => {
-  assert.match(reliablePlayAll, /__homePanelYoutubePlaylistStartupState/);
-  assert.match(host, /kNativeMediaPlayAllRetryLimit/);
+test('playlist startup fallback is one-shot, event driven and bounded', () => {
+  assert.match(reliablePlayAll, /__homePanelYoutubePlaylistFallbackInstalled/);
+  assert.match(reliablePlayAll, /new MutationObserver\(mutations =>/);
+  assert.match(reliablePlayAll, /observer\.observe\(root, \{ childList: true, subtree: true \}\)/);
+  assert.match(reliablePlayAll, /yt-page-data-updated/);
+  assert.match(reliablePlayAll, /yt-navigate-finish/);
+  assert.match(reliablePlayAll, /window\.setTimeout\([\s\S]*7000\)/);
+  assert.match(reliablePlayAll, /v1\/native\/youtube-start/);
+  assert.doesNotMatch(reliablePlayAll, /setInterval\(/);
+  assert.match(host, /BeginYoutubePlaylistFallback\(\)/);
+  assert.doesNotMatch(host, /ProbePlayAll|playAllProbeAttempts_|kNativeMediaPlayAllTimer/);
   assert.match(host, /ReloadYoutubePlaylist\(\)/);
   assert.match(host, /IsYoutubeWatchPage\(\)/);
 });
