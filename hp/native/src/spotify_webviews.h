@@ -126,6 +126,8 @@ class SpotifyWebViews final {
     bool podcastBreakActive = false;
     bool hostLayoutApplied = false;
     bool hostLayoutReducedZoomApplied = false;
+    bool hostMemoryTargetApplied = false;
+    bool hostMemoryTargetLow = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
   };
 
@@ -214,6 +216,7 @@ class SpotifyWebViews final {
   bool cloudPlaylistWriteTimeKnown_ = false;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
+  unsigned hostLowPowerMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
   size_t hostLayoutAuthenticationSlot_ = kAccountCount;
   bool started_ = false;
