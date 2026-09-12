@@ -40,8 +40,9 @@ bool NativeMediaTverContainsId(
     std::wstring_view id) noexcept {
   return std::find_if(
              values.begin(), values.end(),
-             [id](const std::wstring& value) { return value == id; }) !=
-      values.end();
+             [id](const std::wstring& value) {
+               return std::wstring_view(value) == id;
+             }) != values.end();
 }
 
 std::wstring NativeMediaTverEpisodeUrl(std::wstring_view id) {
