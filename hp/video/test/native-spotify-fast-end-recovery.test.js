@@ -132,7 +132,7 @@ test('pause, waiting, stalled, and silent media-clock freezes recover playback w
   assert.match(events, /scheduleRecovery\(event\.target, 600, true\)/);
   assert.match(events, /scheduleRecovery\(event\.target, 2500, false\)/);
   assert.match(runtime, /currentTime > startTime \+ 0\.05/);
-  assert.match(heartbeat, /setInterval\([\s\S]*10000\)/);
+  assert.match(heartbeat, /setInterval\([\s\S]*20000\)/);
   assert.match(heartbeat, /heartbeatMisses >= 2/);
   assert.match(heartbeat, /requestRecovery\(media\)/);
   assert.match(runtime, /post\('spotify:not-playing'\)/);
