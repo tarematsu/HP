@@ -19,12 +19,14 @@ test('native deadline directly advances A to the next rotation slot', () => {
   assert.doesNotMatch(due, /PostWebMessageAsString|spotify:completion-probe/);
 });
 
-test('a repeated same-generation plan cannot extend the armed deadline', () => {
-  const planStart = rotation.indexOf('if (planned) {');
-  const planEnd = rotation.indexOf('\n              if (planCleared)', planStart);
-  assert.ok(planStart >= 0 && planEnd > planStart);
-  const plan = rotation.slice(planStart, planEnd);
+test('same generation cannot extend the one-shot armed deadline', () => {
+  const handlerStart = rotation.indexOf('const bool started = ParseSpotifyStartedEvent');
+  const handlerEnd = rotation.indexOf('\n            }).Get(),', handlerStart);
+  assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
+  const handler = rotation.slice(handlerStart, handlerEnd);
 
-  assert.match(plan, /candidateDeadline < target->timedCompletionDeadlineTick/);
-  assert.match(plan, /target->timedCompletionDeadlineTick = candidateDeadline/);
+  assert.match(handler, /target->timedCompletionDeadlineTick == 0/);
+  assert.match(handler, /target->timedCompletionDeadlineGeneration != eventGeneration/);
+  assert.match(handler, /target->timedCompletionDeadlineTick = now \+ remainingMs/);
+  assert.doesNotMatch(handler, /candidateDeadline|timed-plan-clear/);
 });
