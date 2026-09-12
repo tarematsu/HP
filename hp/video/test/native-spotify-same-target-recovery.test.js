@@ -25,7 +25,7 @@ class FakeMedia {
   currentTime = 12;
 }
 
-test('same-generation recovery posts a fresh timed-started after playback resumes', () => {
+test('same-generation pause and resume never requests recovery or reposts start', () => {
   const messages = [];
   const hostListeners = [];
   const media = new FakeMedia();
@@ -66,7 +66,6 @@ test('same-generation recovery posts a fresh timed-started after playback resume
     String,
     Number,
     setTimeout() { return 1; },
-    clearTimeout() {},
   });
   vm.runInContext(rawRuntimeScript(), context);
 
@@ -78,17 +77,19 @@ test('same-generation recovery posts a fresh timed-started after playback resume
   assert.ok(runtime);
   assert.equal(runtime.enforceTarget(media), 'playing');
   assert.equal(messages.at(-1), 'spotify:timed-started\x1f41');
+  assert.equal(runtime.requestRecovery, undefined);
+  assert.equal(runtime.scheduleRecovery, undefined);
 
-  assert.equal(runtime.requestRecovery(media), true);
-  assert.equal(messages.at(-1), 'spotify:not-playing\x1f41');
-  assert.equal(runtime.state.restartPending, true);
-
+  media.paused = true;
+  assert.equal(runtime.enforceTarget(media), 'target');
+  media.paused = false;
   assert.equal(runtime.enforceTarget(media), 'playing');
-  assert.equal(messages.at(-1), 'spotify:timed-started\x1f41');
+
   assert.equal(
     messages.filter(message => message === 'spotify:timed-started\x1f41').length,
-    2,
+    1,
   );
-  assert.equal(runtime.state.restartPending, false);
-  assert.equal(runtime.state.recoveryPosted, false);
+  assert.equal(messages.some(message => message.startsWith('spotify:not-playing')), false);
+  assert.equal('restartPending' in runtime.state, false);
+  assert.equal('recoveryPosted' in runtime.state, false);
 });

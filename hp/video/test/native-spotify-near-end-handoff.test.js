@@ -97,10 +97,6 @@ function createHarness() {
     clearTimeout(id) {
       timers.delete(id);
     },
-    setInterval() {
-      return 0;
-    },
-    clearInterval() {},
   });
   vm.runInContext(observerScript, context);
 
@@ -209,9 +205,6 @@ test('a witnessed terminal rewind completes even before the projected deadline e
   h.hostMessage('spotify:completion-probe\x1f26');
   assert.equal(h.messages.at(-1), 'spotify:timed-plan\x1f26\x1f1200');
 
-  // Spotify can reset its media clock a fraction early. The old design waited
-  // for wall-clock expiry, then accepted the new 0-second playback as a fresh
-  // plan. The terminal high-water witness must instead close this generation.
   h.advanceWall(300);
   h.media.currentTime = 0.2;
   h.dispatch('seeking');
@@ -256,7 +249,7 @@ test('an expired completion probe wins even if Spotify has already paused', () =
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f27').length, 1);
 });
 
-test('pre-rewind waiting cannot turn natural completion into same-track recovery', () => {
+test('waiting and pause stay passive when no terminal witness exists', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f29');
   h.media.paused = false;
@@ -266,26 +259,19 @@ test('pre-rewind waiting cannot turn natural completion into same-track recovery
   h.advanceWall(177_000);
   h.media.currentTime = 177;
   h.dispatch('waiting');
-
-  assert.equal(h.messages.filter(m => m === 'spotify:timed-plan-clear\x1f29').length, 0);
+  assert.equal(h.messages.at(-1), 'spotify:timed-plan-clear\x1f29');
 
   h.media.currentTime = 0.2;
   h.media.paused = true;
   h.dispatch('pause');
 
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f29').length, 0);
-  assert.equal(h.media.pauseCalls, 0);
-  assert.equal(h.timers.size, 1);
-
-  h.advanceWall(3_100);
-  h.hostMessage('spotify:completion-probe\x1f29');
-  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f29');
-  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f29').length, 1);
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
   assert.equal(h.media.pauseCalls, 0);
   assert.equal(h.timers.size, 0);
 });
 
-test('pause away from the end clears the native deadline before recovery', () => {
+test('pause away from the end clears the native deadline without scheduling recovery', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f28');
   h.media.paused = false;
@@ -298,5 +284,6 @@ test('pause away from the end clears the native deadline before recovery', () =>
 
   assert.equal(h.messages.at(-1), 'spotify:timed-plan-clear\x1f28');
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f28').length, 0);
-  assert.equal(h.timers.size, 1);
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
+  assert.equal(h.timers.size, 0);
 });

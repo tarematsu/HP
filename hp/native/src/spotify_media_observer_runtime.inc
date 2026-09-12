@@ -1,8 +1,9 @@
 namespace hp {
 namespace {
 
-// Owns target identity, observer state, and recovery decisions. Event binding and
-// periodic health checks are separate scripts that consume this stable runtime.
+// Owns target identity and observer state. Playback recovery is intentionally
+// excluded: this observer only recognizes the requested target and reports
+// start/completion events.
 constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverRuntime) return true;
@@ -20,13 +21,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     key: '',
     started: false,
     startPosted: false,
-    restartPending: false,
     endedPosted: false,
-    recoveryPosted: false,
     targetMedia: null,
-    stallTimer: 0,
-    heartbeatTime: -1,
-    heartbeatMisses: 0,
     lastIdentityCheckTime: -1
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
@@ -38,37 +34,16 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       }
     } catch (_) {}
   };
-  const heartbeatRuntime = () =>
-      window.__homePanelSpotifyMediaObserverRuntime || null;
-  const startHeartbeatIfAvailable = () => {
-    const runtime = heartbeatRuntime();
-    if (runtime && typeof runtime.startHeartbeat === 'function') {
-      runtime.startHeartbeat();
-    }
-  };
-  const stopHeartbeatIfAvailable = () => {
-    const runtime = heartbeatRuntime();
-    if (runtime && typeof runtime.stopHeartbeat === 'function') {
-      runtime.stopHeartbeat();
-    }
-  };
   const targetKey = target => target
       ? [target.pagePath, target.trackPath, normalize(target.title),
          target.kind, generation()].join('|')
       : '';
   const resetState = key => {
-    clearTimeout(state.stallTimer);
-    stopHeartbeatIfAvailable();
     state.key = key;
     state.started = false;
     state.startPosted = false;
-    state.restartPending = false;
     state.endedPosted = false;
-    state.recoveryPosted = false;
     state.targetMedia = null;
-    state.stallTimer = 0;
-    state.heartbeatTime = -1;
-    state.heartbeatMisses = 0;
     state.lastIdentityCheckTime = -1;
   };
   const syncTarget = () => {
@@ -104,10 +79,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   };
   const isMedia = value => value instanceof HTMLMediaElement;
 
-  // Observer responsibility is detection only. Once the requested generation
-  // has really started, a different identifiable track requests native recovery
-  // but never calls media.pause(). Navigation owns target replacement, so media
-  // observation cannot race a new start and freeze it at currentTime=0.
+  // Identity validation never attempts to repair playback. A mismatch simply
+  // disarms completion tracking for the current media element; navigation owns
+  // target changes and the next generation will establish a new target.
   const enforceTarget = media => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || !target.pagePath ||
@@ -118,61 +92,21 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     const identity = currentTrack();
     if (!identity.path && !identity.title) return 'unknown';
     if (!matchesTarget(target, identity)) {
-      // During initial navigation the now-playing surface may still show the
-      // previous document. Only enforce after this generation started once.
       if (!state.startPosted) return 'unknown';
-      stopHeartbeatIfAvailable();
       state.started = false;
       state.targetMedia = null;
-      state.heartbeatTime = -1;
-      state.heartbeatMisses = 0;
       state.lastIdentityCheckTime = -1;
-      if (!state.recoveryPosted) {
-        state.recoveryPosted = true;
-        state.restartPending = true;
-        post('spotify:not-playing');
-      }
       return 'wrong';
     }
 
-    if (media.paused) {
-      stopHeartbeatIfAvailable();
-      return 'target';
-    }
-    clearTimeout(state.stallTimer);
-    state.stallTimer = 0;
-    if (!state.started || state.targetMedia !== media) {
-      state.heartbeatTime = Number(media.currentTime) || 0;
-      state.heartbeatMisses = 0;
-      state.lastIdentityCheckTime = -1;
-    }
+    if (media.paused) return 'target';
     state.started = true;
-    state.recoveryPosted = false;
     state.targetMedia = media;
-    if (!state.startPosted || state.restartPending) {
+    if (!state.startPosted) {
       state.startPosted = true;
-      state.restartPending = false;
       post('spotify:timed-started');
     }
-    startHeartbeatIfAvailable();
     return 'playing';
-  };
-
-  const requestRecovery = media => {
-    const target = syncTarget();
-    if (!target || target.kind !== 'music' || state.endedPosted ||
-        !isMedia(media) || media.ended) {
-      return false;
-    }
-    if (enforceTarget(media) === 'wrong') return true;
-    if (state.recoveryPosted || !state.started || state.targetMedia !== media) {
-      return false;
-    }
-    state.recoveryPosted = true;
-    state.restartPending = true;
-    stopHeartbeatIfAvailable();
-    post('spotify:not-playing');
-    return true;
   };
 
   const scheduleTargetChecks = media => {
@@ -181,52 +115,17 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     });
   };
 
-  const scheduleRecovery = (media, delay, requirePaused) => {
-    const target = syncTarget();
-    if (!target || target.kind !== 'music' || !state.started ||
-        state.endedPosted || state.recoveryPosted ||
-        state.targetMedia !== media || media.ended) {
-      return;
-    }
-
-    clearTimeout(state.stallTimer);
-    const startTime = Number(media.currentTime) || 0;
-    state.stallTimer = setTimeout(() => {
-      state.stallTimer = 0;
-      const currentTarget = syncTarget();
-      if (!currentTarget || currentTarget.kind !== 'music' ||
-          !state.started || state.endedPosted || state.recoveryPosted ||
-          state.targetMedia !== media || media.ended) {
-        return;
-      }
-      const currentTime = Number(media.currentTime) || 0;
-      if (requirePaused ? !media.paused : currentTime > startTime + 0.05) {
-        if (!requirePaused) {
-          state.heartbeatTime = currentTime;
-          state.heartbeatMisses = 0;
-        }
-        return;
-      }
-      requestRecovery(media);
-    }, delay);
-  };
-
   const runtime = {
     state,
     post,
     syncTarget,
     isMedia,
     enforceTarget,
-    requestRecovery,
     scheduleTargetChecks,
-    scheduleRecovery,
     postCompletionPlan: () => false,
     clearCompletionPlan: () => false,
     probeCompletion: null,
-    eventsInstalled: false,
-    heartbeatTimer: 0,
-    startHeartbeat: null,
-    stopHeartbeat: null
+    eventsInstalled: false
   };
   window.__homePanelSpotifyMediaObserverRuntime = runtime;
 

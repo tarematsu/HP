@@ -18,10 +18,6 @@ const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url),
   'utf8',
 );
-const heartbeat = readFileSync(
-  new URL('../../native/src/spotify_media_observer_heartbeat.inc', import.meta.url),
-  'utf8',
-);
 const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
   'utf8',
@@ -53,17 +49,16 @@ test('observer responsibilities are independent scripts sharing one explicit run
   for (const file of [
     'spotify_media_observer_runtime.inc',
     'spotify_media_observer_events.inc',
-    'spotify_media_observer_heartbeat.inc',
     'spotify_fast_end_observer.inc',
   ]) {
     assert.match(wrapper, new RegExp(`#include "${file.replace('.', '\\.')}"`));
   }
+  assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
   assert.match(runtime, /__homePanelSpotifyMediaObserverRuntime/);
   assert.match(events, /runtime\.eventsInstalled/);
-  assert.match(heartbeat, /runtime\.heartbeatTimer/);
   assert.match(bundle, /kSpotifyMediaObserverRuntimeScript/);
   assert.match(bundle, /kSpotifyMediaObserverEventsScript/);
-  assert.match(bundle, /kSpotifyMediaObserverHeartbeatScript/);
+  assert.doesNotMatch(bundle, /kSpotifyMediaObserverHeartbeatScript/);
   assert.doesNotMatch(bundle, /LR"JS\(/);
 });
 
@@ -96,7 +91,7 @@ test('direct track path is preferred over MediaSession title when both exist', (
   assert.match(runtime, /value\.endsWith\(expected\)/);
 });
 
-test('start and recovery are non-destructive while completed-generation autoplay is quarantined', () => {
+test('start and completion are non-destructive while completed-generation autoplay is quarantined', () => {
   assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
   assert.doesNotMatch(scripts, /if \(changed\)[\s\S]*media\.pause\(\)/);
   assert.doesNotMatch(runtime, executablePause);
@@ -127,17 +122,13 @@ test('start and recovery are non-destructive while completed-generation autoplay
   assert.match(timed, /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*Navigate\(SpotifyPodcastUrl\(\)\)/);
 });
 
-test('pause, waiting, stalled, and silent media-clock freezes recover playback without forced stop', () => {
+test('pause, waiting, stalled, and target mismatch never request playback recovery', () => {
   assert.match(events, /document\.addEventListener\('pause'/);
   assert.match(events, /\['waiting', 'stalled'\]/);
-  assert.match(events, /scheduleRecovery\(event\.target, 600, true\)/);
-  assert.match(events, /scheduleRecovery\(event\.target, 2500, false\)/);
-  assert.match(runtime, /currentTime > startTime \+ 0\.05/);
-  assert.match(heartbeat, /setInterval\([\s\S]*20000\)/);
-  assert.match(heartbeat, /heartbeatMisses >= 2/);
-  assert.match(heartbeat, /requestRecovery\(media\)/);
-  assert.match(runtime, /post\('spotify:not-playing'\)/);
-  assert.match(rotation, /const bool stopped =[\s\S]*spotify:not-playing/);
+  assert.doesNotMatch(events, /scheduleRecovery|requestRecovery|spotify:not-playing/);
+  assert.doesNotMatch(runtime, /scheduleRecovery|requestRecovery|spotify:not-playing/);
+  assert.doesNotMatch(runtime, /recoveryPosted|restartPending|heartbeat/);
+  assert.doesNotMatch(rotation, /const bool stopped|spotify:not-playing/);
   assert.doesNotMatch(runtime, executablePause);
 });
 

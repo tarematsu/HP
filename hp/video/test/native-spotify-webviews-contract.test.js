@@ -70,17 +70,18 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
   for (const file of [
     'spotify_static_scripts.inc', 'spotify_scoped_track_reconcile.inc',
     'spotify_media_observer_runtime.inc', 'spotify_media_observer_events.inc',
-    'spotify_media_observer_heartbeat.inc', 'spotify_cloud_playlist.inc',
-    'spotify_playback_mode_guards.inc', 'spotify_rotation_cycle.inc',
-    'spotify_music_target.inc', 'spotify_target_routing.inc',
+    'spotify_cloud_playlist.inc', 'spotify_playback_mode_guards.inc',
+    'spotify_rotation_cycle.inc', 'spotify_music_target.inc',
+    'spotify_target_routing.inc',
   ]) assert.match(wrapper, new RegExp(`#include "${file.replace('.', '\\.')}"`));
+  assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
   assert.doesNotMatch(wrapper, /spotify_recent_catalog\.inc/);
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
   assert.match(scripts, /kSpotifyStaticPodcastReconcileScript\[\]/);
   assert.match(scoped, /kSpotifyScopedTrackReconcileScript/);
   assert.match(observerBundle, /kSpotifyMediaObserverRuntimeScript/);
   assert.match(observerBundle, /kSpotifyMediaObserverEventsScript/);
-  assert.match(observerBundle, /kSpotifyMediaObserverHeartbeatScript/);
+  assert.doesNotMatch(observerBundle, /kSpotifyMediaObserverHeartbeatScript/);
   assert.match(scripts, /window\.chrome\.webview\.addEventListener\('message'/);
   assert.match(scripts, /spotify:target/);
   assert.match(routing, /spotify:generation/);

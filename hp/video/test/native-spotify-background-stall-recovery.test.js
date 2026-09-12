@@ -22,10 +22,6 @@ const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url),
   'utf8',
 );
-const heartbeat = readFileSync(
-  new URL('../../native/src/spotify_media_observer_heartbeat.inc', import.meta.url),
-  'utf8',
-);
 const phase = readFileSync(
   new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
   'utf8',
@@ -60,7 +56,7 @@ test('only one recovery-sized Spotify owner is selected at a time', () => {
   assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);
 });
 
-test('slow responsive layout settles before owner-only DOM recovery', () => {
+test('slow responsive layout settles before owner-only DOM reconciliation', () => {
   assert.match(schedule, /kSpotifySimpleLayoutSettleMs = 2ULL \* 1000ULL/);
   assert.match(schedule, /kSpotifySimpleRetryMs = 4ULL \* 1000ULL/);
   assert.match(
@@ -70,16 +66,14 @@ test('slow responsive layout settles before owner-only DOM recovery', () => {
   assert.match(schedule, /ReconcileActiveTimedSlot\(slot\)/);
 });
 
-test('track completion stays event driven while media progress has a low-frequency heartbeat', () => {
+test('track completion stays event driven with no media heartbeat', () => {
   assert.match(rotation, /kSpotifyFastEndObserverScript/);
   assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(events, /document\.addEventListener\('play'/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
   assert.match(runtime, /spotify:generation/);
-  assert.match(heartbeat, /setInterval\([\s\S]*20000\)/);
-  assert.match(heartbeat, /heartbeatMisses >= 2/);
-  assert.match(heartbeat, /currentTime > state\.heartbeatTime \+ 0\.05/);
-  assert.match(heartbeat, /requestRecovery\(media\)/);
+  assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
+  assert.doesNotMatch(runtime + events, /heartbeatTimer|heartbeatMisses|requestRecovery/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
 });
 
@@ -96,27 +90,17 @@ test('lost ExecuteScript callbacks expire instead of wedging a slot forever', ()
   assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
 });
 
-test('playback anomalies recover the current target while only natural completion advances', () => {
+test('playback anomalies are passive while only natural completion advances', () => {
   assert.doesNotMatch(header, /kSpotifyMusicTrackDeadlineMs/);
   assert.doesNotMatch(phase + schedule + rotation, /AdvanceExpiredTimedRotation|kSpotifyMusicTrackDeadlineMs/);
-  assert.match(runtime, /post\('spotify:not-playing'\)/);
-  assert.match(rotation, /const bool stopped =[\s\S]*spotify:not-playing/);
+  assert.doesNotMatch(runtime + events + rotation, /spotify:not-playing/);
+  assert.doesNotMatch(runtime + events, /requestRecovery|scheduleRecovery/);
+  assert.doesNotMatch(rotation, /const bool stopped|if \(stopped\)/);
 
   const endedStart = rotation.indexOf('if (ended) {');
-  const stoppedStart = rotation.indexOf('if (stopped) {', endedStart);
-  const stoppedEnd = rotation.indexOf(
-    '\n              }\n\n              return S_OK;',
-    stoppedStart,
-  );
-  assert.ok(endedStart >= 0 && stoppedStart > endedStart && stoppedEnd > stoppedStart);
-  const endedBranch = rotation.slice(endedStart, stoppedStart);
-  const stoppedBranch = rotation.slice(stoppedStart, stoppedEnd);
-
+  assert.ok(endedStart >= 0);
+  const endedBranch = rotation.slice(endedStart, rotation.indexOf('\n\n              return S_OK;', endedStart));
   assert.match(endedBranch, /AdvanceTimedRotationSlot\(\*target, now\)/);
-  assert.match(stoppedBranch, /MarkSlotRecovering\(\*target, now\)/);
-  assert.match(stoppedBranch, /RecomputeForeground\(\)/);
-  assert.match(stoppedBranch, /ArmRobustScheduler\(\)/);
-  assert.doesNotMatch(stoppedBranch, /AdvanceTimedRotationSlot/);
   assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
   assert.match(events, /document\.addEventListener\('ended'/);
 });

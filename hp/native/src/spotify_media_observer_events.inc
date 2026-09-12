@@ -2,7 +2,7 @@ namespace hp {
 namespace {
 
 // Binds delegated media lifecycle events to the observer runtime. This script is
-// idempotent and contains no periodic polling.
+// idempotent, contains no periodic polling, and never performs playback recovery.
 constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 (() => {
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
@@ -11,16 +11,11 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   runtime.eventsInstalled = true;
 
   const { state, post, syncTarget, isMedia, enforceTarget,
-          scheduleTargetChecks, scheduleRecovery, postCompletionPlan,
-          clearCompletionPlan, terminalWrapObserved,
-          completionPlanDue, completionPlanExpired } = runtime;
-  const completionGraceMs = 5000;
+          scheduleTargetChecks, postCompletionPlan, clearCompletionPlan,
+          terminalWrapObserved, completionPlanExpired } = runtime;
 
   const quarantineMedia = media => {
     try { if (isMedia(media) && !media.paused) media.pause(); } catch (_) {}
-  };
-  const stopHeartbeat = () => {
-    if (typeof runtime.stopHeartbeat === 'function') runtime.stopHeartbeat();
   };
   const quarantineCompletedGeneration = media => {
     const target = syncTarget();
@@ -28,7 +23,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
         !isMedia(media)) {
       return false;
     }
-    stopHeartbeat();
     quarantineMedia(media);
     return true;
   };
@@ -38,18 +32,13 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
         !state.started || state.endedPosted || state.targetMedia !== media) {
       return false;
     }
-    clearTimeout(state.stallTimer);
-    state.stallTimer = 0;
     state.endedPosted = true;
     clearCompletionPlan();
-    stopHeartbeat();
     post('spotify:timed-ended');
     return true;
   };
   // A completion deadline is only a wake-up hint. It must never end a track
   // before Spotify/HTMLMediaElement has naturally reached its terminal state.
-  // If an ended event is lost, a paused media clock pinned at the real duration
-  // is an acceptable post-end fallback because no playback is interrupted.
   const finishPausedAtEnd = media => {
     if (!isMedia(media) || !media.paused || media.ended ||
         typeof completionPlanExpired !== 'function' ||
@@ -68,8 +57,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   // back to 0 before the projected wall-clock deadline. A generation-scoped
   // high-water witness proves that the same target was already in its terminal
   // window, so this rewind is completion even when `ended` is missing or early.
-  // Deadline expiry remains a fallback for cases where the terminal witness was
-  // not observed (for example, a delayed background callback).
   const finishProjectedWrap = media => {
     const currentTime = Number(media && media.currentTime);
     if (!Number.isFinite(currentTime)) return false;
@@ -83,16 +70,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     quarantineMedia(media);
     return true;
   };
-  const deferNearEndRecovery = (media, delay, requirePaused) => {
-    if (typeof completionPlanDue !== 'function' ||
-        !completionPlanDue(completionGraceMs)) {
-      return false;
-    }
-    stopHeartbeat();
-    scheduleRecovery(
-        media, Math.max(delay, completionGraceMs + 1000), requirePaused);
-    return true;
-  };
 
   runtime.probeCompletion = () => {
     const media = state.targetMedia;
@@ -104,9 +81,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       clearCompletionPlan();
       return false;
     }
-    // Expiry alone is never completion. Re-project from the live media clock and
-    // keep waiting for ended, an observed terminal rewind, or a paused-at-duration
-    // terminal state.
     return postCompletionPlan(media, true);
   };
 
@@ -114,10 +88,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     if (!isMedia(event.target)) return;
     if (quarantineCompletedGeneration(event.target)) return;
     if (finishProjectedWrap(event.target)) return;
-    clearTimeout(state.stallTimer);
-    state.stallTimer = 0;
-    state.heartbeatTime = Number(event.target.currentTime) || 0;
-    state.heartbeatMisses = 0;
     state.lastIdentityCheckTime = -1;
     scheduleTargetChecks(event.target);
   }, true);
@@ -149,7 +119,6 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     if (!isMedia(event.target) || event.target.ended) return;
     if (quarantineCompletedGeneration(event.target)) return;
     if (finishProjectedWrap(event.target)) return;
-    if (deferNearEndRecovery(event.target, 2500, false)) return;
     clearCompletionPlan();
   }, true);
 
@@ -175,20 +144,14 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     const media = event.target;
     if (!isMedia(media) || media.ended || media.paused) return;
     if (quarantineCompletedGeneration(media)) return;
-    if (finishProjectedWrap(media)) return;
-    // The completion module records only an in-process high-water mark here.
-    // It does not post cross-process messages or add polling, so normal
-    // timeupdate traffic stays cheap while preserving terminal evidence.
+    finishProjectedWrap(media);
   }, true);
 
   document.addEventListener('pause', event => {
     if (!isMedia(event.target)) return;
     if (finishPausedAtEnd(event.target)) return;
     if (finishProjectedWrap(event.target)) return;
-    if (deferNearEndRecovery(event.target, 600, true)) return;
     clearCompletionPlan();
-    stopHeartbeat();
-    scheduleRecovery(event.target, 600, true);
   }, true);
 
   for (const eventName of ['waiting', 'stalled']) {
@@ -196,9 +159,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       if (!isMedia(event.target)) return;
       if (finishPausedAtEnd(event.target)) return;
       if (finishProjectedWrap(event.target)) return;
-      if (deferNearEndRecovery(event.target, 2500, false)) return;
       clearCompletionPlan();
-      scheduleRecovery(event.target, 2500, false);
     }, true);
   }
 

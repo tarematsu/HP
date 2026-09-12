@@ -40,7 +40,7 @@ test('repeat wrap is fenced by terminal progress evidence with deadline fallback
   assert.match(completion, /const completionPlanDue = \(leadMs = 0\) =>/);
   assert.match(completion, /const completionPlanExpired = \(\) => completionPlanDue\(\)/);
   assert.doesNotMatch(events, /finishLeadSeconds|duration\s*-\s*finishLeadSeconds/);
-  assert.match(events, /const completionGraceMs = 5000/);
+  assert.doesNotMatch(events, /completionGraceMs|deferNearEndRecovery/);
   assert.match(events, /const finishProjectedWrap = media =>/);
   const wrapStart = events.indexOf('const finishProjectedWrap = media =>');
   const wrapEnd = events.indexOf('\n  };', wrapStart);
@@ -50,7 +50,6 @@ test('repeat wrap is fenced by terminal progress evidence with deadline fallback
   assert.match(wrap, /currentTime <= 1\.5/);
   assert.match(wrap, /completionPlanExpired\(\)/);
   assert.match(wrap, /!witnessedWrap && !deadlineWrap/);
-  assert.doesNotMatch(wrap, /completionPlanDue\(completionGraceMs\)/);
   assert.match(events, /const finishPausedAtEnd = media =>/);
   assert.match(events, /document\.addEventListener\('seeking'/);
   assert.match(events, /if \(finishProjectedWrap\(event\.target\)\) return;/);
