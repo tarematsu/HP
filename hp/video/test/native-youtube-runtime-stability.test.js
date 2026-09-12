@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const reliablePlayAll = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url), 'utf8');
-const recovery = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
+const recovery = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 const trustedAction = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_trusted_action.inc', import.meta.url), 'utf8');
 const eventAgent = readFileSync(
@@ -38,8 +39,9 @@ test('repeated YouTube trusted actions have per-action settle windows', () => {
   assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
 });
 
-test('transparent clean-player chrome still supports trusted fullscreen recovery', () => {
+test('transparent clean-player chrome still supports one-shot trusted fullscreen setup', () => {
   assert.match(recovery, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
+  assert.match(recovery, /if \(recoveryState\.fullscreenApplied\) return null/);
   assert.match(trustedAction, /visibility', 'visible'/);
   assert.match(trustedAction, /pointer-events', 'auto'/);
   assert.match(trustedAction, /opacity', '0'/);
