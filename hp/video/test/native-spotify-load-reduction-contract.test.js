@@ -24,9 +24,9 @@ test('Spotify WebViews serialize startup without UI-thread blocking or legacy ti
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);
 });
 
-test('Spotify layout updates only the dimensions that actually changed', () => {
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+test('Spotify layout parks healthy players in a smaller offscreen viewport', () => {
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
   assert.match(layout, /const bool zOrderChanged =/);
@@ -38,13 +38,24 @@ test('Spotify layout updates only the dimensions that actually changed', () => {
   assert.doesNotMatch(layout, /BeginDeferWindowPos|EndDeferWindowPos/);
 });
 
-test('Spotify layout avoids redundant controller COM calls', () => {
+test('healthy music WebViews suppress rendering while auth and recovery remain visible', () => {
+  assert.match(
+    layout,
+    /const bool suppressHealthyMusicRendering =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*TimedSpotifyTarget::Music[\s\S]*slot\.playerPage[\s\S]*!slot\.loginPage/,
+  );
+  assert.match(
+    layout,
+    /put_IsVisible\(\s*suppressHealthyMusicRendering \? FALSE : TRUE\s*\)/,
+  );
+  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+});
+
+test('Spotify layout avoids redundant controller geometry COM calls', () => {
   assert.match(spotifyHeader, /ICoreWebView2Controller\* hostLayoutController = nullptr/);
   assert.match(spotifyHeader, /bool hostLayoutReducedZoomApplied = false/);
   assert.match(layout, /const bool controllerChanged =/);
   assert.match(layout, /Configure\(\) already pushed initial bounds\/visibility/);
   assert.doesNotMatch(layout, /controllerChanged\)[\s\S]{0,220}put_Bounds/);
-  assert.doesNotMatch(layout, /controllerChanged\)[\s\S]{0,220}put_IsVisible/);
   assert.match(
     layout,
     /if \(positionChanged \|\| controllerChanged\)[\s\S]*NotifyParentWindowPositionChanged\(\)/,
