@@ -1,5 +1,6 @@
 import { applyD1Migrations, env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { invalidateR2EnvironmentCache } from "../src/environment_r2";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
 type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
@@ -7,6 +8,8 @@ type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migratio
 beforeEach(async () => {
   const testEnv = env as TestEnv;
   await resetD1TestDatabase(testEnv.DB, testEnv.TEST_MIGRATIONS);
+  await testEnv.DATA_BUCKET.delete("environment/v2/latest.json");
+  invalidateR2EnvironmentCache(testEnv);
 });
 
 const auth = (token: string): HeadersInit => ({ Authorization: `Bearer ${token}` });
