@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
-const episode = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8');
-const watchdog = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
+const episode = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const watchdog = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 
-test('TVer program playback settings are dirty-state and event driven', () => {
+test('TVer program playback settings are one-shot and event driven', () => {
   assert.match(episode, /const playbackRate = 1\.75/);
   assert.match(episode, /const targetVolume = 1\.0/);
   assert.doesNotMatch(episode, /setInterval\(ensure/);
@@ -15,7 +15,7 @@ test('TVer program playback settings are dirty-state and event driven', () => {
   assert.match(episode, /if \(!state\.playbackSettingsApplied\)/);
   assert.match(episode, /video\.defaultPlaybackRate = playbackRate/);
   assert.match(episode, /video\.playbackRate = playbackRate/);
-  assert.match(episode, /addEventListener\('ratechange'/);
+  assert.doesNotMatch(episode, /addEventListener\('ratechange'/);
   assert.match(episode, /addEventListener\('volumechange'/);
 });
 
@@ -25,6 +25,7 @@ test('TVer quality discovery is rate limited and bounded', () => {
   assert.match(episode, /state\.qualityProbeAttempts < qualityProbeLimit/);
   assert.match(episode, /now - state\.qualityProbeAt >= qualityProbeIntervalMs/);
   assert.match(episode, /const root = playerRootFor\(video\)/);
+  assert.match(episode, /state\.lowQualitySet = true/);
 });
 
 test('TVer ads do not receive program speed, volume or recovery mutation', () => {
