@@ -6,12 +6,16 @@ const guards = readFileSync(
   new URL('../../native/src/spotify_playback_mode_guards.inc', import.meta.url),
   'utf8',
 );
-const completion = readFileSync(
-  new URL('../../native/src/spotify_media_observer_completion.inc', import.meta.url),
+const runtime = readFileSync(
+  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url),
   'utf8',
 );
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url),
+  'utf8',
+);
+const rotation = readFileSync(
+  new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
   'utf8',
 );
 
@@ -29,29 +33,10 @@ test('repeat guard survives Spotify builds that omit aria-checked', () => {
   );
 });
 
-test('repeat wrap is fenced by terminal progress evidence with deadline fallback', () => {
-  assert.match(completion, /const terminalWitnessWindowSeconds = 2/);
-  assert.match(completion, /const terminalWrapSeconds = 1\.5/);
-  assert.match(completion, /const observeCompletionProgress = media =>/);
-  assert.match(completion, /state\.completionHighWaterTime/);
-  assert.match(completion, /state\.completionNearEndArmed = true/);
-  assert.match(completion, /const terminalWrapObserved = media =>/);
-  assert.match(completion, /currentTime <= terminalWrapSeconds/);
-  assert.match(completion, /const completionPlanDue = \(leadMs = 0\) =>/);
-  assert.match(completion, /const completionPlanExpired = \(\) => completionPlanDue\(\)/);
-  assert.doesNotMatch(events, /finishLeadSeconds|duration\s*-\s*finishLeadSeconds/);
-  assert.doesNotMatch(events, /completionGraceMs|deferNearEndRecovery/);
-  assert.match(events, /const finishProjectedWrap = media =>/);
-  const wrapStart = events.indexOf('const finishProjectedWrap = media =>');
-  const wrapEnd = events.indexOf('\n  };', wrapStart);
-  assert.ok(wrapStart >= 0 && wrapEnd > wrapStart);
-  const wrap = events.slice(wrapStart, wrapEnd + '\n  };'.length);
-  assert.match(wrap, /terminalWrapObserved\(media\)/);
-  assert.match(wrap, /currentTime <= 1\.5/);
-  assert.match(wrap, /completionPlanExpired\(\)/);
-  assert.match(wrap, /!witnessedWrap && !deadlineWrap/);
-  assert.match(events, /const finishPausedAtEnd = media =>/);
-  assert.match(events, /document\.addEventListener\('seeking'/);
-  assert.match(events, /if \(finishProjectedWrap\(event\.target\)\) return;/);
-  assert.match(events, /document\.addEventListener\('pause'/);
+test('repeat wrap is irrelevant after native start deadline is armed', () => {
+  assert.match(runtime, /state\.startPosted = true/);
+  assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.doesNotMatch(events, /timeupdate|seeking|seeked|ended|terminalWrap|completionPlan/);
+  assert.match(rotation, /one-shot native deadline expires[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
+  assert.doesNotMatch(rotation, /spotify:timed-ended|spotify:timed-plan/);
 });
