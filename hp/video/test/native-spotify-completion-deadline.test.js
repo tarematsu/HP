@@ -4,8 +4,8 @@ import test from 'node:test';
 
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
-const runtime = readFileSync(
-  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
+const completion = readFileSync(
+  new URL('../../native/src/spotify_media_observer_completion.inc', import.meta.url), 'utf8');
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
 const phase = readFileSync(
@@ -24,8 +24,8 @@ test('each Spotify slot owns a generation-fenced completion deadline', () => {
 });
 
 test('WebView publishes remaining time once and native probes near the deadline', () => {
-  assert.match(runtime, /postFields\('spotify:timed-plan', String\(remainingMs\)\)/);
-  assert.match(runtime, /spotify:completion-probe/);
+  assert.match(completion, /postFields\('spotify:timed-plan', String\(remainingMs\)\)/);
+  assert.match(completion, /spotify:completion-probe/);
   assert.match(events, /runtime\.probeCompletion = \(\) =>/);
   assert.match(events, /return postCompletionPlan\(media\)/);
   assert.match(rotation, /kSpotifyCompletionProbeLeadMs/);
@@ -47,6 +47,6 @@ test('pause, seek and stall invalidate stale completion deadlines', () => {
   assert.match(events, /document\.addEventListener\('pause'[\s\S]*clearCompletionPlan\(\)/);
   assert.match(events, /document\.addEventListener\('seeking'[\s\S]*clearCompletionPlan\(\)/);
   assert.match(events, /\['waiting', 'stalled'\][\s\S]*clearCompletionPlan\(\)/);
-  assert.match(runtime, /post\('spotify:timed-plan-clear'\)/);
+  assert.match(completion, /post\('spotify:timed-plan-clear'\)/);
   assert.match(rotation, /if \(planCleared\)[\s\S]*timedCompletionDeadlineTick = 0/);
 });
