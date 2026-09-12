@@ -101,7 +101,8 @@ test('stall recovery retries the same track instead of skipping it on a deadline
   assert.doesNotMatch(phase + schedule + rotation, /AdvanceExpiredTimedRotation|kSpotifyMusicTrackDeadlineMs/);
   assert.match(runtime, /post\('spotify:not-playing'\)/);
   assert.match(rotation, /if \(stopped\)[\s\S]*MarkSlotRecovering\(\*target, now\)/);
-  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
+  assert.match(events, /const finishLeadSeconds = 1\.5/);
+  assert.match(events, /duration - finishLeadSeconds/);
 });
 
 test('advertisements cannot complete or start a requested song', () => {

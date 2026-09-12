@@ -25,7 +25,9 @@ test('repeat guard survives Spotify builds that omit aria-checked', () => {
   );
 });
 
-test('same-media repeat wrap advances only after the physical track end', () => {
+test('same-media repeat wrap remains a fallback after near-end completion', () => {
+  assert.match(events, /const finishLeadSeconds = 1\.5/);
+  assert.match(events, /duration\s*-\s*finishLeadSeconds/);
   assert.match(events, /const detectRepeatWrap = media =>/);
   assert.match(events, /marker\.key !== state\.key/);
   assert.match(events, /previousTime >= Math\.max\(0, duration - 3\)/);
@@ -35,5 +37,4 @@ test('same-media repeat wrap advances only after the physical track end', () => 
   assert.match(events, /quarantineMedia\(media\);[\s\S]*return true;/);
   assert.match(events, /document\.addEventListener\('seeking'/);
   assert.match(events, /if \(detectRepeatWrap\(media\)\) return;/);
-  assert.doesNotMatch(events, /duration\s*-\s*finishLeadSeconds/);
 });

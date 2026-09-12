@@ -301,7 +301,7 @@ test('production heartbeat stays healthy while media currentTime advances', () =
   assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
 });
 
-test('production observer waits for natural track end before advancing and does not pause on end', () => {
+test('production observer advances inside the final 1.5 seconds and quarantines the old generation', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f14');
   h.setTrack('/track/A', 'Target A');
@@ -310,18 +310,20 @@ test('production observer waits for natural track end before advancing and does 
   h.media.duration = 180;
   h.dispatch('playing');
 
-  h.media.currentTime = 179.4;
+  h.media.currentTime = 178.4;
   h.dispatch('timeupdate');
-
-  assert.equal(h.media.paused, false);
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 0);
+  assert.equal(h.media.pauseCalls, 0);
+
+  h.media.currentTime = 178.6;
+  h.dispatch('timeupdate');
+  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f14');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 1);
+  assert.equal(h.media.pauseCalls, 1);
+  assert.equal(h.media.paused, true);
 
   h.media.ended = true;
   h.dispatch('ended');
-
-  assert.equal(h.media.pauseCalls, 0);
-  assert.equal(h.media.paused, false);
-  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f14');
   assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 1);
 });
 

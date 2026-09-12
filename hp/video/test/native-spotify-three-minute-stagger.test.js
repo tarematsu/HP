@@ -57,14 +57,15 @@ test('cloud rotation supports fixed, shuffle, random, TALKABOUT candidates, and 
   assert.doesNotMatch(rotation, /% 6U|position <= 4U/);
 });
 
-test('cycle advances only after the requested track reaches its natural end', () => {
+test('cycle advances at the requested track near-end completion boundary', () => {
   assert.match(rotation, /\+\+slot\.timedRotationPosition/);
   assert.match(rotation, /slot\.timedRotationPosition >= slot\.timedCycleTracks\.size\(\)/);
   assert.match(rotation, /PrepareTimedRotationCycle\(slot\)/);
+  assert.match(events, /const finishLeadSeconds = 1\.5/);
+  assert.match(events, /duration - finishLeadSeconds/);
   assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(events, /spotify:timed-ended/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
-  assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
   assert.doesNotMatch(header + rotation + schedule, /kSpotifyMusicTrackDeadlineMs|AdvanceExpiredTimedRotation/);
   assert.match(runtime, /spotify:timed-started/);
   assert.match(runtime, /navigator\.mediaSession/);
