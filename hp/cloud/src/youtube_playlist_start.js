@@ -92,32 +92,35 @@ export async function resolveYoutubePlaylistStart(dependencies = {}) {
   }
 }
 
+function redirectHeaders(location, state) {
+  return {
+    'Location': location,
+    'Cache-Control': 'no-store',
+    'Referrer-Policy': 'no-referrer',
+    'X-Content-Type-Options': 'nosniff',
+    'X-HomePanel-Youtube-Start': state,
+  };
+}
+
 export async function youtubePlaylistStartResponse(dependencies = {}) {
   try {
     const start = await resolveYoutubePlaylistStart(dependencies);
     return new Response(null, {
       status: 302,
-      headers: {
-        'Location': start.url,
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff',
-        'X-HomePanel-Youtube-Start': start.cached ? 'cloud-cache' : 'cloud-resolved',
-      },
+      headers: redirectHeaders(
+        start.url,
+        start.cached ? 'cloud-cache' : 'cloud-resolved',
+      ),
     });
   } catch (error) {
     console.warn('youtube-playlist-start-resolve-failed', {
       error: error instanceof Error ? error.message : String(error),
     });
     // Preserve startup if YouTube temporarily blocks Worker-side HTML fetches.
-    // The native fallback reads the first playlist item but never clicks Play all.
+    // The native fallback reads the first playlist item without using UI controls.
     return new Response(null, {
       status: 302,
-      headers: {
-        'Location': YOUTUBE_PLAYLIST_URL,
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff',
-        'X-HomePanel-Youtube-Start': 'native-fallback',
-      },
+      headers: redirectHeaders(YOUTUBE_PLAYLIST_URL, 'native-fallback'),
     });
   }
 }
