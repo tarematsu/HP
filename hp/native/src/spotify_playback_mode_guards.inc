@@ -81,8 +81,9 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
                 ArmRobustScheduler();
                 return S_OK;
               }
-              // Missing or not-yet-mounted controls remain pending. Do not mark
-              // the slot unhealthy while Spotify is still mounting its player.
+              // Missing or not-yet-mounted controls remain pending. Playback is
+              // already confirmed at this stage, so mode convergence must never
+              // demote a healthy slot or block the media clock.
               if (value == L"false") {
                 ArmRobustScheduler();
                 return S_OK;
@@ -92,13 +93,18 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
             int x = 0;
             int y = 0;
             if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
-              ClickSlotNormalizedPoint(*target, x, y);
+              // The point was measured in the current viewport and belongs only
+              // to Shuffle/Repeat. Dispatch it directly so changing a playback
+              // mode cannot route through the recovery click helper and change
+              // SlotState::Playing to WaitingTarget.
+              DispatchSpotifyDevToolsClick(*target, x, y);
               ArmRobustScheduler();
               return S_OK;
             }
 
-            MarkSlotRecovering(*target, GetTickCount64());
-            RecomputeForeground();
+            // Shuffle/Repeat are post-start best-effort guards. Script failures
+            // must not convert a genuinely playing slot into recovery; retry on
+            // a later healthy verification turn instead.
             ArmRobustScheduler();
             return S_OK;
           }).Get());
@@ -109,8 +115,6 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
       slot.reconcileInFlight = false;
       slot.reconcileStartedTick = 0;
     }
-    MarkSlotRecovering(slot, GetTickCount64());
-    RecomputeForeground();
     ArmRobustScheduler();
   }
   return false;
