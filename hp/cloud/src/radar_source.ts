@@ -20,7 +20,7 @@ const RADAR_BASE_CROP_WIDTH = 640;
 const RADAR_BASE_CROP_HEIGHT = 1280;
 const RADAR_OUTPUT_WIDTH = 1440;
 const RADAR_OUTPUT_HEIGHT = 960;
-const RADAR_COMPOSITION_VERSION = "radar-frame-v2-1440x960-static-mask";
+const RADAR_COMPOSITION_VERSION = "radar-frame-v4-1440x960-time-only-top-50";
 const RADAR_LEGEND = [0, 1, 2, 4, 8, 16, 32, 64] as const;
 const RADAR_FRAME_PATH = "/v1/radar/frame/representative/latest.png";
 const RADAR_LEGACY_FRAME_PREFIX = "radar/frames/";
@@ -206,7 +206,6 @@ function jstTimeText(entry: RadarTimeEntry): string {
 
 async function panelRequest(
   env: Env,
-  title: string,
   product: RadarProduct,
   entry: RadarTimeEntry,
   displayLayout: RadarTileLayout[],
@@ -214,7 +213,6 @@ async function panelRequest(
   expires: number,
 ): Promise<BrowserRadarPanelRequest> {
   return {
-    title,
     tiles: await signedBrowserTiles(env, product, entry, RADAR_DISPLAY_ZOOM, displayLayout, expires),
     sourceWidth: RADAR_PANEL_SOURCE_WIDTH,
     sourceHeight: RADAR_PANEL_SOURCE_HEIGHT,
@@ -263,9 +261,9 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
 
   const panelMetadata = [
-    { title: "現在", validTimeText: jstTimeText(currentEntry) },
-    { title: "1時間後", validTimeText: jstTimeText(oneHourEntry) },
-    { title: "取得可能な最後", validTimeText: jstTimeText(latestEntry) },
+    { validTimeText: jstTimeText(currentEntry) },
+    { validTimeText: jstTimeText(oneHourEntry) },
+    { validTimeText: jstTimeText(latestEntry) },
   ] as const;
   const compositionKey = radarCompositionKey(currentEntry, oneHourEntry, latestEntry);
   const existingFrame = await env.UPDATE_BUCKET.head(representativeFrameKey());
@@ -281,9 +279,9 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
     );
     const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
     const panels = await Promise.all([
-      panelRequest(env, panelMetadata[0].title, "jma", currentEntry, displayLayout, viewport, expires),
-      panelRequest(env, panelMetadata[1].title, "jma", oneHourEntry, displayLayout, viewport, expires),
-      panelRequest(env, panelMetadata[2].title, "rasrf", latestEntry, displayLayout, viewport, expires),
+      panelRequest(env, "jma", currentEntry, displayLayout, viewport, expires),
+      panelRequest(env, "jma", oneHourEntry, displayLayout, viewport, expires),
+      panelRequest(env, "rasrf", latestEntry, displayLayout, viewport, expires),
     ]) as [
       BrowserRadarPanelRequest,
       BrowserRadarPanelRequest,

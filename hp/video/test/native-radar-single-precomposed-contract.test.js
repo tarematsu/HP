@@ -104,9 +104,9 @@ test('cloud radar contract remains one reduced precomposed three-panel represent
   assert.match(cloud, /const RADAR_BASE_CROP_HEIGHT = 1280/);
   assert.match(cloud, /RADAR_FRAME_PATH = "\/v1\/radar\/frame\/representative\/latest\.png"/);
   assert.match(cloud, /JMA_SHORT_TERM_TIMES_URL/);
-  assert.match(cloud, /panelRequest\(env, panelMetadata\[0\]\.title, "jma"/);
-  assert.match(cloud, /panelRequest\(env, panelMetadata\[1\]\.title, "jma"/);
-  assert.match(cloud, /panelRequest\(env, panelMetadata\[2\]\.title, "rasrf"/);
+  assert.match(cloud, /panelRequest\(env, "jma", currentEntry/);
+  assert.match(cloud, /panelRequest\(env, "jma", oneHourEntry/);
+  assert.match(cloud, /panelRequest\(env, "rasrf", latestEntry/);
   assert.match(cloud, /precomposed: true/);
   assert.match(cloud, /frames: \[frame\]/);
   assert.match(cloud, /one cloud-composited representative frame/);
@@ -150,12 +150,16 @@ test('native skips radar JSON parsing when its stamp is unchanged but still chec
   assert.match(renderer, /const std::string stamp = file::Stamp\(\*framePath\)/);
 });
 
-test('all three radar labels remain proportional after the reduced frame size', () => {
-  assert.match(browserFrame, /const chipTop = 148;/);
+test('all three radar panels render only an enlarged timestamp chip', () => {
+  assert.match(browserFrame, /const chipTop = 50;/);
   assert.match(browserFrame, /panelWidth - chipLeft \* 2/);
   assert.match(browserFrame, /context\.roundRect\(panelX \+ chipLeft, chipTop/);
-  assert.match(browserFrame, /chipTop \+ 25/);
-  assert.match(browserFrame, /chipTop \+ 61/);
+  assert.match(browserFrame, /context\.font = "500 39px sans-serif";/);
+  assert.match(browserFrame, /const timeWidth = context\.measureText\(timeText\)\.width;/);
+  assert.match(browserFrame, /chipTop \+ chipHeight \/ 2/);
+  assert.doesNotMatch(browserFrame, /\btitle\b/);
+  assert.doesNotMatch(cloud, /title:/);
+  assert.doesNotMatch(cloud, /現在|1時間後|取得可能な最後/);
   assert.match(browserFrame, /context\.fillStyle = "rgba\(0,0,0,0\.92\)";/);
   assert.match(browserFrame, /context\.fillRect\(divider \* panelWidth - 1, 0, 3, payload\.outputHeight\)/);
 });

@@ -8,7 +8,6 @@ export interface BrowserRadarTile {
 }
 
 export interface BrowserRadarPanelRequest {
-  title: string;
   tiles: BrowserRadarTile[];
   sourceWidth: number;
   sourceHeight: number;
@@ -131,7 +130,6 @@ export async function renderRepresentativeRadarFrame(
     });
 
     const panelResults = request.panels.map(panel => ({
-      title: panel.title,
       validTimeText: panel.validTimeText,
       tiles: panel.tiles,
       sourceWidth: panel.sourceWidth,
@@ -309,30 +307,28 @@ export async function renderRepresentativeRadarFrame(
       };
 
       const drawPanelLabel = (panel: any, panelX: number) => {
-        const title = panel.title as string;
         const timeText = panel.validTimeText as string;
         const chipLeft = 18;
-        const chipTop = 148;
+        const chipTop = 50;
         const chipHorizontalPadding = 20;
         const chipHeight = 84;
-        context.font = "600 32px sans-serif";
+        context.font = "500 39px sans-serif";
         context.textBaseline = "middle";
-        const titleWidth = context.measureText(title).width;
-        context.font = "500 26px sans-serif";
         const timeWidth = context.measureText(timeText).width;
         const chipWidth = Math.min(
           panelWidth - chipLeft * 2,
-          Math.max(titleWidth, timeWidth) + chipHorizontalPadding * 2,
+          timeWidth + chipHorizontalPadding * 2,
         );
         context.fillStyle = "rgba(0,0,0,0.78)";
         context.beginPath();
         context.roundRect(panelX + chipLeft, chipTop, chipWidth, chipHeight, 17);
         context.fill();
         context.fillStyle = "white";
-        context.font = "600 32px sans-serif";
-        context.fillText(title, panelX + chipLeft + chipHorizontalPadding, chipTop + 25);
-        context.font = "500 26px sans-serif";
-        context.fillText(timeText, panelX + chipLeft + chipHorizontalPadding, chipTop + 61);
+        context.fillText(
+          timeText,
+          panelX + chipLeft + chipHorizontalPadding,
+          chipTop + chipHeight / 2,
+        );
       };
 
       for (let panelIndex = 0; panelIndex < payload.panels.length; panelIndex += 1) {
