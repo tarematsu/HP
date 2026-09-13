@@ -103,7 +103,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.hostLayoutReducedZoomApplied = false;
     }
 
-    slot.controller->put_IsVisible(lowPowerPlayback ? FALSE : TRUE);
+    slot.controller->put_IsVisible(TRUE);
 
     const bool reducedZoom = authentication || recovery;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {

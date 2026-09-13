@@ -4,12 +4,13 @@
 namespace hp {
 namespace {
 
-// Full-resource media surfaces need autonomous playback, but they do not need
-// to opt out of Chromium's occlusion/background throttling. Audio playback can
-// continue while off-screen renderers reduce visual work. Cheap browser
-// services that do not participate in playback are disabled everywhere.
+// Full-resource media surfaces need autonomous playback and stable timing even
+// while their host windows are parked off-screen. Keep Chromium from treating
+// an occluded media window as a backgrounded renderer. Cheap browser services
+// that do not participate in playback remain disabled everywhere.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--autoplay-policy=no-user-gesture-required "
+    L"--disable-backgrounding-occluded-windows "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "
