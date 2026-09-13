@@ -8,6 +8,7 @@
 #include "spotify_fast_end_observer.inc"
 #include "spotify_auth_badge.inc"
 #include "spotify_phase_sync.inc"
+#include "spotify_playback_telemetry.inc"
 #include "spotify_webviews.cpp"
 #include "spotify_network_block.inc"
 #include "spotify_host_layout.inc"
