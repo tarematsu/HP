@@ -5,71 +5,6 @@
 namespace hp {
 namespace {
 constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
-#if 0  // Stationhead disabled while MV playback is active.
-constexpr int64_t kStationheadHandoffAudioStabilityMs = 1'500;
-
-constexpr int64_t StableAudioReadyAt(
-    int64_t requestedReadyAtMs,
-    int64_t audioPlayingSinceMs) noexcept {
-  if (audioPlayingSinceMs <= 0) return requestedReadyAtMs;
-  const int64_t continuousReadyAt =
-      audioPlayingSinceMs + kStationheadHandoffAudioStabilityMs;
-  return std::max(requestedReadyAtMs, continuousReadyAt);
-}
-
-enum class TrackBoundaryPendingAction {
-  Wait,
-  CancelExpired,
-  CancelResumed,
-  Retry,
-};
-
-constexpr TrackBoundaryPendingAction TrackBoundaryPendingActionFor(
-    int64_t nowMs,
-    int64_t pendingUntilMs,
-    int64_t handoffReadyAtMs,
-    bool pendingWindowPlaying,
-    bool otherWindowRequired,
-    bool otherWindowPlaying) noexcept {
-  if (pendingUntilMs <= 0) return TrackBoundaryPendingAction::Wait;
-  if (nowMs >= pendingUntilMs) return TrackBoundaryPendingAction::CancelExpired;
-  if (nowMs < handoffReadyAtMs) return TrackBoundaryPendingAction::Wait;
-  if (pendingWindowPlaying) return TrackBoundaryPendingAction::CancelResumed;
-  if (otherWindowRequired && !otherWindowPlaying) {
-    return TrackBoundaryPendingAction::Wait;
-  }
-  return TrackBoundaryPendingAction::Retry;
-}
-
-constexpr bool ShouldReturnMainForStationheadChanges(uint32_t changes) noexcept {
-  return (changes & StationheadChangeReturnMain) != 0 &&
-         (changes & StationheadChangeReleaseAuth) == 0;
-}
-
-static_assert(kStationheadHandoffAudioStabilityMs >= 1'000);
-static_assert(StableAudioReadyAt(150, 0) == 150);
-static_assert(StableAudioReadyAt(150, 100) == 1'600);
-static_assert(StableAudioReadyAt(2'000, 100) == 2'000);
-static_assert(TrackBoundaryPendingActionFor(100, 0, 0, false, true, true) ==
-              TrackBoundaryPendingAction::Wait);
-static_assert(TrackBoundaryPendingActionFor(100, 200, 150, true, true, true) ==
-              TrackBoundaryPendingAction::Wait);
-static_assert(TrackBoundaryPendingActionFor(160, 200, 150, true, true, true) ==
-              TrackBoundaryPendingAction::CancelResumed);
-static_assert(TrackBoundaryPendingActionFor(200, 200, 150, false, true, true) ==
-              TrackBoundaryPendingAction::CancelExpired);
-static_assert(TrackBoundaryPendingActionFor(100, 200, 150, false, true, true) ==
-              TrackBoundaryPendingAction::Wait);
-static_assert(TrackBoundaryPendingActionFor(160, 200, 150, false, true, false) ==
-              TrackBoundaryPendingAction::Wait);
-static_assert(TrackBoundaryPendingActionFor(160, 200, 150, false, true, true) ==
-              TrackBoundaryPendingAction::Retry);
-static_assert(TrackBoundaryPendingActionFor(160, 200, 150, false, false, false) ==
-              TrackBoundaryPendingAction::Retry);
-static_assert(ShouldReturnMainForStationheadChanges(StationheadChangeReturnMain));
-static_assert(!ShouldReturnMainForStationheadChanges(
-    StationheadChangeReturnMain | StationheadChangeReleaseAuth));
-#endif
 }
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -92,85 +27,14 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 }
 
 void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
-#if 0  // Stationhead disabled.
-  const auto process = [this, nowMs](
-                           auto& pendingUntil,
-                           auto& handoffReadyAt,
-                           auto& pendingPlayer,
-                           auto& otherPlayer,
-                           bool otherRequired,
-                           const wchar_t* roleTag) {
-    if (pendingUntil <= 0) return;
-    const bool pendingPlaying = pendingPlayer && pendingPlayer->AudioPlaying();
-    const bool otherPlaying =
-        !otherRequired || (otherPlayer && otherPlayer->AudioPlaying());
-    const int64_t otherPlayingSince =
-        otherRequired && otherPlayer ? otherPlayer->AudioPlayingSince() : nowMs;
-    if (otherRequired) {
-      if (!otherPlaying || otherPlayingSince <= 0) {
-        handoffReadyAt = nowMs + kStationheadHandoffAudioStabilityMs;
-      } else {
-        handoffReadyAt = StableAudioReadyAt(
-            handoffReadyAt, otherPlayingSince);
-      }
-    }
-    const TrackBoundaryPendingAction action = TrackBoundaryPendingActionFor(
-        nowMs, pendingUntil, handoffReadyAt, pendingPlaying,
-        otherRequired, otherPlaying);
-    switch (action) {
-      case TrackBoundaryPendingAction::CancelExpired:
-        pendingUntil = 0;
-        handoffReadyAt = 0;
-        if (pendingPlayer) pendingPlayer->CancelPendingTrackBoundaryRefresh();
-        if (logger_) {
-          logger_->Warn(L"Stationhead " + std::wstring(roleTag) +
-                        L" pending track-boundary refresh expired");
-        }
-        return;
-      case TrackBoundaryPendingAction::CancelResumed:
-        pendingUntil = 0;
-        handoffReadyAt = 0;
-        if (pendingPlayer) pendingPlayer->CancelPendingTrackBoundaryRefresh();
-        if (logger_) {
-          logger_->Info(L"Stationhead " + std::wstring(roleTag) +
-                        L" pending track-boundary refresh cancelled because the next track already started");
-        }
-        return;
-      case TrackBoundaryPendingAction::Retry:
-        if (!pendingPlayer) {
-          pendingUntil = 0;
-          handoffReadyAt = 0;
-          return;
-        }
-        pendingPlayer->RetryPendingTrackBoundaryRefresh(nowMs);
-        return;
-      case TrackBoundaryPendingAction::Wait:
-      default:
-        return;
-    }
-  };
-
-  process(primaryTrackBoundaryPendingUntil_, primaryTrackBoundaryHandoffReadyAt_,
-          stationhead_, secondaryStationhead_,
-          static_cast<bool>(secondaryStationhead_), L"A");
-  process(secondaryTrackBoundaryPendingUntil_, secondaryTrackBoundaryHandoffReadyAt_,
-          secondaryStationhead_, stationhead_, true, L"B");
-#else
+  // A single Stationhead player has no peer handoff window to coordinate.
   (void)nowMs;
-#endif
 }
 
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
       Tick();
-#if 0  // Stationhead disabled: no handoff processing or health toast.
-      ProcessPendingStationheadTrackBoundaryRefreshes(UnixMillis());
-      if (cloud_ && toastUntil_ == 0 && toastText_.empty()) {
-        std::wstring health = cloud_->StationheadHealthText();
-        if (toastText_ != health) ShowToast(std::move(health), 0, false);
-      }
-#endif
       return 0;
     case kStartupUpdateWakeMessage:
       HandleStartupUpdateWake();
@@ -193,6 +57,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       HandleAction(static_cast<UiAction>(wParam));
       return 0;
     case WM_HP_CLOUD_UPDATED: {
+      if (!renderer_) return 0;
       bool dashboardChanged = false;
       if (!renderer_->LoadDashboard(dataDir_ / L"dashboard.json", &dashboardChanged) ||
           !dashboardChanged) {
@@ -219,153 +84,23 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
 
     case WM_HP_PRIMARY_RELOAD_READY:
+      // There is no B window to wait for. The single player may refresh as soon
+      // as its own track-boundary policy decides a navigation is due.
+      return stationhead_ ? 1 : 0;
     case WM_HP_SECONDARY_RELOAD_READY:
-    case WM_HP_STATIONHEAD_CHANGED:
-    case kStationheadHealthUpdatedMessage:
-      // Stationhead messages are intentionally ignored while the MV panel is active.
       return 0;
-
-#if 0  // Legacy Stationhead message handling retained but not compiled.
-    case WM_HP_PRIMARY_RELOAD_READY: {
-      const int64_t now = UnixMillis();
-      if (primaryTrackBoundaryPendingUntil_ <= 0) {
-        primaryTrackBoundaryPendingUntil_ =
-            now + kStationheadTrackTransitionGraceMs;
-        primaryTrackBoundaryHandoffReadyAt_ =
-            now + kStationheadHandoffAudioStabilityMs;
-        return 0;
-      }
-      if (stationhead_->AudioPlaying()) {
-        primaryTrackBoundaryPendingUntil_ = 0;
-        primaryTrackBoundaryHandoffReadyAt_ = 0;
-        stationhead_->CancelPendingTrackBoundaryRefresh();
-        if (logger_) {
-          logger_->Info(
-              L"Stationhead A track-boundary refresh cancelled at readiness check because the next track already started");
-        }
-        return 0;
-      }
-      if (now >= primaryTrackBoundaryPendingUntil_) {
-        primaryTrackBoundaryPendingUntil_ = 0;
-        primaryTrackBoundaryHandoffReadyAt_ = 0;
-        stationhead_->CancelPendingTrackBoundaryRefresh();
-        return 0;
-      }
-      if (secondaryStationhead_) {
-        const bool handoffPlaying = secondaryStationhead_->AudioPlaying();
-        const int64_t handoffPlayingSince = secondaryStationhead_->AudioPlayingSince();
-        if (!handoffPlaying || handoffPlayingSince <= 0) {
-          primaryTrackBoundaryHandoffReadyAt_ =
-              now + kStationheadHandoffAudioStabilityMs;
-          return 0;
-        }
-        primaryTrackBoundaryHandoffReadyAt_ = StableAudioReadyAt(
-            primaryTrackBoundaryHandoffReadyAt_, handoffPlayingSince);
-      }
-      if (now < primaryTrackBoundaryHandoffReadyAt_) return 0;
-      primaryTrackBoundaryPendingUntil_ = 0;
-      primaryTrackBoundaryHandoffReadyAt_ = 0;
-      if (secondaryStationhead_) ApplyScheduledStationheadAudioProfile(false);
-      return 1;
-    }
-    case WM_HP_SECONDARY_RELOAD_READY: {
-      if (!secondaryStationhead_) return 0;
-      const int64_t now = UnixMillis();
-      if (secondaryTrackBoundaryPendingUntil_ <= 0) {
-        secondaryTrackBoundaryPendingUntil_ =
-            now + kStationheadTrackTransitionGraceMs;
-        secondaryTrackBoundaryHandoffReadyAt_ =
-            now + kStationheadHandoffAudioStabilityMs;
-        return 0;
-      }
-      if (secondaryStationhead_->AudioPlaying()) {
-        secondaryTrackBoundaryPendingUntil_ = 0;
-        secondaryTrackBoundaryHandoffReadyAt_ = 0;
-        secondaryStationhead_->CancelPendingTrackBoundaryRefresh();
-        if (logger_) {
-          logger_->Info(
-              L"Stationhead B track-boundary refresh cancelled at readiness check because the next track already started");
-        }
-        return 0;
-      }
-      if (now >= secondaryTrackBoundaryPendingUntil_) {
-        secondaryTrackBoundaryPendingUntil_ = 0;
-        secondaryTrackBoundaryHandoffReadyAt_ = 0;
-        secondaryStationhead_->CancelPendingTrackBoundaryRefresh();
-        return 0;
-      }
-      const bool handoffPlaying = stationhead_->AudioPlaying();
-      const int64_t handoffPlayingSince = stationhead_->AudioPlayingSince();
-      if (!handoffPlaying || handoffPlayingSince <= 0) {
-        secondaryTrackBoundaryHandoffReadyAt_ =
-            now + kStationheadHandoffAudioStabilityMs;
-        return 0;
-      }
-      secondaryTrackBoundaryHandoffReadyAt_ = StableAudioReadyAt(
-          secondaryTrackBoundaryHandoffReadyAt_, handoffPlayingSince);
-      if (now < secondaryTrackBoundaryHandoffReadyAt_) return 0;
-      secondaryTrackBoundaryPendingUntil_ = 0;
-      secondaryTrackBoundaryHandoffReadyAt_ = 0;
-      ApplyScheduledStationheadAudioProfile(true);
-      return 1;
-    }
     case WM_HP_STATIONHEAD_CHANGED: {
-      const uint32_t primaryChanges = stationhead_->ConsumeChangeFlags();
-      const uint32_t secondaryChanges = secondaryStationhead_
-          ? secondaryStationhead_->ConsumeChangeFlags()
-          : 0;
-      const uint32_t changes = primaryChanges | secondaryChanges;
-      const int64_t now = UnixMillis();
-      ProcessPendingStationheadTrackBoundaryRefreshes(now);
-      bool layoutChanged = false;
-      if ((primaryChanges & StationheadChangeReleaseAuth) != 0) {
+      if (!stationhead_) return 0;
+      const uint32_t changes = stationhead_->ConsumeChangeFlags();
+      if ((changes & StationheadChangeReleaseAuth) != 0) {
         stationhead_->ReleaseCompletedAuth();
       }
-      if (secondaryStationhead_ &&
-          (secondaryChanges & StationheadChangeReleaseAuth) != 0) {
-        secondaryStationhead_->ReleaseCompletedAuth();
-      }
-      bool showPlayer = false;
-      if ((primaryChanges & StationheadChangeShowPlayer) != 0) {
+      if ((changes & StationheadChangeShowPlayer) != 0) {
         stationhead_->ShowAfterAudioStop();
-        showPlayer = true;
       }
-      if (secondaryStationhead_ &&
-          (secondaryChanges & StationheadChangeShowPlayer) != 0) {
-        secondaryStationhead_->ShowAfterAudioStop();
-        showPlayer = true;
-      }
-      if (showPlayer) {
-        if (selectedTab_ != WorkspaceTab::Main) {
-          selectedTab_ = WorkspaceTab::Main;
-          layoutChanged = true;
-        }
-      } else if (ShouldReturnMainForStationheadChanges(changes) &&
-                 selectedTab_ != WorkspaceTab::Main) {
-        selectedTab_ = WorkspaceTab::Main;
-        layoutChanged = true;
-      }
-      if (layoutChanged) LayoutWorkspace();
       MarkStationheadPlacementDirty();
-      StationheadStatus renderStationheadState = stationhead_->Status();
-      StationheadStatus secondaryStatus =
-          secondaryStationhead_ ? secondaryStationhead_->Status() : StationheadStatus{};
-      EnrichRenderStationheadState(
-          renderStationheadState,
-          secondaryStationhead_ ? &secondaryStatus : nullptr,
-          config_.stationhead);
-      renderStationheadState.primaryAudioSelected = scheduledPrimaryAudioAudible_;
-      const bool stateChanged = UpdateRenderStationheadState(std::move(renderStationheadState));
-      if (!rendererStarted_) {
-        StartDeferredServices(UnixMillis(), renderState_.stationhead);
-      } else if (!layoutChanged && stateChanged) {
-        if (selectedTab_ == WorkspaceTab::Main) {
-          ApplyStationheadWindowPlacement(renderState_.stationhead, secondaryStatus);
-        } else {
-          LayoutWorkspace();
-        }
-      }
-      if (layoutChanged || stateChanged) PublishRenderStateNow();
+      ApplyStationheadWindowPlacement(stationhead_->Status(), StationheadStatus{});
+      ScheduleNextTick(1);
       return 0;
     }
     case kStationheadHealthUpdatedMessage:
@@ -374,7 +109,6 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         if (toastText_ != health) ShowToast(std::move(health), 0, false);
       }
       return 0;
-#endif
 
     case WM_HP_CONFIG_UPDATED:
       ShowToast(L"クラウド設定を保存しました。再起動時に適用します", 5000);
