@@ -39,10 +39,8 @@ void SpotifyWebViews::Start() noexcept {
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
   robustSchedulerStarted_ = false;
-  staggerSlotIndex_ = 0;
-  staggerSlotStartTick_ = 0;
+  schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
-  staggerSlotValidated_ = false;
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
   hostLayoutAuthenticationSlot_ = kAccountCount;
@@ -58,25 +56,17 @@ void SpotifyWebViews::Start() noexcept {
     slot.controllerCreating = false;
     slot.controllerCreateTick = 0;
     slot.timedTarget = TimedSpotifyTarget::None;
-    slot.timedCatalogIndex = kNoTimedCatalogIndex;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
     slot.timedPlaybackStartTick = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
-    slot.timedRandomFIndex = kNoTimedCatalogIndex;
-    slot.timedMiddleOrder = {
-        TimedSpotifyTarget::BitterBlue,
-        TimedSpotifyTarget::Monshirocho,
-        TimedSpotifyTarget::Munen,
-        TimedSpotifyTarget::OnMyWay,
-    };
     slot.timedRotationActive = false;
     if (!CreateHost(slot)) continue;
   }
 
   // Controller creation is serialized. Slot 0 starts immediately; the scheduler
-  // creates the remaining accounts when each 40-second start offset arrives.
+  // creates the remaining accounts when each ten-second start offset arrives.
   if (!slots_.empty() && slots_[0].hostWindow) {
     CreateController(slots_[0]);
   }
@@ -169,8 +159,7 @@ void SpotifyWebViews::Shutdown() noexcept {
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
   robustSchedulerStarted_ = false;
-  staggerSlotIndex_ = 0;
-  staggerSlotStartTick_ = 0;
+  schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
 }
 
