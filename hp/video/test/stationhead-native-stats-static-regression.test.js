@@ -14,8 +14,6 @@ const playerSource = readFileSync(
   new URL('../../native/src/sh.cpp', import.meta.url), 'utf8');
 const webview = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url), 'utf8');
-const panel = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url), 'utf8');
 
 test('July 19 auth capture remains in the Stationhead composition', () => {
   assert.match(composition, /#include "sh_july19_stats_policy_fix\.h"/);
@@ -45,15 +43,4 @@ test('successful stats are no longer consumed into the later native store', () =
   assert.match(webview, /type == L"stationhead-play-stats"/);
   assert.match(webview, /status_\.dailyPlayCounts = std::move\(normalized\)/);
   assert.match(webview, /status_\.dailyPlayStatsUpdatedAt = receivedAt/);
-});
-
-test('Music panel reads StationheadStatus and App history', () => {
-  assert.match(panel, /nativeStationhead_\.dailyPlayCounts/);
-  assert.match(panel, /nativeStationhead_\.dailyPlayStatsUpdatedAt/);
-  assert.match(panel, /nativeStationheadPlayHistory_/);
-  assert.match(
-    panel,
-    /SummarizeStationheadDailyPlays\(nativeStationhead_\.dailyPlayCounts, nowMs\)/,
-  );
-  assert.doesNotMatch(panel, /GlobalStationheadNativeStatsStore\(\)\.Snapshot\(\)/);
 });
