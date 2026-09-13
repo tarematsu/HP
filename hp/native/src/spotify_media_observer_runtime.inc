@@ -29,8 +29,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     identityFallbackTimer: 0,
     identityFallbackMedia: null,
     identityFallbackKey: '',
-    interruptionStartedAt: 0,
-    interruptionIdentityKey: ''
+    interruptionStartedAt: 0
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
@@ -61,13 +60,10 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   };
   const clearInterruption = () => {
     state.interruptionStartedAt = 0;
-    state.interruptionIdentityKey = '';
   };
-  const beginInterruption = identity => {
+  const beginInterruption = () => {
     if (state.interruptionStartedAt) return;
     state.interruptionStartedAt = Date.now();
-    state.interruptionIdentityKey =
-        [identity && identity.path || '', identity && identity.title || ''].join('|');
     post('spotify:timed-interruption-started');
   };
   const cancelInterruption = () => {
@@ -161,6 +157,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     clearTrustedStart();
     return true;
   };
+)JS"
+LR"JS(
 
   // Identity validation normally requires the now-playing surface or
   // MediaSession metadata. Immediately after native has verified and clicked an
@@ -185,13 +183,12 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     } else if (!matchesTarget(target, identity)) {
       clearTrustedStart();
 
-      // Spotify ads and similar inserted audio normally have active media and
-      // metadata but no /track/ identity. Treat that as a provisional
-      // interruption. If Spotify subsequently exposes a concrete different
-      // /track/, cancel the interruption instead of extending the requested
-      // song's deadline for an actual wrong-song playback.
+      // Inserted ads normally expose active media and metadata but no /track/
+      // identity. Keep that provisional until the requested track resumes. A
+      // concrete different /track/ is a wrong song, not billable interruption
+      // time, so it cancels the provisional hold immediately.
       if (!media.paused && !identity.path) {
-        beginInterruption(identity);
+        beginInterruption();
         if (!state.startPosted) return 'unknown';
         return 'interruption';
       }
