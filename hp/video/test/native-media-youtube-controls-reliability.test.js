@@ -25,14 +25,14 @@ test('YouTube steady watchdog is low-frequency and event assisted', () => {
   assert.doesNotMatch(base + host, /kNativeMediaYoutubeControlWatchdogMs|kNativeMediaYoutubeHealthTimer/);
 });
 
-test('YouTube watchdog self-heals lost and stale ExecuteScript callbacks', () => {
-  assert.match(host, /kYoutubeWatchdogTimeoutMs = 5ULL \* 1000ULL/);
-  assert.match(host, /uint64_t youtubeWatchdogRequestGeneration_ = 0/);
-  assert.match(host, /ULONGLONG youtubeWatchdogStartedTick_ = 0/);
-  assert.match(
-    host,
-    /youtubeWatchdogInFlight_[\s\S]*youtubeWatchdogStartedTick_[\s\S]*kYoutubeWatchdogTimeoutMs[\s\S]*InvalidateYoutubeWatchdog\(\)/,
-  );
+test('the one active media WebView uses one stale-callback watchdog state', () => {
+  assert.match(host, /kWatchdogTimeoutMs = 5ULL \* 1000ULL/);
+  assert.match(host, /uint64_t watchdogGeneration_ = 0/);
+  assert.match(host, /ULONGLONG watchdogStartedTick_ = 0/);
+  assert.match(host, /bool watchdogInFlight_ = false/);
+  assert.match(host, /BeginWatchdogProbe/);
+  assert.match(host, /FinishWatchdogProbe/);
+  assert.doesNotMatch(host, /youtubeWatchdogRequestGeneration_|tverWatchdogRequestGeneration_/);
 });
 
 test('trusted WebView2 clicks convert raw Win32 coordinates to CSS pixels', () => {
@@ -52,14 +52,15 @@ test('YouTube skip detection remains player-local and variant tolerant', () => {
   assert.doesNotMatch(recovery, /document\.querySelectorAll\(skipSelectors/);
 });
 
-test('YouTube message dialogs auto-close explicit Close controls only', () => {
+test('YouTube message dialogs use the same scoped observer as player state', () => {
   assert.match(agent, /closePattern = \/\^\(閉じる\|close\)\$\/i/);
   assert.match(agent, /document\.querySelector\('ytd-popup-container'\)/);
-  assert.match(agent, /state\.popupObserver\.observe\(popupContainer/);
+  assert.match(agent, /state\.observer\.observe\(popupContainer/);
+  assert.match(agent, /state\.observer\.observe\(player/);
   assert.match(agent, /close\.click\(\)/);
   assert.match(agent, /isSurveyDialog/);
   assert.match(agent, /root\?\.querySelector\?\.\(surveyDialogMarkerSelector\)/);
-  assert.doesNotMatch(agent, /popupObserver\.observe\(document\.(?:documentElement|body)/);
+  assert.doesNotMatch(agent, /popupObserver|classObserver/);
 });
 
 test('YouTube content recovery retries fullscreen until actual entry is confirmed', () => {
