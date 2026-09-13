@@ -25,17 +25,18 @@ const lifecycle = readFileSync(new URL('../../native/src/renderer_lifecycle.cpp'
 const mediaPanel = readFileSync(new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const mediaHost = readFileSync(new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 
-test('five Spotify accounts share the WebView2 environment while using isolated profiles', () => {
-  assert.match(header, /kSpotifyActiveAccountCount = 5/);
+test('four Spotify accounts keep their existing isolated profiles after amazon moves to Stationhead', () => {
+  assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
+  assert.match(header, /kSpotifyActiveAccountCount = 4/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
   assert.match(scripts, /std::array<std::wstring_view, kSpotifyActiveAccountCount> kSpotifyPanelNames/);
-  assert.match(scripts, /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata"/);
-  assert.doesNotMatch(scripts, /L"ozeki"/);
+  assert.match(scripts, /L"yuukiar", L"ten", L"nagi", L"hinata"/);
+  assert.doesNotMatch(scripts, /L"amazon"|L"ozeki"/);
   assert.match(spotify, /webview2-youtube-mv/);
   assert.match(mediaHost, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
   assert.match(spotify, /kSpotifyProfilePrefix\[\] = L"spotify-"/);
-  assert.match(spotify, /std::to_wstring\(target->index \+ 1\)/);
+  assert.match(spotify, /target->index \+ kSpotifyProfileFirstAccountNumber/);
   assert.match(spotify, /put_ProfileName\(profileName\.c_str\(\)\)/);
   assert.match(spotify, /CreateCoreWebView2ControllerWithOptions/);
   assert.doesNotMatch(spotify, /CreateCoreWebView2EnvironmentWithOptions/);
@@ -178,8 +179,8 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow/);
 });
 
-test('all five Spotify WebViews remain natively muted', () => {
-  assert.match(header, /kSpotifyActiveAccountCount = 5/);
+test('all four remaining Spotify WebViews remain natively muted', () => {
+  assert.match(header, /kSpotifyActiveAccountCount = 4/);
   assert.match(spotify, /ComPtr<ICoreWebView2_8> audio/);
   assert.match(spotify, /audio->put_IsMuted\(TRUE\)/);
   assert.match(spotify, /SetSpotifyOutputMuted\(slot\.webview\)/);
