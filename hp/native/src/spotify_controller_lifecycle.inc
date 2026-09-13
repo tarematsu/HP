@@ -19,7 +19,6 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
           if (FAILED(result) || !environment || !target->hostWindow ||
               !IsWindow(target->hostWindow)) {
             target->controllerCreating = false;
-            target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
             return;
@@ -30,7 +29,6 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
           if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment10))) ||
               !environment10) {
             target->controllerCreating = false;
-            target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
             return;
@@ -39,7 +37,6 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
           if (FAILED(environment10->CreateCoreWebView2ControllerOptions(&options)) ||
               !options) {
             target->controllerCreating = false;
-            target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
             return;
@@ -50,7 +47,6 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
           if (FAILED(options->put_ProfileName(profileName.c_str())) ||
               FAILED(options->put_IsInPrivateModeEnabled(FALSE))) {
             target->controllerCreating = false;
-            target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
             return;
@@ -66,7 +62,6 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                       return S_OK;
                     }
                     target->controllerCreating = false;
-                    target->controllerCreateTick = 0;
                     if (FAILED(controllerResult) || !controller ||
                         !target->hostWindow || !IsWindow(target->hostWindow)) {
                       if (controller) controller->Close();
@@ -83,6 +78,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                       ArmRobustScheduler();
                       return S_OK;
                     }
+                    target->controllerCreateTick = 0;
                     Configure(*target);
                     ArmRobustScheduler();
                     return S_OK;
@@ -93,14 +89,12 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                   target->hostWindow, options.Get(), ready.Get());
           if (FAILED(createResult)) {
             target->controllerCreating = false;
-            target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
           }
         });
   } catch (...) {
     slot.controllerCreating = false;
-    slot.controllerCreateTick = 0;
     MarkSlotRecovering(slot, GetTickCount64());
     ArmRobustScheduler();
   }
@@ -163,10 +157,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                                   ICoreWebView2NavigationStartingEventArgs* args)
                 -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
-              // Navigation replaces the page document, not the requested
-              // rotation target. Keep targetGeneration stable so a Spotify
-              // redirect/reload cannot invalidate the native A -> B completion
-              // deadline. Only invalidate async work tied to the old document.
               ++target->reconcileRequestGeneration;
               if (target->reconcileRequestGeneration == 0) {
                 ++target->reconcileRequestGeneration;
