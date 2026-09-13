@@ -21,6 +21,12 @@ class PowerSavingController {
   static void AttachCurrent(HWND parent);
 
  private:
+  enum class AudioMode {
+    Media,
+    Stationhead,
+    Muted,
+  };
+
   struct BrightnessState;
 
   static constexpr UINT_PTR kScheduleTimer = 1;
@@ -48,7 +54,8 @@ class PowerSavingController {
   void OpenMvStartupInputPass();
   void CloseMvStartupInputPass();
   void ApplyMode(bool enabled);
-  void ApplyMediaMute(bool enabled) noexcept;
+  void CycleAudioMode() noexcept;
+  void ApplyAudioMode(AudioMode mode) noexcept;
   void ApplyMinimumBrightness() noexcept;
   void RestoreBrightness() noexcept;
   void RefreshMinimumBrightness() noexcept;
@@ -62,6 +69,7 @@ class PowerSavingController {
   HWND parent_ = nullptr;
   HWND overlay_ = nullptr;
   bool powerSaving_ = false;
+  AudioMode audioMode_ = AudioMode::Media;
   bool mediaMuted_ = false;
   bool mvStartupInputPass_ = false;
   bool scheduleInitialized_ = false;
