@@ -18,11 +18,6 @@ class SpotifyWebViews final {
   void Shutdown() noexcept;
   void SetNetworkBlocked(bool blocked) noexcept;
 
-  enum class TimedSpotifyTarget : unsigned char {
-    None,
-    Music,
-  };
-
  private:
   static constexpr size_t kAccountCount = 6;
   static constexpr UINT kSpotifySchedulerMessage = WM_APP + 0x53;
@@ -69,7 +64,6 @@ class SpotifyWebViews final {
     ULONGLONG lastModeNavigateTick = 0;
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG timedRotationCycle = 0;
-    ULONGLONG timedPlaybackStartTick = 0;
     ULONGLONG timedInterruptionStartTick = 0;
     ULONGLONG timedCompletionDeadlineTick = 0;
     ULONGLONG timedCompletionDeadlineGeneration = 0;
@@ -97,13 +91,6 @@ class SpotifyWebViews final {
     bool timedRotationActive = false;
     bool hostLayoutApplied = false;
     bool hostLayoutReducedZoomApplied = false;
-    TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
-  };
-
-  struct MusicTargetDescriptor {
-    const wchar_t* title = nullptr;
-    const wchar_t* url = nullptr;
-    const wchar_t* path = nullptr;
   };
 
   static LRESULT CALLBACK HostWndProc(
@@ -142,7 +129,7 @@ class SpotifyWebViews final {
   void EnsureCloudPlaylistLoaded() noexcept;
   ULONGLONG NextTimedRandom() noexcept;
   void PrepareTimedRotationCycle(Slot& slot) noexcept;
-  MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
+  const ManagedTrack* CurrentMusicTrack(const Slot& slot) const noexcept;
   bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
   void ArmMusicCompletionDeadlineFromStart(
       Slot& slot, ULONGLONG playbackStartTick,
