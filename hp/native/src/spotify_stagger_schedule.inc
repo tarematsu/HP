@@ -64,16 +64,24 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const auto asyncIdle = [](const Slot& slot) noexcept {
     return !slot.reconcileInFlight && !slot.timedObserverInstallInFlight;
   };
+  const auto controllerReady = [now](const Slot& slot) noexcept {
+    if (slot.webview) return true;
+    if (slot.controllerCreating) return false;
+    return slot.controllerCreateTick == 0 ||
+           now - slot.controllerCreateTick >= kSpotifyRobustControllerRetryMs;
+  };
 
   size_t selected = count;
 
   // First priority: explicit recovery. Round-robin scanning prevents one slow
-  // WebView from monopolizing the shared DOM lane.
+  // WebView from monopolizing the shared DOM lane. Controller failures honor
+  // their own cooldown and therefore cannot consume empty scheduler passes.
   for (size_t step = 0; step < count; ++step) {
     const size_t index = (scanStart + step) % count;
     const Slot& candidate = slots_[index];
     if (!startupReady(index) || candidate.state != SlotState::Recovering ||
-        !asyncIdle(candidate) || !retryReady(candidate)) {
+        !controllerReady(candidate) || !asyncIdle(candidate) ||
+        !retryReady(candidate)) {
       continue;
     }
     selected = index;
@@ -86,7 +94,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     for (size_t step = 0; step < count; ++step) {
       const size_t index = (scanStart + step) % count;
       const Slot& candidate = slots_[index];
-      if (!startupReady(index)) continue;
+      if (!startupReady(index) || !controllerReady(candidate)) continue;
       const bool pending = !candidate.timedRotationActive ||
                            SlotStateNeedsRecovery(candidate.state);
       if (!pending) continue;
