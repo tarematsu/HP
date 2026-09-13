@@ -2,7 +2,7 @@ namespace hp {
 namespace {
 
 constexpr UINT kSpotifySchedulerBootstrapMs = 2U * 1000U;
-constexpr UINT kSpotifyHealthyAuditMs = 60U * 1000U;
+constexpr UINT kSpotifyHealthyAuditMs = 5U * 60U * 1000U;
 constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyQueueRetryMs = 4ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
