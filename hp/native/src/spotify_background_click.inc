@@ -26,17 +26,15 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return;
 
   // Parked surfaces are playback-only. Expanding a responsive page invalidates
-  // coordinates measured at 320x180, so the first pass only promotes recovery
-  // ownership. The next settled reconcile obtains a fresh point before click.
+  // coordinates measured at 320x180, so the first pass only promotes this slot
+  // to the recovery layout. The next reconcile obtains a fresh point before click.
   const bool recoveryViewportReady =
       hostLayoutActiveSlot_ == slot.index && SlotStateNeedsRecovery(slot.state);
   if (!recoveryViewportReady) {
     const ULONGLONG now = GetTickCount64();
     MarkSlotRecovering(slot, now);
     slot.lastTimedReconcileTick = 0;
-    staggerSlotIndex_ = slot.index;
-    staggerSlotStartTick_ = now;
-    staggerSlotValidated_ = false;
+    schedulerCursor_ = slot.index;
     RefreshSpotifyHostLayout();
     ArmRobustScheduler();
     return;
