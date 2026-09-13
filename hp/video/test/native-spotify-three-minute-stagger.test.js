@@ -31,12 +31,14 @@ test('Spotify startup uses one shared ten-second offset and one adaptive schedul
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
 });
 
-test('Spotify schedule starts autonomously and loads cloud playlist before rotation', () => {
+test('Spotify schedule starts autonomously and loads cloud playlist once ready before rotation', () => {
   assert.match(header, /scheduleStartTick_ = 0/);
   assert.match(header, /void StartAutonomousSchedule\(ULONGLONG now\) noexcept/);
   assert.match(hostLifecycle, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
-  assert.match(schedule, /EnsureCloudPlaylistLoaded\(\)[\s\S]*robustSchedulerStarted_ = true/);
+  assert.match(schedule, /BeginInitialCloudPlaylistWait\(now\)[\s\S]*robustSchedulerStarted_ = true/);
+  assert.match(schedule, /if \(!InitialCloudPlaylistReady\(now\)\) return/);
+  assert.match(schedule, /if \(cloudPlaylistWasReady\) EnsureCloudPlaylistLoaded\(\)/);
   assert.match(
     schedule,
     /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot\);[\s\S]*CurrentMusicTrack\(slot\)[\s\S]*NavigateMusicTarget\(slot\);/,

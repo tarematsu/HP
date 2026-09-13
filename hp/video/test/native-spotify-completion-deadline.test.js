@@ -105,7 +105,7 @@ test('scheduler timer directly considers completion startup retry timeout and au
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
   assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
-  assert.match(phase, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
+  assert.match(phase, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
   assert.match(phase, /SpotifyDeadlineWithInterruptionHold/);
   assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
   assert.match(phase, /slot\.reconcileStartedTick \+ kSpotifyAsyncOperationTimeoutMs/);

@@ -39,8 +39,8 @@ test('slow multi-window recovery is time based instead of retry-count based', ()
   assert.doesNotMatch(header, /unhealthyChecks/);
 });
 
-test('healthy scheduler uses a 60-second ceiling and exact ten-second startup boundaries', () => {
-  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
+test('healthy scheduler uses a five-minute ceiling and exact ten-second startup boundaries', () => {
+  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(
     phaseSync,
@@ -85,7 +85,7 @@ test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('authentication and recovery stay visible while healthy playback enters low-power mode', () => {
+test('authentication recovery and healthy playback remain visible with compact healthy geometry', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
@@ -105,7 +105,8 @@ test('authentication and recovery stay visible while healthy playback enters low
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
   );
   assert.match(layout, /const bool lowPowerPlayback =/);
-  assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
+  assert.match(layout, /put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
   assert.match(layout, /x = client\.right \+ 32/);
   assert.match(layout, /insertAfter = HWND_TOP/);
 });
