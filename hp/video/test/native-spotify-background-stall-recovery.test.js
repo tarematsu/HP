@@ -12,8 +12,6 @@ const runtime = readFileSync(
   new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
-const deadlineEvents = readFileSync(
-  new URL('../../native/src/spotify_music_deadline_events.inc', import.meta.url), 'utf8');
 const phase = readFileSync(
   new URL('../../native/src/spotify_phase_sync.inc', import.meta.url), 'utf8');
 const header = readFileSync(
@@ -61,8 +59,12 @@ test('track completion remains native-deadline driven with no media heartbeat', 
   assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
   assert.doesNotMatch(runtime + events, /heartbeatTimer|heartbeatMisses|requestRecovery/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
-  assert.match(deadlineEvents, /ShortenMusicCompletionDeadlineAtEnd/);
-  assert.doesNotMatch(deadlineEvents, /AdvanceTimedRotationSlot/);
+  assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
+
+  const endedStart = rotation.indexOf('if (ended) {');
+  const endedEnd = rotation.indexOf('SetSlotState(*target, SlotState::Playing)', endedStart);
+  assert.ok(endedStart >= 0 && endedEnd > endedStart);
+  assert.doesNotMatch(rotation.slice(endedStart, endedEnd), /AdvanceTimedRotationSlot/);
 });
 
 test('lost ExecuteScript callbacks expire instead of wedging a slot forever', () => {
@@ -82,8 +84,8 @@ test('playback anomalies cannot postpone the native completion deadline', () => 
   assert.doesNotMatch(header, /kSpotifyMusicTrackDeadlineMs/);
   assert.doesNotMatch(runtime + events + rotation, /spotify:not-playing/);
   assert.doesNotMatch(runtime + events, /requestRecovery|scheduleRecovery/);
-  assert.match(rotation, /timedCompletionDeadlineTick == 0/);
-  assert.match(rotation, /timedCompletionDeadlineGeneration != eventGeneration/);
+  assert.match(music, /timedCompletionDeadlineTick != 0/);
+  assert.match(music, /timedCompletionDeadlineGeneration == slot\.targetGeneration/);
   assert.doesNotMatch(rotation, /timed-plan-clear|candidateDeadline/);
   assert.doesNotMatch(events, /addEventListener\('timeupdate'/);
   assert.match(music, /timedCompletionDeadlineTick > endedTick/);
