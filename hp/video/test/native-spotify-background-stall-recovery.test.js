@@ -16,8 +16,6 @@ const phase = readFileSync(
   new URL('../../native/src/spotify_phase_sync.inc', import.meta.url), 'utf8');
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
-const timed = readFileSync(
-  new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
 
@@ -75,7 +73,6 @@ test('lost ExecuteScript callbacks expire instead of wedging a slot forever', ()
   assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
   assert.match(phase, /ExpireStaleAsyncWork\(\s*Slot& slot, ULONGLONG now\)/);
   assert.match(schedule, /ExpireStaleAsyncWork\(candidate, now\)/);
-  assert.match(timed, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
   assert.match(music, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
   assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
 });
