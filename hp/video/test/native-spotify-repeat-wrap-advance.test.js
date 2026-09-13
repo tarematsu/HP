@@ -43,7 +43,7 @@ test('playback wrap cannot postpone the native deadline and ended may only short
   );
   assert.doesNotMatch(runtime + events, /terminalWrapObserved|completionPlanExpired|postCompletionPlan/);
   assert.match(rotation, /SpotifyDeadlineWithInterruptionHold/);
-  assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
+  assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot\)/i);
   assert.match(rotation, /spotify:timed-interruption-ended/);
   assert.match(rotation, /spotify:timed-ended/);
   assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
