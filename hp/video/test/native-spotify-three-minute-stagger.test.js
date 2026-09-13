@@ -12,7 +12,6 @@ const music = readFileSync(new URL('../../native/src/spotify_music_target.inc', 
 const routing = readFileSync(new URL('../../native/src/spotify_target_routing.inc', import.meta.url), 'utf8');
 const fallback = readFileSync(new URL('../../native/src/spotify_fallback_catalog.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
-const scripts = readFileSync(new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
 const scoped = readFileSync(new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const events = readFileSync(new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
@@ -35,20 +34,18 @@ test('Spotify schedule starts autonomously and loads cloud playlist before rotat
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
   assert.match(schedule, /EnsureCloudPlaylistLoaded\(\)[\s\S]*robustSchedulerStarted_ = true/);
   assert.match(schedule, /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot, now\)/);
-  assert.doesNotMatch(header + schedule, /podcastMode_|SetPodcastMode|youtubeCycleStartTick_/);
+  assert.doesNotMatch(header + schedule, /youtubeCycleStartTick_/);
 });
 
-test('cloud rotation supports fixed, shuffle, random, TALKABOUT candidates, and cycle dedupe', () => {
+test('cloud rotation supports fixed, shuffle, random, and cycle dedupe', () => {
   assert.match(header, /struct RotationGroup/);
   assert.match(header, /Mode : unsigned char \{ Fixed, Shuffle, Random \}/);
   assert.match(header, /std::vector<ManagedTrack> tracks/);
-  assert.match(header, /bool includeTalkAbout = false/);
   assert.match(header, /std::vector<ManagedTrack> timedCycleTracks/);
   assert.match(cloud, /GetNamedArray\(L"rotation"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"fixed"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"shuffle"\)/);
   assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"random"\)/);
-  assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
   assert.match(cloud, /GetNamedNumber\(L"count", 1\.0\)/);
   assert.match(cycle, /std::vector<std::wstring> usedPaths/);
   assert.match(cycle, /for \(const RotationGroup& group : cloudRotationGroups_\) appendGroup\(group\)/);
@@ -108,21 +105,12 @@ test('invalid or absent cloud rotation retains the former six-song fallback', ()
   assert.match(cycle, /kSpotifyFallbackCatalogTracks\.size\(\)/);
 });
 
-test('TALKABOUT direct episode and playback rate are cloud-managed without a timed interval', () => {
-  assert.match(cloud, /GetNamedObject\(L"talkAbout"\)/);
-  assert.match(cloud, /GetNamedString\(L"episodeUrl", L""\)/);
-  assert.match(cloud, /ManagedSpotifyPathFromUrl\(episodeUrl, L"\/episode\/"\)/);
-  assert.match(cloud, /SpotifyPodcastTargetReady\(\) const noexcept/);
-  assert.match(cloud, /GetNamedNumber\([\s\S]*L"playbackRate"/);
-  assert.doesNotMatch(cloud + header + schedule + rotation, /intervalMinutes|SpotifyPodcastIntervalMs|StartOverduePodcastBreak/);
-  assert.match(routing, /SpotifyPodcastPlaybackRate\(\)/);
-  assert.match(scripts, /target && target\.playbackRate/);
-  assert.match(scripts, /Math\.max\(0\.5, Math\.min\(4\.0, requestedRate\)\)/);
-  assert.match(timed, /SpotifyPodcastPath\(\)/);
-  assert.match(timed, /SpotifyPodcastUrl\(\)/);
-  assert.doesNotMatch(timed, /source\.find\(L"\/episode\/"\)/);
-  assert.match(rotation, /target\.path == SpotifyPodcastPath\(\)/);
-  assert.match(rotation, /TimedSpotifyTarget::TalkAbout/);
+test('Spotify runtime is music-only', () => {
+  assert.doesNotMatch(
+    header + cloud + cycle + timed + routing + rotation + schedule,
+    /TalkAbout|TALKABOUT|talkAbout|includeTalkAbout|SpotifyPodcast|podcastBreakActive/,
+  );
+  assert.match(routing, /kind = L"music"/);
 });
 
 test('fallback catalog excludes fixed songs and unsupported variants', () => {
