@@ -70,7 +70,7 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
       } else if (PtInRect(&powerButton, point)) {
         controller->ApplyMode(!controller->powerSaving_);
       } else if (PtInRect(&muteButton, point)) {
-        controller->ApplyMediaMute(!controller->mediaMuted_);
+        controller->CycleAudioMode();
       }
       return 0;
     }
@@ -287,9 +287,16 @@ void PowerSavingController::PaintOverlay(HWND window) {
   drawButton(
       powerButton, powerSaving_, RGB(30, 92, 55), RGB(74, 180, 105),
       powerSaving_ ? L"モニター ON" : L"モニター");
+
+  const wchar_t* audioModeLabel = L"ミュートA";
+  if (audioMode_ == AudioMode::Stationhead) {
+    audioModeLabel = L"ミュートB";
+  } else if (audioMode_ == AudioMode::Muted) {
+    audioModeLabel = L"ミュートAB";
+  }
   drawButton(
       muteButton, mediaMuted_, RGB(88, 43, 47), RGB(190, 92, 102),
-      mediaMuted_ ? L"ミュート ON" : L"ミュート");
+      audioModeLabel);
 
   EndPaint(window, &paint);
 }
