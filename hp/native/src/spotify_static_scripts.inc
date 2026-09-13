@@ -58,18 +58,11 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
       }
       if (fields[0] !== 'spotify:target') return;
 
-      window.__homePanelSpotifyNativeTarget = {
-        pagePath: fields[1] || '',
-        trackPath: fields[2] || '',
-        title: (fields[3] || '').replace(/\s+/g, ' ').trim().toLowerCase(),
-        kind: fields[4] || ''
-      };
-
-      // Target messages describe intent only. They never stop media. Playback
-      // ownership belongs to the media observer, while target transitions are
-      // performed by navigation. Keeping the bridge non-destructive removes the
-      // race where an asynchronous target message pauses a freshly started item
-      // at currentTime=0.
+      const path = fields[1] || '';
+      window.__homePanelSpotifyNativeTarget = path ? {
+        path,
+        title: (fields[2] || '').replace(/\s+/g, ' ').trim().toLowerCase()
+      } : null;
     });
   }
   return true;
