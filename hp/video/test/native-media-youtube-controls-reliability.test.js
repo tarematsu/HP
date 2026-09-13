@@ -63,7 +63,7 @@ test('YouTube message dialogs auto-close explicit Close controls only', () => {
 });
 
 test('YouTube content recovery retries fullscreen until actual entry is confirmed', () => {
-  const paused = recovery.indexOf('video && video.paused && !video.ended');
+  const paused = recovery.indexOf('video && video.paused');
   const confirmed = recovery.lastIndexOf('if (trusted.fullscreen())');
   const contentFullscreen = recovery.lastIndexOf("player.querySelector('.ytp-fullscreen-button')");
   const arm = recovery.lastIndexOf("trusted.arm(target, 'fullscreen', 1200)");
@@ -82,4 +82,19 @@ test('YouTube content recovery retries fullscreen until actual entry is confirme
     /fullscreenAction[\s\S]{0,160}recoveryState\.fullscreenApplied = true/,
   );
   assert.match(recovery, /return trusted\.arm\(target, 'fullscreen', 1200\)/);
+});
+
+test('YouTube stalled playback retries once then advances the playlist', () => {
+  assert.match(recovery, /pauseEscalationMs = 10 \* 1000/);
+  assert.match(recovery, /stallEscalationMs = 30 \* 1000/);
+  assert.match(recovery, /playRetryAttempted/);
+  assert.match(recovery, /advanceToNextPlaylistItem/);
+  assert.match(recovery, /\.ytp-next-button\[href\]/);
+  assert.match(recovery, /location\.assign\(candidate\.href\)/);
+  assert.match(recovery, /typeof player\.nextVideo === 'function'/);
+  assert.match(agent, /recoveryTimer/);
+  assert.match(agent, /'waiting', 'stalled'/);
+  assert.match(agent, /scheduleRecoveryWake\(10 \* 1000 \+ 500\)/);
+  assert.match(agent, /scheduleRecoveryWake\(30 \* 1000 \+ 500\)/);
+  assert.match(agent, /wake\(true\)/);
 });
