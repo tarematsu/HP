@@ -26,6 +26,20 @@ test('Spotify watches the same device config cache replaced by CloudClient sync'
   assert.match(schedule, /RunStaggeredReconcile\(\)[\s\S]*EnsureCloudPlaylistLoaded\(\)/);
 });
 
+test('each scheduler pass checks the synchronized playlist cache at most once', () => {
+  const startAt = schedule.indexOf('void SpotifyWebViews::StartAutonomousSchedule');
+  const runAt = schedule.indexOf('void SpotifyWebViews::RunStaggeredReconcile');
+  assert.ok(startAt >= 0 && runAt > startAt);
+  const start = schedule.slice(startAt, runAt);
+  const run = schedule.slice(runAt);
+  assert.doesNotMatch(start, /EnsureCloudPlaylistLoaded\(\)/);
+  assert.match(run, /const bool cloudPlaylistWasReady = initialCloudPlaylistReady_/);
+  assert.match(run, /if \(!InitialCloudPlaylistReady\(now\)\) return/);
+  assert.match(run, /if \(cloudPlaylistWasReady\) EnsureCloudPlaylistLoaded\(\)/);
+  assert.equal((run.match(/EnsureCloudPlaylistLoaded\(\)/g) ?? []).length, 1);
+  assert.match(loader, /if \(initialCloudPlaylistReady_\) EnsureCloudPlaylistLoaded\(\)/);
+});
+
 test('device config cache identity/version mismatch forces a full cloud refresh', () => {
   assert.match(cloudSync, /const auto requestedDeviceConfigVersion = \[&\]\(\)/);
   assert.match(cloudSync, /GetNamedNumber\(L"version", -1\.0\)/);
