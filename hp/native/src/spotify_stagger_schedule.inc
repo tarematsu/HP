@@ -116,11 +116,39 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const size_t scheduledIndex =
       SimpleSpotifyScheduledIndex(elapsed, slots_.size());
 
+  // Healthy accounts keep the low-cost 40-second ownership cadence. An account
+  // that explicitly entered Recovering is different: the robust scheduler is
+  // already waking every two seconds for it, so let the oldest recovering
+  // non-owner jump ahead instead of waiting up to a full six-account round.
+  size_t recoveryPriorityIndex = slots_.size();
+  ULONGLONG oldestRecoveryTick = (std::numeric_limits<ULONGLONG>::max)();
+  if (!holdRecovery) {
+    for (size_t i = 0; i < slots_.size(); ++i) {
+      if (i == staggerSlotIndex_) continue;
+      const Slot& candidate = slots_[i];
+      if (!candidate.timedRotationActive ||
+          candidate.timedTarget == TimedSpotifyTarget::None ||
+          candidate.state != SlotState::Recovering) {
+        continue;
+      }
+      const ULONGLONG recoveryTick =
+          candidate.unhealthySinceTick == 0 ? now : candidate.unhealthySinceTick;
+      if (recoveryPriorityIndex == slots_.size() ||
+          recoveryTick < oldestRecoveryTick) {
+        recoveryPriorityIndex = i;
+        oldestRecoveryTick = recoveryTick;
+      }
+    }
+  }
+  const size_t nextIndex = recoveryPriorityIndex < slots_.size()
+      ? recoveryPriorityIndex
+      : scheduledIndex;
+
   // Login is a presentation concern, not scheduler ownership. A login surface
   // stays foreground through RefreshSpotifyHostLayout(), while the normal turn
   // schedule and event-driven recovery for the other accounts continue.
-  if (!holdRecovery && staggerSlotIndex_ != scheduledIndex) {
-    staggerSlotIndex_ = scheduledIndex;
+  if (!holdRecovery && staggerSlotIndex_ != nextIndex) {
+    staggerSlotIndex_ = nextIndex;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
   }
