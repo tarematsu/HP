@@ -19,6 +19,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     try { existing.classObserver?.disconnect(); } catch (_) {}
     try { existing.popupObserver?.disconnect(); } catch (_) {}
     try { if (existing.wakeTimer) clearTimeout(existing.wakeTimer); } catch (_) {}
+    try { if (existing.recoveryTimer) clearTimeout(existing.recoveryTimer); } catch (_) {}
   }
 
   const state = {
@@ -26,6 +27,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     video: null,
     wakeAt: 0,
     wakeTimer: 0,
+    recoveryTimer: 0,
     lastWakeSignature: '',
     pendingWakeDirty: false,
     playerObserver: null,
@@ -162,14 +164,44 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   };
   state.wake = wake;
 
+  const clearRecoveryWake = () => {
+    if (!state.recoveryTimer) return;
+    clearTimeout(state.recoveryTimer);
+    state.recoveryTimer = 0;
+  };
+  const scheduleRecoveryWake = delayMs => {
+    clearRecoveryWake();
+    state.recoveryTimer = setTimeout(() => {
+      state.recoveryTimer = 0;
+      // The player state can remain bit-for-bit identical while it is stuck, so
+      // this delayed escalation intentionally bypasses signature suppression.
+      wake(true);
+    }, delayMs);
+  };
+
   const bindVideo = () => {
     const video = player.querySelector('video');
     if (!video || state.video === video) return;
     state.video = video;
+    const onVideoState = event => {
+      if (event.currentTarget !== state.video) return;
+      if (event.type === 'pause') {
+        scheduleRecoveryWake(10 * 1000 + 500);
+      } else if (event.type === 'waiting' || event.type === 'stalled') {
+        scheduleRecoveryWake(30 * 1000 + 500);
+      } else if (event.type === 'play' || event.type === 'playing' ||
+                 event.type === 'ended' || event.type === 'error' ||
+                 event.type === 'loadedmetadata' || event.type === 'emptied') {
+        clearRecoveryWake();
+      }
+      wake(event.type === 'waiting' || event.type === 'stalled');
+    };
     for (const eventName of [
-        'play', 'pause', 'ended', 'error', 'loadedmetadata', 'emptied']) {
-      video.addEventListener(eventName, () => wake(), { passive: true });
+        'play', 'playing', 'pause', 'waiting', 'stalled', 'ended', 'error',
+        'loadedmetadata', 'emptied']) {
+      video.addEventListener(eventName, onVideoState, { passive: true });
     }
+    if (video.paused && !video.ended) scheduleRecoveryWake(10 * 1000 + 500);
     wake(true);
   };
 
