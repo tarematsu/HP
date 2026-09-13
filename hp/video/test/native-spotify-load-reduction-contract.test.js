@@ -50,6 +50,10 @@ test('healthy music and podcast WebViews suppress rendering while auth and recov
     layout,
     /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/,
   );
+  assert.match(
+    layout,
+    /lowPowerPlayback[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+  );
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
 
