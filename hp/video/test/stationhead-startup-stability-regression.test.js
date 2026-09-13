@@ -67,7 +67,7 @@ test('App starts only the single Primary Stationhead during cold startup', () =>
     'void App::StartServices()',
     'void App::ApplyStartupStationheadPreview()',
   );
-  const active = startServices.slice(0, startServices.indexOf('#if 0'));
+  const active = startServices.replace(/#if 0[\s\S]*?#endif/g, '');
   assert.match(active, /StationheadRole::Primary/);
   assert.match(active, /stationhead_->Start\(\)/);
   assert.doesNotMatch(active, /StationheadRole::Secondary|secondaryStationhead_->Start\(\)/);
