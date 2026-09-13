@@ -53,12 +53,15 @@ LR"JS(
   const state = window.__homePanelSakuraMeetsState;
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
 
-  // Once playback and fullscreen have been configured for the current video,
-  // healthy watchdog passes do not verify or reapply those settings. A pending
-  // event-driven recovery explicitly bypasses this fast path.
+  // Once playback, low quality and fullscreen have been configured for the
+  // current video, healthy watchdog passes do not inspect the control surface.
+  // A bounded quality failure is also treated as settled so it never becomes a
+  // permanent polling loop.
   const trackedVideo = state && state.video;
   if (state && !adActive && !state.recoveryPending &&
-      state.playbackSettingsApplied && state.fullscreenDirty === false &&
+      state.playbackSettingsApplied &&
+      (state.lowQualitySet || state.qualityAttemptExhausted) &&
+      state.fullscreenDirty === false &&
       trackedVideo instanceof HTMLMediaElement &&
       !trackedVideo.paused && !trackedVideo.ended && !trackedVideo.error &&
       !trackedVideo.muted && trackedVideo.volume === 1.0) {

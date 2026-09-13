@@ -1,5 +1,82 @@
 LR"JS(
 
+  // Low-quality selection is a bounded, event-driven trusted-click sequence.
+  // The page-local MutationObserver wakes this watchdog when Settings/Quality
+  // menus appear, so no fixed 2-second quality poll is required.
+  if (video && state && !state.lowQualitySet &&
+      !state.qualityAttemptExhausted) {
+    const qualityRoot = playerRootFor(video);
+    if (qualityRoot) {
+      try {
+        const rect = visibleRect(video);
+        if (rect) {
+          video.dispatchEvent(new MouseEvent('mousemove', {
+            bubbles: true,
+            clientX: rect.left + rect.width / 2,
+            clientY: rect.top + rect.height / 2,
+          }));
+        }
+      } catch (_) {}
+
+      const qualityControls = Array.from(qualityRoot.querySelectorAll(
+          'button, [role="button"], [role="menuitem"], [role="radio"], '
+          + '[role="option"], li, [aria-label], [title]'))
+          .filter(visible);
+      const qualityName = element => labelOf(element)
+          .replace(/[（(](?:選択中|設定中)[）)]/g, '')
+          .replace(/画質$/, '')
+          .trim();
+      const qualityChoices = qualityControls.filter(element =>
+          /^(自動|高|中|低)$/.test(qualityName(element)));
+      const lowOption = qualityChoices.find(element =>
+          qualityName(element) === '低') || null;
+      const lowSelected = lowOption && (
+          lowOption.getAttribute('aria-checked') === 'true' ||
+          lowOption.getAttribute('aria-selected') === 'true' ||
+          lowOption.getAttribute('data-state') === 'checked' ||
+          /選択中|設定中/.test(labelOf(lowOption)));
+
+      if (lowSelected) {
+        state.lowQualitySet = true;
+        state.lowClickPending = false;
+      } else if (lowOption) {
+        if (Number(state.qualityActionCount || 0) >= 6) {
+          state.qualityAttemptExhausted = true;
+        } else {
+          state.lowClickPending = true;
+          state.qualityActionCount = Number(state.qualityActionCount || 0) + 1;
+          return point(lowOption);
+        }
+      } else if (state.lowClickPending) {
+        // Selecting Low normally closes the menu. Once the trusted click has
+        // been issued and the option disappears, treat that transition as the
+        // completion signal and stop all quality work for this media item.
+        state.lowQualitySet = true;
+        state.lowClickPending = false;
+      } else {
+        const qualityMenu = qualityControls.find(element => {
+          const label = labelOf(element).toLowerCase();
+          return label === '画質' || label === '画質設定' ||
+                 label === 'quality' || label === 'quality settings';
+        }) || null;
+        const settings = qualityControls.find(element => {
+          const label = labelOf(element).toLowerCase();
+          return label === '設定' || label.includes('プレイヤー設定') ||
+                 label === 'settings' || label === 'setting';
+        }) || null;
+        const target = qualityMenu || settings;
+        if (target) {
+          if (Number(state.qualityActionCount || 0) >= 6) {
+            state.qualityAttemptExhausted = true;
+          } else {
+            state.qualityActionCount = Number(state.qualityActionCount || 0) + 1;
+            return point(target);
+          }
+        }
+      }
+    }
+  }
+
   // Survey discovery is relatively expensive and page-wide by necessity. Only
   // do it when playback is absent/paused; healthy playing content never scans
   // unrelated page dialogs.
