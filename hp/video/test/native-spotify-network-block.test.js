@@ -20,7 +20,7 @@ test('Spotify network block destroys all configured WebView/controller slots', (
 test('Spotify unmute resets the simplified async recovery and playback state', () => {
   assert.match(network, /alive_ = std::make_shared<std::atomic<bool>>\(true\)/);
   assert.match(network, /for \(Slot& slot : slots_\)[\s\S]*CreateHost\(slot\)/);
-  assert.match(network, /CreateController\(slots_\[0\]\)/);
+  assert.doesNotMatch(network, /CreateController\(slots_\[0\]\)/);
   assert.match(network, /slot\.timedRotationActive = false/);
   assert.match(network, /slot\.timedCompletionDeadlineTick = 0/);
   assert.match(network, /slot\.nextRecoveryTick = 0/);
@@ -30,6 +30,7 @@ test('Spotify unmute resets the simplified async recovery and playback state', (
   assert.match(network, /slot\.trustedClickBlockedUntilTick = 0/);
   assert.doesNotMatch(network + header, /timedInterruptionStartTick|reconcileInFlight|lastTimedReconcileTick|TimedSpotifyTarget/);
   assert.match(network, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
+  assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
 });
 
 test('global media mute remains the only media-to-Spotify state coupling', () => {
