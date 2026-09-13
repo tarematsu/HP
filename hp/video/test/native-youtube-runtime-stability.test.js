@@ -63,7 +63,9 @@ test('YouTube event agent is player-local and coalesces wake notifications', () 
   assert.match(eventAgent, /const pending = signature\(\)/);
   assert.match(eventAgent, /250 - \(Date\.now\(\) - state\.wakeAt\)/);
   assert.match(eventAgent, /nextSignature === state\.lastWakeSignature/);
-  assert.match(eventAgent, /state\.playerObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
+  assert.match(eventAgent, /addEventListener\(\s*'yt-navigate-finish'/);
+  assert.match(eventAgent, /addEventListener\(\s*'yt-page-data-updated'/);
+  assert.doesNotMatch(eventAgent, /playerObserver/);
   assert.match(eventAgent, /attributeFilter: \['class'\]/);
   assert.doesNotMatch(eventAgent, /observe\(document\.(?:documentElement|body)/);
 });
