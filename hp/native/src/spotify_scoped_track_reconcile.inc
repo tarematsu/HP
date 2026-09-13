@@ -8,7 +8,9 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
-  if (!target || !target.path) return null;
+  const targetPath = target &&
+      (target.path || target.trackPath || target.pagePath || '');
+  if (!targetPath) return null;
 
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const sameTrackPath = (value, expected) => {
@@ -17,8 +19,8 @@ LR"JS(
         (expected.startsWith('/track/') && value.endsWith(expected));
   };
   const onTargetPage = () =>
-      location.pathname === target.path ||
-      (target.path.startsWith('/track/') && location.pathname.endsWith(target.path));
+      location.pathname === targetPath ||
+      (targetPath.startsWith('/track/') && location.pathname.endsWith(targetPath));
   const visible = element => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true') return false;
@@ -66,14 +68,14 @@ LR"JS(
     return { path: '', title: normalize(metadata && metadata.title).toLowerCase() };
   };
   const targetMatches = track => {
-    if (target.path && track.path) return sameTrackPath(track.path, target.path);
+    if (targetPath && track.path) return sameTrackPath(track.path, targetPath);
     return !!target.title && track.title === target.title;
   };
   const targetLink = () => Array.from(
       document.querySelectorAll('a[href*="/track/"]')).find(link => {
         try {
           const path = new URL(link.href, location.href).pathname;
-          return sameTrackPath(path, target.path);
+          return sameTrackPath(path, targetPath);
         } catch (_) { return false; }
       }) || null;
   const targetPlayButton = () => {
