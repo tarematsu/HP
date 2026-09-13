@@ -9,8 +9,8 @@ const runtime = source('spotify_media_observer_runtime.inc');
 const panelState = source('renderer_panel_state.cpp');
 
 test('Spotify identity adoption uses one immediate check plus one coalesced fallback', () => {
-  assert.match(runtime, /const checkTarget = media =>/);
-  assert.match(runtime, /const status = checkTarget\(media\)/);
+  assert.match(runtime, /const enforceTarget = media =>/);
+  assert.match(runtime, /const status = enforceTarget\(media\)/);
   assert.match(runtime, /identityFallbackTimer = setTimeout\([\s\S]*1500\)/);
   assert.match(runtime, /clearIdentityFallback\(\)/);
   assert.doesNotMatch(runtime, /\[0,\s*250,\s*1000,\s*2500,\s*5000\]/);
