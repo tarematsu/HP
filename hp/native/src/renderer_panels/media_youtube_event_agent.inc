@@ -188,6 +188,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
       wake(true);
     }, delayMs);
   };
+  state.scheduleRecoveryWake = scheduleRecoveryWake;
 
   const bindVideo = () => {
     const video = player.querySelector('video');

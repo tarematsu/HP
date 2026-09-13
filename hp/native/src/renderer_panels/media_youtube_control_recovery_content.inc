@@ -44,6 +44,7 @@ LR"JS(
 
   const advanceToNextPlaylistItem = () => {
     if (now - Number(recoveryState.nextRequestedAt || 0) < 8000) {
+      requestRecoveryRecheck();
       return 'recovery';
     }
 
@@ -61,6 +62,7 @@ LR"JS(
           candidate.href !== location.href) {
         recoveryState.nextRequestedAt = now;
         location.assign(candidate.href);
+        requestRecoveryRecheck();
         return 'recovery';
       }
     } catch (_) {}
@@ -71,6 +73,7 @@ LR"JS(
       if (typeof player.nextVideo === 'function') {
         recoveryState.nextRequestedAt = now;
         player.nextVideo();
+        requestRecoveryRecheck();
         return 'recovery';
       }
     } catch (_) {}
@@ -97,11 +100,13 @@ LR"JS(
       } catch (_) {}
       const play = player.querySelector('.ytp-play-button');
       if (trusted.valid(play)) return trusted.arm(play, 'play', 1500);
+      requestRecoveryRecheck();
       return 'recovery';
     }
     if (now - Number(recoveryState.pausedSince || now) >= pauseEscalationMs) {
       return advanceToNextPlaylistItem();
     }
+    requestRecoveryRecheck();
     return 'recovery';
   }
 
@@ -153,14 +158,14 @@ LR"JS(
   // Fullscreen remains a one-shot preference after YouTube confirms entry, but
   // merely arming a trusted click is not success. The control can appear before
   // YouTube is ready to accept fullscreen, so suppress the initial click for
-  // 1.5 seconds and let the existing recovery watchdog make the first attempt
-  // after the player has settled. No extra timer or polling loop is introduced.
+  // 1.5 seconds and reuse the event-agent recovery timer for the next attempt.
   if (trusted.fullscreen()) {
     recoveryState.fullscreenApplied = true;
     return null;
   }
   if (recoveryState.fullscreenApplied) return null;
   if (Date.now() < Number(recoveryState.fullscreenReadyAt || 0)) {
+    requestRecoveryRecheck();
     return 'recovery';
   }
   target = player.querySelector('.ytp-fullscreen-button');

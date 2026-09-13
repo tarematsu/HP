@@ -54,9 +54,10 @@ LR"JS(
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
 
   // Once playback and fullscreen have been configured for the current video,
-  // healthy watchdog passes do not verify or reapply those settings.
+  // healthy watchdog passes do not verify or reapply those settings. A pending
+  // event-driven recovery explicitly bypasses this fast path.
   const trackedVideo = state && state.video;
-  if (state && !adActive &&
+  if (state && !adActive && !state.recoveryPending &&
       state.playbackSettingsApplied && state.fullscreenDirty === false &&
       trackedVideo instanceof HTMLMediaElement &&
       !trackedVideo.paused && !trackedVideo.ended && !trackedVideo.error &&
