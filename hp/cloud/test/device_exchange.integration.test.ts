@@ -1,7 +1,6 @@
 import { applyD1Migrations, env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { invalidateR2EnvironmentCache } from "../src/environment_r2";
-import { stateGeneration } from "../src/state_generation";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
 type TestEnv = typeof env & {
@@ -202,12 +201,24 @@ describe("device exchange", () => {
     expect(document.row.observed_at).toBe(recent);
   });
 
-  it("does not invalidate dashboard state when an accepted sample leaves content unchanged", async () => {
+  it("does not advance environment state when an accepted sample leaves content unchanged", async () => {
     const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
     expect((await exchange({ versions, telemetry: telemetry(1, observedAt) })).status).toBe(200);
-    const generation = stateGeneration(env);
+    const firstStored = await testEnv().DATA_BUCKET.get("environment/v2/latest.json");
+    expect(firstStored).not.toBeNull();
+    const firstDocument = await firstStored!.json<{
+      row: { version: number; content_hash: string | null; payload: string };
+    }>();
 
     expect((await exchange({ versions, telemetry: telemetry(2, observedAt) })).status).toBe(200);
-    expect(stateGeneration(env)).toBe(generation);
+    const secondStored = await testEnv().DATA_BUCKET.get("environment/v2/latest.json");
+    expect(secondStored).not.toBeNull();
+    const secondDocument = await secondStored!.json<{
+      row: { version: number; content_hash: string | null; payload: string };
+    }>();
+
+    expect(secondDocument.row.version).toBe(firstDocument.row.version);
+    expect(secondDocument.row.content_hash).toBe(firstDocument.row.content_hash);
+    expect(secondDocument.row.payload).toBe(firstDocument.row.payload);
   });
 });
