@@ -65,12 +65,11 @@ bool ParseSpotifyStartedEvent(
       rawMessage, L"spotify:timed-started", generation, remainingMs);
 }
 
-bool ParseSpotifyInterruptionEndedEvent(
+bool ParseSpotifyResumedEvent(
     LPCWSTR rawMessage, ULONGLONG* generation,
-    ULONGLONG* interruptionMs) noexcept {
+    ULONGLONG* remainingMs) noexcept {
   return ParseSpotifyDurationEvent(
-      rawMessage, L"spotify:timed-interruption-ended",
-      generation, interruptionMs);
+      rawMessage, L"spotify:timed-resumed", generation, remainingMs);
 }
 
 }  // namespace
@@ -78,7 +77,6 @@ bool ParseSpotifyInterruptionEndedEvent(
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
-  slot.timedInterruptionStartTick = 0;
   if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
   if (slot.timedCycleTracks.empty()) {
     slot.timedRotationActive = false;
@@ -87,10 +85,13 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
 
   slot.timedRotationPosition %= slot.timedCycleTracks.size();
   BumpSpotifyTargetGeneration(slot);
-  slot.unhealthySinceTick = 0;
+  ++slot.asyncEpoch;
+  if (slot.asyncEpoch == 0) ++slot.asyncEpoch;
+  slot.asyncWork = AsyncWork::None;
+  slot.asyncStartedTick = 0;
+  slot.nextRecoveryTick = 0;
+  slot.trustedClickBlockedUntilTick = 0;
   SetSlotState(slot, SlotState::WaitingTarget);
-  slot.lastModeNavigateTick = 0;
-  slot.lastTimedReconcileTick = 0;
 }
 
 void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
@@ -159,15 +160,10 @@ void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
         !CurrentMusicTrack(slot)) {
       slot.timedCompletionDeadlineTick = 0;
       slot.timedCompletionDeadlineGeneration = 0;
-      slot.timedInterruptionStartTick = 0;
       continue;
     }
+    if (slot.timedCompletionDeadlineTick > now) continue;
 
-    const ULONGLONG effectiveDeadline = SpotifyDeadlineWithInterruptionHold(
-        slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick);
-    if (effectiveDeadline > now) continue;
-
-    slot.timedInterruptionStartTick = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
     AdvanceTimedRotationSlot(slot);
@@ -195,34 +191,18 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
               ULONGLONG eventGeneration = 0;
               ULONGLONG remainingMs = 0;
-              ULONGLONG interruptionMs = 0;
               const bool started = ParseSpotifyStartedEvent(
                   rawMessage, &eventGeneration, &remainingMs);
-              const bool interruptionStarted = !started &&
-                  ParseSpotifyGenerationEvent(
-                      rawMessage, L"spotify:timed-interruption-started",
-                      &eventGeneration);
-              const bool interruptionCancelled = !started && !interruptionStarted &&
-                  ParseSpotifyGenerationEvent(
-                      rawMessage, L"spotify:timed-interruption-cancelled",
-                      &eventGeneration);
-              const bool interruptionEnded = !started && !interruptionStarted &&
-                  !interruptionCancelled && ParseSpotifyInterruptionEndedEvent(
-                      rawMessage, &eventGeneration, &interruptionMs);
-              const bool ended = !started && !interruptionStarted &&
-                  !interruptionCancelled && !interruptionEnded &&
+              const bool resumed = !started && ParseSpotifyResumedEvent(
+                  rawMessage, &eventGeneration, &remainingMs);
+              const bool ended = !started && !resumed &&
                   ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:timed-ended", &eventGeneration);
-              const bool observerSynced = !started && !interruptionStarted &&
-                  !interruptionCancelled && !interruptionEnded && !ended &&
+              const bool observerSynced = !started && !resumed && !ended &&
                   ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:observer-synced", &eventGeneration);
               CoTaskMemFree(rawMessage);
-              if (!started && !interruptionStarted && !interruptionCancelled &&
-                  !interruptionEnded && !ended && !observerSynced) {
-                return S_OK;
-              }
-
+              if (!started && !resumed && !ended && !observerSynced) return S_OK;
               if (eventGeneration == 0 ||
                   eventGeneration != target->targetGeneration) {
                 return S_OK;
@@ -230,55 +210,23 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
               const ULONGLONG now = GetTickCount64();
               if (observerSynced) {
-                target->timedObserverInstallInFlight = false;
-                target->timedObserverInstallStartedTick = 0;
+                target->asyncWork = AsyncWork::None;
+                target->asyncStartedTick = 0;
                 target->timedObserverReady = true;
-                target->lastTimedReconcileTick = 0;
+                target->nextRecoveryTick = 0;
                 ArmRobustScheduler();
                 return S_OK;
               }
 
               if (!CurrentMusicTrack(*target)) return S_OK;
-
-              if (interruptionStarted) {
-                if (target->timedInterruptionStartTick == 0) {
-                  target->timedInterruptionStartTick = now;
-                }
-                ArmRobustScheduler();
-                return S_OK;
-              }
-
-              if (interruptionCancelled) {
-                target->timedInterruptionStartTick = 0;
-                ArmRobustScheduler();
-                return S_OK;
-              }
-
-              if (interruptionEnded) {
-                target->timedInterruptionStartTick = 0;
-                if (target->timedCompletionDeadlineTick != 0 &&
-                    target->timedCompletionDeadlineGeneration == eventGeneration) {
-                  const ULONGLONG extension = std::min(
-                      interruptionMs, kSpotifyMaxInterruptionHoldMs);
-                  const ULONGLONG maxTick =
-                      (std::numeric_limits<ULONGLONG>::max)();
-                  target->timedCompletionDeadlineTick =
-                      target->timedCompletionDeadlineTick > maxTick - extension
-                          ? maxTick
-                          : target->timedCompletionDeadlineTick + extension;
-                }
-                ArmRobustScheduler();
-                return S_OK;
-              }
-
               if (ended) {
                 ShortenMusicCompletionDeadlineAtEnd(*target, now);
                 return S_OK;
               }
 
               SetSlotState(*target, SlotState::Playing);
-              target->unhealthySinceTick = 0;
-              ArmMusicCompletionDeadlineFromStart(*target, now, remainingMs);
+              SetMusicCompletionDeadline(
+                  *target, now, remainingMs, resumed);
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
@@ -290,17 +238,14 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
     }
   }
 
-  if (slot.timedObserverReady || slot.timedObserverInstallInFlight) return;
+  if (slot.timedObserverReady || slot.asyncWork != AsyncWork::None) return;
 
-  ++slot.timedObserverInstallGeneration;
-  if (slot.timedObserverInstallGeneration == 0) {
-    ++slot.timedObserverInstallGeneration;
-  }
-  const ULONGLONG observerInstallGeneration =
-      slot.timedObserverInstallGeneration;
+  ++slot.asyncEpoch;
+  if (slot.asyncEpoch == 0) ++slot.asyncEpoch;
+  const ULONGLONG asyncEpoch = slot.asyncEpoch;
   const ULONGLONG observerTargetGeneration = slot.targetGeneration;
-  slot.timedObserverInstallInFlight = true;
-  slot.timedObserverInstallStartedTick = GetTickCount64();
+  slot.asyncWork = AsyncWork::Observer;
+  slot.asyncStartedTick = GetTickCount64();
   Slot* const observerTarget = &slot;
   ComPtr<ICoreWebView2> observerView = slot.webview;
   const auto observerAlive = alive_;
@@ -308,11 +253,11 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
       kSpotifyFastEndObserverScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
           [this, observerAlive, observerTarget, observerView,
-           observerInstallGeneration, observerTargetGeneration](
-              HRESULT result, LPCWSTR json) -> HRESULT {
+           asyncEpoch, observerTargetGeneration](HRESULT result, LPCWSTR json)
+              -> HRESULT {
             if (!observerAlive->load(std::memory_order_acquire) ||
-                observerTarget->timedObserverInstallGeneration !=
-                    observerInstallGeneration ||
+                observerTarget->asyncEpoch != asyncEpoch ||
+                observerTarget->asyncWork != AsyncWork::Observer ||
                 observerTarget->targetGeneration != observerTargetGeneration ||
                 observerTarget->webview.Get() != observerView.Get()) {
               return S_OK;
@@ -321,8 +266,8 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 SUCCEEDED(result) && json &&
                 std::wstring_view(json) == L"true";
             if (!installed) {
-              observerTarget->timedObserverInstallInFlight = false;
-              observerTarget->timedObserverInstallStartedTick = 0;
+              observerTarget->asyncWork = AsyncWork::None;
+              observerTarget->asyncStartedTick = 0;
               observerTarget->timedObserverReady = false;
               MarkSlotRecovering(*observerTarget, GetTickCount64());
               ArmRobustScheduler();
@@ -333,23 +278,21 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
             syncMessage.push_back(kSpotifyMessageSeparator);
             syncMessage.append(std::to_wstring(observerTargetGeneration));
             if (FAILED(observerView->PostWebMessageAsString(syncMessage.c_str()))) {
-              observerTarget->timedObserverInstallInFlight = false;
-              observerTarget->timedObserverInstallStartedTick = 0;
+              observerTarget->asyncWork = AsyncWork::None;
+              observerTarget->asyncStartedTick = 0;
               observerTarget->timedObserverReady = false;
               MarkSlotRecovering(*observerTarget, GetTickCount64());
               ArmRobustScheduler();
               return S_OK;
             }
-            observerTarget->timedObserverReady = false;
-            observerTarget->timedObserverInstallStartedTick = GetTickCount64();
+            observerTarget->asyncStartedTick = GetTickCount64();
             ArmRobustScheduler();
             return S_OK;
           }).Get());
   if (FAILED(installStarted)) {
-    if (slot.timedObserverInstallGeneration == observerInstallGeneration &&
-        slot.webview.Get() == observerView.Get()) {
-      slot.timedObserverInstallInFlight = false;
-      slot.timedObserverInstallStartedTick = 0;
+    if (slot.asyncEpoch == asyncEpoch && slot.asyncWork == AsyncWork::Observer) {
+      slot.asyncWork = AsyncWork::None;
+      slot.asyncStartedTick = 0;
     }
     MarkSlotRecovering(slot, GetTickCount64());
     ArmRobustScheduler();

@@ -17,7 +17,6 @@ function rawScript(source, symbol) {
   let cursor = source.indexOf(assignment);
   assert.notEqual(cursor, -1, `${symbol} assignment not found`);
   cursor += assignment.length;
-
   const opener = 'LR"JS(\n';
   const closer = '\n)JS"';
   const chunks = [];
@@ -35,9 +34,7 @@ function rawScript(source, symbol) {
 }
 
 function productionObserverScript() {
-  return observerModules
-    .map(({ source, symbol }) => rawScript(source, symbol))
-    .join(';\n') + ';';
+  return observerModules.map(({ source, symbol }) => rawScript(source, symbol)).join(';\n') + ';';
 }
 
 class FakeMedia {
@@ -55,162 +52,97 @@ function createHarness() {
   const timers = new Map();
   let nextTimer = 1;
   let currentTrack = null;
-  let nowMs = 1_000;
-
   const media = new FakeMedia();
   const window = {
-    __homePanelSpotifyNativeTarget: {
-      path: '/track/A',
-      title: 'Target A',
-    },
-    chrome: {
-      webview: {
-        postMessage(message) {
-          messages.push(message);
-        },
-        addEventListener(type, handler) {
-          if (type === 'message') webviewListeners.push(handler);
-        },
-      },
-    },
+    __homePanelSpotifyNativeTarget: { path: '/track/A', title: 'Target A' },
+    chrome: { webview: {
+      postMessage(message) { messages.push(message); },
+      addEventListener(type, handler) { if (type === 'message') webviewListeners.push(handler); },
+    } },
   };
   const document = {
     addEventListener(type, handler) {
       if (!documentListeners.has(type)) documentListeners.set(type, []);
       documentListeners.get(type).push(handler);
     },
-    querySelector() {
-      return currentTrack;
-    },
-    querySelectorAll(selector) {
-      return selector === 'audio, video' ? [media] : [];
-    },
+    querySelector() { return currentTrack; },
+    querySelectorAll(selector) { return selector === 'audio, video' ? [media] : []; },
   };
   const navigator = { mediaSession: { metadata: { title: '' } } };
-
   const context = vm.createContext({
-    window,
-    document,
-    navigator,
-    HTMLMediaElement: FakeMedia,
+    window, document, navigator, HTMLMediaElement: FakeMedia,
     location: { href: 'https://open.spotify.com/track/A' },
-    URL,
-    Number,
-    Array,
-    String,
-    Date: { now: () => nowMs },
-    Math,
-    setTimeout(fn) {
-      const id = nextTimer++;
-      timers.set(id, fn);
-      return id;
-    },
-    clearTimeout(id) {
-      timers.delete(id);
-    },
+    URL, Number, Array, String, Date, Math,
+    setTimeout(fn) { const id = nextTimer++; timers.set(id, fn); return id; },
+    clearTimeout(id) { timers.delete(id); },
   });
   vm.runInContext(productionObserverScript(), context);
-
   const dispatch = (type, target = media) => {
-    for (const handler of documentListeners.get(type) || []) {
-      handler({ target });
-    }
+    for (const handler of documentListeners.get(type) || []) handler({ target });
   };
-  const hostMessage = data => {
-    for (const handler of webviewListeners) handler({ data });
-  };
+  const hostMessage = data => { for (const handler of webviewListeners) handler({ data }); };
   const setTrack = (path, title) => {
-    currentTrack = path ? {
-      href: `https://open.spotify.com${path}`,
-      textContent: title,
-    } : null;
+    currentTrack = path ? { href: `https://open.spotify.com${path}`, textContent: title } : null;
   };
   const runTimers = () => {
     const pending = [...timers.values()];
     timers.clear();
     for (const fn of pending) fn();
   };
-  const advanceTime = ms => {
-    nowMs += ms;
-  };
-
-  return {
-    window,
-    navigator,
-    media,
-    messages,
-    dispatch,
-    hostMessage,
-    setTrack,
-    runTimers,
-    advanceTime,
-    documentListeners,
-  };
+  return { window, navigator, media, messages, dispatch, hostMessage, setTrack, runTimers, documentListeners };
 }
 
 test('target identity and wrong-track rejection have one runtime owner', () => {
-  const runtime = observerModules.find(({ file }) =>
-    file === 'spotify_media_observer_runtime.inc').source;
-  const events = observerModules.find(({ file }) =>
-    file === 'spotify_media_observer_events.inc').source;
-
+  const runtime = observerModules[0].source;
+  const events = observerModules[1].source;
   assert.match(runtime, /const enforceTarget = media =>/);
   assert.match(runtime, /const scheduleTargetChecks = media =>/);
-  assert.doesNotMatch(runtime + events,
-    /rejectWrongTrack|scheduleIdentityCheck|confirmStarted|scheduleStartChecks/);
   assert.match(events, /scheduleTargetChecks\(event\.target\)/);
+  assert.doesNotMatch(runtime + events, /requestRecovery|heartbeat|postCompletionPlan/);
 });
 
-test('production observer prefers direct Track ID and reports remaining duration once', () => {
+test('observer prefers direct Track ID and reports remaining duration once', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f7');
-
   h.setTrack('/track/B', 'Different Track');
   h.navigator.mediaSession.metadata.title = 'Target A';
   h.media.duration = 180;
   h.media.paused = false;
   h.dispatch('playing');
   assert.deepEqual(h.messages, []);
-
   h.setTrack('/track/A', 'Target A');
   h.media.currentTime = 20;
   h.dispatch('playing');
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f7\x1f160000']);
-
   h.dispatch('playing');
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f7\x1f160000']);
 });
 
-test('invalid duration waits until metadata becomes usable', () => {
+test('invalid duration waits until durationchange makes metadata usable', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f12');
   h.setTrack('/track/A', 'Target A');
   h.media.paused = false;
   h.dispatch('playing');
   assert.deepEqual(h.messages, []);
-
   h.media.duration = 181;
   h.media.currentTime = 1;
-  h.dispatch('loadedmetadata');
+  h.dispatch('durationchange');
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f12\x1f180000']);
 });
 
-test('trusted native Play establishes start when Spotify identity is temporarily absent', () => {
+test('trusted native Play establishes start only when concrete identity is absent', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f21');
   const runtime = h.window.__homePanelSpotifyMediaObserverRuntime;
   assert.equal(runtime.armTrustedStart('21'), true);
-
   h.setTrack(null, '');
   h.navigator.mediaSession.metadata.title = '';
   h.media.currentTime = 1;
   h.media.duration = 181;
   h.media.paused = false;
   h.dispatch('playing');
-
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f21\x1f180000']);
-  assert.equal(runtime.state.startPosted, true);
-  assert.equal(runtime.state.targetMedia, h.media);
 });
 
 test('trusted native Play never overrides a concrete wrong-track identity', () => {
@@ -218,21 +150,15 @@ test('trusted native Play never overrides a concrete wrong-track identity', () =
   h.hostMessage('spotify:generation\x1f22');
   const runtime = h.window.__homePanelSpotifyMediaObserverRuntime;
   assert.equal(runtime.armTrustedStart('22'), true);
-
   h.setTrack('/track/B', 'Wrong B');
   h.media.currentTime = 1;
   h.media.duration = 180;
   h.media.paused = false;
   h.dispatch('playing');
   assert.equal(h.messages.some(m => m.startsWith('spotify:timed-started')), false);
-
-  h.setTrack(null, '');
-  h.dispatch('playing');
-  assert.equal(h.messages.some(m => m.startsWith('spotify:timed-started')), false);
-  assert.equal(runtime.state.startPosted, false);
 });
 
-test('non-track advertisement time is measured until the requested track resumes', () => {
+test('non-target playback after start emits one resume deadline from remaining target duration', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f31');
   h.setTrack('/track/A', 'Target A');
@@ -240,49 +166,36 @@ test('non-track advertisement time is measured until the requested track resumes
   h.media.currentTime = 10;
   h.media.paused = false;
   h.dispatch('playing');
-
-  h.advanceTime(500);
   h.setTrack(null, '');
   h.navigator.mediaSession.metadata.title = 'Advertisement';
   h.dispatch('playing');
-
-  h.advanceTime(30_000);
   h.setTrack('/track/A', 'Target A');
   h.navigator.mediaSession.metadata.title = 'Target A';
-  h.media.currentTime = 11;
+  h.media.currentTime = 40;
   h.dispatch('playing');
-
   assert.deepEqual(h.messages, [
     'spotify:timed-started\x1f31\x1f170000',
-    'spotify:timed-interruption-started\x1f31',
-    'spotify:timed-interruption-ended\x1f31\x1f30000',
+    'spotify:timed-resumed\x1f31\x1f140000',
   ]);
 });
 
-test('advertisement before the target starts extends timing without starting the target timer', () => {
+test('non-target playback before target start does not create a separate interruption timer', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f32');
   h.setTrack(null, '');
   h.navigator.mediaSession.metadata.title = 'Advertisement';
   h.media.paused = false;
   h.dispatch('playing');
-  assert.deepEqual(h.messages, ['spotify:timed-interruption-started\x1f32']);
-
-  h.advanceTime(20_000);
+  assert.deepEqual(h.messages, []);
   h.setTrack('/track/A', 'Target A');
   h.navigator.mediaSession.metadata.title = 'Target A';
   h.media.duration = 181;
   h.media.currentTime = 1;
   h.dispatch('playing');
-
-  assert.deepEqual(h.messages, [
-    'spotify:timed-interruption-started\x1f32',
-    'spotify:timed-interruption-ended\x1f32\x1f20000',
-    'spotify:timed-started\x1f32\x1f180000',
-  ]);
+  assert.deepEqual(h.messages, ['spotify:timed-started\x1f32\x1f180000']);
 });
 
-test('a concrete wrong track cancels a provisional advertisement interruption', () => {
+test('concrete wrong playback after start remains a simple interruption until target resumes', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f33');
   h.setTrack('/track/A', 'Target A');
@@ -290,26 +203,16 @@ test('a concrete wrong track cancels a provisional advertisement interruption', 
   h.media.currentTime = 10;
   h.media.paused = false;
   h.dispatch('playing');
-
-  h.advanceTime(1_000);
-  h.setTrack(null, '');
-  h.navigator.mediaSession.metadata.title = 'Advertisement';
-  h.dispatch('playing');
-
-  h.advanceTime(5_000);
   h.setTrack('/track/B', 'Wrong B');
   h.navigator.mediaSession.metadata.title = 'Wrong B';
   h.dispatch('playing');
-
-  h.advanceTime(10_000);
   h.setTrack('/track/A', 'Target A');
   h.navigator.mediaSession.metadata.title = 'Target A';
+  h.media.currentTime = 20;
   h.dispatch('playing');
-
   assert.deepEqual(h.messages, [
     'spotify:timed-started\x1f33\x1f170000',
-    'spotify:timed-interruption-started\x1f33',
-    'spotify:timed-interruption-cancelled\x1f33',
+    'spotify:timed-resumed\x1f33\x1f160000',
   ]);
 });
 
@@ -323,30 +226,23 @@ test('validated requested-track ended publishes one advisory shortening event', 
   h.dispatch('playing');
   h.media.ended = true;
   h.dispatch('ended');
-
   assert.deepEqual(h.messages, [
     'spotify:timed-started\x1f34\x1f1000',
     'spotify:timed-ended\x1f34',
   ]);
 });
 
-test('observer has no heartbeat recovery or completion-planner API', () => {
+test('observer has no heartbeat recovery completion planner or interruption clock API', () => {
   const h = createHarness();
   const runtime = h.window.__homePanelSpotifyMediaObserverRuntime;
   assert.equal(runtime.requestRecovery, undefined);
-  assert.equal(runtime.scheduleRecovery, undefined);
   assert.equal(runtime.startHeartbeat, undefined);
-  assert.equal(runtime.stopHeartbeat, undefined);
   assert.equal(runtime.postCompletionPlan, undefined);
-  assert.equal(runtime.clearCompletionPlan, undefined);
-  assert.equal(runtime.probeCompletion, undefined);
-  assert.equal('heartbeatTimer' in runtime, false);
-  assert.equal('recoveryPosted' in runtime.state, false);
-  assert.equal('restartPending' in runtime.state, false);
-  assert.equal('started' in runtime.state, false);
-
-  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause']) {
+  assert.equal('interruptionStartedAt' in runtime.state, false);
+  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause', 'play', 'loadedmetadata']) {
     assert.equal(h.documentListeners.has(type), false);
   }
+  assert.equal(h.documentListeners.has('playing'), true);
+  assert.equal(h.documentListeners.has('durationchange'), true);
   assert.equal(h.documentListeners.has('ended'), true);
 });

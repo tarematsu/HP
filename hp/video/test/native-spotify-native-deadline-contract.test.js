@@ -21,13 +21,13 @@ test('native deadline directly advances A to the next rotation slot', () => {
   assert.doesNotMatch(due, /PostWebMessageAsString|spotify:completion-probe/);
 });
 
-test('same generation cannot extend the one-shot armed deadline', () => {
+test('same generation start cannot extend the one-shot deadline while resume may replace it', () => {
   assert.match(
     music,
-    /timedCompletionDeadlineTick != 0[\s\S]*timedCompletionDeadlineGeneration == slot\.targetGeneration[\s\S]*return;/,
+    /!replaceExisting && slot\.timedCompletionDeadlineTick != 0[\s\S]*timedCompletionDeadlineGeneration == slot\.targetGeneration[\s\S]*return;/,
   );
-  assert.match(rotation, /ArmMusicCompletionDeadlineFromStart\([\s\S]*remainingMs/);
-  assert.doesNotMatch(rotation, /candidateDeadline|timed-plan-clear/);
+  assert.match(rotation, /SetMusicCompletionDeadline\([\s\S]*remainingMs, resumed/);
+  assert.doesNotMatch(rotation, /candidateDeadline|timed-plan-clear|interruptionMs/);
 });
 
 test('ended can only shorten that same deadline', () => {

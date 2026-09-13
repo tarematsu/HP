@@ -10,6 +10,10 @@ const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
   'utf8',
 );
+const header = readFileSync(
+  new URL('../../native/src/spotify_webviews.h', import.meta.url),
+  'utf8',
+);
 
 function between(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -19,7 +23,7 @@ function between(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test('Spotify navigation never changes playback target generation or cancels its deadline', () => {
+test('navigation invalidates page and async callbacks without changing the playback target generation', () => {
   const navigation = between(
     lifecycle,
     'slot.webview->add_NavigationStarting(',
@@ -29,12 +33,12 @@ test('Spotify navigation never changes playback target generation or cancels its
   assert.doesNotMatch(navigation, /BumpSpotifyTargetGeneration/);
   assert.doesNotMatch(navigation, /timedCompletionDeadlineTick\s*=\s*0/);
   assert.doesNotMatch(navigation, /timedCompletionDeadlineGeneration\s*=\s*0/);
-
-  assert.match(navigation, /\+\+target->reconcileRequestGeneration/);
-  assert.match(navigation, /\+\+target->timedObserverInstallGeneration/);
-  assert.match(navigation, /\+\+target->trustedClickGeneration/);
+  assert.match(navigation, /\+\+target->pageEpoch/);
+  assert.match(navigation, /\+\+target->asyncEpoch/);
+  assert.match(navigation, /target->asyncWork = AsyncWork::None/);
   assert.match(navigation, /target->trustedClickBlockedUntilTick\s*=\s*0/);
   assert.match(navigation, /target->timedObserverReady\s*=\s*false/);
+  assert.doesNotMatch(navigation, /reconcileRequestGeneration|timedObserverInstallGeneration|trustedClickGeneration/);
 });
 
 test('Spotify target generation changes only when the rotation target changes', () => {
@@ -50,9 +54,11 @@ test('Spotify target generation changes only when the rotation target changes', 
   );
 
   assert.match(applyTarget, /BumpSpotifyTargetGeneration\(slot\)/);
+  assert.match(applyTarget, /\+\+slot\.asyncEpoch/);
   assert.match(
     dueCompletions,
     /timedCompletionDeadlineGeneration\s*!=\s*slot\.targetGeneration/,
   );
   assert.match(dueCompletions, /AdvanceTimedRotationSlot\(slot\)/);
+  assert.match(header, /ULONGLONG targetGeneration = 0/);
 });

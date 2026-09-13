@@ -1,8 +1,8 @@
 namespace hp {
 namespace {
 
-// Owns only the current track identity, one validated start notification and
-// explicit non-track interruption timing. Recovery/navigation remain native.
+// Owns current-track identity and emits only start/resume timing for the native
+// one-shot deadline. Recovery and navigation remain native-owned.
 constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverRuntime) return true;
@@ -27,7 +27,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     identityFallbackTimer: 0,
     identityFallbackMedia: null,
     identityFallbackKey: '',
-    interruptionStartedAt: 0
+    interrupted: false
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
@@ -55,26 +55,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.identityFallbackMedia = null;
     state.identityFallbackKey = '';
   };
-  const clearInterruption = () => {
-    state.interruptionStartedAt = 0;
-  };
-  const beginInterruption = () => {
-    if (state.interruptionStartedAt) return;
-    state.interruptionStartedAt = Date.now();
-    post('spotify:timed-interruption-started');
-  };
-  const cancelInterruption = () => {
-    if (!state.interruptionStartedAt) return;
-    clearInterruption();
-    post('spotify:timed-interruption-cancelled');
-  };
-  const completeInterruption = () => {
-    if (!state.interruptionStartedAt) return;
-    const elapsedMs = Math.max(
-        1, Math.ceil(Date.now() - state.interruptionStartedAt));
-    clearInterruption();
-    postFields('spotify:timed-interruption-ended', String(elapsedMs));
-  };
   const resetState = key => {
     clearIdentityFallback();
     state.key = key;
@@ -82,7 +62,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.targetMedia = null;
     state.trustedStartKey = '';
     state.trustedStartUntil = 0;
-    clearInterruption();
+    state.interrupted = false;
   };
   const syncTarget = () => {
     const target = window.__homePanelSpotifyNativeTarget;
@@ -164,28 +144,29 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     const targetIdentityConfirmed = matchesTarget(target, identity);
     const ownsMedia = state.targetMedia === media;
     if (!identity.path && !identity.title) {
-      if (!ownsMedia) {
-        if (media.paused || !consumeTrustedStart(target)) return 'unknown';
+      if (!ownsMedia && (media.paused || !consumeTrustedStart(target))) {
+        return 'unknown';
       }
     } else if (!targetIdentityConfirmed) {
       clearTrustedStart();
-      if (!media.paused && !identity.path) {
-        beginInterruption();
-        return state.startPosted ? 'interruption' : 'unknown';
+      if (!media.paused && state.startPosted) {
+        state.interrupted = true;
+        return 'interruption';
       }
-      cancelInterruption();
       return state.startPosted ? 'wrong' : 'unknown';
     }
 
     if (media.paused) return 'target';
-    if (targetIdentityConfirmed) completeInterruption();
     state.targetMedia = media;
-    if (!state.startPosted) {
-      const remainingMs = remainingDurationMs(media);
+    const remainingMs = remainingDurationMs(media);
+    if (state.interrupted) {
+      state.interrupted = false;
       if (remainingMs > 0) {
-        state.startPosted = true;
-        postFields('spotify:timed-started', String(remainingMs));
+        postFields('spotify:timed-resumed', String(remainingMs));
       }
+    } else if (!state.startPosted && remainingMs > 0) {
+      state.startPosted = true;
+      postFields('spotify:timed-started', String(remainingMs));
     }
     return 'playing';
   };

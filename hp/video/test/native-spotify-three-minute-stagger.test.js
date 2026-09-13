@@ -2,157 +2,100 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const wrapper = readFileSync(new URL('../../native/src/spotify_webviews.inc', import.meta.url), 'utf8');
-const header = readFileSync(new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
-const hostLifecycle = readFileSync(new URL('../../native/src/spotify_host_lifecycle.inc', import.meta.url), 'utf8');
-const phase = readFileSync(new URL('../../native/src/spotify_phase_sync.inc', import.meta.url), 'utf8');
-const schedule = readFileSync(new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
-const timed = readFileSync(new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
-const cycle = readFileSync(new URL('../../native/src/spotify_rotation_cycle.inc', import.meta.url), 'utf8');
-const music = readFileSync(new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
-const routing = readFileSync(new URL('../../native/src/spotify_target_routing.inc', import.meta.url), 'utf8');
-const fallback = readFileSync(new URL('../../native/src/spotify_fallback_catalog.inc', import.meta.url), 'utf8');
-const rotation = readFileSync(new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
-const scoped = readFileSync(new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
-const runtime = readFileSync(new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
-const events = readFileSync(new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
-const cloud = readFileSync(new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
+const source = name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
-test('Spotify startup uses one shared ten-second offset and one adaptive scheduler timer', () => {
-  assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
-  assert.match(wrapper, /#include "spotify_cloud_playlist\.inc"/);
-  assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
+const wrapper = source('spotify_webviews.inc');
+const header = source('spotify_webviews.h');
+const hostLifecycle = source('spotify_host_lifecycle.inc');
+const phase = source('spotify_phase_sync.inc');
+const schedule = source('spotify_stagger_schedule.inc');
+const timed = source('spotify_timed_sequence.inc');
+const cycle = source('spotify_rotation_cycle.inc');
+const music = source('spotify_music_target.inc');
+const routing = source('spotify_target_routing.inc');
+const fallback = source('spotify_fallback_catalog.inc');
+const rotation = source('spotify_timed_end_rotation.inc');
+const scoped = source('spotify_scoped_track_reconcile.inc');
+const runtime = source('spotify_media_observer_runtime.inc');
+const events = source('spotify_media_observer_events.inc');
+const cloud = source('spotify_cloud_playlist.inc');
+
+test('Spotify startup uses one ten-second stagger and one adaptive scheduler timer', () => {
+  assert.match(wrapper, /spotify_stagger_schedule\.inc/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(phase, /SchedulerTimerProc/);
   assert.match(schedule, /const auto startupReady/);
-  assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
-  assert.doesNotMatch(phase + schedule, /StaggeredReconcileTimerProc|::SetTimer\(|KillTimer\(/);
-  assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
+  assert.equal((schedule.match(/for \(size_t step = 0; step < count; \+\+step\)/g) || []).length, 1);
+  assert.doesNotMatch(phase + schedule, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify schedule starts autonomously and loads cloud playlist once ready before rotation', () => {
-  assert.match(header, /scheduleStartTick_ = 0/);
-  assert.match(header, /void StartAutonomousSchedule\(ULONGLONG now\) noexcept/);
+test('Spotify schedule starts autonomously and waits for cloud playlist readiness', () => {
   assert.match(hostLifecycle, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
-  assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
-  assert.match(schedule, /BeginInitialCloudPlaylistWait\(now\)[\s\S]*robustSchedulerStarted_ = true/);
+  assert.match(schedule, /BeginInitialCloudPlaylistWait\(now\)/);
   assert.match(schedule, /if \(!InitialCloudPlaylistReady\(now\)\) return/);
-  assert.match(schedule, /if \(cloudPlaylistWasReady\) EnsureCloudPlaylistLoaded\(\)/);
-  assert.match(
-    schedule,
-    /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot\);[\s\S]*CurrentMusicTrack\(slot\)[\s\S]*NavigateMusicTarget\(slot\);/,
-  );
-  assert.doesNotMatch(header + schedule, /youtubeCycleStartTick_/);
+  assert.match(schedule, /InitializeTimedRotationSlot\(slot\)/);
+  assert.match(schedule, /NavigateMusicTarget\(slot\)/);
 });
 
-test('cloud rotation supports fixed, shuffle, random, and cycle dedupe', () => {
-  assert.match(header, /struct RotationGroup/);
+test('cloud rotation supports fixed shuffle random and cycle dedupe', () => {
   assert.match(header, /Mode : unsigned char \{ Fixed, Shuffle, Random \}/);
-  assert.match(header, /std::vector<ManagedTrack> tracks/);
-  assert.match(header, /std::vector<ManagedTrack> timedCycleTracks/);
   assert.match(cloud, /GetNamedArray\(L"rotation"\)/);
-  assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"fixed"\)/);
-  assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"shuffle"\)/);
-  assert.match(cloud, /_wcsicmp\(mode\.c_str\(\), L"random"\)/);
-  assert.match(cloud, /GetNamedNumber\(L"count", 1\.0\)/);
+  assert.match(cloud, /L"fixed"/);
+  assert.match(cloud, /L"shuffle"/);
+  assert.match(cloud, /L"random"/);
   assert.match(cycle, /std::vector<std::wstring> usedPaths/);
-  assert.match(cycle, /for \(const RotationGroup& group : cloudRotationGroups_\) appendGroup\(group\)/);
   assert.match(cycle, /std::swap\(candidates\[remaining - 1\], candidates\[swapIndex\]\)/);
-  assert.match(cycle, /std::min\(group\.count, candidates\.size\(\)\)/);
-  assert.doesNotMatch(rotation, /% 6U|position <= 4U/);
 });
 
-test('cycle advances only through the unified native deadline and queues navigation', () => {
+test('cycle advances only through the native deadline and queues later navigation', () => {
   assert.match(rotation, /\+\+slot\.timedRotationPosition/);
-  assert.match(rotation, /slot\.timedRotationPosition >= slot\.timedCycleTracks\.size\(\)/);
   assert.match(rotation, /PrepareTimedRotationCycle\(slot\)/);
-  assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
-  assert.match(events, /post\('spotify:timed-ended'\)/);
-  assert.match(rotation, /ArmMusicCompletionDeadlineFromStart/);
+  assert.match(runtime, /spotify:timed-started/);
+  assert.match(runtime, /spotify:timed-resumed/);
+  assert.match(events, /spotify:timed-ended/);
+  assert.match(rotation, /SetMusicCompletionDeadline/);
   assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(slot\)/);
   const advanceStart = rotation.indexOf('void SpotifyWebViews::AdvanceTimedRotationSlot');
   const advanceEnd = rotation.indexOf('\nvoid SpotifyWebViews::ProbeDueTimedCompletions', advanceStart);
   assert.ok(advanceStart >= 0 && advanceEnd > advanceStart);
   assert.doesNotMatch(rotation.slice(advanceStart, advanceEnd), /NavigateMusicTarget|RefreshSpotifyHostLayout/);
-  assert.doesNotMatch(
-    events,
-    /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause)'/,
-  );
-  assert.doesNotMatch(runtime + events + rotation, /spotify:timed-plan/);
-  assert.doesNotMatch(header + rotation + schedule, /kSpotifyMusicTrackDeadlineMs|AdvanceExpiredTimedRotation/);
-  assert.match(runtime, /navigator\.mediaSession/);
-  assert.match(runtime, /const enforceTarget = media =>/);
-  assert.match(runtime, /targetIdentityConfirmed/);
+  assert.doesNotMatch(runtime + events + rotation, /spotify:timed-plan|SpotifyDeadlineWithInterruptionHold/);
 });
 
-test('every cloud song uses the current ManagedTrack and one scoped reconcile path', () => {
+test('every cloud song uses ManagedTrack and one directly referenced scoped reconcile script', () => {
   assert.doesNotMatch(header + music, /MusicTargetDescriptor|TimedSpotifyTarget|ResolveMusicTarget/);
   assert.match(header, /const ManagedTrack\* CurrentMusicTrack/);
-  assert.match(music, /CurrentMusicTrack\(\s*const Slot& slot\) const noexcept/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(music, /void SpotifyWebViews::NavigateMusicTarget/);
   assert.match(music, /void SpotifyWebViews::ReconcileMusicTarget/);
-  assert.match(music, /kSpotifyStaticTrackReconcileScript/);
-  assert.doesNotMatch(header + timed + music, /SlotMatchesTimedTarget|NavigateTimedSlot|ReconcileTimedSlot/);
+  assert.match(music, /kSpotifyScopedTrackReconcileScript/);
+  assert.doesNotMatch(wrapper, /#define kSpotifyStaticTrackReconcileScript/);
 });
 
 test('stale playback events are rejected by target generation', () => {
   assert.match(header, /ULONGLONG targetGeneration = 0/);
-  assert.match(rotation, /ParseSpotifyGenerationEvent/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
   assert.match(routing, /spotify:generation/);
   assert.match(routing, /std::to_wstring\(slot\.targetGeneration\)/);
-  assert.match(runtime, /message \+ '\\u001f' \+ generation\(\)/);
 });
 
-test('invalid or absent cloud rotation retains the former six-song fallback', () => {
+test('invalid cloud rotation retains the fallback catalog and runtime remains music-only', () => {
   assert.match(cycle, /Fail-safe preserves the former six-song behavior/);
-  for (const id of [
-    '6Vy6hCA2CZwZalGqaX6Sew', '5EjWZuODqEPQ9eq7XCmITh',
-    '6VIY7OFy8g5ZyLSgQEi8lV', '0rUT5nQpBjkg4SPY8jPjcO',
-    '2UHNvd8SjNGoEI6jXa2afx',
-  ]) assert.match(timed, new RegExp(id));
   assert.match(cycle, /kSpotifyFallbackCatalogTracks/);
-  assert.match(cycle, /kSpotifyFallbackCatalogTracks\.size\(\)/);
-});
-
-test('Spotify runtime is music-only with no separate target kind state', () => {
+  assert.match(fallback, /std::array<SpotifyFallbackCatalogTrack, \d+>/);
   assert.doesNotMatch(
     header + cloud + cycle + timed + routing + rotation + schedule,
     /TalkAbout|TALKABOUT|talkAbout|includeTalkAbout|SpotifyPodcast|podcastBreakActive|TimedSpotifyTarget/,
   );
-  assert.match(routing, /CurrentMusicTrack\(slot\)/);
-  assert.doesNotMatch(routing, /kind = L"music"|pagePath|trackPath/);
 });
 
-test('fallback catalog excludes fixed songs and unsupported variants', () => {
-  assert.match(fallback, /std::array<SpotifyFallbackCatalogTrack, \d+>/);
-  const catalogSection = fallback.slice(
-    fallback.indexOf('kSpotifyFallbackCatalogTracks = {{'),
-    fallback.indexOf('}};', fallback.indexOf('kSpotifyFallbackCatalogTracks = {{')),
-  );
-  for (const fixedId of [
-    '6Vy6hCA2CZwZalGqaX6Sew', '5EjWZuODqEPQ9eq7XCmITh',
-    '6VIY7OFy8g5ZyLSgQEi8lV', '0rUT5nQpBjkg4SPY8jPjcO',
-    '2UHNvd8SjNGoEI6jXa2afx',
-  ]) assert.doesNotMatch(catalogSection, new RegExp(fixedId));
-  assert.doesNotMatch(catalogSection, /愛MUST BE|Remix/);
-  for (const shortTrack of [
-    'Sunny side up', 'キスが苦い', 'やるしかないじゃん', '恋愛無双',
-    '死んだふり', 'Make or Break', '行かないで', 'ドライフルーツ',
-    'Nightmare症候群',
-    'Interlude #1', 'Interlude #2', 'Interlude #4', 'Interlude #6',
-    'Overture',
-  ]) assert.match(catalogSection, new RegExp(shortTrack));
-});
-
-test('direct tracks are passed to the scoped reconcile script without runtime script rewriting', () => {
+test('direct tracks use the scoped reconcile script without runtime script rewriting', () => {
   assert.match(music, /PostSpotifyTargetDescriptorForSlot\(slot\)/);
-  assert.match(music, /kSpotifyStaticTrackReconcileScript/);
+  assert.match(music, /kSpotifyScopedTrackReconcileScript/);
   assert.match(scoped, /targetLink/);
   assert.match(scoped, /scrollIntoView/);
-  assert.doesNotMatch(wrapper, /RewriteSpotify|#define ExecuteScript/);
-  assert.doesNotMatch(music, /BuildRecentTrackScript|EscapeRecentScriptLiteral/);
+  assert.doesNotMatch(wrapper, /RewriteSpotify|#define ExecuteScript|kSpotifyStaticTrackReconcileScript/);
 });

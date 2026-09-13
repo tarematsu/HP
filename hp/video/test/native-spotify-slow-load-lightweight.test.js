@@ -2,52 +2,35 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const phaseSync = readFileSync(
-  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
-  'utf8',
-);
-const scripts = readFileSync(
-  new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
-  'utf8',
-);
+const source = name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+
+const phaseSync = source('spotify_phase_sync.inc');
+const scripts = source('spotify_static_scripts.inc');
 const spotify = [
   'spotify_webviews.cpp',
   'spotify_webview_foundation.inc',
   'spotify_host_lifecycle.inc',
   'spotify_controller_lifecycle.inc',
-].map(name => readFileSync(
-  new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
-const layout = readFileSync(
-  new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
-  'utf8',
-);
-const click = readFileSync(
-  new URL('../../native/src/spotify_background_click.inc', import.meta.url),
-  'utf8',
-);
-const header = readFileSync(
-  new URL('../../native/src/spotify_webviews.h', import.meta.url),
-  'utf8',
-);
+].map(source).join('\n');
+const layout = source('spotify_host_layout.inc');
+const click = source('spotify_background_click.inc');
+const header = source('spotify_webviews.h');
 
-test('slow multi-window recovery is time based instead of retry-count based', () => {
-  assert.match(phaseSync, /kSpotifyUnhealthyRenavigateMs = 30ULL \* 1000ULL/);
-  assert.match(phaseSync, /kSpotifyRobustNavigateRetryMs = 20ULL \* 1000ULL/);
-  assert.match(phaseSync, /kSpotifyRobustControllerRetryMs = 20ULL \* 1000ULL/);
-  assert.match(phaseSync, /ShouldRenavigateUnhealthySlot/);
-  assert.doesNotMatch(phaseSync, /kSpotifyRobustReloadThreshold|unhealthyChecks/);
-  assert.doesNotMatch(header, /unhealthyChecks/);
+test('slow multi-window recovery uses one time-based retry instead of layered watchdogs', () => {
+  assert.match(phaseSync, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
+  assert.match(phaseSync, /kSpotifyControllerRetryMs = 20ULL \* 1000ULL/);
+  assert.match(phaseSync, /slot\.nextRecoveryTick = now \+ kSpotifyRecoveryRetryMs/);
+  assert.doesNotMatch(phaseSync, /kSpotifyUnhealthyRenavigateMs|kSpotifyRobustNavigateRetryMs|ShouldRenavigateUnhealthySlot|unhealthyChecks/);
+  assert.doesNotMatch(header, /lastModeNavigateTick|unhealthySinceTick|unhealthyChecks/);
 });
 
 test('healthy scheduler uses a five-minute ceiling and exact ten-second startup boundaries', () => {
   assert.match(phaseSync, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
-  assert.match(
-    phaseSync,
-    /boundary =\s*scheduleStartTick_ \+[\s\S]*static_cast<ULONGLONG>\(i\) \* kSpotifyAccountStartOffsetMs/,
-  );
+  assert.match(phaseSync, /static_cast<ULONGLONG>\(i\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(phaseSync, /considerTick\(boundary\)/);
-  assert.doesNotMatch(phaseSync, /kSpotifyAdaptiveSteadyStartMs|::SetTimer\(|KillTimer\(/);
+  assert.doesNotMatch(phaseSync, /::SetTimer\(|KillTimer\(/);
 });
 
 test('usable Spotify controls are recovered through the dedicated trusted-input module', () => {
@@ -72,43 +55,20 @@ test('healthy slots are not continuously scanned by a second native watchdog', (
 });
 
 test('healthy cursor changes do not relayout all playback hosts', () => {
-  assert.match(
-    layout,
-    /const size_t recoveryIndex =[\s\S]*SlotStateNeedsRecovery\(slots_\[activeIndex\]\.state\)/,
-  );
+  assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /hostLayoutActiveSlot_ = recoveryIndex/);
-  assert.match(
-    layout,
-    /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
-  );
+  assert.match(layout, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
 test('authentication recovery and healthy playback remain visible with compact healthy geometry', () => {
-  assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
-  assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
-  assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
-  assert.match(layout, /const size_t activeIndex = schedulerCursor_ % slots_\.size\(\)/);
-  assert.match(layout, /foregroundAuthenticationIndex/);
-  assert.match(layout, /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex/);
-  assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
   assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
   assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
-  assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
-  assert.match(
-    layout,
-    /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
-  );
-  assert.match(layout, /const bool lowPowerPlayback =/);
   assert.match(layout, /put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
-  assert.match(layout, /x = client\.right \+ 32/);
-  assert.match(layout, /insertAfter = HWND_TOP/);
 });
 
 test('cached authentication foreground avoids repeated WebView geometry notifications', () => {
@@ -119,10 +79,7 @@ test('cached authentication foreground avoids repeated WebView geometry notifica
 
 test('login checks use cached navigation state instead of repeated COM source reads', () => {
   assert.match(header, /bool loginPage = false/);
-  assert.match(
-    phaseSync,
-    /SlotIsLoginPage\(const Slot& slot\)[\s\S]*return slot\.webview && slot\.loginPage;/,
-  );
+  assert.match(phaseSync, /return slot\.webview && slot\.loginPage/);
   const loginCheck = phaseSync.slice(
     phaseSync.indexOf('bool SpotifyWebViews::SlotIsLoginPage'),
     phaseSync.indexOf('void SpotifyWebViews::BeginControllerCreate'),

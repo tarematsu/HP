@@ -114,7 +114,7 @@ test('one adaptive threadpool timer services the state queue and exact deadlines
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
   assert.match(phaseSync, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
-  assert.match(phaseSync, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phaseSync, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /CreateThreadpoolTimer\([\s\S]*SchedulerTimerProc/);
   assert.match(phaseSync, /SetThreadpoolTimer\(schedulerTimer_, &due, 0, 0\)/);
@@ -129,7 +129,7 @@ test('one adaptive threadpool timer services the state queue and exact deadlines
 test('controller creation is serialized and bounded on slow machines', () => {
   assert.match(header, /ULONGLONG controllerCreateTick = 0/);
   assert.match(header, /bool controllerCreating = false/);
-  assert.match(phaseSync, /kSpotifyRobustControllerRetryMs = 20ULL \* 1000ULL/);
+  assert.match(phaseSync, /kSpotifyControllerRetryMs = 20ULL \* 1000ULL/);
   assert.match(phaseSync, /void SpotifyWebViews::BeginControllerCreate/);
   assert.match(phaseSync, /CreateController\(slot\)/);
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
@@ -147,7 +147,8 @@ test('all managed Spotify targets use the current ManagedTrack as the single tar
   assert.match(music, /void SpotifyWebViews::ReconcileMusicTarget/);
   assert.match(routing, /CurrentMusicTrack\(slot\)/);
   assert.doesNotMatch(routing, /pagePath|trackPath|kind = L"music"/);
-  assert.match(wrapper, /#define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript/);
+  assert.match(music, /ExecuteScript\(\s*kSpotifyScopedTrackReconcileScript/);
+  assert.doesNotMatch(wrapper, /#define kSpotifyStaticTrackReconcileScript/);
   assert.doesNotMatch(scripts, /__homePanelLonesomeRabbitLoop|ensureRepeatOne/);
 });
 

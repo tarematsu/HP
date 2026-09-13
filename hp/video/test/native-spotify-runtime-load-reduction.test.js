@@ -11,45 +11,39 @@ const bundle = source('spotify_fast_end_observer.inc');
 const phase = source('spotify_phase_sync.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('timed music observer installs no periodic completion probe', () => {
-  assert.match(events, /document\.addEventListener\('play'/);
+test('music observer is event driven with no periodic completion probe', () => {
   assert.match(events, /document\.addEventListener\('playing'/);
-  assert.match(events, /document\.addEventListener\('loadedmetadata'/);
   assert.match(events, /document\.addEventListener\('durationchange'/);
   assert.match(events, /document\.addEventListener\('ended', observeEnded, true\)/);
-  assert.doesNotMatch(
-    events,
-    /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause)'/,
-  );
+  assert.doesNotMatch(events, /document\.addEventListener\('play'/);
+  assert.doesNotMatch(events, /document\.addEventListener\('loadedmetadata'/);
   assert.doesNotMatch(events, /setInterval|MutationObserver/);
   assert.match(runtime, /const enforceTarget = media =>/);
 });
 
-test('timed music observer contains no playback recovery heartbeat or completion loop', () => {
+test('observer contains no playback heartbeat or parallel recovery loop', () => {
   assert.doesNotMatch(runtime, /requestRecovery|scheduleRecovery|recoveryPosted|restartPending/);
   assert.doesNotMatch(runtime, /heartbeatTimer|heartbeatMisses|startHeartbeat|stopHeartbeat/);
   assert.doesNotMatch(runtime, /spotify:not-playing|postCompletionPlan|clearCompletionPlan|probeCompletion/);
   assert.doesNotMatch(events, /scheduleRecovery|requestRecovery|spotify:not-playing/);
-  assert.doesNotMatch(events, /setInterval|startHeartbeat|stopHeartbeat|quarantineCompletedGeneration/);
   assert.doesNotMatch(bundle, /kSpotifyMediaObserverHeartbeatScript|kSpotifyMediaObserverCompletionScript/);
 });
 
-test('ended listener is event-driven and only emits an advisory deadline-shortening signal', () => {
+test('ended remains only an advisory native-deadline shortening signal', () => {
   assert.match(events, /const observeEnded = event =>/);
   assert.match(events, /state\.targetMedia !== media/);
-  assert.match(events, /state\.interruptionStartedAt/);
+  assert.match(events, /state\.interrupted/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
-  assert.doesNotMatch(events, /setTimeout\([^)]*ended|setInterval/);
 });
 
-test('healthy native Spotify sleeps up to five minutes and wakes at exact pending work', () => {
+test('healthy Spotify sleeps up to five minutes while recovery has one five-second deadline', () => {
   assert.match(phase, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
   assert.match(phase, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
-  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
-  assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
-  assert.match(phase, /slot\.reconcileStartedTick \+ kSpotifyAsyncOperationTimeoutMs/);
+  assert.match(phase, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
+  assert.match(phase, /considerTick\(slot\.nextRecoveryTick\)/);
+  assert.match(phase, /slot\.asyncStartedTick \+ kSpotifyAsyncOperationTimeoutMs/);
   assert.match(phase, /considerTick\(boundary\)/);
-  assert.doesNotMatch(phase, /::SetTimer\(|KillTimer\(/);
+  assert.doesNotMatch(phase, /kSpotifyQueueRetryMs|lastTimedReconcileTick|::SetTimer\(|KillTimer\(/);
 });
 
 test('healthy deadline-owned playback does not enter DOM reconcile work', () => {
