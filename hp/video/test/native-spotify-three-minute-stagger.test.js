@@ -17,14 +17,15 @@ const runtime = readFileSync(new URL('../../native/src/spotify_media_observer_ru
 const events = readFileSync(new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
 const cloud = readFileSync(new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
 
-test('Spotify startup keeps one shared 40-second account offset with one direct scheduler', () => {
+test('Spotify startup uses one shared ten-second account offset with a state-driven scheduler', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
   assert.match(wrapper, /#include "spotify_cloud_playlist\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(schedule, /const auto startupReady/);
+  assert.match(schedule, /const size_t scanStart = \(staggerSlotIndex_ \+ 1\) % count/);
   assert.match(schedule, /StaggeredReconcileTimerProc/);
+  assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
 });
 
 test('Spotify schedule starts autonomously and loads cloud playlist before rotation', () => {
