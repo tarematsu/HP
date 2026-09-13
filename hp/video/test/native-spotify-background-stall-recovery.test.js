@@ -102,8 +102,9 @@ test('playback anomalies cannot postpone the native completion deadline', () => 
 
 test('advertisements cannot start or falsely end the requested-song timer', () => {
   assert.match(runtime, /const enforceTarget = media =>/);
-  assert.match(runtime, /else if \(!matchesTarget\(target, identity\)\)/);
-  assert.match(runtime, /if \(!state\.startPosted\) return 'unknown'/);
+  assert.match(runtime, /else if \(!targetIdentityConfirmed\)/);
+  assert.match(runtime, /return state\.startPosted \? 'interruption' : 'unknown'/);
+  assert.match(runtime, /return state\.startPosted \? 'wrong' : 'unknown'/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(events, /state\.interruptionStartedAt/);
   assert.match(events, /state\.targetMedia !== media/);
