@@ -11,10 +11,6 @@ const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url),
   'utf8',
 );
-const timed = readFileSync(
-  new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url),
-  'utf8',
-);
 
 const bootstrapMatch = scripts.match(
   /constexpr wchar_t kSpotifyStaticPageBootstrapScript\[\] = LR"JS\(([\s\S]*?)\)JS";/,
@@ -57,7 +53,7 @@ function createBootstrapHarness() {
     window,
     sendTarget(path, title = 'track') {
       messageHandler({
-        data: ['spotify:target', path, path, title, 'music', ''].join('\u001f'),
+        data: ['spotify:target', path, path, title, 'music'].join('\u001f'),
       });
     },
   };
@@ -82,10 +78,9 @@ test('all target messages are declarative and never pause media in the page brid
   assert.doesNotMatch(bootstrap, /\.pause\s*\(/);
 });
 
-test('music and podcast transitions use navigation as the sole target actuator', () => {
+test('music transitions use navigation as the sole target actuator', () => {
   assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
   assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript/);
-  assert.doesNotMatch(timed, /kSpotifyStaticStopPlaybackScript/);
   assert.match(music, /Navigate\(target\.url\)/);
-  assert.match(timed, /Navigate\(SpotifyPodcastUrl\(\)\)/);
+  assert.doesNotMatch(scripts + music, /TalkAbout|TALKABOUT|SpotifyPodcast|podcast/);
 });
