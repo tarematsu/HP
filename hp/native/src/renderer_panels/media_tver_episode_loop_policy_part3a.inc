@@ -109,6 +109,9 @@ LR"JS(
       if (!video) return;
       bindVideoEvents(video, state);
       bindPlayerObserver(video);
+      if (video.paused && !video.ended && !state.adActive) {
+        try { state.requestRecoveryWake?.('initial-pause'); } catch (_) {}
+      }
       enforceVolume(video);
 
       // Playback rate is initialized exactly once for the current video.
