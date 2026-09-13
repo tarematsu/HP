@@ -44,7 +44,7 @@ export const ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS = [
   ["なぜ　恋をして来なかったんだろう？", "2K6uY7BaeOfuPwJNOVF3ht"],
 ] as const;
 
-// F/G use the complete short music pool. Instrumentals stay exclusive to C/E.
+// F/G use the complete short music pool. Instrumentals stay exclusive to B/E.
 export const SHORT_SPOTIFY_ROTATION_TRACKS = [
   ...SHORT_SPOTIFY_RANDOM_TRACKS,
   ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
@@ -103,12 +103,12 @@ export function managedSpotifySevenSlotRotation() {
     {
       mode: "random",
       count: 1,
-      tracks: rotationTracks(SPOTIFY_B_ROTATION_TRACKS),
+      tracks: instrumentalSongs.map(track => ({ ...track })),
     },
     {
       mode: "random",
       count: 1,
-      tracks: instrumentalSongs.map(track => ({ ...track })),
+      tracks: rotationTracks(SPOTIFY_B_ROTATION_TRACKS),
     },
     {
       mode: "shuffle",
