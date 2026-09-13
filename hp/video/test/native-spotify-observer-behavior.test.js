@@ -315,7 +315,24 @@ test('a concrete wrong track cancels a provisional advertisement interruption', 
   ]);
 });
 
-test('observer has no heartbeat, recovery, or completion API', () => {
+test('validated requested-track ended publishes one advisory shortening event', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f34');
+  h.setTrack('/track/A', 'Target A');
+  h.media.duration = 180;
+  h.media.currentTime = 179;
+  h.media.paused = false;
+  h.dispatch('playing');
+  h.media.ended = true;
+  h.dispatch('ended');
+
+  assert.deepEqual(h.messages, [
+    'spotify:timed-started\x1f34\x1f1000',
+    'spotify:timed-ended\x1f34',
+  ]);
+});
+
+test('observer has no heartbeat recovery or completion-planner API', () => {
   const h = createHarness();
   const runtime = h.window.__homePanelSpotifyMediaObserverRuntime;
   assert.equal(runtime.requestRecovery, undefined);
@@ -329,7 +346,8 @@ test('observer has no heartbeat, recovery, or completion API', () => {
   assert.equal('recoveryPosted' in runtime.state, false);
   assert.equal('restartPending' in runtime.state, false);
 
-  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause', 'ended']) {
+  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause']) {
     assert.equal(h.documentListeners.has(type), false);
   }
+  assert.equal(h.documentListeners.has('ended'), true);
 });
