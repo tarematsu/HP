@@ -11,6 +11,7 @@ const events = source('spotify_media_observer_events.inc');
 const phase = source('spotify_phase_sync.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
 const music = source('spotify_music_target.inc');
+const scoped = source('spotify_scoped_track_reconcile.inc');
 
 test('observer models non-target playback as one boolean interruption state', () => {
   assert.match(runtime, /interrupted: false/);
@@ -19,6 +20,22 @@ test('observer models non-target playback as one boolean interruption state', ()
   assert.match(events, /state\.interrupted/);
   assert.doesNotMatch(runtime, /interruptionStartedAt|timed-interruption-started|timed-interruption-ended|timed-interruption-cancelled/);
   assert.doesNotMatch(events, /addEventListener\('(?:timeupdate|pause|waiting|stalled)'/);
+});
+
+test('active non-target playback before the requested song waits instead of forcing navigation', () => {
+  assert.match(runtime, /if \(!media\.paused\) \{[\s\S]*return 'interruption'/);
+  assert.match(scoped, /if \(mediaState\.known && mediaState\.playing\) return 'settling'/);
+  assert.doesNotMatch(scoped, /return 'wrong'/);
+  assert.doesNotMatch(music, /"\\"wrong\\""/);
+  const waitingStart = music.indexOf(
+    'if (json && std::wstring_view(json) == L"\\"settling\\"")',
+  );
+  const pointStart = music.indexOf('int x = 0;', waitingStart);
+  assert.ok(waitingStart >= 0 && pointStart > waitingStart);
+  const waiting = music.slice(waitingStart, pointStart);
+  assert.match(waiting, /SlotState::WaitingTarget/);
+  assert.match(waiting, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
+  assert.doesNotMatch(waiting, /NavigateMusicTarget/);
 });
 
 test('requested-song resume sends remaining duration instead of elapsed interruption time', () => {

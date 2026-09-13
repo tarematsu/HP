@@ -149,11 +149,11 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       }
     } else if (!targetIdentityConfirmed) {
       clearTrustedStart();
-      if (!media.paused && state.startPosted) {
-        state.interrupted = true;
+      if (!media.paused) {
+        if (state.startPosted) state.interrupted = true;
         return 'interruption';
       }
-      return state.startPosted ? 'wrong' : 'unknown';
+      return 'unknown';
     }
 
     if (media.paused) return 'target';

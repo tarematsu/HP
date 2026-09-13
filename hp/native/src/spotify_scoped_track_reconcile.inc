@@ -142,7 +142,6 @@ LR"JS(
 
   const current = currentTrack();
   const currentMatchesTarget = targetMatches(current);
-  const currentIdentified = !!current.path || !!current.title;
   const control = playerControl();
   const button = targetPlayButton();
   const controlIntent = buttonIntent(control);
@@ -150,8 +149,7 @@ LR"JS(
   const mediaState = mediaPlaybackState();
 
   if (currentMatchesTarget && mediaState.known && mediaState.playing) return true;
-  if (mediaState.known && mediaState.playing && currentIdentified &&
-      !currentMatchesTarget) return 'wrong';
+  if (mediaState.known && mediaState.playing) return 'settling';
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') return 'settling';
   if (buttonIntentValue === 'play') return point(button);
   if (currentMatchesTarget && controlIntent === 'play') return point(control);
