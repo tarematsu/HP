@@ -75,36 +75,30 @@ test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
   assert.match(click, /Input\.dispatchMouseEvent/);
 });
 
-test('initial account starts remain 40 seconds apart then healthy verification rotates every 40 seconds', () => {
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /elapsed < initialSerialWindowMs[\s\S]*elapsed \/ kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /elapsed - initialSerialWindowMs[\s\S]*kSpotifySimpleSteadyTurnMs/);
-  assert.match(schedule, /% accountCount/);
+test('initial account starts are ten seconds apart and steady work is state driven', () => {
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(schedule, /const auto startupReady/);
+  assert.match(schedule, /SlotState is the queue/);
+  assert.match(schedule, /No work is queued:[\s\S]*60-second healthy scheduler wake/);
+  assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
 });
 
-test('authentication foreground never extends scheduler ownership', () => {
-  assert.doesNotMatch(schedule, /kSpotifyAuthenticationHoldMs|holdAuthentication/);
-  assert.match(schedule, /const bool holdRecovery/);
+test('authentication never owns or extends a scheduler lease', () => {
+  assert.doesNotMatch(schedule, /kSpotifyAuthenticationHoldMs|holdAuthentication|holdRecovery/);
+  assert.match(schedule, /SlotIsLoginPage\(candidate\)/);
+  assert.match(schedule, /if \(slot\.webview && SlotIsLoginPage\(slot\)\) return/);
+});
+
+test('recovery is reselected by state instead of a fixed hold duration', () => {
+  assert.match(schedule, /candidate\.state != SlotState::Recovering/);
+  assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.doesNotMatch(schedule, /kSpotifySimpleRecoveryHoldMs|staggerSlotStartTick_ < /);
+});
+
+test('each serviced queue item refreshes layout before returning for login', () => {
   assert.match(
     schedule,
-    /if \(!holdRecovery && staggerSlotIndex_ != scheduledIndex\)/,
-  );
-  assert.match(schedule, /Login is a presentation concern, not scheduler ownership/);
-});
-
-test('recovery has a bounded hold long enough for async timeout and retry', () => {
-  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);
-  assert.match(schedule, /const bool holdRecovery/);
-  assert.match(schedule, /SlotStateNeedsRecovery\(current\.state\)/);
-  assert.match(schedule, /if \(!holdRecovery && staggerSlotIndex_ != scheduledIndex\)/);
-});
-
-test('each scheduler ownership pass refreshes layout before returning for login', () => {
-  assert.match(
-    schedule,
-    /Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\) return;/,
+    /staggerSlotIndex_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\) return;/,
   );
 });
 
