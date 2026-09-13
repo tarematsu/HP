@@ -10,13 +10,25 @@ const runtimeSource = readFileSync(
 
 function rawRuntimeScript() {
   const symbol = 'kSpotifyMediaObserverRuntimeScript';
-  const prefix = `constexpr wchar_t ${symbol}[] = LR"JS(\n`;
-  const start = runtimeSource.indexOf(prefix);
-  assert.notEqual(start, -1, `${symbol} raw string not found`);
-  const bodyStart = start + prefix.length;
-  const end = runtimeSource.indexOf('\n)JS";', bodyStart);
-  assert.notEqual(end, -1, `${symbol} raw string terminator not found`);
-  return runtimeSource.slice(bodyStart, end);
+  const assignment = `constexpr wchar_t ${symbol}[] =`;
+  let cursor = runtimeSource.indexOf(assignment);
+  assert.notEqual(cursor, -1, `${symbol} assignment not found`);
+  cursor += assignment.length;
+
+  const opener = 'LR"JS(\n';
+  const closer = '\n)JS"';
+  const chunks = [];
+  while (true) {
+    while (/\s/.test(runtimeSource[cursor] || '')) cursor += 1;
+    if (!runtimeSource.startsWith(opener, cursor)) break;
+    const bodyStart = cursor + opener.length;
+    const end = runtimeSource.indexOf(closer, bodyStart);
+    assert.notEqual(end, -1, `${symbol} raw string terminator not found`);
+    chunks.push(runtimeSource.slice(bodyStart, end));
+    cursor = end + closer.length;
+  }
+  assert.ok(chunks.length > 0, `${symbol} raw string not found`);
+  return chunks.join('\n');
 }
 
 class FakeMedia {
@@ -68,6 +80,7 @@ test('same-generation pause and resume never requests recovery or reposts start'
     String,
     Number,
     Math,
+    Date,
     setTimeout() { return 1; },
     clearTimeout() {},
   });
