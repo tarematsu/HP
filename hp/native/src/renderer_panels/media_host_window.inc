@@ -1,4 +1,115 @@
-// Native MV host HWND registration, message dispatch and bounds management.
+// Native MV host HWND registration, Spotify status strip, message dispatch and
+// bounds management.
+namespace {
+constexpr wchar_t kNativeSpotifyStatusClass[] = L"HomePanelNativeSpotifyStatus";
+constexpr UINT_PTR kNativeSpotifyStatusTimer = 0x53500001;
+constexpr UINT kNativeSpotifyStatusRefreshMs = 5U * 1000U;
+constexpr LONG kNativeSpotifyStatusHeight = 56;
+
+std::wstring SpotifyStatusClock(const SpotifyPlaybackStatus& status) {
+  if (!status.confirmed) return L"--:--:--";
+  wchar_t text[16]{};
+  swprintf_s(text, L"%02u:%02u:%02u", status.confirmedAt.wHour,
+             status.confirmedAt.wMinute, status.confirmedAt.wSecond);
+  return text;
+}
+
+LRESULT CALLBACK NativeSpotifyStatusWndProc(
+    HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+  switch (message) {
+    case WM_TIMER:
+      if (wparam == kNativeSpotifyStatusTimer) {
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+      }
+      break;
+    case WM_ERASEBKGND:
+      return 1;
+    case WM_PAINT: {
+      PAINTSTRUCT paint{};
+      HDC dc = BeginPaint(hwnd, &paint);
+      if (!dc) return 0;
+      RECT client{};
+      GetClientRect(hwnd, &client);
+      FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+      SetBkMode(dc, TRANSPARENT);
+      SetTextColor(dc, RGB(225, 229, 235));
+      HGDIOBJ previousFont = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
+
+      const auto statuses = GetSpotifyPlaybackStatuses();
+      const LONG width = std::max(1L, client.right - client.left);
+      for (size_t i = 0; i < statuses.size(); ++i) {
+        const LONG left = client.left +
+            static_cast<LONG>((static_cast<long long>(width) * i) /
+                              statuses.size());
+        const LONG right = client.left +
+            static_cast<LONG>((static_cast<long long>(width) * (i + 1)) /
+                              statuses.size());
+        RECT first{left + 6, client.top + 5, right - 6, client.top + 24};
+        RECT second{left + 6, client.top + 27, right - 6, client.bottom - 4};
+        std::wstring heading = statuses[i].windowName;
+        heading.append(L"  確認 ");
+        heading.append(SpotifyStatusClock(statuses[i]));
+        const std::wstring& track = statuses[i].trackTitle;
+        const wchar_t* trackText = track.empty() ? L"--" : track.c_str();
+        DrawTextW(dc, heading.c_str(), -1, &first,
+                  DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
+                      DT_NOPREFIX);
+        DrawTextW(dc, trackText, -1, &second,
+                  DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
+                      DT_NOPREFIX);
+        if (i + 1 < statuses.size()) {
+          RECT divider{right - 1, client.top + 5, right, client.bottom - 5};
+          FillRect(dc, &divider, static_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
+        }
+      }
+      if (previousFont && previousFont != HGDI_ERROR) SelectObject(dc, previousFont);
+      EndPaint(hwnd, &paint);
+      return 0;
+    }
+    default:
+      break;
+  }
+  return DefWindowProcW(hwnd, message, wparam, lparam);
+}
+
+bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexcept {
+  static std::once_flag once;
+  static bool registered = false;
+  std::call_once(once, [] {
+    WNDCLASSW windowClass{};
+    windowClass.lpfnWndProc = NativeSpotifyStatusWndProc;
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpszClassName = kNativeSpotifyStatusClass;
+    windowClass.hCursor = nullptr;
+    windowClass.hbrBackground =
+        static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    SetLastError(ERROR_SUCCESS);
+    registered = RegisterClassW(&windowClass) != 0 ||
+                 GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+  });
+  if (!registered) return false;
+
+  HWND status = FindWindowExW(parentWindow, nullptr, kNativeSpotifyStatusClass, nullptr);
+  if (!status) {
+    status = CreateWindowExW(
+        0, kNativeSpotifyStatusClass, L"",
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        bounds.left, bounds.top, std::max(1L, bounds.right - bounds.left),
+        std::max(1L, bounds.bottom - bounds.top), parentWindow, nullptr,
+        GetModuleHandleW(nullptr), nullptr);
+    if (!status) return false;
+    SetTimer(status, kNativeSpotifyStatusTimer, kNativeSpotifyStatusRefreshMs, nullptr);
+  } else {
+    SetWindowPos(status, HWND_TOP, bounds.left, bounds.top,
+                 std::max(1L, bounds.right - bounds.left),
+                 std::max(1L, bounds.bottom - bounds.top),
+                 SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
+  }
+  return true;
+}
+}  // namespace
+
 LRESULT CALLBACK NativeMediaPanelWndProc(
     HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
   NativeMediaPanelHost* host = reinterpret_cast<NativeMediaPanelHost*>(
@@ -58,6 +169,16 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
   });
   if (!registered) return false;
 
+  const LONG totalHeight = std::max(1L, bounds.bottom - bounds.top);
+  const LONG statusHeight = std::min(
+      kNativeSpotifyStatusHeight, std::max(1L, totalHeight / 3));
+  RECT statusBounds = bounds;
+  statusBounds.bottom = statusBounds.top + statusHeight;
+  RECT videoBounds = bounds;
+  videoBounds.top = std::min(videoBounds.bottom - 1, statusBounds.bottom);
+
+  if (!EnsureNativeSpotifyStatusPanel(parentWindow, statusBounds)) return false;
+
   HWND host = FindWindowExW(
       parentWindow, nullptr, kNativeMvPanelHostClass, nullptr);
   if (!host) {
@@ -66,8 +187,9 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
     host = CreateWindowExW(
         0, kNativeMvPanelHostClass, L"",
         WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_VISIBLE,
-        bounds.left, bounds.top, std::max(1L, bounds.right - bounds.left),
-        std::max(1L, bounds.bottom - bounds.top), parentWindow, nullptr,
+        videoBounds.left, videoBounds.top,
+        std::max(1L, videoBounds.right - videoBounds.left),
+        std::max(1L, videoBounds.bottom - videoBounds.top), parentWindow, nullptr,
         GetModuleHandleW(nullptr), state);
     if (!host) {
       delete state;
@@ -80,11 +202,11 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
   RECT current{};
   GetWindowRect(host, &current);
   MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
-  if (!EqualRect(&current, &bounds)) {
+  if (!EqualRect(&current, &videoBounds)) {
     SetWindowPos(
-        host, HWND_TOP, bounds.left, bounds.top,
-        std::max(1L, bounds.right - bounds.left),
-        std::max(1L, bounds.bottom - bounds.top),
+        host, HWND_TOP, videoBounds.left, videoBounds.top,
+        std::max(1L, videoBounds.right - videoBounds.left),
+        std::max(1L, videoBounds.bottom - videoBounds.top),
         SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
   }
   return true;

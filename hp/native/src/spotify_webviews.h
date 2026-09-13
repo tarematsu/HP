@@ -4,6 +4,14 @@
 namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 10ULL * 1000ULL;
+inline constexpr size_t kSpotifyActiveAccountCount = 5;
+
+struct SpotifyPlaybackStatus {
+  std::wstring windowName;
+  std::wstring trackTitle;
+  SYSTEMTIME confirmedAt{};
+  bool confirmed = false;
+};
 
 class SpotifyWebViews final {
  public:
@@ -17,9 +25,11 @@ class SpotifyWebViews final {
   void Resize() noexcept;
   void Shutdown() noexcept;
   void SetNetworkBlocked(bool blocked) noexcept;
+  std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
+  PlaybackStatuses() const noexcept;
 
  private:
-  static constexpr size_t kAccountCount = 6;
+  static constexpr size_t kAccountCount = kSpotifyActiveAccountCount;
   static constexpr UINT kSpotifySchedulerMessage = WM_APP + 0x53;
 
   enum class SlotState : unsigned char {
@@ -67,6 +77,7 @@ class SpotifyWebViews final {
     ICoreWebView2Controller* hostLayoutController = nullptr;
     RECT hostLayoutRect{};
     HWND hostLayoutInsertAfter = nullptr;
+    SYSTEMTIME playbackConfirmedAt{};
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG timedRotationCycle = 0;
     ULONGLONG timedCompletionDeadlineTick = 0;
@@ -88,6 +99,7 @@ class SpotifyWebViews final {
     bool loginPage = false;
     bool timedObserverReady = false;
     bool timedRotationActive = false;
+    bool playbackConfirmed = false;
     bool hostLayoutApplied = false;
     bool hostLayoutReducedZoomApplied = false;
   };
@@ -175,6 +187,9 @@ class SpotifyWebViews final {
   bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
 };
+
+std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
+GetSpotifyPlaybackStatuses() noexcept;
 
 // Spotify runs independently from the YouTube/TVer media phase. Accounts become
 // scheduler-eligible ten seconds apart and then run from cloud rotation blocks.

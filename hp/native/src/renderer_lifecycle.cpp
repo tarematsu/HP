@@ -43,6 +43,13 @@ void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept {
   gSpotifyWebViews->SetNetworkBlocked(blocked);
 }
 
+std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
+GetSpotifyPlaybackStatuses() noexcept {
+  return gSpotifyWebViews ? gSpotifyWebViews->PlaybackStatuses()
+                          : std::array<SpotifyPlaybackStatus,
+                                       kSpotifyActiveAccountCount>{};
+}
+
 Renderer::Renderer(HWND window, int width, int height)
     : window_(window), width_(width), height_(height) {
   current_ = this;
