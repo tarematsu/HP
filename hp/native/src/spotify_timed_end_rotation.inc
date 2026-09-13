@@ -104,9 +104,6 @@ void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
   PrepareTimedRotationCycle(slot);
   slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
-  schedulerCursor_ = slot.index;
-  RefreshSpotifyHostLayout();
-  NavigateActiveTimedSlot(slot);
 }
 
 void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
@@ -153,9 +150,6 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
     }
   }
   ApplyTimedRotationTarget(slot);
-  schedulerCursor_ = slot.index;
-  RefreshSpotifyHostLayout();
-  NavigateActiveTimedSlot(slot);
 }
 
 void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
@@ -174,17 +168,15 @@ void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
         slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick);
     if (effectiveDeadline > now) continue;
 
-    // A provisional interruption may hold the deadline only for a bounded
-    // window. If it never resolves back to the requested track, fail forward at
-    // the effective deadline instead of allowing an ad/metadata state to wedge
-    // the rotation forever.
+    // Expiry only advances queue state. The scheduler pass chooses one slot for
+    // navigation/DOM work, so simultaneous completions cannot fan out into six
+    // concurrent WebView actions.
     slot.timedInterruptionStartTick = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
     slot.timedPlaybackStartTick = 0;
     AdvanceTimedRotationSlot(slot);
   }
-  ArmCompletionDeadlineTimer();
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
@@ -250,7 +242,6 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 target->timedObserverInstallStartedTick = 0;
                 target->timedObserverReady = true;
                 target->lastTimedReconcileTick = 0;
-                ReconcileActiveTimedSlot(*target);
                 ArmRobustScheduler();
                 return S_OK;
               }
@@ -263,7 +254,6 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               if (interruptionStarted) {
                 if (target->timedInterruptionStartTick == 0) {
                   target->timedInterruptionStartTick = now;
-                  ArmCompletionDeadlineTimer();
                 }
                 ArmRobustScheduler();
                 return S_OK;
@@ -272,7 +262,6 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               if (interruptionCancelled) {
                 if (target->timedInterruptionStartTick != 0) {
                   target->timedInterruptionStartTick = 0;
-                  ArmCompletionDeadlineTimer();
                 }
                 ArmRobustScheduler();
                 return S_OK;
@@ -292,7 +281,6 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                             ? maxTick
                             : target->timedCompletionDeadlineTick + extension;
                   }
-                  ArmCompletionDeadlineTimer();
                 }
                 ArmRobustScheduler();
                 return S_OK;
@@ -300,10 +288,9 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
               if (ended) {
                 // End detection is advisory only. It shortens the generation's
-                // existing unified deadline to now; the common deadline probe
-                // remains the sole path that advances to the next target.
+                // existing unified deadline; the scheduler remains the sole path
+                // that advances rotation state and starts the next navigation.
                 ShortenMusicCompletionDeadlineAtEnd(*target, now);
-                ArmRobustScheduler();
                 return S_OK;
               }
 
