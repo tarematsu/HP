@@ -162,9 +162,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     if (slot.lastTimedReconcileTick == 0 ||
         now - slot.lastTimedReconcileTick >= kSpotifySimpleRetryMs) {
       slot.lastTimedReconcileTick = now;
-      if (slot.timedTarget != TimedSpotifyTarget::TalkAbout) {
-        ArmTimedEndObserver(slot);
-      }
+      ArmTimedEndObserver(slot);
       staggerSlotValidated_ = true;
       ReconcileActiveTimedSlot(slot);
     }
