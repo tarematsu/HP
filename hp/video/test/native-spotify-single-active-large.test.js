@@ -98,8 +98,13 @@ test('recovery is reselected by state instead of a fixed hold duration', () => {
 test('each serviced queue item refreshes layout before returning for login', () => {
   assert.match(
     schedule,
-    /staggerSlotIndex_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\) return;/,
+    /schedulerCursor_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\) return;/,
   );
+});
+
+test('scheduler has one cursor and no obsolete ownership bookkeeping', () => {
+  assert.match(header, /size_t schedulerCursor_ = 0/);
+  assert.doesNotMatch(header, /staggerSlotIndex_|staggerSlotStartTick_|staggerSlotValidated_/);
 });
 
 test('the exact login slot participates in layout cache so auth handoff parks the old host', () => {
