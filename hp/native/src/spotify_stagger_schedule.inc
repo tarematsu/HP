@@ -28,10 +28,8 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   BeginInitialCloudPlaylistWait(now);
   EnsureCloudPlaylistLoaded();
   robustSchedulerStarted_ = true;
-  staggerSlotIndex_ = slots_.size() - 1;
-  staggerSlotStartTick_ = 0;
+  schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = 0;
-  staggerSlotValidated_ = false;
 
   // Only slot 0 is allowed to start controller creation immediately. Remaining
   // accounts become queue-eligible at their ten-second startup boundaries.
@@ -67,7 +65,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   const ULONGLONG elapsed = now - scheduleStartTick_;
   const size_t count = slots_.size();
-  const size_t scanStart = (staggerSlotIndex_ + 1) % count;
+  const size_t scanStart = (schedulerCursor_ + 1) % count;
 
   const auto startupReady = [elapsed](size_t index) noexcept {
     return elapsed >= static_cast<ULONGLONG>(index) *
@@ -127,9 +125,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   if (selected == count) return;
 
-  // staggerSlotIndex_ is now only the currently serviced/layout slot. It is not
-  // a time lease; the next pass starts scanning after it immediately.
-  staggerSlotIndex_ = selected;
+  // One cursor is enough: it is both the round-robin starting point and the
+  // recovery layout slot for this pass. There is no ownership lease or hold.
+  schedulerCursor_ = selected;
   Slot& slot = slots_[selected];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
 
@@ -141,13 +139,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       BeginControllerCreate(slot);
       return;
     }
-    InitializeTimedRotationSlot(slot, now);
-    return;
-  }
-
-  if (slot.lastTimedReconcileTick != 0 &&
-      now - slot.lastTimedReconcileTick < kSpotifyQueueRetryMs &&
-      SlotStateNeedsRecovery(slot.state)) {
+    InitializeTimedRotationSlot(slot);
     return;
   }
 
