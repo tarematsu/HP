@@ -30,7 +30,7 @@ test('runtime uses one adaptive scheduler instead of parallel background probing
 test('slot state is the recovery queue with no fixed ownership lease', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
-  assert.match(schedule, /const size_t scanStart = \(staggerSlotIndex_ \+ 1\) % count/);
+  assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
   assert.match(schedule, /candidate\.state != SlotState::Recovering/);
   assert.match(schedule, /!candidate\.timedRotationActive \|\|\s*SlotStateNeedsRecovery\(candidate\.state\)/);
   assert.doesNotMatch(schedule, /kSpotifySimpleRecoveryHoldMs|holdRecovery|SimpleSpotifyScheduledIndex/);
@@ -40,7 +40,7 @@ test('queue runs at most one DOM reconciliation per scheduler pass', () => {
   const reconciles = schedule.match(/ReconcileActiveTimedSlot\(slot\);/g) || [];
   assert.equal(reconciles.length, 1);
   assert.match(schedule, /selected = index;\s*break;/);
-  assert.match(schedule, /staggerSlotIndex_ = selected/);
+  assert.match(schedule, /schedulerCursor_ = selected/);
   assert.match(schedule, /RefreshSpotifyHostLayout\(\)/);
 });
 
@@ -80,6 +80,7 @@ test('lost ExecuteScript callbacks expire instead of wedging a slot forever', ()
   assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
   assert.match(phase, /ExpireStaleAsyncWork\(\s*Slot& slot, ULONGLONG now\)/);
   assert.match(schedule, /ExpireStaleAsyncWork\(candidate, now\)/);
+  assert.doesNotMatch(phase, /staggerSlotIndex_|staggerSlotStartTick_|staggerSlotValidated_/);
   assert.match(music, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
   assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
 });
@@ -102,5 +103,5 @@ test('advertisements cannot start or falsely end the requested-song timer', () =
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(events, /state\.interruptionStartedAt/);
   assert.match(events, /state\.targetMedia !== media/);
-  assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(rotation, /AdvanceTimedRotationSlot\(slot\)/);
 });
