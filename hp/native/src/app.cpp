@@ -284,6 +284,12 @@ void App::Tick() {
         NextDelayFromDeadline(
             now, lastTelemetryAt_ + telemetryIntervalMs, kMaxAppTimerMs));
   }
+  if (rendererStarted_) {
+    nextTickMs = std::min(
+        nextTickMs,
+        NextDelayFromDeadline(
+            now, renderer_->NativePlaybackNextWakeAt(now), kMaxAppTimerMs));
+  }
   if (stationhead_) {
     if (StationheadNeedsForeground(stationheadStatus)) {
       nextTickMs = std::min(nextTickMs, kFastTickMs);
