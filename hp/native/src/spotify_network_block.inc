@@ -55,7 +55,6 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
         TimedSpotifyTarget::OnMyWay,
     };
     slot.timedRotationActive = false;
-    slot.podcastBreakActive = false;
     slot.reconcileInFlight = false;
     slot.targetGeneration = 0;
     if (!CreateHost(slot)) continue;
