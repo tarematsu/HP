@@ -85,7 +85,7 @@ test('healthy ownership handoff does not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('authentication and recovery are visible while healthy playback rendering is suppressed', () => {
+test('authentication and recovery stay visible while healthy playback enters low-power mode', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
@@ -95,6 +95,8 @@ test('authentication and recovery are visible while healthy playback rendering i
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
   assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
+  assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
+  assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
@@ -102,8 +104,8 @@ test('authentication and recovery are visible while healthy playback rendering i
     layout,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
   );
-  assert.match(layout, /suppressHealthyRendering/);
-  assert.match(layout, /put_IsVisible\(suppressHealthyRendering \? FALSE : TRUE\)/);
+  assert.match(layout, /const bool lowPowerPlayback =/);
+  assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
   assert.match(layout, /x = client\.right \+ 32/);
   assert.match(layout, /insertAfter = HWND_TOP/);
 });

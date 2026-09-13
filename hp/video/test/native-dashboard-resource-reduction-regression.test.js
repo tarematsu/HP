@@ -48,7 +48,7 @@ test('hidden native dashboard stops radar work before releasing display memory',
     'ResetNativeBitmapCaches();',
   ]);
   assert.match(setVisible, /radarFrameBitmap_ = nullptr/);
-  assert.match(setVisible, /radarTimeText_ = L"--:--"/);
+  assert.doesNotMatch(setVisible, /radarTimeText_/);
 });
 
 test('dashboard image and panel caches are discarded while hidden', () => {

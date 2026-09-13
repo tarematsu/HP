@@ -195,7 +195,6 @@ void Renderer::ApplyDashboardVisibility() {
     std::lock_guard lock(radarFrameMutex_);
     if (radarFrameBitmap_) DeleteObject(radarFrameBitmap_);
     radarFrameBitmap_ = nullptr;
-    radarTimeText_ = L"--:--";
     radarSignature_.clear();
   }
   radarFailedTiles_.clear();

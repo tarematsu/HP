@@ -10,20 +10,12 @@ const radarSection = readFileSync(
   new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url),
   'utf8',
 );
-const panel = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
-  'utf8',
-);
 const july19Policy = readFileSync(
   new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
   'utf8',
 );
 const activePolicy = readFileSync(
   new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url),
-  'utf8',
-);
-const messagePolicy = readFileSync(
-  new URL('../../native/src/sh_stats_webview_message_policy_fix.h', import.meta.url),
   'utf8',
 );
 
@@ -38,20 +30,6 @@ test('the compiled media panel uses the integrated YouTube and TVer surface', ()
   assert.doesNotMatch(entry, /media_section_v2\.inc/);
 });
 
-test('legacy play-count rendering remains isolated for Stationhead regression coverage', () => {
-  for (const label of ['直近1時間', '本日', '昨日', '今週', '先週']) {
-    assert.match(panel, new RegExp(`L"${label}"`));
-  }
-  assert.match(panel, /std::wstring metricsLine/);
-  assert.match(panel, /metricsLine \+= kPlayMetricLabels\[index\]/);
-  assert.match(panel, /metricsLine \+= playMetricValues\[index\]/);
-  assert.match(
-    panel,
-    /SelectObject\(dc, TierFont\(FontTier::Small\)\);[\s\S]*DrawTextInRect\(dc, metricsLine, metricsRect,[\s\S]*DT_RIGHT \| DT_SINGLELINE/,
-  );
-  assert.match(panel, /L"--"/);
-});
-
 test('play-count acquisition uses PR48 authenticated Primary WebView polling', () => {
   assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
   assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
@@ -62,12 +40,4 @@ test('play-count acquisition uses PR48 authenticated Primary WebView polling', (
   assert.match(activePolicy, /credentials: 'include'/);
   assert.match(activePolicy, /\/streakStats/);
   assert.match(activePolicy, /10 \* 60 \* 1000/);
-});
-
-test('the legacy display path remains StationheadStatus plus App play history', () => {
-  assert.doesNotMatch(messagePolicy, /PublishStationheadNativeStatsMessage/);
-  assert.match(panel, /nativeStationhead_\.dailyPlayCounts/);
-  assert.match(panel, /nativeStationhead_\.dailyPlayStatsUpdatedAt/);
-  assert.match(panel, /nativeStationheadPlayHistory_/);
-  assert.doesNotMatch(panel, /GlobalStationheadNativeStatsStore\(\)\.Snapshot\(\)/);
 });

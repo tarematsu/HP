@@ -312,7 +312,7 @@ export async function renderRepresentativeRadarFrame(
         const title = panel.title as string;
         const timeText = panel.validTimeText as string;
         const chipLeft = 18;
-        const chipTop = 180;
+        const chipTop = 148;
         const chipHorizontalPadding = 20;
         const chipHeight = 84;
         context.font = "600 32px sans-serif";

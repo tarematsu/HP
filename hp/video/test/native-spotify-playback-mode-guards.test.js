@@ -50,11 +50,11 @@ test('healthy music stays renderable until shuffle and repeat are verified off',
   );
   assert.match(
     layout,
-    /const bool suppressHealthyRendering =[\s\S]*\(healthyMusicReadyToHide \|\| healthyPodcastReadyToHide\)/,
+    /const bool lowPowerPlayback =[\s\S]*\(healthyMusicReadyToHide \|\| healthyPodcastReadyToHide\)/,
   );
   assert.match(
     layout,
-    /put_IsVisible\(suppressHealthyRendering \? FALSE : TRUE\)/,
+    /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/,
   );
   assert.match(
     guards,
