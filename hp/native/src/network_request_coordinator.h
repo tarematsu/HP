@@ -4,6 +4,7 @@
 
 #include <condition_variable>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -22,6 +23,7 @@ namespace hp {
 struct CoordinatedNetworkResult {
   bool ok = false;
   std::vector<uint8_t> body;
+  std::wstring contentType;
   std::wstring error;
 };
 
