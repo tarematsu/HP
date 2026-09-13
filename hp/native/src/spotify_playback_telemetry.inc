@@ -1,9 +1,23 @@
+#include "spotify_playback_telemetry.h"
+
 namespace hp {
 namespace {
 
 constexpr ULONGLONG kSpotifyPlaybackTelemetryMinIntervalMs = 15ULL * 1000ULL;
+SpotifyWebViews* gSpotifyPlaybackTelemetrySource = nullptr;
+
+void SetSpotifyPlaybackTelemetrySource(SpotifyWebViews* source) noexcept {
+  gSpotifyPlaybackTelemetrySource = source;
+}
 
 }  // namespace
+
+std::string CurrentSpotifyPlaybackTelemetryJson() noexcept {
+  if (!gSpotifyPlaybackTelemetrySource) {
+    return "{\"available\":false,\"sampledAt\":0,\"playingCount\":0,\"slots\":[]}";
+  }
+  return gSpotifyPlaybackTelemetrySource->PlaybackTelemetryJson();
+}
 
 std::string SpotifyWebViews::PlaybackTelemetryJson() const noexcept {
   try {
