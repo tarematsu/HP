@@ -37,7 +37,7 @@ test('cloud owns the requested seven-group Spotify rotation', () => {
   assert.equal((rotationFunction.match(/tracks: shortSongs\.map/g) ?? []).length, 2);
   assert.match(
     rotationFunction,
-    /mode: "shuffle",[\s\S]*放課後BitterBlue[\s\S]*紋白蝶が確か飛んでた/,
+    /mode: "random",\s*count: 1,\s*tracks: \[\s*spotifyRotationTrack\("放課後BitterBlue"[\s\S]*spotifyRotationTrack\("紋白蝶が確か飛んでた"/,
   );
 
   assert.match(admin, /rotation:structuredClone\(managedSpotifyRotation\)/);
@@ -45,7 +45,7 @@ test('cloud owns the requested seven-group Spotify rotation', () => {
   assert.match(deviceSync, /spotify\.rotation = nextRotation/);
 });
 
-test('B slot contains the requested five Spotify tracks', () => {
+test('C slot contains the requested five Spotify tracks', () => {
   for (const id of [
     '33liCluqUasE65nMv3KLLm',
     '5QnQ7m9OxSoFeSPSz8grqX',
@@ -58,7 +58,7 @@ test('B slot contains the requested five Spotify tracks', () => {
   ]) assert.match(catalog, new RegExp(title));
 });
 
-test('C and E share Overture plus all seven Interludes', () => {
+test('B and E share Overture plus all seven Interludes', () => {
   assert.match(catalog, /Overture/);
   for (let index = 1; index <= 7; ++index) {
     assert.match(catalog, new RegExp(`Interlude #${index}`));

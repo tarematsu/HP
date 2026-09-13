@@ -111,7 +111,8 @@ export function managedSpotifySevenSlotRotation() {
       tracks: rotationTracks(SPOTIFY_B_ROTATION_TRACKS),
     },
     {
-      mode: "shuffle",
+      mode: "random",
+      count: 1,
       tracks: [
         spotifyRotationTrack("放課後BitterBlue", "5EjWZuODqEPQ9eq7XCmITh"),
         spotifyRotationTrack("紋白蝶が確か飛んでた", "6VIY7OFy8g5ZyLSgQEi8lV"),
