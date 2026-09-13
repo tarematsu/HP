@@ -51,19 +51,22 @@ void SpotifyWebViews::Start() noexcept {
 
   for (Slot& slot : slots_) {
     slot.state = SlotState::NotCreated;
-    slot.unhealthySinceTick = 0;
     slot.targetGeneration = 0;
+    slot.nextRecoveryTick = 0;
+    slot.asyncEpoch = 0;
+    slot.asyncStartedTick = 0;
+    slot.pageEpoch = 0;
+    slot.asyncWork = AsyncWork::None;
     slot.playerPage = false;
     slot.loginPage = false;
     slot.timedObserverReady = false;
-    slot.timedObserverInstallInFlight = false;
     slot.controllerCreating = false;
     slot.controllerCreateTick = 0;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
-    slot.timedInterruptionStartTick = 0;
+    slot.trustedClickBlockedUntilTick = 0;
     slot.timedRotationActive = false;
     if (!CreateHost(slot)) continue;
   }
@@ -128,27 +131,21 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.hostWindow = nullptr;
   slot.controllerCreating = false;
   slot.controllerCreateTick = 0;
-  ++slot.reconcileRequestGeneration;
-  if (slot.reconcileRequestGeneration == 0) ++slot.reconcileRequestGeneration;
-  slot.reconcileInFlight = false;
-  slot.reconcileStartedTick = 0;
-  ++slot.timedObserverInstallGeneration;
-  if (slot.timedObserverInstallGeneration == 0) {
-    ++slot.timedObserverInstallGeneration;
-  }
-  slot.timedObserverInstallStartedTick = 0;
-  slot.trustedClickTargetGeneration = 0;
+  ++slot.asyncEpoch;
+  if (slot.asyncEpoch == 0) ++slot.asyncEpoch;
+  ++slot.pageEpoch;
+  if (slot.pageEpoch == 0) ++slot.pageEpoch;
+  slot.asyncWork = AsyncWork::None;
+  slot.asyncStartedTick = 0;
+  slot.nextRecoveryTick = 0;
   slot.trustedClickBlockedUntilTick = 0;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
-  slot.timedInterruptionStartTick = 0;
   slot.timedRotationActive = false;
   slot.state = SlotState::NotCreated;
-  slot.unhealthySinceTick = 0;
   slot.playerPage = false;
   slot.loginPage = false;
   slot.timedObserverReady = false;
-  slot.timedObserverInstallInFlight = false;
 }
 
 void SpotifyWebViews::Shutdown() noexcept {
