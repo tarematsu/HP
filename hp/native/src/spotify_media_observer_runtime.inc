@@ -16,6 +16,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     return value === expected ||
         (expected.startsWith('/track/') && value.endsWith(expected));
   };
+  const targetPath = target =>
+      target && (target.path || target.trackPath || target.pagePath || '');
   const state = {
     key: '',
     startPosted: false,
@@ -45,7 +47,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     } catch (_) {}
   };
   const targetKey = target => target
-      ? [target.path, normalize(target.title), generation()].join('|')
+      ? [targetPath(target), normalize(target.title), generation()].join('|')
       : '';
   const clearIdentityFallback = () => {
     if (state.identityFallbackTimer) clearTimeout(state.identityFallbackTimer);
@@ -108,8 +110,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   };
   const matchesTarget = (target, track) => {
     if (!target) return false;
-    if (target.path && track.path) {
-      return sameTrackPath(track.path, target.path);
+    const expectedPath = targetPath(target);
+    if (expectedPath && track.path) {
+      return sameTrackPath(track.path, expectedPath);
     }
     return !!target.title && track.title === normalize(target.title);
   };
@@ -131,7 +134,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     const target = syncTarget();
     const requested = String(requestedGeneration || '0');
     if (requested === '0' || requested !== generation() ||
-        !target || !target.path) {
+        !targetPath(target)) {
       return false;
     }
     state.trustedStartKey = targetKey(target);
@@ -153,7 +156,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 
   const enforceTarget = media => {
     const target = syncTarget();
-    if (!target || !target.path || !isMedia(media) || media.ended) {
+    if (!targetPath(target) || !isMedia(media) || media.ended) {
       return 'ignore';
     }
 
