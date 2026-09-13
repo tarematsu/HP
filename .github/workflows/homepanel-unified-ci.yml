@@ -38,6 +38,7 @@ on:
       - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-*.mjs'
       - '.github/scripts/publish-cloudflare-observability-status.mjs'
+      - '.github/scripts/ci/run-quiet.sh'
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/sh-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
@@ -80,6 +81,7 @@ on:
       - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-*.mjs'
       - '.github/scripts/publish-cloudflare-observability-status.mjs'
+      - '.github/scripts/ci/run-quiet.sh'
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/sh-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
@@ -156,78 +158,92 @@ jobs:
         if: needs.changes.outputs.contracts == 'true'
         shell: bash
         run: |
-          set -euo pipefail
-          {
-            python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
-            python3 .github/scripts/audit-cloudflare-d1-history.py --self-test
-            python3 .github/scripts/audit-cloudflare-free-tier.py --self-test
-            python3 .github/scripts/audit-observability-budget-gates.py --self-test
-            python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
-            python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
-            python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
-            node --test \
-              tests/cloudflare-*.test.mjs \
-              tests/homepanel-*.test.mjs \
-              tests/observability-*.test.mjs
-          } 2>&1 | tee observability-contracts.log
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "Production contracts and observability policies" \
+            "observability-contracts.log" \
+            bash -c 'set -euo pipefail
+              python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
+              python3 .github/scripts/audit-cloudflare-d1-history.py --self-test
+              python3 .github/scripts/audit-cloudflare-free-tier.py --self-test
+              python3 .github/scripts/audit-observability-budget-gates.py --self-test
+              python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
+              python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
+              python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
+              node --test tests/cloudflare-*.test.mjs tests/homepanel-*.test.mjs tests/observability-*.test.mjs'
 
       - name: Install HomePanel workspace dependencies
         if: needs.changes.outputs.cloud == 'true' || needs.changes.outputs.video == 'true'
         working-directory: hp
-        run: npm ci --prefer-offline --no-audit --no-fund
+        shell: bash
+        run: |
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "HomePanel dependency install" \
+            "install.log" \
+            npm ci --prefer-offline --no-audit --no-fund
 
       - name: Validate HomePanel video
         if: needs.changes.outputs.video == 'true'
         working-directory: hp
         shell: bash
         run: |
-          set -o pipefail
-          {
-            npm run check --workspace video
-            npm test --workspace video
-          } 2>&1 | tee video/validation.log
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "HomePanel video validation" \
+            "video/validation.log" \
+            bash -c 'set -euo pipefail; npm run check --workspace video; npm test --workspace video'
 
       - name: Check HomePanel sources
         if: needs.changes.outputs.cloud == 'true'
         working-directory: hp
         shell: bash
         run: |
-          set -o pipefail
-          npm run check --workspace cloud 2>&1 | tee cloud/source-check.log
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "HomePanel source check" \
+            "cloud/source-check.log" \
+            npm run check --workspace cloud
 
       - name: Run fast HomePanel tests
         if: needs.changes.outputs.cloud == 'true' && needs.changes.outputs.integration != 'true' && github.event_name != 'workflow_dispatch'
         working-directory: hp
         shell: bash
         run: |
-          set -o pipefail
-          npm run test:ci --workspace cloud 2>&1 | tee cloud/test.log
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "Fast HomePanel tests" \
+            "cloud/test.log" \
+            npm run test:ci --workspace cloud
 
       - name: Run full HomePanel tests
         if: needs.changes.outputs.cloud == 'true' && (needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch')
         working-directory: hp
         shell: bash
         run: |
-          set -o pipefail
-          npm test --workspace cloud 2>&1 | tee cloud/test.log
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "Full HomePanel tests" \
+            "cloud/test.log" \
+            npm test --workspace cloud
 
       - name: Build the unified Worker
         if: needs.changes.outputs.bundle == 'true'
         working-directory: hp
-        run: npm run check:unified-bundle --workspace cloud
+        shell: bash
+        run: |
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "Unified Worker bundle check" \
+            "cloud/unified-bundle.log" \
+            npm run check:unified-bundle --workspace cloud
 
       - name: Verify local unified D1 migrations
         if: needs.changes.outputs.migrations == 'true'
         working-directory: hp/cloud
         shell: bash
         run: |
-          set -o pipefail
-          {
-            rm -rf .wrangler-ci-state
-            npx wrangler d1 migrations apply homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc
-            npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA foreign_key_check;"
-            npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "SELECT COUNT(*) AS schema_object_count FROM sqlite_schema WHERE type IN ('table','index','trigger','view') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%';"
-          } 2>&1 | tee d1-validation.log
+          bash "$GITHUB_WORKSPACE/.github/scripts/ci/run-quiet.sh" \
+            "Unified D1 migrations" \
+            "d1-validation.log" \
+            bash -c 'set -euo pipefail
+              rm -rf .wrangler-ci-state
+              npx wrangler d1 migrations apply homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc
+              npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA foreign_key_check;"
+              npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "SELECT COUNT(*) AS schema_object_count FROM sqlite_schema WHERE type IN ('"'"'table'"'"','"'"'index'"'"','"'"'trigger'"'"','"'"'view'"'"') AND name NOT LIKE '"'"'sqlite_%'"'"' AND name NOT LIKE '"'"'_cf_%'"'"';"'
 
       - name: Upload failed validation output
         if: failure()
@@ -236,9 +252,11 @@ jobs:
           name: homepanel-unified-validation-output-${{ github.run_id }}
           path: |
             observability-contracts.log
+            hp/install.log
             hp/video/validation.log
             hp/cloud/source-check.log
             hp/cloud/test.log
+            hp/cloud/unified-bundle.log
             hp/cloud/d1-validation.log
           if-no-files-found: warn
           retention-days: 7
