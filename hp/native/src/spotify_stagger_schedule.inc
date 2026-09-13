@@ -1,7 +1,6 @@
-// SlotState is the queue. No separate container or ownership lease is needed:
-// each scheduler pass scans from the previous slot and starts at most one piece
-// of WebView work. The single adaptive threadpool timer wakes only when the next
-// retry, startup boundary, async timeout, completion deadline, or audit is due.
+// SlotState is the queue. Each scheduler pass scans once from the previous slot
+// and starts at most one piece of WebView work. The adaptive timer wakes only
+// for startup, recovery, async timeout, completion deadline, or the healthy audit.
 
 void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
@@ -26,19 +25,13 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
 
   const ULONGLONG now = GetTickCount64();
-
   const bool cloudPlaylistWasReady = initialCloudPlaylistReady_;
   if (!InitialCloudPlaylistReady(now)) return;
-  // InitialCloudPlaylistReady() performs the first load on the transition to
-  // ready. Subsequent scheduler passes check the atomically replaced cache once.
   if (cloudPlaylistWasReady) EnsureCloudPlaylistLoaded();
   if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
 
   ProbeDueTimedCompletions(now);
-
-  for (Slot& candidate : slots_) {
-    ExpireStaleAsyncWork(candidate, now);
-  }
+  for (Slot& slot : slots_) ExpireStaleAsyncWork(slot, now);
 
   const ULONGLONG elapsed = now - scheduleStartTick_;
   const size_t count = slots_.size();
@@ -48,18 +41,14 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     return elapsed >= static_cast<ULONGLONG>(index) *
                           kSpotifyAccountStartOffsetMs;
   };
-  const auto retryReady = [now](const Slot& slot) noexcept {
-    return slot.lastTimedReconcileTick == 0 ||
-           now - slot.lastTimedReconcileTick >= kSpotifyQueueRetryMs;
-  };
-  const auto asyncIdle = [](const Slot& slot) noexcept {
-    return !slot.reconcileInFlight && !slot.timedObserverInstallInFlight;
-  };
   const auto controllerReady = [now](const Slot& slot) noexcept {
     if (slot.webview) return true;
     if (slot.controllerCreating) return false;
     return slot.controllerCreateTick == 0 ||
-           now - slot.controllerCreateTick >= kSpotifyRobustControllerRetryMs;
+           now - slot.controllerCreateTick >= kSpotifyControllerRetryMs;
+  };
+  const auto recoveryReady = [now](const Slot& slot) noexcept {
+    return slot.nextRecoveryTick == 0 || now >= slot.nextRecoveryTick;
   };
   const auto healthyPlaybackNeedsNoWork = [](const Slot& slot) noexcept {
     return SlotStateIsHealthy(slot.state) && slot.timedObserverReady &&
@@ -68,48 +57,26 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   };
 
   size_t selected = count;
-
   for (size_t step = 0; step < count; ++step) {
     const size_t index = (scanStart + step) % count;
     const Slot& candidate = slots_[index];
-    if (!startupReady(index) || candidate.state != SlotState::Recovering ||
-        !controllerReady(candidate) || !asyncIdle(candidate) ||
-        !retryReady(candidate)) {
+    if (!startupReady(index) || !controllerReady(candidate) ||
+        SlotIsLoginPage(candidate)) {
+      continue;
+    }
+    if (!candidate.timedRotationActive || !CurrentMusicTrack(candidate)) {
+      selected = index;
+      break;
+    }
+    if (healthyPlaybackNeedsNoWork(candidate) ||
+        candidate.asyncWork != AsyncWork::None) {
+      continue;
+    }
+    if (SlotStateNeedsRecovery(candidate.state) && !recoveryReady(candidate)) {
       continue;
     }
     selected = index;
     break;
-  }
-
-  if (selected == count) {
-    for (size_t step = 0; step < count; ++step) {
-      const size_t index = (scanStart + step) % count;
-      const Slot& candidate = slots_[index];
-      if (!startupReady(index) || !controllerReady(candidate)) continue;
-      const bool pending = !candidate.timedRotationActive ||
-                           SlotStateNeedsRecovery(candidate.state);
-      if (!pending) continue;
-      if (candidate.timedRotationActive &&
-          (!asyncIdle(candidate) || !retryReady(candidate))) {
-        continue;
-      }
-      selected = index;
-      break;
-    }
-  }
-
-  if (selected == count) {
-    for (size_t step = 0; step < count; ++step) {
-      const size_t index = (scanStart + step) % count;
-      const Slot& candidate = slots_[index];
-      if (!startupReady(index) || !CurrentMusicTrack(candidate) ||
-          SlotIsLoginPage(candidate) || !asyncIdle(candidate) ||
-          healthyPlaybackNeedsNoWork(candidate)) {
-        continue;
-      }
-      selected = index;
-      break;
-    }
   }
 
   if (selected == count) return;
@@ -119,7 +86,6 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
 
   RefreshSpotifyHostLayout();
-  if (slot.webview && SlotIsLoginPage(slot)) return;
 
   if (!slot.timedRotationActive) {
     if (!slot.webview) {
@@ -137,7 +103,5 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     return;
   }
 
-  slot.lastTimedReconcileTick = now;
-  ArmTimedEndObserver(slot);
   ReconcileMusicTarget(slot);
 }
