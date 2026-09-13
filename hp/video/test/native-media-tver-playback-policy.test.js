@@ -82,6 +82,20 @@ test('healthy playing TVer content avoids page-wide survey scanning', () => {
   assert.match(policy, /const root = playerRootFor\(video\)/);
 });
 
+test('TVer low quality uses bounded event-driven trusted clicks instead of polling', () => {
+  assert.match(policy, /state\.lowQualitySet \|\| state\.qualityAttemptExhausted/);
+  assert.match(policy, /qualityActionCount/);
+  assert.match(policy, />= 6/);
+  assert.match(policy, /const qualityMenu = qualityControls\.find/);
+  assert.match(policy, /return point\(lowOption\)/);
+  assert.match(policy, /return point\(target\)/);
+  assert.match(episodeLoop, /MutationObserver/);
+  assert.match(episodeLoop, /recoveryFlags\.push\('quality'\)/);
+  assert.match(episodeLoop, /lowClickPending/);
+  assert.doesNotMatch(episodeLoop, /lowOption\.click\(\)/);
+  assert.doesNotMatch(episodeLoop, /setInterval\s*\(\s*ensure/);
+});
+
 test('paused TVer program recovery is idempotent and never toggles the video surface', () => {
   assert.match(policy, /if \(video\.paused && !video\.ended\)/);
   assert.match(policy, /const pending = video\.play\(\)/);
@@ -129,6 +143,7 @@ test('TVer program volume stays at 100 percent while ads remain untouched', () =
 
 test('event policy wakes native recovery only while recovery is needed', () => {
   assert.match(episodeLoop, /homepanel:tver-wake/);
+  assert.match(episodeLoop, /recoveryFlags\.push\('quality'\)/);
   assert.match(episodeLoop, /if \(video\.paused && !video\.ended\) recoveryFlags\.push\('paused'\)/);
   assert.match(episodeLoop, /!browserFullscreen && state\.fullscreenDirty/);
   assert.match(episodeLoop, /window\.__homePanelTverAdActive = true;[\s\S]*wakeNative\('ad:'/);
