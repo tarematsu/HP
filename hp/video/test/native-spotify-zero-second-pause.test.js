@@ -34,17 +34,17 @@ test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
   assert.doesNotMatch(startup, /PlaybackModeGuard|EnsurePlaybackModeOff|shuffleOffVerified|repeatOffVerified/);
 });
 
-test('settling queues one recovery deadline without a second renavigation watchdog', () => {
+test('settling queues one recovery deadline without a renavigation branch', () => {
   const callbackStart = music.indexOf(
-    'if (json && (std::wstring_view(json) == L"\\"starting\\""',
+    'if (json && std::wstring_view(json) == L"\\"settling\\"")',
   );
   const pointStart = music.indexOf('int x = 0;', callbackStart);
   assert.ok(callbackStart >= 0 && pointStart > callbackStart);
   const callbackBranch = music.slice(callbackStart, pointStart);
   assert.match(callbackBranch, /SlotState::WaitingTarget/);
   assert.match(callbackBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
-  assert.doesNotMatch(callbackBranch, /ShouldRenavigateUnhealthySlot|unhealthySinceTick/);
-  assert.doesNotMatch(music, /ShouldRenavigateUnhealthySlot|lastModeNavigateTick/);
+  assert.doesNotMatch(callbackBranch, /NavigateMusicTarget|ShouldRenavigateUnhealthySlot|unhealthySinceTick/);
+  assert.doesNotMatch(music, /"\\"wrong\\""|"\\"starting\\""|ShouldRenavigateUnhealthySlot|lastModeNavigateTick/);
 });
 
 test('startup and target-transition paths contain no executable generic media stop actuator', () => {
@@ -59,7 +59,7 @@ test('startup and target-transition paths contain no executable generic media st
 test('DOM reconcile cannot promote a music slot to Playing by itself', () => {
   const trueBranch = music.slice(
     music.indexOf('if (json && std::wstring_view(json) == L"true")'),
-    music.indexOf('if (json && std::wstring_view(json) == L"\\"wrong\\"")'),
+    music.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
   );
   assert.match(trueBranch, /SlotState::WaitingTarget/);
   assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
