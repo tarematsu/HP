@@ -1,0 +1,69 @@
+import { describe, expect, it } from "vitest";
+import type { Env } from "../src/sources";
+import { managedSpotifySevenSlotRotation } from "../src/spotify_random_catalog";
+import { resolveSpotifyTrackDurations } from "../src/spotify_track_durations";
+
+const FIRST_ID = "6Vy6hCA2CZwZalGqaX6Sew";
+const SECOND_ID = "5EjWZuODqEPQ9eq7XCmITh";
+
+describe("Spotify rotation duration resolver", () => {
+  it("keeps all 42 managed music targets addressable by trackId", () => {
+    const rotation = managedSpotifySevenSlotRotation();
+    const tracks = rotation.flatMap(group => group.tracks);
+    const ids = tracks.map(track => track.trackId);
+    expect(ids).toHaveLength(42);
+    expect(new Set(ids).size).toBe(42);
+    expect(ids.every(id => /^[A-Za-z0-9]{22}$/.test(id))).toBe(true);
+  });
+
+  it("resolves exact track durations with the current single-track Web API", async () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("accounts.spotify.com/api/token")) {
+        return Response.json({ access_token: "duration-test-token", expires_in: 3600 });
+      }
+      if (url.includes(`/v1/tracks/${FIRST_ID}`)) {
+        return Response.json({ id: FIRST_ID, duration_ms: 235267 });
+      }
+      if (url.includes(`/v1/tracks/${SECOND_ID}`)) {
+        return Response.json({ id: SECOND_ID, duration_ms: 199123 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+    const env = {
+      SPOTIFY_CLIENT_ID: "duration-test-client",
+      SPOTIFY_CLIENT_SECRET: "duration-test-secret",
+    } as Env;
+
+    const resolved = await resolveSpotifyTrackDurations(
+      env,
+      [FIRST_ID, SECOND_ID],
+      { fetchImpl, now: Date.UTC(2026, 8, 13), concurrency: 1 },
+    );
+
+    expect(resolved.get(FIRST_ID)).toBe(235267);
+    expect(resolved.get(SECOND_ID)).toBe(199123);
+    expect(calls.filter(url => url.includes("accounts.spotify.com/api/token"))).toHaveLength(1);
+    expect(calls.some(url => url.includes(`/v1/tracks/${FIRST_ID}`))).toBe(true);
+    expect(calls.some(url => url.includes(`/v1/tracks/${SECOND_ID}`))).toBe(true);
+  });
+
+  it("does not make track requests without configured client credentials", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return new Response("unexpected", { status: 500 });
+    }) as typeof fetch;
+
+    const resolved = await resolveSpotifyTrackDurations(
+      {} as Env,
+      ["33liCluqUasE65nMv3KLLm"],
+      { fetchImpl, now: Date.UTC(2026, 8, 13) },
+    );
+
+    expect(resolved.size).toBe(0);
+    expect(calls).toBe(0);
+  });
+});

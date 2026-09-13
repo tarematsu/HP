@@ -83,9 +83,10 @@ export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
 export const MANAGED_SPOTIFY_RANDOM_TRACK_IDS =
   MANAGED_SPOTIFY_RANDOM_TRACKS.map(([, id]) => id);
 
-const spotifyRotationTrack = (title: string, id: string) => ({
+const spotifyRotationTrack = (title: string, trackId: string) => ({
   title,
-  url: `https://open.spotify.com/track/${id}`,
+  trackId,
+  url: `https://open.spotify.com/track/${trackId}`,
 });
 
 const rotationTracks = (tracks: readonly (readonly [string, string])[]) =>

@@ -81,6 +81,11 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
             track.title = object.GetNamedString(L"title", L"").c_str();
             track.url = url;
             track.path = path;
+            const double durationMs = object.GetNamedNumber(L"durationMs", 0.0);
+            if (std::isfinite(durationMs) && durationMs >= 1000.0 &&
+                durationMs <= 24.0 * 60.0 * 60.0 * 1000.0) {
+              track.durationMs = static_cast<ULONGLONG>(std::llround(durationMs));
+            }
             return track;
           } catch (...) {
             return std::nullopt;

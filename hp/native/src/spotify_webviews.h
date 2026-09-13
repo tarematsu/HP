@@ -59,6 +59,7 @@ class SpotifyWebViews final {
     std::wstring title;
     std::wstring url;
     std::wstring path;
+    ULONGLONG durationMs = 0;
   };
 
   struct RotationGroup {
