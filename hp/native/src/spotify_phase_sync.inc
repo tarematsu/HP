@@ -4,12 +4,9 @@ namespace {
 constexpr UINT kSpotifySchedulerBootstrapMs = 2U * 1000U;
 constexpr UINT kSpotifyHealthyAuditMs = 5U * 60U * 1000U;
 constexpr UINT kSpotifySchedulerFloorMs = 100U;
-constexpr ULONGLONG kSpotifyQueueRetryMs = 4ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 12ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyMaxInterruptionHoldMs = 5ULL * 60ULL * 1000ULL;
 
 bool SpotifyUrlStartsWith(std::wstring_view value,
                           std::wstring_view prefix) noexcept {
@@ -22,17 +19,6 @@ bool SpotifyUrlStartsWith(std::wstring_view value,
 
 bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
   return SpotifyUrlStartsWith(source, L"https://open.spotify.com/");
-}
-
-ULONGLONG SpotifyDeadlineWithInterruptionHold(
-    ULONGLONG deadline, ULONGLONG interruptionStart) noexcept {
-  if (deadline == 0 || interruptionStart == 0) return deadline;
-  const ULONGLONG maxTick = (std::numeric_limits<ULONGLONG>::max)();
-  const ULONGLONG holdUntil = interruptionStart >
-          maxTick - kSpotifyMaxInterruptionHoldMs
-      ? maxTick
-      : interruptionStart + kSpotifyMaxInterruptionHoldMs;
-  return std::max(deadline, holdUntil);
 }
 
 }  // namespace
@@ -49,53 +35,31 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
-      state == SlotState::Navigating || state == SlotState::Playing) {
-    slot.unhealthySinceTick = 0;
+      state == SlotState::Playing) {
+    slot.nextRecoveryTick = 0;
   }
 }
 
 void SpotifyWebViews::MarkSlotRecovering(
     Slot& slot, ULONGLONG now) noexcept {
   slot.state = SlotState::Recovering;
-  if (slot.unhealthySinceTick == 0) slot.unhealthySinceTick = now;
-}
-
-bool SpotifyWebViews::ShouldRenavigateUnhealthySlot(
-    const Slot& slot, ULONGLONG now) const noexcept {
-  return slot.unhealthySinceTick != 0 &&
-         now - slot.unhealthySinceTick >= kSpotifyUnhealthyRenavigateMs &&
-         (slot.lastModeNavigateTick == 0 ||
-          now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs);
+  slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
 }
 
 bool SpotifyWebViews::ExpireStaleAsyncWork(
     Slot& slot, ULONGLONG now) noexcept {
-  bool expired = false;
-  if (slot.reconcileInFlight && slot.reconcileStartedTick != 0 &&
-      now - slot.reconcileStartedTick >= kSpotifyAsyncOperationTimeoutMs) {
-    ++slot.reconcileRequestGeneration;
-    if (slot.reconcileRequestGeneration == 0) ++slot.reconcileRequestGeneration;
-    slot.reconcileInFlight = false;
-    slot.reconcileStartedTick = 0;
-    expired = true;
+  if (slot.asyncWork == AsyncWork::None || slot.asyncStartedTick == 0 ||
+      now - slot.asyncStartedTick < kSpotifyAsyncOperationTimeoutMs) {
+    return false;
   }
-  if (slot.timedObserverInstallInFlight &&
-      slot.timedObserverInstallStartedTick != 0 &&
-      now - slot.timedObserverInstallStartedTick >=
-          kSpotifyAsyncOperationTimeoutMs) {
-    ++slot.timedObserverInstallGeneration;
-    if (slot.timedObserverInstallGeneration == 0) {
-      ++slot.timedObserverInstallGeneration;
-    }
-    slot.timedObserverInstallInFlight = false;
-    slot.timedObserverInstallStartedTick = 0;
-    slot.timedObserverReady = false;
-    expired = true;
-  }
-  if (!expired) return false;
 
+  const bool observerExpired = slot.asyncWork == AsyncWork::Observer;
+  ++slot.asyncEpoch;
+  if (slot.asyncEpoch == 0) ++slot.asyncEpoch;
+  slot.asyncWork = AsyncWork::None;
+  slot.asyncStartedTick = 0;
+  if (observerExpired) slot.timedObserverReady = false;
   MarkSlotRecovering(slot, now);
-  slot.lastTimedReconcileTick = 0;
   return true;
 }
 
@@ -139,31 +103,22 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         CurrentMusicTrack(slot)) {
-      considerTick(SpotifyDeadlineWithInterruptionHold(
-          slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick));
+      considerTick(slot.timedCompletionDeadlineTick);
     }
 
-    if (slot.reconcileInFlight && slot.reconcileStartedTick != 0) {
-      considerTick(slot.reconcileStartedTick + kSpotifyAsyncOperationTimeoutMs);
-    }
-    if (slot.timedObserverInstallInFlight &&
-        slot.timedObserverInstallStartedTick != 0) {
-      considerTick(
-          slot.timedObserverInstallStartedTick + kSpotifyAsyncOperationTimeoutMs);
+    if (slot.asyncWork != AsyncWork::None && slot.asyncStartedTick != 0) {
+      considerTick(slot.asyncStartedTick + kSpotifyAsyncOperationTimeoutMs);
     }
     if (!slot.webview && slot.controllerCreateTick != 0) {
-      considerTick(slot.controllerCreateTick + kSpotifyRobustControllerRetryMs);
+      considerTick(slot.controllerCreateTick + kSpotifyControllerRetryMs);
     }
 
-    const bool queueReady =
-        CurrentMusicTrack(slot) && SlotStateNeedsRecovery(slot.state) &&
-        !slot.loginPage && !slot.reconcileInFlight &&
-        !slot.timedObserverInstallInFlight;
-    if (queueReady) {
-      if (slot.lastTimedReconcileTick == 0) {
+    if (CurrentMusicTrack(slot) && SlotStateNeedsRecovery(slot.state) &&
+        !slot.loginPage && slot.asyncWork == AsyncWork::None) {
+      if (slot.nextRecoveryTick == 0) {
         nextDelayMs = 0;
       } else {
-        considerTick(slot.lastTimedReconcileTick + kSpotifyQueueRetryMs);
+        considerTick(slot.nextRecoveryTick);
       }
     }
   }
@@ -186,7 +141,7 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
       if (!slot.webview) {
         if (slot.controllerCreating) continue;
         if (slot.controllerCreateTick != 0 &&
-            now - slot.controllerCreateTick < kSpotifyRobustControllerRetryMs) {
+            now - slot.controllerCreateTick < kSpotifyControllerRetryMs) {
           continue;
         }
       }
@@ -240,7 +195,7 @@ void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
 
   const ULONGLONG now = GetTickCount64();
   if (slot.controllerCreateTick != 0 &&
-      now - slot.controllerCreateTick < kSpotifyRobustControllerRetryMs) {
+      now - slot.controllerCreateTick < kSpotifyControllerRetryMs) {
     return;
   }
 
