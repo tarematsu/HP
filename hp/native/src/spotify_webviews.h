@@ -31,6 +31,12 @@ class SpotifyWebViews final {
     Recovering,
   };
 
+  enum class AsyncWork : unsigned char {
+    None,
+    Reconcile,
+    Observer,
+  };
+
   struct ManagedTrack {
     std::wstring title;
     std::wstring url;
@@ -61,33 +67,26 @@ class SpotifyWebViews final {
     ICoreWebView2Controller* hostLayoutController = nullptr;
     RECT hostLayoutRect{};
     HWND hostLayoutInsertAfter = nullptr;
-    ULONGLONG lastModeNavigateTick = 0;
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG timedRotationCycle = 0;
-    ULONGLONG timedInterruptionStartTick = 0;
     ULONGLONG timedCompletionDeadlineTick = 0;
     ULONGLONG timedCompletionDeadlineGeneration = 0;
-    ULONGLONG lastTimedReconcileTick = 0;
-    ULONGLONG unhealthySinceTick = 0;
-    ULONGLONG reconcileRequestGeneration = 0;
-    ULONGLONG reconcileStartedTick = 0;
-    ULONGLONG timedObserverInstallGeneration = 0;
-    ULONGLONG timedObserverInstallStartedTick = 0;
+    ULONGLONG nextRecoveryTick = 0;
+    ULONGLONG asyncEpoch = 0;
+    ULONGLONG asyncStartedTick = 0;
+    ULONGLONG pageEpoch = 0;
     ULONGLONG targetGeneration = 0;
-    ULONGLONG trustedClickGeneration = 0;
-    ULONGLONG trustedClickTargetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
     ULONGLONG authenticationBadgeTick = 0;
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
     ULONGLONG timedCloudRotationRevision = 0;
     SlotState state = SlotState::NotCreated;
+    AsyncWork asyncWork = AsyncWork::None;
     bool controllerCreating = false;
-    bool reconcileInFlight = false;
     bool playerPage = false;
     bool loginPage = false;
     bool timedObserverReady = false;
-    bool timedObserverInstallInFlight = false;
     bool timedRotationActive = false;
     bool hostLayoutApplied = false;
     bool hostLayoutReducedZoomApplied = false;
@@ -113,8 +112,6 @@ class SpotifyWebViews final {
   bool SlotIsLoginPage(const Slot& slot) const noexcept;
   void SetSlotState(Slot& slot, SlotState state) noexcept;
   void MarkSlotRecovering(Slot& slot, ULONGLONG now) noexcept;
-  bool ShouldRenavigateUnhealthySlot(
-      const Slot& slot, ULONGLONG now) const noexcept;
   bool ExpireStaleAsyncWork(Slot& slot, ULONGLONG now) noexcept;
   void BumpSpotifyTargetGeneration(Slot& slot) noexcept;
   void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
@@ -131,9 +128,10 @@ class SpotifyWebViews final {
   void PrepareTimedRotationCycle(Slot& slot) noexcept;
   const ManagedTrack* CurrentMusicTrack(const Slot& slot) const noexcept;
   bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
-  void ArmMusicCompletionDeadlineFromStart(
+  void SetMusicCompletionDeadline(
       Slot& slot, ULONGLONG playbackStartTick,
-      ULONGLONG observedRemainingMs = 0) noexcept;
+      ULONGLONG observedRemainingMs = 0,
+      bool replaceExisting = false) noexcept;
   void ShortenMusicCompletionDeadlineAtEnd(
       Slot& slot, ULONGLONG endedTick) noexcept;
   void NavigateMusicTarget(Slot& slot) noexcept;
