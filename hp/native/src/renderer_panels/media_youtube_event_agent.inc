@@ -15,9 +15,16 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   const existing = window.__homePanelYoutubeEventAgent;
   if (existing && existing.player === player) return true;
   if (existing) {
-    try { existing.playerObserver?.disconnect(); } catch (_) {}
     try { existing.classObserver?.disconnect(); } catch (_) {}
     try { existing.popupObserver?.disconnect(); } catch (_) {}
+    try {
+      if (existing.navigationHandler) {
+        document.removeEventListener(
+            'yt-navigate-finish', existing.navigationHandler, true);
+        document.removeEventListener(
+            'yt-page-data-updated', existing.navigationHandler, true);
+      }
+    } catch (_) {}
     try { if (existing.wakeTimer) clearTimeout(existing.wakeTimer); } catch (_) {}
     try { if (existing.recoveryTimer) clearTimeout(existing.recoveryTimer); } catch (_) {}
   }
@@ -30,9 +37,11 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     recoveryTimer: 0,
     lastWakeSignature: '',
     pendingWakeDirty: false,
-    playerObserver: null,
     classObserver: null,
     popupObserver: null,
+    navigationHandler: null,
+    adActive: player.classList.contains('ad-showing') ||
+        player.classList.contains('ad-interrupting'),
     dialogCloseAt: 0,
   };
   window.__homePanelYoutubeEventAgent = state;
@@ -128,7 +137,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
 
   // Coalesce bursts into one trailing notification and suppress an unchanged
   // state entirely. If a trailing wake is already armed, avoid rescanning the
-  // player for every mutation; compute the expensive signature once at flush.
+  // player for every event; compute the expensive signature once at flush.
   const wake = (force = false) => {
     const delay = Math.max(0, 250 - (Date.now() - state.wakeAt));
     if (!force && delay > 0 && state.wakeTimer) {
@@ -206,38 +215,36 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     wake(true);
   };
 
-  const interestingSelector = [
-    'video',
-    skipSelector,
-    surveySelector,
-    messageDialogSelector
-  ].join(',');
+  // YouTube already emits SPA navigation events. Use those plus media events
+  // instead of observing the entire #movie_player subtree, which mutates heavily
+  // during normal playback and ads.
+  state.navigationHandler = () => {
+    bindVideo();
+    if (dismissMessageDialog()) wake(true);
+    else wake(true);
+  };
+  document.addEventListener(
+      'yt-navigate-finish', state.navigationHandler, true);
+  document.addEventListener(
+      'yt-page-data-updated', state.navigationHandler, true);
 
   if (typeof MutationObserver === 'function') {
-    state.playerObserver = new MutationObserver(mutations => {
-      let interesting = false;
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
-          const element = node;
-          if (element.matches?.(interestingSelector) ||
-              element.querySelector?.(interestingSelector)) {
-            interesting = true;
-            break;
-          }
+    // Ad transitions are represented on the player itself. A delayed wake after
+    // entering an ad gives the skip control time to appear without a subtree
+    // observer continuously walking ad DOM mutations.
+    state.classObserver = new MutationObserver(() => {
+      const nextAdActive = player.classList.contains('ad-showing') ||
+          player.classList.contains('ad-interrupting');
+      if (nextAdActive !== state.adActive) {
+        state.adActive = nextAdActive;
+        if (nextAdActive) {
+          scheduleRecoveryWake(5 * 1000 + 500);
+        } else if (!state.video?.paused) {
+          clearRecoveryWake();
         }
-        if (interesting) break;
       }
-      if (!interesting) return;
-      bindVideo();
-      if (dismissMessageDialog()) wake(true);
-      else wake();
+      wake();
     });
-    state.playerObserver.observe(player, { childList: true, subtree: true });
-
-    // YouTube signals ad transitions primarily by toggling player classes. Watch
-    // only that one attribute on the one player node rather than page-wide DOM.
-    state.classObserver = new MutationObserver(() => wake());
     state.classObserver.observe(player, {
       attributes: true,
       attributeFilter: ['class']

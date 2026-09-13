@@ -104,7 +104,9 @@ test('YouTube content settings are one-shot per video', () => {
 
 test('event agent wakes the native watchdog only on relevant player transitions', () => {
   assert.match(eventAgent, /homepanel:youtube-wake/);
-  assert.match(eventAgent, /state\.playerObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
+  assert.match(eventAgent, /addEventListener\(\s*'yt-navigate-finish'/);
+  assert.match(eventAgent, /addEventListener\(\s*'yt-page-data-updated'/);
+  assert.doesNotMatch(eventAgent, /playerObserver/);
   assert.match(eventAgent, /attributeFilter: \['class'\]/);
   assert.doesNotMatch(eventAgent, /document\.documentElement.*MutationObserver/);
   assert.match(composition, /#include "media_youtube_event_agent\.inc"/);

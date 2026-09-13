@@ -126,6 +126,8 @@ test('TVer episode playback is one-shot 1.75x, native-queue based and player-loc
   assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
   assert.doesNotMatch(tverEpisode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
   assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
+  assert.match(mediaHost, /kTverWatchdogHealthyMs = 60U \* 1000U/);
+  assert.match(mediaHost, /kTverWatchdogRecoveryMs = 5U \* 1000U/);
   assert.match(mediaHost, /BeginTverPlaybackMonitor\(\)/);
   assert.match(mediaHost, /ProbeTverWatchdog\(\)/);
 });
@@ -165,7 +167,7 @@ test('TVer completion reuses the existing controller through the host navigation
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });
 
-test('media WebView blocks image and font requests without touching playback resources', () => {
+test('media WebView blocks image requests while leaving fonts and playback resources available', () => {
   assert.match(
     mediaHost,
     /SharedWebViewEnvironment::Instance\(\)\.Acquire\(\s*userDataFolder_, false, false,/,
@@ -174,7 +176,7 @@ test('media WebView blocks image and font requests without touching playback res
     mediaHost,
     /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\)/,
   );
-  assert.match(
+  assert.doesNotMatch(
     mediaHost,
     /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\)/,
   );
