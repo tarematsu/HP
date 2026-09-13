@@ -95,6 +95,22 @@ describe("device exchange", () => {
   });
 
   it("returns the newly merged environment and compact telemetry receipt in one binary response", async () => {
+    await env.DB.prepare(
+      "INSERT INTO device_configs(device_id,version,payload,updated_at) VALUES(?1,?2,?3,?4)",
+    ).bind(
+      "homepanel-device",
+      0,
+      JSON.stringify({
+        spotify: {
+          rotation: [{
+            mode: "fixed",
+            tracks: [{ title: "Fixture", url: "https://example.invalid/spotify-fixture" }],
+          }],
+        },
+      }),
+      Date.now(),
+    ).run();
+
     const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
     const response = await exchange({ versions, telemetry: telemetry(1, observedAt) });
     expect(response.status).toBe(200);
