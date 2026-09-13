@@ -8,12 +8,14 @@ constexpr UINT_PTR kNativeMediaPhaseTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMediaNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
 constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
+constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 // Healthy YouTube playback is event-driven; the timer is only a backstop.
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
+constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 
 // Routing sentinel only. The exceptional /playlist fallback installs one
 // event-driven resolver in media_youtube_playall_reliable.inc.
@@ -32,6 +34,9 @@ constexpr const wchar_t* kNativeMediaTverLoopScript =
 constexpr const wchar_t* kNativeMediaTverWatchdogScript =
     kNativeMediaTverWatchdogStaticScript;
 
+bool NativeMediaWatchdogExecutionTimedOut(
+    HWND hostWindow, UINT_PTR timerId) noexcept;
+void NativeMediaForgetWatchdogExecution(HWND hostWindow) noexcept;
 LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 
 #include "media_host.inc"
