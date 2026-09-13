@@ -1,14 +1,36 @@
 LR"JS(
 (() => {
-  const player = document.querySelector('#movie_player');
-  const trusted = window.__homePanelYoutubeTrustedAction;
-  if (!player || !trusted) return null;
-
   const requestRecoveryRecheck = () => {
     try {
-      window.__homePanelYoutubeEventAgent?.scheduleRecoveryWake?.(2000);
+      const agent = window.__homePanelYoutubeEventAgent;
+      if (typeof agent?.scheduleRecoveryWake === 'function') {
+        window.__homePanelYoutubeEventAgent?.scheduleRecoveryWake?.(2000);
+        return;
+      }
+
+      // Initial document startup can reach the recovery policy before the
+      // event agent has finished installing. Use only a bounded one-shot
+      // fallback here; normal playback remains event-driven.
+      const attemptKey = '__homePanelYoutubeStartupRecoveryAttempts';
+      const timerKey = '__homePanelYoutubeStartupRecoveryTimer';
+      const attempts = Number(window[attemptKey] || 0);
+      if (attempts >= 3 || window[timerKey]) return;
+      window[attemptKey] = attempts + 1;
+      window[timerKey] = setTimeout(() => {
+        window[timerKey] = 0;
+        try {
+          window.chrome?.webview?.postMessage('homepanel:youtube-wake');
+        } catch (_) {}
+      }, 2000);
     } catch (_) {}
   };
+
+  const player = document.querySelector('#movie_player');
+  const trusted = window.__homePanelYoutubeTrustedAction;
+  if (!player || !trusted) {
+    requestRecoveryRecheck();
+    return 'recovery';
+  }
 
   const video = player.querySelector('video');
   const visibleError = Array.from(player.querySelectorAll(
