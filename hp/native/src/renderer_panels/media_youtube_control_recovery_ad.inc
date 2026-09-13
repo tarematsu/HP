@@ -31,7 +31,6 @@ LR"JS(
     requestRecoveryRecheck();
     return 'recovery';
   }
-  window.__homePanelYoutubeStartupRecoveryAttempts = 0;
 
   const video = player.querySelector('video');
   const visibleError = Array.from(player.querySelectorAll(
