@@ -33,19 +33,23 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
   for (Slot& slot : slots_) {
     slot.controllerCreating = false;
     slot.controllerCreateTick = 0;
-    slot.lastModeNavigateTick = 0;
-    slot.lastTimedReconcileTick = 0;
-    slot.unhealthySinceTick = 0;
+    slot.nextRecoveryTick = 0;
+    ++slot.asyncEpoch;
+    if (slot.asyncEpoch == 0) ++slot.asyncEpoch;
+    ++slot.pageEpoch;
+    if (slot.pageEpoch == 0) ++slot.pageEpoch;
+    slot.asyncWork = AsyncWork::None;
+    slot.asyncStartedTick = 0;
     slot.state = SlotState::NotCreated;
     slot.playerPage = false;
     slot.loginPage = false;
+    slot.timedObserverReady = false;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
-    slot.timedInterruptionStartTick = 0;
+    slot.trustedClickBlockedUntilTick = 0;
     slot.timedRotationActive = false;
-    slot.reconcileInFlight = false;
     slot.targetGeneration = 0;
     if (!CreateHost(slot)) continue;
   }
