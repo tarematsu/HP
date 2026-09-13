@@ -84,7 +84,8 @@ test('initial account starts are ten seconds apart and steady work is state driv
   assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(schedule, /const auto startupReady/);
   assert.match(schedule, /SlotState is the queue/);
-  assert.match(schedule, /No work is queued:[\s\S]*60-second healthy scheduler wake/);
+  assert.match(schedule, /if \(selected == count\)[\s\S]*CurrentMusicTrack\(candidate\)/);
+  assert.match(phase, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
 });
 
