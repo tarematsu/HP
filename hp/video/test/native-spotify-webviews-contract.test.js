@@ -61,8 +61,9 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(layout, /if \(placementChanged\)/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
-  assert.match(layout, /suppressHealthyRendering/);
-  assert.match(layout, /put_IsVisible\(suppressHealthyRendering \? FALSE : TRUE\)/);
+  assert.match(layout, /const bool lowPowerPlayback =/);
+  assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
+  assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
 
@@ -70,10 +71,10 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
   for (const file of [
     'spotify_static_scripts.inc', 'spotify_scoped_track_reconcile.inc',
     'spotify_media_observer_runtime.inc', 'spotify_media_observer_events.inc',
-    'spotify_cloud_playlist.inc', 'spotify_playback_mode_guards.inc',
-    'spotify_rotation_cycle.inc', 'spotify_music_target.inc',
-    'spotify_target_routing.inc',
+    'spotify_cloud_playlist.inc', 'spotify_rotation_cycle.inc',
+    'spotify_music_target.inc', 'spotify_target_routing.inc',
   ]) assert.match(wrapper, new RegExp(`#include "${file.replace('.', '\\.')}"`));
+  assert.doesNotMatch(wrapper, /spotify_playback_mode_guards\.inc/);
   assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
   assert.doesNotMatch(wrapper, /spotify_recent_catalog\.inc/);
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
