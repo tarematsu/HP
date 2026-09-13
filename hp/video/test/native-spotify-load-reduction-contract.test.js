@@ -42,14 +42,15 @@ test('Spotify layout parks healthy players in a smaller offscreen viewport', () 
   assert.doesNotMatch(layout, /BeginDeferWindowPos|EndDeferWindowPos/);
 });
 
-test('healthy music WebViews suppress rendering while auth and recovery remain visible', () => {
+test('healthy music WebViews stay visible while retaining compact host geometry', () => {
   assert.match(layout, /CurrentMusicTrack\(slot\)/);
   assert.doesNotMatch(layout, /TimedSpotifyTarget|shuffleOffVerified|repeatOffVerified|PlaybackModeGuard/);
   assert.match(
     layout,
     /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*slot\.playerPage[\s\S]*!slot\.loginPage[\s\S]*CurrentMusicTrack\(slot\)/,
   );
-  assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
+  assert.match(layout, /put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
