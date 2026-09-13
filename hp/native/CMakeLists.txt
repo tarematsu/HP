@@ -153,6 +153,7 @@ set(HOMEPANEL_CORE_SOURCES
 set(HOMEPANEL_STATIONHEAD_SOURCES
   src/stationhead_native_stats.cpp
   src/stationhead_native_stats.h
+  src/sh_profile_reuse_policy.h
   src/sh_layout.cpp
   src/sh_polling_policy.h
   src/sh_audio_loss_policy.h
@@ -199,6 +200,7 @@ add_executable(HomePanel WIN32
 homepanel_configure_common_target(HomePanel)
 
 target_precompile_headers(HomePanel PRIVATE
+  src/sh_profile_reuse_policy.h
   src/sh_polling_policy.h
   src/sh_runtime_policy_fix.h)
 target_precompile_headers(HomePanel PRIVATE
