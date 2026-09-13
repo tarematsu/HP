@@ -33,16 +33,15 @@ test('timed music observer contains no playback recovery heartbeat or completion
   assert.doesNotMatch(bundle, /kSpotifyMediaObserverHeartbeatScript|kSpotifyMediaObserverCompletionScript/);
 });
 
-test('shuffle and repeat mode verification shares one DOM probe and ExecuteScript round trip', () => {
-  assert.match(guards, /kSpotifyPlaybackModesOffProbeScript/);
+test('shuffle verification uses one DOM probe and never controls repeat', () => {
+  assert.match(guards, /kSpotifyShuffleOffProbeScript/);
   assert.match(guards, /control-button-shuffle/);
-  assert.match(guards, /control-button-repeat/);
+  assert.doesNotMatch(guards, /control-button-repeat|repeatOffVerified|repeat one|disable repeat|enable repeat/i);
   assert.equal(
-    (guards.match(/ExecuteScript\(\s*kSpotifyPlaybackModesOffProbeScript/g) || []).length,
+    (guards.match(/ExecuteScript\(\s*kSpotifyShuffleOffProbeScript/g) || []).length,
     1,
   );
   assert.match(guards, /target->shuffleOffVerified = true;/);
-  assert.match(guards, /target->repeatOffVerified = true;/);
 });
 
 test('healthy native Spotify reconciliation sleeps up to 60 seconds', () => {
