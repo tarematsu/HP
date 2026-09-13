@@ -4,6 +4,7 @@
 namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 10ULL * 1000ULL;
+inline constexpr ULONGLONG kSpotifyCloudReloadMinIntervalMs = 60ULL * 1000ULL;
 
 class SpotifyWebViews final {
  public:
@@ -156,6 +157,7 @@ class SpotifyWebViews final {
   fs::file_time_type initialCloudPlaylistWriteTime_{};
   ULONGLONG cloudRotationRevision_ = 1;
   ULONGLONG initialCloudPlaylistWaitStartedTick_ = 0;
+  ULONGLONG nextCloudPlaylistCheckTick_ = 0;
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
   PTP_TIMER schedulerTimer_ = nullptr;
