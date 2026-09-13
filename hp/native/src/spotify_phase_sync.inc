@@ -157,7 +157,7 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
       considerTick(
           slot.timedObserverInstallStartedTick + kSpotifyAsyncOperationTimeoutMs);
     }
-    if (slot.controllerCreating && slot.controllerCreateTick != 0) {
+    if (!slot.webview && slot.controllerCreateTick != 0) {
       considerTick(slot.controllerCreateTick + kSpotifyRobustControllerRetryMs);
     }
 
@@ -190,7 +190,13 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
           !slot.hostWindow || !IsWindow(slot.hostWindow)) {
         continue;
       }
-      if (!slot.webview && slot.controllerCreating) continue;
+      if (!slot.webview) {
+        if (slot.controllerCreating) continue;
+        if (slot.controllerCreateTick != 0 &&
+            now - slot.controllerCreateTick < kSpotifyRobustControllerRetryMs) {
+          continue;
+        }
+      }
       nextDelayMs = 0;
     }
   }
@@ -240,7 +246,7 @@ void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
   }
 
   const ULONGLONG now = GetTickCount64();
-  if (slot.controllerCreating && slot.controllerCreateTick != 0 &&
+  if (slot.controllerCreateTick != 0 &&
       now - slot.controllerCreateTick < kSpotifyRobustControllerRetryMs) {
     return;
   }
