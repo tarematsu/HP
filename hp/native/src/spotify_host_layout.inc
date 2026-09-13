@@ -15,7 +15,7 @@ bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
 }
 
 bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
-  return left.right - left.left == right.right - right.left &&
+  return left.right - left.left == right.right - left.left &&
          left.bottom - left.top == right.bottom - right.top;
 }
 
@@ -103,7 +103,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.hostLayoutReducedZoomApplied = false;
     }
 
-    slot.controller->put_IsVisible(lowPowerPlayback ? FALSE : TRUE);
+    slot.controller->put_IsVisible(TRUE);
 
     const bool reducedZoom = authentication || recovery;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
