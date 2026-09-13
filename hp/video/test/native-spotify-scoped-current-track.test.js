@@ -35,12 +35,13 @@ test('current-track identity never falls back to an arbitrary track-list row', (
 });
 
 test('play-button fallback is allowed only on the requested direct track page and only for explicit Play', () => {
+  assert.match(scoped, /const targetPath = target &&/);
   assert.match(scoped, /const onTargetPage = \(\) =>/);
-  assert.match(scoped, /target\.pagePath\.startsWith\('\/track\/'\)/);
-  assert.match(scoped, /location\.pathname\.endsWith\(target\.pagePath\)/);
+  assert.match(scoped, /targetPath\.startsWith\('\/track\/'\)/);
+  assert.match(scoped, /location\.pathname\.endsWith\(targetPath\)/);
   assert.match(
     scoped,
-    /if \(target\.trackPath && onTargetPage\(\)\)[\s\S]*button\[data-testid="play-button"\][\s\S]*return null;/,
+    /if \(onTargetPage\(\)\) \{[\s\S]*button\[data-testid="play-button"\][\s\S]*return null;/,
   );
   assert.match(scoped, /const buttonIntent = button =>/);
   assert.match(scoped, /if \(buttonIntentValue === 'play'\) return point\(button\)/);
