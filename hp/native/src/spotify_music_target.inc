@@ -34,7 +34,6 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
 
   slot.lastModeNavigateTick = GetTickCount64();
   slot.shuffleOffVerified = false;
-  slot.repeatOffVerified = false;
   SetSlotState(slot, SlotState::Navigating);
   SetSpotifyOutputMuted(slot.webview);
   PostSpotifyTargetDescriptorForSlot(slot);
@@ -99,17 +98,10 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
 
   slot.lastModeNavigateTick = 0;
 
-  // Playback-mode controls are presentation state, not a prerequisite for the
-  // requested media element to start. On a freshly loaded Spotify track page
-  // Shuffle/Repeat can be unmounted or lack a stable aria-checked value while
-  // the media element is already paused at currentTime=0. Gating reconcile on
-  // those controls makes the zero-second recovery below unreachable. Start the
-  // requested target first; after the generation-tagged observer has confirmed
-  // real playback, converge Shuffle and Repeat to OFF in the background.
-  if (slot.state == SlotState::Playing) {
-    if (!EnsurePlaybackModeOff(slot, PlaybackModeGuard::Shuffle)) return;
-    if (!EnsurePlaybackModeOff(slot, PlaybackModeGuard::Repeat)) return;
-  }
+  // Shuffle is presentation state, not a prerequisite for the requested media
+  // element to start. Converge it to OFF only after playback is confirmed.
+  // Repeat is intentionally unmanaged: native code never inspects or clicks it.
+  if (slot.state == SlotState::Playing && !EnsureShuffleOff(slot)) return;
   if (slot.reconcileInFlight) return;
 
   PostSpotifyTargetDescriptorForSlot(slot);
