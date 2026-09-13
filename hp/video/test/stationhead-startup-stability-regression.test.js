@@ -47,16 +47,13 @@ test('native dashboard is initialized before the top-level window is exposed', (
   assert.doesNotMatch(startServices, /ApplyStartupStationheadPreview\(\)/);
 });
 
-test('legacy Stationhead workspace cannot hide the dashboard', () => {
+test('single Stationhead workspace keeps the dashboard visible', () => {
   const layoutWorkspace = section(
     appSource,
     'void App::LayoutWorkspace()',
     'void App::ApplyStationheadWindowPlacement(',
   );
-  assert.match(
-    layoutWorkspace,
-    /if \(selectedTab_ == WorkspaceTab::Stationhead\) \{[\s\S]*selectedTab_ = WorkspaceTab::Main;/,
-  );
+  assert.match(layoutWorkspace, /selectedTab_ = WorkspaceTab::Main;/);
   assert.match(layoutWorkspace, /renderer_->SetVisible\(rendererStarted_\);/);
   assert.doesNotMatch(
     layoutWorkspace,
@@ -64,18 +61,19 @@ test('legacy Stationhead workspace cannot hide the dashboard', () => {
   );
 });
 
-test('App requests Window A before Window B during cold startup', () => {
+test('App starts only the single Primary Stationhead during cold startup', () => {
   const startServices = section(
     appSource,
     'void App::StartServices()',
     'void App::ApplyStartupStationheadPreview()',
   );
-  const primaryStart = startServices.indexOf('stationhead_->Start();');
-  const secondaryStart = startServices.indexOf('secondaryStationhead_->Start();');
-  assert.ok(primaryStart >= 0 && secondaryStart > primaryStart);
+  const active = startServices.slice(0, startServices.indexOf('#if 0'));
+  assert.match(active, /StationheadRole::Primary/);
+  assert.match(active, /stationhead_->Start\(\)/);
+  assert.doesNotMatch(active, /StationheadRole::Secondary|secondaryStationhead_->Start\(\)/);
 });
 
-test('Window B defers its actual player start until Window A is configured', () => {
+test('retained Secondary handle defers its actual player start until Primary is configured', () => {
   const secondaryHandle = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
@@ -102,7 +100,7 @@ test('Window B defers its actual player start until Window A is configured', () 
   assert.match(deferred, /StationheadHandleBase::Start\(\);/);
 });
 
-test('startup coordination remains private to the handle lifecycle', () => {
+test('startup coordination remains private to the retained handle lifecycle', () => {
   const baseHandle = section(
     handleHeader,
     'class StationheadHandleBase',
@@ -114,7 +112,7 @@ test('startup coordination remains private to the handle lifecycle', () => {
   assert.doesNotMatch(handleHeader, /inline StationheadHandleBase\* stationheadStartupPrimaryHandle/);
 });
 
-test('Window B startup fallback uses monotonic uptime instead of wall clock', () => {
+test('retained Secondary startup fallback uses monotonic uptime instead of wall clock', () => {
   assert.match(
     handleHeader,
     /kStationheadSecondaryStartupFallbackMs = 8'000/,
@@ -132,7 +130,7 @@ test('Window B startup fallback uses monotonic uptime instead of wall clock', ()
   assert.doesNotMatch(readiness, /UnixMillis/);
 });
 
-test('deferred Window B starts and ticks in one scheduler pass', () => {
+test('retained deferred Secondary starts and ticks in one scheduler pass', () => {
   const secondaryHandle = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
@@ -150,7 +148,7 @@ test('deferred Window B starts and ticks in one scheduler pass', () => {
   assert.match(tick, /if \(PlayerStarted\(\)\)/);
 });
 
-test('Window A covers both preview halves while Window B is deferred', () => {
+test('retained Primary can cover both preview halves while Secondary is deferred', () => {
   const primaryHandle = section(
     handleHeader,
     'class AppStationheadHandle final',
@@ -194,7 +192,7 @@ test('Window A covers both preview halves while Window B is deferred', () => {
   assert.ok(expandAt >= 0 && requestAt > expandAt);
 });
 
-test('Window B exposes its preview only after useful content and then restores Window A left', () => {
+test('retained Secondary exposes its preview only after useful content', () => {
   const secondaryHandle = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
@@ -215,7 +213,7 @@ test('Window B exposes its preview only after useful content and then restores W
   assert.ok(readyAt >= 0 && applyAt > readyAt && restoreAt > applyAt);
 });
 
-test('shutdown cancels pending Window B startup and preview requests', () => {
+test('retained Secondary shutdown cancels pending startup and preview requests', () => {
   const secondaryHandle = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
