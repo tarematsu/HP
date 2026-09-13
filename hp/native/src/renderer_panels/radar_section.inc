@@ -50,7 +50,7 @@ void Renderer::DrawRadarSection(HDC dc, const RECT& card) {
     const int chipPadX = std::max(8, SpanX(bounds, 8));
     const int chipPadY = std::max(4, SpanY(bounds, 8));
     const int chipMarginX = std::max(10, SpanY(bounds, 25));
-    const int chipMarginY = std::max(4, SpanY(bounds, 8));
+    const int chipMarginY = std::max(1, SpanY(bounds, 2));
     const RECT chip{
         bounds.left + chipMarginX,
         bounds.top + chipMarginY,
