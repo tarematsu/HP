@@ -38,7 +38,8 @@ test('music duration and five-minute fallback share one two-second-grace deadlin
     /slot\.timedCompletionDeadlineTick = playbackStartTick \+ completionDelayMs/,
   );
   assert.match(arm, /slot\.timedCompletionDeadlineGeneration = slot\.targetGeneration/);
-  assert.match(arm, /ArmCompletionDeadlineTimer\(\)/);
+  assert.match(arm, /ArmRobustScheduler\(\)/);
+  assert.doesNotMatch(arm, /ArmCompletionDeadlineTimer/);
 });
 
 test('navigation selects a track but no longer starts its completion clock', () => {
@@ -124,10 +125,10 @@ test('first rotation waits for startup cloud config opportunity', () => {
   assert.match(schedule, /BeginInitialCloudPlaylistWait\(now\)/);
   assert.match(schedule, /if \(!InitialCloudPlaylistReady\(now\)\) return/);
   assert.match(schedule, /scheduleStartTick_ = 0/);
-  assert.match(phase, /if \(!initialCloudPlaylistReady_\) return kSpotifyRobustUrgentTickMs/);
+  assert.match(phase, /!initialCloudPlaylistReady_[\s\S]*kSpotifySchedulerBootstrapMs/);
 });
 
-test('the unified deadline still advances through the common rotation path', () => {
+test('the unified deadline advances queue state and scheduler starts navigation', () => {
   const start = rotation.indexOf(
     'void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept');
   const end = rotation.indexOf('\nvoid SpotifyWebViews::ArmTimedEndObserver', start);
@@ -136,4 +137,6 @@ test('the unified deadline still advances through the common rotation path', () 
 
   assert.match(due, /effectiveDeadline > now/);
   assert.match(due, /AdvanceTimedRotationSlot\(slot\)/);
+  assert.doesNotMatch(due, /NavigateMusicTarget/);
+  assert.match(schedule, /ReconcileMusicTarget\(slot\)/);
 });
