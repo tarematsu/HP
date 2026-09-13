@@ -107,16 +107,19 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
 });
 
-test('one adaptive scheduler services a state queue with ten-second startup offsets', () => {
-  assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
-  assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
-  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 60U \* 1000U/);
+test('one adaptive threadpool timer services the state queue and exact deadlines', () => {
+  assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
+  assert.match(header, /std::atomic<bool> schedulerWakePosted_\{false\}/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(phaseSync, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
-  assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
+  assert.match(phaseSync, /CreateThreadpoolTimer\([\s\S]*SchedulerTimerProc/);
+  assert.match(phaseSync, /SetThreadpoolTimer\(schedulerTimer_, &due, 0, 0\)/);
   assert.match(schedule, /SlotState is the queue/);
   assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
-  assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.doesNotMatch(phaseSync + schedule, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs|kSpotifySimpleRecoveryHoldMs/);
   assert.doesNotMatch(header, /staggerSlotIndex_|staggerSlotStartTick_|staggerSlotValidated_|reconcileIndex_|playbackWatchdogIndex_/);
 });
@@ -151,8 +154,8 @@ test('rotation construction is isolated from music navigation and target routing
   assert.doesNotMatch(cycle, /NavigateMusicTarget|PostSpotifyTargetDescriptorForSlot/);
   assert.match(music, /NavigateMusicTarget/);
   assert.doesNotMatch(music, /PrepareTimedRotationCycle/);
-  assert.match(routing, /NavigateActiveTimedSlot/);
   assert.match(routing, /PostSpotifyTargetDescriptorForSlot/);
+  assert.doesNotMatch(routing, /NavigateActiveTimedSlot|ReconcileActiveTimedSlot/);
   assert.doesNotMatch(routing, /PrepareTimedRotationCycle|ReconcileMusicTarget\(Slot& slot\)/);
 });
 
