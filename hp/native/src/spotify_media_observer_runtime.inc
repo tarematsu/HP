@@ -3,7 +3,8 @@ namespace {
 
 // Owns target identity and observer state. Playback recovery and completion
 // detection are intentionally excluded: this observer only recognizes the
-// requested target and reports one validated start with its remaining duration.
+// requested target, reports one validated start, and measures explicit non-track
+// playback interruptions so native can preserve the requested song's play time.
 constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverRuntime) return true;
@@ -27,7 +28,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     trustedStartUntil: 0,
     identityFallbackTimer: 0,
     identityFallbackMedia: null,
-    identityFallbackKey: ''
+    identityFallbackKey: '',
+    interruptionStartedAt: 0,
+    interruptionIdentityKey: ''
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
@@ -56,6 +59,29 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.identityFallbackMedia = null;
     state.identityFallbackKey = '';
   };
+  const clearInterruption = () => {
+    state.interruptionStartedAt = 0;
+    state.interruptionIdentityKey = '';
+  };
+  const beginInterruption = identity => {
+    if (state.interruptionStartedAt) return;
+    state.interruptionStartedAt = Date.now();
+    state.interruptionIdentityKey =
+        [identity && identity.path || '', identity && identity.title || ''].join('|');
+    post('spotify:timed-interruption-started');
+  };
+  const cancelInterruption = () => {
+    if (!state.interruptionStartedAt) return;
+    clearInterruption();
+    post('spotify:timed-interruption-cancelled');
+  };
+  const completeInterruption = () => {
+    if (!state.interruptionStartedAt) return;
+    const elapsedMs = Math.max(
+        1, Math.ceil(Date.now() - state.interruptionStartedAt));
+    clearInterruption();
+    postFields('spotify:timed-interruption-ended', String(elapsedMs));
+  };
   const resetState = key => {
     clearIdentityFallback();
     state.key = key;
@@ -65,6 +91,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state.lastIdentityCheckTime = -1;
     state.trustedStartKey = '';
     state.trustedStartUntil = 0;
+    clearInterruption();
   };
   const syncTarget = () => {
     const target = window.__homePanelSpotifyNativeTarget;
@@ -149,6 +176,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     }
 
     const identity = currentTrack();
+    const targetIdentityConfirmed = matchesTarget(target, identity);
     const ownsTrustedMedia = state.started && state.targetMedia === media;
     if (!identity.path && !identity.title) {
       if (!ownsTrustedMedia) {
@@ -156,11 +184,24 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       }
     } else if (!matchesTarget(target, identity)) {
       clearTrustedStart();
+
+      // Spotify ads and similar inserted audio normally have active media and
+      // metadata but no /track/ identity. Treat that as a provisional
+      // interruption. If Spotify subsequently exposes a concrete different
+      // /track/, cancel the interruption instead of extending the requested
+      // song's deadline for an actual wrong-song playback.
+      if (!media.paused && !identity.path) {
+        beginInterruption(identity);
+        if (!state.startPosted) return 'unknown';
+        return 'interruption';
+      }
+      cancelInterruption();
       if (!state.startPosted) return 'unknown';
       return 'wrong';
     }
 
     if (media.paused) return 'target';
+    if (targetIdentityConfirmed) completeInterruption();
     state.started = true;
     state.targetMedia = media;
     if (!state.startPosted) {
@@ -176,7 +217,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   const checkTarget = media => enforceTarget(media);
   const scheduleTargetChecks = media => {
     const status = checkTarget(media);
-    if (status === 'playing' || status === 'ignore') {
+    if (status === 'playing' || status === 'ignore' ||
+        status === 'interruption') {
       clearIdentityFallback();
       return;
     }
