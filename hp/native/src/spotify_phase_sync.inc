@@ -38,7 +38,7 @@ ULONGLONG SpotifyDeadlineWithInterruptionHold(
 }  // namespace
 
 bool SpotifyWebViews::SlotStateIsHealthy(SlotState state) noexcept {
-  return state == SlotState::Playing || state == SlotState::Completed;
+  return state == SlotState::Playing;
 }
 
 bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
@@ -49,8 +49,7 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
-      state == SlotState::Navigating || state == SlotState::Playing ||
-      state == SlotState::Completed) {
+      state == SlotState::Navigating || state == SlotState::Playing) {
     slot.unhealthySinceTick = 0;
   }
 }
@@ -95,11 +94,10 @@ bool SpotifyWebViews::ExpireStaleAsyncWork(
   }
   if (!expired) return false;
 
+  // The slot state itself is the queue entry. Do not mutate scheduler ownership
+  // from an async callback; the next scheduler pass will select this recovery.
   MarkSlotRecovering(slot, now);
   slot.lastTimedReconcileTick = 0;
-  staggerSlotIndex_ = slot.index;
-  staggerSlotStartTick_ = now;
-  staggerSlotValidated_ = false;
   return true;
 }
 
