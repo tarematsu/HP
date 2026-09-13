@@ -122,12 +122,6 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
 
   if (SlotIsLoginPage(slot) || !ResolveMusicTarget(slot).url) return;
 
-  // Register the lightweight native message consumer before playback starts.
-  // It only shortens the same completion deadline when a validated requested
-  // track emits ended, and also normalizes direct-play start timing through the
-  // same deadline helper.
-  ArmMusicEndShortener(slot);
-
   // The media observer owns generation-tagged start/completion truth. Never
   // start a target before that observer has been installed for this document;
   // otherwise Spotify can begin playback while the observer still has the
