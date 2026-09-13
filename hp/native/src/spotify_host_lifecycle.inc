@@ -72,7 +72,6 @@ void SpotifyWebViews::Start() noexcept {
         TimedSpotifyTarget::OnMyWay,
     };
     slot.timedRotationActive = false;
-    slot.podcastBreakActive = false;
     if (!CreateHost(slot)) continue;
   }
 
