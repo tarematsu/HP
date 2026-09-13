@@ -102,8 +102,13 @@ test('music playback waits until the observer acknowledges the current generatio
   assert.match(rotation, /L"spotify:observer-synced"/);
   assert.match(
     rotation,
-    /if \(observerSynced\) \{[\s\S]*timedObserverReady = true;[\s\S]*ReconcileActiveTimedSlot\(\*target\)/,
+    /if \(observerSynced\) \{[\s\S]*timedObserverReady = true;[\s\S]*lastTimedReconcileTick = 0;[\s\S]*ArmRobustScheduler\(\)/,
   );
+  const synced = rotation.slice(
+    rotation.indexOf('if (observerSynced) {'),
+    rotation.indexOf('if (target->timedTarget != TimedSpotifyTarget::Music', rotation.indexOf('if (observerSynced) {')),
+  );
+  assert.doesNotMatch(synced, /ReconcileMusicTarget|ReconcileActiveTimedSlot/);
 });
 
 test('observer adoption of already-playing media emits one start deadline', () => {
