@@ -9,9 +9,6 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     if (schedulerTimer_) SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
     schedulerWakePosted_.store(false, std::memory_order_release);
 
-    // Invalidate every outstanding async controller/environment callback before
-    // destroying the Spotify WebViews. Old callbacks retain this false generation
-    // even after unmute creates a fresh shared flag.
     if (alive_) alive_->store(false, std::memory_order_release);
     for (Slot& slot : slots_) CloseSlot(slot);
     robustSchedulerStarted_ = false;
@@ -42,10 +39,11 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     slot.state = SlotState::NotCreated;
     slot.playerPage = false;
     slot.loginPage = false;
-    slot.timedTarget = TimedSpotifyTarget::None;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
-    slot.timedPlaybackStartTick = 0;
+    slot.timedCompletionDeadlineTick = 0;
+    slot.timedCompletionDeadlineGeneration = 0;
+    slot.timedInterruptionStartTick = 0;
     slot.timedRotationActive = false;
     slot.reconcileInFlight = false;
     slot.targetGeneration = 0;
