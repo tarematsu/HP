@@ -1,3 +1,5 @@
+#include "spotify_playback_telemetry.h"
+
 // Spotify implementation is deliberately composed from static C++/JavaScript
 // fragments. No ExecuteScript, timer, input, or layout call is rewritten by the
 // preprocessor and no JavaScript source is generated or patched at runtime.
