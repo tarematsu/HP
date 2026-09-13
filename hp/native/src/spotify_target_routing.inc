@@ -1,13 +1,5 @@
 namespace hp {
 
-void SpotifyWebViews::NavigateActiveTimedSlot(Slot& slot) noexcept {
-  NavigateMusicTarget(slot);
-}
-
-void SpotifyWebViews::ReconcileActiveTimedSlot(Slot& slot) noexcept {
-  ReconcileMusicTarget(slot);
-}
-
 void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
   if (!slot.webview) return;
 
