@@ -154,25 +154,38 @@ test('invalid duration waits for metadata instead of arming a bad timer', () => 
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f23\x1f179000']);
 });
 
-test('completion lifecycle events are not installed', () => {
+test('only ended is added as a completion advisory lifecycle event', () => {
   const h = createHarness();
-  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause', 'ended']) {
+  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause']) {
     assert.equal(h.listeners.has(type), false, `${type} must not be observed`);
   }
-  for (const type of ['play', 'playing', 'loadedmetadata', 'durationchange']) {
+  for (const type of ['play', 'playing', 'loadedmetadata', 'durationchange', 'ended']) {
     assert.equal(h.listeners.has(type), true, `${type} must be observed`);
   }
 });
 
-test('rewind to zero cannot produce a second start event for the generation', () => {
+test('validated requested-track ended publishes one generation-tagged shortening signal', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f24');
   h.media.paused = false;
+  h.dispatch('playing');
+  h.media.ended = true;
+  h.dispatch('ended');
+  assert.deepEqual(h.messages, [
+    'spotify:timed-started\x1f24\x1f180000',
+    'spotify:timed-ended\x1f24',
+  ]);
+});
+
+test('rewind to zero cannot produce a second start event for the generation', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f25');
+  h.media.paused = false;
   h.media.currentTime = 0;
   h.dispatch('playing');
-  assert.deepEqual(h.messages, ['spotify:timed-started\x1f24\x1f180000']);
+  assert.deepEqual(h.messages, ['spotify:timed-started\x1f25\x1f180000']);
 
   h.media.currentTime = 0.1;
   h.dispatch('playing');
-  assert.deepEqual(h.messages, ['spotify:timed-started\x1f24\x1f180000']);
+  assert.deepEqual(h.messages, ['spotify:timed-started\x1f25\x1f180000']);
 });
