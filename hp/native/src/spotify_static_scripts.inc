@@ -2,8 +2,8 @@ namespace hp {
 namespace {
 
 constexpr wchar_t kSpotifyMessageSeparator = L'\x1f';
-constexpr std::array<std::wstring_view, 6> kSpotifyPanelNames = {
-    L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"};
+constexpr std::array<std::wstring_view, kSpotifyActiveAccountCount> kSpotifyPanelNames = {
+    L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata"};
 
 constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
 (() => {
@@ -80,6 +80,20 @@ void SpotifyWebViews::PostSpotifyPageContext(Slot& slot) noexcept {
     slot.webview->PostWebMessageAsString(message.c_str());
   }
   PostSpotifyTargetDescriptorForSlot(slot);
+}
+
+std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
+SpotifyWebViews::PlaybackStatuses() const noexcept {
+  std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount> result{};
+  for (size_t i = 0; i < result.size(); ++i) {
+    result[i].windowName.assign(kSpotifyPanelNames[i]);
+    if (const ManagedTrack* const track = CurrentMusicTrack(slots_[i])) {
+      result[i].trackTitle = track->title;
+    }
+    result[i].confirmedAt = slots_[i].playbackConfirmedAt;
+    result[i].confirmed = slots_[i].playbackConfirmed;
+  }
+  return result;
 }
 
 }  // namespace hp
