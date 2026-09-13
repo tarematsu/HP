@@ -23,11 +23,11 @@ bool SpotifyWebViews::ParseNormalizedPoint(
 
 void SpotifyWebViews::ClickSlotNormalizedPoint(
     Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
-  if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return;
+  if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow) ||
+      !CurrentMusicTrack(slot)) {
+    return;
+  }
 
-  // Parked surfaces are playback-only. Expanding a responsive page invalidates
-  // coordinates measured at 320x180, so the first pass only promotes this slot
-  // to the recovery layout. The next reconcile obtains a fresh point before click.
   const bool recoveryViewportReady =
       hostLayoutActiveSlot_ == slot.index && SlotStateNeedsRecovery(slot.state);
   if (!recoveryViewportReady) {
@@ -43,13 +43,6 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   SetSlotState(slot, SlotState::WaitingTarget);
   const ULONGLONG targetGeneration = slot.targetGeneration;
 
-  // The point was measured asynchronously. Spotify can switch a Play-labelled
-  // control to Pause before native input reaches it. Revalidate both playback
-  // state and the element currently under the point immediately before CDP
-  // input; a stale point is discarded instead of becoming an accidental pause.
-  // For music, arm the generation-scoped trusted start inside this same script
-  // before returning success. That guarantees the observer is ready before the
-  // subsequent native click can produce a play/playing event.
   std::wstring preflight = L"(() => {";
   preflight += L"const nx=" + std::to_wstring(xTenThousandths) + L";";
   preflight += L"const ny=" + std::to_wstring(yTenThousandths) + L";";
@@ -65,15 +58,12 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
       L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
       L"if(!label||label.includes('pause')||label.includes('一時停止'))return false;"
       L"const trustedPlay=label==='play'||label==='再生'||label.startsWith('play ')||label.endsWith('を再生');"
-      L"if(!trustedPlay)return false;";
-  if (slot.timedTarget == TimedSpotifyTarget::Music) {
-    preflight +=
-        L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
-        L"if(!runtime||typeof runtime.armTrustedStart!=='function')return false;"
-        L"if(!runtime.armTrustedStart('" + std::to_wstring(targetGeneration) +
-        L"'))return false;";
-  }
-  preflight += L"return true;})()";
+      L"if(!trustedPlay)return false;"
+      L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
+      L"if(!runtime||typeof runtime.armTrustedStart!=='function')return false;"
+      L"if(!runtime.armTrustedStart('" + std::to_wstring(targetGeneration) +
+      L"'))return false;"
+      L"return true;})()";
 
   Slot* const target = &slot;
   ComPtr<ICoreWebView2> requestedView = slot.webview;
@@ -109,11 +99,11 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
 UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
   try {
-    if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return 0;
+    if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow) ||
+        !CurrentMusicTrack(slot)) {
+      return 0;
+    }
 
-    // One native gate covers both in-flight suppression and the post-click
-    // cooldown. A lost callback simply ages out; a target change bypasses the
-    // old gate immediately.
     constexpr ULONGLONG kSpotifyTrustedClickGateMs = 8ULL * 1000ULL;
     const ULONGLONG now = GetTickCount64();
     const ULONGLONG targetGeneration = slot.targetGeneration;
@@ -129,8 +119,6 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     const int height = client.bottom - client.top;
     if (width <= 1 || height <= 1) return 0;
 
-    // CDP Input.dispatchMouseEvent consumes CSS viewport coordinates. WebView2
-    // ZoomFactor changes the CSS viewport size without changing the host bounds.
     double zoom = 1.0;
     if (slot.controller) {
       double controllerZoom = 1.0;
@@ -197,9 +185,6 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                           return S_OK;
                         }
 
-                        // Anchor song timing to the Play press itself. The
-                        // callback may arrive slightly later, but the captured
-                        // tick is the moment mousePressed was dispatched.
                         ArmMusicCompletionDeadlineFromStart(
                             *target, playbackStartTick);
 
