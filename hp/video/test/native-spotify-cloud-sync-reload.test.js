@@ -102,5 +102,5 @@ test('admin exposes the shared seven-group managed rotation', () => {
   assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.equal((randomCatalog.match(/tracks: instrumentalSongs\.map/g) ?? []).length, 2);
-  assert.equal((randomCatalog.match(/tracks: shortSongs\.map/g) ?? []).length, 2);
+  assert.equal((randomCatalog.match(/tracks: shortSongs\.map/g) ?? []).length, 3);
 });
