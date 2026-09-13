@@ -37,6 +37,16 @@ LR"JS(
     return cachedPlayerControls;
   };
 
+  if (state && state.recoveryPending && !video.ended) {
+    const recoveryAge = Date.now() - Number(state.recoverySince || Date.now());
+    if (recoveryAge >= 30 * 1000) return 'restart';
+    try {
+      const pending = video.play();
+      if (pending && typeof pending.catch === 'function') pending.catch(() => {});
+    } catch (_) {}
+    return 'recovery';
+  }
+
   if (video.paused && !video.ended) {
     // Playback recovery must be idempotent. A video-surface click is a play/pause
     // toggle, so a delayed trusted click can pause TVer after playback has already
@@ -45,7 +55,9 @@ LR"JS(
       const pending = video.play();
       if (pending && typeof pending.catch === 'function') pending.catch(() => {});
     } catch (_) {}
-    return null;
+    // Tell native that this pass performed recovery so it rechecks quickly
+    // instead of backing off to the healthy watchdog interval immediately.
+    return 'recovery';
   }
 
   const browserFullscreen = document.fullscreenElement ||

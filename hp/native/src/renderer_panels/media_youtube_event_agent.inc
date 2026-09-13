@@ -16,6 +16,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   if (existing && existing.player === player) return true;
   if (existing) {
     try { existing.playerObserver?.disconnect(); } catch (_) {}
+    try { existing.adObserver?.disconnect(); } catch (_) {}
     try { existing.classObserver?.disconnect(); } catch (_) {}
     try { existing.popupObserver?.disconnect(); } catch (_) {}
     try { if (existing.wakeTimer) clearTimeout(existing.wakeTimer); } catch (_) {}
@@ -31,6 +32,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     lastWakeSignature: '',
     pendingWakeDirty: false,
     playerObserver: null,
+    adObserver: null,
     classObserver: null,
     popupObserver: null,
     dialogCloseAt: 0,
@@ -206,38 +208,54 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     wake(true);
   };
 
-  const interestingSelector = [
-    'video',
-    skipSelector,
-    surveySelector,
-    messageDialogSelector
-  ].join(',');
+  const bindAdObserver = () => {
+    if (typeof MutationObserver !== 'function') return;
+    if (!state.adObserver) {
+      state.adObserver = new MutationObserver(() => wake());
+    } else {
+      try { state.adObserver.disconnect(); } catch (_) {}
+    }
+    const roots = Array.from(player.querySelectorAll(
+        '.video-ads, .ytp-ad-module, .ytp-ad-player-overlay'));
+    for (const root of roots) {
+      state.adObserver.observe(root, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'aria-hidden', 'disabled']
+      });
+    }
+  };
 
   if (typeof MutationObserver === 'function') {
-    state.playerObserver = new MutationObserver(mutations => {
-      let interesting = false;
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
-          const element = node;
-          if (element.matches?.(interestingSelector) ||
-              element.querySelector?.(interestingSelector)) {
-            interesting = true;
-            break;
+    // Video replacement is the only player-subtree mutation we need during
+    // ordinary content playback. Scope this observer to the dedicated video
+    // container instead of the full #movie_player tree.
+    const videoContainer = player.querySelector('.html5-video-container');
+    if (videoContainer) {
+      state.playerObserver = new MutationObserver(mutations => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
+            const element = node;
+            if (element.matches?.('video') || element.querySelector?.('video')) {
+              bindVideo();
+              return;
+            }
           }
         }
-        if (interesting) break;
-      }
-      if (!interesting) return;
-      bindVideo();
-      if (dismissMessageDialog()) wake(true);
-      else wake();
-    });
-    state.playerObserver.observe(player, { childList: true, subtree: true });
+      });
+      state.playerObserver.observe(videoContainer, { childList: true, subtree: true });
+    }
+
+    bindAdObserver();
 
     // YouTube signals ad transitions primarily by toggling player classes. Watch
     // only that one attribute on the one player node rather than page-wide DOM.
-    state.classObserver = new MutationObserver(() => wake());
+    state.classObserver = new MutationObserver(() => {
+      bindAdObserver();
+      wake();
+    });
     state.classObserver.observe(player, {
       attributes: true,
       attributeFilter: ['class']

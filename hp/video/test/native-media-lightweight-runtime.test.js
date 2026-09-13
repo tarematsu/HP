@@ -33,6 +33,7 @@ test('TVer uses media events plus a player-local observer, never a document-wide
   assert.match(tverEpisode, /addEventListener\('timeupdate'/);
   assert.match(tverEpisode, /event\.target instanceof HTMLMediaElement/);
   assert.match(tverEpisode, /homepanel:tver-wake/);
+  assert.match(tverEpisode, /\['waiting', 'stalled'\]/);
 });
 
 test('TVer progress sampling backs off during steady playback and tightens only near the end', () => {
@@ -50,13 +51,17 @@ test('TVer event bridge suppresses duplicate native wakeups for unchanged recove
   assert.match(tverEpisode, /signature === lastWakeSignature/);
   assert.match(tverEpisode, /recoveryFlags\.join\('\+'\)/);
   assert.match(tverEpisode, /wakeNative\('ui:' \+ playerUiRevision\)/);
+  assert.match(tverEpisode, /recoveryPending/);
 });
 
 test('YouTube uses event wakeups with a 30-second steady watchdog backstop', () => {
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(youtubeAgent, /homepanel:youtube-wake/);
-  assert.match(youtubeAgent, /state\.playerObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
+  assert.match(youtubeAgent, /const videoContainer = player\.querySelector\('\.html5-video-container'\)/);
+  assert.match(youtubeAgent, /state\.playerObserver\.observe\(videoContainer, \{ childList: true, subtree: true \}\)/);
+  assert.match(youtubeAgent, /state\.adObserver\.observe\(root/);
+  assert.doesNotMatch(youtubeAgent, /state\.playerObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
   assert.match(youtubeAgent, /attributeFilter: \['class'\]/);
   assert.match(mediaWrapper, /add_WebMessageReceived/);
   assert.match(mediaWrapper, /kNativeMediaYoutubeWatchdogTimer/);
@@ -77,6 +82,16 @@ test('YouTube coalesces DOM bursts before crossing the WebView2 native boundary'
     mediaWrapper,
     /message == L"homepanel:youtube-wake"[\s\S]{0,400}NativeMediaWebViewSourceContains\(sender/,
   );
+});
+
+test('adaptive media watchdogs stay quiet while healthy and tighten only for recovery', () => {
+  assert.match(mediaBase, /kNativeMediaTverWatchdogStartupMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogHealthyMs = 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogRecoveryMs = 2U \* 1000U/);
+  assert.match(mediaHost, /RecoveryState::Healthy/);
+  assert.match(mediaHost, /RecoveryState::Recovering/);
+  assert.match(mediaHost, /std::wstring_view\(json\) == L"\\\"recovery\\\""/);
+  assert.match(mediaHost, /tverWatchdogRequestGeneration_/);
 });
 
 test('YouTube static presentation policy is not reinjected after navigation completes', () => {

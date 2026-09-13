@@ -97,6 +97,9 @@ test('YouTube preserves playlist playback, one-shot 480p, captions off, skip and
   assert.match(youtubeRecovery, /fullscreenApplied: false/);
   assert.match(youtubeAgent, /homepanel:youtube-wake/);
   assert.match(youtubeAgent, /attributeFilter: \['class'\]/);
+  assert.match(youtubeAgent, /\.html5-video-container/);
+  assert.match(youtubeAgent, /state\.adObserver\.observe\(root/);
+  assert.doesNotMatch(youtubeAgent, /state\.playerObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
   assert.doesNotMatch(youtubeAgent, /document\.documentElement.*observe/);
 });
 
@@ -122,12 +125,27 @@ test('TVer episode playback is one-shot 1.75x, native-queue based and player-loc
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
   assert.match(tverEpisode, /homepanel:tver-media-init/);
   assert.match(tverEpisode, /homepanel:tver-ended/);
+  assert.match(tverEpisode, /recoveryPending/);
+  assert.match(tverEpisode, /\['waiting', 'stalled'\]/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
   assert.doesNotMatch(tverEpisode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
-  assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogStartupMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogHealthyMs = 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(mediaHost, /BeginTverPlaybackMonitor\(\)/);
   assert.match(mediaHost, /ProbeTverWatchdog\(\)/);
+});
+
+test('media recovery is single-flight and navigation retry uses bounded backoff', () => {
+  assert.match(mediaHost, /enum class RecoveryState \{ Healthy, Suspect, Recovering, Reload \}/);
+  assert.match(mediaHost, /tverWatchdogRequestGeneration_/);
+  assert.match(mediaHost, /youtubeWatchdogRequestGeneration_/);
+  assert.match(mediaBase, /kNativeMediaNavigationRetryInitialMs = 3U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaNavigationRetryMaxMs = 30U \* 1000U/);
+  assert.match(mediaHost, /navigationRetryMs_ = std::min/);
+  assert.match(mediaHost, /navigationRetryMs_ = kNativeMediaNavigationRetryInitialMs/);
+  assert.match(mediaHost, /L"\\\"recovery\\\""/);
 });
 
 test('TVer media initialization performs one pointer wake without burst polling', () => {
@@ -165,7 +183,7 @@ test('TVer completion reuses the existing controller through the host navigation
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });
 
-test('media WebView blocks image and font requests without touching playback resources', () => {
+test('media WebView blocks images while keeping fonts and playback resources available', () => {
   assert.match(
     mediaHost,
     /SharedWebViewEnvironment::Instance\(\)\.Acquire\(\s*userDataFolder_, false, false,/,
@@ -174,7 +192,7 @@ test('media WebView blocks image and font requests without touching playback res
     mediaHost,
     /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\)/,
   );
-  assert.match(
+  assert.doesNotMatch(
     mediaHost,
     /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\)/,
   );

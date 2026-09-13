@@ -9,11 +9,16 @@ constexpr UINT_PTR kNativeMediaNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
 constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
-constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
+constexpr UINT kNativeMediaNavigationRetryInitialMs = 3U * 1000U;
+constexpr UINT kNativeMediaNavigationRetryMaxMs = 30U * 1000U;
 // Healthy YouTube playback is event-driven; the timer is only a backstop.
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
-constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
+// TVer starts with a conservative startup watchdog, backs off during healthy
+// playback, and tightens only while recovery is actually in progress.
+constexpr UINT kNativeMediaTverWatchdogStartupMs = 30U * 1000U;
+constexpr UINT kNativeMediaTverWatchdogHealthyMs = 60U * 1000U;
+constexpr UINT kNativeMediaTverWatchdogRecoveryMs = 2U * 1000U;
 
 // Routing sentinel only. The exceptional /playlist fallback installs one
 // event-driven resolver in media_youtube_playall_reliable.inc.

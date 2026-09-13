@@ -23,6 +23,8 @@ LR"JS(
           adIdentity: '',
           adEndedAt: 0,
           postrollAfterProgram: false,
+          recoveryPending: false,
+          recoverySince: 0,
         };
         window.__homePanelSakuraMeetsState = state;
       }
@@ -51,6 +53,8 @@ LR"JS(
           state.lowQualitySet = false;
           state.playbackSettingsApplied = false;
           state.fullscreenDirty = true;
+          state.recoveryPending = false;
+          state.recoverySince = 0;
         }
         window.__homePanelTverAdActive = true;
         const adFullscreen = !!(document.fullscreenElement ||
@@ -74,6 +78,8 @@ LR"JS(
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
         state.postrollAfterProgram = false;
+        state.recoveryPending = false;
+        state.recoverySince = 0;
         window.__homePanelTverAdActive = false;
         if (completedPostroll) {
           if (postEpisodeEnded(state)) return;
@@ -90,6 +96,8 @@ LR"JS(
         state.lowQualitySet = false;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
+        state.recoveryPending = false;
+        state.recoverySince = 0;
       }
       if (!video) return;
       bindVideoEvents(video, state);

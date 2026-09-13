@@ -53,6 +53,7 @@ test('TVer is event driven and player-local', () => {
   assert.match(tverEpisode, /event\.target instanceof HTMLMediaElement/);
   assert.match(tverEpisode, /homepanel:tver-media-init/);
   assert.match(tverEpisode, /homepanel:tver-ended/);
+  assert.match(tverEpisode, /\['waiting', 'stalled'\]/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverEpisode, /setInterval\(ensure/);
   assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
@@ -67,7 +68,7 @@ test('hidden YouTube and TVer share one WebView2 trusted-input path', () => {
   assert.doesNotMatch(trustedInput, /::SendInput\(/);
 });
 
-test('TVer media wake is one-shot and the steady watchdog stays low frequency', () => {
+test('TVer media wake is one-shot and the steady watchdog backs off while healthy', () => {
   assert.match(mediaWrapper, /homepanel:tver-media-init/);
   assert.match(mediaWrapper, /NativeMediaTrustedWake\(hostWindow, sender, nullptr\)/);
   assert.match(trustedInput, /return ::SetTimer\(hwnd, timerId, steadyIntervalMs, nullptr\)/);
@@ -75,7 +76,9 @@ test('TVer media wake is one-shot and the steady watchdog stays low frequency', 
     trustedInput,
     /kNativeMediaTrustedWakeIntervalMs|kNativeMediaTrustedWakeAttempts|NativeMediaTrustedWakeTimerProc/,
   );
-  assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogStartupMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogHealthyMs = 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogRecoveryMs = 2U \* 1000U/);
 });
 
 test('YouTube health uses a 30-second backstop plus event wakeups', () => {
@@ -85,6 +88,7 @@ test('YouTube health uses a 30-second backstop plus event wakeups', () => {
   assert.match(mediaWrapper, /#include "media_youtube_event_agent\.inc"/);
   assert.match(youtubeAgent, /homepanel:youtube-wake/);
   assert.match(mediaWrapper, /homepanel:youtube-wake/);
+  assert.match(mediaHost, /RecoveryState::Recovering/);
   assert.doesNotMatch(mediaWrapper, /kNativeMediaYoutubeHealthScript|kNativeMediaYoutubeHealthPolicyScript/);
 });
 

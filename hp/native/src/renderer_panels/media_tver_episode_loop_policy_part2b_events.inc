@@ -6,6 +6,10 @@ LR"JS(
     video.addEventListener('timeupdate', () => {
       if (window.__homePanelSakuraMeetsState !== state) return;
       sampleProgress(video, state);
+      if (state.recoveryPending) {
+        state.recoveryPending = false;
+        state.recoverySince = 0;
+      }
     }, { passive: true });
     // playbackRate is initialized once when this video becomes current. Do not
     // watch ratechange and rewrite it repeatedly during the same media item.
@@ -17,14 +21,35 @@ LR"JS(
     video.addEventListener('ended', () => {
       if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
       sampleProgress(video, state, true);
+      state.recoveryPending = false;
+      state.recoverySince = 0;
       state.endCandidateAt = Date.now();
       window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
     }, { passive: true });
-    for (const eventName of ['play', 'pause', 'emptied']) {
+    for (const eventName of ['waiting', 'stalled']) {
+      video.addEventListener(eventName, () => {
+        if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
+        if (!state.recoveryPending) state.recoverySince = Date.now();
+        state.recoveryPending = true;
+        wakeNative('recovery:' + eventName + ':' + mediaIdentity(video), true);
+        scheduleEnsure(40);
+      }, { passive: true });
+    }
+    for (const eventName of ['play', 'playing']) {
+      video.addEventListener(eventName, () => {
+        if (window.__homePanelSakuraMeetsState !== state) return;
+        state.recoveryPending = false;
+        state.recoverySince = 0;
+        scheduleEnsure(40);
+      }, { passive: true });
+    }
+    for (const eventName of ['pause', 'emptied']) {
       video.addEventListener(eventName, () => scheduleEnsure(40), { passive: true });
     }
     for (const eventName of ['loadedmetadata', 'durationchange']) {
       video.addEventListener(eventName, () => {
+        state.recoveryPending = false;
+        state.recoverySince = 0;
         sampleProgress(video, state, true);
         scheduleEnsure(40);
       }, { passive: true });
