@@ -55,14 +55,15 @@ test('due native deadline advances the rotation without asking Spotify again', (
   assert.ok(dueStart >= 0 && dueEnd > dueStart);
   const due = rotation.slice(dueStart, dueEnd);
 
-  assert.match(due, /timedCompletionDeadlineTick > now/);
+  assert.match(due, /SpotifyDeadlineWithInterruptionHold/);
+  assert.match(due, /effectiveDeadline > now/);
   assert.match(due, /AdvanceTimedRotationSlot\(slot, now\)/);
   assert.match(due, /ArmCompletionDeadlineTimer\(\)/);
   assert.doesNotMatch(due, /PostWebMessageAsString/);
   assert.doesNotMatch(due, /slot\.webview/);
 });
 
-test('same generation cannot postpone or clear the armed A to B deadline', () => {
+test('same generation cannot postpone or clear the armed A to B deadline with repeated start events', () => {
   const handlerStart = rotation.indexOf('const bool started = ParseSpotifyStartedEvent');
   const handlerEnd = rotation.indexOf('\n            }).Get(),', handlerStart);
   assert.ok(handlerStart >= 0 && handlerEnd > handlerStart);
@@ -73,6 +74,8 @@ test('same generation cannot postpone or clear the armed A to B deadline', () =>
   assert.match(handler, /timedCompletionDeadlineTick = now \+ remainingMs/);
   assert.doesNotMatch(handler, /candidateDeadline/);
   assert.doesNotMatch(handler, /timedCompletionDeadlineTick = 0/);
+  assert.match(handler, /interruptionEnded/);
+  assert.match(handler, /timedCompletionDeadlineTick \+ extension/);
 });
 
 test('threadpool timer is the primary completion wake-up under six-WebView load', () => {

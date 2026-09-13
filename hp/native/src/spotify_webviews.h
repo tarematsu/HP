@@ -85,6 +85,7 @@ class SpotifyWebViews final {
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG timedRotationCycle = 0;
     ULONGLONG timedPlaybackStartTick = 0;
+    ULONGLONG timedInterruptionStartTick = 0;
     ULONGLONG timedCompletionDeadlineTick = 0;
     ULONGLONG timedCompletionDeadlineGeneration = 0;
     ULONGLONG lastTimedReconcileTick = 0;

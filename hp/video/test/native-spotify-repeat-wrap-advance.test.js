@@ -41,6 +41,8 @@ test('playback wrap is irrelevant after native start deadline is armed', () => {
     /addEventListener\('(?:timeupdate|seeking|seeked|ended)'/,
   );
   assert.doesNotMatch(runtime + events, /terminalWrapObserved|completionPlanExpired|postCompletionPlan/);
-  assert.match(rotation, /one-shot native deadline expires[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
+  assert.match(rotation, /SpotifyDeadlineWithInterruptionHold/);
+  assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
+  assert.match(rotation, /spotify:timed-interruption-ended/);
   assert.doesNotMatch(rotation, /spotify:timed-ended|spotify:timed-plan/);
 });

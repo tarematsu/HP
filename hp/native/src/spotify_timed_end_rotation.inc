@@ -20,11 +20,10 @@ bool ParseSpotifyGenerationEvent(
   return true;
 }
 
-bool ParseSpotifyStartedEvent(
-    LPCWSTR rawMessage, ULONGLONG* generation,
-    ULONGLONG* remainingMs) noexcept {
-  if (!rawMessage || !generation || !remainingMs) return false;
-  constexpr std::wstring_view eventName = L"spotify:timed-started";
+bool ParseSpotifyDurationEvent(
+    LPCWSTR rawMessage, std::wstring_view eventName,
+    ULONGLONG* generation, ULONGLONG* durationMs) noexcept {
+  if (!rawMessage || !generation || !durationMs) return false;
   const std::wstring_view value(rawMessage);
   if (value.size() <= eventName.size() ||
       value.substr(0, eventName.size()) != eventName ||
@@ -42,22 +41,37 @@ bool ParseSpotifyStartedEvent(
 
   const std::wstring generationText(
       value.substr(generationStart, separator - generationStart));
-  const std::wstring remainingText(value.substr(separator + 1));
+  const std::wstring durationText(value.substr(separator + 1));
   wchar_t* generationEnd = nullptr;
-  wchar_t* remainingEnd = nullptr;
+  wchar_t* durationEnd = nullptr;
   const unsigned long long parsedGeneration =
       wcstoull(generationText.c_str(), &generationEnd, 10);
-  const unsigned long long parsedRemaining =
-      wcstoull(remainingText.c_str(), &remainingEnd, 10);
+  const unsigned long long parsedDuration =
+      wcstoull(durationText.c_str(), &durationEnd, 10);
   if (!generationEnd || *generationEnd != L'\0' ||
-      !remainingEnd || *remainingEnd != L'\0' || parsedRemaining == 0 ||
-      parsedRemaining > 24ULL * 60ULL * 60ULL * 1000ULL) {
+      !durationEnd || *durationEnd != L'\0' || parsedDuration == 0 ||
+      parsedDuration > 24ULL * 60ULL * 60ULL * 1000ULL) {
     return false;
   }
 
   *generation = static_cast<ULONGLONG>(parsedGeneration);
-  *remainingMs = static_cast<ULONGLONG>(parsedRemaining);
+  *durationMs = static_cast<ULONGLONG>(parsedDuration);
   return true;
+}
+
+bool ParseSpotifyStartedEvent(
+    LPCWSTR rawMessage, ULONGLONG* generation,
+    ULONGLONG* remainingMs) noexcept {
+  return ParseSpotifyDurationEvent(
+      rawMessage, L"spotify:timed-started", generation, remainingMs);
+}
+
+bool ParseSpotifyInterruptionEndedEvent(
+    LPCWSTR rawMessage, ULONGLONG* generation,
+    ULONGLONG* interruptionMs) noexcept {
+  return ParseSpotifyDurationEvent(
+      rawMessage, L"spotify:timed-interruption-ended",
+      generation, interruptionMs);
 }
 
 }  // namespace
@@ -67,6 +81,7 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
+  slot.timedInterruptionStartTick = 0;
   if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
   if (slot.timedCycleTracks.empty()) {
     slot.timedTarget = TimedSpotifyTarget::None;
@@ -173,13 +188,19 @@ void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
         !slot.timedRotationActive) {
       slot.timedCompletionDeadlineTick = 0;
       slot.timedCompletionDeadlineGeneration = 0;
+      slot.timedInterruptionStartTick = 0;
       continue;
     }
-    if (slot.timedCompletionDeadlineTick > now) continue;
 
-    // The first validated playback start owns the entire generation. Once its
-    // one-shot native deadline expires, advance without asking Spotify whether
-    // it emitted ended, rewound the media element, paused, or started A again.
+    const ULONGLONG effectiveDeadline = SpotifyDeadlineWithInterruptionHold(
+        slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick);
+    if (effectiveDeadline > now) continue;
+
+    // A provisional interruption may hold the deadline only for a bounded
+    // window. If it never resolves back to the requested track, fail forward at
+    // the effective deadline instead of allowing an ad/metadata state to wedge
+    // the rotation forever.
+    slot.timedInterruptionStartTick = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
     slot.timedPlaybackStartTick = 0;
@@ -213,12 +234,29 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
               ULONGLONG eventGeneration = 0;
               ULONGLONG remainingMs = 0;
+              ULONGLONG interruptionMs = 0;
               const bool started = ParseSpotifyStartedEvent(
                   rawMessage, &eventGeneration, &remainingMs);
-              const bool observerSynced = !started && ParseSpotifyGenerationEvent(
-                  rawMessage, L"spotify:observer-synced", &eventGeneration);
+              const bool interruptionStarted = !started &&
+                  ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:timed-interruption-started",
+                      &eventGeneration);
+              const bool interruptionCancelled = !started && !interruptionStarted &&
+                  ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:timed-interruption-cancelled",
+                      &eventGeneration);
+              const bool interruptionEnded = !started && !interruptionStarted &&
+                  !interruptionCancelled && ParseSpotifyInterruptionEndedEvent(
+                      rawMessage, &eventGeneration, &interruptionMs);
+              const bool observerSynced = !started && !interruptionStarted &&
+                  !interruptionCancelled && !interruptionEnded &&
+                  ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:observer-synced", &eventGeneration);
               CoTaskMemFree(rawMessage);
-              if (!started && !observerSynced) return S_OK;
+              if (!started && !interruptionStarted && !interruptionCancelled &&
+                  !interruptionEnded && !observerSynced) {
+                return S_OK;
+              }
 
               if (eventGeneration == 0 ||
                   eventGeneration != target->targetGeneration) {
@@ -241,14 +279,54 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 return S_OK;
               }
 
+              if (interruptionStarted) {
+                if (target->timedInterruptionStartTick == 0) {
+                  target->timedInterruptionStartTick = now;
+                  ArmCompletionDeadlineTimer();
+                }
+                ArmRobustScheduler();
+                return S_OK;
+              }
+
+              if (interruptionCancelled) {
+                if (target->timedInterruptionStartTick != 0) {
+                  target->timedInterruptionStartTick = 0;
+                  ArmCompletionDeadlineTimer();
+                }
+                ArmRobustScheduler();
+                return S_OK;
+              }
+
+              if (interruptionEnded) {
+                if (target->timedInterruptionStartTick != 0) {
+                  target->timedInterruptionStartTick = 0;
+                  if (target->timedCompletionDeadlineTick != 0 &&
+                      target->timedCompletionDeadlineGeneration == eventGeneration) {
+                    const ULONGLONG extension = std::min(
+                        interruptionMs, kSpotifyMaxInterruptionHoldMs);
+                    const ULONGLONG maxTick =
+                        (std::numeric_limits<ULONGLONG>::max)();
+                    target->timedCompletionDeadlineTick =
+                        target->timedCompletionDeadlineTick > maxTick - extension
+                            ? maxTick
+                            : target->timedCompletionDeadlineTick + extension;
+                  }
+                  ArmCompletionDeadlineTimer();
+                }
+                ArmRobustScheduler();
+                return S_OK;
+              }
+
               SetSlotState(*target, SlotState::Playing);
               if (target->timedPlaybackStartTick == 0) {
                 target->timedPlaybackStartTick = now;
               }
               target->unhealthySinceTick = 0;
 
-              // One start event arms exactly one native completion timer. Later
-              // Spotify events cannot clear, postpone, or replace this deadline.
+              // One target-start event arms exactly one native completion timer.
+              // Repeated Spotify playback events cannot postpone it; only a
+              // generation-matched non-track interruption that later resolves
+              // back to the requested song may add its measured duration.
               if (target->timedCompletionDeadlineTick == 0 ||
                   target->timedCompletionDeadlineGeneration != eventGeneration) {
                 target->timedCompletionDeadlineTick = now + remainingMs;
