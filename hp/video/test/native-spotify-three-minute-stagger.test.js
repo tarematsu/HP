@@ -5,6 +5,7 @@ import test from 'node:test';
 const wrapper = readFileSync(new URL('../../native/src/spotify_webviews.inc', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
 const hostLifecycle = readFileSync(new URL('../../native/src/spotify_host_lifecycle.inc', import.meta.url), 'utf8');
+const phase = readFileSync(new URL('../../native/src/spotify_phase_sync.inc', import.meta.url), 'utf8');
 const schedule = readFileSync(new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 const timed = readFileSync(new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const cycle = readFileSync(new URL('../../native/src/spotify_rotation_cycle.inc', import.meta.url), 'utf8');
@@ -17,14 +18,16 @@ const runtime = readFileSync(new URL('../../native/src/spotify_media_observer_ru
 const events = readFileSync(new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
 const cloud = readFileSync(new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
 
-test('Spotify startup uses one shared ten-second account offset with a state-driven scheduler', () => {
+test('Spotify startup uses one shared ten-second offset and one adaptive scheduler timer', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
   assert.match(wrapper, /#include "spotify_cloud_playlist\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
+  assert.match(phase, /SchedulerTimerProc/);
   assert.match(schedule, /const auto startupReady/);
   assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
-  assert.match(schedule, /StaggeredReconcileTimerProc/);
+  assert.doesNotMatch(phase + schedule, /StaggeredReconcileTimerProc|::SetTimer\(|KillTimer\(/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
 });
 
@@ -34,7 +37,10 @@ test('Spotify schedule starts autonomously and loads cloud playlist before rotat
   assert.match(hostLifecycle, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
   assert.match(schedule, /EnsureCloudPlaylistLoaded\(\)[\s\S]*robustSchedulerStarted_ = true/);
-  assert.match(schedule, /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot\)/);
+  assert.match(
+    schedule,
+    /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot\);[\s\S]*NavigateMusicTarget\(slot\);/,
+  );
   assert.doesNotMatch(header + schedule, /youtubeCycleStartTick_/);
 });
 
@@ -55,7 +61,7 @@ test('cloud rotation supports fixed, shuffle, random, and cycle dedupe', () => {
   assert.doesNotMatch(rotation, /% 6U|position <= 4U/);
 });
 
-test('cycle advances only through the unified native deadline', () => {
+test('cycle advances only through the unified native deadline and queues navigation', () => {
   assert.match(rotation, /\+\+slot\.timedRotationPosition/);
   assert.match(rotation, /slot\.timedRotationPosition >= slot\.timedCycleTracks\.size\(\)/);
   assert.match(rotation, /PrepareTimedRotationCycle\(slot\)/);
@@ -64,6 +70,10 @@ test('cycle advances only through the unified native deadline', () => {
   assert.match(rotation, /ArmMusicCompletionDeadlineFromStart/);
   assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(slot\)/);
+  const advanceStart = rotation.indexOf('void SpotifyWebViews::AdvanceTimedRotationSlot');
+  const advanceEnd = rotation.indexOf('\nvoid SpotifyWebViews::ProbeDueTimedCompletions', advanceStart);
+  assert.ok(advanceStart >= 0 && advanceEnd > advanceStart);
+  assert.doesNotMatch(rotation.slice(advanceStart, advanceEnd), /NavigateMusicTarget|RefreshSpotifyHostLayout/);
   assert.doesNotMatch(
     events,
     /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause)'/,
