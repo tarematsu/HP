@@ -1,4 +1,5 @@
 #include "app.h"
+#include "spotify_playback_telemetry.h"
 #include "version.h"
 #include <charconv>
 #include <limits>
@@ -137,8 +138,15 @@ void App::SendTelemetryAsync() {
     constexpr bool stationPlaying = false;
 #endif
     const size_t count = std::min<size_t>(60, sensor.outboxCount);
-    const std::string body = sensors_->BuildTelemetryPayload(
+    std::string body = sensors_->BuildTelemetryPayload(
         config_.deviceId, versionUtf8, stationPlaying, count);
+    const std::string spotify = CurrentSpotifyPlaybackTelemetryJson();
+    if (!spotify.empty() && body.size() >= 2 && body.back() == '}') {
+      body.pop_back();
+      body += ",\"spotify\":";
+      body += spotify;
+      body.push_back('}');
+    }
     cloud_->QueueTelemetry(body, [this](TelemetryReceipt receipt) {
       if (receipt.success && sensors_) {
         sensors_->ApplyTelemetryReceipt(receipt.acknowledgedSequences, receipt.nextSequence);
