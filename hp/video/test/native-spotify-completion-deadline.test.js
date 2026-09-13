@@ -36,6 +36,7 @@ test('validated music start feeds one deadline calculator with two-second grace'
   assert.match(rotation, /ArmMusicCompletionDeadlineFromStart/);
   assert.match(music, /kSpotifyNavigationCompletionGraceMs = 2ULL \* 1000ULL/);
   assert.match(music, /slot\.timedCompletionDeadlineTick = playbackStartTick \+ completionDelayMs/);
+  assert.match(music, /ArmRobustScheduler\(\)/);
   assert.doesNotMatch(rotation, /spotify:timed-plan/);
 });
 
@@ -62,7 +63,7 @@ test('observer has no completion planner or heartbeat lifecycle tracking', () =>
   assert.doesNotMatch(runtime, /postCompletionPlan|clearCompletionPlan|completionPlan/);
 });
 
-test('due native deadline advances the rotation without asking Spotify again', () => {
+test('due native deadline only advances queue state without touching a WebView', () => {
   const dueStart = rotation.indexOf(
     'void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept');
   const dueEnd = rotation.indexOf(
@@ -73,9 +74,8 @@ test('due native deadline advances the rotation without asking Spotify again', (
   assert.match(due, /SpotifyDeadlineWithInterruptionHold/);
   assert.match(due, /effectiveDeadline > now/);
   assert.match(due, /AdvanceTimedRotationSlot\(slot\)/);
-  assert.match(due, /ArmCompletionDeadlineTimer\(\)/);
-  assert.doesNotMatch(due, /PostWebMessageAsString/);
-  assert.doesNotMatch(due, /slot\.webview/);
+  assert.doesNotMatch(due, /ArmCompletionDeadlineTimer|NavigateMusicTarget|ReconcileMusicTarget/);
+  assert.doesNotMatch(due, /PostWebMessageAsString|slot\.webview/);
 });
 
 test('same generation cannot postpone the armed A to B deadline with repeated start events', () => {
@@ -87,23 +87,29 @@ test('same generation cannot postpone the armed A to B deadline with repeated st
   assert.match(rotation, /timedCompletionDeadlineTick \+ extension/);
 });
 
-test('threadpool timer is the primary completion wake-up under six-WebView load', () => {
-  assert.match(header, /PTP_TIMER completionDeadlineTimer_ = nullptr/);
-  assert.match(header, /CompletionDeadlineTimerProc/);
-  assert.match(phase, /CreateThreadpoolTimer/);
-  assert.match(phase, /SetThreadpoolTimer\(completionDeadlineTimer_, &due, 0, 0\)/);
-  assert.match(phase, /PostMessageW\(host, kSpotifyCompletionDeadlineMessage, 0, 0\)/);
-  assert.match(lifecycle, /message == kSpotifyCompletionDeadlineMessage/);
-  assert.match(lifecycle, /ProbeDueTimedCompletions\(GetTickCount64\(\)\)/);
-  assert.match(lifecycle, /WaitForThreadpoolTimerCallbacks\(completionDeadlineTimer_, TRUE\)/);
-  assert.match(lifecycle, /CloseThreadpoolTimer\(completionDeadlineTimer_\)/);
+test('one threadpool timer owns every Spotify timed wake-up', () => {
+  assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
+  assert.match(header, /SchedulerTimerProc/);
+  assert.match(header, /std::atomic<bool> schedulerWakePosted_\{false\}/);
+  assert.doesNotMatch(header, /completionDeadlineTimer_|CompletionDeadlineTimerProc/);
+  assert.match(phase, /CreateThreadpoolTimer\([\s\S]*SchedulerTimerProc/);
+  assert.match(phase, /SetThreadpoolTimer\(schedulerTimer_, &due, 0, 0\)/);
+  assert.match(phase, /PostMessageW\(host, kSpotifySchedulerMessage, 0, 0\)/);
+  assert.match(lifecycle, /message == kSpotifySchedulerMessage/);
+  assert.match(lifecycle, /RunStaggeredReconcile\(\)/);
+  assert.match(lifecycle, /WaitForThreadpoolTimerCallbacks\(schedulerTimer_, TRUE\)/);
+  assert.match(lifecycle, /CloseThreadpoolTimer\(schedulerTimer_\)/);
 });
 
-test('WM_TIMER remains only a fallback scheduler, not the sole completion clock', () => {
+test('scheduler timer directly considers completion startup retry timeout and audit deadlines', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
-  assert.match(phase, /threadpool timer is the primary completion wake-up/i);
-  assert.match(phase, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
+  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
+  assert.match(phase, /SpotifyDeadlineWithInterruptionHold/);
+  assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
+  assert.match(phase, /slot\.reconcileStartedTick \+ kSpotifyAsyncOperationTimeoutMs/);
+  assert.match(phase, /static_cast<ULONGLONG>\(i\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /ProbeDueTimedCompletions\(now\)/);
-  assert.doesNotMatch(rotation, /SetTimer\(/);
-  assert.doesNotMatch(schedule, /SetTimer\(/);
+  assert.doesNotMatch(phase + schedule + rotation, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
