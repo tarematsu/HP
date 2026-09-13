@@ -14,12 +14,12 @@ const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 
 test('observer measures only provisional non-track interruptions', () => {
-  assert.match(runtime, /ULONGLONG|interruptionStartedAt/);
+  assert.match(runtime, /interruptionStartedAt/);
   assert.match(runtime, /!media\.paused && !identity\.path/);
   assert.match(runtime, /spotify:timed-interruption-started/);
   assert.match(runtime, /spotify:timed-interruption-ended/);
   assert.match(runtime, /spotify:timed-interruption-cancelled/);
-  assert.match(runtime, /cancelInterruption\(\)[\s\S]*return 'wrong'/);
+  assert.match(runtime, /cancelInterruption\(\);[\s\S]*return state\.startPosted \? 'wrong' : 'unknown'/);
   assert.doesNotMatch(
     events,
     /addEventListener\('(?:timeupdate|pause|waiting|stalled)'/,
