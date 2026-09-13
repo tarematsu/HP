@@ -85,7 +85,7 @@ test('native TVer phase selects and navigates an episode without a data-page boo
   assert.doesNotMatch(playbackPolicy, /location\.replace\(/);
 });
 
-test('native TVer refresh preserves current selection and consumed state without page injection', () => {
+test('native TVer refresh preserves valid state but rejects stale or redirected episode ids', () => {
   assert.match(cloudQueueRefresh, /kNativeMediaTverCloudQueueRefreshMs =\s*30ULL \* 60ULL \* 1000ULL/);
   assert.match(cloudQueueRefresh, /kNativeMediaTverStartupTimeoutMs = 30ULL \* 1000ULL/);
   assert.match(cloudQueueRefresh, /NativeMediaTverFetchCloudFeed\(\)/);
@@ -95,7 +95,9 @@ test('native TVer refresh preserves current selection and consumed state without
   assert.match(cloudQueueRefresh, /latestEpisodeIds/);
   assert.match(cloudQueueRefresh, /queueEpisodeIds/);
   assert.match(cloudQueueRefresh, /consumedEpisodeIds/);
-  assert.match(cloudQueueRefresh, /Never interrupt an episode that is already selected/);
+  assert.match(cloudQueueRefresh, /rejectedEpisodeIds/);
+  assert.match(cloudQueueRefresh, /NativeMediaTverSourceMatchesEpisode/);
+  assert.match(cloudQueueRefresh, /missingFromLatest/);
   assert.match(cloudQueueRefresh, /Queue exhaustion starts a fresh cycle/);
   assert.doesNotMatch(
     cloudQueueRefresh,

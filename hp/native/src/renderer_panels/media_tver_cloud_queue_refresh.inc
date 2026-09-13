@@ -24,6 +24,7 @@ struct NativeMediaTverNativeQueueState {
   std::vector<std::wstring> latestEpisodeIds;
   std::vector<std::wstring> queueEpisodeIds;
   std::vector<std::wstring> consumedEpisodeIds;
+  std::vector<std::wstring> rejectedEpisodeIds;
   std::wstring currentEpisodeId;
   std::wstring appliedGeneratedAt;
   ULONGLONG navigationStartedAt = 0;
@@ -63,25 +64,32 @@ bool NativeMediaTverSourceMatchesEpisode(
 void NativeMediaTverRebuildQueueLocked(
     NativeMediaTverNativeQueueState& state) {
   std::vector<std::wstring> rebuilt;
-  if (!state.currentEpisodeId.empty()) {
-    // Never interrupt an episode that is already selected. If a refresh removes
-    // it, ordinary completion or the native startup timeout fails forward.
+  if (!state.currentEpisodeId.empty() &&
+      !NativeMediaTverContainsId(
+          state.rejectedEpisodeIds, state.currentEpisodeId)) {
     rebuilt.push_back(state.currentEpisodeId);
   }
   for (const auto& id : state.latestEpisodeIds) {
     if (id == state.currentEpisodeId ||
         NativeMediaTverContainsId(state.consumedEpisodeIds, id) ||
+        NativeMediaTverContainsId(state.rejectedEpisodeIds, id) ||
         NativeMediaTverContainsId(rebuilt, id)) {
       continue;
     }
     rebuilt.push_back(id);
   }
 
-  // Queue exhaustion starts a fresh cycle from the newest cloud snapshot. This
-  // replaces the old sessionStorage removal + data-page bootstrap round trip.
+  // Queue exhaustion starts a fresh cycle from the newest cloud snapshot, but
+  // never retries an episode that redirected away from its requested id during
+  // this TVer phase. That prevents expired URLs from repeatedly opening TVer's
+  // replacement/recommendation content.
   if (rebuilt.empty() && !state.latestEpisodeIds.empty()) {
     state.consumedEpisodeIds.clear();
-    rebuilt = state.latestEpisodeIds;
+    for (const auto& id : state.latestEpisodeIds) {
+      if (!NativeMediaTverContainsId(state.rejectedEpisodeIds, id)) {
+        rebuilt.push_back(id);
+      }
+    }
   }
   state.queueEpisodeIds = std::move(rebuilt);
 }
@@ -187,6 +195,7 @@ void NativeMediaTverBeginQueuePhase(
     state.latestEpisodeIds.clear();
     state.queueEpisodeIds.clear();
     state.consumedEpisodeIds.clear();
+    state.rejectedEpisodeIds.clear();
     state.currentEpisodeId.clear();
     state.appliedGeneratedAt.clear();
     state.navigationStartedAt = 0;
@@ -206,6 +215,7 @@ void NativeMediaTverEndQueuePhase() noexcept {
   state.latestEpisodeIds.clear();
   state.queueEpisodeIds.clear();
   state.consumedEpisodeIds.clear();
+  state.rejectedEpisodeIds.clear();
   state.currentEpisodeId.clear();
   state.appliedGeneratedAt.clear();
   state.navigationStartedAt = 0;
@@ -259,11 +269,27 @@ bool NativeMediaTverStartupExpired(
     std::wstring_view source, ULONGLONG now) noexcept {
   auto& state = NativeMediaTverNativeQueue();
   std::lock_guard lock(state.mutex);
-  if (!state.phaseActive || state.mediaReady ||
-      state.navigationStartedAt == 0 || state.currentEpisodeId.empty() ||
-      !NativeMediaTverSourceMatchesEpisode(source, state.currentEpisodeId)) {
+  if (!state.phaseActive || state.currentEpisodeId.empty() || source.empty()) {
     return false;
   }
+
+  // An expired TVer episode can redirect to a different /episodes/{id}. Treat
+  // any top-level source mismatch as an immediate startup failure instead of
+  // letting TVer's replacement/recommendation episode become playable.
+  if (!NativeMediaTverSourceMatchesEpisode(source, state.currentEpisodeId)) {
+    return true;
+  }
+
+  // A refreshed authoritative cloud feed can also retire an episode while its
+  // navigation is still starting. Do not interrupt media that already became
+  // ready, but fail forward immediately before playback begins.
+  if (!state.mediaReady && !state.latestEpisodeIds.empty() &&
+      !NativeMediaTverContainsId(
+          state.latestEpisodeIds, state.currentEpisodeId)) {
+    return true;
+  }
+
+  if (state.mediaReady || state.navigationStartedAt == 0) return false;
   return now >= state.navigationStartedAt &&
       now - state.navigationStartedAt >= kNativeMediaTverStartupTimeoutMs;
 }
@@ -271,9 +297,23 @@ bool NativeMediaTverStartupExpired(
 bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
   auto& state = NativeMediaTverNativeQueue();
   std::lock_guard lock(state.mutex);
-  if (!state.phaseActive || state.currentEpisodeId.empty() ||
-      !NativeMediaTverSourceMatchesEpisode(source, state.currentEpisodeId)) {
-    return false;
+  if (!state.phaseActive || state.currentEpisodeId.empty()) return false;
+
+  const bool sourceMatches =
+      NativeMediaTverSourceMatchesEpisode(source, state.currentEpisodeId);
+  const bool missingFromLatest =
+      !state.latestEpisodeIds.empty() &&
+      !NativeMediaTverContainsId(
+          state.latestEpisodeIds, state.currentEpisodeId);
+  if (!sourceMatches || missingFromLatest) {
+    if (!NativeMediaTverContainsId(
+            state.rejectedEpisodeIds, state.currentEpisodeId)) {
+      state.rejectedEpisodeIds.push_back(state.currentEpisodeId);
+    }
+    // Make the next navigation eligible to refresh the cloud snapshot
+    // immediately; a redirect is stronger evidence of staleness than the
+    // ordinary 30-minute queue refresh cadence.
+    state.lastAttemptAt = 0;
   }
 
   if (!NativeMediaTverContainsId(
