@@ -96,12 +96,14 @@ test('News rotation compatibility state is completely removed', () => {
   assert.doesNotMatch(rendererHeader, /NewsCount\(/);
 });
 
-test('Stationhead compatibility publication remains available', () => {
+test('Stationhead compatibility publication remains available without retired panel history storage', () => {
   assert.match(appHeader, /RenderState renderState_/);
   assert.match(appHeader, /void PublishRenderState\(\)/);
   assert.match(appHeader, /void PublishRenderStateNow\(\)/);
   assert.match(rendererHeader, /void UpdateState\(const RenderState& state\)/);
+  assert.doesNotMatch(rendererHeader, /nativeStationheadPlayHistory_/);
   assert.match(rendererLifecycle, /void Renderer::UpdateState\(const RenderState& state\)/);
   assert.match(panelState, /void Renderer::UpdateNativeStaticPanels\(const RenderState& state\)/);
+  assert.doesNotMatch(panelState, /stationheadPlayHistory|GlobalStationheadNativeStatsStore/);
   assert.match(appSource, /#if 0\s+\/\/ Stationhead disabled:/);
 });
