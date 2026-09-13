@@ -41,9 +41,9 @@ test('Spotify layout parks healthy players in a smaller offscreen viewport', () 
 test('healthy music and podcast WebViews suppress rendering while auth and recovery remain visible', () => {
   assert.match(
     layout,
-    /const bool healthyMusicReadyToHide =[\s\S]*TimedSpotifyTarget::Music[\s\S]*shuffleOffVerified/,
+    /const bool healthyMusicReadyToHide =[\s\S]*TimedSpotifyTarget::Music/,
   );
-  assert.doesNotMatch(layout, /repeatOffVerified/);
+  assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard/);
   assert.match(
     layout,
     /const bool healthyPodcastReadyToHide =[\s\S]*TimedSpotifyTarget::TalkAbout/,
