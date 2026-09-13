@@ -28,7 +28,11 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
   slot.hostWindow = CreateWindowExW(
       0, kSpotifyHostClass, L"Spotify", WS_CHILD | WS_CLIPSIBLINGS,
       0, 0, 1, 1, parentWindow_, nullptr, GetModuleHandleW(nullptr), &slot);
-  return slot.hostWindow && IsWindow(slot.hostWindow);
+  const bool created = slot.hostWindow && IsWindow(slot.hostWindow);
+  if (created && slot.index == 0) {
+    schedulerHost_.store(slot.hostWindow, std::memory_order_release);
+  }
+  return created;
 }
 
 void SpotifyWebViews::Start() noexcept {
@@ -39,6 +43,7 @@ void SpotifyWebViews::Start() noexcept {
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
   robustSchedulerStarted_ = false;
+  schedulerHost_.store(nullptr, std::memory_order_release);
   schedulerWakePosted_.store(false, std::memory_order_release);
   schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
@@ -87,6 +92,10 @@ void SpotifyWebViews::Resize() noexcept {
 }
 
 void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
+  if (slot.index == 0) {
+    schedulerHost_.store(nullptr, std::memory_order_release);
+    schedulerWakePosted_.store(false, std::memory_order_release);
+  }
   if (slot.webview) {
     if (slot.navigationStartingToken.value != 0) {
       slot.webview->remove_NavigationStarting(slot.navigationStartingToken);
@@ -187,6 +196,9 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
       return 0;
     }
     if (message == WM_NCDESTROY) {
+      if (slot->index == 0 && slot->owner) {
+        slot->owner->schedulerHost_.store(nullptr, std::memory_order_release);
+      }
       if (slot->hostWindow == hwnd) slot->hostWindow = nullptr;
       SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
     }
