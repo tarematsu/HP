@@ -182,7 +182,6 @@ class SpotifyWebViews final {
       ULONGLONG observedRemainingMs = 0) noexcept;
   void ShortenMusicCompletionDeadlineAtEnd(
       Slot& slot, ULONGLONG endedTick) noexcept;
-  void ArmMusicEndShortener(Slot& slot) noexcept;
   void NavigateMusicTarget(Slot& slot) noexcept;
   void ReconcileMusicTarget(Slot& slot) noexcept;
   void NavigateActiveTimedSlot(Slot& slot) noexcept;
