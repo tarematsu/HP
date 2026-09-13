@@ -163,6 +163,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     }, delay);
   };
   state.wake = wake;
+)JS" LR"JS(
 
   const clearRecoveryWake = () => {
     if (!state.recoveryTimer) return;
