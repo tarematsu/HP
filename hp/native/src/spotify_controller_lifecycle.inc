@@ -21,6 +21,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
             target->controllerCreating = false;
             target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
+            ArmRobustScheduler();
             return;
           }
           target->environment = environment;
@@ -31,6 +32,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
             target->controllerCreating = false;
             target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
+            ArmRobustScheduler();
             return;
           }
           ComPtr<ICoreWebView2ControllerOptions> options;
@@ -39,6 +41,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
             target->controllerCreating = false;
             target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
+            ArmRobustScheduler();
             return;
           }
           const std::wstring profileName =
@@ -49,6 +52,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
             target->controllerCreating = false;
             target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
+            ArmRobustScheduler();
             return;
           }
 
@@ -67,6 +71,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                         !target->hostWindow || !IsWindow(target->hostWindow)) {
                       if (controller) controller->Close();
                       MarkSlotRecovering(*target, GetTickCount64());
+                      ArmRobustScheduler();
                       return S_OK;
                     }
                     target->controller = controller;
@@ -75,9 +80,11 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                       target->controller->Close();
                       target->controller.Reset();
                       MarkSlotRecovering(*target, GetTickCount64());
+                      ArmRobustScheduler();
                       return S_OK;
                     }
                     Configure(*target);
+                    ArmRobustScheduler();
                     return S_OK;
                   });
 
@@ -88,12 +95,14 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
             target->controllerCreating = false;
             target->controllerCreateTick = 0;
             MarkSlotRecovering(*target, GetTickCount64());
+            ArmRobustScheduler();
           }
         });
   } catch (...) {
     slot.controllerCreating = false;
     slot.controllerCreateTick = 0;
     MarkSlotRecovering(slot, GetTickCount64());
+    ArmRobustScheduler();
   }
 }
 
@@ -190,6 +199,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                   ? SlotState::Authenticating
                   : SlotState::Navigating);
               RecomputeForeground();
+              ArmRobustScheduler();
               return S_OK;
             }).Get(),
         &slot.navigationStartingToken);
@@ -246,6 +256,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                           return S_OK;
                         }
                         PostSpotifyPageContext(*target);
+                        ArmRobustScheduler();
                         return S_OK;
                       }).Get());
               if (FAILED(bootstrap)) {
@@ -264,8 +275,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     slot.controller->put_IsVisible(TRUE);
     SetSlotState(slot, SlotState::Authenticating);
     slot.webview->Navigate(kSpotifyLoginUrl);
+    ArmRobustScheduler();
   } catch (...) {
     MarkSlotRecovering(slot, GetTickCount64());
+    ArmRobustScheduler();
   }
 }
 
