@@ -16,7 +16,7 @@ bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
 
 bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
   return left.right - left.left == right.right - right.left &&
-         left.bottom - left.top == right.bottom - right.top;
+         left.bottom - left.top == right.bottom - left.top;
 }
 
 }  // namespace
@@ -104,16 +104,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     }
 
     slot.controller->put_IsVisible(lowPowerPlayback ? FALSE : TRUE);
-
-    if (slot.webview) {
-      ComPtr<ICoreWebView2_19> memoryView;
-      if (SUCCEEDED(slot.webview.As(&memoryView)) && memoryView) {
-        memoryView->put_MemoryUsageTargetLevel(
-            lowPowerPlayback
-                ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
-                : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
-      }
-    }
 
     const bool reducedZoom = authentication || recovery;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
