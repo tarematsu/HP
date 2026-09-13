@@ -43,7 +43,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
           }
           const std::wstring profileName =
               std::wstring(kSpotifyProfilePrefix) +
-              std::to_wstring(target->index + 1);
+              std::to_wstring(target->index + kSpotifyProfileFirstAccountNumber);
           if (FAILED(options->put_ProfileName(profileName.c_str())) ||
               FAILED(options->put_IsInPrivateModeEnabled(FALSE))) {
             target->controllerCreating = false;

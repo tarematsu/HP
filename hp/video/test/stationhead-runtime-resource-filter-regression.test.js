@@ -89,7 +89,7 @@ test('shared media environments permit autonomous playback without occluded-wind
   );
 });
 
-test('Blink rejects image loading and cached image decoding before navigation', () => {
+test('Stationhead joins the existing full-resource environment and filters its own image/font requests', () => {
   const argumentsBuilder = section(
     environmentSource,
     'std::wstring BuildWebView2Arguments(',
@@ -108,7 +108,7 @@ test('Blink rejects image loading and cached image decoding before navigation', 
   );
   assert.match(
     environmentHeader,
-    /Acquire\(userDataFolder, true, true, std::move\(completion\)\)/,
+    /Acquire\(userDataFolder, false, false, std::move\(completion\)\)/,
   );
 });
 
@@ -144,7 +144,7 @@ test('source-aware filters cover all current request sources without duplicate w
   const filterHelper = section(
     policySource,
     'inline void AddStationheadResourceFilter(',
-    '// Blink disables image loading',
+    '// The shared environment keeps Blink',
   );
   assert.match(filterHelper, /ICoreWebView2_22\* sourceAwareWebView/);
   assert.match(
@@ -169,7 +169,7 @@ test('source-aware filters cover all current request sources without duplicate w
   assert.match(policy, /AddStationheadResourceFilter\([\s\S]*sourceKinds/);
 });
 
-test('only Primary owns environment-wide worker filters', () => {
+test('the restored amazon profile owns environment-wide worker filters', () => {
   const owner = section(
     policySource,
     'inline bool StationheadOwnsWorkerRequestFilters(',
@@ -178,8 +178,8 @@ test('only Primary owns environment-wide worker filters', () => {
   assert.match(owner, /ICoreWebView2_13/);
   assert.match(owner, /get_Profile\(&profile\)/);
   assert.match(owner, /get_ProfileName\(&profileNameRaw\)/);
-  assert.match(owner, /_wcsicmp\(profileNameRaw, L"Default"\) == 0/);
-  assert.match(policySource, /requires those source filters on one CoreWebView per environment/);
+  assert.match(owner, /_wcsicmp\(profileNameRaw, L"spotify-v2-1"\) == 0/);
+  assert.match(policySource, /single Stationhead instance owns the former amazon profile/);
 });
 
 test('resource reduction never relies on DOM scans or post-load hiding', () => {
@@ -187,7 +187,10 @@ test('resource reduction never relies on DOM scans or post-load hiding', () => {
     policySource,
     /MutationObserver|querySelectorAll|createElement\(['"]style|display\s*:\s*none/,
   );
-  assert.match(policySource, /No DOM scan[\s\S]*pays the resource cost first/);
+  assert.match(
+    policySource,
+    /shared environment keeps Blink's global resource policy compatible[\s\S]*per-WebView request boundary/,
+  );
 });
 
 test('ping requests are rejected without URI allocation', () => {

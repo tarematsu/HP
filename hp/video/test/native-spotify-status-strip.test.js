@@ -15,11 +15,12 @@ const lifecycle = readFileSync(
 const hostWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
 
-test('ozeki is disabled by constructing exactly five Spotify slots', () => {
-  assert.match(header, /kSpotifyActiveAccountCount = 5/);
+test('amazon is reserved for Stationhead and four Spotify slots remain', () => {
+  assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
+  assert.match(header, /kSpotifyActiveAccountCount = 4/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
-  assert.match(scripts, /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata"/);
-  assert.doesNotMatch(scripts, /ozeki/i);
+  assert.match(scripts, /L"yuukiar", L"ten", L"nagi", L"hinata"/);
+  assert.doesNotMatch(scripts, /amazon|ozeki/i);
 });
 
 test('playback status uses existing start and resume events without adding a Spotify poller', () => {
@@ -39,7 +40,7 @@ test('an already-playing target is handed back to the existing media observer fo
   assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
 });
 
-test('YouTube and TVer reserve a compact five-column Spotify status strip', () => {
+test('YouTube and TVer reserve a compact Spotify status strip sized by active slots', () => {
   assert.match(hostWindow, /kNativeSpotifyStatusHeight = 56/);
   assert.match(hostWindow, /GetSpotifyPlaybackStatuses\(\)/);
   assert.match(hostWindow, /heading\.append\(L"  確認 "\)/);

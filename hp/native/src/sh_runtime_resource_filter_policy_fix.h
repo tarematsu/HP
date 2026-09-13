@@ -5,8 +5,8 @@ namespace hp {
 
 // Service-worker and shared-worker requests are environment-wide. WebView2
 // requires those source filters on one CoreWebView per environment; otherwise
-// the same request is delivered to multiple native handlers. Primary is always
-// present and uses Default, while Secondary uses stationhead-secondary.
+// the same request is delivered to multiple native handlers. The restored
+// single Stationhead instance owns the former amazon profile (spotify-v2-1).
 inline bool StationheadOwnsWorkerRequestFilters(ICoreWebView2* webview) {
   if (!webview) return false;
   ComPtr<ICoreWebView2> base = webview;
@@ -18,7 +18,8 @@ inline bool StationheadOwnsWorkerRequestFilters(ICoreWebView2* webview) {
   if (FAILED(profile->get_ProfileName(&profileNameRaw)) || !profileNameRaw) {
     return true;
   }
-  const bool ownsWorkerFilters = _wcsicmp(profileNameRaw, L"Default") == 0;
+  const bool ownsWorkerFilters =
+      _wcsicmp(profileNameRaw, L"spotify-v2-1") == 0;
   CoTaskMemFree(profileNameRaw);
   return ownsWorkerFilters;
 }
@@ -38,10 +39,9 @@ inline void AddStationheadResourceFilter(
   }
 }
 
-// Blink disables image loading and decoding at environment creation. Keep this
-// typed callback as a second network boundary for worker fetches, script-owned
-// image downloads, telemetry, social APIs, and non-playback media. No DOM scan
-// or post-load hiding is used because that pays the resource cost first.
+// The shared environment keeps Blink's global resource policy compatible with
+// Spotify/YouTube/TVer. Stationhead therefore applies image/font reduction at
+// this typed per-WebView request boundary instead of changing the environment.
 inline void ApplyStationheadResourceBlockingFilterFixed(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,

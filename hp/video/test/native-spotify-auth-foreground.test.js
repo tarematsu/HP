@@ -58,7 +58,7 @@ test('authentication foreground repair is conditional instead of running every s
   assert.doesNotMatch(layout, /maintainAuthenticationForeground[\s\S]{0,800}SetWindowPos\(slot\.hostWindow, HWND_TOP[\s\S]{0,200}else/);
 });
 
-test('authentication page receives the established five-window account label once per document', () => {
+test('authentication page receives the four remaining Spotify account labels once per document', () => {
   assert.match(bundle, /#include "spotify_auth_badge\.inc"/);
   assert.match(authBadge, /kSpotifyAuthenticationBadgeBootstrapScript/);
   assert.match(authBadge, /fields\[0\] === 'spotify:account'/);
@@ -67,7 +67,7 @@ test('authentication page receives the established five-window account label onc
   assert.match(layout, /PostSpotifyPageContext\(\*target\)/);
   assert.match(
     staticScripts,
-    /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata"/,
+    /L"yuukiar", L"ten", L"nagi", L"hinata"/,
   );
-  assert.doesNotMatch(staticScripts, /L"ozeki"/);
+  assert.doesNotMatch(staticScripts, /L"amazon"|L"ozeki"/);
 });
