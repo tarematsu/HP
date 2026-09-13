@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const guards = readFileSync(
-  new URL('../../native/src/spotify_playback_mode_guards.inc', import.meta.url),
+const wrapper = readFileSync(
+  new URL('../../native/src/spotify_webviews.inc', import.meta.url),
   'utf8',
 );
 const header = readFileSync(
@@ -27,12 +27,10 @@ const rotation = readFileSync(
   'utf8',
 );
 
-test('native Spotify never inspects or changes repeat mode', () => {
-  assert.doesNotMatch(header, /repeatOffVerified|PlaybackModeGuard/);
-  assert.doesNotMatch(guards, /control-button-repeat|repeat one|disable repeat|enable repeat/i);
-  assert.doesNotMatch(music, /repeatOffVerified|PlaybackModeGuard::Repeat|EnsurePlaybackModeOff/);
-  assert.match(guards, /control-button-shuffle/);
-  assert.match(music, /EnsureShuffleOff\(slot\)/);
+test('native Spotify does not manage shuffle or repeat modes', () => {
+  assert.doesNotMatch(wrapper, /spotify_playback_mode_guards/);
+  assert.doesNotMatch(header, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard|EnsureShuffleOff|EnsurePlaybackModeOff/);
+  assert.doesNotMatch(music, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard|EnsureShuffleOff|EnsurePlaybackModeOff/);
 });
 
 test('playback wrap is irrelevant after native start deadline is armed', () => {
