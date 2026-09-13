@@ -83,15 +83,10 @@ export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
 export const MANAGED_SPOTIFY_RANDOM_TRACK_IDS =
   MANAGED_SPOTIFY_RANDOM_TRACKS.map(([, id]) => id);
 
-const spotifyRotationTrack = (
-  title: string,
-  trackId: string,
-  durationMs?: number,
-) => ({
+const spotifyRotationTrack = (title: string, trackId: string) => ({
   title,
   trackId,
   url: `https://open.spotify.com/track/${trackId}`,
-  ...(durationMs && durationMs > 0 ? { durationMs } : {}),
 });
 
 const rotationTracks = (tracks: readonly (readonly [string, string])[]) =>
@@ -102,13 +97,7 @@ export function managedSpotifySevenSlotRotation() {
   return [
     {
       mode: "fixed",
-      tracks: [
-        spotifyRotationTrack(
-          "Lonesome Rabbit",
-          "6Vy6hCA2CZwZalGqaX6Sew",
-          235267,
-        ),
-      ],
+      tracks: [spotifyRotationTrack("Lonesome Rabbit", "6Vy6hCA2CZwZalGqaX6Sew")],
     },
     {
       mode: "random",
