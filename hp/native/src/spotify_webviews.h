@@ -174,6 +174,7 @@ class SpotifyWebViews final {
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
   PTP_TIMER schedulerTimer_ = nullptr;
+  std::atomic<HWND> schedulerHost_{nullptr};
   std::atomic<bool> schedulerWakePosted_{false};
   size_t schedulerCursor_ = 0;
   ULONGLONG scheduleStartTick_ = 0;
