@@ -48,6 +48,9 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   const bool changed = slot.state != state;
+  if (changed && state == SlotState::Playing) {
+    slot.lastPlaybackStartedAt = UnixMillis();
+  }
   slot.state = state;
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
       state == SlotState::Navigating || state == SlotState::Playing) {
@@ -106,6 +109,8 @@ bool SpotifyWebViews::ExpireStaleAsyncWork(
 void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   ++slot.targetGeneration;
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
+  slot.lastPlaybackStartedAt = 0;
+  NotifyPlaybackTelemetryChanged();
 }
 
 void CALLBACK SpotifyWebViews::SchedulerTimerProc(
