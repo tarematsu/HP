@@ -107,16 +107,17 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
 });
 
-test('one adaptive scheduler serializes all six Spotify windows with one shared startup offset', () => {
+test('one adaptive scheduler services a state queue with ten-second startup offsets', () => {
   assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
   assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
   assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 60U \* 1000U/);
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
-  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
-  assert.match(schedule, /% accountCount/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
+  assert.match(schedule, /SlotState is the queue/);
+  assert.match(schedule, /const size_t scanStart = \(staggerSlotIndex_ \+ 1\) % count/);
+  assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs|kSpotifySimpleRecoveryHoldMs/);
   assert.doesNotMatch(header, /reconcileIndex_|playbackWatchdogIndex_/);
 });
 
