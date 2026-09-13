@@ -34,7 +34,7 @@ test('observer bundle contains only runtime and start-event bindings', () => {
   assert.doesNotMatch(bundle, /kSpotifyMediaObserverCompletionScript|kSpotifyMediaObserverHeartbeatScript/);
 });
 
-test('delegated media events cover start discovery only', () => {
+test('delegated media events cover start and interruption discovery only', () => {
   assert.match(events, /document\.addEventListener\('play'/);
   assert.match(events, /document\.addEventListener\('playing'/);
   assert.match(events, /document\.addEventListener\('loadedmetadata'/);
@@ -60,10 +60,11 @@ test('direct track path is preferred over MediaSession title when both exist', (
   assert.match(runtime, /return sameTrackPath\(track\.path, target\.trackPath\)/);
 });
 
-test('completion no longer mutates or observes the Spotify media element', () => {
+test('completion does not mutate the Spotify media element and advances at the effective deadline', () => {
   assert.doesNotMatch(runtime + events, /\.pause\s*\(|\.play\s*\(/);
   assert.doesNotMatch(runtime + events, /endedPosted|quarantineCompletedGeneration|finishTarget|finishProjectedWrap/);
-  assert.match(rotation, /one-shot native deadline expires[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
+  assert.match(rotation, /SpotifyDeadlineWithInterruptionHold/);
+  assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
 });
 
 test('pause waiting stalled and target mismatch never request playback recovery', () => {
@@ -83,9 +84,10 @@ test('observer injection is generation-fenced and a lost callback expires', () =
   assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
 });
 
-test('music rotation advances only by its armed native deadline', () => {
+test('music rotation advances only by its native deadline plus measured interruptions', () => {
   assert.doesNotMatch(header, /kSpotifyMusicTrackDeadlineMs/);
   assert.doesNotMatch(events, /finishLeadSeconds|duration - finishLeadSeconds/);
   assert.match(rotation, /timedCompletionDeadlineTick = now \+ remainingMs/);
+  assert.match(rotation, /timedCompletionDeadlineTick \+ extension/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
 });
