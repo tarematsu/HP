@@ -23,6 +23,9 @@ LR"JS(
           adIdentity: '',
           adEndedAt: 0,
           postrollAfterProgram: false,
+          recoveryPending: false,
+          recoverySince: 0,
+          recoveryWakeTimer: 0,
         };
         window.__homePanelSakuraMeetsState = state;
       }
@@ -40,6 +43,7 @@ LR"JS(
               state.maxDuration >= 5 &&
               state.maxTime >= Math.max(3, state.maxDuration - 10);
           if (!state.adActive) state.postrollAfterProgram = completedProgram;
+          try { state.clearRecoveryWake?.(); } catch (_) {}
           state.adActive = true;
           state.adVideo = video || null;
           state.adIdentity = identity;
@@ -51,6 +55,9 @@ LR"JS(
           state.lowQualitySet = false;
           state.playbackSettingsApplied = false;
           state.fullscreenDirty = true;
+          state.recoveryPending = false;
+          state.recoverySince = 0;
+          state.recoveryWakeTimer = 0;
         }
         window.__homePanelTverAdActive = true;
         const adFullscreen = !!(document.fullscreenElement ||
@@ -61,6 +68,7 @@ LR"JS(
 
       if (state.adActive) {
         const completedPostroll = state.postrollAfterProgram;
+        try { state.clearRecoveryWake?.(); } catch (_) {}
         state.adActive = false;
         state.adVideo = null;
         state.adIdentity = '';
@@ -74,6 +82,9 @@ LR"JS(
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
         state.postrollAfterProgram = false;
+        state.recoveryPending = false;
+        state.recoverySince = 0;
+        state.recoveryWakeTimer = 0;
         window.__homePanelTverAdActive = false;
         if (completedPostroll) {
           if (postEpisodeEnded(state)) return;
@@ -85,11 +96,15 @@ LR"JS(
       }
 
       if (state.video !== video) {
+        try { state.clearRecoveryWake?.(); } catch (_) {}
         state.video = video;
         state.progressSampleAt = 0;
         state.lowQualitySet = false;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
+        state.recoveryPending = false;
+        state.recoverySince = 0;
+        state.recoveryWakeTimer = 0;
       }
       if (!video) return;
       bindVideoEvents(video, state);
