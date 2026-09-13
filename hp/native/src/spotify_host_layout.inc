@@ -16,7 +16,7 @@ bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
 
 bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
   return left.right - left.left == right.right - right.left &&
-         left.bottom - left.top == right.bottom - left.top;
+         left.bottom - left.top == right.bottom - right.top;
 }
 
 }  // namespace
