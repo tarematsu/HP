@@ -33,7 +33,7 @@ void PrepareParentWindow(HWND window) {
 void SetSpotifyMediaPhase(bool) noexcept {
   // Legacy media-panel notification retained only to keep the composition
   // boundary stable. Spotify intentionally ignores YouTube/TVer phase changes;
-  // its scheduler, rotation and podcast breaks are fully autonomous.
+  // its scheduler and rotation are fully autonomous.
 }
 
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept {
