@@ -47,7 +47,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('both windows normally use sakuramankai and buddy46 is the fallback', () => {
+test('both roles normally use sakuramankai and buddy46 remains configured as fallback', () => {
   assert.match(
     configHeader,
     /url = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
@@ -69,7 +69,7 @@ test('both windows normally use sakuramankai and buddy46 is the fallback', () =>
   );
 });
 
-test('Window A refreshes at 53 minutes and Window B at 54 minutes', () => {
+test('Primary refreshes at 53 minutes and retained Secondary role at 54 minutes', () => {
   const interval = section(
     policy,
     'inline constexpr int64_t StationheadPeriodicRefreshIntervalMs(',
@@ -106,7 +106,7 @@ test('the central scheduler uses each role elapsed-time deadline', () => {
   assert.match(wrapper, /RefreshPeriodicNavigation\(UnixMillis\(\)\);/);
 });
 
-test('each role reloads its current URL with its own reason', () => {
+test('each retained role reloads its current URL with its own reason', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
   assert.match(injected, /StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/);
   assert.match(injected, /L"54-minute periodic refresh"/);
@@ -159,15 +159,12 @@ test('track-boundary reload remains disabled', () => {
   assert.doesNotMatch(boundaryScript, /addEventListener\(['"]ended|postMessage/);
 });
 
-test('the existing managed abnormal-state fallback still switches both windows', () => {
+test('single-window runtime removes the old cross-window abnormal-state fallback', () => {
   const fallback = section(
     appSource,
     'void App::UpdateStationheadPlaybackFallback(int64_t nowMs)',
     'void App::Tick()',
   );
-  assert.match(fallback, /!config_\.stationhead\.fallbackUrl\.empty\(\)/);
-  assert.match(fallback, /stationhead_->SetPlaybackFallback\([\s\S]*true/);
-  assert.match(fallback, /secondaryStationhead_->SetPlaybackFallback\([\s\S]*true/);
-  assert.match(fallback, /returning to primary URL/);
-  assert.match(fallback, /returning to secondary URL/);
+  assert.match(fallback, /\(void\)nowMs;/);
+  assert.doesNotMatch(fallback, /secondaryStationhead_|SetPlaybackFallback|fallbackUrl/);
 });
