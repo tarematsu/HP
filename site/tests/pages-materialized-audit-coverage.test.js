@@ -21,7 +21,7 @@ test('materialized audit checks data completeness without issuing another reques
   assert.match(audit, /auditPayloadCompleteness\(variant\.key, payload/);
   assert.match(audit, /Data completeness reuses these already-fetched materialized responses/);
   assert.match(audit, /Pages data completeness/);
-  assert.match(audit, /missing daily period/);
+  assert.match(audit, /missing \$\{mode\} period/);
   assert.match(audit, /sakurazaka46jp_recent_sessions is empty/);
 });
 
