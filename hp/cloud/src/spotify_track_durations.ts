@@ -114,6 +114,7 @@ export async function resolveSpotifyTrackDurations(
   const worker = async () => {
     while (cursor < missing.length) {
       const id = missing[cursor++];
+      if (!id) continue;
       try {
         const durationMs = await fetchTrackDuration(id, token, fetchImpl);
         if (!durationMs) continue;
