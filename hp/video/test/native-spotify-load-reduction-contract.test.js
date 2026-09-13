@@ -43,16 +43,13 @@ test('Spotify layout parks healthy players in a smaller offscreen viewport', () 
 });
 
 test('healthy music WebViews suppress rendering while auth and recovery remain visible', () => {
-  assert.match(layout, /slot\.timedTarget == TimedSpotifyTarget::Music/);
-  assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard/);
+  assert.match(layout, /CurrentMusicTrack\(slot\)/);
+  assert.doesNotMatch(layout, /TimedSpotifyTarget|shuffleOffVerified|repeatOffVerified|PlaybackModeGuard/);
   assert.match(
     layout,
-    /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*slot\.playerPage[\s\S]*!slot\.loginPage/,
+    /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*slot\.playerPage[\s\S]*!slot\.loginPage[\s\S]*CurrentMusicTrack\(slot\)/,
   );
-  assert.match(
-    layout,
-    /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/,
-  );
+  assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
   assert.match(
     layout,
     /lowPowerPlayback[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
@@ -64,7 +61,6 @@ test('Spotify layout avoids redundant controller geometry COM calls', () => {
   assert.match(spotifyHeader, /ICoreWebView2Controller\* hostLayoutController = nullptr/);
   assert.match(spotifyHeader, /bool hostLayoutReducedZoomApplied = false/);
   assert.match(layout, /const bool controllerChanged =/);
-  assert.match(layout, /Configure\(\) already pushed initial bounds\/visibility/);
   assert.doesNotMatch(layout, /controllerChanged\)[\s\S]{0,220}put_Bounds/);
   assert.match(
     layout,
@@ -103,7 +99,7 @@ test('each Spotify scheduler pass performs at most one host layout refresh', () 
 test('scheduler state is minimal and does not duplicate slot state', () => {
   assert.match(spotifyHeader, /size_t schedulerCursor_ = 0/);
   assert.match(spotifyHeader, /std::atomic<bool> schedulerWakePosted_\{false\}/);
-  assert.doesNotMatch(spotifyHeader, /staggerSlotStartTick_|staggerSlotValidated_|timedCatalogIndex|timedRandomFIndex|timedMiddleOrder/);
+  assert.doesNotMatch(spotifyHeader, /staggerSlotStartTick_|staggerSlotValidated_|timedCatalogIndex|timedRandomFIndex|timedMiddleOrder|TimedSpotifyTarget|timedPlaybackStartTick/);
 });
 
 test('lightweight Spotify styling is a fixed bootstrap script with no MutationObserver', () => {
