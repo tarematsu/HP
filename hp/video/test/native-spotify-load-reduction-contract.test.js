@@ -11,17 +11,21 @@ const spotify = [
   'spotify_controller_lifecycle.inc',
 ].map(sourcePart).join('\n');
 const spotifyHeader = sourcePart('spotify_webviews.h');
+const phase = sourcePart('spotify_phase_sync.inc');
 const schedule = sourcePart('spotify_stagger_schedule.inc');
 const scripts = sourcePart('spotify_static_scripts.inc');
 const layout = sourcePart('spotify_host_layout.inc');
 
-test('Spotify WebViews serialize startup without UI-thread blocking or legacy timer rewriting', () => {
+test('Spotify WebViews serialize startup without UI-thread blocking or polling timers', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
   assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(spotifyHeader, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(schedule, /startupReady/);
-  assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);
+  assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
 test('Spotify layout parks healthy players in a smaller offscreen viewport', () => {
@@ -93,10 +97,12 @@ test('each Spotify scheduler pass performs at most one host layout refresh', () 
     schedule,
     /schedulerCursor_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
   );
+  assert.match(schedule, /const auto asyncIdle/);
 });
 
 test('scheduler state is minimal and does not duplicate slot state', () => {
   assert.match(spotifyHeader, /size_t schedulerCursor_ = 0/);
+  assert.match(spotifyHeader, /std::atomic<bool> schedulerWakePosted_\{false\}/);
   assert.doesNotMatch(spotifyHeader, /staggerSlotStartTick_|staggerSlotValidated_|timedCatalogIndex|timedRandomFIndex|timedMiddleOrder/);
 });
 
