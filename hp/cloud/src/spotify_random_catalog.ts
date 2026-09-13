@@ -125,13 +125,11 @@ export function managedSpotifySevenSlotRotation() {
     {
       mode: "random",
       count: 1,
-      includeTalkAbout: true,
       tracks: shortSongs.map(track => ({ ...track })),
     },
     {
       mode: "random",
       count: 1,
-      includeTalkAbout: true,
       tracks: shortSongs.map(track => ({ ...track })),
     },
   ];
