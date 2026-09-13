@@ -27,7 +27,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Window A and B publish interactive states as pending placement', () => {
+test('retained Primary and Secondary handles publish interactive states as pending placement', () => {
   for (const [start, end] of [
     ['class AppStationheadHandle final', 'class AppSecondaryStationheadHandle final'],
     ['class AppSecondaryStationheadHandle final', '}  // namespace hp'],
@@ -43,29 +43,28 @@ test('Window A and B publish interactive states as pending placement', () => {
   }
 });
 
-test('dual-window placement constrains pending A left and pending B right', () => {
+test('single Stationhead placement always uses the full workspace', () => {
   const placement = section(
     appSource,
     'void App::ApplyStationheadWindowPlacement(',
     'void App::PublishRenderState()',
   );
+  assert.match(placement, /\(void\)secondaryStatus;/);
   assert.match(placement, /primaryPending = !primaryStatus\.audioPlaying;/);
-  assert.match(placement, /secondaryPending = secondaryStationhead_ && !secondaryStatus\.playing;/);
-  assert.match(placement, /stationhead_->SetBounds\(primaryPending \? left : bounds\);/);
-  assert.match(
-    placement,
-    /secondaryStationhead_->SetBounds\(secondaryPending \? right : bounds\);/,
-  );
+  assert.match(placement, /placedSecondaryPending_ = false;/);
+  assert.match(placement, /stationhead_->SetBounds\(bounds\);/);
+  assert.doesNotMatch(placement, /RECT left|RECT right|secondaryPending|secondaryStationhead_->SetBounds/);
 });
 
-test('Window A and B converge on the same foreground and background implementation', () => {
+test('single runtime player uses the retained foreground/background implementation', () => {
   const placement = section(
     appSource,
     'void App::ApplyStationheadWindowPlacement(',
     'void App::PublishRenderState()',
   );
-  assert.match(placement, /stationhead_->SelectTab\(StationheadTabKind::None\);/);
-  assert.match(placement, /secondaryStationhead_->RefreshVisibility\(\);/);
+  assert.match(placement, /stationhead_->SetBounds\(bounds\);/);
+  assert.match(placement, /stationhead_->RefreshVisibility\(\);/);
+  assert.doesNotMatch(placement, /secondaryStationhead_/);
 
   const selectPlayerTab = section(
     handleSource,
@@ -150,7 +149,7 @@ test('normal playback stays behind while explicit auth surfaces may occupy the w
   );
 });
 
-test('unmuting either window mutes its peer first', () => {
+test('retained peer-mute helper still mutes the peer before unmuting a handle', () => {
   assert.match(handleHeader, /AppStationheadHandle\(\);/);
   assert.match(handleHeader, /~AppStationheadHandle\(\);/);
   assert.match(handleHeader, /AppSecondaryStationheadHandle\(\);/);
