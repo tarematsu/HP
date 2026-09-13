@@ -151,7 +151,7 @@ test('native skips radar JSON parsing when its stamp is unchanged but still chec
 });
 
 test('all three radar labels remain proportional after the reduced frame size', () => {
-  assert.match(browserFrame, /const chipTop = 148;/);
+  assert.match(browserFrame, /const chipTop = 50;/);
   assert.match(browserFrame, /panelWidth - chipLeft \* 2/);
   assert.match(browserFrame, /context\.roundRect\(panelX \+ chipLeft, chipTop/);
   assert.match(browserFrame, /chipTop \+ 25/);
