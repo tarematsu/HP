@@ -31,7 +31,6 @@ test('Spotify unmute uses a fresh async generation and recreates every configure
   assert.match(network, /for \(Slot& slot : slots_\)[\s\S]*CreateHost\(slot\)/);
   assert.match(network, /CreateController\(slots_\[0\]\)/);
   assert.match(network, /timedTarget = TimedSpotifyTarget::None/);
-  assert.match(network, /podcastBreakActive = false/);
   assert.match(network, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
 });
 
@@ -45,14 +44,14 @@ test('global media mute remains the only media-to-Spotify state coupling', () =>
     lifecycle,
     /void SetSpotifyMediaPhase\(bool\) noexcept \{[\s\S]*Spotify intentionally ignores YouTube\/TVer phase changes/,
   );
-  assert.doesNotMatch(lifecycle, /gSpotifyTverPhase|SetPodcastMode/);
+  assert.doesNotMatch(lifecycle, /gSpotifyTverPhase/);
 });
 
-test('unmute restarts autonomous A-B-C-D without a media-phase wait', () => {
+test('unmute restarts autonomous cloud rotation without a media-phase wait', () => {
   assert.match(
     schedule,
     /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot, now\);/,
   );
   assert.match(schedule, /StartAutonomousSchedule/);
-  assert.doesNotMatch(schedule, /podcastMode_|SetPodcastMode|gSpotifyTverPhase|kSpotifyTimedTalkAboutStartMs|kSpotifyTimedRotationStartMs/);
+  assert.doesNotMatch(schedule, /gSpotifyTverPhase/);
 });
