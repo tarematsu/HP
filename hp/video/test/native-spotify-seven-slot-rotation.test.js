@@ -31,7 +31,9 @@ test('cloud owns the requested six-position Spotify rotation', () => {
   assert.match(catalog, /shortSongs\.map/);
   assert.match(catalog, /includeTalkAbout: true/);
   assert.match(admin, /rotation:structuredClone\(managedSpotifyRotation\)/);
-  assert.match(deviceSync, /spotify\.rotation = managedSpotifySevenSlotRotation\(\)/);
+  assert.match(deviceSync, /const nextRotation = managedSpotifySevenSlotRotation\(\)/);
+  assert.match(deviceSync, /applySpotifyRotationDurations\(nextRotation, storedDurations\)/);
+  assert.match(deviceSync, /spotify\.rotation = nextRotation/);
 });
 
 test('B slot contains the requested five Spotify tracks', () => {
