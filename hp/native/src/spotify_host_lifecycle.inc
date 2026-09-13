@@ -38,8 +38,6 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
 void SpotifyWebViews::Start() noexcept {
   if (started_ || !parentWindow_ || !IsWindow(parentWindow_)) return;
 
-  // Every start owns a fresh async generation. Reusing the old atomic and
-  // toggling it back to true would revive callbacks captured before Shutdown().
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
   robustSchedulerStarted_ = false;
@@ -61,18 +59,15 @@ void SpotifyWebViews::Start() noexcept {
     slot.timedObserverInstallInFlight = false;
     slot.controllerCreating = false;
     slot.controllerCreateTick = 0;
-    slot.timedTarget = TimedSpotifyTarget::None;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
-    slot.timedPlaybackStartTick = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
+    slot.timedInterruptionStartTick = 0;
     slot.timedRotationActive = false;
     if (!CreateHost(slot)) continue;
   }
 
-  // Controller creation is serialized. Slot 0 starts immediately; the scheduler
-  // creates the remaining accounts when each ten-second start offset arrives.
   if (!slots_.empty() && slots_[0].hostWindow) {
     CreateController(slots_[0]);
   }
@@ -146,6 +141,8 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.trustedClickBlockedUntilTick = 0;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
+  slot.timedInterruptionStartTick = 0;
+  slot.timedRotationActive = false;
   slot.state = SlotState::NotCreated;
   slot.unhealthySinceTick = 0;
   slot.playerPage = false;
