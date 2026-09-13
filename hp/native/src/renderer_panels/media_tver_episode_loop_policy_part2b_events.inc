@@ -24,9 +24,12 @@ LR"JS(
     };
     const startRecovery = reason => {
       if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
-      if (!state.recoveryPending) state.recoverySince = Date.now();
-      state.recoveryPending = true;
-      wakeNative('recovery:' + reason + ':' + mediaIdentity(video), true);
+      const enteringRecovery = !state.recoveryPending;
+      if (enteringRecovery) {
+        state.recoverySince = Date.now();
+        state.recoveryPending = true;
+        wakeNative('recovery:' + reason + ':' + mediaIdentity(video), true);
+      }
       armRecoveryWake();
     };
     state.clearRecoveryWake = clearRecovery;
@@ -35,7 +38,6 @@ LR"JS(
     video.addEventListener('timeupdate', () => {
       if (window.__homePanelSakuraMeetsState !== state) return;
       sampleProgress(video, state);
-      clearRecovery();
     }, { passive: true });
     // playbackRate is initialized once when this video becomes current. Do not
     // watch ratechange and rewrite it repeatedly during the same media item.
