@@ -3,7 +3,6 @@
 namespace hp {
 namespace {
 
-constexpr ULONGLONG kSpotifyPlaybackTelemetryMinIntervalMs = 15ULL * 1000ULL;
 SpotifyWebViews* gSpotifyPlaybackTelemetrySource = nullptr;
 
 void SetSpotifyPlaybackTelemetrySource(SpotifyWebViews* source) noexcept {
