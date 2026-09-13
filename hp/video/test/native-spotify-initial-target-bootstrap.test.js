@@ -53,7 +53,7 @@ function createBootstrapHarness() {
     window,
     sendTarget(path, title = 'track') {
       messageHandler({
-        data: ['spotify:target', path, path, title, 'music'].join('\u001f'),
+        data: ['spotify:target', path, title].join('\u001f'),
       });
     },
   };
@@ -64,7 +64,8 @@ test('first target message initializes a fresh Spotify document without pausing 
   harness.sendTarget('/track/first', 'first');
 
   assert.equal(harness.media.pauseCalls, 0);
-  assert.equal(harness.window.__homePanelSpotifyNativeTarget.trackPath, '/track/first');
+  assert.equal(harness.window.__homePanelSpotifyNativeTarget.path, '/track/first');
+  assert.equal(harness.window.__homePanelSpotifyNativeTarget.title, 'first');
 });
 
 test('all target messages are declarative and never pause media in the page bridge', () => {
@@ -74,13 +75,13 @@ test('all target messages are declarative and never pause media in the page brid
   harness.sendTarget('/track/second', 'second');
 
   assert.equal(harness.media.pauseCalls, 0);
-  assert.equal(harness.window.__homePanelSpotifyNativeTarget.trackPath, '/track/second');
+  assert.equal(harness.window.__homePanelSpotifyNativeTarget.path, '/track/second');
   assert.doesNotMatch(bootstrap, /\.pause\s*\(/);
 });
 
 test('music transitions use navigation as the sole target actuator', () => {
   assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
   assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript/);
-  assert.match(music, /Navigate\(target\.url\)/);
+  assert.match(music, /Navigate\(track->url\.c_str\(\)\)/);
   assert.doesNotMatch(scripts + music, /TalkAbout|TALKABOUT|SpotifyPodcast|podcast/);
 });
