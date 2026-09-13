@@ -17,8 +17,6 @@ class SpotifyWebViews final {
   void Resize() noexcept;
   void Shutdown() noexcept;
   void SetNetworkBlocked(bool blocked) noexcept;
-  static void CALLBACK StaggeredReconcileTimerProc(
-      HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
 
   enum class TimedSpotifyTarget : unsigned char {
     None,
@@ -27,7 +25,7 @@ class SpotifyWebViews final {
 
  private:
   static constexpr size_t kAccountCount = 6;
-  static constexpr UINT kSpotifyCompletionDeadlineMessage = WM_APP + 0x53;
+  static constexpr UINT kSpotifySchedulerMessage = WM_APP + 0x53;
 
   enum class SlotState : unsigned char {
     NotCreated,
@@ -110,7 +108,7 @@ class SpotifyWebViews final {
 
   static LRESULT CALLBACK HostWndProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
-  static void CALLBACK CompletionDeadlineTimerProc(
+  static void CALLBACK SchedulerTimerProc(
       PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_TIMER timer);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
   static bool IsSpotifyLoginUri(const wchar_t* uri) noexcept;
@@ -123,7 +121,6 @@ class SpotifyWebViews final {
   void CreateController(Slot& slot) noexcept;
   void Configure(Slot& slot) noexcept;
   void ArmRobustScheduler() noexcept;
-  void ArmCompletionDeadlineTimer() noexcept;
   UINT NextRobustSchedulerDelayMs(ULONGLONG now) const noexcept;
   void BeginControllerCreate(Slot& slot) noexcept;
   bool SlotIsLoginPage(const Slot& slot) const noexcept;
@@ -154,8 +151,6 @@ class SpotifyWebViews final {
       Slot& slot, ULONGLONG endedTick) noexcept;
   void NavigateMusicTarget(Slot& slot) noexcept;
   void ReconcileMusicTarget(Slot& slot) noexcept;
-  void NavigateActiveTimedSlot(Slot& slot) noexcept;
-  void ReconcileActiveTimedSlot(Slot& slot) noexcept;
   void ApplyTimedRotationTarget(Slot& slot) noexcept;
   void InitializeTimedRotationSlot(Slot& slot) noexcept;
   void AdvanceTimedRotationSlot(Slot& slot) noexcept;
@@ -178,7 +173,8 @@ class SpotifyWebViews final {
   ULONGLONG initialCloudPlaylistWaitStartedTick_ = 0;
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
-  PTP_TIMER completionDeadlineTimer_ = nullptr;
+  PTP_TIMER schedulerTimer_ = nullptr;
+  std::atomic<bool> schedulerWakePosted_{false};
   size_t schedulerCursor_ = 0;
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
