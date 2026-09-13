@@ -109,13 +109,13 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
 void CALLBACK SpotifyWebViews::SchedulerTimerProc(
     PTP_CALLBACK_INSTANCE, PVOID context, PTP_TIMER) {
   auto* owner = static_cast<SpotifyWebViews*>(context);
-  if (!owner || !owner->started_ || owner->networkBlocked_ ||
-      owner->slots_.empty()) {
-    return;
-  }
+  if (!owner) return;
 
-  HWND host = owner->slots_[0].hostWindow;
-  if (!host || !IsWindow(host)) return;
+  // The threadpool callback intentionally reads no mutable Slot/UI state. The
+  // only cross-thread inputs are atomics; all lifecycle and queue decisions are
+  // deferred to HostWndProc on the UI thread.
+  HWND host = owner->schedulerHost_.load(std::memory_order_acquire);
+  if (!host) return;
 
   bool expected = false;
   if (!owner->schedulerWakePosted_.compare_exchange_strong(
@@ -213,11 +213,11 @@ void SpotifyWebViews::ArmRobustScheduler() noexcept {
     if (!schedulerTimer_) return;
   }
 
-  if (!started_ || networkBlocked_ || slots_.empty()) {
+  if (!started_ || networkBlocked_) {
     SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
     return;
   }
-  HWND host = slots_[0].hostWindow;
+  HWND host = schedulerHost_.load(std::memory_order_acquire);
   if (!host || !IsWindow(host)) {
     SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
     return;
