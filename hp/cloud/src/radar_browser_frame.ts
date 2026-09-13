@@ -8,7 +8,6 @@ export interface BrowserRadarTile {
 }
 
 export interface BrowserRadarPanelRequest {
-  title: string;
   tiles: BrowserRadarTile[];
   sourceWidth: number;
   sourceHeight: number;
@@ -131,7 +130,6 @@ export async function renderRepresentativeRadarFrame(
     });
 
     const panelResults = request.panels.map(panel => ({
-      title: panel.title,
       validTimeText: panel.validTimeText,
       tiles: panel.tiles,
       sourceWidth: panel.sourceWidth,
