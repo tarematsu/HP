@@ -178,7 +178,11 @@ class SpotifyWebViews final {
   MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
   bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
   void ArmMusicCompletionDeadlineFromStart(
-      Slot& slot, ULONGLONG playbackStartTick) noexcept;
+      Slot& slot, ULONGLONG playbackStartTick,
+      ULONGLONG observedRemainingMs = 0) noexcept;
+  void ShortenMusicCompletionDeadlineAtEnd(
+      Slot& slot, ULONGLONG endedTick) noexcept;
+  void ArmMusicEndShortener(Slot& slot) noexcept;
   void NavigateMusicTarget(Slot& slot) noexcept;
   void ReconcileMusicTarget(Slot& slot) noexcept;
   void NavigateActiveTimedSlot(Slot& slot) noexcept;
