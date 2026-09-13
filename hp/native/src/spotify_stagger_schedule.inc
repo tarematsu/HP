@@ -7,6 +7,7 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (now == 0) now = GetTickCount64();
 
   BeginInitialCloudPlaylistWait(now);
+  nextCloudPlaylistCheckTick_ = 0;
   robustSchedulerStarted_ = true;
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = 0;
@@ -27,7 +28,13 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const ULONGLONG now = GetTickCount64();
   const bool cloudPlaylistWasReady = initialCloudPlaylistReady_;
   if (!InitialCloudPlaylistReady(now)) return;
-  if (cloudPlaylistWasReady) EnsureCloudPlaylistLoaded();
+  if (!cloudPlaylistWasReady) {
+    nextCloudPlaylistCheckTick_ = now + kSpotifyCloudReloadMinIntervalMs;
+  } else if (nextCloudPlaylistCheckTick_ == 0 ||
+             now >= nextCloudPlaylistCheckTick_) {
+    EnsureCloudPlaylistLoaded();
+    nextCloudPlaylistCheckTick_ = now + kSpotifyCloudReloadMinIntervalMs;
+  }
   if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
 
   ProbeDueTimedCompletions(now);
