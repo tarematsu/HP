@@ -8,8 +8,6 @@ const runtime = readFileSync(
   new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
-const deadlineEvents = readFileSync(
-  new URL('../../native/src/spotify_music_deadline_events.inc', import.meta.url), 'utf8');
 const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
 const wrapper = readFileSync(
@@ -34,8 +32,8 @@ test('validated music start feeds one deadline calculator with two-second grace'
   assert.match(runtime, /const remainingDurationMs = media =>/);
   assert.match(runtime, /\(\(duration - currentTime\) \/ playbackRate\) \* 1000/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
-  assert.match(deadlineEvents, /ParseSpotifyStartedEvent/);
-  assert.match(deadlineEvents, /ArmMusicCompletionDeadlineFromStart/);
+  assert.match(rotation, /ParseSpotifyStartedEvent/);
+  assert.match(rotation, /ArmMusicCompletionDeadlineFromStart/);
   assert.match(music, /kSpotifyNavigationCompletionGraceMs = 2ULL \* 1000ULL/);
   assert.match(music, /slot\.timedCompletionDeadlineTick = playbackStartTick \+ completionDelayMs/);
   assert.doesNotMatch(rotation, /spotify:timed-plan/);
@@ -44,10 +42,14 @@ test('validated music start feeds one deadline calculator with two-second grace'
 test('ended is best-effort deadline shortening, not a second completion path', () => {
   assert.match(events, /addEventListener\('ended', observeEnded, true\)/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
-  assert.match(deadlineEvents, /ParseSpotifyGenerationEvent\([\s\S]*spotify:timed-ended/);
-  assert.match(deadlineEvents, /ShortenMusicCompletionDeadlineAtEnd/);
+  assert.match(rotation, /ParseSpotifyGenerationEvent\([\s\S]*spotify:timed-ended/);
+  assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
   assert.match(music, /slot\.timedCompletionDeadlineTick = endedTick/);
-  assert.doesNotMatch(deadlineEvents, /AdvanceTimedRotationSlot/);
+
+  const endedStart = rotation.indexOf('if (ended) {');
+  const endedEnd = rotation.indexOf('SetSlotState(*target, SlotState::Playing)', endedStart);
+  assert.ok(endedStart >= 0 && endedEnd > endedStart);
+  assert.doesNotMatch(rotation.slice(endedStart, endedEnd), /AdvanceTimedRotationSlot/);
 });
 
 test('observer has no completion planner or heartbeat lifecycle tracking', () => {
@@ -79,8 +81,8 @@ test('due native deadline advances the rotation without asking Spotify again', (
 test('same generation cannot postpone the armed A to B deadline with repeated start events', () => {
   assert.match(music, /timedCompletionDeadlineTick != 0/);
   assert.match(music, /timedCompletionDeadlineGeneration == slot\.targetGeneration/);
-  assert.match(deadlineEvents, /ArmMusicCompletionDeadlineFromStart/);
-  assert.doesNotMatch(deadlineEvents, /candidateDeadline/);
+  assert.match(rotation, /ArmMusicCompletionDeadlineFromStart/);
+  assert.doesNotMatch(rotation, /candidateDeadline/);
   assert.match(rotation, /interruptionEnded/);
   assert.match(rotation, /timedCompletionDeadlineTick \+ extension/);
 });
