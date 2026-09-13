@@ -37,6 +37,7 @@ test('device sync migrates managed Spotify rotations to the seven-slot layout', 
   assert.match(deviceSync, /SHORT_SPOTIFY_RANDOM_TRACKS/);
   assert.match(deviceSync, /isManagedRandomPool/);
   assert.match(deviceSync, /isManagedSevenSlotRotation/);
+  assert.match(deviceSync, /isManagedSixPositionRotation/);
   assert.match(deviceSync, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(deviceSync, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.match(deviceSync, /SHORT_SPOTIFY_ROTATION_TRACKS/);
@@ -60,7 +61,7 @@ test('native consumes only the cloud-resolved direct episode URL', () => {
   assert.doesNotMatch(timed, /source\.find\(L"\/episode\/"\)/);
 });
 
-test('F omits TALKABOUT when no direct latest episode is synchronized', () => {
+test('TALKABOUT-enabled rotation omits the episode when no direct latest URL is synchronized', () => {
   assert.doesNotMatch(scripts, /latestEpisodeButton|a\[href\*="\/episode\/"\]/);
   assert.match(scripts, /target\.pagePath\.startsWith\('\/episode\/'\)/);
   assert.match(scripts, /location\.pathname !== target\.pagePath/);
