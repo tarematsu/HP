@@ -150,12 +150,15 @@ test('native skips radar JSON parsing when its stamp is unchanged but still chec
   assert.match(renderer, /const std::string stamp = file::Stamp\(\*framePath\)/);
 });
 
-test('all three radar labels remain proportional after the reduced frame size', () => {
+test('all three radar panels render only an enlarged timestamp chip', () => {
   assert.match(browserFrame, /const chipTop = 50;/);
   assert.match(browserFrame, /panelWidth - chipLeft \* 2/);
   assert.match(browserFrame, /context\.roundRect\(panelX \+ chipLeft, chipTop/);
-  assert.match(browserFrame, /chipTop \+ 25/);
-  assert.match(browserFrame, /chipTop \+ 61/);
+  assert.match(browserFrame, /context\.font = "500 39px sans-serif";/);
+  assert.match(browserFrame, /const timeWidth = context\.measureText\(timeText\)\.width;/);
+  assert.match(browserFrame, /chipTop \+ chipHeight \/ 2/);
+  assert.doesNotMatch(browserFrame, /const title = panel\.title/);
+  assert.doesNotMatch(browserFrame, /fillText\(title/);
   assert.match(browserFrame, /context\.fillStyle = "rgba\(0,0,0,0\.92\)";/);
   assert.match(browserFrame, /context\.fillRect\(divider \* panelWidth - 1, 0, 3, payload\.outputHeight\)/);
 });
