@@ -3,35 +3,37 @@ LR"JS(
       // Quality discovery is event driven and player-local. Native owns the
       // trusted clicks; this page policy only detects completion and requests
       // another step when low quality has not settled yet.
-      if (!state.lowQualitySet && !state.qualityAttemptExhausted) {
-        const root = playerRootFor(video);
-        if (root) {
-          const qualityChoices = [];
-          for (const element of root.querySelectorAll(
-              'button, [role="button"], [role="menuitem"], [role="radio"], '
-              + '[role="option"], li')) {
-            if (!visibleRect(element)) continue;
-            const name = labelOf(element)
-                .replace(/[（(](?:選択中|設定中)[）)]/g, '')
-                .replace(/画質$/, '').trim();
-            if (/^(自動|高|中|低)$/.test(name)) qualityChoices.push([element, name]);
-          }
-          const low = qualityChoices.find(([, name]) => name === '低');
-          if (low) {
-            const element = low[0];
-            const selected = element.getAttribute('aria-checked') === 'true' ||
-                element.getAttribute('aria-selected') === 'true' ||
-                element.getAttribute('data-state') === 'checked' ||
-                /選択中|設定中/.test(labelOf(element));
-            if (selected) {
+      if (!state.lowQualitySet) {
+        if (!state.qualityAttemptExhausted) {
+          const root = playerRootFor(video);
+          if (root) {
+            const qualityChoices = [];
+            for (const element of root.querySelectorAll(
+                'button, [role="button"], [role="menuitem"], [role="radio"], '
+                + '[role="option"], li')) {
+              if (!visibleRect(element)) continue;
+              const name = labelOf(element)
+                  .replace(/[（(](?:選択中|設定中)[）)]/g, '')
+                  .replace(/画質$/, '').trim();
+              if (/^(自動|高|中|低)$/.test(name)) qualityChoices.push([element, name]);
+            }
+            const low = qualityChoices.find(([, name]) => name === '低');
+            if (low) {
+              const element = low[0];
+              const selected = element.getAttribute('aria-checked') === 'true' ||
+                  element.getAttribute('aria-selected') === 'true' ||
+                  element.getAttribute('data-state') === 'checked' ||
+                  /選択中|設定中/.test(labelOf(element));
+              if (selected) {
+                state.lowQualitySet = true;
+                state.lowClickPending = false;
+              }
+            } else if (state.lowClickPending) {
+              // The Low option disappearing immediately after the trusted click is
+              // TVer's normal menu-close transition and is treated as completion.
               state.lowQualitySet = true;
               state.lowClickPending = false;
             }
-          } else if (state.lowClickPending) {
-            // The Low option disappearing immediately after the trusted click is
-            // TVer's normal menu-close transition and is treated as completion.
-            state.lowQualitySet = true;
-            state.lowClickPending = false;
           }
         }
       }
