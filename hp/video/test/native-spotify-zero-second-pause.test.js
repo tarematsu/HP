@@ -19,8 +19,9 @@ test('zero-second recovery uses only explicit Spotify Play-labelled controls', (
   assert.match(scoped, /candidate\.tagName === 'AUDIO'/);
   assert.doesNotMatch(scoped, /requestMediaStart|__homePanelSpotifyPlayAttempt/);
   const executableScoped = scoped.replace(/\/\/.*$/gm, '');
-  assert.doesNotMatch(executableScoped, /\.play\s*\(/);
-  assert.match(scoped, /HTMLMediaElement\.play\(\) bypasses Spotify's own state machine/);
+  assert.doesNotMatch(executableScoped, /\.play\s*\(|\.click\s*\(/);
+  assert.match(scoped, /buttonIntentValue === 'play'/);
+  assert.match(scoped, /controlIntent === 'play'/);
 
   const pauseUi = scoped.indexOf(
     "if (controlIntent === 'pause' || buttonIntentValue === 'pause')",
@@ -52,18 +53,24 @@ test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
   );
 });
 
-test('native settling recovery waits or renavigates without ambiguous toggle clicks', () => {
-  const start = music.indexOf(
+test('settling callback only queues state; scheduler owns any later renavigation', () => {
+  const callbackStart = music.indexOf(
     'if (json && (std::wstring_view(json) == L"\\"starting\\""',
   );
-  const pointStart = music.indexOf('int x = 0;', start);
-  assert.ok(start >= 0 && pointStart > start);
-  const waitBranch = music.slice(start, pointStart);
-  assert.match(waitBranch, /SlotState::WaitingTarget/);
-  assert.match(waitBranch, /ShouldRenavigateUnhealthySlot/);
-  assert.match(waitBranch, /NavigateMusicTarget/);
-  assert.match(waitBranch, /\\"settling\\"/);
-  assert.doesNotMatch(waitBranch, /ClickSlotNormalizedPoint/);
+  const pointStart = music.indexOf('int x = 0;', callbackStart);
+  assert.ok(callbackStart >= 0 && pointStart > callbackStart);
+  const callbackBranch = music.slice(callbackStart, pointStart);
+  assert.match(callbackBranch, /SlotState::WaitingTarget/);
+  assert.match(callbackBranch, /unhealthySinceTick/);
+  assert.match(callbackBranch, /ArmRobustScheduler/);
+  assert.match(callbackBranch, /\\"settling\\"/);
+  assert.doesNotMatch(callbackBranch, /NavigateMusicTarget|ClickSlotNormalizedPoint|ShouldRenavigateUnhealthySlot/);
+
+  const reconcileStart = music.indexOf('void SpotifyWebViews::ReconcileMusicTarget');
+  const executeStart = music.indexOf('kSpotifyStaticTrackReconcileScript', reconcileStart);
+  const schedulerOwned = music.slice(reconcileStart, executeStart);
+  assert.match(schedulerOwned, /ShouldRenavigateUnhealthySlot\(slot, now\)/);
+  assert.match(schedulerOwned, /NavigateMusicTarget\(slot\)/);
 });
 
 test('startup and target-transition paths contain no executable generic media stop actuator', () => {
@@ -104,11 +111,13 @@ test('music playback waits until the observer acknowledges the current generatio
     rotation,
     /if \(observerSynced\) \{[\s\S]*timedObserverReady = true;[\s\S]*lastTimedReconcileTick = 0;[\s\S]*ArmRobustScheduler\(\)/,
   );
-  const synced = rotation.slice(
-    rotation.indexOf('if (observerSynced) {'),
-    rotation.indexOf('if (target->timedTarget != TimedSpotifyTarget::Music', rotation.indexOf('if (observerSynced) {')),
+  const syncedStart = rotation.indexOf('if (observerSynced) {');
+  const syncedEnd = rotation.indexOf('if (!CurrentMusicTrack(*target))', syncedStart);
+  assert.ok(syncedStart >= 0 && syncedEnd > syncedStart);
+  assert.doesNotMatch(
+    rotation.slice(syncedStart, syncedEnd),
+    /ReconcileMusicTarget|NavigateMusicTarget/,
   );
-  assert.doesNotMatch(synced, /ReconcileMusicTarget|ReconcileActiveTimedSlot/);
 });
 
 test('observer adoption of already-playing media emits one start deadline', () => {
