@@ -360,7 +360,6 @@ class Renderer {
   std::mutex radarComposeWakeMutex_;
   mutable std::mutex radarFrameMutex_;
   HBITMAP radarFrameBitmap_ = nullptr;
-  std::wstring radarTimeText_ = L"--:--";
   std::wstring radarSignature_;
   std::string radarJsonStamp_;
   std::map<std::wstring, int64_t> radarFailedTiles_;
