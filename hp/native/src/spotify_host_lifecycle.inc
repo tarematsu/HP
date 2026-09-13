@@ -39,6 +39,7 @@ void SpotifyWebViews::Start() noexcept {
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
   robustSchedulerStarted_ = false;
+  schedulerWakePosted_.store(false, std::memory_order_release);
   schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
   hostLayoutMask_ = ~0u;
@@ -86,9 +87,6 @@ void SpotifyWebViews::Resize() noexcept {
 }
 
 void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
-  if (slot.index == 0 && slot.hostWindow && IsWindow(slot.hostWindow)) {
-    KillTimer(slot.hostWindow, kSpotifyRobustReconcileTimer);
-  }
   if (slot.webview) {
     if (slot.navigationStartingToken.value != 0) {
       slot.webview->remove_NavigationStarting(slot.navigationStartingToken);
@@ -150,12 +148,13 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
 void SpotifyWebViews::Shutdown() noexcept {
   if (!started_) return;
   started_ = false;
-  if (completionDeadlineTimer_) {
-    SetThreadpoolTimer(completionDeadlineTimer_, nullptr, 0, 0);
-    WaitForThreadpoolTimerCallbacks(completionDeadlineTimer_, TRUE);
-    CloseThreadpoolTimer(completionDeadlineTimer_);
-    completionDeadlineTimer_ = nullptr;
+  if (schedulerTimer_) {
+    SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
+    WaitForThreadpoolTimerCallbacks(schedulerTimer_, TRUE);
+    CloseThreadpoolTimer(schedulerTimer_);
+    schedulerTimer_ = nullptr;
   }
+  schedulerWakePosted_.store(false, std::memory_order_release);
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
   robustSchedulerStarted_ = false;
@@ -172,11 +171,11 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(slot));
   }
   if (slot) {
-    if (message == kSpotifyCompletionDeadlineMessage && slot->index == 0 &&
-        slot->owner) {
+    if (message == kSpotifySchedulerMessage && slot->index == 0 && slot->owner) {
       SpotifyWebViews* const owner = slot->owner;
-      if (owner->started_) {
-        owner->ProbeDueTimedCompletions(GetTickCount64());
+      owner->schedulerWakePosted_.store(false, std::memory_order_release);
+      if (owner->started_ && !owner->networkBlocked_) {
+        owner->RunStaggeredReconcile();
         owner->ArmRobustScheduler();
       }
       return 0;
