@@ -91,8 +91,13 @@ test('each Spotify scheduler pass performs at most one host layout refresh', () 
   assert.equal(refreshes.length, 1);
   assert.match(
     schedule,
-    /staggerSlotIndex_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
+    /schedulerCursor_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
   );
+});
+
+test('scheduler state is minimal and does not duplicate slot state', () => {
+  assert.match(spotifyHeader, /size_t schedulerCursor_ = 0/);
+  assert.doesNotMatch(spotifyHeader, /staggerSlotStartTick_|staggerSlotValidated_|timedCatalogIndex|timedRandomFIndex|timedMiddleOrder/);
 });
 
 test('lightweight Spotify styling is a fixed bootstrap script with no MutationObserver', () => {
