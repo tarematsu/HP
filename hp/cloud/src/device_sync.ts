@@ -274,16 +274,36 @@ function isManagedSixPositionRotation(rotation: unknown[]): boolean {
     isManagedShortRotationPool(fIds);
 }
 
-function migrateManagedSpotifyRotation(config: JsonRecord): boolean {
+function migrateManagedSpotifyRotation(
+  config: JsonRecord,
+  storedDurations: ReadonlyMap<string, number>,
+): boolean {
   const spotify = objectOrNull(config.spotify);
   const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
-  if (!spotify || isManagedSixPositionRotation(rotation)) return false;
-  if (!isManagedLegacySpotifyRotation(rotation) && !isManagedSevenSlotRotation(rotation)) {
-    return false;
+  if (!spotify) return false;
+
+  // Once a device has been recognized as using the managed rotation, persist a
+  // stable marker. Future catalog edits can then refresh that device even when
+  // its old track set no longer matches the newly compiled pool exactly.
+  const recognizedManagedRotation =
+    isManagedLegacySpotifyRotation(rotation) ||
+    isManagedSevenSlotRotation(rotation) ||
+    isManagedSixPositionRotation(rotation);
+  if (spotify.managedRotation !== true && !recognizedManagedRotation) return false;
+
+  let changed = false;
+  if (spotify.managedRotation !== true) {
+    spotify.managedRotation = true;
+    changed = true;
   }
 
-  spotify.rotation = managedSpotifySevenSlotRotation();
-  return true;
+  const nextRotation = managedSpotifySevenSlotRotation();
+  applySpotifyRotationDurations(nextRotation, storedDurations);
+  if (JSON.stringify(rotation) !== JSON.stringify(nextRotation)) {
+    spotify.rotation = nextRotation;
+    changed = true;
+  }
+  return changed;
 }
 
 export async function readDeviceSyncManifest(env: Env): Promise<DeviceSyncManifestRow> {
@@ -364,7 +384,7 @@ async function refreshManagedSpotifyConfig(
   const beforeRotation = Array.isArray(beforeSpotify?.rotation) ? beforeSpotify.rotation : [];
   const storedDurations = spotifyRotationStoredDurations(beforeRotation);
 
-  let changed = migrateManagedSpotifyRotation(config);
+  let changed = migrateManagedSpotifyRotation(config, storedDurations);
   const spotify = objectOrNull(config.spotify);
   const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
   const rotationTrackIds = spotifyRotationTrackIds(rotation);

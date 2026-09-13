@@ -237,14 +237,12 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 return S_OK;
               }
 
-              // Cloud-managed music durations make target progression independent
-              // from Spotify's media-start/ended events. Once the requested track
-              // page has loaded successfully, arm one immutable native deadline
-              // for this target generation. A small grace window covers the gap
-              // between document completion and Spotify beginning audible media.
+              // Cloud-managed music duration owns the normal completion time.
+              // NavigateMusicTarget already armed a five-minute safety deadline;
+              // once the requested page is confirmed, shorten that deadline to
+              // duration + grace when the cloud metadata gives an earlier time.
               if (target->timedRotationActive &&
                   target->timedTarget == TimedSpotifyTarget::Music &&
-                  target->timedCompletionDeadlineTick == 0 &&
                   target->timedRotationPosition < target->timedCycleTracks.size() &&
                   SlotMatchesMusicTarget(*target)) {
                 const ULONGLONG durationMs =
@@ -252,11 +250,17 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                         .durationMs;
                 if (durationMs > 0) {
                   const ULONGLONG now = GetTickCount64();
-                  target->timedCompletionDeadlineTick =
+                  const ULONGLONG durationDeadline =
                       now + durationMs + kSpotifyNavigationCompletionGraceMs;
-                  target->timedCompletionDeadlineGeneration =
-                      target->targetGeneration;
-                  ArmCompletionDeadlineTimer();
+                  if (target->timedCompletionDeadlineTick == 0 ||
+                      target->timedCompletionDeadlineGeneration !=
+                          target->targetGeneration ||
+                      durationDeadline < target->timedCompletionDeadlineTick) {
+                    target->timedCompletionDeadlineTick = durationDeadline;
+                    target->timedCompletionDeadlineGeneration =
+                        target->targetGeneration;
+                    ArmCompletionDeadlineTimer();
+                  }
                 }
               }
 

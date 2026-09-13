@@ -1,4 +1,9 @@
 namespace hp {
+namespace {
+
+constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 5ULL * 60ULL * 1000ULL;
+
+}  // namespace
 
 SpotifyWebViews::MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget(
     const Slot& slot) const noexcept {
@@ -43,6 +48,19 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   if (FAILED(result)) {
     slot.lastModeNavigateTick = 0;
     MarkSlotRecovering(slot, GetTickCount64());
+  } else if (slot.timedRotationActive &&
+             slot.timedTarget == TimedSpotifyTarget::Music &&
+             (slot.timedCompletionDeadlineTick == 0 ||
+              slot.timedCompletionDeadlineGeneration != slot.targetGeneration)) {
+    // Absolute safety net: even if cloud duration resolution, NavigationCompleted,
+    // and Spotify playback-start observation all fail, one target generation may
+    // never remain selected for more than five minutes after its first successful
+    // Navigate() call. Recovery re-navigation for the same generation never
+    // extends this deadline.
+    slot.timedCompletionDeadlineTick =
+        slot.lastModeNavigateTick + kSpotifyNavigationFailsafeMs;
+    slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
+    ArmCompletionDeadlineTimer();
   }
   ArmRobustScheduler();
 }
