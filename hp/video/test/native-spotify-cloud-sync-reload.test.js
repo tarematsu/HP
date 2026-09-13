@@ -33,9 +33,8 @@ test('each scheduler pass checks the synchronized playlist cache at most once', 
   const start = schedule.slice(startAt, runAt);
   const run = schedule.slice(runAt);
   assert.doesNotMatch(start, /EnsureCloudPlaylistLoaded\(\)/);
-  assert.match(run, /const bool cloudPlaylistWasReady = initialCloudPlaylistReady_/);
-  assert.match(run, /if \(!InitialCloudPlaylistReady\(now\)\) return/);
-  assert.match(run, /if \(cloudPlaylistWasReady\) EnsureCloudPlaylistLoaded\(\)/);
+  assert.match(run, /const bool cloudPlaylistReady = InitialCloudPlaylistReady\(now\)/);
+  assert.match(run, /if \(cloudPlaylistWasReady && cloudPlaylistReady\) EnsureCloudPlaylistLoaded\(\)/);
   assert.equal((run.match(/EnsureCloudPlaylistLoaded\(\)/g) ?? []).length, 1);
   assert.match(loader, /if \(initialCloudPlaylistReady_\) EnsureCloudPlaylistLoaded\(\)/);
 });

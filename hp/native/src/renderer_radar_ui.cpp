@@ -102,6 +102,7 @@ void Renderer::StartRadarCompose() {
     radarComposePending_ = true;
   }
   radarComposeThread_ = std::thread([this] {
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
     for (;;) {
       try {
         RadarComposeLoop();

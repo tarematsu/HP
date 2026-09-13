@@ -54,9 +54,6 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     if (!CreateHost(slot)) continue;
   }
 
-  if (!slots_.empty() && slots_[0].hostWindow) {
-    CreateController(slots_[0]);
-  }
   Resize();
   StartAutonomousSchedule(GetTickCount64());
 }

@@ -68,13 +68,15 @@ test('non-target playback resumes by replacing the same completion deadline', ()
   assert.doesNotMatch(rotation + phase + header, /ParseSpotifyInterruptionEndedEvent|SpotifyDeadlineWithInterruptionHold|timedInterruptionStartTick|kSpotifyMaxInterruptionHoldMs/);
 });
 
-test('first rotation waits for startup cloud config opportunity', () => {
+test('first rotation waits for startup cloud config opportunity while controller warmup may begin', () => {
   assert.match(header, /BeginInitialCloudPlaylistWait/);
   assert.match(header, /InitialCloudPlaylistReady/);
   assert.match(cloud, /kSpotifyInitialCloudSyncSettleMs = 10ULL \* 1000ULL/);
   assert.match(cloud, /kSpotifyInitialCloudSyncFallbackMs = 30ULL \* 1000ULL/);
   assert.match(schedule, /BeginInitialCloudPlaylistWait\(now\)/);
-  assert.match(schedule, /if \(!InitialCloudPlaylistReady\(now\)\) return/);
+  assert.match(schedule, /const bool cloudPlaylistReady = InitialCloudPlaylistReady\(now\)/);
+  assert.match(schedule, /if \(!slot\.webview\) \{[\s\S]*BeginControllerCreate\(slot\)[\s\S]*return/);
+  assert.match(schedule, /if \(!cloudPlaylistReady\) return;[\s\S]*InitializeTimedRotationSlot\(slot\)/);
 });
 
 test('the unified deadline advances queue state and scheduler starts later work', () => {

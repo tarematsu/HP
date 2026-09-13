@@ -134,7 +134,9 @@ test('controller creation is serialized and bounded on slow machines', () => {
   assert.match(phaseSync, /kSpotifyControllerRetryMs = 20ULL \* 1000ULL/);
   assert.match(phaseSync, /void SpotifyWebViews::BeginControllerCreate/);
   assert.match(phaseSync, /CreateController\(slot\)/);
-  assert.match(spotify, /CreateController\(slots_\[0\]\)/);
+  assert.doesNotMatch(spotify, /CreateController\(slots_\[0\]\)/);
+  assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /BeginControllerCreate\(slot\)/);
 });
 
 test('all managed Spotify targets use the current ManagedTrack as the single target source', () => {

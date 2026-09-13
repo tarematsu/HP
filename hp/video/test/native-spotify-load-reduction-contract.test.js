@@ -17,10 +17,13 @@ const scripts = sourcePart('spotify_static_scripts.inc');
 const layout = sourcePart('spotify_host_layout.inc');
 
 test('Spotify WebViews serialize startup without UI-thread blocking or polling timers', () => {
-  assert.match(spotify, /CreateController\(slots_\[0\]\)/);
+  assert.doesNotMatch(spotify, /CreateController\(slots_\[0\]\)/);
   assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 60ULL \* 1000ULL/);
   assert.match(spotifyHeader, /PTP_TIMER schedulerTimer_ = nullptr/);
+  assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /scheduleStartTick_ = now \+ kSpotifyInitialStartDelayMs/);
   assert.match(schedule, /startupReady/);
+  assert.match(schedule, /if \(!slot\.webview\)[\s\S]*BeginControllerCreate\(slot\)/);
   assert.match(phase, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
   assert.match(phase, /slot\.nextRecoveryTick/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);

@@ -2,6 +2,10 @@
 // and starts at most one piece of WebView work. The adaptive timer wakes only
 // for startup, recovery, async timeout, completion deadline, or the healthy audit.
 
+namespace {
+constexpr ULONGLONG kSpotifyInitialStartDelayMs = 4ULL * 1000ULL;
+}
+
 void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
   if (now == 0) now = GetTickCount64();
@@ -9,12 +13,12 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   BeginInitialCloudPlaylistWait(now);
   robustSchedulerStarted_ = true;
   schedulerCursor_ = slots_.size() - 1;
-  scheduleStartTick_ = 0;
+  scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
 
-  for (size_t i = 1; i < slots_.size(); ++i) {
-    slots_[i].controllerCreating = false;
-    slots_[i].controllerCreateTick = 0;
-    if (!slots_[i].webview) SetSlotState(slots_[i], SlotState::NotCreated);
+  for (Slot& slot : slots_) {
+    slot.controllerCreating = false;
+    slot.controllerCreateTick = 0;
+    if (!slot.webview) SetSlotState(slot, SlotState::NotCreated);
   }
 
   RunStaggeredReconcile();
@@ -26,20 +30,24 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   const ULONGLONG now = GetTickCount64();
   const bool cloudPlaylistWasReady = initialCloudPlaylistReady_;
-  if (!InitialCloudPlaylistReady(now)) return;
-  if (cloudPlaylistWasReady) EnsureCloudPlaylistLoaded();
-  if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
+  const bool cloudPlaylistReady = InitialCloudPlaylistReady(now);
+  if (cloudPlaylistWasReady && cloudPlaylistReady) EnsureCloudPlaylistLoaded();
+  if (scheduleStartTick_ == 0) {
+    scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
+  }
+  if (now < scheduleStartTick_) return;
 
   ProbeDueTimedCompletions(now);
   for (Slot& slot : slots_) ExpireStaleAsyncWork(slot, now);
 
-  const ULONGLONG elapsed = now - scheduleStartTick_;
   const size_t count = slots_.size();
   const size_t scanStart = (schedulerCursor_ + 1) % count;
 
-  const auto startupReady = [elapsed](size_t index) noexcept {
-    return elapsed >= static_cast<ULONGLONG>(index) *
-                          kSpotifyAccountStartOffsetMs;
+  const auto startupReady = [this, now](size_t index) noexcept {
+    const ULONGLONG boundary =
+        scheduleStartTick_ +
+        static_cast<ULONGLONG>(index) * kSpotifyAccountStartOffsetMs;
+    return now >= boundary;
   };
   const auto controllerReady = [now](const Slot& slot) noexcept {
     if (slot.webview) return true;
@@ -92,6 +100,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       BeginControllerCreate(slot);
       return;
     }
+    if (!cloudPlaylistReady) return;
     InitializeTimedRotationSlot(slot);
     if (CurrentMusicTrack(slot)) NavigateMusicTarget(slot);
     return;
