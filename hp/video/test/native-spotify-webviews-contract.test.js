@@ -115,10 +115,10 @@ test('one adaptive scheduler services a state queue with ten-second startup offs
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
   assert.match(schedule, /SlotState is the queue/);
-  assert.match(schedule, /const size_t scanStart = \(staggerSlotIndex_ \+ 1\) % count/);
+  assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
   assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs|kSpotifySimpleRecoveryHoldMs/);
-  assert.doesNotMatch(header, /reconcileIndex_|playbackWatchdogIndex_/);
+  assert.doesNotMatch(header, /staggerSlotIndex_|staggerSlotStartTick_|staggerSlotValidated_|reconcileIndex_|playbackWatchdogIndex_/);
 });
 
 test('controller creation is serialized and bounded on slow machines', () => {
@@ -131,6 +131,8 @@ test('controller creation is serialized and bounded on slow machines', () => {
 });
 
 test('all managed Spotify targets use one generic music descriptor', () => {
+  assert.match(header, /enum class TimedSpotifyTarget : unsigned char \{\s*None,\s*Music,\s*\}/);
+  assert.doesNotMatch(header, /BitterBlue|Monshirocho|Munen|OnMyWay|LonesomeRabbit|CatalogTrack/);
   assert.match(header, /struct RotationGroup/);
   assert.match(header, /std::vector<ManagedTrack> timedCycleTracks/);
   assert.match(cloud, /GetNamedArray\(L"rotation"\)/);
@@ -174,10 +176,10 @@ test('all six Spotify WebViews remain natively muted', () => {
 });
 
 test('slot lifecycle uses one explicit state machine rather than an overloaded playing flag', () => {
-  for (const state of ['NotCreated', 'Authenticating', 'Navigating', 'WaitingTarget', 'Playing', 'Recovering', 'Completed']) {
+  for (const state of ['NotCreated', 'Authenticating', 'Navigating', 'WaitingTarget', 'Playing', 'Recovering']) {
     assert.match(header, new RegExp(`\\b${state}\\b`));
   }
-  assert.doesNotMatch(header, /bool playing = false/);
+  assert.doesNotMatch(header, /\bCompleted\b|bool playing = false/);
   assert.match(header, /SlotState state = SlotState::NotCreated/);
   assert.match(phaseSync, /SetSlotState/);
   assert.match(phaseSync, /MarkSlotRecovering/);
