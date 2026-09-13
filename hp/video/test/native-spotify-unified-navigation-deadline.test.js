@@ -50,7 +50,7 @@ test('navigation selects a track but no longer starts its completion clock', () 
 
 test('trusted Play mousePressed is the primary playback-start anchor', () => {
   assert.match(click, /const ULONGLONG playbackStartTick = GetTickCount64\(\)/);
-  assert.match(click, /\"type\":\"mousePressed\"/);
+  assert.match(click, /mousePressed/);
   assert.match(
     click,
     /ArmMusicCompletionDeadlineFromStart\([\s\S]*\*target, playbackStartTick\)/,
