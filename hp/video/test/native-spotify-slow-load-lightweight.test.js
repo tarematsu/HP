@@ -71,7 +71,7 @@ test('healthy slots are not continuously scanned by a second native watchdog', (
   assert.doesNotMatch(spotify, /RunPlaybackWatchdog|kSpotifyPlaybackWatchdogTimer/);
 });
 
-test('healthy ownership handoff does not relayout all playback hosts', () => {
+test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.match(
     layout,
     /const size_t recoveryIndex =[\s\S]*SlotStateNeedsRecovery\(slots_\[activeIndex\]\.state\)/,
@@ -89,7 +89,7 @@ test('authentication and recovery stay visible while healthy playback enters low
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
-  assert.match(layout, /const size_t activeIndex = staggerSlotIndex_ % slots_\.size\(\)/);
+  assert.match(layout, /const size_t activeIndex = schedulerCursor_ % slots_\.size\(\)/);
   assert.match(layout, /foregroundAuthenticationIndex/);
   assert.match(layout, /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
