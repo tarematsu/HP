@@ -86,7 +86,10 @@ test('YouTube fullscreen waits for player settle, then uses the real trusted con
   assert.match(recovery, /trusted\.arm\(target, 'fullscreen', 1200\)/);
   assert.match(trustedAction, /action === 'fullscreen'/);
   assert.doesNotMatch(trustedAction, /requestFullscreen|webkitRequestFullscreen/);
-  assert.doesNotMatch(recovery, /setTimeout\s*\(/);
+  assert.match(recovery, /__homePanelYoutubeStartupRecoveryAttempts/);
+  assert.match(recovery, /attempts >= 3/);
+  assert.match(recovery, /setTimeout\(\(\) =>/);
+  assert.doesNotMatch(recovery, /setInterval\s*\(/);
 });
 
 test('YouTube content settings are one-shot per video', () => {
