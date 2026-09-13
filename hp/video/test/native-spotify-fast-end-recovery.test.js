@@ -61,8 +61,8 @@ test('direct track path is preferred over MediaSession title when both exist', (
   const domIdentity = runtime.indexOf('for (const selector of [');
   const mediaSession = runtime.indexOf('navigator.mediaSession');
   assert.ok(domIdentity >= 0 && mediaSession > domIdentity);
-  assert.match(runtime, /if \(target\.trackPath && track\.path\)/);
-  assert.match(runtime, /return sameTrackPath\(track\.path, target\.trackPath\)/);
+  assert.match(runtime, /const expectedPath = targetPath\(target\)/);
+  assert.match(runtime, /sameTrackPath\(track\.path, expectedPath\)/);
 });
 
 test('completion does not mutate the Spotify media element and advances at the effective deadline', () => {
