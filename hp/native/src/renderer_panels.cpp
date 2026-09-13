@@ -1,6 +1,7 @@
 // Kept as one translation unit so cached GDI primitives remain shared.
 // Fragment boundaries follow complete responsibilities and never split functions.
 #include "native_media_audio.h"
+#include "network_request_coordinator.h"
 #include "shared_webview_environment.h"
 #include "spotify_webviews.h"
 #include "version.h"

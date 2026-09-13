@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include "network_request_coordinator.h"
 #include "winhttp_helpers.h"
 
 namespace hp {
@@ -108,17 +109,30 @@ inline std::wstring CacheArtworkUrl(const fs::path& dataDir,
     }
   }
 
-  std::vector<uint8_t> bytes;
-  std::wstring contentType;
-  if (!WinHttpDownload(artworkUrl.c_str(), 8 * 1024 * 1024, &bytes, &contentType,
-                       nullptr, userAgent)) {
+  std::wstring requestKey = L"artwork|";
+  if (userAgent) requestKey += userAgent;
+  requestKey += L"|";
+  requestKey += artworkUrl;
+  const CoordinatedNetworkResult download = NetworkRequestCoordinator::Run(
+      requestKey,
+      10'000,
+      static_cast<ULONGLONG>(kArtworkFailureRetryMs),
+      [&] {
+        CoordinatedNetworkResult result;
+        result.ok = WinHttpDownload(
+            artworkUrl.c_str(), 8 * 1024 * 1024, &result.body,
+            &result.contentType, &result.error, userAgent);
+        return result;
+      });
+  if (!download.ok) {
     remember(artworkUrl, now + kArtworkFailureRetryMs);
     return artworkUrl;
   }
 
-  const std::wstring extension = GuessArtworkExtension(contentType, artworkUrl);
+  const std::wstring extension =
+      GuessArtworkExtension(download.contentType, artworkUrl);
   const fs::path cached = cacheDir / (stem + extension);
-  if (!AtomicWriteBytes(cached, bytes)) {
+  if (!AtomicWriteBytes(cached, download.body)) {
     remember(artworkUrl, now + kArtworkFailureRetryMs);
     return artworkUrl;
   }
