@@ -1,8 +1,8 @@
 namespace hp {
 namespace {
 
-// Minimal delegated events: validate playback start and optionally shorten the
-// native deadline when the exact owned media element reports ended.
+// Minimal delegated events: validate active playback and optionally shorten the
+// native deadline when the owned media element reports ended.
 constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 (() => {
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
@@ -18,16 +18,13 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const observeEnded = event => {
     const media = event.target;
     if (!isMedia(media) || !media.ended || !syncTarget() ||
-        !state.startPosted || state.targetMedia !== media ||
-        state.interruptionStartedAt) {
+        !state.startPosted || state.targetMedia !== media || state.interrupted) {
       return;
     }
     post('spotify:timed-ended');
   };
 
-  document.addEventListener('play', observe, true);
   document.addEventListener('playing', observe, true);
-  document.addEventListener('loadedmetadata', observe, true);
   document.addEventListener('durationchange', observe, true);
   document.addEventListener('ended', observeEnded, true);
 
