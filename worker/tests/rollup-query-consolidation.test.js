@@ -43,15 +43,25 @@ test('legacy daily rollups dedupe each channel to one row per minute and select 
   assert.match(daily, /validateSummaryCounts\('sh_daily_summary', aggregate\)/);
 });
 
-test('normal daily maintenance seeks the canonical minute range directly', () => {
+test('normal daily maintenance selects the dominant channel before context joins', () => {
   const cte = section('const MINUTE_DAILY_ROWS_CTE', 'const MINUTE_DAILY_SUMMARY_SQL');
-  assert.match(cte, /daily_minute_rows AS MATERIALIZED/);
+  assert.match(cte, /daily_fact_rows AS MATERIALIZED/);
   assert.match(cte, /FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time/);
   assert.match(cte, /WHERE f\.minute_at>=\?1 AND f\.minute_at<\?2/);
+  assert.equal((cte.match(/\?1/g) || []).length, 1);
+  assert.equal((cte.match(/\?2/g) || []).length, 1);
+  assert.match(cte, /SELECT channel_id FROM daily_fact_rows/);
+  assert.match(cte, /ORDER BY COUNT\(\*\) DESC,MAX\(observed_at\) DESC,channel_id ASC/);
   assert.match(cte, /selected_rows AS MATERIALIZED/);
+  assert.match(cte, /FROM daily_fact_rows AS f/);
+  assert.match(cte, /WHERE f\.channel_id=\(SELECT channel_id FROM selected_channel\)/);
   assert.match(cte, /LEFT JOIN sh_minute_fact_context_v2 AS c ON c\.fact_id=f\.id/);
   assert.match(cte, /LEFT JOIN sh_broadcast_sessions AS session ON session\.id=f\.broadcast_session_id/);
   assert.match(cte, /COALESCE\(c\.host_id_override,session\.host_id\)/);
+  assert.ok(
+    cte.indexOf('selected_channel AS') < cte.indexOf('LEFT JOIN sh_minute_fact_context_v2'),
+    'context joins must run only after the dominant channel is selected',
+  );
   assert.doesNotMatch(cte, /sh_minute_fact_context AS c/);
   assert.doesNotMatch(cte, /sh_channel_snapshots/);
 
