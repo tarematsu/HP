@@ -17,6 +17,7 @@ test('TVer advances only through the native cloud-owned episode queue', () => {
   assert.match(queue, /latestEpisodeIds/);
   assert.match(queue, /queueEpisodeIds/);
   assert.match(queue, /consumedEpisodeIds/);
+  assert.match(queue, /rejectedEpisodeIds/);
   assert.match(queue, /NativeMediaTverAdvanceEpisode/);
   assert.match(wrapper, /message == L"homepanel:tver-ended"/);
   assert.match(wrapper, /NativeMediaTverAdvanceEpisode\(source\)/);
@@ -35,21 +36,28 @@ test('TVer completed program waits for post-roll before native advancement', () 
   assert.match(episode, /endReported/);
 });
 
-test('TVer stale or unplayable pages fail forward under native control', () => {
+test('TVer stale, expired, or redirected pages fail forward under native control', () => {
   assert.match(queue, /kNativeMediaTverStartupTimeoutMs = 30ULL \* 1000ULL/);
   assert.match(queue, /NativeMediaTverMarkNavigationStarted/);
   assert.match(queue, /NativeMediaTverMarkMediaReady/);
   assert.match(queue, /NativeMediaTverStartupExpired/);
+  assert.match(queue, /!NativeMediaTverSourceMatchesEpisode\(source, state\.currentEpisodeId\)/);
+  assert.match(queue, /return true;/);
+  assert.match(queue, /missingFromLatest/);
+  assert.match(queue, /state\.rejectedEpisodeIds\.push_back\(state\.currentEpisodeId\)/);
+  assert.match(queue, /state\.lastAttemptAt = 0;/);
   assert.match(host, /NativeMediaTverStartupExpired\(source, now\)/);
   assert.match(host, /NativeMediaTverAdvanceEpisode\(source\)/);
   assert.doesNotMatch(queue, /document\.querySelectorAll|setTimeout|setInterval/);
 });
 
-test('TVer cloud refresh preserves the selected episode and consumed prefix natively', () => {
-  assert.match(queue, /Never interrupt an episode that is already selected/);
-  assert.match(queue, /NativeMediaTverContainsId\(state\.consumedEpisodeIds, id\)/);
-  assert.match(queue, /state\.currentEpisodeId/);
-  assert.match(queue, /state\.latestEpisodeIds/);
+test('TVer queue never retries an episode rejected after an id redirect', () => {
+  assert.match(
+    queue,
+    /NativeMediaTverContainsId\(state\.rejectedEpisodeIds, id\)/,
+  );
+  assert.match(queue, /never retries an episode that redirected away from its requested id/);
+  assert.match(queue, /state\.rejectedEpisodeIds\.clear\(\)/);
   assert.match(queue, /Queue exhaustion starts a fresh cycle/);
   assert.doesNotMatch(
     queue,
