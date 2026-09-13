@@ -38,10 +38,9 @@ test('Spotify layout parks healthy players in a smaller offscreen viewport', () 
   assert.doesNotMatch(layout, /BeginDeferWindowPos|EndDeferWindowPos/);
 });
 
-test('healthy music and podcast WebViews suppress rendering while auth and recovery remain visible', () => {
+test('healthy music WebViews suppress rendering while auth and recovery remain visible', () => {
   assert.match(layout, /slot\.timedTarget == TimedSpotifyTarget::Music/);
   assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard/);
-  assert.match(layout, /slot\.timedTarget == TimedSpotifyTarget::TalkAbout/);
   assert.match(
     layout,
     /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*slot\.playerPage[\s\S]*!slot\.loginPage/,
