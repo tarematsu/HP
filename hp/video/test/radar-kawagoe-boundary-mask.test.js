@@ -79,7 +79,7 @@ test('each dry radar panel independently becomes gray and uses an aspect-safe su
 });
 
 test('radar panel labels use the requested top offset and timestamp-only content', () => {
-  assert.match(browserRadar, /const chipTop = 50;/);
+  assert.match(browserRadar, /const chipTop = 70;/);
   assert.match(browserRadar, /context\.font = "500 39px sans-serif";/);
   assert.doesNotMatch(browserRadar, /\btitle\b/);
   assert.doesNotMatch(cloudRadar, /title:/);
