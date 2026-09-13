@@ -13,69 +13,61 @@ const music = readFileSync(
 const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url), 'utf8');
 
-test('Spotify starts target before post-start shuffle/repeat convergence', () => {
+test('Spotify starts target before post-start shuffle convergence', () => {
   assert.match(wrapper, /#include "spotify_playback_mode_guards\.inc"/);
-  assert.doesNotMatch(wrapper, /spotify_shuffle_off\.inc/);
-  assert.match(header, /enum class PlaybackModeGuard/);
   assert.match(header, /bool shuffleOffVerified = false;/);
-  assert.match(header, /bool repeatOffVerified = false;/);
-  assert.match(header, /bool EnsurePlaybackModeOff\(/);
-  assert.match(guards, /kSpotifyPlaybackModesOffProbeScript/);
+  assert.match(header, /bool EnsureShuffleOff\(/);
+  assert.doesNotMatch(header, /PlaybackModeGuard|repeatOffVerified/);
+  assert.match(guards, /kSpotifyShuffleOffProbeScript/);
   assert.match(guards, /control-button-shuffle/);
-  assert.match(guards, /control-button-repeat/);
+  assert.doesNotMatch(guards, /control-button-repeat|repeatOffVerified|repeat one|disable repeat|enable repeat/i);
   assert.match(guards, /checked === 'false'/);
-  assert.match(guards, /\['true', 'mixed'\]/);
   assert.match(guards, /target->shuffleOffVerified = true;/);
-  assert.match(guards, /target->repeatOffVerified = true;/);
   assert.match(guards, /DispatchSpotifyDevToolsClick\(\*target, x, y\)/);
   assert.doesNotMatch(guards, /ClickSlotNormalizedPoint/);
   assert.doesNotMatch(guards, /MarkSlotRecovering|RecomputeForeground/);
   assert.doesNotMatch(guards, /\.click\(\)/);
   assert.match(music, /slot\.shuffleOffVerified = false;/);
-  assert.match(music, /slot\.repeatOffVerified = false;/);
+  assert.doesNotMatch(music, /repeatOffVerified|PlaybackModeGuard::Repeat|EnsurePlaybackModeOff/);
 
-  const playingGate = music.indexOf('if (slot.state == SlotState::Playing)');
-  const shuffle = music.indexOf('PlaybackModeGuard::Shuffle', playingGate);
-  const repeat = music.indexOf('PlaybackModeGuard::Repeat', shuffle);
-  const reconcile = music.indexOf('kSpotifyStaticTrackReconcileScript', repeat);
-  assert.ok(
-    playingGate >= 0 && shuffle > playingGate && repeat > shuffle && reconcile > repeat,
-  );
+  const playingGate = music.indexOf('slot.state == SlotState::Playing');
+  const shuffle = music.indexOf('EnsureShuffleOff(slot)', playingGate);
+  const reconcile = music.indexOf('kSpotifyStaticTrackReconcileScript', shuffle);
+  assert.ok(playingGate >= 0 && shuffle > playingGate && reconcile > shuffle);
 });
 
-test('healthy music stays renderable until shuffle and repeat are verified off', () => {
+test('healthy music stays renderable until shuffle is verified off', () => {
   assert.match(
     layout,
-    /const bool healthyMusicReadyToHide =[\s\S]*TimedSpotifyTarget::Music[\s\S]*slot\.shuffleOffVerified && slot\.repeatOffVerified/,
+    /const bool healthyMusicReadyToHide =[\s\S]*TimedSpotifyTarget::Music[\s\S]*slot\.shuffleOffVerified/,
+  );
+  assert.doesNotMatch(layout, /repeatOffVerified/);
+  assert.match(
+    layout,
+    /const bool lowPowerPlayback =[\s\S]*\(healthyMusicReadyToHide \|\| healthyPodcastReadyToHide\)/,
   );
   assert.match(
     layout,
-    /const bool suppressHealthyRendering =[\s\S]*\(healthyMusicReadyToHide \|\| healthyPodcastReadyToHide\)/,
-  );
-  assert.match(
-    layout,
-    /put_IsVisible\(suppressHealthyRendering \? FALSE : TRUE\)/,
+    /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/,
   );
   assert.match(
     guards,
-    /target->shuffleOffVerified = true;[\s\S]*target->repeatOffVerified = true;[\s\S]*PlaceHosts\(\)/,
+    /target->shuffleOffVerified = true;[\s\S]*PlaceHosts\(\)/,
   );
   assert.match(guards, /RefreshSpotifyHostLayout\(\) can legitimately early-return/);
 });
 
-test('shuffle and repeat are inspected in one JavaScript round trip', () => {
+test('shuffle uses one JavaScript probe and never inspects repeat', () => {
   assert.equal(
-    (guards.match(/ExecuteScript\(\s*kSpotifyPlaybackModesOffProbeScript/g) || []).length,
+    (guards.match(/ExecuteScript\(\s*kSpotifyShuffleOffProbeScript/g) || []).length,
     1,
   );
-  assert.doesNotMatch(guards, /kSpotifyShuffleOffProbeScript|kSpotifyRepeatOffProbeScript/);
-  assert.match(guards, /const shuffle = inspect\('control-button-shuffle', \['true'\]\)/);
-  assert.match(guards, /const repeat = inspect\('control-button-repeat', \['true', 'mixed'\]\)/);
-  assert.match(guards, /return shuffle\.off && repeat\.off/);
+  assert.match(guards, /control-button-shuffle/);
+  assert.doesNotMatch(guards, /control-button-repeat|repeat one|disable repeat|enable repeat/i);
 });
 
-test('unmounted controls stay pending without demoting confirmed playback', () => {
-  assert.match(guards, /if \(!button\) return \{ off: false, point: null \}/);
+test('unmounted shuffle control stays pending without demoting confirmed playback', () => {
+  assert.match(guards, /if \(!button\) return false/);
   assert.match(guards, /if \(value == L"false"\)/);
   assert.match(guards, /ArmRobustScheduler\(\);[\s\S]*return S_OK;/);
   assert.doesNotMatch(guards, /MarkSlotRecovering|RecomputeForeground/);
