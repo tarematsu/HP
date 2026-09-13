@@ -40,11 +40,14 @@ void SpotifyWebViews::Start() noexcept {
 
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
+  SetSpotifyPlaybackTelemetrySource(this);
   robustSchedulerStarted_ = false;
   schedulerHost_.store(nullptr, std::memory_order_release);
   schedulerWakePosted_.store(false, std::memory_order_release);
   schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
+  lastPlaybackTelemetryPostTick_ = 0;
+  playbackTelemetryDirty_ = false;
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
   hostLayoutAuthenticationSlot_ = kAccountCount;
@@ -65,6 +68,7 @@ void SpotifyWebViews::Start() noexcept {
     slot.timedCompletionDeadlineGeneration = 0;
     slot.timedInterruptionStartTick = 0;
     slot.timedRotationActive = false;
+    slot.lastPlaybackStartedAt = 0;
     if (!CreateHost(slot)) continue;
   }
 
@@ -73,6 +77,7 @@ void SpotifyWebViews::Start() noexcept {
   }
   Resize();
   StartAutonomousSchedule(GetTickCount64());
+  NotifyPlaybackTelemetryChanged();
 }
 
 void SpotifyWebViews::RecomputeForeground() noexcept {
@@ -143,6 +148,7 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.timedCompletionDeadlineGeneration = 0;
   slot.timedInterruptionStartTick = 0;
   slot.timedRotationActive = false;
+  slot.lastPlaybackStartedAt = 0;
   slot.state = SlotState::NotCreated;
   slot.unhealthySinceTick = 0;
   slot.playerPage = false;
@@ -166,6 +172,8 @@ void SpotifyWebViews::Shutdown() noexcept {
   robustSchedulerStarted_ = false;
   schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
+  playbackTelemetryDirty_ = false;
+  SetSpotifyPlaybackTelemetrySource(nullptr);
 }
 
 LRESULT CALLBACK SpotifyWebViews::HostWndProc(
