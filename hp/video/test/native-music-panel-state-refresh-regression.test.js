@@ -7,22 +7,14 @@ const panelStateSource = readFileSync(
   'utf8',
 );
 
-test('Stationhead status remains cached without repainting the radar card', () => {
-  assert.match(
-    panelStateSource,
-    /const bool stationheadChanged = nativeStationhead_ != state\.stationhead;/,
-  );
-  assert.match(
-    panelStateSource,
-    /if \(stationheadChanged\) nativeStationhead_ = state\.stationhead;/,
-  );
-  assert.doesNotMatch(panelStateSource, /PanelSection::Music/);
+test('Stationhead status remains cached without retired panel work', () => {
   const updateFunction = panelStateSource.match(
     /void Renderer::UpdateNativeStaticPanels\([\s\S]*?\n\}/,
   )?.[0] ?? '';
-  assert.doesNotMatch(updateFunction, /PanelSection::Radar/);
-  assert.doesNotMatch(
-    panelStateSource,
-    /const bool stationheadChanged =[\s\S]{0,500}nativeStationhead_\.contentRevision !=/,
+  assert.match(
+    updateFunction,
+    /if \(nativeStationhead_ != state\.stationhead\) \{[\s\S]*nativeStationhead_ = state\.stationhead;/,
   );
+  assert.doesNotMatch(updateFunction, /stationheadPlayHistory|PanelSection::Radar|PanelSection::Music/);
+  assert.doesNotMatch(panelStateSource, /GlobalStationheadNativeStatsStore|StationheadRevisionCache/);
 });
