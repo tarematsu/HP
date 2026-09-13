@@ -157,37 +157,30 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                                   ICoreWebView2NavigationStartingEventArgs* args)
                 -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
-              ++target->reconcileRequestGeneration;
-              if (target->reconcileRequestGeneration == 0) {
-                ++target->reconcileRequestGeneration;
-              }
-              target->reconcileInFlight = false;
-              target->reconcileStartedTick = 0;
-              ++target->timedObserverInstallGeneration;
-              if (target->timedObserverInstallGeneration == 0) {
-                ++target->timedObserverInstallGeneration;
-              }
-              target->timedObserverInstallStartedTick = 0;
-              ++target->trustedClickGeneration;
-              if (target->trustedClickGeneration == 0) {
-                ++target->trustedClickGeneration;
-              }
-              target->trustedClickTargetGeneration = 0;
+              ++target->pageEpoch;
+              if (target->pageEpoch == 0) ++target->pageEpoch;
+              ++target->asyncEpoch;
+              if (target->asyncEpoch == 0) ++target->asyncEpoch;
+              target->asyncWork = AsyncWork::None;
+              target->asyncStartedTick = 0;
               target->trustedClickBlockedUntilTick = 0;
               target->playerPage = false;
               target->loginPage = false;
               target->authenticationBadgeTick = 0;
               target->timedObserverReady = false;
-              target->timedObserverInstallInFlight = false;
               LPWSTR rawUri = nullptr;
               if (SUCCEEDED(args->get_Uri(&rawUri)) && rawUri) {
                 target->playerPage = IsSpotifyPlayerUri(rawUri);
                 target->loginPage = IsSpotifyLoginUri(rawUri);
                 CoTaskMemFree(rawUri);
               }
+              const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, target->loginPage
                   ? SlotState::Authenticating
                   : SlotState::Navigating);
+              if (!target->loginPage) {
+                target->nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
+              }
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
@@ -222,24 +215,32 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               }
               target->playerPage = playerPage;
               target->loginPage = loginPage;
+              const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, loginPage
                   ? SlotState::Authenticating
                   : (playerPage ? SlotState::WaitingTarget
                                 : SlotState::Navigating));
+              target->nextRecoveryTick = playerPage || loginPage
+                  ? 0
+                  : now + kSpotifyRecoveryRetryMs;
               RecomputeForeground();
               if (!playerPage) {
                 ArmRobustScheduler();
                 return S_OK;
               }
 
+              const ULONGLONG pageEpoch = target->pageEpoch;
               const HRESULT bootstrap = sender->ExecuteScript(
                   kSpotifyStaticPageBootstrapScript,
                   Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-                      [this, alive, target](HRESULT result, LPCWSTR) -> HRESULT {
+                      [this, alive, target, pageEpoch](HRESULT result, LPCWSTR)
+                          -> HRESULT {
                         if (!alive->load(std::memory_order_acquire) ||
-                            FAILED(result) || !started_ || !target->webview) {
-                          if (alive->load(std::memory_order_acquire) &&
-                              started_ && target->webview) {
+                            target->pageEpoch != pageEpoch) {
+                          return S_OK;
+                        }
+                        if (FAILED(result) || !started_ || !target->webview) {
+                          if (started_ && target->webview) {
                             MarkSlotRecovering(*target, GetTickCount64());
                             ArmRobustScheduler();
                           }
@@ -260,8 +261,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     RECT client{};
     GetClientRect(slot.hostWindow, &client);
     slot.controller->put_Bounds(client);
-    // Keeping WebView2 visible avoids background suspension. The HWND itself is
-    // parked outside the dashboard when this slot does not own recovery.
     slot.controller->put_IsVisible(TRUE);
     SetSlotState(slot, SlotState::Authenticating);
     slot.webview->Navigate(kSpotifyLoginUrl);
