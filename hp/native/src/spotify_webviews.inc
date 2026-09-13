@@ -25,6 +25,7 @@
 #undef kSpotifyStaticTrackReconcileScript
 
 #include "spotify_timed_end_rotation.inc"
+#include "spotify_music_deadline_events.inc"
 
 namespace hp {
 #include "spotify_stagger_schedule.inc"
