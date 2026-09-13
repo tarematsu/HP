@@ -1,8 +1,7 @@
 // Event-driven YouTube wake agent.
 //
-// The expensive recovery policy remains native-owned and trusted-input based.
-// This page-local helper reports only meaningful player-state transitions, so
-// repeated DOM mutations do not bounce through WebView2/native unnecessarily.
+// Keep the page helper event-led: media and SPA events cover playback changes,
+// while one MutationObserver handles the two small DOM surfaces that need it.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
 (() => {
@@ -15,8 +14,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   const existing = window.__homePanelYoutubeEventAgent;
   if (existing && existing.player === player) return true;
   if (existing) {
-    try { existing.classObserver?.disconnect(); } catch (_) {}
-    try { existing.popupObserver?.disconnect(); } catch (_) {}
+    try { existing.observer?.disconnect(); } catch (_) {}
     try {
       if (existing.navigationHandler) {
         document.removeEventListener(
@@ -35,10 +33,9 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     wakeAt: 0,
     wakeTimer: 0,
     recoveryTimer: 0,
+    forceWake: false,
     lastWakeSignature: '',
-    pendingWakeDirty: false,
-    classObserver: null,
-    popupObserver: null,
+    observer: null,
     navigationHandler: null,
     adActive: player.classList.contains('ad-showing') ||
         player.classList.contains('ad-interrupting'),
@@ -94,9 +91,8 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   const dismissMessageDialog = () => {
     const now = Date.now();
     if (now - state.dialogCloseAt < 500) return false;
-    const scopes = [player, document.querySelector('ytd-popup-container')]
-        .filter(Boolean);
-    for (const scope of scopes) {
+    for (const scope of [player, document.querySelector('ytd-popup-container')]) {
+      if (!scope) continue;
       for (const root of scope.querySelectorAll(messageDialogSelector)) {
         if (!root.getClientRects().length || isSurveyDialog(root)) continue;
         const close = Array.from(root.querySelectorAll(messageControlSelector))
@@ -129,46 +125,25 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   const postWake = nextSignature => {
     state.wakeAt = Date.now();
     state.lastWakeSignature = nextSignature;
-    state.pendingWakeDirty = false;
     try {
       window.chrome?.webview?.postMessage('homepanel:youtube-wake');
     } catch (_) {}
   };
 
-  // Coalesce bursts into one trailing notification and suppress an unchanged
-  // state entirely. If a trailing wake is already armed, avoid rescanning the
-  // player for every event; compute the expensive signature once at flush.
+  // One timer coalesces event bursts. The signature is computed only once when
+  // that timer fires, and identical states do not cross the WebView2 boundary.
   const wake = (force = false) => {
-    const delay = Math.max(0, 250 - (Date.now() - state.wakeAt));
-    if (!force && delay > 0 && state.wakeTimer) {
-      state.pendingWakeDirty = true;
-      return;
-    }
-
-    const nextSignature = signature();
-    if (!force && nextSignature === state.lastWakeSignature && !state.wakeTimer) {
-      return;
-    }
-    state.pendingWakeDirty = true;
-    if (delay === 0) {
-      if (state.wakeTimer) {
-        clearTimeout(state.wakeTimer);
-        state.wakeTimer = 0;
-      }
-      if (force || nextSignature !== state.lastWakeSignature) {
-        postWake(nextSignature);
-      } else {
-        state.pendingWakeDirty = false;
-      }
-      return;
-    }
+    state.forceWake ||= force;
     if (state.wakeTimer) return;
+    const delay = Math.max(0, 250 - (Date.now() - state.wakeAt));
     state.wakeTimer = setTimeout(() => {
       state.wakeTimer = 0;
-      if (!state.pendingWakeDirty) return;
-      const pending = signature();
-      state.pendingWakeDirty = false;
-      if (pending !== state.lastWakeSignature) postWake(pending);
+      const nextSignature = signature();
+      const forced = state.forceWake;
+      state.forceWake = false;
+      if (forced || nextSignature !== state.lastWakeSignature) {
+        postWake(nextSignature);
+      }
     }, delay);
   };
   state.wake = wake;
@@ -183,8 +158,6 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     clearRecoveryWake();
     state.recoveryTimer = setTimeout(() => {
       state.recoveryTimer = 0;
-      // The player state can remain bit-for-bit identical while it is stuck, so
-      // this delayed escalation intentionally bypasses signature suppression.
       wake(true);
     }, delayMs);
   };
@@ -215,13 +188,9 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     wake(true);
   };
 
-  // YouTube already emits SPA navigation events. Use those plus media events
-  // instead of observing the entire #movie_player subtree, which mutates heavily
-  // during normal playback and ads.
   state.navigationHandler = () => {
     bindVideo();
-    if (dismissMessageDialog()) wake(true);
-    else wake(true);
+    wake(dismissMessageDialog());
   };
   document.addEventListener(
       'yt-navigate-finish', state.navigationHandler, true);
@@ -229,10 +198,8 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
       'yt-page-data-updated', state.navigationHandler, true);
 
   if (typeof MutationObserver === 'function') {
-    // Ad transitions are represented on the player itself. A delayed wake after
-    // entering an ad gives the skip control time to appear without a subtree
-    // observer continuously walking ad DOM mutations.
-    state.classObserver = new MutationObserver(() => {
+    const popupContainer = document.querySelector('ytd-popup-container');
+    state.observer = new MutationObserver(() => {
       const nextAdActive = player.classList.contains('ad-showing') ||
           player.classList.contains('ad-interrupting');
       if (nextAdActive !== state.adActive) {
@@ -243,21 +210,14 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
           clearRecoveryWake();
         }
       }
-      wake();
+      wake(dismissMessageDialog());
     });
-    state.classObserver.observe(player, {
+    state.observer.observe(player, {
       attributes: true,
       attributeFilter: ['class']
     });
-
-    // Message windows are rendered in YouTube's dedicated popup host. Observe
-    // only that host; do not add a page-wide MutationObserver.
-    const popupContainer = document.querySelector('ytd-popup-container');
     if (popupContainer) {
-      state.popupObserver = new MutationObserver(() => {
-        if (dismissMessageDialog()) wake(true);
-      });
-      state.popupObserver.observe(popupContainer, {
+      state.observer.observe(popupContainer, {
         childList: true,
         subtree: true,
         attributes: true,
@@ -269,8 +229,7 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   document.addEventListener('fullscreenchange', () => wake(), true);
   document.addEventListener('webkitfullscreenchange', () => wake(), true);
   bindVideo();
-  if (dismissMessageDialog()) wake(true);
-  else wake(true);
+  wake(dismissMessageDialog());
   return true;
 })()
 )JS";
