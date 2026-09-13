@@ -1,4 +1,9 @@
 namespace hp {
+namespace {
+
+constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 5ULL * 1000ULL;
+
+}  // namespace
 
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow) ||
@@ -230,6 +235,29 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               if (!playerPage) {
                 ArmRobustScheduler();
                 return S_OK;
+              }
+
+              // Cloud-managed music durations make target progression independent
+              // from Spotify's media-start/ended events. Once the requested track
+              // page has loaded successfully, arm one immutable native deadline
+              // for this target generation. A small grace window covers the gap
+              // between document completion and Spotify beginning audible media.
+              if (target->timedRotationActive &&
+                  target->timedTarget == TimedSpotifyTarget::Music &&
+                  target->timedCompletionDeadlineTick == 0 &&
+                  target->timedRotationPosition < target->timedCycleTracks.size() &&
+                  SlotMatchesMusicTarget(*target)) {
+                const ULONGLONG durationMs =
+                    target->timedCycleTracks[target->timedRotationPosition]
+                        .durationMs;
+                if (durationMs > 0) {
+                  const ULONGLONG now = GetTickCount64();
+                  target->timedCompletionDeadlineTick =
+                      now + durationMs + kSpotifyNavigationCompletionGraceMs;
+                  target->timedCompletionDeadlineGeneration =
+                      target->targetGeneration;
+                  ArmCompletionDeadlineTimer();
+                }
               }
 
               const HRESULT bootstrap = sender->ExecuteScript(
