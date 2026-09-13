@@ -1,9 +1,4 @@
 namespace hp {
-namespace {
-
-constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 5ULL * 1000ULL;
-
-}  // namespace
 
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow) ||
@@ -235,33 +230,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               if (!playerPage) {
                 ArmRobustScheduler();
                 return S_OK;
-              }
-
-              // Cloud-managed music duration owns the normal completion time.
-              // NavigateMusicTarget already armed a five-minute safety deadline;
-              // once the requested page is confirmed, shorten that deadline to
-              // duration + grace when the cloud metadata gives an earlier time.
-              if (target->timedRotationActive &&
-                  target->timedTarget == TimedSpotifyTarget::Music &&
-                  target->timedRotationPosition < target->timedCycleTracks.size() &&
-                  SlotMatchesMusicTarget(*target)) {
-                const ULONGLONG durationMs =
-                    target->timedCycleTracks[target->timedRotationPosition]
-                        .durationMs;
-                if (durationMs > 0) {
-                  const ULONGLONG now = GetTickCount64();
-                  const ULONGLONG durationDeadline =
-                      now + durationMs + kSpotifyNavigationCompletionGraceMs;
-                  if (target->timedCompletionDeadlineTick == 0 ||
-                      target->timedCompletionDeadlineGeneration !=
-                          target->targetGeneration ||
-                      durationDeadline < target->timedCompletionDeadlineTick) {
-                    target->timedCompletionDeadlineTick = durationDeadline;
-                    target->timedCompletionDeadlineGeneration =
-                        target->targetGeneration;
-                    ArmCompletionDeadlineTimer();
-                  }
-                }
               }
 
               const HRESULT bootstrap = sender->ExecuteScript(
