@@ -72,7 +72,7 @@ test('due native deadline advances the rotation without asking Spotify again', (
 
   assert.match(due, /SpotifyDeadlineWithInterruptionHold/);
   assert.match(due, /effectiveDeadline > now/);
-  assert.match(due, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(due, /AdvanceTimedRotationSlot\(slot\)/);
   assert.match(due, /ArmCompletionDeadlineTimer\(\)/);
   assert.doesNotMatch(due, /PostWebMessageAsString/);
   assert.doesNotMatch(due, /slot\.webview/);
