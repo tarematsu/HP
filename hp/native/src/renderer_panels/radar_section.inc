@@ -49,13 +49,14 @@ void Renderer::DrawRadarSection(HDC dc, const RECT& card) {
         DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
     const int chipPadX = std::max(8, SpanX(bounds, 8));
     const int chipPadY = std::max(4, SpanY(bounds, 8));
-    const int chipMargin = std::max(10, SpanY(bounds, 25));
+    const int chipMarginX = std::max(10, SpanY(bounds, 25));
+    const int chipMarginY = std::max(1, SpanY(bounds, 2));
     const RECT chip{
-        bounds.left + chipMargin,
-        bounds.top + chipMargin,
-        bounds.left + chipMargin +
+        bounds.left + chipMarginX,
+        bounds.top + chipMarginY,
+        bounds.left + chipMarginX +
             (measure.right - measure.left) + chipPadX * 2,
-        bounds.top + chipMargin +
+        bounds.top + chipMarginY +
             (measure.bottom - measure.top) + chipPadY * 2};
     FillRoundRectTranslucent(
         dc, chip, RGB(0, 0, 0), chip.bottom - chip.top, 150);

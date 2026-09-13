@@ -45,3 +45,11 @@ test('native radar renders only in the semantic radar section', () => {
   assert.match(radarSection, /StretchRadarInto\(dc, bounds, radarFrameBitmap_\)/);
   assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Radar\)/);
 });
+
+test('radar time chip is raised without changing its horizontal inset', () => {
+  assert.match(radarSection, /const int chipMarginX = std::max\(10, SpanY\(bounds, 25\)\)/);
+  assert.match(radarSection, /const int chipMarginY = std::max\(1, SpanY\(bounds, 2\)\)/);
+  assert.match(radarSection, /bounds\.left \+ chipMarginX/);
+  assert.match(radarSection, /bounds\.top \+ chipMarginY/);
+  assert.doesNotMatch(radarSection, /const int chipMargin =/);
+});
