@@ -1,10 +1,8 @@
 namespace hp {
 namespace {
 
-// Owns target identity and observer state. Playback recovery and completion
-// detection are intentionally excluded: this observer only recognizes the
-// requested target, reports one validated start, and measures explicit non-track
-// playback interruptions so native can preserve the requested song's play time.
+// Owns only the current track identity, one validated start notification and
+// explicit non-track interruption timing. Recovery/navigation remain native.
 constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverRuntime) return true;
@@ -20,10 +18,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   };
   const state = {
     key: '',
-    started: false,
     startPosted: false,
     targetMedia: null,
-    lastIdentityCheckTime: -1,
     trustedStartKey: '',
     trustedStartUntil: 0,
     identityFallbackTimer: 0,
@@ -49,8 +45,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     } catch (_) {}
   };
   const targetKey = target => target
-      ? [target.pagePath, target.trackPath, normalize(target.title),
-         target.kind, generation()].join('|')
+      ? [target.path, normalize(target.title), generation()].join('|')
       : '';
   const clearIdentityFallback = () => {
     if (state.identityFallbackTimer) clearTimeout(state.identityFallbackTimer);
@@ -81,10 +76,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   const resetState = key => {
     clearIdentityFallback();
     state.key = key;
-    state.started = false;
     state.startPosted = false;
     state.targetMedia = null;
-    state.lastIdentityCheckTime = -1;
     state.trustedStartKey = '';
     state.trustedStartUntil = 0;
     clearInterruption();
@@ -115,8 +108,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   };
   const matchesTarget = (target, track) => {
     if (!target) return false;
-    if (target.trackPath && track.path) {
-      return sameTrackPath(track.path, target.trackPath);
+    if (target.path && track.path) {
+      return sameTrackPath(track.path, target.path);
     }
     return !!target.title && track.title === normalize(target.title);
   };
@@ -138,7 +131,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     const target = syncTarget();
     const requested = String(requestedGeneration || '0');
     if (requested === '0' || requested !== generation() ||
-        !target || target.kind !== 'music' || !target.pagePath) {
+        !target || !target.path) {
       return false;
     }
     state.trustedStartKey = targetKey(target);
@@ -157,49 +150,32 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     clearTrustedStart();
     return true;
   };
-)JS"
-LR"JS(
 
-  // Identity validation normally requires the now-playing surface or
-  // MediaSession metadata. Immediately after native has verified and clicked an
-  // explicit Play-labelled target control, however, Spotify can begin the
-  // correct audio before either identity surface is populated. That single
-  // transition is accepted through a generation-scoped, short-lived trusted
-  // start token. An explicitly identified wrong track is never trusted.
   const enforceTarget = media => {
     const target = syncTarget();
-    if (!target || target.kind !== 'music' || !target.pagePath ||
-        !isMedia(media) || media.ended) {
+    if (!target || !target.path || !isMedia(media) || media.ended) {
       return 'ignore';
     }
 
     const identity = currentTrack();
     const targetIdentityConfirmed = matchesTarget(target, identity);
-    const ownsTrustedMedia = state.started && state.targetMedia === media;
+    const ownsMedia = state.targetMedia === media;
     if (!identity.path && !identity.title) {
-      if (!ownsTrustedMedia) {
+      if (!ownsMedia) {
         if (media.paused || !consumeTrustedStart(target)) return 'unknown';
       }
-    } else if (!matchesTarget(target, identity)) {
+    } else if (!targetIdentityConfirmed) {
       clearTrustedStart();
-
-      // Inserted ads normally expose active media and metadata but no /track/
-      // identity. Keep that provisional until the requested track resumes. A
-      // concrete different /track/ is a wrong song, not billable interruption
-      // time, so it cancels the provisional hold immediately.
       if (!media.paused && !identity.path) {
         beginInterruption();
-        if (!state.startPosted) return 'unknown';
-        return 'interruption';
+        return state.startPosted ? 'interruption' : 'unknown';
       }
       cancelInterruption();
-      if (!state.startPosted) return 'unknown';
-      return 'wrong';
+      return state.startPosted ? 'wrong' : 'unknown';
     }
 
     if (media.paused) return 'target';
     if (targetIdentityConfirmed) completeInterruption();
-    state.started = true;
     state.targetMedia = media;
     if (!state.startPosted) {
       const remainingMs = remainingDurationMs(media);
@@ -211,18 +187,14 @@ LR"JS(
     return 'playing';
   };
 
-  const checkTarget = media => enforceTarget(media);
   const scheduleTargetChecks = media => {
-    const status = checkTarget(media);
+    const status = enforceTarget(media);
     if (status === 'playing' || status === 'ignore' ||
         status === 'interruption') {
       clearIdentityFallback();
       return;
     }
 
-    // Spotify normally supplies identity from the same media lifecycle event.
-    // Keep only one coalesced delayed fallback for the short window where the
-    // now-playing surface and MediaSession metadata lag behind audio start.
     clearIdentityFallback();
     state.identityFallbackMedia = media;
     state.identityFallbackKey = state.key;
@@ -233,7 +205,7 @@ LR"JS(
       state.identityFallbackMedia = null;
       state.identityFallbackKey = '';
       if (expectedMedia !== media || expectedKey !== state.key) return;
-      checkTarget(media);
+      enforceTarget(media);
     }, 1500);
   };
 
@@ -243,7 +215,6 @@ LR"JS(
     syncTarget,
     isMedia,
     armTrustedStart,
-    enforceTarget,
     scheduleTargetChecks,
     eventsInstalled: false
   };
