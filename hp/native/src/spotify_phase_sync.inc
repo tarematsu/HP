@@ -159,6 +159,7 @@ void SpotifyWebViews::ArmCompletionDeadlineTimer() noexcept {
 UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
   if (!robustSchedulerStarted_) return kSpotifyRobustUrgentTickMs;
+  if (!initialCloudPlaylistReady_) return kSpotifyRobustUrgentTickMs;
 
   ULONGLONG nextDeadlineMs = kSpotifyRobustHealthyTickMs;
   for (const Slot& slot : slots_) {
