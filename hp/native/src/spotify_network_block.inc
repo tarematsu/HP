@@ -17,6 +17,12 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     hostLayoutMask_ = ~0u;
     hostLayoutActiveSlot_ = kAccountCount;
     hostLayoutAuthenticationSlot_ = kAccountCount;
+
+    // A hard network block cannot rely on the stopped Spotify scheduler to
+    // flush a coalesced update, so publish this availability change immediately.
+    playbackTelemetryDirty_ = true;
+    lastPlaybackTelemetryPostTick_ = 0;
+    MaybePostPlaybackTelemetryChanged(GetTickCount64());
     return;
   }
 
@@ -45,6 +51,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     slot.timedCompletionDeadlineGeneration = 0;
     slot.timedInterruptionStartTick = 0;
     slot.timedRotationActive = false;
+    slot.lastPlaybackStartedAt = 0;
     slot.reconcileInFlight = false;
     slot.targetGeneration = 0;
     if (!CreateHost(slot)) continue;
@@ -55,6 +62,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
   }
   Resize();
   StartAutonomousSchedule(GetTickCount64());
+  NotifyPlaybackTelemetryChanged();
 }
 
 }  // namespace hp
