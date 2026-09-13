@@ -77,7 +77,6 @@ bool ParseSpotifyInterruptionEndedEvent(
 }  // namespace
 
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
-  slot.podcastBreakActive = false;
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
@@ -90,13 +89,7 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   }
 
   slot.timedRotationPosition %= slot.timedCycleTracks.size();
-  const ManagedTrack& target = slot.timedCycleTracks[slot.timedRotationPosition];
-  const bool talkAboutTarget =
-      SpotifyPodcastTargetReady() && target.path == SpotifyPodcastPath();
-  slot.podcastBreakActive = talkAboutTarget;
-  slot.timedTarget = talkAboutTarget
-      ? TimedSpotifyTarget::TalkAbout
-      : TimedSpotifyTarget::Music;
+  slot.timedTarget = TimedSpotifyTarget::Music;
   BumpSpotifyTargetGeneration(slot);
   slot.unhealthySinceTick = 0;
   SetSlotState(slot, SlotState::WaitingTarget);
@@ -108,7 +101,6 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
 void SpotifyWebViews::InitializeTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   slot.timedRotationActive = true;
-  slot.podcastBreakActive = false;
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
@@ -121,16 +113,9 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   NavigateActiveTimedSlot(slot);
 }
 
-void SpotifyWebViews::CompletePodcastBreak(
-    Slot& slot, ULONGLONG now) noexcept {
-  if (!slot.timedRotationActive || !slot.podcastBreakActive) return;
-  slot.podcastBreakActive = false;
-  AdvanceTimedRotationSlot(slot, now);
-}
-
 void SpotifyWebViews::AdvanceTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
-  if (!slot.timedRotationActive || slot.podcastBreakActive) return;
+  if (!slot.timedRotationActive) return;
 
   std::wstring completedPath;
   if (slot.timedRotationPosition < slot.timedCycleTracks.size()) {
@@ -210,8 +195,7 @@ void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
-  if (!slot.webview || !slot.timedRotationActive || slot.podcastBreakActive ||
-      slot.timedTarget == TimedSpotifyTarget::TalkAbout ||
+  if (!slot.webview || !slot.timedRotationActive ||
       slot.timedTarget == TimedSpotifyTarget::None) {
     return;
   }
