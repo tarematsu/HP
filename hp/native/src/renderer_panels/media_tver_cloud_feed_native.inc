@@ -1,8 +1,6 @@
 // Minimal native TVer cloud-feed client shared by queue refresh workers.
 // No series-page discovery or TVer platform API fallback lives here: the cloud
 // collector is the single source of episode selection for native playback.
-#include "../network_request_coordinator.h"
-
 namespace {
 constexpr size_t kNativeMediaTverMaximumFeedBytes = 2U * 1024U * 1024U;
 constexpr ULONGLONG kNativeMediaTverFeedSuccessTtlMs = 5ULL * 1000ULL;
