@@ -88,7 +88,7 @@ test('cycle advances only through the unified native deadline and queues navigat
 test('every cloud song uses the current ManagedTrack and one scoped reconcile path', () => {
   assert.doesNotMatch(header + music, /MusicTargetDescriptor|TimedSpotifyTarget|ResolveMusicTarget/);
   assert.match(header, /const ManagedTrack\* CurrentMusicTrack/);
-  assert.match(music, /CurrentMusicTrack\(const Slot& slot\)/);
+  assert.match(music, /CurrentMusicTrack\(\s*const Slot& slot\) const noexcept/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(music, /void SpotifyWebViews::NavigateMusicTarget/);
   assert.match(music, /void SpotifyWebViews::ReconcileMusicTarget/);
