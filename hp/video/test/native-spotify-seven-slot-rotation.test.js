@@ -69,7 +69,7 @@ test('B and E share Overture plus all seven Interludes', () => {
   );
 });
 
-test('short-song pool includes every verified short OFF VOCAL track', () => {
+test('catalog retains managed short OFF VOCAL tracks for migration', () => {
   assert.match(
     catalog,
     /SHORT_SPOTIFY_ROTATION_TRACKS\s*=\s*\[\s*\.\.\.SHORT_SPOTIFY_RANDOM_TRACKS,\s*\.\.\.OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,/s,
@@ -89,7 +89,7 @@ test('short-song pool includes every verified short OFF VOCAL track', () => {
   ]) assert.match(catalog, new RegExp(id));
 });
 
-test('short-song pool includes the eleven additional verified vocal tracks', () => {
+test('catalog retains additional verified vocal tracks for migration', () => {
   assert.match(catalog, /ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS/);
   assert.match(
     catalog,
@@ -109,6 +109,27 @@ test('short-song pool includes the eleven additional verified vocal tracks', () 
     '1QidgC1vyuG6053IY5S4UG',
   ]) assert.match(catalog, new RegExp(id));
   assert.match(catalog, /ピッカーン！/);
+});
+
+test('F and G exclude the eight removed longest tracks', () => {
+  const exclusions = catalog.slice(
+    catalog.indexOf('const SHORT_SPOTIFY_ROTATION_EXCLUDED_IDS'),
+    catalog.indexOf('// F/G use the filtered short music pool'),
+  );
+  for (const id of [
+    '7vvZ1QHTdkoEXBiOBdxdIo',
+    '3HdmFZGqZLNiCAfiNj4N84',
+    '51nXGT2UTljN9BdOgn0Utw',
+    '5DrxCKjopmd7UL1pJWqBHK',
+    '2K6uY7BaeOfuPwJNOVF3ht',
+    '5TaAgmUQuhJw4bGW4dg3KI',
+    '2hi8kIoKC8tRMDajdkoYFL',
+    '4hVECXakmpdqigQq1mJwNg',
+  ]) assert.match(exclusions, new RegExp(id));
+  assert.match(
+    catalog,
+    /\.filter\(\(\[, id\]\) => !SHORT_SPOTIFY_ROTATION_EXCLUDED_IDS\.has\(id\)\)/,
+  );
 });
 
 test('native enforces no duplicate Spotify path inside one cycle', () => {
