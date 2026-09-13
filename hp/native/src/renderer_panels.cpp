@@ -37,7 +37,7 @@ void StretchRadarIntoLowPeak(
     BitBlt(destDc, destRect.left, destRect.top, destWidth, destHeight,
            sourceDc, sourceLeft, sourceTop, SRCCOPY);
   } else {
-    StretchBlt(destDc, destRect.left, destRect.top, destWidth, destRect.bottom - destRect.top,
+    StretchBlt(destDc, destRect.left, destRect.top, destWidth, destHeight,
                sourceDc, sourceLeft, sourceTop, sourceWidth, sourceHeight,
                SRCCOPY);
   }
