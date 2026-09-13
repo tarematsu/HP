@@ -8,11 +8,12 @@ const FIRST_ID = "6Vy6hCA2CZwZalGqaX6Sew";
 const SECOND_ID = "5EjWZuODqEPQ9eq7XCmITh";
 
 describe("Spotify rotation duration resolver", () => {
-  it("keeps all 42 managed music targets addressable by trackId", () => {
+  it("keeps all 42 unique managed music targets addressable by trackId", () => {
     const rotation = managedSpotifySevenSlotRotation();
     const tracks = rotation.flatMap(group => group.tracks);
     const ids = tracks.map(track => track.trackId);
-    expect(ids).toHaveLength(42);
+    expect(rotation).toHaveLength(7);
+    expect(ids).toHaveLength(76);
     expect(new Set(ids).size).toBe(42);
     expect(ids.every(id => /^[A-Za-z0-9]{22}$/.test(id))).toBe(true);
   });
@@ -24,14 +25,10 @@ describe("Spotify rotation duration resolver", () => {
     const spotify = config.spotify as {
       managedRotation?: boolean;
       rotation?: unknown[];
-      talkAbout?: { url?: string; playbackRate?: number };
     };
     expect(spotify.managedRotation).toBe(true);
-    expect(spotify.rotation).toHaveLength(6);
-    expect(spotify.talkAbout).toEqual({
-      url: "https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed",
-      playbackRate: 3,
-    });
+    expect(spotify.rotation).toHaveLength(7);
+    expect(Object.keys(spotify).sort()).toEqual(["managedRotation", "rotation"]);
   });
 
   it("resolves exact track durations with the current single-track Web API", async () => {
