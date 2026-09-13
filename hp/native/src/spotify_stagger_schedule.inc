@@ -7,17 +7,12 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
   if (now == 0) now = GetTickCount64();
 
-  // Capture the pre-CloudClient cache state. Renderer starts Spotify immediately
-  // before CloudClient starts its first synchronization, so a subsequent file
-  // creation/replacement is an unambiguous fresh-config signal.
   BeginInitialCloudPlaylistWait(now);
   EnsureCloudPlaylistLoaded();
   robustSchedulerStarted_ = true;
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = 0;
 
-  // Only slot 0 is allowed to start controller creation immediately. Remaining
-  // accounts become queue-eligible at their ten-second startup boundaries.
   for (size_t i = 1; i < slots_.size(); ++i) {
     slots_[i].controllerCreating = false;
     slots_[i].controllerCreateTick = 0;
@@ -35,16 +30,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   EnsureCloudPlaylistLoaded();
   if (!InitialCloudPlaylistReady(now)) return;
-
-  // Startup staggering begins only after the initial cloud-config gate opens.
   if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
 
-  // Deadlines only update queue state. Navigation and DOM work are selected
-  // below so several simultaneous completions cannot fan out into parallel work.
   ProbeDueTimedCompletions(now);
   EnsureCloudPlaylistLoaded();
 
-  // Lost ExecuteScript callbacks become ordinary Recovering queue entries.
   for (Slot& candidate : slots_) {
     ExpireStaleAsyncWork(candidate, now);
   }
@@ -73,9 +63,6 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   size_t selected = count;
 
-  // First priority: explicit recovery. Round-robin scanning prevents one slow
-  // WebView from monopolizing the shared DOM lane. Controller failures honor
-  // their own cooldown and therefore cannot consume empty scheduler passes.
   for (size_t step = 0; step < count; ++step) {
     const size_t index = (scanStart + step) % count;
     const Slot& candidate = slots_[index];
@@ -88,8 +75,6 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     break;
   }
 
-  // Second priority: startup/navigation/target work already represented by the
-  // slot state. This is the implicit queue; no mirrored pending-work structure.
   if (selected == count) {
     for (size_t step = 0; step < count; ++step) {
       const size_t index = (scanStart + step) % count;
@@ -107,14 +92,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     }
   }
 
-  // No work is queued: use the 60-second healthy scheduler wake as a
-  // low-frequency safety audit, one account per wake.
   if (selected == count) {
     for (size_t step = 0; step < count; ++step) {
       const size_t index = (scanStart + step) % count;
       const Slot& candidate = slots_[index];
-      if (!startupReady(index) || !candidate.timedRotationActive ||
-          candidate.timedTarget == TimedSpotifyTarget::None ||
+      if (!startupReady(index) || !CurrentMusicTrack(candidate) ||
           SlotIsLoginPage(candidate) || !asyncIdle(candidate)) {
         continue;
       }
@@ -125,8 +107,6 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   if (selected == count) return;
 
-  // One cursor is enough: it is both the round-robin starting point and the
-  // recovery layout slot for this pass. There is no ownership lease or hold.
   schedulerCursor_ = selected;
   Slot& slot = slots_[selected];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
@@ -140,7 +120,13 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       return;
     }
     InitializeTimedRotationSlot(slot);
-    NavigateMusicTarget(slot);
+    if (CurrentMusicTrack(slot)) NavigateMusicTarget(slot);
+    return;
+  }
+
+  if (!CurrentMusicTrack(slot)) {
+    slot.timedRotationActive = false;
+    ArmRobustScheduler();
     return;
   }
 
