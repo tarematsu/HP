@@ -65,7 +65,7 @@ void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart(
   slot.timedPlaybackStartTick = playbackStartTick;
   slot.timedCompletionDeadlineTick = playbackStartTick + completionDelayMs;
   slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
-  ArmCompletionDeadlineTimer();
+  ArmRobustScheduler();
 }
 
 void SpotifyWebViews::ShortenMusicCompletionDeadlineAtEnd(
@@ -76,15 +76,15 @@ void SpotifyWebViews::ShortenMusicCompletionDeadlineAtEnd(
     return;
   }
 
-  // Best-effort ended detection never creates a second timer. It only moves the
-  // generation's existing unified deadline earlier; the normal deadline probe
-  // remains the sole transition path to the next target.
+  // Best-effort ended detection never creates a second completion path. It only
+  // moves the generation's existing deadline earlier and re-arms the one shared
+  // scheduler timer that owns every timed Spotify wake-up.
   if (slot.timedCompletionDeadlineTick == 0 ||
       slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
       slot.timedCompletionDeadlineTick > endedTick) {
     slot.timedCompletionDeadlineTick = endedTick;
     slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
-    ArmCompletionDeadlineTimer();
+    ArmRobustScheduler();
   }
 }
 
