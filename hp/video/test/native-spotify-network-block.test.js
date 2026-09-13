@@ -26,11 +26,14 @@ test('Spotify network block destroys all configured WebView/controller slots', (
   assert.match(network, /for \(Slot& slot : slots_\) CloseSlot\(slot\)/);
 });
 
-test('Spotify unmute uses a fresh async generation and recreates every configured host', () => {
+test('Spotify unmute uses a fresh async generation and resets the single-track playback state', () => {
   assert.match(network, /alive_ = std::make_shared<std::atomic<bool>>\(true\)/);
   assert.match(network, /for \(Slot& slot : slots_\)[\s\S]*CreateHost\(slot\)/);
   assert.match(network, /CreateController\(slots_\[0\]\)/);
-  assert.match(network, /timedTarget = TimedSpotifyTarget::None/);
+  assert.match(network, /slot\.timedRotationActive = false/);
+  assert.match(network, /slot\.timedCompletionDeadlineTick = 0/);
+  assert.match(network, /slot\.timedInterruptionStartTick = 0/);
+  assert.doesNotMatch(network + header, /TimedSpotifyTarget|timedPlaybackStartTick/);
   assert.match(network, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
 });
 
