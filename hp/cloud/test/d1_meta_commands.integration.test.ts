@@ -116,9 +116,18 @@ describe("D1 meta and command optimizations", () => {
       await insertState(source, version, "ok", payload);
     }
     const configUpdatedAt = Date.now();
+    const configPayload = {
+      cloudPollSeconds: 900,
+      spotify: {
+        rotation: [{
+          mode: "fixed",
+          tracks: [{ title: "Fixture", url: "https://example.invalid/spotify-fixture" }],
+        }],
+      },
+    };
     await env.DB.prepare(
       "INSERT INTO device_configs(device_id,version,payload,updated_at) VALUES(?1,?2,?3,?4)",
-    ).bind("homepanel-device", 9, JSON.stringify({ cloudPollSeconds: 900 }), configUpdatedAt).run();
+    ).bind("homepanel-device", 9, JSON.stringify(configPayload), configUpdatedAt).run();
 
     const probe = await SELF.fetch(
       "https://homepanel.test/v1/device/sync?deviceId=homepanel-device&dashboardVersion=-1&radarVersion=8&switchbotVersion=5&stationheadVersion=6&stationheadHealthVersion=10&configVersion=9",
@@ -155,7 +164,7 @@ describe("D1 meta and command optimizations", () => {
         deviceId: "homepanel-device",
         version: 9,
         updatedAt: configUpdatedAt,
-        config: { cloudPollSeconds: 900 },
+        config: configPayload,
       }),
     });
   });
