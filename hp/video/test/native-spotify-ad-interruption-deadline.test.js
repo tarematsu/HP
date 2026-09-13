@@ -64,5 +64,5 @@ test('deadline expiry respects the active interruption hold then still fails for
   assert.match(probe, /SpotifyDeadlineWithInterruptionHold/);
   assert.match(probe, /effectiveDeadline > now/);
   assert.match(probe, /slot\.timedInterruptionStartTick = 0/);
-  assert.match(probe, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(probe, /AdvanceTimedRotationSlot\(slot\)/);
 });
