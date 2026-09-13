@@ -157,13 +157,7 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
-            if (json && std::wstring_view(json) == L"\"wrong\"") {
-              NavigateMusicTarget(*target);
-              return S_OK;
-            }
-
-            if (json && (std::wstring_view(json) == L"\"starting\"" ||
-                         std::wstring_view(json) == L"\"settling\"")) {
+            if (json && std::wstring_view(json) == L"\"settling\"") {
               SetSlotState(*target, SlotState::WaitingTarget);
               target->nextRecoveryTick = callbackNow + kSpotifyRecoveryRetryMs;
               RecomputeForeground();
