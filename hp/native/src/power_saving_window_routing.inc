@@ -137,6 +137,11 @@ void PowerSavingController::Attach(HWND parent) {
         HRESULT_FROM_WIN32(error), "SetWindowSubclass power saving parent");
   }
 
+  // Every fresh dashboard starts in mode A: YouTube/TVer audible and
+  // Stationhead muted. Spotify WebViews are intentionally outside this route.
+  audioMode_ = AudioMode::Media;
+  ApplyAudioMode(audioMode_);
+
   EnumChildWindows(
       parent_,
       [](HWND child, LPARAM value) -> BOOL {
