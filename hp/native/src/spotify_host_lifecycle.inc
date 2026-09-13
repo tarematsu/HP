@@ -73,7 +73,6 @@ void SpotifyWebViews::Start() noexcept {
     };
     slot.timedRotationActive = false;
     slot.podcastBreakActive = false;
-    slot.shuffleOffVerified = false;
     if (!CreateHost(slot)) continue;
   }
 
@@ -157,7 +156,6 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.loginPage = false;
   slot.timedObserverReady = false;
   slot.timedObserverInstallInFlight = false;
-  slot.shuffleOffVerified = false;
 }
 
 void SpotifyWebViews::Shutdown() noexcept {
