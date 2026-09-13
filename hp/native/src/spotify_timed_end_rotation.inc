@@ -77,7 +77,6 @@ bool ParseSpotifyInterruptionEndedEvent(
 }  // namespace
 
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
-  slot.timedCatalogIndex = kNoTimedCatalogIndex;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
   slot.timedInterruptionStartTick = 0;
@@ -98,23 +97,19 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.timedPlaybackStartTick = 0;
 }
 
-void SpotifyWebViews::InitializeTimedRotationSlot(
-    Slot& slot, ULONGLONG now) noexcept {
+void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
   slot.timedRotationActive = true;
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
   slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
-  staggerSlotIndex_ = slot.index;
-  staggerSlotStartTick_ = now;
-  staggerSlotValidated_ = false;
+  schedulerCursor_ = slot.index;
   RefreshSpotifyHostLayout();
   NavigateActiveTimedSlot(slot);
 }
 
-void SpotifyWebViews::AdvanceTimedRotationSlot(
-    Slot& slot, ULONGLONG now) noexcept {
+void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
   if (!slot.timedRotationActive) return;
 
   std::wstring completedPath;
@@ -158,9 +153,7 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
     }
   }
   ApplyTimedRotationTarget(slot);
-  staggerSlotIndex_ = slot.index;
-  staggerSlotStartTick_ = now;
-  staggerSlotValidated_ = false;
+  schedulerCursor_ = slot.index;
   RefreshSpotifyHostLayout();
   NavigateActiveTimedSlot(slot);
 }
@@ -189,7 +182,7 @@ void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
     slot.timedPlaybackStartTick = 0;
-    AdvanceTimedRotationSlot(slot, now);
+    AdvanceTimedRotationSlot(slot);
   }
   ArmCompletionDeadlineTimer();
 }
