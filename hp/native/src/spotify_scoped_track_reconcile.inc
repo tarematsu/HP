@@ -128,14 +128,14 @@ LR"JS(
   const mediaPlaybackState = () => {
     const media = Array.from(document.querySelectorAll('audio, video'));
     const active = media.find(candidate => !candidate.ended && !candidate.paused);
-    if (active) return { known: true, playing: true };
+    if (active) return { known: true, playing: true, media: active };
     const pending =
         media.find(candidate => candidate.tagName === 'AUDIO' &&
             !candidate.ended && candidate.readyState >= 1) ||
         media.find(candidate => candidate.tagName === 'AUDIO' && !candidate.ended) ||
         media.find(candidate => !candidate.ended && candidate.readyState >= 1) ||
         media.find(candidate => !candidate.ended) || null;
-    return { known: !!pending, playing: false };
+    return { known: !!pending, playing: false, media: pending };
   };
 
   if (location.hostname !== 'open.spotify.com' || !onTargetPage()) return null;
@@ -148,7 +148,14 @@ LR"JS(
   const buttonIntentValue = buttonIntent(button);
   const mediaState = mediaPlaybackState();
 
-  if (currentMatchesTarget && mediaState.known && mediaState.playing) return true;
+  if (currentMatchesTarget && mediaState.known && mediaState.playing) {
+    const runtime = window.__homePanelSpotifyMediaObserverRuntime;
+    if (runtime && typeof runtime.scheduleTargetChecks === 'function' &&
+        mediaState.media) {
+      runtime.scheduleTargetChecks(mediaState.media);
+    }
+    return true;
+  }
   if (mediaState.known && mediaState.playing) return 'settling';
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') return 'settling';
   if (buttonIntentValue === 'play') return point(button);
