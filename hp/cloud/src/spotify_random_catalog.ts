@@ -42,6 +42,7 @@ export const ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS = [
   ["ジャマイカビール", "37h3M4ZYJgSRy0cXArsH59"],
   ["承認欲求", "59G1ePHebLtol0u5upRFSZ"],
   ["なぜ　恋をして来なかったんだろう？", "2K6uY7BaeOfuPwJNOVF3ht"],
+  ["ピッカーン！", "1QidgC1vyuG6053IY5S4UG"],
 ] as const;
 
 // F/G use the complete short music pool. Instrumentals stay exclusive to B/E.
