@@ -9,7 +9,6 @@ function rawScript(file, symbol) {
   let cursor = source.indexOf(assignment);
   assert.notEqual(cursor, -1, `${symbol} assignment not found`);
   cursor += assignment.length;
-
   const opener = 'LR"JS(\n';
   const closer = '\n)JS"';
   const chunks = [];
@@ -46,71 +45,38 @@ function createHarness() {
   const timers = new Map();
   let nextTimer = 1;
   const media = new FakeMedia();
-  const track = {
-    href: 'https://open.spotify.com/track/A',
-    textContent: 'Target A',
-  };
-
+  const track = { href: 'https://open.spotify.com/track/A', textContent: 'Target A' };
   const window = {
-    __homePanelSpotifyNativeTarget: {
-      pagePath: '/track/A',
-      trackPath: '/track/A',
-      title: 'Target A',
-      kind: 'music',
-    },
-    chrome: {
-      webview: {
-        postMessage(message) {
-          messages.push(message);
-        },
-        addEventListener(type, handler) {
-          if (type === 'message') webviewListeners.push(handler);
-        },
-      },
-    },
+    __homePanelSpotifyNativeTarget: { pagePath: '/track/A', trackPath: '/track/A', title: 'Target A', kind: 'music' },
+    chrome: { webview: {
+      postMessage(message) { messages.push(message); },
+      addEventListener(type, handler) { if (type === 'message') webviewListeners.push(handler); },
+    } },
   };
   const document = {
     addEventListener(type, handler) {
       if (!listeners.has(type)) listeners.set(type, []);
       listeners.get(type).push(handler);
     },
-    querySelector() {
-      return track;
-    },
-    querySelectorAll(selector) {
-      return selector === 'audio, video' ? [media] : [];
-    },
+    querySelector() { return track; },
+    querySelectorAll(selector) { return selector === 'audio, video' ? [media] : []; },
   };
   const context = vm.createContext({
-    window,
-    document,
+    window, document,
     navigator: { mediaSession: { metadata: { title: 'Target A' } } },
     HTMLMediaElement: FakeMedia,
     location: { href: 'https://open.spotify.com/track/A' },
-    URL,
-    Number,
-    Array,
-    String,
-    Math,
-    Date,
-    setTimeout(fn) {
-      const id = nextTimer++;
-      timers.set(id, fn);
-      return id;
-    },
-    clearTimeout(id) {
-      timers.delete(id);
-    },
+    URL, Number, Array, String, Math, Date,
+    setTimeout(fn) { const id = nextTimer++; timers.set(id, fn); return id; },
+    clearTimeout(id) { timers.delete(id); },
   });
   vm.runInContext(observerScript, context);
-
   const dispatch = type => {
     for (const handler of listeners.get(type) || []) handler({ target: media });
   };
   const hostMessage = data => {
     for (const handler of webviewListeners) handler({ data });
   };
-
   return { media, messages, dispatch, hostMessage, listeners, timers };
 }
 
@@ -120,9 +86,7 @@ test('music start publishes exactly one remaining-duration event', () => {
   h.media.paused = false;
   h.media.currentTime = 100;
   h.dispatch('playing');
-
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f21\x1f80000']);
-
   h.dispatch('playing');
   h.dispatch('durationchange');
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f21\x1f80000']);
@@ -136,30 +100,28 @@ test('remaining duration accounts for playback rate once at start', () => {
   h.media.duration = 180;
   h.media.playbackRate = 2;
   h.dispatch('playing');
-
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f22\x1f60000']);
 });
 
-test('invalid duration waits for metadata instead of arming a bad timer', () => {
+test('invalid duration waits for durationchange instead of arming a bad timer', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f23');
   h.media.paused = false;
   h.media.duration = Number.NaN;
   h.dispatch('playing');
   assert.deepEqual(h.messages, []);
-
   h.media.duration = 180;
   h.media.currentTime = 1;
   h.dispatch('durationchange');
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f23\x1f179000']);
 });
 
-test('only ended is added as a completion advisory lifecycle event', () => {
+test('observer uses only playing durationchange and ended lifecycle events', () => {
   const h = createHarness();
-  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause']) {
+  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause', 'play', 'loadedmetadata']) {
     assert.equal(h.listeners.has(type), false, `${type} must not be observed`);
   }
-  for (const type of ['play', 'playing', 'loadedmetadata', 'durationchange', 'ended']) {
+  for (const type of ['playing', 'durationchange', 'ended']) {
     assert.equal(h.listeners.has(type), true, `${type} must be observed`);
   }
 });
@@ -181,10 +143,8 @@ test('rewind to zero cannot produce a second start event for the generation', ()
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f25');
   h.media.paused = false;
-  h.media.currentTime = 0;
   h.dispatch('playing');
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f25\x1f180000']);
-
   h.media.currentTime = 0.1;
   h.dispatch('playing');
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f25\x1f180000']);
