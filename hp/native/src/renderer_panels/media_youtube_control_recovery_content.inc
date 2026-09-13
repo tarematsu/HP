@@ -87,7 +87,7 @@ LR"JS(
 
   if (video?.ended) return advanceToNextPlaylistItem();
 
-  if (video && video.paused) {
+  if (video && video.paused && !video.ended) {
     if (!recoveryState.pausedSince) recoveryState.pausedSince = now;
     if (!recoveryState.playRetryAttempted) {
       recoveryState.playRetryAttempted = true;
