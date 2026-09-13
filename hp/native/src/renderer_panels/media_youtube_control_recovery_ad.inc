@@ -4,6 +4,18 @@ LR"JS(
   const trusted = window.__homePanelYoutubeTrustedAction;
   if (!player || !trusted) return null;
 
+  const requestRecoveryRecheck = () => {
+    if (!window.__homePanelYoutubePolicyRecoveryTimer) {
+      window.__homePanelYoutubePolicyRecoveryTimer = setTimeout(() => {
+        window.__homePanelYoutubePolicyRecoveryTimer = 0;
+        try {
+          window.chrome?.webview?.postMessage('homepanel:youtube-wake');
+        } catch (_) {}
+      }, 2000);
+    }
+    return 'recovery';
+  };
+
   const video = player.querySelector('video');
   const visibleError = Array.from(player.querySelectorAll(
       '.ytp-error, .ytp-error-content-wrap, .ytp-error-content, '
@@ -111,8 +123,8 @@ LR"JS(
     if (target) return trusted.arm(target, 'skip-ad', 600);
 
     // Never let an unskippable ad fall through to content playback, quality or
-    // caption mutation.
-    return 'recovery';
+    // caption mutation. Re-enter only while recovery is actually active.
+    return requestRecoveryRecheck();
   }
   if (adRecoveryState.active) {
     adRecoveryState.active = false;
