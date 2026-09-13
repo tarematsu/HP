@@ -4,6 +4,10 @@ import test from 'node:test';
 
 const catalog = readFileSync(
   new URL('../../cloud/src/spotify_random_catalog.ts', import.meta.url), 'utf8');
+const deviceSync = readFileSync(
+  new URL('../../cloud/src/device_sync.ts', import.meta.url), 'utf8');
+const durationResolver = readFileSync(
+  new URL('../../cloud/src/spotify_track_durations.ts', import.meta.url), 'utf8');
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
 const cloud = readFileSync(
@@ -13,10 +17,17 @@ const controller = readFileSync(
 const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 
-test('cloud owns the A track id and duration used by native timing', () => {
+test('cloud persists trackId and durationMs for every managed Spotify music target', () => {
   assert.match(catalog, /trackId/);
   assert.match(catalog, /6Vy6hCA2CZwZalGqaX6Sew/);
-  assert.match(catalog, /235267/);
+  assert.doesNotMatch(catalog, /235267/);
+  assert.match(durationResolver, /\/v1\/tracks\/\$\{spotifyId\}/);
+  assert.match(durationResolver, /duration_ms/);
+  assert.match(deviceSync, /spotifyRotationStoredDurations/);
+  assert.match(deviceSync, /missingDurationIds/);
+  assert.match(deviceSync, /resolveSpotifyTrackDurations/);
+  assert.match(deviceSync, /applySpotifyRotationDurations/);
+  assert.match(deviceSync, /track\.durationMs = durationMs/);
   assert.match(header, /ULONGLONG durationMs = 0/);
   assert.match(cloud, /GetNamedNumber\(L"durationMs", 0\.0\)/);
   assert.match(cloud, /track\.durationMs = static_cast<ULONGLONG>/);
