@@ -13,13 +13,25 @@ const observerModules = [
 }));
 
 function rawScript(source, symbol) {
-  const prefix = `constexpr wchar_t ${symbol}[] = LR"JS(\n`;
-  const start = source.indexOf(prefix);
-  assert.notEqual(start, -1, `${symbol} raw string not found`);
-  const bodyStart = start + prefix.length;
-  const end = source.indexOf('\n)JS";', bodyStart);
-  assert.notEqual(end, -1, `${symbol} raw string terminator not found`);
-  return source.slice(bodyStart, end);
+  const assignment = `constexpr wchar_t ${symbol}[] =`;
+  let cursor = source.indexOf(assignment);
+  assert.notEqual(cursor, -1, `${symbol} assignment not found`);
+  cursor += assignment.length;
+
+  const opener = 'LR"JS(\n';
+  const closer = '\n)JS"';
+  const chunks = [];
+  while (true) {
+    while (/\s/.test(source[cursor] || '')) cursor += 1;
+    if (!source.startsWith(opener, cursor)) break;
+    const bodyStart = cursor + opener.length;
+    const end = source.indexOf(closer, bodyStart);
+    assert.notEqual(end, -1, `${symbol} raw string terminator not found`);
+    chunks.push(source.slice(bodyStart, end));
+    cursor = end + closer.length;
+  }
+  assert.ok(chunks.length > 0, `${symbol} raw string not found`);
+  return chunks.join('\n');
 }
 
 function productionObserverScript() {
