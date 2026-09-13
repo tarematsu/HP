@@ -55,7 +55,7 @@ LR"JS(
         state.lowClickPending = false;
       } else {
         const qualityMenu = qualityControls.find(element => {
-          const label = qualityName(element).toLowerCase();
+          const label = labelOf(element).toLowerCase();
           return label === '画質' || label === '画質設定' ||
                  label === 'quality' || label === 'quality settings';
         }) || null;
