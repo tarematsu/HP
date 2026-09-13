@@ -32,8 +32,6 @@ LR"JS(
 
       const video = currentVideo();
       requestNativeMediaInit(video, state);
-      bindVideoEvents(video, state);
-      bindPlayerObserver(video);
       const advertisementActive = detectAd(video, state);
       if (advertisementActive) {
         const identity = mediaIdentity(video);
@@ -112,9 +110,9 @@ LR"JS(
       if (video.paused && !video.ended && !state.adActive) {
         try { state.requestRecoveryWake?.('initial-pause'); } catch (_) {}
       }
-      enforceVolume(video);
 
-      // Playback rate is initialized exactly once for the current video.
+      // Playback settings are initialized once for the current video. Volume
+      // changes after initialization are handled by the volumechange listener.
       if (!state.playbackSettingsApplied) {
         try {
           video.defaultPlaybackRate = playbackRate;
