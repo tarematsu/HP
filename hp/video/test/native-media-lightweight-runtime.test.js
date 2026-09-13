@@ -44,12 +44,13 @@ test('TVer progress sampling backs off during steady playback and tightens only 
   assert.match(tverEpisode, /video\.addEventListener\('timeupdate',[\s\S]*sampleProgress\(video, state\)/);
 });
 
-test('TVer event bridge suppresses duplicate native wakeups for unchanged recovery state', () => {
+test('TVer event bridge suppresses duplicate native wakeups without a revision counter', () => {
   assert.match(tverEpisode, /lastWakeSignature/);
   assert.match(tverEpisode, /pendingWakeSignature/);
   assert.match(tverEpisode, /signature === lastWakeSignature/);
   assert.match(tverEpisode, /recoveryFlags\.join\('\+'\)/);
-  assert.match(tverEpisode, /wakeNative\('ui:' \+ playerUiRevision\)/);
+  assert.match(tverEpisode, /wakeNative\('ui', true\)/);
+  assert.doesNotMatch(tverEpisode, /playerUiRevision/);
 });
 
 test('YouTube uses event wakeups with a 30-second steady watchdog backstop', () => {
@@ -58,7 +59,9 @@ test('YouTube uses event wakeups with a 30-second steady watchdog backstop', () 
   assert.match(youtubeAgent, /homepanel:youtube-wake/);
   assert.match(youtubeAgent, /addEventListener\(\s*'yt-navigate-finish'/);
   assert.match(youtubeAgent, /addEventListener\(\s*'yt-page-data-updated'/);
-  assert.doesNotMatch(youtubeAgent, /playerObserver/);
+  assert.match(youtubeAgent, /state\.observer\.observe\(player/);
+  assert.match(youtubeAgent, /state\.observer\.observe\(popupContainer/);
+  assert.doesNotMatch(youtubeAgent, /playerObserver|classObserver|popupObserver/);
   assert.match(youtubeAgent, /attributeFilter: \['class'\]/);
   assert.match(mediaWrapper, /add_WebMessageReceived/);
   assert.match(mediaWrapper, /kNativeMediaYoutubeWatchdogTimer/);
@@ -67,13 +70,14 @@ test('YouTube uses event wakeups with a 30-second steady watchdog backstop', () 
   assert.doesNotMatch(mediaPanel, /kNativeMediaPlaybackHealthTimer|ProbeYoutubeHealth/);
 });
 
-test('YouTube coalesces event bursts before crossing the WebView2 native boundary', () => {
+test('YouTube coalesces event bursts with one timer and one force bit', () => {
   assert.match(youtubeAgent, /lastWakeSignature/);
-  assert.match(youtubeAgent, /pendingWakeDirty/);
-  assert.match(youtubeAgent, /if \(!state\.pendingWakeDirty\) return/);
-  assert.match(youtubeAgent, /const pending = signature\(\)/);
-  assert.match(youtubeAgent, /nextSignature === state\.lastWakeSignature/);
+  assert.match(youtubeAgent, /forceWake/);
+  assert.match(youtubeAgent, /if \(state\.wakeTimer\) return/);
+  assert.match(youtubeAgent, /const nextSignature = signature\(\)/);
+  assert.match(youtubeAgent, /nextSignature !== state\.lastWakeSignature/);
   assert.match(youtubeAgent, /250 - \(Date\.now\(\) - state\.wakeAt\)/);
+  assert.doesNotMatch(youtubeAgent, /pendingWakeDirty/);
   assert.match(mediaWrapper, /NativeMediaReadWebViewSource\(sender, source\)/);
   assert.doesNotMatch(
     mediaWrapper,
@@ -81,14 +85,18 @@ test('YouTube coalesces event bursts before crossing the WebView2 native boundar
   );
 });
 
-test('media watchdogs use adaptive recovery state and navigation backoff', () => {
-  assert.match(mediaHost, /enum class RecoveryState \{ Healthy, Suspect, Recovering, Reloading \}/);
+test('media watchdogs share one async state and keep bounded navigation backoff', () => {
+  assert.match(mediaHost, /kWatchdogTimeoutMs = 5ULL \* 1000ULL/);
   assert.match(mediaHost, /kNavigationRetryMaxMs = 30U \* 1000U/);
   assert.match(mediaHost, /navigationRetryMs_ = std::min\(kNavigationRetryMaxMs, delayMs \* 2U\)/);
   assert.match(mediaHost, /kTverWatchdogHealthyMs = 60U \* 1000U/);
   assert.match(mediaHost, /kTverWatchdogRecoveryMs = 5U \* 1000U/);
-  assert.match(mediaHost, /uint64_t tverWatchdogRequestGeneration_ = 0/);
-  assert.match(mediaHost, /RecoveryCoolingDown\(now\)/);
+  assert.match(mediaHost, /uint64_t watchdogGeneration_ = 0/);
+  assert.match(mediaHost, /bool watchdogInFlight_ = false/);
+  assert.match(mediaHost, /BeginWatchdogProbe/);
+  assert.match(mediaHost, /FinishWatchdogProbe/);
+  assert.doesNotMatch(mediaHost, /RecoveryState|RecoveryCoolingDown/);
+  assert.doesNotMatch(mediaHost, /youtubeWatchdogRequestGeneration_|tverWatchdogRequestGeneration_/);
 });
 
 test('media WebView blocks images but leaves fonts available for stable controls', () => {
