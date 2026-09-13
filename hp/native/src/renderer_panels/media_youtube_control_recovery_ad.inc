@@ -4,7 +4,7 @@ LR"JS(
     try {
       const agent = window.__homePanelYoutubeEventAgent;
       if (typeof agent?.scheduleRecoveryWake === 'function') {
-        agent.scheduleRecoveryWake(2000);
+        window.__homePanelYoutubeEventAgent?.scheduleRecoveryWake?.(2000);
         return;
       }
 
