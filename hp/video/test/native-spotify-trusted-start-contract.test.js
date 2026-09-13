@@ -8,7 +8,7 @@ const source = name => readFileSync(
 const runtime = source('spotify_media_observer_runtime.inc');
 const click = source('spotify_background_click.inc');
 
-test('music play preflight arms trusted start before native click dispatch', () => {
+test('music play preflight always arms trusted start before native click dispatch', () => {
   const generation = click.indexOf(
     'const ULONGLONG targetGeneration = slot.targetGeneration;',
   );
@@ -18,7 +18,8 @@ test('music play preflight arms trusted start before native click dispatch', () 
 
   assert.ok(generation >= 0 && preflight > generation && arm > preflight);
   assert.ok(dispatch > arm);
-  assert.match(click, /slot\.timedTarget == TimedSpotifyTarget::Music/);
+  assert.match(click, /!CurrentMusicTrack\(slot\)/);
+  assert.doesNotMatch(click, /TimedSpotifyTarget/);
 });
 
 test('trusted start is generation scoped, short lived, and cannot override wrong identity', () => {
@@ -26,18 +27,16 @@ test('trusted start is generation scoped, short lived, and cannot override wrong
   assert.match(runtime, /requested !== generation\(\)/);
   assert.match(runtime, /state\.trustedStartUntil = Date\.now\(\) \+ 15000/);
   assert.match(runtime, /state\.trustedStartKey !== targetKey\(target\)/);
-  assert.match(runtime, /clearTrustedStart\(\);[\s\S]*if \(!state\.startPosted\) return 'unknown'/);
+  assert.match(runtime, /clearTrustedStart\(\);[\s\S]*return state\.startPosted \? 'wrong' : 'unknown'/);
 });
 
-test('once trusted media is adopted, missing Spotify metadata cannot drop start ownership', () => {
+test('once media is adopted, missing Spotify metadata cannot drop start ownership', () => {
+  assert.match(runtime, /const ownsMedia = state\.targetMedia === media/);
   assert.match(
     runtime,
-    /const ownsTrustedMedia = state\.started && state\.targetMedia === media/,
-  );
-  assert.match(
-    runtime,
-    /if \(!identity\.path && !identity\.title\) \{[\s\S]*if \(!ownsTrustedMedia\)/,
+    /if \(!identity\.path && !identity\.title\) \{[\s\S]*if \(!ownsMedia\)/,
   );
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(runtime, /state\.startPosted = true/);
+  assert.doesNotMatch(runtime, /state\.started/);
 });
