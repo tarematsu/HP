@@ -23,17 +23,7 @@ class SpotifyWebViews final {
   enum class TimedSpotifyTarget : unsigned char {
     None,
     Music,
-    // Legacy names are retained only so old reset/recovery paths compile while
-    // playback itself is driven exclusively by timedCycleTracks.
-    BitterBlue,
-    Monshirocho,
-    Munen,
-    OnMyWay,
-    LonesomeRabbit,
-    CatalogTrack,
   };
-
-  static constexpr size_t kNoTimedCatalogIndex = static_cast<size_t>(-1);
 
  private:
   static constexpr size_t kAccountCount = 6;
@@ -46,7 +36,6 @@ class SpotifyWebViews final {
     WaitingTarget,
     Playing,
     Recovering,
-    Completed,
   };
 
   struct ManagedTrack {
@@ -100,15 +89,6 @@ class SpotifyWebViews final {
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
     ULONGLONG timedCloudRotationRevision = 0;
-    // Legacy scheduler state is no longer consulted by active playback.
-    size_t timedCatalogIndex = kNoTimedCatalogIndex;
-    size_t timedRandomFIndex = kNoTimedCatalogIndex;
-    std::array<TimedSpotifyTarget, 4> timedMiddleOrder{
-        TimedSpotifyTarget::BitterBlue,
-        TimedSpotifyTarget::Monshirocho,
-        TimedSpotifyTarget::Munen,
-        TimedSpotifyTarget::OnMyWay,
-    };
     SlotState state = SlotState::NotCreated;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
@@ -177,8 +157,8 @@ class SpotifyWebViews final {
   void NavigateActiveTimedSlot(Slot& slot) noexcept;
   void ReconcileActiveTimedSlot(Slot& slot) noexcept;
   void ApplyTimedRotationTarget(Slot& slot) noexcept;
-  void InitializeTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
-  void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
+  void InitializeTimedRotationSlot(Slot& slot) noexcept;
+  void AdvanceTimedRotationSlot(Slot& slot) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void ProbeDueTimedCompletions(ULONGLONG now) noexcept;
   void RecomputeForeground() noexcept;
@@ -199,15 +179,13 @@ class SpotifyWebViews final {
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
   PTP_TIMER completionDeadlineTimer_ = nullptr;
-  size_t staggerSlotIndex_ = 0;
-  ULONGLONG staggerSlotStartTick_ = 0;
+  size_t schedulerCursor_ = 0;
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
   bool cloudPlaylistLoaded_ = false;
   bool cloudPlaylistWriteTimeKnown_ = false;
   bool initialCloudPlaylistWriteTimeKnown_ = false;
   bool initialCloudPlaylistReady_ = false;
-  bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
   size_t hostLayoutAuthenticationSlot_ = kAccountCount;
