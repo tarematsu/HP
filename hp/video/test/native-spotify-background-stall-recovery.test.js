@@ -27,13 +27,17 @@ test('runtime uses one adaptive scheduler instead of parallel background probing
   assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
 });
 
-test('only one recovery-sized Spotify owner is selected at a time', () => {
+test('recovering non-owner jumps ahead without increasing healthy polling cadence', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
   assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
-  assert.match(schedule, /staggerSlotIndex_ = scheduledIndex/);
+  assert.match(schedule, /candidate\.state != SlotState::Recovering/);
+  assert.match(schedule, /candidate\.unhealthySinceTick/);
+  assert.match(schedule, /recoveryPriorityIndex < slots_\.size\(\)/);
+  assert.match(schedule, /staggerSlotIndex_ = nextIndex/);
   assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
 });
 
 test('slow responsive layout settles before owner-only DOM reconciliation', () => {
