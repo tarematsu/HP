@@ -31,7 +31,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Window A and B interactive states are not exposed as reusable healthy playback', () => {
+test('single active Stationhead does not expose interactive state as reusable healthy playback', () => {
   const primaryHandle = section(
     handleHeader,
     'class AppStationheadHandle final',
@@ -59,28 +59,24 @@ test('Window A and B interactive states are not exposed as reusable healthy play
   assert.match(secondaryHandle, /status\.playing = false;/);
 
   const tick = section(appSource, 'void App::Tick()', 'void App::Draw()');
-  assert.match(
-    tick,
-    /secondaryAudioPlaying,[\s\S]*renderState_\.stationhead\.secondaryPlaying/,
-  );
-  assert.match(tick, /secondaryStatus = secondaryStationhead_->Status\(\);/);
+  assert.match(tick, /stationheadStatus = stationhead_->Status\(\);/);
+  assert.match(tick, /ApplyStationheadWindowPlacement\(stationheadStatus, StationheadStatus\{\}\);/);
+  assert.doesNotMatch(tick, /secondaryAudioPlaying|secondaryStationhead_->Status\(\)/);
 });
 
-test('Window B remains constrained to its right-half placement while pending', () => {
+test('single active Stationhead uses full-workspace placement while pending', () => {
   const placement = section(
     appSource,
     'void App::ApplyStationheadWindowPlacement(',
     'void App::PublishRenderState()',
   );
-  assert.match(placement, /secondaryPending = secondaryStationhead_ && !secondaryStatus\.playing;/);
-  assert.match(
-    placement,
-    /secondaryStationhead_->SetBounds\(secondaryPending \? right : bounds\);/,
-  );
-  assert.match(placement, /secondaryStationhead_->RefreshVisibility\(\);/);
+  assert.match(placement, /\(void\)secondaryStatus;/);
+  assert.match(placement, /stationhead_->SetBounds\(bounds\);/);
+  assert.match(placement, /stationhead_->RefreshVisibility\(\);/);
+  assert.doesNotMatch(placement, /secondaryPending|RECT right|secondaryStationhead_->SetBounds/);
 });
 
-test('Window A and B keep confirmed login-required state while audio continues', () => {
+test('retained Primary and Secondary roles keep confirmed login-required state while audio continues', () => {
   const applyAudio = section(
     playerSource,
     'void StationheadPlayer::ApplyAudioPlaybackState(',
@@ -96,7 +92,7 @@ test('Window A and B keep confirmed login-required state while audio continues',
   );
 });
 
-test('Window B rejects auth-probe results from an obsolete local execution', () => {
+test('retained Secondary role rejects auth-probe results from an obsolete local execution', () => {
   const taggedProbe = section(
     playerSource,
     'std::wstring StationheadAuthProbeScriptForRun(',
@@ -169,7 +165,7 @@ test('login detection rejects the captured token and is re-armed after new authe
 });
 
 
-test('A and B continue login detection while audio remains active', () => {
+test('retained roles continue login detection while audio remains active', () => {
   const autoplay = section(
     sharedSource,
     'inline std::wstring StationheadAutoplayScript(',
@@ -201,7 +197,7 @@ test('A and B continue login detection while audio remains active', () => {
   assert.match(autoplay, /nativeTimeout\(schedule, 15000\);/);
 });
 
-test('Window A schedules failed stats execution and auth errors for a real 30-second retry', () => {
+test('Primary schedules failed stats execution and auth errors for a real 30-second retry', () => {
   const pollStats = section(
     playerSource,
     'void StationheadPlayer::PollDailyPlayStats(',
