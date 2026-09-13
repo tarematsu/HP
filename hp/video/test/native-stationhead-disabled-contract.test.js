@@ -2,34 +2,34 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const source = name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url),
+  'utf8',
+);
 const cmakeSource = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
 );
-const appSource = readFileSync(
-  new URL('../../native/src/app.cpp', import.meta.url),
-  'utf8',
-);
-const disabledStubs = readFileSync(
-  new URL('../../native/src/stationhead_disabled_stubs.cpp', import.meta.url),
-  'utf8',
-);
+const appSource = source('app.cpp');
+const messages = source('app_messages.cpp');
+const sharedEnvironment = source('shared_webview_environment.h');
+const profilePolicy = source('sh_profile_reuse_policy.h');
 
-function section(source, start, end) {
-  const startAt = source.indexOf(start);
+function section(sourceText, start, end) {
+  const startAt = sourceText.indexOf(start);
   assert.notEqual(startAt, -1, `missing section: ${start}`);
-  const endAt = source.indexOf(end, startAt + start.length);
+  const endAt = sourceText.indexOf(end, startAt + start.length);
   assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
-  return source.slice(startAt, endAt);
+  return sourceText.slice(startAt, endAt);
 }
 
-test('Stationhead implementation is not compiled into HomePanel', () => {
+test('Stationhead implementation is compiled while disabled stubs stay out', () => {
   const stationheadSources = section(
     cmakeSource,
     'set(HOMEPANEL_STATIONHEAD_SOURCES',
     'set(HOMEPANEL_RENDERER_SOURCES',
   );
-  for (const source of [
+  for (const stationheadSource of [
     'src/sh.cpp',
     'src/sh_webview.cpp',
     'src/sh_layout.cpp',
@@ -37,31 +37,42 @@ test('Stationhead implementation is not compiled into HomePanel', () => {
     'src/sh_audio_loss.cpp',
     'src/stationhead_native_stats.cpp',
   ]) {
-    assert.match(stationheadSources, new RegExp(`# ${source.replaceAll('.', '\\.')}`));
-    assert.doesNotMatch(stationheadSources, new RegExp(`^\\s{2}${source.replaceAll('.', '\\.')}`, 'm'));
+    assert.match(
+      stationheadSources,
+      new RegExp(`^\\s{2}${stationheadSource.replaceAll('.', '\\.')}`, 'm'),
+    );
   }
-  assert.match(cmakeSource, /src\/stationhead_disabled_stubs\.cpp/);
-  assert.match(cmakeSource, /src\/shared_webview_environment\.cpp/);
+  assert.doesNotMatch(cmakeSource, /^\s{2}src\/stationhead_disabled_stubs\.cpp/m);
+  assert.match(cmakeSource, /src\/sh_profile_reuse_policy\.h/);
 });
 
-test('Stationhead player construction and start remain compile-disabled', () => {
+test('App creates one Stationhead player using the former amazon WebView profile', () => {
   const startServices = section(
     appSource,
     'void App::StartServices()',
     'void App::ApplyStartupStationheadPreview()',
   );
-  assert.match(
-    startServices,
-    /#if 0\s+\/\/ Stationhead disabled:[\s\S]*std::make_unique<StationheadPlayer>/,
-  );
-  assert.match(
-    startServices,
-    /#if 0\s+\/\/ Stationhead disabled\.[\s\S]*stationhead_->Start\(\)/,
+  assert.match(startServices, /webview2-youtube-mv/);
+  assert.match(appSource, /kStationheadAmazonProfile\[\] = L"spotify-v2-1"/);
+  assert.match(startServices, /StationheadRole::Primary/);
+  assert.match(startServices, /ReuseWebViewProfile\(kStationheadAmazonProfile\)/);
+  assert.match(startServices, /stationhead_->Start\(\)/);
+  const active = startServices.slice(0, startServices.indexOf('#if 0'));
+  assert.doesNotMatch(active, /StationheadRole::Secondary|secondaryStationhead_\s*=/);
+});
+
+test('single Stationhead has no A-B handoff dependency', () => {
+  assert.match(messages, /case WM_HP_PRIMARY_RELOAD_READY:[\s\S]*return stationhead_ \? 1 : 0/);
+  assert.match(messages, /case WM_HP_SECONDARY_RELOAD_READY:[\s\S]*return 0/);
+  assert.match(appSource, /stationhead_->SetBounds\(bounds\)/);
+  assert.doesNotMatch(
+    section(appSource, 'void App::ApplyStationheadWindowPlacement', 'void App::PublishRenderState'),
+    /RECT left|RECT right|secondaryStationhead_->SetBounds/,
   );
 });
 
-test('disabled compatibility layer cannot create Stationhead surfaces', () => {
-  assert.doesNotMatch(disabledStubs, /CreateWindow|CreateCoreWebView2|Navigate\(|SetWindowPos|ShowWindow/);
-  assert.match(disabledStubs, /StationheadPlayer::~StationheadPlayer\(\) = default/);
-  assert.match(disabledStubs, /GetStationheadNativeStatsRevision\(\)[\s\S]*return 0/);
+test('Stationhead reuses the full-resource shared environment and profile data in place', () => {
+  assert.match(sharedEnvironment, /Acquire\(userDataFolder, false, false, std::move\(completion\)\)/);
+  assert.match(profilePolicy, /void ReuseWebViewProfile\(std::wstring profileName\)/);
+  assert.match(profilePolicy, /profileName_ = std::move\(profileName\)/);
 });
