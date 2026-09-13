@@ -12,6 +12,8 @@ const runtime = readFileSync(
   new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
+const deadlineEvents = readFileSync(
+  new URL('../../native/src/spotify_music_deadline_events.inc', import.meta.url), 'utf8');
 const phase = readFileSync(
   new URL('../../native/src/spotify_phase_sync.inc', import.meta.url), 'utf8');
 const header = readFileSync(
@@ -48,16 +50,19 @@ test('slow responsive layout settles before owner-only DOM reconciliation', () =
   assert.match(schedule, /ReconcileActiveTimedSlot\(slot\)/);
 });
 
-test('track completion is native-timer driven with no media heartbeat', () => {
+test('track completion remains native-deadline driven with no media heartbeat', () => {
   assert.match(rotation, /kSpotifyFastEndObserverScript/);
   assert.match(events, /document\.addEventListener\('play'/);
   assert.match(events, /document\.addEventListener\('playing'/);
+  assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.match(events, /post\('spotify:timed-ended'\)/);
   assert.match(runtime, /spotify:generation/);
   assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
   assert.doesNotMatch(runtime + events, /heartbeatTimer|heartbeatMisses|requestRecovery/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
-  assert.match(rotation, /timedCompletionDeadlineTick = now \+ remainingMs/);
+  assert.match(deadlineEvents, /ShortenMusicCompletionDeadlineAtEnd/);
+  assert.doesNotMatch(deadlineEvents, /AdvanceTimedRotationSlot/);
 });
 
 test('lost ExecuteScript callbacks expire instead of wedging a slot forever', () => {
@@ -80,13 +85,16 @@ test('playback anomalies cannot postpone the native completion deadline', () => 
   assert.match(rotation, /timedCompletionDeadlineTick == 0/);
   assert.match(rotation, /timedCompletionDeadlineGeneration != eventGeneration/);
   assert.doesNotMatch(rotation, /timed-plan-clear|candidateDeadline/);
-  assert.doesNotMatch(events, /addEventListener\('ended'|addEventListener\('timeupdate'/);
+  assert.doesNotMatch(events, /addEventListener\('timeupdate'/);
+  assert.match(music, /timedCompletionDeadlineTick > endedTick/);
 });
 
-test('advertisements cannot start the requested-song timer', () => {
+test('advertisements cannot start or falsely end the requested-song timer', () => {
   assert.match(runtime, /const enforceTarget = media =>/);
   assert.match(runtime, /else if \(!matchesTarget\(target, identity\)\)/);
   assert.match(runtime, /if \(!state\.startPosted\) return 'unknown'/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.match(events, /state\.interruptionStartedAt/);
+  assert.match(events, /state\.targetMedia !== media/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
 });
