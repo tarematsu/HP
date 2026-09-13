@@ -16,7 +16,6 @@ const scripts = readFileSync(new URL('../../native/src/spotify_static_scripts.in
 const scoped = readFileSync(new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const events = readFileSync(new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
-const deadlineEvents = readFileSync(new URL('../../native/src/spotify_music_deadline_events.inc', import.meta.url), 'utf8');
 const cloud = readFileSync(new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
 
 test('Spotify startup keeps one shared 40-second account offset with one direct scheduler', () => {
@@ -64,14 +63,14 @@ test('cycle advances only through the unified native deadline', () => {
   assert.match(rotation, /PrepareTimedRotationCycle\(slot\)/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
-  assert.match(deadlineEvents, /ShortenMusicCompletionDeadlineAtEnd/);
+  assert.match(rotation, /ArmMusicCompletionDeadlineFromStart/);
+  assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
   assert.doesNotMatch(
     events,
     /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause)'/,
   );
   assert.doesNotMatch(runtime + events + rotation, /spotify:timed-plan/);
-  assert.doesNotMatch(deadlineEvents, /AdvanceTimedRotationSlot/);
   assert.doesNotMatch(header + rotation + schedule, /kSpotifyMusicTrackDeadlineMs|AdvanceExpiredTimedRotation/);
   assert.match(runtime, /navigator\.mediaSession/);
   assert.match(runtime, /const enforceTarget = media =>/);
