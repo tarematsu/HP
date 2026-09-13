@@ -9,6 +9,7 @@ constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 12ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyMaxInterruptionHoldMs = 5ULL * 60ULL * 1000ULL;
 
 bool SpotifyUrlStartsWith(std::wstring_view value,
                           std::wstring_view prefix) noexcept {
@@ -21,6 +22,17 @@ bool SpotifyUrlStartsWith(std::wstring_view value,
 
 bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
   return SpotifyUrlStartsWith(source, L"https://open.spotify.com/");
+}
+
+ULONGLONG SpotifyDeadlineWithInterruptionHold(
+    ULONGLONG deadline, ULONGLONG interruptionStart) noexcept {
+  if (deadline == 0 || interruptionStart == 0) return deadline;
+  const ULONGLONG maxTick = (std::numeric_limits<ULONGLONG>::max)();
+  const ULONGLONG holdUntil = interruptionStart >
+          maxTick - kSpotifyMaxInterruptionHoldMs
+      ? maxTick
+      : interruptionStart + kSpotifyMaxInterruptionHoldMs;
+  return std::max(deadline, holdUntil);
 }
 
 }  // namespace
@@ -122,8 +134,10 @@ void SpotifyWebViews::ArmCompletionDeadlineTimer() noexcept {
         !slot.timedRotationActive) {
       continue;
     }
-    if (earliest == 0 || slot.timedCompletionDeadlineTick < earliest) {
-      earliest = slot.timedCompletionDeadlineTick;
+    const ULONGLONG effectiveDeadline = SpotifyDeadlineWithInterruptionHold(
+        slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick);
+    if (earliest == 0 || effectiveDeadline < earliest) {
+      earliest = effectiveDeadline;
     }
   }
 
@@ -159,15 +173,19 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
 
     // The threadpool timer is the primary completion wake-up. Keep this
     // low-priority WM_TIMER path only as a safety net if the native dispatch is
-    // unavailable or the UI thread was blocked past the deadline.
+    // unavailable or the UI thread was blocked past the deadline. A confirmed
+    // non-track interruption temporarily shifts the effective wake-up without
+    // changing the underlying deadline until the measured interruption ends.
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         slot.timedTarget == TimedSpotifyTarget::Music) {
-      if (slot.timedCompletionDeadlineTick <= now) {
+      const ULONGLONG effectiveDeadline = SpotifyDeadlineWithInterruptionHold(
+          slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick);
+      if (effectiveDeadline <= now) {
         nextDeadlineMs = 0;
       } else {
         nextDeadlineMs = std::min(
-            nextDeadlineMs, slot.timedCompletionDeadlineTick - now);
+            nextDeadlineMs, effectiveDeadline - now);
       }
     }
 
