@@ -105,5 +105,7 @@ test('Stationhead compatibility publication remains available without retired pa
   assert.match(rendererLifecycle, /void Renderer::UpdateState\(const RenderState& state\)/);
   assert.match(panelState, /void Renderer::UpdateNativeStaticPanels\(const RenderState& state\)/);
   assert.doesNotMatch(panelState, /stationheadPlayHistory|GlobalStationheadNativeStatsStore/);
-  assert.match(appSource, /#if 0\s+\/\/ Stationhead disabled:/);
+  assert.match(appSource, /StationheadRole::Primary/);
+  assert.match(appSource, /Single Stationhead started in the background/);
+  assert.doesNotMatch(functionBody(appSource, 'void App::Tick()'), /PublishRenderState/);
 });
