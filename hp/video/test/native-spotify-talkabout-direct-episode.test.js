@@ -40,8 +40,10 @@ test('device sync migrates managed Spotify rotations to the six-slot layout', ()
   assert.match(deviceSync, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(deviceSync, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.match(deviceSync, /SHORT_SPOTIFY_ROTATION_TRACKS/);
-  assert.match(deviceSync, /migrateManagedSpotifyRotation\(config\)/);
-  assert.match(deviceSync, /spotify\.rotation = managedSpotifySevenSlotRotation\(\)/);
+  assert.match(deviceSync, /migrateManagedSpotifyRotation\(config, storedDurations\)/);
+  assert.match(deviceSync, /const nextRotation = managedSpotifySevenSlotRotation\(\)/);
+  assert.match(deviceSync, /applySpotifyRotationDurations\(nextRotation, storedDurations\)/);
+  assert.match(deviceSync, /spotify\.rotation = nextRotation/);
   assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.match(randomCatalog, /紋白蝶が確か飛んでた/);
