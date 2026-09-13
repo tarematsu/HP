@@ -8,6 +8,8 @@ const scripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
+const reconcile = readFileSync(
+  new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
 const lifecycle = readFileSync(
   new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url), 'utf8');
 const hostWindow = readFileSync(
@@ -28,6 +30,13 @@ test('playback status uses existing start and resume events without adding a Spo
   assert.match(rotation, /slot\.playbackConfirmed = false/);
   assert.doesNotMatch(rotation, /SetTimer|CreateThreadpoolTimer/);
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
+});
+
+test('an already-playing target is handed back to the existing media observer for confirmation', () => {
+  assert.match(reconcile, /playing: true, media: active/);
+  assert.match(reconcile, /__homePanelSpotifyMediaObserverRuntime/);
+  assert.match(reconcile, /runtime\.scheduleTargetChecks\(mediaState\.media\)/);
+  assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
 });
 
 test('YouTube and TVer reserve a compact five-column Spotify status strip', () => {
