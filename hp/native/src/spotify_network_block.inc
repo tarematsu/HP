@@ -6,6 +6,9 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
   if (!started_) return;
 
   if (blocked) {
+    if (schedulerTimer_) SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
+    schedulerWakePosted_.store(false, std::memory_order_release);
+
     // Invalidate every outstanding async controller/environment callback before
     // destroying the Spotify WebViews. Old callbacks retain this false generation
     // even after unmute creates a fresh shared flag.
@@ -22,6 +25,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
 
   alive_ = std::make_shared<std::atomic<bool>>(true);
   robustSchedulerStarted_ = false;
+  schedulerWakePosted_.store(false, std::memory_order_release);
   schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
   timedRandomState_ = 0;
