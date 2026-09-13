@@ -103,7 +103,7 @@ test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(cycle, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
-test('managed TALKABOUT slot mixes short songs with latest episode and no timed interrupt remains', () => {
+test('TALKABOUT-enabled slot mixes short songs with latest episode and no timed interrupt remains', () => {
   assert.match(header, /bool includeTalkAbout = false/);
   assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
   assert.match(cycle, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
