@@ -31,11 +31,12 @@ test('Spotify startup uses one-minute stagger and one adaptive scheduler timer',
   assert.doesNotMatch(phase + schedule, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify schedule starts autonomously and waits for cloud playlist readiness', () => {
+test('Spotify schedule starts autonomously, warms the controller, and gates rotation on cloud readiness', () => {
   assert.match(hostLifecycle, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
   assert.match(schedule, /BeginInitialCloudPlaylistWait\(now\)/);
-  assert.match(schedule, /if \(!InitialCloudPlaylistReady\(now\)\) return/);
-  assert.match(schedule, /InitializeTimedRotationSlot\(slot\)/);
+  assert.match(schedule, /const bool cloudPlaylistReady = InitialCloudPlaylistReady\(now\)/);
+  assert.match(schedule, /if \(!slot\.webview\) \{[\s\S]*BeginControllerCreate\(slot\)[\s\S]*return/);
+  assert.match(schedule, /if \(!cloudPlaylistReady\) return;[\s\S]*InitializeTimedRotationSlot\(slot\)/);
   assert.match(schedule, /NavigateMusicTarget\(slot\)/);
 });
 
