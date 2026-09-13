@@ -43,6 +43,7 @@ function createHarness() {
   const timers = new Map();
   let nextTimer = 1;
   let currentTrack = null;
+  let nowMs = 1_000;
 
   const media = new FakeMedia();
   const window = {
@@ -87,7 +88,7 @@ function createHarness() {
     Number,
     Array,
     String,
-    Date,
+    Date: { now: () => nowMs },
     Math,
     setTimeout(fn) {
       const id = nextTimer++;
@@ -119,6 +120,9 @@ function createHarness() {
     timers.clear();
     for (const fn of pending) fn();
   };
+  const advanceTime = ms => {
+    nowMs += ms;
+  };
 
   return {
     window,
@@ -129,6 +133,7 @@ function createHarness() {
     hostMessage,
     setTrack,
     runTimers,
+    advanceTime,
     documentListeners,
   };
 }
@@ -215,6 +220,87 @@ test('trusted native Play never overrides a concrete wrong-track identity', () =
   h.dispatch('playing');
   assert.equal(h.messages.some(m => m.startsWith('spotify:timed-started')), false);
   assert.equal(runtime.state.started, false);
+});
+
+test('non-track advertisement time is measured until the requested track resumes', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f31');
+  h.setTrack('/track/A', 'Target A');
+  h.media.duration = 180;
+  h.media.currentTime = 10;
+  h.media.paused = false;
+  h.dispatch('playing');
+
+  h.advanceTime(500);
+  h.setTrack(null, '');
+  h.navigator.mediaSession.metadata.title = 'Advertisement';
+  h.dispatch('playing');
+
+  h.advanceTime(30_000);
+  h.setTrack('/track/A', 'Target A');
+  h.navigator.mediaSession.metadata.title = 'Target A';
+  h.media.currentTime = 11;
+  h.dispatch('playing');
+
+  assert.deepEqual(h.messages, [
+    'spotify:timed-started\x1f31\x1f170000',
+    'spotify:timed-interruption-started\x1f31',
+    'spotify:timed-interruption-ended\x1f31\x1f30000',
+  ]);
+});
+
+test('advertisement before the target starts extends timing without starting the target timer', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f32');
+  h.setTrack(null, '');
+  h.navigator.mediaSession.metadata.title = 'Advertisement';
+  h.media.paused = false;
+  h.dispatch('playing');
+  assert.deepEqual(h.messages, ['spotify:timed-interruption-started\x1f32']);
+
+  h.advanceTime(20_000);
+  h.setTrack('/track/A', 'Target A');
+  h.navigator.mediaSession.metadata.title = 'Target A';
+  h.media.duration = 181;
+  h.media.currentTime = 1;
+  h.dispatch('playing');
+
+  assert.deepEqual(h.messages, [
+    'spotify:timed-interruption-started\x1f32',
+    'spotify:timed-interruption-ended\x1f32\x1f20000',
+    'spotify:timed-started\x1f32\x1f180000',
+  ]);
+});
+
+test('a concrete wrong track cancels a provisional advertisement interruption', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f33');
+  h.setTrack('/track/A', 'Target A');
+  h.media.duration = 180;
+  h.media.currentTime = 10;
+  h.media.paused = false;
+  h.dispatch('playing');
+
+  h.advanceTime(1_000);
+  h.setTrack(null, '');
+  h.navigator.mediaSession.metadata.title = 'Advertisement';
+  h.dispatch('playing');
+
+  h.advanceTime(5_000);
+  h.setTrack('/track/B', 'Wrong B');
+  h.navigator.mediaSession.metadata.title = 'Wrong B';
+  h.dispatch('playing');
+
+  h.advanceTime(10_000);
+  h.setTrack('/track/A', 'Target A');
+  h.navigator.mediaSession.metadata.title = 'Target A';
+  h.dispatch('playing');
+
+  assert.deepEqual(h.messages, [
+    'spotify:timed-started\x1f33\x1f170000',
+    'spotify:timed-interruption-started\x1f33',
+    'spotify:timed-interruption-cancelled\x1f33',
+  ]);
 });
 
 test('observer has no heartbeat, recovery, or completion API', () => {
