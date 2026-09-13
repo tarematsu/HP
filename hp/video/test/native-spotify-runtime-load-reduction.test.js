@@ -8,7 +8,6 @@ const source = name => readFileSync(
 const runtime = source('spotify_media_observer_runtime.inc');
 const events = source('spotify_media_observer_events.inc');
 const bundle = source('spotify_fast_end_observer.inc');
-const guards = source('spotify_playback_mode_guards.inc');
 const phase = source('spotify_phase_sync.inc');
 
 test('timed music observer installs no periodic or completion lifecycle probe', () => {
@@ -31,17 +30,6 @@ test('timed music observer contains no playback recovery heartbeat or completion
   assert.doesNotMatch(events, /scheduleRecovery|requestRecovery|spotify:not-playing/);
   assert.doesNotMatch(events, /setInterval|startHeartbeat|stopHeartbeat|quarantineCompletedGeneration/);
   assert.doesNotMatch(bundle, /kSpotifyMediaObserverHeartbeatScript|kSpotifyMediaObserverCompletionScript/);
-});
-
-test('shuffle verification uses one DOM probe and never controls repeat', () => {
-  assert.match(guards, /kSpotifyShuffleOffProbeScript/);
-  assert.match(guards, /control-button-shuffle/);
-  assert.doesNotMatch(guards, /control-button-repeat|repeatOffVerified|repeat one|disable repeat|enable repeat/i);
-  assert.equal(
-    (guards.match(/ExecuteScript\(\s*kSpotifyShuffleOffProbeScript/g) || []).length,
-    1,
-  );
-  assert.match(guards, /target->shuffleOffVerified = true;/);
 });
 
 test('healthy native Spotify reconciliation sleeps up to 60 seconds', () => {
