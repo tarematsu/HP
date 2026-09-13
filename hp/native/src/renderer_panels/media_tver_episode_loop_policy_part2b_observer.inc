@@ -2,7 +2,6 @@ LR"JS(
 
   let observedPlayerRoot = null;
   let playerObserver = null;
-  let playerUiRevision = 0;
   const interestingPlayerSelector = [
     'video',
     '[aria-label*="スキップ"]', '[title*="スキップ"]',
@@ -30,8 +29,7 @@ LR"JS(
           const element = node;
           if (element.matches?.(interestingPlayerSelector) ||
               element.querySelector?.(interestingPlayerSelector)) {
-            ++playerUiRevision;
-            wakeNative('ui:' + playerUiRevision);
+            wakeNative('ui', true);
             scheduleEnsure(40);
             return;
           }
