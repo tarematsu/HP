@@ -51,7 +51,7 @@ test('recovery interaction keeps a usable viewport and trusted click coordinates
 });
 
 test('initial account starts are staggered and steady work uses one round-robin scan', () => {
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 60ULL \* 1000ULL/);
   assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(schedule, /const auto startupReady/);
   assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
