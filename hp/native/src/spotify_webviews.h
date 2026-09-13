@@ -3,7 +3,7 @@
 
 namespace hp {
 
-inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 10ULL * 1000ULL;
+inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 60ULL * 1000ULL;
 inline constexpr size_t kSpotifyActiveAccountCount = 5;
 
 struct SpotifyPlaybackStatus {
@@ -192,7 +192,7 @@ std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
 GetSpotifyPlaybackStatuses() noexcept;
 
 // Spotify runs independently from the YouTube/TVer media phase. Accounts become
-// scheduler-eligible ten seconds apart and then run from cloud rotation blocks.
+// scheduler-eligible one minute apart and then run from cloud rotation blocks.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 
