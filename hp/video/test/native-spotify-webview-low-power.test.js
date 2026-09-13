@@ -11,7 +11,7 @@ const environment = readFileSync(
   'utf8',
 );
 
-test('healthy Spotify playback uses the compact low-power host', () => {
+test('healthy Spotify playback uses the compact low-power host without hiding the WebView', () => {
   assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
   assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
   assert.match(
@@ -20,7 +20,8 @@ test('healthy Spotify playback uses the compact low-power host', () => {
   );
   assert.match(layout, /width = lowPowerPlayback[\s\S]*kSpotifyLowPowerPlaybackWidth/);
   assert.match(layout, /height = lowPowerPlayback[\s\S]*kSpotifyLowPowerPlaybackHeight/);
-  assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
+  assert.match(layout, /put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
 });
 
 test('healthy Spotify playback leaves WebView2 memory usage at the default target', () => {
@@ -28,7 +29,7 @@ test('healthy Spotify playback leaves WebView2 memory usage at the default targe
   assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
-test('shared WebView environment leaves Chromium occlusion throttling enabled', () => {
+test('shared WebView environment disables Chromium occluded-window backgrounding', () => {
   assert.match(environment, /--autoplay-policy=no-user-gesture-required/);
-  assert.doesNotMatch(environment, /--disable-backgrounding-occluded-windows/);
+  assert.match(environment, /--disable-backgrounding-occluded-windows/);
 });
