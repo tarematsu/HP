@@ -33,16 +33,19 @@ test('native Spotify does not manage shuffle or repeat modes', () => {
   assert.doesNotMatch(music, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard|EnsureShuffleOff|EnsurePlaybackModeOff/);
 });
 
-test('playback wrap is irrelevant after native start deadline is armed', () => {
+test('playback wrap cannot postpone the native deadline and ended may only shorten it', () => {
   assert.match(runtime, /state\.startPosted = true/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.match(events, /addEventListener\('ended', observeEnded, true\)/);
   assert.doesNotMatch(
     events,
-    /addEventListener\('(?:timeupdate|seeking|seeked|ended)'/,
+    /addEventListener\('(?:timeupdate|seeking|seeked)'/,
   );
   assert.doesNotMatch(runtime + events, /terminalWrapObserved|completionPlanExpired|postCompletionPlan/);
   assert.match(rotation, /SpotifyDeadlineWithInterruptionHold/);
   assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
   assert.match(rotation, /spotify:timed-interruption-ended/);
-  assert.doesNotMatch(rotation, /spotify:timed-ended|spotify:timed-plan/);
+  assert.match(rotation, /spotify:timed-ended/);
+  assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
+  assert.doesNotMatch(rotation, /spotify:timed-plan/);
 });
