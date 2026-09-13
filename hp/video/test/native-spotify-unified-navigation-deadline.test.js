@@ -135,5 +135,5 @@ test('the unified deadline still advances through the common rotation path', () 
   const due = rotation.slice(start, end);
 
   assert.match(due, /effectiveDeadline > now/);
-  assert.match(due, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(due, /AdvanceTimedRotationSlot\(slot\)/);
 });
