@@ -39,7 +39,7 @@ test('music duration and five-minute fallback share one two-second-grace deadlin
   );
   assert.match(arm, /slot\.timedCompletionDeadlineGeneration = slot\.targetGeneration/);
   assert.match(arm, /ArmRobustScheduler\(\)/);
-  assert.doesNotMatch(arm, /ArmCompletionDeadlineTimer/);
+  assert.doesNotMatch(arm, /ArmCompletionDeadlineTimer|timedPlaybackStartTick/);
 });
 
 test('navigation selects a track but no longer starts its completion clock', () => {
@@ -48,19 +48,19 @@ test('navigation selects a track but no longer starts its completion clock', () 
   assert.ok(start >= 0 && end > start);
   const navigate = music.slice(start, end);
 
-  assert.match(navigate, /slot\.webview->Navigate\(target\.url\)/);
+  assert.match(navigate, /slot\.webview->Navigate\(track->url\.c_str\(\)\)/);
   assert.doesNotMatch(navigate, /timedCompletionDeadlineTick\s*=/);
   assert.doesNotMatch(navigate, /completionDelayMs/);
 });
 
-test('trusted Play mousePressed is the primary playback-start anchor', () => {
+test('trusted Play mousePressed is the playback-start anchor without a duplicate stored start tick', () => {
   assert.match(click, /const ULONGLONG playbackStartTick = GetTickCount64\(\)/);
   assert.match(click, /mousePressed/);
   assert.match(
     click,
     /ArmMusicCompletionDeadlineFromStart\([\s\S]*\*target, playbackStartTick\)/,
   );
-  assert.match(music, /slot\.timedPlaybackStartTick = playbackStartTick/);
+  assert.doesNotMatch(header + music, /timedPlaybackStartTick/);
 });
 
 test('direct playback start enters the same deadline helper with observed remaining time', () => {
