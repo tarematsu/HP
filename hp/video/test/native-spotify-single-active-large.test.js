@@ -10,6 +10,10 @@ const click = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url),
   'utf8',
 );
+const phase = readFileSync(
+  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
+  'utf8',
+);
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
   'utf8',
@@ -77,6 +81,7 @@ test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
 
 test('initial account starts are ten seconds apart and steady work is state driven', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(schedule, /const auto startupReady/);
   assert.match(schedule, /SlotState is the queue/);
   assert.match(schedule, /No work is queued:[\s\S]*60-second healthy scheduler wake/);
@@ -89,9 +94,10 @@ test('authentication never owns or extends a scheduler lease', () => {
   assert.match(schedule, /if \(slot\.webview && SlotIsLoginPage\(slot\)\) return/);
 });
 
-test('recovery is reselected by state instead of a fixed hold duration', () => {
+test('recovery is reselected by state at the exact retry deadline instead of a fixed hold', () => {
   assert.match(schedule, /candidate\.state != SlotState::Recovering/);
-  assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
   assert.doesNotMatch(schedule, /kSpotifySimpleRecoveryHoldMs|staggerSlotStartTick_ < /);
 });
 
