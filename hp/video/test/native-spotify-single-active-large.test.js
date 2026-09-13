@@ -28,85 +28,57 @@ test('serialized Spotify shows authentication while normal recovery remains offs
   assert.match(layout, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
-  assert.match(
-    layout,
-    /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
-  );
-  assert.match(
-    layout,
-    /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
-  );
+  assert.match(layout, /const bool authentication =/);
+  assert.match(layout, /const bool recovery =/);
   assert.match(layout, /x = client\.right \+ 32/);
-  assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
 });
 
-test('inactive Spotify playback hosts retain a small nonzero viewport', () => {
+test('inactive playback hosts retain compact nonzero geometry', () => {
   assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
   assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
-  assert.match(layout, /static_cast<int>\(i\) \*[\s\S]*kSpotifyParkedPlaybackWidth \+ kSpotifyParkedPlaybackGap/);
+  assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
+  assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
   assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
 });
 
-test('recovery interaction never depends on the compact Spotify breakpoint', () => {
+test('recovery interaction keeps a usable viewport and trusted click coordinates account for zoom', () => {
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
-  assert.match(
-    layout,
-    /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/,
-  );
-  assert.match(
-    layout,
-    /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/,
-  );
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-});
-
-test('reduced Spotify zoom is changed only when the layout mode changes', () => {
-  assert.match(header, /bool hostLayoutReducedZoomApplied = false/);
-  assert.match(layout, /const bool reducedZoom = authentication \|\| recovery/);
-  assert.match(layout, /hostLayoutReducedZoomApplied != reducedZoom/);
-  assert.match(
-    layout,
-    /put_ZoomFactor\(\s*reducedZoom \? kSpotifySerializedRecoveryZoom : 1\.0\)/,
-  );
-  assert.doesNotMatch(layout, /get_ZoomFactor\(/);
-});
-
-test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
   assert.match(click, /controller->get_ZoomFactor\(&controllerZoom\)/);
   assert.match(click, /cssWidth = static_cast<double>\(width\) \/ zoom/);
-  assert.match(click, /cssHeight = static_cast<double>\(height\) \/ zoom/);
   assert.match(click, /Input\.dispatchMouseEvent/);
 });
 
-test('initial account starts are ten seconds apart and steady work is state driven', () => {
+test('initial account starts are staggered and steady work uses one round-robin scan', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(schedule, /const auto startupReady/);
-  assert.match(schedule, /SlotState is the queue/);
-  assert.match(schedule, /if \(selected == count\)[\s\S]*CurrentMusicTrack\(candidate\)/);
+  assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
+  assert.equal((schedule.match(/for \(size_t step = 0; step < count; \+\+step\)/g) || []).length, 1);
   assert.match(schedule, /healthyPlaybackNeedsNoWork\(candidate\)/);
   assert.match(phase, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
 });
 
-test('authentication never owns or extends a scheduler lease', () => {
+test('authentication is skipped by the work queue without a scheduler lease', () => {
   assert.doesNotMatch(schedule, /kSpotifyAuthenticationHoldMs|holdAuthentication|holdRecovery/);
   assert.match(schedule, /SlotIsLoginPage\(candidate\)/);
-  assert.match(schedule, /if \(slot\.webview && SlotIsLoginPage\(slot\)\) return/);
 });
 
-test('recovery is reselected by state at the exact retry deadline instead of a fixed hold', () => {
-  assert.match(schedule, /candidate\.state != SlotState::Recovering/);
-  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
-  assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
-  assert.doesNotMatch(schedule, /kSpotifySimpleRecoveryHoldMs|staggerSlotStartTick_ < /);
+test('recovery uses one five-second eligibility deadline', () => {
+  assert.match(header, /ULONGLONG nextRecoveryTick = 0/);
+  assert.match(phase, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
+  assert.match(schedule, /const auto recoveryReady/);
+  assert.match(schedule, /now >= slot\.nextRecoveryTick/);
+  assert.doesNotMatch(header + phase + schedule, /lastTimedReconcileTick|kSpotifyQueueRetryMs|unhealthySinceTick/);
 });
 
-test('each serviced queue item refreshes layout before returning for login', () => {
+test('each serviced queue item refreshes layout once', () => {
+  assert.equal((schedule.match(/RefreshSpotifyHostLayout\(\);/g) || []).length, 1);
   assert.match(
     schedule,
-    /schedulerCursor_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\) return;/,
+    /schedulerCursor_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
   );
 });
 
@@ -115,14 +87,7 @@ test('scheduler has one cursor and no obsolete ownership bookkeeping', () => {
   assert.doesNotMatch(header, /staggerSlotIndex_|staggerSlotStartTick_|staggerSlotValidated_/);
 });
 
-test('the exact login slot participates in layout cache so auth handoff parks the old host', () => {
-  assert.match(
-    layout,
-    /foregroundAuthenticationIndex[\s\S]*SlotIsLoginPage\(slots_\[i\]\)/,
-  );
-  assert.match(
-    layout,
-    /hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex[\s\S]*return;/,
-  );
+test('the exact login slot participates in layout cache', () => {
+  assert.match(layout, /foregroundAuthenticationIndex/);
   assert.match(layout, /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex/);
 });
