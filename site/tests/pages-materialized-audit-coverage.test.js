@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { auditPayloadCompleteness } from '../../scripts/audit-pages-materialized.mjs';
+
 const audit = readFileSync(new URL('../../scripts/audit-pages-materialized.mjs', import.meta.url), 'utf8');
 const workflow = readFileSync(new URL('../../.github/workflows/pages-live-browser-audit.yml', import.meta.url), 'utf8');
 
@@ -13,6 +15,52 @@ test('production materialized audit checks every bounded API variant', () => {
   assert.match(audit, /x-api-source/);
   assert.match(audit, /x-materialized-at/);
   assert.match(audit, /is stale by/);
+});
+
+test('materialized audit checks data completeness without issuing another request', () => {
+  assert.match(audit, /auditPayloadCompleteness\(variant\.key, payload/);
+  assert.match(audit, /Data completeness reuses these already-fetched materialized responses/);
+  assert.match(audit, /Pages data completeness/);
+  assert.match(audit, /missing daily period/);
+  assert.match(audit, /sakurazaka46jp_recent_sessions is empty/);
+});
+
+test('daily completeness detects unexpected gaps but tolerates the declared collection gap', () => {
+  const now = Date.parse('2026-05-03T06:00:00Z');
+  const payload = {
+    ok: true,
+    rows: [
+      { period_key: '2026-04-29', sample_count: 1440, reliable_sample_count: 1440, period_complete: true },
+      { period_key: '2026-05-01', sample_count: 1440, reliable_sample_count: 1440, period_complete: true },
+      { period_key: '2026-05-02', sample_count: 1440, reliable_sample_count: 1440, period_complete: true },
+    ],
+  };
+  const result = auditPayloadCompleteness('history:daily', payload, { now, materializedAt: now });
+  assert.equal(result.failures.length, 0);
+  assert.equal(result.gapCount, 1);
+  assert.ok(result.warnings.some((warning) => warning.includes('2026-04-30')));
+});
+
+test('daily completeness fails when a recent day is unexpectedly missing or undersampled', () => {
+  const now = Date.parse('2026-05-04T06:00:00Z');
+  const payload = {
+    ok: true,
+    rows: [
+      { period_key: '2026-05-01', sample_count: 1399, reliable_sample_count: 1399, period_complete: true },
+      { period_key: '2026-05-03', sample_count: 1440, reliable_sample_count: 1440, period_complete: true },
+    ],
+  };
+  const result = auditPayloadCompleteness('history:daily', payload, { now, materializedAt: now });
+  assert.ok(result.failures.some((failure) => failure.includes('1399/1440')));
+  assert.ok(result.failures.some((failure) => failure.includes('missing daily period: 2026-05-02')));
+});
+
+test('host summary completeness fails on an empty recent-session model', () => {
+  const result = auditPayloadCompleteness('host-history:summary', {
+    ok: true,
+    sakurazaka46jp_recent_sessions: [],
+  });
+  assert.deepEqual(result.failures, ['sakurazaka46jp_recent_sessions is empty']);
 });
 
 test('production audit is strict after deploy and read-model rebuild', () => {
