@@ -49,8 +49,9 @@ test('completed interruption adds only its measured bounded duration', () => {
   );
   assert.match(
     rotation,
-    /interruptionCancelled[\s\S]*target->timedInterruptionStartTick = 0[\s\S]*ArmCompletionDeadlineTimer\(\)/,
+    /interruptionCancelled[\s\S]*target->timedInterruptionStartTick = 0[\s\S]*ArmRobustScheduler\(\)/,
   );
+  assert.doesNotMatch(rotation, /ArmCompletionDeadlineTimer/);
 });
 
 test('deadline expiry respects the active interruption hold then still fails forward', () => {
@@ -65,4 +66,5 @@ test('deadline expiry respects the active interruption hold then still fails for
   assert.match(probe, /effectiveDeadline > now/);
   assert.match(probe, /slot\.timedInterruptionStartTick = 0/);
   assert.match(probe, /AdvanceTimedRotationSlot\(slot\)/);
+  assert.doesNotMatch(probe, /NavigateMusicTarget|ReconcileMusicTarget/);
 });
