@@ -39,7 +39,7 @@ test('Spotify schedule starts autonomously and loads cloud playlist before rotat
   assert.match(schedule, /EnsureCloudPlaylistLoaded\(\)[\s\S]*robustSchedulerStarted_ = true/);
   assert.match(
     schedule,
-    /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot\);[\s\S]*NavigateMusicTarget\(slot\);/,
+    /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot\);[\s\S]*CurrentMusicTrack\(slot\)[\s\S]*NavigateMusicTarget\(slot\);/,
   );
   assert.doesNotMatch(header + schedule, /youtubeCycleStartTick_/);
 });
@@ -82,13 +82,13 @@ test('cycle advances only through the unified native deadline and queues navigat
   assert.doesNotMatch(header + rotation + schedule, /kSpotifyMusicTrackDeadlineMs|AdvanceExpiredTimedRotation/);
   assert.match(runtime, /navigator\.mediaSession/);
   assert.match(runtime, /const enforceTarget = media =>/);
-  assert.match(runtime, /!matchesTarget\(target, identity\)/);
+  assert.match(runtime, /targetIdentityConfirmed/);
 });
 
-test('every cloud song shares one native music descriptor and scoped reconcile path', () => {
-  assert.match(header, /struct MusicTargetDescriptor/);
-  assert.match(music, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
-  assert.match(music, /slot\.timedTarget != TimedSpotifyTarget::Music/);
+test('every cloud song uses the current ManagedTrack and one scoped reconcile path', () => {
+  assert.doesNotMatch(header + music, /MusicTargetDescriptor|TimedSpotifyTarget|ResolveMusicTarget/);
+  assert.match(header, /const ManagedTrack\* CurrentMusicTrack/);
+  assert.match(music, /CurrentMusicTrack\(const Slot& slot\)/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(music, /void SpotifyWebViews::NavigateMusicTarget/);
   assert.match(music, /void SpotifyWebViews::ReconcileMusicTarget/);
@@ -116,12 +116,13 @@ test('invalid or absent cloud rotation retains the former six-song fallback', ()
   assert.match(cycle, /kSpotifyFallbackCatalogTracks\.size\(\)/);
 });
 
-test('Spotify runtime is music-only', () => {
+test('Spotify runtime is music-only with no separate target kind state', () => {
   assert.doesNotMatch(
     header + cloud + cycle + timed + routing + rotation + schedule,
-    /TalkAbout|TALKABOUT|talkAbout|includeTalkAbout|SpotifyPodcast|podcastBreakActive/,
+    /TalkAbout|TALKABOUT|talkAbout|includeTalkAbout|SpotifyPodcast|podcastBreakActive|TimedSpotifyTarget/,
   );
-  assert.match(routing, /kind = L"music"/);
+  assert.match(routing, /CurrentMusicTrack\(slot\)/);
+  assert.doesNotMatch(routing, /kind = L"music"|pagePath|trackPath/);
 });
 
 test('fallback catalog excludes fixed songs and unsupported variants', () => {
