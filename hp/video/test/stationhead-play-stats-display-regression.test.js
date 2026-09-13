@@ -2,10 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const mediaSection = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
-  'utf8',
-);
 const mediaEntry = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
@@ -68,40 +64,4 @@ test('the compiled media entry is the integrated YouTube and TVer panel', () => 
   assert.doesNotMatch(mediaEntry, /kNativeMediaTverUrl|data:text\/html/);
   assert.doesNotMatch(mediaEntry, /#include "mv_section\.inc"/);
   assert.doesNotMatch(mediaEntry, /media_section_v2\.inc/);
-});
-
-test('legacy five play-count metrics remain testable outside the compiled media panel', () => {
-  assert.match(
-    mediaSection,
-    /kPlayMetricLabels\{[\s\S]*L"直近1時間"[\s\S]*L"本日"[\s\S]*L"昨日"[\s\S]*L"今週"[\s\S]*L"先週"/,
-  );
-  assert.match(mediaSection, /std::array<std::wstring, 5> playMetricValues/);
-  assert.match(mediaSection, /std::wstring metricsLine/);
-  assert.match(mediaSection, /metricsLine \+= L"   "/);
-  assert.match(
-    mediaSection,
-    /DrawTextInRect\(dc, metricsLine, metricsRect,[\s\S]*DT_RIGHT \| DT_SINGLELINE/,
-  );
-  assert.match(mediaSection, /playValueText\(summary\.today\)/);
-  assert.match(mediaSection, /playValueText\(summary\.lastWeek\)/);
-});
-
-test('legacy renderer source reads PR48 StationheadStatus and App history', () => {
-  assert.match(mediaSection, /nativeStationhead_\.dailyPlayCounts/);
-  assert.match(mediaSection, /nativeStationhead_\.dailyPlayStatsUpdatedAt/);
-  assert.match(mediaSection, /nativeStationheadPlayHistory_/);
-  assert.match(mediaSection, /latest\.timestamp - 60LL \* 60 \* 1000/);
-  assert.doesNotMatch(
-    mediaSection,
-    /GlobalStationheadNativeStatsStore\(\)\.Snapshot\(\)/,
-  );
-});
-
-test('legacy unavailable and stale values remain explicit', () => {
-  assert.match(
-    mediaSection,
-    /value >= 0\s*\?\s*std::to_wstring\(value\)\s*:\s*std::wstring\(L"--"\)/,
-  );
-  assert.match(mediaSection, /kDailyPlayStatsStaleAfterMs = 15 \* 60'000/);
-  assert.match(mediaSection, /statsStale\s*\?\s*kWidgetWarning/);
 });

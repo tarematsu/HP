@@ -1,5 +1,4 @@
 #include "web_renderer.h"
-#include "stationhead_native_stats.h"
 #include "winhttp_helpers.h"
 #include <cmath>
 
@@ -25,22 +24,6 @@ bool AirStatsNeedRepaint(const SensorSnapshot& previous,
           kAirStatsTemperatureInvalidateDeltaC ||
       std::abs(next.humidityCorrected - previous.humidityCorrected) >=
           kAirStatsHumidityInvalidateDeltaPercent;
-}
-
-struct StationheadRevisionCache {
-  const Renderer* owner = nullptr;
-  uint64_t history = 0;
-  uint64_t nativeStats = 0;
-};
-
-StationheadRevisionCache& StationheadRevisionsFor(const Renderer* owner) {
-  static StationheadRevisionCache cache;
-  if (cache.owner != owner) {
-    cache.owner = owner;
-    cache.history = std::numeric_limits<uint64_t>::max();
-    cache.nativeStats = GlobalStationheadNativeStatsStore().Revision();
-  }
-  return cache;
 }
 
 std::wstring ClockDateText(const SYSTEMTIME& now) {
@@ -200,31 +183,15 @@ void Renderer::UpdateAirHistory(const std::vector<AirHistorySample>& history) {
 }
 
 void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
-  // Stationhead is disabled in the current build, but keep its rendering path
-  // intact without making active sensor/dashboard updates pass through it.
-  StationheadRevisionCache& revisions = StationheadRevisionsFor(this);
-  const bool stationheadChanged = nativeStationhead_ != state.stationhead;
-  const bool historyChanged =
-      revisions.history != state.stationheadPlayHistoryRevision;
-
-  if (historyChanged) {
-    nativeStationheadPlayHistory_ = state.stationheadPlayHistory;
-    revisions.history = state.stationheadPlayHistoryRevision;
+  // Stationhead status still participates in native playback resolution, but no
+  // active card renders its retired play-history presentation.
+  if (nativeStationhead_ != state.stationhead) {
+    nativeStationhead_ = state.stationhead;
   }
-  if (stationheadChanged) nativeStationhead_ = state.stationhead;
-
-  // Stationhead data is retained for compatibility, but no active native card
-  // renders it. Do not repaint the unrelated rain-radar card when it changes.
 }
 
 void Renderer::TickNativePanels(int64_t, bool timerDriven) {
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
-
-  StationheadRevisionCache& revisions = StationheadRevisionsFor(this);
-  const uint64_t nativeStatsRevision = GlobalStationheadNativeStatsStore().Revision();
-  if (revisions.nativeStats != nativeStatsRevision) {
-    revisions.nativeStats = nativeStatsRevision;
-  }
 
   SYSTEMTIME localTime{};
   const bool previousClockReady = nativeClockReady_;
@@ -273,9 +240,6 @@ void Renderer::TickNativePanels(int64_t, bool timerDriven) {
       IsWindowVisible(nativeMainWindow_)) {
     InvalidateRect(nativeMainWindow_, nullptr, FALSE);
   }
-
-  // Playback and Stationhead state have no active native card. In particular,
-  // they must never invalidate the semantically separate rain-radar section.
 }
 
 }  // namespace hp

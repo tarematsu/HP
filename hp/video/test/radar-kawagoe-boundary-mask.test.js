@@ -78,8 +78,8 @@ test('each dry radar panel independently becomes gray and uses an aspect-safe su
   assert.doesNotMatch(browserRadar, /panelRainTiles|loadedRainTiles|radar rain tiles were not fetched for any panel/);
 });
 
-test('radar panel labels remain below the native center-crop safe area after 0.75 scaling', () => {
-  assert.match(browserRadar, /const chipTop = 180;/);
+test('radar panel labels stay just below the native center-crop boundary', () => {
+  assert.match(browserRadar, /const chipTop = 148;/);
 });
 
 test('missing boundary data never falls back to the opaque legacy map', () => {

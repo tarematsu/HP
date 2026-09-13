@@ -257,10 +257,8 @@ class Renderer {
   void PaintNativeSide(HWND hwnd);
   void PaintNativeMain(HWND hwnd);
   void PaintNativeMedia(HWND hwnd);
-  void DrawClockSection(HDC dc, const RECT& card);
   void DrawAirSection(HDC dc, const RECT& card);
   void DrawWeatherSection(HDC dc, const RECT& card);
-  void DrawControlsSection(HDC dc, const RECT& card);
   void DrawRadarSection(HDC dc, const RECT& card);
   void DrawEnergySection(HDC dc, const RECT& card);
   void DrawEnergySectionUncached(HDC dc, const RECT& card);
@@ -310,7 +308,6 @@ class Renderer {
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;
   AirGraphProjection nativeAirGraph_{};
-  std::vector<StationheadPlayHistorySample> nativeStationheadPlayHistory_;
   StationheadStatus nativeStationhead_{};
   DashboardSnapshot nativeDashboard_{};
   int width_ = 0;
@@ -360,7 +357,6 @@ class Renderer {
   std::mutex radarComposeWakeMutex_;
   mutable std::mutex radarFrameMutex_;
   HBITMAP radarFrameBitmap_ = nullptr;
-  std::wstring radarTimeText_ = L"--:--";
   std::wstring radarSignature_;
   std::string radarJsonStamp_;
   std::map<std::wstring, int64_t> radarFailedTiles_;

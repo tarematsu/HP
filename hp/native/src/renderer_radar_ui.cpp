@@ -194,7 +194,6 @@ void Renderer::ComposeRadarFrame() {
     }
     previous = radarFrameBitmap_;
     radarFrameBitmap_ = decoded;
-    radarTimeText_.clear();
     radarSignature_ = signature;
     radarJsonStamp_ = jsonStamp;
   }

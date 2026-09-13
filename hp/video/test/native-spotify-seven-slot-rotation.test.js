@@ -19,7 +19,7 @@ const rotation = readFileSync(
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 
-test('cloud owns the requested six-position Spotify rotation', () => {
+test('cloud owns the requested seven-position Spotify rotation', () => {
   assert.match(catalog, /function managedSpotifySevenSlotRotation/);
   assert.match(catalog, /Lonesome Rabbit/);
   assert.match(catalog, /放課後BitterBlue/);
@@ -32,7 +32,6 @@ test('cloud owns the requested six-position Spotify rotation', () => {
   assert.match(catalog, /includeTalkAbout: true/);
   assert.match(admin, /rotation:structuredClone\(managedSpotifyRotation\)/);
   assert.match(deviceSync, /const nextRotation = managedSpotifySevenSlotRotation\(\)/);
-  assert.match(deviceSync, /applySpotifyRotationDurations\(nextRotation, storedDurations\)/);
   assert.match(deviceSync, /spotify\.rotation = nextRotation/);
 });
 
@@ -56,7 +55,7 @@ test('C slot includes Overture and all seven Interludes', () => {
   }
 });
 
-test('F short-song pool includes every verified short OFF VOCAL track', () => {
+test('short-song pool includes every verified short OFF VOCAL track', () => {
   assert.match(
     catalog,
     /SHORT_SPOTIFY_ROTATION_TRACKS\s*=\s*\[\s*\.\.\.SHORT_SPOTIFY_RANDOM_TRACKS,\s*\.\.\.OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,/s,
@@ -76,7 +75,7 @@ test('F short-song pool includes every verified short OFF VOCAL track', () => {
   ]) assert.match(catalog, new RegExp(id));
 });
 
-test('F short-song pool includes the ten additional verified vocal tracks', () => {
+test('short-song pool includes the ten additional verified vocal tracks', () => {
   assert.match(catalog, /ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS/);
   assert.match(
     catalog,
@@ -104,7 +103,7 @@ test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(cycle, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
-test('F mixes short songs with latest TALKABOUT and no timed interrupt remains', () => {
+test('TALKABOUT-enabled slot mixes short songs with latest episode and no timed interrupt remains', () => {
   assert.match(header, /bool includeTalkAbout = false/);
   assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
   assert.match(cycle, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);

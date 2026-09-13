@@ -34,25 +34,6 @@ void DrawDottedAirHistoryLine(
   SelectObject(dc, previousPen);
 }
 
-void Renderer::DrawClockSection(HDC dc, const RECT& card) {
-  DrawSectionCard(dc, card);
-  const RECT content = CardContentRect(card);
-  SYSTEMTIME now{};
-  GetLocalTime(&now);
-
-  RECT dateRect{content.left, content.top, content.right, content.top + SpanY(content, 320)};
-  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Medium));
-  SetTextColor(dc, kWidgetMuted);
-  DrawTextInRect(dc, DateText(now), dateRect,
-                 DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_BOTTOM);
-
-  RECT timeRect{content.left, dateRect.bottom, content.right, content.bottom};
-  SelectObject(dc, TierFont(FontTier::Large));
-  SetTextColor(dc, kWidgetText);
-  DrawTextInRect(dc, TimeText(now), timeRect, DT_CENTER | DT_SINGLELINE | DT_TOP);
-  SelectObject(dc, previousFont);
-}
-
 void Renderer::DrawAirSection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT body = CardContentRect(card);
