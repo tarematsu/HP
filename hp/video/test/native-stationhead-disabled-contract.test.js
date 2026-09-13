@@ -13,7 +13,8 @@ const cmakeSource = readFileSync(
 const appSource = source('app.cpp');
 const messages = source('app_messages.cpp');
 const sharedEnvironment = source('shared_webview_environment.h');
-const profilePolicy = source('sh_profile_reuse_policy.h');
+const profilePolicyBegin = source('sh_profile_reuse_policy_begin.h');
+const profilePolicyEnd = source('sh_profile_reuse_policy_end.h');
 
 function section(sourceText, start, end) {
   const startAt = sourceText.indexOf(start);
@@ -43,7 +44,9 @@ test('Stationhead implementation is compiled while disabled stubs stay out', () 
     );
   }
   assert.doesNotMatch(cmakeSource, /^\s{2}src\/stationhead_disabled_stubs\.cpp/m);
-  assert.match(cmakeSource, /src\/sh_profile_reuse_policy\.h/);
+  assert.match(cmakeSource, /src\/sh_profile_reuse_policy_begin\.h/);
+  assert.match(cmakeSource, /src\/sh_track_boundary_message_policy\.h/);
+  assert.match(cmakeSource, /src\/sh_profile_reuse_policy_end\.h/);
 });
 
 test('App creates one Stationhead player using the former amazon WebView profile', () => {
@@ -73,6 +76,7 @@ test('single Stationhead has no A-B handoff dependency', () => {
 
 test('Stationhead reuses the full-resource shared environment and profile data in place', () => {
   assert.match(sharedEnvironment, /Acquire\(userDataFolder, false, false, std::move\(completion\)\)/);
-  assert.match(profilePolicy, /void ReuseWebViewProfile\(std::wstring profileName\)/);
-  assert.match(profilePolicy, /profileName_ = std::move\(profileName\)/);
+  assert.match(profilePolicyBegin, /void ReuseWebViewProfile\(std::wstring profileName\)/);
+  assert.match(profilePolicyBegin, /profileName_ = std::move\(profileName\)/);
+  assert.match(profilePolicyEnd, /#undef autoClickInFlight_/);
 });
