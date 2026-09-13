@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { migrateManagedSpotifyRotation } from "../src/device_sync";
 import type { Env } from "../src/sources";
 import { managedSpotifySevenSlotRotation } from "../src/spotify_random_catalog";
 import { resolveSpotifyTrackDurations } from "../src/spotify_track_durations";
@@ -14,6 +15,23 @@ describe("Spotify rotation duration resolver", () => {
     expect(ids).toHaveLength(42);
     expect(new Set(ids).size).toBe(42);
     expect(ids.every(id => /^[A-Za-z0-9]{22}$/.test(id))).toBe(true);
+  });
+
+  it("bootstraps the managed cloud rotation when a device has no Spotify config", () => {
+    const config: Record<string, unknown> = {};
+    expect(migrateManagedSpotifyRotation(config, new Map())).toBe(true);
+
+    const spotify = config.spotify as {
+      managedRotation?: boolean;
+      rotation?: unknown[];
+      talkAbout?: { url?: string; playbackRate?: number };
+    };
+    expect(spotify.managedRotation).toBe(true);
+    expect(spotify.rotation).toHaveLength(6);
+    expect(spotify.talkAbout).toEqual({
+      url: "https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed",
+      playbackRate: 3,
+    });
   });
 
   it("resolves exact track durations with the current single-track Web API", async () => {

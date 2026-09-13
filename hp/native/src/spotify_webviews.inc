@@ -9,7 +9,6 @@
 #include "spotify_auth_badge.inc"
 #include "spotify_phase_sync.inc"
 #include "spotify_webviews.cpp"
-#include "spotify_playback_mode_guards.inc"
 #include "spotify_network_block.inc"
 #include "spotify_host_layout.inc"
 #include "spotify_cloud_playlist.inc"

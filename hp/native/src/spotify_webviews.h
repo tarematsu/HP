@@ -50,11 +50,6 @@ class SpotifyWebViews final {
     Completed,
   };
 
-  enum class PlaybackModeGuard : unsigned char {
-    Shuffle,
-    Repeat,
-  };
-
   struct ManagedTrack {
     std::wstring title;
     std::wstring url;
@@ -118,8 +113,6 @@ class SpotifyWebViews final {
     SlotState state = SlotState::NotCreated;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
-    bool shuffleOffVerified = false;
-    bool repeatOffVerified = false;
     bool playerPage = false;
     bool loginPage = false;
     bool timedObserverReady = false;
@@ -182,7 +175,6 @@ class SpotifyWebViews final {
   MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
   bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
   void NavigateMusicTarget(Slot& slot) noexcept;
-  bool EnsurePlaybackModeOff(Slot& slot, PlaybackModeGuard mode) noexcept;
   void ReconcileMusicTarget(Slot& slot) noexcept;
   void NavigateActiveTimedSlot(Slot& slot) noexcept;
   void ReconcileActiveTimedSlot(Slot& slot) noexcept;

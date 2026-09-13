@@ -2,8 +2,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const guards = readFileSync(
-  new URL('../../native/src/spotify_playback_mode_guards.inc', import.meta.url),
+const wrapper = readFileSync(
+  new URL('../../native/src/spotify_webviews.inc', import.meta.url),
+  'utf8',
+);
+const header = readFileSync(
+  new URL('../../native/src/spotify_webviews.h', import.meta.url),
+  'utf8',
+);
+const music = readFileSync(
+  new URL('../../native/src/spotify_music_target.inc', import.meta.url),
   'utf8',
 );
 const runtime = readFileSync(
@@ -19,21 +27,13 @@ const rotation = readFileSync(
   'utf8',
 );
 
-test('repeat guard survives Spotify builds that omit aria-checked', () => {
-  assert.match(guards, /const label = normalize\(/);
-  assert.match(guards, /label\.includes\('repeat one'\)/);
-  assert.match(guards, /label\.includes\('disable repeat'\)/);
-  assert.match(guards, /label\.includes\('enable repeat'\)/);
-  assert.match(guards, /checked === null && labelActive/);
-  assert.match(guards, /checked === null && labelOff/);
-  assert.ok(
-    guards.indexOf("label.includes('repeat one')") <
-      guards.indexOf("label.includes('enable repeat')"),
-    'Enable repeat one must be treated as active repeat, not repeat-off',
-  );
+test('native Spotify does not manage shuffle or repeat modes', () => {
+  assert.doesNotMatch(wrapper, /spotify_playback_mode_guards/);
+  assert.doesNotMatch(header, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard|EnsureShuffleOff|EnsurePlaybackModeOff/);
+  assert.doesNotMatch(music, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard|EnsureShuffleOff|EnsurePlaybackModeOff/);
 });
 
-test('repeat wrap is irrelevant after native start deadline is armed', () => {
+test('playback wrap is irrelevant after native start deadline is armed', () => {
   assert.match(runtime, /state\.startPosted = true/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.doesNotMatch(

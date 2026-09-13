@@ -44,10 +44,12 @@ test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
   const reconcile = music.indexOf('kSpotifyStaticTrackReconcileScript', start);
   assert.ok(start >= 0 && reconcile > start);
   const startup = music.slice(start, reconcile);
-  const playingGate = startup.indexOf('if (slot.state == SlotState::Playing)');
-  const shuffle = startup.indexOf('PlaybackModeGuard::Shuffle');
-  const repeat = startup.indexOf('PlaybackModeGuard::Repeat');
-  assert.ok(playingGate >= 0 && shuffle > playingGate && repeat > shuffle);
+  assert.match(startup, /if \(slot\.reconcileInFlight\) return;/);
+  assert.match(startup, /PostSpotifyTargetDescriptorForSlot\(slot\)/);
+  assert.doesNotMatch(
+    startup,
+    /PlaybackModeGuard|EnsurePlaybackModeOff|shuffleOffVerified|repeatOffVerified/,
+  );
 });
 
 test('native settling recovery waits or renavigates without ambiguous toggle clicks', () => {

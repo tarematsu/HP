@@ -18,7 +18,18 @@ describe("device sync unchanged fast path", () => {
     const deviceFirst = vi.fn().mockResolvedValue({
       config_version: 9,
       config_updated_at: 123,
-      config_payload: "{}",
+      config_payload: JSON.stringify({
+        spotify: {
+          rotation: [{
+            mode: "fixed",
+            tracks: [{
+              title: "custom",
+              trackId: "6Vy6hCA2CZwZalGqaX6Sew",
+              url: "https://open.spotify.com/track/6Vy6hCA2CZwZalGqaX6Sew",
+            }],
+          }],
+        },
+      }),
       pending: 0,
     });
     const prepare = vi.fn((sql: string) => {
