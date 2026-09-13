@@ -94,8 +94,6 @@ bool SpotifyWebViews::ExpireStaleAsyncWork(
   }
   if (!expired) return false;
 
-  // SlotState is the queue entry. Async expiry only changes state; the shared
-  // scheduler decides which WebView is allowed to perform the next DOM action.
   MarkSlotRecovering(slot, now);
   slot.lastTimedReconcileTick = 0;
   return true;
@@ -111,9 +109,6 @@ void CALLBACK SpotifyWebViews::SchedulerTimerProc(
   auto* owner = static_cast<SpotifyWebViews*>(context);
   if (!owner) return;
 
-  // The threadpool callback intentionally reads no mutable Slot/UI state. The
-  // only cross-thread inputs are atomics; all lifecycle and queue decisions are
-  // deferred to HostWndProc on the UI thread.
   HWND host = owner->schedulerHost_.load(std::memory_order_acquire);
   if (!host) return;
 
@@ -143,8 +138,7 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   for (const Slot& slot : slots_) {
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
-        slot.timedTarget == TimedSpotifyTarget::Music &&
-        slot.timedRotationActive) {
+        CurrentMusicTrack(slot)) {
       considerTick(SpotifyDeadlineWithInterruptionHold(
           slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick));
     }
@@ -162,10 +156,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     }
 
     const bool queueReady =
-        slot.timedRotationActive &&
-        slot.timedTarget != TimedSpotifyTarget::None &&
-        SlotStateNeedsRecovery(slot.state) && !slot.loginPage &&
-        !slot.reconcileInFlight && !slot.timedObserverInstallInFlight;
+        CurrentMusicTrack(slot) && SlotStateNeedsRecovery(slot.state) &&
+        !slot.loginPage && !slot.reconcileInFlight &&
+        !slot.timedObserverInstallInFlight;
     if (queueReady) {
       if (slot.lastTimedReconcileTick == 0) {
         nextDelayMs = 0;
