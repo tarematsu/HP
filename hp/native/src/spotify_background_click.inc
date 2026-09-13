@@ -31,17 +31,17 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   const bool recoveryViewportReady =
       hostLayoutActiveSlot_ == slot.index && SlotStateNeedsRecovery(slot.state);
   if (!recoveryViewportReady) {
-    const ULONGLONG now = GetTickCount64();
-    MarkSlotRecovering(slot, now);
-    slot.lastTimedReconcileTick = 0;
+    MarkSlotRecovering(slot, GetTickCount64());
     schedulerCursor_ = slot.index;
     RefreshSpotifyHostLayout();
     ArmRobustScheduler();
     return;
   }
 
-  SetSlotState(slot, SlotState::WaitingTarget);
   const ULONGLONG targetGeneration = slot.targetGeneration;
+  const ULONGLONG pageEpoch = slot.pageEpoch;
+  SetSlotState(slot, SlotState::WaitingTarget);
+  slot.nextRecoveryTick = GetTickCount64() + kSpotifyRecoveryRetryMs;
 
   std::wstring preflight = L"(() => {";
   preflight += L"const nx=" + std::to_wstring(xTenThousandths) + L";";
@@ -71,20 +71,19 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   const HRESULT started = requestedView->ExecuteScript(
       preflight.c_str(),
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, target, requestedView, targetGeneration,
+          [this, alive, target, requestedView, targetGeneration, pageEpoch,
            xTenThousandths, yTenThousandths](HRESULT result, LPCWSTR json)
               -> HRESULT {
             if (!alive->load(std::memory_order_acquire) ||
                 target->targetGeneration != targetGeneration ||
+                target->pageEpoch != pageEpoch ||
                 target->webview.Get() != requestedView.Get()) {
               return S_OK;
             }
-
             if (target->state == SlotState::Playing) {
               ArmRobustScheduler();
               return S_OK;
             }
-
             if (SUCCEEDED(result) && json &&
                 std::wstring_view(json) == L"true") {
               DispatchSpotifyDevToolsClick(
@@ -106,9 +105,7 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
 
     constexpr ULONGLONG kSpotifyTrustedClickGateMs = 8ULL * 1000ULL;
     const ULONGLONG now = GetTickCount64();
-    const ULONGLONG targetGeneration = slot.targetGeneration;
-    if (slot.trustedClickTargetGeneration == targetGeneration &&
-        slot.trustedClickBlockedUntilTick != 0 &&
+    if (slot.trustedClickBlockedUntilTick != 0 &&
         now < slot.trustedClickBlockedUntilTick) {
       return 0;
     }
@@ -138,10 +135,8 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
         L"{\"type\":\"mouseMoved\",\"x\":" + std::to_wstring(x) +
         L",\"y\":" + std::to_wstring(y) + L"}";
 
-    ++slot.trustedClickGeneration;
-    if (slot.trustedClickGeneration == 0) ++slot.trustedClickGeneration;
-    const ULONGLONG clickGeneration = slot.trustedClickGeneration;
-    slot.trustedClickTargetGeneration = targetGeneration;
+    const ULONGLONG targetGeneration = slot.targetGeneration;
+    const ULONGLONG pageEpoch = slot.pageEpoch;
     slot.trustedClickBlockedUntilTick = now + kSpotifyTrustedClickGateMs;
 
     Slot* const target = &slot;
@@ -150,11 +145,11 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     const HRESULT dispatched = view->CallDevToolsProtocolMethod(
         L"Input.dispatchMouseEvent", moved.c_str(),
         Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-            [this, alive, target, view, x, y, clickGeneration, targetGeneration](
+            [this, alive, target, view, x, y, targetGeneration, pageEpoch](
                 HRESULT movedResult, LPCWSTR) -> HRESULT {
               if (!alive->load(std::memory_order_acquire) ||
-                  target->trustedClickGeneration != clickGeneration ||
                   target->targetGeneration != targetGeneration ||
+                  target->pageEpoch != pageEpoch ||
                   target->webview.Get() != view.Get()) {
                 return S_OK;
               }
@@ -171,12 +166,12 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
               const HRESULT pressDispatched = view->CallDevToolsProtocolMethod(
                   L"Input.dispatchMouseEvent", pressed.c_str(),
                   Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                      [this, alive, target, view, x, y, clickGeneration,
-                       targetGeneration, playbackStartTick](HRESULT pressedResult,
-                                                            LPCWSTR) -> HRESULT {
+                      [this, alive, target, view, x, y, targetGeneration,
+                       pageEpoch, playbackStartTick](HRESULT pressedResult,
+                                                     LPCWSTR) -> HRESULT {
                         if (!alive->load(std::memory_order_acquire) ||
-                            target->trustedClickGeneration != clickGeneration ||
                             target->targetGeneration != targetGeneration ||
+                            target->pageEpoch != pageEpoch ||
                             target->webview.Get() != view.Get()) {
                           return S_OK;
                         }
@@ -185,8 +180,8 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                           return S_OK;
                         }
 
-                        ArmMusicCompletionDeadlineFromStart(
-                            *target, playbackStartTick);
+                        SetMusicCompletionDeadline(
+                            *target, playbackStartTick, 0, false);
 
                         const std::wstring released =
                             L"{\"type\":\"mouseReleased\",\"x\":" +
@@ -197,32 +192,18 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                         view->CallDevToolsProtocolMethod(
                             L"Input.dispatchMouseEvent", released.c_str(),
                             Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                                [alive, target, view, clickGeneration,
-                                 targetGeneration](HRESULT, LPCWSTR) -> HRESULT {
-                                  if (!alive->load(std::memory_order_acquire) ||
-                                      target->trustedClickGeneration !=
-                                          clickGeneration ||
-                                      target->targetGeneration !=
-                                          targetGeneration ||
-                                      target->webview.Get() != view.Get()) {
-                                    return S_OK;
-                                  }
+                                [](HRESULT, LPCWSTR) -> HRESULT {
                                   return S_OK;
                                 }).Get());
                         return S_OK;
                       }).Get());
-              if (FAILED(pressDispatched) &&
-                  target->trustedClickGeneration == clickGeneration &&
-                  target->targetGeneration == targetGeneration) {
+              if (FAILED(pressDispatched)) {
                 target->trustedClickBlockedUntilTick = 0;
               }
               return S_OK;
             }).Get());
     if (FAILED(dispatched)) {
-      if (slot.trustedClickGeneration == clickGeneration &&
-          slot.targetGeneration == targetGeneration) {
-        slot.trustedClickBlockedUntilTick = 0;
-      }
+      slot.trustedClickBlockedUntilTick = 0;
       return 0;
     }
     return 1U;
