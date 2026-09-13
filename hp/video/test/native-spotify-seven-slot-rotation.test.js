@@ -35,7 +35,6 @@ test('cloud owns the requested seven-group Spotify rotation', () => {
   assert.equal((rotationFunction.match(/mode: /g) ?? []).length, 7);
   assert.equal((rotationFunction.match(/tracks: instrumentalSongs\.map/g) ?? []).length, 2);
   assert.equal((rotationFunction.match(/tracks: shortSongs\.map/g) ?? []).length, 2);
-  assert.equal((rotationFunction.match(/includeTalkAbout: true/g) ?? []).length, 2);
   assert.match(
     rotationFunction,
     /mode: "shuffle",[\s\S]*放課後BitterBlue[\s\S]*紋白蝶が確か飛んでた/,
@@ -118,15 +117,11 @@ test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(cycle, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
-test('F and G mix the shared short-song pool with latest TALKABOUT and no timed interrupt remains', () => {
-  assert.match(header, /bool includeTalkAbout = false/);
-  assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
-  assert.match(cycle, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
-  assert.match(cycle, /SpotifyPodcastUrl\(\)/);
-  assert.match(cycle, /SpotifyPodcastPath\(\)/);
-  assert.match(rotation, /target\.path == SpotifyPodcastPath\(\)/);
-  assert.match(rotation, /TimedSpotifyTarget::TalkAbout/);
+test('F and G use the same short-song music pool and no podcast path remains', () => {
   assert.equal((catalog.match(/tracks: shortSongs\.map/g) ?? []).length, 2);
-  assert.equal((catalog.match(/includeTalkAbout: true/g) ?? []).length, 2);
-  assert.doesNotMatch(header + cloud + rotation + schedule, /StartOverduePodcastBreak|podcastDueTick|intervalMinutes/);
+  const spotifySources = catalog + admin + deviceSync + header + cloud + cycle + rotation + schedule;
+  assert.doesNotMatch(
+    spotifySources,
+    /TalkAbout|TALKABOUT|talkAbout|includeTalkAbout|SpotifyPodcast|podcastBreakActive/,
+  );
 });
