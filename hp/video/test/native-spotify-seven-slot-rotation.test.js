@@ -89,7 +89,7 @@ test('short-song pool includes every verified short OFF VOCAL track', () => {
   ]) assert.match(catalog, new RegExp(id));
 });
 
-test('short-song pool includes the ten additional verified vocal tracks', () => {
+test('short-song pool includes the eleven additional verified vocal tracks', () => {
   assert.match(catalog, /ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS/);
   assert.match(
     catalog,
@@ -106,7 +106,9 @@ test('short-song pool includes the ten additional verified vocal tracks', () => 
     '37h3M4ZYJgSRy0cXArsH59',
     '59G1ePHebLtol0u5upRFSZ',
     '2K6uY7BaeOfuPwJNOVF3ht',
+    '1QidgC1vyuG6053IY5S4UG',
   ]) assert.match(catalog, new RegExp(id));
+  assert.match(catalog, /ピッカーン！/);
 });
 
 test('native enforces no duplicate Spotify path inside one cycle', () => {
