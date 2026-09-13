@@ -63,7 +63,8 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
   assert.match(layout, /const bool lowPowerPlayback =/);
-  assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
+  assert.match(layout, /put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
   assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
@@ -112,13 +113,14 @@ test('one adaptive threadpool timer services the state queue and exact deadlines
   assert.match(header, /std::atomic<bool> schedulerWakePosted_\{false\}/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
-  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
   assert.match(phaseSync, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /CreateThreadpoolTimer\([\s\S]*SchedulerTimerProc/);
   assert.match(phaseSync, /SetThreadpoolTimer\(schedulerTimer_, &due, 0, 0\)/);
   assert.match(schedule, /SlotState is the queue/);
   assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
+  assert.match(schedule, /healthyPlaybackNeedsNoWork\(candidate\)/);
   assert.doesNotMatch(phaseSync + schedule, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs|kSpotifySimpleRecoveryHoldMs/);
   assert.doesNotMatch(header, /staggerSlotIndex_|staggerSlotStartTick_|staggerSlotValidated_|reconcileIndex_|playbackWatchdogIndex_/);
