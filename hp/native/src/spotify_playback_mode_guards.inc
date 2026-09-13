@@ -1,85 +1,51 @@
 namespace hp {
 namespace {
 
-constexpr wchar_t kSpotifyPlaybackModesOffProbeScript[] = LR"JS(
+constexpr wchar_t kSpotifyShuffleOffProbeScript[] = LR"JS(
 (() => {
   const normalize = value =>
       (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const inspect = (testId, activeStates) => {
-    const button = document.querySelector(`button[data-testid="${testId}"]`);
-    if (!button) return { off: false, point: null };
-    const checked = button.getAttribute('aria-checked');
-    const label = normalize(
-        button.getAttribute('aria-label') || button.getAttribute('title'));
+  const button = document.querySelector(
+      'button[data-testid="control-button-shuffle"]');
+  if (!button) return false;
 
-    // Spotify does not consistently expose aria-checked on every player build.
-    // Fall back to the action label, but distinguish "Enable repeat one" from
-    // plain "Enable repeat": the former means repeat-context is already active.
-    let labelOff = false;
-    let labelActive = false;
-    if (testId === 'control-button-repeat') {
-      labelActive =
-          label.includes('repeat one') ||
-          label.includes('disable repeat') ||
-          (label.includes('リピート') &&
-           (label.includes('オフ') || label.includes('無効') ||
-            label.includes('1曲') || label.includes('1 曲')));
-      labelOff = !labelActive &&
-          ((label.includes('enable repeat') && !label.includes('repeat one')) ||
-           (label.includes('リピート') &&
-            (label.includes('オン') || label.includes('有効'))));
-    } else if (testId === 'control-button-shuffle') {
-      labelActive =
-          label.includes('disable shuffle') ||
-          (label.includes('シャッフル') &&
-           (label.includes('オフ') || label.includes('無効')));
-      labelOff = !labelActive &&
-          (label.includes('enable shuffle') ||
-           (label.includes('シャッフル') &&
-            (label.includes('オン') || label.includes('有効'))));
-    }
+  const checked = button.getAttribute('aria-checked');
+  const label = normalize(
+      button.getAttribute('aria-label') || button.getAttribute('title'));
+  const labelActive =
+      label.includes('disable shuffle') ||
+      (label.includes('シャッフル') &&
+       (label.includes('オフ') || label.includes('無効')));
+  const labelOff = !labelActive &&
+      (label.includes('enable shuffle') ||
+       (label.includes('シャッフル') &&
+        (label.includes('オン') || label.includes('有効'))));
 
-    if (checked === 'false' || (checked === null && labelOff)) {
-      return { off: true, point: null };
-    }
-    const active = activeStates.includes(checked) ||
-        (checked === null && labelActive);
-    if (!active) return { off: false, point: null };
-    const style = window.getComputedStyle(button);
-    const rect = button.getBoundingClientRect();
-    if (button.disabled || button.getAttribute('aria-disabled') === 'true' ||
-        style.display === 'none' || style.visibility === 'hidden' ||
-        style.pointerEvents === 'none' || rect.width <= 0 || rect.height <= 0 ||
-        window.innerWidth <= 0 || window.innerHeight <= 0) {
-      return { off: false, point: null };
-    }
-    return {
-      off: false,
-      point: [
-        Math.max(0, Math.min(10000, Math.round(
-            ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
-        Math.max(0, Math.min(10000, Math.round(
-            ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
-      ]
-    };
-  };
+  if (checked === 'false' || (checked === null && labelOff)) return true;
+  const active = checked === 'true' || (checked === null && labelActive);
+  if (!active) return false;
 
-  const shuffle = inspect('control-button-shuffle', ['true']);
-  const repeat = inspect('control-button-repeat', ['true', 'mixed']);
-  if (shuffle.point) return shuffle.point;
-  if (repeat.point) return repeat.point;
-  return shuffle.off && repeat.off;
+  const style = window.getComputedStyle(button);
+  const rect = button.getBoundingClientRect();
+  if (button.disabled || button.getAttribute('aria-disabled') === 'true' ||
+      style.display === 'none' || style.visibility === 'hidden' ||
+      style.pointerEvents === 'none' || rect.width <= 0 || rect.height <= 0 ||
+      window.innerWidth <= 0 || window.innerHeight <= 0) {
+    return false;
+  }
+  return [
+    Math.max(0, Math.min(10000, Math.round(
+        ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
+    Math.max(0, Math.min(10000, Math.round(
+        ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
+  ];
 })()
 )JS";
 
 }  // namespace
 
-bool SpotifyWebViews::EnsurePlaybackModeOff(
-    Slot& slot, PlaybackModeGuard mode) noexcept {
-  const bool requestedVerified = mode == PlaybackModeGuard::Shuffle
-      ? slot.shuffleOffVerified
-      : slot.repeatOffVerified;
-  if (requestedVerified) return true;
+bool SpotifyWebViews::EnsureShuffleOff(Slot& slot) noexcept {
+  if (slot.shuffleOffVerified) return true;
   if (!slot.webview || slot.reconcileInFlight) return false;
 
   ++slot.reconcileRequestGeneration;
@@ -93,7 +59,7 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
   ComPtr<ICoreWebView2> requestedView = slot.webview;
   const auto alive = alive_;
   const HRESULT started = requestedView->ExecuteScript(
-      kSpotifyPlaybackModesOffProbeScript,
+      kSpotifyShuffleOffProbeScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
           [this, alive, target, requestedView, requestedGeneration,
            requestGeneration](HRESULT result, LPCWSTR json) -> HRESULT {
@@ -113,9 +79,8 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
               const std::wstring_view value(json);
               if (value == L"true") {
                 target->shuffleOffVerified = true;
-                target->repeatOffVerified = true;
                 // RefreshSpotifyHostLayout() can legitimately early-return when
-                // only these verification flags changed. PlaceHosts() is a
+                // only this verification flag changed. PlaceHosts() is a
                 // one-shot geometry/visibility reconciliation here so the just-
                 // verified healthy player is hidden immediately without adding
                 // any steady polling.
@@ -124,8 +89,8 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
                 return S_OK;
               }
               // Missing or not-yet-mounted controls remain pending. Playback is
-              // already confirmed at this stage, so mode convergence must never
-              // demote a healthy slot or block the media clock.
+              // already confirmed at this stage, so shuffle convergence must
+              // never demote a healthy slot or block the media clock.
               if (value == L"false") {
                 ArmRobustScheduler();
                 return S_OK;
@@ -135,18 +100,16 @@ bool SpotifyWebViews::EnsurePlaybackModeOff(
             int x = 0;
             int y = 0;
             if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
-              // The point was measured in the current viewport and belongs only
-              // to Shuffle/Repeat. Dispatch it directly so changing a playback
-              // mode cannot route through the recovery click helper and change
-              // SlotState::Playing to WaitingTarget.
+              // The point belongs only to the Shuffle control. Dispatch it
+              // directly so changing shuffle state cannot route through the
+              // recovery click helper and change SlotState::Playing.
               DispatchSpotifyDevToolsClick(*target, x, y);
               ArmRobustScheduler();
               return S_OK;
             }
 
-            // Shuffle/Repeat are post-start best-effort guards. Script failures
-            // must not convert a genuinely playing slot into recovery; retry on
-            // a later healthy verification turn instead.
+            // Shuffle is a post-start best-effort guard. Script failures must
+            // not convert a genuinely playing slot into recovery.
             ArmRobustScheduler();
             return S_OK;
           }).Get());
