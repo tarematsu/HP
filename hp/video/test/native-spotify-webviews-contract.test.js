@@ -133,18 +133,18 @@ test('controller creation is serialized and bounded on slow machines', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
 });
 
-test('all managed Spotify targets use one generic music descriptor', () => {
-  assert.match(header, /enum class TimedSpotifyTarget : unsigned char \{\s*None,\s*Music,\s*\}/);
+test('all managed Spotify targets use the current ManagedTrack as the single target source', () => {
+  assert.doesNotMatch(header, /TimedSpotifyTarget|MusicTargetDescriptor|timedPlaybackStartTick/);
   assert.doesNotMatch(header, /BitterBlue|Monshirocho|Munen|OnMyWay|LonesomeRabbit|CatalogTrack/);
   assert.match(header, /struct RotationGroup/);
   assert.match(header, /std::vector<ManagedTrack> timedCycleTracks/);
   assert.match(cloud, /GetNamedArray\(L"rotation"\)/);
-  assert.match(header, /struct MusicTargetDescriptor/);
-  assert.match(music, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
-  assert.match(music, /TimedSpotifyTarget::Music/);
+  assert.match(header, /const ManagedTrack\* CurrentMusicTrack/);
+  assert.match(music, /const SpotifyWebViews::ManagedTrack\* SpotifyWebViews::CurrentMusicTrack/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(music, /void SpotifyWebViews::ReconcileMusicTarget/);
-  assert.match(routing, /kind = L"music"/);
+  assert.match(routing, /CurrentMusicTrack\(slot\)/);
+  assert.doesNotMatch(routing, /pagePath|trackPath|kind = L"music"/);
   assert.match(wrapper, /#define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript/);
   assert.doesNotMatch(scripts, /__homePanelLonesomeRabbitLoop|ensureRepeatOne/);
 });
