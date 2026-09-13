@@ -3,7 +3,7 @@
 
 namespace hp {
 
-inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 40ULL * 1000ULL;
+inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 10ULL * 1000ULL;
 
 class SpotifyWebViews final {
  public:
@@ -216,9 +216,8 @@ class SpotifyWebViews final {
   bool networkBlocked_ = false;
 };
 
-// Spotify runs independently from the YouTube/TVer media phase. Each account
-// starts 40 seconds apart and builds its cycle from cloud deviceConfig.spotify
-// rotation blocks.
+// Spotify runs independently from the YouTube/TVer media phase. Accounts become
+// scheduler-eligible ten seconds apart and then run from cloud rotation blocks.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 
