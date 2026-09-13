@@ -23,11 +23,9 @@ test('healthy Spotify playback uses the compact low-power host', () => {
   assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
 });
 
-test('healthy Spotify playback requests LOW WebView2 memory usage', () => {
-  assert.match(layout, /ComPtr<ICoreWebView2_19> memoryView/);
-  assert.match(layout, /put_MemoryUsageTargetLevel/);
-  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
-  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
+test('healthy Spotify playback leaves WebView2 memory usage at the default target', () => {
+  assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel/);
+  assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
 test('shared WebView environment leaves Chromium occlusion throttling enabled', () => {
