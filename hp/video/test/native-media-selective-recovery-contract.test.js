@@ -1,18 +1,21 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const youtubeRecovery = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
+const youtubeAgent = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const tverPlayback = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 
-test('YouTube recovery keeps the existing event-driven host and rechecks only while recovering', () => {
-  assert.match(youtubeRecovery, /__homePanelYoutubePolicyRecoveryTimer/);
-  assert.match(youtubeRecovery, /postMessage\('homepanel:youtube-wake'\)/);
-  assert.match(youtubeRecovery, /}, 2000\);/);
+test('YouTube recovery reuses the existing event-agent timer', () => {
+  assert.match(youtubeAgent, /state\.scheduleRecoveryWake = scheduleRecoveryWake/);
+  assert.match(youtubeRecovery, /scheduleRecoveryWake\?\.\(2000\)/);
+  assert.doesNotMatch(youtubeRecovery, /setTimeout\s*\(/);
   assert.ok((youtubeRecovery.match(/requestRecoveryRecheck\(\)/g) || []).length >= 5);
 });
 
