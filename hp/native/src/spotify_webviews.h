@@ -17,6 +17,7 @@ class SpotifyWebViews final {
   void Resize() noexcept;
   void Shutdown() noexcept;
   void SetNetworkBlocked(bool blocked) noexcept;
+  std::string PlaybackTelemetryJson() const noexcept;
 
  private:
   static constexpr size_t kAccountCount = 6;
@@ -78,6 +79,7 @@ class SpotifyWebViews final {
     ULONGLONG trustedClickTargetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
     ULONGLONG authenticationBadgeTick = 0;
+    int64_t lastPlaybackStartedAt = 0;
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
     ULONGLONG timedCloudRotationRevision = 0;
@@ -117,6 +119,8 @@ class SpotifyWebViews final {
       const Slot& slot, ULONGLONG now) const noexcept;
   bool ExpireStaleAsyncWork(Slot& slot, ULONGLONG now) noexcept;
   void BumpSpotifyTargetGeneration(Slot& slot) noexcept;
+  void NotifyPlaybackTelemetryChanged() noexcept;
+  void MaybePostPlaybackTelemetryChanged(ULONGLONG now) noexcept;
   void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
                                 int yTenThousandths) noexcept;
   UINT DispatchSpotifyDevToolsClick(Slot& slot, int xTenThousandths,
@@ -166,6 +170,8 @@ class SpotifyWebViews final {
   size_t schedulerCursor_ = 0;
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
+  ULONGLONG lastPlaybackTelemetryPostTick_ = 0;
+  bool playbackTelemetryDirty_ = false;
   bool cloudPlaylistLoaded_ = false;
   bool cloudPlaylistWriteTimeKnown_ = false;
   bool initialCloudPlaylistWriteTimeKnown_ = false;
