@@ -45,12 +45,25 @@ export const ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS = [
   ["ピッカーン！", "1QidgC1vyuG6053IY5S4UG"],
 ] as const;
 
-// F/G use the complete short music pool. Instrumentals stay exclusive to B/E.
+// Keep the original catalog intact for device migration, but remove the eight
+// longest ranked entries from the active F/G music pool.
+const SHORT_SPOTIFY_ROTATION_EXCLUDED_IDS = new Set([
+  "7vvZ1QHTdkoEXBiOBdxdIo", // Make or Break
+  "3HdmFZGqZLNiCAfiNj4N84", // 行かないで
+  "51nXGT2UTljN9BdOgn0Utw", // Make or Break -OFF VOCAL ver.-
+  "5DrxCKjopmd7UL1pJWqBHK", // ドライフルーツ
+  "2K6uY7BaeOfuPwJNOVF3ht", // なぜ　恋をして来なかったんだろう？
+  "5TaAgmUQuhJw4bGW4dg3KI", // なぜ　恋をして来なかったんだろう？ -OFF VOCAL ver.-
+  "2hi8kIoKC8tRMDajdkoYFL", // Nightmare症候群
+  "4hVECXakmpdqigQq1mJwNg", // Nightmare症候群 -OFF VOCAL ver.-
+]);
+
+// F/G use the filtered short music pool. Instrumentals stay exclusive to B/E.
 export const SHORT_SPOTIFY_ROTATION_TRACKS = [
   ...SHORT_SPOTIFY_RANDOM_TRACKS,
   ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
   ...ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS,
-] as const;
+].filter(([, id]) => !SHORT_SPOTIFY_ROTATION_EXCLUDED_IDS.has(id));
 
 // Keep newly discovered instrumental tracks appended after the existing managed
 // pool so older device configs remain an exact prefix and migrate safely.
