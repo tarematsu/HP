@@ -76,9 +76,5 @@ LR"JS(
         scheduleEnsure(40);
       }, { passive: true });
     }
-
-    if (video.paused && !video.ended && !state.adActive) {
-      startRecovery('initial-pause');
-    }
   };
 )JS"
