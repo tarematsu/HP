@@ -166,10 +166,7 @@ test('existing polling and recovery expressions bind to monotonic arithmetic', (
     'void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs)',
     'LRESULT App::HandleMessage(',
   );
-  assert.match(appPending, /auto& pendingUntil/);
-  assert.match(appPending, /auto& handoffReadyAt/);
-  assert.match(
-    appPending,
-    /TrackBoundaryPendingActionFor\(\s*nowMs, pendingUntil, handoffReadyAt/,
-  );
+  assert.match(appPending, /single Stationhead player has no peer handoff window/);
+  assert.match(appPending, /\(void\)nowMs;/);
+  assert.doesNotMatch(appPending, /pendingUntil|handoffReadyAt|TrackBoundaryPendingActionFor/);
 });
