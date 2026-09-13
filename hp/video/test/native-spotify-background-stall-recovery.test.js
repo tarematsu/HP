@@ -27,25 +27,29 @@ test('runtime uses one adaptive scheduler instead of parallel background probing
   assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
 });
 
-test('recovering non-owner jumps ahead without increasing healthy polling cadence', () => {
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
+test('slot state is the recovery queue with no fixed ownership lease', () => {
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /const size_t scanStart = \(staggerSlotIndex_ \+ 1\) % count/);
   assert.match(schedule, /candidate\.state != SlotState::Recovering/);
-  assert.match(schedule, /candidate\.unhealthySinceTick/);
-  assert.match(schedule, /recoveryPriorityIndex < slots_\.size\(\)/);
-  assert.match(schedule, /staggerSlotIndex_ = nextIndex/);
-  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);
-  assert.match(phase, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
+  assert.match(schedule, /!candidate\.timedRotationActive \|\|\s*SlotStateNeedsRecovery\(candidate\.state\)/);
+  assert.doesNotMatch(schedule, /kSpotifySimpleRecoveryHoldMs|holdRecovery|SimpleSpotifyScheduledIndex/);
 });
 
-test('slow responsive layout settles before owner-only DOM reconciliation', () => {
-  assert.match(schedule, /kSpotifySimpleLayoutSettleMs = 2ULL \* 1000ULL/);
-  assert.match(schedule, /kSpotifySimpleRetryMs = 4ULL \* 1000ULL/);
+test('queue runs at most one DOM reconciliation per scheduler pass', () => {
+  const reconciles = schedule.match(/ReconcileActiveTimedSlot\(slot\);/g) || [];
+  assert.equal(reconciles.length, 1);
+  assert.match(schedule, /selected = index;\s*break;/);
+  assert.match(schedule, /staggerSlotIndex_ = selected/);
+  assert.match(schedule, /RefreshSpotifyHostLayout\(\)/);
+});
+
+test('slow recovery is retried sparsely while urgent timer remains responsive', () => {
+  assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
   assert.match(
     schedule,
-    /SlotStateNeedsRecovery\(slot\.state\)[\s\S]*kSpotifySimpleLayoutSettleMs[\s\S]*return;/,
+    /lastTimedReconcileTick == 0 \|\|\s*now - slot\.lastTimedReconcileTick >= kSpotifyQueueRetryMs/,
   );
   assert.match(schedule, /ReconcileActiveTimedSlot\(slot\)/);
 });
@@ -57,7 +61,6 @@ test('track completion remains native-deadline driven with no media heartbeat', 
   assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
-  assert.match(runtime, /spotify:generation/);
   assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
   assert.doesNotMatch(runtime + events, /heartbeatTimer|heartbeatMisses|requestRecovery/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
