@@ -101,14 +101,46 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
     if (!status) return false;
     SetTimer(status, kNativeSpotifyStatusTimer, kNativeSpotifyStatusRefreshMs, nullptr);
   } else {
-    SetWindowPos(status, HWND_TOP, bounds.left, bounds.top,
-                 std::max(1L, bounds.right - bounds.left),
-                 std::max(1L, bounds.bottom - bounds.top),
-                 SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
+    RECT current{};
+    GetWindowRect(status, &current);
+    MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
+    if (!EqualRect(&current, &bounds)) {
+      SetWindowPos(status, nullptr, bounds.left, bounds.top,
+                   std::max(1L, bounds.right - bounds.left),
+                   std::max(1L, bounds.bottom - bounds.top),
+                   SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER |
+                       SWP_SHOWWINDOW);
+    }
   }
   return true;
 }
 }  // namespace
+
+bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
+                         const RECT& bounds) noexcept;
+
+fs::path gNativeMediaDataDir;
+
+bool RecreateNativeMediaPanel(HWND hwnd) noexcept {
+  if (!hwnd || !IsWindow(hwnd)) return false;
+  HWND parentWindow = GetParent(hwnd);
+  if (!parentWindow || !IsWindow(parentWindow) || gNativeMediaDataDir.empty()) {
+    return false;
+  }
+  RECT bounds{};
+  if (!GetClientRect(parentWindow, &bounds) ||
+      bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+    return false;
+  }
+  fs::path dataDir;
+  try {
+    dataDir = gNativeMediaDataDir;
+  } catch (...) {
+    return false;
+  }
+  if (!DestroyWindow(hwnd)) return false;
+  return EnsureNativeMvPanel(parentWindow, dataDir, bounds);
+}
 
 LRESULT CALLBACK NativeMediaPanelWndProc(
     HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -124,18 +156,30 @@ LRESULT CALLBACK NativeMediaPanelWndProc(
   }
   if (host) {
     switch (message) {
+      case kNativeMediaRecreateMessage:
+        RecreateNativeMediaPanel(hwnd);
+        return 0;
       case WM_SIZE:
         host->Resize();
         return 0;
-      case WM_TIMER:
-        if (host->OnTimer(static_cast<UINT_PTR>(wparam))) return 0;
+      case WM_TIMER: {
+        const UINT_PTR timerId = static_cast<UINT_PTR>(wparam);
+        if ((timerId == kNativeMediaYoutubeWatchdogTimer ||
+             timerId == kNativeMediaTverWatchdogTimer) &&
+            NativeMediaWatchdogExecutionTimedOut(hwnd, timerId)) {
+          PostMessageW(hwnd, kNativeMediaRecreateMessage, 0, 0);
+          return 0;
+        }
+        if (host->OnTimer(timerId)) return 0;
         break;
+      }
       case WM_ERASEBKGND:
         return 1;
       case WM_PAINT:
         host->Paint();
         return 0;
       case WM_NCDESTROY:
+        NativeMediaForgetWatchdogExecution(hwnd);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         host->Shutdown();
         delete host;
@@ -151,6 +195,11 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
                          const RECT& bounds) noexcept {
   if (!parentWindow || !IsWindow(parentWindow) ||
       bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+    return false;
+  }
+  try {
+    if (gNativeMediaDataDir != dataDir) gNativeMediaDataDir = dataDir;
+  } catch (...) {
     return false;
   }
   static std::once_flag once;
@@ -204,10 +253,10 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
   MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
   if (!EqualRect(&current, &videoBounds)) {
     SetWindowPos(
-        host, HWND_TOP, videoBounds.left, videoBounds.top,
+        host, nullptr, videoBounds.left, videoBounds.top,
         std::max(1L, videoBounds.right - videoBounds.left),
         std::max(1L, videoBounds.bottom - videoBounds.top),
-        SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
+        SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_SHOWWINDOW);
   }
   return true;
 }

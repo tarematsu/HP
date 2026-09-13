@@ -84,19 +84,109 @@ bool NativeMediaWebViewSourceContains(
          source.find(needle) != std::wstring::npos;
 }
 
+struct NativeMediaWatchdogExecutionState {
+  std::mutex mutex;
+  HWND hostWindow = nullptr;
+  UINT_PTR timerId = 0;
+  uint64_t generation = 0;
+  ULONGLONG startedTick = 0;
+  bool inFlight = false;
+};
+
+NativeMediaWatchdogExecutionState& NativeMediaWatchdogState() noexcept {
+  static NativeMediaWatchdogExecutionState state;
+  return state;
+}
+
+uint64_t NativeMediaBeginWatchdogExecution(
+    HWND hostWindow, UINT_PTR timerId) noexcept {
+  auto& state = NativeMediaWatchdogState();
+  std::lock_guard lock(state.mutex);
+  ++state.generation;
+  if (state.generation == 0) ++state.generation;
+  state.hostWindow = hostWindow;
+  state.timerId = timerId;
+  state.startedTick = GetTickCount64();
+  if (state.startedTick == 0) state.startedTick = 1;
+  state.inFlight = true;
+  return state.generation;
+}
+
+bool NativeMediaFinishWatchdogExecution(
+    HWND hostWindow, uint64_t generation) noexcept {
+  auto& state = NativeMediaWatchdogState();
+  std::lock_guard lock(state.mutex);
+  if (!state.inFlight || state.hostWindow != hostWindow ||
+      state.generation != generation) {
+    return false;
+  }
+  state.inFlight = false;
+  state.startedTick = 0;
+  return true;
+}
+
+bool NativeMediaWatchdogExecutionTimedOut(
+    HWND hostWindow, UINT_PTR timerId) noexcept {
+  auto& state = NativeMediaWatchdogState();
+  std::lock_guard lock(state.mutex);
+  if (!state.inFlight || state.hostWindow != hostWindow ||
+      state.timerId != timerId || state.startedTick == 0) {
+    return false;
+  }
+  ULONGLONG now = GetTickCount64();
+  if (now == 0) now = 1;
+  if (now - state.startedTick < kNativeMediaWatchdogExecutionTimeoutMs) {
+    return false;
+  }
+  ++state.generation;
+  if (state.generation == 0) ++state.generation;
+  state.inFlight = false;
+  state.startedTick = 0;
+  return true;
+}
+
+void NativeMediaForgetWatchdogExecution(HWND hostWindow) noexcept {
+  auto& state = NativeMediaWatchdogState();
+  std::lock_guard lock(state.mutex);
+  if (state.hostWindow != hostWindow) return;
+  ++state.generation;
+  if (state.generation == 0) ++state.generation;
+  state.hostWindow = nullptr;
+  state.timerId = 0;
+  state.startedTick = 0;
+  state.inFlight = false;
+}
+
+bool NativeMediaProcessNeedsRecreate(
+    COREWEBVIEW2_PROCESS_FAILED_KIND kind) noexcept {
+  switch (kind) {
+    case COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED:
+    case COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED:
+    case COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 void NativeMediaEnsureEventWakeBridge(
     ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
   static ComPtr<ICoreWebView2> installedWebview;
   static EventRegistrationToken installedToken{};
+  static EventRegistrationToken installedProcessFailedToken{};
   if (!webview || !hostWindow || !IsWindow(hostWindow) || !alive) return;
   if (installedWebview.Get() == webview && installedToken.value != 0) return;
 
   if (installedWebview && installedToken.value != 0) {
     installedWebview->remove_WebMessageReceived(installedToken);
   }
+  if (installedWebview && installedProcessFailedToken.value != 0) {
+    installedWebview->remove_ProcessFailed(installedProcessFailedToken);
+  }
   installedWebview.Reset();
   installedToken = {};
+  installedProcessFailedToken = {};
 
   ComPtr<ICoreWebView2Settings> settings;
   if (FAILED(webview->get_Settings(&settings)) || !settings ||
@@ -159,9 +249,32 @@ void NativeMediaEnsureEventWakeBridge(
             return S_OK;
           }).Get(),
       &token);
-  if (SUCCEEDED(registered)) {
-    installedWebview = webview;
-    installedToken = token;
+  if (FAILED(registered)) return;
+
+  EventRegistrationToken processFailedToken{};
+  const HRESULT processRegistered = webview->add_ProcessFailed(
+      Callback<ICoreWebView2ProcessFailedEventHandler>(
+          [hostWindow, safeAlive](
+              ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args)
+              -> HRESULT {
+            if (!safeAlive->load(std::memory_order_acquire) || !args ||
+                !hostWindow || !IsWindow(hostWindow)) {
+              return S_OK;
+            }
+            COREWEBVIEW2_PROCESS_FAILED_KIND kind{};
+            if (FAILED(args->get_ProcessFailedKind(&kind)) ||
+                !NativeMediaProcessNeedsRecreate(kind)) {
+              return S_OK;
+            }
+            PostMessageW(hostWindow, kNativeMediaRecreateMessage, 0, 0);
+            return S_OK;
+          }).Get(),
+      &processFailedToken);
+
+  installedWebview = webview;
+  installedToken = token;
+  if (SUCCEEDED(processRegistered)) {
+    installedProcessFailedToken = processFailedToken;
   }
 }
 
@@ -233,6 +346,43 @@ HRESULT ExecuteNativeMediaPolicyScript(
   if (!webview || !script) return E_POINTER;
   const wchar_t* resolved =
       ResolveNativeMediaPolicyScript(script, webview, hostWindow, alive);
-  return resolved ? webview->ExecuteScript(resolved, handler) : E_POINTER;
+  if (!resolved) return E_POINTER;
+
+  UINT_PTR watchdogTimerId = 0;
+  if (script == kNativeMediaYoutubeWatchdogScript) {
+    watchdogTimerId = kNativeMediaYoutubeWatchdogTimer;
+  } else if (script == kNativeMediaTverWatchdogScript) {
+    watchdogTimerId = kNativeMediaTverWatchdogTimer;
+  }
+  if (watchdogTimerId == 0 || !handler) {
+    return webview->ExecuteScript(resolved, handler);
+  }
+
+  const uint64_t generation =
+      NativeMediaBeginWatchdogExecution(hostWindow, watchdogTimerId);
+  ComPtr<ICoreWebView2ExecuteScriptCompletedHandler> downstream = handler;
+  const auto safeAlive = alive;
+  const auto completed =
+      Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+          [hostWindow, safeAlive, downstream, generation](
+              HRESULT result, LPCWSTR json) -> HRESULT {
+            if (!NativeMediaFinishWatchdogExecution(hostWindow, generation)) {
+              return S_OK;
+            }
+            if (safeAlive && safeAlive->load(std::memory_order_acquire) &&
+                FAILED(result) && hostWindow && IsWindow(hostWindow)) {
+              PostMessageW(hostWindow, kNativeMediaRecreateMessage, 0, 0);
+            }
+            return downstream ? downstream->Invoke(result, json) : S_OK;
+          });
+  const HRESULT started = webview->ExecuteScript(resolved, completed.Get());
+  if (FAILED(started)) {
+    NativeMediaFinishWatchdogExecution(hostWindow, generation);
+    if (safeAlive && safeAlive->load(std::memory_order_acquire) &&
+        hostWindow && IsWindow(hostWindow)) {
+      PostMessageW(hostWindow, kNativeMediaRecreateMessage, 0, 0);
+    }
+  }
+  return started;
 }
 }  // namespace
