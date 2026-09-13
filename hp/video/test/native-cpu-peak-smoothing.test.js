@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const source = name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+
+const schedule = source('spotify_stagger_schedule.inc');
+const lifecycle = source('spotify_host_lifecycle.inc');
+const network = source('spotify_network_block.inc');
+const radar = source('renderer_radar_ui.cpp');
+const mediaBase = source('renderer_panels/media_section_base.inc');
+const mediaWindow = source('renderer_panels/media_host_window.inc');
+
+test('Spotify startup defers the first WebView and keeps later accounts serialized', () => {
+  assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /scheduleStartTick_ = now \+ kSpotifyInitialStartDelayMs/);
+  assert.match(schedule, /scheduleStartTick_ \+[\s\S]*kSpotifyAccountStartOffsetMs/);
+  assert.match(schedule, /if \(now < scheduleStartTick_\) return/);
+  assert.doesNotMatch(lifecycle + network, /CreateController\(slots_\[0\]\)/);
+  assert.match(schedule, /BeginControllerCreate\(slot\)/);
+  assert.equal((schedule.match(/BeginControllerCreate\(slot\)/g) || []).length, 1);
+});
+
+test('rain radar decoding yields CPU priority to playback work', () => {
+  assert.match(
+    radar,
+    /radarComposeThread_ = std::thread\(\[this\] \{[\s\S]*SetThreadPriority\(GetCurrentThread\(\), THREAD_PRIORITY_BELOW_NORMAL\)/,
+  );
+  assert.match(radar, /ComposeRadarFrame\(\)/);
+});
+
+test('Spotify status repaint is phase-offset from whole-second media watchdog cadence', () => {
+  assert.match(mediaWindow, /kNativeSpotifyStatusInitialDelayMs = 2'500U/);
+  assert.match(mediaWindow, /kNativeSpotifyStatusRefreshMs = 5U \* 1000U/);
+  assert.match(
+    mediaWindow,
+    /SetTimer\(status, kNativeSpotifyStatusTimer,\s*kNativeSpotifyStatusInitialDelayMs, nullptr\)/,
+  );
+  assert.match(
+    mediaWindow,
+    /WM_TIMER:[\s\S]*kNativeSpotifyStatusTimer[\s\S]*SetTimer\(hwnd, kNativeSpotifyStatusTimer,\s*kNativeSpotifyStatusRefreshMs, nullptr\)/,
+  );
+  assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
+});
