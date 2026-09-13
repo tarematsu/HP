@@ -17,10 +17,10 @@ const layout = sourcePart('spotify_host_layout.inc');
 
 test('Spotify WebViews serialize startup without UI-thread blocking or legacy timer rewriting', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
-  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
-  assert.doesNotMatch(schedule, /% 6ULL|std::min<ULONGLONG>\(5ULL/);
+  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(schedule, /startupReady/);
+  assert.match(schedule, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);
 });
 
@@ -86,12 +86,12 @@ test('steady authentication layout repairs z-order only when it is actually lost
   assert.match(layout, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE/);
 });
 
-test('each Spotify scheduler turn performs at most one host layout refresh', () => {
+test('each Spotify scheduler pass performs at most one host layout refresh', () => {
   const refreshes = schedule.match(/RefreshSpotifyHostLayout\(\);/g) || [];
   assert.equal(refreshes.length, 1);
   assert.match(
     schedule,
-    /staggerSlotIndex_ = scheduledIndex;[\s\S]*Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
+    /staggerSlotIndex_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
   );
 });
 
