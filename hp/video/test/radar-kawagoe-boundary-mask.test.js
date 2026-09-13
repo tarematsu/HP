@@ -78,8 +78,13 @@ test('each dry radar panel independently becomes gray and uses an aspect-safe su
   assert.doesNotMatch(browserRadar, /panelRainTiles|loadedRainTiles|radar rain tiles were not fetched for any panel/);
 });
 
-test('radar panel labels use the requested top offset', () => {
+test('radar panel labels use top 50 and render only a 1.5x timestamp', () => {
   assert.match(browserRadar, /const chipTop = 50;/);
+  assert.match(browserRadar, /context\.font = "500 39px sans-serif";/);
+  assert.match(browserRadar, /const timeWidth = context\.measureText\(timeText\)\.width;/);
+  assert.match(browserRadar, /chipTop \+ chipHeight \/ 2/);
+  assert.doesNotMatch(browserRadar, /const title = panel\.title/);
+  assert.doesNotMatch(browserRadar, /fillText\(title/);
 });
 
 test('missing boundary data never falls back to the opaque legacy map', () => {
