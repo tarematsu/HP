@@ -50,7 +50,7 @@ test('global media mute remains the only media-to-Spotify state coupling', () =>
 test('unmute restarts autonomous cloud rotation without a media-phase wait', () => {
   assert.match(
     schedule,
-    /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot, now\);/,
+    /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot\);/,
   );
   assert.match(schedule, /StartAutonomousSchedule/);
   assert.doesNotMatch(schedule, /gSpotifyTverPhase/);
