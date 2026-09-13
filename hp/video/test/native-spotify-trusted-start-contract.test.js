@@ -18,13 +18,14 @@ test('music play preflight arms trusted start before native click dispatch', () 
   assert.doesNotMatch(click, /TimedSpotifyTarget/);
 });
 
-test('trusted start is generation scoped short lived and cannot override wrong identity', () => {
+test('trusted start is generation scoped short lived and never claims concrete non-target playback', () => {
   assert.match(runtime, /const armTrustedStart = requestedGeneration =>/);
   assert.match(runtime, /requested !== generation\(\)/);
   assert.match(runtime, /state\.trustedStartUntil = Date\.now\(\) \+ 15000/);
   assert.match(runtime, /state\.trustedStartKey !== targetKey\(target\)/);
   assert.match(runtime, /clearTrustedStart\(\)/);
-  assert.match(runtime, /return state\.startPosted \? 'wrong' : 'unknown'/);
+  assert.match(runtime, /if \(!media\.paused\) \{[\s\S]*return 'interruption'/);
+  assert.doesNotMatch(runtime, /return state\.startPosted \? 'wrong'/);
 });
 
 test('once media is adopted missing metadata preserves ownership and start state', () => {
