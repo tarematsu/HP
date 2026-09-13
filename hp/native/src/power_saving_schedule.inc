@@ -1,4 +1,4 @@
-// Scheduled power-saving state, MV startup input pass, and media mute toggles.
+// Scheduled power-saving state, MV startup input pass, and audio mode toggles.
 namespace {
 constexpr UINT kMvStartupPassHoldMs = 1'500;
 constexpr int kPowerSavingStartMinute = 12 * 60;
@@ -102,8 +102,33 @@ void PowerSavingController::ApplyMode(bool enabled) {
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
 }
 
-void PowerSavingController::ApplyMediaMute(bool enabled) noexcept {
-  mediaMuted_ = enabled;
-  SetNativeMediaPanelMuted(enabled);
+void PowerSavingController::CycleAudioMode() noexcept {
+  switch (audioMode_) {
+    case AudioMode::Media:
+      ApplyAudioMode(AudioMode::Stationhead);
+      break;
+    case AudioMode::Stationhead:
+      ApplyAudioMode(AudioMode::Muted);
+      break;
+    case AudioMode::Muted:
+      ApplyAudioMode(AudioMode::Media);
+      break;
+  }
+}
+
+void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
+  audioMode_ = mode;
+  mediaMuted_ = mode != AudioMode::Media;
+  SetNativeMediaPanelMuted(mediaMuted_);
+
+  if (parent_ && IsWindow(parent_)) {
+    const UiAction stationheadAction = mode == AudioMode::Stationhead
+        ? UiAction::StationheadAudioToggle
+        : UiAction::StationheadAudioMute;
+    SendMessageW(
+        parent_, kRendererActionMessage,
+        static_cast<WPARAM>(stationheadAction), 0);
+  }
+
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
 }

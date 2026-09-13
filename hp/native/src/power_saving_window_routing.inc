@@ -2,6 +2,9 @@
 namespace {
 constexpr wchar_t kMainWindowClass[] = L"HomePanelNativeWindow";
 constexpr wchar_t kMvPanelWindowClass[] = L"HomePanelNativeMvPanel";
+constexpr wchar_t kStationheadHostWindowClass[] = L"HomePanelStationheadHost";
+constexpr wchar_t kSecondaryStationheadHostWindowClass[] =
+    L"HomePanelSecondaryStationheadHost";
 constexpr UINT_PTR kObservedNativeMvAutoStartTimer = 0x4D56;
 
 bool WindowHasClass(HWND window, const wchar_t* expected) {
@@ -17,6 +20,11 @@ bool IsMainWindow(HWND window) {
 
 bool IsMvPanelWindow(HWND window) {
   return WindowHasClass(window, kMvPanelWindowClass);
+}
+
+bool IsStationheadPlaybackHost(HWND window) {
+  return WindowHasClass(window, kStationheadHostWindowClass) ||
+      WindowHasClass(window, kSecondaryStationheadHostWindowClass);
 }
 }  // namespace
 
@@ -137,6 +145,11 @@ void PowerSavingController::Attach(HWND parent) {
         HRESULT_FROM_WIN32(error), "SetWindowSubclass power saving parent");
   }
 
+  // Every fresh dashboard starts in mode A: YouTube/TVer audible and
+  // Stationhead muted. Spotify WebViews are intentionally outside this route.
+  audioMode_ = AudioMode::Media;
+  ApplyAudioMode(audioMode_);
+
   EnumChildWindows(
       parent_,
       [](HWND child, LPARAM value) -> BOOL {
@@ -158,6 +171,16 @@ void PowerSavingController::Attach(HWND parent) {
 
 void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   if (!parent_ || !window || window == overlay_ || !IsWindow(window)) return;
+
+  // The Stationhead playback host is created after the App object has prepared
+  // its player. Reassert non-B modes here so mode A is muted before playback can
+  // become audible even though the initial controller attach happened earlier.
+  if (audioMode_ != AudioMode::Stationhead && IsStationheadPlaybackHost(window)) {
+    SendMessageW(
+        parent_, kRendererActionMessage,
+        static_cast<WPARAM>(UiAction::StationheadAudioMute), 0);
+  }
+
   ::SetWindowSubclass(
       window, ChildSubclassProc, kChildSubclassId,
       reinterpret_cast<DWORD_PTR>(this));

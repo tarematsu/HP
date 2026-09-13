@@ -57,7 +57,7 @@ test('power-saving controller composes focused responsibilities without a thread
   assert.match(overlay, /void PowerSavingController::PaintOverlay/);
 });
 
-test('update, monitor and media mute controls share one horizontal clock footer row', () => {
+test('update, monitor and audio mode controls share one horizontal clock footer row', () => {
   assert.match(overlay, /constexpr size_t kControlButtonCount = 3/);
   assert.match(overlay, /const int upperMediaHeight = sideHeight \* 600 \/ 1000/);
   assert.match(overlay, /compactAvailable \* 55 \/ 100/);
@@ -70,9 +70,12 @@ test('update, monitor and media mute controls share one horizontal clock footer 
   assert.match(overlay, /button\.bottom - button\.top\) \* 42 \/ 100/);
   assert.match(overlay, /L"更新"/);
   assert.match(overlay, /L"モニター ON" : L"モニター"/);
-  assert.match(overlay, /L"ミュート ON" : L"ミュート"/);
+  assert.match(overlay, /L"ミュートA"/);
+  assert.match(overlay, /L"ミュートB"/);
+  assert.match(overlay, /L"ミュートAB"/);
+  assert.match(header, /enum class AudioMode/);
+  assert.match(header, /AudioMode audioMode_ = AudioMode::Media/);
   assert.match(header, /RECT LocalUpdateButtonRect\(\) const/);
-  assert.match(header, /bool mediaMuted_ = false/);
   assert.match(layout, /SpanY\(hpClockContent, 780\)/);
   assert.match(layout, /SpanY\(hpClockContent, 790\)/);
   assert.match(layout, /hpControlButtonWidth = std::clamp\(SpanX\(hpStatusRect, 205\), 74, 110\)/);
@@ -95,9 +98,34 @@ test('compact overlay clips the complete three-button control row', () => {
   assert.match(overlay, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
 });
 
-test('mute changes only WebView audio state and keeps playback alive', () => {
-  assert.match(overlay, /ApplyMediaMute\(!controller->mediaMuted_\)/);
-  assert.match(schedule, /SetNativeMediaPanelMuted\(enabled\)/);
+test('single audio button cycles A to B to AB while Spotify stays outside routing', () => {
+  assert.match(overlay, /controller->CycleAudioMode\(\)/);
+  assert.match(
+    schedule,
+    /case AudioMode::Media:[\s\S]*ApplyAudioMode\(AudioMode::Stationhead\)[\s\S]*case AudioMode::Stationhead:[\s\S]*ApplyAudioMode\(AudioMode::Muted\)[\s\S]*case AudioMode::Muted:[\s\S]*ApplyAudioMode\(AudioMode::Media\)/,
+  );
+  assert.match(schedule, /mediaMuted_ = mode != AudioMode::Media/);
+  assert.match(schedule, /SetNativeMediaPanelMuted\(mediaMuted_\)/);
+  assert.match(
+    schedule,
+    /mode == AudioMode::Stationhead[\s\S]*UiAction::StationheadAudioToggle[\s\S]*UiAction::StationheadAudioMute/,
+  );
+  assert.match(
+    routing,
+    /audioMode_ = AudioMode::Media;[\s\S]*ApplyAudioMode\(audioMode_\)/,
+  );
+  assert.match(
+    app,
+    /case UiAction::StationheadAudioToggle:[\s\S]*stationhead_->SetAudioMuted\(stationheadAudioMuted_\)/,
+  );
+  assert.match(
+    app,
+    /case UiAction::StationheadAudioMute:[\s\S]*stationhead_->SetAudioMuted\(true\)/,
+  );
+  assert.doesNotMatch(schedule, /Spotify/);
+});
+
+test('media mute changes only YouTube/TVer WebView audio state and keeps playback alive', () => {
   assert.match(mediaHost, /void SetMuted\(bool muted\) noexcept/);
   assert.match(mediaHost, /ComPtr<ICoreWebView2_8> audio/);
   assert.match(mediaHost, /audio->put_IsMuted\(muted \? TRUE : FALSE\)/);
