@@ -77,7 +77,7 @@ test('active Spotify auth takes precedence over audible playback at startup', ()
   assert.doesNotMatch(readiness, /status\.audioPlaying \|\| status\.loginRequired \|\|/);
 });
 
-test('Window B remains covered until the Spotify auth document is usable', () => {
+test('retained Secondary role remains covered until the Spotify auth document is usable', () => {
   const readiness = section(
     handleHeader,
     'inline bool StationheadStartupPreviewReady(',
@@ -106,7 +106,7 @@ test('a loaded playback document cannot bypass an active pending auth surface', 
   assert.ok(stationFallbackAt > audioAt);
 });
 
-test('the auth navigation callback publishes readiness before exposing B', () => {
+test('the auth navigation callback publishes readiness before exposing the auth surface', () => {
   const authConfigure = section(
     webviewSource,
     'void StationheadPlayer::ConfigureAuthWebView()',
@@ -120,7 +120,7 @@ test('the auth navigation callback publishes readiness before exposing B', () =>
   ]);
 });
 
-test('Window B latches completed Auth readiness across later playback updates', () => {
+test('retained Secondary handle latches completed Auth readiness across later playback updates', () => {
   const secondary = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
@@ -148,7 +148,7 @@ test('Window B latches completed Auth readiness across later playback updates', 
   ]);
 });
 
-test('Window B clears a previous Auth-ready latch for a replacement session', () => {
+test('retained Secondary handle clears a previous Auth-ready latch for a replacement session', () => {
   const secondary = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
@@ -174,27 +174,16 @@ test('Window B clears a previous Auth-ready latch for a replacement session', ()
   );
 });
 
-test('Window B re-evaluates deferred preview on the posted state-change event', () => {
-  const secondary = section(
-    handleHeader,
-    'class AppSecondaryStationheadHandle final',
-    '}  // namespace hp',
-  );
-  const consume = section(
-    secondary,
-    'uint32_t ConsumeChangeFlags() {',
-    'StationheadStatus Status() const',
-  );
-
-  assertOrdered(consume, [
-    'StationheadHandleBase::ConsumeChangeFlags()',
-    'ApplyDeferredStartupPreview();',
-    'return flags;',
-  ]);
-  assert.match(
+test('single Stationhead re-evaluates placement on its posted state-change event', () => {
+  const changed = section(
     appMessages,
-    /secondaryStationhead_\s*\? secondaryStationhead_->ConsumeChangeFlags\(\)/,
+    'case WM_HP_STATIONHEAD_CHANGED:',
+    'case kStationheadHealthUpdatedMessage:',
   );
+  assert.match(changed, /stationhead_->ConsumeChangeFlags\(\)/);
+  assert.match(changed, /ApplyStationheadWindowPlacement\(stationhead_->Status\(\), StationheadStatus\{\}\)/);
+  assert.match(changed, /ScheduleNextTick\(1\)/);
+  assert.doesNotMatch(changed, /secondaryStationhead_/);
 });
 
 test('popup authorization becomes active before its controller is created', () => {
