@@ -21,14 +21,14 @@ const cloud = readFileSync(
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 
-test('music duration and five-minute fallback share one two-second-grace deadline calculator', () => {
+test('music duration and four-minute fallback share one two-second-grace deadline calculator', () => {
   const start = music.indexOf(
     'void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart');
   const end = music.indexOf('\nvoid SpotifyWebViews::ShortenMusicCompletionDeadlineAtEnd', start);
   assert.ok(start >= 0 && end > start);
   const arm = music.slice(start, end);
 
-  assert.match(music, /kSpotifyNavigationFailsafeMs = 5ULL \* 60ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyNavigationFailsafeMs = 4ULL \* 60ULL \* 1000ULL/);
   assert.match(music, /kSpotifyNavigationCompletionGraceMs = 2ULL \* 1000ULL/);
   assert.match(arm, /observedRemainingMs/);
   assert.match(arm, /completionDelayMs = kSpotifyNavigationFailsafeMs/);
