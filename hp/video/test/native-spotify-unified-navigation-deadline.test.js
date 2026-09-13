@@ -4,16 +4,12 @@ import test from 'node:test';
 
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
-const wrapper = readFileSync(
-  new URL('../../native/src/spotify_webviews.inc', import.meta.url), 'utf8');
 const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
 const click = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
-const deadlineEvents = readFileSync(
-  new URL('../../native/src/spotify_music_deadline_events.inc', import.meta.url), 'utf8');
 const controller = readFileSync(
   new URL('../../native/src/spotify_controller_lifecycle.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
@@ -67,10 +63,9 @@ test('trusted Play mousePressed is the primary playback-start anchor', () => {
 });
 
 test('direct playback start enters the same deadline helper with observed remaining time', () => {
-  assert.match(wrapper, /spotify_music_deadline_events\.inc/);
-  assert.match(deadlineEvents, /ParseSpotifyStartedEvent/);
+  assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(
-    deadlineEvents,
+    rotation,
     /ArmMusicCompletionDeadlineFromStart\([\s\S]*\*target, now, remainingMs/,
   );
 });
@@ -80,10 +75,14 @@ test('validated ended only shortens the same deadline', () => {
   assert.match(events, /state\.targetMedia !== media/);
   assert.match(events, /state\.interruptionStartedAt/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
-  assert.match(deadlineEvents, /spotify:timed-ended/);
-  assert.match(deadlineEvents, /ShortenMusicCompletionDeadlineAtEnd\(\*target, now\)/);
+  assert.match(rotation, /L"spotify:timed-ended"/);
+  assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd\(\*target, now\)/);
   assert.match(music, /slot\.timedCompletionDeadlineTick = endedTick/);
-  assert.doesNotMatch(deadlineEvents, /AdvanceTimedRotationSlot/);
+
+  const endedStart = rotation.indexOf('if (ended) {');
+  const endedEnd = rotation.indexOf('SetSlotState(*target, SlotState::Playing)', endedStart);
+  assert.ok(endedStart >= 0 && endedEnd > endedStart);
+  assert.doesNotMatch(rotation.slice(endedStart, endedEnd), /AdvanceTimedRotationSlot/);
 });
 
 test('NavigationCompleted no longer owns a second duration deadline path', () => {
