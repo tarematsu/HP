@@ -23,7 +23,6 @@ class SpotifyWebViews final {
   enum class TimedSpotifyTarget : unsigned char {
     None,
     Music,
-    TalkAbout,
     // Legacy names are retained only so old reset/recovery paths compile while
     // playback itself is driven exclusively by timedCycleTracks.
     BitterBlue,
@@ -62,7 +61,6 @@ class SpotifyWebViews final {
     Mode mode = Mode::Fixed;
     std::vector<ManagedTrack> tracks;
     size_t count = 0;
-    bool includeTalkAbout = false;
   };
 
   struct Slot {
@@ -119,7 +117,6 @@ class SpotifyWebViews final {
     bool timedObserverReady = false;
     bool timedObserverInstallInFlight = false;
     bool timedRotationActive = false;
-    bool podcastBreakActive = false;
     bool hostLayoutApplied = false;
     bool hostLayoutReducedZoomApplied = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
@@ -166,13 +163,6 @@ class SpotifyWebViews final {
   void BeginInitialCloudPlaylistWait(ULONGLONG now) noexcept;
   bool InitialCloudPlaylistReady(ULONGLONG now) noexcept;
   void EnsureCloudPlaylistLoaded() noexcept;
-  const wchar_t* SpotifyPodcastUrl() const noexcept;
-  const wchar_t* SpotifyPodcastPath() const noexcept;
-  bool SpotifyPodcastTargetReady() const noexcept;
-  double SpotifyPodcastPlaybackRate() const noexcept;
-  bool SlotMatchesPodcastTarget(const Slot& slot) const noexcept;
-  void NavigatePodcastSlot(Slot& slot) noexcept;
-  void ReconcilePodcastSlot(Slot& slot) noexcept;
   ULONGLONG NextTimedRandom() noexcept;
   void PrepareTimedRotationCycle(Slot& slot) noexcept;
   MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
@@ -189,7 +179,6 @@ class SpotifyWebViews final {
   void ApplyTimedRotationTarget(Slot& slot) noexcept;
   void InitializeTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
-  void CompletePodcastBreak(Slot& slot, ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void ProbeDueTimedCompletions(ULONGLONG now) noexcept;
   void RecomputeForeground() noexcept;
@@ -202,15 +191,11 @@ class SpotifyWebViews final {
   fs::path userDataFolder_;
   std::array<Slot, kAccountCount> slots_{};
   std::vector<RotationGroup> cloudRotationGroups_;
-  std::wstring cloudPodcastUrl_;
-  std::wstring cloudPodcastPath_;
   std::wstring cloudRotationFingerprint_;
-  std::wstring cloudPodcastFingerprint_;
   fs::file_time_type cloudPlaylistWriteTime_{};
   fs::file_time_type initialCloudPlaylistWriteTime_{};
   ULONGLONG cloudRotationRevision_ = 1;
   ULONGLONG initialCloudPlaylistWaitStartedTick_ = 0;
-  double podcastPlaybackRate_ = 3.0;
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
   PTP_TIMER completionDeadlineTimer_ = nullptr;
@@ -233,8 +218,7 @@ class SpotifyWebViews final {
 
 // Spotify runs independently from the YouTube/TVer media phase. Each account
 // starts 40 seconds apart and builds its cycle from cloud deviceConfig.spotify
-// rotation blocks. TALKABOUT playback only uses the cloud-resolved direct
-// episodeUrl; the native app never chooses an episode from the show page.
+// rotation blocks.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 
