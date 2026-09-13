@@ -100,7 +100,7 @@ test('threadpool timer is the primary completion wake-up under six-WebView load'
 });
 
 test('WM_TIMER remains only a fallback scheduler, not the sole completion clock', () => {
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(phase, /threadpool timer is the primary completion wake-up/i);
   assert.match(phase, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
   assert.match(schedule, /ProbeDueTimedCompletions\(now\)/);
