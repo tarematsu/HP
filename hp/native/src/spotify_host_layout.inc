@@ -15,7 +15,7 @@ bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
 }
 
 bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
-  return left.right - left.left == right.right - right.left &&
+  return left.right - left.left == right.right - left.left &&
          left.bottom - left.top == right.bottom - right.top;
 }
 
@@ -148,7 +148,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   if (slots_.empty()) return;
 
-  const size_t activeIndex = staggerSlotIndex_ % slots_.size();
+  const size_t activeIndex = schedulerCursor_ % slots_.size();
   const size_t recoveryIndex =
       activeIndex < slots_.size() &&
       SlotStateNeedsRecovery(slots_[activeIndex].state) &&
