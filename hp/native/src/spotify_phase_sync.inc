@@ -47,17 +47,21 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 }
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
+  const bool changed = slot.state != state;
   slot.state = state;
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
       state == SlotState::Navigating || state == SlotState::Playing) {
     slot.unhealthySinceTick = 0;
   }
+  if (changed) NotifyPlaybackTelemetryChanged();
 }
 
 void SpotifyWebViews::MarkSlotRecovering(
     Slot& slot, ULONGLONG now) noexcept {
+  const bool changed = slot.state != SlotState::Recovering;
   slot.state = SlotState::Recovering;
   if (slot.unhealthySinceTick == 0) slot.unhealthySinceTick = now;
+  if (changed) NotifyPlaybackTelemetryChanged();
 }
 
 bool SpotifyWebViews::ShouldRenavigateUnhealthySlot(
@@ -134,6 +138,15 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     nextDelayMs = std::min(
         nextDelayMs, dueTick <= now ? 0ULL : dueTick - now);
   };
+
+  if (playbackTelemetryDirty_) {
+    if (lastPlaybackTelemetryPostTick_ == 0) {
+      nextDelayMs = 0;
+    } else {
+      considerTick(
+          lastPlaybackTelemetryPostTick_ + kSpotifyPlaybackTelemetryMinIntervalMs);
+    }
+  }
 
   for (const Slot& slot : slots_) {
     if (slot.timedCompletionDeadlineTick != 0 &&
