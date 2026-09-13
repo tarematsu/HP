@@ -44,7 +44,7 @@ LR"JS(
 
   const advanceToNextPlaylistItem = () => {
     if (now - Number(recoveryState.nextRequestedAt || 0) < 8000) {
-      return 'recovery';
+      return requestRecoveryRecheck();
     }
 
     // Prefer the playlist's concrete next watch URL. This avoids depending on
@@ -61,7 +61,7 @@ LR"JS(
           candidate.href !== location.href) {
         recoveryState.nextRequestedAt = now;
         location.assign(candidate.href);
-        return 'recovery';
+        return requestRecoveryRecheck();
       }
     } catch (_) {}
 
@@ -71,7 +71,7 @@ LR"JS(
       if (typeof player.nextVideo === 'function') {
         recoveryState.nextRequestedAt = now;
         player.nextVideo();
-        return 'recovery';
+        return requestRecoveryRecheck();
       }
     } catch (_) {}
     const nextControl = player.querySelector('.ytp-next-button');
@@ -97,12 +97,12 @@ LR"JS(
       } catch (_) {}
       const play = player.querySelector('.ytp-play-button');
       if (trusted.valid(play)) return trusted.arm(play, 'play', 1500);
-      return 'recovery';
+      return requestRecoveryRecheck();
     }
     if (now - Number(recoveryState.pausedSince || now) >= pauseEscalationMs) {
       return advanceToNextPlaylistItem();
     }
-    return 'recovery';
+    return requestRecoveryRecheck();
   }
 
   if (video) {
@@ -153,15 +153,14 @@ LR"JS(
   // Fullscreen remains a one-shot preference after YouTube confirms entry, but
   // merely arming a trusted click is not success. The control can appear before
   // YouTube is ready to accept fullscreen, so suppress the initial click for
-  // 1.5 seconds and let the existing recovery watchdog make the first attempt
-  // after the player has settled. No extra timer or polling loop is introduced.
+  // 1.5 seconds and request one short recovery recheck after the player settles.
   if (trusted.fullscreen()) {
     recoveryState.fullscreenApplied = true;
     return null;
   }
   if (recoveryState.fullscreenApplied) return null;
   if (Date.now() < Number(recoveryState.fullscreenReadyAt || 0)) {
-    return 'recovery';
+    return requestRecoveryRecheck();
   }
   target = player.querySelector('.ytp-fullscreen-button');
   if (!trusted.valid(target)) {
