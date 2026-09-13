@@ -25,6 +25,7 @@ test('TVer stalled or paused playback wakes native every two seconds only until 
   assert.match(tverEpisode, /}, 2000\);/);
   assert.match(tverEpisode, /clearRecoveryWake/);
   assert.match(tverEpisode, /requestRecoveryWake/);
+  assert.match(tverEpisode, /requestRecoveryWake\?\.\('initial-pause'\)/);
 });
 
 test('TVer recovery bypasses the healthy fast path and escalates after 30 seconds', () => {
