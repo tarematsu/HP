@@ -41,8 +41,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         i == hostLayoutActiveSlot_ && !authentication &&
         SlotStateNeedsRecovery(slot.state);
     const bool healthyMusicReadyToHide =
-        slot.timedTarget == TimedSpotifyTarget::Music &&
-        slot.shuffleOffVerified;
+        slot.timedTarget == TimedSpotifyTarget::Music;
     const bool healthyPodcastReadyToHide =
         slot.timedTarget == TimedSpotifyTarget::TalkAbout;
     const bool lowPowerPlayback =
@@ -113,10 +112,9 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.hostLayoutReducedZoomApplied = false;
     }
 
-    // Healthy playback does not need a compositor surface. Music stays visible
-    // only until Shuffle has been verified OFF; Repeat is intentionally unmanaged.
-    // Podcast playback has no equivalent steady-state control dependency, so hide
-    // it as soon as playback is healthy.
+    // Healthy playback does not need a compositor surface. Spotify playback
+    // mode controls are intentionally unmanaged, so music and podcasts hide as
+    // soon as their playback state is healthy.
     slot.controller->put_IsVisible(lowPowerPlayback ? FALSE : TRUE);
 
     // WebView2 LOW keeps scripts, networking and audio alive while allowing the
