@@ -50,10 +50,7 @@ test('healthy music WebViews suppress rendering while auth and recovery remain v
     /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*slot\.playerPage[\s\S]*!slot\.loginPage[\s\S]*CurrentMusicTrack\(slot\)/,
   );
   assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
-  assert.match(
-    layout,
-    /lowPowerPlayback[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
-  );
+  assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
 

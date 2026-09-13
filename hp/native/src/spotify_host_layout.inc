@@ -105,16 +105,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     slot.controller->put_IsVisible(lowPowerPlayback ? FALSE : TRUE);
 
-    if (slot.webview) {
-      ComPtr<ICoreWebView2_19> memoryView;
-      if (SUCCEEDED(slot.webview.As(&memoryView)) && memoryView) {
-        memoryView->put_MemoryUsageTargetLevel(
-            lowPowerPlayback
-                ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
-                : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
-      }
-    }
-
     const bool reducedZoom = authentication || recovery;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
       const HRESULT zoomResult = slot.controller->put_ZoomFactor(
