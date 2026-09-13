@@ -20,7 +20,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('dashboard A/B and MUTE actions use only the native WebView2 mute API', () => {
+test('single Stationhead and MUTE actions use only the native WebView2 mute API', () => {
   const setMuted = section(
     audio,
     'void StationheadPlayer::SetMuted(bool muted) noexcept',
@@ -44,7 +44,7 @@ test('dashboard A/B and MUTE actions use only the native WebView2 mute API', () 
     'void App::ScheduleNextTick(',
   );
   assert.match(profile, /SetAudioMuted\(primaryMuted\)/);
-  assert.match(profile, /SetAudioMuted\(secondaryMuted\)/);
+  assert.doesNotMatch(profile, /secondaryMuted|secondaryStationhead_->SetAudioMuted/);
   assert.doesNotMatch(profile, /SetVolume|ExecuteScript/);
 
   const handleMute = section(
