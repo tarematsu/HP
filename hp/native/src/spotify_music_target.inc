@@ -28,6 +28,42 @@ bool SpotifyWebViews::SlotMatchesMusicTarget(const Slot& slot) const noexcept {
   return IsSpotifyOpenSource(source) && source.find(target.path) != std::wstring::npos;
 }
 
+void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart(
+    Slot& slot, ULONGLONG playbackStartTick) noexcept {
+  if (playbackStartTick == 0 || !slot.timedRotationActive ||
+      slot.timedTarget != TimedSpotifyTarget::Music) {
+    return;
+  }
+  if (slot.timedCompletionDeadlineTick != 0 &&
+      slot.timedCompletionDeadlineGeneration == slot.targetGeneration) {
+    if (slot.timedPlaybackStartTick == 0) {
+      slot.timedPlaybackStartTick = playbackStartTick;
+    }
+    return;
+  }
+
+  ULONGLONG completionDelayMs = kSpotifyNavigationFailsafeMs;
+  if (slot.timedRotationPosition < slot.timedCycleTracks.size()) {
+    const ULONGLONG durationMs =
+        slot.timedCycleTracks[slot.timedRotationPosition].durationMs;
+    if (durationMs > 0) {
+      const ULONGLONG maxDurationMs =
+          kSpotifyNavigationFailsafeMs - kSpotifyNavigationCompletionGraceMs;
+      completionDelayMs =
+          std::min(durationMs, maxDurationMs) +
+          kSpotifyNavigationCompletionGraceMs;
+    }
+  }
+
+  // The play-button press is the native start anchor. Navigation/loading time is
+  // deliberately excluded. PR #897 ad interruptions subsequently extend this
+  // same generation-scoped deadline by their measured duration.
+  slot.timedPlaybackStartTick = playbackStartTick;
+  slot.timedCompletionDeadlineTick = playbackStartTick + completionDelayMs;
+  slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
+  ArmCompletionDeadlineTimer();
+}
+
 void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   if (!slot.webview) return;
   const MusicTargetDescriptor target = ResolveMusicTarget(slot);
@@ -39,38 +75,14 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   PostSpotifyTargetDescriptorForSlot(slot);
   RecomputeForeground();
 
-  // Navigation is the only music target-transition actuator. Do not issue an
-  // independent media.pause() before it: target messages and media lifecycle
-  // events are asynchronous, so a generic stop can race the new target's first
-  // play event and freeze it at currentTime=0.
+  // Navigation only selects the requested target. Completion timing starts at
+  // the subsequent trusted Play press, not while Spotify is still loading the
+  // page. Recovery re-navigation for the same generation therefore cannot move
+  // the song's start time or completion deadline.
   const HRESULT result = slot.webview->Navigate(target.url);
   if (FAILED(result)) {
     slot.lastModeNavigateTick = 0;
     MarkSlotRecovering(slot, GetTickCount64());
-  } else if (slot.timedRotationActive &&
-             slot.timedTarget == TimedSpotifyTarget::Music &&
-             (slot.timedCompletionDeadlineTick == 0 ||
-              slot.timedCompletionDeadlineGeneration != slot.targetGeneration)) {
-    // One successful Navigate() call owns the target-generation deadline. Start
-    // from the five-minute fallback, shorten it with cloud duration when known,
-    // and let measured ad interruptions extend this same deadline later. Recovery
-    // re-navigation for the same generation never creates a second timing path.
-    ULONGLONG completionDelayMs = kSpotifyNavigationFailsafeMs;
-    if (slot.timedRotationPosition < slot.timedCycleTracks.size()) {
-      const ULONGLONG durationMs =
-          slot.timedCycleTracks[slot.timedRotationPosition].durationMs;
-      if (durationMs > 0) {
-        const ULONGLONG maxDurationMs =
-            kSpotifyNavigationFailsafeMs - kSpotifyNavigationCompletionGraceMs;
-        completionDelayMs =
-            std::min(durationMs, maxDurationMs) +
-            kSpotifyNavigationCompletionGraceMs;
-      }
-    }
-    slot.timedCompletionDeadlineTick =
-        slot.lastModeNavigateTick + completionDelayMs;
-    slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
-    ArmCompletionDeadlineTimer();
   }
   ArmRobustScheduler();
 }
