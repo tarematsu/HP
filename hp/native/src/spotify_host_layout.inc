@@ -42,12 +42,9 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         SlotStateNeedsRecovery(slot.state);
     const bool healthyMusicReadyToHide =
         slot.timedTarget == TimedSpotifyTarget::Music;
-    const bool healthyPodcastReadyToHide =
-        slot.timedTarget == TimedSpotifyTarget::TalkAbout;
     const bool lowPowerPlayback =
         !authentication && !recovery && SlotStateIsHealthy(slot.state) &&
-        slot.playerPage && !slot.loginPage &&
-        (healthyMusicReadyToHide || healthyPodcastReadyToHide);
+        slot.playerPage && !slot.loginPage && healthyMusicReadyToHide;
 
     int x = client.right + 32 + static_cast<int>(i) *
         (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
@@ -113,8 +110,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     }
 
     // Healthy playback does not need a compositor surface. Spotify playback
-    // mode controls are intentionally unmanaged, so music and podcasts hide as
-    // soon as their playback state is healthy.
+    // mode controls are intentionally unmanaged, so music hides as soon as its
+    // playback state is healthy.
     slot.controller->put_IsVisible(lowPowerPlayback ? FALSE : TRUE);
 
     // WebView2 LOW keeps scripts, networking and audio alive while allowing the
