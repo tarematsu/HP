@@ -69,7 +69,7 @@ test('completion does not mutate the Spotify media element and advances at the e
   assert.doesNotMatch(runtime + events, /\.pause\s*\(|\.play\s*\(/);
   assert.doesNotMatch(runtime + events, /endedPosted|quarantineCompletedGeneration|finishTarget|finishProjectedWrap/);
   assert.match(rotation, /SpotifyDeadlineWithInterruptionHold/);
-  assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
+  assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot\)/i);
 });
 
 test('pause waiting stalled and target mismatch never request playback recovery', () => {
@@ -96,5 +96,5 @@ test('music rotation uses one native deadline shaped by start duration ads and e
   assert.match(music, /kSpotifyNavigationCompletionGraceMs = 2ULL \* 1000ULL/);
   assert.match(rotation, /timedCompletionDeadlineTick \+ extension/);
   assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
-  assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(rotation, /AdvanceTimedRotationSlot\(slot\)/);
 });
