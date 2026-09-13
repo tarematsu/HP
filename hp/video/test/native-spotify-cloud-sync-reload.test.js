@@ -45,17 +45,16 @@ test('temporary cache absence keeps the last synchronized Spotify settings', () 
 
 test('only Spotify rotation changes advance the rotation revision', () => {
   assert.match(header, /cloudRotationFingerprint_/);
-  assert.match(header, /cloudPodcastFingerprint_/);
   assert.match(header, /cloudRotationRevision_ = 1/);
   assert.match(header, /timedCloudRotationRevision = 0/);
   assert.match(loader, /nextRotationFingerprint = rotation\.Stringify\(\)\.c_str\(\)/);
-  assert.match(loader, /nextPodcastFingerprint = talkAbout\.Stringify\(\)\.c_str\(\)/);
-  assert.match(loader, /if \(rotationChanged\)[\s\S]*\+\+cloudRotationRevision_/);
+  assert.match(loader, /if \(!rotationChanged\) return;[\s\S]*\+\+cloudRotationRevision_/);
+  assert.doesNotMatch(header + loader, /cloudPodcastFingerprint|nextPodcastFingerprint/);
 });
 
 test('a synchronized rotation starts at the next natural completion boundary without replaying the completed path', () => {
   const advanceStart = rotation.indexOf('void SpotifyWebViews::AdvanceTimedRotationSlot');
-  const advanceEnd = rotation.indexOf('void SpotifyWebViews::ArmTimedEndObserver', advanceStart);
+  const advanceEnd = rotation.indexOf('void SpotifyWebViews::ProbeDueTimedCompletions', advanceStart);
   assert.ok(advanceStart >= 0 && advanceEnd > advanceStart);
   const advance = rotation.slice(advanceStart, advanceEnd);
   assert.match(advance, /std::wstring completedPath/);
@@ -72,15 +71,16 @@ test('a synchronized rotation starts at the next natural completion boundary wit
   assert.doesNotMatch(rotation + schedule, /AdvanceExpiredTimedRotation|kSpotifyMusicTrackDeadlineMs/);
 });
 
-test('legacy TALKABOUT interval state is absent from native sync handling', () => {
-  const source = header + loader + schedule + rotation;
-  assert.doesNotMatch(source, /intervalMinutes|podcastIntervalMs_|podcastDueTick|podcastDueUnixMs/);
-  assert.doesNotMatch(source, /StartOverduePodcastBreak|SavePodcastScheduleState/);
+test('Spotify sync handling contains no podcast feature path', () => {
+  const source = header + loader + schedule + rotation + admin + randomCatalog;
+  assert.doesNotMatch(
+    source,
+    /TalkAbout|TALKABOUT|talkAbout|includeTalkAbout|SpotifyPodcast|podcastBreakActive/,
+  );
 });
 
-test('admin exposes the shared seven-slot managed rotation', () => {
+test('admin exposes the shared seven-group managed rotation', () => {
   assert.match(admin, /端末への反映は次回クラウド同期時です/);
-  assert.match(admin, /includeTalkAbout:true/);
   assert.match(admin, /次回クラウド同期でSpotify設定を反映します/);
   assert.match(admin, /managedSpotifySevenSlotRotation/);
   assert.match(admin, /MANAGED_SPOTIFY_RANDOM_TRACK_IDS/);
@@ -88,6 +88,6 @@ test('admin exposes the shared seven-slot managed rotation', () => {
   assert.match(admin, /managedRandomPool/);
   assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
-  assert.match(randomCatalog, /includeTalkAbout: true/);
-  assert.doesNotMatch(admin, /intervalMinutes:120/);
+  assert.equal((randomCatalog.match(/tracks: instrumentalSongs\.map/g) ?? []).length, 2);
+  assert.equal((randomCatalog.match(/tracks: shortSongs\.map/g) ?? []).length, 2);
 });
