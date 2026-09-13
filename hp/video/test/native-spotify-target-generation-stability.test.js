@@ -54,5 +54,5 @@ test('Spotify target generation changes only when the rotation target changes', 
     dueCompletions,
     /timedCompletionDeadlineGeneration\s*!=\s*slot\.targetGeneration/,
   );
-  assert.match(dueCompletions, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(dueCompletions, /AdvanceTimedRotationSlot\(slot\)/);
 });
