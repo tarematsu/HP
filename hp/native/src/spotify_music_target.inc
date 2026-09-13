@@ -2,7 +2,7 @@ namespace hp {
 namespace {
 
 constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 5ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
 
 }  // namespace
 
@@ -29,7 +29,8 @@ bool SpotifyWebViews::SlotMatchesMusicTarget(const Slot& slot) const noexcept {
 }
 
 void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart(
-    Slot& slot, ULONGLONG playbackStartTick) noexcept {
+    Slot& slot, ULONGLONG playbackStartTick,
+    ULONGLONG observedRemainingMs) noexcept {
   if (playbackStartTick == 0 || !slot.timedRotationActive ||
       slot.timedTarget != TimedSpotifyTarget::Music) {
     return;
@@ -42,26 +43,49 @@ void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart(
     return;
   }
 
+  ULONGLONG durationMs = observedRemainingMs;
+  if (durationMs == 0 &&
+      slot.timedRotationPosition < slot.timedCycleTracks.size()) {
+    durationMs = slot.timedCycleTracks[slot.timedRotationPosition].durationMs;
+  }
+
   ULONGLONG completionDelayMs = kSpotifyNavigationFailsafeMs;
-  if (slot.timedRotationPosition < slot.timedCycleTracks.size()) {
-    const ULONGLONG durationMs =
-        slot.timedCycleTracks[slot.timedRotationPosition].durationMs;
-    if (durationMs > 0) {
-      const ULONGLONG maxDurationMs =
-          kSpotifyNavigationFailsafeMs - kSpotifyNavigationCompletionGraceMs;
-      completionDelayMs =
-          std::min(durationMs, maxDurationMs) +
-          kSpotifyNavigationCompletionGraceMs;
-    }
+  if (durationMs > 0) {
+    const ULONGLONG maxDurationMs =
+        kSpotifyNavigationFailsafeMs - kSpotifyNavigationCompletionGraceMs;
+    completionDelayMs =
+        std::min(durationMs, maxDurationMs) +
+        kSpotifyNavigationCompletionGraceMs;
   }
 
   // The play-button press is the native start anchor. Navigation/loading time is
-  // deliberately excluded. PR #897 ad interruptions subsequently extend this
-  // same generation-scoped deadline by their measured duration.
+  // deliberately excluded. Observer-reported remaining time uses this same
+  // path for direct-play fallback, and PR #897 ad interruptions subsequently
+  // extend this same generation-scoped deadline by their measured duration.
   slot.timedPlaybackStartTick = playbackStartTick;
   slot.timedCompletionDeadlineTick = playbackStartTick + completionDelayMs;
   slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
   ArmCompletionDeadlineTimer();
+}
+
+void SpotifyWebViews::ShortenMusicCompletionDeadlineAtEnd(
+    Slot& slot, ULONGLONG endedTick) noexcept {
+  if (endedTick == 0 || !slot.timedRotationActive ||
+      slot.timedTarget != TimedSpotifyTarget::Music ||
+      slot.timedInterruptionStartTick != 0) {
+    return;
+  }
+
+  // Best-effort ended detection never creates a second timer. It only moves the
+  // generation's existing unified deadline earlier; the normal deadline probe
+  // remains the sole transition path to the next target.
+  if (slot.timedCompletionDeadlineTick == 0 ||
+      slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
+      slot.timedCompletionDeadlineTick > endedTick) {
+    slot.timedCompletionDeadlineTick = endedTick;
+    slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
+    ArmCompletionDeadlineTimer();
+  }
 }
 
 void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
@@ -97,6 +121,12 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
   slot.controllerCreateTick = 0;
 
   if (SlotIsLoginPage(slot) || !ResolveMusicTarget(slot).url) return;
+
+  // Register the lightweight native message consumer before playback starts.
+  // It only shortens the same completion deadline when a validated requested
+  // track emits ended, and also normalizes direct-play start timing through the
+  // same deadline helper.
+  ArmMusicEndShortener(slot);
 
   // The media observer owns generation-tagged start/completion truth. Never
   // start a target before that observer has been installed for this document;
