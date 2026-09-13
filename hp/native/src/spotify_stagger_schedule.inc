@@ -8,7 +8,6 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (now == 0) now = GetTickCount64();
 
   BeginInitialCloudPlaylistWait(now);
-  EnsureCloudPlaylistLoaded();
   robustSchedulerStarted_ = true;
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = 0;
@@ -28,12 +27,14 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   const ULONGLONG now = GetTickCount64();
 
-  EnsureCloudPlaylistLoaded();
+  const bool cloudPlaylistWasReady = initialCloudPlaylistReady_;
   if (!InitialCloudPlaylistReady(now)) return;
+  // InitialCloudPlaylistReady() performs the first load on the transition to
+  // ready. Subsequent scheduler passes check the atomically replaced cache once.
+  if (cloudPlaylistWasReady) EnsureCloudPlaylistLoaded();
   if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
 
   ProbeDueTimedCompletions(now);
-  EnsureCloudPlaylistLoaded();
 
   for (Slot& candidate : slots_) {
     ExpireStaleAsyncWork(candidate, now);
@@ -59,6 +60,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     if (slot.controllerCreating) return false;
     return slot.controllerCreateTick == 0 ||
            now - slot.controllerCreateTick >= kSpotifyRobustControllerRetryMs;
+  };
+  const auto healthyPlaybackNeedsNoWork = [](const Slot& slot) noexcept {
+    return SlotStateIsHealthy(slot.state) && slot.timedObserverReady &&
+           slot.timedCompletionDeadlineTick != 0 &&
+           slot.timedCompletionDeadlineGeneration == slot.targetGeneration;
   };
 
   size_t selected = count;
@@ -97,7 +103,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       const size_t index = (scanStart + step) % count;
       const Slot& candidate = slots_[index];
       if (!startupReady(index) || !CurrentMusicTrack(candidate) ||
-          SlotIsLoginPage(candidate) || !asyncIdle(candidate)) {
+          SlotIsLoginPage(candidate) || !asyncIdle(candidate) ||
+          healthyPlaybackNeedsNoWork(candidate)) {
         continue;
       }
       selected = index;
