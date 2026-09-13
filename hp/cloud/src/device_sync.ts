@@ -87,6 +87,10 @@ const LEGACY_SPOTIFY_MIDDLE_TRACK_IDS = [
   "2UHNvd8SjNGoEI6jXa2afx",
 ] as const;
 
+const DEFAULT_SPOTIFY_TALK_ABOUT_SHOW_URL =
+  "https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
+const DEFAULT_SPOTIFY_TALK_ABOUT_PLAYBACK_RATE = 3;
+
 const MANAGED_SPOTIFY_B_TRACK_IDS = SPOTIFY_B_ROTATION_TRACKS.map(([, id]) => id);
 const MANAGED_SPOTIFY_INSTRUMENTAL_TRACK_IDS =
   ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS.map(([, id]) => id);
@@ -274,24 +278,32 @@ function isManagedSixPositionRotation(rotation: unknown[]): boolean {
     isManagedShortRotationPool(fIds);
 }
 
-function migrateManagedSpotifyRotation(
+export function migrateManagedSpotifyRotation(
   config: JsonRecord,
   storedDurations: ReadonlyMap<string, number>,
 ): boolean {
-  const spotify = objectOrNull(config.spotify);
-  const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
-  if (!spotify) return false;
+  let spotify = objectOrNull(config.spotify);
+  let changed = false;
+  if (!spotify) {
+    spotify = {};
+    config.spotify = spotify;
+    changed = true;
+  }
 
-  // Once a device has been recognized as using the managed rotation, persist a
-  // stable marker. Future catalog edits can then refresh that device even when
-  // its old track set no longer matches the newly compiled pool exactly.
+  const rotation = Array.isArray(spotify.rotation) ? spotify.rotation : [];
+  // A missing/empty rotation means the device never received the managed cloud
+  // catalog. Bootstrap it here so Native cannot silently fall back to the old
+  // built-in six-song order. Non-empty unrecognized rotations remain untouched
+  // unless they have already opted into managedRotation.
   const recognizedManagedRotation =
     isManagedLegacySpotifyRotation(rotation) ||
     isManagedSevenSlotRotation(rotation) ||
     isManagedSixPositionRotation(rotation);
-  if (spotify.managedRotation !== true && !recognizedManagedRotation) return false;
+  if (spotify.managedRotation !== true && !recognizedManagedRotation &&
+      rotation.length > 0) {
+    return changed;
+  }
 
-  let changed = false;
   if (spotify.managedRotation !== true) {
     spotify.managedRotation = true;
     changed = true;
@@ -301,6 +313,14 @@ function migrateManagedSpotifyRotation(
   applySpotifyRotationDurations(nextRotation, storedDurations);
   if (JSON.stringify(rotation) !== JSON.stringify(nextRotation)) {
     spotify.rotation = nextRotation;
+    changed = true;
+  }
+
+  if (!objectOrNull(spotify.talkAbout)) {
+    spotify.talkAbout = {
+      url: DEFAULT_SPOTIFY_TALK_ABOUT_SHOW_URL,
+      playbackRate: DEFAULT_SPOTIFY_TALK_ABOUT_PLAYBACK_RATE,
+    };
     changed = true;
   }
   return changed;
@@ -369,15 +389,15 @@ async function refreshManagedSpotifyConfig(
   snapshot: DeviceSyncSnapshotRow,
   now: number,
 ): Promise<DeviceSyncSnapshotRow> {
-  if (!snapshot.config_payload) return snapshot;
-
-  let config: JsonRecord;
-  try {
-    const parsed = objectOrNull(JSON.parse(snapshot.config_payload));
-    if (!parsed) return snapshot;
-    config = parsed;
-  } catch {
-    return snapshot;
+  let config: JsonRecord = {};
+  if (snapshot.config_payload !== null) {
+    try {
+      const parsed = objectOrNull(JSON.parse(snapshot.config_payload));
+      if (!parsed) return snapshot;
+      config = parsed;
+    } catch {
+      return snapshot;
+    }
   }
 
   const beforeSpotify = objectOrNull(config.spotify);
@@ -430,22 +450,29 @@ async function refreshManagedSpotifyConfig(
   if (!changed) return snapshot;
   const payload = JSON.stringify(config);
   if (payload.length > 32_000) {
-    console.warn("spotify-talkabout-config-update-skipped", {
+    console.warn("spotify-managed-config-update-skipped", {
       deviceId,
       reason: "config-too-large",
     });
     return snapshot;
   }
 
-  const nextVersion = snapshot.config_version + 1;
-  const updated = await env.DB.prepare(
-    `UPDATE device_configs
-        SET version=?2,payload=?3,updated_at=?4
-      WHERE device_id=?1 AND version=?5`,
-  ).bind(deviceId, nextVersion, payload, now, snapshot.config_version).run();
+  const creatingConfig = snapshot.config_payload === null &&
+    snapshot.config_version === 0;
+  const nextVersion = creatingConfig ? 1 : snapshot.config_version + 1;
+  const updated = creatingConfig
+    ? await env.DB.prepare(
+        `INSERT OR IGNORE INTO device_configs(device_id,version,payload,updated_at)
+         VALUES(?1,?2,?3,?4)`,
+      ).bind(deviceId, nextVersion, payload, now).run()
+    : await env.DB.prepare(
+        `UPDATE device_configs
+            SET version=?2,payload=?3,updated_at=?4
+          WHERE device_id=?1 AND version=?5`,
+      ).bind(deviceId, nextVersion, payload, now, snapshot.config_version).run();
   if (Number(updated.meta.changes ?? 0) !== 1) {
-    // An admin save won the race. Never overwrite it; the next device sync will
-    // resolve the latest episode against that newer configuration.
+    // An admin save or another first-sync bootstrap won the race. Never
+    // overwrite it; the next device sync will reconcile that newer config.
     return snapshot;
   }
 
