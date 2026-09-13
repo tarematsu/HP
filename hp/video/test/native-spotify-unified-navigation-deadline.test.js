@@ -2,10 +2,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const header = readFileSync(
+  new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
+const wrapper = readFileSync(
+  new URL('../../native/src/spotify_webviews.inc', import.meta.url), 'utf8');
 const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
 const click = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
+const events = readFileSync(
+  new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
+const deadlineEvents = readFileSync(
+  new URL('../../native/src/spotify_music_deadline_events.inc', import.meta.url), 'utf8');
 const controller = readFileSync(
   new URL('../../native/src/spotify_controller_lifecycle.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
@@ -17,17 +25,17 @@ const cloud = readFileSync(
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 
-test('music duration and five-minute fallback share one deadline calculator', () => {
+test('music duration and five-minute fallback share one two-second-grace deadline calculator', () => {
   const start = music.indexOf(
     'void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart');
-  const end = music.indexOf('\nvoid SpotifyWebViews::NavigateMusicTarget', start);
+  const end = music.indexOf('\nvoid SpotifyWebViews::ShortenMusicCompletionDeadlineAtEnd', start);
   assert.ok(start >= 0 && end > start);
   const arm = music.slice(start, end);
 
   assert.match(music, /kSpotifyNavigationFailsafeMs = 5ULL \* 60ULL \* 1000ULL/);
-  assert.match(music, /kSpotifyNavigationCompletionGraceMs = 5ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyNavigationCompletionGraceMs = 2ULL \* 1000ULL/);
+  assert.match(arm, /observedRemainingMs/);
   assert.match(arm, /completionDelayMs = kSpotifyNavigationFailsafeMs/);
-  assert.match(arm, /timedCycleTracks\[slot\.timedRotationPosition\]\.durationMs/);
   assert.match(arm, /std::min\(durationMs, maxDurationMs\)/);
   assert.match(
     arm,
@@ -56,6 +64,26 @@ test('trusted Play mousePressed is the primary playback-start anchor', () => {
     /ArmMusicCompletionDeadlineFromStart\([\s\S]*\*target, playbackStartTick\)/,
   );
   assert.match(music, /slot\.timedPlaybackStartTick = playbackStartTick/);
+});
+
+test('direct playback start enters the same deadline helper with observed remaining time', () => {
+  assert.match(wrapper, /spotify_music_deadline_events\.inc/);
+  assert.match(deadlineEvents, /ParseSpotifyStartedEvent/);
+  assert.match(
+    deadlineEvents,
+    /ArmMusicCompletionDeadlineFromStart\([\s\S]*\*target, now, remainingMs/,
+  );
+});
+
+test('validated ended only shortens the same deadline', () => {
+  assert.match(events, /document\.addEventListener\('ended', observeEnded, true\)/);
+  assert.match(events, /state\.targetMedia !== media/);
+  assert.match(events, /state\.interruptionStartedAt/);
+  assert.match(events, /post\('spotify:timed-ended'\)/);
+  assert.match(deadlineEvents, /spotify:timed-ended/);
+  assert.match(deadlineEvents, /ShortenMusicCompletionDeadlineAtEnd\(\*target, now\)/);
+  assert.match(music, /slot\.timedCompletionDeadlineTick = endedTick/);
+  assert.doesNotMatch(deadlineEvents, /AdvanceTimedRotationSlot/);
 });
 
 test('NavigationCompleted no longer owns a second duration deadline path', () => {
@@ -90,6 +118,8 @@ test('active ads only hold the unified deadline temporarily', () => {
 });
 
 test('first rotation waits for startup cloud config opportunity', () => {
+  assert.match(header, /BeginInitialCloudPlaylistWait/);
+  assert.match(header, /InitialCloudPlaylistReady/);
   assert.match(cloud, /kSpotifyInitialCloudSyncSettleMs = 10ULL \* 1000ULL/);
   assert.match(cloud, /kSpotifyInitialCloudSyncFallbackMs = 30ULL \* 1000ULL/);
   assert.match(schedule, /BeginInitialCloudPlaylistWait\(now\)/);
