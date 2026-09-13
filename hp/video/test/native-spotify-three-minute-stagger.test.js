@@ -23,7 +23,7 @@ test('Spotify startup uses one shared ten-second account offset with a state-dri
   assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(schedule, /const auto startupReady/);
-  assert.match(schedule, /const size_t scanStart = \(staggerSlotIndex_ \+ 1\) % count/);
+  assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
   assert.match(schedule, /StaggeredReconcileTimerProc/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
 });
@@ -34,7 +34,7 @@ test('Spotify schedule starts autonomously and loads cloud playlist before rotat
   assert.match(hostLifecycle, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
   assert.match(schedule, /EnsureCloudPlaylistLoaded\(\)[\s\S]*robustSchedulerStarted_ = true/);
-  assert.match(schedule, /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot, now\)/);
+  assert.match(schedule, /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot\)/);
   assert.doesNotMatch(header + schedule, /youtubeCycleStartTick_/);
 });
 
@@ -63,7 +63,7 @@ test('cycle advances only through the unified native deadline', () => {
   assert.match(events, /post\('spotify:timed-ended'\)/);
   assert.match(rotation, /ArmMusicCompletionDeadlineFromStart/);
   assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
-  assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(rotation, /AdvanceTimedRotationSlot\(slot\)/);
   assert.doesNotMatch(
     events,
     /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause)'/,
