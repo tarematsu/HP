@@ -1,7 +1,8 @@
 // SlotState is the queue. No separate container or ownership lease is needed:
 // each scheduler pass scans from the previous slot and starts at most one piece
 // of WebView work. The single adaptive threadpool timer wakes only when the next
-// retry, startup boundary, async timeout, completion deadline, or audit is due.
+// retry, startup boundary, async timeout, completion deadline, telemetry flush,
+// or audit is due.
 
 void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
@@ -27,6 +28,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
 
   const ULONGLONG now = GetTickCount64();
+  MaybePostPlaybackTelemetryChanged(now);
 
   EnsureCloudPlaylistLoaded();
   if (!InitialCloudPlaylistReady(now)) return;
