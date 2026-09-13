@@ -17,10 +17,9 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   };
   const observeEnded = event => {
     const media = event.target;
-    if (!isMedia(media) || !media.ended) return;
-    const target = syncTarget();
-    if (!target || !target.path || !state.startPosted ||
-        state.targetMedia !== media || state.interruptionStartedAt) {
+    if (!isMedia(media) || !media.ended || !syncTarget() ||
+        !state.startPosted || state.targetMedia !== media ||
+        state.interruptionStartedAt) {
       return;
     }
     post('spotify:timed-ended');
