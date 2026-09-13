@@ -53,6 +53,8 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
   assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
+  assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
+  assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
