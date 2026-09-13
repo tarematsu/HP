@@ -27,6 +27,7 @@ import {
   normalizeSpotifyShowUrl,
   resolveLatestSpotifyTalkAboutEpisode,
 } from "./spotify_talkabout_latest";
+import { resolveSpotifyTrackDurations } from "./spotify_track_durations";
 
 type SyncSourceName = typeof DASHBOARD_SOURCE_NAMES[number] | "radar" | "stationhead_health";
 type JsonRecord = Record<string, unknown>;
@@ -94,14 +95,79 @@ const MANAGED_SPOTIFY_SHORT_ROTATION_TRACK_IDS =
 
 function spotifyTrackId(value: unknown): string {
   const track = objectOrNull(value);
+  const explicit = typeof track?.trackId === "string" ? track.trackId.trim() : "";
+  if (/^[A-Za-z0-9]{22}$/.test(explicit)) return explicit;
   const url = typeof track?.url === "string" ? track.url : "";
   return url.match(/\/track\/([A-Za-z0-9]{22})(?:[/?#]|$)/)?.[1] ?? "";
+}
+
+function spotifyTrackDurationMs(value: unknown): number {
+  const track = objectOrNull(value);
+  const durationMs = Math.round(Number(track?.durationMs ?? 0));
+  return Number.isSafeInteger(durationMs) && durationMs >= 1_000 &&
+      durationMs <= 24 * 60 * 60 * 1000
+    ? durationMs
+    : 0;
 }
 
 function spotifyGroupTrackIds(value: unknown): string[] {
   const group = objectOrNull(value);
   const tracks = Array.isArray(group?.tracks) ? group.tracks : [];
   return tracks.map(spotifyTrackId);
+}
+
+function spotifyRotationTrackIds(rotation: unknown[]): string[] {
+  const ids = new Set<string>();
+  for (const value of rotation) {
+    const group = objectOrNull(value);
+    const tracks = Array.isArray(group?.tracks) ? group.tracks : [];
+    for (const track of tracks) {
+      const id = spotifyTrackId(track);
+      if (id) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
+function spotifyRotationStoredDurations(rotation: unknown[]): Map<string, number> {
+  const durations = new Map<string, number>();
+  for (const value of rotation) {
+    const group = objectOrNull(value);
+    const tracks = Array.isArray(group?.tracks) ? group.tracks : [];
+    for (const track of tracks) {
+      const id = spotifyTrackId(track);
+      const durationMs = spotifyTrackDurationMs(track);
+      if (id && durationMs) durations.set(id, durationMs);
+    }
+  }
+  return durations;
+}
+
+function applySpotifyRotationDurations(
+  rotation: unknown[],
+  durations: ReadonlyMap<string, number>,
+): boolean {
+  let changed = false;
+  for (const value of rotation) {
+    const group = objectOrNull(value);
+    const tracks = Array.isArray(group?.tracks) ? group.tracks : [];
+    for (const value of tracks) {
+      const track = objectOrNull(value);
+      if (!track) continue;
+      const id = spotifyTrackId(track);
+      if (!id) continue;
+      if (track.trackId !== id) {
+        track.trackId = id;
+        changed = true;
+      }
+      const durationMs = durations.get(id) ?? 0;
+      if (durationMs && spotifyTrackDurationMs(track) !== durationMs) {
+        track.durationMs = durationMs;
+        changed = true;
+      }
+    }
+  }
+  return changed;
 }
 
 function sameTrackSet(actual: readonly string[], expected: readonly string[]): boolean {
@@ -178,11 +244,41 @@ function isManagedSevenSlotRotation(rotation: unknown[]): boolean {
     isManagedShortRotationPool(gIds);
 }
 
+function isManagedSixPositionRotation(rotation: unknown[]): boolean {
+  if (rotation.length !== 6) return false;
+  const a = objectOrNull(rotation[0]);
+  const b = objectOrNull(rotation[1]);
+  const c = objectOrNull(rotation[2]);
+  const d = objectOrNull(rotation[3]);
+  const e = objectOrNull(rotation[4]);
+  const f = objectOrNull(rotation[5]);
+  if (!a || !b || !c || !d || !e || !f) return false;
+  if (a.mode !== "fixed" || b.mode !== "random" || c.mode !== "random" ||
+      d.mode !== "fixed" || e.mode !== "fixed" || f.mode !== "random" ||
+      Number(b.count ?? 1) !== 1 || Number(c.count ?? 1) !== 1 ||
+      Number(f.count ?? 1) !== 1 || f.includeTalkAbout !== true) {
+    return false;
+  }
+
+  const aIds = spotifyGroupTrackIds(a);
+  const bIds = spotifyGroupTrackIds(b);
+  const cIds = spotifyGroupTrackIds(c);
+  const dIds = spotifyGroupTrackIds(d);
+  const eIds = spotifyGroupTrackIds(e);
+  const fIds = spotifyGroupTrackIds(f);
+  return aIds.length === 1 && aIds[0] === "6Vy6hCA2CZwZalGqaX6Sew" &&
+    sameTrackSet(bIds, MANAGED_SPOTIFY_B_TRACK_IDS) &&
+    sameTrackSet(cIds, MANAGED_SPOTIFY_INSTRUMENTAL_TRACK_IDS) &&
+    dIds.length === 1 && dIds[0] === "5EjWZuODqEPQ9eq7XCmITh" &&
+    eIds.length === 1 && eIds[0] === "6VIY7OFy8g5ZyLSgQEi8lV" &&
+    isManagedShortRotationPool(fIds);
+}
+
 function migrateManagedSpotifyRotation(config: JsonRecord): boolean {
   const spotify = objectOrNull(config.spotify);
   const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
-  if (!spotify ||
-      (!isManagedLegacySpotifyRotation(rotation) && !isManagedSevenSlotRotation(rotation))) {
+  if (!spotify || isManagedSixPositionRotation(rotation)) return false;
+  if (!isManagedLegacySpotifyRotation(rotation) && !isManagedSevenSlotRotation(rotation)) {
     return false;
   }
 
@@ -264,8 +360,37 @@ async function refreshManagedSpotifyConfig(
     return snapshot;
   }
 
+  const beforeSpotify = objectOrNull(config.spotify);
+  const beforeRotation = Array.isArray(beforeSpotify?.rotation) ? beforeSpotify.rotation : [];
+  const storedDurations = spotifyRotationStoredDurations(beforeRotation);
+
   let changed = migrateManagedSpotifyRotation(config);
   const spotify = objectOrNull(config.spotify);
+  const rotation = Array.isArray(spotify?.rotation) ? spotify.rotation : [];
+  const rotationTrackIds = spotifyRotationTrackIds(rotation);
+  const missingDurationIds = rotationTrackIds.filter(id => !storedDurations.has(id));
+  if (missingDurationIds.length) {
+    try {
+      const resolvedDurations = await resolveSpotifyTrackDurations(
+        env,
+        missingDurationIds,
+        { now },
+      );
+      for (const [id, durationMs] of resolvedDurations) {
+        storedDurations.set(id, durationMs);
+      }
+    } catch (error) {
+      console.warn("spotify-rotation-duration-resolve-failed", {
+        deviceId,
+        missing: missingDurationIds.length,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  if (rotation.length && applySpotifyRotationDurations(rotation, storedDurations)) {
+    changed = true;
+  }
+
   const talkAbout = objectOrNull(spotify?.talkAbout);
   const showUrl = normalizeSpotifyShowUrl(talkAbout?.url);
   if (spotify && talkAbout && showUrl) {
