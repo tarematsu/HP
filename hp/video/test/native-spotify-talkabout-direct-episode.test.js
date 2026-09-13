@@ -30,7 +30,7 @@ test('cloud resolves TALKABOUT latest episode and persists it into normal device
   assert.match(deviceSync, /WHERE device_id=\?1 AND version=\?5/);
 });
 
-test('device sync migrates managed Spotify rotations to the six-slot layout', () => {
+test('device sync migrates managed Spotify rotations to the seven-slot layout', () => {
   assert.match(deviceSync, /LEGACY_SPOTIFY_RANDOM_TRACK_IDS/);
   assert.match(deviceSync, /LEGACY_SPOTIFY_MIDDLE_TRACK_IDS/);
   assert.match(deviceSync, /MANAGED_SPOTIFY_RANDOM_TRACK_IDS/);
@@ -40,8 +40,9 @@ test('device sync migrates managed Spotify rotations to the six-slot layout', ()
   assert.match(deviceSync, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(deviceSync, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.match(deviceSync, /SHORT_SPOTIFY_ROTATION_TRACKS/);
-  assert.match(deviceSync, /migrateManagedSpotifyRotation\(config\)/);
-  assert.match(deviceSync, /spotify\.rotation = managedSpotifySevenSlotRotation\(\)/);
+  assert.match(deviceSync, /migrateManagedSpotifyRotation\(config, storedDurations\)/);
+  assert.match(deviceSync, /const nextRotation = managedSpotifySevenSlotRotation\(\)/);
+  assert.match(deviceSync, /spotify\.rotation = nextRotation/);
   assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.match(randomCatalog, /紋白蝶が確か飛んでた/);
