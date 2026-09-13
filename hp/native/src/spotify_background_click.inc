@@ -164,7 +164,7 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     const HRESULT dispatched = view->CallDevToolsProtocolMethod(
         L"Input.dispatchMouseEvent", moved.c_str(),
         Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-            [alive, target, view, x, y, clickGeneration, targetGeneration](
+            [this, alive, target, view, x, y, clickGeneration, targetGeneration](
                 HRESULT movedResult, LPCWSTR) -> HRESULT {
               if (!alive->load(std::memory_order_acquire) ||
                   target->trustedClickGeneration != clickGeneration ||
@@ -181,12 +181,13 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                   L"{\"type\":\"mousePressed\",\"x\":" +
                   std::to_wstring(x) + L",\"y\":" + std::to_wstring(y) +
                   L",\"button\":\"left\",\"buttons\":1,\"clickCount\":1}";
+              const ULONGLONG playbackStartTick = GetTickCount64();
               const HRESULT pressDispatched = view->CallDevToolsProtocolMethod(
                   L"Input.dispatchMouseEvent", pressed.c_str(),
                   Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                      [alive, target, view, x, y, clickGeneration,
-                       targetGeneration](HRESULT pressedResult, LPCWSTR)
-                          -> HRESULT {
+                      [this, alive, target, view, x, y, clickGeneration,
+                       targetGeneration, playbackStartTick](HRESULT pressedResult,
+                                                            LPCWSTR) -> HRESULT {
                         if (!alive->load(std::memory_order_acquire) ||
                             target->trustedClickGeneration != clickGeneration ||
                             target->targetGeneration != targetGeneration ||
@@ -197,6 +198,12 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                           target->trustedClickBlockedUntilTick = 0;
                           return S_OK;
                         }
+
+                        // Anchor song timing to the Play press itself. The
+                        // callback may arrive slightly later, but the captured
+                        // tick is the moment mousePressed was dispatched.
+                        ArmMusicCompletionDeadlineFromStart(
+                            *target, playbackStartTick);
 
                         const std::wstring released =
                             L"{\"type\":\"mouseReleased\",\"x\":" +
