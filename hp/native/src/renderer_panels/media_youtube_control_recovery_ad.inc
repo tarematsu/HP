@@ -5,15 +5,9 @@ LR"JS(
   if (!player || !trusted) return null;
 
   const requestRecoveryRecheck = () => {
-    if (!window.__homePanelYoutubePolicyRecoveryTimer) {
-      window.__homePanelYoutubePolicyRecoveryTimer = setTimeout(() => {
-        window.__homePanelYoutubePolicyRecoveryTimer = 0;
-        try {
-          window.chrome?.webview?.postMessage('homepanel:youtube-wake');
-        } catch (_) {}
-      }, 2000);
-    }
-    return 'recovery';
+    try {
+      window.__homePanelYoutubeEventAgent?.scheduleRecoveryWake?.(2000);
+    } catch (_) {}
   };
 
   const video = player.querySelector('video');
@@ -76,8 +70,7 @@ LR"JS(
     // Fullscreen is one-shot for each contiguous ad period. Do not issue the
     // trusted click during the first 1.5 seconds of a new ad period: YouTube can
     // expose the control before the player is ready to accept fullscreen. The
-    // existing recovery watchdog retries after this settle window without an
-    // extra timer or polling loop.
+    // existing event-agent recovery timer handles the short recheck.
     if (trusted.fullscreen()) {
       adRecoveryState.fullscreenApplied = true;
     } else if (!adRecoveryState.fullscreenApplied &&
@@ -123,8 +116,9 @@ LR"JS(
     if (target) return trusted.arm(target, 'skip-ad', 600);
 
     // Never let an unskippable ad fall through to content playback, quality or
-    // caption mutation. Re-enter only while recovery is actually active.
-    return requestRecoveryRecheck();
+    // caption mutation.
+    requestRecoveryRecheck();
+    return 'recovery';
   }
   if (adRecoveryState.active) {
     adRecoveryState.active = false;
