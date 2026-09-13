@@ -43,11 +43,15 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
   if (now == 0) now = GetTickCount64();
 
+  // Capture the pre-CloudClient cache state. Renderer starts Spotify immediately
+  // before CloudClient starts its first synchronization, so a subsequent file
+  // creation/replacement is an unambiguous fresh-config signal.
+  BeginInitialCloudPlaylistWait(now);
   EnsureCloudPlaylistLoaded();
   robustSchedulerStarted_ = true;
   staggerSlotIndex_ = 0;
   staggerSlotStartTick_ = now;
-  scheduleStartTick_ = now;
+  scheduleStartTick_ = 0;
   staggerSlotValidated_ = false;
 
   // Only slot 0 is allowed to start controller creation immediately. The other
@@ -66,7 +70,19 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
 
   const ULONGLONG now = GetTickCount64();
-  if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
+
+  // device-config.json is atomically replaced by CloudClient. Do not lock in a
+  // fallback/stale first cycle before the startup synchronization has had its
+  // chance to create or replace that file.
+  EnsureCloudPlaylistLoaded();
+  if (!InitialCloudPlaylistReady(now)) return;
+
+  // The six-account 40-second staggering starts only after the initial cloud
+  // config gate opens; time spent waiting for sync does not consume lane offsets.
+  if (scheduleStartTick_ == 0) {
+    scheduleStartTick_ = now;
+    staggerSlotStartTick_ = now;
+  }
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
 
   // Completion deadlines are independent per WebView, including the 40-second
@@ -74,9 +90,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   // that owns heavier DOM reconciliation for this scheduler turn.
   ProbeDueTimedCompletions(now);
 
-  // device-config.json is atomically replaced by the existing CloudClient sync.
-  // A timestamp check is cheap and makes Spotify consume the synchronized
-  // settings without restarting HomePanel.
+  // Continue hot-reloading the cloud file after startup without restarting the
+  // native app. Rotation revisions become active at normal track boundaries.
   EnsureCloudPlaylistLoaded();
 
   // ExecuteScript completion callbacks are not a lifetime guarantee. If WebView2

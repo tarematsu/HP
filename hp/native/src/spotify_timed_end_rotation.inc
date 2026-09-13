@@ -248,13 +248,17 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               const bool interruptionEnded = !started && !interruptionStarted &&
                   !interruptionCancelled && ParseSpotifyInterruptionEndedEvent(
                       rawMessage, &eventGeneration, &interruptionMs);
-              const bool observerSynced = !started && !interruptionStarted &&
+              const bool ended = !started && !interruptionStarted &&
                   !interruptionCancelled && !interruptionEnded &&
+                  ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:timed-ended", &eventGeneration);
+              const bool observerSynced = !started && !interruptionStarted &&
+                  !interruptionCancelled && !interruptionEnded && !ended &&
                   ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:observer-synced", &eventGeneration);
               CoTaskMemFree(rawMessage);
               if (!started && !interruptionStarted && !interruptionCancelled &&
-                  !interruptionEnded && !observerSynced) {
+                  !interruptionEnded && !ended && !observerSynced) {
                 return S_OK;
               }
 
@@ -317,22 +321,23 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 return S_OK;
               }
 
-              SetSlotState(*target, SlotState::Playing);
-              if (target->timedPlaybackStartTick == 0) {
-                target->timedPlaybackStartTick = now;
+              if (ended) {
+                // End detection is advisory only. It shortens the generation's
+                // existing unified deadline to now; the common deadline probe
+                // remains the sole path that advances to the next target.
+                ShortenMusicCompletionDeadlineAtEnd(*target, now);
+                ArmRobustScheduler();
+                return S_OK;
               }
+
+              SetSlotState(*target, SlotState::Playing);
               target->unhealthySinceTick = 0;
 
-              // One target-start event arms exactly one native completion timer.
-              // Repeated Spotify playback events cannot postpone it; only a
-              // generation-matched non-track interruption that later resolves
-              // back to the requested song may add its measured duration.
-              if (target->timedCompletionDeadlineTick == 0 ||
-                  target->timedCompletionDeadlineGeneration != eventGeneration) {
-                target->timedCompletionDeadlineTick = now + remainingMs;
-                target->timedCompletionDeadlineGeneration = eventGeneration;
-                ArmCompletionDeadlineTimer();
-              }
+              // Trusted Play and direct/autoplay starts both enter one deadline
+              // calculator. A deadline already armed from the Play press wins,
+              // so this later observer event can never postpone it.
+              ArmMusicCompletionDeadlineFromStart(
+                  *target, now, remainingMs);
 
               RecomputeForeground();
               ArmRobustScheduler();

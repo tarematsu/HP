@@ -1,9 +1,9 @@
 namespace hp {
 namespace {
 
-// Assemble the target observer and its minimal event bindings into one
-// ExecuteScript call. Completion detection is intentionally absent: native owns
-// the one-shot completion deadline after the validated start event.
+// Assemble target recognition and the minimal media lifecycle bindings into one
+// ExecuteScript call. Native still owns the one-shot completion deadline; an
+// ended event is only an advisory signal that may shorten that same deadline.
 const std::wstring kSpotifyFastEndObserverScriptStorage = [] {
   std::wstring script;
   script.reserve(

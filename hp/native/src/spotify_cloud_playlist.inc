@@ -6,6 +6,8 @@ constexpr double kSpotifyDefaultPodcastPlaybackRate = 3.0;
 constexpr size_t kSpotifyMaxRotationGroups = 32;
 constexpr size_t kSpotifyMaxTracksPerGroup = 256;
 constexpr size_t kSpotifyMaxTracksPerCycle = 512;
+constexpr ULONGLONG kSpotifyInitialCloudSyncSettleMs = 10ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyInitialCloudSyncFallbackMs = 30ULL * 1000ULL;
 constexpr wchar_t kSpotifyFallbackRotationFingerprint[] = L"<fallback>";
 constexpr wchar_t kSpotifyDefaultPodcastFingerprint[] = L"<default>";
 
@@ -33,6 +35,55 @@ std::wstring ManagedSpotifyPathFromUrl(
 }
 
 }  // namespace
+
+void SpotifyWebViews::BeginInitialCloudPlaylistWait(ULONGLONG now) noexcept {
+  if (now == 0) now = GetTickCount64();
+  initialCloudPlaylistWaitStartedTick_ = now;
+  initialCloudPlaylistReady_ = false;
+  initialCloudPlaylistWriteTimeKnown_ = false;
+  initialCloudPlaylistWriteTime_ = {};
+
+  const fs::path path = userDataFolder_.parent_path() / kSpotifyCloudConfigFile;
+  std::error_code error;
+  const fs::file_time_type writeTime = fs::last_write_time(path, error);
+  if (!error) {
+    initialCloudPlaylistWriteTime_ = writeTime;
+    initialCloudPlaylistWriteTimeKnown_ = true;
+  }
+}
+
+bool SpotifyWebViews::InitialCloudPlaylistReady(ULONGLONG now) noexcept {
+  if (initialCloudPlaylistReady_) return true;
+  if (initialCloudPlaylistWaitStartedTick_ == 0) {
+    BeginInitialCloudPlaylistWait(now);
+  }
+  if (now == 0) now = GetTickCount64();
+
+  const fs::path path = userDataFolder_.parent_path() / kSpotifyCloudConfigFile;
+  std::error_code error;
+  const fs::file_time_type writeTime = fs::last_write_time(path, error);
+  const bool fileAvailable = !error;
+  const ULONGLONG elapsed = now - initialCloudPlaylistWaitStartedTick_;
+
+  // CloudClient starts immediately after Renderer initialization. On a fresh
+  // install, do not build the first Spotify cycle until that first sync has
+  // produced device-config.json. With a coherent existing cache, give the
+  // startup sync a short window to replace it if the cloud version changed.
+  // The bounded fallback preserves offline startup instead of wedging Spotify.
+  if (!initialCloudPlaylistWriteTimeKnown_) {
+    initialCloudPlaylistReady_ = fileAvailable ||
+        elapsed >= kSpotifyInitialCloudSyncFallbackMs;
+  } else if (fileAvailable && writeTime != initialCloudPlaylistWriteTime_) {
+    initialCloudPlaylistReady_ = true;
+  } else if (fileAvailable && elapsed >= kSpotifyInitialCloudSyncSettleMs) {
+    initialCloudPlaylistReady_ = true;
+  } else if (elapsed >= kSpotifyInitialCloudSyncFallbackMs) {
+    initialCloudPlaylistReady_ = true;
+  }
+
+  if (initialCloudPlaylistReady_) EnsureCloudPlaylistLoaded();
+  return initialCloudPlaylistReady_;
+}
 
 void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
   const fs::path path = userDataFolder_.parent_path() / kSpotifyCloudConfigFile;

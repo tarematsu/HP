@@ -2,6 +2,7 @@ namespace hp {
 namespace {
 
 constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 5ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
 
 }  // namespace
 
@@ -27,6 +28,66 @@ bool SpotifyWebViews::SlotMatchesMusicTarget(const Slot& slot) const noexcept {
   return IsSpotifyOpenSource(source) && source.find(target.path) != std::wstring::npos;
 }
 
+void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart(
+    Slot& slot, ULONGLONG playbackStartTick,
+    ULONGLONG observedRemainingMs) noexcept {
+  if (playbackStartTick == 0 || !slot.timedRotationActive ||
+      slot.timedTarget != TimedSpotifyTarget::Music) {
+    return;
+  }
+  if (slot.timedCompletionDeadlineTick != 0 &&
+      slot.timedCompletionDeadlineGeneration == slot.targetGeneration) {
+    if (slot.timedPlaybackStartTick == 0) {
+      slot.timedPlaybackStartTick = playbackStartTick;
+    }
+    return;
+  }
+
+  ULONGLONG durationMs = observedRemainingMs;
+  if (durationMs == 0 &&
+      slot.timedRotationPosition < slot.timedCycleTracks.size()) {
+    durationMs = slot.timedCycleTracks[slot.timedRotationPosition].durationMs;
+  }
+
+  ULONGLONG completionDelayMs = kSpotifyNavigationFailsafeMs;
+  if (durationMs > 0) {
+    const ULONGLONG maxDurationMs =
+        kSpotifyNavigationFailsafeMs - kSpotifyNavigationCompletionGraceMs;
+    completionDelayMs =
+        std::min(durationMs, maxDurationMs) +
+        kSpotifyNavigationCompletionGraceMs;
+  }
+
+  // The play-button press is the native start anchor. Navigation/loading time is
+  // deliberately excluded. Observer-reported remaining time uses this same
+  // path for direct-play fallback, and PR #897 ad interruptions subsequently
+  // extend this same generation-scoped deadline by their measured duration.
+  slot.timedPlaybackStartTick = playbackStartTick;
+  slot.timedCompletionDeadlineTick = playbackStartTick + completionDelayMs;
+  slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
+  ArmCompletionDeadlineTimer();
+}
+
+void SpotifyWebViews::ShortenMusicCompletionDeadlineAtEnd(
+    Slot& slot, ULONGLONG endedTick) noexcept {
+  if (endedTick == 0 || !slot.timedRotationActive ||
+      slot.timedTarget != TimedSpotifyTarget::Music ||
+      slot.timedInterruptionStartTick != 0) {
+    return;
+  }
+
+  // Best-effort ended detection never creates a second timer. It only moves the
+  // generation's existing unified deadline earlier; the normal deadline probe
+  // remains the sole transition path to the next target.
+  if (slot.timedCompletionDeadlineTick == 0 ||
+      slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
+      slot.timedCompletionDeadlineTick > endedTick) {
+    slot.timedCompletionDeadlineTick = endedTick;
+    slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
+    ArmCompletionDeadlineTimer();
+  }
+}
+
 void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   if (!slot.webview) return;
   const MusicTargetDescriptor target = ResolveMusicTarget(slot);
@@ -38,27 +99,14 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   PostSpotifyTargetDescriptorForSlot(slot);
   RecomputeForeground();
 
-  // Navigation is the only music target-transition actuator. Do not issue an
-  // independent media.pause() before it: target messages and media lifecycle
-  // events are asynchronous, so a generic stop can race the new target's first
-  // play event and freeze it at currentTime=0.
+  // Navigation only selects the requested target. Completion timing starts at
+  // the subsequent trusted Play press, not while Spotify is still loading the
+  // page. Recovery re-navigation for the same generation therefore cannot move
+  // the song's start time or completion deadline.
   const HRESULT result = slot.webview->Navigate(target.url);
   if (FAILED(result)) {
     slot.lastModeNavigateTick = 0;
     MarkSlotRecovering(slot, GetTickCount64());
-  } else if (slot.timedRotationActive &&
-             slot.timedTarget == TimedSpotifyTarget::Music &&
-             (slot.timedCompletionDeadlineTick == 0 ||
-              slot.timedCompletionDeadlineGeneration != slot.targetGeneration)) {
-    // Absolute safety net: even if cloud duration resolution, NavigationCompleted,
-    // and Spotify playback-start observation all fail, one target generation may
-    // never remain selected for more than five minutes after its first successful
-    // Navigate() call. Recovery re-navigation for the same generation never
-    // extends this deadline.
-    slot.timedCompletionDeadlineTick =
-        slot.lastModeNavigateTick + kSpotifyNavigationFailsafeMs;
-    slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
-    ArmCompletionDeadlineTimer();
   }
   ArmRobustScheduler();
 }

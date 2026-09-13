@@ -163,6 +163,8 @@ class SpotifyWebViews final {
   void PostSpotifyPageContext(Slot& slot) noexcept;
   void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
+  void BeginInitialCloudPlaylistWait(ULONGLONG now) noexcept;
+  bool InitialCloudPlaylistReady(ULONGLONG now) noexcept;
   void EnsureCloudPlaylistLoaded() noexcept;
   const wchar_t* SpotifyPodcastUrl() const noexcept;
   const wchar_t* SpotifyPodcastPath() const noexcept;
@@ -175,6 +177,11 @@ class SpotifyWebViews final {
   void PrepareTimedRotationCycle(Slot& slot) noexcept;
   MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
   bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
+  void ArmMusicCompletionDeadlineFromStart(
+      Slot& slot, ULONGLONG playbackStartTick,
+      ULONGLONG observedRemainingMs = 0) noexcept;
+  void ShortenMusicCompletionDeadlineAtEnd(
+      Slot& slot, ULONGLONG endedTick) noexcept;
   void NavigateMusicTarget(Slot& slot) noexcept;
   void ReconcileMusicTarget(Slot& slot) noexcept;
   void NavigateActiveTimedSlot(Slot& slot) noexcept;
@@ -200,7 +207,9 @@ class SpotifyWebViews final {
   std::wstring cloudRotationFingerprint_;
   std::wstring cloudPodcastFingerprint_;
   fs::file_time_type cloudPlaylistWriteTime_{};
+  fs::file_time_type initialCloudPlaylistWriteTime_{};
   ULONGLONG cloudRotationRevision_ = 1;
+  ULONGLONG initialCloudPlaylistWaitStartedTick_ = 0;
   double podcastPlaybackRate_ = 3.0;
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
@@ -211,6 +220,8 @@ class SpotifyWebViews final {
   ULONGLONG timedRandomState_ = 0;
   bool cloudPlaylistLoaded_ = false;
   bool cloudPlaylistWriteTimeKnown_ = false;
+  bool initialCloudPlaylistWriteTimeKnown_ = false;
+  bool initialCloudPlaylistReady_ = false;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;

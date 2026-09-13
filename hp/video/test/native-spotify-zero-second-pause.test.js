@@ -87,7 +87,7 @@ test('DOM reconcile cannot promote a music slot to Playing by itself', () => {
 test('generation-tagged observer remains the authority for confirmed music playback start', () => {
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.match(rotation, /timedCompletionDeadlineTick = now \+ remainingMs/);
+  assert.match(rotation, /ArmMusicCompletionDeadlineFromStart\([\s\S]*\*target, now, remainingMs/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
 });
 

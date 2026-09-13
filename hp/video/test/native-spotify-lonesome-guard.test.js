@@ -12,6 +12,8 @@ const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
 const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
+const rotation = readFileSync(
+  new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const routing = readFileSync(
   new URL('../../native/src/spotify_target_routing.inc', import.meta.url), 'utf8');
 const click = readFileSync(
@@ -30,14 +32,17 @@ test('all configured tracks use the shared music descriptor and scoped reconcile
   assert.match(scoped, /targetPlayButton/);
 });
 
-test('track reconcile never forces repeat-one and completion is native timed', () => {
+test('track reconcile never forces repeat-one and completion remains one native deadline', () => {
   assert.doesNotMatch(scoped, /repeatState|control-button-repeat|repeatMode/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.match(events, /addEventListener\('ended', observeEnded, true\)/);
   assert.doesNotMatch(
     events,
-    /addEventListener\('(?:ended|timeupdate|seeking|seeked|waiting|stalled|pause)'/,
+    /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause)'/,
   );
-  assert.doesNotMatch(runtime + events, /spotify:timed-ended|spotify:timed-plan/);
+  assert.match(events, /post\('spotify:timed-ended'\)/);
+  assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
+  assert.doesNotMatch(runtime + events, /spotify:timed-plan/);
 });
 
 test('returned Spotify control points flow through the single CDP trusted-click module', () => {

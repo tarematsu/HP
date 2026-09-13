@@ -22,8 +22,10 @@ test('observer measures only provisional non-track interruptions', () => {
   assert.match(runtime, /cancelInterruption\(\)[\s\S]*return 'wrong'/);
   assert.doesNotMatch(
     events,
-    /addEventListener\('(?:timeupdate|pause|ended|waiting|stalled)'/,
+    /addEventListener\('(?:timeupdate|pause|waiting|stalled)'/,
   );
+  assert.match(events, /state\.interruptionStartedAt/);
+  assert.match(events, /state\.targetMedia !== media/);
 });
 
 test('native keeps an active interruption generation-local and bounded', () => {
