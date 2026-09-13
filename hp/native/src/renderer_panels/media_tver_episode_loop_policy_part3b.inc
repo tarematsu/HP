@@ -1,8 +1,9 @@
 LR"JS(
 
-      // Quality discovery is event driven and player-local. Once low quality is
-      // set, state.lowQualitySet prevents further setting attempts for this video.
-      if (!state.lowQualitySet) {
+      // Quality discovery is event driven and player-local. Native owns the
+      // trusted clicks; this page policy only detects completion and requests
+      // another step when low quality has not settled yet.
+      if (!state.lowQualitySet && !state.qualityAttemptExhausted) {
         const root = playerRootFor(video);
         if (root) {
           const qualityChoices = [];
@@ -15,18 +16,22 @@ LR"JS(
                 .replace(/画質$/, '').trim();
             if (/^(自動|高|中|低)$/.test(name)) qualityChoices.push([element, name]);
           }
-          const labels = new Set(qualityChoices.map(([, name]) => name));
           const low = qualityChoices.find(([, name]) => name === '低');
-          if (labels.size >= 3 && low) {
+          if (low) {
             const element = low[0];
             const selected = element.getAttribute('aria-checked') === 'true' ||
                 element.getAttribute('aria-selected') === 'true' ||
                 element.getAttribute('data-state') === 'checked' ||
                 /選択中|設定中/.test(labelOf(element));
-            if (!selected) {
-              try { element.click(); } catch (_) {}
+            if (selected) {
+              state.lowQualitySet = true;
+              state.lowClickPending = false;
             }
+          } else if (state.lowClickPending) {
+            // The Low option disappearing immediately after the trusted click is
+            // TVer's normal menu-close transition and is treated as completion.
             state.lowQualitySet = true;
+            state.lowClickPending = false;
           }
         }
       }
@@ -34,6 +39,9 @@ LR"JS(
       const browserFullscreen = document.fullscreenElement ||
           document.webkitFullscreenElement || document.msFullscreenElement;
       const recoveryFlags = [];
+      if (!state.lowQualitySet && !state.qualityAttemptExhausted) {
+        recoveryFlags.push('quality');
+      }
       if (video.paused && !video.ended) recoveryFlags.push('paused');
       if (!browserFullscreen && state.fullscreenDirty) recoveryFlags.push('fullscreen');
       if (recoveryFlags.length) {
