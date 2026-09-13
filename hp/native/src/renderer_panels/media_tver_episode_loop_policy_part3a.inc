@@ -16,6 +16,9 @@ LR"JS(
           endCandidateAt: 0,
           endReported: false,
           lowQualitySet: false,
+          lowClickPending: false,
+          qualityActionCount: 0,
+          qualityAttemptExhausted: false,
           playbackSettingsApplied: false,
           fullscreenDirty: true,
           adActive: false,
@@ -51,6 +54,9 @@ LR"JS(
           state.maxTime = 0;
           state.progressSampleAt = 0;
           state.lowQualitySet = false;
+          state.lowClickPending = false;
+          state.qualityActionCount = 0;
+          state.qualityAttemptExhausted = false;
           state.playbackSettingsApplied = false;
           state.fullscreenDirty = true;
           state.recoveryPending = false;
@@ -77,6 +83,9 @@ LR"JS(
         state.progressSampleAt = 0;
         state.endCandidateAt = 0;
         state.lowQualitySet = false;
+        state.lowClickPending = false;
+        state.qualityActionCount = 0;
+        state.qualityAttemptExhausted = false;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
         state.postrollAfterProgram = false;
@@ -98,6 +107,9 @@ LR"JS(
         state.video = video;
         state.progressSampleAt = 0;
         state.lowQualitySet = false;
+        state.lowClickPending = false;
+        state.qualityActionCount = 0;
+        state.qualityAttemptExhausted = false;
         state.playbackSettingsApplied = false;
         state.fullscreenDirty = true;
         state.recoveryPending = false;
