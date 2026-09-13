@@ -11,17 +11,21 @@ const spotify = [
   'spotify_controller_lifecycle.inc',
 ].map(sourcePart).join('\n');
 const spotifyHeader = sourcePart('spotify_webviews.h');
+const phase = sourcePart('spotify_phase_sync.inc');
 const schedule = sourcePart('spotify_stagger_schedule.inc');
 const scripts = sourcePart('spotify_static_scripts.inc');
 const layout = sourcePart('spotify_host_layout.inc');
 
-test('Spotify WebViews serialize startup without UI-thread blocking or legacy timer rewriting', () => {
+test('Spotify WebViews serialize startup without UI-thread blocking or polling timers', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
-  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
-  assert.doesNotMatch(schedule, /% 6ULL|std::min<ULONGLONG>\(5ULL/);
+  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(spotifyHeader, /PTP_TIMER schedulerTimer_ = nullptr/);
+  assert.match(schedule, /startupReady/);
+  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
+  assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);
+  assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
 test('Spotify layout parks healthy players in a smaller offscreen viewport', () => {
@@ -38,18 +42,14 @@ test('Spotify layout parks healthy players in a smaller offscreen viewport', () 
   assert.doesNotMatch(layout, /BeginDeferWindowPos|EndDeferWindowPos/);
 });
 
-test('healthy music and podcast WebViews suppress rendering while auth and recovery remain visible', () => {
-  assert.match(layout, /slot\.timedTarget == TimedSpotifyTarget::Music/);
-  assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified|PlaybackModeGuard/);
-  assert.match(layout, /slot\.timedTarget == TimedSpotifyTarget::TalkAbout/);
+test('healthy music WebViews suppress rendering while auth and recovery remain visible', () => {
+  assert.match(layout, /CurrentMusicTrack\(slot\)/);
+  assert.doesNotMatch(layout, /TimedSpotifyTarget|shuffleOffVerified|repeatOffVerified|PlaybackModeGuard/);
   assert.match(
     layout,
-    /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*slot\.playerPage[\s\S]*!slot\.loginPage/,
+    /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*slot\.playerPage[\s\S]*!slot\.loginPage[\s\S]*CurrentMusicTrack\(slot\)/,
   );
-  assert.match(
-    layout,
-    /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/,
-  );
+  assert.match(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
   assert.match(
     layout,
     /lowPowerPlayback[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
@@ -61,7 +61,6 @@ test('Spotify layout avoids redundant controller geometry COM calls', () => {
   assert.match(spotifyHeader, /ICoreWebView2Controller\* hostLayoutController = nullptr/);
   assert.match(spotifyHeader, /bool hostLayoutReducedZoomApplied = false/);
   assert.match(layout, /const bool controllerChanged =/);
-  assert.match(layout, /Configure\(\) already pushed initial bounds\/visibility/);
   assert.doesNotMatch(layout, /controllerChanged\)[\s\S]{0,220}put_Bounds/);
   assert.match(
     layout,
@@ -87,13 +86,20 @@ test('steady authentication layout repairs z-order only when it is actually lost
   assert.match(layout, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE/);
 });
 
-test('each Spotify scheduler turn performs at most one host layout refresh', () => {
+test('each Spotify scheduler pass performs at most one host layout refresh', () => {
   const refreshes = schedule.match(/RefreshSpotifyHostLayout\(\);/g) || [];
   assert.equal(refreshes.length, 1);
   assert.match(
     schedule,
-    /staggerSlotIndex_ = scheduledIndex;[\s\S]*Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
+    /schedulerCursor_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
   );
+  assert.match(schedule, /const auto asyncIdle/);
+});
+
+test('scheduler state is minimal and does not duplicate slot state', () => {
+  assert.match(spotifyHeader, /size_t schedulerCursor_ = 0/);
+  assert.match(spotifyHeader, /std::atomic<bool> schedulerWakePosted_\{false\}/);
+  assert.doesNotMatch(spotifyHeader, /staggerSlotStartTick_|staggerSlotValidated_|timedCatalogIndex|timedRandomFIndex|timedMiddleOrder|TimedSpotifyTarget|timedPlaybackStartTick/);
 });
 
 test('lightweight Spotify styling is a fixed bootstrap script with no MutationObserver', () => {

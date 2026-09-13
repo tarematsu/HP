@@ -4,8 +4,6 @@
 namespace hp {
 namespace {
 constexpr wchar_t kSpotifyHostClass[] = L"HomePanelSpotifyWebView";
-constexpr wchar_t kSpotifyPodcastUrl[] =
-    L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
 // v2 intentionally starts every configured account with a fresh named profile

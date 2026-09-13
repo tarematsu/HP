@@ -60,10 +60,8 @@ function createHarness() {
   const media = new FakeMedia();
   const window = {
     __homePanelSpotifyNativeTarget: {
-      pagePath: '/track/A',
-      trackPath: '/track/A',
+      path: '/track/A',
       title: 'Target A',
-      kind: 'music',
     },
     chrome: {
       webview: {
@@ -211,7 +209,7 @@ test('trusted native Play establishes start when Spotify identity is temporarily
   h.dispatch('playing');
 
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f21\x1f180000']);
-  assert.equal(runtime.state.started, true);
+  assert.equal(runtime.state.startPosted, true);
   assert.equal(runtime.state.targetMedia, h.media);
 });
 
@@ -231,7 +229,7 @@ test('trusted native Play never overrides a concrete wrong-track identity', () =
   h.setTrack(null, '');
   h.dispatch('playing');
   assert.equal(h.messages.some(m => m.startsWith('spotify:timed-started')), false);
-  assert.equal(runtime.state.started, false);
+  assert.equal(runtime.state.startPosted, false);
 });
 
 test('non-track advertisement time is measured until the requested track resumes', () => {
@@ -345,6 +343,7 @@ test('observer has no heartbeat recovery or completion-planner API', () => {
   assert.equal('heartbeatTimer' in runtime, false);
   assert.equal('recoveryPosted' in runtime.state, false);
   assert.equal('restartPending' in runtime.state, false);
+  assert.equal('started' in runtime.state, false);
 
   for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause']) {
     assert.equal(h.documentListeners.has(type), false);

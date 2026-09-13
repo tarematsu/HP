@@ -61,15 +61,15 @@ test('direct track path is preferred over MediaSession title when both exist', (
   const domIdentity = runtime.indexOf('for (const selector of [');
   const mediaSession = runtime.indexOf('navigator.mediaSession');
   assert.ok(domIdentity >= 0 && mediaSession > domIdentity);
-  assert.match(runtime, /if \(target\.trackPath && track\.path\)/);
-  assert.match(runtime, /return sameTrackPath\(track\.path, target\.trackPath\)/);
+  assert.match(runtime, /const expectedPath = targetPath\(target\)/);
+  assert.match(runtime, /sameTrackPath\(track\.path, expectedPath\)/);
 });
 
 test('completion does not mutate the Spotify media element and advances at the effective deadline', () => {
   assert.doesNotMatch(runtime + events, /\.pause\s*\(|\.play\s*\(/);
   assert.doesNotMatch(runtime + events, /endedPosted|quarantineCompletedGeneration|finishTarget|finishProjectedWrap/);
   assert.match(rotation, /SpotifyDeadlineWithInterruptionHold/);
-  assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot, now\)/i);
+  assert.match(rotation, /effectiveDeadline > now[\s\S]*AdvanceTimedRotationSlot\(slot\)/i);
 });
 
 test('pause waiting stalled and target mismatch never request playback recovery', () => {
@@ -96,5 +96,5 @@ test('music rotation uses one native deadline shaped by start duration ads and e
   assert.match(music, /kSpotifyNavigationCompletionGraceMs = 2ULL \* 1000ULL/);
   assert.match(rotation, /timedCompletionDeadlineTick \+ extension/);
   assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);
-  assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(rotation, /AdvanceTimedRotationSlot\(slot\)/);
 });

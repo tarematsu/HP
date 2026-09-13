@@ -1,61 +1,18 @@
-namespace {
-// One healthy slot is verified per turn. With the adaptive 40-second scheduler
-// this is one lightweight verification per account roughly every four minutes.
-constexpr ULONGLONG kSpotifySimpleSteadyTurnMs = 40ULL * 1000ULL;
-// A recovery owner gets enough time for one 12-second async timeout plus a
-// layout-settled retry before normal healthy-account fairness resumes.
-constexpr ULONGLONG kSpotifySimpleRecoveryHoldMs = 36ULL * 1000ULL;
-constexpr ULONGLONG kSpotifySimpleLayoutSettleMs = 2ULL * 1000ULL;
-constexpr ULONGLONG kSpotifySimpleRetryMs = 4ULL * 1000ULL;
-
-size_t SimpleSpotifyScheduledIndex(
-    ULONGLONG elapsed, size_t accountCount) noexcept {
-  if (accountCount == 0) return 0;
-  const ULONGLONG initialSerialWindowMs =
-      static_cast<ULONGLONG>(accountCount) * kSpotifyAccountStartOffsetMs;
-  if (elapsed < initialSerialWindowMs) {
-    return static_cast<size_t>(std::min<ULONGLONG>(
-        static_cast<ULONGLONG>(accountCount - 1),
-        elapsed / kSpotifyAccountStartOffsetMs));
-  }
-  return static_cast<size_t>(
-      ((elapsed - initialSerialWindowMs) /
-       kSpotifySimpleSteadyTurnMs) % accountCount);
-}
-}  // namespace
-
-void CALLBACK SpotifyWebViews::StaggeredReconcileTimerProc(
-    HWND hwnd, UINT, UINT_PTR timerId, DWORD) {
-  if (timerId != kSpotifyRobustReconcileTimer || !hwnd || !IsWindow(hwnd)) {
-    return;
-  }
-  auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-  if (!slot || !slot->owner || slot->index != 0) return;
-  SpotifyWebViews* const owner = slot->owner;
-  owner->RunStaggeredReconcile();
-  // SetTimer is intentionally re-armed after each pass so healthy operation can
-  // sleep at the adaptive cadence while recovery and completion deadlines wake
-  // the same single native timer only when needed.
-  owner->ArmRobustScheduler();
-}
+// SlotState is the queue. No separate container or ownership lease is needed:
+// each scheduler pass scans from the previous slot and starts at most one piece
+// of WebView work. The single adaptive threadpool timer wakes only when the next
+// retry, startup boundary, async timeout, completion deadline, or audit is due.
 
 void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
   if (now == 0) now = GetTickCount64();
 
-  // Capture the pre-CloudClient cache state. Renderer starts Spotify immediately
-  // before CloudClient starts its first synchronization, so a subsequent file
-  // creation/replacement is an unambiguous fresh-config signal.
   BeginInitialCloudPlaylistWait(now);
   EnsureCloudPlaylistLoaded();
   robustSchedulerStarted_ = true;
-  staggerSlotIndex_ = 0;
-  staggerSlotStartTick_ = now;
+  schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = 0;
-  staggerSlotValidated_ = false;
 
-  // Only slot 0 is allowed to start controller creation immediately. The other
-  // accounts enter through the same serialized ownership schedule.
   for (size_t i = 1; i < slots_.size(); ++i) {
     slots_[i].controllerCreating = false;
     slots_[i].controllerCreateTick = 0;
@@ -71,102 +28,109 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   const ULONGLONG now = GetTickCount64();
 
-  // device-config.json is atomically replaced by CloudClient. Do not lock in a
-  // fallback/stale first cycle before the startup synchronization has had its
-  // chance to create or replace that file.
   EnsureCloudPlaylistLoaded();
   if (!InitialCloudPlaylistReady(now)) return;
+  if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
 
-  // The six-account 40-second staggering starts only after the initial cloud
-  // config gate opens; time spent waiting for sync does not consume lane offsets.
-  if (scheduleStartTick_ == 0) {
-    scheduleStartTick_ = now;
-    staggerSlotStartTick_ = now;
-  }
-  if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
-
-  // Completion deadlines are independent per WebView, including the 40-second
-  // startup staggering. Probe every due slot before selecting the one account
-  // that owns heavier DOM reconciliation for this scheduler turn.
   ProbeDueTimedCompletions(now);
-
-  // Continue hot-reloading the cloud file after startup without restarting the
-  // native app. Rotation revisions become active at normal track boundaries.
   EnsureCloudPlaylistLoaded();
 
-  // ExecuteScript completion callbacks are not a lifetime guarantee. If WebView2
-  // drops one, invalidate that request generation and immediately give the
-  // affected account serialized recovery ownership instead of leaving an
-  // in-flight boolean stuck for the lifetime of the process.
   for (Slot& candidate : slots_) {
-    if (ExpireStaleAsyncWork(candidate, now)) {
-      RecomputeForeground();
+    ExpireStaleAsyncWork(candidate, now);
+  }
+
+  const ULONGLONG elapsed = now - scheduleStartTick_;
+  const size_t count = slots_.size();
+  const size_t scanStart = (schedulerCursor_ + 1) % count;
+
+  const auto startupReady = [elapsed](size_t index) noexcept {
+    return elapsed >= static_cast<ULONGLONG>(index) *
+                          kSpotifyAccountStartOffsetMs;
+  };
+  const auto retryReady = [now](const Slot& slot) noexcept {
+    return slot.lastTimedReconcileTick == 0 ||
+           now - slot.lastTimedReconcileTick >= kSpotifyQueueRetryMs;
+  };
+  const auto asyncIdle = [](const Slot& slot) noexcept {
+    return !slot.reconcileInFlight && !slot.timedObserverInstallInFlight;
+  };
+  const auto controllerReady = [now](const Slot& slot) noexcept {
+    if (slot.webview) return true;
+    if (slot.controllerCreating) return false;
+    return slot.controllerCreateTick == 0 ||
+           now - slot.controllerCreateTick >= kSpotifyRobustControllerRetryMs;
+  };
+
+  size_t selected = count;
+
+  for (size_t step = 0; step < count; ++step) {
+    const size_t index = (scanStart + step) % count;
+    const Slot& candidate = slots_[index];
+    if (!startupReady(index) || candidate.state != SlotState::Recovering ||
+        !controllerReady(candidate) || !asyncIdle(candidate) ||
+        !retryReady(candidate)) {
+      continue;
+    }
+    selected = index;
+    break;
+  }
+
+  if (selected == count) {
+    for (size_t step = 0; step < count; ++step) {
+      const size_t index = (scanStart + step) % count;
+      const Slot& candidate = slots_[index];
+      if (!startupReady(index) || !controllerReady(candidate)) continue;
+      const bool pending = !candidate.timedRotationActive ||
+                           SlotStateNeedsRecovery(candidate.state);
+      if (!pending) continue;
+      if (candidate.timedRotationActive &&
+          (!asyncIdle(candidate) || !retryReady(candidate))) {
+        continue;
+      }
+      selected = index;
       break;
     }
   }
 
-  const ULONGLONG elapsed = now - scheduleStartTick_;
-
-  staggerSlotIndex_ %= slots_.size();
-  Slot& current = slots_[staggerSlotIndex_];
-  const bool holdRecovery =
-      current.timedTarget != TimedSpotifyTarget::None &&
-      SlotStateNeedsRecovery(current.state) &&
-      now - staggerSlotStartTick_ < kSpotifySimpleRecoveryHoldMs;
-  const size_t scheduledIndex =
-      SimpleSpotifyScheduledIndex(elapsed, slots_.size());
-
-  // Login is a presentation concern, not scheduler ownership. A login surface
-  // stays foreground through RefreshSpotifyHostLayout(), while the normal turn
-  // schedule and event-driven recovery for the other accounts continue.
-  if (!holdRecovery && staggerSlotIndex_ != scheduledIndex) {
-    staggerSlotIndex_ = scheduledIndex;
-    staggerSlotStartTick_ = now;
-    staggerSlotValidated_ = false;
+  if (selected == count) {
+    for (size_t step = 0; step < count; ++step) {
+      const size_t index = (scanStart + step) % count;
+      const Slot& candidate = slots_[index];
+      if (!startupReady(index) || !CurrentMusicTrack(candidate) ||
+          SlotIsLoginPage(candidate) || !asyncIdle(candidate)) {
+        continue;
+      }
+      selected = index;
+      break;
+    }
   }
 
-  if (staggerSlotIndex_ >= slots_.size()) return;
-  Slot& slot = slots_[staggerSlotIndex_];
+  if (selected == count) return;
+
+  schedulerCursor_ = selected;
+  Slot& slot = slots_[selected];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
-  // One layout pass observes the final owner for this scheduler turn. The old
-  // path refreshed once during ownership handoff and immediately again here.
+
   RefreshSpotifyHostLayout();
-  // An auth-owned turn performs no playback DOM work. The visible auth window
-  // remains independent, and observer/timer events from other slots stay live.
   if (slot.webview && SlotIsLoginPage(slot)) return;
 
-  const ULONGLONG slotOffset =
-      static_cast<ULONGLONG>(slot.index) * kSpotifyAccountStartOffsetMs;
-  if (elapsed < slotOffset) return;
-
-  // Spotify playback no longer depends on the YouTube/TVer phase. Once an
-  // account reaches its serialized start turn, it owns an autonomous
-  // cloud-defined rotation for the rest of its lifetime.
   if (!slot.timedRotationActive) {
     if (!slot.webview) {
       BeginControllerCreate(slot);
       return;
     }
-    InitializeTimedRotationSlot(slot, now);
+    InitializeTimedRotationSlot(slot);
+    if (CurrentMusicTrack(slot)) NavigateMusicTarget(slot);
     return;
   }
 
-  if (SlotStateNeedsRecovery(slot.state) &&
-      now - staggerSlotStartTick_ < kSpotifySimpleLayoutSettleMs) {
+  if (!CurrentMusicTrack(slot)) {
+    slot.timedRotationActive = false;
+    ArmRobustScheduler();
     return;
   }
 
-  // Healthy accounts get one verification on their ownership turn. Recovery is
-  // event-driven and retries only the affected account every four seconds.
-  if (!staggerSlotValidated_ || SlotStateNeedsRecovery(slot.state)) {
-    if (slot.lastTimedReconcileTick == 0 ||
-        now - slot.lastTimedReconcileTick >= kSpotifySimpleRetryMs) {
-      slot.lastTimedReconcileTick = now;
-      if (slot.timedTarget != TimedSpotifyTarget::TalkAbout) {
-        ArmTimedEndObserver(slot);
-      }
-      staggerSlotValidated_ = true;
-      ReconcileActiveTimedSlot(slot);
-    }
-  }
+  slot.lastTimedReconcileTick = now;
+  ArmTimedEndObserver(slot);
+  ReconcileMusicTarget(slot);
 }

@@ -44,7 +44,7 @@ export const ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS = [
   ["なぜ　恋をして来なかったんだろう？", "2K6uY7BaeOfuPwJNOVF3ht"],
 ] as const;
 
-// F uses the complete short music pool. Instrumentals stay exclusive to C.
+// F/G use the complete short music pool. Instrumentals stay exclusive to C/E.
 export const SHORT_SPOTIFY_ROTATION_TRACKS = [
   ...SHORT_SPOTIFY_RANDOM_TRACKS,
   ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
@@ -93,6 +93,7 @@ const rotationTracks = (tracks: readonly (readonly [string, string])[]) =>
   tracks.map(([title, id]) => spotifyRotationTrack(title, id));
 
 export function managedSpotifySevenSlotRotation() {
+  const instrumentalSongs = rotationTracks(ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS);
   const shortSongs = rotationTracks(SHORT_SPOTIFY_ROTATION_TRACKS);
   return [
     {
@@ -107,20 +108,28 @@ export function managedSpotifySevenSlotRotation() {
     {
       mode: "random",
       count: 1,
-      tracks: rotationTracks(ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS),
+      tracks: instrumentalSongs.map(track => ({ ...track })),
     },
     {
-      mode: "fixed",
-      tracks: [spotifyRotationTrack("放課後BitterBlue", "5EjWZuODqEPQ9eq7XCmITh")],
-    },
-    {
-      mode: "fixed",
-      tracks: [spotifyRotationTrack("紋白蝶が確か飛んでた", "6VIY7OFy8g5ZyLSgQEi8lV")],
+      mode: "shuffle",
+      tracks: [
+        spotifyRotationTrack("放課後BitterBlue", "5EjWZuODqEPQ9eq7XCmITh"),
+        spotifyRotationTrack("紋白蝶が確か飛んでた", "6VIY7OFy8g5ZyLSgQEi8lV"),
+      ],
     },
     {
       mode: "random",
       count: 1,
-      includeTalkAbout: true,
+      tracks: instrumentalSongs.map(track => ({ ...track })),
+    },
+    {
+      mode: "random",
+      count: 1,
+      tracks: shortSongs.map(track => ({ ...track })),
+    },
+    {
+      mode: "random",
+      count: 1,
       tracks: shortSongs.map(track => ({ ...track })),
     },
   ];

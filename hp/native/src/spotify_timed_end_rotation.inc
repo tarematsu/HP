@@ -32,8 +32,7 @@ bool ParseSpotifyDurationEvent(
   }
 
   const size_t generationStart = eventName.size() + 1;
-  const size_t separator =
-      value.find(kSpotifyMessageSeparator, generationStart);
+  const size_t separator = value.find(kSpotifyMessageSeparator, generationStart);
   if (separator == std::wstring_view::npos || separator == generationStart ||
       separator + 1 >= value.size()) {
     return false;
@@ -77,77 +76,49 @@ bool ParseSpotifyInterruptionEndedEvent(
 }  // namespace
 
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
-  slot.podcastBreakActive = false;
-  slot.timedCatalogIndex = kNoTimedCatalogIndex;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
   slot.timedInterruptionStartTick = 0;
   if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
   if (slot.timedCycleTracks.empty()) {
-    slot.timedTarget = TimedSpotifyTarget::None;
-    slot.timedPlaybackStartTick = 0;
+    slot.timedRotationActive = false;
     return;
   }
 
   slot.timedRotationPosition %= slot.timedCycleTracks.size();
-  const ManagedTrack& target = slot.timedCycleTracks[slot.timedRotationPosition];
-  const bool talkAboutTarget =
-      SpotifyPodcastTargetReady() && target.path == SpotifyPodcastPath();
-  slot.podcastBreakActive = talkAboutTarget;
-  slot.timedTarget = talkAboutTarget
-      ? TimedSpotifyTarget::TalkAbout
-      : TimedSpotifyTarget::Music;
   BumpSpotifyTargetGeneration(slot);
   slot.unhealthySinceTick = 0;
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
-  slot.timedPlaybackStartTick = 0;
 }
 
-void SpotifyWebViews::InitializeTimedRotationSlot(
-    Slot& slot, ULONGLONG now) noexcept {
+void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
   slot.timedRotationActive = true;
-  slot.podcastBreakActive = false;
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
   slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
-  staggerSlotIndex_ = slot.index;
-  staggerSlotStartTick_ = now;
-  staggerSlotValidated_ = false;
-  RefreshSpotifyHostLayout();
-  NavigateActiveTimedSlot(slot);
 }
 
-void SpotifyWebViews::CompletePodcastBreak(
-    Slot& slot, ULONGLONG now) noexcept {
-  if (!slot.timedRotationActive || !slot.podcastBreakActive) return;
-  slot.podcastBreakActive = false;
-  AdvanceTimedRotationSlot(slot, now);
-}
-
-void SpotifyWebViews::AdvanceTimedRotationSlot(
-    Slot& slot, ULONGLONG now) noexcept {
-  if (!slot.timedRotationActive || slot.podcastBreakActive) return;
+void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
+  if (!slot.timedRotationActive) return;
 
   std::wstring completedPath;
-  if (slot.timedRotationPosition < slot.timedCycleTracks.size()) {
-    completedPath = slot.timedCycleTracks[slot.timedRotationPosition].path;
+  if (const ManagedTrack* const track = CurrentMusicTrack(slot)) {
+    completedPath = track->path;
   }
 
   if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
     slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
     slot.timedCloudRotationRevision = cloudRotationRevision_;
-    if (slot.timedCycleTracks.empty()) return;
+    if (slot.timedCycleTracks.empty()) {
+      slot.timedRotationActive = false;
+      return;
+    }
 
-    // A cloud revision becomes active only at this natural completion boundary.
-    // Never let the revision reset replay the track that just completed: if the
-    // rebuilt cycle starts with the same path, move to the first different
-    // target. This also makes repeated config refreshes fail forward instead of
-    // pinning a slot to position zero forever.
     if (!completedPath.empty() &&
         slot.timedCycleTracks[slot.timedRotationPosition].path == completedPath) {
       const auto next = std::find_if(
@@ -162,30 +133,30 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
     }
   } else {
     if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
-    if (slot.timedCycleTracks.empty()) return;
+    if (slot.timedCycleTracks.empty()) {
+      slot.timedRotationActive = false;
+      return;
+    }
 
     ++slot.timedRotationPosition;
     if (slot.timedRotationPosition >= slot.timedCycleTracks.size()) {
       ++slot.timedRotationCycle;
       slot.timedRotationPosition = 0;
       PrepareTimedRotationCycle(slot);
-      if (slot.timedCycleTracks.empty()) return;
+      if (slot.timedCycleTracks.empty()) {
+        slot.timedRotationActive = false;
+        return;
+      }
     }
   }
   ApplyTimedRotationTarget(slot);
-  staggerSlotIndex_ = slot.index;
-  staggerSlotStartTick_ = now;
-  staggerSlotValidated_ = false;
-  RefreshSpotifyHostLayout();
-  NavigateActiveTimedSlot(slot);
 }
 
 void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
   for (Slot& slot : slots_) {
     if (slot.timedCompletionDeadlineTick == 0) continue;
     if (slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
-        slot.timedTarget != TimedSpotifyTarget::Music ||
-        !slot.timedRotationActive) {
+        !CurrentMusicTrack(slot)) {
       slot.timedCompletionDeadlineTick = 0;
       slot.timedCompletionDeadlineGeneration = 0;
       slot.timedInterruptionStartTick = 0;
@@ -196,25 +167,15 @@ void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept {
         slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick);
     if (effectiveDeadline > now) continue;
 
-    // A provisional interruption may hold the deadline only for a bounded
-    // window. If it never resolves back to the requested track, fail forward at
-    // the effective deadline instead of allowing an ad/metadata state to wedge
-    // the rotation forever.
     slot.timedInterruptionStartTick = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
-    slot.timedPlaybackStartTick = 0;
-    AdvanceTimedRotationSlot(slot, now);
+    AdvanceTimedRotationSlot(slot);
   }
-  ArmCompletionDeadlineTimer();
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
-  if (!slot.webview || !slot.timedRotationActive || slot.podcastBreakActive ||
-      slot.timedTarget == TimedSpotifyTarget::TalkAbout ||
-      slot.timedTarget == TimedSpotifyTarget::None) {
-    return;
-  }
+  if (!slot.webview || !CurrentMusicTrack(slot)) return;
 
   if (slot.timedEndHandlerWebview != slot.webview.Get()) {
     Slot* const target = &slot;
@@ -273,72 +234,51 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 target->timedObserverInstallStartedTick = 0;
                 target->timedObserverReady = true;
                 target->lastTimedReconcileTick = 0;
-                ReconcileActiveTimedSlot(*target);
                 ArmRobustScheduler();
                 return S_OK;
               }
 
-              if (target->timedTarget != TimedSpotifyTarget::Music ||
-                  !target->timedRotationActive) {
-                return S_OK;
-              }
+              if (!CurrentMusicTrack(*target)) return S_OK;
 
               if (interruptionStarted) {
                 if (target->timedInterruptionStartTick == 0) {
                   target->timedInterruptionStartTick = now;
-                  ArmCompletionDeadlineTimer();
                 }
                 ArmRobustScheduler();
                 return S_OK;
               }
 
               if (interruptionCancelled) {
-                if (target->timedInterruptionStartTick != 0) {
-                  target->timedInterruptionStartTick = 0;
-                  ArmCompletionDeadlineTimer();
-                }
+                target->timedInterruptionStartTick = 0;
                 ArmRobustScheduler();
                 return S_OK;
               }
 
               if (interruptionEnded) {
-                if (target->timedInterruptionStartTick != 0) {
-                  target->timedInterruptionStartTick = 0;
-                  if (target->timedCompletionDeadlineTick != 0 &&
-                      target->timedCompletionDeadlineGeneration == eventGeneration) {
-                    const ULONGLONG extension = std::min(
-                        interruptionMs, kSpotifyMaxInterruptionHoldMs);
-                    const ULONGLONG maxTick =
-                        (std::numeric_limits<ULONGLONG>::max)();
-                    target->timedCompletionDeadlineTick =
-                        target->timedCompletionDeadlineTick > maxTick - extension
-                            ? maxTick
-                            : target->timedCompletionDeadlineTick + extension;
-                  }
-                  ArmCompletionDeadlineTimer();
+                target->timedInterruptionStartTick = 0;
+                if (target->timedCompletionDeadlineTick != 0 &&
+                    target->timedCompletionDeadlineGeneration == eventGeneration) {
+                  const ULONGLONG extension = std::min(
+                      interruptionMs, kSpotifyMaxInterruptionHoldMs);
+                  const ULONGLONG maxTick =
+                      (std::numeric_limits<ULONGLONG>::max)();
+                  target->timedCompletionDeadlineTick =
+                      target->timedCompletionDeadlineTick > maxTick - extension
+                          ? maxTick
+                          : target->timedCompletionDeadlineTick + extension;
                 }
                 ArmRobustScheduler();
                 return S_OK;
               }
 
               if (ended) {
-                // End detection is advisory only. It shortens the generation's
-                // existing unified deadline to now; the common deadline probe
-                // remains the sole path that advances to the next target.
                 ShortenMusicCompletionDeadlineAtEnd(*target, now);
-                ArmRobustScheduler();
                 return S_OK;
               }
 
               SetSlotState(*target, SlotState::Playing);
               target->unhealthySinceTick = 0;
-
-              // Trusted Play and direct/autoplay starts both enter one deadline
-              // calculator. A deadline already armed from the Play press wins,
-              // so this later observer event can never postpone it.
-              ArmMusicCompletionDeadlineFromStart(
-                  *target, now, remainingMs);
-
+              ArmMusicCompletionDeadlineFromStart(*target, now, remainingMs);
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
@@ -389,10 +329,6 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               return S_OK;
             }
 
-            // The page-context generation message can be emitted before this
-            // observer exists. Synchronize again after installation and wait for
-            // an acknowledgement from the observer itself before allowing any
-            // playback reconcile. This removes the generation-0 start race.
             std::wstring syncMessage = L"spotify:observer-sync";
             syncMessage.push_back(kSpotifyMessageSeparator);
             syncMessage.append(std::to_wstring(observerTargetGeneration));

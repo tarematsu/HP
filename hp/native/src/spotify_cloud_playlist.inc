@@ -2,14 +2,12 @@ namespace hp {
 namespace {
 
 constexpr wchar_t kSpotifyCloudConfigFile[] = L"device-config.json";
-constexpr double kSpotifyDefaultPodcastPlaybackRate = 3.0;
 constexpr size_t kSpotifyMaxRotationGroups = 32;
 constexpr size_t kSpotifyMaxTracksPerGroup = 256;
 constexpr size_t kSpotifyMaxTracksPerCycle = 512;
 constexpr ULONGLONG kSpotifyInitialCloudSyncSettleMs = 10ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyInitialCloudSyncFallbackMs = 30ULL * 1000ULL;
 constexpr wchar_t kSpotifyFallbackRotationFingerprint[] = L"<fallback>";
-constexpr wchar_t kSpotifyDefaultPodcastFingerprint[] = L"<default>";
 
 std::wstring ManagedSpotifyPathFromUrl(
     const std::wstring& url, std::wstring_view segment) {
@@ -101,11 +99,7 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
   }
 
   std::vector<RotationGroup> nextRotationGroups;
-  std::wstring nextPodcastUrl;
-  std::wstring nextPodcastPath;
   std::wstring nextRotationFingerprint = kSpotifyFallbackRotationFingerprint;
-  std::wstring nextPodcastFingerprint = kSpotifyDefaultPodcastFingerprint;
-  double nextPodcastPlaybackRate = kSpotifyDefaultPodcastPlaybackRate;
 
   if (fileAvailable) {
     try {
@@ -172,8 +166,6 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
             } else {
               continue;
             }
-            group.includeTalkAbout =
-                source.GetNamedBoolean(L"includeTalkAbout", false);
 
             const JsonArray tracks =
                 source.GetNamedArray(L"tracks", JsonArray{});
@@ -197,8 +189,7 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
               }
             }
 
-            const size_t configuredCandidateCount =
-                group.tracks.size() + (group.includeTalkAbout ? 1U : 0U);
+            const size_t configuredCandidateCount = group.tracks.size();
             if (configuredCandidateCount == 0) continue;
 
             if (group.mode == RotationGroup::Mode::Random) {
@@ -227,27 +218,6 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
         } catch (...) {
           // Invalid rotation deliberately falls back to the built-in cycle.
         }
-
-        try {
-          const JsonObject talkAbout = spotify.GetNamedObject(L"talkAbout");
-          const std::wstring episodeUrl =
-              talkAbout.GetNamedString(L"episodeUrl", L"").c_str();
-          const std::wstring episodePath =
-              ManagedSpotifyPathFromUrl(episodeUrl, L"/episode/");
-          if (!episodePath.empty()) {
-            nextPodcastUrl = episodeUrl;
-            nextPodcastPath = episodePath;
-          }
-
-          const double rate = talkAbout.GetNamedNumber(
-              L"playbackRate", kSpotifyDefaultPodcastPlaybackRate);
-          if (std::isfinite(rate)) {
-            nextPodcastPlaybackRate = std::clamp(rate, 0.5, 4.0);
-          }
-          nextPodcastFingerprint = talkAbout.Stringify().c_str();
-        } catch (...) {
-          // No valid direct episode URL means the G slot samples music only.
-        }
       }
     } catch (...) {
       // A malformed synchronized file leaves the safe defaults active.
@@ -257,41 +227,16 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
   const bool initialLoad = !cloudPlaylistLoaded_;
   const bool rotationChanged =
       initialLoad || nextRotationFingerprint != cloudRotationFingerprint_;
-  const bool podcastChanged =
-      initialLoad || nextPodcastFingerprint != cloudPodcastFingerprint_;
 
   cloudPlaylistLoaded_ = true;
   cloudPlaylistWriteTimeKnown_ = fileAvailable;
   if (fileAvailable) cloudPlaylistWriteTime_ = writeTime;
 
-  if (rotationChanged) {
-    cloudRotationGroups_ = std::move(nextRotationGroups);
-    cloudRotationFingerprint_ = std::move(nextRotationFingerprint);
-    ++cloudRotationRevision_;
-    if (cloudRotationRevision_ == 0) cloudRotationRevision_ = 1;
-  }
-
-  if (!podcastChanged) return;
-  cloudPodcastUrl_ = std::move(nextPodcastUrl);
-  cloudPodcastPath_ = std::move(nextPodcastPath);
-  cloudPodcastFingerprint_ = std::move(nextPodcastFingerprint);
-  podcastPlaybackRate_ = nextPodcastPlaybackRate;
-}
-
-const wchar_t* SpotifyWebViews::SpotifyPodcastUrl() const noexcept {
-  return cloudPodcastUrl_.c_str();
-}
-
-const wchar_t* SpotifyWebViews::SpotifyPodcastPath() const noexcept {
-  return cloudPodcastPath_.c_str();
-}
-
-bool SpotifyWebViews::SpotifyPodcastTargetReady() const noexcept {
-  return !cloudPodcastUrl_.empty() && !cloudPodcastPath_.empty();
-}
-
-double SpotifyWebViews::SpotifyPodcastPlaybackRate() const noexcept {
-  return podcastPlaybackRate_;
+  if (!rotationChanged) return;
+  cloudRotationGroups_ = std::move(nextRotationGroups);
+  cloudRotationFingerprint_ = std::move(nextRotationFingerprint);
+  ++cloudRotationRevision_;
+  if (cloudRotationRevision_ == 0) cloudRotationRevision_ = 1;
 }
 
 }  // namespace hp

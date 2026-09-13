@@ -28,21 +28,23 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
   slot.hostWindow = CreateWindowExW(
       0, kSpotifyHostClass, L"Spotify", WS_CHILD | WS_CLIPSIBLINGS,
       0, 0, 1, 1, parentWindow_, nullptr, GetModuleHandleW(nullptr), &slot);
-  return slot.hostWindow && IsWindow(slot.hostWindow);
+  const bool created = slot.hostWindow && IsWindow(slot.hostWindow);
+  if (created && slot.index == 0) {
+    schedulerHost_.store(slot.hostWindow, std::memory_order_release);
+  }
+  return created;
 }
 
 void SpotifyWebViews::Start() noexcept {
   if (started_ || !parentWindow_ || !IsWindow(parentWindow_)) return;
 
-  // Every start owns a fresh async generation. Reusing the old atomic and
-  // toggling it back to true would revive callbacks captured before Shutdown().
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
   robustSchedulerStarted_ = false;
-  staggerSlotIndex_ = 0;
-  staggerSlotStartTick_ = 0;
+  schedulerHost_.store(nullptr, std::memory_order_release);
+  schedulerWakePosted_.store(false, std::memory_order_release);
+  schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
-  staggerSlotValidated_ = false;
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
   hostLayoutAuthenticationSlot_ = kAccountCount;
@@ -57,27 +59,15 @@ void SpotifyWebViews::Start() noexcept {
     slot.timedObserverInstallInFlight = false;
     slot.controllerCreating = false;
     slot.controllerCreateTick = 0;
-    slot.timedTarget = TimedSpotifyTarget::None;
-    slot.timedCatalogIndex = kNoTimedCatalogIndex;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
-    slot.timedPlaybackStartTick = 0;
     slot.timedCompletionDeadlineTick = 0;
     slot.timedCompletionDeadlineGeneration = 0;
-    slot.timedRandomFIndex = kNoTimedCatalogIndex;
-    slot.timedMiddleOrder = {
-        TimedSpotifyTarget::BitterBlue,
-        TimedSpotifyTarget::Monshirocho,
-        TimedSpotifyTarget::Munen,
-        TimedSpotifyTarget::OnMyWay,
-    };
+    slot.timedInterruptionStartTick = 0;
     slot.timedRotationActive = false;
-    slot.podcastBreakActive = false;
     if (!CreateHost(slot)) continue;
   }
 
-  // Controller creation is serialized. Slot 0 starts immediately; the scheduler
-  // creates the remaining accounts when each 40-second start offset arrives.
   if (!slots_.empty() && slots_[0].hostWindow) {
     CreateController(slots_[0]);
   }
@@ -97,8 +87,9 @@ void SpotifyWebViews::Resize() noexcept {
 }
 
 void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
-  if (slot.index == 0 && slot.hostWindow && IsWindow(slot.hostWindow)) {
-    KillTimer(slot.hostWindow, kSpotifyRobustReconcileTimer);
+  if (slot.index == 0) {
+    schedulerHost_.store(nullptr, std::memory_order_release);
+    schedulerWakePosted_.store(false, std::memory_order_release);
   }
   if (slot.webview) {
     if (slot.navigationStartingToken.value != 0) {
@@ -150,6 +141,8 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.trustedClickBlockedUntilTick = 0;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
+  slot.timedInterruptionStartTick = 0;
+  slot.timedRotationActive = false;
   slot.state = SlotState::NotCreated;
   slot.unhealthySinceTick = 0;
   slot.playerPage = false;
@@ -161,17 +154,17 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
 void SpotifyWebViews::Shutdown() noexcept {
   if (!started_) return;
   started_ = false;
-  if (completionDeadlineTimer_) {
-    SetThreadpoolTimer(completionDeadlineTimer_, nullptr, 0, 0);
-    WaitForThreadpoolTimerCallbacks(completionDeadlineTimer_, TRUE);
-    CloseThreadpoolTimer(completionDeadlineTimer_);
-    completionDeadlineTimer_ = nullptr;
+  if (schedulerTimer_) {
+    SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
+    WaitForThreadpoolTimerCallbacks(schedulerTimer_, TRUE);
+    CloseThreadpoolTimer(schedulerTimer_);
+    schedulerTimer_ = nullptr;
   }
+  schedulerWakePosted_.store(false, std::memory_order_release);
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
   robustSchedulerStarted_ = false;
-  staggerSlotIndex_ = 0;
-  staggerSlotStartTick_ = 0;
+  schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
 }
 
@@ -184,11 +177,11 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(slot));
   }
   if (slot) {
-    if (message == kSpotifyCompletionDeadlineMessage && slot->index == 0 &&
-        slot->owner) {
+    if (message == kSpotifySchedulerMessage && slot->index == 0 && slot->owner) {
       SpotifyWebViews* const owner = slot->owner;
-      if (owner->started_) {
-        owner->ProbeDueTimedCompletions(GetTickCount64());
+      owner->schedulerWakePosted_.store(false, std::memory_order_release);
+      if (owner->started_ && !owner->networkBlocked_) {
+        owner->RunStaggeredReconcile();
         owner->ArmRobustScheduler();
       }
       return 0;
@@ -200,6 +193,9 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
       return 0;
     }
     if (message == WM_NCDESTROY) {
+      if (slot->index == 0 && slot->owner) {
+        slot->owner->schedulerHost_.store(nullptr, std::memory_order_release);
+      }
       if (slot->hostWindow == hwnd) slot->hostWindow = nullptr;
       SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
     }

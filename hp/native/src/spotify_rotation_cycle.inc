@@ -44,9 +44,9 @@ ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
 void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
   slot.timedCycleTracks.clear();
 
-  // E/F/G intentionally share the same short-song pool, so keep one common
-  // used-path set across all groups. A song selected earlier in the same cycle
-  // is skipped and the group continues through its shuffled candidates.
+  // Keep one common used-path set across all groups. C/E and F/G intentionally
+  // reuse the same candidate pools; if an earlier group selected the same track,
+  // the later group continues through its shuffled candidates instead.
   std::vector<std::wstring> usedPaths;
   usedPaths.reserve(kSpotifyMaxTracksPerCycle);
   const auto appendUnique = [&slot, &usedPaths](ManagedTrack track) {
@@ -65,11 +65,6 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
       [this, &slot, &appendUnique, &groupIndex](const RotationGroup& group) {
     const size_t currentGroupIndex = groupIndex++;
     std::vector<ManagedTrack> candidates = group.tracks;
-    if (group.includeTalkAbout && SpotifyPodcastTargetReady()) {
-      candidates.push_back(
-          {L"櫻坂46の「さ」Talk about", SpotifyPodcastUrl(),
-           SpotifyPodcastPath()});
-    }
     if (candidates.empty()) return;
 
     const size_t take = group.mode == RotationGroup::Mode::Random

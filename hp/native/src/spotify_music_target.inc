@@ -1,53 +1,47 @@
 namespace hp {
 namespace {
 
-constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 5ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
 
 }  // namespace
 
-SpotifyWebViews::MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget(
+const SpotifyWebViews::ManagedTrack* SpotifyWebViews::CurrentMusicTrack(
     const Slot& slot) const noexcept {
-  if (slot.timedTarget != TimedSpotifyTarget::Music ||
+  if (!slot.timedRotationActive ||
       slot.timedRotationPosition >= slot.timedCycleTracks.size()) {
-    return {};
+    return nullptr;
   }
-  const ManagedTrack& track = slot.timedCycleTracks[slot.timedRotationPosition];
-  return {track.title.c_str(), track.url.c_str(), track.path.c_str()};
+  return &slot.timedCycleTracks[slot.timedRotationPosition];
 }
 
 bool SpotifyWebViews::SlotMatchesMusicTarget(const Slot& slot) const noexcept {
   if (!slot.webview) return false;
-  const MusicTargetDescriptor target = ResolveMusicTarget(slot);
-  if (!target.path) return false;
+  const ManagedTrack* const track = CurrentMusicTrack(slot);
+  if (!track || track->path.empty()) return false;
 
   LPWSTR rawSource = nullptr;
   if (FAILED(slot.webview->get_Source(&rawSource)) || !rawSource) return false;
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
-  return IsSpotifyOpenSource(source) && source.find(target.path) != std::wstring::npos;
+  return IsSpotifyOpenSource(source) && source.find(track->path) != std::wstring::npos;
 }
 
 void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart(
     Slot& slot, ULONGLONG playbackStartTick,
     ULONGLONG observedRemainingMs) noexcept {
-  if (playbackStartTick == 0 || !slot.timedRotationActive ||
-      slot.timedTarget != TimedSpotifyTarget::Music) {
-    return;
-  }
+  const ManagedTrack* const track = CurrentMusicTrack(slot);
+  if (playbackStartTick == 0 || !track) return;
+
+  // One deadline per target generation. Later observer start events may confirm
+  // playback but never postpone the deadline already anchored to trusted input.
   if (slot.timedCompletionDeadlineTick != 0 &&
       slot.timedCompletionDeadlineGeneration == slot.targetGeneration) {
-    if (slot.timedPlaybackStartTick == 0) {
-      slot.timedPlaybackStartTick = playbackStartTick;
-    }
     return;
   }
 
   ULONGLONG durationMs = observedRemainingMs;
-  if (durationMs == 0 &&
-      slot.timedRotationPosition < slot.timedCycleTracks.size()) {
-    durationMs = slot.timedCycleTracks[slot.timedRotationPosition].durationMs;
-  }
+  if (durationMs == 0) durationMs = track->durationMs;
 
   ULONGLONG completionDelayMs = kSpotifyNavigationFailsafeMs;
   if (durationMs > 0) {
@@ -58,40 +52,31 @@ void SpotifyWebViews::ArmMusicCompletionDeadlineFromStart(
         kSpotifyNavigationCompletionGraceMs;
   }
 
-  // The play-button press is the native start anchor. Navigation/loading time is
-  // deliberately excluded. Observer-reported remaining time uses this same
-  // path for direct-play fallback, and PR #897 ad interruptions subsequently
-  // extend this same generation-scoped deadline by their measured duration.
-  slot.timedPlaybackStartTick = playbackStartTick;
   slot.timedCompletionDeadlineTick = playbackStartTick + completionDelayMs;
   slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
-  ArmCompletionDeadlineTimer();
+  ArmRobustScheduler();
 }
 
 void SpotifyWebViews::ShortenMusicCompletionDeadlineAtEnd(
     Slot& slot, ULONGLONG endedTick) noexcept {
-  if (endedTick == 0 || !slot.timedRotationActive ||
-      slot.timedTarget != TimedSpotifyTarget::Music ||
+  if (endedTick == 0 || !CurrentMusicTrack(slot) ||
       slot.timedInterruptionStartTick != 0) {
     return;
   }
 
-  // Best-effort ended detection never creates a second timer. It only moves the
-  // generation's existing unified deadline earlier; the normal deadline probe
-  // remains the sole transition path to the next target.
   if (slot.timedCompletionDeadlineTick == 0 ||
       slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
       slot.timedCompletionDeadlineTick > endedTick) {
     slot.timedCompletionDeadlineTick = endedTick;
     slot.timedCompletionDeadlineGeneration = slot.targetGeneration;
-    ArmCompletionDeadlineTimer();
+    ArmRobustScheduler();
   }
 }
 
 void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   if (!slot.webview) return;
-  const MusicTargetDescriptor target = ResolveMusicTarget(slot);
-  if (!target.url) return;
+  const ManagedTrack* const track = CurrentMusicTrack(slot);
+  if (!track || track->url.empty()) return;
 
   slot.lastModeNavigateTick = GetTickCount64();
   SetSlotState(slot, SlotState::Navigating);
@@ -99,11 +84,7 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   PostSpotifyTargetDescriptorForSlot(slot);
   RecomputeForeground();
 
-  // Navigation only selects the requested target. Completion timing starts at
-  // the subsequent trusted Play press, not while Spotify is still loading the
-  // page. Recovery re-navigation for the same generation therefore cannot move
-  // the song's start time or completion deadline.
-  const HRESULT result = slot.webview->Navigate(target.url);
+  const HRESULT result = slot.webview->Navigate(track->url.c_str());
   if (FAILED(result)) {
     slot.lastModeNavigateTick = 0;
     MarkSlotRecovering(slot, GetTickCount64());
@@ -120,26 +101,29 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
   slot.controllerCreating = false;
   slot.controllerCreateTick = 0;
 
-  if (SlotIsLoginPage(slot) || !ResolveMusicTarget(slot).url) return;
+  if (SlotIsLoginPage(slot) || !CurrentMusicTrack(slot)) return;
 
-  // The media observer owns generation-tagged start/completion truth. Never
-  // start a target before that observer has been installed for this document;
-  // otherwise Spotify can begin playback while the observer still has the
-  // default generation 0, causing native to reject the only start/deadline
-  // events and leaving the slot able to repeat A or stop at currentTime=0.
   if (!slot.timedObserverReady) {
     ArmTimedEndObserver(slot);
     ArmRobustScheduler();
     return;
   }
 
+  const ULONGLONG now = GetTickCount64();
   if (!SlotMatchesMusicTarget(slot)) {
-    const ULONGLONG now = GetTickCount64();
     MarkSlotRecovering(slot, now);
     if (slot.lastModeNavigateTick == 0 ||
         now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs) {
       NavigateMusicTarget(slot);
     }
+    return;
+  }
+
+  // Navigation is scheduler-owned. Once a target has been unhealthy long enough,
+  // re-navigation starts here before another DOM reconcile is launched.
+  if (ShouldRenavigateUnhealthySlot(slot, now)) {
+    MarkSlotRecovering(slot, now);
+    NavigateMusicTarget(slot);
     return;
   }
 
@@ -151,7 +135,7 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
   if (slot.reconcileRequestGeneration == 0) ++slot.reconcileRequestGeneration;
   const ULONGLONG reconcileRequestGeneration = slot.reconcileRequestGeneration;
   slot.reconcileInFlight = true;
-  slot.reconcileStartedTick = GetTickCount64();
+  slot.reconcileStartedTick = now;
   const ULONGLONG requestedGeneration = slot.targetGeneration;
   Slot* const target = &slot;
   ComPtr<ICoreWebView2> requestedView = slot.webview;
@@ -169,26 +153,19 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             target->reconcileInFlight = false;
             target->reconcileStartedTick = 0;
             if (!started_ || requestedGeneration != target->targetGeneration ||
-                !ResolveMusicTarget(*target).url) {
+                !CurrentMusicTrack(*target)) {
               return S_OK;
             }
 
-            const ULONGLONG now = GetTickCount64();
+            const ULONGLONG callbackNow = GetTickCount64();
             if (FAILED(result)) {
-              MarkSlotRecovering(*target, now);
-              if (ShouldRenavigateUnhealthySlot(*target, now)) {
-                NavigateMusicTarget(*target);
-              } else {
-                RecomputeForeground();
-                ArmRobustScheduler();
-              }
+              MarkSlotRecovering(*target, callbackNow);
+              RecomputeForeground();
+              ArmRobustScheduler();
               return S_OK;
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              // Only the generation-tagged media observer may promote music to
-              // Playing. Reconcile can observe a healthy surface but does not
-              // own playback truth.
               if (target->state != SlotState::Playing) {
                 SetSlotState(*target, SlotState::WaitingTarget);
               }
@@ -198,53 +175,38 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"\"wrong\"") {
-              // A different identifiable track is actively playing. Recovery is
-              // target replacement by navigation, never a pause/toggle click.
-              MarkSlotRecovering(*target, now);
+              MarkSlotRecovering(*target, callbackNow);
               target->lastModeNavigateTick = 0;
-              NavigateMusicTarget(*target);
+              RecomputeForeground();
+              ArmRobustScheduler();
               return S_OK;
             }
 
             if (json && (std::wstring_view(json) == L"\"starting\"" ||
                          std::wstring_view(json) == L"\"settling\"")) {
-              // starting means the requested media element received play()
-              // directly; settling means Spotify has not exposed a safe start
-              // actuator yet. Neither state clicks an ambiguous Pause control.
               SetSlotState(*target, SlotState::WaitingTarget);
-              if (target->unhealthySinceTick == 0) target->unhealthySinceTick = now;
-              if (ShouldRenavigateUnhealthySlot(*target, now)) {
-                NavigateMusicTarget(*target);
-              } else {
-                RecomputeForeground();
-                ArmRobustScheduler();
+              if (target->unhealthySinceTick == 0) {
+                target->unhealthySinceTick = callbackNow;
               }
+              RecomputeForeground();
+              ArmRobustScheduler();
               return S_OK;
             }
 
             int x = 0;
             int y = 0;
             if (ParseNormalizedPoint(json, &x, &y)) {
-              // The JS side returns coordinates only for an explicitly
-              // Play-labelled target control. Pause-labelled controls never
-              // enter this trusted-click path.
-              if (target->unhealthySinceTick == 0) target->unhealthySinceTick = now;
-              if (ShouldRenavigateUnhealthySlot(*target, now)) {
-                NavigateMusicTarget(*target);
-              } else {
-                ClickSlotNormalizedPoint(*target, x, y);
-                ArmRobustScheduler();
+              if (target->unhealthySinceTick == 0) {
+                target->unhealthySinceTick = callbackNow;
               }
+              ClickSlotNormalizedPoint(*target, x, y);
+              ArmRobustScheduler();
               return S_OK;
             }
 
-            MarkSlotRecovering(*target, now);
-            if (ShouldRenavigateUnhealthySlot(*target, now)) {
-              NavigateMusicTarget(*target);
-            } else {
-              RecomputeForeground();
-              ArmRobustScheduler();
-            }
+            MarkSlotRecovering(*target, callbackNow);
+            RecomputeForeground();
+            ArmRobustScheduler();
             return S_OK;
           }).Get());
 
@@ -254,14 +216,9 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
       slot.reconcileInFlight = false;
       slot.reconcileStartedTick = 0;
     }
-    const ULONGLONG now = GetTickCount64();
-    MarkSlotRecovering(slot, now);
-    if (ShouldRenavigateUnhealthySlot(slot, now)) {
-      NavigateMusicTarget(slot);
-    } else {
-      RecomputeForeground();
-      ArmRobustScheduler();
-    }
+    MarkSlotRecovering(slot, GetTickCount64());
+    RecomputeForeground();
+    ArmRobustScheduler();
   }
 }
 

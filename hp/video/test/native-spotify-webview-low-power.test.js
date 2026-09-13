@@ -16,7 +16,7 @@ test('healthy Spotify playback uses the compact low-power host', () => {
   assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
   assert.match(
     layout,
-    /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*healthyMusicReadyToHide \|\| healthyPodcastReadyToHide/,
+    /const bool lowPowerPlayback =[\s\S]*SlotStateIsHealthy\(slot\.state\)[\s\S]*CurrentMusicTrack\(slot\)/,
   );
   assert.match(layout, /width = lowPowerPlayback[\s\S]*kSpotifyLowPowerPlaybackWidth/);
   assert.match(layout, /height = lowPowerPlayback[\s\S]*kSpotifyLowPowerPlaybackHeight/);

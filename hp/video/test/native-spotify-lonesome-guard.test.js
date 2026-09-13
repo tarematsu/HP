@@ -19,12 +19,13 @@ const routing = readFileSync(
 const click = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 
-test('all configured tracks use the shared music descriptor and scoped reconcile implementation', () => {
+test('all configured tracks use the current ManagedTrack and scoped reconcile implementation', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_lonesome_guard\.inc|RewriteSpotify|#define ExecuteScript/);
-  assert.match(music, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
+  assert.match(music, /const SpotifyWebViews::ManagedTrack\* SpotifyWebViews::CurrentMusicTrack/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
-  assert.match(routing, /kind = L"music"/);
+  assert.match(routing, /CurrentMusicTrack\(slot\)/);
+  assert.doesNotMatch(routing, /kind = L"music"|trackPath|pagePath/);
   assert.match(scoped, /now-playing-widget/);
   assert.match(scoped, /now-playing-bar/);
   assert.match(scoped, /navigator\.mediaSession/);
@@ -56,10 +57,11 @@ test('returned Spotify control points flow through the single CDP trusted-click 
   assert.doesNotMatch(click, /SendInput|MOUSEEVENTF_/);
 });
 
-test('wrong queue items are corrected only from the requested track or direct track page', () => {
+test('wrong queue items are corrected by scheduler-owned target navigation', () => {
   assert.match(scoped, /a\[href\*="\/track\/"\]/);
   assert.match(scoped, /tracklist-row/);
   assert.match(scoped, /onTargetPage\(\)/);
-  assert.match(scoped, /spotify:not-playing/);
-  assert.match(music, /track\.path\.c_str\(\)/);
+  assert.doesNotMatch(scoped, /spotify:playing|spotify:not-playing/);
+  assert.match(music, /MarkSlotRecovering\(\*target, callbackNow\)/);
+  assert.match(music, /NavigateMusicTarget\(slot\)/);
 });

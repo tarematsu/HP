@@ -1,9 +1,8 @@
 namespace hp {
 namespace {
 
-// Bind the minimal events needed to validate playback start and, when Spotify
-// exposes a trustworthy ended event for the requested media element, shorten the
-// native one-shot deadline. The ended event never advances rotation directly.
+// Minimal delegated events: validate playback start and optionally shorten the
+// native deadline when the exact owned media element reports ended.
 constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 (() => {
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
@@ -18,11 +17,9 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   };
   const observeEnded = event => {
     const media = event.target;
-    if (!isMedia(media) || !media.ended) return;
-    const target = syncTarget();
-    if (!target || target.kind !== 'music' ||
-        !state.started || !state.startPosted ||
-        state.targetMedia !== media || state.interruptionStartedAt) {
+    if (!isMedia(media) || !media.ended || !syncTarget() ||
+        !state.startPosted || state.targetMedia !== media ||
+        state.interruptionStartedAt) {
       return;
     }
     post('spotify:timed-ended');

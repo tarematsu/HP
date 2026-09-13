@@ -1,10 +1,10 @@
 namespace hp {
 namespace {
 
-constexpr UINT_PTR kSpotifyRobustReconcileTimer = 0x53505243;
-constexpr UINT kSpotifyRobustUrgentTickMs = 2U * 1000U;
-constexpr UINT kSpotifyRobustHealthyTickMs = 60U * 1000U;
-constexpr UINT kSpotifyCompletionTimerFloorMs = 100U;
+constexpr UINT kSpotifySchedulerBootstrapMs = 2U * 1000U;
+constexpr UINT kSpotifyHealthyAuditMs = 60U * 1000U;
+constexpr UINT kSpotifySchedulerFloorMs = 100U;
+constexpr ULONGLONG kSpotifyQueueRetryMs = 4ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
@@ -38,7 +38,7 @@ ULONGLONG SpotifyDeadlineWithInterruptionHold(
 }  // namespace
 
 bool SpotifyWebViews::SlotStateIsHealthy(SlotState state) noexcept {
-  return state == SlotState::Playing || state == SlotState::Completed;
+  return state == SlotState::Playing;
 }
 
 bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
@@ -49,8 +49,7 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
-      state == SlotState::Navigating || state == SlotState::Playing ||
-      state == SlotState::Completed) {
+      state == SlotState::Navigating || state == SlotState::Playing) {
     slot.unhealthySinceTick = 0;
   }
 }
@@ -97,9 +96,6 @@ bool SpotifyWebViews::ExpireStaleAsyncWork(
 
   MarkSlotRecovering(slot, now);
   slot.lastTimedReconcileTick = 0;
-  staggerSlotIndex_ = slot.index;
-  staggerSlotStartTick_ = now;
-  staggerSlotValidated_ = false;
   return true;
 }
 
@@ -108,136 +104,126 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
 }
 
-void CALLBACK SpotifyWebViews::CompletionDeadlineTimerProc(
+void CALLBACK SpotifyWebViews::SchedulerTimerProc(
     PTP_CALLBACK_INSTANCE, PVOID context, PTP_TIMER) {
   auto* owner = static_cast<SpotifyWebViews*>(context);
-  if (!owner || owner->slots_.empty()) return;
-  HWND host = owner->slots_[0].hostWindow;
-  if (!host || !IsWindow(host)) return;
-  PostMessageW(host, kSpotifyCompletionDeadlineMessage, 0, 0);
-}
+  if (!owner) return;
 
-void SpotifyWebViews::ArmCompletionDeadlineTimer() noexcept {
-  if (!started_ || slots_.empty()) return;
+  HWND host = owner->schedulerHost_.load(std::memory_order_acquire);
+  if (!host) return;
 
-  if (!completionDeadlineTimer_) {
-    completionDeadlineTimer_ = CreateThreadpoolTimer(
-        &SpotifyWebViews::CompletionDeadlineTimerProc, this, nullptr);
-    if (!completionDeadlineTimer_) return;
-  }
-
-  ULONGLONG earliest = 0;
-  for (const Slot& slot : slots_) {
-    if (slot.timedCompletionDeadlineTick == 0 ||
-        slot.timedCompletionDeadlineGeneration != slot.targetGeneration ||
-        slot.timedTarget != TimedSpotifyTarget::Music ||
-        !slot.timedRotationActive) {
-      continue;
-    }
-    const ULONGLONG effectiveDeadline = SpotifyDeadlineWithInterruptionHold(
-        slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick);
-    if (earliest == 0 || effectiveDeadline < earliest) {
-      earliest = effectiveDeadline;
-    }
-  }
-
-  if (earliest == 0) {
-    SetThreadpoolTimer(completionDeadlineTimer_, nullptr, 0, 0);
+  bool expected = false;
+  if (!owner->schedulerWakePosted_.compare_exchange_strong(
+          expected, true, std::memory_order_acq_rel)) {
     return;
   }
-
-  const ULONGLONG now = GetTickCount64();
-  const ULONGLONG delayMs = earliest <= now ? 1ULL : earliest - now;
-  LARGE_INTEGER relativeDue{};
-  relativeDue.QuadPart = -static_cast<LONGLONG>(delayMs * 10000ULL);
-  FILETIME due{};
-  due.dwLowDateTime = relativeDue.LowPart;
-  due.dwHighDateTime = relativeDue.HighPart;
-  SetThreadpoolTimer(completionDeadlineTimer_, &due, 0, 0);
+  if (!PostMessageW(host, kSpotifySchedulerMessage, 0, 0)) {
+    owner->schedulerWakePosted_.store(false, std::memory_order_release);
+  }
 }
 
 UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
-  if (!robustSchedulerStarted_) return kSpotifyRobustUrgentTickMs;
-  if (!initialCloudPlaylistReady_) return kSpotifyRobustUrgentTickMs;
+  if (!robustSchedulerStarted_ || !initialCloudPlaylistReady_) {
+    return kSpotifySchedulerBootstrapMs;
+  }
 
-  ULONGLONG nextDeadlineMs = kSpotifyRobustHealthyTickMs;
+  ULONGLONG nextDelayMs = kSpotifyHealthyAuditMs;
+  const auto considerTick = [&nextDelayMs, now](ULONGLONG dueTick) noexcept {
+    if (dueTick == 0) return;
+    nextDelayMs = std::min(
+        nextDelayMs, dueTick <= now ? 0ULL : dueTick - now);
+  };
+
   for (const Slot& slot : slots_) {
-    const bool relevantRecovery =
-        SlotStateNeedsRecovery(slot.state) &&
-        (slot.timedTarget != TimedSpotifyTarget::None ||
-         slot.loginPage || slot.controllerCreating);
-    if (relevantRecovery) {
-      nextDeadlineMs = std::min<ULONGLONG>(
-          nextDeadlineMs, kSpotifyRobustUrgentTickMs);
-    }
-
-    // The threadpool timer is the primary completion wake-up. Keep this
-    // low-priority WM_TIMER path only as a safety net if the native dispatch is
-    // unavailable or the UI thread was blocked past the deadline. A confirmed
-    // non-track interruption temporarily shifts the effective wake-up without
-    // changing the underlying deadline until the measured interruption ends.
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
-        slot.timedTarget == TimedSpotifyTarget::Music) {
-      const ULONGLONG effectiveDeadline = SpotifyDeadlineWithInterruptionHold(
-          slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick);
-      if (effectiveDeadline <= now) {
-        nextDeadlineMs = 0;
-      } else {
-        nextDeadlineMs = std::min(
-            nextDeadlineMs, effectiveDeadline - now);
-      }
+        CurrentMusicTrack(slot)) {
+      considerTick(SpotifyDeadlineWithInterruptionHold(
+          slot.timedCompletionDeadlineTick, slot.timedInterruptionStartTick));
     }
 
     if (slot.reconcileInFlight && slot.reconcileStartedTick != 0) {
-      const ULONGLONG age = now - slot.reconcileStartedTick;
-      if (age >= kSpotifyAsyncOperationTimeoutMs) {
-        nextDeadlineMs = std::min<ULONGLONG>(
-            nextDeadlineMs, kSpotifyRobustUrgentTickMs);
-      } else {
-        nextDeadlineMs = std::min(
-            nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
-      }
+      considerTick(slot.reconcileStartedTick + kSpotifyAsyncOperationTimeoutMs);
     }
     if (slot.timedObserverInstallInFlight &&
         slot.timedObserverInstallStartedTick != 0) {
-      const ULONGLONG age = now - slot.timedObserverInstallStartedTick;
-      if (age >= kSpotifyAsyncOperationTimeoutMs) {
-        nextDeadlineMs = std::min<ULONGLONG>(
-            nextDeadlineMs, kSpotifyRobustUrgentTickMs);
+      considerTick(
+          slot.timedObserverInstallStartedTick + kSpotifyAsyncOperationTimeoutMs);
+    }
+    if (!slot.webview && slot.controllerCreateTick != 0) {
+      considerTick(slot.controllerCreateTick + kSpotifyRobustControllerRetryMs);
+    }
+
+    const bool queueReady =
+        CurrentMusicTrack(slot) && SlotStateNeedsRecovery(slot.state) &&
+        !slot.loginPage && !slot.reconcileInFlight &&
+        !slot.timedObserverInstallInFlight;
+    if (queueReady) {
+      if (slot.lastTimedReconcileTick == 0) {
+        nextDelayMs = 0;
       } else {
-        nextDeadlineMs = std::min(
-            nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
+        considerTick(slot.lastTimedReconcileTick + kSpotifyQueueRetryMs);
       }
     }
   }
 
-  if (scheduleStartTick_ != 0 && now >= scheduleStartTick_) {
-    const ULONGLONG elapsed = now - scheduleStartTick_;
-    for (size_t i = 1; i < slots_.size(); ++i) {
+  if (scheduleStartTick_ != 0) {
+    for (size_t i = 0; i < slots_.size(); ++i) {
       const ULONGLONG boundary =
+          scheduleStartTick_ +
           static_cast<ULONGLONG>(i) * kSpotifyAccountStartOffsetMs;
-      if (elapsed < boundary) {
-        nextDeadlineMs = std::min(nextDeadlineMs, boundary - elapsed);
-        break;
+      if (now < boundary) {
+        considerTick(boundary);
+        continue;
       }
+
+      const Slot& slot = slots_[i];
+      if (slot.timedRotationActive || slot.loginPage ||
+          !slot.hostWindow || !IsWindow(slot.hostWindow)) {
+        continue;
+      }
+      if (!slot.webview) {
+        if (slot.controllerCreating) continue;
+        if (slot.controllerCreateTick != 0 &&
+            now - slot.controllerCreateTick < kSpotifyRobustControllerRetryMs) {
+          continue;
+        }
+      }
+      nextDelayMs = 0;
     }
   }
 
   return static_cast<UINT>(std::max<ULONGLONG>(
-      kSpotifyCompletionTimerFloorMs, std::min<ULONGLONG>(
-          kSpotifyRobustHealthyTickMs, nextDeadlineMs)));
+      kSpotifySchedulerFloorMs,
+      std::min<ULONGLONG>(kSpotifyHealthyAuditMs, nextDelayMs)));
 }
 
 void SpotifyWebViews::ArmRobustScheduler() noexcept {
-  if (slots_.empty()) return;
-  HWND host = slots_[0].hostWindow;
-  if (!host || !IsWindow(host)) return;
-  KillTimer(host, kSpotifyRobustReconcileTimer);
-  const UINT delay = NextRobustSchedulerDelayMs(GetTickCount64());
-  ::SetTimer(host, kSpotifyRobustReconcileTimer, delay,
-             &SpotifyWebViews::StaggeredReconcileTimerProc);
+  if (!schedulerTimer_) {
+    schedulerTimer_ = CreateThreadpoolTimer(
+        &SpotifyWebViews::SchedulerTimerProc, this, nullptr);
+    if (!schedulerTimer_) return;
+  }
+
+  if (!started_ || networkBlocked_) {
+    SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
+    return;
+  }
+  HWND host = schedulerHost_.load(std::memory_order_acquire);
+  if (!host || !IsWindow(host)) {
+    SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
+    return;
+  }
+
+  const UINT delayMs = NextRobustSchedulerDelayMs(GetTickCount64());
+  LARGE_INTEGER relativeDue{};
+  relativeDue.QuadPart =
+      -static_cast<LONGLONG>(static_cast<ULONGLONG>(delayMs) * 10000ULL);
+  FILETIME due{};
+  due.dwLowDateTime = relativeDue.LowPart;
+  due.dwHighDateTime = relativeDue.HighPart;
+  SetThreadpoolTimer(schedulerTimer_, &due, 0, 0);
 }
 
 bool SpotifyWebViews::SlotIsLoginPage(const Slot& slot) const noexcept {
@@ -253,7 +239,7 @@ void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
   }
 
   const ULONGLONG now = GetTickCount64();
-  if (slot.controllerCreating && slot.controllerCreateTick != 0 &&
+  if (slot.controllerCreateTick != 0 &&
       now - slot.controllerCreateTick < kSpotifyRobustControllerRetryMs) {
     return;
   }

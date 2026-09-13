@@ -49,10 +49,8 @@ test('same-generation pause and resume never requests recovery or reposts start'
   };
   const window = {
     __homePanelSpotifyNativeTarget: {
-      pagePath: '/track/A',
-      trackPath: '/track/A',
+      path: '/track/A',
       title: 'Target A',
-      kind: 'music',
     },
     chrome: {
       webview: {
@@ -92,15 +90,15 @@ test('same-generation pause and resume never requests recovery or reposts start'
 
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
   assert.ok(runtime);
-  assert.equal(runtime.enforceTarget(media), 'playing');
+  runtime.scheduleTargetChecks(media);
   assert.equal(messages.at(-1), 'spotify:timed-started\x1f41\x1f168000');
   assert.equal(runtime.requestRecovery, undefined);
   assert.equal(runtime.scheduleRecovery, undefined);
 
   media.paused = true;
-  assert.equal(runtime.enforceTarget(media), 'target');
+  runtime.scheduleTargetChecks(media);
   media.paused = false;
-  assert.equal(runtime.enforceTarget(media), 'playing');
+  runtime.scheduleTargetChecks(media);
 
   assert.equal(
     messages.filter(message => message === 'spotify:timed-started\x1f41\x1f168000').length,
@@ -109,4 +107,5 @@ test('same-generation pause and resume never requests recovery or reposts start'
   assert.equal(messages.some(message => message.startsWith('spotify:not-playing')), false);
   assert.equal('restartPending' in runtime.state, false);
   assert.equal('recoveryPosted' in runtime.state, false);
+  assert.equal('started' in runtime.state, false);
 });

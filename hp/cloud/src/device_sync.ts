@@ -22,11 +22,6 @@ import {
 } from "./spotify_random_catalog";
 import type { Env } from "./sources";
 import { stationheadHealthPayload } from "./stationhead_health";
-import {
-  normalizeSpotifyEpisodeUrl,
-  normalizeSpotifyShowUrl,
-  resolveLatestSpotifyTalkAboutEpisode,
-} from "./spotify_talkabout_latest";
 import { resolveSpotifyTrackDurations } from "./spotify_track_durations";
 
 type SyncSourceName = typeof DASHBOARD_SOURCE_NAMES[number] | "radar" | "stationhead_health";
@@ -87,10 +82,10 @@ const LEGACY_SPOTIFY_MIDDLE_TRACK_IDS = [
   "2UHNvd8SjNGoEI6jXa2afx",
 ] as const;
 
-const DEFAULT_SPOTIFY_TALK_ABOUT_SHOW_URL =
-  "https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
-const DEFAULT_SPOTIFY_TALK_ABOUT_PLAYBACK_RATE = 3;
-
+const MANAGED_SPOTIFY_D_TRACK_IDS = [
+  "5EjWZuODqEPQ9eq7XCmITh",
+  "6VIY7OFy8g5ZyLSgQEi8lV",
+] as const;
 const MANAGED_SPOTIFY_B_TRACK_IDS = SPOTIFY_B_ROTATION_TRACKS.map(([, id]) => id);
 const MANAGED_SPOTIFY_INSTRUMENTAL_TRACK_IDS =
   ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS.map(([, id]) => id);
@@ -224,11 +219,10 @@ function isManagedSevenSlotRotation(rotation: unknown[]): boolean {
   const g = objectOrNull(rotation[6]);
   if (!a || !b || !c || !d || !e || !f || !g) return false;
   if (a.mode !== "fixed" || b.mode !== "random" || c.mode !== "random" ||
-      d.mode !== "fixed" || e.mode !== "random" || f.mode !== "random" ||
+      d.mode !== "shuffle" || e.mode !== "random" || f.mode !== "random" ||
       g.mode !== "random" || Number(b.count ?? 1) !== 1 ||
       Number(c.count ?? 1) !== 1 || Number(e.count ?? 1) !== 1 ||
-      Number(f.count ?? 1) !== 1 || Number(g.count ?? 1) !== 1 ||
-      g.includeTalkAbout !== true) {
+      Number(f.count ?? 1) !== 1 || Number(g.count ?? 1) !== 1) {
     return false;
   }
 
@@ -242,8 +236,8 @@ function isManagedSevenSlotRotation(rotation: unknown[]): boolean {
   return aIds.length === 1 && aIds[0] === "6Vy6hCA2CZwZalGqaX6Sew" &&
     sameTrackSet(bIds, MANAGED_SPOTIFY_B_TRACK_IDS) &&
     sameTrackSet(cIds, MANAGED_SPOTIFY_INSTRUMENTAL_TRACK_IDS) &&
-    dIds.length === 1 && dIds[0] === "5EjWZuODqEPQ9eq7XCmITh" &&
-    isManagedShortRotationPool(eIds) &&
+    sameTrackSet(dIds, MANAGED_SPOTIFY_D_TRACK_IDS) &&
+    sameTrackSet(eIds, MANAGED_SPOTIFY_INSTRUMENTAL_TRACK_IDS) &&
     isManagedShortRotationPool(fIds) &&
     isManagedShortRotationPool(gIds);
 }
@@ -260,7 +254,7 @@ function isManagedSixPositionRotation(rotation: unknown[]): boolean {
   if (a.mode !== "fixed" || b.mode !== "random" || c.mode !== "random" ||
       d.mode !== "fixed" || e.mode !== "fixed" || f.mode !== "random" ||
       Number(b.count ?? 1) !== 1 || Number(c.count ?? 1) !== 1 ||
-      Number(f.count ?? 1) !== 1 || f.includeTalkAbout !== true) {
+      Number(f.count ?? 1) !== 1) {
     return false;
   }
 
@@ -316,11 +310,11 @@ export function migrateManagedSpotifyRotation(
     changed = true;
   }
 
-  if (!objectOrNull(spotify.talkAbout)) {
-    spotify.talkAbout = {
-      url: DEFAULT_SPOTIFY_TALK_ABOUT_SHOW_URL,
-      playbackRate: DEFAULT_SPOTIFY_TALK_ABOUT_PLAYBACK_RATE,
-    };
+  // Spotify is rotation-only. Remove obsolete per-feature settings without
+  // carrying feature-specific parsing or playback behavior in the sync path.
+  for (const key of Object.keys(spotify)) {
+    if (key === "managedRotation" || key === "rotation") continue;
+    delete spotify[key];
     changed = true;
   }
   return changed;
@@ -431,22 +425,6 @@ async function refreshManagedSpotifyConfig(
     changed = true;
   }
 
-  const talkAbout = objectOrNull(spotify?.talkAbout);
-  const showUrl = normalizeSpotifyShowUrl(talkAbout?.url);
-  if (spotify && talkAbout && showUrl) {
-    try {
-      const episodeUrl = await resolveLatestSpotifyTalkAboutEpisode(env, showUrl, { now });
-      if (episodeUrl && normalizeSpotifyEpisodeUrl(talkAbout.episodeUrl) !== episodeUrl) {
-        talkAbout.episodeUrl = episodeUrl;
-        changed = true;
-      }
-    } catch (error) {
-      console.warn("spotify-talkabout-latest-resolve-failed", {
-        deviceId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
   if (!changed) return snapshot;
   const payload = JSON.stringify(config);
   if (payload.length > 32_000) {

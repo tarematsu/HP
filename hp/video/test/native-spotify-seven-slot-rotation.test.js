@@ -19,7 +19,7 @@ const rotation = readFileSync(
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 
-test('cloud owns the requested seven-position Spotify rotation', () => {
+test('cloud owns the requested seven-group Spotify rotation', () => {
   assert.match(catalog, /function managedSpotifySevenSlotRotation/);
   assert.match(catalog, /Lonesome Rabbit/);
   assert.match(catalog, /放課後BitterBlue/);
@@ -28,8 +28,18 @@ test('cloud owns the requested seven-position Spotify rotation', () => {
   assert.match(catalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(catalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.match(catalog, /SHORT_SPOTIFY_ROTATION_TRACKS/);
-  assert.match(catalog, /shortSongs\.map/);
-  assert.match(catalog, /includeTalkAbout: true/);
+
+  const rotationFunction = catalog.slice(
+    catalog.indexOf('export function managedSpotifySevenSlotRotation()'),
+  );
+  assert.equal((rotationFunction.match(/mode: /g) ?? []).length, 7);
+  assert.equal((rotationFunction.match(/tracks: instrumentalSongs\.map/g) ?? []).length, 2);
+  assert.equal((rotationFunction.match(/tracks: shortSongs\.map/g) ?? []).length, 2);
+  assert.match(
+    rotationFunction,
+    /mode: "shuffle",[\s\S]*放課後BitterBlue[\s\S]*紋白蝶が確か飛んでた/,
+  );
+
   assert.match(admin, /rotation:structuredClone\(managedSpotifyRotation\)/);
   assert.match(deviceSync, /const nextRotation = managedSpotifySevenSlotRotation\(\)/);
   assert.match(deviceSync, /spotify\.rotation = nextRotation/);
@@ -48,11 +58,15 @@ test('B slot contains the requested five Spotify tracks', () => {
   ]) assert.match(catalog, new RegExp(title));
 });
 
-test('C slot includes Overture and all seven Interludes', () => {
+test('C and E share Overture plus all seven Interludes', () => {
   assert.match(catalog, /Overture/);
   for (let index = 1; index <= 7; ++index) {
     assert.match(catalog, new RegExp(`Interlude #${index}`));
   }
+  assert.equal(
+    (catalog.match(/tracks: instrumentalSongs\.map/g) ?? []).length,
+    2,
+  );
 });
 
 test('short-song pool includes every verified short OFF VOCAL track', () => {
@@ -103,13 +117,11 @@ test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(cycle, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
-test('TALKABOUT-enabled slot mixes short songs with latest episode and no timed interrupt remains', () => {
-  assert.match(header, /bool includeTalkAbout = false/);
-  assert.match(cloud, /GetNamedBoolean\(L"includeTalkAbout", false\)/);
-  assert.match(cycle, /group\.includeTalkAbout && SpotifyPodcastTargetReady\(\)/);
-  assert.match(cycle, /SpotifyPodcastUrl\(\)/);
-  assert.match(cycle, /SpotifyPodcastPath\(\)/);
-  assert.match(rotation, /target\.path == SpotifyPodcastPath\(\)/);
-  assert.match(rotation, /TimedSpotifyTarget::TalkAbout/);
-  assert.doesNotMatch(header + cloud + rotation + schedule, /StartOverduePodcastBreak|podcastDueTick|intervalMinutes/);
+test('F and G use the same short-song music pool and no podcast path remains', () => {
+  assert.equal((catalog.match(/tracks: shortSongs\.map/g) ?? []).length, 2);
+  const spotifySources = catalog + admin + deviceSync + header + cloud + cycle + rotation + schedule;
+  assert.doesNotMatch(
+    spotifySources,
+    /TalkAbout|TALKABOUT|talkAbout|includeTalkAbout|SpotifyPodcast|podcastBreakActive/,
+  );
 });

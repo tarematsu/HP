@@ -6,16 +6,14 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
   if (!started_) return;
 
   if (blocked) {
-    // Invalidate every outstanding async controller/environment callback before
-    // destroying the Spotify WebViews. Old callbacks retain this false generation
-    // even after unmute creates a fresh shared flag.
+    if (schedulerTimer_) SetThreadpoolTimer(schedulerTimer_, nullptr, 0, 0);
+    schedulerWakePosted_.store(false, std::memory_order_release);
+
     if (alive_) alive_->store(false, std::memory_order_release);
     for (Slot& slot : slots_) CloseSlot(slot);
     robustSchedulerStarted_ = false;
-    staggerSlotIndex_ = 0;
-    staggerSlotStartTick_ = 0;
+    schedulerCursor_ = 0;
     scheduleStartTick_ = 0;
-    staggerSlotValidated_ = false;
     hostLayoutMask_ = ~0u;
     hostLayoutActiveSlot_ = kAccountCount;
     hostLayoutAuthenticationSlot_ = kAccountCount;
@@ -24,11 +22,10 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
 
   alive_ = std::make_shared<std::atomic<bool>>(true);
   robustSchedulerStarted_ = false;
-  staggerSlotIndex_ = 0;
-  staggerSlotStartTick_ = 0;
+  schedulerWakePosted_.store(false, std::memory_order_release);
+  schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
   timedRandomState_ = 0;
-  staggerSlotValidated_ = false;
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
   hostLayoutAuthenticationSlot_ = kAccountCount;
@@ -42,20 +39,12 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     slot.state = SlotState::NotCreated;
     slot.playerPage = false;
     slot.loginPage = false;
-    slot.timedTarget = TimedSpotifyTarget::None;
-    slot.timedCatalogIndex = kNoTimedCatalogIndex;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
-    slot.timedPlaybackStartTick = 0;
-    slot.timedRandomFIndex = kNoTimedCatalogIndex;
-    slot.timedMiddleOrder = {
-        TimedSpotifyTarget::BitterBlue,
-        TimedSpotifyTarget::Monshirocho,
-        TimedSpotifyTarget::Munen,
-        TimedSpotifyTarget::OnMyWay,
-    };
+    slot.timedCompletionDeadlineTick = 0;
+    slot.timedCompletionDeadlineGeneration = 0;
+    slot.timedInterruptionStartTick = 0;
     slot.timedRotationActive = false;
-    slot.podcastBreakActive = false;
     slot.reconcileInFlight = false;
     slot.targetGeneration = 0;
     if (!CreateHost(slot)) continue;

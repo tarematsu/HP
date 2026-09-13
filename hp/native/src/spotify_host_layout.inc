@@ -40,14 +40,9 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool recovery =
         i == hostLayoutActiveSlot_ && !authentication &&
         SlotStateNeedsRecovery(slot.state);
-    const bool healthyMusicReadyToHide =
-        slot.timedTarget == TimedSpotifyTarget::Music;
-    const bool healthyPodcastReadyToHide =
-        slot.timedTarget == TimedSpotifyTarget::TalkAbout;
     const bool lowPowerPlayback =
         !authentication && !recovery && SlotStateIsHealthy(slot.state) &&
-        slot.playerPage && !slot.loginPage &&
-        (healthyMusicReadyToHide || healthyPodcastReadyToHide);
+        slot.playerPage && !slot.loginPage && CurrentMusicTrack(slot);
 
     int x = client.right + 32 + static_cast<int>(i) *
         (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
@@ -64,8 +59,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       height = activeHeight;
       insertAfter = HWND_TOP;
     } else if (recovery) {
-      // 0.80 recovery zoom makes these physical minimums at least a 900x600
-      // CSS viewport, avoiding Spotify's compact control layout during input.
       x = client.right + 32 + static_cast<int>(slots_.size()) *
           (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
       y = client.top + (clientHeight - activeHeight) / 2;
@@ -106,20 +99,12 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     }
 
     if (controllerChanged) {
-      // Configure() already pushed initial bounds/visibility. Layout only needs
-      // to remember the new controller and notify it of the parent position.
       slot.hostLayoutController = slot.controller.Get();
       slot.hostLayoutReducedZoomApplied = false;
     }
 
-    // Healthy playback does not need a compositor surface. Spotify playback
-    // mode controls are intentionally unmanaged, so music and podcasts hide as
-    // soon as their playback state is healthy.
     slot.controller->put_IsVisible(lowPowerPlayback ? FALSE : TRUE);
 
-    // WebView2 LOW keeps scripts, networking and audio alive while allowing the
-    // renderer to shed inactive memory. Authentication/recovery and any
-    // non-healthy player immediately return to NORMAL.
     if (slot.webview) {
       ComPtr<ICoreWebView2_19> memoryView;
       if (SUCCEEDED(slot.webview.As(&memoryView)) && memoryView) {
@@ -139,9 +124,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       }
     }
 
-    // A pure resize is already propagated by WM_SIZE. WebView2 only needs the
-    // parent-position notification when the HWND actually moved or a controller
-    // was newly attached.
     if (positionChanged || controllerChanged) {
       slot.controller->NotifyParentWindowPositionChanged();
     }
@@ -151,7 +133,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   if (slots_.empty()) return;
 
-  const size_t activeIndex = staggerSlotIndex_ % slots_.size();
+  const size_t activeIndex = schedulerCursor_ % slots_.size();
   const size_t recoveryIndex =
       activeIndex < slots_.size() &&
       SlotStateNeedsRecovery(slots_[activeIndex].state) &&
@@ -180,17 +162,12 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
           return;
         }
 
-        // Only repair z-order when another child actually moved above the auth
-        // surface. A steady scheduler pass therefore costs no SetWindowPos call.
         if (!layoutChanged && GetWindow(slot.hostWindow, GW_HWNDPREV) != nullptr) {
           SetWindowPos(slot.hostWindow, HWND_TOP, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
                            SWP_SHOWWINDOW);
         }
 
-        // The bridge is document-scoped and the account label is immutable for
-        // the slot. Bootstrap once per navigation generation; retry only after a
-        // failed ExecuteScript instead of polling it every scheduler pass.
         if (slot.authenticationBadgeTick != 0) return;
         slot.authenticationBadgeTick = 1;
 

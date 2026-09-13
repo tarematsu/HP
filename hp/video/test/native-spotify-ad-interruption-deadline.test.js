@@ -14,12 +14,12 @@ const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 
 test('observer measures only provisional non-track interruptions', () => {
-  assert.match(runtime, /ULONGLONG|interruptionStartedAt/);
+  assert.match(runtime, /interruptionStartedAt/);
   assert.match(runtime, /!media\.paused && !identity\.path/);
   assert.match(runtime, /spotify:timed-interruption-started/);
   assert.match(runtime, /spotify:timed-interruption-ended/);
   assert.match(runtime, /spotify:timed-interruption-cancelled/);
-  assert.match(runtime, /cancelInterruption\(\)[\s\S]*return 'wrong'/);
+  assert.match(runtime, /cancelInterruption\(\);[\s\S]*return state\.startPosted \? 'wrong' : 'unknown'/);
   assert.doesNotMatch(
     events,
     /addEventListener\('(?:timeupdate|pause|waiting|stalled)'/,
@@ -49,8 +49,9 @@ test('completed interruption adds only its measured bounded duration', () => {
   );
   assert.match(
     rotation,
-    /interruptionCancelled[\s\S]*target->timedInterruptionStartTick = 0[\s\S]*ArmCompletionDeadlineTimer\(\)/,
+    /interruptionCancelled[\s\S]*target->timedInterruptionStartTick = 0[\s\S]*ArmRobustScheduler\(\)/,
   );
+  assert.doesNotMatch(rotation, /ArmCompletionDeadlineTimer/);
 });
 
 test('deadline expiry respects the active interruption hold then still fails forward', () => {
@@ -64,5 +65,6 @@ test('deadline expiry respects the active interruption hold then still fails for
   assert.match(probe, /SpotifyDeadlineWithInterruptionHold/);
   assert.match(probe, /effectiveDeadline > now/);
   assert.match(probe, /slot\.timedInterruptionStartTick = 0/);
-  assert.match(probe, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(probe, /AdvanceTimedRotationSlot\(slot\)/);
+  assert.doesNotMatch(probe, /NavigateMusicTarget|ReconcileMusicTarget/);
 });

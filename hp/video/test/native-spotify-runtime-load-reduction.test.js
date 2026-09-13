@@ -41,8 +41,12 @@ test('ended listener is event-driven and only emits an advisory deadline-shorten
   assert.doesNotMatch(events, /setTimeout\([^)]*ended|setInterval/);
 });
 
-test('healthy native Spotify reconciliation sleeps up to 60 seconds', () => {
-  assert.match(phase, /kSpotifyRobustHealthyTickMs = 60U \* 1000U/);
-  assert.match(phase, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
-  assert.match(phase, /nextDeadlineMs = std::min\(nextDeadlineMs, boundary - elapsed\)/);
+test('healthy native Spotify sleeps up to 60 seconds and wakes at exact pending work', () => {
+  assert.match(phase, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
+  assert.match(phase, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
+  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
+  assert.match(phase, /slot\.reconcileStartedTick \+ kSpotifyAsyncOperationTimeoutMs/);
+  assert.match(phase, /considerTick\(boundary\)/);
+  assert.doesNotMatch(phase, /::SetTimer\(|KillTimer\(/);
 });

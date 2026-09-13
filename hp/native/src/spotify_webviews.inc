@@ -14,9 +14,8 @@
 #include "spotify_cloud_playlist.inc"
 
 // Keep existing call sites static while routing music reconciliation through the
-// now-playing-scoped identity implementation. Podcast reconciliation stays on
-// the established fixed script. Rotation construction, music control, and
-// music/podcast routing are kept in separate responsibility modules.
+// now-playing-scoped identity implementation. Rotation construction, music
+// control, and target routing are kept in separate responsibility modules.
 #define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript
 #include "spotify_timed_sequence.inc"
 #include "spotify_rotation_cycle.inc"

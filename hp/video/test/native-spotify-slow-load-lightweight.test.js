@@ -39,15 +39,15 @@ test('slow multi-window recovery is time based instead of retry-count based', ()
   assert.doesNotMatch(header, /unhealthyChecks/);
 });
 
-test('healthy scheduler uses a 60-second ceiling but wakes on exact initial 40-second account boundaries', () => {
-  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 60U \* 1000U/);
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
+test('healthy scheduler uses a 60-second ceiling and exact ten-second startup boundaries', () => {
+  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(
     phaseSync,
-    /boundary =\s*static_cast<ULONGLONG>\(i\) \* kSpotifyAccountStartOffsetMs/,
+    /boundary =\s*scheduleStartTick_ \+[\s\S]*static_cast<ULONGLONG>\(i\) \* kSpotifyAccountStartOffsetMs/,
   );
-  assert.match(phaseSync, /nextDeadlineMs = std::min\(nextDeadlineMs, boundary - elapsed\)/);
-  assert.doesNotMatch(phaseSync, /kSpotifyAdaptiveSteadyStartMs/);
+  assert.match(phaseSync, /considerTick\(boundary\)/);
+  assert.doesNotMatch(phaseSync, /kSpotifyAdaptiveSteadyStartMs|::SetTimer\(|KillTimer\(/);
 });
 
 test('usable Spotify controls are recovered through the dedicated trusted-input module', () => {
@@ -71,7 +71,7 @@ test('healthy slots are not continuously scanned by a second native watchdog', (
   assert.doesNotMatch(spotify, /RunPlaybackWatchdog|kSpotifyPlaybackWatchdogTimer/);
 });
 
-test('healthy ownership handoff does not relayout all playback hosts', () => {
+test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.match(
     layout,
     /const size_t recoveryIndex =[\s\S]*SlotStateNeedsRecovery\(slots_\[activeIndex\]\.state\)/,
@@ -89,7 +89,7 @@ test('authentication and recovery stay visible while healthy playback enters low
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
-  assert.match(layout, /const size_t activeIndex = staggerSlotIndex_ % slots_\.size\(\)/);
+  assert.match(layout, /const size_t activeIndex = schedulerCursor_ % slots_\.size\(\)/);
   assert.match(layout, /foregroundAuthenticationIndex/);
   assert.match(layout, /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);

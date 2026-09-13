@@ -16,7 +16,6 @@ const layout = readFileSync(new URL('../../native/src/spotify_host_layout.inc', 
 const scripts = readFileSync(new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
 const scoped = readFileSync(new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
 const observerBundle = readFileSync(new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url), 'utf8');
-const timed = readFileSync(new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const cycle = readFileSync(new URL('../../native/src/spotify_rotation_cycle.inc', import.meta.url), 'utf8');
 const music = readFileSync(new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
 const routing = readFileSync(new URL('../../native/src/spotify_target_routing.inc', import.meta.url), 'utf8');
@@ -80,7 +79,6 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
   assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
   assert.doesNotMatch(wrapper, /spotify_recent_catalog\.inc/);
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
-  assert.match(scripts, /kSpotifyStaticPodcastReconcileScript\[\]/);
   assert.match(scoped, /kSpotifyScopedTrackReconcileScript/);
   assert.match(observerBundle, /kSpotifyMediaObserverRuntimeScript/);
   assert.match(observerBundle, /kSpotifyMediaObserverEventsScript/);
@@ -104,22 +102,26 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaHost, /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/);
   assert.match(lifecycle, /void SetSpotifyMediaPhase\(bool\) noexcept \{[\s\S]*Spotify intentionally ignores YouTube\/TVer phase changes/);
-  assert.doesNotMatch(lifecycle + header + schedule, /gSpotifyTverPhase|SetPodcastMode|podcastMode_/);
+  assert.doesNotMatch(lifecycle + header + schedule, /gSpotifyTverPhase/);
   assert.match(spotify, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
 });
 
-test('one adaptive scheduler serializes all six Spotify windows with one shared startup offset', () => {
-  assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
-  assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
-  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 60U \* 1000U/);
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
+test('one adaptive threadpool timer services the state queue and exact deadlines', () => {
+  assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
+  assert.match(header, /std::atomic<bool> schedulerWakePosted_\{false\}/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(phaseSync, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
-  assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
-  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
-  assert.match(schedule, /% accountCount/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
-  assert.doesNotMatch(header, /reconcileIndex_|playbackWatchdogIndex_/);
+  assert.match(phaseSync, /CreateThreadpoolTimer\([\s\S]*SchedulerTimerProc/);
+  assert.match(phaseSync, /SetThreadpoolTimer\(schedulerTimer_, &due, 0, 0\)/);
+  assert.match(schedule, /SlotState is the queue/);
+  assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
+  assert.doesNotMatch(phaseSync + schedule, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
+  assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs|kSpotifySimpleRecoveryHoldMs/);
+  assert.doesNotMatch(header, /staggerSlotIndex_|staggerSlotStartTick_|staggerSlotValidated_|reconcileIndex_|playbackWatchdogIndex_/);
 });
 
 test('controller creation is serialized and bounded on slow machines', () => {
@@ -131,23 +133,19 @@ test('controller creation is serialized and bounded on slow machines', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
 });
 
-test('music is a generic cloud-managed descriptor while podcast stays separate', () => {
+test('all managed Spotify targets use the current ManagedTrack as the single target source', () => {
+  assert.doesNotMatch(header, /TimedSpotifyTarget|MusicTargetDescriptor|timedPlaybackStartTick/);
+  assert.doesNotMatch(header, /BitterBlue|Monshirocho|Munen|OnMyWay|LonesomeRabbit|CatalogTrack/);
   assert.match(header, /struct RotationGroup/);
   assert.match(header, /std::vector<ManagedTrack> timedCycleTracks/);
   assert.match(cloud, /GetNamedArray\(L"rotation"\)/);
-  assert.match(cloud, /GetNamedObject\(L"talkAbout"\)/);
-  assert.match(header, /struct MusicTargetDescriptor/);
-  assert.match(music, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
-  assert.match(music, /TimedSpotifyTarget::Music/);
+  assert.match(header, /const ManagedTrack\* CurrentMusicTrack/);
+  assert.match(music, /const SpotifyWebViews::ManagedTrack\* SpotifyWebViews::CurrentMusicTrack/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(music, /void SpotifyWebViews::ReconcileMusicTarget/);
-  assert.match(timed, /void SpotifyWebViews::ReconcilePodcastSlot/);
-  assert.match(routing, /kind = L"music"/);
-  assert.match(routing, /kind = L"podcast"/);
+  assert.match(routing, /CurrentMusicTrack\(slot\)/);
+  assert.doesNotMatch(routing, /pagePath|trackPath|kind = L"music"/);
   assert.match(wrapper, /#define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript/);
-  assert.match(timed, /kSpotifyStaticPodcastReconcileScript/);
-  assert.match(scripts, /target && target\.playbackRate/);
-  assert.match(scripts, /__homePanelSpotifyPodcastOneShot/);
   assert.doesNotMatch(scripts, /__homePanelLonesomeRabbitLoop|ensureRepeatOne/);
 });
 
@@ -155,9 +153,9 @@ test('rotation construction is isolated from music navigation and target routing
   assert.match(cycle, /PrepareTimedRotationCycle/);
   assert.doesNotMatch(cycle, /NavigateMusicTarget|PostSpotifyTargetDescriptorForSlot/);
   assert.match(music, /NavigateMusicTarget/);
-  assert.doesNotMatch(music, /PrepareTimedRotationCycle|kind = L"podcast"/);
-  assert.match(routing, /NavigateActiveTimedSlot/);
+  assert.doesNotMatch(music, /PrepareTimedRotationCycle/);
   assert.match(routing, /PostSpotifyTargetDescriptorForSlot/);
+  assert.doesNotMatch(routing, /NavigateActiveTimedSlot|ReconcileActiveTimedSlot/);
   assert.doesNotMatch(routing, /PrepareTimedRotationCycle|ReconcileMusicTarget\(Slot& slot\)/);
 });
 
@@ -181,10 +179,10 @@ test('all six Spotify WebViews remain natively muted', () => {
 });
 
 test('slot lifecycle uses one explicit state machine rather than an overloaded playing flag', () => {
-  for (const state of ['NotCreated', 'Authenticating', 'Navigating', 'WaitingTarget', 'Playing', 'Recovering', 'Completed']) {
+  for (const state of ['NotCreated', 'Authenticating', 'Navigating', 'WaitingTarget', 'Playing', 'Recovering']) {
     assert.match(header, new RegExp(`\\b${state}\\b`));
   }
-  assert.doesNotMatch(header, /bool playing = false/);
+  assert.doesNotMatch(header, /\bCompleted\b|bool playing = false/);
   assert.match(header, /SlotState state = SlotState::NotCreated/);
   assert.match(phaseSync, /SetSlotState/);
   assert.match(phaseSync, /MarkSlotRecovering/);

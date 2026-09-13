@@ -1,26 +1,16 @@
 namespace hp {
 namespace {
 
-// Active music reconcile script. Current-track identity is read only from the
-// now-playing surface before MediaSession fallback. Track-list rows may be used
-// to locate the requested target, but an unrelated global play button is never
-// treated as that target.
+// Reconcile only the requested track surface. Playback truth belongs to the
+// generation-tagged media observer; this script returns a compact action/result
+// to native and emits no second playback-status channel.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
-  const report = playing => {
-    try {
-      if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage(
-            playing ? 'spotify:playing' : 'spotify:not-playing');
-      }
-    } catch (_) {}
-  };
-  if (!target || target.kind !== 'music' || !target.pagePath) {
-    report(false);
-    return null;
-  }
+  const targetPath = target &&
+      (target.path || target.trackPath || target.pagePath || '');
+  if (!targetPath) return null;
 
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const sameTrackPath = (value, expected) => {
@@ -29,9 +19,8 @@ LR"JS(
         (expected.startsWith('/track/') && value.endsWith(expected));
   };
   const onTargetPage = () =>
-      location.pathname === target.pagePath ||
-      (target.pagePath.startsWith('/track/') &&
-       location.pathname.endsWith(target.pagePath));
+      location.pathname === targetPath ||
+      (targetPath.startsWith('/track/') && location.pathname.endsWith(targetPath));
   const visible = element => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true') return false;
@@ -62,42 +51,31 @@ LR"JS(
         null;
   };
   const currentTrack = () => {
-    const selectors = [
+    for (const selector of [
       '[data-testid="now-playing-widget"] a[href*="/track/"]',
       '[data-testid="now-playing-bar"] [data-testid="context-item-link"][href*="/track/"]',
       'footer [data-testid="context-item-link"][href*="/track/"]'
-    ];
-    for (const selector of selectors) {
+    ]) {
       const link = document.querySelector(selector);
       if (!link) continue;
       try {
         const path = new URL(link.href, location.href).pathname;
         if (!path.includes('/track/')) continue;
-        return {
-          path,
-          title: normalize(link.textContent).toLowerCase()
-        };
+        return { path, title: normalize(link.textContent).toLowerCase() };
       } catch (_) {}
     }
     const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
-    return {
-      path: '',
-      title: normalize(metadata && metadata.title).toLowerCase()
-    };
+    return { path: '', title: normalize(metadata && metadata.title).toLowerCase() };
   };
   const targetMatches = track => {
-    if (target.trackPath && track.path) {
-      return sameTrackPath(track.path, target.trackPath);
-    }
+    if (targetPath && track.path) return sameTrackPath(track.path, targetPath);
     return !!target.title && track.title === target.title;
   };
   const targetLink = () => Array.from(
       document.querySelectorAll('a[href*="/track/"]')).find(link => {
         try {
           const path = new URL(link.href, location.href).pathname;
-          if (target.trackPath && sameTrackPath(path, target.trackPath)) return true;
-          return !target.trackPath && !!target.title &&
-              normalize(link.textContent).toLowerCase() === target.title;
+          return sameTrackPath(path, targetPath);
         } catch (_) { return false; }
       }) || null;
   const targetPlayButton = () => {
@@ -122,7 +100,7 @@ LR"JS(
       }
     }
 
-    if (target.trackPath && onTargetPage()) {
+    if (onTargetPage()) {
       return Array.from(document.querySelectorAll(
           'button[data-testid="play-button"]')).find(visible) || null;
     }
@@ -150,38 +128,17 @@ LR"JS(
   const mediaPlaybackState = () => {
     const media = Array.from(document.querySelectorAll('audio, video'));
     const active = media.find(candidate => !candidate.ended && !candidate.paused);
-    if (active) {
-      return {
-        known: true,
-        playing: true,
-        currentTime: Number(active.currentTime) || 0
-      };
-    }
-    // Media elements are observation-only here. Starting playback by calling
-    // HTMLMediaElement.play() bypasses Spotify's own state machine and can be
-    // immediately countermanded by Spotify with a pause at currentTime=0.
+    if (active) return { known: true, playing: true };
     const pending =
         media.find(candidate => candidate.tagName === 'AUDIO' &&
             !candidate.ended && candidate.readyState >= 1) ||
-        media.find(candidate => candidate.tagName === 'AUDIO' &&
-            !candidate.ended) ||
+        media.find(candidate => candidate.tagName === 'AUDIO' && !candidate.ended) ||
         media.find(candidate => !candidate.ended && candidate.readyState >= 1) ||
         media.find(candidate => !candidate.ended) || null;
-    if (pending) {
-      return {
-        known: true,
-        playing: false,
-        currentTime: Number(pending.currentTime) || 0
-      };
-    }
-    return { known: false, playing: false, currentTime: 0 };
+    return { known: !!pending, playing: false };
   };
-)JS"
-LR"JS(
-  if (location.hostname !== 'open.spotify.com' || !onTargetPage()) {
-    report(false);
-    return null;
-  }
+
+  if (location.hostname !== 'open.spotify.com' || !onTargetPage()) return null;
 
   const current = currentTrack();
   const currentMatchesTarget = targetMatches(current);
@@ -192,27 +149,10 @@ LR"JS(
   const buttonIntentValue = buttonIntent(button);
   const mediaState = mediaPlaybackState();
 
-  if (currentMatchesTarget && mediaState.known && mediaState.playing) {
-    report(true);
-    return true;
-  }
-
+  if (currentMatchesTarget && mediaState.known && mediaState.playing) return true;
   if (mediaState.known && mediaState.playing && currentIdentified &&
-      !currentMatchesTarget) {
-    report(false);
-    return 'wrong';
-  }
-
-  // Playback starts only through an explicitly Play-labelled Spotify control.
-  // Never call media.play() on Spotify's internal audio element: that bypasses
-  // Spotify's queue/device state and is a known path to an immediate 0-second
-  // re-pause. Pause-labelled controls remain settling and are never toggled.
-  if (controlIntent === 'pause' || buttonIntentValue === 'pause') {
-    report(false);
-    return 'settling';
-  }
-
-  report(false);
+      !currentMatchesTarget) return 'wrong';
+  if (controlIntent === 'pause' || buttonIntentValue === 'pause') return 'settling';
   if (buttonIntentValue === 'play') return point(button);
   if (currentMatchesTarget && controlIntent === 'play') return point(control);
   if (currentMatchesTarget || mediaState.known) return 'settling';

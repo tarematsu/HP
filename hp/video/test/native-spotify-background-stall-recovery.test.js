@@ -16,36 +16,46 @@ const phase = readFileSync(
   new URL('../../native/src/spotify_phase_sync.inc', import.meta.url), 'utf8');
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
-const timed = readFileSync(
-  new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const music = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
 
-test('runtime uses one adaptive scheduler instead of parallel background probing', () => {
+test('runtime uses one adaptive threadpool scheduler instead of parallel probing', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
   assert.match(phase, /NextRobustSchedulerDelayMs/);
-  assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
+  assert.match(phase, /SchedulerTimerProc/);
+  assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.doesNotMatch(schedule, /BackgroundPlaybackProbe|playbackWatchdogIndex_|RunPlaybackWatchdog/);
+  assert.doesNotMatch(phase + schedule, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
   assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
 });
 
-test('only one recovery-sized Spotify owner is selected at a time', () => {
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
-  assert.match(schedule, /staggerSlotIndex_ = scheduledIndex/);
-  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);
+test('slot state is the recovery queue with no fixed ownership lease', () => {
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
+  assert.match(schedule, /candidate\.state != SlotState::Recovering/);
+  assert.match(schedule, /!candidate\.timedRotationActive \|\|\s*SlotStateNeedsRecovery\(candidate\.state\)/);
+  assert.doesNotMatch(schedule, /kSpotifySimpleRecoveryHoldMs|holdRecovery|SimpleSpotifyScheduledIndex/);
 });
 
-test('slow responsive layout settles before owner-only DOM reconciliation', () => {
-  assert.match(schedule, /kSpotifySimpleLayoutSettleMs = 2ULL \* 1000ULL/);
-  assert.match(schedule, /kSpotifySimpleRetryMs = 4ULL \* 1000ULL/);
+test('queue runs at most one music reconciliation per scheduler pass', () => {
+  const reconciles = schedule.match(/ReconcileMusicTarget\(slot\);/g) || [];
+  assert.equal(reconciles.length, 1);
+  assert.match(schedule, /selected = index;\s*break;/);
+  assert.match(schedule, /schedulerCursor_ = selected/);
+  assert.match(schedule, /RefreshSpotifyHostLayout\(\)/);
+  assert.match(schedule, /const auto asyncIdle/);
+});
+
+test('slow recovery wakes at its next real four-second retry instead of polling every two seconds', () => {
+  assert.match(phase, /kSpotifyQueueRetryMs = 4ULL \* 1000ULL/);
+  assert.match(phase, /slot\.lastTimedReconcileTick \+ kSpotifyQueueRetryMs/);
   assert.match(
     schedule,
-    /SlotStateNeedsRecovery\(slot\.state\)[\s\S]*kSpotifySimpleLayoutSettleMs[\s\S]*return;/,
+    /lastTimedReconcileTick == 0 \|\|\s*now - slot\.lastTimedReconcileTick >= kSpotifyQueueRetryMs/,
   );
-  assert.match(schedule, /ReconcileActiveTimedSlot\(slot\)/);
+  assert.match(schedule, /ReconcileMusicTarget\(slot\)/);
+  assert.match(phase, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
 });
 
 test('track completion remains native-deadline driven with no media heartbeat', () => {
@@ -55,7 +65,6 @@ test('track completion remains native-deadline driven with no media heartbeat', 
   assert.match(events, /document\.addEventListener\('ended'/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(events, /post\('spotify:timed-ended'\)/);
-  assert.match(runtime, /spotify:generation/);
   assert.doesNotMatch(wrapper, /spotify_media_observer_heartbeat\.inc/);
   assert.doesNotMatch(runtime + events, /heartbeatTimer|heartbeatMisses|requestRecovery/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
@@ -75,7 +84,7 @@ test('lost ExecuteScript callbacks expire instead of wedging a slot forever', ()
   assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
   assert.match(phase, /ExpireStaleAsyncWork\(\s*Slot& slot, ULONGLONG now\)/);
   assert.match(schedule, /ExpireStaleAsyncWork\(candidate, now\)/);
-  assert.match(timed, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
+  assert.doesNotMatch(phase, /staggerSlotIndex_|staggerSlotStartTick_|staggerSlotValidated_/);
   assert.match(music, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
   assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
 });
@@ -93,10 +102,11 @@ test('playback anomalies cannot postpone the native completion deadline', () => 
 
 test('advertisements cannot start or falsely end the requested-song timer', () => {
   assert.match(runtime, /const enforceTarget = media =>/);
-  assert.match(runtime, /else if \(!matchesTarget\(target, identity\)\)/);
-  assert.match(runtime, /if \(!state\.startPosted\) return 'unknown'/);
+  assert.match(runtime, /else if \(!targetIdentityConfirmed\)/);
+  assert.match(runtime, /return state\.startPosted \? 'interruption' : 'unknown'/);
+  assert.match(runtime, /return state\.startPosted \? 'wrong' : 'unknown'/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(events, /state\.interruptionStartedAt/);
   assert.match(events, /state\.targetMedia !== media/);
-  assert.match(rotation, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(rotation, /AdvanceTimedRotationSlot\(slot\)/);
 });

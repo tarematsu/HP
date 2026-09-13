@@ -17,7 +17,7 @@ test('native deadline directly advances A to the next rotation slot', () => {
 
   assert.match(due, /slot\.timedCompletionDeadlineTick = 0/);
   assert.match(due, /slot\.timedCompletionDeadlineGeneration = 0/);
-  assert.match(due, /AdvanceTimedRotationSlot\(slot, now\)/);
+  assert.match(due, /AdvanceTimedRotationSlot\(slot\)/);
   assert.doesNotMatch(due, /PostWebMessageAsString|spotify:completion-probe/);
 });
 
