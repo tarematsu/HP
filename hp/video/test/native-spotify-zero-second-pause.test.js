@@ -58,7 +58,7 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('DOM reconcile directly confirms target playback while status timing stays title-event owned', () => {
+test('DOM reconcile accepts target playback before page observer status confirmation', () => {
   assert.match(
     scoped,
     /currentMatchesTarget &&[\s\S]*controlIntent === 'pause'[\s\S]*buttonIntentValue === 'pause'[\s\S]*return true/,
@@ -69,24 +69,27 @@ test('DOM reconcile directly confirms target playback while status timing stays 
   );
   assert.match(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(trueBranch, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
+  assert.match(trueBranch, /ArmTimedEndObserver\(\*target\)/);
   assert.doesNotMatch(trueBranch, /GetLocalTime|playbackConfirmed/);
   assert.doesNotMatch(trueBranch, /SlotState::WaitingTarget/);
   assert.doesNotMatch(trueBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
-  assert.match(controller, /add_DocumentTitleChanged/);
-  assert.match(controller, /GetLocalTime\(&target->playbackConfirmedAt\)/);
+  assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
+  assert.doesNotMatch(controller, /get_DocumentTitle/);
 });
 
-test('generation-tagged observer remains a generation-safe optional compatibility path', () => {
+test('generation-tagged page observer owns status confirmation timing', () => {
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
-  assert.doesNotMatch(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
-  assert.doesNotMatch(music, /ArmTimedEndObserver\(slot\)/);
+  assert.match(rotation, /target->observedTrackTitle = currentTrack->title/);
+  assert.match(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
+  assert.match(rotation, /target->playbackConfirmed = true/);
+  assert.match(music, /ArmTimedEndObserver\(\*target\)/);
 });
 
-test('music playback no longer waits for observer acknowledgement', () => {
+test('music playback does not wait for observer acknowledgement', () => {
   assert.doesNotMatch(music, /if \(!slot\.timedObserverReady\)/);
-  assert.doesNotMatch(music, /ArmTimedEndObserver\(slot\)/);
+  assert.match(music, /ArmTimedEndObserver\(\*target\)/);
   assert.match(scoped, /controlIntent === 'pause'/);
   assert.match(scoped, /buttonIntentValue === 'pause'/);
 });
