@@ -46,12 +46,13 @@ test('auth surface is complete before playback is retired', () => {
   ]);
 });
 
-test('playback surface is restored before the auth surface is retired', () => {
-  const normalPlaybackAt = applyLayout.lastIndexOf('  if (controller) {');
+test('playback visibility is selected before the auth surface is retired', () => {
+  const normalPlaybackAt = applyLayout.lastIndexOf('SetControllerMemoryUsageTarget(');
   assert.notEqual(normalPlaybackAt, -1);
   const normalPlayback = applyLayout.slice(normalPlaybackAt);
   assertOrdered(normalPlayback, [
-    'controller->put_IsVisible(TRUE);',
+    'const BOOL desiredVisibility = playbackForeground ? TRUE : FALSE;',
+    'controller->put_IsVisible(desiredVisibility);',
     'SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING',
     'ShowWindow(authHostWindow, SW_HIDE);',
     'authController->put_IsVisible(FALSE);',
@@ -65,7 +66,7 @@ test('destination hosts are sized before visibility changes without exposing an 
   );
   assert.match(
     applyLayout,
-    /const HWND hostPlacement = showPlayback \? HWND_TOP : HWND_BOTTOM;/,
+    /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/,
   );
   assert.match(
     applyLayout,
