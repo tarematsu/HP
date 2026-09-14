@@ -62,13 +62,14 @@ test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('authentication recovery and healthy playback remain visible with compact healthy geometry', () => {
+test('authentication recovery and healthy playback keep hidden low-memory WebViews with compact geometry', () => {
   assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
   assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
-  assert.match(layout, /put_IsVisible\(TRUE\)/);
-  assert.doesNotMatch(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
+  assert.match(layout, /slot\.controller->put_IsVisible\(FALSE\)/);
+  assert.doesNotMatch(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
 test('cached authentication foreground avoids repeated WebView geometry notifications', () => {
