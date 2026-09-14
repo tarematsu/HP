@@ -50,7 +50,7 @@ bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placeme
   if (!EqualRect(&parentRelative, &expected)) return false;
   if (placement == HWND_TOP) return GetWindow(window, GW_HWNDPREV) == nullptr;
   if (placement == HWND_BOTTOM) return GetWindow(window, GW_HWNDNEXT) == nullptr;
-  return false;
+  return true;
 }
 
 bool ControllerBoundsMatch(ICoreWebView2Controller* controller,
@@ -88,24 +88,31 @@ bool PlaybackSurfaceMatches(HWND hostWindow,
   if (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) {
     return false;
   }
-  const int controllerWidth = std::max(1L, workspaceBounds.right - workspaceBounds.left);
-  const int controllerHeight = std::max(1L, workspaceBounds.bottom - workspaceBounds.top);
   const RECT hostBounds{workspaceBounds.left, workspaceBounds.top,
                         workspaceBounds.left + hostWidth,
                         workspaceBounds.top + hostHeight};
-  const RECT controllerBounds{0, 0, controllerWidth, controllerHeight};
+  const RECT controllerBounds{0, 0, hostWidth, hostHeight};
   return WindowClientSizeMatches(hostWindow, hostWidth, hostHeight) &&
          ChildWindowPlacementMatches(hostWindow, hostBounds, placement) &&
          ControllerBoundsMatch(controller, controllerBounds) &&
          ControllerVisibilityMatches(controller, TRUE);
 }
 
-bool HiddenAuthSurfaceMatches(HWND authHostWindow,
-                              ICoreWebView2Controller* authController) noexcept {
-  const bool hostHidden = !authHostWindow || !IsWindow(authHostWindow) ||
-                          !IsWindowVisible(authHostWindow);
-  const bool controllerHidden = !authController || ControllerVisibilityMatches(authController, FALSE);
-  return hostHidden && controllerHidden;
+bool BackgroundAuthSurfaceMatches(HWND authHostWindow,
+                                  ICoreWebView2Controller* authController,
+                                  const RECT& workspaceBounds) noexcept {
+  if (!authHostWindow || !IsWindow(authHostWindow)) return authController == nullptr;
+  const RECT authHostBounds{workspaceBounds.left, workspaceBounds.top,
+                            workspaceBounds.left + 1, workspaceBounds.top + 1};
+  const RECT authBounds{0, 0, 1, 1};
+  const bool controllerReady =
+      !authController ||
+      (ControllerBoundsMatch(authController, authBounds) &&
+       ControllerVisibilityMatches(authController, TRUE));
+  return IsWindowVisible(authHostWindow) &&
+         WindowClientSizeMatches(authHostWindow, 1, 1) &&
+         ChildWindowPlacementMatches(authHostWindow, authHostBounds, nullptr) &&
+         controllerReady;
 }
 
 bool ActiveAuthSurfaceMatches(HWND hostWindow,
@@ -120,10 +127,13 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
                             workspaceBounds.left + width,
                             workspaceBounds.top + height};
   const RECT authBounds{0, 0, width, height};
-  const bool playbackHidden =
-      (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) &&
-      (!controller || ControllerVisibilityMatches(controller, TRUE));
-  return playbackHidden &&
+  const bool playbackBackground =
+      hostWindow && IsWindow(hostWindow) && IsWindowVisible(hostWindow) &&
+      WindowClientSizeMatches(hostWindow, 1, 1) &&
+      (!controller ||
+       (ControllerBoundsMatch(controller, RECT{0, 0, 1, 1}) &&
+        ControllerVisibilityMatches(controller, TRUE)));
+  return playbackBackground &&
          WindowClientSizeMatches(authHostWindow, width, height) &&
          ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP) &&
          ControllerBoundsMatch(authController, authBounds) &&
@@ -181,58 +191,48 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                                  bool showPlayback,
                                  bool hidePlayback) {
   const bool monitorForeground = StationheadMonitorForeground();
-  const bool playbackForeground = showPlayback || (!showAuth && !hidePlayback && monitorForeground);
+  const bool playbackForeground =
+      showPlayback || (!showAuth && !hidePlayback && monitorForeground);
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
   const int hostWidth = playbackForeground ? width : 1;
   const int hostHeight = playbackForeground ? height : 1;
+  const int authHostWidth = showAuth ? width : 1;
+  const int authHostHeight = showAuth ? height : 1;
   const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
-  const RECT contentBounds{0, 0, width, height};
-  const RECT authBounds{0, 0, width, height};
-  const RECT hostBounds{bounds.left, bounds.top, bounds.left + hostWidth, bounds.top + hostHeight};
-  const RECT authHostBounds{bounds.left, bounds.top, bounds.left + width, bounds.top + height};
+  const HWND authPlacement = showAuth ? HWND_TOP : HWND_BOTTOM;
+  const RECT contentBounds{0, 0, hostWidth, hostHeight};
+  const RECT authBounds{0, 0, authHostWidth, authHostHeight};
+  const RECT hostBounds{bounds.left, bounds.top,
+                        bounds.left + hostWidth, bounds.top + hostHeight};
+  const RECT authHostBounds{bounds.left, bounds.top,
+                            bounds.left + authHostWidth,
+                            bounds.top + authHostHeight};
   const bool hostValid = hostWindow && IsWindow(hostWindow);
   const bool authHostValid = authHostWindow && IsWindow(authHostWindow);
-  const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
-  const bool authWasVisible = authHostValid && IsWindowVisible(authHostWindow);
-  const bool hostSizeMatches = hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight);
-  const bool authHostSizeMatches = authHostValid && WindowClientSizeMatches(authHostWindow, width, height);
-  const bool hostPlacementMatches = hostValid && ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement);
-  const bool authHostPlacementMatches = authHostValid && ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP);
+  const bool hostSizeMatches =
+      hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight);
+  const bool authHostSizeMatches =
+      authHostValid && WindowClientSizeMatches(authHostWindow, authHostWidth, authHostHeight);
+  const bool hostPlacementMatches =
+      hostValid && ChildWindowPlacementMatches(
+          hostWindow, hostBounds, playbackForeground ? HWND_TOP : nullptr);
+  const bool authHostPlacementMatches =
+      authHostValid && ChildWindowPlacementMatches(
+          authHostWindow, authHostBounds, showAuth ? HWND_TOP : nullptr);
 
-  if (!hidePlayback && hostValid && (!hostSizeMatches || !hostPlacementMatches)) {
-    SetWindowPos(hostWindow, hostPlacement, bounds.left, bounds.top, hostWidth, hostHeight,
-                 SWP_NOACTIVATE | SWP_NOSENDCHANGING);
+  if (hostValid &&
+      (!hostSizeMatches || !hostPlacementMatches || !IsWindowVisible(hostWindow))) {
+    SetWindowPos(hostWindow, hostPlacement, bounds.left, bounds.top,
+                 hostWidth, hostHeight,
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   }
-  if (showAuth && authHostValid && (!authHostSizeMatches || !authHostPlacementMatches)) {
-    SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
-                 SWP_NOACTIVATE | SWP_NOSENDCHANGING);
-  }
-
-  if (showAuth) {
-    SetControllerMemoryUsageTarget(authController, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
-    if (authController) {
-      if (!authHostSizeMatches || !ControllerBoundsMatch(authController, authBounds)) authController->put_Bounds(authBounds);
-      if (!ControllerVisibilityMatches(authController, TRUE)) authController->put_IsVisible(TRUE);
-    }
-    if (authHostValid && !authWasVisible) {
-      SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
-                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-    }
-    if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    SetControllerMemoryUsageTarget(controller, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-    if (controller && !ControllerVisibilityMatches(controller, TRUE)) controller->put_IsVisible(TRUE);
-    return;
-  }
-
-  if (hidePlayback) {
-    if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    SetControllerMemoryUsageTarget(controller, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-    if (controller && !ControllerVisibilityMatches(controller, TRUE)) controller->put_IsVisible(TRUE);
-    if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
-    SetControllerMemoryUsageTarget(authController, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-    if (authController && !ControllerVisibilityMatches(authController, FALSE)) authController->put_IsVisible(FALSE);
-    return;
+  if (authHostValid &&
+      (!authHostSizeMatches || !authHostPlacementMatches ||
+       !IsWindowVisible(authHostWindow))) {
+    SetWindowPos(authHostWindow, authPlacement, bounds.left, bounds.top,
+                 authHostWidth, authHostHeight,
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   }
 
   SetControllerMemoryUsageTarget(
@@ -240,16 +240,26 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       playbackForeground ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
                          : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   if (controller) {
-    if (!ControllerBoundsMatch(controller, contentBounds)) controller->put_Bounds(contentBounds);
-    if (!ControllerVisibilityMatches(controller, TRUE)) controller->put_IsVisible(TRUE);
+    if (!ControllerBoundsMatch(controller, contentBounds)) {
+      controller->put_Bounds(contentBounds);
+    }
+    if (!ControllerVisibilityMatches(controller, TRUE)) {
+      controller->put_IsVisible(TRUE);
+    }
   }
-  if (hostValid && (!hostWasVisible || !hostSizeMatches || !hostPlacementMatches)) {
-    SetWindowPos(hostWindow, hostPlacement, bounds.left, bounds.top, hostWidth, hostHeight,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+
+  SetControllerMemoryUsageTarget(
+      authController,
+      showAuth ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+               : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+  if (authController) {
+    if (!ControllerBoundsMatch(authController, authBounds)) {
+      authController->put_Bounds(authBounds);
+    }
+    if (!ControllerVisibilityMatches(authController, TRUE)) {
+      authController->put_IsVisible(TRUE);
+    }
   }
-  if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
-  SetControllerMemoryUsageTarget(authController, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-  if (authController && !ControllerVisibilityMatches(authController, FALSE)) authController->put_IsVisible(FALSE);
 }
 
 }
@@ -322,8 +332,8 @@ void StationheadPlayer::SetVisible(bool visible) {
         PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
                                monitorForeground ? std::max(1L, bounds_.right - bounds_.left) : 1,
                                monitorForeground ? std::max(1L, bounds_.bottom - bounds_.top) : 1,
-                               monitorForeground ? HWND_TOP : HWND_BOTTOM) &&
-        HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get())) {
+                               monitorForeground ? HWND_TOP : nullptr) &&
+        BackgroundAuthSurfaceMatches(authHostWindow_, authController_.Get(), bounds_)) {
       return;
     }
     const bool hadInteractiveSurface = viewVisible_ || selectedTab_ != StationheadTabKind::None;
@@ -360,7 +370,7 @@ void StationheadPlayer::SetVisible(bool visible) {
         WindowContainsFocus(authHostWindow_)) return;
   } else if (viewVisible_ &&
              PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_, width, height, HWND_TOP) &&
-             HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get()) && WindowContainsFocus(hostWindow_)) {
+             BackgroundAuthSurfaceMatches(authHostWindow_, authController_.Get(), bounds_) && WindowContainsFocus(hostWindow_)) {
     return;
   }
 
