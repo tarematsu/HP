@@ -237,8 +237,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   SetControllerMemoryUsageTarget(
       controller,
-      playbackForeground ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
-                         : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   if (controller) {
     if (!ControllerBoundsMatch(controller, contentBounds)) {
       controller->put_Bounds(contentBounds);
@@ -250,8 +249,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   SetControllerMemoryUsageTarget(
       authController,
-      showAuth ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
-               : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   if (authController) {
     if (!ControllerBoundsMatch(authController, authBounds)) {
       authController->put_Bounds(authBounds);
