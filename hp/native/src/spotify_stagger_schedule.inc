@@ -68,7 +68,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     return slot.nextRecoveryTick == 0 || now >= slot.nextRecoveryTick;
   };
   const auto healthyPlaybackNeedsNoWork = [](const Slot& slot) noexcept {
-    return SlotStateIsHealthy(slot.state) && slot.timedObserverReady &&
+    return SlotStateIsHealthy(slot.state) &&
            slot.timedCompletionDeadlineTick != 0 &&
            slot.timedCompletionDeadlineGeneration == slot.targetGeneration;
   };
