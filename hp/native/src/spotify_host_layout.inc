@@ -19,6 +19,14 @@ bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
          left.bottom - left.top == right.bottom - right.top;
 }
 
+void ApplySpotifyLayoutLowMemory(ICoreWebView2* webview) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2_19> webview19;
+  if (SUCCEEDED(webview->QueryInterface(IID_PPV_ARGS(&webview19))) && webview19) {
+    webview19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+  }
+}
+
 }  // namespace
 
 void SpotifyWebViews::PlaceHosts() noexcept {
@@ -103,7 +111,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.hostLayoutReducedZoomApplied = false;
     }
 
-    slot.controller->put_IsVisible(TRUE);
+    slot.controller->put_IsVisible(FALSE);
+    ApplySpotifyLayoutLowMemory(slot.webview.Get());
 
     const bool reducedZoom = authentication || recovery;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
@@ -157,6 +166,8 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
                            SWP_SHOWWINDOW);
         }
+        if (slot.controller) slot.controller->put_IsVisible(FALSE);
+        ApplySpotifyLayoutLowMemory(slot.webview.Get());
 
         if (slot.authenticationBadgeTick != 0) return;
         slot.authenticationBadgeTick = 1;
