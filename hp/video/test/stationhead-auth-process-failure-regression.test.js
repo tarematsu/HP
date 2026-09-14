@@ -23,14 +23,19 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('auth process-failure policy is compiled after interactive memory policy', () => {
-  const memoryMacroAt = memoryPolicy.indexOf(
-    '#define COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW',
-  );
+test('auth process-failure policy follows permanent LOW memory policy without remapping it', () => {
   const processIncludeAt = memoryPolicy.indexOf(
     '#include "sh_auth_process_failure_policy_fix.h"',
   );
-  assert.ok(memoryMacroAt >= 0 && memoryMacroAt < processIncludeAt);
+  assert.ok(processIncludeAt >= 0);
+  assert.match(
+    memoryPolicy,
+    /kInteractiveAuthMemoryTarget\s*=\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
+  );
+  assert.doesNotMatch(
+    memoryPolicy,
+    /#define COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+  );
 });
 
 test('base auth handler still owns fatal controller teardown', () => {

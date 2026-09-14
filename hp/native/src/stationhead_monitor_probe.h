@@ -11,8 +11,8 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 void RequestStationheadMonitorDomProbe() noexcept;
 
 // Monitor placement and Stationhead WebView layout live in separate modules.
-// Keep only the effective foreground bit here so both sides agree whether the
-// playback controller may render at normal memory priority.
+// Keep only the effective foreground bit here so both sides agree on geometry
+// and z-order; Stationhead memory priority remains LOW in either placement.
 inline std::atomic<bool> gStationheadMonitorForeground{false};
 
 inline bool SetStationheadMonitorForeground(bool foreground) noexcept {

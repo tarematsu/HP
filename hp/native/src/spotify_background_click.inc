@@ -193,20 +193,7 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                             view->CallDevToolsProtocolMethod(
                                 L"Input.dispatchMouseEvent", released.c_str(),
                                 Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                                    [alive, target, view, targetGeneration,
-                                     pageEpoch](HRESULT releasedResult,
-                                                LPCWSTR) -> HRESULT {
-                                      if (!alive->load(std::memory_order_acquire) ||
-                                          target->targetGeneration !=
-                                              targetGeneration ||
-                                          target->pageEpoch != pageEpoch ||
-                                          target->webview.Get() != view.Get()) {
-                                        return S_OK;
-                                      }
-                                      if (SUCCEEDED(releasedResult) &&
-                                          target->controller) {
-                                        target->controller->put_IsVisible(FALSE);
-                                      }
+                                    [](HRESULT, LPCWSTR) -> HRESULT {
                                       return S_OK;
                                     }).Get());
                         if (FAILED(releaseDispatched)) {
