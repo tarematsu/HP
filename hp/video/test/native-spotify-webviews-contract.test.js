@@ -97,16 +97,26 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
   assert.doesNotMatch(wrapper, /#define ExecuteScript|RewriteSpotify|spotify_viewport_recovery\.inc|spotify_lonesome_guard\.inc/);
 });
 
-test('Spotify player pages reduce decorative work without blocking audio/media resources', () => {
+test('Spotify player pages reduce decorative work without touching playback timing surfaces', () => {
   assert.match(scripts, /animation: none !important/);
   assert.match(scripts, /transition: none !important/);
   assert.match(scripts, /data-testid="left-sidebar"/);
   assert.match(scripts, /data-testid="global-nav-bar"/);
   assert.match(scripts, /content-visibility: hidden !important/);
-  assert.match(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
-  assert.match(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
+  assert.match(scripts, /Keep the player footer \/ elapsed-time \/ progress controls untouched/);
+  assert.match(scripts, /\[data-testid="now-playing-bar"\]/);
+  assert.match(spotify, /Network\.setBlockedURLs/);
+  assert.match(spotify, /kSpotifyBlockedDecorativeUrls/);
+  assert.doesNotMatch(spotify, /AddWebResourceRequestedFilter/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
+});
+
+test('Spotify uses in-page track routing before full Navigate fallback', () => {
+  assert.match(scripts, /kSpotifySpaRouteScript/);
+  assert.match(scripts, /link\.click\(\)/);
+  assert.match(music, /ExecuteScript\(\s*kSpotifySpaRouteScript/);
+  assert.match(music, /requestedView->Navigate\(currentTrack->url\.c_str\(\)\)/);
 });
 
 test('YouTube/TVer phase notification cannot mutate Spotify playback state', () => {
