@@ -1,6 +1,7 @@
 #include "app.h"
 #include "sh.h"
 #include "sh_audio_loss_policy.h"
+#include "stationhead_monitor_probe.h"
 #include "web_renderer.h"
 #include <winrt/Windows.Data.Json.h>
 
@@ -10,6 +11,22 @@ namespace {
 bool AudioLossCallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
 }
+
+std::atomic<bool> monitorDomProbeRequested{false};
+std::atomic<bool> monitorDomProbeInFlight{false};
+
+// Monitor A intentionally uses a much simpler policy than audio-loss recovery:
+// every five minutes it looks only for the two operator-requested phrases. B is
+// unconditional foreground, so this probe is never requested in monitor B.
+constexpr wchar_t kMonitorDomProbeScript[] = LR"JS(
+(() => {
+  if (document.readyState === 'loading' || !document.body) return false;
+  const text = String(document.body.innerText || document.body.textContent || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /\blog\s+in\b/i.test(text) || /\bconnect\s+spotify\b/i.test(text);
+})()
+)JS";
 
 // This probe is based on the live Stationhead DOM observed on 2026-07-31.
 // The ordinary page has a persistent top-right `Log in` button. That button by
@@ -141,6 +158,10 @@ constexpr wchar_t kAuthenticationUiProbeScript[] = LR"JS(
 )JS";
 
 }  // namespace
+
+void RequestStationheadMonitorDomProbe() noexcept {
+  monitorDomProbeRequested.store(true, std::memory_order_release);
+}
 
 void App::NotifyStationheadPlaybackFallbackStarted() {
   if (!renderer_ || stationheadPlaybackFallbackActive_) return;
@@ -289,6 +310,33 @@ void StationheadPlayer::SetManagedPlaybackFallback(
 }
 
 void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
+  if (monitorDomProbeRequested.exchange(false, std::memory_order_acq_rel) &&
+      webview_ &&
+      !monitorDomProbeInFlight.exchange(true, std::memory_order_acq_rel)) {
+    const auto alive = createCallbackAlive_;
+    ComPtr<ICoreWebView2> view = webview_;
+    const HRESULT started = view->ExecuteScript(
+        kMonitorDomProbeScript,
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [this, alive, view](HRESULT result, LPCWSTR resultJson) -> HRESULT {
+              if (!AudioLossCallbackAlive(alive) || view.Get() != webview_.Get()) {
+                monitorDomProbeInFlight.store(false, std::memory_order_release);
+                return S_OK;
+              }
+              monitorDomProbeInFlight.store(false, std::memory_order_release);
+              if (FAILED(result) || !resultJson) return S_OK;
+              const std::wstring_view value(resultJson);
+              if (value != L"true" && value != L"false") return S_OK;
+              PostMessageW(
+                  window_, kStationheadMonitorProbeResultMessage,
+                  value == L"true" ? 1 : 0, 0);
+              return S_OK;
+            }).Get());
+    if (FAILED(started)) {
+      monitorDomProbeInFlight.store(false, std::memory_order_release);
+    }
+  }
+
   if (managedPlaybackFallbackActive_) {
     if (managedPlaybackReturnRequested_ &&
         StationheadFallbackDwellSatisfied(
@@ -438,5 +486,3 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
         L"fallback: no authentication surface remained at the twelve-second check");
   }
 }
-
-}  // namespace hp
