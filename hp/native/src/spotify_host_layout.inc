@@ -2,8 +2,6 @@ namespace hp {
 namespace {
 
 constexpr double kSpotifySerializedRecoveryZoom = 0.80;
-constexpr int kSpotifyRecoveryInteractionWidth = 720;
-constexpr int kSpotifyRecoveryInteractionHeight = 480;
 
 bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top;
@@ -39,18 +37,20 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
-    const bool recovery =
-        i == hostLayoutActiveSlot_ && !authentication &&
-        SlotStateNeedsRecovery(slot.state);
+    const bool compactPlayback =
+        slot.playbackConfirmed && CurrentMusicTrack(slot) != nullptr;
 
-    // Steady background playback is a visible 1x1 surface. Monitor C is the
-    // explicit inspection mode and expands Spotify to the full dashboard.
-    // Recovery/authentication use their existing bounded interactive surfaces
-    // only while Monitor C is not active.
+    // Keep the player at the dashboard's full viewport behind native content
+    // until real media playback is confirmed. The larger viewport gives Spotify
+    // its normal responsive layout and makes the trusted Play target much less
+    // fragile. Once playback starts, keep the renderer alive at 1x1 until that
+    // target song finishes (including any mid-song ad interruption). Monitor C
+    // remains the explicit full-size foreground inspection mode. Authentication
+    // keeps its existing foreground surface so login remains usable.
     int x = client.left;
     int y = client.top;
-    int width = 1;
-    int height = 1;
+    int width = compactPlayback ? 1 : clientWidth;
+    int height = compactPlayback ? 1 : clientHeight;
     HWND insertAfter = HWND_BOTTOM;
     if (monitorForeground_) {
       width = clientWidth;
@@ -62,11 +62,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       width = activeWidth;
       height = activeHeight;
       insertAfter = HWND_TOP;
-    } else if (recovery) {
-      x = client.right + 32;
-      y = client.top;
-      width = kSpotifyRecoveryInteractionWidth;
-      height = kSpotifyRecoveryInteractionHeight;
     }
 
     const RECT desired{x, y, x + width, y + height};
@@ -107,7 +102,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.controller->put_IsVisible(TRUE);
     }
 
-    const bool reducedZoom = !monitorForeground_ && (authentication || recovery);
+    const bool reducedZoom = !monitorForeground_ && authentication;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
       const HRESULT zoomResult = slot.controller->put_ZoomFactor(
           reducedZoom ? kSpotifySerializedRecoveryZoom : 1.0);
