@@ -57,7 +57,7 @@ test('trusted click uses the full-size background viewport and repairs accidenta
   assert.match(helper, /const bool recoveryViewportReady = SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(helper, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
   assert.match(helper, /slot\.hostLayoutApplied = false;/);
-  assert.match(helper, /RefreshSpotifyHostLayout\(\);/);
+  assert.match(helper, /PlaceHosts\(\);/);
 });
 
 test('recovery arms playback observer before trusted Play input', () => {
