@@ -20,8 +20,11 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
         box-shadow: none !important;
         filter: none !important;
         backdrop-filter: none !important;
+        text-shadow: none !important;
+        will-change: auto !important;
       }
-      img, picture, video, canvas {
+      img, picture, video, canvas,
+      svg[aria-hidden='true'] {
         display: none !important;
       }
     `;
