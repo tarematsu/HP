@@ -10,4 +10,10 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 // access on the existing UI thread and avoids adding another polling thread.
 void RequestStationheadMonitorDomProbe() noexcept;
 
+// Returns true only when the effective foreground state changed. The layout
+// layer uses this state to keep background playback low-memory and invisible
+// without hiding Monitor B or Monitor A authentication surfaces.
+bool SetStationheadMonitorForeground(bool foreground) noexcept;
+bool StationheadMonitorForeground() noexcept;
+
 }  // namespace hp
