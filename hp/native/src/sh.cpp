@@ -631,7 +631,7 @@ void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
           return S_OK;
         }
         authController_ = controller;
-        authController_->put_IsVisible(FALSE);
+        authController_->put_IsVisible(TRUE);
         authController_->get_CoreWebView2(&authWebview_);
         if (!authWebview_) {
           FinishSpotifyAuthorization(L"Spotify auth WebView unavailable");
