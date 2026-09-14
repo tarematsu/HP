@@ -22,6 +22,14 @@ const overlay = readFileSync(
   new URL('../../native/src/power_saving_overlay.inc', import.meta.url),
   'utf8',
 );
+const spotifyLayout = readFileSync(
+  new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
+  'utf8',
+);
+const spotifyFoundation = readFileSync(
+  new URL('../../native/src/spotify_webview_foundation.inc', import.meta.url),
+  'utf8',
+);
 const source = [controller, brightness, routing, schedule, overlay].join('\n');
 const header = readFileSync(
   new URL('../../native/src/power_saving_controller.h', import.meta.url),
@@ -71,9 +79,11 @@ test('update, monitor and audio mode controls share one horizontal clock footer 
   assert.match(overlay, /L"更新"/);
   assert.match(overlay, /L"モニターA"/);
   assert.match(overlay, /L"モニターB"/);
+  assert.match(overlay, /L"モニターC"/);
   assert.match(overlay, /L"モニターOFF"/);
   assert.match(overlay, /L"ミュートA"/);
   assert.match(overlay, /L"ミュートB"/);
+  assert.match(overlay, /L"ミュートC"/);
   assert.match(overlay, /L"ミュートAB"/);
   assert.match(header, /enum class MonitorMode/);
   assert.match(header, /MonitorMode monitorMode_ = MonitorMode::Native/);
@@ -86,12 +96,15 @@ test('update, monitor and audio mode controls share one horizontal clock footer 
   assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 3 \+ hpControlButtonGap \* 2/);
 });
 
-test('monitor button cycles native A to Stationhead B to black OFF', () => {
+test('monitor button cycles A to B to Spotify C to black OFF', () => {
   assert.match(overlay, /controller->CycleMonitorMode\(\)/);
   assert.match(
     schedule,
-    /case MonitorMode::Native:[\s\S]*ApplyMonitorMode\(MonitorMode::Stationhead\)[\s\S]*case MonitorMode::Stationhead:[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)[\s\S]*case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/,
+    /case MonitorMode::Native:[\s\S]*ApplyMonitorMode\(MonitorMode::Stationhead\)[\s\S]*case MonitorMode::Stationhead:[\s\S]*ApplyMonitorMode\(MonitorMode::Spotify\)[\s\S]*case MonitorMode::Spotify:[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)[\s\S]*case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/,
   );
+  assert.match(schedule, /SetSpotifyMonitorForeground\(mode == MonitorMode::Spotify\)/);
+  assert.match(spotifyLayout, /void SpotifyWebViews::SetMonitorForeground/);
+  assert.match(spotifyLayout, /if \(monitorForeground_\)[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP/);
   assert.match(schedule, /powerSaving_ = nextPowerSaving/);
   assert.match(schedule, /Renderer::SetGlobalPowerSavingMode\(powerSaving_\)/);
   assert.match(schedule, /ApplyStationheadMonitorPlacement\(\)/);
@@ -117,14 +130,17 @@ test('compact overlay clips the complete three-button control row', () => {
   assert.match(overlay, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
 });
 
-test('single audio button cycles A to B to AB while Spotify stays outside routing', () => {
+test('single audio button cycles A to B to Spotify C to AB', () => {
   assert.match(overlay, /controller->CycleAudioMode\(\)/);
   assert.match(
     schedule,
-    /case AudioMode::Media:[\s\S]*ApplyAudioMode\(AudioMode::Stationhead\)[\s\S]*case AudioMode::Stationhead:[\s\S]*ApplyAudioMode\(AudioMode::Muted\)[\s\S]*case AudioMode::Muted:[\s\S]*ApplyAudioMode\(AudioMode::Media\)/,
+    /case AudioMode::Media:[\s\S]*ApplyAudioMode\(AudioMode::Stationhead\)[\s\S]*case AudioMode::Stationhead:[\s\S]*ApplyAudioMode\(AudioMode::Spotify\)[\s\S]*case AudioMode::Spotify:[\s\S]*ApplyAudioMode\(AudioMode::Muted\)[\s\S]*case AudioMode::Muted:[\s\S]*ApplyAudioMode\(AudioMode::Media\)/,
   );
   assert.match(schedule, /mediaMuted_ = mode != AudioMode::Media/);
   assert.match(schedule, /SetNativeMediaPanelMuted\(mediaMuted_\)/);
+  assert.match(schedule, /SetSpotifyAudioMuted\(mode != AudioMode::Spotify\)/);
+  assert.match(spotifyFoundation, /gSpotifyAudioMuted = true/);
+  assert.match(spotifyFoundation, /audio->put_IsMuted\(gSpotifyAudioMuted \? TRUE : FALSE\)/);
   assert.match(
     schedule,
     /mode == AudioMode::Stationhead[\s\S]*UiAction::StationheadAudioToggle[\s\S]*UiAction::StationheadAudioMute/,
@@ -141,7 +157,6 @@ test('single audio button cycles A to B to AB while Spotify stays outside routin
     app,
     /case UiAction::StationheadAudioMute:[\s\S]*stationhead_->SetAudioMuted\(true\)/,
   );
-  assert.doesNotMatch(schedule, /Spotify/);
 });
 
 test('media mute changes only YouTube/TVer WebView audio state and keeps playback alive', () => {
