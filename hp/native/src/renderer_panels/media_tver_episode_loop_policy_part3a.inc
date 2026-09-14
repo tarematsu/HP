@@ -78,6 +78,7 @@ LR"JS(
           state.recoveryWakeTimer = 0;
         }
         window.__homePanelTverAdActive = true;
+        if (video) bindPlayerObserver(video);
         const adFullscreen = !!(document.fullscreenElement ||
             document.webkitFullscreenElement || document.msFullscreenElement);
         wakeNative('ad:' + identity + ':' + (adFullscreen ? 'fs' : 'window'));
