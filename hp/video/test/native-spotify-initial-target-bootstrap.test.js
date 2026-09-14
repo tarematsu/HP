@@ -56,6 +56,11 @@ function createBootstrapHarness() {
         data: ['spotify:target', path, title].join('\u001f'),
       });
     },
+    sendGeneration(generation) {
+      messageHandler({
+        data: ['spotify:generation', String(generation)].join('\u001f'),
+      });
+    },
   };
 }
 
@@ -66,6 +71,16 @@ test('first target message initializes a fresh Spotify document without pausing 
   assert.equal(harness.media.pauseCalls, 0);
   assert.equal(harness.window.__homePanelSpotifyNativeTarget.path, '/track/first');
   assert.equal(harness.window.__homePanelSpotifyNativeTarget.title, 'first');
+});
+
+test('static target bridge caches generation before the playback observer exists', () => {
+  const harness = createBootstrapHarness();
+  assert.equal(harness.window.__homePanelSpotifyGeneration, '0');
+
+  harness.sendGeneration(27);
+
+  assert.equal(harness.window.__homePanelSpotifyGeneration, '27');
+  assert.equal(harness.media.pauseCalls, 0);
 });
 
 test('all target messages are declarative and never pause media in the page bridge', () => {
