@@ -41,12 +41,13 @@ test('Stationhead interaction tab expands the playback host and forces rendering
     '}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
   );
   assert.match(childLayout, /const bool playbackForeground\s*=\s*showPlayback \|\|/);
-  assert.match(childLayout, /const int hostWidth = playbackForeground \? width : 1;/);
-  assert.match(childLayout, /const int hostHeight = playbackForeground \? height : 1;/);
+  assert.match(childLayout, /const bool playbackFullSize = playbackForeground \|\| playbackBackgroundFullSize;/);
+  assert.match(childLayout, /const int hostWidth = playbackFullSize \? width : 1;/);
+  assert.match(childLayout, /const int hostHeight = playbackFullSize \? height : 1;/);
   assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
   assert.match(
     childLayout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
+    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
   );
   assert.match(childLayout, /controller->put_IsVisible\(playbackControllerVisible\)/);
 });
