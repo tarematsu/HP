@@ -14,6 +14,10 @@ const bridge = readFileSync(
   new URL('../../native/src/stationhead_monitor_probe.h', import.meta.url),
   'utf8',
 );
+const appMessages = readFileSync(
+  new URL('../../native/src/app_messages.cpp', import.meta.url),
+  'utf8',
+);
 
 test('Stationhead background playback may suppress rendering without forcing a LOW memory target', () => {
   assert.doesNotMatch(layout, /SetControllerMemoryUsageTarget/);
@@ -42,4 +46,11 @@ test('Monitor B and Monitor A auth promotion drive the effective foreground bit'
   assert.match(routing, /SetStationheadMonitorForeground\(stationheadForeground\)/);
   assert.match(routing, /PostMessageW\(parent_, WM_TIMER, 0, 0\)/);
   assert.match(bridge, /inline std::atomic<bool> gStationheadMonitorForeground\{false\}/);
+});
+
+test('Stationhead monitor wake invalidates cached placement before Tick relayout', () => {
+  assert.match(
+    appMessages,
+    /case WM_TIMER:[\s\S]*if \(wParam == 0\) MarkStationheadPlacementDirty\(\);[\s\S]*Tick\(\);/,
+  );
 });
