@@ -108,6 +108,10 @@ void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
 void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
   if (!slot.timedRotationActive) return;
 
+  // Playback stays non-rendering after the trusted Play click. Restore the
+  // individual controller exactly when this slot advances to its next target.
+  if (slot.controller) slot.controller->put_IsVisible(TRUE);
+
   std::wstring completedPath;
   if (const ManagedTrack* const track = CurrentMusicTrack(slot)) {
     completedPath = track->path;
