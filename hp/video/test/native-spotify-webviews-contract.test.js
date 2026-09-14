@@ -49,28 +49,28 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('authentication and recovery geometry stay in layout while permanent resource policy stays in controller setup', () => {
+test('authentication expands while every background Spotify WebView remains visible at 1x1', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
-  assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
-  assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
-  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
-  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
+  assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyParkedPlaybackHeight/);
+  assert.doesNotMatch(layout, /kSpotifyLowPowerPlaybackWidth|kSpotifyLowPowerPlaybackHeight/);
+  assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
   assert.match(layout, /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/);
+  assert.match(layout, /int width = 1;/);
+  assert.match(layout, /int height = 1;/);
+  assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.match(layout, /if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
   assert.match(layout, /const bool placementChanged = positionChanged \|\| sizeChanged \|\| zOrderChanged/);
-  assert.match(layout, /if \(placementChanged\)/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
-  assert.match(layout, /const bool lowPowerPlayback =/);
-  assert.doesNotMatch(layout, /put_IsVisible|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified/);
   assert.match(spotify, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
-  assert.match(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
-  assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
+  assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
 });
 
 test('Spotify browser behavior uses responsibility-split playback modules', () => {
