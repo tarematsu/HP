@@ -8,6 +8,8 @@ const scripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
 const controller = readFileSync(
   new URL('../../native/src/spotify_controller_lifecycle.inc', import.meta.url), 'utf8');
+const runtime = readFileSync(
+  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const reconcile = readFileSync(
@@ -27,23 +29,25 @@ test('only yuukiar Spotify slot is active for single-window diagnostics', () => 
   assert.doesNotMatch(scripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });
 
-test('status title and confirmation clock come from DocumentTitleChanged', () => {
-  assert.match(header, /EventRegistrationToken documentTitleChangedToken/);
+test('status title and confirmation clock come from the page playback observer', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
   assert.match(header, /SYSTEMTIME playbackConfirmedAt/);
-  assert.match(controller, /add_DocumentTitleChanged/);
-  assert.match(controller, /get_DocumentTitle/);
-  assert.match(controller, /target->observedTrackTitle = std::move\(observed\)/);
-  assert.match(controller, /GetLocalTime\(&target->playbackConfirmedAt\)/);
-  assert.match(controller, /target->playbackConfirmed = true/);
+  assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
+  assert.doesNotMatch(controller, /get_DocumentTitle/);
+  assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.match(runtime, /postFields\('spotify:timed-resumed', String\(remainingMs\)\)/);
+  assert.match(musicTarget, /ArmTimedEndObserver\(\*target\)/);
+  assert.match(rotation, /target->observedTrackTitle = currentTrack->title/);
+  assert.match(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
+  assert.match(rotation, /target->playbackConfirmed = true/);
+  assert.match(rotation, /slot\.observedTrackTitle\.clear\(\)/);
+  assert.match(rotation, /slot\.playbackConfirmed = false/);
   assert.match(scripts, /result\[i\]\.trackTitle = slots_\[i\]\.observedTrackTitle/);
   assert.doesNotMatch(musicTarget, /GetLocalTime\(&target->playbackConfirmedAt\)/);
-  assert.doesNotMatch(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
-  assert.doesNotMatch(rotation, /slot\.playbackConfirmed = false/);
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
-test('target plus pause control confirms playback without changing status-clock ownership', () => {
+test('target plus pause control confirms playback before arming status observer', () => {
   assert.match(reconcile, /currentMatchesTarget/);
   assert.match(reconcile, /controlIntent === 'pause'/);
   assert.match(reconcile, /buttonIntentValue === 'pause'/);
@@ -53,6 +57,7 @@ test('target plus pause control confirms playback without changing status-clock 
   assert.match(musicTarget, /json && std::wstring_view\(json\) == L"true"/);
   assert.match(musicTarget, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(musicTarget, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
+  assert.match(musicTarget, /ArmTimedEndObserver\(\*target\)/);
 });
 
 test('YouTube and TVer reserve a compact card-style Spotify status strip', () => {

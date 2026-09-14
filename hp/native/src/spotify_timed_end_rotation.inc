@@ -77,6 +77,9 @@ bool ParseSpotifyResumedEvent(
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
+  slot.observedTrackTitle.clear();
+  slot.playbackConfirmed = false;
+  slot.playbackConfirmedAt = {};
   if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
   if (slot.timedCycleTracks.empty()) {
     slot.timedRotationActive = false;
@@ -222,19 +225,21 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 return S_OK;
               }
 
-              if (!CurrentMusicTrack(*target)) return S_OK;
+              const ManagedTrack* const currentTrack = CurrentMusicTrack(*target);
+              if (!currentTrack) return S_OK;
               if (ended) {
                 ShortenMusicCompletionDeadlineAtEnd(*target, now);
                 return S_OK;
               }
 
+              target->observedTrackTitle = currentTrack->title;
+              GetLocalTime(&target->playbackConfirmedAt);
+              target->playbackConfirmed = true;
               SetSlotState(*target, SlotState::Playing);
               SetMusicCompletionDeadline(
                   *target, now, remainingMs, resumed);
-              // This event is already the authoritative playback-start signal,
-              // so no additional polling or DOM probe is needed. Visibility is
-              // intentionally unchanged: Spotify controllers remain TRUE while
-              // waiting, playing, navigating, and recovering.
+              // The page observer is the authoritative playback confirmation.
+              // Status display and timing both advance from the same event.
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
