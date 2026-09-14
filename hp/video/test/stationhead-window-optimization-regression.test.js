@@ -37,15 +37,16 @@ test('startup preview keeps normal playback backgrounded but preserves explicit 
   assert.match(setPreviewBounds, /viewVisible_ = true;[\s\S]*LayoutControllers\(\);/);
 });
 
-test('background host clips a normal-size playback viewport while interactive auth can expand it', () => {
+test('background host clips a normal-size playback viewport while foreground interaction can expand it', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
     '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
   );
-  assert.match(applyLayout, /const int hostWidth = showPlayback \? width : 1;/);
-  assert.match(applyLayout, /const int hostHeight = showPlayback \? height : 1;/);
-  assert.match(applyLayout, /const HWND hostPlacement = showPlayback \? HWND_TOP : HWND_BOTTOM;/);
+  assert.match(applyLayout, /const bool playbackForeground = showPlayback \|\|/);
+  assert.match(applyLayout, /const int hostWidth = playbackForeground \? width : 1;/);
+  assert.match(applyLayout, /const int hostHeight = playbackForeground \? height : 1;/);
+  assert.match(applyLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
   assert.match(applyLayout, /const RECT contentBounds\{0, 0, width, height\};/);
   assert.match(
     applyLayout,
@@ -58,15 +59,16 @@ test('background host clips a normal-size playback viewport while interactive au
   );
 });
 
-test('duplicate hide notifications verify stable playback and auth surfaces', () => {
+test('duplicate hide notifications verify the effective monitor placement and auth surface', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
     'void StationheadPlayer::LayoutControllers()',
   );
+  assert.match(setVisible, /const bool monitorForeground = StationheadMonitorForeground\(\);/);
   assert.match(
     setVisible,
-    /!viewVisible_[\s\S]*selectedTab_ == StationheadTabKind::None[\s\S]*PlaybackSurfaceMatches\([\s\S]*1, 1, HWND_BOTTOM\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
+    /PlaybackSurfaceMatches\([\s\S]*monitorForeground \? std::max[\s\S]*monitorForeground \? HWND_TOP : HWND_BOTTOM\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
   );
   assert.match(setVisible, /const bool hadInteractiveSurface/);
   assert.match(setVisible, /const bool interactiveSurfaceHadFocus/);
@@ -96,7 +98,7 @@ test('explicit Stationhead interaction may reuse the playback surface while norm
   );
 });
 
-test('fast-path helpers validate host placement, controller bounds and visibility', () => {
+test('fast-path helpers validate host placement, controller bounds and mode-specific visibility', () => {
   const playbackMatches = section(
     layoutSource,
     'bool PlaybackSurfaceMatches(',
@@ -105,7 +107,8 @@ test('fast-path helpers validate host placement, controller bounds and visibilit
   assert.match(playbackMatches, /WindowClientSizeMatches\(/);
   assert.match(playbackMatches, /ChildWindowPlacementMatches\(/);
   assert.match(playbackMatches, /ControllerBoundsMatch\(/);
-  assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, TRUE\)/);
+  assert.match(playbackMatches, /const BOOL expectedVisibility = placement == HWND_BOTTOM \? FALSE : TRUE;/);
+  assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, expectedVisibility\)/);
   assert.match(
     playbackMatches,
     /controllerWidth =[\s\S]*workspaceBounds\.right - workspaceBounds\.left/,
