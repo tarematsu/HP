@@ -7,6 +7,10 @@ const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
+const startup = readFileSync(
+  new URL('../../native/src/sh_startup_script.h', import.meta.url),
+  'utf8',
+);
 const july19Policy = readFileSync(
   new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
   'utf8',
@@ -24,58 +28,51 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-function settlementSection() {
+function compactRuntime() {
   return section(
+    startup,
+    'inline std::wstring StationheadCompactRuntimeScript(',
+    'inline std::wstring BuildStationheadStartupScript(',
+  );
+}
+
+test('legacy login-settlement registration is now a no-op', () => {
+  const settlement = section(
     composition,
     'inline std::wstring StationheadLoginSettlementScript()',
     'inline std::wstring StationheadTrackBoundaryScript(',
   );
-}
-
-test('current login settlement remains intact', () => {
-  const settlement = settlementSection();
-  assert.match(settlement, /stationhead-auth-ready/);
-  assert.match(settlement, /document\.elementsFromPoint/);
-  assert.match(settlement, /now - accountSince >= 3000/);
-  assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest/);
+  assert.match(settlement, /return L"void 0;"/);
+  assert.doesNotMatch(settlement, /setInterval|MutationObserver|elementsFromPoint/);
 });
 
-test('signed-in account wins over a stray standalone Log in affordance', () => {
-  const settlement = settlementSection();
-  const blockingSurface = section(
-    settlement,
-    'const blockingLoginSurfaceVisible = authenticated => {',
-    'const accountNode = element => {',
-  );
-  const check = section(
-    settlement,
-    'const check = () => {',
-    'const schedule = (delay = 1000) => {',
-  );
-
-  assert.match(blockingSurface, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true;/);
-  assert.match(blockingSurface, /credentialSelector/);
-  assert.match(blockingSurface, /serviceConnectPattern/);
-  assert.match(check, /const account = topRightAccountControl\(\);/);
-  assert.match(check, /blockingLoginSurfaceVisible\(Boolean\(account\)\)/);
-  assert.match(check, /if \(!account\)/);
+test('compact runtime owns both login-required and stable auth-ready edges', () => {
+  const runtime = compactRuntime();
+  assert.match(runtime, /const accountVisible = \(\) =>/);
+  assert.match(runtime, /const blockingLogin = authenticated =>/);
+  assert.match(runtime, /postText\('login-required'\)/);
+  assert.match(runtime, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
+  assert.match(runtime, /authReadyTimer = nativeTimeout[\s\S]*3000/);
+  assert.match(runtime, /if \(!authenticated \|\| lastBlocking === false \|\| authReadyTimer\) return;/);
+  assert.doesNotMatch(runtime, /setInterval\s*\(/);
+  assert.doesNotMatch(runtime, /MutationObserver/);
 });
 
-test('real blocking authentication surfaces still beat a stale account icon', () => {
-  const settlement = settlementSection();
-  const blockingSurface = section(
-    settlement,
-    'const blockingLoginSurfaceVisible = authenticated => {',
-    'const accountNode = element => {',
+test('real blocking authentication surfaces beat stale account presentation', () => {
+  const runtime = compactRuntime();
+  const blocking = section(
+    runtime,
+    'const blockingLogin = authenticated => {',
+    'const cancelAuthReady = () => {',
   );
-
-  assert.match(blockingSurface, /if \(loginRoute\(\)\) return true;/);
-  assert.match(blockingSurface, /if \(visible\(input\)\) return true;/);
-  assert.match(blockingSurface, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
-  assert.match(blockingSurface, /element\.closest\?\.\(blockingShellSelector\)/);
+  assert.match(blocking, /if \(loginRoute\(\)\) return true;/);
+  assert.match(blocking, /if \(visible\(input\)\) return true;/);
+  assert.match(blocking, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
+  assert.match(blocking, /element\.closest\?\.\(blockingShellSelector\)/);
+  assert.match(blocking, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true;/);
 });
 
-test('July 19 credential capture is composed before login settlement', () => {
+test('July 19 credential capture remains composed before the no-op settlement slot', () => {
   assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
   assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
   assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
@@ -93,10 +90,10 @@ test('July 19 credential capture is composed before login settlement', () => {
   );
 });
 
-test('embedded login settlement JavaScript parses independently', () => {
-  const settlement = settlementSection();
-  const raw = settlement.match(/LR"JS\(([\s\S]*?)\)JS"/);
-  assert.ok(raw, 'missing Stationhead login settlement raw JavaScript');
+test('compact document runtime JavaScript parses independently', () => {
+  const runtime = compactRuntime();
+  const raw = runtime.match(/LR"JS\(([\s\S]*?)\)JS"/);
+  assert.ok(raw, 'missing compact Stationhead runtime raw JavaScript');
   assert.doesNotThrow(() => new vm.Script(raw[1]));
 });
 
@@ -111,7 +108,7 @@ test('document-start registration still occurs before startup script', () => {
   assert.ok(startupRegistration > firstRegistration);
 });
 
-test('only a stable signed-in account slot clears the native login latch', () => {
+test('only auth-ready clears the native login latch', () => {
   const authReadyAt = webview.indexOf(
     'if (type == L"stationhead-auth-ready") {',
   );
