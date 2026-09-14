@@ -10,7 +10,7 @@ const spotify = source('spotify_static_scripts.inc');
 const playbackPolicy = source('sh_playback_resource_policy_fix.h');
 const renderPolicy = source('sh_render_reduction_policy.h');
 const roomUiPolicy = source('sh_room_ui_reduction_policy.h');
-const presentationPolicy = source('sh_presentation_registration_policy.h');
+const startupScript = source('sh_startup_script.h');
 const profileReuseEnd = source('sh_profile_reuse_policy_end.h');
 const interactionPolicy = source('sh_track_boundary_message_policy.h');
 const nativeCmake = readFileSync(
@@ -34,45 +34,44 @@ test('Spotify suppresses paint-only media and visual effects without hiding cont
 });
 
 test('Stationhead startup composition names the actual runtime pieces once', () => {
-  // Playback/data policy must not own presentation composition.
   assert.doesNotMatch(playbackPolicy, /sh_render_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /sh_room_ui_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /StationheadAutoplayScriptRenderReduced/);
   assert.doesNotMatch(playbackPolicy, /#define StationheadAutoplayScript/);
 
-  assert.match(presentationPolicy, /#include "sh_render_reduction_policy\.h"/);
-  assert.match(presentationPolicy, /#include "sh_room_ui_reduction_policy\.h"/);
-  assert.match(presentationPolicy, /inline std::wstring BuildStationheadStartupScript\(/);
+  assert.match(startupScript, /#include "sh_render_reduction_policy\.h"/);
+  assert.match(startupScript, /#include "sh_room_ui_reduction_policy\.h"/);
+  assert.match(startupScript, /inline std::wstring BuildStationheadStartupScript\(/);
   assert.match(
-    presentationPolicy,
+    startupScript,
     /StationheadAutoplayScriptCurrentInteraction\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
   );
   assert.doesNotMatch(
-    presentationPolicy,
+    startupScript,
     /std::wstring script = StationheadAutoplayScript\(globalName, messagePrefix\)/,
   );
   assert.match(
-    presentationPolicy,
+    startupScript,
     /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript BuildStationheadStartupScript/,
   );
 
-  // The historical macro remains only as a call-site adapter. The real
-  // composition above names CurrentInteraction directly instead of wrapping a
-  // previously selected policy and depending on header order for behavior.
+  // The real composition does not wrap whichever policy macro happened to be
+  // selected earlier. One compatibility alias remains only for sh_webview.cpp's
+  // historical call-site name.
   assert.match(
     interactionPolicy,
     /#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction/,
   );
   assert.match(
     profileReuseEnd,
-    /#undef autoClickInFlight_[\s\S]*#include "sh_presentation_registration_policy\.h"/,
+    /#undef autoClickInFlight_[\s\S]*#include "sh_startup_script\.h"/,
   );
   const interactionAt = nativeCmake.indexOf('src/sh_track_boundary_message_policy.h');
   const endAt = nativeCmake.indexOf('src/sh_profile_reuse_policy_end.h');
   assert.ok(interactionAt >= 0);
   assert.ok(endAt > interactionAt);
 
-  assert.doesNotMatch(presentationPolicy, /Toggle Mute|View streaming party details|content-visibility/);
+  assert.doesNotMatch(startupScript, /Toggle Mute|View streaming party details|content-visibility/);
   assert.doesNotMatch(renderPolicy, /Toggle Mute|View streaming party details|button--full-width/);
   assert.doesNotMatch(roomUiPolicy, /Network\.clearBrowserCache|streakStats/);
 });
