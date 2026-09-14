@@ -5,9 +5,9 @@ import test from 'node:test';
 const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
-const startup = source('sh_startup_script.h');
+const interaction = source('sh_runtime_interaction_script.h');
+const lifecycle = source('sh_runtime_lifecycle_script.h');
 const composition = source('sh_track_boundary_script.h');
-const lifecycle = source('sh_runtime_lifecycle_policy_fix.h');
 const webview = source('sh_webview.cpp');
 const audioLoss = source('sh_audio_loss.cpp');
 
@@ -19,33 +19,25 @@ function section(text, start, end) {
   return text.slice(startAt, endAt);
 }
 
-const compact = section(
-  startup,
-  'inline std::wstring StationheadCompactRuntimeScript(',
-  'inline std::wstring BuildStationheadStartupScript(',
-);
-
-test('compact runtime distinguishes account state from blocking login surfaces', () => {
-  assert.match(compact, /const accountPattern =/);
-  assert.match(compact, /account\|profile\|avatar/);
-  assert.match(compact, /const accountVisible = \(\) =>/);
-  assert.match(compact, /const blockingLogin = authenticated =>/);
-  assert.match(compact, /credentialSelector/);
-  assert.match(compact, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
-  assert.match(compact, /const shell = element\.closest\?\.\(blockingShellSelector\)/);
-  assert.match(compact, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true/);
+test('interaction owner distinguishes account state from blocking login surfaces', () => {
+  assert.match(interaction, /const accountPattern =/);
+  assert.match(interaction, /account\|profile\|avatar/);
+  assert.match(interaction, /const accountVisible = \(\) =>/);
+  assert.match(interaction, /const blockingLogin = authenticated =>/);
+  assert.match(interaction, /credentialSelector/);
+  assert.match(interaction, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
+  assert.match(interaction, /const shell = element\.closest\?\.\(blockingShellSelector\)/);
+  assert.match(interaction, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true/);
 });
 
-test('compact runtime publishes login and auth-ready edges without a recurring poll', () => {
-  assert.match(compact, /postText\('login-required'\)/);
-  assert.match(compact, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
-  assert.match(compact, /authReadyTimer = nativeTimeout/);
-  assert.match(compact, /3000/);
-  assert.match(compact, /'play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error'/);
-  assert.match(compact, /document\.addEventListener\(eventName, onStateEvent, true\)/);
-  assert.doesNotMatch(compact, /setInterval\s*\(/);
-  assert.doesNotMatch(compact, /new\s+MutationObserver/);
-  assert.doesNotMatch(lifecycle, /setInterval|setTimeout|MutationObserver/);
+test('interaction publishes auth edges while lifecycle owns event scheduling', () => {
+  assert.match(interaction, /postText\('login-required'\)/);
+  assert.match(interaction, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
+  assert.match(interaction, /authReadyTimer = nativeTimeout/);
+  assert.match(interaction, /3000/);
+  assert.match(lifecycle, /'play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error'/);
+  assert.match(lifecycle, /document\.addEventListener\(eventName, onStateEvent, true\)/);
+  assert.doesNotMatch(interaction + lifecycle, /setInterval\s*\(|new\s+MutationObserver/);
 });
 
 test('legacy login and track-boundary registration slots are inert', () => {
