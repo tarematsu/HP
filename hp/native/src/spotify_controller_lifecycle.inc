@@ -1,35 +1,4 @@
 namespace hp {
-namespace {
-
-constexpr wchar_t kSpotifyBlockedDecorativeUrls[] = LR"JSON({"urls":[
-  "*://i.scdn.co/*",
-  "*://mosaic.scdn.co/*",
-  "*://image-cdn-ak.spotifycdn.com/*",
-  "*://image-cdn-fa.spotifycdn.com/*",
-  "*://*.scdn.co/*image*",
-  "*://*.spotifycdn.com/*image*",
-  "*://*/*.jpg*",
-  "*://*/*.jpeg*",
-  "*://*/*.png*",
-  "*://*/*.webp*",
-  "*://*/*.gif*",
-  "*://*/*.avif*",
-  "*://*/*.woff*",
-  "*://*/*.ttf*",
-  "*://*/*.otf*"
-]})JSON";
-constexpr wchar_t kSpotifyUnblockedDecorativeUrls[] = L"{\"urls\":[]}";
-
-void SetSpotifyDecorativeResourceBlocking(
-    ICoreWebView2* webview, bool blocked) noexcept {
-  if (!webview) return;
-  webview->CallDevToolsProtocolMethod(
-      L"Network.setBlockedURLs",
-      blocked ? kSpotifyBlockedDecorativeUrls : kSpotifyUnblockedDecorativeUrls,
-      nullptr);
-}
-
-}  // namespace
 
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow) || slot.controller || slot.webview) return;
@@ -183,10 +152,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 target->loginPage = IsSpotifyLoginUri(rawUri);
                 CoTaskMemFree(rawUri);
               }
-              // Block decorative image/font URLs inside Chromium on player
-              // pages. Login pages are explicitly unblocked so authentication
-              // and any challenge UI retain their normal resources.
-              SetSpotifyDecorativeResourceBlocking(sender, target->playerPage);
               const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, target->loginPage ? SlotState::Authenticating : SlotState::Navigating);
               if (!target->loginPage) target->nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
@@ -219,7 +184,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               }
               target->playerPage = playerPage;
               target->loginPage = loginPage;
-              SetSpotifyDecorativeResourceBlocking(sender, playerPage);
               const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, loginPage ? SlotState::Authenticating : (playerPage ? SlotState::WaitingTarget : SlotState::Navigating));
               target->nextRecoveryTick = playerPage || loginPage ? 0 : now + kSpotifyRecoveryRetryMs;
