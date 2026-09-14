@@ -47,7 +47,9 @@ test('auth surface is complete before playback is retired', () => {
 });
 
 test('playback visibility is selected before the auth surface is retired', () => {
-  const normalPlaybackAt = applyLayout.lastIndexOf('SetControllerMemoryUsageTarget(');
+  const normalPlaybackAt = applyLayout.indexOf(
+    'const BOOL desiredVisibility = playbackForeground ? TRUE : FALSE;',
+  );
   assert.notEqual(normalPlaybackAt, -1);
   const normalPlayback = applyLayout.slice(normalPlaybackAt);
   assertOrdered(normalPlayback, [
