@@ -314,6 +314,11 @@ export async function renderRepresentativeRadarFrame(
       for (let panelIndex = 0; panelIndex < payload.panels.length; panelIndex += 1) {
         const panel = payload.panels[panelIndex]!;
         const panelX = panelIndex * panelWidth;
+        context.save();
+        context.beginPath();
+        context.rect(panelX, 0, panelWidth, payload.outputHeight);
+        context.clip();
+
         drawBase(satellite, panel, panelX);
         const scaleX = panelWidth / panel.sourceWidth;
         const scaleY = payload.outputHeight / panel.sourceHeight;
@@ -331,6 +336,7 @@ export async function renderRepresentativeRadarFrame(
           bitmap.close?.();
         }
         context.drawImage(kawagoeMask, panelX, 0, panelWidth, payload.outputHeight);
+        context.restore();
       }
 
       satellite.close?.();
