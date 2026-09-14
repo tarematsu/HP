@@ -62,7 +62,8 @@ test('steady background Spotify is visible at 1x1 with only transient interactio
   assert.match(layout, /int width = 1;/);
   assert.match(layout, /int height = 1;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
-  assert.match(layout, /if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /else if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
   assert.match(layout, /else if \(recovery\) \{[\s\S]*width = kSpotifyRecoveryInteractionWidth;[\s\S]*height = kSpotifyRecoveryInteractionHeight;/);
   assert.match(layout, /const bool placementChanged = positionChanged \|\| sizeChanged \|\| zOrderChanged/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
@@ -182,12 +183,13 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow/);
 });
 
-test('active yuukiar Spotify WebView remains natively muted', () => {
+test('Spotify defaults muted but can be explicitly unmuted by audio mode C', () => {
   assert.match(header, /kSpotifyActiveAccountCount = 1/);
-  assert.match(spotify, /ComPtr<ICoreWebView2_8> audio/);
-  assert.match(spotify, /audio->put_IsMuted\(TRUE\)/);
+  assert.match(header, /void SetOutputMuted\(bool muted\) noexcept/);
+  assert.match(spotify, /bool gSpotifyAudioMuted = true/);
+  assert.match(spotify, /audio->put_IsMuted\(gSpotifyAudioMuted \? TRUE : FALSE\)/);
+  assert.match(spotify, /void SetSpotifyAudioMuted\(bool muted\) noexcept/);
   assert.match(spotify, /SetSpotifyOutputMuted\(slot\.webview\)/);
-  assert.doesNotMatch(spotify, /put_IsMuted\(FALSE\)/);
 });
 
 test('slot lifecycle uses one explicit state machine rather than an overloaded playing flag', () => {
