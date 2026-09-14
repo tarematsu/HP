@@ -32,9 +32,10 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
   assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify layout keeps steady background players visible at 1x1', () => {
-  assert.match(layout, /int width = 1;/);
-  assert.match(layout, /int height = 1;/);
+test('Spotify layout keeps pre-playback full-size behind native UI and confirmed playback at 1x1', () => {
+  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
+  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
@@ -44,10 +45,11 @@ test('Spotify layout keeps steady background players visible at 1x1', () => {
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
 });
 
-test('Spotify recovery may expand briefly for trusted CDP input', () => {
-  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
-  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
-  assert.match(layout, /else if \(recovery\)/);
+test('Spotify recovery uses the full dashboard viewport for trusted CDP input', () => {
+  assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
+  assert.doesNotMatch(layout, /else if \(recovery\)/);
+  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
 });
 
 test('Spotify does not override WebView2 memory target and controller visibility stays true', () => {
