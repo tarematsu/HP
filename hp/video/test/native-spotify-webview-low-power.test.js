@@ -15,7 +15,7 @@ const environment = readFileSync(
   'utf8',
 );
 
-test('Spotify playback keeps compact host geometry while controller rendering stays hidden', () => {
+test('Spotify playback keeps compact host geometry without resource-policy COM calls in layout', () => {
   assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
   assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
   assert.match(
@@ -24,16 +24,17 @@ test('Spotify playback keeps compact host geometry while controller rendering st
   );
   assert.match(layout, /width = lowPowerPlayback[\s\S]*kSpotifyLowPowerPlaybackWidth/);
   assert.match(layout, /height = lowPowerPlayback[\s\S]*kSpotifyLowPowerPlaybackHeight/);
-  assert.match(layout, /slot\.controller->put_IsVisible\(FALSE\)/);
-  assert.doesNotMatch(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible/);
+  assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
-test('Spotify WebViews always request the low memory target', () => {
-  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
-  assert.match(layout, /put_MemoryUsageTargetLevel/);
-  assert.match(controller, /ApplySpotifyPermanentLowMemoryMode/);
+test('Spotify resource policy is applied once during controller configuration', () => {
+  assert.match(controller, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
+  assert.match(controller, /slot\.controller->put_IsVisible\(FALSE\)/);
   assert.match(controller, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.doesNotMatch(controller, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
+  assert.equal((controller.match(/ApplySpotifyPermanentLowMemoryMode\(/g) || []).length, 2);
+  assert.equal((controller.match(/slot\.controller->put_IsVisible\(FALSE\)/g) || []).length, 1);
 });
 
 test('shared WebView environment disables Chromium occluded-window backgrounding', () => {
