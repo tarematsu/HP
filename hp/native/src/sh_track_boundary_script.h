@@ -344,7 +344,8 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
   do {                                                                        \
     (void)(now_ms);                                                           \
     ::hp::SetStationheadPlaybackRenderingSuppressed(                          \
-        IsSecondary(), static_cast<bool>(suppress_rendering));                \
+        IsSecondary(), controller_.Get(),                                     \
+        static_cast<bool>(suppress_rendering));                               \
     LayoutControllers();                                                      \
   } while (false)
 
