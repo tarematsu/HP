@@ -6,6 +6,14 @@ constexpr UINT_PTR kNativeSpotifyStatusTimer = 0x53500001;
 constexpr UINT kNativeSpotifyStatusInitialDelayMs = 2'500U;
 constexpr UINT kNativeSpotifyStatusRefreshMs = 5U * 1000U;
 constexpr LONG kNativeSpotifyStatusHeight = 56;
+constexpr COLORREF kSpotifyStatusBackground = RGB(7, 10, 16);
+constexpr COLORREF kSpotifyStatusSurface = RGB(20, 26, 36);
+constexpr COLORREF kSpotifyStatusOutline = RGB(43, 54, 69);
+
+HBRUSH SpotifyStatusBackgroundBrush() noexcept {
+  static HBRUSH brush = CreateSolidBrush(kSpotifyStatusBackground);
+  return brush;
+}
 
 std::wstring SpotifyStatusClock(const SpotifyPlaybackStatus& status) {
   if (!status.confirmed) return L"--:--:--";
@@ -34,39 +42,79 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
       if (!dc) return 0;
       RECT client{};
       GetClientRect(hwnd, &client);
-      FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-      SetBkMode(dc, TRANSPARENT);
-      SetTextColor(dc, RGB(225, 229, 235));
-      HGDIOBJ previousFont = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
+      const int width = std::max(1L, client.right - client.left);
+      const int height = std::max(1L, client.bottom - client.top);
+      HDC memoryDc = CreateCompatibleDC(dc);
+      HBITMAP bitmap = memoryDc ? CreateCompatibleBitmap(dc, width, height) : nullptr;
+      HGDIOBJ previousBitmap =
+          memoryDc && bitmap ? SelectObject(memoryDc, bitmap) : nullptr;
+      HDC paintDc = memoryDc && bitmap ? memoryDc : dc;
+
+      FillRect(paintDc, &client, SpotifyStatusBackgroundBrush());
+      SetBkMode(paintDc, TRANSPARENT);
+      SetTextColor(paintDc, RGB(225, 229, 235));
+      HGDIOBJ previousFont =
+          SelectObject(paintDc, GetStockObject(DEFAULT_GUI_FONT));
 
       const auto statuses = GetSpotifyPlaybackStatuses();
-      const LONG width = std::max(1L, client.right - client.left);
+      const LONG stripWidth = std::max(1L, client.right - client.left);
+      constexpr LONG outerInset = 3;
+      constexpr LONG cardGap = 4;
+      HBRUSH cardBrush = CreateSolidBrush(kSpotifyStatusSurface);
+      HPEN cardPen = CreatePen(PS_SOLID, 1, kSpotifyStatusOutline);
+      HGDIOBJ previousBrush = SelectObject(paintDc, cardBrush);
+      HGDIOBJ previousPen = SelectObject(paintDc, cardPen);
+
       for (size_t i = 0; i < statuses.size(); ++i) {
-        const LONG left = client.left +
-            static_cast<LONG>((static_cast<long long>(width) * i) /
+        const LONG cellLeft = client.left +
+            static_cast<LONG>((static_cast<long long>(stripWidth) * i) /
                               statuses.size());
-        const LONG right = client.left +
-            static_cast<LONG>((static_cast<long long>(width) * (i + 1)) /
+        const LONG cellRight = client.left +
+            static_cast<LONG>((static_cast<long long>(stripWidth) * (i + 1)) /
                               statuses.size());
-        RECT first{left + 6, client.top + 5, right - 6, client.top + 24};
-        RECT second{left + 6, client.top + 27, right - 6, client.bottom - 4};
+        const LONG leftInset = outerInset + (i == 0 ? 0 : cardGap / 2);
+        const LONG rightInset = outerInset +
+            (i + 1 == statuses.size() ? 0 : cardGap - cardGap / 2);
+        RECT card{
+            cellLeft + leftInset,
+            client.top + outerInset,
+            std::max<LONG>(cellLeft + leftInset + 1, cellRight - rightInset),
+            std::max<LONG>(client.top + outerInset + 1,
+                           client.bottom - outerInset)};
+        const int radius = std::max(8L, std::min(16L, card.bottom - card.top));
+        RoundRect(paintDc, card.left, card.top, card.right, card.bottom,
+                  radius, radius);
+
+        RECT first{card.left + 8, card.top + 3, card.right - 8, card.top + 22};
+        RECT second{card.left + 8, card.top + 24, card.right - 8, card.bottom - 3};
         std::wstring heading = statuses[i].windowName;
         heading.append(L"  確認 ");
         heading.append(SpotifyStatusClock(statuses[i]));
         const std::wstring& track = statuses[i].trackTitle;
         const wchar_t* trackText = track.empty() ? L"--" : track.c_str();
-        DrawTextW(dc, heading.c_str(), -1, &first,
+        DrawTextW(paintDc, heading.c_str(), -1, &first,
                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
                       DT_NOPREFIX);
-        DrawTextW(dc, trackText, -1, &second,
+        DrawTextW(paintDc, trackText, -1, &second,
                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
                       DT_NOPREFIX);
-        if (i + 1 < statuses.size()) {
-          RECT divider{right - 1, client.top + 5, right, client.bottom - 5};
-          FillRect(dc, &divider, static_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
-        }
       }
-      if (previousFont && previousFont != HGDI_ERROR) SelectObject(dc, previousFont);
+
+      SelectObject(paintDc, previousPen);
+      SelectObject(paintDc, previousBrush);
+      DeleteObject(cardPen);
+      DeleteObject(cardBrush);
+      if (previousFont && previousFont != HGDI_ERROR) {
+        SelectObject(paintDc, previousFont);
+      }
+      if (paintDc != dc) {
+        BitBlt(dc, 0, 0, width, height, paintDc, 0, 0, SRCCOPY);
+      }
+      if (memoryDc && bitmap) {
+        SelectObject(memoryDc, previousBitmap);
+        DeleteObject(bitmap);
+      }
+      if (memoryDc) DeleteDC(memoryDc);
       EndPaint(hwnd, &paint);
       return 0;
     }
@@ -85,8 +133,7 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = kNativeSpotifyStatusClass;
     windowClass.hCursor = nullptr;
-    windowClass.hbrBackground =
-        static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    windowClass.hbrBackground = SpotifyStatusBackgroundBrush();
     SetLastError(ERROR_SUCCESS);
     registered = RegisterClassW(&windowClass) != 0 ||
                  GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
