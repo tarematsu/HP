@@ -6,10 +6,6 @@ const cmakeSource = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
 );
-const runtimeSource = readFileSync(
-  new URL('../../native/src/sh_runtime_policy_fix.h', import.meta.url),
-  'utf8',
-);
 const lifecycleSource = readFileSync(
   new URL('../../native/src/sh_runtime_lifecycle_policy_fix.h', import.meta.url),
   'utf8',
@@ -23,139 +19,37 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-function occurrences(source, needle) {
-  return source.split(needle).length - 1;
-}
-
-test('lifecycle policy is compiled between login and resource policies', () => {
+test('lifecycle header remains between runtime auth capture and resource policies', () => {
   assert.match(
     cmakeSource,
     /set\(HOMEPANEL_STATIONHEAD_SOURCES[\s\S]*src\/sh_runtime_policy_fix\.h[\s\S]*src\/sh_runtime_lifecycle_policy_fix\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
   );
-  const loginPchAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_polling_policy.h\n  src/sh_runtime_policy_fix.h)',
-  );
-  const lifecyclePchAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_lifecycle_policy_fix.h)',
-  );
-  const resourcePchAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_policy_fix.h)',
-  );
-  assert.ok(loginPchAt >= 0 && loginPchAt < lifecyclePchAt);
-  assert.ok(lifecyclePchAt >= 0 && lifecyclePchAt < resourcePchAt);
 });
 
-test('obsolete Stationhead documents cancel and do not re-arm login timers', () => {
-  const wrapper = section(
-    lifecycleSource,
-    'inline std::wstring StationheadAutoplayScriptLifecycleFixed(',
-    '}  // namespace hp',
-  );
-  assert.match(
-    wrapper,
-    /StationheadAutoplayScriptRuntimeFixed\(globalName, messagePrefix\)/,
-  );
-  assert.match(wrapper, /const nativeClearTimeout = window\.clearTimeout\.bind\(window\);/);
-  assert.match(wrapper, /if \(!pageActive \|\| timer\) return;/);
-  assert.match(
-    wrapper,
-    /timer = nativeTimeout\(\(\) => \{[\s\S]*if \(!pageActive\) return;[\s\S]*schedule\(\);[\s\S]*\}, delay\);/,
-  );
-  assert.match(
-    wrapper,
-    /addEventListener\('pagehide',[\s\S]*pageActive = false;[\s\S]*nativeClearTimeout\(timer\);[\s\S]*timer = 0;/,
-  );
-  assert.match(
-    wrapper,
-    /addEventListener\('pageshow',[\s\S]*pageActive = true;[\s\S]*scan\(\);[\s\S]*reschedule\(\);/,
-  );
-  assert.match(
-    wrapper,
-    /const scan = \(\) => \{[\s\S]*if \(!pageActive\) return;[\s\S]*baseScan\(\);/,
-  );
-});
-
-test('login rechecks stay fixed during playback and run at document readiness', () => {
-  const wrapper = section(
-    lifecycleSource,
-    'inline std::wstring StationheadAutoplayScriptLifecycleFixed(',
-    '}  // namespace hp',
-  );
-  const fixedSchedule = section(
-    lifecycleSource,
-    'static constexpr std::wstring_view kScheduleFixed =',
-    'static constexpr std::wstring_view kPageLifecycle =',
-  );
-  const fixedTail = section(
-    lifecycleSource,
-    'static constexpr std::wstring_view kAuthReadyTailFixed =',
-    'const bool uiLifecycleReplaced =',
-  );
-
-  assert.match(fixedSchedule, /const loginRecheckMs = 5000;/);
-  assert.match(fixedSchedule, /const schedule = \(delay = loginRecheckMs\) =>/);
-  assert.match(fixedSchedule, /const reschedule = \(delay = 0\) =>/);
-  assert.doesNotMatch(fixedSchedule, /stablePlaybackRecheckMs|nextRecheckDelay|playing\(\)/);
-  assert.doesNotMatch(wrapper, /const stablePlaybackRecheckMs|const nextRecheckDelay/);
-  assert.match(
-    fixedTail,
-    /const recheckLoginSurface = \(\) => \{[\s\S]*scan\(\);[\s\S]*reschedule\(loginRecheckMs\);/,
-  );
-  assert.match(
-    fixedTail,
-    /document\.addEventListener\('DOMContentLoaded', recheckLoginSurface, \{ once: true \}\);/,
-  );
-  assert.match(
-    fixedTail,
-    /window\.addEventListener\('load', recheckLoginSurface, \{ once: true \}\);/,
-  );
-  assert.match(
-    fixedTail,
-    /homepanel-stationhead-auth-ready[\s\S]*recheckLoginSurface\(\);/,
-  );
-  assert.doesNotMatch(fixedTail, /\['play','playing','pause','ended','stalled','waiting','error'\]/);
-});
-
-test('base autoplay and UI observers stop across BFCache transitions', () => {
-  assert.match(lifecycleSource, /let pageActive = true;/);
-  assert.match(lifecycleSource, /if \(!pageActive \|\| scanQueued\) return;/);
-  assert.match(lifecycleSource, /const delayedScanTimer = nativeTimeout\(schedule, 15000\);/);
-  assert.match(lifecycleSource, /nativeClearTimeout\(delayedScanTimer\);/);
-  assert.match(lifecycleSource, /observer\?\.disconnect\?\.\(\);/);
-  assert.match(lifecycleSource, /window\.addEventListener\('pagehide', pauseObserver, true\);/);
-  assert.match(lifecycleSource, /window\.addEventListener\('pageshow', resumeObserver, true\);/);
-});
-
-test('login timer replacement marker is unique in its generated source', () => {
-  const marker = [
-    '  const nativeTimeout = window.setTimeout.bind(window);',
-    "  const normalize = value => String(value || '').replace(/\\s+/g, ' ').trim();",
-  ].join('\n');
-  assert.equal(occurrences(runtimeSource, marker), 1);
-  assert.equal(occurrences(lifecycleSource, 'static constexpr std::wstring_view kTimerDeclaration ='), 1);
-  assert.match(
-    lifecycleSource,
-    /kTimerDeclaration = LR"JS\(  const nativeTimeout = window\.setTimeout\.bind\(window\);[\s\S]*const normalize = value/,
-  );
-});
-
-test('every lifecycle marker is pinned without selecting the startup implementation', () => {
-  for (const marker of [
-    'uiLifecycleReplaced',
-    'baseStateReplaced',
-    'baseScanReplaced',
-    'baseScheduleReplaced',
-    'baseTailReplaced',
-    'timerDeclarationReplaced',
-    'scanReplaced',
-    'scheduleReplaced',
-    'lifecycleReplaced',
-    'authReadyTailReplaced',
-  ]) {
-    assert.match(lifecycleSource, new RegExp(`const bool ${marker}`));
-    assert.match(lifecycleSource, new RegExp(`\\(void\\)${marker};`));
-  }
+test('lifecycle header no longer owns startup timers or DOM observers', () => {
+  assert.doesNotMatch(lifecycleSource, /StationheadAutoplayScriptLifecycleFixed/);
+  assert.doesNotMatch(lifecycleSource, /setInterval|setTimeout|MutationObserver|pagehide|pageshow/);
   assert.doesNotMatch(lifecycleSource, /#define StationheadAutoplayScript/);
+});
+
+test('source rewrite helper is retained only for authentication policy composition', () => {
+  assert.match(lifecycleSource, /inline bool ReplaceStationheadRuntimeFragment\(/);
+  assert.match(lifecycleSource, /script\.find\(from\)/);
+  assert.match(lifecycleSource, /script\.replace\(at, from\.size\(\), to\)/);
+});
+
+test('authentication capture remains restricted to top-level trusted HTTPS Stationhead URLs', () => {
+  const auth = section(
+    lifecycleSource,
+    'inline std::wstring StationheadAuthCaptureScriptOriginFixed()',
+    '}  // namespace hp',
+  );
+  assert.match(auth, /window\.top !== window/);
+  assert.match(auth, /const NativeURL = window\.URL/);
+  assert.match(auth, /parsed\.protocol === 'https:'/);
+  assert.match(auth, /targetHost === 'stationhead\.com'/);
+  assert.match(auth, /targetHost\.endsWith\('\.stationhead\.com'\)/);
+  assert.match(auth, /NativeURL && input instanceof NativeURL/);
   assert.match(
     lifecycleSource,
     /#define StationheadAuthCaptureScript StationheadAuthCaptureScriptOriginFixed/,

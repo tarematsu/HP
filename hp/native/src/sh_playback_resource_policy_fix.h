@@ -3,24 +3,19 @@
 
 namespace hp {
 
-// Playback/data boundary policy. Presentation reduction is registered directly
-// at the WebView document-start call site so later autoplay policy wrappers
-// cannot accidentally replace it.
+// Use the single audited resource boundary for playback as well. It blocks
+// images/fonts, telemetry, social/UI chunks and non-playback media while keeping
+// Stationhead/Spotify playback and authenticated data requests fail-open. Do not
+// clear the HTTP cache: retaining safe cached assets reduces startup network and
+// CPU work on every periodic navigation.
 inline void ApplyStationheadResourceBlockingPlaybackSafe(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
     const StationheadConfig& config,
     std::atomic<bool>& armed,
     EventRegistrationToken& token) {
-  (void)config;
-  (void)armed;
-  (void)token;
-  if (!environment || !webview) return;
-
-  // Only the HTTP cache is cleared. Cookies and DOM storage remain intact so
-  // the persistent Stationhead login profile is preserved across restarts.
-  webview->CallDevToolsProtocolMethod(
-      L"Network.clearBrowserCache", L"{}", nullptr);
+  ApplyStationheadResourceBlockingStartupReduced(
+      environment, webview, config, armed, token);
 }
 
 // Authenticated statistics acquisition remains independent from presentation
@@ -51,7 +46,7 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
     cache: 'no-store',
     headers: Object.assign({ accept: 'application/json' }, headers),
   }).then(async response => {
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       window.__homepanelStationheadRejectedAuthorization = headers.authorization;
       window.__homepanelStationheadAuthHeaders = null;
       post({
@@ -59,6 +54,14 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
         status: response.status,
         auth_generation: 1,
       });
+      // Primary stats are polled by native code every five minutes. A genuine
+      // 401 therefore doubles as a low-frequency auth-expiry signal without a
+      // second page-side login timer.
+      try { window.chrome?.webview?.postMessage('stationhead-login-required'); } catch (_) {}
+      return null;
+    }
+    if (response.status === 403) {
+      post({ type: 'stationhead-play-stats-error', error: 'forbidden' });
       return null;
     }
     if (!response.ok) throw new Error('http-' + response.status);
