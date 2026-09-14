@@ -106,10 +106,38 @@ export function selectLatestShortTermEntry(entries: RadarTimeEntry[]): RadarTime
     && jmaTimestampToMillis(entry.basetime) > 0
     && jmaTimestampToMillis(entry.validtime) > 0
   ));
-  return available.sort((left, right) => (
+  const ordered = available.sort((left, right) => (
     left.validtime.localeCompare(right.validtime)
     || left.basetime.localeCompare(right.basetime)
-  )).at(-1);
+  ));
+  const latest = ordered.at(-1);
+  if (!latest) return undefined;
+
+  const jstOffsetMs = 9 * 60 * 60 * 1000;
+  const latestJst = new Date(jmaTimestampToMillis(latest.validtime) + jstOffsetMs);
+  const secondsIntoDay = (
+    latestJst.getUTCHours() * 60 * 60
+    + latestJst.getUTCMinutes() * 60
+    + latestJst.getUTCSeconds()
+  );
+  const nineOClock = 9 * 60 * 60;
+  const twentyTwoOClock = 22 * 60 * 60;
+  const targetHour = secondsIntoDay > twentyTwoOClock
+    ? 22
+    : secondsIntoDay > nineOClock && secondsIntoDay < twentyTwoOClock
+      ? 9
+      : null;
+  if (targetHour === null) return latest;
+
+  const targetAt = Date.UTC(
+    latestJst.getUTCFullYear(),
+    latestJst.getUTCMonth(),
+    latestJst.getUTCDate(),
+    targetHour,
+    0,
+    0,
+  ) - jstOffsetMs;
+  return ordered.filter(entry => jmaTimestampToMillis(entry.validtime) === targetAt).at(-1);
 }
 
 function radarViewport(lat: number, lon: number, zoom: number, width: number, height: number): RadarViewport {

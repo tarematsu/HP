@@ -12,6 +12,10 @@ function entry(basetime: string, validtime = basetime): RadarTimeEntry {
   return { basetime, validtime, elements: hrpns };
 }
 
+function rasrf(basetime: string, validtime: string, member = "none"): RadarTimeEntry {
+  return { basetime, validtime, member, elements: ["rasrf"] };
+}
+
 describe("radar fixed endpoint selection", () => {
   it("uses the latest observation and available forecast valid times through 60 minutes", () => {
     const observed = [
@@ -107,21 +111,77 @@ describe("radar fixed endpoint selection", () => {
     expect(selected[1]?.basetime).toBe("20260717102500");
   });
 
-  it("uses the latest available RASRF valid time without rain scoring", () => {
+  it("caps the right panel at exactly 09:00 JST when the latest available time is later than 09:00", () => {
     const shortTerm: RadarTimeEntry[] = [
-      { basetime: "20260909120000", validtime: "20260910010000", member: "none", elements: ["rasrf"] },
-      { basetime: "20260909120000", validtime: "20260910030000", member: "none", elements: ["rasrf"] },
-      { basetime: "20260909130000", validtime: "20260910030000", member: "none", elements: ["rasrf"] },
-      { basetime: "20260909140000", validtime: "20260910040000", member: "immed", elements: ["rasrf"] },
-      { basetime: "20260909140000", validtime: "20260910050000", member: "none", elements: ["other"] },
+      rasrf("20260914230000", "20260915000000"),
+      rasrf("20260915000000", "20260915000000"),
+      rasrf("20260915010000", "20260915030000"),
+      rasrf("20260915020000", "20260915060000"),
     ];
 
     expect(selectLatestShortTermEntry(shortTerm)).toEqual(
       expect.objectContaining({
-        basetime: "20260909130000",
-        validtime: "20260910030000",
-        member: "none",
+        basetime: "20260915000000",
+        validtime: "20260915000000",
       }),
+    );
+  });
+
+  it("caps the right panel at exactly 22:00 JST when the latest available time is later than 22:00", () => {
+    const shortTerm: RadarTimeEntry[] = [
+      rasrf("20260915110000", "20260915120000"),
+      rasrf("20260915120000", "20260915130000"),
+      rasrf("20260915130000", "20260915140000"),
+    ];
+
+    expect(selectLatestShortTermEntry(shortTerm)).toEqual(
+      expect.objectContaining({
+        validtime: "20260915130000",
+      }),
+    );
+  });
+
+  it("keeps the latest RASRF time when it has not passed 09:00 JST", () => {
+    const shortTerm: RadarTimeEntry[] = [
+      rasrf("20260914210000", "20260914220000"),
+      rasrf("20260914220000", "20260914230000"),
+    ];
+
+    expect(selectLatestShortTermEntry(shortTerm)).toEqual(
+      expect.objectContaining({
+        validtime: "20260914230000",
+      }),
+    );
+  });
+
+  it("keeps exact 09:00 and 22:00 JST boundary frames unchanged", () => {
+    expect(selectLatestShortTermEntry([
+      rasrf("20260914230000", "20260915000000"),
+    ])?.validtime).toBe("20260915000000");
+
+    expect(selectLatestShortTermEntry([
+      rasrf("20260915120000", "20260915130000"),
+    ])?.validtime).toBe("20260915130000");
+  });
+
+  it("does not substitute a nearby frame when an exact 09:00 or 22:00 JST cap is missing", () => {
+    const shortTerm: RadarTimeEntry[] = [
+      rasrf("20260914230000", "20260914233000"),
+      rasrf("20260915010000", "20260915030000"),
+    ];
+
+    expect(selectLatestShortTermEntry(shortTerm)).toBeUndefined();
+  });
+
+  it("ignores non-none RASRF members and non-RASRF elements", () => {
+    const shortTerm: RadarTimeEntry[] = [
+      rasrf("20260914220000", "20260914230000"),
+      rasrf("20260915010000", "20260915030000", "immed"),
+      { basetime: "20260915020000", validtime: "20260915040000", member: "none", elements: ["other"] },
+    ];
+
+    expect(selectLatestShortTermEntry(shortTerm)).toEqual(
+      expect.objectContaining({ validtime: "20260914230000", member: "none" }),
     );
   });
 });
