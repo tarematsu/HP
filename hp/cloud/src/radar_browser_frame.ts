@@ -48,7 +48,7 @@ type BrowserBindingEnv = Env & { BROWSER?: Fetcher };
 const RENDER_PAGE_PATH = "/radar-cloud/render.html";
 const SATELLITE_ASSET_PATH = "/radar-cloud/radar-satellite.png";
 const KAWAGOE_BOUNDARY_URL = "https://geoshape.ex.nii.ac.jp/city/geojson/latest/11201.geojson";
-export const KAWAGOE_MASK_KEY = "radar/assets/kawagoe-mask-v1-480x960.png";
+export const KAWAGOE_MASK_KEY = "radar/assets/kawagoe-mask-v2-z10-480x960.png";
 
 function originUrl(value: string): string {
   const url = new URL(value);
@@ -362,7 +362,7 @@ export async function renderRepresentativeRadarFrame(
         decodePngDataUrl(evaluation.generatedMaskDataUrl),
         {
           httpMetadata: { contentType: "image/png" },
-          customMetadata: { version: "kawagoe-z9-480x960-v1" },
+          customMetadata: { version: "kawagoe-z10-480x960-v2" },
         },
       );
     }
