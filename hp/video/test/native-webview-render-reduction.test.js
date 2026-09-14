@@ -23,6 +23,8 @@ test('Spotify suppresses paint-only media and visual effects', () => {
 test('Stationhead reduces paint work without hiding auth/start controls', () => {
   assert.match(stationhead, /__homepanelStationheadRenderReduction/);
   assert.match(stationhead, /animation: none !important/);
+  assert.match(stationhead, /transition: none !important/);
+  assert.match(stationhead, /view-transition-name: none !important/);
   assert.match(stationhead, /video, canvas, svg\[aria-hidden='true'\]/);
   assert.match(
     stationhead,
@@ -37,12 +39,24 @@ test('Stationhead reduces paint work without hiding auth/start controls', () => 
   assert.doesNotMatch(renderScript, /input\s*[,}]/);
   assert.doesNotMatch(renderScript, /img, picture/);
   assert.doesNotMatch(renderScript, /background-image: none/);
+  assert.doesNotMatch(renderScript, /MutationObserver/);
+  assert.doesNotMatch(renderScript, /requestAnimationFrame\s*=/);
+  assert.doesNotMatch(renderScript, /cancelAnimationFrame\s*=/);
+  assert.doesNotMatch(renderScript, /HTMLMediaElement|\.pause\(\)/);
 });
 
-test('Stationhead hides chat, audience and presentation-only statistics', () => {
+test('Stationhead hides social, decorative and presentation-only UI', () => {
   for (const token of [
     'chat',
     'comment',
+    'gift',
+    'reaction',
+    'emoji',
+    'tip',
+    'tipping',
+    'share',
+    'invite',
+    'social',
     'listener',
     'audience',
     'leaderboard',
@@ -51,10 +65,21 @@ test('Stationhead hides chat, audience and presentation-only statistics', () => 
     'streak',
     'play-count',
     'total-plays',
+    'waveform',
+    'visualizer',
+    'equalizer',
+    'spectrum',
+    'lottie',
+    'confetti',
+    'sparkle',
+    'marquee',
+    'ticker',
   ]) {
     assert.match(stationhead, new RegExp(`data-testid\\*='${token}'`));
   }
   assert.match(stationhead, /aria-label\*='total plays'/);
+  assert.match(stationhead, /class\*='waveform'/);
+  assert.match(stationhead, /class\*='lottie'/);
   assert.match(stationhead, /a\[href\*='\/chat'/);
   assert.match(stationhead, /content-visibility: hidden !important/);
 });
