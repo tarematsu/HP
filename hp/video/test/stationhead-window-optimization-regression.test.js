@@ -37,7 +37,7 @@ test('startup preview keeps normal playback backgrounded but preserves explicit 
   assert.match(setPreviewBounds, /viewVisible_ = true;[\s\S]*LayoutControllers\(\);/);
 });
 
-test('background playback shrinks both HWND and WebView controller to 1x1', () => {
+test('background playback shrinks HWND and WebView controller to 1x1 and may suppress rendering', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
@@ -52,8 +52,11 @@ test('background playback shrinks both HWND and WebView controller to 1x1', () =
     /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*hostWidth, hostHeight,[\s\S]*SWP_SHOWWINDOW/,
   );
   assert.match(applyLayout, /controller->put_Bounds\(contentBounds\);/);
-  assert.match(applyLayout, /controller->put_IsVisible\(TRUE\);/);
-  assert.doesNotMatch(applyLayout, /controller->put_IsVisible\(FALSE\)/);
+  assert.match(
+    applyLayout,
+    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
+  );
+  assert.match(applyLayout, /controller->put_IsVisible\(playbackControllerVisible\);/);
 });
 
 test('background auth WebView also stays visible at 1x1', () => {
@@ -105,7 +108,7 @@ test('explicit Stationhead interaction may expand the playback surface', () => {
   );
 });
 
-test('fast-path helpers validate controller size together with host size', () => {
+test('fast-path helpers validate controller size and the expected render state together', () => {
   const playbackMatches = section(
     layoutSource,
     'bool PlaybackSurfaceMatches(',
@@ -114,7 +117,9 @@ test('fast-path helpers validate controller size together with host size', () =>
   assert.match(playbackMatches, /WindowClientSizeMatches\(/);
   assert.match(playbackMatches, /ChildWindowPlacementMatches\(/);
   assert.match(playbackMatches, /ControllerBoundsMatch\(/);
-  assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, TRUE\)/);
+  assert.match(playbackMatches, /const BOOL expectedVisibility/);
+  assert.match(playbackMatches, /StationheadPlaybackRenderingSuppressed\(controller\)/);
+  assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, expectedVisibility\)/);
   assert.match(playbackMatches, /const RECT controllerBounds\{0, 0, hostWidth, hostHeight\};/);
 
   const activeAuthMatches = section(
@@ -125,5 +130,7 @@ test('fast-path helpers validate controller size together with host size', () =>
   assert.match(activeAuthMatches, /playbackBackground/);
   assert.match(activeAuthMatches, /WindowClientSizeMatches\(hostWindow, 1, 1\)/);
   assert.match(activeAuthMatches, /ControllerBoundsMatch\(controller, RECT\{0, 0, 1, 1\}\)/);
+  assert.match(activeAuthMatches, /const BOOL playbackVisibility/);
+  assert.match(activeAuthMatches, /ControllerVisibilityMatches\(controller, playbackVisibility\)/);
   assert.match(activeAuthMatches, /ControllerVisibilityMatches\(authController, TRUE\)/);
 });
