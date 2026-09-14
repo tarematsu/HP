@@ -25,7 +25,7 @@ test('amazon is reserved for Stationhead and four Spotify slots remain', () => {
   assert.doesNotMatch(scripts, /amazon|ozeki/i);
 });
 
-test('playback status uses start/resume events with an already-playing fallback and no new poller', () => {
+test('playback status uses start/resume events with an already-playing clock fallback and no new poller', () => {
   assert.match(header, /SYSTEMTIME playbackConfirmedAt/);
   assert.match(header, /bool playbackConfirmed = false/);
   assert.match(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
@@ -37,17 +37,21 @@ test('playback status uses start/resume events with an already-playing fallback 
   const confirmedBranch = musicTarget.match(
     /if \(json && std::wstring_view\(json\) == L"true"\) \{([\s\S]*?)\n            \}/,
   )?.[1] ?? '';
-  assert.match(confirmedBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(confirmedBranch, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(confirmedBranch, /target->playbackConfirmed = true/);
-  assert.match(
+  assert.match(confirmedBranch, /SlotState::WaitingTarget/);
+  assert.doesNotMatch(
+    confirmedBranch,
+    /SetSlotState\(\*target, SlotState::Playing\)/,
+  );
+  assert.doesNotMatch(
     confirmedBranch,
     /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/,
   );
   assert.doesNotMatch(musicTarget, /setInterval|SetTimer|CreateThreadpoolTimer/);
 });
 
-test('an already-playing target is handed back to the media observer and also confirms natively', () => {
+test('an already-playing target is handed back to the media observer and also confirms the status clock', () => {
   assert.match(reconcile, /playing: true, media: active/);
   assert.match(reconcile, /__homePanelSpotifyMediaObserverRuntime/);
   assert.match(reconcile, /runtime\.scheduleTargetChecks\(mediaState\.media\)/);
