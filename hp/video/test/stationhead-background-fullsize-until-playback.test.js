@@ -46,6 +46,10 @@ test('track-boundary refresh keeps Stationhead full-size behind the dashboard', 
   assert.match(apply, /hostHeight = playbackFullSize \? height : 1/);
   assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(apply, /playbackControllerVisible\s*=\s*playbackFullSize \|\|/);
+  assert.match(
+    apply,
+    /ChildWindowPlacementMatches\(\s*hostWindow, hostBounds, playbackForeground \? HWND_TOP : nullptr\)/,
+  );
 });
 
 test('normal established playback still collapses to 1x1 in Monitor A while Monitor B stays foreground', () => {
@@ -58,7 +62,7 @@ test('normal established playback still collapses to 1x1 in Monitor A while Moni
     setVisible,
     /const bool playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground/,
   );
-  assert.match(setVisible, /monitorForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(setVisible, /monitorForeground \? HWND_TOP : nullptr/);
 
   const surfaceMatch = section(
     layout,
