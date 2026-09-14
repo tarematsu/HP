@@ -79,9 +79,12 @@ test('all target messages are declarative and never pause media in the page brid
   assert.doesNotMatch(bootstrap, /\.pause\s*\(/);
 });
 
-test('music transitions use navigation as the sole target actuator', () => {
+test('music transitions prefer a real Spotify SPA link and retain native navigation fallback', () => {
   assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
   assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript/);
-  assert.match(music, /Navigate\(track->url\.c_str\(\)\)/);
+  assert.match(scripts, /kSpotifySpaRouteScript/);
+  assert.match(scripts, /link\.click\(\)/);
+  assert.match(music, /ExecuteScript\(\s*kSpotifySpaRouteScript/);
+  assert.match(music, /Navigate\(currentTrack->url\.c_str\(\)\)/);
   assert.doesNotMatch(scripts + music, /TalkAbout|TALKABOUT|SpotifyPodcast|podcast/);
 });

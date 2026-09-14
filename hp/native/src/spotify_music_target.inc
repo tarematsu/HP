@@ -80,8 +80,65 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   PostSpotifyTargetDescriptorForSlot(slot);
   RecomputeForeground();
 
-  if (FAILED(slot.webview->Navigate(track->url.c_str()))) {
-    MarkSlotRecovering(slot, now);
+  // Try a real Spotify React link first. When the target link exists in the
+  // current tree this normally stays inside the SPA and avoids rebuilding the
+  // whole renderer. If no exact link exists (or the script fails), fall back to
+  // the previous top-level Navigate path.
+  ++slot.asyncEpoch;
+  if (slot.asyncEpoch == 0) ++slot.asyncEpoch;
+  const ULONGLONG asyncEpoch = slot.asyncEpoch;
+  const ULONGLONG requestedGeneration = slot.targetGeneration;
+  slot.asyncWork = AsyncWork::Reconcile;
+  slot.asyncStartedTick = now;
+
+  Slot* const target = &slot;
+  ComPtr<ICoreWebView2> requestedView = slot.webview;
+  const auto alive = alive_;
+  const HRESULT routeStarted = requestedView->ExecuteScript(
+      kSpotifySpaRouteScript,
+      Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+          [this, alive, target, requestedView, requestedGeneration,
+           asyncEpoch](HRESULT result, LPCWSTR json) -> HRESULT {
+            if (!alive->load(std::memory_order_acquire) ||
+                target->asyncEpoch != asyncEpoch ||
+                target->asyncWork != AsyncWork::Reconcile ||
+                target->webview.Get() != requestedView.Get()) {
+              return S_OK;
+            }
+            target->asyncWork = AsyncWork::None;
+            target->asyncStartedTick = 0;
+            if (!started_ || requestedGeneration != target->targetGeneration) {
+              return S_OK;
+            }
+
+            const ULONGLONG callbackNow = GetTickCount64();
+            if (SUCCEEDED(result) && json &&
+                std::wstring_view(json) == L"true") {
+              SetSlotState(*target, SlotState::WaitingTarget);
+              target->nextRecoveryTick = callbackNow + kSpotifyRecoveryRetryMs;
+              ArmRobustScheduler();
+              return S_OK;
+            }
+
+            const ManagedTrack* const currentTrack = CurrentMusicTrack(*target);
+            if (!currentTrack || currentTrack->url.empty() ||
+                FAILED(requestedView->Navigate(currentTrack->url.c_str()))) {
+              MarkSlotRecovering(*target, callbackNow);
+            }
+            ArmRobustScheduler();
+            return S_OK;
+          }).Get());
+
+  if (FAILED(routeStarted)) {
+    if (slot.asyncEpoch == asyncEpoch && slot.asyncWork == AsyncWork::Reconcile) {
+      slot.asyncWork = AsyncWork::None;
+      slot.asyncStartedTick = 0;
+    }
+    const ManagedTrack* const currentTrack = CurrentMusicTrack(slot);
+    if (!currentTrack || currentTrack->url.empty() ||
+        FAILED(slot.webview->Navigate(currentTrack->url.c_str()))) {
+      MarkSlotRecovering(slot, GetTickCount64());
+    }
   }
   ArmRobustScheduler();
 }

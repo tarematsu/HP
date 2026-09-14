@@ -101,24 +101,12 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
     if (slot.navigationCompletedToken.value != 0) {
       slot.webview->remove_NavigationCompleted(slot.navigationCompletedToken);
     }
-    if (slot.documentTitleChangedToken.value != 0) {
-      slot.webview->remove_DocumentTitleChanged(slot.documentTitleChangedToken);
-    }
-    if (slot.webMessageReceivedToken.value != 0) {
-      slot.webview->remove_WebMessageReceived(slot.webMessageReceivedToken);
-    }
-    if (slot.webResourceRequestedToken.value != 0) {
-      slot.webview->remove_WebResourceRequested(slot.webResourceRequestedToken);
-    }
     if (slot.timedEndMessageReceivedToken.value != 0) {
       slot.webview->remove_WebMessageReceived(slot.timedEndMessageReceivedToken);
     }
   }
   slot.navigationStartingToken = {};
   slot.navigationCompletedToken = {};
-  slot.documentTitleChangedToken = {};
-  slot.webMessageReceivedToken = {};
-  slot.webResourceRequestedToken = {};
   slot.timedEndMessageReceivedToken = {};
   slot.timedEndHandlerWebview = nullptr;
   slot.webview.Reset();
@@ -129,7 +117,6 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.hostLayoutInsertAfter = nullptr;
   slot.hostLayoutApplied = false;
   slot.hostLayoutReducedZoomApplied = false;
-  slot.authenticationBadgeTick = 0;
   slot.environment.Reset();
   if (slot.hostWindow && IsWindow(slot.hostWindow)) DestroyWindow(slot.hostWindow);
   slot.hostWindow = nullptr;

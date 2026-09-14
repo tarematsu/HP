@@ -10,10 +10,6 @@ const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
 );
-const authBadge = readFileSync(
-  new URL('../../native/src/spotify_auth_badge.inc', import.meta.url),
-  'utf8',
-);
 const staticScripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
   'utf8',
@@ -58,13 +54,10 @@ test('authentication foreground repair is conditional instead of running every s
   assert.doesNotMatch(layout, /maintainAuthenticationForeground[\s\S]{0,800}SetWindowPos\(slot\.hostWindow, HWND_TOP[\s\S]{0,200}else/);
 });
 
-test('authentication page receives only the active yuukiar account label', () => {
-  assert.match(bundle, /#include "spotify_auth_badge\.inc"/);
-  assert.match(authBadge, /kSpotifyAuthenticationBadgeBootstrapScript/);
-  assert.match(authBadge, /fields\[0\] === 'spotify:account'/);
-  assert.match(layout, /if \(slot\.authenticationBadgeTick != 0\) return/);
-  assert.match(layout, /ExecuteScript\(\s*kSpotifyAuthenticationBadgeBootstrapScript/);
-  assert.match(layout, /PostSpotifyPageContext\(\*target\)/);
+test('single-window authentication does not install an account-label DOM bridge', () => {
+  assert.doesNotMatch(bundle, /spotify_auth_badge\.inc/);
+  assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeBootstrapScript|authenticationBadgeTick|ExecuteScript/);
+  assert.doesNotMatch(staticScripts, /spotify:account|__homePanelSpotifyAccount|mountBadge/);
   assert.match(staticScripts, /L"yuukiar"/);
   assert.doesNotMatch(staticScripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });

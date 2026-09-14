@@ -15,6 +15,7 @@ const phase = sourcePart('spotify_phase_sync.inc');
 const schedule = sourcePart('spotify_stagger_schedule.inc');
 const scripts = sourcePart('spotify_static_scripts.inc');
 const layout = sourcePart('spotify_host_layout.inc');
+const music = sourcePart('spotify_music_target.inc');
 
 test('Spotify WebViews serialize startup without UI-thread blocking or polling timers', () => {
   assert.doesNotMatch(spotify, /CreateController\(slots_\[0\]\)/);
@@ -66,12 +67,11 @@ test('Spotify layout avoids redundant controller geometry COM calls', () => {
   assert.doesNotMatch(layout, /get_ZoomFactor\(/);
 });
 
-test('Spotify authentication badge bootstrap runs once per navigation generation', () => {
-  assert.match(spotifyHeader, /ULONGLONG authenticationBadgeTick = 0/);
-  assert.match(layout, /if \(slot\.authenticationBadgeTick != 0\) return/);
-  assert.match(layout, /slot\.authenticationBadgeTick = 1/);
-  assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeRefreshMs/);
-  assert.match(spotify, /target->authenticationBadgeTick = 0/);
+test('single-window authentication keeps foreground repair without account badge work', () => {
+  assert.doesNotMatch(spotifyHeader, /authenticationBadgeTick/);
+  assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeBootstrapScript|ExecuteScript/);
+  assert.match(layout, /maintainAuthenticationForeground/);
+  assert.doesNotMatch(scripts, /spotify:account|__homePanelSpotifyAccount|mountBadge/);
 });
 
 test('each Spotify scheduler pass performs one round-robin scan and at most one layout refresh', () => {
@@ -89,19 +89,48 @@ test('scheduler state does not duplicate slot recovery or async state', () => {
   assert.doesNotMatch(spotifyHeader, /lastTimedReconcileTick|lastModeNavigateTick|unhealthySinceTick|reconcileRequestGeneration|timedObserverInstallGeneration/);
 });
 
-test('lightweight Spotify styling is fixed CSS with no MutationObserver', () => {
+test('lightweight Spotify styling protects player timing and progress surfaces', () => {
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
   assert.match(scripts, /background-image: none !important/);
   assert.match(scripts, /img, picture, video, canvas/);
+  assert.match(scripts, /Keep player controls, elapsed-time text and progress\/slider trees out/);
+  assert.match(scripts, /data-testid\*="playback"/);
+  assert.match(scripts, /data-testid\*="progress"/);
+  assert.match(scripts, /role="slider"/);
+  assert.match(scripts, /aria-valuenow/);
+  assert.match(scripts, /\[data-testid="now-playing-bar"\]/);
+  assert.match(scripts, /footer/);
+  assert.doesNotMatch(scripts, /audio\s*,?\s*\{/);
   assert.doesNotMatch(scripts, /new\s+MutationObserver\s*\(/);
   assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment/);
 });
 
-test('Spotify player pages block only images and fonts while auth pages stay unfiltered', () => {
-  assert.match(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
-  assert.match(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
-  assert.match(spotify, /!target->playerPage \|\| !target->environment/);
-  assert.match(spotify, /CreateWebResourceResponse\(\s*nullptr, 204, L"No Content"/);
-  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
+test('Spotify decorative requests are blocked inside Chromium and login is unblocked', () => {
+  assert.match(spotify, /Network\.setBlockedURLs/);
+  assert.match(spotify, /kSpotifyBlockedDecorativeUrls/);
+  assert.match(spotify, /kSpotifyUnblockedDecorativeUrls/);
+  assert.match(spotify, /SetSpotifyDecorativeResourceBlocking\(sender, target->playerPage\)/);
+  assert.match(spotify, /SetSpotifyDecorativeResourceBlocking\(sender, playerPage\)/);
+  assert.doesNotMatch(spotify, /AddWebResourceRequestedFilter/);
+  assert.doesNotMatch(spotify, /CreateWebResourceResponse/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
+  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
+});
+
+test('Spotify trims browser UI services without disabling script or web messages', () => {
+  assert.match(spotify, /put_AreDefaultScriptDialogsEnabled\(FALSE\)/);
+  assert.match(spotify, /put_IsPasswordAutosaveEnabled\(FALSE\)/);
+  assert.match(spotify, /put_IsGeneralAutofillEnabled\(FALSE\)/);
+  assert.match(spotify, /put_IsPinchZoomEnabled\(FALSE\)/);
+  assert.match(spotify, /put_IsSwipeNavigationEnabled\(FALSE\)/);
+  assert.match(spotify, /put_IsScriptEnabled\(TRUE\)/);
+  assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
+});
+
+test('track changes prefer Spotify SPA links and retain full navigation as fallback', () => {
+  assert.match(scripts, /kSpotifySpaRouteScript/);
+  assert.match(scripts, /document\.querySelectorAll\('a\[href\*="\/track\/"\]'\)/);
+  assert.match(scripts, /link\.click\(\)/);
+  assert.match(music, /ExecuteScript\(\s*kSpotifySpaRouteScript/);
+  assert.match(music, /requestedView->Navigate\(currentTrack->url\.c_str\(\)\)/);
 });

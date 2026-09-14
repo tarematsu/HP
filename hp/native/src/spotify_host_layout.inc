@@ -159,29 +159,6 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
                            SWP_SHOWWINDOW);
         }
-
-        if (slot.authenticationBadgeTick != 0) return;
-        slot.authenticationBadgeTick = 1;
-
-        const auto alive = alive_;
-        Slot* const target = &slot;
-        const HRESULT started = slot.webview->ExecuteScript(
-            kSpotifyAuthenticationBadgeBootstrapScript,
-            Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-                [this, alive, target](HRESULT result, LPCWSTR) -> HRESULT {
-                  if (!alive->load(std::memory_order_acquire) || FAILED(result) ||
-                      !started_ || !target->webview ||
-                      !SlotIsLoginPage(*target)) {
-                    if (alive->load(std::memory_order_acquire) && started_ &&
-                        target->webview && SlotIsLoginPage(*target)) {
-                      target->authenticationBadgeTick = 0;
-                    }
-                    return S_OK;
-                  }
-                  PostSpotifyPageContext(*target);
-                  return S_OK;
-                }).Get());
-        if (FAILED(started)) slot.authenticationBadgeTick = 0;
       };
 
   if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == recoveryIndex &&

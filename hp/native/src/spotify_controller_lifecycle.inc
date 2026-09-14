@@ -1,4 +1,35 @@
 namespace hp {
+namespace {
+
+constexpr wchar_t kSpotifyBlockedDecorativeUrls[] = LR"JSON({"urls":[
+  "*://i.scdn.co/*",
+  "*://mosaic.scdn.co/*",
+  "*://image-cdn-ak.spotifycdn.com/*",
+  "*://image-cdn-fa.spotifycdn.com/*",
+  "*://*.scdn.co/*image*",
+  "*://*.spotifycdn.com/*image*",
+  "*://*/*.jpg*",
+  "*://*/*.jpeg*",
+  "*://*/*.png*",
+  "*://*/*.webp*",
+  "*://*/*.gif*",
+  "*://*/*.avif*",
+  "*://*/*.woff*",
+  "*://*/*.ttf*",
+  "*://*/*.otf*"
+]})JSON";
+constexpr wchar_t kSpotifyUnblockedDecorativeUrls[] = L"{\"urls\":[]}";
+
+void SetSpotifyDecorativeResourceBlocking(
+    ICoreWebView2* webview, bool blocked) noexcept {
+  if (!webview) return;
+  webview->CallDevToolsProtocolMethod(
+      L"Network.setBlockedURLs",
+      blocked ? kSpotifyBlockedDecorativeUrls : kSpotifyUnblockedDecorativeUrls,
+      nullptr);
+}
+
+}  // namespace
 
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow) || slot.controller || slot.webview) return;
@@ -104,39 +135,40 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     if (SUCCEEDED(slot.webview->get_Settings(&settings)) && settings) {
       settings->put_IsScriptEnabled(TRUE);
       settings->put_IsWebMessageEnabled(TRUE);
-      settings->put_AreDefaultScriptDialogsEnabled(TRUE);
+      settings->put_AreDefaultScriptDialogsEnabled(FALSE);
       settings->put_AreDefaultContextMenusEnabled(FALSE);
       settings->put_AreDevToolsEnabled(FALSE);
       settings->put_IsStatusBarEnabled(FALSE);
       settings->put_AreHostObjectsAllowed(FALSE);
       settings->put_IsZoomControlEnabled(FALSE);
       settings->put_IsBuiltInErrorPageEnabled(TRUE);
+
       ComPtr<ICoreWebView2Settings3> settings3;
-      if (SUCCEEDED(settings.As(&settings3)) && settings3) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
+      if (SUCCEEDED(settings.As(&settings3)) && settings3) {
+        settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
+      }
+      ComPtr<ICoreWebView2Settings4> settings4;
+      if (SUCCEEDED(settings.As(&settings4)) && settings4) {
+        settings4->put_IsPasswordAutosaveEnabled(FALSE);
+        settings4->put_IsGeneralAutofillEnabled(FALSE);
+      }
+      ComPtr<ICoreWebView2Settings5> settings5;
+      if (SUCCEEDED(settings.As(&settings5)) && settings5) {
+        settings5->put_IsPinchZoomEnabled(FALSE);
+      }
+      ComPtr<ICoreWebView2Settings6> settings6;
+      if (SUCCEEDED(settings.As(&settings6)) && settings6) {
+        settings6->put_IsSwipeNavigationEnabled(FALSE);
+      }
     }
 
     Slot* const target = &slot;
     const auto alive = alive_;
 
-    slot.webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
-    slot.webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
-    slot.webview->add_WebResourceRequested(
-        Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-            [alive, target](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) || !args || !target->playerPage || !target->environment) return S_OK;
-              ComPtr<ICoreWebView2WebResourceResponse> response;
-              if (SUCCEEDED(target->environment->CreateWebResourceResponse(
-                      nullptr, 204, L"No Content", L"Cache-Control: no-store\r\n", &response)) && response) {
-                args->put_Response(response.Get());
-              }
-              return S_OK;
-            }).Get(),
-        &slot.webResourceRequestedToken);
-
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
-            [this, alive, target](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
+            [this, alive, target](ICoreWebView2* sender, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) || !sender || !args) return S_OK;
               ++target->pageEpoch; if (target->pageEpoch == 0) ++target->pageEpoch;
               ++target->asyncEpoch; if (target->asyncEpoch == 0) ++target->asyncEpoch;
               target->asyncWork = AsyncWork::None;
@@ -144,7 +176,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               target->trustedClickBlockedUntilTick = 0;
               target->playerPage = false;
               target->loginPage = false;
-              target->authenticationBadgeTick = 0;
               target->timedObserverReady = false;
               LPWSTR rawUri = nullptr;
               if (SUCCEEDED(args->get_Uri(&rawUri)) && rawUri) {
@@ -152,6 +183,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 target->loginPage = IsSpotifyLoginUri(rawUri);
                 CoTaskMemFree(rawUri);
               }
+              // Block decorative image/font URLs inside Chromium on player
+              // pages. Login pages are explicitly unblocked so authentication
+              // and any challenge UI retain their normal resources.
+              SetSpotifyDecorativeResourceBlocking(sender, target->playerPage);
               const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, target->loginPage ? SlotState::Authenticating : SlotState::Navigating);
               if (!target->loginPage) target->nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
@@ -184,6 +219,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               }
               target->playerPage = playerPage;
               target->loginPage = loginPage;
+              SetSpotifyDecorativeResourceBlocking(sender, playerPage);
               const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, loginPage ? SlotState::Authenticating : (playerPage ? SlotState::WaitingTarget : SlotState::Navigating));
               target->nextRecoveryTick = playerPage || loginPage ? 0 : now + kSpotifyRecoveryRetryMs;

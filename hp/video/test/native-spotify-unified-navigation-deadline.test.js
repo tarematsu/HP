@@ -29,11 +29,12 @@ test('music duration and four-minute fallback share one two-second-grace deadlin
   assert.match(arm, /timedCompletionDeadlineGeneration = slot\.targetGeneration/);
 });
 
-test('navigation selects a track but does not start its completion clock', () => {
+test('target routing does not start the completion clock before playback confirmation', () => {
   const start = music.indexOf('void SpotifyWebViews::NavigateMusicTarget');
   const end = music.indexOf('\nvoid SpotifyWebViews::ReconcileMusicTarget', start);
   const navigate = music.slice(start, end);
-  assert.match(navigate, /slot\.webview->Navigate\(track->url\.c_str\(\)\)/);
+  assert.match(navigate, /ExecuteScript\(\s*kSpotifySpaRouteScript/);
+  assert.match(navigate, /requestedView->Navigate\(currentTrack->url\.c_str\(\)\)/);
   assert.doesNotMatch(navigate, /timedCompletionDeadlineTick\s*=/);
 });
 

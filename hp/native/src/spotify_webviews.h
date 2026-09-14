@@ -77,9 +77,6 @@ class SpotifyWebViews final {
     ComPtr<ICoreWebView2> webview;
     EventRegistrationToken navigationStartingToken{};
     EventRegistrationToken navigationCompletedToken{};
-    EventRegistrationToken documentTitleChangedToken{};
-    EventRegistrationToken webMessageReceivedToken{};
-    EventRegistrationToken webResourceRequestedToken{};
     EventRegistrationToken timedEndMessageReceivedToken{};
     ICoreWebView2* timedEndHandlerWebview = nullptr;
     ICoreWebView2Controller* hostLayoutController = nullptr;
@@ -96,7 +93,6 @@ class SpotifyWebViews final {
     ULONGLONG pageEpoch = 0;
     ULONGLONG targetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
-    ULONGLONG authenticationBadgeTick = 0;
     std::wstring observedTrackTitle;
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
