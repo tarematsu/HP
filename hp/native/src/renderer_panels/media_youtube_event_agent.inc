@@ -46,24 +46,6 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   };
   window.__homePanelYoutubeEventAgent = state;
 
-  const skipSelector = [
-    '.ytp-ad-skip-button',
-    '.ytp-ad-skip-button-modern',
-    '.ytp-skip-ad-button',
-    '.videoAdUiSkipButton',
-    '.ytp-ad-skip-button-slot',
-    '.ytp-ad-skip-button-container',
-    '[class*="ytp-ad-skip"]',
-    '[aria-label*="Skip ad" i]',
-    '[aria-label*="広告をスキップ"]'
-  ].join(',');
-  const surveySelector = [
-    '.ytp-ad-survey',
-    '.ytp-ad-feedback-dialog',
-    'yt-survey-renderer',
-    'ytd-survey-renderer',
-    '[role="dialog"]'
-  ].join(',');
   const messageDialogSelector = [
     'tp-yt-paper-dialog[opened]',
     '[role="dialog"]:not([aria-hidden="true"])',
@@ -118,12 +100,9 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
     const paused = !video || video.paused;
     const ended = !!video?.ended;
     const failed = !!video?.error || player.classList.contains('ytp-error');
-    const skip = !!player.querySelector(skipSelector);
-    const survey = !!player.querySelector(surveySelector);
     const fullscreen = !!(document.fullscreenElement ||
         document.webkitFullscreenElement || document.msFullscreenElement);
-    return [location.href, ad, paused, ended, failed, skip, survey, fullscreen]
-        .join('|');
+    return [location.href, ad, paused, ended, failed, fullscreen].join('|');
   };
 
   const postWake = nextSignature => {
@@ -136,8 +115,8 @@ constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
   };
 
   // Coalesce bursts into one trailing notification and suppress an unchanged
-  // state entirely. If a trailing wake is already armed, avoid rescanning the
-  // player for every event; compute the expensive signature once at flush.
+  // state entirely. The signature is intentionally media-only; skip/survey DOM
+  // discovery is deferred to ad/recovery wakes instead of every event burst.
   const wake = (force = false) => {
     const delay = Math.max(0, 250 - (Date.now() - state.wakeAt));
     if (!force && delay > 0 && state.wakeTimer) {
