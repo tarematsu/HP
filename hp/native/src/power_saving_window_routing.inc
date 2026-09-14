@@ -26,6 +26,20 @@ bool IsStationheadPlaybackHost(HWND window) {
   return WindowHasClass(window, kStationheadHostWindowClass) ||
       WindowHasClass(window, kSecondaryStationheadHostWindowClass);
 }
+
+bool ChildBoundsMatch(HWND window, const RECT& expected) noexcept {
+  if (!window || !IsWindow(window)) return false;
+  HWND parent = GetParent(window);
+  RECT current{};
+  if (!parent || !GetWindowRect(window, &current)) return false;
+  POINT topLeft{current.left, current.top};
+  POINT bottomRight{current.right, current.bottom};
+  if (!ScreenToClient(parent, &topLeft) || !ScreenToClient(parent, &bottomRight)) {
+    return false;
+  }
+  const RECT relative{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
+  return EqualRect(&relative, &expected);
+}
 }  // namespace
 
 void PowerSavingController::InstallForCurrentThread() {
@@ -145,8 +159,9 @@ void PowerSavingController::Attach(HWND parent) {
         HRESULT_FROM_WIN32(error), "SetWindowSubclass power saving parent");
   }
 
-  // Every fresh dashboard starts in mode A: YouTube/TVer audible and
-  // Stationhead muted. Spotify WebViews are intentionally outside this route.
+  // Every fresh dashboard starts in monitor A and audio mode A.
+  monitorMode_ = MonitorMode::Native;
+  powerSaving_ = false;
   audioMode_ = AudioMode::Media;
   ApplyAudioMode(audioMode_);
 
@@ -173,8 +188,8 @@ void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   if (!parent_ || !window || window == overlay_ || !IsWindow(window)) return;
 
   // The Stationhead playback host is created after the App object has prepared
-  // its player. Reassert non-B modes here so mode A is muted before playback can
-  // become audible even though the initial controller attach happened earlier.
+  // its player. Reassert non-B audio modes here so mode A is muted before
+  // playback can become audible even though initial controller attach happened earlier.
   if (audioMode_ != AudioMode::Stationhead && IsStationheadPlaybackHost(window)) {
     SendMessageW(
         parent_, kRendererActionMessage,
@@ -184,6 +199,62 @@ void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   ::SetWindowSubclass(
       window, ChildSubclassProc, kChildSubclassId,
       reinterpret_cast<DWORD_PTR>(this));
+  if (IsStationheadPlaybackHost(window)) ApplyStationheadMonitorPlacement();
+}
+
+void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
+  if (!parent_ || !IsWindow(parent_)) return;
+
+  RECT client{};
+  if (!GetClientRect(parent_, &client)) return;
+  const RECT foregroundBounds{
+      client.left, client.top,
+      std::max<LONG>(client.left + 1, client.right),
+      std::max<LONG>(client.top + 1, client.bottom)};
+  const RECT backgroundBounds{client.left, client.top, client.left + 1, client.top + 1};
+
+  struct Context {
+    PowerSavingController* controller;
+    RECT foregroundBounds;
+    RECT backgroundBounds;
+  } context{this, foregroundBounds, backgroundBounds};
+
+  EnumChildWindows(
+      parent_,
+      [](HWND child, LPARAM value) -> BOOL {
+        auto* context = reinterpret_cast<Context*>(value);
+        if (!IsStationheadPlaybackHost(child)) return TRUE;
+
+        PowerSavingController* controller = context->controller;
+        if (controller->monitorMode_ == MonitorMode::Stationhead) {
+          const bool boundsMatch = ChildBoundsMatch(child, context->foregroundBounds);
+          const bool zOrderMatch = controller->overlay_ &&
+              GetWindow(child, GW_HWNDPREV) == controller->overlay_;
+          if (!boundsMatch || !zOrderMatch || !IsWindowVisible(child)) {
+            SetWindowPos(
+                child,
+                controller->overlay_ ? controller->overlay_ : HWND_TOP,
+                context->foregroundBounds.left,
+                context->foregroundBounds.top,
+                context->foregroundBounds.right - context->foregroundBounds.left,
+                context->foregroundBounds.bottom - context->foregroundBounds.top,
+                SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+          }
+        } else {
+          const bool boundsMatch = ChildBoundsMatch(child, context->backgroundBounds);
+          const bool zOrderMatch = GetWindow(child, GW_HWNDNEXT) == nullptr;
+          if (!boundsMatch || !zOrderMatch || !IsWindowVisible(child)) {
+            SetWindowPos(
+                child, HWND_BOTTOM,
+                context->backgroundBounds.left,
+                context->backgroundBounds.top,
+                1, 1,
+                SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+          }
+        }
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&context));
 }
 
 void PowerSavingController::Detach() noexcept {
