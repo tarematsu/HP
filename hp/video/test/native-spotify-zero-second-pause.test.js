@@ -56,7 +56,7 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('DOM reconcile promotes only an already-playing target as a confirmation fallback', () => {
+test('DOM reconcile fills the status clock for an already-playing target without taking observer authority', () => {
   assert.match(
     scoped,
     /currentMatchesTarget && mediaState\.known && mediaState\.playing[\s\S]*runtime\.scheduleTargetChecks\(mediaState\.media\)[\s\S]*return true/,
@@ -65,14 +65,15 @@ test('DOM reconcile promotes only an already-playing target as a confirmation fa
     music.indexOf('if (json && std::wstring_view(json) == L"true")'),
     music.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
   );
-  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(trueBranch, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(trueBranch, /target->playbackConfirmed = true/);
-  assert.match(trueBranch, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
-  assert.doesNotMatch(trueBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
+  assert.match(trueBranch, /SlotState::WaitingTarget/);
+  assert.match(trueBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
+  assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.doesNotMatch(trueBranch, /SetMusicCompletionDeadline\(/);
 });
 
-test('generation-tagged observer remains the primary confirmed playback start and resume path', () => {
+test('generation-tagged observer remains the authority for confirmed playback start and resume', () => {
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
   assert.match(rotation, /SetSlotState\(\*target, SlotState::Playing\)/);
