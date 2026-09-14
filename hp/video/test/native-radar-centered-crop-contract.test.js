@@ -35,22 +35,29 @@ const buildRadarBase = readFileSync(
   'utf8',
 );
 
-test('cloud radar renders a z10 1440x960 three-panel image', () => {
+test('cloud radar renders a z10 1440x960 three-panel image at 1:1 panel scale', () => {
   assert.match(cloudRadar, /const RADAR_BASE_ZOOM = 10;/);
   assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM = 10;/);
-  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 320;/);
-  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 640;/);
-  assert.match(cloudRadar, /const RADAR_BASE_CROP_WIDTH = 320;/);
-  assert.match(cloudRadar, /const RADAR_BASE_CROP_HEIGHT = 640;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 480;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 960;/);
+  assert.match(cloudRadar, /const RADAR_BASE_CROP_WIDTH = 480;/);
+  assert.match(cloudRadar, /const RADAR_BASE_CROP_HEIGHT = 960;/);
   assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 1440;/);
   assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 960;/);
+  assert.match(cloudRadar, /native-scale/);
   assert.match(cloudRadar, /renderRepresentativeRadarFrame/);
   assert.match(cloudRadar, /precomposed: true/);
   assert.match(cloudRadar, /frames: \[frame\]/);
   assert.match(browserRadar, /payload\.outputWidth \/ payload\.panels\.length/);
+  assert.match(browserRadar, /panel\.sourceWidth !== panelWidth/);
+  assert.match(browserRadar, /panel\.sourceHeight !== payload\.outputHeight/);
+  assert.match(browserRadar, /panel\.baseCropWidth !== panelWidth/);
+  assert.match(browserRadar, /panel\.baseCropHeight !== payload\.outputHeight/);
+  assert.match(browserRadar, /must match output pixels at 1:1 scale/);
   assert.match(browserRadar, /const cropWidth = panel\.baseCropWidth as number/);
   assert.match(browserRadar, /const cropHeight = panel\.baseCropHeight as number/);
   assert.match(browserRadar, /context\.drawImage\(kawagoeMask, panelX, 0, panelWidth, payload\.outputHeight\)/);
+  assert.match(browserRadar, /kawagoe-mask-v3-z10-480x960-native-scale\.png/);
   assert.doesNotMatch(browserRadar, /MAP_ASSET_PATH|drawBase\(map/);
   assert.match(browserRadar, /divider < payload\.panels\.length/);
   assert.doesNotMatch(browserRadar, /const panelAspect = panelWidth \/ payload\.outputHeight/);
