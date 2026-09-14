@@ -310,6 +310,8 @@ void PowerSavingController::PaintOverlay(HWND window) {
   const wchar_t* monitorLabel = L"モニターA";
   if (monitorMode_ == MonitorMode::Stationhead) {
     monitorLabel = L"モニターB";
+  } else if (monitorMode_ == MonitorMode::Spotify) {
+    monitorLabel = L"モニターC";
   } else if (monitorMode_ == MonitorMode::Off) {
     monitorLabel = L"モニターOFF";
   }
@@ -320,6 +322,8 @@ void PowerSavingController::PaintOverlay(HWND window) {
   const wchar_t* audioModeLabel = L"ミュートA";
   if (audioMode_ == AudioMode::Stationhead) {
     audioModeLabel = L"ミュートB";
+  } else if (audioMode_ == AudioMode::Spotify) {
+    audioModeLabel = L"ミュートC";
   } else if (audioMode_ == AudioMode::Muted) {
     audioModeLabel = L"ミュートAB";
   }
