@@ -100,6 +100,9 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
 test('Spotify player pages reduce decorative work without blocking audio/media resources', () => {
   assert.match(scripts, /animation: none !important/);
   assert.match(scripts, /transition: none !important/);
+  assert.match(scripts, /data-testid="left-sidebar"/);
+  assert.match(scripts, /data-testid="global-nav-bar"/);
+  assert.match(scripts, /content-visibility: hidden !important/);
   assert.match(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
   assert.match(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
@@ -120,7 +123,7 @@ test('one adaptive threadpool timer services the state queue and exact deadlines
   assert.match(header, /std::atomic<bool> schedulerWakePosted_\{false\}/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 60ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
-  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
   assert.match(phaseSync, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /CreateThreadpoolTimer\([\s\S]*SchedulerTimerProc/);
