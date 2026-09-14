@@ -18,8 +18,8 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
       environment, webview, config, armed, token);
 }
 
-// Authenticated statistics acquisition remains independent from presentation
-// reduction so UI changes cannot affect the request/auth state machine.
+// Preserve the established PR48 stats/auth behavior while keeping it separate
+// from presentation and resource-reduction policy.
 inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
@@ -46,7 +46,7 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
     cache: 'no-store',
     headers: Object.assign({ accept: 'application/json' }, headers),
   }).then(async response => {
-    if (response.status === 401) {
+    if (response.status === 401 || response.status === 403) {
       window.__homepanelStationheadRejectedAuthorization = headers.authorization;
       window.__homepanelStationheadAuthHeaders = null;
       post({
@@ -54,14 +54,6 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
         status: response.status,
         auth_generation: 1,
       });
-      // Primary stats are polled by native code every five minutes. A genuine
-      // 401 therefore doubles as a low-frequency auth-expiry signal without a
-      // second page-side login timer.
-      try { window.chrome?.webview?.postMessage('stationhead-login-required'); } catch (_) {}
-      return null;
-    }
-    if (response.status === 403) {
-      post({ type: 'stationhead-play-stats-error', error: 'forbidden' });
       return null;
     }
     if (!response.ok) throw new Error('http-' + response.status);
