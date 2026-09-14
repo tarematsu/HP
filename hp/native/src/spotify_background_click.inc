@@ -38,10 +38,21 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
     return;
   }
 
+  const ULONGLONG now = GetTickCount64();
+  if (!slot.timedObserverReady) {
+    // Install the generation-fenced media observer before dispatching Play so
+    // the real `playing` event, rather than input delivery, owns success.
+    SetSlotState(slot, SlotState::WaitingTarget);
+    slot.nextRecoveryTick = now + kSpotifyPlaybackStartRetryMs;
+    ArmTimedEndObserver(slot);
+    ArmRobustScheduler();
+    return;
+  }
+
   const ULONGLONG targetGeneration = slot.targetGeneration;
   const ULONGLONG pageEpoch = slot.pageEpoch;
   SetSlotState(slot, SlotState::WaitingTarget);
-  slot.nextRecoveryTick = GetTickCount64() + kSpotifyRecoveryRetryMs;
+  slot.nextRecoveryTick = now + kSpotifyPlaybackStartRetryMs;
 
   std::wstring preflight = L"(() => {";
   preflight += L"const nx=" + std::to_wstring(xTenThousandths) + L";";
@@ -103,7 +114,6 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
       return 0;
     }
 
-    constexpr ULONGLONG kSpotifyTrustedClickGateMs = 8ULL * 1000ULL;
     const ULONGLONG now = GetTickCount64();
     if (slot.trustedClickBlockedUntilTick != 0 &&
         now < slot.trustedClickBlockedUntilTick) {
@@ -137,7 +147,7 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
 
     const ULONGLONG targetGeneration = slot.targetGeneration;
     const ULONGLONG pageEpoch = slot.pageEpoch;
-    slot.trustedClickBlockedUntilTick = now + kSpotifyTrustedClickGateMs;
+    slot.trustedClickBlockedUntilTick = now + kSpotifyPlaybackStartRetryMs;
 
     Slot* const target = &slot;
     const auto alive = alive_;
@@ -162,13 +172,11 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                   L"{\"type\":\"mousePressed\",\"x\":" +
                   std::to_wstring(x) + L",\"y\":" + std::to_wstring(y) +
                   L",\"button\":\"left\",\"buttons\":1,\"clickCount\":1}";
-              const ULONGLONG playbackStartTick = GetTickCount64();
               const HRESULT pressDispatched = view->CallDevToolsProtocolMethod(
                   L"Input.dispatchMouseEvent", pressed.c_str(),
                   Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
                       [this, alive, target, view, x, y, targetGeneration,
-                       pageEpoch, playbackStartTick](HRESULT pressedResult,
-                                                     LPCWSTR) -> HRESULT {
+                       pageEpoch](HRESULT pressedResult, LPCWSTR) -> HRESULT {
                         if (!alive->load(std::memory_order_acquire) ||
                             target->targetGeneration != targetGeneration ||
                             target->pageEpoch != pageEpoch ||
@@ -179,9 +187,6 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                           target->trustedClickBlockedUntilTick = 0;
                           return S_OK;
                         }
-
-                        SetMusicCompletionDeadline(
-                            *target, playbackStartTick, 0, false);
 
                         const std::wstring released =
                             L"{\"type\":\"mouseReleased\",\"x\":" +
