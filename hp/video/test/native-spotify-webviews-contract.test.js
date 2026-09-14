@@ -49,22 +49,21 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('steady background Spotify is visible at 1x1 with only transient interaction expansion', () => {
+test('Spotify is full-size behind native UI until playback confirmation and then stays 1x1 through the target song', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyParkedPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyLowPowerPlaybackWidth|kSpotifyLowPowerPlaybackHeight/);
-  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
-  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
+  assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
-  assert.match(layout, /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/);
-  assert.match(layout, /int width = 1;/);
-  assert.match(layout, /int height = 1;/);
+  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
+  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
   assert.match(layout, /else if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
-  assert.match(layout, /else if \(recovery\) \{[\s\S]*width = kSpotifyRecoveryInteractionWidth;[\s\S]*height = kSpotifyRecoveryInteractionHeight;/);
+  assert.doesNotMatch(layout, /else if \(recovery\)/);
   assert.match(layout, /const bool placementChanged = positionChanged \|\| sizeChanged \|\| zOrderChanged/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
@@ -189,7 +188,7 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.match(header, /ClickSlotNormalizedPoint/);
   assert.match(click, /bool SpotifyWebViews::ParseNormalizedPoint/);
   assert.match(click, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
-  assert.match(click, /RefreshSpotifyHostLayout\(\)/);
+  assert.match(click, /PlaceHosts\(\)/);
   assert.match(click, /DispatchSpotifyDevToolsClick/);
   assert.match(click, /Input\.dispatchMouseEvent/);
   assert.doesNotMatch(phaseSync, /ParseNormalizedPoint|ClickSlotNormalizedPoint|DispatchSpotifyDevToolsClick/);

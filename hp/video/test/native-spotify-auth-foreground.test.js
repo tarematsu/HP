@@ -42,7 +42,7 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
   );
   assert.match(
     layout,
-    /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\);/,
+    /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr;/,
   );
 });
 

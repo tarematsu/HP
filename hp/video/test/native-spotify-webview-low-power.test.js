@@ -15,19 +15,21 @@ const environment = readFileSync(
   'utf8',
 );
 
-test('Spotify playback keeps a visible 1x1 steady host without memory-policy COM calls in layout', () => {
-  assert.match(layout, /int width = 1;/);
-  assert.match(layout, /int height = 1;/);
+test('Spotify confirmed playback keeps a visible 1x1 host without memory-policy COM calls in layout', () => {
+  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
+  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
-test('Spotify recovery retains a bounded temporary viewport for trusted input', () => {
-  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
-  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
-  assert.match(layout, /else if \(recovery\)/);
+test('Spotify pre-playback recovery uses the full dashboard viewport behind native UI', () => {
+  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
+  assert.doesNotMatch(layout, /else if \(recovery\)/);
 });
 
 test('Spotify leaves WebView2 memory target unmanaged while controller visibility stays true', () => {

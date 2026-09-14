@@ -42,25 +42,22 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('steady background Spotify is 1x1 while trusted recovery gets a temporary viewport', () => {
-  assert.match(layout, /int width = 1;/);
-  assert.match(layout, /int height = 1;/);
-  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
-  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
-  assert.match(
-    layout,
-    /else if \(recovery\) \{[\s\S]*width = kSpotifyRecoveryInteractionWidth;[\s\S]*height = kSpotifyRecoveryInteractionHeight;/,
-  );
+test('Spotify stays full-size behind the dashboard until real playback is confirmed', () => {
+  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
+  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
 });
 
-test('trusted click requests recovery layout before using a normalized point', () => {
+test('trusted click uses the full-size background viewport and repairs accidental 1x1 placement', () => {
   assert.match(helper, /bool SpotifyWebViews::ParseNormalizedPoint/);
   assert.match(helper, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
-  assert.match(helper, /const bool recoveryViewportReady =/);
-  assert.match(
-    helper,
-    /if \(!recoveryViewportReady\) \{[\s\S]*MarkSlotRecovering\(slot, GetTickCount64\(\)\)[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*ArmRobustScheduler\(\);[\s\S]*return;/,
-  );
+  assert.match(helper, /if \(slot\.playbackConfirmed\) \{[\s\S]*return;/);
+  assert.match(helper, /const bool recoveryViewportReady = SlotStateNeedsRecovery\(slot\.state\)/);
+  assert.match(helper, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
+  assert.match(helper, /slot\.hostLayoutApplied = false;/);
+  assert.match(helper, /PlaceHosts\(\);/);
 });
 
 test('recovery arms playback observer before trusted Play input', () => {

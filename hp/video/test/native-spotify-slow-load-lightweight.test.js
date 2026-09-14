@@ -61,15 +61,16 @@ test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /hostLayoutActiveSlot_ = recoveryIndex/);
-  assert.match(layout, /SlotStateNeedsRecovery\(slot\.state\)/);
+  assert.match(layout, /SlotStateNeedsRecovery\(slots_\[activeIndex\]\.state\)/);
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('authentication recovery and healthy playback use 1x1 steady geometry without memory-target overrides', () => {
-  assert.match(layout, /int width = 1;/);
-  assert.match(layout, /int height = 1;/);
-  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
-  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
+test('pre-playback recovery is full-size behind native UI while confirmed playback is 1x1', () => {
+  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
+  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
