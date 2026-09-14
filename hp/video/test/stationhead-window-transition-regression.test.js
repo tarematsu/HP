@@ -35,26 +35,27 @@ function assertOrdered(source, markers) {
   }
 }
 
-test('auth surface is complete before playback is retired', () => {
+test('auth surface is complete before playback host is retired without hiding the playback controller', () => {
   assertOrdered(applyLayout, [
     'if (showAuth) {',
     'authController->put_IsVisible(TRUE);',
     'SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING',
     'if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);',
-    'controller->put_IsVisible(FALSE);',
+    'ControllerVisibilityMatches(controller, TRUE)',
     'return;',
   ]);
+  assert.doesNotMatch(applyLayout, /controller->put_IsVisible\(FALSE\)/);
 });
 
-test('playback visibility is selected before the auth surface is retired', () => {
+test('normal playback keeps the controller visible before auth surface retirement', () => {
   const normalPlaybackAt = applyLayout.indexOf(
-    'const BOOL desiredVisibility = playbackForeground ? TRUE : FALSE;',
+    'SetControllerMemoryUsageTarget(\n      controller,',
   );
   assert.notEqual(normalPlaybackAt, -1);
   const normalPlayback = applyLayout.slice(normalPlaybackAt);
   assertOrdered(normalPlayback, [
-    'const BOOL desiredVisibility = playbackForeground ? TRUE : FALSE;',
-    'controller->put_IsVisible(desiredVisibility);',
+    'ControllerVisibilityMatches(controller, TRUE)',
+    'controller->put_IsVisible(TRUE);',
     'SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING',
     'ShowWindow(authHostWindow, SW_HIDE);',
     'authController->put_IsVisible(FALSE);',
