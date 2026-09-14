@@ -22,6 +22,7 @@ test('Spotify suppresses paint-only media and visual effects', () => {
 
 test('Stationhead reduces paint work without hiding auth/start controls', () => {
   assert.match(stationhead, /__homepanelStationheadRenderReduction/);
+  assert.match(stationhead, /__homepanelStationheadPruned/);
   assert.match(stationhead, /animation: none !important/);
   assert.match(stationhead, /transition: none !important/);
   assert.match(stationhead, /view-transition-name: none !important/);
@@ -40,9 +41,13 @@ test('Stationhead reduces paint work without hiding auth/start controls', () => 
   assert.doesNotMatch(renderScript, /img, picture/);
   assert.doesNotMatch(renderScript, /background-image: none/);
   assert.doesNotMatch(renderScript, /MutationObserver/);
+  assert.doesNotMatch(renderScript, /setInterval\s*\(/);
   assert.doesNotMatch(renderScript, /requestAnimationFrame\s*=/);
   assert.doesNotMatch(renderScript, /cancelAnimationFrame\s*=/);
   assert.doesNotMatch(renderScript, /HTMLMediaElement|\.pause\(\)/);
+  assert.match(renderScript, /start listening/);
+  assert.match(renderScript, /connect spotify/);
+  assert.match(renderScript, /hasProtectedControl/);
 });
 
 test('Stationhead hides social, decorative and presentation-only UI', () => {
@@ -65,6 +70,11 @@ test('Stationhead hides social, decorative and presentation-only UI', () => {
     'streak',
     'play-count',
     'total-plays',
+    'now-playing',
+    'track-card',
+    'current-track',
+    'current-song',
+    'song-card',
     'waveform',
     'visualizer',
     'equalizer',
@@ -78,8 +88,29 @@ test('Stationhead hides social, decorative and presentation-only UI', () => {
     assert.match(stationhead, new RegExp(`data-testid\\*='${token}'`));
   }
   assert.match(stationhead, /aria-label\*='total plays'/);
+  assert.match(stationhead, /class\*='chat'/);
+  assert.match(stationhead, /class\*='thread'/);
   assert.match(stationhead, /class\*='waveform'/);
   assert.match(stationhead, /class\*='lottie'/);
   assert.match(stationhead, /a\[href\*='\/chat'/);
   assert.match(stationhead, /content-visibility: hidden !important/);
+});
+
+test('Stationhead prunes unlabeled production UI with bounded startup passes', () => {
+  for (const label of [
+    'threads',
+    'following',
+    'request song',
+    'ask to speak',
+    'get the app',
+    'all access',
+  ]) {
+    assert.match(stationhead, new RegExp(`'${label}'`));
+  }
+  assert.match(stationhead, /send a message/);
+  assert.match(stationhead, /i'm on stationhead/);
+  assert.match(stationhead, /syndicating on/);
+  assert.match(stationhead, /document\.querySelectorAll\('header,footer'\)/);
+  assert.match(stationhead, /\[0, 500, 1500, 4000, 8000, 15000\]/);
+  assert.match(stationhead, /setTimeout\(prune, delay\)/);
 });
