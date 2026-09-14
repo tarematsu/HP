@@ -94,11 +94,10 @@ bool PlaybackSurfaceMatches(HWND hostWindow,
                         workspaceBounds.left + hostWidth,
                         workspaceBounds.top + hostHeight};
   const RECT controllerBounds{0, 0, controllerWidth, controllerHeight};
-  const BOOL expectedVisibility = placement == HWND_BOTTOM ? FALSE : TRUE;
   return WindowClientSizeMatches(hostWindow, hostWidth, hostHeight) &&
          ChildWindowPlacementMatches(hostWindow, hostBounds, placement) &&
          ControllerBoundsMatch(controller, controllerBounds) &&
-         ControllerVisibilityMatches(controller, expectedVisibility);
+         ControllerVisibilityMatches(controller, TRUE);
 }
 
 bool HiddenAuthSurfaceMatches(HWND authHostWindow,
@@ -123,7 +122,7 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
   const RECT authBounds{0, 0, width, height};
   const bool playbackHidden =
       (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) &&
-      (!controller || ControllerVisibilityMatches(controller, FALSE));
+      (!controller || ControllerVisibilityMatches(controller, TRUE));
   return playbackHidden &&
          WindowClientSizeMatches(authHostWindow, width, height) &&
          ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP) &&
@@ -222,14 +221,14 @@ void ApplyStationheadChildLayout(HWND hostWindow,
     }
     if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
     SetControllerMemoryUsageTarget(controller, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-    if (controller && !ControllerVisibilityMatches(controller, FALSE)) controller->put_IsVisible(FALSE);
+    if (controller && !ControllerVisibilityMatches(controller, TRUE)) controller->put_IsVisible(TRUE);
     return;
   }
 
   if (hidePlayback) {
     if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
     SetControllerMemoryUsageTarget(controller, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-    if (controller && !ControllerVisibilityMatches(controller, FALSE)) controller->put_IsVisible(FALSE);
+    if (controller && !ControllerVisibilityMatches(controller, TRUE)) controller->put_IsVisible(TRUE);
     if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
     SetControllerMemoryUsageTarget(authController, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
     if (authController && !ControllerVisibilityMatches(authController, FALSE)) authController->put_IsVisible(FALSE);
@@ -242,8 +241,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                          : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   if (controller) {
     if (!ControllerBoundsMatch(controller, contentBounds)) controller->put_Bounds(contentBounds);
-    const BOOL desiredVisibility = playbackForeground ? TRUE : FALSE;
-    if (!ControllerVisibilityMatches(controller, desiredVisibility)) controller->put_IsVisible(desiredVisibility);
+    if (!ControllerVisibilityMatches(controller, TRUE)) controller->put_IsVisible(TRUE);
   }
   if (hostValid && (!hostWasVisible || !hostSizeMatches || !hostPlacementMatches)) {
     SetWindowPos(hostWindow, hostPlacement, bounds.left, bounds.top, hostWidth, hostHeight,
