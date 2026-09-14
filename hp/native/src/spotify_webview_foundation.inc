@@ -11,11 +11,14 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 // launches reuse the newly authenticated sessions instead of resetting again.
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
+SpotifyWebViews* gSpotifyControlInstance = nullptr;
+bool gSpotifyAudioMuted = true;
+
 void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
-    audio->put_IsMuted(TRUE);
+    audio->put_IsMuted(gSpotifyAudioMuted ? TRUE : FALSE);
   }
 }
 
@@ -34,12 +37,32 @@ SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
       // One UDF keeps the browser process family shared. Named profiles below
       // isolate cookies/local storage for every Spotify account.
       userDataFolder_(std::move(dataDir) / L"webview2-youtube-mv") {
+  gSpotifyControlInstance = this;
   for (size_t i = 0; i < slots_.size(); ++i) {
     slots_[i].owner = this;
     slots_[i].index = i;
   }
 }
 
-SpotifyWebViews::~SpotifyWebViews() { Shutdown(); }
+SpotifyWebViews::~SpotifyWebViews() {
+  Shutdown();
+  if (gSpotifyControlInstance == this) gSpotifyControlInstance = nullptr;
+}
+
+void SpotifyWebViews::SetOutputMuted(bool muted) noexcept {
+  gSpotifyAudioMuted = muted;
+  for (Slot& slot : slots_) SetSpotifyOutputMuted(slot.webview);
+}
+
+void SetSpotifyAudioMuted(bool muted) noexcept {
+  gSpotifyAudioMuted = muted;
+  if (gSpotifyControlInstance) gSpotifyControlInstance->SetOutputMuted(muted);
+}
+
+void SetSpotifyMonitorForeground(bool foreground) noexcept {
+  if (gSpotifyControlInstance) {
+    gSpotifyControlInstance->SetMonitorForeground(foreground);
+  }
+}
 
 }  // namespace hp

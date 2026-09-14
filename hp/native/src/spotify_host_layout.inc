@@ -16,6 +16,13 @@ bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
 
 }  // namespace
 
+void SpotifyWebViews::SetMonitorForeground(bool foreground) noexcept {
+  if (monitorForeground_ == foreground) return;
+  monitorForeground_ = foreground;
+  for (Slot& slot : slots_) slot.hostLayoutApplied = false;
+  PlaceHosts();
+}
+
 void SpotifyWebViews::PlaceHosts() noexcept {
   if (!parentWindow_ || !IsWindow(parentWindow_) || slots_.empty()) return;
 
@@ -36,16 +43,20 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         i == hostLayoutActiveSlot_ && !authentication &&
         SlotStateNeedsRecovery(slot.state);
 
-    // Steady background playback is a visible 1x1 surface. A recovery click is
-    // the one short-lived exception: CDP trusted input needs a real viewport,
-    // so the selected recovery slot expands offscreen only for that interaction
-    // and returns to 1x1 as soon as it leaves Recovering.
+    // Steady background playback is a visible 1x1 surface. Monitor C is the
+    // explicit inspection mode and expands Spotify to the full dashboard.
+    // Recovery/authentication use their existing bounded interactive surfaces
+    // only while Monitor C is not active.
     int x = client.left;
     int y = client.top;
     int width = 1;
     int height = 1;
     HWND insertAfter = HWND_BOTTOM;
-    if (authentication) {
+    if (monitorForeground_) {
+      width = clientWidth;
+      height = clientHeight;
+      insertAfter = HWND_TOP;
+    } else if (authentication) {
       x = client.left + (clientWidth - activeWidth) / 2;
       y = client.top + (clientHeight - activeHeight) / 2;
       width = activeWidth;
@@ -96,7 +107,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.controller->put_IsVisible(TRUE);
     }
 
-    const bool reducedZoom = authentication || recovery;
+    const bool reducedZoom = !monitorForeground_ && (authentication || recovery);
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
       const HRESULT zoomResult = slot.controller->put_ZoomFactor(
           reducedZoom ? kSpotifySerializedRecoveryZoom : 1.0);
@@ -133,8 +144,8 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
 
   const auto maintainAuthenticationForeground =
       [this, foregroundAuthenticationIndex](bool layoutChanged) noexcept {
-        if (foregroundAuthenticationIndex >= slots_.size() || !parentWindow_ ||
-            !IsWindow(parentWindow_)) {
+        if (monitorForeground_ || foregroundAuthenticationIndex >= slots_.size() ||
+            !parentWindow_ || !IsWindow(parentWindow_)) {
           return;
         }
         Slot& slot = slots_[foregroundAuthenticationIndex];
