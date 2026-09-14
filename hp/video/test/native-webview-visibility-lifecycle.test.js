@@ -74,7 +74,7 @@ test('Stationhead waits for stable playback then restores rendering before the t
   assert.match(boundary, /event\.type === 'stalled'/);
 });
 
-test('Spotify trusted Play click stays visible until playback is actually confirmed', () => {
+test('Spotify trusted Play click never hides the controller', () => {
   const releasedAt = spotifyClick.indexOf('L"Input.dispatchMouseEvent", released.c_str()');
   assert.ok(releasedAt >= 0);
   assert.doesNotMatch(
@@ -83,20 +83,17 @@ test('Spotify trusted Play click stays visible until playback is actually confir
   );
 });
 
-test('Spotify hides the slot only after the observer confirms playback', () => {
+test('Spotify remains visible after the observer confirms playback', () => {
   const observer = section(
     spotifyRotation,
     'void SpotifyWebViews::ArmTimedEndObserver',
     '}  // namespace hp',
   );
   assert.match(observer, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.match(
-    observer,
-    /if \(target->controller\)\s*\{\s*target->controller->put_IsVisible\(FALSE\);\s*\}/,
-  );
+  assert.doesNotMatch(observer, /put_IsVisible\(FALSE\)/);
 });
 
-test('Spotify restores that slot when its next-track advance begins', () => {
+test('Spotify reasserts visible state when its next-track advance begins', () => {
   const advance = section(
     spotifyRotation,
     'void SpotifyWebViews::AdvanceTimedRotationSlot',
@@ -106,4 +103,5 @@ test('Spotify restores that slot when its next-track advance begins', () => {
   const applyAt = advance.indexOf('ApplyTimedRotationTarget(slot)');
   assert.ok(showAt >= 0);
   assert.ok(applyAt > showAt);
+  assert.doesNotMatch(advance, /put_IsVisible\(FALSE\)/);
 });
