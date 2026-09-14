@@ -2,11 +2,20 @@ namespace hp {
 namespace {
 
 constexpr UINT kSpotifySchedulerBootstrapMs = 2U * 1000U;
-constexpr UINT kSpotifyHealthyAuditMs = 5U * 60U * 1000U;
+constexpr UINT kSpotifyHealthyAuditMs = 60U * 60U * 1000U;
 constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 12ULL * 1000ULL;
+constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
+
+void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
+  if (!hostWindow || !IsWindow(hostWindow)) return;
+  HWND parent = GetParent(hostWindow);
+  if (!parent || !IsWindow(parent)) return;
+  HWND status = FindWindowExW(parent, nullptr, kSpotifyStatusWindowClass, nullptr);
+  if (status && IsWindow(status)) InvalidateRect(status, nullptr, FALSE);
+}
 
 bool SpotifyUrlStartsWith(std::wstring_view value,
                           std::wstring_view prefix) noexcept {
@@ -38,12 +47,16 @@ void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
       state == SlotState::Playing) {
     slot.nextRecoveryTick = 0;
   }
+  // Spotify status is event-driven. Repaint whenever page/scheduler state
+  // publishes a new status instead of polling the strip on a fixed timer.
+  InvalidateSpotifyStatusForHost(slot.hostWindow);
 }
 
 void SpotifyWebViews::MarkSlotRecovering(
     Slot& slot, ULONGLONG now) noexcept {
   slot.state = SlotState::Recovering;
   slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
+  InvalidateSpotifyStatusForHost(slot.hostWindow);
 }
 
 bool SpotifyWebViews::ExpireStaleAsyncWork(
@@ -92,6 +105,8 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     return kSpotifySchedulerBootstrapMs;
   }
 
+  // Healthy playback normally wakes at its exact completion deadline. The
+  // one-hour ceiling is only a coarse safety audit for unexpected state loss.
   ULONGLONG nextDelayMs = kSpotifyHealthyAuditMs;
   const auto considerTick = [&nextDelayMs, now](ULONGLONG dueTick) noexcept {
     if (dueTick == 0) return;
