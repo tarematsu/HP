@@ -5,7 +5,5 @@
 // autoClickInFlight_ normally.
 #undef autoClickInFlight_
 
-// Build the effective document-start script once, at the end of the Stationhead
-// setup. The included header lists the runtime pieces in their real execution
-// order instead of adding another behavioral wrapper layer.
-#include "sh_presentation_registration_policy.h"
+// Build the actual document-start script once, in one readable function.
+#include "sh_startup_script.h"
