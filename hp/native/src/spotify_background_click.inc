@@ -58,13 +58,11 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
 
   const ULONGLONG now = GetTickCount64();
   if (!slot.timedObserverReady) {
-    // Install the generation-fenced media observer before dispatching Play so
-    // the real `playing` event, rather than input delivery, owns success.
-    SetSlotState(slot, SlotState::WaitingTarget);
-    slot.nextRecoveryTick = now + kSpotifyPlaybackStartRetryMs;
+    // Start the generation-fenced confirmation observer before sending Play,
+    // but never make observer acknowledgement a prerequisite for the click.
+    // The observer's sync path scans already-active media, so it can still
+    // confirm playback when the trusted click wins the race with installation.
     ArmTimedEndObserver(slot);
-    ArmRobustScheduler();
-    return;
   }
 
   const ULONGLONG targetGeneration = slot.targetGeneration;
@@ -90,9 +88,8 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
       L"const trustedPlay=testid==='play-button'||label==='play'||label==='再生'||label.startsWith('play ')||label.endsWith('を再生');"
       L"if(!trustedPlay)return false;"
       L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
-      L"if(!runtime||typeof runtime.armTrustedStart!=='function')return false;"
-      L"if(!runtime.armTrustedStart('" + std::to_wstring(targetGeneration) +
-      L"'))return false;"
+      L"if(runtime&&typeof runtime.armTrustedStart==='function'){"
+      L"runtime.armTrustedStart('" + std::to_wstring(targetGeneration) + L"');}"
       L"return true;})()";
 
   Slot* const target = &slot;
