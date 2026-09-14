@@ -3,10 +3,9 @@
 
 namespace hp {
 
-// Stationhead playback controllers remain visible for their entire lifetime.
-// Track-boundary code may still call this compatibility hook, but rendering is
-// never suppressed through IsVisible; background cost is handled by 1x1 layout
-// and permanent LOW memory targeting instead.
+// Stationhead playback controllers stay WebView2-visible for playback stability.
+// Background rendering cost is reduced by the 1x1 host layout plus the compact
+// CSS/runtime policy; no LOW-memory target or IsVisible suppression is forced.
 inline void SetStationheadPlaybackRenderingSuppressed(
     bool,
     ICoreWebView2Controller*,
