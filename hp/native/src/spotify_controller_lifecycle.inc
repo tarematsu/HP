@@ -1,14 +1,6 @@
 namespace hp {
 
 namespace {
-void ApplySpotifyPermanentLowMemoryMode(ICoreWebView2* webview) noexcept {
-  if (!webview) return;
-  ComPtr<ICoreWebView2_19> webview19;
-  if (SUCCEEDED(webview->QueryInterface(IID_PPV_ARGS(&webview19))) && webview19) {
-    webview19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-  }
-}
-
 std::wstring NormalizeObservedSpotifyTitle(const wchar_t* rawTitle) noexcept {
   if (!rawTitle) return {};
   try {
@@ -133,7 +125,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
   if (!slot.controller || !slot.webview) return;
   try {
     SetSpotifyOutputMuted(slot.webview);
-    ApplySpotifyPermanentLowMemoryMode(slot.webview.Get());
     // Keep the renderer active at all times. Background cost is controlled by
     // shrinking the host/controller surface to 1x1 instead of IsVisible=false.
     slot.controller->put_IsVisible(TRUE);

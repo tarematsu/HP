@@ -68,7 +68,7 @@ test('steady background Spotify is visible at 1x1 with only transient interactio
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
   assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified/);
-  assert.match(spotify, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
+  assert.doesNotMatch(spotify, /ApplySpotifyPermanentLowMemoryMode|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);

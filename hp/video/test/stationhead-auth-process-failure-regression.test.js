@@ -23,18 +23,15 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('auth process-failure policy follows permanent LOW memory policy without remapping it', () => {
+test('auth process-failure policy remains in the final policy chain without a memory-target override', () => {
   const processIncludeAt = memoryPolicy.indexOf(
     '#include "sh_auth_process_failure_policy_fix.h"',
   );
   assert.ok(processIncludeAt >= 0);
-  assert.match(
-    memoryPolicy,
-    /kInteractiveAuthMemoryTarget\s*=\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
-  );
+  assert.doesNotMatch(memoryPolicy, /kInteractiveAuthMemoryTarget/);
   assert.doesNotMatch(
     memoryPolicy,
-    /#define COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+    /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)|put_MemoryUsageTargetLevel/,
   );
 });
 

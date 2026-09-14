@@ -30,13 +30,12 @@ test('Spotify recovery retains a bounded temporary viewport for trusted input', 
   assert.match(layout, /else if \(recovery\)/);
 });
 
-test('Spotify low-memory policy remains permanent while controller visibility stays true', () => {
-  assert.match(controller, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
+test('Spotify leaves WebView2 memory target unmanaged while controller visibility stays true', () => {
   assert.match(controller, /slot\.controller->put_IsVisible\(TRUE\)/);
-  assert.match(controller, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
-  assert.doesNotMatch(controller, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
+  assert.doesNotMatch(controller, /ApplySpotifyPermanentLowMemoryMode/);
+  assert.doesNotMatch(controller, /put_MemoryUsageTargetLevel/);
+  assert.doesNotMatch(controller, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/);
   assert.doesNotMatch(controller, /slot\.controller->put_IsVisible\(FALSE\)/);
-  assert.equal((controller.match(/ApplySpotifyPermanentLowMemoryMode\(/g) || []).length, 2);
 });
 
 test('shared WebView environment leaves Chromium occluded-window backgrounding enabled', () => {
