@@ -87,6 +87,56 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   return script.str();
 }
 
+// Suppress paint-heavy visual effects without hiding the controls that native
+// login/start detection needs. In particular, account/avatar images and CSS
+// background images stay available because Stationhead's login settlement
+// heuristics use them as authentication signals.
+inline std::wstring StationheadRenderReductionScript() {
+  static constexpr wchar_t kScript[] = LR"JS(
+(() => {
+  const host = String(location.hostname || '').toLowerCase();
+  if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
+  const styleId = '__homepanelStationheadRenderReduction';
+  const install = () => {
+    if (document.getElementById(styleId)) return true;
+    const root = document.head || document.documentElement;
+    if (!root) return false;
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+        box-shadow: none !important;
+        filter: none !important;
+        backdrop-filter: none !important;
+        text-shadow: none !important;
+        will-change: auto !important;
+      }
+      video, canvas, svg[aria-hidden='true'] {
+        display: none !important;
+      }
+    `;
+    root.appendChild(style);
+    return true;
+  };
+  if (!install()) {
+    document.addEventListener('DOMContentLoaded', install, { once: true });
+  }
+  return true;
+})()
+)JS";
+  return kScript;
+}
+
+inline std::wstring StationheadAutoplayScriptRenderReduced(
+    const wchar_t* globalName,
+    const wchar_t* messagePrefix) {
+  return StationheadAutoplayScript(globalName, messagePrefix) + L"\n" +
+         StationheadRenderReductionScript();
+}
+
 }  // namespace hp
 
 #undef ApplyStationheadResourceBlocking
@@ -94,3 +144,6 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
 
 #undef StationheadApiPlayStatsScript
 #define StationheadApiPlayStatsScript StationheadPrimaryPlayStatsScript
+
+#undef StationheadAutoplayScript
+#define StationheadAutoplayScript StationheadAutoplayScriptRenderReduced
