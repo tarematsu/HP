@@ -1,39 +1,5 @@
 namespace hp {
 
-namespace {
-std::wstring NormalizeObservedSpotifyTitle(const wchar_t* rawTitle) noexcept {
-  if (!rawTitle) return {};
-  try {
-    std::wstring title(rawTitle);
-    const auto isSpace = [](wchar_t ch) noexcept { return iswspace(ch) != 0; };
-    while (!title.empty() && isSpace(title.front())) title.erase(title.begin());
-    while (!title.empty() && isSpace(title.back())) title.pop_back();
-
-    constexpr std::array<std::wstring_view, 3> suffixes = {
-        L" | Spotify", L" - Spotify", L" – Spotify"};
-    for (const std::wstring_view suffix : suffixes) {
-      if (title.size() >= suffix.size() &&
-          std::wstring_view(title).substr(title.size() - suffix.size()) == suffix) {
-        title.erase(title.size() - suffix.size());
-        while (!title.empty() && isSpace(title.back())) title.pop_back();
-        break;
-      }
-    }
-
-    std::wstring lower = title;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
-    if (lower.empty() || lower == L"spotify" || lower == L"web player" ||
-        lower.find(L"spotify web player") != std::wstring::npos) {
-      return {};
-    }
-    return title;
-  } catch (...) {
-    return {};
-  }
-}
-}  // namespace
-
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow) || slot.controller || slot.webview) return;
   SetSlotState(slot, SlotState::NotCreated);
@@ -151,35 +117,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
 
     Slot* const target = &slot;
     const auto alive = alive_;
-
-    slot.webview->add_DocumentTitleChanged(
-        Callback<ICoreWebView2DocumentTitleChangedEventHandler>(
-            [this, alive, target](ICoreWebView2* sender, IUnknown*) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) || !sender) return S_OK;
-
-              LPWSTR rawSource = nullptr;
-              const bool playerPage =
-                  SUCCEEDED(sender->get_Source(&rawSource)) && rawSource &&
-                  IsSpotifyPlayerUri(rawSource);
-              if (rawSource) CoTaskMemFree(rawSource);
-              if (!playerPage) return S_OK;
-
-              LPWSTR rawTitle = nullptr;
-              if (FAILED(sender->get_DocumentTitle(&rawTitle)) || !rawTitle) {
-                return S_OK;
-              }
-              std::wstring observed = NormalizeObservedSpotifyTitle(rawTitle);
-              CoTaskMemFree(rawTitle);
-              if (observed.empty() || observed == target->observedTrackTitle) {
-                return S_OK;
-              }
-
-              target->observedTrackTitle = std::move(observed);
-              GetLocalTime(&target->playbackConfirmedAt);
-              target->playbackConfirmed = true;
-              return S_OK;
-            }).Get(),
-        &slot.documentTitleChangedToken);
 
     slot.webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
     slot.webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
