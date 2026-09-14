@@ -6,6 +6,10 @@ const layout = readFileSync(
   new URL('../../native/src/sh_layout.cpp', import.meta.url),
   'utf8',
 );
+const routing = readFileSync(
+  new URL('../../native/src/power_saving_window_routing.inc', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const from = source.indexOf(start);
@@ -49,6 +53,22 @@ test('track-boundary refresh keeps Stationhead full-size behind the dashboard', 
   assert.match(
     apply,
     /ChildWindowPlacementMatches\(\s*hostWindow, hostBounds, playbackForeground \? HWND_TOP : nullptr\)/,
+  );
+});
+
+test('monitor routing preserves player-owned background size while forcing Stationhead behind the dashboard', () => {
+  const placement = section(
+    routing,
+    'void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept',
+    'void PowerSavingController::Detach() noexcept',
+  );
+  assert.match(
+    placement,
+    /if \(context->stationheadForeground\)[\s\S]*else \{[\s\S]*SetWindowPos\([\s\S]*child, HWND_BOTTOM,[\s\S]*SWP_NOMOVE \| SWP_NOSIZE/,
+  );
+  assert.doesNotMatch(
+    placement,
+    /IsStationheadPlaybackHost[\s\S]*backgroundBounds/,
   );
 });
 
