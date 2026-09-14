@@ -89,6 +89,9 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
 
 // Suppress paint-heavy visual effects and presentation-only social/statistics
 // surfaces without hiding the controls that native login/start detection needs.
+// Keep this CSS-only: it automatically covers SPA-added DOM without a mutation
+// observer or animation-frame loop, and it never pauses page timers/media that
+// may be part of Stationhead's playback state machine.
 // Account/avatar images and CSS backgrounds stay available because Stationhead's
 // login settlement heuristics use them as authentication signals.
 inline std::wstring StationheadRenderReductionScript() {
@@ -113,12 +116,20 @@ inline std::wstring StationheadRenderReductionScript() {
         backdrop-filter: none !important;
         text-shadow: none !important;
         will-change: auto !important;
+        view-transition-name: none !important;
       }
       video, canvas, svg[aria-hidden='true'],
+      marquee,
       [data-testid*='chat' i], [id*='chat' i], [aria-label*='chat' i],
       [data-testid*='comment' i], [id*='comment' i], [aria-label*='comment' i],
       [data-testid*='gift' i], [id*='gift' i], [aria-label*='gift' i],
       [data-testid*='reaction' i], [id*='reaction' i], [aria-label*='reaction' i],
+      [data-testid*='emoji' i], [id*='emoji' i], [aria-label*='emoji' i],
+      [data-testid*='tip' i], [id*='tip' i], [aria-label*='tip' i],
+      [data-testid*='tipping' i], [id*='tipping' i], [aria-label*='tipping' i],
+      [data-testid*='share' i], [id*='share' i], [aria-label*='share' i],
+      [data-testid*='invite' i], [id*='invite' i], [aria-label*='invite' i],
+      [data-testid*='social' i], [id*='social' i], [aria-label*='social' i],
       [data-testid*='listener' i], [id*='listener' i], [aria-label*='listener' i],
       [data-testid*='audience' i], [id*='audience' i], [aria-label*='audience' i],
       [data-testid*='leaderboard' i], [id*='leaderboard' i], [aria-label*='leaderboard' i],
@@ -130,6 +141,15 @@ inline std::wstring StationheadRenderReductionScript() {
       [data-testid*='playcount' i], [id*='playcount' i], [aria-label*='total plays' i],
       [data-testid*='total-plays' i], [id*='total-plays' i],
       [data-testid*='totalplays' i], [id*='totalplays' i],
+      [data-testid*='waveform' i], [id*='waveform' i], [class*='waveform' i], [aria-label*='waveform' i],
+      [data-testid*='visualizer' i], [id*='visualizer' i], [class*='visualizer' i], [aria-label*='visualizer' i],
+      [data-testid*='equalizer' i], [id*='equalizer' i], [class*='equalizer' i], [aria-label*='equalizer' i],
+      [data-testid*='spectrum' i], [id*='spectrum' i], [class*='spectrum' i], [aria-label*='spectrum' i],
+      [data-testid*='lottie' i], [id*='lottie' i], [class*='lottie' i],
+      [data-testid*='confetti' i], [id*='confetti' i], [class*='confetti' i],
+      [data-testid*='sparkle' i], [id*='sparkle' i], [class*='sparkle' i],
+      [data-testid*='marquee' i], [id*='marquee' i], [class*='marquee' i],
+      [data-testid*='ticker' i], [id*='ticker' i], [class*='ticker' i],
       a[href*='/chat' i], a[href*='/leaderboard' i] {
         display: none !important;
         visibility: hidden !important;
