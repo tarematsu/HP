@@ -486,3 +486,5 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
         L"fallback: no authentication surface remained at the twelve-second check");
   }
 }
+
+}  // namespace hp
