@@ -145,18 +145,30 @@ test('all two-minute and even-odd clock switching code is removed', () => {
   assert.doesNotMatch(workflow, /clock-click-order|clock-switch/);
 });
 
-test('track-boundary reload remains disabled', () => {
+test('track-boundary reload remains disabled while boundary events only control rendering', () => {
   assert.match(policy, /#define RetryPendingTrackBoundaryRefresh\(parameters\)/);
   assert.match(policy, /RetryPendingTrackBoundaryRefreshDisabled\(parameters\)/);
   assert.match(policy, /trackBoundaryRefreshPending_ = false;[\s\S]*return false;/);
   const boundaryScript = section(
     trackScript,
-    'inline std::wstring StationheadTrackBoundaryScript(const wchar_t*)',
+    'inline std::wstring StationheadTrackBoundaryScript(',
     '}  // namespace hp',
   );
-  assert.match(boundaryScript, /return \{\};/);
-  assert.match(trackScript, /#define HandleTrackEnded\(\.\.\.\) \(\(void\)0\)/);
-  assert.doesNotMatch(boundaryScript, /addEventListener\(['"]ended|postMessage/);
+  assert.match(boundaryScript, /const hideDelayMs = 5000;/);
+  assert.match(boundaryScript, /const revealBeforeEndSeconds = 10;/);
+  assert.match(boundaryScript, /post\('track-boundary-retry'\)/);
+  assert.match(boundaryScript, /post\('track-ended'\)/);
+  assert.doesNotMatch(boundaryScript, /NavigateCurrentUrl\(|ScheduleRecreate\(|location\.reload/);
+
+  const renderMacro = section(
+    trackScript,
+    '#define HandleTrackEnded(now_ms, suppress_rendering)',
+    '#undef StationheadAuthCaptureScript',
+  );
+  assert.match(renderMacro, /SetStationheadPlaybackRenderingSuppressed/);
+  assert.match(renderMacro, /controller_\.Get\(\)/);
+  assert.match(renderMacro, /LayoutControllers\(\)/);
+  assert.doesNotMatch(renderMacro, /NavigateCurrentUrl\(|ScheduleRecreate\(/);
 });
 
 test('single-window runtime removes the old cross-window abnormal-state fallback', () => {
