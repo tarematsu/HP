@@ -1,13 +1,11 @@
 #pragma once
 #include "sh_startup_resource_reduction_policy_fix.h"
-#include "sh_render_reduction_policy.h"
-#include "sh_room_ui_reduction_policy.h"
 
 namespace hp {
 
-// Playback/data boundary policy. This file intentionally owns only WebView
-// resource behavior, authenticated statistics acquisition, and composition of
-// the independent presentation policies.
+// Playback/data boundary policy. Presentation reduction is registered directly
+// at the WebView document-start call site so later autoplay policy wrappers
+// cannot accidentally replace it.
 inline void ApplyStationheadResourceBlockingPlaybackSafe(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -86,14 +84,6 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   return script.str();
 }
 
-inline std::wstring StationheadAutoplayScriptRenderReduced(
-    const wchar_t* globalName,
-    const wchar_t* messagePrefix) {
-  return StationheadAutoplayScript(globalName, messagePrefix) + L"\n" +
-         StationheadRenderReductionScript() + L"\n" +
-         StationheadRoomUiReductionScript();
-}
-
 }  // namespace hp
 
 #undef ApplyStationheadResourceBlocking
@@ -101,6 +91,3 @@ inline std::wstring StationheadAutoplayScriptRenderReduced(
 
 #undef StationheadApiPlayStatsScript
 #define StationheadApiPlayStatsScript StationheadPrimaryPlayStatsScript
-
-#undef StationheadAutoplayScript
-#define StationheadAutoplayScript StationheadAutoplayScriptRenderReduced
