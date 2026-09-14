@@ -9,21 +9,27 @@ const runtime = source('spotify_media_observer_runtime.inc');
 const music = source('spotify_music_target.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
 
-test('music reconcile no longer waits for observer generation sync', () => {
+test('music reconcile arms observer after playback is accepted without waiting for sync', () => {
   assert.doesNotMatch(music, /if \(!slot\.timedObserverReady\)/);
-  assert.doesNotMatch(music, /ArmTimedEndObserver\(slot\)/);
   assert.match(music, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(music, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
+  assert.match(music, /ArmTimedEndObserver\(\*target\)/);
 
-  // The generation-safe observer protocol may remain available as a compatible
-  // secondary path, but it is no longer required before playback can be accepted.
+  const accepted = music.indexOf('SetSlotState(*target, SlotState::Playing)');
+  const observer = music.indexOf('ArmTimedEndObserver(*target)');
+  assert.ok(accepted >= 0 && observer > accepted);
+
+  // Playback acceptance remains independent from observer acknowledgement, while
+  // the generation-safe observer now owns the visible status confirmation.
   assert.match(runtime, /fields\[0\] === 'spotify:observer-sync'/);
   assert.match(runtime, /post\('spotify:observer-synced'\)/);
   assert.match(rotation, /L"spotify:observer-sync"/);
   assert.match(rotation, /L"spotify:observer-synced"/);
+  assert.match(rotation, /target->observedTrackTitle = currentTrack->title/);
+  assert.match(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
 });
 
-test('already-playing media can still be adopted by the optional observer path', () => {
+test('already-playing media is adopted by the page observer status path', () => {
   assert.match(runtime, /document\.querySelectorAll\('audio, video'\)/);
   assert.match(runtime, /scheduleTargetChecks\(media\)/);
   assert.match(runtime, /const remainingMs = remainingDurationMs\(media\)/);
