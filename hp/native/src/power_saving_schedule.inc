@@ -1,6 +1,7 @@
 // Scheduled power-saving state, MV startup input pass, and audio/monitor mode toggles.
 namespace {
 constexpr UINT kMvStartupPassHoldMs = 1'500;
+constexpr int64_t kMonitorAuthProbeIntervalMs = 5 * 60'000;
 constexpr int kPowerSavingStartMinute = 12 * 60;
 constexpr int kPowerSavingEndMinute = 20 * 60;
 
@@ -14,6 +15,7 @@ static_assert(!ScheduledPowerSavingAt(11, 59));
 static_assert(ScheduledPowerSavingAt(12, 0));
 static_assert(ScheduledPowerSavingAt(19, 59));
 static_assert(!ScheduledPowerSavingAt(20, 0));
+static_assert(kMonitorAuthProbeIntervalMs == 300'000);
 
 bool ScheduledPowerSavingNow(int64_t nowMs) {
   const std::time_t seconds = static_cast<std::time_t>(nowMs / 1000);
@@ -54,17 +56,31 @@ void PowerSavingController::CheckSchedule(bool force) {
     ApplyMode(ScheduledPowerSavingNow(now));
     nextScheduleBoundaryAt_ = NextScheduleBoundary(now);
   }
+  if (monitorMode_ == MonitorMode::Native) RequestMonitorAuthProbe();
   ArmScheduleTimer();
 }
 
 void PowerSavingController::ArmScheduleTimer() {
   if (!overlay_) return;
   KillTimer(overlay_, kScheduleTimer);
-  const int64_t remaining = std::max<int64_t>(
+  int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
+  // Monitor A owns the only periodic DOM inspection. B is unconditional
+  // foreground and OFF is black, so neither mode spends WebView2 work on this.
+  if (monitorMode_ == MonitorMode::Native) {
+    remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
+  }
   const UINT delay = static_cast<UINT>(std::clamp<int64_t>(
       remaining, 1, std::numeric_limits<UINT>::max()));
   SetTimer(overlay_, kScheduleTimer, delay, nullptr);
+}
+
+void PowerSavingController::RequestMonitorAuthProbe() noexcept {
+  if (monitorMode_ != MonitorMode::Native || powerSaving_) return;
+  RequestStationheadMonitorDomProbe();
+  // The Stationhead player consumes the request from its existing native tick,
+  // keeping all WebView2 access on the UI thread without another polling loop.
+  if (parent_ && IsWindow(parent_)) PostMessageW(parent_, WM_TIMER, 0, 0);
 }
 
 void PowerSavingController::OpenMvStartupInputPass() {
@@ -113,6 +129,7 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   const bool layoutChanged = powerSaving_ != nextPowerSaving;
   monitorMode_ = mode;
   powerSaving_ = nextPowerSaving;
+  if (mode != MonitorMode::Native) monitorAuthForeground_ = false;
 
   if (powerSaving_) {
     ApplyMinimumBrightness();
@@ -122,6 +139,8 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   Renderer::SetGlobalPowerSavingMode(powerSaving_);
   ApplyStationheadMonitorPlacement();
   if (layoutChanged) LayoutOverlay();
+  if (monitorMode_ == MonitorMode::Native) RequestMonitorAuthProbe();
+  ArmScheduleTimer();
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
 }
 
