@@ -6,7 +6,10 @@ import vm from 'node:vm';
 const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 const composition = source('sh_track_boundary_script.h');
-const startup = source('sh_startup_script.h');
+const interaction = source('sh_runtime_interaction_script.h');
+const recovery = source('sh_runtime_blank_recovery_script.h');
+const lifecycle = source('sh_runtime_lifecycle_script.h');
+const compact = source('sh_compact_runtime_script.h');
 const july19Policy = source('sh_july19_stats_policy_fix.h');
 const webview = source('sh_webview.cpp');
 
@@ -18,11 +21,11 @@ function section(text, start, end) {
   return text.slice(startAt, endAt);
 }
 
-const compactRuntime = () => section(
-  startup,
-  'inline std::wstring StationheadCompactRuntimeScript(',
-  'inline std::wstring BuildStationheadStartupScript(',
-);
+function rawScript(text) {
+  const raw = text.match(/LR"JS\(([\s\S]*?)\)JS"/);
+  assert.ok(raw, 'missing Stationhead raw JavaScript fragment');
+  return raw[1];
+}
 
 test('legacy login-settlement registration is inert', () => {
   const settlement = section(
@@ -34,21 +37,19 @@ test('legacy login-settlement registration is inert', () => {
   assert.doesNotMatch(settlement, /setInterval|new\s+MutationObserver|elementsFromPoint/);
 });
 
-test('compact runtime owns login-required and stable auth-ready edges', () => {
-  const runtime = compactRuntime();
-  assert.match(runtime, /const accountVisible = \(\) =>/);
-  assert.match(runtime, /const blockingLogin = authenticated =>/);
-  assert.match(runtime, /postText\('login-required'\)/);
-  assert.match(runtime, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
-  assert.match(runtime, /authReadyTimer = nativeTimeout[\s\S]*3000/);
-  assert.match(runtime, /if \(!authenticated \|\| lastBlocking === false \|\| authReadyTimer\) return;/);
-  assert.doesNotMatch(runtime, /setInterval\s*\(|new\s+MutationObserver/);
+test('interaction runtime owns login-required and stable auth-ready edges', () => {
+  assert.match(interaction, /const accountVisible = \(\) =>/);
+  assert.match(interaction, /const blockingLogin = authenticated =>/);
+  assert.match(interaction, /postText\('login-required'\)/);
+  assert.match(interaction, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
+  assert.match(interaction, /authReadyTimer = nativeTimeout[\s\S]*3000/);
+  assert.match(interaction, /if \(!authenticated \|\| lastBlocking === false \|\| authReadyTimer\) return;/);
+  assert.doesNotMatch(interaction, /setInterval\s*\(|new\s+MutationObserver/);
 });
 
 test('real blocking auth surfaces beat stale account presentation', () => {
-  const runtime = compactRuntime();
   const blocking = section(
-    runtime,
+    interaction,
     'const blockingLogin = authenticated => {',
     'const cancelAuthReady = () => {',
   );
@@ -70,14 +71,16 @@ test('July 19 credential capture remains before the inert settlement slot', () =
   );
 });
 
-test('all compact runtime JavaScript chunks assemble into one valid script', () => {
-  const chunks = [...compactRuntime().matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
-    .map(match => match[1]);
-  assert.equal(chunks.length, 3);
-  const script = chunks.join('\n')
+test('responsibility fragments assemble into one valid compact runtime', () => {
+  const script = [interaction, recovery, lifecycle]
+    .map(rawScript)
+    .join('\n')
     .replaceAll('{{GLOBAL}}', '__homepanelPrimaryStationhead')
     .replaceAll('{{PREFIX}}', 'stationhead');
   assert.doesNotThrow(() => new vm.Script(script));
+  assert.match(compact, /StationheadRuntimeInteractionFragment\(\)/);
+  assert.match(compact, /StationheadRuntimeBlankRecoveryFragment\(\)/);
+  assert.match(compact, /StationheadRuntimeLifecycleFragment\(\)/);
 });
 
 test('auth capture registration still precedes startup runtime registration', () => {
