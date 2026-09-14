@@ -19,8 +19,11 @@ constexpr wchar_t kSharedWebView2LifecycleArguments[] =
 
 // Full-resource playback surfaces keep DRM/media plumbing intact while turning
 // off browser subsystems that are unrelated to YouTube/TVer/Spotify playback.
+// The media controller alternates YouTube and TVer in one WebView, so BFCache is
+// disabled to avoid retaining the previous phase's renderer after navigation.
 constexpr wchar_t kFullResourceWebView2Arguments[] =
-    L"--disable-features=MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
+    L"--disable-features=BackForward"
+    L"Cache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
 
 constexpr wchar_t kStationheadWebView2Arguments[] =
     // Keep page-state restoration disabled across Stationhead navigations. HTTP
