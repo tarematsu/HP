@@ -10,6 +10,13 @@ const spotify = source('spotify_static_scripts.inc');
 const playbackPolicy = source('sh_playback_resource_policy_fix.h');
 const renderPolicy = source('sh_render_reduction_policy.h');
 const roomUiPolicy = source('sh_room_ui_reduction_policy.h');
+const presentationPolicy = source('sh_presentation_registration_policy.h');
+const profileReuseEnd = source('sh_profile_reuse_policy_end.h');
+const interactionPolicy = source('sh_track_boundary_message_policy.h');
+const nativeCmake = readFileSync(
+  new URL('../../native/CMakeLists.txt', import.meta.url),
+  'utf8',
+);
 
 test('Spotify suppresses paint-only media and visual effects without hiding control SVGs', () => {
   assert.match(spotify, /__homePanelSpotifyStaticLightweight/);
@@ -26,16 +33,41 @@ test('Spotify suppresses paint-only media and visual effects without hiding cont
   assert.match(spotify, /\[data-testid="control-button-playpause"\] svg/);
 });
 
-test('Stationhead presentation policies stay split by responsibility', () => {
-  assert.match(playbackPolicy, /#include "sh_render_reduction_policy\.h"/);
-  assert.match(playbackPolicy, /#include "sh_room_ui_reduction_policy\.h"/);
-  assert.doesNotMatch(playbackPolicy, /sh_minimal_ui_policy/);
+test('Stationhead presentation is registered after the final autoplay policy', () => {
+  // Playback/data policy must not own presentation composition. Its old macro
+  // wrapper could be replaced by later lifecycle/recovery/interaction layers.
+  assert.doesNotMatch(playbackPolicy, /sh_render_reduction_policy/);
+  assert.doesNotMatch(playbackPolicy, /sh_room_ui_reduction_policy/);
+  assert.doesNotMatch(playbackPolicy, /StationheadAutoplayScriptRenderReduced/);
+  assert.doesNotMatch(playbackPolicy, /#define StationheadAutoplayScript/);
+
+  assert.match(presentationPolicy, /#include "sh_render_reduction_policy\.h"/);
+  assert.match(presentationPolicy, /#include "sh_room_ui_reduction_policy\.h"/);
   assert.match(
-    playbackPolicy,
+    presentationPolicy,
     /StationheadAutoplayScript\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
   );
+  assert.match(
+    presentationPolicy,
+    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript StationheadAutoplayScriptPresentationReduced/,
+  );
 
-  assert.doesNotMatch(playbackPolicy, /Toggle Mute|View streaming party details|content-visibility/);
+  // Current-interaction is the final behavioral autoplay layer. The PCH end
+  // boundary must include presentation strictly after it.
+  assert.match(
+    interactionPolicy,
+    /#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction/,
+  );
+  assert.match(
+    profileReuseEnd,
+    /#undef autoClickInFlight_[\s\S]*#include "sh_presentation_registration_policy\.h"/,
+  );
+  const interactionAt = nativeCmake.indexOf('src/sh_track_boundary_message_policy.h');
+  const endAt = nativeCmake.indexOf('src/sh_profile_reuse_policy_end.h');
+  assert.ok(interactionAt >= 0);
+  assert.ok(endAt > interactionAt);
+
+  assert.doesNotMatch(presentationPolicy, /Toggle Mute|View streaming party details|content-visibility/);
   assert.doesNotMatch(renderPolicy, /Toggle Mute|View streaming party details|button--full-width/);
   assert.doesNotMatch(roomUiPolicy, /Network\.clearBrowserCache|streakStats/);
 });
