@@ -3,6 +3,7 @@
 #include "sh_data_acquisition_resource_policy_fix.h"
 #include "sh_startup_resource_reduction_policy_fix.h"
 #include "sh_playback_resource_policy_fix.h"
+#include "sh_playback_visibility.h"
 
 namespace hp {
 
@@ -218,17 +219,134 @@ inline std::wstring StationheadLoginSettlementScript() {
   return kScript;
 }
 
-// Media boundaries never initiate navigation. Window A uses the native
-// 55-minute clock and Window B uses the native 54-minute clock instead.
-inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
-  return {};
+// Reuse the legacy track-boundary message slots only as lightweight rendering
+// hints. They never navigate. A finite media duration lets the page hide the
+// background controller five seconds into playback, then reveal it ten seconds
+// before the current track ends so the next-track transition can render
+// normally. If duration is unavailable, rendering remains enabled.
+inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix) {
+  static constexpr wchar_t kTemplate[] = LR"JS(
+(() => {
+  const host = String(location.hostname || '').toLowerCase();
+  if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
+      window.top !== window || window.__homepanelStationheadRenderLifecycle) {
+    return;
+  }
+  const webview = window.chrome?.webview;
+  if (!webview || typeof webview.postMessage !== 'function') return;
+  window.__homepanelStationheadRenderLifecycle = true;
+
+  const nativeTimeout = window.setTimeout.bind(window);
+  const nativeClearTimeout = window.clearTimeout.bind(window);
+  const hideDelayMs = 5000;
+  const revealBeforeEndSeconds = 10;
+  let hideTimer = 0;
+  let renderSuppressed = false;
+  let lastTrackKey = '';
+  let lastTrackTime = -1;
+
+  const post = suffix => {
+    try { webview.postMessage('{{PREFIX}}-' + suffix); } catch (_) {}
+  };
+  const cancelHide = () => {
+    if (!hideTimer) return;
+    nativeClearTimeout(hideTimer);
+    hideTimer = 0;
+  };
+  const reveal = () => {
+    cancelHide();
+    if (!renderSuppressed) return;
+    renderSuppressed = false;
+    post('track-ended');
+  };
+  const scheduleHide = () => {
+    cancelHide();
+    hideTimer = nativeTimeout(() => {
+      hideTimer = 0;
+      if (window.__homepanelAudioPlaying === false) return;
+      renderSuppressed = true;
+      post('track-boundary-retry');
+    }, hideDelayMs);
+  };
+  const mediaKey = media => {
+    const source = String(media.currentSrc || media.src || '');
+    const duration = Number(media.duration);
+    return source + '|' + (Number.isFinite(duration) ? duration.toFixed(3) : '');
+  };
+  const inspectMedia = media => {
+    if (!(media instanceof HTMLMediaElement)) return;
+    const duration = Number(media.duration);
+    const currentTime = Number(media.currentTime);
+    if (!Number.isFinite(duration) || duration <= 0 ||
+        !Number.isFinite(currentTime) || currentTime < 0) {
+      // Live/infinite streams have no reliable track boundary. Keep rendering
+      // enabled rather than risking a hidden transition we cannot predict.
+      reveal();
+      lastTrackKey = '';
+      lastTrackTime = -1;
+      return;
+    }
+
+    const key = mediaKey(media);
+    const restarted = key !== lastTrackKey ||
+        (lastTrackTime >= 0 && currentTime + 2 < lastTrackTime);
+    const remaining = Math.max(0, duration - currentTime);
+    if (restarted) {
+      reveal();
+      lastTrackKey = key;
+      if (remaining > revealBeforeEndSeconds) scheduleHide();
+    }
+    lastTrackTime = currentTime;
+
+    if (remaining <= revealBeforeEndSeconds) {
+      reveal();
+    } else if (!renderSuppressed && !hideTimer) {
+      scheduleHide();
+    }
+  };
+  const handleMediaEvent = event => {
+    const media = event.target;
+    if (!(media instanceof HTMLMediaElement)) return;
+    if (event.type === 'pause' || event.type === 'ended' ||
+        event.type === 'error' || event.type === 'stalled' ||
+        event.type === 'waiting' || event.type === 'emptied') {
+      reveal();
+      return;
+    }
+    inspectMedia(media);
+  };
+
+  for (const eventName of [
+      'play', 'playing', 'canplay', 'loadedmetadata', 'durationchange',
+      'timeupdate', 'pause', 'ended', 'error', 'stalled', 'waiting', 'emptied']) {
+    document.addEventListener(eventName, handleMediaEvent, true);
+  }
+  window.addEventListener('pagehide', reveal, true);
+  for (const media of document.querySelectorAll('audio,video')) inspectMedia(media);
+})()
+)JS";
+  std::wstring script = kTemplate;
+  static constexpr std::wstring_view marker = L"{{PREFIX}}";
+  const std::wstring replacement = messagePrefix ? messagePrefix : L"stationhead";
+  for (size_t at = script.find(marker); at != std::wstring::npos;
+       at = script.find(marker, at + replacement.size())) {
+    script.replace(at, marker.size(), replacement);
+  }
+  return script;
 }
 
 }  // namespace hp
 
-// Keep legacy trusted-origin track-ended messages harmless during an in-place
-// update. Only the independent elapsed-time refresh policy may reload a player.
-#define HandleTrackEnded(...) ((void)0)
+// In sh_webview.cpp these legacy message handlers are now rendering hints only.
+// retry=true means stable playback can stop rendering; retry=false restores the
+// controller before the media boundary. No navigation or reload is initiated.
+#define HandleTrackEnded(now_ms, suppress_rendering)                          \
+  do {                                                                        \
+    (void)(now_ms);                                                           \
+    ::hp::SetStationheadPlaybackRenderingSuppressed(                          \
+        IsSecondary(), static_cast<bool>(suppress_rendering));                \
+    LayoutControllers();                                                      \
+  } while (false)
 
 #undef StationheadAuthCaptureScript
 #define StationheadAuthCaptureScript StationheadLoginSettlementScript
