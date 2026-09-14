@@ -25,18 +25,21 @@ const applyLayout = section(
   '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
 );
 
-test('auth promotion keeps playback alive at a 1x1 visible surface', () => {
+test('auth promotion keeps playback host alive while rendering follows suppression state', () => {
   assert.match(applyLayout, /const int hostWidth = playbackForeground \? width : 1;/);
   assert.match(applyLayout, /const int hostHeight = playbackForeground \? height : 1;/);
   assert.match(applyLayout, /const int authHostWidth = showAuth \? width : 1;/);
   assert.match(applyLayout, /const int authHostHeight = showAuth \? height : 1;/);
-  assert.match(applyLayout, /controller->put_IsVisible\(TRUE\)/);
+  assert.match(
+    applyLayout,
+    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
+  );
+  assert.match(applyLayout, /controller->put_IsVisible\(playbackControllerVisible\)/);
   assert.match(applyLayout, /authController->put_IsVisible\(TRUE\)/);
-  assert.doesNotMatch(applyLayout, /put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(applyLayout, /ShowWindow\([^\n]*SW_HIDE/);
 });
 
-test('background surfaces are shown at reduced geometry instead of hidden', () => {
+test('background surfaces are shown at reduced geometry instead of hidden HWNDs', () => {
   assert.match(
     applyLayout,
     /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*hostWidth, hostHeight,[\s\S]*SWP_SHOWWINDOW/,
