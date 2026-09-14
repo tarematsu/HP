@@ -60,19 +60,27 @@ test('trusted click uses the full-size background viewport and repairs accidenta
   assert.match(helper, /PlaceHosts\(\);/);
 });
 
-test('recovery arms playback observer before trusted Play input', () => {
+test('recovery starts playback observer but never waits for observer acknowledgement before Play', () => {
   const preflight = helper.slice(
     helper.indexOf('void SpotifyWebViews::ClickSlotNormalizedPoint'),
     helper.indexOf('UINT SpotifyWebViews::DispatchSpotifyDevToolsClick'),
   );
   assert.match(preflight, /if \(!slot\.timedObserverReady\)/);
   assert.match(preflight, /ArmTimedEndObserver\(slot\)/);
+  const observerBranch = preflight.slice(
+    preflight.indexOf('if (!slot.timedObserverReady)'),
+    preflight.indexOf('const ULONGLONG targetGeneration'),
+  );
+  assert.doesNotMatch(observerBranch, /return;/);
   assert.match(preflight, /nextRecoveryTick = now \+ kSpotifyPlaybackStartRetryMs/);
   assert.match(preflight, /document\.querySelectorAll\('audio, video'\)/);
   assert.match(preflight, /document\.elementFromPoint\(x,y\)/);
   assert.match(preflight, /label\.includes\('pause'\)/);
   assert.match(preflight, /label==='play'/);
   assert.match(preflight, /label==='再生'/);
+  assert.match(preflight, /runtime&&typeof runtime\.armTrustedStart==='function'/);
+  assert.doesNotMatch(preflight, /if\(!runtime\|\|typeof runtime\.armTrustedStart/);
+  assert.doesNotMatch(preflight, /if\(!runtime\.armTrustedStart/);
   assert.match(preflight, /ExecuteScript\(/);
   assert.match(preflight, /target->state == SlotState::Playing/);
   assert.match(preflight, /DispatchSpotifyDevToolsClick/);
