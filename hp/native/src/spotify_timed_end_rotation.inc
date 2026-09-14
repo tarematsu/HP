@@ -77,9 +77,11 @@ bool ParseSpotifyResumedEvent(
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
+  const bool statusWasVisible = slot.playbackConfirmed || !slot.observedTrackTitle.empty();
   slot.observedTrackTitle.clear();
   slot.playbackConfirmed = false;
   slot.playbackConfirmedAt = {};
+  if (statusWasVisible) InvalidateSpotifyStatusForHost(slot.hostWindow);
   if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
   if (slot.timedCycleTracks.empty()) {
     slot.timedRotationActive = false;
@@ -235,6 +237,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               target->observedTrackTitle = currentTrack->title;
               GetLocalTime(&target->playbackConfirmedAt);
               target->playbackConfirmed = true;
+              InvalidateSpotifyStatusForHost(target->hostWindow);
               SetSlotState(*target, SlotState::Playing);
               SetMusicCompletionDeadline(
                   *target, now, remainingMs, resumed);
