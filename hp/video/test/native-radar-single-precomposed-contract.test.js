@@ -125,15 +125,15 @@ test('unchanged cloud radar times reuse the existing representative frame', () =
   assert.match(cloud, /customMetadata: \{ radarCompositionKey: compositionKey \}/);
 });
 
-test('Kawagoe z10 native-scale mask is persisted once in R2 and loaded internally as a PNG data URL', () => {
-  assert.match(browserFrame, /KAWAGOE_MASK_KEY = "radar\/assets\/kawagoe-mask-v3-z10-480x960-native-scale\.png"/);
-  assert.match(browserFrame, /UPDATE_BUCKET\.get\(KAWAGOE_MASK_KEY\)/);
-  assert.match(browserFrame, /storedMask \? null : await fetchKawagoeBoundary\(\)/);
-  assert.match(browserFrame, /encodePngDataUrl\(new Uint8Array\(await storedMask\.arrayBuffer\(\)\)\)/);
-  assert.match(browserFrame, /kawagoeMaskDataUrl: storedMaskDataUrl/);
-  assert.match(browserFrame, /generatedMaskDataUrl = maskCanvas\.toDataURL\("image\/png"\)/);
-  assert.match(browserFrame, /UPDATE_BUCKET\.put\(\s*KAWAGOE_MASK_KEY/s);
-  assert.doesNotMatch(cloud, /KAWAGOE_MASK_PATH/);
+test('cloud radar draws a centered current-location marker without a city-boundary asset', () => {
+  assert.match(cloud, /const RADAR_CENTER = \{ lat: 35\.8923181, lon: 139\.4858691 \}/);
+  assert.match(cloud, /location: RADAR_CENTER/);
+  assert.match(browserFrame, /interface BrowserRadarLocation/);
+  assert.match(browserFrame, /const world = worldPixel\(lon, lat, panel\.zoom\)/);
+  assert.match(browserFrame, /context\.arc\(x, y, 24, 0, fullCircle\)/);
+  assert.match(browserFrame, /#4285F4/);
+  assert.doesNotMatch(browserFrame, /city\/geojson|kawagoe-mask|fetchKawagoeBoundary|boundaryPolygons/);
+  assert.doesNotMatch(cloud, /KAWAGOE_MASK_KEY/);
 });
 
 test('cloud radar always composes fetched tiles without rain-presence classification', () => {
