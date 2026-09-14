@@ -128,7 +128,6 @@ void PowerSavingController::ObserveParentMessage(
     case WM_SIZE:
     case WM_WINDOWPOSCHANGED:
     case WM_SHOWWINDOW:
-    case WM_TIMER:
       if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
       break;
     case WM_TIMECHANGE:
