@@ -15,17 +15,18 @@ const bridge = readFileSync(
   'utf8',
 );
 
-test('Stationhead background playback is low-memory and controller-invisible', () => {
+test('Stationhead background playback is low-memory but controller-visible', () => {
   assert.match(layout, /SetControllerMemoryUsageTarget/);
   assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
-  assert.match(layout, /const BOOL desiredVisibility = playbackForeground \? TRUE : FALSE/);
-  assert.match(layout, /controller->put_IsVisible\(desiredVisibility\)/);
+  assert.match(layout, /ControllerVisibilityMatches\(controller, TRUE\)/);
+  assert.match(layout, /controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /const BOOL desiredVisibility = playbackForeground \? TRUE : FALSE/);
 });
 
-test('Stationhead foreground playback restores normal memory and visibility', () => {
+test('Stationhead foreground playback restores normal memory without toggling controller visibility false', () => {
   assert.match(layout, /playbackForeground \? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
-  assert.match(layout, /playbackForeground \? TRUE : FALSE/);
   assert.match(layout, /StationheadMonitorForeground\(\)/);
+  assert.doesNotMatch(layout, /controller->put_IsVisible\(FALSE\)/);
 });
 
 test('Monitor B and Monitor A auth promotion drive the effective foreground bit', () => {
