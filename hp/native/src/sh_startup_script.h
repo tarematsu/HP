@@ -5,15 +5,16 @@
 
 namespace hp {
 
-// One document-start runtime for Stationhead. Playback start is driven by the
-// existing native Tick()/AttemptNativeStartClick path, so this script only owns
-// cheap page events: fallback audio state, login surface edges and a bounded
-// blank-page recovery check. It intentionally has no MutationObserver,
-// setInterval, animation-frame loop or recurring DOM scan.
+// One document-start runtime for Stationhead. Native Tick()/AttemptNativeStartClick
+// owns Start Listening. This page runtime only publishes fallback audio/auth edges
+// and performs one bounded blank-page recovery sequence. No recurring DOM poll or
+// document-wide observer is installed.
 inline std::wstring StationheadCompactRuntimeScript(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
-  static constexpr wchar_t kTemplate[] = LR"JS(
+  // Keep the JavaScript in small C++ literals for MSVC. These chunks form one
+  // IIFE after concatenation; the split has no runtime layering semantics.
+  static constexpr wchar_t kPrelude[] = LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
   if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
@@ -23,8 +24,6 @@ inline std::wstring StationheadCompactRuntimeScript(
   if (window[guardName]) return;
   window[guardName] = true;
 
-  // Disconnect observers left by an older in-place document before installing
-  // the compact event-driven runtime.
   for (const key of [
     '__homepanelStationheadAudioOnlyUiObserver',
     '__homepanelStationheadVolumeObserver'
@@ -38,18 +37,18 @@ inline std::wstring StationheadCompactRuntimeScript(
   const nativeClearTimeout = window.clearTimeout.bind(window);
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const controlSelector =
-      "button,[role='button'],a,input[type='button'],input[type='submit']," +
-      "[aria-label],[data-testid],[tabindex]";
+    "button,[role='button'],a,input[type='button'],input[type='submit']," +
+    "[aria-label],[data-testid],[tabindex]";
   const credentialSelector =
-      "input[type='password'],input[type='email'],input[autocomplete='username']," +
-      "input[autocomplete='current-password']";
+    "input[type='password'],input[type='email'],input[autocomplete='username']," +
+    "input[autocomplete='current-password']";
   const blockingShellSelector =
-      "form,[role='dialog'],[aria-modal='true'],[data-modal]," +
-      "[class*='modal'],[class*='dialog']";
+    "form,[role='dialog'],[aria-modal='true'],[data-modal]," +
+    "[class*='modal'],[class*='dialog']";
   const loginPattern =
-      /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
+    /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
   const accountPattern =
-      /\b(account|profile|avatar|user\s+menu|my\s+profile)\b|アカウント|プロフィール/i;
+    /\b(account|profile|avatar|user\s+menu|my\s+profile)\b|アカウント|プロフィール/i;
   const serviceConnectPattern = /^connect\s+music$/i;
 
   let pageActive = true;
@@ -68,10 +67,8 @@ inline std::wstring StationheadCompactRuntimeScript(
   };
   const visible = element => {
     if (!(element instanceof Element) || !element.isConnected ||
-        element.getAttribute('aria-hidden') === 'true' ||
-        element.getAttribute('aria-disabled') === 'true' || element.disabled) {
-      return false;
-    }
+        element.disabled || element.getAttribute('aria-hidden') === 'true' ||
+        element.getAttribute('aria-disabled') === 'true') return false;
     const rect = element.getBoundingClientRect?.();
     if (!rect || rect.width <= 2 || rect.height <= 2 || rect.right <= 0 ||
         rect.bottom <= 0 || rect.left >= innerWidth || rect.top >= innerHeight) {
@@ -105,10 +102,12 @@ inline std::wstring StationheadCompactRuntimeScript(
     postText(current ? 'playing' : 'stopped');
     return current;
   };
-
   const loginRoute = () =>
-      /(^|\/)(login|signin|sign-in|auth)(?:\/|[?#]|$)/i.test(
-          String(location.pathname || ''));
+    /(^|\/)(login|signin|sign-in|auth)(?:\/|[?#]|$)/i.test(
+      String(location.pathname || ''));
+)JS";
+
+  static constexpr wchar_t kAuth[] = LR"JS(
   const accountVisible = () => {
     for (const element of document.querySelectorAll(controlSelector)) {
       if (!visible(element)) continue;
@@ -116,7 +115,8 @@ inline std::wstring StationheadCompactRuntimeScript(
       const href = String(element.getAttribute?.('href') || '').toLowerCase();
       if (accountPattern.test(label) ||
           /(^|\/)(account|profile|settings|user)(?:\/|[?#]|$)/i.test(href) ||
-          element.querySelector?.("[data-testid*='avatar' i],[data-testid*='profile' i],[class*='avatar' i]")) {
+          element.querySelector?.(
+            "[data-testid*='avatar' i],[data-testid*='profile' i],[class*='avatar' i]")) {
         return true;
       }
     }
@@ -135,9 +135,7 @@ inline std::wstring StationheadCompactRuntimeScript(
       const label = labelOf(element);
       const href = String(element.getAttribute?.('href') || '').toLowerCase();
       if (!loginPattern.test(label) &&
-          !/(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) {
-        continue;
-      }
+          !/(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) continue;
       const shell = element.closest?.(blockingShellSelector);
       if (!authenticated || (shell && visible(shell))) return true;
     }
@@ -177,7 +175,9 @@ inline std::wstring StationheadCompactRuntimeScript(
       post({ type: 'stationhead-auth-ready', source: 'compact-runtime' });
     }, 3000);
   };
+)JS";
 
+  static constexpr wchar_t kEvents[] = LR"JS(
   const run = () => {
     if (!pageActive) return;
     publishAudio();
@@ -190,13 +190,14 @@ inline std::wstring StationheadCompactRuntimeScript(
       run();
     }, delay);
   };
+  const onStateEvent = () => schedule(0);
+  const onInteractiveEvent = () => schedule(150);
 
   const blankReloadKey = '__homepanelStationheadCompactBlankReloadAt';
   const sparseBlankPage = () => {
     if (!pageActive || document.readyState !== 'complete' || !document.body ||
         playing() || blockingLogin(accountVisible())) return false;
-    const text = normalize(document.body.innerText);
-    if (text.length >= 48) return false;
+    if (normalize(document.body.innerText).length >= 48) return false;
     return !document.querySelector(
       "button,a,input,select,textarea,audio,video,[role='button'],[aria-label]");
   };
@@ -219,13 +220,8 @@ inline std::wstring StationheadCompactRuntimeScript(
     }, 30000);
   };
 
-  const onInteractiveEvent = () => {
-    schedule(0);
-    schedule(3000);
-  };
-  for (const eventName of [
-      'play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error']) {
-    document.addEventListener(eventName, schedule, true);
+  for (const eventName of ['play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error']) {
+    document.addEventListener(eventName, onStateEvent, true);
   }
   document.addEventListener('click', onInteractiveEvent, true);
   document.addEventListener('submit', onInteractiveEvent, true);
@@ -237,10 +233,10 @@ inline std::wstring StationheadCompactRuntimeScript(
     run();
     armBlankRecovery();
   }, { once: true });
-  window.addEventListener('focus', schedule, true);
-  window.addEventListener('popstate', schedule, true);
-  window.addEventListener('hashchange', schedule, true);
-  window.addEventListener('homepanel-stationhead-auth-ready', schedule, true);
+  window.addEventListener('focus', onStateEvent, true);
+  window.addEventListener('popstate', onStateEvent, true);
+  window.addEventListener('hashchange', onStateEvent, true);
+  window.addEventListener('homepanel-stationhead-auth-ready', onStateEvent, true);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) schedule(0);
   });
@@ -262,6 +258,12 @@ inline std::wstring StationheadCompactRuntimeScript(
 })()
 )JS";
 
+  std::wstring script = kPrelude;
+  script.push_back(L'\n');
+  script.append(kAuth);
+  script.push_back(L'\n');
+  script.append(kEvents);
+
   const auto replaceAll = [](std::wstring text,
                              std::wstring_view from,
                              std::wstring_view to) {
@@ -273,7 +275,7 @@ inline std::wstring StationheadCompactRuntimeScript(
   };
   const std::wstring guard = globalName ? globalName : L"__homepanelStationhead";
   const std::wstring prefix = messagePrefix ? messagePrefix : L"stationhead";
-  return replaceAll(replaceAll(kTemplate, L"{{GLOBAL}}", guard),
+  return replaceAll(replaceAll(std::move(script), L"{{GLOBAL}}", guard),
                     L"{{PREFIX}}", prefix);
 }
 
@@ -291,7 +293,5 @@ inline std::wstring BuildStationheadStartupScript(
 
 }  // namespace hp
 
-// One compatibility name remains at the sh_webview.cpp call site. No earlier
-// policy header selects or wraps the effective startup implementation.
 #undef StationheadAutoplayScript
 #define StationheadAutoplayScript BuildStationheadStartupScript
