@@ -2,9 +2,6 @@
 // bounds management.
 namespace {
 constexpr wchar_t kNativeSpotifyStatusClass[] = L"HomePanelNativeSpotifyStatus";
-constexpr UINT_PTR kNativeSpotifyStatusTimer = 0x53500001;
-constexpr UINT kNativeSpotifyStatusInitialDelayMs = 2'500U;
-constexpr UINT kNativeSpotifyStatusRefreshMs = 5U * 1000U;
 constexpr LONG kNativeSpotifyStatusHeight = 56;
 constexpr COLORREF kSpotifyStatusBackground = RGB(7, 10, 16);
 constexpr COLORREF kSpotifyStatusSurface = RGB(20, 26, 36);
@@ -26,14 +23,6 @@ std::wstring SpotifyStatusClock(const SpotifyPlaybackStatus& status) {
 LRESULT CALLBACK NativeSpotifyStatusWndProc(
     HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
   switch (message) {
-    case WM_TIMER:
-      if (wparam == kNativeSpotifyStatusTimer) {
-        InvalidateRect(hwnd, nullptr, FALSE);
-        SetTimer(hwnd, kNativeSpotifyStatusTimer,
-                 kNativeSpotifyStatusRefreshMs, nullptr);
-        return 0;
-      }
-      break;
     case WM_ERASEBKGND:
       return 1;
     case WM_PAINT: {
@@ -149,8 +138,6 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
         std::max(1L, bounds.bottom - bounds.top), parentWindow, nullptr,
         GetModuleHandleW(nullptr), nullptr);
     if (!status) return false;
-    SetTimer(status, kNativeSpotifyStatusTimer,
-             kNativeSpotifyStatusInitialDelayMs, nullptr);
   } else {
     RECT current{};
     GetWindowRect(status, &current);
