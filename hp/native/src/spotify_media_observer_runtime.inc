@@ -1,8 +1,8 @@
 namespace hp {
 namespace {
 
-// Owns current-track identity and emits only start/resume timing for the native
-// one-shot deadline. Recovery and navigation remain native-owned.
+// Owns current-track identity and emits start/interruption/resume timing for the
+// native one-shot deadline. Recovery and navigation remain native-owned.
 constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverRuntime) return true;
@@ -150,7 +150,10 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     } else if (!targetIdentityConfirmed) {
       clearTrustedStart();
       if (!media.paused) {
-        if (state.startPosted) state.interrupted = true;
+        if (state.startPosted && !state.interrupted) {
+          state.interrupted = true;
+          post('spotify:timed-interrupted');
+        }
         return 'interruption';
       }
       return 'unknown';
