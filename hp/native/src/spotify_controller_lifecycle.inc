@@ -176,7 +176,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               target->trustedClickBlockedUntilTick = 0;
               target->playerPage = false;
               target->loginPage = false;
-              target->authenticationBadgeTick = 0;
               target->timedObserverReady = false;
               LPWSTR rawUri = nullptr;
               if (SUCCEEDED(args->get_Uri(&rawUri)) && rawUri) {
