@@ -54,7 +54,7 @@ test('Spotify hides the slot only after the observer confirms playback', () => {
   assert.match(observer, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(
     observer,
-    /if \(target->controller\) target->controller->put_IsVisible\(FALSE\)/,
+    /if \(target->controller\)\s*\{\s*target->controller->put_IsVisible\(FALSE\);\s*\}/,
   );
 });
 
