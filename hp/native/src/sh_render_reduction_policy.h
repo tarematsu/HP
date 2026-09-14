@@ -3,16 +3,14 @@
 namespace hp {
 
 // CSS-only rendering reduction for Stationhead. This policy owns paint and
-// presentation concerns only; it does not inspect UI text or mutate playback
-// controls. Keeping it separate makes it safe to evolve selector coverage
-// independently from DOM pruning and authenticated data acquisition.
+// presentation effects that are safe on every Stationhead page; room-specific
+// audited selectors live in sh_room_ui_reduction_policy.h.
 inline std::wstring StationheadRenderReductionScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
   if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
   const styleId = '__homepanelStationheadRenderReduction';
-  const pruneClass = '__homepanelStationheadPruned';
   const install = () => {
     if (document.getElementById(styleId)) return true;
     const root = document.head || document.documentElement;
@@ -31,7 +29,6 @@ inline std::wstring StationheadRenderReductionScript() {
         will-change: auto !important;
         view-transition-name: none !important;
       }
-      .${pruneClass},
       video, canvas, svg[aria-hidden='true'],
       marquee,
       [data-testid*='chat' i], [id*='chat' i], [class*='chat' i], [aria-label*='chat' i],

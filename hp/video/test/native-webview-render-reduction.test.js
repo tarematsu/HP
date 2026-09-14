@@ -9,7 +9,7 @@ const source = name => readFileSync(
 const spotify = source('spotify_static_scripts.inc');
 const playbackPolicy = source('sh_playback_resource_policy_fix.h');
 const renderPolicy = source('sh_render_reduction_policy.h');
-const minimalUiPolicy = source('sh_minimal_ui_policy.h');
+const roomUiPolicy = source('sh_room_ui_reduction_policy.h');
 
 test('Spotify suppresses paint-only media and visual effects without hiding control SVGs', () => {
   assert.match(spotify, /__homePanelSpotifyStaticLightweight/);
@@ -28,20 +28,20 @@ test('Spotify suppresses paint-only media and visual effects without hiding cont
 
 test('Stationhead presentation policies stay split by responsibility', () => {
   assert.match(playbackPolicy, /#include "sh_render_reduction_policy\.h"/);
-  assert.match(playbackPolicy, /#include "sh_minimal_ui_policy\.h"/);
+  assert.match(playbackPolicy, /#include "sh_room_ui_reduction_policy\.h"/);
+  assert.doesNotMatch(playbackPolicy, /sh_minimal_ui_policy/);
   assert.match(
     playbackPolicy,
-    /StationheadAutoplayScript\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadMinimalUiPruningScript\(\)/,
+    /StationheadAutoplayScript\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
   );
 
-  assert.doesNotMatch(playbackPolicy, /send a message|request song|content-visibility/);
-  assert.doesNotMatch(renderPolicy, /send a message|request song|setTimeout\(prune/);
-  assert.doesNotMatch(minimalUiPolicy, /Network\.clearBrowserCache|streakStats/);
+  assert.doesNotMatch(playbackPolicy, /Toggle Mute|View streaming party details|content-visibility/);
+  assert.doesNotMatch(renderPolicy, /Toggle Mute|View streaming party details|button--full-width/);
+  assert.doesNotMatch(roomUiPolicy, /Network\.clearBrowserCache|streakStats/);
 });
 
 test('Stationhead render policy reduces paint work without hiding all controls', () => {
   assert.match(renderPolicy, /__homepanelStationheadRenderReduction/);
-  assert.match(renderPolicy, /__homepanelStationheadPruned/);
   assert.match(renderPolicy, /animation: none !important/);
   assert.match(renderPolicy, /transition: none !important/);
   assert.match(renderPolicy, /view-transition-name: none !important/);
@@ -57,7 +57,7 @@ test('Stationhead render policy reduces paint work without hiding all controls',
   assert.doesNotMatch(renderPolicy, /HTMLMediaElement|\.pause\(\)/);
 });
 
-test('Stationhead render policy hides social, decorative and presentation-only UI', () => {
+test('Stationhead render policy hides generic social and decorative UI', () => {
   for (const token of [
     'chat',
     'comment',
@@ -103,28 +103,40 @@ test('Stationhead render policy hides social, decorative and presentation-only U
   assert.match(renderPolicy, /content-visibility: hidden !important/);
 });
 
-test('Stationhead semantic UI pruning protects auth/start and uses bounded startup passes', () => {
-  for (const label of [
-    'threads',
-    'following',
-    'request song',
-    'ask to speak',
-    'get the app',
-    'all access',
+test('Stationhead room UI uses audited static selectors instead of semantic polling', () => {
+  assert.match(roomUiPolicy, /__homepanelStationheadRoomUiReduction/);
+  assert.match(roomUiPolicy, /parts\.length !== 1/);
+  assert.match(roomUiPolicy, /'home', 'sign-in', 'sign-up'/);
+
+  for (const contract of [
+    /class~='button--full-width'/,
+    /class~='button--md'/,
+    /class~='h-12'/,
+    /class~='justify-between'/,
+    /aria-label='Open threads'/,
+    /href\$='\/threads'/,
+    /aria-label='View streaming party details'/,
+    /aria-label='Copy link'/,
+    /aria-label='Toggle Mute'/,
+    /aria-label='Volume'/,
+    /aria-label\^='View '/,
+    /aria-label\^='Reply to '/,
+    /class~='resize-none'/,
+    /class~='bg-transparent'/,
+    /aside:has\(textarea/,
+    /\[role='complementary'\]:has\(textarea/,
   ]) {
-    assert.match(minimalUiPolicy, new RegExp(`'${label}'`));
+    assert.match(roomUiPolicy, contract);
   }
-  assert.match(minimalUiPolicy, /start listening/);
-  assert.match(minimalUiPolicy, /connect spotify/);
-  assert.match(minimalUiPolicy, /hasProtectedControl/);
-  assert.match(minimalUiPolicy, /send a message/);
-  assert.match(minimalUiPolicy, /i'm on stationhead/);
-  assert.match(minimalUiPolicy, /syndicating on/);
-  assert.match(minimalUiPolicy, /document\.querySelectorAll\('header,footer'\)/);
-  assert.match(minimalUiPolicy, /\[0, 500, 1500, 4000, 8000, 15000\]/);
-  assert.match(minimalUiPolicy, /setTimeout\(prune, delay\)/);
-  assert.doesNotMatch(minimalUiPolicy, /MutationObserver/);
-  assert.doesNotMatch(minimalUiPolicy, /setInterval\s*\(/);
-  assert.doesNotMatch(minimalUiPolicy, /requestAnimationFrame\s*=/);
-  assert.doesNotMatch(minimalUiPolicy, /HTMLMediaElement|\.pause\(\)/);
+
+  assert.doesNotMatch(roomUiPolicy, /querySelectorAll/);
+  assert.doesNotMatch(roomUiPolicy, /getBoundingClientRect/);
+  assert.doesNotMatch(roomUiPolicy, /innerText/);
+  assert.equal((roomUiPolicy.match(/textContent/g) ?? []).length, 1);
+  assert.doesNotMatch(roomUiPolicy, /setTimeout\s*\(/);
+  assert.doesNotMatch(roomUiPolicy, /setInterval\s*\(/);
+  assert.doesNotMatch(roomUiPolicy, /MutationObserver/);
+  assert.doesNotMatch(roomUiPolicy, /requestAnimationFrame/);
+  assert.doesNotMatch(roomUiPolicy, /HTMLMediaElement|\.pause\(\)/);
+  assert.doesNotMatch(roomUiPolicy, /start listening|connect spotify|log in/i);
 });
