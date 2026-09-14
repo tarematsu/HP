@@ -49,6 +49,7 @@ const RENDER_PAGE_PATH = "/radar-cloud/render.html";
 const SATELLITE_ASSET_PATH = "/radar-cloud/radar-satellite.png";
 const KAWAGOE_BOUNDARY_URL = "https://geoshape.ex.nii.ac.jp/city/geojson/latest/11201.geojson";
 export const KAWAGOE_MASK_KEY = "radar/assets/kawagoe-mask-v3-z10-480x960-native-scale.png";
+const KAWAGOE_MASK_VERSION = "kawagoe-z10-480x960-native-scale-v4-green-boundary";
 
 function originUrl(value: string): string {
   const url = new URL(value);
@@ -101,8 +102,11 @@ export async function renderRepresentativeRadarFrame(
   const browserBinding = (env as BrowserBindingEnv).BROWSER;
   if (!browserBinding) throw new Error("Cloudflare Browser Run binding is unavailable");
   const publicOrigin = originUrl(request.publicUrl);
-  const storedMask = env.UPDATE_BUCKET
+  const storedMaskObject = env.UPDATE_BUCKET
     ? await env.UPDATE_BUCKET.get(KAWAGOE_MASK_KEY)
+    : null;
+  const storedMask = storedMaskObject?.customMetadata?.version === KAWAGOE_MASK_VERSION
+    ? storedMaskObject
     : null;
   const storedMaskDataUrl = storedMask
     ? encodePngDataUrl(new Uint8Array(await storedMask.arrayBuffer()))
@@ -273,18 +277,10 @@ export async function renderRepresentativeRadarFrame(
         if (!maskContext) throw new Error("radar Kawagoe mask canvas unavailable");
 
         maskContext.beginPath();
-        maskContext.rect(0, 0, panelWidth, payload.outputHeight);
-        if (!addBoundaryPath(maskContext, payload.panels[0])) {
-          throw new Error("radar Kawagoe boundary could not be projected");
-        }
-        maskContext.fillStyle = "rgba(96,96,96,0.68)";
-        maskContext.fill("evenodd");
-
-        maskContext.beginPath();
         if (!addBoundaryPath(maskContext, payload.panels[0])) {
           throw new Error("radar Kawagoe boundary could not be stroked");
         }
-        maskContext.strokeStyle = "rgba(255,255,255,0.98)";
+        maskContext.strokeStyle = "rgba(0,200,0,0.98)";
         maskContext.lineWidth = 4;
         maskContext.lineJoin = "round";
         maskContext.lineCap = "round";
@@ -376,7 +372,7 @@ export async function renderRepresentativeRadarFrame(
         decodePngDataUrl(evaluation.generatedMaskDataUrl),
         {
           httpMetadata: { contentType: "image/png" },
-          customMetadata: { version: "kawagoe-z10-480x960-native-scale-v3" },
+          customMetadata: { version: KAWAGOE_MASK_VERSION },
         },
       );
     }

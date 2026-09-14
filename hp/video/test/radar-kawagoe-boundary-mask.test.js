@@ -15,15 +15,19 @@ const prepareAssets = readFileSync(
   'utf8',
 );
 
-test('cloud radar persists one Kawagoe mask PNG and draws it above every panel', () => {
+test('cloud radar persists one Kawagoe boundary PNG and draws it above every panel', () => {
   assert.match(browserRadar, /city\/geojson\/latest\/11201\.geojson/);
-  assert.match(browserRadar, /const storedMask = env\.UPDATE_BUCKET/);
+  assert.match(browserRadar, /KAWAGOE_MASK_VERSION = "kawagoe-z10-480x960-native-scale-v4-green-boundary"/);
+  assert.match(browserRadar, /UPDATE_BUCKET\.get\(KAWAGOE_MASK_KEY\)/);
+  assert.match(browserRadar, /storedMaskObject\?\.customMetadata\?\.version === KAWAGOE_MASK_VERSION/);
   assert.match(browserRadar, /storedMask \? null : await fetchKawagoeBoundary\(\)/);
-  assert.match(browserRadar, /maskContext\.fill\("evenodd"\)/);
-  assert.match(browserRadar, /rgba\(96,96,96,0\.68\)/);
-  assert.match(browserRadar, /rgba\(255,255,255,0\.98\)/);
+  assert.doesNotMatch(browserRadar, /maskContext\.fill\("evenodd"\)/);
+  assert.doesNotMatch(browserRadar, /rgba\(96,96,96,0\.68\)/);
+  assert.doesNotMatch(browserRadar, /rgba\(255,255,255,0\.98\)/);
+  assert.match(browserRadar, /rgba\(0,200,0,0\.98\)/);
   assert.match(browserRadar, /maskContext\.lineWidth = 4/);
   assert.match(browserRadar, /generatedMaskDataUrl = maskCanvas\.toDataURL\("image\/png"\)/);
+  assert.match(browserRadar, /customMetadata: \{ version: KAWAGOE_MASK_VERSION \}/);
   assert.match(browserRadar, /UPDATE_BUCKET\.put\(\s*KAWAGOE_MASK_KEY/s);
   assert.doesNotMatch(browserRadar, /MAP_ASSET_PATH|mapUrl|drawBase\(map/);
   assert.doesNotMatch(prepareAssets, /"radar-map\.png"/);
@@ -37,11 +41,11 @@ test('cloud radar persists one Kawagoe mask PNG and draws it above every panel',
 
   assert.ok(satellite >= 0, 'satellite layer draw is missing');
   assert.ok(rain > satellite, 'rain must be drawn after satellite');
-  assert.ok(mask > rain, 'Kawagoe mask must be drawn after rain');
-  assert.ok(label > mask, 'date/time label must be drawn after the mask');
+  assert.ok(mask > rain, 'Kawagoe boundary must be drawn after rain');
+  assert.ok(label > mask, 'date/time label must be drawn after the boundary');
 });
 
-test('Kawagoe mask warmup uses the exact same world-pixel viewport as rain tiles', () => {
+test('Kawagoe boundary warmup uses the exact same world-pixel viewport as rain tiles', () => {
   assert.match(cloudRadar, /type RadarViewport = \{ worldLeft: number; worldTop: number; zoom: number \}/);
   assert.match(cloudRadar, /worldLeft: viewport\.worldLeft/);
   assert.match(cloudRadar, /worldTop: viewport\.worldTop/);
@@ -71,7 +75,7 @@ test('every radar panel is generated without dry or sunny classification', () =>
 
 test('radar panel labels use the requested top offset and timestamp-only content', () => {
   assert.match(browserRadar, /const chipTop = 70;/);
-  assert.match(browserRadar, /context\.font = "500 39px sans-serif";/);
+  assert.match(browserRadar, /context\.font = "500 39px sans-serif"/);
   assert.doesNotMatch(browserRadar, /\btitle\b/);
   assert.doesNotMatch(cloudRadar, /title:/);
   assert.doesNotMatch(cloudRadar, /現在|1時間後|取得可能な最後/);
