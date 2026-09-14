@@ -14,6 +14,28 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
     const style = document.createElement('style');
     style.id = 'homepanel-youtube-clean-player';
     style.textContent = `
+      /*
+       * The native panel never exposes the normal watch-page shell. Keep those
+       * trees out of layout/paint instead of merely covering them. This leaves
+       * Chromium less work for secondary YouTube renderer/frame activity while
+       * preserving the actual player, playlist transport and trusted controls.
+       */
+      ytd-watch-flexy #secondary,
+      ytd-watch-flexy #below,
+      ytd-watch-flexy #chat-container,
+      ytd-watch-flexy #panels,
+      ytd-watch-flexy #related,
+      ytd-watch-flexy ytd-comments,
+      ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+      ytd-watch-flexy ytd-merch-shelf-renderer,
+      ytd-masthead,
+      ytd-mini-guide-renderer,
+      ytd-guide-renderer {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
+
       #movie_player:not(.ad-showing):not(.ad-interrupting) > :not(.html5-video-container),
       #movie_player .html5-video-container > :not(video),
       #movie_player .ytp-chrome-top,
