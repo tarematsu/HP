@@ -35,13 +35,13 @@ const buildRadarBase = readFileSync(
   'utf8',
 );
 
-test('cloud radar renders a z9-equivalent 1440x960 three-panel image', () => {
+test('cloud radar renders a z10 1440x960 three-panel image', () => {
   assert.match(cloudRadar, /const RADAR_BASE_ZOOM = 10;/);
-  assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM = 9;/);
+  assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM = 10;/);
   assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 320;/);
   assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 640;/);
-  assert.match(cloudRadar, /const RADAR_BASE_CROP_WIDTH = 640;/);
-  assert.match(cloudRadar, /const RADAR_BASE_CROP_HEIGHT = 1280;/);
+  assert.match(cloudRadar, /const RADAR_BASE_CROP_WIDTH = 320;/);
+  assert.match(cloudRadar, /const RADAR_BASE_CROP_HEIGHT = 640;/);
   assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 1440;/);
   assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 960;/);
   assert.match(cloudRadar, /renderRepresentativeRadarFrame/);
