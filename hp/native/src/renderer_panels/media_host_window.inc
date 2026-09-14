@@ -21,7 +21,7 @@ std::wstring SpotifyStatusClock(const SpotifyPlaybackStatus& status) {
 }
 
 LRESULT CALLBACK NativeSpotifyStatusWndProc(
-    HWND hwnd, UINT message, WPARAM, LPARAM) {
+    HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
   switch (message) {
     case WM_ERASEBKGND:
       return 1;
