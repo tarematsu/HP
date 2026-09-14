@@ -40,9 +40,10 @@ test('Stationhead interaction tab expands the playback host instead of forcing b
     'void ApplyStationheadChildLayout(',
     '}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
   );
-  assert.match(childLayout, /const int hostWidth = showPlayback \? width : 1;/);
-  assert.match(childLayout, /const int hostHeight = showPlayback \? height : 1;/);
-  assert.match(childLayout, /const HWND hostPlacement = showPlayback \? HWND_TOP : HWND_BOTTOM;/);
+  assert.match(childLayout, /const bool playbackForeground = showPlayback \|\|/);
+  assert.match(childLayout, /const int hostWidth = playbackForeground \? width : 1;/);
+  assert.match(childLayout, /const int hostHeight = playbackForeground \? height : 1;/);
+  assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
 });
 
 test('pending Stationhead authentication cannot be hidden by normal placement refreshes', () => {
