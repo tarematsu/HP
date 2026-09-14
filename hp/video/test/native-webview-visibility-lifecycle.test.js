@@ -9,6 +9,7 @@ const stationhead = source('sh.cpp');
 const stationheadLayout = source('sh_layout.cpp');
 const stationheadPopup = source('sh_webview.cpp');
 const stationheadBoundary = source('sh_track_boundary_script.h');
+const stationheadVisibility = source('sh_playback_visibility.h');
 const spotifyClick = source('spotify_background_click.inc');
 const spotifyRotation = source('spotify_timed_end_rotation.inc');
 
@@ -38,7 +39,18 @@ test('Stationhead playback controller starts visible while auth controllers may 
   assert.match(stationheadPopup, /authController_->put_IsVisible\(FALSE\)/);
 });
 
-test('Stationhead suppresses rendering only for a background playback surface', () => {
+test('Stationhead playback rendering suppression is disabled', () => {
+  assert.match(
+    stationheadVisibility,
+    /SetStationheadPlaybackRenderingSuppressed\([\s\S]*?\) noexcept \{\}/,
+  );
+  assert.match(
+    stationheadVisibility,
+    /StationheadPlaybackRenderingSuppressed\([\s\S]*?\) noexcept \{\s*return false;\s*\}/,
+  );
+});
+
+test('Stationhead layout therefore keeps playback visible in background', () => {
   const layout = section(
     stationheadLayout,
     'void ApplyStationheadChildLayout(',
@@ -58,7 +70,7 @@ test('Stationhead suppresses rendering only for a background playback surface', 
   );
 });
 
-test('Stationhead waits for stable playback then restores rendering before the track boundary', () => {
+test('Stationhead track-boundary observer remains available without hiding playback', () => {
   const boundary = section(
     stationheadBoundary,
     'inline std::wstring StationheadTrackBoundaryScript(',
