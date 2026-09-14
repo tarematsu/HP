@@ -22,7 +22,7 @@ const nativeCmake = readFileSync(
   'utf8',
 );
 
-test('Spotify suppresses paint-only media and visual effects without hiding control SVGs', () => {
+test('Spotify keeps only static paint reduction and does not block playback controls', () => {
   assert.match(spotify, /__homePanelSpotifyStaticLightweight/);
   assert.match(spotify, /animation: none !important/);
   assert.match(spotify, /background-image: none !important/);
@@ -37,30 +37,34 @@ test('Spotify suppresses paint-only media and visual effects without hiding cont
   assert.match(spotify, /\[data-testid="control-button-playpause"\] svg/);
 });
 
-test('Stationhead startup composition names the actual runtime pieces once', () => {
+test('Stationhead has one compact document-start runtime', () => {
   assert.doesNotMatch(playbackPolicy, /sh_render_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /sh_room_ui_reduction_policy/);
-  assert.doesNotMatch(playbackPolicy, /StationheadAutoplayScriptRenderReduced/);
-  assert.doesNotMatch(playbackPolicy, /#define StationheadAutoplayScript/);
+  assert.match(
+    playbackPolicy,
+    /ApplyStationheadResourceBlockingStartupReduced\([\s\S]*environment, webview, config, armed, token/,
+  );
+  assert.doesNotMatch(playbackPolicy, /Network\.clearBrowserCache/);
 
   assert.match(startupScript, /#include "sh_render_reduction_policy\.h"/);
   assert.match(startupScript, /#include "sh_room_ui_reduction_policy\.h"/);
+  assert.match(startupScript, /inline std::wstring StationheadCompactRuntimeScript\(/);
   assert.match(startupScript, /inline std::wstring BuildStationheadStartupScript\(/);
   assert.match(
     startupScript,
-    /StationheadAutoplayScriptCurrentInteraction\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
+    /StationheadCompactRuntimeScript\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
   );
-  assert.doesNotMatch(
-    startupScript,
-    /std::wstring script = StationheadAutoplayScript\(globalName, messagePrefix\)/,
-  );
+  assert.doesNotMatch(startupScript, /StationheadAutoplayScriptCurrentInteraction/);
+  assert.doesNotMatch(startupScript, /MutationObserver/);
+  assert.doesNotMatch(startupScript, /setInterval\s*\(/);
+  assert.doesNotMatch(startupScript, /requestAnimationFrame/);
   assert.match(
     startupScript,
     /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript BuildStationheadStartupScript/,
   );
 
-  // Helpers may still exist for regression coverage, but none of them is
-  // allowed to select the effective startup implementation anymore.
+  // Legacy helper headers may remain for compatibility, but none of them is
+  // allowed to select the effective document-start implementation.
   assert.match(interactionPolicy, /inline std::wstring StationheadAutoplayScriptCurrentInteraction\(/);
   for (const policy of [runtimePolicy, lifecyclePolicy, recoveryPolicy, watchdogPolicy, interactionPolicy]) {
     assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
@@ -98,38 +102,12 @@ test('Stationhead render policy reduces paint work without hiding all controls',
 
 test('Stationhead render policy hides generic social and decorative UI', () => {
   for (const token of [
-    'chat',
-    'comment',
-    'gift',
-    'reaction',
-    'emoji',
-    'tip',
-    'tipping',
-    'share',
-    'invite',
-    'social',
-    'listener',
-    'audience',
-    'leaderboard',
-    'ranking',
-    'stats',
-    'streak',
-    'play-count',
-    'total-plays',
-    'now-playing',
-    'track-card',
-    'current-track',
-    'current-song',
-    'song-card',
-    'waveform',
-    'visualizer',
-    'equalizer',
-    'spectrum',
-    'lottie',
-    'confetti',
-    'sparkle',
-    'marquee',
-    'ticker',
+    'chat', 'comment', 'gift', 'reaction', 'emoji', 'tip', 'tipping',
+    'share', 'invite', 'social', 'listener', 'audience', 'leaderboard',
+    'ranking', 'stats', 'streak', 'play-count', 'total-plays', 'now-playing',
+    'track-card', 'current-track', 'current-song', 'song-card', 'waveform',
+    'visualizer', 'equalizer', 'spectrum', 'lottie', 'confetti', 'sparkle',
+    'marquee', 'ticker',
   ]) {
     assert.match(renderPolicy, new RegExp(`data-testid\\*='${token}'`));
   }
