@@ -12,9 +12,18 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
-      /* Keep the player footer / elapsed-time / progress controls untouched.
-         Heavy visual effects are disabled only on non-player content. */
-      main, main *,
+      /* Keep player controls, elapsed-time text and progress/slider trees out
+         of the heavy CSS rules even if Spotify moves them under <main>. */
+      main,
+      main :not(
+        [data-testid="now-playing-bar"], [data-testid="now-playing-bar"] *,
+        [data-testid="now-playing-widget"], [data-testid="now-playing-widget"] *,
+        [data-testid*="playback"], [data-testid*="playback"] *,
+        [data-testid*="progress"], [data-testid*="progress"] *,
+        [role="slider"], [role="slider"] *,
+        [aria-valuenow], [aria-valuenow] *,
+        footer, footer *
+      ),
       [data-testid="left-sidebar"], [data-testid="left-sidebar"] *,
       [data-testid="global-nav-bar"], [data-testid="global-nav-bar"] *,
       [data-testid="topbar"], [data-testid="topbar"] *,
