@@ -38,3 +38,23 @@ test('Stationhead reduces paint work without hiding auth/start controls', () => 
   assert.doesNotMatch(renderScript, /img, picture/);
   assert.doesNotMatch(renderScript, /background-image: none/);
 });
+
+test('Stationhead hides chat, audience and presentation-only statistics', () => {
+  for (const token of [
+    'chat',
+    'comment',
+    'listener',
+    'audience',
+    'leaderboard',
+    'ranking',
+    'stats',
+    'streak',
+    'play-count',
+    'total-plays',
+  ]) {
+    assert.match(stationhead, new RegExp(`data-testid\\*='${token}'`));
+  }
+  assert.match(stationhead, /aria-label\*='total plays'/);
+  assert.match(stationhead, /a\[href\*='\/chat'/);
+  assert.match(stationhead, /content-visibility: hidden !important/);
+});
