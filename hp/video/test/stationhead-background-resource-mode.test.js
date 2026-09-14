@@ -23,8 +23,16 @@ test('Stationhead background playback is low-memory but controller-visible', () 
   assert.doesNotMatch(layout, /const BOOL desiredVisibility = playbackForeground \? TRUE : FALSE/);
 });
 
-test('Stationhead foreground playback restores normal memory without toggling controller visibility false', () => {
-  assert.match(layout, /playbackForeground \? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
+test('Stationhead playback and auth stay low-memory even when foreground', () => {
+  assert.match(
+    layout,
+    /SetControllerMemoryUsageTarget\(\s*controller,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\)/,
+  );
+  assert.match(
+    layout,
+    /SetControllerMemoryUsageTarget\(\s*authController,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\)/,
+  );
+  assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
   assert.match(layout, /StationheadMonitorForeground\(\)/);
   assert.doesNotMatch(layout, /controller->put_IsVisible\(FALSE\)/);
 });
