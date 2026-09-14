@@ -2,6 +2,7 @@
 namespace {
 constexpr wchar_t kMainWindowClass[] = L"HomePanelNativeWindow";
 constexpr wchar_t kMvPanelWindowClass[] = L"HomePanelNativeMvPanel";
+constexpr wchar_t kNativeSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
 constexpr wchar_t kStationheadHostWindowClass[] = L"HomePanelStationheadHost";
 constexpr wchar_t kSecondaryStationheadHostWindowClass[] =
     L"HomePanelSecondaryStationheadHost";
@@ -39,6 +40,30 @@ bool ChildBoundsMatch(HWND window, const RECT& expected) noexcept {
   }
   const RECT relative{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
   return EqualRect(&relative, &expected);
+}
+
+RECT NativeMvForegroundBounds(HWND mvPanel) noexcept {
+  RECT fallback{0, 0, 1, 1};
+  HWND parent = mvPanel ? GetParent(mvPanel) : nullptr;
+  if (!parent || !IsWindow(parent)) return fallback;
+  RECT client{};
+  if (!GetClientRect(parent, &client)) return fallback;
+  client.right = std::max<LONG>(client.left + 1, client.right);
+  client.bottom = std::max<LONG>(client.top + 1, client.bottom);
+
+  LONG videoTop = client.top;
+  HWND status = FindWindowExW(
+      parent, nullptr, kNativeSpotifyStatusWindowClass, nullptr);
+  if (status && IsWindow(status)) {
+    RECT statusBounds{};
+    if (GetWindowRect(status, &statusBounds) &&
+        MapWindowPoints(nullptr, parent,
+                        reinterpret_cast<POINT*>(&statusBounds), 2)) {
+      videoTop = std::clamp<LONG>(statusBounds.bottom, client.top,
+                                  client.bottom - 1);
+    }
+  }
+  return RECT{client.left, videoTop, client.right, client.bottom};
 }
 }  // namespace
 
@@ -208,7 +233,9 @@ void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   ::SetWindowSubclass(
       window, ChildSubclassProc, kChildSubclassId,
       reinterpret_cast<DWORD_PTR>(this));
-  if (IsStationheadPlaybackHost(window)) ApplyStationheadMonitorPlacement();
+  if (IsStationheadPlaybackHost(window) || IsMvPanelWindow(window)) {
+    ApplyStationheadMonitorPlacement();
+  }
 }
 
 void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
@@ -217,10 +244,12 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   const bool stationheadForeground =
       monitorMode_ == MonitorMode::Stationhead ||
       (monitorMode_ == MonitorMode::Native && monitorAuthForeground_);
+  const bool nativeMediaForeground =
+      monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
   if (SetStationheadMonitorForeground(stationheadForeground)) {
     // App::Tick reapplies Stationhead's own WebView layout. Wake it only when
-    // the effective foreground state changes so controller visibility and
-    // memory priority change together with HWND placement.
+    // the effective foreground state changes so memory priority and the 1x1
+    // background viewport move together with HWND placement.
     PostMessageW(parent_, WM_TIMER, 0, 0);
   }
 
@@ -237,15 +266,34 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
     RECT foregroundBounds;
     RECT backgroundBounds;
     bool stationheadForeground;
-  } context{this, foregroundBounds, backgroundBounds, stationheadForeground};
+    bool nativeMediaForeground;
+  } context{this, foregroundBounds, backgroundBounds,
+            stationheadForeground, nativeMediaForeground};
 
   EnumChildWindows(
       parent_,
       [](HWND child, LPARAM value) -> BOOL {
         auto* context = reinterpret_cast<Context*>(value);
+        PowerSavingController* controller = context->controller;
+
+        if (IsMvPanelWindow(child)) {
+          const RECT target = context->nativeMediaForeground
+              ? NativeMvForegroundBounds(child)
+              : RECT{0, 0, 1, 1};
+          if (!ChildBoundsMatch(child, target) || !IsWindowVisible(child)) {
+            SetWindowPos(
+                child, nullptr,
+                target.left, target.top,
+                std::max<LONG>(1, target.right - target.left),
+                std::max<LONG>(1, target.bottom - target.top),
+                SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING |
+                    SWP_NOZORDER);
+          }
+          return TRUE;
+        }
+
         if (!IsStationheadPlaybackHost(child)) return TRUE;
 
-        PowerSavingController* controller = context->controller;
         if (context->stationheadForeground) {
           const bool boundsMatch = ChildBoundsMatch(child, context->foregroundBounds);
           const bool zOrderMatch = controller->overlay_ &&
