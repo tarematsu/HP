@@ -19,10 +19,16 @@ export interface BrowserRadarPanelRequest {
   validTimeText: string;
 }
 
+export interface BrowserRadarLocation {
+  lat: number;
+  lon: number;
+}
+
 export interface BrowserRadarRenderRequest {
   publicUrl: string;
   outputWidth: number;
   outputHeight: number;
+  location: BrowserRadarLocation;
   panels: [
     BrowserRadarPanelRequest,
     BrowserRadarPanelRequest,
@@ -47,52 +53,10 @@ type BrowserBindingEnv = Env & { BROWSER?: Fetcher };
 
 const RENDER_PAGE_PATH = "/radar-cloud/render.html";
 const SATELLITE_ASSET_PATH = "/radar-cloud/radar-satellite.png";
-const KAWAGOE_BOUNDARY_URL = "https://geoshape.ex.nii.ac.jp/city/geojson/latest/11201.geojson";
-export const KAWAGOE_MASK_KEY = "radar/assets/kawagoe-mask-v3-z10-480x960-native-scale.png";
-const KAWAGOE_MASK_VERSION = "kawagoe-z10-480x960-native-scale-v4-green-boundary";
 
 function originUrl(value: string): string {
   const url = new URL(value);
   return `${url.protocol}//${url.host}`;
-}
-
-async function fetchKawagoeBoundary(): Promise<unknown | null> {
-  try {
-    const response = await fetch(KAWAGOE_BOUNDARY_URL, {
-      headers: { "User-Agent": "HomePanel-Cloud/2.6" },
-      cf: { cacheEverything: true, cacheTtl: 86_400 },
-    } as RequestInit);
-    if (!response.ok) {
-      await response.body?.cancel();
-      return null;
-    }
-    return await response.json();
-  } catch {
-    return null;
-  }
-}
-
-function decodePngDataUrl(value: string): Uint8Array {
-  const marker = ";base64,";
-  const markerAt = value.indexOf(marker);
-  if (!value.startsWith("data:image/png") || markerAt < 0) {
-    throw new Error("invalid Kawagoe mask data URL");
-  }
-  const binary = atob(value.slice(markerAt + marker.length));
-  const output = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    output[index] = binary.charCodeAt(index);
-  }
-  return output;
-}
-
-function encodePngDataUrl(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return `data:image/png;base64,${btoa(binary)}`;
 }
 
 export async function renderRepresentativeRadarFrame(
@@ -102,19 +66,6 @@ export async function renderRepresentativeRadarFrame(
   const browserBinding = (env as BrowserBindingEnv).BROWSER;
   if (!browserBinding) throw new Error("Cloudflare Browser Run binding is unavailable");
   const publicOrigin = originUrl(request.publicUrl);
-  const storedMaskObject = env.UPDATE_BUCKET
-    ? await env.UPDATE_BUCKET.get(KAWAGOE_MASK_KEY)
-    : null;
-  const storedMask = storedMaskObject?.customMetadata?.version === KAWAGOE_MASK_VERSION
-    ? storedMaskObject
-    : null;
-  const storedMaskDataUrl = storedMask
-    ? encodePngDataUrl(new Uint8Array(await storedMask.arrayBuffer()))
-    : "";
-  const boundary = storedMask ? null : await fetchKawagoeBoundary();
-  if (!storedMask && !boundary) {
-    throw new Error("Kawagoe boundary is unavailable for static radar mask warmup");
-  }
 
   const browser = await puppeteer.launch(browserBinding);
   try {
@@ -142,11 +93,10 @@ export async function renderRepresentativeRadarFrame(
       zoom: panel.zoom,
     }));
 
-    const evaluation = await page.evaluate(async (payload) => {
+    await page.evaluate(async (payload) => {
       const g = globalThis as unknown as {
         document: {
           getElementById(id: string): any;
-          createElement(tagName: string): any;
         };
         createImageBitmap(blob: Blob): Promise<any>;
       };
@@ -202,25 +152,6 @@ export async function renderRepresentativeRadarFrame(
         );
       };
 
-      const boundary = payload.boundary as any;
-      const boundaryGeometries: any[] = (() => {
-        if (!boundary || typeof boundary !== "object") return [];
-        if (boundary.type === "FeatureCollection") {
-          return Array.isArray(boundary.features)
-            ? boundary.features.map((feature: any) => feature?.geometry).filter(Boolean)
-            : [];
-        }
-        if (boundary.type === "Feature") return boundary.geometry ? [boundary.geometry] : [];
-        return [boundary];
-      })();
-      const boundaryPolygons: any[] = boundaryGeometries.flatMap((geometry: any) => (
-        geometry?.type === "Polygon"
-          ? [geometry.coordinates]
-          : geometry?.type === "MultiPolygon" && Array.isArray(geometry.coordinates)
-            ? geometry.coordinates
-            : []
-      ));
-
       const worldPixel = (lon: number, lat: number, zoom: number) => {
         const scale = 2 ** zoom * 256;
         const safeLat = Math.max(-85.05112878, Math.min(85.05112878, lat));
@@ -230,65 +161,40 @@ export async function renderRepresentativeRadarFrame(
           y: (1 - Math.asinh(Math.tan(radians)) / Math.PI) / 2 * scale,
         };
       };
-      const addBoundaryPath = (target: any, panel: any) => {
-        if (!boundaryPolygons.length) return false;
-        if (!Number.isFinite(panel.worldLeft)
+
+      const drawLocationMarker = (panel: any, panelX: number) => {
+        const lat = Number(payload.location.lat);
+        const lon = Number(payload.location.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)
+            || !Number.isFinite(panel.worldLeft)
             || !Number.isFinite(panel.worldTop)
-            || !Number.isFinite(panel.zoom)) return false;
+            || !Number.isFinite(panel.zoom)) {
+          throw new Error("radar location marker coordinates are invalid");
+        }
         const scaleX = panelWidth / panel.sourceWidth;
         const scaleY = payload.outputHeight / panel.sourceHeight;
-        let drewPoint = false;
-        for (const polygon of boundaryPolygons) {
-          if (!Array.isArray(polygon)) continue;
-          for (const ring of polygon) {
-            if (!Array.isArray(ring) || ring.length < 2) continue;
-            let first = true;
-            for (const coordinate of ring) {
-              if (!Array.isArray(coordinate) || coordinate.length < 2) continue;
-              const lon = Number(coordinate[0]);
-              const lat = Number(coordinate[1]);
-              if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-              const world = worldPixel(lon, lat, panel.zoom);
-              const x = (world.x - panel.worldLeft) * scaleX;
-              const y = (world.y - panel.worldTop) * scaleY;
-              if (first) {
-                target.moveTo(x, y);
-                first = false;
-              } else {
-                target.lineTo(x, y);
-              }
-              drewPoint = true;
-            }
-            if (!first) target.closePath();
-          }
-        }
-        return drewPoint;
+        const world = worldPixel(lon, lat, panel.zoom);
+        const x = panelX + (world.x - panel.worldLeft) * scaleX;
+        const y = (world.y - panel.worldTop) * scaleY;
+        const fullCircle = Math.PI * 2;
+
+        context.save();
+        context.beginPath();
+        context.arc(x, y, 24, 0, fullCircle);
+        context.fillStyle = "rgba(66,133,244,0.20)";
+        context.fill();
+
+        context.beginPath();
+        context.arc(x, y, 13, 0, fullCircle);
+        context.fillStyle = "rgba(255,255,255,0.98)";
+        context.fill();
+
+        context.beginPath();
+        context.arc(x, y, 9, 0, fullCircle);
+        context.fillStyle = "#4285F4";
+        context.fill();
+        context.restore();
       };
-
-      let generatedMaskDataUrl: string | null = null;
-      let kawagoeMask: any | null = payload.kawagoeMaskDataUrl
-        ? await loadRequired(payload.kawagoeMaskDataUrl)
-        : null;
-      if (!kawagoeMask && boundaryPolygons.length) {
-        const maskCanvas = g.document.createElement("canvas");
-        maskCanvas.width = panelWidth;
-        maskCanvas.height = payload.outputHeight;
-        const maskContext = maskCanvas.getContext("2d");
-        if (!maskContext) throw new Error("radar Kawagoe mask canvas unavailable");
-
-        maskContext.beginPath();
-        if (!addBoundaryPath(maskContext, payload.panels[0])) {
-          throw new Error("radar Kawagoe boundary could not be stroked");
-        }
-        maskContext.strokeStyle = "rgba(0,200,0,0.98)";
-        maskContext.lineWidth = 4;
-        maskContext.lineJoin = "round";
-        maskContext.lineCap = "round";
-        maskContext.stroke();
-        kawagoeMask = maskCanvas;
-        generatedMaskDataUrl = maskCanvas.toDataURL("image/png");
-      }
-      if (!kawagoeMask) throw new Error("radar Kawagoe mask unavailable");
 
       const drawPanelLabel = (panel: any, panelX: number) => {
         const timeText = panel.validTimeText as string;
@@ -339,12 +245,11 @@ export async function renderRepresentativeRadarFrame(
           );
           bitmap.close?.();
         }
-        context.drawImage(kawagoeMask, panelX, 0, panelWidth, payload.outputHeight);
+        drawLocationMarker(panel, panelX);
         context.restore();
       }
 
       satellite.close?.();
-      if (payload.kawagoeMaskDataUrl) kawagoeMask.close?.();
 
       context.fillStyle = "rgba(0,0,0,0.92)";
       for (let divider = 1; divider < payload.panels.length; divider += 1) {
@@ -356,26 +261,13 @@ export async function renderRepresentativeRadarFrame(
         const panelX = panelIndex * panelWidth;
         drawPanelLabel(panel, panelX);
       }
-      return { generatedMaskDataUrl };
     }, {
       outputWidth: request.outputWidth,
       outputHeight: request.outputHeight,
       panels: panelResults,
       satelliteUrl: `${publicOrigin}${SATELLITE_ASSET_PATH}`,
-      kawagoeMaskDataUrl: storedMaskDataUrl,
-      boundary,
+      location: request.location,
     });
-
-    if (evaluation.generatedMaskDataUrl && env.UPDATE_BUCKET) {
-      await env.UPDATE_BUCKET.put(
-        KAWAGOE_MASK_KEY,
-        decodePngDataUrl(evaluation.generatedMaskDataUrl),
-        {
-          httpMetadata: { contentType: "image/png" },
-          customMetadata: { version: KAWAGOE_MASK_VERSION },
-        },
-      );
-    }
 
     const screenshot = await page.screenshot({
       type: "png",

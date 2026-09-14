@@ -1,6 +1,5 @@
 import { fetchJson } from "./http";
 import {
-  KAWAGOE_MASK_KEY,
   renderRepresentativeRadarFrame,
   type BrowserRadarPanelRequest,
   type BrowserRadarTile,
@@ -20,7 +19,7 @@ const RADAR_BASE_CROP_WIDTH = 480;
 const RADAR_BASE_CROP_HEIGHT = 960;
 const RADAR_OUTPUT_WIDTH = 1440;
 const RADAR_OUTPUT_HEIGHT = 960;
-const RADAR_COMPOSITION_VERSION = "radar-frame-v8-z10-1440x960-native-scale-green-kawagoe-boundary";
+const RADAR_COMPOSITION_VERSION = "radar-frame-v9-z10-1440x960-native-scale-location-marker";
 const RADAR_LEGEND = [0, 1, 2, 4, 8, 16, 32, 64] as const;
 const RADAR_FRAME_PATH = "/v1/radar/frame/representative/latest.png";
 const RADAR_LEGACY_FRAME_PREFIX = "radar/frames/";
@@ -320,6 +319,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
       publicUrl: publicWorkerUrl(env),
       outputWidth: RADAR_OUTPUT_WIDTH,
       outputHeight: RADAR_OUTPUT_HEIGHT,
+      location: RADAR_CENTER,
       panels,
     });
     await env.UPDATE_BUCKET.put(representativeFrameKey(), rendered.png, {
