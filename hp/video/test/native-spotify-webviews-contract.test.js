@@ -49,19 +49,21 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('authentication expands while every background Spotify WebView remains visible at 1x1', () => {
+test('steady background Spotify is visible at 1x1 with only transient interaction expansion', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyParkedPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyLowPowerPlaybackWidth|kSpotifyLowPowerPlaybackHeight/);
-  assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
+  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
   assert.match(layout, /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(layout, /int width = 1;/);
   assert.match(layout, /int height = 1;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /else if \(recovery\) \{[\s\S]*width = kSpotifyRecoveryInteractionWidth;[\s\S]*height = kSpotifyRecoveryInteractionHeight;/);
   assert.match(layout, /const bool placementChanged = positionChanged \|\| sizeChanged \|\| zOrderChanged/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
