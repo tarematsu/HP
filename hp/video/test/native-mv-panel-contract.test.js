@@ -84,11 +84,11 @@ test('phase clock is removed while cursor hiding remains', () => {
   assert.match(mediaWindow, /windowClass\.hCursor = nullptr/);
 });
 
-test('YouTube preserves playlist playback, one-shot 480p, captions off, skip and fullscreen', () => {
+test('YouTube preserves playlist playback, one-shot 360p, captions off, skip and fullscreen', () => {
   assert.match(mediaBase, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/youtube-start/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
-  assert.match(youtubeRecovery, /const preferredQuality = 'large'/);
+  assert.match(youtubeRecovery, /const preferredQuality = 'medium'/);
   assert.match(youtubeRecovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
   assert.doesNotMatch(youtubeRecovery, /getPlaybackQuality\(\)/);
   assert.match(youtubeRecovery, /setOption\('captions', 'track', \{\}\)/);
@@ -120,6 +120,7 @@ test('TVer episode playback is one-shot 1.75x, native-queue based and player-loc
   assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue|sessionStorage|location\.replace/);
   assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
+  assert.match(tverEpisode, /const suspendPlayerObserver = \(\) =>/);
   assert.match(tverEpisode, /homepanel:tver-media-init/);
   assert.match(tverEpisode, /homepanel:tver-ended/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
