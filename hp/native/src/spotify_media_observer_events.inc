@@ -21,6 +21,10 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
         !state.startPosted || state.targetMedia !== media || state.interrupted) {
       return;
     }
+    // Once the owned target really ended, later ad playback belongs after the
+    // completion event and must not suspend the already-due native deadline.
+    state.startPosted = false;
+    state.targetMedia = null;
     post('spotify:timed-ended');
   };
 

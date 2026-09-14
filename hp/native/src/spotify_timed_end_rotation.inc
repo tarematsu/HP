@@ -204,14 +204,21 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                   rawMessage, &eventGeneration, &remainingMs);
               const bool resumed = !started && ParseSpotifyResumedEvent(
                   rawMessage, &eventGeneration, &remainingMs);
-              const bool ended = !started && !resumed &&
+              const bool interrupted = !started && !resumed &&
+                  ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:timed-interrupted", &eventGeneration);
+              const bool ended = !started && !resumed && !interrupted &&
                   ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:timed-ended", &eventGeneration);
-              const bool observerSynced = !started && !resumed && !ended &&
+              const bool observerSynced =
+                  !started && !resumed && !interrupted && !ended &&
                   ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:observer-synced", &eventGeneration);
               CoTaskMemFree(rawMessage);
-              if (!started && !resumed && !ended && !observerSynced) return S_OK;
+              if (!started && !resumed && !interrupted && !ended &&
+                  !observerSynced) {
+                return S_OK;
+              }
               if (eventGeneration == 0 ||
                   eventGeneration != target->targetGeneration) {
                 return S_OK;
@@ -229,6 +236,18 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
               const ManagedTrack* const currentTrack = CurrentMusicTrack(*target);
               if (!currentTrack) return S_OK;
+              if (interrupted) {
+                // Ads and other non-target playback must not consume the target
+                // song's remaining-time deadline. Resume will install a fresh
+                // deadline from the media element's actual remaining duration.
+                target->timedCompletionDeadlineTick = 0;
+                target->timedCompletionDeadlineGeneration = 0;
+                SetSlotState(*target, SlotState::WaitingTarget);
+                target->nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
+                RecomputeForeground();
+                ArmRobustScheduler();
+                return S_OK;
+              }
               if (ended) {
                 ShortenMusicCompletionDeadlineAtEnd(*target, now);
                 return S_OK;

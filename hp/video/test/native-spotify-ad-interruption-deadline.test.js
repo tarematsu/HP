@@ -13,17 +13,19 @@ const rotation = source('spotify_timed_end_rotation.inc');
 const music = source('spotify_music_target.inc');
 const scoped = source('spotify_scoped_track_reconcile.inc');
 
-test('observer models non-target playback as one boolean interruption state', () => {
+test('observer posts one generation-fenced interruption event after target playback started', () => {
   assert.match(runtime, /interrupted: false/);
+  assert.match(runtime, /state\.startPosted && !state\.interrupted/);
   assert.match(runtime, /state\.interrupted = true/);
+  assert.match(runtime, /post\('spotify:timed-interrupted'\)/);
   assert.match(runtime, /return 'interruption'/);
   assert.match(events, /state\.interrupted/);
   assert.doesNotMatch(runtime, /interruptionStartedAt|timed-interruption-started|timed-interruption-ended|timed-interruption-cancelled/);
   assert.doesNotMatch(events, /addEventListener\('(?:timeupdate|pause|waiting|stalled)'/);
 });
 
-test('active non-target playback before the requested song waits instead of forcing navigation', () => {
-  assert.match(runtime, /if \(!media\.paused\) \{[\s\S]*return 'interruption'/);
+test('active non-target playback before the requested song waits without creating a deadline', () => {
+  assert.match(runtime, /if \(!media\.paused\) \{[\s\S]*state\.startPosted && !state\.interrupted[\s\S]*return 'interruption'/);
   assert.match(scoped, /if \(mediaState\.known && mediaState\.playing\) return 'settling'/);
   assert.doesNotMatch(scoped, /return 'wrong'/);
   assert.doesNotMatch(music, /"\\"wrong\\""/);
@@ -38,23 +40,53 @@ test('active non-target playback before the requested song waits instead of forc
   assert.doesNotMatch(waiting, /NavigateMusicTarget/);
 });
 
-test('requested-song resume sends remaining duration instead of elapsed interruption time', () => {
+test('native clears the target completion deadline as soon as interruption is observed', () => {
+  assert.match(rotation, /L"spotify:timed-interrupted"/);
+  assert.match(rotation, /const bool interrupted =/);
+  assert.match(rotation, /eventGeneration != target->targetGeneration/);
+  const interruptedStart = rotation.indexOf('if (interrupted) {');
+  const endedStart = rotation.indexOf('if (ended) {', interruptedStart);
+  assert.ok(interruptedStart >= 0 && endedStart > interruptedStart);
+  const interruptedBranch = rotation.slice(interruptedStart, endedStart);
+  assert.match(interruptedBranch, /timedCompletionDeadlineTick = 0/);
+  assert.match(interruptedBranch, /timedCompletionDeadlineGeneration = 0/);
+  assert.match(interruptedBranch, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
+  assert.match(interruptedBranch, /nextRecoveryTick = now \+ kSpotifyRecoveryRetryMs/);
+  assert.match(interruptedBranch, /ArmRobustScheduler\(\)/);
+  assert.doesNotMatch(interruptedBranch, /AdvanceTimedRotationSlot/);
+});
+
+test('natural target end cannot be cancelled by an ad that starts immediately after it', () => {
+  const endedStart = events.indexOf('const observeEnded = event => {');
+  const endedEnd = events.indexOf("document.addEventListener('playing'", endedStart);
+  assert.ok(endedStart >= 0 && endedEnd > endedStart);
+  const endedHandler = events.slice(endedStart, endedEnd);
+  assert.match(endedHandler, /state\.startPosted = false/);
+  assert.match(endedHandler, /state\.targetMedia = null/);
+  assert.match(endedHandler, /post\('spotify:timed-ended'\)/);
+  assert.ok(
+    endedHandler.indexOf('state.startPosted = false') <
+      endedHandler.indexOf("post('spotify:timed-ended')"),
+  );
+});
+
+test('requested-song resume rebuilds deadline from actual remaining duration', () => {
   assert.match(runtime, /if \(state\.interrupted\)/);
+  assert.match(runtime, /state\.interrupted = false/);
   assert.match(runtime, /postFields\('spotify:timed-resumed', String\(remainingMs\)\)/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
   assert.match(rotation, /const bool resumed =/);
   assert.match(rotation, /SetMusicCompletionDeadline\([\s\S]*remainingMs, resumed/);
+  assert.match(music, /bool replaceExisting/);
 });
 
-test('native has no separate interruption clock or hold cap', () => {
+test('interruption handling keeps no separate elapsed-time clock or hold cap', () => {
   assert.doesNotMatch(header, /timedInterruptionStartTick/);
   assert.doesNotMatch(phase, /kSpotifyMaxInterruptionHoldMs|SpotifyDeadlineWithInterruptionHold/);
   assert.doesNotMatch(rotation, /interruptionStarted|interruptionEnded|interruptionCancelled|interruptionMs/);
 });
 
-test('resume replacement remains generation fenced and deadline expiry still fails forward', () => {
-  assert.match(rotation, /eventGeneration != target->targetGeneration/);
-  assert.match(music, /bool replaceExisting/);
+test('deadline expiry still advances only when an active deadline remains', () => {
   assert.match(music, /if \(!replaceExisting && slot\.timedCompletionDeadlineTick != 0/);
   const probeStart = rotation.indexOf(
     'void SpotifyWebViews::ProbeDueTimedCompletions(ULONGLONG now) noexcept');
@@ -62,6 +94,7 @@ test('resume replacement remains generation fenced and deadline expiry still fai
     '\nvoid SpotifyWebViews::ArmTimedEndObserver', probeStart);
   assert.ok(probeStart >= 0 && probeEnd > probeStart);
   const probe = rotation.slice(probeStart, probeEnd);
+  assert.match(probe, /if \(slot\.timedCompletionDeadlineTick == 0\) continue/);
   assert.match(probe, /slot\.timedCompletionDeadlineTick > now/);
   assert.match(probe, /AdvanceTimedRotationSlot\(slot\)/);
   assert.doesNotMatch(probe, /NavigateMusicTarget|ReconcileMusicTarget/);
