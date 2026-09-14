@@ -108,8 +108,8 @@ void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
 void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
   if (!slot.timedRotationActive) return;
 
-  // Playback stays non-rendering after playback confirmation. Restore the
-  // individual controller exactly when this slot advances to its next target.
+  // Spotify controllers stay visible for their entire lifetime. Reassert TRUE
+  // when advancing so navigation/recovery never inherits a hidden state.
   if (slot.controller) slot.controller->put_IsVisible(TRUE);
 
   std::wstring completedPath;
@@ -236,11 +236,9 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               SetMusicCompletionDeadline(
                   *target, now, remainingMs, resumed);
               // This event is already the authoritative playback-start signal,
-              // so no additional polling or DOM probe is needed. Hide only
-              // after playback is known to have started for this generation.
-              if (target->controller) {
-                target->controller->put_IsVisible(FALSE);
-              }
+              // so no additional polling or DOM probe is needed. Visibility is
+              // intentionally unchanged: Spotify controllers remain TRUE while
+              // waiting, playing, navigating, and recovering.
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
