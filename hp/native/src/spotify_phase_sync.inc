@@ -47,16 +47,12 @@ void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
       state == SlotState::Playing) {
     slot.nextRecoveryTick = 0;
   }
-  // Spotify status is event-driven. Repaint whenever page/scheduler state
-  // publishes a new status instead of polling the strip on a fixed timer.
-  InvalidateSpotifyStatusForHost(slot.hostWindow);
 }
 
 void SpotifyWebViews::MarkSlotRecovering(
     Slot& slot, ULONGLONG now) noexcept {
   slot.state = SlotState::Recovering;
   slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
-  InvalidateSpotifyStatusForHost(slot.hostWindow);
 }
 
 bool SpotifyWebViews::ExpireStaleAsyncWork(
