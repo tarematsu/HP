@@ -51,7 +51,7 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
       hostClient.right - hostClient.left <= 1 ||
       hostClient.bottom - hostClient.top <= 1) {
     slot.hostLayoutApplied = false;
-    RefreshSpotifyHostLayout();
+    PlaceHosts();
     ArmRobustScheduler();
     return;
   }
