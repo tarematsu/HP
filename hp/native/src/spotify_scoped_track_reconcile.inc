@@ -1,9 +1,8 @@
 namespace hp {
 namespace {
 
-// Reconcile only the requested track surface. Playback truth belongs to the
-// generation-tagged media observer; this script returns a compact action/result
-// to native and emits no second playback-status channel.
+// Reconcile only the requested track surface. Prefer Spotify's visible play/pause
+// state for playback confirmation; media elements are only a fallback signal.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
@@ -128,14 +127,14 @@ LR"JS(
   const mediaPlaybackState = () => {
     const media = Array.from(document.querySelectorAll('audio, video'));
     const active = media.find(candidate => !candidate.ended && !candidate.paused);
-    if (active) return { known: true, playing: true, media: active };
+    if (active) return { known: true, playing: true };
     const pending =
         media.find(candidate => candidate.tagName === 'AUDIO' &&
             !candidate.ended && candidate.readyState >= 1) ||
         media.find(candidate => candidate.tagName === 'AUDIO' && !candidate.ended) ||
         media.find(candidate => !candidate.ended && candidate.readyState >= 1) ||
         media.find(candidate => !candidate.ended) || null;
-    return { known: !!pending, playing: false, media: pending };
+    return { known: !!pending, playing: false };
   };
 
   if (location.hostname !== 'open.spotify.com' || !onTargetPage()) return null;
@@ -148,14 +147,11 @@ LR"JS(
   const buttonIntentValue = buttonIntent(button);
   const mediaState = mediaPlaybackState();
 
-  if (currentMatchesTarget && mediaState.known && mediaState.playing) {
-    const runtime = window.__homePanelSpotifyMediaObserverRuntime;
-    if (runtime && typeof runtime.scheduleTargetChecks === 'function' &&
-        mediaState.media) {
-      runtime.scheduleTargetChecks(mediaState.media);
-    }
+  if (currentMatchesTarget &&
+      (controlIntent === 'pause' || buttonIntentValue === 'pause')) {
     return true;
   }
+  if (currentMatchesTarget && mediaState.known && mediaState.playing) return true;
   if (mediaState.known && mediaState.playing) return 'settling';
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') return 'settling';
   if (buttonIntentValue === 'play') return point(button);
