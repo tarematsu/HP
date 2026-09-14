@@ -1,7 +1,7 @@
 #pragma once
 #include "sh_startup_resource_reduction_policy_fix.h"
 #include "sh_render_reduction_policy.h"
-#include "sh_minimal_ui_policy.h"
+#include "sh_room_ui_reduction_policy.h"
 
 namespace hp {
 
@@ -91,7 +91,7 @@ inline std::wstring StationheadAutoplayScriptRenderReduced(
     const wchar_t* messagePrefix) {
   return StationheadAutoplayScript(globalName, messagePrefix) + L"\n" +
          StationheadRenderReductionScript() + L"\n" +
-         StationheadMinimalUiPruningScript();
+         StationheadRoomUiReductionScript();
 }
 
 }  // namespace hp
