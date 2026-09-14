@@ -12,7 +12,16 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
-      *, *::before, *::after {
+      /* Keep the player footer / elapsed-time / progress controls untouched.
+         Heavy visual effects are disabled only on non-player content. */
+      main, main *,
+      [data-testid="left-sidebar"], [data-testid="left-sidebar"] *,
+      [data-testid="global-nav-bar"], [data-testid="global-nav-bar"] *,
+      [data-testid="topbar"], [data-testid="topbar"] *,
+      [data-testid="buddy-feed"], [data-testid="buddy-feed"] *,
+      [aria-label="Friend Activity"], [aria-label="Friend Activity"] *,
+      [aria-label="フレンドアクティビティ"], [aria-label="フレンドアクティビティ"] *,
+      aside, aside * {
         animation: none !important;
         transition: none !important;
         scroll-behavior: auto !important;
@@ -40,7 +49,9 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
         content-visibility: hidden !important;
         contain: strict !important;
       }
-      main,
+      main {
+        contain: layout style paint !important;
+      }
       [data-testid="now-playing-bar"],
       [data-testid="now-playing-widget"],
       footer {
@@ -50,22 +61,6 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
     (document.head || document.documentElement).appendChild(style);
   }
 
-  const mountBadge = text => {
-    if (!text) return;
-    let badge = document.getElementById('__homePanelSpotifyAccount');
-    if (!badge) {
-      badge = document.createElement('div');
-      badge.id = '__homePanelSpotifyAccount';
-      badge.style.cssText =
-          'position:fixed;left:8px;top:8px;z-index:2147483647;' +
-          'padding:4px 7px;border-radius:4px;background:rgba(0,0,0,.78);' +
-          'color:#fff;font:600 14px/1.2 "Segoe UI",sans-serif;' +
-          'pointer-events:none;';
-      (document.body || document.documentElement).appendChild(badge);
-    }
-    badge.textContent = text;
-  };
-
   if (window.__homePanelSpotifyStaticBridgeInstalled) return true;
   window.__homePanelSpotifyStaticBridgeInstalled = true;
   window.__homePanelSpotifyNativeTarget = null;
@@ -74,10 +69,6 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
     window.chrome.webview.addEventListener('message', event => {
       if (typeof event.data !== 'string') return;
       const fields = event.data.split('\u001f');
-      if (fields[0] === 'spotify:account') {
-        mountBadge(fields[1] || '');
-        return;
-      }
       if (fields[0] !== 'spotify:target') return;
 
       const path = fields[1] || '';
@@ -91,16 +82,46 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
 })()
 )JS";
 
+// Prefer Spotify's own SPA link when the next managed track is already present
+// in the current React tree. Clicking that real link lets Spotify's router keep
+// the app shell alive. Native falls back to a top-level Navigate when no exact
+// link is available, so this optimization never makes routing mandatory.
+constexpr wchar_t kSpotifySpaRouteScript[] = LR"JS(
+(() => {
+  const target = window.__homePanelSpotifyNativeTarget;
+  const targetPath = target && (target.path || target.trackPath || target.pagePath || '');
+  if (!targetPath || location.hostname !== 'open.spotify.com') return false;
+  if (location.pathname === targetPath ||
+      (targetPath.startsWith('/track/') && location.pathname.endsWith(targetPath))) {
+    return true;
+  }
+
+  const links = Array.from(document.querySelectorAll('a[href*="/track/"]'));
+  const link = links.find(candidate => {
+    try {
+      const url = new URL(candidate.href, location.href);
+      return url.origin === location.origin &&
+          (url.pathname === targetPath ||
+           (targetPath.startsWith('/track/') && url.pathname.endsWith(targetPath)));
+    } catch (_) {
+      return false;
+    }
+  });
+  if (!link || !link.isConnected) return false;
+
+  try {
+    link.click();
+    return true;
+  } catch (_) {
+    return false;
+  }
+})()
+)JS";
+
 }  // namespace
 
 void SpotifyWebViews::PostSpotifyPageContext(Slot& slot) noexcept {
   if (!slot.webview) return;
-  if (slot.index < kSpotifyPanelNames.size()) {
-    std::wstring message = L"spotify:account";
-    message.push_back(kSpotifyMessageSeparator);
-    message.append(kSpotifyPanelNames[slot.index]);
-    slot.webview->PostWebMessageAsString(message.c_str());
-  }
   PostSpotifyTargetDescriptorForSlot(slot);
 }
 
