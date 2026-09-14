@@ -2,6 +2,12 @@
 namespace {
 constexpr wchar_t kOverlayWindowClass[] = L"HomePanelPowerSavingOverlay";
 constexpr size_t kControlButtonCount = 3;
+constexpr COLORREF kControlOverlayBackground = RGB(20, 26, 36);
+
+HBRUSH ControlOverlayBackgroundBrush() noexcept {
+  static HBRUSH brush = CreateSolidBrush(kControlOverlayBackground);
+  return brush;
+}
 
 RECT ShrinkRect(RECT rect, int inset) {
   rect.left += inset;
@@ -105,8 +111,7 @@ void PowerSavingController::EnsureOverlay() {
     windowClass.lpfnWndProc = OverlayWndProc;
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.hCursor = LoadCursorW(nullptr, IDC_HAND);
-    windowClass.hbrBackground =
-        reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    windowClass.hbrBackground = ControlOverlayBackgroundBrush();
     windowClass.lpszClassName = kOverlayWindowClass;
     SetLastError(ERROR_SUCCESS);
     if (!RegisterClassW(&windowClass) &&
@@ -241,9 +246,15 @@ void PowerSavingController::PaintOverlay(HWND window) {
 
   RECT client{};
   GetClientRect(window, &client);
-  FillRect(
-      dc, &client,
-      reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+  const int width = std::max(1L, client.right - client.left);
+  const int height = std::max(1L, client.bottom - client.top);
+  HDC memoryDc = CreateCompatibleDC(dc);
+  HBITMAP bitmap = memoryDc ? CreateCompatibleBitmap(dc, width, height) : nullptr;
+  HGDIOBJ previousBitmap =
+      memoryDc && bitmap ? SelectObject(memoryDc, bitmap) : nullptr;
+  HDC paintDc = memoryDc && bitmap ? memoryDc : dc;
+
+  FillRect(paintDc, &client, ControlOverlayBackgroundBrush());
 
   const RECT updateButton = LocalUpdateButtonRect();
   const RECT powerButton = LocalPowerButtonRect();
@@ -255,14 +266,14 @@ void PowerSavingController::PaintOverlay(HWND window) {
     HBRUSH brush = CreateSolidBrush(surface);
     HPEN pen = CreatePen(
         PS_SOLID, 1, active ? activeBorder : RGB(63, 76, 96));
-    HGDIOBJ previousBrush = SelectObject(dc, brush);
-    HGDIOBJ previousPen = SelectObject(dc, pen);
+    HGDIOBJ previousBrush = SelectObject(paintDc, brush);
+    HGDIOBJ previousPen = SelectObject(paintDc, pen);
     const int radius = std::max(8L, button.bottom - button.top);
     RoundRect(
-        dc, button.left, button.top, button.right, button.bottom,
+        paintDc, button.left, button.top, button.right, button.bottom,
         radius, radius);
-    SelectObject(dc, previousPen);
-    SelectObject(dc, previousBrush);
+    SelectObject(paintDc, previousPen);
+    SelectObject(paintDc, previousBrush);
     DeleteObject(pen);
     DeleteObject(brush);
 
@@ -272,14 +283,14 @@ void PowerSavingController::PaintOverlay(HWND window) {
         -fontHeight, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
-    HGDIOBJ previousFont = SelectObject(dc, font);
-    SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, RGB(232, 237, 244));
+    HGDIOBJ previousFont = SelectObject(paintDc, font);
+    SetBkMode(paintDc, TRANSPARENT);
+    SetTextColor(paintDc, RGB(232, 237, 244));
     RECT textRect = button;
     DrawTextW(
-        dc, text, -1, &textRect,
+        paintDc, text, -1, &textRect,
         DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-    SelectObject(dc, previousFont);
+    SelectObject(paintDc, previousFont);
     DeleteObject(font);
   };
 
@@ -306,5 +317,13 @@ void PowerSavingController::PaintOverlay(HWND window) {
       muteButton, mediaMuted_, RGB(88, 43, 47), RGB(190, 92, 102),
       audioModeLabel);
 
+  if (paintDc != dc) {
+    BitBlt(dc, 0, 0, width, height, paintDc, 0, 0, SRCCOPY);
+  }
+  if (memoryDc && bitmap) {
+    SelectObject(memoryDc, previousBitmap);
+    DeleteObject(bitmap);
+  }
+  if (memoryDc) DeleteDC(memoryDc);
   EndPaint(window, &paint);
 }
