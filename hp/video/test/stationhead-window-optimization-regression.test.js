@@ -98,7 +98,7 @@ test('explicit Stationhead interaction may reuse the playback surface while norm
   );
 });
 
-test('fast-path helpers validate host placement, controller bounds and mode-specific visibility', () => {
+test('fast-path helpers validate host placement, controller bounds and persistent playback visibility', () => {
   const playbackMatches = section(
     layoutSource,
     'bool PlaybackSurfaceMatches(',
@@ -107,8 +107,8 @@ test('fast-path helpers validate host placement, controller bounds and mode-spec
   assert.match(playbackMatches, /WindowClientSizeMatches\(/);
   assert.match(playbackMatches, /ChildWindowPlacementMatches\(/);
   assert.match(playbackMatches, /ControllerBoundsMatch\(/);
-  assert.match(playbackMatches, /const BOOL expectedVisibility = placement == HWND_BOTTOM \? FALSE : TRUE;/);
-  assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, expectedVisibility\)/);
+  assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, TRUE\)/);
+  assert.doesNotMatch(playbackMatches, /expectedVisibility|ControllerVisibilityMatches\(controller, FALSE\)/);
   assert.match(
     playbackMatches,
     /controllerWidth =[\s\S]*workspaceBounds\.right - workspaceBounds\.left/,
