@@ -28,11 +28,29 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
     return;
   }
 
-  const bool recoveryViewportReady =
-      hostLayoutActiveSlot_ == slot.index && SlotStateNeedsRecovery(slot.state);
+  // After real playback has started the host intentionally stays 1x1 through
+  // the target song's end, including ad interruptions. Never promote that
+  // established playback surface just to retry a stale Play coordinate.
+  if (slot.playbackConfirmed) {
+    ArmRobustScheduler();
+    return;
+  }
+
+  const bool recoveryViewportReady = SlotStateNeedsRecovery(slot.state);
   if (!recoveryViewportReady) {
     MarkSlotRecovering(slot, GetTickCount64());
-    schedulerCursor_ = slot.index;
+    RefreshSpotifyHostLayout();
+    ArmRobustScheduler();
+    return;
+  }
+
+  // Recovery/pre-playback hosts are full-size behind the dashboard. Repair the
+  // cached placement once if an external window operation left this host at 1x1.
+  RECT hostClient{};
+  if (!GetClientRect(slot.hostWindow, &hostClient) ||
+      hostClient.right - hostClient.left <= 1 ||
+      hostClient.bottom - hostClient.top <= 1) {
+    slot.hostLayoutApplied = false;
     RefreshSpotifyHostLayout();
     ArmRobustScheduler();
     return;
