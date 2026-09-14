@@ -41,13 +41,12 @@ test('Spotify layout parks healthy players in a smaller offscreen viewport', () 
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
 });
 
-test('all Spotify WebViews stay hidden and low-memory while retaining compact host geometry', () => {
+test('Spotify resource policy is permanent and layout does not reapply it', () => {
   assert.match(layout, /CurrentMusicTrack\(slot\)/);
   assert.match(layout, /const bool lowPowerPlayback =/);
-  assert.match(layout, /slot\.controller->put_IsVisible\(FALSE\)/);
-  assert.doesNotMatch(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
-  assert.match(layout, /put_MemoryUsageTargetLevel/);
-  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+  assert.doesNotMatch(layout, /put_IsVisible/);
+  assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+  assert.match(spotify, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
