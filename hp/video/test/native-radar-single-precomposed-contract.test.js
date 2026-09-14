@@ -134,12 +134,16 @@ test('Kawagoe mask is persisted once in R2 and loaded internally as a PNG data U
   assert.doesNotMatch(cloud, /KAWAGOE_MASK_PATH/);
 });
 
-test('rain presence analysis uses a quarter-size canvas in each dimension', () => {
-  assert.match(browserFrame, /const RAIN_ANALYSIS_WIDTH = 80;/);
-  assert.match(browserFrame, /const RAIN_ANALYSIS_HEIGHT = 160;/);
-  assert.match(browserFrame, /rainCanvas\.width = payload\.analysisWidth/);
-  assert.match(browserFrame, /rainCanvas\.height = payload\.analysisHeight/);
-  assert.match(browserFrame, /rainContext\.imageSmoothingEnabled = false/);
+test('cloud radar always composes fetched tiles without rain-presence classification', () => {
+  assert.doesNotMatch(browserFrame, /RAIN_ANALYSIS_WIDTH|RAIN_ANALYSIS_HEIGHT/);
+  assert.doesNotMatch(browserFrame, /rainCanvas|rainContext|getImageData|hasRain|rainPixels/);
+  assert.doesNotMatch(browserFrame, /SUNNY_ICON_ASSET_PATH|drawNoRainPanel|sunnyIcon/);
+  assert.match(browserFrame, /for \(const tile of panel\.tiles/);
+  assert.match(browserFrame, /if \(!bitmap\) continue;/);
+  assert.match(
+    browserFrame,
+    /context\.drawImage\(\s*bitmap,\s*panelX \+ Math\.round\(tile\.destX \* scaleX\),/s,
+  );
 });
 
 test('native skips radar JSON parsing when its stamp is unchanged but still checks PNG stamp', () => {
@@ -154,12 +158,12 @@ test('all three radar panels render only an enlarged timestamp chip', () => {
   assert.match(browserFrame, /const chipTop = 70;/);
   assert.match(browserFrame, /panelWidth - chipLeft \* 2/);
   assert.match(browserFrame, /context\.roundRect\(panelX \+ chipLeft, chipTop/);
-  assert.match(browserFrame, /context\.font = "500 39px sans-serif";/);
+  assert.match(browserFrame, /context\.font = "500 39px sans-serif"/);
   assert.match(browserFrame, /const timeWidth = context\.measureText\(timeText\)\.width;/);
   assert.match(browserFrame, /chipTop \+ chipHeight \/ 2/);
   assert.doesNotMatch(browserFrame, /\btitle\b/);
   assert.doesNotMatch(cloud, /title:/);
   assert.doesNotMatch(cloud, /現在|1時間後|取得可能な最後/);
-  assert.match(browserFrame, /context\.fillStyle = "rgba\(0,0,0,0\.92\)";/);
+  assert.match(browserFrame, /context\.fillStyle = "rgba\(0,0,0,0\.92\)"/);
   assert.match(browserFrame, /context\.fillRect\(divider \* panelWidth - 1, 0, 3, payload\.outputHeight\)/);
 });

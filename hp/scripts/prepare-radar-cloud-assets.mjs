@@ -7,13 +7,7 @@ const sourceDirectory = resolve(hpRoot, "native/scripts/ui");
 const destinationDirectory = resolve(hpRoot, "video/public/radar-cloud");
 
 await mkdir(destinationDirectory, { recursive: true });
-await Promise.all([
-  copyFile(
-    resolve(sourceDirectory, "radar-satellite.png"),
-    resolve(destinationDirectory, "radar-satellite.png"),
-  ),
-  copyFile(
-    resolve(sourceDirectory, "radar-sunny.png"),
-    resolve(destinationDirectory, "weather-sunny.png"),
-  ),
-]);
+await copyFile(
+  resolve(sourceDirectory, "radar-satellite.png"),
+  resolve(destinationDirectory, "radar-satellite.png"),
+);

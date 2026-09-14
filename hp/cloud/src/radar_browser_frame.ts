@@ -47,11 +47,8 @@ type BrowserBindingEnv = Env & { BROWSER?: Fetcher };
 
 const RENDER_PAGE_PATH = "/radar-cloud/render.html";
 const SATELLITE_ASSET_PATH = "/radar-cloud/radar-satellite.png";
-const SUNNY_ICON_ASSET_PATH = "/radar-cloud/weather-sunny.png";
 const KAWAGOE_BOUNDARY_URL = "https://geoshape.ex.nii.ac.jp/city/geojson/latest/11201.geojson";
 export const KAWAGOE_MASK_KEY = "radar/assets/kawagoe-mask-v1-480x960.png";
-const RAIN_ANALYSIS_WIDTH = 80;
-const RAIN_ANALYSIS_HEIGHT = 160;
 
 function originUrl(value: string): string {
   const url = new URL(value);
@@ -169,11 +166,6 @@ export async function renderRepresentativeRadarFrame(
         return g.createImageBitmap(await response.blob());
       };
       const satellite = await loadRequired(payload.satelliteUrl);
-      let sunnyIcon: any | null = null;
-      const getSunnyIcon = async () => {
-        if (!sunnyIcon) sunnyIcon = await loadRequired(payload.sunnyIconUrl);
-        return sunnyIcon;
-      };
 
       const drawBase = (bitmap: any, panel: any, panelX: number) => {
         const cropWidth = panel.baseCropWidth as number;
@@ -294,18 +286,6 @@ export async function renderRepresentativeRadarFrame(
       }
       if (!kawagoeMask) throw new Error("radar Kawagoe mask unavailable");
 
-      const drawNoRainPanel = async (panelX: number) => {
-        context.save();
-        context.fillStyle = "rgba(96,96,96,0.72)";
-        context.fillRect(panelX, 0, panelWidth, payload.outputHeight);
-        context.restore();
-        const icon = await getSunnyIcon();
-        const iconSize = Math.round(Math.min(panelWidth * 0.56, payload.outputHeight * 0.30));
-        const iconX = panelX + Math.round((panelWidth - iconSize) / 2);
-        const iconY = Math.round((payload.outputHeight - iconSize) / 2);
-        context.drawImage(icon, iconX, iconY, iconSize, iconSize);
-      };
-
       const drawPanelLabel = (panel: any, panelX: number) => {
         const timeText = panel.validTimeText as string;
         const chipLeft = 18;
@@ -337,62 +317,22 @@ export async function renderRepresentativeRadarFrame(
         drawBase(satellite, panel, panelX);
         const scaleX = panelWidth / panel.sourceWidth;
         const scaleY = payload.outputHeight / panel.sourceHeight;
-        const rainCanvas = g.document.createElement("canvas");
-        rainCanvas.width = payload.analysisWidth;
-        rainCanvas.height = payload.analysisHeight;
-        const rainContext = rainCanvas.getContext("2d");
-        if (!rainContext) throw new Error("radar rain analysis canvas unavailable");
-        rainContext.imageSmoothingEnabled = false;
-        rainContext.clearRect(0, 0, payload.analysisWidth, payload.analysisHeight);
-        const analysisScaleX = payload.analysisWidth / panel.sourceWidth;
-        const analysisScaleY = payload.analysisHeight / panel.sourceHeight;
 
-        const rainLayers: Array<{
-          bitmap: any;
-          tile: { url: string; destX: number; destY: number };
-        }> = [];
         for (const tile of panel.tiles as Array<{ url: string; destX: number; destY: number }>) {
           const bitmap = await loadRain(tile.url);
           if (!bitmap) continue;
-          rainContext.drawImage(
+          context.drawImage(
             bitmap,
-            Math.round(tile.destX * analysisScaleX),
-            Math.round(tile.destY * analysisScaleY),
-            Math.ceil(256 * analysisScaleX),
-            Math.ceil(256 * analysisScaleY),
+            panelX + Math.round(tile.destX * scaleX),
+            Math.round(tile.destY * scaleY),
+            Math.ceil(256 * scaleX),
+            Math.ceil(256 * scaleY),
           );
-          rainLayers.push({ bitmap, tile });
+          bitmap.close?.();
         }
-
-        const rainPixels = rainContext.getImageData(
-          0, 0, payload.analysisWidth, payload.analysisHeight,
-        ).data;
-        let hasRain = false;
-        for (let offset = 3; offset < rainPixels.length; offset += 4) {
-          if (rainPixels[offset] > 8) {
-            hasRain = true;
-            break;
-          }
-        }
-
-        if (!hasRain) {
-          await drawNoRainPanel(panelX);
-        } else {
-          for (const { bitmap, tile } of rainLayers) {
-            context.drawImage(
-              bitmap,
-              panelX + Math.round(tile.destX * scaleX),
-              Math.round(tile.destY * scaleY),
-              Math.ceil(256 * scaleX),
-              Math.ceil(256 * scaleY),
-            );
-          }
-          context.drawImage(kawagoeMask, panelX, 0, panelWidth, payload.outputHeight);
-        }
-        for (const { bitmap } of rainLayers) bitmap.close?.();
+        context.drawImage(kawagoeMask, panelX, 0, panelWidth, payload.outputHeight);
       }
 
-      sunnyIcon?.close?.();
       satellite.close?.();
       if (payload.kawagoeMaskDataUrl) kawagoeMask.close?.();
 
@@ -412,11 +352,8 @@ export async function renderRepresentativeRadarFrame(
       outputHeight: request.outputHeight,
       panels: panelResults,
       satelliteUrl: `${publicOrigin}${SATELLITE_ASSET_PATH}`,
-      sunnyIconUrl: `${publicOrigin}${SUNNY_ICON_ASSET_PATH}`,
       kawagoeMaskDataUrl: storedMaskDataUrl,
       boundary,
-      analysisWidth: RAIN_ANALYSIS_WIDTH,
-      analysisHeight: RAIN_ANALYSIS_HEIGHT,
     });
 
     if (evaluation.generatedMaskDataUrl && env.UPDATE_BUCKET) {

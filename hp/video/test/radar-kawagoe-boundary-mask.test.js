@@ -14,11 +14,8 @@ const prepareAssets = readFileSync(
   new URL('../../scripts/prepare-radar-cloud-assets.mjs', import.meta.url),
   'utf8',
 );
-const radarSunny = readFileSync(
-  new URL('../../native/scripts/ui/radar-sunny.png', import.meta.url),
-);
 
-test('cloud radar persists one Kawagoe mask PNG and draws it above wet panels', () => {
+test('cloud radar persists one Kawagoe mask PNG and draws it above every panel', () => {
   assert.match(browserRadar, /city\/geojson\/latest\/11201\.geojson/);
   assert.match(browserRadar, /const storedMask = env\.UPDATE_BUCKET/);
   assert.match(browserRadar, /storedMask \? null : await fetchKawagoeBoundary\(\)/);
@@ -55,27 +52,21 @@ test('Kawagoe mask warmup uses the exact same world-pixel viewport as rain tiles
   assert.doesNotMatch(browserRadar, /tileReference/);
 });
 
-test('each dry radar panel independently becomes gray and uses an aspect-safe sunny icon', () => {
-  assert.match(browserRadar, /const SUNNY_ICON_ASSET_PATH = "\/radar-cloud\/weather-sunny\.png";/);
-  assert.match(prepareAssets, /resolve\(sourceDirectory, "radar-sunny\.png"\)/);
-  assert.match(prepareAssets, /weather-sunny\.png/);
-  assert.doesNotMatch(prepareAssets, /weather-icons\/100_day\.png/);
-  assert.equal(radarSunny.readUInt32BE(16), radarSunny.readUInt32BE(20));
-  assert.match(browserRadar, /const RAIN_ANALYSIS_WIDTH = 80;/);
-  assert.match(browserRadar, /const RAIN_ANALYSIS_HEIGHT = 160;/);
-  assert.match(browserRadar, /const rainCanvas = g\.document\.createElement\("canvas"\)/);
-  assert.match(browserRadar, /rainCanvas\.width = payload\.analysisWidth/);
-  assert.match(browserRadar, /rainCanvas\.height = payload\.analysisHeight/);
-  assert.match(browserRadar, /rainContext\.getImageData\(\s*0, 0, payload\.analysisWidth, payload\.analysisHeight,/s);
-  assert.match(browserRadar, /if \(rainPixels\[offset\] > 8\)/);
-  assert.match(browserRadar, /if \(!hasRain\)/);
-  assert.match(browserRadar, /await drawNoRainPanel\(panelX\)/);
-  assert.match(browserRadar, /rgba\(96,96,96,0\.72\)/);
-  assert.match(browserRadar, /context\.fillRect\(panelX, 0, panelWidth, payload\.outputHeight\)/);
-  assert.match(browserRadar, /Math\.min\(panelWidth \* 0\.56, payload\.outputHeight \* 0\.30\)/);
-  assert.match(browserRadar, /context\.drawImage\(icon, iconX, iconY, iconSize, iconSize\)/);
-  assert.match(browserRadar, /sunnyIconUrl: `\$\{publicOrigin\}\$\{SUNNY_ICON_ASSET_PATH\}`/);
-  assert.doesNotMatch(browserRadar, /panelRainTiles|loadedRainTiles|radar rain tiles were not fetched for any panel/);
+test('every radar panel is generated without dry or sunny classification', () => {
+  assert.doesNotMatch(browserRadar, /SUNNY_ICON_ASSET_PATH|sunnyIcon|drawNoRainPanel/);
+  assert.doesNotMatch(browserRadar, /RAIN_ANALYSIS_WIDTH|RAIN_ANALYSIS_HEIGHT/);
+  assert.doesNotMatch(browserRadar, /rainCanvas|rainContext|getImageData|hasRain|rainPixels/);
+  assert.doesNotMatch(prepareAssets, /radar-sunny\.png|weather-sunny\.png/);
+  assert.match(browserRadar, /for \(const tile of panel\.tiles/);
+  assert.match(browserRadar, /if \(!bitmap\) continue;/);
+  assert.match(
+    browserRadar,
+    /context\.drawImage\(\s*bitmap,\s*panelX \+ Math\.round\(tile\.destX \* scaleX\),/s,
+  );
+  assert.match(
+    browserRadar,
+    /context\.drawImage\(kawagoeMask, panelX, 0, panelWidth, payload\.outputHeight\);/,
+  );
 });
 
 test('radar panel labels use the requested top offset and timestamp-only content', () => {
