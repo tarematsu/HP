@@ -6,7 +6,7 @@ namespace hp {
 // The audited room uses stable class/ARIA contracts for action rows, chat,
 // listener controls and the mini-player. Injecting one stylesheet lets the
 // browser match both existing and later SPA nodes without JS polling, text
-// scans, geometry reads, MutationObserver, or recurring timers.
+// scans, geometry reads, persistent DOM observers, or recurring timers.
 inline std::wstring StationheadRoomUiReductionScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
