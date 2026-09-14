@@ -13,6 +13,10 @@ const roomUiPolicy = source('sh_room_ui_reduction_policy.h');
 const startupScript = source('sh_startup_script.h');
 const profileReuseEnd = source('sh_profile_reuse_policy_end.h');
 const interactionPolicy = source('sh_track_boundary_message_policy.h');
+const runtimePolicy = source('sh_runtime_policy_fix.h');
+const lifecyclePolicy = source('sh_runtime_lifecycle_policy_fix.h');
+const recoveryPolicy = source('sh_runtime_recovery_polling_policy_fix.h');
+const watchdogPolicy = source('sh_media_stall_watchdog_policy_fix.h');
 const nativeCmake = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
@@ -55,13 +59,12 @@ test('Stationhead startup composition names the actual runtime pieces once', () 
     /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript BuildStationheadStartupScript/,
   );
 
-  // The real composition does not wrap whichever policy macro happened to be
-  // selected earlier. One compatibility alias remains only for sh_webview.cpp's
-  // historical call-site name.
-  assert.match(
-    interactionPolicy,
-    /#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction/,
-  );
+  // Helpers may still exist for regression coverage, but none of them is
+  // allowed to select the effective startup implementation anymore.
+  assert.match(interactionPolicy, /inline std::wstring StationheadAutoplayScriptCurrentInteraction\(/);
+  for (const policy of [runtimePolicy, lifecyclePolicy, recoveryPolicy, watchdogPolicy, interactionPolicy]) {
+    assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
+  }
   assert.match(
     profileReuseEnd,
     /#undef autoClickInFlight_[\s\S]*#include "sh_startup_script\.h"/,
