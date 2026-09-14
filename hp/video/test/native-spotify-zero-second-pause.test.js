@@ -56,16 +56,23 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('DOM reconcile cannot promote a music slot to Playing by itself', () => {
+test('DOM reconcile promotes only an already-playing target as a confirmation fallback', () => {
+  assert.match(
+    scoped,
+    /currentMatchesTarget && mediaState\.known && mediaState\.playing[\s\S]*runtime\.scheduleTargetChecks\(mediaState\.media\)[\s\S]*return true/,
+  );
   const trueBranch = music.slice(
     music.indexOf('if (json && std::wstring_view(json) == L"true")'),
     music.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
   );
-  assert.match(trueBranch, /SlotState::WaitingTarget/);
-  assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(trueBranch, /GetLocalTime\(&target->playbackConfirmedAt\)/);
+  assert.match(trueBranch, /target->playbackConfirmed = true/);
+  assert.match(trueBranch, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
+  assert.doesNotMatch(trueBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
 });
 
-test('generation-tagged observer remains authority for confirmed playback start and resume', () => {
+test('generation-tagged observer remains the primary confirmed playback start and resume path', () => {
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
   assert.match(rotation, /SetSlotState\(\*target, SlotState::Playing\)/);
