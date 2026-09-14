@@ -8,6 +8,8 @@ const loader = readFileSync(
   new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
+const phase = readFileSync(
+  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const cloudSync = readFileSync(
@@ -26,17 +28,29 @@ test('Spotify watches the same device config cache replaced by CloudClient sync'
   assert.match(schedule, /RunStaggeredReconcile\(\)[\s\S]*EnsureCloudPlaylistLoaded\(\)/);
 });
 
-test('each scheduler pass checks the synchronized playlist cache at most once', () => {
+test('natural scheduler wakes throttle synchronized playlist cache checks', () => {
   const startAt = schedule.indexOf('void SpotifyWebViews::StartAutonomousSchedule');
   const runAt = schedule.indexOf('void SpotifyWebViews::RunStaggeredReconcile');
   assert.ok(startAt >= 0 && runAt > startAt);
   const start = schedule.slice(startAt, runAt);
   const run = schedule.slice(runAt);
+
   assert.doesNotMatch(start, /EnsureCloudPlaylistLoaded\(\)/);
+  assert.match(schedule, /kSpotifyCloudReloadMinIntervalMs = 60ULL \* 1000ULL/);
+  assert.match(header, /ULONGLONG nextCloudPlaylistCheckTick_ = 0/);
+  assert.match(start, /nextCloudPlaylistCheckTick_ = 0/);
   assert.match(run, /const bool cloudPlaylistReady = InitialCloudPlaylistReady\(now\)/);
-  assert.match(run, /if \(cloudPlaylistWasReady && cloudPlaylistReady\) EnsureCloudPlaylistLoaded\(\)/);
+  assert.match(
+    run,
+    /if \(!cloudPlaylistWasReady && cloudPlaylistReady\) \{[\s\S]*nextCloudPlaylistCheckTick_ = now \+ kSpotifyCloudReloadMinIntervalMs/,
+  );
+  assert.match(
+    run,
+    /else if \(cloudPlaylistWasReady && cloudPlaylistReady &&[\s\S]*nextCloudPlaylistCheckTick_ == 0 \|\|[\s\S]*now >= nextCloudPlaylistCheckTick_[\s\S]*EnsureCloudPlaylistLoaded\(\);[\s\S]*nextCloudPlaylistCheckTick_ = now \+ kSpotifyCloudReloadMinIntervalMs/,
+  );
   assert.equal((run.match(/EnsureCloudPlaylistLoaded\(\)/g) ?? []).length, 1);
   assert.match(loader, /if \(initialCloudPlaylistReady_\) EnsureCloudPlaylistLoaded\(\)/);
+  assert.doesNotMatch(phase, /nextCloudPlaylistCheckTick_|kSpotifyCloudReloadMinIntervalMs/);
 });
 
 test('device config cache identity/version mismatch forces a full cloud refresh', () => {
