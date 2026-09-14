@@ -118,10 +118,10 @@ LR"JS(
     }
   }
 
-  // 480p is a per-content preference. Set it once for a new video. The page is
-  // responsible for maintaining it afterwards; watchdog passes do not query or
-  // reapply quality after the initial request succeeds.
-  const preferredQuality = 'large';
+  // 360p is a per-content preference. Set it once for a new video to reduce
+  // decode/GPU/memory pressure on low-spec devices. The page maintains it after
+  // the initial request; watchdog passes do not query or reapply the quality.
+  const preferredQuality = 'medium';
   if (!recoveryState.qualityApplied) {
     let touched = false;
     try {
