@@ -10,8 +10,8 @@ const validationPolicy = readFileSync(
   new URL('../../native/src/sh_auth_capture_validation_policy_fix.h', import.meta.url),
   'utf8',
 );
-const runtimePolicy = readFileSync(
-  new URL('../../native/src/sh_runtime_policy_fix.h', import.meta.url),
+const reusePolicy = readFileSync(
+  new URL('../../native/src/sh_auth_capture_reuse_policy.h', import.meta.url),
   'utf8',
 );
 
@@ -49,9 +49,9 @@ test('response-validated auth capture is compiled after auth navigation policy',
   );
 });
 
-test('optimistic base auth-cache markers are replaced exactly once', () => {
-  assert.equal(occurrences(runtimePolicy, 'rememberAcceptedAuthorization();'), 2);
-  assert.equal(occurrences(runtimePolicy, 'releaseRejectedAuthorization('), 2);
+test('optimistic auth-reuse markers are replaced exactly once', () => {
+  assert.equal(occurrences(reusePolicy, 'rememberAcceptedAuthorization();'), 2);
+  assert.equal(occurrences(reusePolicy, 'releaseRejectedAuthorization('), 2);
   for (const marker of [
     'acceptanceHelpersReplaced',
     'fetchCaptureReplaced',
@@ -60,6 +60,7 @@ test('optimistic base auth-cache markers are replaced exactly once', () => {
     assert.match(validationPolicy, new RegExp(`const bool ${marker}`));
     assert.match(validationPolicy, new RegExp(`\\(void\\)${marker};`));
   }
+  assert.match(validationPolicy, /ReplaceStationheadAuthCaptureFragment/);
 });
 
 test('fetch tokens are accepted only after a trusted Stationhead response', () => {
