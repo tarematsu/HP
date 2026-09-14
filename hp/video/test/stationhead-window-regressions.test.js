@@ -62,7 +62,7 @@ test('hidden playback placement does not trust a stale cached visible flag', () 
   );
   assert.match(
     keepBehind,
-    /ApplyStationheadChildLayout\([\s\S]*bounds_, false, false, false\)/,
+    /ApplyStationheadChildLayout\([\s\S]*bounds_, false, false, false,[\s\S]*keepPlaybackFullSizeInBackground\)/,
   );
 });
 
