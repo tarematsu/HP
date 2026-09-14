@@ -436,8 +436,6 @@ static_assert(kStationheadMeasuredPostPlaybackStopClickDelayMs < 12'000);
 
 }  // namespace hp
 
-#undef StationheadAutoplayScript
-#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction
 #undef StationheadAuthProbeScript
 #define StationheadAuthProbeScript StationheadCurrentInteractionAuthProbeScript
 
