@@ -34,6 +34,11 @@ void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
+      // PowerSavingController posts a zero-id WM_TIMER when the effective
+      // Stationhead monitor foreground state changes. The ordinary app timer
+      // uses kCentralTimer, so only this explicit wake needs to invalidate the
+      // placement cache before Tick reapplies the WebView2 bounds/visibility.
+      if (wParam == 0) MarkStationheadPlacementDirty();
       Tick();
       return 0;
     case kStartupUpdateWakeMessage:
