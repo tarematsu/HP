@@ -4,6 +4,32 @@ LR"JS(
     if (!video || video.__homePanelTverEventState === state) return;
     video.__homePanelTverEventState = state;
 
+    const clearProgressSampler = () => {
+      if (!state.progressTimer) return;
+      clearTimeout(state.progressTimer);
+      state.progressTimer = 0;
+    };
+    const armProgressSampler = () => {
+      if (state.progressTimer || state.recoveryPending || state.adActive ||
+          video.paused || video.ended) return;
+      const delay = progressIntervalFor(video);
+      state.progressTimer = setTimeout(() => {
+        state.progressTimer = 0;
+        if (window.__homePanelSakuraMeetsState !== state ||
+            state.video !== video || video.ended || state.recoveryPending ||
+            state.adActive) return;
+        const currentTime = Number(video.currentTime);
+        if (Number.isFinite(currentTime) && state.maxTime >= 10 &&
+            currentTime + 5 < state.maxTime) {
+          scheduleEnsure(0);
+        }
+        sampleProgress(video, state);
+        if (!video.paused) armProgressSampler();
+      }, delay);
+    };
+    state.clearProgressSampler = clearProgressSampler;
+    state.armProgressSampler = armProgressSampler;
+
     const clearRecovery = () => {
       state.recoveryPending = false;
       state.recoverySince = 0;
@@ -35,10 +61,11 @@ LR"JS(
     state.clearRecoveryWake = clearRecovery;
     state.requestRecoveryWake = startRecovery;
 
-    video.addEventListener('timeupdate', () => {
-      if (window.__homePanelSakuraMeetsState !== state) return;
-      sampleProgress(video, state);
-    }, { passive: true });
+    // Progress sampling uses one adaptive one-shot timer rather than receiving
+    // every timeupdate event. Healthy playback wakes at most every two seconds,
+    // with tighter sampling only near the end of an item.
+    armProgressSampler();
+
     // playbackRate is initialized once when this video becomes current. Do not
     // watch ratechange and rewrite it repeatedly during the same media item.
     video.addEventListener('volumechange', () => {
@@ -48,6 +75,7 @@ LR"JS(
     });
     video.addEventListener('ended', () => {
       if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
+      clearProgressSampler();
       sampleProgress(video, state, true);
       clearRecovery();
       state.endCandidateAt = Date.now();
@@ -55,26 +83,35 @@ LR"JS(
     }, { passive: true });
     for (const eventName of ['waiting', 'stalled']) {
       video.addEventListener(eventName, () => {
+        clearProgressSampler();
         startRecovery(eventName);
         scheduleEnsure(40);
       }, { passive: true });
     }
     video.addEventListener('pause', () => {
+      clearProgressSampler();
       if (!video.ended) startRecovery('pause');
       scheduleEnsure(40);
     }, { passive: true });
-    video.addEventListener('play', () => scheduleEnsure(40), { passive: true });
+    video.addEventListener('play', () => {
+      armProgressSampler();
+      scheduleEnsure(40);
+    }, { passive: true });
     video.addEventListener('playing', () => {
       clearRecovery();
+      armProgressSampler();
       scheduleEnsure(40);
     }, { passive: true });
     video.addEventListener('emptied', () => {
+      clearProgressSampler();
       clearRecovery();
       scheduleEnsure(40);
     }, { passive: true });
     for (const eventName of ['loadedmetadata', 'durationchange']) {
       video.addEventListener(eventName, () => {
         sampleProgress(video, state, true);
+        clearProgressSampler();
+        armProgressSampler();
         scheduleEnsure(40);
       }, { passive: true });
     }

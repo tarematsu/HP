@@ -2,6 +2,7 @@ LR"JS(
 
   let observedPlayerRoot = null;
   let playerObserver = null;
+  let playerObserverActive = false;
   let playerUiRevision = 0;
   const interestingPlayerSelector = [
     'video',
@@ -16,29 +17,42 @@ LR"JS(
     '[role="menuitem"]', '[role="radio"]', '[role="option"]',
     '[role="dialog"]', '[aria-modal="true"]'
   ].join(',');
+  const disconnectPlayerObserver = () => {
+    if (!playerObserverActive) return;
+    try { playerObserver?.disconnect(); } catch (_) {}
+    playerObserverActive = false;
+  };
   const bindPlayerObserver = video => {
     const root = playerRootFor(video);
-    if (!root || root === observedPlayerRoot || typeof MutationObserver !== 'function') {
-      return;
+    if (!root || typeof MutationObserver !== 'function') return;
+    if (root !== observedPlayerRoot) {
+      disconnectPlayerObserver();
+      observedPlayerRoot = root;
+      playerObserver = null;
     }
-    try { playerObserver?.disconnect(); } catch (_) {}
-    observedPlayerRoot = root;
-    playerObserver = new MutationObserver(mutations => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
-          const element = node;
-          if (element.matches?.(interestingPlayerSelector) ||
-              element.querySelector?.(interestingPlayerSelector)) {
-            ++playerUiRevision;
-            wakeNative('ui:' + playerUiRevision);
-            scheduleEnsure(40);
-            return;
+    if (playerObserverActive) return;
+    if (!playerObserver) {
+      playerObserver = new MutationObserver(mutations => {
+        for (const mutation of mutations) {
+          for (const node of mutation.addedNodes) {
+            if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
+            const element = node;
+            if (element.matches?.(interestingPlayerSelector) ||
+                element.querySelector?.(interestingPlayerSelector)) {
+              ++playerUiRevision;
+              wakeNative('ui:' + playerUiRevision);
+              scheduleEnsure(40);
+              return;
+            }
           }
         }
-      }
-    });
+      });
+    }
     playerObserver.observe(root, { childList: true, subtree: true });
+    playerObserverActive = true;
     window.__homePanelTverEpisodeObserver = playerObserver;
+  };
+  const suspendPlayerObserver = () => {
+    disconnectPlayerObserver();
   };
 )JS"

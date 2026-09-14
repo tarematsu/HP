@@ -92,12 +92,12 @@ test('YouTube fullscreen waits for player settle, then uses the real trusted con
   assert.doesNotMatch(recovery, /setInterval\s*\(/);
 });
 
-test('YouTube content settings are one-shot per video', () => {
+test('YouTube content settings are one-shot per video at 360p', () => {
   assert.match(recovery, /videoKey/);
   assert.match(recovery, /qualityApplied: false/);
   assert.match(recovery, /captionsApplied: false/);
   assert.match(recovery, /fullscreenApplied: false/);
-  assert.match(recovery, /const preferredQuality = 'large'/);
+  assert.match(recovery, /const preferredQuality = 'medium'/);
   assert.match(recovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
   assert.match(recovery, /setPlaybackQuality\(preferredQuality\)/);
   assert.match(recovery, /player\.setOption\('captions', 'track', \{\}\)/);
@@ -105,13 +105,16 @@ test('YouTube content settings are one-shot per video', () => {
   assert.doesNotMatch(recovery, /getPlaybackQuality\(\)/);
 });
 
-test('event agent wakes the native watchdog only on relevant player transitions', () => {
+test('event agent wakes native only on media state while ad UI is deferred to recovery', () => {
   assert.match(eventAgent, /homepanel:youtube-wake/);
   assert.match(eventAgent, /addEventListener\(\s*'yt-navigate-finish'/);
   assert.match(eventAgent, /addEventListener\(\s*'yt-page-data-updated'/);
   assert.doesNotMatch(eventAgent, /playerObserver/);
   assert.match(eventAgent, /attributeFilter: \['class'\]/);
   assert.doesNotMatch(eventAgent, /document\.documentElement.*MutationObserver/);
+  assert.match(eventAgent, /return \[location\.href, ad, paused, ended, failed, fullscreen\]\.join\('\|'\)/);
+  assert.doesNotMatch(eventAgent, /const skip =/);
+  assert.doesNotMatch(eventAgent, /const survey =/);
   assert.match(composition, /#include "media_youtube_event_agent\.inc"/);
   assert.match(composition, /kNativeMediaYoutubeEventAgentScript/);
 });
