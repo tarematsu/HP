@@ -1,8 +1,8 @@
 namespace hp {
 namespace {
 
-// Reconcile only the requested track surface. Prefer Spotify's visible play/pause
-// state for playback confirmation; media elements are only a fallback signal.
+// Reconcile only the requested track surface. Actual media playback is the
+// success signal; Spotify's play/pause chrome is only used to locate controls.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
@@ -147,10 +147,6 @@ LR"JS(
   const buttonIntentValue = buttonIntent(button);
   const mediaState = mediaPlaybackState();
 
-  if (currentMatchesTarget &&
-      (controlIntent === 'pause' || buttonIntentValue === 'pause')) {
-    return true;
-  }
   if (currentMatchesTarget && mediaState.known && mediaState.playing) return true;
   if (mediaState.known && mediaState.playing) return 'settling';
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') return 'settling';
