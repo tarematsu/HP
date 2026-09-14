@@ -84,11 +84,11 @@ test('one threadpool timer owns every Spotify timed wake-up', () => {
   assert.match(lifecycle, /RunStaggeredReconcile\(\)/);
 });
 
-test('scheduler considers completion startup recovery async timeout and audit deadlines', () => {
+test('scheduler considers completion startup recovery async timeout and hourly safety audit deadlines', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 60ULL \* 1000ULL/);
   assert.match(phase, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
   assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
-  assert.match(phase, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
+  assert.match(phase, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
   assert.match(phase, /considerTick\(slot\.timedCompletionDeadlineTick\)/);
   assert.match(phase, /considerTick\(slot\.nextRecoveryTick\)/);
   assert.match(phase, /slot\.asyncStartedTick \+ kSpotifyAsyncOperationTimeoutMs/);
