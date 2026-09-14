@@ -3,6 +3,8 @@ namespace {
 
 constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTrackTransitionRetryMs = 500ULL;
+constexpr ULONGLONG kSpotifyPlaybackStartRetryMs = 1500ULL;
 
 }  // namespace
 
@@ -115,7 +117,8 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
             if (SUCCEEDED(result) && json &&
                 std::wstring_view(json) == L"true") {
               SetSlotState(*target, SlotState::WaitingTarget);
-              target->nextRecoveryTick = callbackNow + kSpotifyRecoveryRetryMs;
+              target->nextRecoveryTick =
+                  callbackNow + kSpotifyTrackTransitionRetryMs;
               ArmRobustScheduler();
               return S_OK;
             }
@@ -200,8 +203,12 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              SetSlotState(*target, SlotState::Playing);
-              SetMusicCompletionDeadline(*target, callbackNow, 0, false);
+              // DOM/media inspection may notice the active target first, but
+              // only the generation-fenced media observer is allowed to start
+              // the completion clock or publish Playing.
+              SetSlotState(*target, SlotState::WaitingTarget);
+              target->nextRecoveryTick =
+                  callbackNow + kSpotifyPlaybackStartRetryMs;
               ArmTimedEndObserver(*target);
               RecomputeForeground();
               ArmRobustScheduler();
@@ -219,7 +226,8 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             int x = 0;
             int y = 0;
             if (ParseNormalizedPoint(json, &x, &y)) {
-              target->nextRecoveryTick = callbackNow + kSpotifyRecoveryRetryMs;
+              target->nextRecoveryTick =
+                  callbackNow + kSpotifyPlaybackStartRetryMs;
               ClickSlotNormalizedPoint(*target, x, y);
               return S_OK;
             }

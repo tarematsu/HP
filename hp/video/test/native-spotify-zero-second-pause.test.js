@@ -58,21 +58,24 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('DOM reconcile accepts target playback before page observer status confirmation', () => {
+test('DOM reconcile requires active target media and leaves success to the observer', () => {
   assert.match(
     scoped,
-    /currentMatchesTarget &&[\s\S]*controlIntent === 'pause'[\s\S]*buttonIntentValue === 'pause'[\s\S]*return true/,
+    /currentMatchesTarget && mediaState\.known && mediaState\.playing\) return true/,
+  );
+  assert.doesNotMatch(
+    scoped,
+    /currentMatchesTarget &&[\s\S]{0,180}controlIntent === 'pause'[\s\S]{0,180}return true/,
   );
   const trueBranch = music.slice(
     music.indexOf('if (json && std::wstring_view(json) == L"true")'),
     music.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
   );
-  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.match(trueBranch, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
+  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
+  assert.match(trueBranch, /kSpotifyPlaybackStartRetryMs/);
   assert.match(trueBranch, /ArmTimedEndObserver\(\*target\)/);
-  assert.doesNotMatch(trueBranch, /GetLocalTime|playbackConfirmed/);
-  assert.doesNotMatch(trueBranch, /SlotState::WaitingTarget/);
-  assert.doesNotMatch(trueBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
+  assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.doesNotMatch(trueBranch, /SetMusicCompletionDeadline/);
   assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
   assert.doesNotMatch(controller, /get_DocumentTitle/);
 });
@@ -87,8 +90,8 @@ test('generation-tagged page observer owns status confirmation timing', () => {
   assert.match(music, /ArmTimedEndObserver\(\*target\)/);
 });
 
-test('music playback does not wait for observer acknowledgement', () => {
-  assert.doesNotMatch(music, /if \(!slot\.timedObserverReady\)/);
+test('DOM detection can arm the observer without title-based status confirmation', () => {
+  assert.doesNotMatch(music, /DocumentTitleChanged|get_DocumentTitle/);
   assert.match(music, /ArmTimedEndObserver\(\*target\)/);
   assert.match(scoped, /controlIntent === 'pause'/);
   assert.match(scoped, /buttonIntentValue === 'pause'/);

@@ -49,17 +49,30 @@ test('status title and confirmation clock come from the page playback observer',
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
-test('target plus pause control confirms playback before arming status observer', () => {
+test('active target media arms the observer and only observer events confirm playback', () => {
   assert.match(reconcile, /currentMatchesTarget/);
+  assert.match(reconcile, /mediaState\.known && mediaState\.playing/);
   assert.match(reconcile, /controlIntent === 'pause'/);
   assert.match(reconcile, /buttonIntentValue === 'pause'/);
-  assert.match(reconcile, /return true/);
+  assert.doesNotMatch(
+    reconcile,
+    /currentMatchesTarget &&[\s\S]{0,180}controlIntent === 'pause'[\s\S]{0,180}return true/,
+  );
   assert.doesNotMatch(reconcile, /runtime\.scheduleTargetChecks/);
   assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
-  assert.match(musicTarget, /json && std::wstring_view\(json\) == L"true"/);
-  assert.match(musicTarget, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.match(musicTarget, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
-  assert.match(musicTarget, /ArmTimedEndObserver\(\*target\)/);
+
+  const trueBranch = musicTarget.slice(
+    musicTarget.indexOf('if (json && std::wstring_view(json) == L"true")'),
+    musicTarget.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
+  );
+  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
+  assert.match(trueBranch, /kSpotifyPlaybackStartRetryMs/);
+  assert.match(trueBranch, /ArmTimedEndObserver\(\*target\)/);
+  assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.doesNotMatch(trueBranch, /SetMusicCompletionDeadline/);
+
+  assert.match(rotation, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(rotation, /SetMusicCompletionDeadline\([\s\S]*remainingMs, resumed/);
 });
 
 test('Spotify status strip repaints from state/page events without its own timer', () => {
