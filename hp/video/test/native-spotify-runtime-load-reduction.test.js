@@ -49,7 +49,7 @@ test('healthy Spotify sleeps up to five minutes while recovery has one five-seco
 test('healthy deadline-owned playback does not enter DOM reconcile work', () => {
   assert.match(schedule, /const auto healthyPlaybackNeedsNoWork/);
   assert.match(schedule, /SlotStateIsHealthy\(slot\.state\)/);
-  assert.match(schedule, /slot\.timedObserverReady/);
+  assert.doesNotMatch(schedule, /slot\.timedObserverReady/);
   assert.match(schedule, /slot\.timedCompletionDeadlineGeneration == slot\.targetGeneration/);
   assert.match(schedule, /healthyPlaybackNeedsNoWork\(candidate\)/);
   assert.ok(
