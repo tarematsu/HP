@@ -23,18 +23,14 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('auth process-failure policy follows permanent LOW memory policy without remapping it', () => {
+test('auth process-failure policy remains chained without a memory-target layer', () => {
   const processIncludeAt = memoryPolicy.indexOf(
     '#include "sh_auth_process_failure_policy_fix.h"',
   );
   assert.ok(processIncludeAt >= 0);
-  assert.match(
-    memoryPolicy,
-    /kInteractiveAuthMemoryTarget\s*=\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
-  );
   assert.doesNotMatch(
     memoryPolicy,
-    /#define COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+    /kInteractiveAuthMemoryTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
 });
 
@@ -47,6 +43,10 @@ test('base auth handler still owns fatal controller teardown', () => {
   assert.match(
     authConfiguration,
     /add_ProcessFailed\([\s\S]*FinishSpotifyAuthorization\(L"Spotify login WebView failed"\)/,
+  );
+  assert.doesNotMatch(
+    authConfiguration,
+    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
 });
 
