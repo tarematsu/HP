@@ -38,10 +38,20 @@ test('target routing does not start the completion clock before playback confirm
   assert.doesNotMatch(navigate, /timedCompletionDeadlineTick\s*=/);
 });
 
-test('trusted Play mousePressed is a playback-start anchor without duplicate start state', () => {
-  assert.match(click, /const ULONGLONG playbackStartTick = GetTickCount64\(\)/);
-  assert.match(click, /SetMusicCompletionDeadline\([\s\S]*\*target, playbackStartTick, 0, false/);
+test('trusted Play input never starts the completion clock by itself', () => {
+  assert.match(click, /ArmTimedEndObserver\(slot\)/);
+  assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyPlaybackStartRetryMs/);
+  assert.doesNotMatch(click, /SetMusicCompletionDeadline/);
+  assert.doesNotMatch(click, /playbackStartTick/);
   assert.doesNotMatch(header + music, /timedPlaybackStartTick/);
+});
+
+test('failed Play and SPA handoff use short targeted retries', () => {
+  assert.match(music, /kSpotifyTrackTransitionRetryMs = 500ULL/);
+  assert.match(music, /kSpotifyPlaybackStartRetryMs = 1500ULL/);
+  assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
+  assert.match(music, /callbackNow \+ kSpotifyPlaybackStartRetryMs/);
+  assert.match(click, /nextRecoveryTick = now \+ kSpotifyPlaybackStartRetryMs/);
 });
 
 test('direct playback start and resume enter the same deadline helper', () => {
