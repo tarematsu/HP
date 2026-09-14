@@ -37,7 +37,7 @@ test('interactive auth memory policy is the final auth policy layer', () => {
   assert.ok(captureAt >= 0 && captureAt < memoryAt);
 });
 
-test('Stationhead uses LOW memory target only in the interactive auth controller path', () => {
+test('ConfigureAuthWebView requests the LOW memory target directly', () => {
   assert.equal(
     occurrences(webviewSource, 'COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW'),
     1,
@@ -53,26 +53,22 @@ test('Stationhead uses LOW memory target only in the interactive auth controller
   );
 });
 
-test('interactive auth LOW request is compiled as NORMAL', () => {
+test('interactive auth LOW request remains LOW instead of being remapped to NORMAL', () => {
   assert.match(
     memoryPolicy,
-    /kInteractiveAuthMemoryTarget\s*=\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+    /kInteractiveAuthMemoryTarget\s*=\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
   );
-  assert.match(
+  assert.doesNotMatch(
     memoryPolicy,
-    /#undef COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
+    /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
   );
-  assert.match(
+  assert.doesNotMatch(
     memoryPolicy,
-    /#define COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\\]*::hp::stationhead_auth_memory_policy::kInteractiveAuthMemoryTarget/,
-  );
-  assert.match(
-    memoryPolicy,
-    /static_assert\(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW !=[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL\)/,
+    /#undef COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW|#define COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
   );
 });
 
-test('playback controller memory behavior remains separate from auth override', () => {
+test('playback controller memory behavior remains owned by the layout policy', () => {
   const playbackConfiguration = section(
     webviewSource,
     'void StationheadPlayer::ConfigureWebView()',
