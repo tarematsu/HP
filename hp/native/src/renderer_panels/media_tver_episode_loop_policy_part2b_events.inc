@@ -10,12 +10,14 @@ LR"JS(
       state.progressTimer = 0;
     };
     const armProgressSampler = () => {
-      if (state.progressTimer || video.paused || video.ended) return;
+      if (state.progressTimer || state.recoveryPending || state.adActive ||
+          video.paused || video.ended) return;
       const delay = progressIntervalFor(video);
       state.progressTimer = setTimeout(() => {
         state.progressTimer = 0;
         if (window.__homePanelSakuraMeetsState !== state ||
-            state.video !== video || video.ended) return;
+            state.video !== video || video.ended || state.recoveryPending ||
+            state.adActive) return;
         const currentTime = Number(video.currentTime);
         if (Number.isFinite(currentTime) && state.maxTime >= 10 &&
             currentTime + 5 < state.maxTime) {
@@ -108,6 +110,7 @@ LR"JS(
     for (const eventName of ['loadedmetadata', 'durationchange']) {
       video.addEventListener(eventName, () => {
         sampleProgress(video, state, true);
+        clearProgressSampler();
         armProgressSampler();
         scheduleEnsure(40);
       }, { passive: true });
