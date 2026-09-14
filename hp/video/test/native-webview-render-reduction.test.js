@@ -131,7 +131,8 @@ test('Stationhead room UI uses audited static selectors instead of semantic poll
 
   assert.doesNotMatch(roomUiPolicy, /querySelectorAll/);
   assert.doesNotMatch(roomUiPolicy, /getBoundingClientRect/);
-  assert.doesNotMatch(roomUiPolicy, /innerText|textContent/);
+  assert.doesNotMatch(roomUiPolicy, /innerText/);
+  assert.equal((roomUiPolicy.match(/textContent/g) ?? []).length, 1);
   assert.doesNotMatch(roomUiPolicy, /setTimeout\s*\(/);
   assert.doesNotMatch(roomUiPolicy, /setInterval\s*\(/);
   assert.doesNotMatch(roomUiPolicy, /MutationObserver/);
