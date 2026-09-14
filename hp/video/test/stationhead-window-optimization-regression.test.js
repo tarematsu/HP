@@ -37,15 +37,20 @@ test('startup preview keeps normal playback backgrounded but preserves explicit 
   assert.match(setPreviewBounds, /viewVisible_ = true;[\s\S]*LayoutControllers\(\);/);
 });
 
-test('background playback shrinks HWND and WebView controller to 1x1 and may suppress rendering', () => {
+test('established background playback shrinks to 1x1 while startup and reload recovery may stay full-size', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
     '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
   );
   assert.match(applyLayout, /const bool playbackForeground =/);
-  assert.match(applyLayout, /const int hostWidth = playbackForeground \? width : 1;/);
-  assert.match(applyLayout, /const int hostHeight = playbackForeground \? height : 1;/);
+  assert.match(
+    applyLayout,
+    /const bool playbackBackgroundFullSize\s*=\s*keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback &&\s*!playbackForeground;/,
+  );
+  assert.match(applyLayout, /const bool playbackFullSize = playbackForeground \|\| playbackBackgroundFullSize;/);
+  assert.match(applyLayout, /const int hostWidth = playbackFullSize \? width : 1;/);
+  assert.match(applyLayout, /const int hostHeight = playbackFullSize \? height : 1;/);
   assert.match(applyLayout, /const RECT contentBounds\{0, 0, hostWidth, hostHeight\};/);
   assert.match(
     applyLayout,
@@ -54,7 +59,7 @@ test('background playback shrinks HWND and WebView controller to 1x1 and may sup
   assert.match(applyLayout, /controller->put_Bounds\(contentBounds\);/);
   assert.match(
     applyLayout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
+    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
   );
   assert.match(applyLayout, /controller->put_IsVisible\(playbackControllerVisible\);/);
 });
@@ -73,7 +78,7 @@ test('background auth WebView also stays visible at 1x1', () => {
   assert.doesNotMatch(applyLayout, /ShowWindow\([^\n]*SW_HIDE/);
 });
 
-test('duplicate background notifications verify 1x1 monitor placement and auth surface', () => {
+test('duplicate background notifications verify effective playback geometry and auth surface', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -82,7 +87,11 @@ test('duplicate background notifications verify 1x1 monitor placement and auth s
   assert.match(setVisible, /const bool monitorForeground = StationheadMonitorForeground\(\);/);
   assert.match(
     setVisible,
-    /PlaybackSurfaceMatches\([\s\S]*monitorForeground \? std::max[\s\S]*monitorForeground \? HWND_TOP : nullptr\)[\s\S]*BackgroundAuthSurfaceMatches\([\s\S]*return;/,
+    /const bool playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground;/,
+  );
+  assert.match(
+    setVisible,
+    /PlaybackSurfaceMatches\([\s\S]*playbackFullSize[\s\S]*monitorForeground \? HWND_TOP : nullptr\)[\s\S]*BackgroundAuthSurfaceMatches\([\s\S]*return;/,
   );
   assert.match(setVisible, /const bool hadInteractiveSurface/);
   assert.match(setVisible, /const bool interactiveSurfaceHadFocus/);
@@ -119,6 +128,7 @@ test('fast-path helpers validate controller size and the expected render state t
   assert.match(playbackMatches, /ControllerBoundsMatch\(/);
   assert.match(playbackMatches, /const BOOL expectedVisibility/);
   assert.match(playbackMatches, /StationheadPlaybackRenderingSuppressed\(controller\)/);
+  assert.match(playbackMatches, /hostWidth > 1 \|\| hostHeight > 1/);
   assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, expectedVisibility\)/);
   assert.match(playbackMatches, /const RECT controllerBounds\{0, 0, hostWidth, hostHeight\};/);
 

@@ -19,14 +19,14 @@ const appMessages = readFileSync(
   'utf8',
 );
 
-test('Stationhead background playback may suppress rendering without forcing a LOW memory target', () => {
+test('Stationhead background playback may suppress 1x1 rendering without forcing a LOW memory target', () => {
   assert.doesNotMatch(layout, /SetControllerMemoryUsageTarget/);
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel/);
   assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/);
   assert.match(layout, /StationheadPlaybackRenderingSuppressed\(controller\)/);
   assert.match(
     layout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
+    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
   );
   assert.match(layout, /controller->put_IsVisible\(playbackControllerVisible\)/);
 });

@@ -25,21 +25,26 @@ const applyLayout = section(
   '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
 );
 
-test('auth promotion keeps playback host alive while rendering follows suppression state', () => {
-  assert.match(applyLayout, /const int hostWidth = playbackForeground \? width : 1;/);
-  assert.match(applyLayout, /const int hostHeight = playbackForeground \? height : 1;/);
+test('auth promotion keeps playback host alive while rendering follows the effective full-size state', () => {
+  assert.match(applyLayout, /const bool playbackFullSize = playbackForeground \|\| playbackBackgroundFullSize;/);
+  assert.match(applyLayout, /const int hostWidth = playbackFullSize \? width : 1;/);
+  assert.match(applyLayout, /const int hostHeight = playbackFullSize \? height : 1;/);
   assert.match(applyLayout, /const int authHostWidth = showAuth \? width : 1;/);
   assert.match(applyLayout, /const int authHostHeight = showAuth \? height : 1;/);
   assert.match(
     applyLayout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
+    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
   );
   assert.match(applyLayout, /controller->put_IsVisible\(playbackControllerVisible\)/);
   assert.match(applyLayout, /authController->put_IsVisible\(TRUE\)/);
+  assert.match(
+    applyLayout,
+    /keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback/,
+  );
   assert.doesNotMatch(applyLayout, /ShowWindow\([^\n]*SW_HIDE/);
 });
 
-test('background surfaces are shown at reduced geometry instead of hidden HWNDs', () => {
+test('background surfaces are resized instead of hidden HWNDs', () => {
   assert.match(
     applyLayout,
     /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*hostWidth, hostHeight,[\s\S]*SWP_SHOWWINDOW/,

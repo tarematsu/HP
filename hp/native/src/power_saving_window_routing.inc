@@ -248,8 +248,8 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
       monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
   if (SetStationheadMonitorForeground(stationheadForeground)) {
     // App::Tick reapplies Stationhead's own WebView layout. Wake it only when
-    // the effective foreground state changes so memory priority and the 1x1
-    // background viewport move together with HWND placement.
+    // the effective foreground state changes so player-owned geometry follows
+    // the selected monitor mode without adding steady-state layout work.
     PostMessageW(parent_, WM_TIMER, 0, 0);
   }
 
@@ -259,16 +259,13 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
       client.left, client.top,
       std::max<LONG>(client.left + 1, client.right),
       std::max<LONG>(client.top + 1, client.bottom)};
-  const RECT backgroundBounds{client.left, client.top, client.left + 1, client.top + 1};
 
   struct Context {
     PowerSavingController* controller;
     RECT foregroundBounds;
-    RECT backgroundBounds;
     bool stationheadForeground;
     bool nativeMediaForeground;
-  } context{this, foregroundBounds, backgroundBounds,
-            stationheadForeground, nativeMediaForeground};
+  } context{this, foregroundBounds, stationheadForeground, nativeMediaForeground};
 
   EnumChildWindows(
       parent_,
@@ -309,15 +306,16 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
           }
         } else {
-          const bool boundsMatch = ChildBoundsMatch(child, context->backgroundBounds);
+          // Background geometry belongs to StationheadPlayer: it is full-size
+          // while startup/reload is waiting for audio, then 1x1 during stable
+          // playback. Monitor routing owns only the background Z-order here.
           const bool zOrderMatch = GetWindow(child, GW_HWNDNEXT) == nullptr;
-          if (!boundsMatch || !zOrderMatch || !IsWindowVisible(child)) {
+          if (!zOrderMatch || !IsWindowVisible(child)) {
             SetWindowPos(
                 child, HWND_BOTTOM,
-                context->backgroundBounds.left,
-                context->backgroundBounds.top,
-                1, 1,
-                SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW |
+                    SWP_NOSENDCHANGING);
           }
         }
         return TRUE;

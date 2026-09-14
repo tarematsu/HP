@@ -50,7 +50,7 @@ test('Stationhead playback rendering suppression is disabled', () => {
   );
 });
 
-test('Stationhead layout therefore keeps playback visible in background', () => {
+test('Stationhead layout keeps full-size playback visible in foreground or background recovery', () => {
   const layout = section(
     stationheadLayout,
     'void ApplyStationheadChildLayout(',
@@ -58,7 +58,7 @@ test('Stationhead layout therefore keeps playback visible in background', () => 
   );
   assert.match(
     layout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
+    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
   );
   assert.match(
     layout,
