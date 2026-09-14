@@ -27,6 +27,12 @@ class PowerSavingController {
     Muted,
   };
 
+  enum class MonitorMode {
+    Native,
+    Stationhead,
+    Off,
+  };
+
   struct BrightnessState;
 
   static constexpr UINT_PTR kScheduleTimer = 1;
@@ -54,6 +60,9 @@ class PowerSavingController {
   void OpenMvStartupInputPass();
   void CloseMvStartupInputPass();
   void ApplyMode(bool enabled);
+  void CycleMonitorMode() noexcept;
+  void ApplyMonitorMode(MonitorMode mode) noexcept;
+  void ApplyStationheadMonitorPlacement() noexcept;
   void CycleAudioMode() noexcept;
   void ApplyAudioMode(AudioMode mode) noexcept;
   void ApplyMinimumBrightness() noexcept;
@@ -69,6 +78,7 @@ class PowerSavingController {
   HWND parent_ = nullptr;
   HWND overlay_ = nullptr;
   bool powerSaving_ = false;
+  MonitorMode monitorMode_ = MonitorMode::Native;
   AudioMode audioMode_ = AudioMode::Media;
   bool mediaMuted_ = false;
   bool mvStartupInputPass_ = false;

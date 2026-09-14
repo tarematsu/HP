@@ -68,7 +68,7 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
               static_cast<WPARAM>(UiAction::AppUpdate), 0);
         }
       } else if (PtInRect(&powerButton, point)) {
-        controller->ApplyMode(!controller->powerSaving_);
+        controller->CycleMonitorMode();
       } else if (PtInRect(&muteButton, point)) {
         controller->CycleAudioMode();
       }
@@ -84,6 +84,7 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
       return 0;
     case kRaiseOverlayMessage:
       controller->LayoutOverlay();
+      controller->ApplyStationheadMonitorPlacement();
       return 0;
     case WM_NCDESTROY:
       KillTimer(window, kScheduleTimer);
@@ -284,9 +285,16 @@ void PowerSavingController::PaintOverlay(HWND window) {
 
   drawButton(
       updateButton, false, RGB(40, 73, 112), RGB(84, 145, 211), L"更新");
+
+  const wchar_t* monitorLabel = L"モニターA";
+  if (monitorMode_ == MonitorMode::Stationhead) {
+    monitorLabel = L"モニターB";
+  } else if (monitorMode_ == MonitorMode::Off) {
+    monitorLabel = L"モニターOFF";
+  }
   drawButton(
-      powerButton, powerSaving_, RGB(30, 92, 55), RGB(74, 180, 105),
-      powerSaving_ ? L"モニター ON" : L"モニター");
+      powerButton, monitorMode_ != MonitorMode::Native,
+      RGB(30, 92, 55), RGB(74, 180, 105), monitorLabel);
 
   const wchar_t* audioModeLabel = L"ミュートA";
   if (audioMode_ == AudioMode::Stationhead) {
