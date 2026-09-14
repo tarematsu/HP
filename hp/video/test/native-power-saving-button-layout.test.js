@@ -65,7 +65,7 @@ test('power-saving controller composes focused responsibilities without a thread
   assert.match(overlay, /void PowerSavingController::PaintOverlay/);
 });
 
-test('update, monitor and audio mode controls share one horizontal clock footer row', () => {
+test('update, monitor and audio output controls share one horizontal clock footer row', () => {
   assert.match(overlay, /constexpr size_t kControlButtonCount = 3/);
   assert.match(overlay, /const int upperMediaHeight = sideHeight \* 600 \/ 1000/);
   assert.match(overlay, /compactAvailable \* 55 \/ 100/);
@@ -81,10 +81,11 @@ test('update, monitor and audio mode controls share one horizontal clock footer 
   assert.match(overlay, /L"モニターB"/);
   assert.match(overlay, /L"モニターC"/);
   assert.match(overlay, /L"モニターOFF"/);
-  assert.match(overlay, /L"ミュートA"/);
-  assert.match(overlay, /L"ミュートB"/);
-  assert.match(overlay, /L"ミュートC"/);
-  assert.match(overlay, /L"ミュートAB"/);
+  assert.match(overlay, /L"音声出力A"/);
+  assert.match(overlay, /L"音声出力B"/);
+  assert.match(overlay, /L"音声出力C"/);
+  assert.match(overlay, /L"音声出力OFF"/);
+  assert.doesNotMatch(overlay, /L"ミュート(?:A|B|C|AB)"/);
   assert.match(header, /enum class MonitorMode/);
   assert.match(header, /MonitorMode monitorMode_ = MonitorMode::Native/);
   assert.match(header, /enum class AudioMode/);
@@ -130,7 +131,7 @@ test('compact overlay clips the complete three-button control row', () => {
   assert.match(overlay, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
 });
 
-test('single audio button cycles A to B to Spotify C to AB', () => {
+test('single audio output button cycles A to B to Spotify C to OFF', () => {
   assert.match(overlay, /controller->CycleAudioMode\(\)/);
   assert.match(
     schedule,
