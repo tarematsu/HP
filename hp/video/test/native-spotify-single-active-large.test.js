@@ -23,28 +23,29 @@ const header = readFileSync(
   'utf8',
 );
 
-test('serialized Spotify shows authentication while normal recovery remains offscreen', () => {
+test('serialized Spotify uses 1x1 steady background and expands only interaction surfaces', () => {
   assert.match(layout, /activeWidth = std::max\(1, clientWidth \* 3 \/ 5\)/);
   assert.match(layout, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /const bool authentication =/);
-  assert.match(layout, /const bool recovery =/);
-  assert.match(layout, /x = client\.right \+ 32/);
+  assert.match(layout, /int width = 1;/);
+  assert.match(layout, /int height = 1;/);
+  assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.match(layout, /if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /else if \(recovery\) \{[\s\S]*kSpotifyRecoveryInteractionWidth[\s\S]*kSpotifyRecoveryInteractionHeight/);
 });
 
-test('inactive playback hosts retain compact nonzero geometry', () => {
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
-  assert.match(layout, /kSpotifyLowPowerPlaybackWidth = 96/);
-  assert.match(layout, /kSpotifyLowPowerPlaybackHeight = 54/);
-  assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
+test('background Spotify controllers stay visible while the host viewport is reduced', () => {
+  assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
+  assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyLowPowerPlaybackWidth/);
 });
 
-test('recovery interaction keeps a usable viewport and trusted click coordinates account for zoom', () => {
+test('trusted click recovery still accounts for controller zoom', () => {
+  assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
-  assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(click, /controller->get_ZoomFactor\(&controllerZoom\)/);
   assert.match(click, /cssWidth = static_cast<double>\(width\) \/ zoom/);
   assert.match(click, /Input\.dispatchMouseEvent/);

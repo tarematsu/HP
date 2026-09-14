@@ -25,56 +25,28 @@ const applyLayout = section(
   '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
 );
 
-function assertOrdered(source, markers) {
-  let previous = -1;
-  for (const marker of markers) {
-    const at = source.indexOf(marker);
-    assert.ok(at >= 0, `missing marker: ${marker}`);
-    assert.ok(at > previous, `out-of-order marker: ${marker}`);
-    previous = at;
-  }
-}
-
-test('auth surface is complete before playback host is retired without hiding the playback controller', () => {
-  assertOrdered(applyLayout, [
-    'if (showAuth) {',
-    'authController->put_IsVisible(TRUE);',
-    'SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING',
-    'if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);',
-    'ControllerVisibilityMatches(controller, TRUE)',
-    'return;',
-  ]);
-  assert.doesNotMatch(applyLayout, /controller->put_IsVisible\(FALSE\)/);
+test('auth promotion keeps playback alive at a 1x1 visible surface', () => {
+  assert.match(applyLayout, /const int hostWidth = playbackForeground \? width : 1;/);
+  assert.match(applyLayout, /const int hostHeight = playbackForeground \? height : 1;/);
+  assert.match(applyLayout, /const int authHostWidth = showAuth \? width : 1;/);
+  assert.match(applyLayout, /const int authHostHeight = showAuth \? height : 1;/);
+  assert.match(applyLayout, /controller->put_IsVisible\(TRUE\)/);
+  assert.match(applyLayout, /authController->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(applyLayout, /put_IsVisible\(FALSE\)/);
+  assert.doesNotMatch(applyLayout, /ShowWindow\([^\n]*SW_HIDE/);
 });
 
-test('normal playback keeps the controller visible before auth surface retirement', () => {
-  const normalPlaybackAt = applyLayout.indexOf(
-    'SetControllerMemoryUsageTarget(\n      controller,',
-  );
-  assert.notEqual(normalPlaybackAt, -1);
-  const normalPlayback = applyLayout.slice(normalPlaybackAt);
-  assertOrdered(normalPlayback, [
-    'ControllerVisibilityMatches(controller, TRUE)',
-    'controller->put_IsVisible(TRUE);',
-    'SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING',
-    'ShowWindow(authHostWindow, SW_HIDE);',
-    'authController->put_IsVisible(FALSE);',
-  ]);
-});
-
-test('destination hosts are sized before visibility changes without exposing an empty frame', () => {
+test('background surfaces are shown at reduced geometry instead of hidden', () => {
   assert.match(
     applyLayout,
-    /if \(!hidePlayback && hostValid &&[\s\S]*SetWindowPos\(hostWindow, hostPlacement,[\s\S]*SWP_NOACTIVATE \| SWP_NOSENDCHANGING\);/,
+    /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*hostWidth, hostHeight,[\s\S]*SWP_SHOWWINDOW/,
   );
   assert.match(
     applyLayout,
-    /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/,
+    /SetWindowPos\(authHostWindow, authPlacement,[\s\S]*authHostWidth, authHostHeight,[\s\S]*SWP_SHOWWINDOW/,
   );
-  assert.match(
-    applyLayout,
-    /if \(showAuth && authHostValid &&[\s\S]*SetWindowPos\(authHostWindow, HWND_TOP,[\s\S]*SWP_NOACTIVATE \| SWP_NOSENDCHANGING\);/,
-  );
+  assert.match(applyLayout, /const RECT contentBounds\{0, 0, hostWidth, hostHeight\};/);
+  assert.match(applyLayout, /const RECT authBounds\{0, 0, authHostWidth, authHostHeight\};/);
 });
 
 test('only explicit account interaction surfaces receive WebView2 focus', () => {
@@ -105,7 +77,7 @@ test('only explicit account interaction surfaces receive WebView2 focus', () => 
   );
 });
 
-test('hiding Stationhead only returns focus when an interactive surface owned it', () => {
+test('backgrounding Stationhead only returns focus when an interactive surface owned it', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
