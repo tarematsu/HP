@@ -62,7 +62,7 @@ test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('authentication recovery and healthy playback use 1x1 steady geometry without resource-policy churn', () => {
+test('authentication recovery and healthy playback use 1x1 steady geometry without low-memory targets', () => {
   assert.match(layout, /int width = 1;/);
   assert.match(layout, /int height = 1;/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
@@ -70,8 +70,11 @@ test('authentication recovery and healthy playback use 1x1 steady geometry witho
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
-  assert.match(spotify, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(
+    spotify,
+    /ApplySpotifyPermanentLowMemoryMode|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
+  );
   assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
 });
 

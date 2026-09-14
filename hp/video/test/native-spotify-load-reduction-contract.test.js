@@ -49,10 +49,13 @@ test('Spotify recovery may expand briefly for trusted CDP input', () => {
   assert.match(layout, /else if \(recovery\)/);
 });
 
-test('Spotify resource policy is permanent and controller visibility stays true', () => {
+test('Spotify resource policy keeps controller visibility true without low-memory targeting', () => {
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
-  assert.match(spotify, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(
+    spotify,
+    /ApplySpotifyPermanentLowMemoryMode|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
+  );
   assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);

@@ -9,7 +9,6 @@ struct StationheadConfig {
   int channelId = 318;
   bool blockImages = true;
   bool blockFonts = true;
-  bool lowMemoryMode = true;
   bool secondaryEnabled = true;
   std::wstring secondaryUrl = L"https://www.stationhead.com/sakuramankai";
 };

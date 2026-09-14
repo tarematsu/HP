@@ -15,9 +15,11 @@ const bridge = readFileSync(
   'utf8',
 );
 
-test('Stationhead background playback stays low-memory and may suppress rendering', () => {
-  assert.match(layout, /SetControllerMemoryUsageTarget/);
-  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+test('Stationhead background playback may suppress rendering without changing memory target', () => {
+  assert.doesNotMatch(
+    layout,
+    /SetControllerMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
+  );
   assert.match(layout, /StationheadPlaybackRenderingSuppressed\(controller\)/);
   assert.match(
     layout,
@@ -26,16 +28,11 @@ test('Stationhead background playback stays low-memory and may suppress renderin
   assert.match(layout, /controller->put_IsVisible\(playbackControllerVisible\)/);
 });
 
-test('Stationhead playback and auth stay low-memory even when foreground', () => {
-  assert.match(
+test('Stationhead playback and auth keep normal WebView2 memory policy in foreground', () => {
+  assert.doesNotMatch(
     layout,
-    /SetControllerMemoryUsageTarget\(\s*controller,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\)/,
+    /SetControllerMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
-  assert.match(
-    layout,
-    /SetControllerMemoryUsageTarget\(\s*authController,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\)/,
-  );
-  assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
   assert.match(layout, /StationheadMonitorForeground\(\)/);
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
 });

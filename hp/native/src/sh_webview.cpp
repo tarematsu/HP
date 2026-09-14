@@ -79,11 +79,6 @@ void StationheadPlayer::ConfigureWebView() {
     }
   }
 
-  // An audio WebView must not be marked as a low-memory discard target.
-  // Once the dashboard moves it behind the native surface, WebView2 can
-  // otherwise unload and recreate the page, stopping playback and causing
-  // Start Listening to be clicked again. Keep LOW only for the transient
-  // authorization WebView below.
   ApplyMute();
   if (IsSecondary()) EnsureDistinctBrowserIdentity();
 
@@ -159,9 +154,6 @@ void StationheadPlayer::ConfigureWebView() {
               statsLastAcceptedRequestId_ = 0;
             }
             if (IsSecondary()) {
-              // Invalidate a local probe started by the outgoing document.
-              // Internal redirects do not pass through NavigateStationheadUrl(),
-              // so they must clear the execution token here as well.
               authProbeInFlight_ = false;
               authProbeStartedAt_ = 0;
               lastAuthProbeAt_ = 0;
@@ -613,10 +605,6 @@ void StationheadPlayer::ConfigureWebView() {
             COREWEBVIEW2_WEB_ERROR_STATUS webError{};
             args->get_IsSuccess(&success);
             args->get_WebErrorStatus(&webError);
-            // This callback belongs to the Stationhead playback WebView. Spotify
-            // authorization always runs in authWebview_; an overlapping auth
-            // session must not reclassify this completion and suppress playback
-            // failure recovery or lastReloadAt_ updates.
             const int64_t now = UnixMillis();
             {
               std::lock_guard lock(mutex_);
@@ -709,10 +697,6 @@ void StationheadPlayer::ConfigureAuthWebView() {
     settings->put_AreDevToolsEnabled(FALSE);
     settings->put_IsStatusBarEnabled(FALSE);
     settings->put_IsZoomControlEnabled(FALSE);
-  }
-  ComPtr<ICoreWebView2_19> authV19;
-  if (config_.lowMemoryMode && SUCCEEDED(authWebview_.As(&authV19)) && authV19) {
-    authV19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
 
   const HRESULT authNavigationResult = authWebview_->add_NavigationCompleted(

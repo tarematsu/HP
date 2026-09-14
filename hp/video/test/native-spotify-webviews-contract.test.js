@@ -68,7 +68,10 @@ test('steady background Spotify is visible at 1x1 with only transient interactio
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
   assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified/);
-  assert.match(spotify, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
+  assert.doesNotMatch(
+    spotify,
+    /ApplySpotifyPermanentLowMemoryMode|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
+  );
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
@@ -112,6 +115,13 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
   assert.doesNotMatch(lifecycle + header + schedule, /gSpotifyTverPhase/);
   assert.match(spotify, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
+});
+
+test('YouTube/TVer shared WebView never requests a low-memory target', () => {
+  assert.doesNotMatch(
+    mediaHost,
+    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
+  );
 });
 
 test('one adaptive threadpool timer services the state queue and exact deadlines', () => {
