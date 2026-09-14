@@ -1,5 +1,4 @@
 #include "sh.h"
-#include "sh_playback_visibility.h"
 #include "stationhead_monitor_probe.h"
 
 namespace hp {
@@ -93,14 +92,10 @@ bool PlaybackSurfaceMatches(HWND hostWindow,
                         workspaceBounds.left + hostWidth,
                         workspaceBounds.top + hostHeight};
   const RECT controllerBounds{0, 0, hostWidth, hostHeight};
-  const BOOL expectedVisibility =
-      placement == HWND_TOP || !StationheadPlaybackRenderingSuppressed(controller)
-          ? TRUE
-          : FALSE;
   return WindowClientSizeMatches(hostWindow, hostWidth, hostHeight) &&
          ChildWindowPlacementMatches(hostWindow, hostBounds, placement) &&
          ControllerBoundsMatch(controller, controllerBounds) &&
-         ControllerVisibilityMatches(controller, expectedVisibility);
+         ControllerVisibilityMatches(controller, TRUE);
 }
 
 bool BackgroundAuthSurfaceMatches(HWND authHostWindow,
@@ -132,14 +127,12 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
                             workspaceBounds.left + width,
                             workspaceBounds.top + height};
   const RECT authBounds{0, 0, width, height};
-  const BOOL playbackVisibility =
-      StationheadPlaybackRenderingSuppressed(controller) ? FALSE : TRUE;
   const bool playbackBackground =
       hostWindow && IsWindow(hostWindow) && IsWindowVisible(hostWindow) &&
       WindowClientSizeMatches(hostWindow, 1, 1) &&
       (!controller ||
        (ControllerBoundsMatch(controller, RECT{0, 0, 1, 1}) &&
-        ControllerVisibilityMatches(controller, playbackVisibility)));
+        ControllerVisibilityMatches(controller, TRUE)));
   return playbackBackground &&
          WindowClientSizeMatches(authHostWindow, width, height) &&
          ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP) &&
@@ -200,10 +193,6 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool monitorForeground = StationheadMonitorForeground();
   const bool playbackForeground =
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
-  const BOOL playbackControllerVisible =
-      playbackForeground || !StationheadPlaybackRenderingSuppressed(controller)
-          ? TRUE
-          : FALSE;
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
   const int hostWidth = playbackForeground ? width : 1;
@@ -253,8 +242,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
     if (!ControllerBoundsMatch(controller, contentBounds)) {
       controller->put_Bounds(contentBounds);
     }
-    if (!ControllerVisibilityMatches(controller, playbackControllerVisible)) {
-      controller->put_IsVisible(playbackControllerVisible);
+    if (!ControllerVisibilityMatches(controller, TRUE)) {
+      controller->put_IsVisible(TRUE);
     }
   }
 
