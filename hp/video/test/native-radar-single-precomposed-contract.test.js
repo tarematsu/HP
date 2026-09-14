@@ -93,15 +93,15 @@ test('cloud radar composition has an explicit public origin for Browser Renderin
   assert.match(wrangler, /"browser": \{\s*"binding": "BROWSER"/);
 });
 
-test('cloud radar contract remains one reduced precomposed three-panel representative frame', () => {
+test('cloud radar contract remains one z10 reduced precomposed three-panel representative frame', () => {
   assert.match(cloud, /const RADAR_OUTPUT_WIDTH = 1440/);
   assert.match(cloud, /const RADAR_OUTPUT_HEIGHT = 960/);
   assert.match(cloud, /const RADAR_BASE_ZOOM = 10/);
-  assert.match(cloud, /const RADAR_DISPLAY_ZOOM = 9/);
+  assert.match(cloud, /const RADAR_DISPLAY_ZOOM = 10/);
   assert.match(cloud, /const RADAR_PANEL_SOURCE_WIDTH = 320/);
   assert.match(cloud, /const RADAR_PANEL_SOURCE_HEIGHT = 640/);
-  assert.match(cloud, /const RADAR_BASE_CROP_WIDTH = 640/);
-  assert.match(cloud, /const RADAR_BASE_CROP_HEIGHT = 1280/);
+  assert.match(cloud, /const RADAR_BASE_CROP_WIDTH = 320/);
+  assert.match(cloud, /const RADAR_BASE_CROP_HEIGHT = 640/);
   assert.match(cloud, /RADAR_FRAME_PATH = "\/v1\/radar\/frame\/representative\/latest\.png"/);
   assert.match(cloud, /JMA_SHORT_TERM_TIMES_URL/);
   assert.match(cloud, /panelRequest\(env, "jma", currentEntry/);
@@ -123,8 +123,8 @@ test('unchanged cloud radar times reuse the existing representative frame', () =
   assert.match(cloud, /customMetadata: \{ radarCompositionKey: compositionKey \}/);
 });
 
-test('Kawagoe mask is persisted once in R2 and loaded internally as a PNG data URL', () => {
-  assert.match(browserFrame, /KAWAGOE_MASK_KEY = "radar\/assets\/kawagoe-mask-v1-480x960\.png"/);
+test('Kawagoe z10 mask is persisted once in R2 and loaded internally as a PNG data URL', () => {
+  assert.match(browserFrame, /KAWAGOE_MASK_KEY = "radar\/assets\/kawagoe-mask-v2-z10-480x960\.png"/);
   assert.match(browserFrame, /UPDATE_BUCKET\.get\(KAWAGOE_MASK_KEY\)/);
   assert.match(browserFrame, /storedMask \? null : await fetchKawagoeBoundary\(\)/);
   assert.match(browserFrame, /encodePngDataUrl\(new Uint8Array\(await storedMask\.arrayBuffer\(\)\)\)/);
