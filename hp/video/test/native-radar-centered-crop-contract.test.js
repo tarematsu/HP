@@ -56,8 +56,9 @@ test('cloud radar renders a z10 1440x960 three-panel image at 1:1 panel scale', 
   assert.match(browserRadar, /must match output pixels at 1:1 scale/);
   assert.match(browserRadar, /const cropWidth = panel\.baseCropWidth as number/);
   assert.match(browserRadar, /const cropHeight = panel\.baseCropHeight as number/);
-  assert.match(browserRadar, /context\.drawImage\(kawagoeMask, panelX, 0, panelWidth, payload\.outputHeight\)/);
-  assert.match(browserRadar, /kawagoe-mask-v3-z10-480x960-native-scale\.png/);
+  assert.match(browserRadar, /drawLocationMarker\(panel, panelX\)/);
+  assert.match(browserRadar, /location: request\.location/);
+  assert.doesNotMatch(browserRadar, /kawagoe-mask|KAWAGOE|city\/geojson/);
   assert.doesNotMatch(browserRadar, /MAP_ASSET_PATH|drawBase\(map/);
   assert.match(browserRadar, /divider < payload\.panels\.length/);
   assert.doesNotMatch(browserRadar, /const panelAspect = panelWidth \/ payload\.outputHeight/);
