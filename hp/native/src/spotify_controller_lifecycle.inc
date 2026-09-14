@@ -173,8 +173,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
             [this, alive, target](ICoreWebView2* sender, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || !sender || !args) return S_OK;
               SetSpotifyOutputMuted(target->webview);
-              ApplySpotifyPermanentLowMemoryMode(target->webview.Get());
-              if (target->controller) target->controller->put_IsVisible(FALSE);
               BOOL success = FALSE;
               if (FAILED(args->get_IsSuccess(&success)) || !success) {
                 target->playerPage = false;
@@ -226,8 +224,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     RECT client{};
     GetClientRect(slot.hostWindow, &client);
     slot.controller->put_Bounds(client);
-    slot.controller->put_IsVisible(FALSE);
-    ApplySpotifyPermanentLowMemoryMode(slot.webview.Get());
     SetSlotState(slot, SlotState::Authenticating);
     slot.webview->Navigate(kSpotifyLoginUrl);
     ArmRobustScheduler();
