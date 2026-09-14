@@ -14,6 +14,10 @@ const webviewSource = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url),
   'utf8',
 );
+const layoutSource = readFileSync(
+  new URL('../../native/src/sh_layout.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -68,14 +72,17 @@ test('interactive auth LOW request remains LOW instead of being remapped to NORM
   );
 });
 
-test('playback controller memory behavior remains owned by the layout policy', () => {
-  const playbackConfiguration = section(
-    webviewSource,
-    'void StationheadPlayer::ConfigureWebView()',
-    'void StationheadPlayer::ConfigureAuthWebView()',
+test('playback and auth layout never promote Stationhead back to NORMAL memory', () => {
+  assert.match(
+    layoutSource,
+    /SetControllerMemoryUsageTarget\(\s*controller,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\)/,
+  );
+  assert.match(
+    layoutSource,
+    /SetControllerMemoryUsageTarget\(\s*authController,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\)/,
   );
   assert.doesNotMatch(
-    playbackConfiguration,
-    /put_MemoryUsageTargetLevel/,
+    layoutSource,
+    /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
   );
 });
