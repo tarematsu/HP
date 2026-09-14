@@ -31,10 +31,13 @@ LR"JS(
   const labelOf = element => normalize(
       (element && (element.getAttribute('aria-label') ||
                    element.getAttribute('title'))) || '').toLowerCase();
+  const testIdOf = element =>
+      ((element && element.getAttribute('data-testid')) || '').toLowerCase();
   const buttonIntent = button => {
     const label = labelOf(button);
-    if (!label) return 'unknown';
+    const testId = testIdOf(button);
     if (label.includes('pause') || label.includes('一時停止')) return 'pause';
+    if (testId === 'play-button') return 'play';
     if (label === 'play' || label === '再生' ||
         label.startsWith('play ') || label.endsWith('を再生')) {
       return 'play';
@@ -100,8 +103,15 @@ LR"JS(
     }
 
     if (onTargetPage()) {
-      return Array.from(document.querySelectorAll(
-          'button[data-testid="play-button"]')).find(visible) || null;
+      const pageButtons = Array.from(document.querySelectorAll(
+          'button[data-testid="play-button"], '
+          + 'button[data-testid="control-button-playpause"], '
+          + 'button, [role="button"]'));
+      const explicit = pageButtons.find(candidate =>
+          visible(candidate) && testIdOf(candidate) === 'play-button');
+      if (explicit) return explicit;
+      return pageButtons.find(candidate =>
+          visible(candidate) && buttonIntent(candidate) === 'play') || null;
     }
     return null;
   };

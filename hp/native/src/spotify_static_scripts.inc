@@ -14,11 +14,14 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
     style.textContent = `
       /* Keep the player footer / elapsed-time / progress controls untouched.
          Keep player controls, elapsed-time text and progress/slider trees out
-         of the heavy CSS rules even if Spotify moves them under <main>. */
+         of the heavy CSS rules even if Spotify moves them under <main>.
+         Play/Pause controls are also trusted-input targets used by native. */
       main,
       main :not(
         [data-testid="now-playing-bar"], [data-testid="now-playing-bar"] *,
         [data-testid="now-playing-widget"], [data-testid="now-playing-widget"] *,
+        [data-testid="play-button"], [data-testid="play-button"] *,
+        [data-testid="control-button-playpause"], [data-testid="control-button-playpause"] *,
         [data-testid*="playback"], [data-testid*="playback"] *,
         [data-testid*="progress"], [data-testid*="progress"] *,
         [role="slider"], [role="slider"] *,
@@ -42,9 +45,27 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
         text-shadow: none !important;
         will-change: auto !important;
       }
-      img, picture, video, canvas,
-      svg[aria-hidden='true'] {
+      /* Do not hide SVG globally: Spotify's Play/Pause glyphs are aria-hidden
+         SVGs inside otherwise valid buttons. Removing them can collapse the
+         trusted input target or leave an unlabeled-looking control. */
+      img, picture, video, canvas {
         display: none !important;
+      }
+      [data-testid="play-button"],
+      [data-testid="control-button-playpause"] {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        content-visibility: visible !important;
+      }
+      [data-testid="play-button"] svg,
+      [data-testid="control-button-playpause"] svg,
+      [data-testid="now-playing-bar"] svg,
+      [data-testid="now-playing-widget"] svg,
+      footer svg {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
       }
       [data-testid="left-sidebar"],
       [data-testid="global-nav-bar"],
