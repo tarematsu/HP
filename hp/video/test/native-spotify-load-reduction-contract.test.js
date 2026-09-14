@@ -107,12 +107,10 @@ test('lightweight Spotify styling protects player timing and progress surfaces',
   assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment/);
 });
 
-test('Spotify decorative requests are blocked inside Chromium and login is unblocked', () => {
-  assert.match(spotify, /Network\.setBlockedURLs/);
-  assert.match(spotify, /kSpotifyBlockedDecorativeUrls/);
-  assert.match(spotify, /kSpotifyUnblockedDecorativeUrls/);
-  assert.match(spotify, /SetSpotifyDecorativeResourceBlocking\(sender, target->playerPage\)/);
-  assert.match(spotify, /SetSpotifyDecorativeResourceBlocking\(sender, playerPage\)/);
+test('Spotify resource blocking is completely disabled', () => {
+  assert.doesNotMatch(spotify, /Network\.setBlockedURLs/);
+  assert.doesNotMatch(spotify, /kSpotifyBlockedDecorativeUrls|kSpotifyUnblockedDecorativeUrls/);
+  assert.doesNotMatch(spotify, /SetSpotifyDecorativeResourceBlocking/);
   assert.doesNotMatch(spotify, /AddWebResourceRequestedFilter/);
   assert.doesNotMatch(spotify, /CreateWebResourceResponse/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);

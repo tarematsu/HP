@@ -96,7 +96,7 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
   assert.doesNotMatch(wrapper, /#define ExecuteScript|RewriteSpotify|spotify_viewport_recovery\.inc|spotify_lonesome_guard\.inc/);
 });
 
-test('Spotify player pages reduce decorative work without touching playback timing surfaces', () => {
+test('Spotify player pages reduce decorative CSS work without network resource blocking', () => {
   assert.match(scripts, /animation: none !important/);
   assert.match(scripts, /transition: none !important/);
   assert.match(scripts, /data-testid="left-sidebar"/);
@@ -104,9 +104,11 @@ test('Spotify player pages reduce decorative work without touching playback timi
   assert.match(scripts, /content-visibility: hidden !important/);
   assert.match(scripts, /Keep the player footer \/ elapsed-time \/ progress controls untouched/);
   assert.match(scripts, /\[data-testid="now-playing-bar"\]/);
-  assert.match(spotify, /Network\.setBlockedURLs/);
-  assert.match(spotify, /kSpotifyBlockedDecorativeUrls/);
+  assert.doesNotMatch(spotify, /Network\.setBlockedURLs/);
+  assert.doesNotMatch(spotify, /kSpotifyBlockedDecorativeUrls|kSpotifyUnblockedDecorativeUrls/);
+  assert.doesNotMatch(spotify, /SetSpotifyDecorativeResourceBlocking/);
   assert.doesNotMatch(spotify, /AddWebResourceRequestedFilter/);
+  assert.doesNotMatch(spotify, /CreateWebResourceResponse/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
 });
