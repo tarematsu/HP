@@ -48,6 +48,11 @@ LR"JS(
       if (!browserFullscreen && state.fullscreenDirty) recoveryFlags.push('fullscreen');
       if (recoveryFlags.length) {
         wakeNative('recovery:' + recoveryFlags.join('+') + ':' + mediaIdentity(video));
+      } else if (!state.adActive && !video.ended) {
+        // Once playback is fully configured and healthy, media events and the
+        // low-frequency native watchdog are sufficient. Drop the player subtree
+        // observer until a media/recovery event schedules ensure() again.
+        suspendPlayerObserver();
       }
     } catch (_) {}
   };
