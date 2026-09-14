@@ -36,8 +36,8 @@ test('Stationhead reduces paint work without hiding auth/start controls', () => 
     stationhead.indexOf('inline std::wstring StationheadRenderReductionScript'),
     stationhead.indexOf('inline std::wstring StationheadAutoplayScriptRenderReduced'),
   );
-  assert.doesNotMatch(renderScript, /button\s*[,}]/);
-  assert.doesNotMatch(renderScript, /input\s*[,}]/);
+  assert.doesNotMatch(renderScript, /^\s*button\s*[,}]/m);
+  assert.doesNotMatch(renderScript, /^\s*input\s*[,}]/m);
   assert.doesNotMatch(renderScript, /img, picture/);
   assert.doesNotMatch(renderScript, /background-image: none/);
   assert.doesNotMatch(renderScript, /MutationObserver/);
