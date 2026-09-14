@@ -34,19 +34,30 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
       if (!dc) return 0;
       RECT client{};
       GetClientRect(hwnd, &client);
-      FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-      SetBkMode(dc, TRANSPARENT);
-      SetTextColor(dc, RGB(225, 229, 235));
-      HGDIOBJ previousFont = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
+      const int width = std::max(1L, client.right - client.left);
+      const int height = std::max(1L, client.bottom - client.top);
+      HDC memoryDc = CreateCompatibleDC(dc);
+      HBITMAP bitmap = memoryDc ? CreateCompatibleBitmap(dc, width, height) : nullptr;
+      HGDIOBJ previousBitmap =
+          memoryDc && bitmap ? SelectObject(memoryDc, bitmap) : nullptr;
+      HDC paintDc = memoryDc && bitmap ? memoryDc : dc;
+
+      FillRect(
+          paintDc, &client,
+          static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+      SetBkMode(paintDc, TRANSPARENT);
+      SetTextColor(paintDc, RGB(225, 229, 235));
+      HGDIOBJ previousFont =
+          SelectObject(paintDc, GetStockObject(DEFAULT_GUI_FONT));
 
       const auto statuses = GetSpotifyPlaybackStatuses();
-      const LONG width = std::max(1L, client.right - client.left);
+      const LONG stripWidth = std::max(1L, client.right - client.left);
       for (size_t i = 0; i < statuses.size(); ++i) {
         const LONG left = client.left +
-            static_cast<LONG>((static_cast<long long>(width) * i) /
+            static_cast<LONG>((static_cast<long long>(stripWidth) * i) /
                               statuses.size());
         const LONG right = client.left +
-            static_cast<LONG>((static_cast<long long>(width) * (i + 1)) /
+            static_cast<LONG>((static_cast<long long>(stripWidth) * (i + 1)) /
                               statuses.size());
         RECT first{left + 6, client.top + 5, right - 6, client.top + 24};
         RECT second{left + 6, client.top + 27, right - 6, client.bottom - 4};
@@ -55,18 +66,30 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
         heading.append(SpotifyStatusClock(statuses[i]));
         const std::wstring& track = statuses[i].trackTitle;
         const wchar_t* trackText = track.empty() ? L"--" : track.c_str();
-        DrawTextW(dc, heading.c_str(), -1, &first,
+        DrawTextW(paintDc, heading.c_str(), -1, &first,
                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
                       DT_NOPREFIX);
-        DrawTextW(dc, trackText, -1, &second,
+        DrawTextW(paintDc, trackText, -1, &second,
                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
                       DT_NOPREFIX);
         if (i + 1 < statuses.size()) {
           RECT divider{right - 1, client.top + 5, right, client.bottom - 5};
-          FillRect(dc, &divider, static_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
+          FillRect(
+              paintDc, &divider,
+              static_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
         }
       }
-      if (previousFont && previousFont != HGDI_ERROR) SelectObject(dc, previousFont);
+      if (previousFont && previousFont != HGDI_ERROR) {
+        SelectObject(paintDc, previousFont);
+      }
+      if (paintDc != dc) {
+        BitBlt(dc, 0, 0, width, height, paintDc, 0, 0, SRCCOPY);
+      }
+      if (memoryDc && bitmap) {
+        SelectObject(memoryDc, previousBitmap);
+        DeleteObject(bitmap);
+      }
+      if (memoryDc) DeleteDC(memoryDc);
       EndPaint(hwnd, &paint);
       return 0;
     }
