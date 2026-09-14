@@ -24,7 +24,7 @@ test('zero-second recovery uses only explicit Spotify Play-labelled controls', (
   assert.match(scoped, /controlIntent === 'play'/);
 });
 
-test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
+test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness', () => {
   const reconcileStart = music.indexOf('void SpotifyWebViews::ReconcileMusicTarget');
   const executeStart = music.indexOf('kSpotifyScopedTrackReconcileScript', reconcileStart);
   assert.ok(reconcileStart >= 0 && executeStart > reconcileStart);
@@ -32,6 +32,7 @@ test('zero-second startup is not gated on Shuffle or Repeat mounting', () => {
   assert.match(startup, /if \(slot\.asyncWork != AsyncWork::None\) return;/);
   assert.match(startup, /PostSpotifyTargetDescriptorForSlot\(slot\)/);
   assert.doesNotMatch(startup, /PlaybackModeGuard|EnsurePlaybackModeOff|shuffleOffVerified|repeatOffVerified/);
+  assert.doesNotMatch(startup, /timedObserverReady|ArmTimedEndObserver/);
 });
 
 test('settling queues one recovery deadline without a renavigation branch', () => {
@@ -56,10 +57,10 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('DOM reconcile fills the status clock for an already-playing target without taking observer authority', () => {
+test('DOM reconcile directly confirms target playback from the visible pause state', () => {
   assert.match(
     scoped,
-    /currentMatchesTarget && mediaState\.known && mediaState\.playing[\s\S]*runtime\.scheduleTargetChecks\(mediaState\.media\)[\s\S]*return true/,
+    /currentMatchesTarget &&[\s\S]*controlIntent === 'pause'[\s\S]*buttonIntentValue === 'pause'[\s\S]*return true/,
   );
   const trueBranch = music.slice(
     music.indexOf('if (json && std::wstring_view(json) == L"true")'),
@@ -67,33 +68,27 @@ test('DOM reconcile fills the status clock for an already-playing target without
   );
   assert.match(trueBranch, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(trueBranch, /target->playbackConfirmed = true/);
-  assert.match(trueBranch, /SlotState::WaitingTarget/);
-  assert.match(trueBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
-  assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.doesNotMatch(trueBranch, /SetMusicCompletionDeadline\(/);
+  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(trueBranch, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
+  assert.doesNotMatch(trueBranch, /SlotState::WaitingTarget/);
+  assert.doesNotMatch(trueBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
 });
 
-test('generation-tagged observer remains the authority for confirmed playback start and resume', () => {
+test('generation-tagged observer remains a generation-safe optional compatibility path', () => {
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
-  assert.match(rotation, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.match(rotation, /SetMusicCompletionDeadline\([\s\S]*\*target, now, remainingMs, resumed/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
+  assert.doesNotMatch(music, /ArmTimedEndObserver\(slot\)/);
 });
 
-test('music playback waits until the observer acknowledges the current generation', () => {
-  assert.match(
-    music,
-    /if \(!slot\.timedObserverReady\) \{[\s\S]*ArmTimedEndObserver\(slot\);[\s\S]*return;/,
-  );
-  assert.match(runtime, /fields\[0\] === 'spotify:observer-sync'/);
-  assert.match(runtime, /post\('spotify:observer-synced'\)/);
-  assert.match(rotation, /L"spotify:observer-sync"/);
-  assert.match(rotation, /L"spotify:observer-synced"/);
-  assert.match(rotation, /if \(observerSynced\) \{[\s\S]*asyncWork = AsyncWork::None;[\s\S]*timedObserverReady = true;[\s\S]*nextRecoveryTick = 0;/);
+test('music playback no longer waits for observer acknowledgement', () => {
+  assert.doesNotMatch(music, /if \(!slot\.timedObserverReady\)/);
+  assert.doesNotMatch(music, /ArmTimedEndObserver\(slot\)/);
+  assert.match(scoped, /controlIntent === 'pause'/);
+  assert.match(scoped, /buttonIntentValue === 'pause'/);
 });
 
-test('observer adoption of already-playing media emits one start deadline', () => {
+test('observer adoption of already-playing media still emits one start deadline if used', () => {
   assert.match(
     runtime,
     /spotify:observer-sync[\s\S]*document\.querySelectorAll\('audio, video'\)[\s\S]*scheduleTargetChecks\(media\)/,
