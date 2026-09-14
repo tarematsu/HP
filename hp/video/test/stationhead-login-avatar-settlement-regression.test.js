@@ -28,7 +28,7 @@ function settlementSection() {
   return section(
     composition,
     'inline std::wstring StationheadLoginSettlementScript()',
-    '// Media boundaries never initiate navigation.',
+    'inline std::wstring StationheadTrackBoundaryScript(',
   );
 }
 

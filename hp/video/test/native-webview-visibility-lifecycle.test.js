@@ -6,7 +6,9 @@ const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
 const stationhead = source('sh.cpp');
+const stationheadLayout = source('sh_layout.cpp');
 const stationheadPopup = source('sh_webview.cpp');
+const stationheadBoundary = source('sh_track_boundary_script.h');
 const spotifyClick = source('spotify_background_click.inc');
 const spotifyRotation = source('spotify_timed_end_rotation.inc');
 
@@ -34,6 +36,42 @@ test('Stationhead playback controller starts visible while auth controllers may 
   );
   assert.match(auth, /authController_->put_IsVisible\(FALSE\)/);
   assert.match(stationheadPopup, /authController_->put_IsVisible\(FALSE\)/);
+});
+
+test('Stationhead suppresses rendering only for a background playback surface', () => {
+  const layout = section(
+    stationheadLayout,
+    'void ApplyStationheadChildLayout(',
+    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+  );
+  assert.match(
+    layout,
+    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
+  );
+  assert.match(
+    layout,
+    /controller->put_IsVisible\(playbackControllerVisible\)/,
+  );
+  assert.match(
+    layout,
+    /authController->put_IsVisible\(TRUE\)/,
+  );
+});
+
+test('Stationhead waits for stable playback then restores rendering before the track boundary', () => {
+  const boundary = section(
+    stationheadBoundary,
+    'inline std::wstring StationheadTrackBoundaryScript(',
+    '}  // namespace hp',
+  );
+  assert.match(boundary, /const hideDelayMs = 5000;/);
+  assert.match(boundary, /const revealBeforeEndSeconds = 10;/);
+  assert.match(boundary, /Number\.isFinite\(duration\)/);
+  assert.match(boundary, /'timeupdate'/);
+  assert.match(boundary, /post\('track-boundary-retry'\)/);
+  assert.match(boundary, /post\('track-ended'\)/);
+  assert.match(boundary, /event\.type === 'pause'/);
+  assert.match(boundary, /event\.type === 'stalled'/);
 });
 
 test('Spotify trusted Play click stays visible until playback is actually confirmed', () => {

@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Stationhead interaction tab expands the playback host instead of forcing background mode', () => {
+test('Stationhead interaction tab expands the playback host and forces rendering visible', () => {
   const policy = section(
     layout,
     'struct StationheadSurfacePolicy {',
@@ -44,8 +44,11 @@ test('Stationhead interaction tab expands the playback host instead of forcing b
   assert.match(childLayout, /const int hostWidth = playbackForeground \? width : 1;/);
   assert.match(childLayout, /const int hostHeight = playbackForeground \? height : 1;/);
   assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
-  assert.match(childLayout, /controller->put_IsVisible\(TRUE\)/);
-  assert.doesNotMatch(childLayout, /controller->put_IsVisible\(FALSE\)/);
+  assert.match(
+    childLayout,
+    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
+  );
+  assert.match(childLayout, /controller->put_IsVisible\(playbackControllerVisible\)/);
 });
 
 test('pending Stationhead authentication cannot be hidden by normal placement refreshes', () => {
