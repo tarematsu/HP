@@ -154,6 +154,9 @@ void StationheadPlayer::ConfigureWebView() {
               statsLastAcceptedRequestId_ = 0;
             }
             if (IsSecondary()) {
+              // Invalidate a local probe started by the outgoing document.
+              // Internal redirects do not pass through NavigateStationheadUrl(),
+              // so they must clear the execution token here as well.
               authProbeInFlight_ = false;
               authProbeStartedAt_ = 0;
               lastAuthProbeAt_ = 0;
@@ -605,6 +608,10 @@ void StationheadPlayer::ConfigureWebView() {
             COREWEBVIEW2_WEB_ERROR_STATUS webError{};
             args->get_IsSuccess(&success);
             args->get_WebErrorStatus(&webError);
+            // This callback belongs to the Stationhead playback WebView. Spotify
+            // authorization always runs in authWebview_; an overlapping auth
+            // session must not reclassify this completion and suppress playback
+            // failure recovery or lastReloadAt_ updates.
             const int64_t now = UnixMillis();
             {
               std::lock_guard lock(mutex_);
