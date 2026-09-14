@@ -74,7 +74,6 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     config.stationhead.blockFonts = HasKey(station, L"blockFonts")
         ? Boolean(station, L"blockFonts", config.stationhead.blockFonts)
         : Boolean(station, L"blockFontsAfterPlayback", config.stationhead.blockFonts);
-    config.stationhead.lowMemoryMode = Boolean(station, L"lowMemoryMode", config.stationhead.lowMemoryMode);
 
     return true;
   } catch (...) {
