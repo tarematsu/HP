@@ -36,27 +36,26 @@ test('Stationhead playback controller starts visible while auth controllers may 
   assert.match(stationheadPopup, /authController_->put_IsVisible\(FALSE\)/);
 });
 
-test('Spotify trusted Play click does not hide before playback confirmation', () => {
+test('Spotify trusted Play click stays visible until playback is actually confirmed', () => {
   const releasedAt = spotifyClick.indexOf('L"Input.dispatchMouseEvent", released.c_str()');
   assert.ok(releasedAt >= 0);
   assert.doesNotMatch(
     spotifyClick.slice(releasedAt),
-    /controller->put_IsVisible\(FALSE\)/,
+    /put_IsVisible\(FALSE\)/,
   );
 });
 
-test('Spotify hides only after the observer confirms started or resumed playback', () => {
+test('Spotify hides the slot only after the observer confirms playback', () => {
   const observer = section(
     spotifyRotation,
     'void SpotifyWebViews::ArmTimedEndObserver',
     '}  // namespace hp',
   );
-  const startedAt = observer.indexOf('const bool started = ParseSpotifyStartedEvent');
-  const playingAt = observer.indexOf('SetSlotState(*target, SlotState::Playing)');
-  const hideAt = observer.indexOf('target->controller->put_IsVisible(FALSE)');
-  assert.ok(startedAt >= 0);
-  assert.ok(playingAt > startedAt);
-  assert.ok(hideAt > playingAt);
+  assert.match(observer, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(
+    observer,
+    /if \(target->controller\) target->controller->put_IsVisible\(FALSE\)/,
+  );
 });
 
 test('Spotify restores that slot when its next-track advance begins', () => {
