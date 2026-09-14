@@ -148,10 +148,17 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              if (target->state != SlotState::Playing) {
-                SetSlotState(*target, SlotState::WaitingTarget);
-                target->nextRecoveryTick = callbackNow + kSpotifyRecoveryRetryMs;
+              // The scoped reconcile only returns true after it has verified
+              // that the current target owns an actively playing media element.
+              // Treat that as a native confirmation as well, so a missed
+              // playing/durationchange WebMessage cannot leave the status strip
+              // at --:--:-- or keep the slot in WaitingTarget indefinitely.
+              SetSlotState(*target, SlotState::Playing);
+              if (!target->playbackConfirmed) {
+                GetLocalTime(&target->playbackConfirmedAt);
+                target->playbackConfirmed = true;
               }
+              SetMusicCompletionDeadline(*target, callbackNow, 0, false);
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
