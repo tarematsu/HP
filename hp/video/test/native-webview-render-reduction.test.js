@@ -33,9 +33,8 @@ test('Spotify suppresses paint-only media and visual effects without hiding cont
   assert.match(spotify, /\[data-testid="control-button-playpause"\] svg/);
 });
 
-test('Stationhead presentation is registered after the final autoplay policy', () => {
-  // Playback/data policy must not own presentation composition. Its old macro
-  // wrapper could be replaced by later lifecycle/recovery/interaction layers.
+test('Stationhead startup composition names the actual runtime pieces once', () => {
+  // Playback/data policy must not own presentation composition.
   assert.doesNotMatch(playbackPolicy, /sh_render_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /sh_room_ui_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /StationheadAutoplayScriptRenderReduced/);
@@ -43,17 +42,23 @@ test('Stationhead presentation is registered after the final autoplay policy', (
 
   assert.match(presentationPolicy, /#include "sh_render_reduction_policy\.h"/);
   assert.match(presentationPolicy, /#include "sh_room_ui_reduction_policy\.h"/);
+  assert.match(presentationPolicy, /inline std::wstring BuildStationheadStartupScript\(/);
   assert.match(
     presentationPolicy,
-    /StationheadAutoplayScript\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
+    /StationheadAutoplayScriptCurrentInteraction\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
+  );
+  assert.doesNotMatch(
+    presentationPolicy,
+    /std::wstring script = StationheadAutoplayScript\(globalName, messagePrefix\)/,
   );
   assert.match(
     presentationPolicy,
-    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript StationheadAutoplayScriptPresentationReduced/,
+    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript BuildStationheadStartupScript/,
   );
 
-  // Current-interaction is the final behavioral autoplay layer. The PCH end
-  // boundary must include presentation strictly after it.
+  // The historical macro remains only as a call-site adapter. The real
+  // composition above names CurrentInteraction directly instead of wrapping a
+  // previously selected policy and depending on header order for behavior.
   assert.match(
     interactionPolicy,
     /#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction/,
