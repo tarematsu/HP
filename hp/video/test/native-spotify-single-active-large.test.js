@@ -23,7 +23,7 @@ const header = readFileSync(
   'utf8',
 );
 
-test('serialized Spotify shows authentication while every non-auth host stays 1x1', () => {
+test('serialized Spotify uses 1x1 steady background and expands only interaction surfaces', () => {
   assert.match(layout, /activeWidth = std::max\(1, clientWidth \* 3 \/ 5\)/);
   assert.match(layout, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
   assert.match(layout, /const size_t recoveryIndex =/);
@@ -33,6 +33,7 @@ test('serialized Spotify shows authentication while every non-auth host stays 1x
   assert.match(layout, /int height = 1;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /else if \(recovery\) \{[\s\S]*kSpotifyRecoveryInteractionWidth[\s\S]*kSpotifyRecoveryInteractionHeight/);
 });
 
 test('background Spotify controllers stay visible while the host viewport is reduced', () => {
@@ -43,6 +44,8 @@ test('background Spotify controllers stay visible while the host viewport is red
 
 test('trusted click recovery still accounts for controller zoom', () => {
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
+  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.match(click, /controller->get_ZoomFactor\(&controllerZoom\)/);
   assert.match(click, /cssWidth = static_cast<double>\(width\) \/ zoom/);
   assert.match(click, /Input\.dispatchMouseEvent/);
