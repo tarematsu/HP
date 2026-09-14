@@ -34,10 +34,7 @@ test('A and B use the live DOM interaction state instead of an audio settlement 
   assert.match(bridge, /if \(!blocking\)/);
   assert.match(bridge, /type: 'stationhead-auth-ready'/);
   assert.match(bridge, /source: 'current-interaction-state'/);
-  assert.match(
-    policy,
-    /#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction/,
-  );
+  assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
 });
 
 test('Window B legacy auth probe is local-only and shares the same interaction state', () => {

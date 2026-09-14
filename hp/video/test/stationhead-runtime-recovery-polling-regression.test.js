@@ -123,7 +123,7 @@ test('playback and document transitions re-arm recovery safely', () => {
   );
 });
 
-test('all generated-source replacement markers are pinned', () => {
+test('all generated-source replacement markers are pinned without selecting startup', () => {
   for (const marker of [
     'timerStateReplaced',
     'surfaceGateReplaced',
@@ -136,8 +136,5 @@ test('all generated-source replacement markers are pinned', () => {
     policySource,
     /StationheadAutoplayScriptLifecycleFixed\(globalName, messagePrefix\)/,
   );
-  assert.match(
-    policySource,
-    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript StationheadAutoplayScriptRecoveryPollingFixed/,
-  );
+  assert.doesNotMatch(policySource, /#define StationheadAutoplayScript/);
 });

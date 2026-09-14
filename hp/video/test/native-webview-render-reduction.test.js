@@ -10,9 +10,13 @@ const spotify = source('spotify_static_scripts.inc');
 const playbackPolicy = source('sh_playback_resource_policy_fix.h');
 const renderPolicy = source('sh_render_reduction_policy.h');
 const roomUiPolicy = source('sh_room_ui_reduction_policy.h');
-const presentationPolicy = source('sh_presentation_registration_policy.h');
+const startupScript = source('sh_startup_script.h');
 const profileReuseEnd = source('sh_profile_reuse_policy_end.h');
 const interactionPolicy = source('sh_track_boundary_message_policy.h');
+const runtimePolicy = source('sh_runtime_policy_fix.h');
+const lifecyclePolicy = source('sh_runtime_lifecycle_policy_fix.h');
+const recoveryPolicy = source('sh_runtime_recovery_polling_policy_fix.h');
+const watchdogPolicy = source('sh_media_stall_watchdog_policy_fix.h');
 const nativeCmake = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
@@ -33,41 +37,44 @@ test('Spotify suppresses paint-only media and visual effects without hiding cont
   assert.match(spotify, /\[data-testid="control-button-playpause"\] svg/);
 });
 
-test('Stationhead presentation is registered after the final autoplay policy', () => {
-  // Playback/data policy must not own presentation composition. Its old macro
-  // wrapper could be replaced by later lifecycle/recovery/interaction layers.
+test('Stationhead startup composition names the actual runtime pieces once', () => {
   assert.doesNotMatch(playbackPolicy, /sh_render_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /sh_room_ui_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /StationheadAutoplayScriptRenderReduced/);
   assert.doesNotMatch(playbackPolicy, /#define StationheadAutoplayScript/);
 
-  assert.match(presentationPolicy, /#include "sh_render_reduction_policy\.h"/);
-  assert.match(presentationPolicy, /#include "sh_room_ui_reduction_policy\.h"/);
+  assert.match(startupScript, /#include "sh_render_reduction_policy\.h"/);
+  assert.match(startupScript, /#include "sh_room_ui_reduction_policy\.h"/);
+  assert.match(startupScript, /inline std::wstring BuildStationheadStartupScript\(/);
   assert.match(
-    presentationPolicy,
-    /StationheadAutoplayScript\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
+    startupScript,
+    /StationheadAutoplayScriptCurrentInteraction\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
+  );
+  assert.doesNotMatch(
+    startupScript,
+    /std::wstring script = StationheadAutoplayScript\(globalName, messagePrefix\)/,
   );
   assert.match(
-    presentationPolicy,
-    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript StationheadAutoplayScriptPresentationReduced/,
+    startupScript,
+    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript BuildStationheadStartupScript/,
   );
 
-  // Current-interaction is the final behavioral autoplay layer. The PCH end
-  // boundary must include presentation strictly after it.
-  assert.match(
-    interactionPolicy,
-    /#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction/,
-  );
+  // Helpers may still exist for regression coverage, but none of them is
+  // allowed to select the effective startup implementation anymore.
+  assert.match(interactionPolicy, /inline std::wstring StationheadAutoplayScriptCurrentInteraction\(/);
+  for (const policy of [runtimePolicy, lifecyclePolicy, recoveryPolicy, watchdogPolicy, interactionPolicy]) {
+    assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
+  }
   assert.match(
     profileReuseEnd,
-    /#undef autoClickInFlight_[\s\S]*#include "sh_presentation_registration_policy\.h"/,
+    /#undef autoClickInFlight_[\s\S]*#include "sh_startup_script\.h"/,
   );
   const interactionAt = nativeCmake.indexOf('src/sh_track_boundary_message_policy.h');
   const endAt = nativeCmake.indexOf('src/sh_profile_reuse_policy_end.h');
   assert.ok(interactionAt >= 0);
   assert.ok(endAt > interactionAt);
 
-  assert.doesNotMatch(presentationPolicy, /Toggle Mute|View streaming party details|content-visibility/);
+  assert.doesNotMatch(startupScript, /Toggle Mute|View streaming party details|content-visibility/);
   assert.doesNotMatch(renderPolicy, /Toggle Mute|View streaming party details|button--full-width/);
   assert.doesNotMatch(roomUiPolicy, /Network\.clearBrowserCache|streakStats/);
 });

@@ -238,6 +238,3 @@ inline std::wstring StationheadAutoplayScriptRecoveryPollingFixed(
 }
 
 }  // namespace hp
-
-#undef StationheadAutoplayScript
-#define StationheadAutoplayScript StationheadAutoplayScriptRecoveryPollingFixed

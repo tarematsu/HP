@@ -139,7 +139,7 @@ test('login timer replacement marker is unique in its generated source', () => {
   );
 });
 
-test('every lifecycle marker is pinned and the final autoplay macro uses it', () => {
+test('every lifecycle marker is pinned without selecting the startup implementation', () => {
   for (const marker of [
     'uiLifecycleReplaced',
     'baseStateReplaced',
@@ -155,8 +155,9 @@ test('every lifecycle marker is pinned and the final autoplay macro uses it', ()
     assert.match(lifecycleSource, new RegExp(`const bool ${marker}`));
     assert.match(lifecycleSource, new RegExp(`\\(void\\)${marker};`));
   }
+  assert.doesNotMatch(lifecycleSource, /#define StationheadAutoplayScript/);
   assert.match(
     lifecycleSource,
-    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript StationheadAutoplayScriptLifecycleFixed/,
+    /#define StationheadAuthCaptureScript StationheadAuthCaptureScriptOriginFixed/,
   );
 });
