@@ -39,7 +39,7 @@ test('Spotify low-memory policy remains permanent while controller visibility st
   assert.equal((controller.match(/ApplySpotifyPermanentLowMemoryMode\(/g) || []).length, 2);
 });
 
-test('shared WebView environment disables Chromium occluded-window backgrounding', () => {
+test('shared WebView environment leaves Chromium occluded-window backgrounding enabled', () => {
   assert.match(environment, /--autoplay-policy=no-user-gesture-required/);
-  assert.match(environment, /--disable-backgrounding-occluded-windows/);
+  assert.doesNotMatch(environment, /--disable-backgrounding-occluded-windows/);
 });
