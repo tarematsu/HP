@@ -25,23 +25,41 @@ const youtubePlaylistFallback = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url), 'utf8');
 const mediaPanel = [mediaBase, mediaHost, mediaWindow].join('\n');
 
-test('TVer uses media events plus a player-local observer, never a document-wide loop', () => {
+test('TVer uses media events plus a player-local observer that sleeps while healthy', () => {
   assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
   assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
+  assert.match(tverEpisode, /const suspendPlayerObserver = \(\) =>/);
+  assert.match(tverEpisode, /playerObserverActive = false/);
+  assert.match(tverEpisode, /if \(observerNeeded\) bindPlayerObserver\(video\)/);
+  assert.match(tverEpisode, /suspendPlayerObserver\(\)/);
   assert.doesNotMatch(tverEpisode, /observer\.observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverEpisode, /setInterval\(ensure/);
-  assert.match(tverEpisode, /addEventListener\('timeupdate'/);
+  assert.doesNotMatch(tverEpisode, /addEventListener\('timeupdate'/);
   assert.match(tverEpisode, /event\.target instanceof HTMLMediaElement/);
   assert.match(tverEpisode, /homepanel:tver-wake/);
 });
 
-test('TVer progress sampling backs off during steady playback and tightens only near the end', () => {
+test('TVer progress sampling uses adaptive one-shot timers and tightens only near the end', () => {
   assert.match(tverEpisode, /progressSteadyIntervalMs = 2000/);
   assert.match(tverEpisode, /progressNearEndIntervalMs = 500/);
   assert.match(tverEpisode, /progressFinalIntervalMs = 200/);
   assert.match(tverEpisode, /if \(remaining <= 3\) return progressFinalIntervalMs/);
   assert.match(tverEpisode, /if \(remaining <= 15\) return progressNearEndIntervalMs/);
-  assert.match(tverEpisode, /video\.addEventListener\('timeupdate',[\s\S]*sampleProgress\(video, state\)/);
+  assert.match(tverEpisode, /const armProgressSampler = \(\) =>/);
+  assert.match(tverEpisode, /const delay = progressIntervalFor\(video\)/);
+  assert.match(tverEpisode, /state\.progressTimer = setTimeout\(\(\) =>/);
+  assert.match(tverEpisode, /sampleProgress\(video, state\)/);
+  assert.doesNotMatch(tverEpisode, /addEventListener\('timeupdate'/);
+});
+
+test('TVer healthy playback avoids style-heavy ad marker scanning', () => {
+  assert.match(tverEpisode, /const healthyProgram =/);
+  assert.match(tverEpisode, /const playbackRolledBack =/);
+  assert.match(
+    tverEpisode,
+    /const advertisementActive = healthyProgram && !playbackRolledBack[\s\S]*\? false : detectAd\(video, state\)/,
+  );
+  assert.match(tverEpisode, /currentTime \+ 5 < state\.maxTime/);
 });
 
 test('TVer event bridge suppresses duplicate native wakeups for unchanged recovery state', () => {
@@ -67,13 +85,16 @@ test('YouTube uses event wakeups with a 30-second steady watchdog backstop', () 
   assert.doesNotMatch(mediaPanel, /kNativeMediaPlaybackHealthTimer|ProbeYoutubeHealth/);
 });
 
-test('YouTube coalesces event bursts before crossing the WebView2 native boundary', () => {
+test('YouTube coalesces event bursts with a media-only wake signature', () => {
   assert.match(youtubeAgent, /lastWakeSignature/);
   assert.match(youtubeAgent, /pendingWakeDirty/);
   assert.match(youtubeAgent, /if \(!state\.pendingWakeDirty\) return/);
   assert.match(youtubeAgent, /const pending = signature\(\)/);
   assert.match(youtubeAgent, /nextSignature === state\.lastWakeSignature/);
   assert.match(youtubeAgent, /250 - \(Date\.now\(\) - state\.wakeAt\)/);
+  assert.match(youtubeAgent, /return \[location\.href, ad, paused, ended, failed, fullscreen\]\.join\('\|'\)/);
+  assert.doesNotMatch(youtubeAgent, /const skip =/);
+  assert.doesNotMatch(youtubeAgent, /const survey =/);
   assert.match(mediaWrapper, /NativeMediaReadWebViewSource\(sender, source\)/);
   assert.doesNotMatch(
     mediaWrapper,
@@ -110,10 +131,11 @@ test('YouTube static presentation policy is not reinjected after navigation comp
   );
 });
 
-test('YouTube applies 480p per video instead of on every healthy watchdog pass', () => {
+test('YouTube applies 360p per video instead of on every healthy watchdog pass', () => {
   assert.match(youtubeRecovery, /videoKey/);
   assert.match(youtubeRecovery, /qualityApplied: false/);
   assert.match(youtubeRecovery, /if \(!recoveryState\.qualityApplied\)/);
+  assert.match(youtubeRecovery, /const preferredQuality = 'medium'/);
   assert.match(youtubeRecovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
   assert.match(youtubeRecovery, /setPlaybackQuality\(preferredQuality\)/);
   assert.doesNotMatch(youtubeRecovery, /getPlaybackQuality\(\)/);
