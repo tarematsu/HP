@@ -5,8 +5,7 @@
 // autoClickInFlight_ normally.
 #undef autoClickInFlight_
 
-// This header is the final Stationhead PCH composition boundary. Register the
-// presentation-only document-start wrapper here, after the current-interaction
-// autoplay policy has been selected, so later autoplay policy overrides cannot
-// discard the UI/render reduction layer.
+// Build the effective document-start script once, at the end of the Stationhead
+// setup. The included header lists the runtime pieces in their real execution
+// order instead of adding another behavioral wrapper layer.
 #include "sh_presentation_registration_policy.h"
