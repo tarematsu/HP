@@ -218,7 +218,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool authHostSizeMatches =
       authHostValid && WindowClientSizeMatches(authHostWindow, authHostWidth, authHostHeight);
   const bool hostPlacementMatches =
-      hostValid && ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement);
+      hostValid && ChildWindowPlacementMatches(
+          hostWindow, hostBounds, playbackForeground ? HWND_TOP : nullptr);
   const bool authHostPlacementMatches =
       authHostValid && ChildWindowPlacementMatches(
           authHostWindow, authHostBounds, showAuth ? HWND_TOP : nullptr);
@@ -339,7 +340,7 @@ void StationheadPlayer::SetVisible(bool visible) {
                                playbackFullSize
                                    ? std::max(1L, bounds_.bottom - bounds_.top)
                                    : 1,
-                               monitorForeground ? HWND_TOP : HWND_BOTTOM) &&
+                               monitorForeground ? HWND_TOP : nullptr) &&
         BackgroundAuthSurfaceMatches(authHostWindow_, authController_.Get(), bounds_)) {
       return;
     }
