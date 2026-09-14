@@ -102,7 +102,7 @@ inline std::wstring StationheadAuthCaptureScriptValidatedRotation() {
   const rejectAuthorization = authorization => {
 )JS";
 
-  const bool candidateRotationReplaced = ReplaceStationheadRuntimeFragment(
+  const bool candidateRotationReplaced = ReplaceStationheadAuthCaptureFragment(
       script, kPinnedCandidatePolicy, kRotatingCandidatePolicy);
   (void)candidateRotationReplaced;
   return script;
