@@ -15,7 +15,7 @@ const nativeStats = readFileSync(
   'utf8',
 );
 
-test('the media progress watchdog is layered after runtime recovery polling', () => {
+test('the media progress watchdog helper stays available without selecting startup', () => {
   assert.match(cmake, /src\/sh_media_stall_watchdog_policy_fix\.h/);
   const recoveryPch = cmake.indexOf(
     'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_recovery_polling_policy_fix.h)',
@@ -32,11 +32,7 @@ test('the media progress watchdog is layered after runtime recovery polling', ()
     watchdog,
     /StationheadAutoplayScriptRecoveryPollingFixed\(globalName, messagePrefix\)/,
   );
-  assert.match(watchdog, /#undef StationheadAutoplayScript/);
-  assert.match(
-    watchdog,
-    /#define StationheadAutoplayScript StationheadAutoplayScriptWithMediaProgressWatchdog/,
-  );
+  assert.doesNotMatch(watchdog, /#define StationheadAutoplayScript/);
 });
 
 test('stalled active media progress reloads after a guarded two-minute window', () => {
