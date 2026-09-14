@@ -65,8 +65,8 @@ void PowerSavingController::ArmScheduleTimer() {
   KillTimer(overlay_, kScheduleTimer);
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
-  // Monitor A owns the only periodic DOM inspection. B is unconditional
-  // foreground and OFF is black, so neither mode spends WebView2 work on this.
+  // Monitor A owns the only periodic DOM inspection. B/C are unconditional
+  // foreground selections and OFF is black, so those modes do no DOM polling.
   if (monitorMode_ == MonitorMode::Native) {
     remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
   }
@@ -78,8 +78,6 @@ void PowerSavingController::ArmScheduleTimer() {
 void PowerSavingController::RequestMonitorAuthProbe() noexcept {
   if (monitorMode_ != MonitorMode::Native || powerSaving_) return;
   RequestStationheadMonitorDomProbe();
-  // The Stationhead player consumes the request from its existing native tick,
-  // keeping all WebView2 access on the UI thread without another polling loop.
   if (parent_ && IsWindow(parent_)) PostMessageW(parent_, WM_TIMER, 0, 0);
 }
 
@@ -111,6 +109,9 @@ void PowerSavingController::CycleMonitorMode() noexcept {
       ApplyMonitorMode(MonitorMode::Stationhead);
       break;
     case MonitorMode::Stationhead:
+      ApplyMonitorMode(MonitorMode::Spotify);
+      break;
+    case MonitorMode::Spotify:
       ApplyMonitorMode(MonitorMode::Off);
       break;
     case MonitorMode::Off:
@@ -137,6 +138,7 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
     RestoreBrightness();
   }
   Renderer::SetGlobalPowerSavingMode(powerSaving_);
+  SetSpotifyMonitorForeground(mode == MonitorMode::Spotify);
   ApplyStationheadMonitorPlacement();
   if (layoutChanged) LayoutOverlay();
   if (monitorMode_ == MonitorMode::Native) RequestMonitorAuthProbe();
@@ -150,6 +152,9 @@ void PowerSavingController::CycleAudioMode() noexcept {
       ApplyAudioMode(AudioMode::Stationhead);
       break;
     case AudioMode::Stationhead:
+      ApplyAudioMode(AudioMode::Spotify);
+      break;
+    case AudioMode::Spotify:
       ApplyAudioMode(AudioMode::Muted);
       break;
     case AudioMode::Muted:
@@ -162,6 +167,7 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
   audioMode_ = mode;
   mediaMuted_ = mode != AudioMode::Media;
   SetNativeMediaPanelMuted(mediaMuted_);
+  SetSpotifyAudioMuted(mode != AudioMode::Spotify);
 
   if (parent_ && IsWindow(parent_)) {
     const UiAction stationheadAction = mode == AudioMode::Stationhead
