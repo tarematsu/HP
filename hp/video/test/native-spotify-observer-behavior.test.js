@@ -158,7 +158,7 @@ test('trusted native Play never overrides a concrete wrong-track identity', () =
   assert.equal(h.messages.some(m => m.startsWith('spotify:timed-started')), false);
 });
 
-test('non-target playback after start emits one resume deadline from remaining target duration', () => {
+test('non-target playback after start emits one suspend and one resume deadline from remaining target duration', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f31');
   h.setTrack('/track/A', 'Target A');
@@ -175,6 +175,7 @@ test('non-target playback after start emits one resume deadline from remaining t
   h.dispatch('playing');
   assert.deepEqual(h.messages, [
     'spotify:timed-started\x1f31\x1f170000',
+    'spotify:timed-interrupted\x1f31',
     'spotify:timed-resumed\x1f31\x1f140000',
   ]);
 });
@@ -212,11 +213,12 @@ test('concrete wrong playback after start remains a simple interruption until ta
   h.dispatch('playing');
   assert.deepEqual(h.messages, [
     'spotify:timed-started\x1f33\x1f170000',
+    'spotify:timed-interrupted\x1f33',
     'spotify:timed-resumed\x1f33\x1f160000',
   ]);
 });
 
-test('validated requested-track ended publishes one advisory shortening event', () => {
+test('validated requested-track ended publishes one advisory shortening event and later ads cannot suspend it', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f34');
   h.setTrack('/track/A', 'Target A');
@@ -226,6 +228,10 @@ test('validated requested-track ended publishes one advisory shortening event', 
   h.dispatch('playing');
   h.media.ended = true;
   h.dispatch('ended');
+  h.media.ended = false;
+  h.setTrack('/track/B', 'Advertisement');
+  h.navigator.mediaSession.metadata.title = 'Advertisement';
+  h.dispatch('playing');
   assert.deepEqual(h.messages, [
     'spotify:timed-started\x1f34\x1f1000',
     'spotify:timed-ended\x1f34',
