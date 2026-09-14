@@ -95,11 +95,17 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
   if (window.__homePanelSpotifyStaticBridgeInstalled) return true;
   window.__homePanelSpotifyStaticBridgeInstalled = true;
   window.__homePanelSpotifyNativeTarget = null;
+  window.__homePanelSpotifyGeneration =
+      window.__homePanelSpotifyGeneration || '0';
 
   if (window.chrome && window.chrome.webview) {
     window.chrome.webview.addEventListener('message', event => {
       if (typeof event.data !== 'string') return;
       const fields = event.data.split('\u001f');
+      if (fields[0] === 'spotify:generation') {
+        window.__homePanelSpotifyGeneration = fields[1] || '0';
+        return;
+      }
       if (fields[0] !== 'spotify:target') return;
 
       const path = fields[1] || '';
