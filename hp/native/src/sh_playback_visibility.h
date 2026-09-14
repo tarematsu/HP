@@ -30,14 +30,14 @@ inline void SetStationheadPlaybackRenderingSuppressed(
 inline bool StationheadPlaybackRenderingSuppressed(
     ICoreWebView2Controller* controller) noexcept {
   if (!controller) return false;
-  for (bool secondary : {false, true}) {
-    auto& state = StationheadPlaybackRenderingStateFor(secondary);
-    if (state.controller.load(std::memory_order_acquire) == controller &&
-        state.suppressed.load(std::memory_order_acquire)) {
-      return true;
-    }
+  auto& primary = StationheadPlaybackRenderingStateFor(false);
+  if (primary.controller.load(std::memory_order_acquire) == controller &&
+      primary.suppressed.load(std::memory_order_acquire)) {
+    return true;
   }
-  return false;
+  auto& secondary = StationheadPlaybackRenderingStateFor(true);
+  return secondary.controller.load(std::memory_order_acquire) == controller &&
+         secondary.suppressed.load(std::memory_order_acquire);
 }
 
 }  // namespace hp
