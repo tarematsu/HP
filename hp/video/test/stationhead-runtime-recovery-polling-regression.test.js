@@ -2,26 +2,35 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const policy = readFileSync(
-  new URL('../../native/src/sh_runtime_recovery_polling_policy_fix.h', import.meta.url),
-  'utf8',
-);
-const startup = readFileSync(
-  new URL('../../native/src/sh_startup_script.h', import.meta.url),
-  'utf8',
-);
+const source = name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+const cmake = readFileSync(
+  new URL('../../native/CMakeLists.txt', import.meta.url), 'utf8');
+const recovery = source('sh_runtime_blank_recovery_script.h');
+const lifecycle = source('sh_runtime_lifecycle_script.h');
+const compact = source('sh_compact_runtime_script.h');
 
-test('legacy recovery polling policy is retired', () => {
-  assert.match(policy, /Retired compatibility header/);
-  assert.doesNotMatch(policy, /setInterval|setTimeout|MutationObserver|location\.reload/);
-  assert.doesNotMatch(policy, /StationheadAutoplayScriptRecoveryPollingFixed/);
+test('legacy recovery polling header is removed from the build', () => {
+  assert.doesNotMatch(cmake, /sh_runtime_recovery_polling_policy_fix\.h/);
+  assert.match(cmake, /sh_runtime_blank_recovery_script\.h/);
 });
 
-test('compact runtime owns bounded blank-page recovery', () => {
-  assert.match(startup, /const armBlankRecovery = \(\) =>/);
-  assert.match(startup, /blankTimer = nativeTimeout[\s\S]*30000/);
-  assert.match(startup, /blankConfirmTimer = nativeTimeout[\s\S]*15000/);
-  assert.match(startup, /now - lastReload < 120000/);
-  assert.match(startup, /location\.reload\(\)/);
-  assert.doesNotMatch(startup, /setInterval\s*\(/);
+test('blank recovery owns only bounded one-shot checks', () => {
+  assert.match(recovery, /const armBlankRecovery = \(\) =>/);
+  assert.match(recovery, /blankTimer = nativeTimeout[\s\S]*30000/);
+  assert.match(recovery, /blankConfirmTimer = nativeTimeout[\s\S]*15000/);
+  assert.match(recovery, /now - lastReload < 120000/);
+  assert.match(recovery, /location\.reload\(\)/);
+  assert.doesNotMatch(recovery, /setInterval\s*\(|MutationObserver|addEventListener/);
+});
+
+test('lifecycle owns recovery arming and teardown', () => {
+  assert.match(lifecycle, /armBlankRecovery\(\)/);
+  assert.match(lifecycle, /pagehide/);
+  assert.match(lifecycle, /blankTimer, blankConfirmTimer/);
+  assert.doesNotMatch(lifecycle, /location\.reload\(\)|sessionStorage/);
+});
+
+test('compact runtime composes recovery exactly once', () => {
+  assert.equal((compact.match(/StationheadRuntimeBlankRecoveryFragment\(\)/g) ?? []).length, 1);
 });
