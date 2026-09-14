@@ -5,10 +5,11 @@ namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 60ULL * 1000ULL;
 // spotify-v2-1 (the former amazon window) is now owned by the single
-// Stationhead player. Keep the four remaining Spotify accounts on their
-// existing profile numbers so cookies/storage are not shifted between users.
+// Stationhead player. Keep yuukiar on its existing profile number so
+// cookies/storage are not shifted while the other Spotify slots are paused
+// for single-window diagnostics.
 inline constexpr size_t kSpotifyProfileFirstAccountNumber = 2;
-inline constexpr size_t kSpotifyActiveAccountCount = 4;
+inline constexpr size_t kSpotifyActiveAccountCount = 1;
 
 struct SpotifyPlaybackStatus {
   std::wstring windowName;
