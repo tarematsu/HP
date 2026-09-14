@@ -1,4 +1,4 @@
-// Scheduled power-saving state, MV startup input pass, and audio mode toggles.
+// Scheduled power-saving state, MV startup input pass, and audio/monitor mode toggles.
 namespace {
 constexpr UINT kMvStartupPassHoldMs = 1'500;
 constexpr int kPowerSavingStartMinute = 12 * 60;
@@ -86,19 +86,42 @@ void PowerSavingController::CloseMvStartupInputPass() {
 }
 
 void PowerSavingController::ApplyMode(bool enabled) {
-  if (!enabled && mvStartupInputPass_) {
+  ApplyMonitorMode(enabled ? MonitorMode::Off : MonitorMode::Native);
+}
+
+void PowerSavingController::CycleMonitorMode() noexcept {
+  switch (monitorMode_) {
+    case MonitorMode::Native:
+      ApplyMonitorMode(MonitorMode::Stationhead);
+      break;
+    case MonitorMode::Stationhead:
+      ApplyMonitorMode(MonitorMode::Off);
+      break;
+    case MonitorMode::Off:
+      ApplyMonitorMode(MonitorMode::Native);
+      break;
+  }
+}
+
+void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
+  if (mode != MonitorMode::Off && mvStartupInputPass_) {
     mvStartupInputPass_ = false;
     if (overlay_) KillTimer(overlay_, kMvStartupPassTimer);
   }
-  const bool changed = powerSaving_ != enabled;
-  powerSaving_ = enabled;
-  if (enabled) {
+
+  const bool nextPowerSaving = mode == MonitorMode::Off;
+  const bool layoutChanged = powerSaving_ != nextPowerSaving;
+  monitorMode_ = mode;
+  powerSaving_ = nextPowerSaving;
+
+  if (powerSaving_) {
     ApplyMinimumBrightness();
   } else {
     RestoreBrightness();
   }
-  Renderer::SetGlobalPowerSavingMode(enabled);
-  if (changed) LayoutOverlay();
+  Renderer::SetGlobalPowerSavingMode(powerSaving_);
+  ApplyStationheadMonitorPlacement();
+  if (layoutChanged) LayoutOverlay();
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
 }
 
