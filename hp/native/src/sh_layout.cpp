@@ -68,18 +68,6 @@ bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
           current == expected;
 }
 
-void SetControllerMemoryUsageTarget(
-    ICoreWebView2Controller* controller,
-    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL level) noexcept {
-  if (!controller) return;
-  ComPtr<ICoreWebView2> webview;
-  if (FAILED(controller->get_CoreWebView2(&webview)) || !webview) return;
-  ComPtr<ICoreWebView2_19> webview19;
-  if (SUCCEEDED(webview.As(&webview19)) && webview19) {
-    webview19->put_MemoryUsageTargetLevel(level);
-  }
-}
-
 bool PlaybackSurfaceMatches(HWND hostWindow,
                             ICoreWebView2Controller* controller,
                             const RECT& workspaceBounds,
@@ -246,9 +234,6 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   }
 
-  SetControllerMemoryUsageTarget(
-      controller,
-      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   if (controller) {
     if (!ControllerBoundsMatch(controller, contentBounds)) {
       controller->put_Bounds(contentBounds);
@@ -258,9 +243,6 @@ void ApplyStationheadChildLayout(HWND hostWindow,
     }
   }
 
-  SetControllerMemoryUsageTarget(
-      authController,
-      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   if (authController) {
     if (!ControllerBoundsMatch(authController, authBounds)) {
       authController->put_Bounds(authBounds);
