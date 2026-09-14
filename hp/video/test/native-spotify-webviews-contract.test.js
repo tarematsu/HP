@@ -49,7 +49,7 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('authentication and recovery geometry are owned by the low-peak layout module', () => {
+test('authentication and recovery geometry stay in layout while permanent resource policy stays in controller setup', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
@@ -66,10 +66,9 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
   assert.match(layout, /const bool lowPowerPlayback =/);
-  assert.match(layout, /slot\.controller->put_IsVisible\(FALSE\)/);
-  assert.doesNotMatch(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
-  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+  assert.doesNotMatch(layout, /put_IsVisible|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified/);
+  assert.match(spotify, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
