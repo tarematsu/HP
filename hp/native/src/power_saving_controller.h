@@ -57,6 +57,7 @@ class PowerSavingController {
   void EnsureOverlay();
   void CheckSchedule(bool force = false);
   void ArmScheduleTimer();
+  void RequestMonitorAuthProbe() noexcept;
   void OpenMvStartupInputPass();
   void CloseMvStartupInputPass();
   void ApplyMode(bool enabled);
@@ -79,6 +80,7 @@ class PowerSavingController {
   HWND overlay_ = nullptr;
   bool powerSaving_ = false;
   MonitorMode monitorMode_ = MonitorMode::Native;
+  bool monitorAuthForeground_ = false;
   AudioMode audioMode_ = AudioMode::Media;
   bool mediaMuted_ = false;
   bool mvStartupInputPass_ = false;

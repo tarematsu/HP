@@ -112,6 +112,15 @@ void PowerSavingController::ObserveParentMessage(
   if (!parent_) return;
 
   switch (message) {
+    case kStationheadMonitorProbeResultMessage: {
+      if (monitorMode_ != MonitorMode::Native) break;
+      const bool detected = wParam != 0;
+      if (monitorAuthForeground_ != detected) {
+        monitorAuthForeground_ = detected;
+        ApplyStationheadMonitorPlacement();
+      }
+      break;
+    }
     case WM_DISPLAYCHANGE:
       if (powerSaving_) RefreshMinimumBrightness();
       if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
@@ -161,6 +170,7 @@ void PowerSavingController::Attach(HWND parent) {
 
   // Every fresh dashboard starts in monitor A and audio mode A.
   monitorMode_ = MonitorMode::Native;
+  monitorAuthForeground_ = false;
   powerSaving_ = false;
   audioMode_ = AudioMode::Media;
   ApplyAudioMode(audioMode_);
@@ -226,7 +236,11 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
         if (!IsStationheadPlaybackHost(child)) return TRUE;
 
         PowerSavingController* controller = context->controller;
-        if (controller->monitorMode_ == MonitorMode::Stationhead) {
+        const bool stationheadForeground =
+            controller->monitorMode_ == MonitorMode::Stationhead ||
+            (controller->monitorMode_ == MonitorMode::Native &&
+             controller->monitorAuthForeground_);
+        if (stationheadForeground) {
           const bool boundsMatch = ChildBoundsMatch(child, context->foregroundBounds);
           const bool zOrderMatch = controller->overlay_ &&
               GetWindow(child, GW_HWNDPREV) == controller->overlay_;
@@ -260,6 +274,7 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
 void PowerSavingController::Detach() noexcept {
   RestoreBrightness();
   mvStartupInputPass_ = false;
+  monitorAuthForeground_ = false;
   if (parent_ && IsWindow(parent_)) {
     EnumChildWindows(
         parent_,
