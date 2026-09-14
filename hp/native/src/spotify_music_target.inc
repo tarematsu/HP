@@ -143,10 +143,6 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              if (!target->playbackConfirmed) {
-                GetLocalTime(&target->playbackConfirmedAt);
-                target->playbackConfirmed = true;
-              }
               SetSlotState(*target, SlotState::Playing);
               SetMusicCompletionDeadline(*target, callbackNow, 0, false);
               RecomputeForeground();
