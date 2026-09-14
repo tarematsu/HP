@@ -15,12 +15,15 @@ const bridge = readFileSync(
   'utf8',
 );
 
-test('Stationhead background playback is low-memory but controller-visible', () => {
+test('Stationhead background playback stays low-memory and may suppress rendering', () => {
   assert.match(layout, /SetControllerMemoryUsageTarget/);
   assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
-  assert.match(layout, /ControllerVisibilityMatches\(controller, TRUE\)/);
-  assert.match(layout, /controller->put_IsVisible\(TRUE\)/);
-  assert.doesNotMatch(layout, /const BOOL desiredVisibility = playbackForeground \? TRUE : FALSE/);
+  assert.match(layout, /StationheadPlaybackRenderingSuppressed\(controller\)/);
+  assert.match(
+    layout,
+    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
+  );
+  assert.match(layout, /controller->put_IsVisible\(playbackControllerVisible\)/);
 });
 
 test('Stationhead playback and auth stay low-memory even when foreground', () => {
@@ -34,7 +37,7 @@ test('Stationhead playback and auth stay low-memory even when foreground', () =>
   );
   assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
   assert.match(layout, /StationheadMonitorForeground\(\)/);
-  assert.doesNotMatch(layout, /controller->put_IsVisible\(FALSE\)/);
+  assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
 });
 
 test('Monitor B and Monitor A auth promotion drive the effective foreground bit', () => {
