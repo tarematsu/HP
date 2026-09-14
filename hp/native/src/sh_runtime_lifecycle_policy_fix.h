@@ -94,9 +94,6 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
   }, true);
 )JS";
 
-  // Include the following normalize declaration in the marker. Earlier composed
-  // IIFEs also declare nativeTimeout, but only the refined login IIFE places
-  // normalize immediately after it.
   static constexpr std::wstring_view kTimerDeclaration = LR"JS(  const nativeTimeout = window.setTimeout.bind(window);
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
 )JS";
@@ -213,10 +210,6 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
   const bool authReadyTailReplaced = ReplaceStationheadRuntimeFragment(
       script, kAuthReadyTail, kAuthReadyTailFixed);
 
-  // Static source tests pin every marker. Keeping the booleans observable here
-  // also prevents an optimizer warning while preserving the last known-good
-  // generated script if an upstream Stationhead policy changes before its test
-  // is updated.
   (void)uiLifecycleReplaced;
   (void)baseStateReplaced;
   (void)baseScanReplaced;
@@ -278,7 +271,5 @@ inline std::wstring StationheadAuthCaptureScriptOriginFixed() {
 
 }  // namespace hp
 
-#undef StationheadAutoplayScript
-#define StationheadAutoplayScript StationheadAutoplayScriptLifecycleFixed
 #undef StationheadAuthCaptureScript
 #define StationheadAuthCaptureScript StationheadAuthCaptureScriptOriginFixed
