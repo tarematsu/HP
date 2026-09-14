@@ -69,10 +69,14 @@ test('update, monitor and audio mode controls share one horizontal clock footer 
   assert.match(overlay, /ControlButtonRect\(row, 2\)/);
   assert.match(overlay, /button\.bottom - button\.top\) \* 42 \/ 100/);
   assert.match(overlay, /L"更新"/);
-  assert.match(overlay, /L"モニター ON" : L"モニター"/);
+  assert.match(overlay, /L"モニターA"/);
+  assert.match(overlay, /L"モニターB"/);
+  assert.match(overlay, /L"モニターOFF"/);
   assert.match(overlay, /L"ミュートA"/);
   assert.match(overlay, /L"ミュートB"/);
   assert.match(overlay, /L"ミュートAB"/);
+  assert.match(header, /enum class MonitorMode/);
+  assert.match(header, /MonitorMode monitorMode_ = MonitorMode::Native/);
   assert.match(header, /enum class AudioMode/);
   assert.match(header, /AudioMode audioMode_ = AudioMode::Media/);
   assert.match(header, /RECT LocalUpdateButtonRect\(\) const/);
@@ -80,6 +84,21 @@ test('update, monitor and audio mode controls share one horizontal clock footer 
   assert.match(layout, /SpanY\(hpClockContent, 790\)/);
   assert.match(layout, /hpControlButtonWidth = std::clamp\(SpanX\(hpStatusRect, 205\), 74, 110\)/);
   assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 3 \+ hpControlButtonGap \* 2/);
+});
+
+test('monitor button cycles native A to Stationhead B to black OFF', () => {
+  assert.match(overlay, /controller->CycleMonitorMode\(\)/);
+  assert.match(
+    schedule,
+    /case MonitorMode::Native:[\s\S]*ApplyMonitorMode\(MonitorMode::Stationhead\)[\s\S]*case MonitorMode::Stationhead:[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)[\s\S]*case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/,
+  );
+  assert.match(schedule, /powerSaving_ = nextPowerSaving/);
+  assert.match(schedule, /Renderer::SetGlobalPowerSavingMode\(powerSaving_\)/);
+  assert.match(schedule, /ApplyStationheadMonitorPlacement\(\)/);
+  assert.match(routing, /monitorMode_ = MonitorMode::Native/);
+  assert.match(routing, /monitorMode_ == MonitorMode::Stationhead/);
+  assert.match(routing, /controller->overlay_ \? controller->overlay_ : HWND_TOP/);
+  assert.match(routing, /child, HWND_BOTTOM/);
 });
 
 test('update button routes through the existing verified app-update action', () => {
