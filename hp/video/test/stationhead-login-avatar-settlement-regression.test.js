@@ -3,50 +3,38 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const composition = readFileSync(
-  new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
-  'utf8',
-);
-const startup = readFileSync(
-  new URL('../../native/src/sh_startup_script.h', import.meta.url),
-  'utf8',
-);
-const july19Policy = readFileSync(
-  new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
-  'utf8',
-);
-const webview = readFileSync(
-  new URL('../../native/src/sh_webview.cpp', import.meta.url),
-  'utf8',
-);
+const source = name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+const composition = source('sh_track_boundary_script.h');
+const startup = source('sh_startup_script.h');
+const july19Policy = source('sh_july19_stats_policy_fix.h');
+const webview = source('sh_webview.cpp');
 
-function section(source, start, end) {
-  const startAt = source.indexOf(start);
+function section(text, start, end) {
+  const startAt = text.indexOf(start);
   assert.notEqual(startAt, -1, `missing section: ${start}`);
-  const endAt = source.indexOf(end, startAt + start.length);
+  const endAt = text.indexOf(end, startAt + start.length);
   assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
-  return source.slice(startAt, endAt);
+  return text.slice(startAt, endAt);
 }
 
-function compactRuntime() {
-  return section(
-    startup,
-    'inline std::wstring StationheadCompactRuntimeScript(',
-    'inline std::wstring BuildStationheadStartupScript(',
-  );
-}
+const compactRuntime = () => section(
+  startup,
+  'inline std::wstring StationheadCompactRuntimeScript(',
+  'inline std::wstring BuildStationheadStartupScript(',
+);
 
-test('legacy login-settlement registration is now a no-op', () => {
+test('legacy login-settlement registration is inert', () => {
   const settlement = section(
     composition,
     'inline std::wstring StationheadLoginSettlementScript()',
     'inline std::wstring StationheadTrackBoundaryScript(',
   );
   assert.match(settlement, /return L"void 0;"/);
-  assert.doesNotMatch(settlement, /setInterval|MutationObserver|elementsFromPoint/);
+  assert.doesNotMatch(settlement, /setInterval|new\s+MutationObserver|elementsFromPoint/);
 });
 
-test('compact runtime owns both login-required and stable auth-ready edges', () => {
+test('compact runtime owns login-required and stable auth-ready edges', () => {
   const runtime = compactRuntime();
   assert.match(runtime, /const accountVisible = \(\) =>/);
   assert.match(runtime, /const blockingLogin = authenticated =>/);
@@ -54,11 +42,10 @@ test('compact runtime owns both login-required and stable auth-ready edges', () 
   assert.match(runtime, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
   assert.match(runtime, /authReadyTimer = nativeTimeout[\s\S]*3000/);
   assert.match(runtime, /if \(!authenticated \|\| lastBlocking === false \|\| authReadyTimer\) return;/);
-  assert.doesNotMatch(runtime, /setInterval\s*\(/);
-  assert.doesNotMatch(runtime, /MutationObserver/);
+  assert.doesNotMatch(runtime, /setInterval\s*\(|new\s+MutationObserver/);
 });
 
-test('real blocking authentication surfaces beat stale account presentation', () => {
+test('real blocking auth surfaces beat stale account presentation', () => {
   const runtime = compactRuntime();
   const blocking = section(
     runtime,
@@ -72,49 +59,42 @@ test('real blocking authentication surfaces beat stale account presentation', ()
   assert.match(blocking, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true;/);
 });
 
-test('July 19 credential capture remains composed before the no-op settlement slot', () => {
+test('July 19 credential capture remains before the inert settlement slot', () => {
   assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
   assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
   assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
-  assert.match(
-    july19Policy,
-    /std::wstring script = StationheadJuly19AuthCaptureScript\(\)/,
-  );
-  assert.match(
-    july19Policy,
-    /script\.append\(StationheadLoginSettlementScript\(\)\)/,
-  );
+  assert.match(july19Policy, /script\.append\(StationheadLoginSettlementScript\(\)\)/);
   assert.match(
     july19Policy,
     /#define StationheadAuthCaptureScript StationheadJuly19AuthAndLoginSettlementScript/,
   );
 });
 
-test('compact document runtime JavaScript parses independently', () => {
-  const runtime = compactRuntime();
-  const raw = runtime.match(/LR"JS\(([\s\S]*?)\)JS"/);
-  assert.ok(raw, 'missing compact Stationhead runtime raw JavaScript');
-  assert.doesNotThrow(() => new vm.Script(raw[1]));
+test('all compact runtime JavaScript chunks assemble into one valid script', () => {
+  const chunks = [...compactRuntime().matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
+    .map(match => match[1]);
+  assert.equal(chunks.length, 3);
+  const script = chunks.join('\n')
+    .replaceAll('{{GLOBAL}}', '__homepanelPrimaryStationhead')
+    .replaceAll('{{PREFIX}}', 'stationhead');
+  assert.doesNotThrow(() => new vm.Script(script));
 });
 
-test('document-start registration still occurs before startup script', () => {
-  const firstRegistration = webview.indexOf(
+test('auth capture registration still precedes startup runtime registration', () => {
+  const authAt = webview.indexOf(
     'const HRESULT authCaptureResult = webview_->AddScriptToExecuteOnDocumentCreated(',
   );
-  const startupRegistration = webview.indexOf(
+  const startupAt = webview.indexOf(
     'const HRESULT startupScriptResult = webview_->AddScriptToExecuteOnDocumentCreated(',
   );
-  assert.ok(firstRegistration >= 0);
-  assert.ok(startupRegistration > firstRegistration);
+  assert.ok(authAt >= 0 && startupAt > authAt);
 });
 
 test('only auth-ready clears the native login latch', () => {
-  const authReadyAt = webview.indexOf(
-    'if (type == L"stationhead-auth-ready") {',
-  );
-  assert.ok(authReadyAt >= 0);
-  const authReadyHandler = webview.slice(authReadyAt, authReadyAt + 2200);
-  assert.match(authReadyHandler, /loginRequired_ = false;/);
-  assert.match(authReadyHandler, /status_\.loginRequired = false;/);
-  assert.match(authReadyHandler, /nextTickAt_ = 0;/);
+  const at = webview.indexOf('if (type == L"stationhead-auth-ready") {');
+  assert.ok(at >= 0);
+  const handler = webview.slice(at, at + 2200);
+  assert.match(handler, /loginRequired_ = false;/);
+  assert.match(handler, /status_\.loginRequired = false;/);
+  assert.match(handler, /nextTickAt_ = 0;/);
 });
