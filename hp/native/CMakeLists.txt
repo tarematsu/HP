@@ -156,7 +156,8 @@ set(HOMEPANEL_STATIONHEAD_SOURCES
   src/sh_layout.cpp
   src/sh_polling_policy.h
   src/sh_audio_loss_policy.h
-  src/sh_runtime_policy_fix.h
+  src/sh_start_button_locator_policy.h
+  src/sh_auth_capture_reuse_policy.h
   src/sh_auth_capture_origin_policy.h
   src/sh_webview_event_policy.h
   src/sh_runtime_resource_policy_fix.h
@@ -205,7 +206,8 @@ homepanel_configure_common_target(HomePanel)
 
 target_precompile_headers(HomePanel PRIVATE
   src/sh_polling_policy.h
-  src/sh_runtime_policy_fix.h)
+  src/sh_start_button_locator_policy.h
+  src/sh_auth_capture_reuse_policy.h)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_auth_capture_origin_policy.h)
 target_precompile_headers(HomePanel PRIVATE
