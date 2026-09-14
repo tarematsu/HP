@@ -2,13 +2,15 @@ namespace hp {
 namespace {
 
 constexpr double kSpotifySerializedRecoveryZoom = 0.80;
+constexpr int kSpotifyRecoveryInteractionWidth = 720;
+constexpr int kSpotifyRecoveryInteractionHeight = 480;
 
 bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top;
 }
 
 bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
-  return left.right - left.left == right.right - right.left &&
+  return left.right - left.left == right.right - left.left &&
          left.bottom - left.top == right.bottom - right.top;
 }
 
@@ -34,10 +36,10 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         i == hostLayoutActiveSlot_ && !authentication &&
         SlotStateNeedsRecovery(slot.state);
 
-    // Keep every non-interactive Spotify WebView alive and visible, but reduce
-    // its actual render surface to one pixel. This avoids IsVisible=false while
-    // preventing six background player surfaces from carrying a viewport-sized
-    // layout/paint cost.
+    // Steady background playback is a visible 1x1 surface. A recovery click is
+    // the one short-lived exception: CDP trusted input needs a real viewport,
+    // so the selected recovery slot expands offscreen only for that interaction
+    // and returns to 1x1 as soon as it leaves Recovering.
     int x = client.left;
     int y = client.top;
     int width = 1;
@@ -49,6 +51,11 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       width = activeWidth;
       height = activeHeight;
       insertAfter = HWND_TOP;
+    } else if (recovery) {
+      x = client.right + 32;
+      y = client.top;
+      width = kSpotifyRecoveryInteractionWidth;
+      height = kSpotifyRecoveryInteractionHeight;
     }
 
     const RECT desired{x, y, x + width, y + height};
