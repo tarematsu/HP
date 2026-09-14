@@ -120,9 +120,11 @@ export function selectLatestShortTermEntry(entries: RadarTimeEntry[]): RadarTime
     + latestJst.getUTCMinutes() * 60
     + latestJst.getUTCSeconds()
   );
-  const targetHour = secondsIntoDay > 22 * 60 * 60
+  const nineOClock = 9 * 60 * 60;
+  const twentyTwoOClock = 22 * 60 * 60;
+  const targetHour = secondsIntoDay > twentyTwoOClock
     ? 22
-    : secondsIntoDay > 9 * 60 * 60
+    : secondsIntoDay > nineOClock && secondsIntoDay < twentyTwoOClock
       ? 9
       : null;
   if (targetHour === null) return latest;
