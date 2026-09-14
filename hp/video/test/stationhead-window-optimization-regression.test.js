@@ -37,29 +37,40 @@ test('startup preview keeps normal playback backgrounded but preserves explicit 
   assert.match(setPreviewBounds, /viewVisible_ = true;[\s\S]*LayoutControllers\(\);/);
 });
 
-test('background host clips a normal-size playback viewport while foreground interaction can expand it', () => {
+test('background playback shrinks both HWND and WebView controller to 1x1', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
     '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
   );
-  assert.match(applyLayout, /const bool playbackForeground = showPlayback \|\|/);
+  assert.match(applyLayout, /const bool playbackForeground =/);
   assert.match(applyLayout, /const int hostWidth = playbackForeground \? width : 1;/);
   assert.match(applyLayout, /const int hostHeight = playbackForeground \? height : 1;/);
-  assert.match(applyLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
-  assert.match(applyLayout, /const RECT contentBounds\{0, 0, width, height\};/);
+  assert.match(applyLayout, /const RECT contentBounds\{0, 0, hostWidth, hostHeight\};/);
   assert.match(
     applyLayout,
-    /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*hostWidth, hostHeight/,
+    /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*hostWidth, hostHeight,[\s\S]*SWP_SHOWWINDOW/,
   );
   assert.match(applyLayout, /controller->put_Bounds\(contentBounds\);/);
-  assert.doesNotMatch(
-    applyLayout,
-    /const RECT contentBounds\{0, 0, hostWidth, hostHeight\};/,
-  );
+  assert.match(applyLayout, /controller->put_IsVisible\(TRUE\);/);
+  assert.doesNotMatch(applyLayout, /controller->put_IsVisible\(FALSE\)/);
 });
 
-test('duplicate hide notifications verify the effective monitor placement and auth surface', () => {
+test('background auth WebView also stays visible at 1x1', () => {
+  const applyLayout = section(
+    layoutSource,
+    'void ApplyStationheadChildLayout(',
+    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+  );
+  assert.match(applyLayout, /const int authHostWidth = showAuth \? width : 1;/);
+  assert.match(applyLayout, /const int authHostHeight = showAuth \? height : 1;/);
+  assert.match(applyLayout, /const RECT authBounds\{0, 0, authHostWidth, authHostHeight\};/);
+  assert.match(applyLayout, /authController->put_IsVisible\(TRUE\);/);
+  assert.doesNotMatch(applyLayout, /authController->put_IsVisible\(FALSE\)/);
+  assert.doesNotMatch(applyLayout, /ShowWindow\([^\n]*SW_HIDE/);
+});
+
+test('duplicate background notifications verify 1x1 monitor placement and auth surface', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -68,17 +79,13 @@ test('duplicate hide notifications verify the effective monitor placement and au
   assert.match(setVisible, /const bool monitorForeground = StationheadMonitorForeground\(\);/);
   assert.match(
     setVisible,
-    /PlaybackSurfaceMatches\([\s\S]*monitorForeground \? std::max[\s\S]*monitorForeground \? HWND_TOP : HWND_BOTTOM\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
+    /PlaybackSurfaceMatches\([\s\S]*monitorForeground \? std::max[\s\S]*monitorForeground \? HWND_TOP : nullptr\)[\s\S]*BackgroundAuthSurfaceMatches\([\s\S]*return;/,
   );
   assert.match(setVisible, /const bool hadInteractiveSurface/);
   assert.match(setVisible, /const bool interactiveSurfaceHadFocus/);
-  assert.match(
-    setVisible,
-    /hadInteractiveSurface && interactiveSurfaceHadFocus &&[\s\S]*GetFocus\(\) != window_[\s\S]*SetFocus\(window_\)/,
-  );
 });
 
-test('explicit Stationhead interaction may reuse the playback surface while normal playback stays background-only', () => {
+test('explicit Stationhead interaction may expand the playback surface', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -98,80 +105,25 @@ test('explicit Stationhead interaction may reuse the playback surface while norm
   );
 });
 
-test('fast-path helpers validate host placement, controller bounds and persistent playback visibility', () => {
+test('fast-path helpers validate controller size together with host size', () => {
   const playbackMatches = section(
     layoutSource,
     'bool PlaybackSurfaceMatches(',
-    'bool HiddenAuthSurfaceMatches(',
+    'bool BackgroundAuthSurfaceMatches(',
   );
   assert.match(playbackMatches, /WindowClientSizeMatches\(/);
   assert.match(playbackMatches, /ChildWindowPlacementMatches\(/);
   assert.match(playbackMatches, /ControllerBoundsMatch\(/);
   assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, TRUE\)/);
-  assert.doesNotMatch(playbackMatches, /expectedVisibility|ControllerVisibilityMatches\(controller, FALSE\)/);
-  assert.match(
-    playbackMatches,
-    /controllerWidth =[\s\S]*workspaceBounds\.right - workspaceBounds\.left/,
-  );
-  assert.match(
-    playbackMatches,
-    /controllerHeight =[\s\S]*workspaceBounds\.bottom - workspaceBounds\.top/,
-  );
+  assert.match(playbackMatches, /const RECT controllerBounds\{0, 0, hostWidth, hostHeight\};/);
 
   const activeAuthMatches = section(
     layoutSource,
     'bool ActiveAuthSurfaceMatches(',
     'bool ConfiguresSecondaryStationheadWindow(',
   );
-  assert.match(activeAuthMatches, /playbackHidden/);
-  assert.match(activeAuthMatches, /WindowClientSizeMatches\(authHostWindow/);
-  assert.match(activeAuthMatches, /ChildWindowPlacementMatches\(authHostWindow/);
-  assert.match(activeAuthMatches, /ControllerBoundsMatch\(authController/);
+  assert.match(activeAuthMatches, /playbackBackground/);
+  assert.match(activeAuthMatches, /WindowClientSizeMatches\(hostWindow, 1, 1\)/);
+  assert.match(activeAuthMatches, /ControllerBoundsMatch\(controller, RECT\{0, 0, 1, 1\}\)/);
   assert.match(activeAuthMatches, /ControllerVisibilityMatches\(authController, TRUE\)/);
-});
-
-test('host resize is checked before synchronous WebView controller bounds reads', () => {
-  const applyLayout = section(
-    layoutSource,
-    'void ApplyStationheadChildLayout(',
-    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
-  );
-  const playbackHostCheck = applyLayout.indexOf(
-    'WindowClientSizeMatches(hostWindow, hostWidth, hostHeight)',
-  );
-  const playbackControllerCheck = applyLayout.indexOf(
-    'ControllerBoundsMatch(controller, contentBounds)',
-  );
-  const authHostCheck = applyLayout.indexOf(
-    'WindowClientSizeMatches(authHostWindow, width, height)',
-  );
-  const authControllerCheck = applyLayout.indexOf(
-    'ControllerBoundsMatch(authController, authBounds)',
-  );
-  assert.ok(playbackHostCheck >= 0 && playbackHostCheck < playbackControllerCheck);
-  assert.ok(authHostCheck >= 0 && authHostCheck < authControllerCheck);
-});
-
-test('layout reuses host size reads before controller bounds repair', () => {
-  const applyLayout = section(
-    layoutSource,
-    'void ApplyStationheadChildLayout(',
-    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
-  );
-  assert.equal(
-    (applyLayout.match(/WindowClientSizeMatches\(hostWindow, hostWidth, hostHeight\)/g) ?? []).length,
-    1,
-  );
-  assert.equal(
-    (applyLayout.match(/WindowClientSizeMatches\(authHostWindow, width, height\)/g) ?? []).length,
-    1,
-  );
-  assert.match(
-    applyLayout,
-    /const bool hostSizeMatches[\s\S]*\(!hostSizeMatches \|\| !hostPlacementMatches\)[\s\S]*if \(!ControllerBoundsMatch\(controller, contentBounds\)\)/,
-  );
-  assert.match(
-    applyLayout,
-    /const bool authHostSizeMatches[\s\S]*\(!authHostSizeMatches \|\| !authHostPlacementMatches\)[\s\S]*if \(!authHostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(authController, authBounds\)/,
-  );
 });
