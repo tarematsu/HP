@@ -68,6 +68,9 @@ void SpotifyWebViews::Start() noexcept {
     slot.timedCompletionDeadlineGeneration = 0;
     slot.trustedClickBlockedUntilTick = 0;
     slot.timedRotationActive = false;
+    slot.observedTrackTitle.clear();
+    slot.playbackConfirmed = false;
+    slot.playbackConfirmedAt = {};
     if (!CreateHost(slot)) continue;
   }
 
@@ -98,6 +101,9 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
     if (slot.navigationCompletedToken.value != 0) {
       slot.webview->remove_NavigationCompleted(slot.navigationCompletedToken);
     }
+    if (slot.documentTitleChangedToken.value != 0) {
+      slot.webview->remove_DocumentTitleChanged(slot.documentTitleChangedToken);
+    }
     if (slot.webMessageReceivedToken.value != 0) {
       slot.webview->remove_WebMessageReceived(slot.webMessageReceivedToken);
     }
@@ -110,6 +116,7 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   }
   slot.navigationStartingToken = {};
   slot.navigationCompletedToken = {};
+  slot.documentTitleChangedToken = {};
   slot.webMessageReceivedToken = {};
   slot.webResourceRequestedToken = {};
   slot.timedEndMessageReceivedToken = {};
@@ -143,6 +150,9 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.playerPage = false;
   slot.loginPage = false;
   slot.timedObserverReady = false;
+  slot.observedTrackTitle.clear();
+  slot.playbackConfirmed = false;
+  slot.playbackConfirmedAt = {};
 }
 
 void SpotifyWebViews::Shutdown() noexcept {

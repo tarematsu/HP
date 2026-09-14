@@ -11,6 +11,7 @@ const timed = source('spotify_timed_sequence.inc');
 const scripts = source('spotify_static_scripts.inc');
 const runtime = source('spotify_media_observer_runtime.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
+const controller = source('spotify_controller_lifecycle.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
@@ -57,7 +58,7 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('DOM reconcile directly confirms target playback from the visible pause state', () => {
+test('DOM reconcile directly confirms target playback while status timing stays title-event owned', () => {
   assert.match(
     scoped,
     /currentMatchesTarget &&[\s\S]*controlIntent === 'pause'[\s\S]*buttonIntentValue === 'pause'[\s\S]*return true/,
@@ -66,18 +67,20 @@ test('DOM reconcile directly confirms target playback from the visible pause sta
     music.indexOf('if (json && std::wstring_view(json) == L"true")'),
     music.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
   );
-  assert.match(trueBranch, /GetLocalTime\(&target->playbackConfirmedAt\)/);
-  assert.match(trueBranch, /target->playbackConfirmed = true/);
   assert.match(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(trueBranch, /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/);
+  assert.doesNotMatch(trueBranch, /GetLocalTime|playbackConfirmed/);
   assert.doesNotMatch(trueBranch, /SlotState::WaitingTarget/);
   assert.doesNotMatch(trueBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
+  assert.match(controller, /add_DocumentTitleChanged/);
+  assert.match(controller, /GetLocalTime\(&target->playbackConfirmedAt\)/);
 });
 
 test('generation-tagged observer remains a generation-safe optional compatibility path', () => {
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
+  assert.doesNotMatch(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.doesNotMatch(music, /ArmTimedEndObserver\(slot\)/);
 });
 
