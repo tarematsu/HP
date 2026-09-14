@@ -396,9 +396,6 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     (host === 'stationhead.com' || host.endsWith('.stationhead.com')) &&
     window.top === window;
   if (!topLevelStationhead) {
-    // AddScriptToExecuteOnDocumentCreated also runs in child frames and after an
-    // external top-level navigation. Remove the page-to-native channel before
-    // either document can emit Stationhead-shaped state messages.
     if (webview && nativePost) {
       const blockedPost = () => undefined;
       try { webview.postMessage = blockedPost; } catch (_) {}
@@ -763,11 +760,8 @@ inline std::wstring StationheadApiPlayStatsScriptRuntimeFixed(int channelId) {
 
 }  // namespace hp
 
-// These macros are intentionally defined after the wrappers. Calls compiled
-// after the precompiled-header boundary use the fixed runtime policy, while the
-// wrapper bodies above still refer to the original policy functions.
+// Non-autoplay adapters used by existing implementation call sites.
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingRuntimeFixed
 #define StationheadAuthCaptureScript StationheadAuthCaptureScriptRuntimeFixed
-#define StationheadAutoplayScript StationheadAutoplayScriptRuntimeFixed
 #define StationheadLocateStartButtonScript StationheadLocateStartButtonScriptRuntimeFixed
 #define StationheadApiPlayStatsScript StationheadApiPlayStatsScriptRuntimeFixed
