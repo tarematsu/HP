@@ -579,7 +579,7 @@ void StationheadPlayer::Create() {
                 return S_OK;
               }
               controller_ = controller;
-              controller_->put_IsVisible(FALSE);
+              controller_->put_IsVisible(TRUE);
               controller_->get_CoreWebView2(&webview_);
               if (!webview_) {
                 ScheduleRecreate(L"WebView unavailable after controller creation");
@@ -597,7 +597,6 @@ void StationheadPlayer::Create() {
         }
       });
 }
-
 void StationheadPlayer::CompletePendingAuthPopupDeferral() noexcept {
   ComPtr<ICoreWebView2Deferral> deferral = authPopupDeferral_;
   const auto completed = authPopupDeferralCompleted_;
