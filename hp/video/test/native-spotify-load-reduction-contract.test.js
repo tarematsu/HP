@@ -31,24 +31,31 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
   assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify layout parks healthy players in a smaller offscreen viewport', () => {
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
+test('Spotify layout keeps steady background players visible at 1x1', () => {
+  assert.match(layout, /int width = 1;/);
+  assert.match(layout, /int height = 1;/);
+  assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
   assert.match(layout, /const bool zOrderChanged =/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
+  assert.match(layout, /SWP_SHOWWINDOW/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
 });
 
-test('Spotify resource policy is permanent and layout does not reapply it', () => {
-  assert.match(layout, /CurrentMusicTrack\(slot\)/);
-  assert.match(layout, /const bool lowPowerPlayback =/);
-  assert.doesNotMatch(layout, /put_IsVisible/);
+test('Spotify recovery may expand briefly for trusted CDP input', () => {
+  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
+  assert.match(layout, /else if \(recovery\)/);
+});
+
+test('Spotify resource policy is permanent and controller visibility stays true', () => {
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.match(spotify, /ApplySpotifyPermanentLowMemoryMode\(slot\.webview\.Get\(\)\)/);
-  assert.match(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
-  assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
+  assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
 });
 
 test('Spotify layout avoids redundant controller geometry COM calls', () => {
