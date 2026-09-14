@@ -150,22 +150,32 @@ void PowerSavingController::LayoutOverlay() {
   if (compact) target = ParentControlStackRect();
   const int width = std::max(1L, target.right - target.left);
   const int height = std::max(1L, target.bottom - target.top);
-  SetWindowPos(
-      overlay_, HWND_TOP,
-      target.left, target.top,
-      width, height,
-      SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-  if (compact) {
-    const int corner = std::max(8, std::min(20, height / 3));
-    HRGN region = CreateRoundRectRgn(
-        0, 0, width + 1, height + 1, corner, corner);
-    if (region && SetWindowRgn(overlay_, region, TRUE) == 0) {
-      DeleteObject(region);
-    }
-  } else {
-    SetWindowRgn(overlay_, nullptr, TRUE);
+  const bool boundsMatch = ChildBoundsMatch(overlay_, target);
+  const bool zOrderMatch = GetWindow(overlay_, GW_HWNDPREV) == nullptr;
+  const bool visible = IsWindowVisible(overlay_) != FALSE;
+
+  if (!boundsMatch || !zOrderMatch || !visible) {
+    UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING;
+    if (boundsMatch) flags |= SWP_NOMOVE | SWP_NOSIZE;
+    SetWindowPos(
+        overlay_, HWND_TOP,
+        target.left, target.top,
+        width, height,
+        flags);
   }
-  InvalidateRect(overlay_, nullptr, FALSE);
+  if (!boundsMatch) {
+    if (compact) {
+      const int corner = std::max(8, std::min(20, height / 3));
+      HRGN region = CreateRoundRectRgn(
+          0, 0, width + 1, height + 1, corner, corner);
+      if (region && SetWindowRgn(overlay_, region, TRUE) == 0) {
+        DeleteObject(region);
+      }
+    } else {
+      SetWindowRgn(overlay_, nullptr, TRUE);
+    }
+    InvalidateRect(overlay_, nullptr, FALSE);
+  }
 }
 
 RECT PowerSavingController::ParentControlStackRect() const {
