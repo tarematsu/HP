@@ -145,6 +145,7 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             if (json && std::wstring_view(json) == L"true") {
               SetSlotState(*target, SlotState::Playing);
               SetMusicCompletionDeadline(*target, callbackNow, 0, false);
+              ArmTimedEndObserver(*target);
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
