@@ -67,12 +67,11 @@ test('Spotify layout avoids redundant controller geometry COM calls', () => {
   assert.doesNotMatch(layout, /get_ZoomFactor\(/);
 });
 
-test('Spotify authentication badge bootstrap runs once per navigation generation', () => {
-  assert.match(spotifyHeader, /ULONGLONG authenticationBadgeTick = 0/);
-  assert.match(layout, /if \(slot\.authenticationBadgeTick != 0\) return/);
-  assert.match(layout, /slot\.authenticationBadgeTick = 1/);
-  assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeRefreshMs/);
-  assert.match(spotify, /target->authenticationBadgeTick = 0/);
+test('single-window authentication keeps foreground repair without account badge work', () => {
+  assert.doesNotMatch(spotifyHeader, /authenticationBadgeTick/);
+  assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeBootstrapScript|ExecuteScript/);
+  assert.match(layout, /maintainAuthenticationForeground/);
+  assert.doesNotMatch(scripts, /spotify:account|__homePanelSpotifyAccount|mountBadge/);
 });
 
 test('each Spotify scheduler pass performs one round-robin scan and at most one layout refresh', () => {
@@ -90,11 +89,15 @@ test('scheduler state does not duplicate slot recovery or async state', () => {
   assert.doesNotMatch(spotifyHeader, /lastTimedReconcileTick|lastModeNavigateTick|unhealthySinceTick|reconcileRequestGeneration|timedObserverInstallGeneration/);
 });
 
-test('lightweight Spotify styling leaves player timing surfaces outside the heavy CSS rules', () => {
+test('lightweight Spotify styling protects player timing and progress surfaces', () => {
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
   assert.match(scripts, /background-image: none !important/);
   assert.match(scripts, /img, picture, video, canvas/);
-  assert.match(scripts, /Keep the player footer \/ elapsed-time \/ progress controls untouched/);
+  assert.match(scripts, /Keep player controls, elapsed-time text and progress\/slider trees out/);
+  assert.match(scripts, /data-testid\*="playback"/);
+  assert.match(scripts, /data-testid\*="progress"/);
+  assert.match(scripts, /role="slider"/);
+  assert.match(scripts, /aria-valuenow/);
   assert.match(scripts, /\[data-testid="now-playing-bar"\]/);
   assert.match(scripts, /footer/);
   assert.doesNotMatch(scripts, /audio\s*,?\s*\{/);
