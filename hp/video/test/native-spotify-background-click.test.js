@@ -40,11 +40,15 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('parked Spotify surfaces are compact and recovery gets a desktop-like viewport', () => {
-  assert.match(layout, /kSpotifyParkedPlaybackWidth = 160/);
-  assert.match(layout, /kSpotifyParkedPlaybackHeight = 90/);
+test('steady background Spotify is 1x1 while trusted recovery gets a temporary viewport', () => {
+  assert.match(layout, /int width = 1;/);
+  assert.match(layout, /int height = 1;/);
   assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
   assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
+  assert.match(
+    layout,
+    /else if \(recovery\) \{[\s\S]*width = kSpotifyRecoveryInteractionWidth;[\s\S]*height = kSpotifyRecoveryInteractionHeight;/,
+  );
 });
 
 test('trusted click requests recovery layout before using a normalized point', () => {
