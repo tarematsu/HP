@@ -5,15 +5,15 @@
 
 namespace hp {
 
-// Final document-start presentation layer. This header is included only after
-// the runtime/lifecycle/recovery/current-interaction autoplay wrappers have
-// selected the actual StationheadAutoplayScript implementation. Keeping this
-// as the last wrapper prevents later policy macros from silently dropping the
-// lightweight CSS while preserving the playback state machine unchanged.
-inline std::wstring StationheadAutoplayScriptPresentationReduced(
+// Keep the effective Stationhead document-start script in one obvious place.
+// The current runtime behavior is: autoplay/login handling, current interaction
+// state, render reduction, then room UI reduction. Do not wrap whatever macro
+// happened to be selected earlier; name the actual behavior explicitly.
+inline std::wstring BuildStationheadStartupScript(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
-  std::wstring script = StationheadAutoplayScript(globalName, messagePrefix);
+  std::wstring script =
+      StationheadAutoplayScriptCurrentInteraction(globalName, messagePrefix);
   script.push_back(L'\n');
   script.append(StationheadRenderReductionScript());
   script.push_back(L'\n');
@@ -23,5 +23,8 @@ inline std::wstring StationheadAutoplayScriptPresentationReduced(
 
 }  // namespace hp
 
+// sh_webview.cpp still uses the historical call-site name. Keep exactly one
+// adapter here until that large source is edited independently; all composition
+// itself is the explicit BuildStationheadStartupScript() function above.
 #undef StationheadAutoplayScript
-#define StationheadAutoplayScript StationheadAutoplayScriptPresentationReduced
+#define StationheadAutoplayScript BuildStationheadStartupScript
