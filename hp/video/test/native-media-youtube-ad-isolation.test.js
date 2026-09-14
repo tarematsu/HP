@@ -19,9 +19,9 @@ test('YouTube ad branch is isolated from content mutation', () => {
   assert.doesNotMatch(adBranch, /setOption\('captions'/);
 });
 
-test('YouTube content quality is one-shot and never touched during ads', () => {
+test('YouTube content quality is one-shot 360p and never touched during ads', () => {
   const contentState = recovery.indexOf('const recoveryState =');
-  const preferred = recovery.indexOf("const preferredQuality = 'large'", contentState);
+  const preferred = recovery.indexOf("const preferredQuality = 'medium'", contentState);
   assert.ok(contentState >= 0 && preferred > contentState);
   assert.match(recovery, /qualityApplied: false/);
   assert.match(recovery, /if \(!recoveryState\.qualityApplied\)/);
