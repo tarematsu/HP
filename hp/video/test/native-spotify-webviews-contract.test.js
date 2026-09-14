@@ -25,13 +25,13 @@ const lifecycle = readFileSync(new URL('../../native/src/renderer_lifecycle.cpp'
 const mediaPanel = readFileSync(new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const mediaHost = readFileSync(new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 
-test('four Spotify accounts keep their existing isolated profiles after amazon moves to Stationhead', () => {
+test('only yuukiar keeps its existing isolated profile during single-window diagnostics', () => {
   assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
-  assert.match(header, /kSpotifyActiveAccountCount = 4/);
+  assert.match(header, /kSpotifyActiveAccountCount = 1/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
   assert.match(scripts, /std::array<std::wstring_view, kSpotifyActiveAccountCount> kSpotifyPanelNames/);
-  assert.match(scripts, /L"yuukiar", L"ten", L"nagi", L"hinata"/);
-  assert.doesNotMatch(scripts, /L"amazon"|L"ozeki"/);
+  assert.match(scripts, /L"yuukiar"/);
+  assert.doesNotMatch(scripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
   assert.match(spotify, /webview2-youtube-mv/);
   assert.match(mediaHost, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
@@ -182,8 +182,8 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow/);
 });
 
-test('all four remaining Spotify WebViews remain natively muted', () => {
-  assert.match(header, /kSpotifyActiveAccountCount = 4/);
+test('active yuukiar Spotify WebView remains natively muted', () => {
+  assert.match(header, /kSpotifyActiveAccountCount = 1/);
   assert.match(spotify, /ComPtr<ICoreWebView2_8> audio/);
   assert.match(spotify, /audio->put_IsMuted\(TRUE\)/);
   assert.match(spotify, /SetSpotifyOutputMuted\(slot\.webview\)/);
