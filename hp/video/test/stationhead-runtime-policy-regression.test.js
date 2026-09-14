@@ -94,10 +94,7 @@ test('active runtime policy gates message sources and resolves login against acc
   assert.match(runtimeAutoplay, /if \(playing\(\)\) baseScan\(\);/);
   assert.match(runtimeAutoplay, /updateBlockingLogin\(\);[\s\S]*5000/);
   assert.match(runtimeAutoplay, /if \(timer\) return;/);
-  assert.match(
-    runtimeFixSource,
-    /#define StationheadAutoplayScript StationheadAutoplayScriptRuntimeFixed/,
-  );
+  assert.doesNotMatch(runtimeFixSource, /#define StationheadAutoplayScript/);
 });
 
 test('blank-page recovery preserves valid account and playback interaction', () => {
@@ -253,7 +250,7 @@ test('Window A runtime stats throttle follows the validated authorization', () =
   );
 });
 
-test('runtime policy override is compiled after the base polling policy', () => {
+test('runtime policy helpers are compiled after the base polling policy', () => {
   assert.match(
     cmakeSource,
     /set\(HOMEPANEL_STATIONHEAD_SOURCES[\s\S]*src\/sh_polling_policy\.h[\s\S]*src\/sh_runtime_policy_fix\.h/,
