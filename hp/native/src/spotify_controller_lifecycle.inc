@@ -1,10 +1,17 @@
 namespace hp {
 
-void SpotifyWebViews::CreateController(Slot& slot) noexcept {
-  if (!slot.hostWindow || !IsWindow(slot.hostWindow) ||
-      slot.controller || slot.webview) {
-    return;
+namespace {
+void ApplySpotifyPermanentLowMemoryMode(ICoreWebView2* webview) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2_19> webview19;
+  if (SUCCEEDED(webview->QueryInterface(IID_PPV_ARGS(&webview19))) && webview19) {
+    webview19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
+}
+}  // namespace
+
+void SpotifyWebViews::CreateController(Slot& slot) noexcept {
+  if (!slot.hostWindow || !IsWindow(slot.hostWindow) || slot.controller || slot.webview) return;
   SetSlotState(slot, SlotState::NotCreated);
   slot.controllerCreating = true;
   slot.controllerCreateTick = GetTickCount64();
@@ -13,11 +20,9 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
   try {
     SharedWebViewEnvironment::Instance().Acquire(
         userDataFolder_, false, false,
-        [this, alive, target](HRESULT result,
-                              ICoreWebView2Environment* environment) {
+        [this, alive, target](HRESULT result, ICoreWebView2Environment* environment) {
           if (!alive->load(std::memory_order_acquire)) return;
-          if (FAILED(result) || !environment || !target->hostWindow ||
-              !IsWindow(target->hostWindow)) {
+          if (FAILED(result) || !environment || !target->hostWindow || !IsWindow(target->hostWindow)) {
             target->controllerCreating = false;
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
@@ -26,23 +31,20 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
           target->environment = environment;
 
           ComPtr<ICoreWebView2Environment10> environment10;
-          if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment10))) ||
-              !environment10) {
+          if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment10))) || !environment10) {
             target->controllerCreating = false;
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
             return;
           }
           ComPtr<ICoreWebView2ControllerOptions> options;
-          if (FAILED(environment10->CreateCoreWebView2ControllerOptions(&options)) ||
-              !options) {
+          if (FAILED(environment10->CreateCoreWebView2ControllerOptions(&options)) || !options) {
             target->controllerCreating = false;
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
             return;
           }
-          const std::wstring profileName =
-              std::wstring(kSpotifyProfilePrefix) +
+          const std::wstring profileName = std::wstring(kSpotifyProfilePrefix) +
               std::to_wstring(target->index + kSpotifyProfileFirstAccountNumber);
           if (FAILED(options->put_ProfileName(profileName.c_str())) ||
               FAILED(options->put_IsInPrivateModeEnabled(FALSE))) {
@@ -52,41 +54,36 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
             return;
           }
 
-          const auto ready =
-              Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                  [this, alive, target](HRESULT controllerResult,
-                                        ICoreWebView2Controller* controller)
-                      -> HRESULT {
-                    if (!alive->load(std::memory_order_acquire)) {
-                      if (controller) controller->Close();
-                      return S_OK;
-                    }
-                    target->controllerCreating = false;
-                    if (FAILED(controllerResult) || !controller ||
-                        !target->hostWindow || !IsWindow(target->hostWindow)) {
-                      if (controller) controller->Close();
-                      MarkSlotRecovering(*target, GetTickCount64());
-                      ArmRobustScheduler();
-                      return S_OK;
-                    }
-                    target->controller = controller;
-                    target->controller->get_CoreWebView2(&target->webview);
-                    if (!target->webview) {
-                      target->controller->Close();
-                      target->controller.Reset();
-                      MarkSlotRecovering(*target, GetTickCount64());
-                      ArmRobustScheduler();
-                      return S_OK;
-                    }
-                    target->controllerCreateTick = 0;
-                    Configure(*target);
-                    ArmRobustScheduler();
-                    return S_OK;
-                  });
+          const auto ready = Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+              [this, alive, target](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
+                if (!alive->load(std::memory_order_acquire)) {
+                  if (controller) controller->Close();
+                  return S_OK;
+                }
+                target->controllerCreating = false;
+                if (FAILED(controllerResult) || !controller || !target->hostWindow || !IsWindow(target->hostWindow)) {
+                  if (controller) controller->Close();
+                  MarkSlotRecovering(*target, GetTickCount64());
+                  ArmRobustScheduler();
+                  return S_OK;
+                }
+                target->controller = controller;
+                target->controller->get_CoreWebView2(&target->webview);
+                if (!target->webview) {
+                  target->controller->Close();
+                  target->controller.Reset();
+                  MarkSlotRecovering(*target, GetTickCount64());
+                  ArmRobustScheduler();
+                  return S_OK;
+                }
+                target->controllerCreateTick = 0;
+                Configure(*target);
+                ArmRobustScheduler();
+                return S_OK;
+              });
 
-          const HRESULT createResult =
-              environment10->CreateCoreWebView2ControllerWithOptions(
-                  target->hostWindow, options.Get(), ready.Get());
+          const HRESULT createResult = environment10->CreateCoreWebView2ControllerWithOptions(
+              target->hostWindow, options.Get(), ready.Get());
           if (FAILED(createResult)) {
             target->controllerCreating = false;
             MarkSlotRecovering(*target, GetTickCount64());
@@ -104,6 +101,9 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
   if (!slot.controller || !slot.webview) return;
   try {
     SetSpotifyOutputMuted(slot.webview);
+    ApplySpotifyPermanentLowMemoryMode(slot.webview.Get());
+    slot.controller->put_IsVisible(FALSE);
+
     ComPtr<ICoreWebView2Controller2> controller2;
     if (SUCCEEDED(slot.controller.As(&controller2)) && controller2) {
       COREWEBVIEW2_COLOR background{255, 0, 0, 0};
@@ -121,30 +121,20 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
       settings->put_IsZoomControlEnabled(FALSE);
       settings->put_IsBuiltInErrorPageEnabled(TRUE);
       ComPtr<ICoreWebView2Settings3> settings3;
-      if (SUCCEEDED(settings.As(&settings3)) && settings3) {
-        settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
-      }
+      if (SUCCEEDED(settings.As(&settings3)) && settings3) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
     }
 
     Slot* const target = &slot;
     const auto alive = alive_;
-    slot.webview->AddWebResourceRequestedFilter(
-        L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
-    slot.webview->AddWebResourceRequestedFilter(
-        L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
+    slot.webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
+    slot.webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
     slot.webview->add_WebResourceRequested(
         Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-            [alive, target](ICoreWebView2*,
-                            ICoreWebView2WebResourceRequestedEventArgs* args)
-                -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) || !args ||
-                  !target->playerPage || !target->environment) {
-                return S_OK;
-              }
+            [alive, target](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) || !args || !target->playerPage || !target->environment) return S_OK;
               ComPtr<ICoreWebView2WebResourceResponse> response;
               if (SUCCEEDED(target->environment->CreateWebResourceResponse(
-                      nullptr, 204, L"No Content",
-                      L"Cache-Control: no-store\r\n", &response)) && response) {
+                      nullptr, 204, L"No Content", L"Cache-Control: no-store\r\n", &response)) && response) {
                 args->put_Response(response.Get());
               }
               return S_OK;
@@ -153,14 +143,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
 
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
-            [this, alive, target](ICoreWebView2*,
-                                  ICoreWebView2NavigationStartingEventArgs* args)
-                -> HRESULT {
+            [this, alive, target](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
-              ++target->pageEpoch;
-              if (target->pageEpoch == 0) ++target->pageEpoch;
-              ++target->asyncEpoch;
-              if (target->asyncEpoch == 0) ++target->asyncEpoch;
+              ++target->pageEpoch; if (target->pageEpoch == 0) ++target->pageEpoch;
+              ++target->asyncEpoch; if (target->asyncEpoch == 0) ++target->asyncEpoch;
               target->asyncWork = AsyncWork::None;
               target->asyncStartedTick = 0;
               target->trustedClickBlockedUntilTick = 0;
@@ -175,27 +161,20 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 CoTaskMemFree(rawUri);
               }
               const ULONGLONG now = GetTickCount64();
-              SetSlotState(*target, target->loginPage
-                  ? SlotState::Authenticating
-                  : SlotState::Navigating);
-              if (!target->loginPage) {
-                target->nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
-              }
+              SetSlotState(*target, target->loginPage ? SlotState::Authenticating : SlotState::Navigating);
+              if (!target->loginPage) target->nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
-            }).Get(),
-        &slot.navigationStartingToken);
+            }).Get(), &slot.navigationStartingToken);
 
     slot.webview->add_NavigationCompleted(
         Callback<ICoreWebView2NavigationCompletedEventHandler>(
-            [this, alive, target](ICoreWebView2* sender,
-                                  ICoreWebView2NavigationCompletedEventArgs* args)
-                -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) || !sender || !args) {
-                return S_OK;
-              }
+            [this, alive, target](ICoreWebView2* sender, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) || !sender || !args) return S_OK;
               SetSpotifyOutputMuted(target->webview);
+              ApplySpotifyPermanentLowMemoryMode(target->webview.Get());
+              if (target->controller) target->controller->put_IsVisible(FALSE);
               BOOL success = FALSE;
               if (FAILED(args->get_IsSuccess(&success)) || !success) {
                 target->playerPage = false;
@@ -204,7 +183,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 ArmRobustScheduler();
                 return S_OK;
               }
-
               LPWSTR rawUri = nullptr;
               bool playerPage = false;
               bool loginPage = false;
@@ -216,29 +194,17 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               target->playerPage = playerPage;
               target->loginPage = loginPage;
               const ULONGLONG now = GetTickCount64();
-              SetSlotState(*target, loginPage
-                  ? SlotState::Authenticating
-                  : (playerPage ? SlotState::WaitingTarget
-                                : SlotState::Navigating));
-              target->nextRecoveryTick = playerPage || loginPage
-                  ? 0
-                  : now + kSpotifyRecoveryRetryMs;
+              SetSlotState(*target, loginPage ? SlotState::Authenticating : (playerPage ? SlotState::WaitingTarget : SlotState::Navigating));
+              target->nextRecoveryTick = playerPage || loginPage ? 0 : now + kSpotifyRecoveryRetryMs;
               RecomputeForeground();
-              if (!playerPage) {
-                ArmRobustScheduler();
-                return S_OK;
-              }
+              if (!playerPage) { ArmRobustScheduler(); return S_OK; }
 
               const ULONGLONG pageEpoch = target->pageEpoch;
               const HRESULT bootstrap = sender->ExecuteScript(
                   kSpotifyStaticPageBootstrapScript,
                   Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-                      [this, alive, target, pageEpoch](HRESULT result, LPCWSTR)
-                          -> HRESULT {
-                        if (!alive->load(std::memory_order_acquire) ||
-                            target->pageEpoch != pageEpoch) {
-                          return S_OK;
-                        }
+                      [this, alive, target, pageEpoch](HRESULT result, LPCWSTR) -> HRESULT {
+                        if (!alive->load(std::memory_order_acquire) || target->pageEpoch != pageEpoch) return S_OK;
                         if (FAILED(result) || !started_ || !target->webview) {
                           if (started_ && target->webview) {
                             MarkSlotRecovering(*target, GetTickCount64());
@@ -255,13 +221,13 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 ArmRobustScheduler();
               }
               return S_OK;
-            }).Get(),
-        &slot.navigationCompletedToken);
+            }).Get(), &slot.navigationCompletedToken);
 
     RECT client{};
     GetClientRect(slot.hostWindow, &client);
     slot.controller->put_Bounds(client);
-    slot.controller->put_IsVisible(TRUE);
+    slot.controller->put_IsVisible(FALSE);
+    ApplySpotifyPermanentLowMemoryMode(slot.webview.Get());
     SetSlotState(slot, SlotState::Authenticating);
     slot.webview->Navigate(kSpotifyLoginUrl);
     ArmRobustScheduler();
@@ -274,15 +240,13 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
 bool SpotifyWebViews::IsSpotifyPlayerUri(const wchar_t* uri) noexcept {
   if (!uri) return false;
   const std::wstring_view value(uri);
-  return StartsWithInsensitive(value, L"https://open.spotify.com/") &&
-         !StartsWithInsensitive(value, L"https://open.spotify.com/login");
+  return StartsWithInsensitive(value, L"https://open.spotify.com/") && !StartsWithInsensitive(value, L"https://open.spotify.com/login");
 }
 
 bool SpotifyWebViews::IsSpotifyLoginUri(const wchar_t* uri) noexcept {
   if (!uri) return false;
   const std::wstring_view value(uri);
-  return StartsWithInsensitive(value, L"https://accounts.spotify.com/") ||
-         StartsWithInsensitive(value, L"https://open.spotify.com/login");
+  return StartsWithInsensitive(value, L"https://accounts.spotify.com/") || StartsWithInsensitive(value, L"https://open.spotify.com/login");
 }
 
 }  // namespace hp

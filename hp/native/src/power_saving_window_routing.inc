@@ -215,6 +215,16 @@ void PowerSavingController::AttachChildWindow(HWND window) noexcept {
 void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   if (!parent_ || !IsWindow(parent_)) return;
 
+  const bool stationheadForeground =
+      monitorMode_ == MonitorMode::Stationhead ||
+      (monitorMode_ == MonitorMode::Native && monitorAuthForeground_);
+  if (SetStationheadMonitorForeground(stationheadForeground)) {
+    // App::Tick reapplies Stationhead's own WebView layout. Wake it only when
+    // the effective foreground state changes so controller visibility and
+    // memory priority change together with HWND placement.
+    PostMessageW(parent_, WM_TIMER, 0, 0);
+  }
+
   RECT client{};
   if (!GetClientRect(parent_, &client)) return;
   const RECT foregroundBounds{
@@ -227,7 +237,8 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
     PowerSavingController* controller;
     RECT foregroundBounds;
     RECT backgroundBounds;
-  } context{this, foregroundBounds, backgroundBounds};
+    bool stationheadForeground;
+  } context{this, foregroundBounds, backgroundBounds, stationheadForeground};
 
   EnumChildWindows(
       parent_,
@@ -236,11 +247,7 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
         if (!IsStationheadPlaybackHost(child)) return TRUE;
 
         PowerSavingController* controller = context->controller;
-        const bool stationheadForeground =
-            controller->monitorMode_ == MonitorMode::Stationhead ||
-            (controller->monitorMode_ == MonitorMode::Native &&
-             controller->monitorAuthForeground_);
-        if (stationheadForeground) {
+        if (context->stationheadForeground) {
           const bool boundsMatch = ChildBoundsMatch(child, context->foregroundBounds);
           const bool zOrderMatch = controller->overlay_ &&
               GetWindow(child, GW_HWNDPREV) == controller->overlay_;
@@ -275,6 +282,7 @@ void PowerSavingController::Detach() noexcept {
   RestoreBrightness();
   mvStartupInputPass_ = false;
   monitorAuthForeground_ = false;
+  SetStationheadMonitorForeground(false);
   if (parent_ && IsWindow(parent_)) {
     EnumChildWindows(
         parent_,

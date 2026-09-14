@@ -1,4 +1,5 @@
 #include "sh.h"
+#include "stationhead_monitor_probe.h"
 
 namespace hp {
 namespace {
@@ -19,8 +20,6 @@ HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wch
     }
   }
 
-  // Child hosts are born background-sized. The playback host must never exist
-  // at dashboard dimensions, even between CreateWindowExW and the first layout pass.
   return CreateWindowExW(0, className, title, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
                            bounds.left, bounds.top, 1, 1, parent, nullptr,
                            instance, nullptr);
@@ -68,6 +67,18 @@ bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
           current == expected;
 }
 
+void SetControllerMemoryUsageTarget(
+    ICoreWebView2Controller* controller,
+    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL level) noexcept {
+  if (!controller) return;
+  ComPtr<ICoreWebView2> webview;
+  if (FAILED(controller->get_CoreWebView2(&webview)) || !webview) return;
+  ComPtr<ICoreWebView2_19> webview19;
+  if (SUCCEEDED(webview.As(&webview19)) && webview19) {
+    webview19->put_MemoryUsageTargetLevel(level);
+  }
+}
+
 bool PlaybackSurfaceMatches(HWND hostWindow,
                             ICoreWebView2Controller* controller,
                             const RECT& workspaceBounds,
@@ -77,26 +88,24 @@ bool PlaybackSurfaceMatches(HWND hostWindow,
   if (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) {
     return false;
   }
-  const int controllerWidth =
-      std::max(1L, workspaceBounds.right - workspaceBounds.left);
-  const int controllerHeight =
-      std::max(1L, workspaceBounds.bottom - workspaceBounds.top);
+  const int controllerWidth = std::max(1L, workspaceBounds.right - workspaceBounds.left);
+  const int controllerHeight = std::max(1L, workspaceBounds.bottom - workspaceBounds.top);
   const RECT hostBounds{workspaceBounds.left, workspaceBounds.top,
                         workspaceBounds.left + hostWidth,
                         workspaceBounds.top + hostHeight};
   const RECT controllerBounds{0, 0, controllerWidth, controllerHeight};
+  const BOOL expectedVisibility = placement == HWND_BOTTOM ? FALSE : TRUE;
   return WindowClientSizeMatches(hostWindow, hostWidth, hostHeight) &&
          ChildWindowPlacementMatches(hostWindow, hostBounds, placement) &&
          ControllerBoundsMatch(controller, controllerBounds) &&
-         ControllerVisibilityMatches(controller, TRUE);
+         ControllerVisibilityMatches(controller, expectedVisibility);
 }
 
 bool HiddenAuthSurfaceMatches(HWND authHostWindow,
                               ICoreWebView2Controller* authController) noexcept {
   const bool hostHidden = !authHostWindow || !IsWindow(authHostWindow) ||
                           !IsWindowVisible(authHostWindow);
-  const bool controllerHidden = !authController ||
-      ControllerVisibilityMatches(authController, FALSE);
+  const bool controllerHidden = !authController || ControllerVisibilityMatches(authController, FALSE);
   return hostHidden && controllerHidden;
 }
 
@@ -105,10 +114,7 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
                               ICoreWebView2Controller* controller,
                               ICoreWebView2Controller* authController,
                               const RECT& workspaceBounds) noexcept {
-  if (!authHostWindow || !IsWindow(authHostWindow) ||
-      !IsWindowVisible(authHostWindow)) {
-    return false;
-  }
+  if (!authHostWindow || !IsWindow(authHostWindow) || !IsWindowVisible(authHostWindow)) return false;
   const int width = std::max(1L, workspaceBounds.right - workspaceBounds.left);
   const int height = std::max(1L, workspaceBounds.bottom - workspaceBounds.top);
   const RECT authHostBounds{workspaceBounds.left, workspaceBounds.top,
@@ -133,14 +139,10 @@ RECT ResolveStationheadWorkspaceBounds(StationheadRole role,
                                         const StationheadConfig& config,
                                         HWND parent,
                                         const RECT& requested) noexcept {
-  if (role == StationheadRole::Secondary ||
-      ConfiguresSecondaryStationheadWindow(config) ||
-      !parent || !IsWindow(parent)) {
-    return requested;
-  }
+  if (role == StationheadRole::Secondary || ConfiguresSecondaryStationheadWindow(config) ||
+      !parent || !IsWindow(parent)) return requested;
   RECT client{};
-  if (!GetClientRect(parent, &client) ||
-      client.right <= client.left || client.bottom <= client.top) {
+  if (!GetClientRect(parent, &client) || client.right <= client.left || client.bottom <= client.top) {
     return requested;
   }
   return client;
@@ -153,35 +155,23 @@ struct StationheadSurfacePolicy {
 };
 
 constexpr StationheadSurfacePolicy ResolveStationheadSurfacePolicy(
-    StationheadTabKind selectedTab,
-    bool authSurfaceReady) noexcept {
+    StationheadTabKind selectedTab, bool authSurfaceReady) noexcept {
   const bool authSelected = selectedTab == StationheadTabKind::Auth;
   const bool playbackSelected = selectedTab == StationheadTabKind::Stationhead;
   return {authSelected && authSurfaceReady, playbackSelected, authSelected};
 }
 
-static_assert(!ResolveStationheadSurfacePolicy(
-                   StationheadTabKind::None, false).showAuth);
-static_assert(!ResolveStationheadSurfacePolicy(
-                   StationheadTabKind::None, false).showPlayback);
-static_assert(!ResolveStationheadSurfacePolicy(
-                   StationheadTabKind::None, false).hidePlayback);
-static_assert(ResolveStationheadSurfacePolicy(
-                  StationheadTabKind::Auth, true).showAuth);
-static_assert(!ResolveStationheadSurfacePolicy(
-                   StationheadTabKind::Auth, true).showPlayback);
-static_assert(ResolveStationheadSurfacePolicy(
-                  StationheadTabKind::Auth, true).hidePlayback);
-static_assert(!ResolveStationheadSurfacePolicy(
-                   StationheadTabKind::Auth, false).showAuth);
-static_assert(ResolveStationheadSurfacePolicy(
-                  StationheadTabKind::Auth, false).hidePlayback);
-static_assert(!ResolveStationheadSurfacePolicy(
-                   StationheadTabKind::Stationhead, true).showAuth);
-static_assert(ResolveStationheadSurfacePolicy(
-                  StationheadTabKind::Stationhead, true).showPlayback);
-static_assert(!ResolveStationheadSurfacePolicy(
-                   StationheadTabKind::Stationhead, true).hidePlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false).showAuth);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false).showPlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false).hidePlayback);
+static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true).showAuth);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true).showPlayback);
+static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true).hidePlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, false).showAuth);
+static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, false).hidePlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true).showAuth);
+static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true).showPlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true).hidePlayback);
 
 void ApplyStationheadChildLayout(HWND hostWindow,
                                  HWND authHostWindow,
@@ -191,97 +181,77 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                                  bool showAuth,
                                  bool showPlayback,
                                  bool hidePlayback) {
+  const bool monitorForeground = StationheadMonitorForeground();
+  const bool playbackForeground = showPlayback || (!showAuth && !hidePlayback && monitorForeground);
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
-  const int hostWidth = showPlayback ? width : 1;
-  const int hostHeight = showPlayback ? height : 1;
-  const HWND hostPlacement = showPlayback ? HWND_TOP : HWND_BOTTOM;
-  // Keep a normal browser viewport while playback is backgrounded. When a
-  // genuine account/music-service interaction is required, expand only that
-  // Stationhead host to its assigned workspace so the user can complete it.
+  const int hostWidth = playbackForeground ? width : 1;
+  const int hostHeight = playbackForeground ? height : 1;
+  const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
   const RECT contentBounds{0, 0, width, height};
   const RECT authBounds{0, 0, width, height};
-  const RECT hostBounds{bounds.left, bounds.top,
-                        bounds.left + hostWidth, bounds.top + hostHeight};
-  const RECT authHostBounds{bounds.left, bounds.top,
-                            bounds.left + width, bounds.top + height};
+  const RECT hostBounds{bounds.left, bounds.top, bounds.left + hostWidth, bounds.top + hostHeight};
+  const RECT authHostBounds{bounds.left, bounds.top, bounds.left + width, bounds.top + height};
   const bool hostValid = hostWindow && IsWindow(hostWindow);
   const bool authHostValid = authHostWindow && IsWindow(authHostWindow);
   const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
   const bool authWasVisible = authHostValid && IsWindowVisible(authHostWindow);
-  const bool hostSizeMatches =
-      hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight);
-  const bool authHostSizeMatches =
-      authHostValid && WindowClientSizeMatches(authHostWindow, width, height);
-  const bool hostPlacementMatches =
-      hostValid && ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement);
-  const bool authHostPlacementMatches =
-      authHostValid && ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP);
+  const bool hostSizeMatches = hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight);
+  const bool authHostSizeMatches = authHostValid && WindowClientSizeMatches(authHostWindow, width, height);
+  const bool hostPlacementMatches = hostValid && ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement);
+  const bool authHostPlacementMatches = authHostValid && ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP);
 
-  if (!hidePlayback && hostValid &&
-      (!hostSizeMatches || !hostPlacementMatches)) {
-    SetWindowPos(hostWindow, hostPlacement,
-                 bounds.left, bounds.top, hostWidth, hostHeight,
+  if (!hidePlayback && hostValid && (!hostSizeMatches || !hostPlacementMatches)) {
+    SetWindowPos(hostWindow, hostPlacement, bounds.left, bounds.top, hostWidth, hostHeight,
                  SWP_NOACTIVATE | SWP_NOSENDCHANGING);
   }
-  if (showAuth && authHostValid &&
-      (!authHostSizeMatches || !authHostPlacementMatches)) {
-    SetWindowPos(authHostWindow, HWND_TOP,
-                 bounds.left, bounds.top, width, height,
+  if (showAuth && authHostValid && (!authHostSizeMatches || !authHostPlacementMatches)) {
+    SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
                  SWP_NOACTIVATE | SWP_NOSENDCHANGING);
   }
 
   if (showAuth) {
+    SetControllerMemoryUsageTarget(authController, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
     if (authController) {
-      if (!authHostSizeMatches ||
-          !ControllerBoundsMatch(authController, authBounds)) {
-        authController->put_Bounds(authBounds);
-      }
-      if (!ControllerVisibilityMatches(authController, TRUE)) {
-        authController->put_IsVisible(TRUE);
-      }
+      if (!authHostSizeMatches || !ControllerBoundsMatch(authController, authBounds)) authController->put_Bounds(authBounds);
+      if (!ControllerVisibilityMatches(authController, TRUE)) authController->put_IsVisible(TRUE);
     }
     if (authHostValid && !authWasVisible) {
-      SetWindowPos(authHostWindow, HWND_TOP,
-                   bounds.left, bounds.top, width, height,
+      SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
     if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    if (controller && !ControllerVisibilityMatches(controller, FALSE)) {
-      controller->put_IsVisible(FALSE);
-    }
+    SetControllerMemoryUsageTarget(controller, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+    if (controller && !ControllerVisibilityMatches(controller, FALSE)) controller->put_IsVisible(FALSE);
     return;
   }
 
   if (hidePlayback) {
     if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    if (controller && !ControllerVisibilityMatches(controller, FALSE)) {
-      controller->put_IsVisible(FALSE);
-    }
+    SetControllerMemoryUsageTarget(controller, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+    if (controller && !ControllerVisibilityMatches(controller, FALSE)) controller->put_IsVisible(FALSE);
     if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
-    if (authController && !ControllerVisibilityMatches(authController, FALSE)) {
-      authController->put_IsVisible(FALSE);
-    }
+    SetControllerMemoryUsageTarget(authController, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+    if (authController && !ControllerVisibilityMatches(authController, FALSE)) authController->put_IsVisible(FALSE);
     return;
   }
 
+  SetControllerMemoryUsageTarget(
+      controller,
+      playbackForeground ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+                         : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   if (controller) {
-    if (!ControllerBoundsMatch(controller, contentBounds)) {
-      controller->put_Bounds(contentBounds);
-    }
-    if (!ControllerVisibilityMatches(controller, TRUE)) {
-      controller->put_IsVisible(TRUE);
-    }
+    if (!ControllerBoundsMatch(controller, contentBounds)) controller->put_Bounds(contentBounds);
+    const BOOL desiredVisibility = playbackForeground ? TRUE : FALSE;
+    if (!ControllerVisibilityMatches(controller, desiredVisibility)) controller->put_IsVisible(desiredVisibility);
   }
   if (hostValid && (!hostWasVisible || !hostSizeMatches || !hostPlacementMatches)) {
-    SetWindowPos(hostWindow, hostPlacement,
-                 bounds.left, bounds.top, hostWidth, hostHeight,
+    SetWindowPos(hostWindow, hostPlacement, bounds.left, bounds.top, hostWidth, hostHeight,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   }
   if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
-  if (authController && !ControllerVisibilityMatches(authController, FALSE)) {
-    authController->put_IsVisible(FALSE);
-  }
+  SetControllerMemoryUsageTarget(authController, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+  if (authController && !ControllerVisibilityMatches(authController, FALSE)) authController->put_IsVisible(FALSE);
 }
 
 }
@@ -289,10 +259,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 bool StationheadPlayer::EnsureHostWindow() {
   if (hostWindow_ && IsWindow(hostWindow_)) return true;
   hostWindow_ = IsSecondary()
-      ? CreateStationheadChildHost(window_, L"HomePanelSecondaryStationheadHost",
-                                   L"SecondaryStationheadHost", bounds_)
-      : CreateStationheadChildHost(window_, L"HomePanelStationheadHost",
-                                   L"StationheadHost", bounds_);
+      ? CreateStationheadChildHost(window_, L"HomePanelSecondaryStationheadHost", L"SecondaryStationheadHost", bounds_)
+      : CreateStationheadChildHost(window_, L"HomePanelStationheadHost", L"StationheadHost", bounds_);
   return hostWindow_ && IsWindow(hostWindow_);
 }
 
@@ -300,10 +268,8 @@ bool StationheadPlayer::EnsureAuthHostWindow() {
   if (authControllerStartedAt_.Active() && !authController_) return false;
   if (authHostWindow_ && IsWindow(authHostWindow_)) return true;
   authHostWindow_ = IsSecondary()
-      ? CreateStationheadChildHost(window_, L"HomePanelSecondarySpotifyAuthHost",
-                                   L"SecondarySpotifyAuthHost", bounds_)
-      : CreateStationheadChildHost(window_, L"HomePanelSpotifyAuthHost",
-                                   L"SpotifyAuthHost", bounds_);
+      ? CreateStationheadChildHost(window_, L"HomePanelSecondarySpotifyAuthHost", L"SecondarySpotifyAuthHost", bounds_)
+      : CreateStationheadChildHost(window_, L"HomePanelSpotifyAuthHost", L"SpotifyAuthHost", bounds_);
   return authHostWindow_ && IsWindow(authHostWindow_);
 }
 
@@ -314,15 +280,12 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
     status_.visible = false;
     return;
   }
-  // Normal playback, navigation, clock switching, and Start Listening retries
-  // remain background operations. Genuine account interaction uses the explicit
-  // Stationhead tab path below instead of this 1x1 surface.
   viewVisible_ = false;
   selectedTab_ = StationheadTabKind::None;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_, false, false, false);
   std::lock_guard lock(mutex_);
-  status_.visible = false;
+  status_.visible = StationheadMonitorForeground();
 }
 
 void StationheadPlayer::SetStartupBounds() {
@@ -356,16 +319,17 @@ void StationheadPlayer::ClearStartupPreviewBounds() {
 
 void StationheadPlayer::SetVisible(bool visible) {
   if (!visible) {
+    const bool monitorForeground = StationheadMonitorForeground();
     if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
         PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
-                               1, 1, HWND_BOTTOM) &&
+                               monitorForeground ? std::max(1L, bounds_.right - bounds_.left) : 1,
+                               monitorForeground ? std::max(1L, bounds_.bottom - bounds_.top) : 1,
+                               monitorForeground ? HWND_TOP : HWND_BOTTOM) &&
         HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get())) {
       return;
     }
-    const bool hadInteractiveSurface =
-        viewVisible_ || selectedTab_ != StationheadTabKind::None;
-    const bool interactiveSurfaceHadFocus =
-        WindowContainsFocus(hostWindow_) || WindowContainsFocus(authHostWindow_);
+    const bool hadInteractiveSurface = viewVisible_ || selectedTab_ != StationheadTabKind::None;
+    const bool interactiveSurfaceHadFocus = WindowContainsFocus(hostWindow_) || WindowContainsFocus(authHostWindow_);
     selectedTab_ = StationheadTabKind::None;
     if (controller_) KeepPlaybackBehindDashboard();
     else {
@@ -373,16 +337,13 @@ void StationheadPlayer::SetVisible(bool visible) {
       std::lock_guard lock(mutex_);
       status_.visible = false;
     }
-    if (hadInteractiveSurface && interactiveSurfaceHadFocus &&
-        window_ && IsWindow(window_) &&
-        GetFocus() != window_) {
+    if (hadInteractiveSurface && interactiveSurfaceHadFocus && window_ && IsWindow(window_) && GetFocus() != window_) {
       SetFocus(window_);
     }
     return;
   }
 
-  if (selectedTab_ != StationheadTabKind::Auth &&
-      selectedTab_ != StationheadTabKind::Stationhead) {
+  if (selectedTab_ != StationheadTabKind::Auth && selectedTab_ != StationheadTabKind::Stationhead) {
     KeepPlaybackBehindDashboard();
     return;
   }
@@ -397,16 +358,11 @@ void StationheadPlayer::SetVisible(bool visible) {
   const int height = std::max(1L, bounds_.bottom - bounds_.top);
   if (selectedTab_ == StationheadTabKind::Auth) {
     if (viewVisible_ && authController_ && authWebview_ &&
-        ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
-                                 authController_.Get(), bounds_) &&
-        WindowContainsFocus(authHostWindow_)) {
-      return;
-    }
+        ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(), bounds_) &&
+        WindowContainsFocus(authHostWindow_)) return;
   } else if (viewVisible_ &&
-             PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
-                                    width, height, HWND_TOP) &&
-             HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get()) &&
-             WindowContainsFocus(hostWindow_)) {
+             PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_, width, height, HWND_TOP) &&
+             HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get()) && WindowContainsFocus(hostWindow_)) {
     return;
   }
 
@@ -415,8 +371,7 @@ void StationheadPlayer::SetVisible(bool visible) {
   ApplyMute();
 
   if (selectedTab_ == StationheadTabKind::Auth) {
-    if (authController_ && authHostWindow_ &&
-        !WindowContainsFocus(authHostWindow_)) {
+    if (authController_ && authHostWindow_ && !WindowContainsFocus(authHostWindow_)) {
       authController_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
     }
   } else if (controller_ && hostWindow_ && !WindowContainsFocus(hostWindow_)) {
@@ -431,14 +386,12 @@ void StationheadPlayer::LayoutControllers() {
     return;
   }
   const bool authSurfaceReady = authController_ && authWebview_;
-  const StationheadSurfacePolicy policy =
-      ResolveStationheadSurfacePolicy(selectedTab_, authSurfaceReady);
-  ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
-                              authController_.Get(), bounds_,
-                              policy.showAuth, policy.showPlayback,
-                              policy.hidePlayback);
+  const StationheadSurfacePolicy policy = ResolveStationheadSurfacePolicy(selectedTab_, authSurfaceReady);
+  ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(), bounds_,
+                              policy.showAuth, policy.showPlayback, policy.hidePlayback);
   std::lock_guard lock(mutex_);
-  status_.visible = policy.showAuth || policy.showPlayback;
+  status_.visible = policy.showAuth || policy.showPlayback ||
+                    (selectedTab_ == StationheadTabKind::None && StationheadMonitorForeground());
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {
@@ -448,13 +401,7 @@ void StationheadPlayer::SetBounds(const RECT& bounds) {
 }
 
 void StationheadPlayer::SelectTab(StationheadTabKind tab) {
-  // While a genuine Stationhead account/music-service surface is pending, App
-  // placement calls requesting the background tab must not hide the interaction
-  // again. Once the page reports auth-ready, loginRequired_ clears and the next
-  // normal placement call returns this host to 1x1/background mode.
-  if (tab == StationheadTabKind::None && loginRequired_ && !spotifyAuthorization_) {
-    tab = StationheadTabKind::Stationhead;
-  }
+  if (tab == StationheadTabKind::None && loginRequired_ && !spotifyAuthorization_) tab = StationheadTabKind::Stationhead;
   if (tab == StationheadTabKind::Auth && loginRequired_) {
     loginRequired_ = false;
     std::lock_guard lock(mutex_);
@@ -478,14 +425,10 @@ bool StationheadPlayer::HasAuthTab() const {
 
 HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
   if (selectedTab_ == StationheadTabKind::Auth) {
-    if (authController_ && authWebview_ &&
-        authHostWindow_ && IsWindow(authHostWindow_)) {
-      return authHostWindow_;
-    }
+    if (authController_ && authWebview_ && authHostWindow_ && IsWindow(authHostWindow_)) return authHostWindow_;
     return nullptr;
   }
-  if (selectedTab_ == StationheadTabKind::Stationhead &&
-      controller_ && hostWindow_ && IsWindow(hostWindow_)) {
+  if (selectedTab_ == StationheadTabKind::Stationhead && controller_ && hostWindow_ && IsWindow(hostWindow_)) {
     return hostWindow_;
   }
   return nullptr;

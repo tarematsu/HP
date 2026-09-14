@@ -66,10 +66,12 @@ test('authentication and recovery geometry are owned by the low-peak layout modu
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
   assert.match(layout, /const bool lowPowerPlayback =/);
-  assert.match(layout, /put_IsVisible\(TRUE\)/);
-  assert.doesNotMatch(layout, /put_IsVisible\(lowPowerPlayback \? FALSE : TRUE\)/);
+  assert.match(layout, /slot\.controller->put_IsVisible\(FALSE\)/);
+  assert.doesNotMatch(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.doesNotMatch(layout, /shuffleOffVerified|repeatOffVerified/);
-  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(spotify, /slot\.controller->put_IsVisible\(FALSE\)/);
+  assert.doesNotMatch(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
 
 test('Spotify browser behavior uses responsibility-split playback modules', () => {
