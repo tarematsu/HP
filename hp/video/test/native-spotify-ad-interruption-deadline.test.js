@@ -56,6 +56,20 @@ test('native clears the target completion deadline as soon as interruption is ob
   assert.doesNotMatch(interruptedBranch, /AdvanceTimedRotationSlot/);
 });
 
+test('natural target end cannot be cancelled by an ad that starts immediately after it', () => {
+  const endedStart = events.indexOf('const observeEnded = event => {');
+  const endedEnd = events.indexOf("document.addEventListener('playing'", endedStart);
+  assert.ok(endedStart >= 0 && endedEnd > endedStart);
+  const endedHandler = events.slice(endedStart, endedEnd);
+  assert.match(endedHandler, /state\.startPosted = false/);
+  assert.match(endedHandler, /state\.targetMedia = null/);
+  assert.match(endedHandler, /post\('spotify:timed-ended'\)/);
+  assert.ok(
+    endedHandler.indexOf('state.startPosted = false') <
+      endedHandler.indexOf("post('spotify:timed-ended')"),
+  );
+});
+
 test('requested-song resume rebuilds deadline from actual remaining duration', () => {
   assert.match(runtime, /if \(state\.interrupted\)/);
   assert.match(runtime, /state\.interrupted = false/);
