@@ -125,7 +125,7 @@ void PowerSavingController::EnsureOverlay() {
   overlay_ = CreateWindowExW(
       WS_EX_NOPARENTNOTIFY,
       kOverlayWindowClass,
-      L"更新 / モニター / ミュート",
+      L"更新 / モニター / 音声出力",
       WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
       0,
       0,
@@ -319,13 +319,13 @@ void PowerSavingController::PaintOverlay(HWND window) {
       powerButton, monitorMode_ != MonitorMode::Native,
       RGB(30, 92, 55), RGB(74, 180, 105), monitorLabel);
 
-  const wchar_t* audioModeLabel = L"ミュートA";
+  const wchar_t* audioModeLabel = L"音声出力A";
   if (audioMode_ == AudioMode::Stationhead) {
-    audioModeLabel = L"ミュートB";
+    audioModeLabel = L"音声出力B";
   } else if (audioMode_ == AudioMode::Spotify) {
-    audioModeLabel = L"ミュートC";
+    audioModeLabel = L"音声出力C";
   } else if (audioMode_ == AudioMode::Muted) {
-    audioModeLabel = L"ミュートAB";
+    audioModeLabel = L"音声出力OFF";
   }
   drawButton(
       muteButton, mediaMuted_, RGB(88, 43, 47), RGB(190, 92, 102),
