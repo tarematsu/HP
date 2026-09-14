@@ -41,6 +41,16 @@ test('unchanged control overlay geometry does not trigger repaint work', () => {
   );
 });
 
+test('control gaps use the same native panel surface instead of black', () => {
+  assert.match(overlay, /kControlOverlayBackground = RGB\(20, 26, 36\)/);
+  assert.match(overlay, /ControlOverlayBackgroundBrush\(\)/);
+  assert.match(
+    overlay,
+    /FillRect\(paintDc, &client, ControlOverlayBackgroundBrush\(\)\)/,
+  );
+  assert.doesNotMatch(overlay, /FillRect\([\s\S]{0,80}BLACK_BRUSH/);
+});
+
 test('top controls and Spotify status render through a back buffer', () => {
   assert.match(overlay, /CreateCompatibleDC\(dc\)/);
   assert.match(overlay, /CreateCompatibleBitmap\(dc, width, height\)/);
