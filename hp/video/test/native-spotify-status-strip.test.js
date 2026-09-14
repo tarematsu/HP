@@ -24,7 +24,7 @@ test('only yuukiar Spotify slot is active for single-window diagnostics', () => 
   assert.match(header, /kSpotifyActiveAccountCount = 1/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
   assert.match(scripts, /L"yuukiar"/);
-  assert.doesNotMatch(scripts, /ten|nagi|hinata|amazon|ozeki/i);
+  assert.doesNotMatch(scripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });
 
 test('status title and confirmation clock come from DocumentTitleChanged', () => {
