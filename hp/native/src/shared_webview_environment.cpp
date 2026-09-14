@@ -5,12 +5,13 @@ namespace hp {
 namespace {
 
 // Full-resource media surfaces need autonomous playback and stable timing even
-// while their host windows are parked off-screen. Keep Chromium from treating
-// an occluded media window as a backgrounded renderer. Cheap browser services
-// that do not participate in playback remain disabled everywhere.
+// while their host windows are parked off-screen. Leave Chromium's normal
+// occluded-window backgrounding enabled so Spotify and Stationhead renderers
+// can shed background work while preserving their existing playback policies.
+// Cheap browser services that do not participate in playback remain disabled
+// everywhere.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--autoplay-policy=no-user-gesture-required "
-    L"--disable-backgrounding-occluded-windows "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "
