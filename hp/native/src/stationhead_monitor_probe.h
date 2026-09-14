@@ -10,10 +10,18 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 // access on the existing UI thread and avoids adding another polling thread.
 void RequestStationheadMonitorDomProbe() noexcept;
 
-// Returns true only when the effective foreground state changed. The layout
-// layer uses this state to keep background playback low-memory and invisible
-// without hiding Monitor B or Monitor A authentication surfaces.
-bool SetStationheadMonitorForeground(bool foreground) noexcept;
-bool StationheadMonitorForeground() noexcept;
+// Monitor placement and Stationhead WebView layout live in separate modules.
+// Keep only the effective foreground bit here so both sides agree whether the
+// playback controller may render at normal memory priority.
+inline std::atomic<bool> gStationheadMonitorForeground{false};
+
+inline bool SetStationheadMonitorForeground(bool foreground) noexcept {
+  return gStationheadMonitorForeground.exchange(
+             foreground, std::memory_order_acq_rel) != foreground;
+}
+
+inline bool StationheadMonitorForeground() noexcept {
+  return gStationheadMonitorForeground.load(std::memory_order_acquire);
+}
 
 }  // namespace hp
