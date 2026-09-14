@@ -25,11 +25,9 @@ test('amazon is reserved for Stationhead and four Spotify slots remain', () => {
   assert.doesNotMatch(scripts, /amazon|ozeki/i);
 });
 
-test('playback status uses start/resume events with an already-playing clock fallback and no new poller', () => {
+test('playback status is confirmed directly by reconcile with no new poller', () => {
   assert.match(header, /SYSTEMTIME playbackConfirmedAt/);
   assert.match(header, /bool playbackConfirmed = false/);
-  assert.match(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
-  assert.match(rotation, /target->playbackConfirmed = true/);
   assert.match(rotation, /slot\.playbackConfirmed = false/);
   assert.doesNotMatch(rotation, /SetTimer|CreateThreadpoolTimer/);
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
@@ -39,22 +37,22 @@ test('playback status uses start/resume events with an already-playing clock fal
   )?.[1] ?? '';
   assert.match(confirmedBranch, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(confirmedBranch, /target->playbackConfirmed = true/);
-  assert.match(confirmedBranch, /SlotState::WaitingTarget/);
-  assert.doesNotMatch(
-    confirmedBranch,
-    /SetSlotState\(\*target, SlotState::Playing\)/,
-  );
-  assert.doesNotMatch(
+  assert.match(confirmedBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(
     confirmedBranch,
     /SetMusicCompletionDeadline\(\*target, callbackNow, 0, false\)/,
   );
+  assert.doesNotMatch(confirmedBranch, /SlotState::WaitingTarget/);
+  assert.doesNotMatch(musicTarget, /ArmTimedEndObserver\(slot\)/);
   assert.doesNotMatch(musicTarget, /setInterval|SetTimer|CreateThreadpoolTimer/);
 });
 
-test('an already-playing target is handed back to the media observer and also confirms the status clock', () => {
-  assert.match(reconcile, /playing: true, media: active/);
-  assert.match(reconcile, /__homePanelSpotifyMediaObserverRuntime/);
-  assert.match(reconcile, /runtime\.scheduleTargetChecks\(mediaState\.media\)/);
+test('target plus pause control confirms playback without media observer messages', () => {
+  assert.match(reconcile, /currentMatchesTarget/);
+  assert.match(reconcile, /controlIntent === 'pause'/);
+  assert.match(reconcile, /buttonIntentValue === 'pause'/);
+  assert.match(reconcile, /return true/);
+  assert.doesNotMatch(reconcile, /runtime\.scheduleTargetChecks/);
   assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
   assert.match(musicTarget, /json && std::wstring_view\(json\) == L"true"/);
 });
