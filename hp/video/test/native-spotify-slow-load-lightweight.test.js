@@ -25,8 +25,8 @@ test('slow multi-window recovery uses one time-based retry instead of layered wa
   assert.doesNotMatch(header, /lastModeNavigateTick|unhealthySinceTick|unhealthyChecks/);
 });
 
-test('healthy scheduler uses a five-minute ceiling and exact one-minute startup boundaries', () => {
-  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
+test('healthy scheduler uses an hourly safety ceiling and exact one-minute startup boundaries', () => {
+  assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 60ULL \* 1000ULL/);
   assert.match(phaseSync, /static_cast<ULONGLONG>\(i\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(phaseSync, /considerTick\(boundary\)/);
@@ -40,11 +40,14 @@ test('usable Spotify controls are recovered through the dedicated trusted-input 
   assert.doesNotMatch(phaseSync, /ParseNormalizedPoint|ClickSlotNormalizedPoint/);
 });
 
-test('ultra-light styling is fixed CSS without runtime source rewriting or MutationObserver churn', () => {
+test('ultra-light styling hides nonessential chrome without runtime source rewriting or MutationObserver churn', () => {
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript/);
   assert.match(scripts, /background-image: none !important/);
   assert.match(scripts, /img, picture, video, canvas/);
-  assert.match(scripts, /display: none !important/);
+  assert.match(scripts, /data-testid="left-sidebar"/);
+  assert.match(scripts, /data-testid="global-nav-bar"/);
+  assert.match(scripts, /data-testid="buddy-feed"/);
+  assert.match(scripts, /content-visibility: hidden !important/);
   assert.doesNotMatch(scripts, /new\s+MutationObserver\s*\(/);
   assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment|thread_local std::wstring/);
 });

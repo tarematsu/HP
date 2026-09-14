@@ -27,6 +27,25 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
       svg[aria-hidden='true'] {
         display: none !important;
       }
+      [data-testid="left-sidebar"],
+      [data-testid="global-nav-bar"],
+      [data-testid="topbar"],
+      [data-testid="buddy-feed"],
+      [aria-label="Friend Activity"],
+      [aria-label="フレンドアクティビティ"],
+      aside {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        content-visibility: hidden !important;
+        contain: strict !important;
+      }
+      main,
+      [data-testid="now-playing-bar"],
+      [data-testid="now-playing-widget"],
+      footer {
+        contain: layout style paint !important;
+      }
     `;
     (document.head || document.documentElement).appendChild(style);
   }

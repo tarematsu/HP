@@ -16,6 +16,8 @@ const reconcile = readFileSync(
   new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
 const musicTarget = readFileSync(
   new URL('../../native/src/spotify_music_target.inc', import.meta.url), 'utf8');
+const phase = readFileSync(
+  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url), 'utf8');
 const lifecycle = readFileSync(
   new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url), 'utf8');
 const hostWindow = readFileSync(
@@ -60,7 +62,7 @@ test('target plus pause control confirms playback before arming status observer'
   assert.match(musicTarget, /ArmTimedEndObserver\(\*target\)/);
 });
 
-test('YouTube and TVer reserve a compact card-style Spotify status strip', () => {
+test('Spotify status strip repaints from state/page events without its own timer', () => {
   assert.match(hostWindow, /kNativeSpotifyStatusHeight = 56/);
   assert.match(hostWindow, /GetSpotifyPlaybackStatuses\(\)/);
   assert.match(hostWindow, /heading\.append\(L"  確認 "\)/);
@@ -73,5 +75,7 @@ test('YouTube and TVer reserve a compact card-style Spotify status strip', () =>
   assert.match(hostWindow, /RECT statusBounds = bounds/);
   assert.match(hostWindow, /RECT videoBounds = bounds/);
   assert.match(hostWindow, /videoBounds\.top =/);
-  assert.match(hostWindow, /kNativeSpotifyStatusRefreshMs = 5U \* 1000U/);
+  assert.doesNotMatch(hostWindow, /kNativeSpotifyStatusTimer|kNativeSpotifyStatusRefreshMs|SetTimer\(status/);
+  assert.match(phase, /InvalidateSpotifyStatusForHost/);
+  assert.match(phase, /InvalidateRect\(status, nullptr, FALSE\)/);
 });

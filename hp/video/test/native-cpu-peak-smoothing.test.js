@@ -11,6 +11,7 @@ const network = source('spotify_network_block.inc');
 const radar = source('renderer_radar_ui.cpp');
 const mediaBase = source('renderer_panels/media_section_base.inc');
 const mediaWindow = source('renderer_panels/media_host_window.inc');
+const phase = source('spotify_phase_sync.inc');
 
 test('Spotify startup defers the first WebView and keeps later accounts serialized', () => {
   assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
@@ -30,17 +31,11 @@ test('rain radar decoding yields CPU priority to playback work', () => {
   assert.match(radar, /ComposeRadarFrame\(\)/);
 });
 
-test('Spotify status repaint is phase-offset from whole-second media watchdog cadence', () => {
-  assert.match(mediaWindow, /kNativeSpotifyStatusInitialDelayMs = 2'500U/);
-  assert.match(mediaWindow, /kNativeSpotifyStatusRefreshMs = 5U \* 1000U/);
-  assert.match(
-    mediaWindow,
-    /SetTimer\(status, kNativeSpotifyStatusTimer,\s*kNativeSpotifyStatusInitialDelayMs, nullptr\)/,
-  );
-  assert.match(
-    mediaWindow,
-    /WM_TIMER:[\s\S]*kNativeSpotifyStatusTimer[\s\S]*SetTimer\(hwnd, kNativeSpotifyStatusTimer,\s*kNativeSpotifyStatusRefreshMs, nullptr\)/,
-  );
+test('Spotify status repaint is event-driven instead of a periodic timer', () => {
+  assert.doesNotMatch(mediaWindow, /kNativeSpotifyStatusInitialDelayMs|kNativeSpotifyStatusRefreshMs/);
+  assert.doesNotMatch(mediaWindow, /kNativeSpotifyStatusTimer|SetTimer\(status/);
+  assert.match(phase, /InvalidateSpotifyStatusForHost/);
+  assert.match(phase, /InvalidateRect\(status, nullptr, FALSE\)/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
 });

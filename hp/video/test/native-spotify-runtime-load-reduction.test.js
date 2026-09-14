@@ -36,10 +36,11 @@ test('ended remains only an advisory native-deadline shortening signal', () => {
   assert.match(events, /post\('spotify:timed-ended'\)/);
 });
 
-test('healthy Spotify sleeps up to five minutes while recovery has one five-second deadline', () => {
-  assert.match(phase, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
+test('healthy Spotify uses exact playback deadlines with only an hourly safety audit', () => {
+  assert.match(phase, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
   assert.match(phase, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
   assert.match(phase, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
+  assert.match(phase, /considerTick\(slot\.timedCompletionDeadlineTick\)/);
   assert.match(phase, /considerTick\(slot\.nextRecoveryTick\)/);
   assert.match(phase, /slot\.asyncStartedTick \+ kSpotifyAsyncOperationTimeoutMs/);
   assert.match(phase, /considerTick\(boundary\)/);

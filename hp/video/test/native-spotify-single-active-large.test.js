@@ -58,7 +58,7 @@ test('initial account starts are staggered and steady work uses one round-robin 
   assert.match(schedule, /const size_t scanStart = \(schedulerCursor_ \+ 1\) % count/);
   assert.equal((schedule.match(/for \(size_t step = 0; step < count; \+\+step\)/g) || []).length, 1);
   assert.match(schedule, /healthyPlaybackNeedsNoWork\(candidate\)/);
-  assert.match(phase, /kSpotifyHealthyAuditMs = 5U \* 60U \* 1000U/);
+  assert.match(phase, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
   assert.doesNotMatch(schedule, /SimpleSpotifyScheduledIndex|kSpotifySimpleSteadyTurnMs/);
 });
 
