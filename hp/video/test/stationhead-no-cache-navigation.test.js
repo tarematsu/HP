@@ -40,7 +40,7 @@ test('Stationhead WebView resets browser cache before first navigation', () => {
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
 
-test('long-lived A and B pages use only their independent 53-minute and 54-minute clocks', () => {
+test('long-lived A and B pages use only their independent 53-minute and 54-minute navigation clocks', () => {
   assert.match(refreshPolicy, /StationheadPeriodicRefreshIntervalMs/);
   assert.match(refreshPolicy, /secondary \? 54 : 53/);
   assert.match(refreshPolicy, /RefreshPeriodicNavigation/);
@@ -49,11 +49,18 @@ test('long-lived A and B pages use only their independent 53-minute and 54-minut
   assert.match(refreshPolicy, /L"54-minute periodic refresh"/);
   assert.doesNotMatch(refreshPolicy, /56-minute/);
   assert.doesNotMatch(refreshPolicy, /StationheadClockSwitch|even-minute|odd-minute/);
-  assert.match(
-    trackBoundaryScript,
-    /StationheadTrackBoundaryScript\(const wchar_t\*\)[\s\S]*return \{\};/,
+
+  const boundaryStart = trackBoundaryScript.indexOf(
+    'inline std::wstring StationheadTrackBoundaryScript(',
   );
-  assert.match(trackBoundaryScript, /#define HandleTrackEnded\(\.\.\.\) \(\(void\)0\)/);
+  const boundaryEnd = trackBoundaryScript.indexOf('}  // namespace hp', boundaryStart);
+  assert.ok(boundaryStart >= 0 && boundaryEnd > boundaryStart);
+  const boundary = trackBoundaryScript.slice(boundaryStart, boundaryEnd);
+  assert.match(boundary, /track-boundary-retry/);
+  assert.match(boundary, /track-ended/);
+  assert.doesNotMatch(boundary, /NavigateCurrentUrl\(|ScheduleRecreate\(|location\.reload/);
+  assert.match(trackBoundaryScript, /SetStationheadPlaybackRenderingSuppressed/);
+
   assert.equal(playbackPolicy.match(/Network\.clearBrowserCache/g)?.length, 1,
     'controller configuration should clear cache once');
   assert.equal(environment.match(/BackForwardCache/g)?.length, 1,
