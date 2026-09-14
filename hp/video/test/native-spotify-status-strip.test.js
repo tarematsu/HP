@@ -19,12 +19,12 @@ const lifecycle = readFileSync(
 const hostWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
 
-test('amazon is reserved for Stationhead and four Spotify slots remain', () => {
+test('only yuukiar Spotify slot is active for single-window diagnostics', () => {
   assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
-  assert.match(header, /kSpotifyActiveAccountCount = 4/);
+  assert.match(header, /kSpotifyActiveAccountCount = 1/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
-  assert.match(scripts, /L"yuukiar", L"ten", L"nagi", L"hinata"/);
-  assert.doesNotMatch(scripts, /amazon|ozeki/i);
+  assert.match(scripts, /L"yuukiar"/);
+  assert.doesNotMatch(scripts, /ten|nagi|hinata|amazon|ozeki/i);
 });
 
 test('status title and confirmation clock come from DocumentTitleChanged', () => {
