@@ -87,10 +87,10 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   return script.str();
 }
 
-// Suppress paint-heavy visual effects without hiding the controls that native
-// login/start detection needs. In particular, account/avatar images and CSS
-// background images stay available because Stationhead's login settlement
-// heuristics use them as authentication signals.
+// Suppress paint-heavy visual effects and presentation-only social/statistics
+// surfaces without hiding the controls that native login/start detection needs.
+// Account/avatar images and CSS backgrounds stay available because Stationhead's
+// login settlement heuristics use them as authentication signals.
 inline std::wstring StationheadRenderReductionScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -114,8 +114,27 @@ inline std::wstring StationheadRenderReductionScript() {
         text-shadow: none !important;
         will-change: auto !important;
       }
-      video, canvas, svg[aria-hidden='true'] {
+      video, canvas, svg[aria-hidden='true'],
+      [data-testid*='chat' i], [id*='chat' i], [aria-label*='chat' i],
+      [data-testid*='comment' i], [id*='comment' i], [aria-label*='comment' i],
+      [data-testid*='gift' i], [id*='gift' i], [aria-label*='gift' i],
+      [data-testid*='reaction' i], [id*='reaction' i], [aria-label*='reaction' i],
+      [data-testid*='listener' i], [id*='listener' i], [aria-label*='listener' i],
+      [data-testid*='audience' i], [id*='audience' i], [aria-label*='audience' i],
+      [data-testid*='leaderboard' i], [id*='leaderboard' i], [aria-label*='leaderboard' i],
+      [data-testid*='ranking' i], [id*='ranking' i], [aria-label*='ranking' i],
+      [data-testid*='rank-' i], [id*='rank-' i], [aria-label*='rank ' i],
+      [data-testid*='stats' i], [id*='stats' i], [aria-label*='stats' i],
+      [data-testid*='streak' i], [id*='streak' i], [aria-label*='streak' i],
+      [data-testid*='play-count' i], [id*='play-count' i], [aria-label*='play count' i],
+      [data-testid*='playcount' i], [id*='playcount' i], [aria-label*='total plays' i],
+      [data-testid*='total-plays' i], [id*='total-plays' i],
+      [data-testid*='totalplays' i], [id*='totalplays' i],
+      a[href*='/chat' i], a[href*='/leaderboard' i] {
         display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        content-visibility: hidden !important;
       }
     `;
     root.appendChild(style);
