@@ -19,12 +19,13 @@ test('Spotify page bootstrap injects no lightweight CSS or style overrides', () 
   assert.doesNotMatch(scripts, /content-visibility\s*:/);
 });
 
-test('track reconcile is CDP-only for playback start', () => {
+test('track reconcile uses CDP only for playback start while Pause confirmation may be background-only', () => {
   assert.match(reconcile, /button\[data-testid="play-button"\]/);
   assert.match(reconcile, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(reconcile, /if \(isPauseControl\(button\)\) return true/);
-  assert.match(reconcile, /return point\(button\)/);
-  assert.doesNotMatch(reconcile, /querySelector\('audio'\)/);
+  assert.match(reconcile, /pageButtons\.some\(isPauseControl\)/);
+  assert.match(reconcile, /playerPause && currentTrackMatchesTarget\(\)/);
+  assert.match(reconcile, /return point\(visiblePageButton\)/);
+  assert.doesNotMatch(reconcile, /point\(playerPause\)|querySelector\('audio'\)/);
   assert.doesNotMatch(reconcile, /audio\.play\(/);
   assert.doesNotMatch(reconcile, /direct-play|DirectPlay/);
 });
