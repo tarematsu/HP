@@ -44,19 +44,72 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       return null;
     }
     state.actionCleanup?.();
+
+    const touched = [];
+    const remember = node => {
+      if (!node?.style) return;
+      touched.push({
+        node,
+        pointerValue: node.style.getPropertyValue('pointer-events'),
+        pointerPriority: node.style.getPropertyPriority('pointer-events'),
+        visibilityValue: node.style.getPropertyValue('visibility'),
+        visibilityPriority: node.style.getPropertyPriority('visibility')
+      });
+      node.style.setProperty('pointer-events', 'auto', 'important');
+      if (getComputedStyle(node).visibility === 'hidden') {
+        node.style.setProperty('visibility', 'visible', 'important');
+      }
+    };
+    for (let node = element; node && node !== player.parentElement;
+         node = node.parentElement) {
+      remember(node);
+      if (node === player) break;
+    }
+
+    const rect = element.getBoundingClientRect?.();
+    const centerX = Number(rect?.left) + Number(rect?.width) / 2;
+    const centerY = Number(rect?.top) + Number(rect?.height) / 2;
+    if (!rect || rect.width <= 0 || rect.height <= 0 ||
+        !Number.isFinite(centerX) || !Number.isFinite(centerY) ||
+        centerX < 0 || centerY < 0 ||
+        centerX >= window.innerWidth || centerY >= window.innerHeight) {
+      for (const entry of touched.reverse()) {
+        if (entry.pointerValue) {
+          entry.node.style.setProperty(
+              'pointer-events', entry.pointerValue, entry.pointerPriority);
+        } else {
+          entry.node.style.removeProperty('pointer-events');
+        }
+        if (entry.visibilityValue) {
+          entry.node.style.setProperty(
+              'visibility', entry.visibilityValue, entry.visibilityPriority);
+        } else {
+          entry.node.style.removeProperty('visibility');
+        }
+      }
+      return null;
+    }
+
     state.action = action;
     state.actionAt = now;
-
-    const css = element.style.cssText;
-    const hidden = element.getAttribute('aria-hidden');
     let timer = 0;
     const cleanup = () => {
       clearTimeout(timer);
       element.removeEventListener('click', onClick, true);
-      if (element.isConnected) {
-        element.style.cssText = css;
-        if (hidden === null) element.removeAttribute('aria-hidden');
-        else element.setAttribute('aria-hidden', hidden);
+      for (const entry of touched.reverse()) {
+        if (!entry.node.isConnected) continue;
+        if (entry.pointerValue) {
+          entry.node.style.setProperty(
+              'pointer-events', entry.pointerValue, entry.pointerPriority);
+        } else {
+          entry.node.style.removeProperty('pointer-events');
+        }
+        if (entry.visibilityValue) {
+          entry.node.style.setProperty(
+              'visibility', entry.visibilityValue, entry.visibilityPriority);
+        } else {
+          entry.node.style.removeProperty('visibility');
+        }
       }
       if (state.actionCleanup === cleanup) state.actionCleanup = null;
     };
@@ -73,17 +126,15 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       setTimeout(cleanup, 0);
     }
 
-    element.style.cssText +=
-        ';position:fixed!important;left:calc(50vw - 48px)!important;'
-        + 'top:calc(50vh - 48px)!important;width:96px!important;height:96px!important;'
-        + 'margin:0!important;padding:0!important;transform:none!important;'
-        + 'opacity:0!important;visibility:visible!important;display:block!important;'
-        + 'pointer-events:auto!important;z-index:2147483647!important';
-    element.removeAttribute('aria-hidden');
     element.addEventListener('click', onClick, true);
     state.actionCleanup = cleanup;
     timer = setTimeout(cleanup, 1400);
-    return [5000, 5000];
+    return [
+      Math.max(0, Math.min(10000, Math.round(
+          (centerX / window.innerWidth) * 10000))),
+      Math.max(0, Math.min(10000, Math.round(
+          (centerY / window.innerHeight) * 10000)))
+    ];
   };
 
   const dismissMessageDialog = () => {
@@ -158,8 +209,15 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 
   const now = Date.now();
   const armFullscreen = () => {
-    const target = player.querySelector('.ytp-fullscreen-button');
-    return arm(target, 'fullscreen', 1200);
+    const canonical = player.querySelector('.ytp-fullscreen-button');
+    const canonicalAction = arm(canonical, 'fullscreen', 1200);
+    if (canonicalAction) return canonicalAction;
+    const fullscreenPattern = /(全画面|fullscreen|full screen)/i;
+    const fallback = Array.from(player.querySelectorAll(
+        'button,[role="button"],[aria-label],[title]'))
+        .find(element => element !== canonical && valid(element) &&
+            fullscreenPattern.test(text(element))) || null;
+    return arm(fallback, 'fullscreen', 1200);
   };
 
   if (ad()) {
