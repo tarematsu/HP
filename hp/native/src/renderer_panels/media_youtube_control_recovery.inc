@@ -38,13 +38,25 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       '.ytp-ad-survey,.ytp-ad-feedback-dialog,yt-survey-renderer,ytd-survey-renderer';
 )JS" LR"JS(
 
+  const actionLane = action => {
+    if (action === 'fullscreen') return 'fullscreen';
+    if (action === 'skip-ad' || action.startsWith('survey-')) return 'ad';
+    return 'control';
+  };
+  const actionState = action => {
+    const lanes = state.actionLanes || (state.actionLanes = {});
+    const key = actionLane(action);
+    return lanes[key] || (lanes[key] = {});
+  };
+
   const arm = (element, action, cooldownMs) => {
     const now = Date.now();
+    const lane = actionState(action);
     if (!valid(element) ||
-        (state.action === action && now - Number(state.actionAt || 0) < cooldownMs)) {
+        (lane.action === action && now - Number(lane.actionAt || 0) < cooldownMs)) {
       return null;
     }
-    state.actionCleanup?.();
+    lane.cleanup?.();
 
     const targetCss = element.style.cssText;
     const targetHidden = element.getAttribute('aria-hidden');
@@ -127,8 +139,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       return null;
     }
 
-    state.action = action;
-    state.actionAt = now;
+    lane.action = action;
+    lane.actionAt = now;
     let timer = 0;
     const cleanup = () => {
       clearTimeout(timer);
@@ -159,7 +171,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         if (targetHidden === null) element.removeAttribute('aria-hidden');
         else element.setAttribute('aria-hidden', targetHidden);
       }
-      if (state.actionCleanup === cleanup) state.actionCleanup = null;
+      if (lane.cleanup === cleanup) lane.cleanup = null;
     };
     function onClick(event) {
       const video = player.querySelector('video');
@@ -175,7 +187,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }
 
     element.addEventListener('click', onClick, true);
-    state.actionCleanup = cleanup;
+    lane.cleanup = cleanup;
     timer = setTimeout(cleanup, 1400);
     return [
       Math.max(0, Math.min(10000, Math.round(
@@ -225,6 +237,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.classObserver?.disconnect();
     state.popupObserver?.disconnect();
     state.actionCleanup?.();
+    for (const lane of Object.values(state.actionLanes || {})) lane.cleanup?.();
+    state.actionLanes = {};
     state.player = player;
     state.video = null;
     state.pageAbort = new AbortController();
@@ -256,6 +270,17 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (video?.error || player.classList.contains('ytp-error')) return 'reload';
 
   const now = Date.now();
+  const url = new URL(location.href);
+  const videoKey = url.searchParams.get('v') || video?.currentSrc || '';
+  const playlistId = url.searchParams.get('list') || '';
+  if (state.videoKey !== videoKey) {
+    Object.assign(state, {
+      videoKey, qualityApplied: false, captionsApplied: false,
+      fullscreenApplied: false,
+      pausedSince: 0, lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
+    });
+  }
+
   const armFullscreen = () => {
     const canonical = player.querySelector('.ytp-fullscreen-button');
     const canonicalAction = arm(canonical, 'fullscreen', 1200);
@@ -267,6 +292,13 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
             fullscreenPattern.test(text(element))) || null;
     return arm(fallback, 'fullscreen', 1200);
   };
+
+  if (fullscreen()) {
+    state.fullscreenApplied = true;
+  } else if (!state.fullscreenApplied) {
+    const fullscreenAction = armFullscreen();
+    if (fullscreenAction) return fullscreenAction;
+  }
 
   if (ad()) {
     state.adActive = true;
@@ -305,17 +337,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
   state.adActive = false;
   state.surveySelected = false;
-
-  const url = new URL(location.href);
-  const videoKey = url.searchParams.get('v') || video?.currentSrc || '';
-  const playlistId = url.searchParams.get('list') || '';
-  if (state.videoKey !== videoKey) {
-    Object.assign(state, {
-      videoKey, qualityApplied: false, captionsApplied: false,
-      fullscreenApplied: false,
-      pausedSince: 0, lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
-    });
-  }
 
   const currentTime = Number(video?.currentTime);
   if (Number.isFinite(currentTime)) {
@@ -399,8 +420,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return null;
   }
   if (state.fullscreenApplied) return null;
-  const fullscreenAction = armFullscreen();
-  if (fullscreenAction) return fullscreenAction;
   recheck();
   return 'recovery';
 })()
