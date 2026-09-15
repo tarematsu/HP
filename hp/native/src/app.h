@@ -74,6 +74,7 @@ class App {
   static constexpr UINT kUpdateResultMessage = WM_APP + 20;
   static constexpr int kRestartExitCode = 42;
   static constexpr uint32_t kStationheadStateWakeMs = 2'000;
+  static constexpr int64_t kMediaStartupStageDelayMs = 10'000;
   static LRESULT CALLBACK WindowProc(
       HWND window, UINT message, WPARAM wParam, LPARAM lParam);
   LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
@@ -127,6 +128,9 @@ class App {
   int startupShowCommand_ = SW_SHOW;
   MonotonicElapsedTimestamp startupAt_;
   bool rendererStarted_ = false;
+  bool stationheadStarted_ = false;
+  bool spotifyStarted_ = false;
+  MonotonicElapsedTimestamp stationheadStartedAt_;
   bool cloudStarted_ = false;
   bool startupUpdateScheduled_ = false;
   bool stationheadPlaybackFallbackActive_ = false;

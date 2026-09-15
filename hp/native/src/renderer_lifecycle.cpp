@@ -104,30 +104,30 @@ void Renderer::Initialize() {
         throw std::runtime_error("native MV initialization failed");
       }
     }
-    if (!gSpotifyWebViews) {
-      gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
-    }
-    // Spotify remains active in power-saving mode unless the explicit mute
-    // control has hard-blocked media networking.
-    gSpotifyWebViews->Start();
-    if (gSpotifyMediaNetworkBlocked) {
-      gSpotifyWebViews->SetNetworkBlocked(true);
-    }
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
 #endif
     if (nativeDashboardVisible_) StartRadarCompose();
   } catch (...) {
     StopRadarCompose();
-    if (gSpotifyWebViews) {
-      gSpotifyWebViews->Shutdown();
-      gSpotifyWebViews.reset();
-    }
 #if 0  // Stationhead playback bridge disabled.
     StopNativePlaybackBridge();
 #endif
     DestroyNativeStaticWindows();
     throw;
+  }
+}
+
+void Renderer::StartSpotify() {
+  if (!gSpotifyWebViews) {
+    gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
+  }
+  // Spotify remains active in power-saving mode unless the explicit mute
+  // control has hard-blocked media networking.
+  gSpotifyWebViews->Start();
+  gSpotifyWebViews->Resize();
+  if (gSpotifyMediaNetworkBlocked) {
+    gSpotifyWebViews->SetNetworkBlocked(true);
   }
 }
 

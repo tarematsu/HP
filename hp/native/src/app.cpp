@@ -118,6 +118,9 @@ void App::StartServices() {
 
   startupAt_ = UnixMillis();
 
+  // Stage 1: initialize the native dashboard and YouTube/MV WebView immediately.
+  // Stationhead and Spotify are intentionally deferred by the app timer so
+  // Chromium/WebView2 startup work does not land in the same burst.
   renderer_->Initialize();
   rendererStarted_ = true;
   RECT client{};
@@ -126,10 +129,7 @@ void App::StartServices() {
   }
   LayoutWorkspace();
   renderer_->TickNativePanels(startupAt_);
-  logger_->Info(L"Native dashboard started before main window display");
-
-  stationhead_->Start();
-  logger_->Info(L"Single Stationhead started in the background");
+  logger_->Info(L"YouTube/native dashboard started; Stationhead scheduled after 10 seconds");
 
   ShowWindow(window_, startupShowCommand_);
   UpdateWindow(window_);
@@ -158,7 +158,27 @@ void App::StartDeferredServices(int64_t now) {
     LayoutWorkspace();
     renderer_->TickNativePanels(now);
     InvalidateAll();
-    logger_->Warn(L"Native dashboard started by deferred recovery");
+    logger_->Warn(L"Native dashboard/YouTube started by deferred recovery");
+  }
+
+  // Stage 2: Stationhead starts ten seconds after YouTube/native initialization.
+  if (!stationheadStarted_ && stationhead_ &&
+      now - startupAt_ >= kMediaStartupStageDelayMs) {
+    stationhead_->Start();
+    stationheadStarted_ = true;
+    stationheadStartedAt_ = now;
+    stationhead_->SetAudioMuted(stationheadAudioMuted_);
+    MarkStationheadPlacementDirty();
+    ApplyStationheadWindowPlacement(stationhead_->Status());
+    logger_->Info(L"Stationhead started 10 seconds after YouTube; Spotify scheduled after 10 more seconds");
+  }
+
+  // Stage 3: Spotify starts ten seconds after Stationhead actually starts.
+  if (stationheadStarted_ && !spotifyStarted_ &&
+      now - stationheadStartedAt_ >= kMediaStartupStageDelayMs) {
+    renderer_->StartSpotify();
+    spotifyStarted_ = true;
+    logger_->Info(L"Spotify started 10 seconds after Stationhead");
   }
 
   if (!cloudStarted_ && cloud_) {
@@ -176,7 +196,7 @@ void App::StartDeferredServices(int64_t now) {
 void App::StopServices() {
   if (window_) KillTimer(window_, kCentralTimer);
   nextAppTickAt_ = 0;
-  if (stationhead_) stationhead_->Stop();
+  if (stationheadStarted_ && stationhead_) stationhead_->Stop();
   if (cloud_) cloud_->Stop();
   if (sensors_) sensors_->Stop();
   if (telemetryThread_.joinable()) telemetryThread_.join();
@@ -191,14 +211,14 @@ void App::Tick() {
   if (!renderer_ || !sensors_ || !cloud_) return;
   const int64_t now = UnixMillis();
 
+  StartDeferredServices(now);
+
   StationheadStatus stationheadStatus;
-  if (stationhead_) {
+  if (stationheadStarted_ && stationhead_) {
     stationhead_->Tick(now);
     stationheadStatus = stationhead_->Status();
     ApplyStationheadWindowPlacement(stationheadStatus);
   }
-
-  StartDeferredServices(now);
 
   const int64_t telemetryIntervalMs =
       static_cast<int64_t>(std::max(1, config_.telemetryMinutes)) * 60'000;
@@ -212,6 +232,18 @@ void App::Tick() {
   }
 
   uint32_t nextTickMs = kMaxAppTimerMs;
+  if (!stationheadStarted_) {
+    nextTickMs = std::min(
+        nextTickMs,
+        NextDelayFromDeadline(
+            now, startupAt_ + kMediaStartupStageDelayMs, kMaxAppTimerMs));
+  } else if (!spotifyStarted_) {
+    nextTickMs = std::min(
+        nextTickMs,
+        NextDelayFromDeadline(
+            now, stationheadStartedAt_ + kMediaStartupStageDelayMs,
+            kMaxAppTimerMs));
+  }
   if (!startupUpdateScheduled_ && cloudStarted_) {
     nextTickMs = std::min(
         nextTickMs,
@@ -229,7 +261,7 @@ void App::Tick() {
         NextDelayFromDeadline(
             now, renderer_->NativePlaybackNextWakeAt(now), kMaxAppTimerMs));
   }
-  if (stationhead_) {
+  if (stationheadStarted_ && stationhead_) {
     if (StationheadNeedsForeground(stationheadStatus)) {
       nextTickMs = std::min(nextTickMs, kFastTickMs);
     } else {
@@ -272,12 +304,14 @@ void App::LayoutWorkspace() {
   renderer_->SetBounds(workspaceBounds_);
   renderer_->SetVisible(rendererStarted_);
   MarkStationheadPlacementDirty();
-  if (stationhead_) ApplyStationheadWindowPlacement(stationhead_->Status());
+  if (stationheadStarted_ && stationhead_) {
+    ApplyStationheadWindowPlacement(stationhead_->Status());
+  }
   InvalidateAll();
 }
 
 void App::ApplyStationheadWindowPlacement(const StationheadStatus& status) {
-  if (!stationhead_ || selectedTab_ != WorkspaceTab::Main) return;
+  if (!stationheadStarted_ || !stationhead_ || selectedTab_ != WorkspaceTab::Main) return;
   RECT bounds = workspaceBounds_;
   if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
 

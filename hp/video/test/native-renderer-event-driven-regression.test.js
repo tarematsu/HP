@@ -103,5 +103,6 @@ test('App no longer owns dormant Stationhead compatibility publication', () => {
   assert.match(panelState, /void Renderer::UpdateNativeStaticPanels\(const RenderState& state\)/);
   assert.doesNotMatch(panelState, /stationheadPlayHistory|GlobalStationheadNativeStatsStore/);
   assert.match(appSource, /StationheadRole::Primary/);
-  assert.match(appSource, /Single Stationhead started in the background/);
+  assert.match(appSource, /stationhead_->Start\(\)/);
+  assert.match(appSource, /Stationhead started 10 seconds after YouTube/);
 });
