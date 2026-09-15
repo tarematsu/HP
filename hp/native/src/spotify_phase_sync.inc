@@ -32,10 +32,6 @@ bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
 
 }  // namespace
 
-bool SpotifyWebViews::SlotStateIsHealthy(SlotState state) noexcept {
-  return state == SlotState::Playing;
-}
-
 bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
   return state == SlotState::NotCreated || state == SlotState::Navigating ||
          state == SlotState::WaitingTarget || state == SlotState::Recovering;
@@ -97,9 +93,7 @@ void CALLBACK SpotifyWebViews::SchedulerTimerProc(
 
 UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
-  if (!robustSchedulerStarted_ || !initialCloudPlaylistReady_) {
-    return kSpotifySchedulerBootstrapMs;
-  }
+  if (!initialCloudPlaylistReady_) return kSpotifySchedulerBootstrapMs;
 
   // Healthy playback normally wakes at its exact completion deadline. The
   // one-hour ceiling is only a coarse safety audit for unexpected state loss.
