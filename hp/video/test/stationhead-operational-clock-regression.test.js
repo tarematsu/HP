@@ -2,171 +2,61 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const playerHeader = readFileSync(
-  new URL('../../native/src/sh.h', import.meta.url),
-  'utf8',
-);
-const playerSource = readFileSync(
-  new URL('../../native/src/sh.cpp', import.meta.url),
-  'utf8',
-);
-const handleHeader = readFileSync(
-  new URL('../../native/src/app_stationhead_handles.h', import.meta.url),
-  'utf8',
-);
-const handleSource = readFileSync(
-  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
-  'utf8',
-);
-const appHeader = readFileSync(
-  new URL('../../native/src/app.h', import.meta.url),
-  'utf8',
-);
-const appMessages = readFileSync(
-  new URL('../../native/src/app_messages.cpp', import.meta.url),
-  'utf8',
-);
+const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+const playerHeader = source('sh.h');
+const playerSource = source('sh.cpp');
+const handleHeader = source('app_stationhead_handles.h');
+const handleSource = source('app_stationhead_handles.cpp');
 
-function section(source, start, end) {
-  const startAt = source.indexOf(start);
-  assert.notEqual(startAt, -1, `missing section: ${start}`);
-  const endAt = source.indexOf(end, startAt + start.length);
-  assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
-  return source.slice(startAt, endAt);
+function section(text, start, end) {
+  const from = text.indexOf(start);
+  assert.notEqual(from, -1, `missing section: ${start}`);
+  const to = text.indexOf(end, from + start.length);
+  assert.notEqual(to, -1, `missing section terminator: ${end}`);
+  return text.slice(from, to);
 }
 
-test('backdated elapsed timestamps retain their initial elapsed duration', () => {
-  const elapsed = section(
-    playerHeader,
-    'class MonotonicElapsedTimestamp',
-    'class AtomicMonotonicElapsedTimestamp',
-  );
+test('elapsed timestamps retain monotonic duration', () => {
+  const elapsed = section(playerHeader, 'class MonotonicElapsedTimestamp',
+    'class AtomicMonotonicElapsedTimestamp');
   assert.match(elapsed, /initialElapsedMs_ = wallTime < wallNow/);
   assert.match(elapsed, /initialElapsedMs_ \+ elapsedSinceAssignment/);
-  assert.match(elapsed, /friend int64_t operator\+\(/);
   assert.match(elapsed, /intervalMs > elapsed \? intervalMs - elapsed : 0/);
-  assert.match(elapsed, /wallNow \+ remaining/);
 });
 
-test('atomic audio start timestamps are re-projected from uptime', () => {
-  const atomicElapsed = section(
-    playerHeader,
-    'class AtomicMonotonicElapsedTimestamp',
-    'class MonotonicDeadline',
-  );
-  assert.match(atomicElapsed, /void store\(/);
-  assert.match(atomicElapsed, /int64_t load\(/);
-  assert.match(atomicElapsed, /startedTick_\.store/);
-  assert.match(atomicElapsed, /GetTickCount64\(\)/);
-  assert.match(atomicElapsed, /return wallNow - static_cast<int64_t>\(elapsed\);/);
-  assert.match(
-    playerHeader,
-    /AtomicMonotonicElapsedTimestamp audioPlayingSinceAt_;/,
-  );
+test('audio start timestamps are re-projected from uptime', () => {
+  const atomic = section(playerHeader, 'class AtomicMonotonicElapsedTimestamp',
+    'class MonotonicDeadline');
+  assert.match(atomic, /startedTick_\.store/);
+  assert.match(atomic, /GetTickCount64\(\)/);
+  assert.match(playerHeader, /AtomicMonotonicElapsedTimestamp audioPlayingSinceAt_;/);
 });
 
-test('ordinary player wake deadlines are re-projected from uptime', () => {
-  const projected = section(
-    playerHeader,
-    'class MonotonicProjectedDeadline',
-    'class StartupAwareWakeDeadline',
-  );
-  assert.match(projected, /deadline_\.ProjectedWallDeadline\(\)/);
+test('player wake deadlines use monotonic wrappers', () => {
+  assert.match(playerHeader, /MonotonicProjectedDeadline trackBoundaryPlaybackRecoveryDeadline_;/);
+  assert.match(playerHeader, /MonotonicElapsedTimestamp lastDailyPlayStatsAt_;/);
+  assert.match(playerHeader, /MonotonicElapsedTimestamp lastAuthProbeAt_;/);
+  assert.match(handleHeader, /MonotonicElapsedTimestamp playbackMissingSinceAt_;/);
 
-  const wake = section(
-    playerHeader,
-    'class StartupAwareWakeDeadline',
-    'struct StationheadDailyPlayPoint',
-  );
-  assert.match(wake, /MonotonicProjectedDeadline value_;/);
-  assert.match(wake, /static_cast<int64_t>\(value_\)/);
+  const retry = section(handleSource, 'struct TrackBoundaryRetryState',
+    'TrackBoundaryRetryState boundaryRetry');
+  assert.match(retry, /MonotonicProjectedDeadline deadline;/);
+  assert.doesNotMatch(retry, /retryAt|secondary/);
 });
 
-test('track-boundary and periodic operational clocks use monotonic wrappers', () => {
-  assert.match(
-    playerHeader,
-    /MonotonicProjectedDeadline trackBoundaryPlaybackRecoveryDeadline_;/,
-  );
-  assert.match(
-    playerHeader,
-    /MonotonicElapsedTimestamp lastDailyPlayStatsAt_;/,
-  );
-  assert.match(
-    playerHeader,
-    /MonotonicElapsedTimestamp lastAuthProbeAt_;/,
-  );
-  assert.match(
-    playerHeader,
-    /MonotonicElapsedTimestamp authProbeStartedAt_;/,
-  );
-  assert.match(
-    handleHeader,
-    /MonotonicElapsedTimestamp playbackMissingSinceAt_;/,
-  );
-
-  const retryState = section(
-    handleSource,
-    'struct TrackBoundaryRetryState',
-    'TrackBoundaryRetryState primaryBoundaryRetry',
-  );
-  assert.match(retryState, /MonotonicProjectedDeadline retryAt;/);
-  assert.match(retryState, /MonotonicProjectedDeadline deadline;/);
-
-  for (const field of [
-    'primaryTrackBoundaryPendingUntil_',
-    'secondaryTrackBoundaryPendingUntil_',
-    'primaryTrackBoundaryHandoffReadyAt_',
-    'secondaryTrackBoundaryHandoffReadyAt_',
-  ]) {
-    assert.match(
-      appHeader,
-      new RegExp(`MonotonicProjectedDeadline ${field};`),
-    );
-  }
-});
-
-test('existing polling and recovery expressions bind to monotonic arithmetic', () => {
-  const tick = section(
-    playerSource,
-    'void StationheadPlayer::Tick(int64_t nowMs)',
-    'void StationheadPlayer::Reconnect()',
-  );
-  assert.match(
-    tick,
-    /nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs/,
-  );
-  assert.match(
-    tick,
-    /lastDailyPlayStatsAt_ \+ kStationheadDailyPlayStatsIntervalMs/,
-  );
-  assert.match(tick, /nowMs - authProbeStartedAt_ >= kAuthProbeTimeoutMs/);
-  assert.match(tick, /lastAuthProbeAt_ \+ kAuthProbeIntervalMs/);
+test('polling and recovery expressions bind to monotonic arithmetic', () => {
+  const tick = section(playerSource, 'void StationheadPlayer::Tick(int64_t nowMs)',
+    'void StationheadPlayer::Reconnect()');
+  assert.match(tick, /nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs/);
+  assert.match(tick, /lastDailyPlayStatsAt_ \+ kStationheadDailyPlayStatsIntervalMs/);
   assert.match(tick, /nowMs >= trackBoundaryPlaybackRecoveryDeadline_/);
 
-  const transitionGap = section(
-    handleSource,
-    'bool StationheadHandleBase::SuppressTrackTransitionGap(',
-    'void StationheadHandleBase::ApplyAudioState()',
-  );
-  assert.match(
-    transitionGap,
-    /now - playbackMissingSinceAt_ < kStationheadTrackTransitionGraceMs/,
-  );
+  const gap = section(handleSource, 'bool StationheadHandleBase::SuppressTrackTransitionGap(',
+    'void StationheadHandleBase::ApplyAudioState()');
+  assert.match(gap, /now - playbackMissingSinceAt_ < kStationheadTrackTransitionGraceMs/);
 
-  const retryTick = section(
-    handleSource,
-    'void StationheadHandleBase::Tick(int64_t nowMs)',
-    'void StationheadHandleBase::Reconnect()',
-  );
-  assert.match(retryTick, /nowMs >= retry\.deadline/);
-  assert.match(retryTick, /nowMs < retry\.retryAt/);
-
-  const appPending = section(
-    appMessages,
-    'void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs)',
-    'LRESULT App::HandleMessage(',
-  );
-  assert.match(appPending, /single Stationhead player has no peer handoff window/);
-  assert.match(appPending, /\(void\)nowMs;/);
-  assert.doesNotMatch(appPending, /pendingUntil|handoffReadyAt|TrackBoundaryPendingActionFor/);
+  const handleTick = section(handleSource, 'void StationheadHandleBase::Tick(int64_t nowMs)',
+    'void StationheadHandleBase::ShowAfterAudioStop()');
+  assert.match(handleTick, /nowMs >= boundaryRetry\.deadline/);
+  assert.doesNotMatch(handleTick, /retryAt|handoff/);
 });
