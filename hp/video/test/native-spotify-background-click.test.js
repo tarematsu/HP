@@ -21,14 +21,13 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
   assert.doesNotMatch(helper, /SetForegroundWindow|SendInput|MOUSEEVENTF_/);
 });
 
-test('Spotify trusted click uses one short retry gate with target and page fencing', () => {
+test('Spotify trusted click uses the same five-second confirmation gate as native recovery', () => {
   assert.match(header, /ULONGLONG trustedClickBlockedUntilTick = 0/);
   assert.match(header, /ULONGLONG pageEpoch = 0/);
   assert.doesNotMatch(header, /trustedClickGeneration|trustedClickTargetGeneration|trustedClickInFlight|trustedClickStartTick/);
-  assert.match(music, /kSpotifyPlaybackStartRetryMs = 1500ULL/);
-  assert.doesNotMatch(helper, /kSpotifyTrustedClickGateMs/);
+  assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
   assert.match(helper, /now < slot\.trustedClickBlockedUntilTick/);
-  assert.match(helper, /slot\.trustedClickBlockedUntilTick = now \+ kSpotifyPlaybackStartRetryMs/);
+  assert.match(helper, /slot\.trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayConfirmWaitMs/);
   assert.match(helper, /target->targetGeneration != targetGeneration/);
   assert.match(helper, /target->pageEpoch != pageEpoch/);
   assert.match(helper, /target->webview\.Get\(\) != view\.Get\(\)/);
@@ -60,28 +59,20 @@ test('trusted click uses the full-size background viewport and repairs accidenta
   assert.match(helper, /PlaceHosts\(\);/);
 });
 
-test('recovery starts playback observer but never waits for observer acknowledgement before Play', () => {
+test('trusted click preflight is minimal and only accepts Spotify Play controls when no media is active', () => {
   const preflight = helper.slice(
     helper.indexOf('void SpotifyWebViews::ClickSlotNormalizedPoint'),
     helper.indexOf('UINT SpotifyWebViews::DispatchSpotifyDevToolsClick'),
   );
   assert.match(preflight, /if \(!slot\.timedObserverReady\)/);
   assert.match(preflight, /ArmTimedEndObserver\(slot\)/);
-  const observerBranch = preflight.slice(
-    preflight.indexOf('if (!slot.timedObserverReady)'),
-    preflight.indexOf('const ULONGLONG targetGeneration'),
-  );
-  assert.doesNotMatch(observerBranch, /return;/);
-  assert.match(preflight, /nextRecoveryTick = now \+ kSpotifyPlaybackStartRetryMs/);
   assert.match(preflight, /document\.querySelectorAll\('audio, video'\)/);
+  assert.match(preflight, /media\.some\(m=>!m\.ended&&!m\.paused\)/);
   assert.match(preflight, /document\.elementFromPoint\(x,y\)/);
-  assert.match(preflight, /label\.includes\('pause'\)/);
-  assert.match(preflight, /label==='play'/);
-  assert.match(preflight, /label==='再生'/);
+  assert.match(preflight, /testid==='play-button'\|\|testid==='control-button-playpause'/);
+  assert.doesNotMatch(preflight, /label\.includes|label==='play'|label==='再生'|一時停止/);
   assert.match(preflight, /runtime&&typeof runtime\.armTrustedStart==='function'/);
-  assert.doesNotMatch(preflight, /if\(!runtime\|\|typeof runtime\.armTrustedStart/);
-  assert.doesNotMatch(preflight, /if\(!runtime\.armTrustedStart/);
   assert.match(preflight, /ExecuteScript\(/);
-  assert.match(preflight, /target->state == SlotState::Playing/);
   assert.match(preflight, /DispatchSpotifyDevToolsClick/);
+  assert.doesNotMatch(preflight, /nextRecoveryTick = now \+ kSpotifyPlaybackStartRetryMs/);
 });
