@@ -19,11 +19,19 @@ LR"JS(
       (element.textContent || ''));
   const hasVisibleLoginPrompt = () => Array.from(document.querySelectorAll(
       'button, a, [role="button"], [role="dialog"], [aria-modal="true"], '
-      + 'h1, h2, h3, [aria-label], [title]')).some(element => {
-    if (!visible(element)) return false;
+      + 'h1, h2, h3, [aria-label], [title]')).some(element =>
+          visible(element) && (labelOf(element).includes('ログイン') ||
+          /\b(?:log\s*in|sign\s*in)\b/i.test(labelOf(element))));
+  const isExitFullscreenControl = element => {
     const label = labelOf(element).toLowerCase();
-    return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
-  });
+    return /全画面を終了|全画面解除|フルスクリーンを終了/.test(label) ||
+        label.includes('exit fullscreen');
+  };
+  const isEnterFullscreenControl = element => {
+    if (!visible(element) || isExitFullscreenControl(element)) return false;
+    const label = labelOf(element).toLowerCase();
+    return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
+  };
   const point = element => {
     if (window.innerWidth <= 0 || window.innerHeight <= 0) return null;
     const rect = visibleRect(element);
@@ -38,14 +46,8 @@ LR"JS(
     ];
   };
 
-  let video = null;
-  for (const candidate of document.querySelectorAll('video')) {
-    if (visible(candidate)) {
-      video = candidate;
-      break;
-    }
-    if (!video) video = candidate;
-  }
+  const videos = Array.from(document.querySelectorAll('video'));
+  const video = videos.find(visible) || videos[0] || null;
   const playerRootFor = media => {
     if (!media) return null;
     let root = media.parentElement;
@@ -59,11 +61,6 @@ LR"JS(
 
   const state = window.__homePanelSakuraMeetsState;
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
-
-  // Once playback, low quality and fullscreen have been configured for the
-  // current video, healthy watchdog passes do not inspect the control surface.
-  // A bounded quality failure is also treated as settled so it never becomes a
-  // permanent polling loop.
   const trackedVideo = state && state.video;
   if (state && !adActive && !state.recoveryPending &&
       state.playbackSettingsApplied &&
@@ -76,19 +73,15 @@ LR"JS(
   }
 
   if (adActive) {
-    // During ads the watchdog may only click Skip or the fullscreen control.
     const adRoot = video ? playerRootFor(video) : null;
     const adControls = adRoot ? Array.from(adRoot.querySelectorAll(
         'button, [role="button"], a, [aria-label], [title]')) : [];
     const skipButton = adControls.find(element => {
       if (!visible(element)) return false;
-      const label = labelOf(element);
-      return /(?:広告|CM).{0,12}スキップ|^スキップ$|skip\s+(?:this\s+)?ads?/i.test(label);
+      return /(?:広告|CM).{0,12}スキップ|^スキップ$|skip\s+(?:this\s+)?ads?/i
+          .test(labelOf(element));
     }) || null;
     if (skipButton) return point(skipButton);
-
-    // Keep the page interactive for account sign-in. Do not consume the
-    // per-video fullscreen attempt while TVer exposes a visible login prompt.
     if (hasVisibleLoginPrompt()) return null;
 
     const browserFullscreen = document.fullscreenElement ||
@@ -98,12 +91,7 @@ LR"JS(
       return null;
     }
     if (state && state.fullscreenDirty === false) return null;
-    const fullscreenButton = adControls.find(element => {
-      if (!visible(element)) return false;
-      const label = labelOf(element).toLowerCase();
-      if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
-      return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
-    }) || null;
+    const fullscreenButton = adControls.find(isEnterFullscreenControl) || null;
     if (fullscreenButton && state) state.fullscreenDirty = false;
     return fullscreenButton ? point(fullscreenButton) : null;
   }
