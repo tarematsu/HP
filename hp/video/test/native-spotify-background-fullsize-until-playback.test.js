@@ -10,33 +10,31 @@ const rotation = source('spotify_timed_end_rotation.inc');
 const click = source('spotify_background_click.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('Spotify fits exactly behind the YouTube/TVer panel before confirmed playback', () => {
-  assert.match(
-    layout,
-    /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/,
-  );
-  assert.match(layout, /bool SpotifyMediaPanelRect\(HWND parentWindow, RECT\* rect\)/);
-  assert.match(layout, /FindWindowExW\([\s\S]*L"HomePanelNativeStaticPanel"[\s\S]*L"HomePanelNativeMedia"/);
-  assert.match(layout, /ScreenToClient\(parentWindow, &topLeft\)/);
-  assert.match(layout, /ScreenToClient\(parentWindow, &bottomRight\)/);
-  assert.match(layout, /int x = mediaPanelRect\.left/);
-  assert.match(layout, /int y = mediaPanelRect\.top/);
-  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth/);
-  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight/);
+test('Spotify keeps a 480x270 background renderer and expands only for foreground inspection or authentication', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+  assert.match(layout, /int x = client\.left/);
+  assert.match(layout, /int y = client\.top/);
+  assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
+  assert.match(layout, /int height = std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM/);
+  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /else if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
 });
 
-test('real media start is the point that collapses Spotify to 1x1', () => {
+test('real media start records playback confirmation without changing the background geometry contract', () => {
   const confirmed = rotation.indexOf('target->playbackConfirmed = true;');
   const recompute = rotation.indexOf('RecomputeForeground();', confirmed);
   assert.ok(confirmed >= 0 && recompute > confirmed);
   const startBranch = rotation.slice(confirmed, recompute + 'RecomputeForeground();'.length);
   assert.match(startBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(startBranch, /SetMusicCompletionDeadline/);
+  assert.doesNotMatch(layout, /playbackConfirmed[\s\S]*\? 1/);
 });
 
-test('ad interruption keeps confirmed playback compact until the target song ends', () => {
+test('ad interruption keeps confirmed playback state until the target song ends', () => {
   const interrupted = rotation.indexOf('if (interrupted) {');
   const ended = rotation.indexOf('if (ended) {', interrupted);
   assert.ok(interrupted >= 0 && ended > interrupted);
@@ -46,7 +44,7 @@ test('ad interruption keeps confirmed playback compact until the target song end
   assert.doesNotMatch(branch, /playbackConfirmed = false/);
 });
 
-test('track advance clears confirmation so the next target returns behind the media panel', () => {
+test('track advance clears playback confirmation for the next target', () => {
   const applyStart = rotation.indexOf('void SpotifyWebViews::ApplyTimedRotationTarget');
   const applyEnd = rotation.indexOf('\nvoid SpotifyWebViews::InitializeTimedRotationSlot', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
