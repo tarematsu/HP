@@ -58,6 +58,6 @@ test('playback and auth layout leave the WebView2 memory target unmanaged', () =
     layoutSource,
     /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
-  assert.match(layoutSource, /controller->put_IsVisible\(playbackControllerVisible\)/);
+  assert.match(layoutSource, /controller->put_IsVisible\(TRUE\)/);
   assert.match(layoutSource, /authController->put_IsVisible\(TRUE\)/);
 });

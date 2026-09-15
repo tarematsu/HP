@@ -47,18 +47,16 @@ test('Stationhead playback rendering suppression remains disabled', () => {
   );
 });
 
-test('Stationhead layout keeps full-size playback visible in foreground or background recovery', () => {
+test('Stationhead layout keeps the playback WebView visible both offscreen and fullscreen', () => {
   const layout = section(
     stationheadLayout,
     'void ApplyStationheadChildLayout(',
-    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+    '}  // namespace',
   );
-  assert.match(
-    layout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
-  );
-  assert.match(layout, /controller->put_IsVisible\(playbackControllerVisible\)/);
+  assert.match(layout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(layout, /controller->put_IsVisible\(TRUE\)/);
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
 });
 
 test('obsolete Stationhead page-side track-boundary observer is a no-op', () => {

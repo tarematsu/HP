@@ -38,7 +38,7 @@ test('hide evaluates the resulting surface before returning focus to Main', () =
 
   assertOrdered(setVisible, [
     'const bool interactiveSurfaceHadFocus =',
-    'if (controller_) KeepPlaybackBehindDashboard();',
+    'KeepPlaybackBehindDashboard();',
     'SetFocus(window_);',
   ]);
   assert.equal(
@@ -88,7 +88,7 @@ test('a full-size visible auth or login surface keeps keyboard focus', () => {
   );
 });
 
-test('the visible 1x1 playback host is not treated as interactive', () => {
+test('degenerate Stationhead focus surfaces are not treated as interactive', () => {
   const sizePolicy = section(
     finalPolicySource,
     'inline constexpr bool StationheadFocusSurfaceIsInteractive(',

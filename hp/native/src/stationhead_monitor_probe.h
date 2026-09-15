@@ -10,9 +10,27 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 // access on the existing UI thread and avoids adding another polling thread.
 void RequestStationheadMonitorDomProbe() noexcept;
 
+// Stationhead keeps a real 480x270 surface even while it is not presented.
+// Background placement is outside the parent client area instead of collapsing
+// the WebView to 1x1. Foreground presentation may use the full workspace.
+inline constexpr LONG kStationheadSurfaceWidth = 480;
+inline constexpr LONG kStationheadSurfaceHeight = 270;
+inline constexpr LONG kStationheadOffscreenGap = 32;
+
+inline RECT StationheadOffscreenBounds(const RECT& workspaceBounds) noexcept {
+  const LONG left = workspaceBounds.right + kStationheadOffscreenGap;
+  const LONG top = workspaceBounds.top;
+  return RECT{
+      left,
+      top,
+      left + kStationheadSurfaceWidth,
+      top + kStationheadSurfaceHeight,
+  };
+}
+
 // Monitor placement and Stationhead WebView layout live in separate modules.
 // Keep only the effective foreground bit here so both sides agree on geometry
-// and z-order; Stationhead memory priority remains LOW in either placement.
+// and z-order.
 inline std::atomic<bool> gStationheadMonitorForeground{false};
 
 inline bool SetStationheadMonitorForeground(bool foreground) noexcept {

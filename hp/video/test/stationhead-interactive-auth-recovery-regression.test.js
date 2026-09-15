@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Stationhead interaction tab expands the playback host and forces rendering visible', () => {
+test('Stationhead interaction tab presents the playback host fullscreen and keeps rendering visible', () => {
   const policy = section(
     layout,
     'struct StationheadSurfacePolicy {',
@@ -38,18 +38,12 @@ test('Stationhead interaction tab expands the playback host and forces rendering
   const childLayout = section(
     layout,
     'void ApplyStationheadChildLayout(',
-    '}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+    '}  // namespace',
   );
-  assert.match(childLayout, /const bool playbackForeground\s*=\s*showPlayback \|\|/);
-  assert.match(childLayout, /const bool playbackFullSize = playbackForeground \|\| playbackBackgroundFullSize;/);
-  assert.match(childLayout, /const int hostWidth = playbackFullSize \? width : 1;/);
-  assert.match(childLayout, /const int hostHeight = playbackFullSize \? height : 1;/);
+  assert.match(childLayout, /const bool playbackForeground\s*=\s*[\s\S]*showPlayback \|\|/);
+  assert.match(childLayout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
   assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
-  assert.match(
-    childLayout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
-  );
-  assert.match(childLayout, /controller->put_IsVisible\(playbackControllerVisible\)/);
+  assert.match(childLayout, /controller->put_IsVisible\(TRUE\)/);
 });
 
 test('pending Stationhead authentication cannot be hidden by normal placement refreshes', () => {
@@ -60,7 +54,7 @@ test('pending Stationhead authentication cannot be hidden by normal placement re
   );
   assert.match(
     selectTab,
-    /tab == StationheadTabKind::None && loginRequired_ && !spotifyAuthorization_/,
+    /tab == StationheadTabKind::None && loginRequired_ &&[\s\S]*!spotifyAuthorization_/,
   );
   assert.match(selectTab, /tab = StationheadTabKind::Stationhead;/);
   assert.doesNotMatch(
