@@ -36,6 +36,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       document.fullscreenElement || player.classList.contains('ytp-fullscreen'));
   const surveySelector =
       '.ytp-ad-survey,.ytp-ad-feedback-dialog,yt-survey-renderer,ytd-survey-renderer';
+)JS" LR"JS(
 
   const arm = (element, action, cooldownMs) => {
     const now = Date.now();
