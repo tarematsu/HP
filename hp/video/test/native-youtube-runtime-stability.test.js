@@ -46,6 +46,15 @@ test('fullscreen and ad clicks keep independent action state', () => {
   const firstFullscreen = runtime.indexOf('const fullscreenAction = armFullscreen();');
   const adStart = runtime.indexOf('if (ad()) {');
   assert.ok(firstFullscreen >= 0 && adStart > firstFullscreen);
+  assert.match(runtime, /if \(!ad\(\) && !fullscreen\(\)\)/);
+});
+
+test('fullscreen recovery stays authoritative to actual fullscreen state', () => {
+  assert.doesNotMatch(runtime, /state\.fullscreenApplied|fullscreenApplied:/);
+  assert.match(runtime, /if \(fullscreen\(\)\) return null;/);
+  const finalFullscreen = runtime.lastIndexOf('const fullscreenAction = armFullscreen();');
+  const finalRecovery = runtime.lastIndexOf("return 'recovery';");
+  assert.ok(finalFullscreen >= 0 && finalRecovery > finalFullscreen);
 });
 
 test('skippable ads are handled before fullscreen recovery', () => {
