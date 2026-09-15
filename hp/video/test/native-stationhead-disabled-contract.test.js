@@ -31,9 +31,11 @@ test('Stationhead build contains only active sources', () => {
 
 test('App owns exactly one Stationhead handle and creates one primary player', () => {
   const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
+  const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
   assert.match(start, /StationheadRole::Primary/);
   assert.match(start, /ReuseWebViewProfile\(kStationheadAmazonProfile\)/);
-  assert.match(start, /stationhead_->Start\(\)/);
+  assert.doesNotMatch(start, /stationhead_->Start\(\)/);
+  assert.match(deferred, /stationhead_->Start\(\)/);
   assert.doesNotMatch(start, /#if 0|Secondary|secondaryStationhead_/);
   assert.doesNotMatch(appHeader, /AppSecondaryStationheadHandle|secondaryStationhead_/);
   assert.doesNotMatch(handles, /AppSecondaryStationheadHandle|PeerAudioHandle|StartupPrimaryHandle/);
