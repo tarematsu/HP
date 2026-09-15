@@ -109,6 +109,11 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   };
 
   for (const Slot& slot : slots_) {
+    if (!slot.processTitleEventRegistered && slot.webview) {
+      considerTick(slot.nextProcessTitlePollTick == 0
+                       ? now
+                       : slot.nextProcessTitlePollTick);
+    }
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         CurrentMusicTrack(slot)) {

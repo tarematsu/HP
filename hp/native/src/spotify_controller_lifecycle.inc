@@ -125,6 +125,19 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     Slot* const target = &slot;
     const auto alive = alive_;
 
+    const HRESULT titleEventResult = slot.webview->add_DocumentTitleChanged(
+        Callback<ICoreWebView2DocumentTitleChangedEventHandler>(
+            [this, alive, target](ICoreWebView2* sender, IUnknown*) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) || !sender) return S_OK;
+              RefreshProcessTitleStatus(*target, sender);
+              return S_OK;
+            }).Get(), &slot.documentTitleChangedToken);
+    slot.processTitleEventRegistered = SUCCEEDED(titleEventResult);
+    slot.nextProcessTitlePollTick = slot.processTitleEventRegistered
+        ? 0
+        : GetTickCount64();
+    RefreshProcessTitleStatus(slot, slot.webview.Get());
+
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
             [this, alive, target](ICoreWebView2* sender, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
