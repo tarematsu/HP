@@ -68,23 +68,21 @@ test('clock waste strip always contains three dated illustrated target categorie
   assert.match(calendar, /DrawCourse36WasteFallbackPictogram\(/);
 });
 
-test('clock waste illustrations keep their 4:3 source aspect ratio', () => {
-  assert.match(calendar, /kCourse36ClockWasteImageAspectWidth = 4/);
-  assert.match(calendar, /kCourse36ClockWasteImageAspectHeight = 3/);
-  assert.match(
-    calendar,
-    /iconWidth \* kCourse36ClockWasteImageAspectHeight \/\s*kCourse36ClockWasteImageAspectWidth/,
-  );
-  assert.match(
-    calendar,
-    /iconHeight \* kCourse36ClockWasteImageAspectWidth \/\s*kCourse36ClockWasteImageAspectHeight/,
-  );
+test('clock waste illustrations scale from visible alpha bounds instead of transparent canvas padding', () => {
+  assert.match(calendar, /kCourse36ClockWasteImageWidth = 128/);
+  assert.match(calendar, /kCourse36ClockWasteImageHeight = 96/);
+  assert.match(calendar, /Course36ClockWasteVisibleBounds\(/);
+  assert.match(calendar, /row\[x \* 4 \+ 3\]/);
+  assert.match(calendar, /iconWidth \* sourceHeight \/ sourceWidth/);
+  assert.match(calendar, /iconHeight \* sourceWidth \/ sourceHeight/);
+  assert.doesNotMatch(calendar, /kCourse36ClockWasteImageAspectWidth/);
+  assert.doesNotMatch(calendar, /kCourse36ClockWasteImageAspectHeight/);
 });
 
-test('transparent waste illustrations use the premultiplied alpha renderer', () => {
+test('transparent waste illustrations crop with premultiplied alpha blending', () => {
   assert.match(
     calendar,
-    /void DrawCourse36WasteBitmap\([\s\S]*DrawPremultipliedBitmap\(dc, bitmap, rect\)/,
+    /void DrawCourse36WasteBitmap\([\s\S]*AC_SRC_ALPHA[\s\S]*AlphaBlend\(/,
   );
   assert.doesNotMatch(
     calendar,

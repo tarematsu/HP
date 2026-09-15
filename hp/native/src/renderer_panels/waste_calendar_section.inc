@@ -200,18 +200,59 @@ constexpr std::array<const wchar_t*, 3> kCourse36ClockWasteImageFiles{{
     L"nonburnable-hazardous.png",
     L"paper.png",
 }};
-constexpr int kCourse36ClockWasteImageAspectWidth = 4;
-constexpr int kCourse36ClockWasteImageAspectHeight = 3;
+constexpr int kCourse36ClockWasteImageWidth = 128;
+constexpr int kCourse36ClockWasteImageHeight = 96;
+constexpr BYTE kCourse36ClockWasteAlphaThreshold = 8;
 
-struct Course36ClockWasteImageAsset {
-  ~Course36ClockWasteImageAsset() {
-    for (const auto& item : bitmaps) {
-      if (item.second) DeleteObject(item.second);
+RECT Course36ClockWasteVisibleBounds(HBITMAP bitmap) {
+  const RECT fullBounds{0, 0, kCourse36ClockWasteImageWidth,
+                        kCourse36ClockWasteImageHeight};
+  BITMAP info{};
+  if (!bitmap || GetObjectW(bitmap, sizeof(info), &info) != sizeof(info) ||
+      !info.bmBits || info.bmBitsPixel != 32 || info.bmWidth <= 0 ||
+      info.bmHeight == 0) {
+    return fullBounds;
+  }
+
+  const int width = static_cast<int>(info.bmWidth);
+  const int height = static_cast<int>(std::abs(info.bmHeight));
+  const int stride = static_cast<int>(std::abs(info.bmWidthBytes));
+  const BYTE* pixels = static_cast<const BYTE*>(info.bmBits);
+  int left = width;
+  int top = height;
+  int right = 0;
+  int bottom = 0;
+
+  for (int y = 0; y < height; ++y) {
+    const BYTE* row = pixels + static_cast<size_t>(y) * stride;
+    for (int x = 0; x < width; ++x) {
+      if (row[x * 4 + 3] <= kCourse36ClockWasteAlphaThreshold) continue;
+      left = std::min(left, x);
+      top = std::min(top, y);
+      right = std::max(right, x + 1);
+      bottom = std::max(bottom, y + 1);
     }
   }
 
+  if (left >= right || top >= bottom) return fullBounds;
+  constexpr int kPadding = 2;
+  return RECT{
+      std::max(0, left - kPadding),
+      std::max(0, top - kPadding),
+      std::min(width, right + kPadding),
+      std::min(height, bottom + kPadding),
+  };
+}
+
+struct Course36ClockWasteImageAsset {
+  ~Course36ClockWasteImageAsset() {
+    if (bitmap) DeleteObject(bitmap);
+  }
+
   std::mutex mutex;
-  std::map<uint64_t, HBITMAP> bitmaps;
+  HBITMAP bitmap = nullptr;
+  RECT visibleBounds{0, 0, kCourse36ClockWasteImageWidth,
+                     kCourse36ClockWasteImageHeight};
 };
 
 const std::array<std::shared_ptr<Course36ClockWasteImageAsset>, 3>&
@@ -225,25 +266,27 @@ Course36ClockWasteImageAssets() {
 }
 
 HBITMAP Course36ClockWasteImageBitmap(
-    Course36WasteKind kind, int width, int height) {
+    Course36WasteKind kind, RECT& visibleBounds) {
   const int index = Course36ClockWasteImageIndex(kind);
-  if (index < 0 || width <= 0 || height <= 0) return nullptr;
+  if (index < 0) return nullptr;
   const auto& asset = Course36ClockWasteImageAssets()[static_cast<size_t>(index)];
 
   std::lock_guard lock(asset->mutex);
-  const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(width)) << 32) |
-      static_cast<uint32_t>(height);
-  const auto found = asset->bitmaps.find(key);
-  if (found != asset->bitmaps.end()) return found->second;
+  if (!asset->bitmap) {
+    wchar_t executableRaw[MAX_PATH * 4]{};
+    if (!GetModuleFileNameW(nullptr, executableRaw, _countof(executableRaw))) return nullptr;
+    const fs::path imagePath = fs::path(executableRaw).parent_path() / L"ui" /
+        L"waste-icons" /
+        kCourse36ClockWasteImageFiles[static_cast<size_t>(index)];
+    asset->bitmap = DecodeImageFileToBitmap(
+        imagePath, kCourse36ClockWasteImageWidth, kCourse36ClockWasteImageHeight);
+    if (asset->bitmap) {
+      asset->visibleBounds = Course36ClockWasteVisibleBounds(asset->bitmap);
+    }
+  }
 
-  wchar_t executableRaw[MAX_PATH * 4]{};
-  if (!GetModuleFileNameW(nullptr, executableRaw, _countof(executableRaw))) return nullptr;
-  const fs::path imagePath = fs::path(executableRaw).parent_path() / L"ui" /
-      L"waste-icons" /
-      kCourse36ClockWasteImageFiles[static_cast<size_t>(index)];
-  HBITMAP bitmap = DecodeImageFileToBitmap(imagePath, width, height);
-  if (bitmap) asset->bitmaps.emplace(key, bitmap);
-  return bitmap;
+  visibleBounds = asset->visibleBounds;
+  return asset->bitmap;
 }
 
 void DrawCourse36WasteFallbackPictogram(
@@ -325,8 +368,24 @@ void DrawCourse36WasteFallbackPictogram(
   SelectObject(dc, previousPen);
 }
 
-void DrawCourse36WasteBitmap(HDC dc, HBITMAP bitmap, const RECT& rect) {
-  DrawPremultipliedBitmap(dc, bitmap, rect);
+void DrawCourse36WasteBitmap(HDC dc, HBITMAP bitmap, const RECT& source,
+                             const RECT& target) {
+  if (!dc || !bitmap) return;
+  const int sourceWidth = source.right - source.left;
+  const int sourceHeight = source.bottom - source.top;
+  const int targetWidth = target.right - target.left;
+  const int targetHeight = target.bottom - target.top;
+  if (sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0) {
+    return;
+  }
+
+  HDC sourceDc = SourceMemoryDc(dc);
+  if (!sourceDc) return;
+  HGDIOBJ previousBitmap = SelectObject(sourceDc, bitmap);
+  const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+  AlphaBlend(dc, target.left, target.top, targetWidth, targetHeight,
+             sourceDc, source.left, source.top, sourceWidth, sourceHeight, blend);
+  SelectObject(sourceDc, previousBitmap);
 }
 
 void DrawCourse36ClockWasteNotices(
@@ -367,15 +426,22 @@ void DrawCourse36ClockWasteNotices(
     const int areaHeight = std::max(1L, iconArea.bottom - iconArea.top);
     const int maxIconWidth = std::max(1, areaWidth * 96 / 100);
     const int maxIconHeight = std::max(1, areaHeight * 94 / 100);
+
+    RECT sourceRect{0, 0, kCourse36ClockWasteImageWidth,
+                    kCourse36ClockWasteImageHeight};
+    HBITMAP bitmap = Course36ClockWasteImageBitmap(notices[index].kind, sourceRect);
+    const int sourceWidth = bitmap
+        ? std::max(1L, sourceRect.right - sourceRect.left)
+        : 4;
+    const int sourceHeight = bitmap
+        ? std::max(1L, sourceRect.bottom - sourceRect.top)
+        : 3;
+
     int iconWidth = maxIconWidth;
-    int iconHeight = std::max(
-        1, iconWidth * kCourse36ClockWasteImageAspectHeight /
-            kCourse36ClockWasteImageAspectWidth);
+    int iconHeight = std::max(1, iconWidth * sourceHeight / sourceWidth);
     if (iconHeight > maxIconHeight) {
       iconHeight = maxIconHeight;
-      iconWidth = std::max(
-          1, iconHeight * kCourse36ClockWasteImageAspectWidth /
-              kCourse36ClockWasteImageAspectHeight);
+      iconWidth = std::max(1, iconHeight * sourceWidth / sourceHeight);
     }
     RECT iconRect{
         iconArea.left + (areaWidth - iconWidth) / 2,
@@ -384,9 +450,7 @@ void DrawCourse36ClockWasteNotices(
         iconArea.top + (areaHeight - iconHeight) / 2 + iconHeight,
     };
 
-    HBITMAP bitmap = Course36ClockWasteImageBitmap(
-        notices[index].kind, iconWidth, iconHeight);
-    if (bitmap) DrawCourse36WasteBitmap(dc, bitmap, iconRect);
+    if (bitmap) DrawCourse36WasteBitmap(dc, bitmap, sourceRect, iconRect);
     else DrawCourse36WasteFallbackPictogram(dc, notices[index].kind, iconRect);
   }
 
