@@ -63,12 +63,13 @@ test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('pre-playback recovery fits behind the YouTube/TVer panel while confirmed playback is 1x1', () => {
-  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
-  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
+test('pre-playback recovery and confirmed playback share the same 480x270 background viewport', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+  assert.match(layout, /std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
+  assert.match(layout, /std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
