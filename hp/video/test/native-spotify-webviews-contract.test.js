@@ -49,25 +49,26 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('Spotify matches the YouTube/TVer panel behind native UI until playback confirmation and then stays 1x1 through the target song', () => {
+test('Spotify keeps one 480x270 background surface for recovery and playback while foreground modes can expand it', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySurfaceZoom = 0\.50/);
   assert.match(layout, /put_ZoomFactor\(kSpotifySurfaceZoom\)/);
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
   assert.doesNotMatch(layout, /kSpotifySerializedRecoveryZoom/);
   assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyParkedPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyLowPowerPlaybackWidth|kSpotifyLowPowerPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
-  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
-  assert.match(layout, /int x = mediaPanelRect\.left;/);
-  assert.match(layout, /int y = mediaPanelRect\.top;/);
-  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
+  assert.match(layout, /int x = client\.left;/);
+  assert.match(layout, /int y = client\.top;/);
+  assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
+  assert.match(layout, /int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
-  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*x = client\.left;[\s\S]*y = client\.top;[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
   assert.match(layout, /else if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
   assert.match(layout, /const bool placementChanged = positionChanged \|\| sizeChanged \|\| zOrderChanged/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
