@@ -215,6 +215,20 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
+            if (json && std::wstring_view(json) == L"\"direct-play\"") {
+              // Direct HTMLMediaElement.play() was issued for the confirmed
+              // target AUDIO element. The observer remains authoritative for
+              // actual playback confirmation. If no playing event arrives,
+              // the next reconcile pass falls back to the Play-button path.
+              SetSlotState(*target, SlotState::WaitingTarget);
+              target->nextRecoveryTick =
+                  callbackNow + kSpotifyPlaybackStartRetryMs;
+              ArmTimedEndObserver(*target);
+              RecomputeForeground();
+              ArmRobustScheduler();
+              return S_OK;
+            }
+
             if (json && std::wstring_view(json) == L"\"settling\"") {
               SetSlotState(*target, SlotState::WaitingTarget);
               target->nextRecoveryTick = callbackNow + kSpotifyRecoveryRetryMs;
