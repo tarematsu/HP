@@ -53,8 +53,7 @@ function functionBody(source, signature) {
 test('active native panel state is not duplicated in RenderState', () => {
   const state = renderState.match(/struct RenderState \{([\s\S]*?)\n\};/)?.[1] ?? '';
   assert.match(state, /StationheadStatus stationhead/);
-  assert.match(state, /stationheadPlayHistory/);
-  assert.doesNotMatch(state, /SensorSnapshot|airHistory|appVersion|toast|newsIndex/);
+  assert.doesNotMatch(state, /stationheadPlayHistory|SensorSnapshot|airHistory|appVersion|toast|newsIndex/);
   assert.match(appHeader, /std::vector<AirHistorySample> airHistory_/);
   assert.match(appHeader, /std::wstring toastText_/);
 });
@@ -96,16 +95,13 @@ test('News rotation compatibility state is completely removed', () => {
   assert.doesNotMatch(rendererHeader, /NewsCount\(/);
 });
 
-test('Stationhead compatibility publication remains available without retired panel history storage', () => {
-  assert.match(appHeader, /RenderState renderState_/);
-  assert.match(appHeader, /void PublishRenderState\(\)/);
-  assert.match(appHeader, /void PublishRenderStateNow\(\)/);
+test('App no longer owns dormant Stationhead compatibility publication', () => {
+  assert.doesNotMatch(appHeader, /RenderState renderState_|PublishRenderState|renderStateDirty_/);
+  assert.doesNotMatch(appSource, /PublishRenderState|renderer_->UpdateState\(renderState_\)/);
   assert.match(rendererHeader, /void UpdateState\(const RenderState& state\)/);
-  assert.doesNotMatch(rendererHeader, /nativeStationheadPlayHistory_/);
   assert.match(rendererLifecycle, /void Renderer::UpdateState\(const RenderState& state\)/);
   assert.match(panelState, /void Renderer::UpdateNativeStaticPanels\(const RenderState& state\)/);
   assert.doesNotMatch(panelState, /stationheadPlayHistory|GlobalStationheadNativeStatsStore/);
   assert.match(appSource, /StationheadRole::Primary/);
   assert.match(appSource, /Single Stationhead started in the background/);
-  assert.doesNotMatch(functionBody(appSource, 'void App::Tick()'), /PublishRenderState/);
 });
