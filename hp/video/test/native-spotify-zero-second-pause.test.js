@@ -18,18 +18,19 @@ const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 test('zero-second recovery tries target AUDIO play once per generation before Play controls', () => {
   assert.match(scoped, /const mediaPlaybackState = \(\) =>/);
   assert.match(scoped, /element: pending/);
-  assert.match(scoped, /const tryDirectTargetPlayback =/);
-  assert.match(scoped, /media\.tagName !== 'AUDIO'/);
-  assert.match(scoped, /typeof media\.play !== 'function'/);
-  assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration === generation/);
-  assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration = generation/);
-  assert.match(scoped, /const result = media\.play\(\)/);
-  assert.match(scoped, /result\.catch\(\(\) => \{\}\)/);
+  assert.match(scripts, /__homePanelSpotifyTryDirectPlay = media =>/);
+  assert.match(scripts, /media\.tagName !== 'AUDIO'/);
+  assert.match(scripts, /typeof media\.play !== 'function'/);
+  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration === generation/);
+  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration = generation/);
+  assert.match(scripts, /const result = media\.play\(\)/);
+  assert.match(scripts, /result\.catch\(\(\) => \{\}\)/);
+  assert.match(scoped, /__homePanelSpotifyTryDirectPlay\(mediaState\.element\)/);
   assert.match(scoped, /return 'direct-play'/);
   assert.match(scoped, /buttonIntentValue === 'play'/);
   assert.match(scoped, /controlIntent === 'play'/);
   assert.ok(
-    scoped.indexOf("return 'direct-play'") <
+    scoped.indexOf('__homePanelSpotifyTryDirectPlay(mediaState.element)') <
       scoped.indexOf("if (controlIntent === 'pause'"),
   );
 });
@@ -63,10 +64,10 @@ test('direct audio play waits five seconds for observer confirmation before trus
   assert.doesNotMatch(directBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.doesNotMatch(directBranch, /ClickSlotNormalizedPoint/);
 
-  const directAttempt = scoped.indexOf('__homePanelSpotifyDirectPlayGeneration = generation');
+  const directAttempt = scoped.indexOf('__homePanelSpotifyTryDirectPlay(mediaState.element)');
   const buttonFallback = scoped.indexOf("if (buttonIntentValue === 'play')");
   assert.ok(directAttempt >= 0 && buttonFallback > directAttempt);
-  assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration === generation[\s\S]*return false/);
+  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration === generation[\s\S]*return false/);
 });
 
 test('settling queues one recovery deadline without a renavigation branch', () => {
