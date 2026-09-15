@@ -8,17 +8,17 @@ const source = name => readFileSync(
 const runtime = source('spotify_media_observer_runtime.inc');
 const click = source('spotify_background_click.inc');
 
-test('music play preflight arms trusted start before native click dispatch', () => {
+test('music play preflight is independent from observer trusted-start state', () => {
   const generation = click.indexOf('const ULONGLONG targetGeneration = slot.targetGeneration;');
   const preflight = click.indexOf('std::wstring preflight', generation);
-  const arm = click.indexOf('runtime.armTrustedStart', preflight);
-  const dispatch = click.indexOf('DispatchSpotifyDevToolsClick', arm);
-  assert.ok(generation >= 0 && preflight > generation && arm > preflight && dispatch > arm);
+  const dispatch = click.indexOf('DispatchSpotifyDevToolsClick', preflight);
+  assert.ok(generation >= 0 && preflight > generation && dispatch > preflight);
   assert.match(click, /!CurrentMusicTrack\(slot\)/);
+  assert.doesNotMatch(click, /runtime\.armTrustedStart|__homePanelSpotifyMediaObserverRuntime|ArmTimedEndObserver/);
   assert.doesNotMatch(click, /TimedSpotifyTarget/);
 });
 
-test('trusted start is generation scoped short lived and never claims concrete non-target playback', () => {
+test('trusted start remains generation scoped if the optional observer is used elsewhere', () => {
   assert.match(runtime, /const armTrustedStart = requestedGeneration =>/);
   assert.match(runtime, /requested !== generation\(\)/);
   assert.match(runtime, /state\.trustedStartUntil = Date\.now\(\) \+ 15000/);
