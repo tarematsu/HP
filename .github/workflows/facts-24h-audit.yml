@@ -1,0 +1,30 @@
+name: Audit Stationhead 24h facts
+
+on:
+  schedule:
+    - cron: "0 0,12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          show-progress: false
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --ignore-scripts
+
+      - name: Count live minute facts from the last 24 hours
+        run: node worker/scripts/audit-facts-24h.mjs
