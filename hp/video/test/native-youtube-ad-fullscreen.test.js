@@ -5,12 +5,15 @@ import { readExpandedNativeSource } from './helpers/read-expanded-native-source.
 const runtime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
-test('YouTube ads attempt fullscreen immediately before skip lookup', () => {
+test('YouTube ads prefer an available skip control before fullscreen recovery', () => {
   const adBranch = runtime.indexOf('if (ad()) {');
-  const fullscreen = runtime.indexOf('const action = armFullscreen()', adBranch);
   const skip = runtime.indexOf('const skipSelector =', adBranch);
-  const guard = runtime.indexOf("return 'recovery';", skip);
-  assert.ok(adBranch >= 0 && fullscreen > adBranch && skip > fullscreen && guard > skip);
+  const skipAction = runtime.indexOf("arm(target, 'skip-ad', 600)", skip);
+  const fullscreen = runtime.indexOf('const action = armFullscreen()', skipAction);
+  const guard = runtime.indexOf("return 'recovery';", fullscreen);
+  assert.ok(
+    adBranch >= 0 && skip > adBranch && skipAction > skip &&
+    fullscreen > skipAction && guard > fullscreen);
   assert.doesNotMatch(runtime, /adFullscreenReadyAt|fullscreenSettleMs/);
 });
 
