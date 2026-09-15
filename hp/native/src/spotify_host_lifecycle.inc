@@ -25,9 +25,15 @@ bool SpotifyWebViews::EnsureHostClass() noexcept {
 bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
   if (slot.hostWindow && IsWindow(slot.hostWindow)) return true;
   if (!parentWindow_ || !IsWindow(parentWindow_) || !EnsureHostClass()) return false;
+
+  RECT client{};
+  if (!GetClientRect(parentWindow_, &client)) return false;
+  const int width = std::max(1L, client.right - client.left);
+  const int height = std::max(1L, client.bottom - client.top);
   slot.hostWindow = CreateWindowExW(
       0, kSpotifyHostClass, L"Spotify", WS_CHILD | WS_CLIPSIBLINGS,
-      0, 0, 1, 1, parentWindow_, nullptr, GetModuleHandleW(nullptr), &slot);
+      client.left, client.top, width, height,
+      parentWindow_, nullptr, GetModuleHandleW(nullptr), &slot);
   const bool created = slot.hostWindow && IsWindow(slot.hostWindow);
   if (created && slot.index == 0) {
     schedulerHost_.store(slot.hostWindow, std::memory_order_release);
