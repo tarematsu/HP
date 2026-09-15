@@ -387,6 +387,11 @@ inline std::wstring StationheadAutoplayScriptCurrentInteraction(
   return script;
 }
 
+inline constexpr int64_t kStationheadMeasuredPostPlaybackStopClickDelayMs =
+    3'500;
+static_assert(kStationheadMeasuredPostPlaybackStopClickDelayMs < 12'000);
+
+}  // namespace hp
 
 #define kStationheadPostPlaybackStopClickDelayMs                             \
   (::hp::kStationheadMeasuredPostPlaybackStopClickDelayMs)

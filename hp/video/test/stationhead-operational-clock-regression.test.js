@@ -35,7 +35,7 @@ test('audio start timestamps are re-projected from uptime', () => {
 test('player wake deadlines use monotonic wrappers', () => {
   assert.match(playerHeader, /MonotonicProjectedDeadline trackBoundaryPlaybackRecoveryDeadline_;/);
   assert.match(playerHeader, /MonotonicElapsedTimestamp lastDailyPlayStatsAt_;/);
-  assert.match(playerHeader, /MonotonicElapsedTimestamp lastAuthProbeAt_;/);
+  assert.doesNotMatch(playerHeader, /lastAuthProbeAt_|authProbeInFlight_|authProbeStartedAt_/);
   assert.match(handleHeader, /MonotonicElapsedTimestamp playbackMissingSinceAt_;/);
 
   const retry = section(handleSource, 'struct TrackBoundaryRetryState',

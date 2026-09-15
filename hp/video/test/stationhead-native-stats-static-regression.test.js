@@ -27,7 +27,11 @@ test('July 19 auth capture remains in the Stationhead composition', () => {
 });
 
 test('Primary owns the PR48 authenticated streakStats request', () => {
-  assert.match(playerSource, /!IsSecondary\(\)[\s\S]*PollDailyPlayStats\(nowMs\)/);
+  assert.match(
+    playerSource,
+    /nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs\) PollDailyPlayStats\(nowMs\)/,
+  );
+  assert.doesNotMatch(playerSource, /IsSecondary\(/);
   assert.match(playerSource, /StationheadApiPlayStatsScript\(config_\.channelId\)/);
   assert.match(activePolicy, /production1\.stationhead\.com\/me\/channel\//);
   assert.match(activePolicy, /\/streakStats/);

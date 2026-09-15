@@ -133,25 +133,19 @@ test('only the exact optional Tooltip stylesheet is replaced with local 204', ()
 });
 
 test('native startup smoke observes real window state without mutating it', () => {
-  for (const role of ['A', 'B']) {
-    assert.match(
-      nativeStartupSmoke,
-      new RegExp(`Stationhead ${role} registering required startup scripts`),
-    );
-    assert.match(
-      nativeStartupSmoke,
-      new RegExp(`Stationhead ${role} auto-clicking Start Listening at`),
-    );
-  }
+  assert.match(nativeStartupSmoke, /Stationhead A registering required startup scripts/);
+  assert.match(nativeStartupSmoke, /Stationhead A auto-clicking Start Listening at/);
+  assert.doesNotMatch(nativeStartupSmoke, /Stationhead B|SecondaryStationhead/);
   assert.match(nativeStartupSmoke, /\[int\]\$StartupBudgetSeconds = 60/);
   assert.match(nativeStartupSmoke, /\[int\]\$PostClickSettleSeconds = 15/);
   assert.match(nativeStartupSmoke, /PlaybackStartupSafe/);
-  assert.match(nativeStartupSmoke, /Started non-mutating Stationhead surface observation at first host creation/);
+  assert.match(nativeStartupSmoke, /if \(\$primaryHostSeen -and -not \$firstSurfaceObservationAtUtc\)/);
+  assert.match(nativeStartupSmoke, /\$firstSurfaceObservationAtUtc = \[DateTime\]::UtcNow/);
   assert.match(nativeStartupSmoke, /PlaybackBehindNativePanels/);
   assert.match(nativeStartupSmoke, /observationalOnly = \$true/);
-  assert.match(nativeStartupSmoke, /sampleIntervalMs = 25/);
+  assert.match(nativeStartupSmoke, /Start-Sleep -Milliseconds 25/);
   assert.match(nativeStartupSmoke, /primaryHostSeen = \$primaryHostSeen/);
-  assert.match(nativeStartupSmoke, /secondaryHostSeen = \$secondaryHostSeen/);
+  assert.doesNotMatch(nativeStartupSmoke, /secondaryHostSeen/);
   assert.doesNotMatch(
     nativeStartupSmoke,
     /private static extern .*\b(?:SetWindowPos|MoveWindow|ShowWindow|SetForegroundWindow|BringWindowToTop|SetParent|SetWindowLong|SetActiveWindow|SwitchToThisWindow|EnableWindow)\b/,
