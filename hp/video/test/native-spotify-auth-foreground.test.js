@@ -22,8 +22,9 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
   );
   assert.match(
     layout,
-    /if \(authentication\)[\s\S]*insertAfter = HWND_TOP;/,
+    /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM;/,
   );
+  assert.doesNotMatch(layout, /else if \(authentication\)|activeWidth|activeHeight/);
   assert.match(layout, /if \(placementChanged\)/);
   assert.match(layout, /UINT flags = SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
