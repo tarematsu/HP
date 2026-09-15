@@ -96,14 +96,12 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
   assert.doesNotMatch(wrapper, /#define ExecuteScript|RewriteSpotify|spotify_viewport_recovery\.inc|spotify_lonesome_guard\.inc/);
 });
 
-test('Spotify player pages reduce decorative CSS work without network resource blocking', () => {
-  assert.match(scripts, /animation: none !important/);
-  assert.match(scripts, /transition: none !important/);
-  assert.match(scripts, /data-testid="left-sidebar"/);
-  assert.match(scripts, /data-testid="global-nav-bar"/);
-  assert.match(scripts, /content-visibility: hidden !important/);
-  assert.match(scripts, /Keep the player footer \/ elapsed-time \/ progress controls untouched/);
-  assert.match(scripts, /\[data-testid="now-playing-bar"\]/);
+test('Spotify player pages receive no injected CSS and no network resource blocking', () => {
+  assert.doesNotMatch(scripts, /createElement\(['"]style['"]\)/);
+  assert.doesNotMatch(scripts, /__homePanelSpotifyStaticLightweight/);
+  assert.doesNotMatch(scripts, /!important/);
+  assert.doesNotMatch(scripts, /animation\s*:|transition\s*:|background-image\s*:/);
+  assert.doesNotMatch(scripts, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
   assert.doesNotMatch(spotify, /Network\.setBlockedURLs/);
   assert.doesNotMatch(spotify, /kSpotifyBlockedDecorativeUrls|kSpotifyUnblockedDecorativeUrls/);
   assert.doesNotMatch(spotify, /SetSpotifyDecorativeResourceBlocking/);
