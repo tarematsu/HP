@@ -15,19 +15,14 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
   let done = false;
 
   const go = href => {
-    if (!href || done) return false;
-    try {
-      const url = new URL(href, location.href);
-      if (!/^(www\.)?youtube\.com$/.test(url.hostname) ||
-          url.pathname !== '/watch' || !url.searchParams.get('v')) return false;
-      if (list) url.searchParams.set('list', list);
-      done = true;
-      location.assign(url.href);
-      return true;
-    } catch (_) { return false; }
+    if (!href || done) return;
+    const url = new URL(href);
+    if (url.pathname !== '/watch' || !url.searchParams.has('v')) return;
+    if (list) url.searchParams.set('list', list);
+    done = true;
+    location.assign(url.href);
   };
   const resolve = () => {
-    if (done) return;
     const link = document.querySelector(
         'ytd-playlist-video-renderer a#thumbnail[href*="/watch"],'
         + 'ytd-playlist-video-renderer a#video-title[href*="/watch"]');
@@ -37,9 +32,7 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
   document.addEventListener('yt-page-data-updated', resolve);
   document.addEventListener('yt-navigate-finish', resolve);
   resolve();
-  setTimeout(() => {
-    if (!done) location.assign(cloud);
-  }, 7000);
+  setTimeout(() => !done && location.assign(cloud), 7000);
   return true;
 })()
 )JS";
