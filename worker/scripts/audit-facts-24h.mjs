@@ -9,8 +9,13 @@ const channelId = Math.max(1, Math.trunc(Number(process.env.CHANNEL_ID || 318)))
 const minuteMs = 60_000;
 const windowMs = 24 * 60 * minuteMs;
 const recentGuardMs = 5 * minuteMs;
-const endMinute = Math.floor((Date.now() - recentGuardMs) / minuteMs) * minuteMs;
-const startMinute = endMinute - windowMs;
+const requestedStart = Number(process.env.AUDIT_WINDOW_START_MS);
+const requestedEnd = Number(process.env.AUDIT_WINDOW_END_MS);
+const fixedWindow = Number.isFinite(requestedStart) && Number.isFinite(requestedEnd) && requestedStart < requestedEnd;
+const endMinute = fixedWindow
+  ? Math.trunc(requestedEnd)
+  : Math.floor((Date.now() - recentGuardMs) / minuteMs) * minuteMs;
+const startMinute = fixedWindow ? Math.trunc(requestedStart) : endMinute - windowMs;
 
 function wrangler(args) {
   return execFileSync(process.execPath, [wranglerScript, ...args], {
@@ -46,6 +51,7 @@ WHERE channel_id=${channelId} AND minute_at>=${startMinute} AND minute_at<${endM
 const result = rows(parse(wrangler([
   'd1', 'execute', databaseName, '--remote', '--yes', '--json', '--command', sql,
 ])))[0] || {};
+const expectedMinutes = Math.max(0, Math.trunc((endMinute - startMinute) / minuteMs));
 const summary = {
   database_name: databaseName,
   channel_id: channelId,
@@ -53,12 +59,13 @@ const summary = {
   window_end_ms: endMinute,
   window_start: new Date(startMinute).toISOString(),
   window_end: new Date(endMinute).toISOString(),
+  expected_minute_count: expectedMinutes,
   row_count: Number(result.row_count || 0),
   distinct_minute_count: Number(result.minute_count || 0),
   first_minute_at: Number(result.first_minute_at || 0) || null,
   last_minute_at: Number(result.last_minute_at || 0) || null,
 };
-summary.needs_repair = summary.distinct_minute_count < 1440;
+summary.needs_repair = summary.distinct_minute_count < expectedMinutes;
 
 console.log(JSON.stringify(summary));
 if (process.env.GITHUB_OUTPUT) {
@@ -67,5 +74,5 @@ if (process.env.GITHUB_OUTPUT) {
 }
 if (process.env.GITHUB_STEP_SUMMARY) {
   appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-    `\n## Stationhead minute facts — last 24 hours\n\n- Channel: **${channelId}**\n- Rows: **${summary.row_count}**\n- Distinct minutes: **${summary.distinct_minute_count} / 1440**\n- Repair required: **${summary.needs_repair}**\n- Window: ${summary.window_start} → ${summary.window_end}\n`);
+    `\n## Stationhead minute facts — last 24 hours\n\n- Channel: **${channelId}**\n- Rows: **${summary.row_count}**\n- Distinct minutes: **${summary.distinct_minute_count} / ${expectedMinutes}**\n- Repair required: **${summary.needs_repair}**\n- Window: ${summary.window_start} → ${summary.window_end}\n`);
 }
