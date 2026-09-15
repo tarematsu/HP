@@ -41,37 +41,10 @@ void SpotifyWebViews::Start() noexcept {
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
   robustSchedulerStarted_ = false;
-  schedulerHost_.store(nullptr, std::memory_order_release);
-  schedulerWakePosted_.store(false, std::memory_order_release);
-  schedulerCursor_ = 0;
-  scheduleStartTick_ = 0;
-  hostLayoutMask_ = ~0u;
-  hostLayoutActiveSlot_ = kAccountCount;
-  hostLayoutAuthenticationSlot_ = kAccountCount;
 
   for (Slot& slot : slots_) {
-    slot.state = SlotState::NotCreated;
-    slot.targetGeneration = 0;
-    slot.nextRecoveryTick = 0;
-    slot.asyncEpoch = 0;
-    slot.asyncStartedTick = 0;
-    slot.pageEpoch = 0;
-    slot.asyncWork = AsyncWork::None;
-    slot.playerPage = false;
-    slot.loginPage = false;
-    slot.timedObserverReady = false;
-    slot.controllerCreating = false;
-    slot.controllerCreateTick = 0;
-    slot.timedRotationCycle = 0;
-    slot.timedRotationPosition = 0;
-    slot.timedCompletionDeadlineTick = 0;
-    slot.timedCompletionDeadlineGeneration = 0;
-    slot.trustedClickBlockedUntilTick = 0;
-    slot.timedRotationActive = false;
-    slot.observedTrackTitle.clear();
-    slot.playbackConfirmed = false;
-    slot.playbackConfirmedAt = {};
-    if (!CreateHost(slot)) continue;
+    CloseSlot(slot);
+    CreateHost(slot);
   }
 
   Resize();
