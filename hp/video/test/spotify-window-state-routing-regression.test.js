@@ -22,6 +22,8 @@ test('Spotify stable playback is parked offscreen while work states stay onscree
     'void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {',
   );
 
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
   assert.match(placeHosts, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\);/);
   assert.match(
     placeHosts,
@@ -32,8 +34,6 @@ test('Spotify stable playback is parked offscreen while work states stay onscree
     /int hostY = backgroundWork \|\| authentication \? y : client\.bottom \+ 1;/,
   );
   assert.match(placeHosts, /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM;/);
-  assert.match(placeHosts, /kSpotifyBackgroundWidth = 480/);
-  assert.match(placeHosts, /kSpotifyBackgroundHeight = 270/);
 });
 
 test('Spotify authentication is onscreen foreground and Monitor C remains full-size foreground', () => {
