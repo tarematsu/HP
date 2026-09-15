@@ -55,6 +55,7 @@ test('background rendering never collapses Stationhead to 1x1', () => {
   assert.match(applyLayout, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /const RECT offscreen = hidePlayback[\s\S]*StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(applyLayout, /authHostBounds = showAuth \? workspaceBounds : authOffscreen/);
   assert.match(applyLayout, /controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(applyLayout, /hostWidth = .*\? .* : 1/);
   assert.doesNotMatch(applyLayout, /put_IsVisible\(FALSE\)/);
@@ -117,7 +118,7 @@ test('authentication uses a fullscreen foreground surface and parks playback off
   );
   assert.match(applyLayout, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /const RECT offscreen = hidePlayback[\s\S]*authOffscreen/);
-  assert.match(applyLayout, /authHostBounds = showAuth \? workspaceBounds : offscreen/);
+  assert.match(applyLayout, /authHostBounds = showAuth \? workspaceBounds : authOffscreen/);
   assert.match(applyLayout, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
 
   const activeAuth = section(
