@@ -15,19 +15,21 @@ function section(text, start, end) {
 }
 
 const applyLayout = section(layout, 'void ApplyStationheadChildLayout(',
-  '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()');
+  '}  // namespace');
 
-test('auth promotion keeps playback host alive', () => {
-  assert.match(applyLayout, /const bool playbackFullSize = playbackForeground \|\| playbackBackgroundFullSize;/);
-  assert.match(applyLayout, /controller->put_IsVisible\(playbackControllerVisible\)/);
+test('auth promotion keeps playback host alive offscreen', () => {
+  assert.match(applyLayout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(applyLayout, /controller->put_IsVisible\(TRUE\)/);
   assert.match(applyLayout, /authController->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(applyLayout, /ShowWindow\([^\n]*SW_HIDE/);
 });
 
-test('background surfaces are resized instead of hidden', () => {
+test('background surfaces are moved offscreen instead of hidden or collapsed', () => {
   assert.match(applyLayout, /SetWindowPos\(hostWindow, hostPlacement/);
   assert.match(applyLayout, /SetWindowPos\(authHostWindow, authPlacement/);
-  assert.match(applyLayout, /const RECT contentBounds\{0, 0, hostWidth, hostHeight\};/);
+  assert.match(applyLayout, /const RECT playbackControllerBounds\{0, 0, playbackWidth, playbackHeight\};/);
+  assert.match(applyLayout, /const RECT authControllerBounds\{0, 0, authWidth, authHeight\};/);
+  assert.doesNotMatch(applyLayout, /hostWidth = .*: 1/);
 });
 
 test('only interactive surfaces receive WebView2 focus', () => {
