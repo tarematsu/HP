@@ -163,13 +163,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   const now = Date.now();
   const fullscreenSettleMs = 1500;
   const armFullscreen = () => {
-    let target = player.querySelector('.ytp-fullscreen-button');
-    if (!valid(target)) {
-      target = Array.from(player.querySelectorAll(
-          'button,[role="button"],[aria-label],[title]'))
-          .find(element => valid(element) &&
-              /(全画面|fullscreen|full screen)/i.test(text(element))) || null;
-    }
+    const target = player.querySelector('.ytp-fullscreen-button');
     return arm(target, 'fullscreen', 1200);
   };
 
@@ -197,7 +191,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       }
     }
 
-    if (!fullscreen() && now >= Number(state.adFullscreenReadyAt || 0)) {
+    if (!fullscreen() && now >= state.adFullscreenReadyAt) {
       const action = armFullscreen();
       if (action) return action;
     }
@@ -206,13 +200,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         '.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,'
         + '.videoAdUiSkipButton,[class*="ytp-ad-skip"],[aria-label*="Skip ad" i],'
         + '[aria-label*="広告をスキップ"],[aria-label*="広告を飛ばす"]';
-    let target = Array.from(player.querySelectorAll(skipSelector)).find(valid) || null;
-    if (!target) {
-      target = Array.from(player.querySelectorAll(
-          'button,tp-yt-paper-button,[role="button"]'))
-          .find(element => valid(element) &&
-              /(広告をスキップ|広告を飛ばす|skip\s*ad(?:s)?)/i.test(text(element))) || null;
-    }
+    const target = Array.from(player.querySelectorAll(skipSelector)).find(valid) || null;
     if (target) return arm(target, 'skip-ad', 600);
     recheck();
     return 'recovery';
@@ -242,32 +230,27 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
 
   const advance = () => {
-    if (now - Number(state.nextRequestedAt || 0) < 8000) {
+    if (now - state.nextRequestedAt < 8000) {
       recheck();
       return 'recovery';
     }
-    const next = player.querySelector('.ytp-next-button[href]');
-    try {
-      const candidate = new URL(next?.href || '', location.href);
-      if (candidate.pathname === '/watch' && candidate.searchParams.get('v') &&
-          candidate.searchParams.get('list') === playlistId &&
-          candidate.href !== location.href) {
-        state.nextRequestedAt = now;
-        location.assign(candidate.href);
-        return 'recovery';
-      }
-    } catch (_) {}
+    state.nextRequestedAt = now;
+    const candidate = new URL(
+        player.querySelector('.ytp-next-button[href]')?.href || location.href);
+    if (candidate.pathname === '/watch' && candidate.searchParams.get('v') &&
+        candidate.searchParams.get('list') === playlistId &&
+        candidate.href !== location.href) {
+      location.assign(candidate.href);
+      return 'recovery';
+    }
     try {
       if (typeof player.nextVideo === 'function') {
-        state.nextRequestedAt = now;
         player.nextVideo();
         recheck();
         return 'recovery';
       }
     } catch (_) {}
-    const action = arm(player.querySelector('.ytp-next-button'), 'next', 3000);
-    if (action) state.nextRequestedAt = now;
-    return action || 'reload';
+    return arm(player.querySelector('.ytp-next-button'), 'next', 3000) || 'reload';
   };
 
   if (video?.ended) return advance();
