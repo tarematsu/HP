@@ -18,6 +18,14 @@ const mvPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
 );
+const embeddedUi = readFileSync(
+  new URL('../../native/src/embedded_ui.cpp', import.meta.url),
+  'utf8',
+);
+const nativeResources = readFileSync(
+  new URL('../../native/resources/HomePanel.rc.in', import.meta.url),
+  'utf8',
+);
 
 test('course 36 schedule remains isolated from the direct media page', () => {
   assert.match(rendererPanels, /waste_calendar_section\.inc/);
@@ -52,11 +60,25 @@ test('clock waste strip always contains three dated illustrated target categorie
   assert.match(calendar, /L"--\/--"/);
   assert.match(calendar, /L"%u\/%u"/);
   assert.doesNotMatch(calendar, /日後/);
-  assert.match(calendar, /bin_kan_1\.jpg/);
-  assert.match(calendar, /yuugai_1\.jpg/);
-  assert.match(calendar, /kami_1\.jpg/);
-  assert.match(calendar, /WinHttpDownload\(/);
+  assert.match(calendar, /bottles-cans\.png/);
+  assert.match(calendar, /nonburnable-hazardous\.png/);
+  assert.match(calendar, /paper\.png/);
+  assert.match(calendar, /DecodeImageFileToBitmap\(/);
+  assert.doesNotMatch(calendar, /WinHttpDownload\(/);
   assert.match(calendar, /DrawCourse36WasteFallbackPictogram\(/);
+});
+
+test('cropped waste illustrations are bundled for offline rendering', () => {
+  for (const [id, name] of [
+    [120, 'bottles-cans.png'],
+    [121, 'nonburnable-hazardous.png'],
+    [122, 'paper.png'],
+  ]) {
+    assert.match(embeddedUi, new RegExp(`\\{${id}, L"waste-icons/${name.replace('.', '\\.')}"\\}`));
+    assert.match(nativeResources, new RegExp(`${id} RCDATA`));
+    const bytes = readFileSync(new URL(`../../native/scripts/ui/waste-icons/${name}`, import.meta.url));
+    assert.equal(bytes.subarray(1, 4).toString(), 'PNG');
+  }
 });
 
 test('course 36 fiscal-year table includes the published July week', () => {

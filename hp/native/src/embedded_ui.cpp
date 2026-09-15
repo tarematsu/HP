@@ -61,6 +61,9 @@ struct RuntimeAsset {
 constexpr RuntimeAsset kRuntimeAssets[] = {
     {110, L"radar-satellite.png"},
     {112, L"radar-map.png"},
+    {120, L"waste-icons/bottles-cans.png"},
+    {121, L"waste-icons/nonburnable-hazardous.png"},
+    {122, L"waste-icons/paper.png"},
 };
 
 void AppendAssetStamp(std::string& stamp, const RuntimeAsset& asset) {
@@ -159,6 +162,11 @@ bool InstallRuntimeAssets() noexcept {
     if (!RuntimeAssetsReady(folder, signature)) {
       bool installed = true;
       for (const RuntimeAsset& asset : kRuntimeAssets) {
+        fs::create_directories((folder / asset.name).parent_path(), error);
+        if (error) {
+          installed = false;
+          error.clear();
+        }
         installed = WriteContent(folder / asset.name, ReadResource(asset.id)) && installed;
       }
       fs::create_directories(folder / L"weather-icons", error);
