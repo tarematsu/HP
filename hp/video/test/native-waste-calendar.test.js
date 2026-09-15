@@ -27,34 +27,36 @@ test('course 36 schedule remains isolated from the direct media page', () => {
   assert.doesNotMatch(mvPanel, /__COURSE36_SCHEDULE__/);
 });
 
-test('waste calendar summary is rendered below the clock instead of on the radar', () => {
-  assert.match(calendar, /Course36ClockWasteSummary\(const SYSTEMTIME& now\)/);
+test('waste collection strip is rendered below the clock instead of on the radar', () => {
+  assert.match(calendar, /DrawCourse36ClockWasteNotices\(/);
   assert.doesNotMatch(calendar, /DrawCourse36WasteCalendarOverlay/);
   assert.doesNotMatch(calendar, /DrawCardOutlineWithWasteCalendarOverlay/);
   assert.doesNotMatch(rendererPanels, /DrawCardOutlineWithWasteCalendarOverlay/);
-  assert.match(layout, /Course36ClockWasteSummary\(nativeClockNow_\)/);
+  assert.match(layout, /DrawCourse36ClockWasteNotices\(\(dc\), hpWasteNow, hpWasteRect\)/);
   assert.match(layout, /nativeClockReady_/);
   assert.match(layout, /hpWasteRect\{hpClockContent\.left, hpTimeRect\.bottom/);
-  assert.match(
-    layout,
-    /hpWasteText[\s\S]*TierFont\(FontTier::Medium\)[\s\S]*DrawTextInRect\(\(dc\), hpWasteText, hpWasteRect/,
-  );
+  assert.doesNotMatch(layout, /Course36ClockWasteSummary|hpWasteText/);
   assert.match(layout, /const std::wstring hpVersionText = kVersion;/);
   assert.doesNotMatch(layout, /L"アプリバージョン "/);
   assert.match(layout, /TierFont\(FontTier::Small\)/);
 });
 
-test('clock waste summary is limited to two non-burnable hazardous, bottles/cans, or paper notices', () => {
-  assert.match(calendar, /BottlesCansPet: return L"びんかん"/);
-  assert.match(calendar, /NonBurnableHazardous: return L"不燃有害"/);
-  assert.match(calendar, /Paper: return L"紙類"/);
-  assert.doesNotMatch(calendar, /L"可燃"|L"プラ"|L"布類"/);
-  assert.match(calendar, /foundCount < 2/);
-  assert.doesNotMatch(calendar, /foundCount < 3/);
-  assert.match(
-    calendar,
-    /swprintf_s\(item, L"%d日後 %ls", offset, Course36ClockWasteLabel\(kind\)\)/,
-  );
+test('clock waste strip always contains three dated illustrated target categories', () => {
+  assert.match(calendar, /std::array<Course36ClockWasteNotice, 3>/);
+  assert.match(calendar, /std::array<Course36WasteKind, 3> kCourse36ClockWasteKinds/);
+  assert.match(calendar, /Course36WasteKind::BottlesCansPet/);
+  assert.match(calendar, /Course36WasteKind::NonBurnableHazardous/);
+  assert.match(calendar, /Course36WasteKind::Paper/);
+  assert.match(calendar, /foundCount < 3/);
+  assert.doesNotMatch(calendar, /foundCount < 2/);
+  assert.match(calendar, /L"--\/--"/);
+  assert.match(calendar, /L"%u\/%u"/);
+  assert.doesNotMatch(calendar, /日後/);
+  assert.match(calendar, /bin_kan_1\.jpg/);
+  assert.match(calendar, /yuugai_1\.jpg/);
+  assert.match(calendar, /kami_1\.jpg/);
+  assert.match(calendar, /WinHttpDownload\(/);
+  assert.match(calendar, /DrawCourse36WasteFallbackPictogram\(/);
 });
 
 test('course 36 fiscal-year table includes the published July week', () => {
