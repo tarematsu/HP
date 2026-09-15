@@ -63,8 +63,6 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   preflight += L"const nx=" + std::to_wstring(xTenThousandths) + L";";
   preflight += L"const ny=" + std::to_wstring(yTenThousandths) + L";";
   preflight +=
-      L"const media=Array.from(document.querySelectorAll('audio, video'));"
-      L"if(media.some(m=>!m.ended&&!m.paused))return false;"
       L"if(window.innerWidth<=0||window.innerHeight<=0)return false;"
       L"const x=window.innerWidth*nx/10000;"
       L"const y=window.innerHeight*ny/10000;"
@@ -74,6 +72,8 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
       L"const testid=((button.getAttribute('data-testid')||'').trim().toLowerCase());"
       L"const trustedPlay=testid==='play-button'||testid==='control-button-playpause';"
       L"if(!trustedPlay)return false;"
+      L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
+      L"if(label.includes('pause')||label.includes('一時停止'))return false;"
       L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
       L"if(runtime&&typeof runtime.armTrustedStart==='function'){"
       L"runtime.armTrustedStart('" + std::to_wstring(targetGeneration) + L"');}"
