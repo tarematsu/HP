@@ -94,7 +94,30 @@ void Renderer::DrawEnergySectionUncached(HDC dc, const RECT& card) {
   RECT chart{body.left, body.top + summaryHeight + SpanY(body, 40),
              body.right, body.bottom - plugHeight - SpanY(body, 25)};
   if (chart.bottom > chart.top + 30 && !nativeDashboard_.octopusProfile.empty()) {
-    const double maximum = nativeDashboard_.octopusRender.maximum;
+    double maximum = 0.1;
+    double currentUsage = 0.0;
+    double previousUsage = 0.0;
+    bool currentComplete = nativeDashboard_.octopusProfile.size() == 7;
+    bool previousComplete = currentComplete;
+    for (const auto& point : nativeDashboard_.octopusProfile) {
+      if (std::isfinite(point.currentTotal)) {
+        currentUsage += point.currentTotal;
+        maximum = std::max(maximum, point.currentTotal);
+      } else {
+        currentComplete = false;
+      }
+      if (std::isfinite(point.previousTotal)) {
+        previousUsage += point.previousTotal;
+        maximum = std::max(maximum, point.previousTotal);
+      } else {
+        previousComplete = false;
+      }
+    }
+    maximum *= 1.1;
+    const std::wstring currentLegend = nativeDashboard_.currentEnergyLabel + L" " +
+        (currentComplete ? Fixed(currentUsage, 1) : L"--.-");
+    const std::wstring previousLegend = nativeDashboard_.previousEnergyLabel + L" " +
+        (previousComplete ? Fixed(previousUsage, 1) : L"--.-");
 
     const int chartHeight = static_cast<int>(chart.bottom - chart.top);
     const int legendHeight = std::clamp(chartHeight * 20 / 100, 12, 22);
@@ -114,9 +137,6 @@ void Renderer::DrawEnergySectionUncached(HDC dc, const RECT& card) {
       SelectObject(dc, previousBrush);
       if (previousPen) SelectObject(dc, previousPen);
     };
-
-    const std::wstring& currentLegend = nativeDashboard_.octopusRender.currentLegend;
-    const std::wstring& previousLegend = nativeDashboard_.octopusRender.previousLegend;
 
     SIZE currentTextSize{};
     SIZE previousTextSize{};
@@ -201,11 +221,11 @@ void Renderer::DrawEnergySectionUncached(HDC dc, const RECT& card) {
         const int groupLeft = plot.left + index * groupWidth;
         const int currentLeft = groupLeft + barGap;
 
-        if (point.currentComplete && std::isfinite(point.currentTotal)) {
+        if (std::isfinite(point.currentTotal)) {
           RECT bar{currentLeft, yFor(point.currentTotal), currentLeft + barWidth, plot.bottom};
           if (bar.bottom > bar.top) DrawWidgetCard(dc, bar, kWidgetCyan, 3, 220);
         }
-        if (point.previousComplete && std::isfinite(point.previousTotal)) {
+        if (std::isfinite(point.previousTotal)) {
           RECT bar{currentLeft, yFor(point.previousTotal), currentLeft + barWidth, plot.bottom};
           if (bar.bottom > bar.top) drawPreviousOverlay(bar);
         }

@@ -48,63 +48,21 @@ double NumberOrNaN(const JsonObject& object, const wchar_t* name) {
   return json::Number(object, name, std::numeric_limits<double>::quiet_NaN());
 }
 
-std::wstring DeviceState(const JsonObject& item) {
-  const std::wstring type = json::Text(item, L"deviceType");
-  std::wstring state = L"接続";
-  if (type.find(L"Contact") != std::wstring::npos) {
-    state = json::Text(item, L"openState", L"-");
-  } else if (type.find(L"Motion") != std::wstring::npos ||
-             type.find(L"Presence") != std::wstring::npos) {
-    state = json::Boolean(item, L"motion") ? L"検知" : L"静止";
-  } else if (type.find(L"Plug") != std::wstring::npos) {
-    state = L"--W";
-    const double watts = NumberOrNaN(item, L"watts");
-    if (std::isfinite(watts)) {
-      wchar_t buffer[40]{};
-      swprintf_s(buffer, L"%dW", static_cast<int>(std::round(watts)));
-      state = buffer;
-    }
-  }
+double CompleteTotal(const JsonObject& object, const wchar_t* complete,
+                     const wchar_t* total) {
+  return json::Boolean(object, complete) ? NumberOrNaN(object, total)
+                                         : std::numeric_limits<double>::quiet_NaN();
+}
+
+std::wstring PlugState(const JsonObject& item) {
+  const double watts = NumberOrNaN(item, L"watts");
+  std::wstring state = std::isfinite(watts)
+      ? std::to_wstring(static_cast<int>(std::round(watts))) + L"W" : L"--W";
   const double battery = NumberOrNaN(item, L"battery");
   if (std::isfinite(battery)) {
-    wchar_t buffer[24]{};
-    swprintf_s(buffer, L" %d%%", static_cast<int>(std::round(battery)));
-    state += buffer;
+    state += L" " + std::to_wstring(static_cast<int>(std::round(battery))) + L"%";
   }
   return state;
-}
-
-std::wstring FixedOne(double value) {
-  wchar_t buffer[64]{};
-  swprintf_s(buffer, L"%.1f", value);
-  return buffer;
-}
-
-void BuildOctopusRenderProjection(DashboardSnapshot& snapshot) {
-  OctopusRenderProjection projection;
-  projection.currentWeekComplete = snapshot.octopusProfile.size() == 7;
-  projection.previousWeekComplete = projection.currentWeekComplete;
-
-  for (const auto& item : snapshot.octopusProfile) {
-    if (item.currentComplete && std::isfinite(item.currentTotal)) {
-      projection.currentWeekUsage += item.currentTotal;
-      projection.maximum = std::max(projection.maximum, item.currentTotal);
-    } else {
-      projection.currentWeekComplete = false;
-    }
-    if (item.previousComplete && std::isfinite(item.previousTotal)) {
-      projection.previousWeekUsage += item.previousTotal;
-      projection.maximum = std::max(projection.maximum, item.previousTotal);
-    } else {
-      projection.previousWeekComplete = false;
-    }
-  }
-  projection.maximum *= 1.1;
-  projection.currentLegend = snapshot.currentEnergyLabel + L" " +
-      (projection.currentWeekComplete ? FixedOne(projection.currentWeekUsage) : L"--.-");
-  projection.previousLegend = snapshot.previousEnergyLabel + L" " +
-      (projection.previousWeekComplete ? FixedOne(projection.previousWeekUsage) : L"--.-");
-  snapshot.octopusRender = std::move(projection);
 }
 }  // namespace
 
@@ -161,7 +119,6 @@ bool ParseDashboardSnapshot(
       next.currentEnergyLabel = previous->currentEnergyLabel;
       next.previousEnergyLabel = previous->previousEnergyLabel;
       next.octopusProfile = previous->octopusProfile;
-      next.octopusRender = previous->octopusRender;
     } else {
       next.lastMonthUsage = NumberOrNaN(json::Object(octopus, L"lastMonth"), L"usage");
       next.projectedUsage =
@@ -180,18 +137,14 @@ bool ParseDashboardSnapshot(
           const JsonObject item = value.GetObject();
           const std::wstring day = json::Text(item, L"day");
           if (day.empty()) continue;
-          const bool currentComplete = json::Boolean(item, L"currentComplete");
-          const bool previousComplete = json::Boolean(item, L"previousComplete");
-          double currentTotal = NumberOrNaN(item, L"currentTotal");
-          double previousTotal = NumberOrNaN(item, L"previousTotal");
-          if (!currentComplete) currentTotal = std::numeric_limits<double>::quiet_NaN();
-          if (!previousComplete) previousTotal = std::numeric_limits<double>::quiet_NaN();
-          next.octopusProfile.push_back(OctopusProfileData{
-              day, currentTotal, previousTotal, currentComplete, previousComplete});
+          next.octopusProfile.push_back({
+              day,
+              CompleteTotal(item, L"currentComplete", L"currentTotal"),
+              CompleteTotal(item, L"previousComplete", L"previousTotal"),
+          });
         } catch (...) {
         }
       }
-      BuildOctopusRenderProjection(next);
     }
 
     // SwitchBot is synchronized through switchbot.json and is intentionally not
@@ -237,7 +190,7 @@ bool ParseSwitchBotDevices(const std::string& text,
         next.push_back({
             json::Text(item, L"deviceName",
                        json::Text(item, L"deviceId", L"SwitchBot")),
-            DeviceState(item),
+            PlugState(item),
         });
       } catch (...) {
       }
