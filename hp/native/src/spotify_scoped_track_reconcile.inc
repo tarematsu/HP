@@ -2,7 +2,7 @@ namespace hp {
 namespace {
 
 // Minimal playback start path for the already-selected Spotify track page:
-// 1) inspect Spotify's own Play/Pause control;
+// 1) prefer the target page Play/Pause control over the global player control;
 // 2) if it is Play, return its center for one trusted CDP click;
 // 3) if it is already Pause, wait for observer confirmation.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
@@ -52,13 +52,18 @@ LR"JS(
     ];
   };
 
-  const button = Array.from(document.querySelectorAll(
-      'button[data-testid="play-button"], '
-      + 'button[data-testid="control-button-playpause"]'))
-      .find(visible) || null;
-  if (!button) return null;
-  if (isPauseControl(button)) return true;
-  return point(button);
+  const pageButton = Array.from(document.querySelectorAll(
+      'button[data-testid="play-button"]')).find(visible) || null;
+  if (pageButton) {
+    if (isPauseControl(pageButton)) return true;
+    return point(pageButton);
+  }
+
+  const playerButton = Array.from(document.querySelectorAll(
+      'button[data-testid="control-button-playpause"]')).find(visible) || null;
+  if (!playerButton) return null;
+  if (isPauseControl(playerButton)) return true;
+  return point(playerButton);
 })()
 )JS";
 
