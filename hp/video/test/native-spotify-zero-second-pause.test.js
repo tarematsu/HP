@@ -15,23 +15,15 @@ const controller = source('spotify_controller_lifecycle.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
-test('zero-second recovery prioritizes target Play before AUDIO fallback', () => {
+test('zero-second recovery starts playback only through trusted CDP Play click', () => {
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /isPauseControl\(pagePlay\)\) return true/);
-  assert.match(scoped, /return point\(pagePlay\)/);
-  assert.match(scoped, /const audio = document\.querySelector\('audio'\)/);
-  assert.doesNotMatch(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
-  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return 'observing'/);
-  assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration !== generation/);
-  assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration = generation/);
-  assert.match(scoped, /const result = audio\.play\(\)/);
-  assert.match(scoped, /return 'direct-play'/);
-  const targetControl = scoped.indexOf('const pagePlay');
-  const audio = scoped.indexOf("const audio = document.querySelector('audio')");
-  assert.ok(targetControl >= 0 && audio > targetControl);
-  assert.doesNotMatch(scoped, /currentTrack|currentMatchesTarget|navigator\.mediaSession|buttonIntent|settling/);
-  assert.doesNotMatch(scripts, /__homePanelSpotifyTryDirectPlay/);
+  assert.match(scoped, /if \(isPauseControl\(button\)\) return true/);
+  assert.match(scoped, /return point\(button\)/);
+  assert.doesNotMatch(scoped, /querySelector\('audio'\)/);
+  assert.doesNotMatch(scoped, /audio\.play\(/);
+  assert.doesNotMatch(scoped, /direct-play|DirectPlay/);
+  assert.doesNotMatch(music, /direct-play|DirectPlay/);
 });
 
 test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness', () => {
@@ -45,18 +37,18 @@ test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness
   assert.doesNotMatch(startup, /timedObserverReady|ArmTimedEndObserver/);
 });
 
-test('direct audio play waits five seconds for observer confirmation before trusted-click fallback', () => {
-  assert.match(music, /kSpotifyDirectPlayConfirmWaitMs = 5ULL \* 1000ULL/);
-  assert.match(
-    music,
-    /std::wstring_view\(json\) == L"true"[\s\S]*std::wstring_view\(json\) == L"\\"direct-play\\""[\s\S]*callbackNow \+ kSpotifyDirectPlayConfirmWaitMs/,
-  );
+test('CDP Play waits five seconds for observer confirmation', () => {
+  assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+  assert.match(music, /std::wstring_view\(json\) == L"true"/);
+  assert.match(music, /callbackNow \+ kSpotifyCdpPlayConfirmWaitMs/);
   assert.match(music, /ArmTimedEndObserver\(\*target\)/);
   assert.match(music, /ParseNormalizedPoint\(json, &x, &y\)/);
-  assert.doesNotMatch(music, /kSpotifyPlaybackStartRetryMs/);
+  assert.match(music, /ClickSlotNormalizedPoint\(\*target, x, y\)/);
+  assert.doesNotMatch(music, /kSpotifyDirectPlayConfirmWaitMs/);
+  assert.doesNotMatch(music, /"\\"direct-play\\""/);
 });
 
-test('not-yet-created AUDIO or Play control is retried without a recovery sub-state machine', () => {
+test('not-yet-created Play control is retried without a recovery sub-state machine', () => {
   const pointStart = music.indexOf('if (ParseNormalizedPoint(json, &x, &y))');
   const executeFailure = music.indexOf('if (FAILED(started))', pointStart);
   assert.ok(pointStart >= 0 && executeFailure > pointStart);
@@ -75,9 +67,7 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('raw media activity is not accepted as target playback confirmation', () => {
-  assert.doesNotMatch(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
-  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return 'observing'/);
+test('playback confirmation stays observer-owned', () => {
   assert.match(scoped, /label\.includes\('pause'\) \|\| label\.includes\('一時停止'\)/);
   assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
   assert.doesNotMatch(controller, /get_DocumentTitle/);
