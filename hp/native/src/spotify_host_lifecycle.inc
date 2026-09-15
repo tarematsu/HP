@@ -40,7 +40,6 @@ void SpotifyWebViews::Start() noexcept {
 
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
-  robustSchedulerStarted_ = false;
 
   for (Slot& slot : slots_) {
     CloseSlot(slot);
@@ -48,7 +47,7 @@ void SpotifyWebViews::Start() noexcept {
   }
 
   Resize();
-  StartAutonomousSchedule(GetTickCount64());
+  StartAutonomousSchedule();
 }
 
 void SpotifyWebViews::RecomputeForeground() noexcept {
@@ -130,7 +129,6 @@ void SpotifyWebViews::Shutdown() noexcept {
   schedulerWakePosted_.store(false, std::memory_order_release);
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
-  robustSchedulerStarted_ = false;
   schedulerCursor_ = 0;
   scheduleStartTick_ = 0;
 }
