@@ -1,8 +1,4 @@
 namespace hp {
-namespace {
-constexpr int kSpotifyInitialHostWidth = 160;
-constexpr int kSpotifyInitialHostHeight = 320;
-}  // namespace
 
 bool SpotifyWebViews::EnsureHostClass() noexcept {
   static std::once_flag once;
@@ -32,14 +28,11 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
 
   RECT client{};
   if (!GetClientRect(parentWindow_, &client)) return false;
-  const MediaSurfaceAnchors anchors = ComputeMediaSurfaceAnchors(client);
-  const RECT surface = CenterMediaSurfaceOnAnchor(
-      client, anchors.air, kSpotifyInitialHostWidth, kSpotifyInitialHostHeight);
-  const int width = std::max(1L, surface.right - surface.left);
-  const int height = std::max(1L, surface.bottom - surface.top);
+  const int width = std::max(1L, client.right - client.left);
+  const int height = std::max(1L, client.bottom - client.top);
   slot.hostWindow = CreateWindowExW(
       0, kSpotifyHostClass, L"Spotify", WS_CHILD | WS_CLIPSIBLINGS,
-      surface.left, surface.top, width, height,
+      client.left, client.top, width, height,
       parentWindow_, nullptr, GetModuleHandleW(nullptr), &slot);
   const bool created = slot.hostWindow && IsWindow(slot.hostWindow);
   if (created && slot.index == 0) {
