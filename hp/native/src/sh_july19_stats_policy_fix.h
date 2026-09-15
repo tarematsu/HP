@@ -1,6 +1,6 @@
 #pragma once
 
-#include "stationhead_native_stats.h"
+#include "config.h"
 
 namespace hp {
 

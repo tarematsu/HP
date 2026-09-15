@@ -17,15 +17,15 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('single Stationhead mute path uses the native WebView2 mute API', () => {
+test('single Stationhead mute path uses only the native WebView2 mute API', () => {
   const setMuted = section(audio, 'void StationheadPlayer::SetMuted(bool muted) noexcept',
-    'bool StationheadPlayer::Muted() const noexcept');
+    'void StationheadPlayer::ApplyMute() const noexcept');
   assert.match(setMuted, /ApplyMute\(\)/);
-  assert.doesNotMatch(setMuted, /ExecuteScript|StationheadVolumeScript/);
 
   const applyMute = section(audio, 'void StationheadPlayer::ApplyMute() const noexcept',
-    'void StationheadPlayer::ApplyVolume() const noexcept');
+    'void StationheadPlayer::EnsureDistinctBrowserIdentity() noexcept');
   assert.match(applyMute, /put_IsMuted/);
+  assert.doesNotMatch(audio, /SetVolume|ApplyVolume|StationheadVolumeScript|ExecuteScript/);
 
   const handleMute = section(handles,
     'void StationheadHandleBase::SetAudioMuted(bool muted) noexcept',

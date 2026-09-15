@@ -15,32 +15,16 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('A/B and MUTE actions only update the persistent playback WebView', () => {
+test('MUTE only updates the persistent playback WebView', () => {
   const audioApplication = section(
     audioSource,
     'void StationheadPlayer::ApplyMute() const noexcept',
-    'void StationheadPlayer::ApplyVolume() const noexcept',
+    'void StationheadPlayer::EnsureDistinctBrowserIdentity() noexcept',
   );
 
   assert.match(audioApplication, /ComPtr<ICoreWebView2> webview = webview_/);
   assert.match(audioApplication, /webview\.As\(&audio\)/);
   assert.match(audioApplication, /audio->put_IsMuted/);
-  assert.doesNotMatch(audioApplication, /authWebview_/);
-  assert.doesNotMatch(audioApplication, /ApplyVolume|ExecuteScript|StationheadVolumeScript/);
-});
-
-test('explicit volume-script failures remain inside their noexcept boundary', () => {
-  const applyVolume = section(
-    audioSource,
-    'void StationheadPlayer::ApplyVolume() const noexcept',
-    '// Window B\'s isolated WebView2 environment',
-  );
-
-  assert.match(applyVolume, /try \{[\s\S]*StationheadVolumeScript/);
-  assert.match(applyVolume, /catch \(\.\.\.\)/);
-  assert.match(applyVolume, /SUCCEEDED\(result\) \? percent : -1/);
-  assert.match(
-    applyVolume,
-    /catch \(\.\.\.\) \{[\s\S]*appliedVolumePercent_\.store\(-1/,
-  );
+  assert.doesNotMatch(audioApplication, /authWebview_|ExecuteScript|StationheadVolumeScript/);
+  assert.doesNotMatch(audioSource, /SetVolume|ApplyVolume|StationheadVolumeScript/);
 });

@@ -1,5 +1,4 @@
 #include "sh.h"
-#include "sh_shared.h"
 
 namespace hp {
 
@@ -8,28 +7,11 @@ void StationheadPlayer::SetMuted(bool muted) noexcept {
   ApplyMute();
 }
 
-bool StationheadPlayer::Muted() const noexcept {
-  return audioMuted_.load(std::memory_order_relaxed);
-}
-
-void StationheadPlayer::SetVolume(double volume) noexcept {
-  audioVolume_.store(std::clamp(volume, 0.0, 1.0), std::memory_order_relaxed);
-  ApplyVolume();
-}
-
-double StationheadPlayer::Volume() const noexcept {
-  return audioVolume_.load(std::memory_order_relaxed);
-}
-
 void StationheadPlayer::ApplyMute() const noexcept {
   const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
   if (appliedMuted_.load(std::memory_order_relaxed) == muted) return;
 
   bool applied = true;
-  // Hold a local COM reference for the complete call. Audio buttons can be
-  // pressed while a navigation or recovery path is replacing the member
-  // WebView; the local reference prevents the target from disappearing during
-  // QueryInterface/put_IsMuted re-entrancy.
   ComPtr<ICoreWebView2> webview = webview_;
   if (webview) {
     ComPtr<ICoreWebView2_8> audio;
@@ -37,37 +19,8 @@ void StationheadPlayer::ApplyMute() const noexcept {
         SUCCEEDED(audio->put_IsMuted(muted ? TRUE : FALSE));
   }
   appliedMuted_.store(applied ? muted : -1, std::memory_order_relaxed);
-
-  // A/B and MUTE are native WebView2 audio-routing operations. Do not execute
-  // page JavaScript here. Per-element volume injection is retained only for an
-  // explicit SetVolume request and is not part of the dashboard button path.
 }
 
-void StationheadPlayer::ApplyVolume() const noexcept {
-  const int percent = std::clamp(
-      static_cast<int>(audioVolume_.load(std::memory_order_relaxed) * 100.0 + 0.5), 0, 100);
-  if (appliedVolumePercent_.load(std::memory_order_relaxed) == percent) return;
-  if (!webview_) {
-    appliedVolumePercent_.store(percent, std::memory_order_relaxed);
-    return;
-  }
-
-  try {
-    const std::wstring script = StationheadVolumeScript(percent);
-    const HRESULT result = webview_->ExecuteScript(script.c_str(), nullptr);
-    appliedVolumePercent_.store(
-        SUCCEEDED(result) ? percent : -1, std::memory_order_relaxed);
-  } catch (...) {
-    // SetVolume is noexcept. An allocation failure while preparing the optional
-    // per-element volume script must not terminate HomePanel.
-    appliedVolumePercent_.store(-1, std::memory_order_relaxed);
-  }
-}
-
-// Window B's isolated WebView2 environment still ships the platform's default
-// user agent, which is otherwise identical to Window A's. Tag it distinctly
-// so Stationhead's own session/device bookkeeping does not conflate the two
-// independent, cookie-isolated sessions with a single device identity.
 void StationheadPlayer::EnsureDistinctBrowserIdentity() noexcept {
   if (!webview_ || identityWebview_ == webview_.Get()) return;
   identityWebview_ = webview_.Get();

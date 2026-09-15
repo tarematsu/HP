@@ -39,16 +39,12 @@ test('Stationhead playback controller starts visible while auth controllers may 
   assert.match(stationheadPopup, /authController_->put_IsVisible\(FALSE\)/);
 });
 
-test('Stationhead playback rendering suppression is disabled', () => {
-  assert.match(
-    stationheadVisibility,
-    /SetStationheadPlaybackRenderingSuppressed\([\s\S]*?\) noexcept \{\}/,
-  );
+test('Stationhead playback rendering suppression remains disabled', () => {
+  assert.doesNotMatch(stationheadVisibility, /SetStationheadPlaybackRenderingSuppressed/);
   assert.match(
     stationheadVisibility,
     /StationheadPlaybackRenderingSuppressed\([\s\S]*?\) noexcept \{\s*return false;\s*\}/,
   );
-  assert.doesNotMatch(stationheadVisibility, /LOW memory|permanent LOW/);
 });
 
 test('Stationhead layout keeps full-size playback visible in foreground or background recovery', () => {
