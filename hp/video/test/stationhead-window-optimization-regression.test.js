@@ -36,6 +36,8 @@ test('startup preview keeps Stationhead backgrounded unless an explicit foregrou
 test('background rendering never collapses Stationhead to 1x1', () => {
   assert.match(bridgeSource, /kStationheadSurfaceWidth = 480/);
   assert.match(bridgeSource, /kStationheadSurfaceHeight = 270/);
+  assert.match(bridgeSource, /StationheadBackgroundBounds/);
+  assert.match(bridgeSource, /StationheadOffscreenBounds/);
 
   const createHost = section(
     layoutSource,
@@ -50,14 +52,15 @@ test('background rendering never collapses Stationhead to 1x1', () => {
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(applyLayout, /const RECT offscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(applyLayout, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(applyLayout, /const RECT offscreen = hidePlayback[\s\S]*StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
   assert.match(applyLayout, /controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(applyLayout, /hostWidth = .*\? .* : 1/);
   assert.doesNotMatch(applyLayout, /put_IsVisible\(FALSE\)/);
 });
 
-test('normal background state is offscreen and behind the dashboard', () => {
+test('normal background state stays in the client area behind the dashboard', () => {
   const keepBehind = section(
     layoutSource,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -74,6 +77,7 @@ test('normal background state is offscreen and behind the dashboard', () => {
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
+  assert.match(applyLayout, /StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(
     applyLayout,
@@ -105,12 +109,14 @@ test('Monitor B and explicit Stationhead presentation use the full workspace', (
   );
 });
 
-test('authentication uses a fullscreen foreground surface', () => {
+test('authentication uses a fullscreen foreground surface and parks playback offscreen', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
+  assert.match(applyLayout, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(applyLayout, /const RECT offscreen = hidePlayback[\s\S]*authOffscreen/);
   assert.match(applyLayout, /authHostBounds = showAuth \? workspaceBounds : offscreen/);
   assert.match(applyLayout, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
 
@@ -119,6 +125,7 @@ test('authentication uses a fullscreen foreground surface', () => {
     'bool ActiveAuthSurfaceMatches(',
     'RECT ResolveStationheadWorkspaceBounds(',
   );
+  assert.match(activeAuth, /SurfaceMatches\(hostWindow, controller, offscreen, nullptr\)/);
   assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, workspaceBounds, HWND_TOP\)/);
 });
 
