@@ -40,14 +40,12 @@ test('usable Spotify controls are recovered through the dedicated trusted-input 
   assert.doesNotMatch(phaseSync, /ParseNormalizedPoint|ClickSlotNormalizedPoint/);
 });
 
-test('ultra-light styling hides nonessential chrome without runtime source rewriting or MutationObserver churn', () => {
+test('Spotify bootstrap keeps only the native bridge and injects no styling', () => {
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript/);
-  assert.match(scripts, /background-image: none !important/);
-  assert.match(scripts, /img, picture, video, canvas/);
-  assert.match(scripts, /data-testid="left-sidebar"/);
-  assert.match(scripts, /data-testid="global-nav-bar"/);
-  assert.match(scripts, /data-testid="buddy-feed"/);
-  assert.match(scripts, /content-visibility: hidden !important/);
+  assert.match(scripts, /window\.chrome\.webview\.addEventListener\('message'/);
+  assert.doesNotMatch(scripts, /createElement\(['"]style['"]\)/);
+  assert.doesNotMatch(scripts, /__homePanelSpotifyStaticLightweight/);
+  assert.doesNotMatch(scripts, /!important|content-visibility|pointer-events/);
   assert.doesNotMatch(scripts, /new\s+MutationObserver\s*\(/);
   assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment|thread_local std::wstring/);
 });
