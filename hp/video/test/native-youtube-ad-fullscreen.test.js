@@ -9,35 +9,22 @@ const trusted = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_trusted_action.inc', import.meta.url), 'utf8');
 
 test('YouTube ads wait for player settle then request fullscreen before skip lookup', () => {
-  const adState = recovery.indexOf('const adShowing = trusted.ad()');
-  const adBranch = recovery.indexOf('if (adShowing) {');
-  const fullscreen = recovery.indexOf(
-    'else if (!adRecoveryState.fullscreenApplied &&', adBranch);
+  const adBranch = recovery.indexOf('if (trusted.ad()) {');
+  const adState = recovery.indexOf('window.__homePanelYoutubeAdState', adBranch);
+  const fullscreen = recovery.indexOf('const action = armFullscreen()', adBranch);
   const skip = recovery.indexOf('const skipSelectors = [', adBranch);
-  const guard = recovery.indexOf("return 'recovery';", adBranch);
-  assert.ok(adState >= 0);
-  assert.ok(adBranch > adState);
-  assert.ok(fullscreen > adBranch);
+  const guard = recovery.indexOf("return 'recovery';", skip);
+  assert.ok(adBranch >= 0);
+  assert.ok(adState > adBranch);
+  assert.ok(fullscreen > adState);
   assert.ok(skip > fullscreen);
   assert.ok(guard > skip);
-  assert.match(recovery, /active: false, fullscreenApplied: false, fullscreenReadyAt: 0/);
-  assert.match(
-    recovery,
-    /Date\.now\(\) >= Number\(adRecoveryState\.fullscreenReadyAt \|\| 0\)/,
-  );
-  assert.match(
-    recovery,
-    /const fullscreenAction = trusted\.arm\(target, 'fullscreen', 1200\)[\s\S]*adRecoveryState\.fullscreenApplied = true;[\s\S]*return fullscreenAction/,
-  );
+  assert.match(recovery, /fullscreenReadyAt: 0/);
+  assert.match(recovery, /now >= adState\.fullscreenReadyAt/);
+  assert.match(recovery, /const action = armFullscreen\(\);\s*if \(action\) return action;/);
 });
 
 test('trusted fullscreen click remains valid while an ad is active', () => {
-  assert.match(
-    trusted,
-    /if \(action === 'fullscreen' && \(fullscreen\(\) \|\| !player\(\)\)\)/,
-  );
-  assert.doesNotMatch(
-    trusted,
-    /action === 'fullscreen' && \(ad\(\) \|\| fullscreen\(\)/,
-  );
+  assert.match(trusted, /if \(action === 'fullscreen' && fullscreen\(\)\)/);
+  assert.doesNotMatch(trusted, /action === 'fullscreen' && .*ad\(\)/);
 });
