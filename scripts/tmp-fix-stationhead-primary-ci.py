@@ -73,6 +73,14 @@ if s.count(old_loop) != 1:
     raise RuntimeError('startup smoke A/B loop did not match exactly once')
 s = s.replace(old_loop, new_loop)
 s = s.replace(
+    "  assert.match(nativeStartupSmoke, /Started non-mutating Stationhead surface observation at first host creation/);\n",
+    "  assert.match(nativeStartupSmoke, /if \\(\\$primaryHostSeen -and -not \\$firstSurfaceObservationAtUtc\\)/);\n  assert.match(nativeStartupSmoke, /\\$firstSurfaceObservationAtUtc = \\[DateTime\\]::UtcNow/);\n",
+)
+s = s.replace(
+    "  assert.match(nativeStartupSmoke, /sampleIntervalMs = 25/);\n",
+    "  assert.match(nativeStartupSmoke, /Start-Sleep -Milliseconds 25/);\n",
+)
+s = s.replace(
     "  assert.match(nativeStartupSmoke, /secondaryHostSeen = \\$secondaryHostSeen/);\n",
     "  assert.doesNotMatch(nativeStartupSmoke, /secondaryHostSeen/);\n",
 )
