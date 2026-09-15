@@ -5,21 +5,19 @@ import test from 'node:test';
 const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
-const anchors = source('media_surface_anchor.h');
 const stationhead = source('stationhead_monitor_probe.h');
 const spotify = source('spotify_host_layout.inc');
 const windows = source('renderer_panels/windows.inc');
 const renderer = source('renderer_panels.cpp');
 
-test('Stationhead and Spotify use portrait 160x320 surfaces anchored to clock and air cards', () => {
-  assert.match(stationhead, /kStationheadSurfaceWidth = 160/);
-  assert.match(stationhead, /kStationheadSurfaceHeight = 320/);
-  assert.match(stationhead, /anchors\.clock/);
-  assert.match(spotify, /kSpotifyBackgroundWidth = 160/);
-  assert.match(spotify, /kSpotifyBackgroundHeight = 320/);
-  assert.match(spotify, /anchors\.air/);
-  assert.match(anchors, /ComputeMediaSurfaceAnchors/);
-  assert.match(anchors, /CenterMediaSurfaceOnAnchor/);
+test('Stationhead and Spotify fill the dashboard client area without fixed window sizes', () => {
+  assert.match(stationhead, /StationheadBackgroundBounds\(const RECT& workspaceBounds\)[\s\S]*return workspaceBounds;/);
+  assert.doesNotMatch(stationhead, /kStationheadSurfaceWidth|kStationheadSurfaceHeight|CenterMediaSurfaceOnAnchor/);
+  assert.match(spotify, /const int hostX = client\.left;/);
+  assert.match(spotify, /const int hostY = client\.top;/);
+  assert.match(spotify, /const int width = std::max\(1L, client\.right - client\.left\);/);
+  assert.match(spotify, /const int height = std::max\(1L, client\.bottom - client\.top\);/);
+  assert.doesNotMatch(spotify, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|CenterMediaSurfaceOnAnchor|anchors\.air/);
 });
 
 test('lower dashboard cards shift energy to old weather, weather to old radar, and radar to old energy slots', () => {

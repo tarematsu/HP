@@ -23,12 +23,9 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead normal background surface stays 160x320 behind the clock panel', () => {
-  assert.match(bridge, /kStationheadSurfaceWidth = 160/);
-  assert.match(bridge, /kStationheadSurfaceHeight = 320/);
-  assert.match(bridge, /StationheadBackgroundBounds/);
-  assert.match(bridge, /ComputeMediaSurfaceAnchors\(workspaceBounds\)/);
-  assert.match(bridge, /anchors\.clock/);
+test('Stationhead normal background surface fills the client area behind the dashboard', () => {
+  assert.match(bridge, /StationheadBackgroundBounds\(const RECT& workspaceBounds\)[\s\S]*return workspaceBounds;/);
+  assert.doesNotMatch(bridge, /kStationheadSurfaceWidth|kStationheadSurfaceHeight|ComputeMediaSurfaceAnchors|anchors\.clock|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(bridge, /StationheadOffscreenBounds|kStationheadOffscreenGap/);
 
   const apply = section(
@@ -63,7 +60,7 @@ test('normal startup and reload layout do not depend on audio confirmation', () 
   assert.match(startup, /LayoutControllers\(\)/);
 });
 
-test('Monitor B changes Stationhead z-order only and preserves the 160x320 geometry', () => {
+test('Monitor B changes Stationhead z-order only and preserves full-client geometry', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -84,14 +81,14 @@ test('Monitor B changes Stationhead z-order only and preserves the 160x320 geome
     'void PowerSavingController::Detach() noexcept',
   );
   assert.match(placement, /monitorMode_ == MonitorMode::Stationhead/);
-  assert.match(placement, /StationheadPlayer exclusively owns the fixed/);
+  assert.match(placement, /StationheadPlayer exclusively owns the/);
   assert.match(placement, /if \(context->stationheadForeground\)/);
   assert.match(placement, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
   assert.doesNotMatch(placement, /foregroundBounds/);
   assert.match(placement, /child, HWND_BOTTOM/);
 });
 
-test('authentication keeps playback alive onscreen behind the 160x320 foreground auth surface', () => {
+test('authentication keeps playback alive onscreen behind the full-client foreground auth surface', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',

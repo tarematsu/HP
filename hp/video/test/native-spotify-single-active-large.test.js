@@ -23,18 +23,14 @@ const header = readFileSync(
   'utf8',
 );
 
-test('Spotify keeps the same onscreen 160x320 air-panel surface for background and Monitor C foreground inspection', () => {
-  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
-  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
-  assert.match(layout, /anchors\.air/);
-  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
-  assert.match(layout, /const int hostX = backgroundSurface\.left;/);
-  assert.match(layout, /const int hostY = backgroundSurface\.top;/);
+test('Spotify keeps the same full-client surface for background and Monitor C foreground inspection', () => {
+  assert.match(layout, /const int hostX = client\.left;/);
+  assert.match(layout, /const int hostY = client\.top;/);
+  assert.match(layout, /client\.right - client\.left/);
+  assert.match(layout, /client\.bottom - client\.top/);
   assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
   assert.match(layout, /const bool authentication =/);
-  assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
-  assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);
+  assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
 });
 
@@ -79,10 +75,7 @@ test('recovery uses one five-second eligibility deadline', () => {
 
 test('each serviced queue item refreshes layout once', () => {
   assert.equal((schedule.match(/RefreshSpotifyHostLayout\(\);/g) || []).length, 1);
-  assert.match(
-    schedule,
-    /schedulerCursor_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
-  );
+  assert.match(schedule, /schedulerCursor_ = selected;[\s\S]*Slot& slot = slots_\[selected\];[\s\S]*RefreshSpotifyHostLayout\(\);/);
 });
 
 test('scheduler has one cursor and no obsolete ownership bookkeeping', () => {
