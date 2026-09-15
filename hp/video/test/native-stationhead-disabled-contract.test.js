@@ -25,7 +25,7 @@ test('Stationhead build contains only active sources', () => {
     'sh_audio_loss.cpp', 'stationhead_native_stats.cpp']) {
     assert.match(cmake, new RegExp(`src/${source.replaceAll('.', '\\.')}`));
   }
-  assert.doesNotMatch(cmake, /app_stationhead_state|stationhead_disabled_stubs|sh_profile_reuse_policy_(?:begin|end)/);
+  assert.doesNotMatch(cmake, /app_stationhead_(?:state|history)|stationhead_disabled_stubs|sh_profile_reuse_policy_(?:begin|end)/);
 });
 
 test('App owns exactly one Stationhead handle and creates one primary player', () => {
@@ -38,12 +38,14 @@ test('App owns exactly one Stationhead handle and creates one primary player', (
   assert.doesNotMatch(handles, /AppSecondaryStationheadHandle|PeerAudioHandle|StartupPrimaryHandle/);
 });
 
-test('single Stationhead has no A-B handoff path', () => {
+test('single Stationhead has no A-B handoff or dormant render-state path', () => {
   assert.match(messages, /case WM_HP_PRIMARY_RELOAD_READY:[\s\S]*return stationhead_ \? 1 : 0/);
   assert.doesNotMatch(messages, /WM_HP_SECONDARY_RELOAD_READY/);
-  const placement = section(app, 'void App::ApplyStationheadWindowPlacement(', 'void App::PublishRenderState()');
+  const placement = section(app, 'void App::ApplyStationheadWindowPlacement(', 'void App::ScheduleNextTick(');
   assert.match(placement, /stationhead_->SetBounds\(bounds\)/);
   assert.doesNotMatch(placement, /secondary|RECT left|RECT right/);
+  assert.doesNotMatch(app, /PublishRenderState/);
+  assert.doesNotMatch(appHeader, /renderState_|renderStateDirty_|PublishRenderState/);
 });
 
 test('Stationhead reuses the existing full-resource profile', () => {

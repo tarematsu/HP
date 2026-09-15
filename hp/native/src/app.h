@@ -85,18 +85,12 @@ class App {
   void StopServices();
   void Tick();
   void Draw();
-  void MarkRenderStateDirty() noexcept { renderStateDirty_ = true; }
   void ShowToast(std::wstring message, int64_t durationMs, bool invalidate = true);
   void ScheduleNextTick(uint32_t milliseconds);
-  void PublishRenderState();
-  void PublishRenderStateNow();
   void InvalidateAll();
   void LoadAirHistory();
   bool SaveAirHistory() const;
   void UpdateAirHistory(const SensorSnapshot& sensors);
-  void LoadStationheadPlayHistory();
-  bool SaveStationheadPlayHistory() const;
-  void UpdateStationheadPlayHistory(const StationheadStatus& status);
   void HandleAction(UiAction action);
   void LayoutWorkspace();
   void ApplyStationheadWindowPlacement(const StationheadStatus& status);
@@ -123,7 +117,6 @@ class App {
   std::unique_ptr<CloudClient> cloud_;
   std::unique_ptr<SensorHub> sensors_;
   AppStationheadHandle stationhead_;
-  RenderState renderState_;
   std::vector<AirHistorySample> airHistory_;
   std::wstring toastText_;
   std::atomic<bool> telemetryBusy_{false};
@@ -141,13 +134,9 @@ class App {
   StationheadFallbackRevisionGate stationheadPlaybackFallbackRevision_;
   int64_t lastTelemetryAt_ = 0;
   int64_t lastAirHistorySavedAt_ = 0;
-  int64_t lastStationheadPlayStatsUpdatedAt_ = 0;
-  int64_t lastStationheadPlayHistorySavedAt_ = 0;
   int64_t toastUntil_ = 0;
   int64_t nextAppTickAt_ = 0;
   bool airHistoryDirty_ = false;
-  bool stationheadPlayHistoryDirty_ = false;
-  bool renderStateDirty_ = true;
   bool stationheadPlacementDirty_ = true;
   bool placedPrimaryPending_ = false;
   RECT placedBounds_{};

@@ -30,10 +30,6 @@ const airHistory = readFileSync(
   new URL('../../native/src/app_air_history.cpp', import.meta.url),
   'utf8',
 );
-const stationheadHistory = readFileSync(
-  new URL('../../native/src/app_stationhead_history.cpp', import.meta.url),
-  'utf8',
-);
 const sensorSerial = readFileSync(
   new URL('../../native/src/sensors_serial.cpp', import.meta.url),
   'utf8',
@@ -67,30 +63,18 @@ test('steady Stationhead ticks read only the authorization flag', () => {
   assert.doesNotMatch(stationheadHandles, /player_->Status\(\)\.spotifyAuthorization/);
 });
 
-test('Stationhead play history persists on a fixed 30 minute cadence', () => {
-  assert.match(stationheadHistory, /kPersistIntervalMs = 30LL \* 60 \* 1000;/);
-  assert.match(stationheadHistory, /lastStationheadPlayHistorySavedAt_ = history\.empty\(\) \? 0 : now;/);
-  assert.match(
-    stationheadHistory,
-    /now - lastStationheadPlayHistorySavedAt_ >= kPersistIntervalMs[\s\S]*SaveStationheadPlayHistory\(\)/,
-  );
-  assert.doesNotMatch(stationheadHistory, /currentValueChanged/);
-});
-
-test('batched histories flush dirty data on normal shutdown', () => {
+test('only active air history flushes dirty data on normal shutdown', () => {
   assert.match(appHeader, /struct HistoryFlushGuard/);
   assert.match(appHeader, /bool SaveAirHistory\(\) const;/);
-  assert.match(appHeader, /bool SaveStationheadPlayHistory\(\) const;/);
+  assert.doesNotMatch(appHeader, /SaveStationheadPlayHistory|stationheadPlayHistoryDirty_/);
   assert.match(appHeader, /bool airHistoryDirty_ = false;/);
-  assert.match(appHeader, /bool stationheadPlayHistoryDirty_ = false;/);
   assert.match(
     airHistory,
-    /HistoryFlushGuard::~HistoryFlushGuard\(\)[\s\S]*airHistoryDirty_[\s\S]*SaveAirHistory\(\)[\s\S]*stationheadPlayHistoryDirty_[\s\S]*SaveStationheadPlayHistory\(\)/,
+    /HistoryFlushGuard::~HistoryFlushGuard\(\)[\s\S]*airHistoryDirty_[\s\S]*SaveAirHistory\(\)/,
   );
+  assert.doesNotMatch(airHistory, /StationheadPlayHistory|stationheadPlayHistory/);
   assert.match(airHistory, /bool App::SaveAirHistory\(\) const/);
-  assert.match(stationheadHistory, /bool App::SaveStationheadPlayHistory\(\) const/);
   assert.match(airHistory, /airHistoryDirty_ = true;/);
-  assert.match(stationheadHistory, /stationheadPlayHistoryDirty_ = true;/);
 });
 
 test('missing serial sensors use bounded exponential retry backoff', () => {

@@ -32,11 +32,6 @@ App::HistoryFlushGuard::~HistoryFlushGuard() {
     owner->airHistoryDirty_ = false;
     owner->lastAirHistorySavedAt_ = now;
   }
-  if (owner->stationheadPlayHistoryDirty_ &&
-      owner->SaveStationheadPlayHistory()) {
-    owner->stationheadPlayHistoryDirty_ = false;
-    owner->lastStationheadPlayHistorySavedAt_ = now;
-  }
 }
 
 void App::LoadAirHistory() {
