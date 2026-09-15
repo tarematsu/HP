@@ -73,7 +73,7 @@ void App::CreateMainWindow(int showCommand) {
   windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
   windowClass.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
   windowClass.lpszClassName = kWindowClass;
-  if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+  if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_ALREADY_EXISTS) {
     ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()), "RegisterClassEx");
   }
   RECT bounds{0, 0, config_.screenWidth, config_.screenHeight};
@@ -291,18 +291,6 @@ void App::ApplyStationheadWindowPlacement(const StationheadStatus& status) {
   placedBounds_ = bounds;
   stationhead_->SetBounds(bounds);
   stationhead_->RefreshVisibility();
-}
-
-void App::PublishRenderState() {
-  if (!renderer_ || !renderStateDirty_) return;
-  renderer_->UpdateState(renderState_);
-  renderStateDirty_ = false;
-}
-
-void App::PublishRenderStateNow() {
-  MarkRenderStateDirty();
-  if (!rendererStarted_) return;
-  PublishRenderState();
 }
 
 void App::ScheduleNextTick(uint32_t milliseconds) {
