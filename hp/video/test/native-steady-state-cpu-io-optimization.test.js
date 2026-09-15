@@ -42,7 +42,6 @@ const artworkCache = readFileSync(
 test('App timer follows real deadlines instead of a fixed five second dashboard cadence', () => {
   assert.doesNotMatch(appSource, /kSteadyDashboardTickMs/);
   assert.match(appSource, /stationhead_->NextWakeAt\(\)/);
-  assert.doesNotMatch(appSource, /secondaryStationhead_->NextWakeAt\(\)/);
   assert.match(appSource, /renderer_->NativePlaybackNextWakeAt\(now\)/);
   assert.match(appSource, /constexpr uint32_t kMaxAppTimerMs = 24U \* 60U \* 60U \* 1000U;/);
   assert.match(appSource, /NextDelayFromDeadline\(int64_t now, int64_t deadline, uint32_t fallbackMs\)/);

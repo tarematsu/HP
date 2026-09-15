@@ -21,11 +21,9 @@ test('single Stationhead exposes interactive states as pending playback', () => 
   const handle = section(handles, 'class AppStationheadHandle final', '}  // namespace hp');
   assert.match(handle, /status\.loginRequired \|\| status\.spotifyAuthorization \|\| status\.processFailed/);
   assert.match(handle, /status\.audioPlaying = false;/);
-  assert.doesNotMatch(handles, /AppSecondaryStationheadHandle/);
 
   const tick = section(app, 'void App::Tick()', 'void App::Draw()');
   assert.match(tick, /ApplyStationheadWindowPlacement\(stationheadStatus\);/);
-  assert.doesNotMatch(tick, /secondaryStationhead_/);
 });
 
 test('login-required state survives audio callbacks', () => {
@@ -48,9 +46,9 @@ test('login detection rejects stale auth and re-arms after authentication', () =
   assert.match(capture, /dispatchEvent\(new Event\('homepanel-stationhead-auth-ready'\)\)/);
 });
 
-test('primary stats failures schedule the short retry', () => {
+test('authenticated stats failures schedule the short retry', () => {
   const poll = section(player, 'void StationheadPlayer::PollDailyPlayStats(',
-    'void StationheadPlayer::PollAuthProbe(');
+    'void StationheadPlayer::AttemptNativeStartClick(');
   assert.match(poll, /ExecuteScript/);
   assert.match(poll, /kStationheadDailyPlayStatsRetryMs/);
   assert.match(poll, /nextTickAt_ = nowMs \+ kStationheadDailyPlayStatsRetryMs/);

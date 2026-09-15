@@ -11,17 +11,6 @@ enum class StationheadTabKind {
   Auth,
 };
 
-// Which Stationhead window this player instance backs. The two roles share
-// every behavior - script injection, resource blocking, the native click
-// bridge, layout/visibility rules - except for exactly two things: the
-// WebView2 user-data environment and which
-// periodic poll runs (Primary polls Stationhead's authenticated stats API,
-// Secondary runs a lightweight local-only auth probe).
-enum class StationheadRole {
-  Primary,
-  Secondary,
-};
-
 enum StationheadChangeFlags : uint32_t {
   StationheadChangeNone = 0,
   StationheadChangeReturnMain = 1u << 0,
@@ -280,12 +269,11 @@ struct StationheadPlayHistorySample {
 };
 
 struct StationheadStatus {
-  // App handles advance these when a primary/secondary notification or the
-  // local track-transition projection changes. Keeping them first lets the
+  // App handles advance this when the Stationhead notification or local
+  // track-transition projection changes. Keeping it first lets the
   // default equality operator reject changed snapshots before touching URLs
   // and diagnostic strings.
   uint64_t contentRevision = 0;
-  uint64_t secondaryContentRevision = 0;
   bool created = false;
   bool navigating = false;
   bool playing = false;
@@ -297,17 +285,12 @@ struct StationheadStatus {
   bool authAvailable = false;
   bool audioPlaying = false;
   bool audioMuted = false;
-  bool secondaryAudioMuted = false;
-  bool secondaryPlaying = false;
-  bool primaryAudioSelected = true;
   std::wstring url;
   // Render-only routing metadata for choosing the shared playback feed.
   std::wstring fallbackUrl;
-  std::wstring secondaryUrl;
   std::wstring detail;
-  // Recent per-day listening activity returned by the primary window's
-  // authenticated Stationhead account endpoint, oldest first; the last entry
-  // is today (partial, still accumulating). Empty for the secondary window.
+  // Recent per-day listening activity returned by the authenticated
+  // Stationhead account endpoint, oldest first; the last entry is today.
   SharedImmutableVector<StationheadDailyPlayPoint> dailyPlayCounts;
   int64_t dailyPlayStatsUpdatedAt = 0;
   int64_t dailyPlayStatsServerDateAt = 0;
@@ -316,11 +299,10 @@ struct StationheadStatus {
   bool operator==(const StationheadStatus&) const = default;
 };
 
-// Drives one embedded Stationhead WebView2 window. Both Window A (Primary)
-// and Window B (Secondary) are the same class, distinguished only by `role_`.
+// Drives the single embedded Stationhead WebView2 window.
 class StationheadPlayer {
  public:
-  StationheadPlayer(StationheadRole role, HWND window, StationheadConfig config,
+  StationheadPlayer(HWND window, StationheadConfig config,
                     fs::path userDataFolder, Logger& log);
   StationheadPlayer(const StationheadPlayer&) = delete;
   StationheadPlayer& operator=(const StationheadPlayer&) = delete;
@@ -408,12 +390,7 @@ class StationheadPlayer {
   void KeepPlaybackBehindDashboard();
 
  private:
-  [[nodiscard]] bool IsSecondary() const noexcept { return role_ == StationheadRole::Secondary; }
-  // Tags shared log lines with which window they came from - both roles run
-  // the same code path, so without this a log reader cannot tell whether an
-  // "audio playing"/"audio stopped" entry (or any other shared-path log line)
-  // came from Window A or Window B.
-  [[nodiscard]] const wchar_t* RoleTag() const noexcept { return IsSecondary() ? L"B" : L"A"; }
+  [[nodiscard]] static constexpr const wchar_t* RoleTag() noexcept { return L"A"; }
   void ApplyMute() const noexcept;
   void ApplyVolume() const noexcept;
   void ApplyAudioPlaybackState(bool playing, const std::wstring& source);
@@ -421,7 +398,6 @@ class StationheadPlayer {
   void RecoverTrackBoundaryPlayback();
   void TryStartInitialNavigation();
   void CompletePendingAuthPopupDeferral() noexcept;
-  void EnsureDistinctBrowserIdentity() noexcept;
   void Create();
   HRESULT CreateProfileController(
       HWND parentWindow, ICoreWebView2CreateCoreWebView2ControllerCompletedHandler* handler) const noexcept;
@@ -435,7 +411,6 @@ class StationheadPlayer {
   void ConfigureAuthWebView();
   void ResetNavigationRouteState();
   void PollDailyPlayStats(int64_t nowMs);
-  void PollAuthProbe(int64_t nowMs);
   void AttemptNativeStartClick(int64_t nowMs);
   void FinishSpotifyAuthorization(const std::wstring& detail);
   void NavigateCurrentUrl(int64_t nowMs, const std::wstring& reason);
@@ -452,7 +427,6 @@ class StationheadPlayer {
   void UpdateAudioLossState(
       const std::wstring& state, const std::wstring& detail);
 
-  StationheadRole role_;
   HWND window_;
   HWND hostWindow_{};
   HWND authHostWindow_{};
@@ -519,9 +493,6 @@ class StationheadPlayer {
   uint64_t statsDocumentGeneration_ = 0;             // Primary only.
   uint64_t statsAuthGeneration_ = 0;                 // Primary only.
   uint64_t statsLastAcceptedRequestId_ = 0;          // Primary only.
-  MonotonicElapsedTimestamp lastAuthProbeAt_;       // Secondary only.
-  MonotonicElapsedTimestamp authProbeStartedAt_;    // Secondary only.
-  bool authProbeInFlight_ = false;                  // Secondary only.
   int64_t nextAutoClickAt_ = 0;
   bool autoClickInFlight_ = false;
   bool webViewConfigured_ = false;
@@ -549,6 +520,5 @@ class StationheadPlayer {
   bool managedPlaybackReturnRequested_ = false;
   bool managedPrimaryReturnPending_ = false;
   std::wstring audioLossState_;
-  ICoreWebView2* identityWebview_ = nullptr;  // Secondary only.
 };
 }  // namespace hp

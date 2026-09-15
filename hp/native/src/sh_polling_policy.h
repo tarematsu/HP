@@ -7,9 +7,7 @@
 #define StationheadAutoplayScript StationheadAutoplayScriptBase
 #define StationheadVolumeScript StationheadVolumeScriptWithMutationObserver
 #define StationheadApiPlayStatsScript StationheadApiPlayStatsScriptUnthrottled
-#define StationheadAuthProbeScript StationheadAuthProbeScriptNetwork
 #include "sh_shared.h"
-#undef StationheadAuthProbeScript
 #undef StationheadApiPlayStatsScript
 #undef StationheadVolumeScript
 #undef StationheadAutoplayScript
@@ -20,7 +18,7 @@ namespace hp {
 
 // Media elements already emit play/loadedmetadata when they become relevant.
 // Use those events instead of retaining a document-wide MutationObserver that
-// scans every Stationhead DOM insertion in both long-lived WebViews.
+// scans every Stationhead DOM insertion in the long-lived WebView.
 inline std::wstring StationheadVolumeScript(int percent) {
   std::wostringstream script;
   script << LR"JS(
@@ -56,7 +54,7 @@ inline std::wstring StationheadVolumeScript(int percent) {
   applyAll();
 
   // Keep one removable handler per page. Returning to the default 100% volume
-  // now removes the listeners instead of leaving both long-lived WebViews with
+  // now removes the listeners instead of leaving the long-lived WebView with
   // callbacks that no longer perform useful work.
   let mediaEventHandler = window.__homepanelStationheadVolumeEventHandler;
   if (v !== 1) {
@@ -181,7 +179,7 @@ inline void ApplyStationheadResourceBlocking(
 // JavaScript chunks are blocked above before download; this DOM suppression is
 // retained only as a fallback when Stationhead bundles presentation code into a
 // shared playback chunk that cannot safely be rejected wholesale. It runs at
-// document creation for both Stationhead windows and never touches login,
+// document creation for the Stationhead window and never touches login,
 // Start Listening, Spotify authorization, or audio/video elements.
 inline std::wstring StationheadAudioOnlyUiScript() {
   static constexpr wchar_t kScript[] = LR"JS(
@@ -429,22 +427,5 @@ inline std::wstring StationheadApiPlayStatsScript(int channelId) {
   return script.str();
 }
 
-// Window B must not make an extra logged-in API request. Its periodic probe now
-// inspects only the authorization header already observed from the page's own
-// traffic and immediately reports that local state to the native handler.
-inline std::wstring StationheadAuthProbeScript(int channelId) {
-  (void)channelId;
-  static constexpr wchar_t kScript[] = LR"JS(
-(() => {
-  const post = message => {
-    try { window.chrome?.webview?.postMessage(message); } catch (_) {}
-  };
-  const authorized = Boolean(window.__homepanelStationheadAuthHeaders?.authorization);
-  post({ type: 'stationhead-auth-probe', state: authorized ? 'ok' : 'no-auth-header' });
-  return authorized;
-})()
-)JS";
-  return kScript;
-}
 
 }  // namespace hp

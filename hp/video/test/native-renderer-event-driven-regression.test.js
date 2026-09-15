@@ -102,7 +102,7 @@ test('App no longer owns dormant Stationhead compatibility publication', () => {
   assert.match(rendererLifecycle, /void Renderer::UpdateState\(const RenderState& state\)/);
   assert.match(panelState, /void Renderer::UpdateNativeStaticPanels\(const RenderState& state\)/);
   assert.doesNotMatch(panelState, /stationheadPlayHistory|GlobalStationheadNativeStatsStore/);
-  assert.match(appSource, /StationheadRole::Primary/);
+  assert.match(appSource, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
   assert.match(appSource, /stationhead_->Start\(\)/);
   assert.match(appSource, /Stationhead started 10 seconds after YouTube/);
 });

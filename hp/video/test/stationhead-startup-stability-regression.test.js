@@ -5,6 +5,7 @@ import test from 'node:test';
 const app = readFileSync(new URL('../../native/src/app.cpp', import.meta.url), 'utf8');
 const handles = readFileSync(
   new URL('../../native/src/app_stationhead_handles.h', import.meta.url), 'utf8');
+const player = readFileSync(new URL('../../native/src/sh.h', import.meta.url), 'utf8');
 
 function section(text, start, end) {
   const from = text.indexOf(start);
@@ -45,9 +46,9 @@ test('single Stationhead workspace keeps the dashboard visible', () => {
 test('cold startup has exactly one Stationhead player and defers its start', () => {
   const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
-  assert.match(start, /StationheadRole::Primary/);
+  assert.match(start, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
   assert.doesNotMatch(start, /stationhead_->Start\(\)/);
   assert.match(deferred, /stationhead_->Start\(\)/);
-  assert.doesNotMatch(start, /#if 0|StationheadRole::Secondary|secondaryStationhead_/);
-  assert.doesNotMatch(handles, /AppSecondaryStationheadHandle|SecondaryStationheadStartupReady/);
+  assert.doesNotMatch(player, /enum class StationheadRole/);
+  assert.doesNotMatch(handles, /PeerAudioHandle|StartupPrimaryHandle/);
 });

@@ -19,7 +19,7 @@ test('MUTE only updates the persistent playback WebView', () => {
   const audioApplication = section(
     audioSource,
     'void StationheadPlayer::ApplyMute() const noexcept',
-    'void StationheadPlayer::EnsureDistinctBrowserIdentity() noexcept',
+    '}  // namespace hp',
   );
 
   assert.match(audioApplication, /ComPtr<ICoreWebView2> webview = webview_/);

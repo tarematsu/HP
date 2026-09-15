@@ -10,9 +10,7 @@ inline constexpr bool StationheadPlaybackNavigationActive(
   return navigationInFlight || (statusNavigating && !spotifyAuthorization);
 }
 
-inline constexpr int64_t StationheadPeriodicRefreshIntervalMs(
-    bool secondary) noexcept {
-  (void)secondary;
+inline constexpr int64_t StationheadPeriodicRefreshIntervalMs() noexcept {
   return 50 * 60'000;
 }
 
@@ -21,20 +19,19 @@ static_assert(StationheadPlaybackNavigationActive(true, true, true));
 static_assert(StationheadPlaybackNavigationActive(false, true, false));
 static_assert(!StationheadPlaybackNavigationActive(false, true, true));
 static_assert(!StationheadPlaybackNavigationActive(false, false, false));
-static_assert(StationheadPeriodicRefreshIntervalMs(false) == 50 * 60'000);
-static_assert(StationheadPeriodicRefreshIntervalMs(true) == 50 * 60'000);
+static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
 
 }  // namespace hp
 
 // Extend StationheadPlayer while sh.h is parsed, then remove the temporary
-// source-rewriting macros before any implementation file is compiled. Every
-// Stationhead role uses the same 50-minute periodic refresh interval.
+// source-rewriting macros before any implementation file is compiled. The
+// single Stationhead player refreshes every 50 minutes.
 #define NextWakeAt()                                                          \
   NextWakeAt() const noexcept {                                               \
     int64_t next = NextWakeAtBase();                                          \
     if (periodicRefreshStartedAt_.Active()) {                                 \
       const int64_t due = periodicRefreshStartedAt_ +                         \
-          ::hp::StationheadPeriodicRefreshIntervalMs(IsSecondary());          \
+          ::hp::StationheadPeriodicRefreshIntervalMs();          \
       if (next <= 0 || due < next) next = due;                                \
     }                                                                         \
     return next;                                                              \
@@ -96,7 +93,7 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 50 * 60'000);
       return;                                                                 \
     }                                                                         \
     const int64_t intervalMs =                                                \
-        ::hp::StationheadPeriodicRefreshIntervalMs(IsSecondary());            \
+        ::hp::StationheadPeriodicRefreshIntervalMs();            \
     if (nowMs - periodicRefreshStartedAt_ < intervalMs) return;               \
                                                                                 \
     periodicRefreshStartedAt_ = nowMs;                                        \
@@ -205,21 +202,13 @@ static_assert(StationheadOperationalDeadlineValue(true, false, 42) == 42);
 namespace stationhead_boundary_message_policy {
 inline SRWLOCK reloadClockLock = SRWLOCK_INIT;
 inline ULONGLONG primaryReloadMonotonicAt = 0;
-inline ULONGLONG secondaryReloadMonotonicAt = 0;
 inline MonotonicProjectedDeadline primaryAutoClickDeadline;
-inline MonotonicProjectedDeadline secondaryAutoClickDeadline;
 inline int64_t primaryAutoClickExposed = 0;
-inline int64_t secondaryAutoClickExposed = 0;
 }  // namespace stationhead_boundary_message_policy
 
-inline int64_t& StationheadAutoClickDeadlineStorage(
-    int64_t& storage, bool secondary) noexcept {
-  MonotonicProjectedDeadline& deadline = secondary
-      ? stationhead_boundary_message_policy::secondaryAutoClickDeadline
-      : stationhead_boundary_message_policy::primaryAutoClickDeadline;
-  int64_t& exposed = secondary
-      ? stationhead_boundary_message_policy::secondaryAutoClickExposed
-      : stationhead_boundary_message_policy::primaryAutoClickExposed;
+inline int64_t& StationheadAutoClickDeadlineStorage(int64_t& storage) noexcept {
+  auto& deadline = stationhead_boundary_message_policy::primaryAutoClickDeadline;
+  int64_t& exposed = stationhead_boundary_message_policy::primaryAutoClickExposed;
   if (storage != exposed) deadline = storage;
   storage = StationheadProjectedDeadlineValue(deadline);
   exposed = storage;
@@ -264,25 +253,19 @@ inline StationheadNavigationInFlightProxy StationheadNavigationInFlightStorage(
 
 class StationheadBoundaryReloadClockProxy {
  public:
-  StationheadBoundaryReloadClockProxy(
-      int64_t& storage, bool secondary, bool configured) noexcept
-      : storage_(storage), secondary_(secondary), configured_(configured) {}
+  StationheadBoundaryReloadClockProxy(int64_t& storage, bool configured) noexcept
+      : storage_(storage), configured_(configured) {}
 
   operator int64_t() const noexcept { return storage_; }
 
   int64_t operator=(int64_t candidate) noexcept {
-    AcquireSRWLockExclusive(
-        &stationhead_boundary_message_policy::reloadClockLock);
+    AcquireSRWLockExclusive(&stationhead_boundary_message_policy::reloadClockLock);
     const bool accept = configured_ && storage_ <= 0;
     if (accept) {
       storage_ = candidate;
-      ULONGLONG& monotonicAt = secondary_
-          ? stationhead_boundary_message_policy::secondaryReloadMonotonicAt
-          : stationhead_boundary_message_policy::primaryReloadMonotonicAt;
-      monotonicAt = GetTickCount64();
+      stationhead_boundary_message_policy::primaryReloadMonotonicAt = GetTickCount64();
     }
-    ReleaseSRWLockExclusive(
-        &stationhead_boundary_message_policy::reloadClockLock);
+    ReleaseSRWLockExclusive(&stationhead_boundary_message_policy::reloadClockLock);
     return candidate;
   }
 
@@ -290,26 +273,21 @@ class StationheadBoundaryReloadClockProxy {
       int64_t wallClockNow,
       const StationheadBoundaryReloadClockProxy& clock) noexcept {
     ULONGLONG monotonicAt = 0;
-    AcquireSRWLockShared(
-        &stationhead_boundary_message_policy::reloadClockLock);
-    monotonicAt = clock.secondary_
-        ? stationhead_boundary_message_policy::secondaryReloadMonotonicAt
-        : stationhead_boundary_message_policy::primaryReloadMonotonicAt;
-    ReleaseSRWLockShared(
-        &stationhead_boundary_message_policy::reloadClockLock);
+    AcquireSRWLockShared(&stationhead_boundary_message_policy::reloadClockLock);
+    monotonicAt = stationhead_boundary_message_policy::primaryReloadMonotonicAt;
+    ReleaseSRWLockShared(&stationhead_boundary_message_policy::reloadClockLock);
     if (monotonicAt == 0) return wallClockNow - clock.storage_;
     return StationheadBoundaryElapsedMs(monotonicAt, GetTickCount64());
   }
 
  private:
   int64_t& storage_;
-  bool secondary_;
   bool configured_;
 };
 
 inline StationheadBoundaryReloadClockProxy StationheadBoundaryReloadClock(
-    int64_t& storage, bool secondary, bool configured) noexcept {
-  return StationheadBoundaryReloadClockProxy(storage, secondary, configured);
+    int64_t& storage, bool configured) noexcept {
+  return StationheadBoundaryReloadClockProxy(storage, configured);
 }
 
 inline constexpr bool StationheadFocusSurfaceIsInteractive(
@@ -353,10 +331,10 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
 
 #define lastReloadAt_                                                        \
   (::hp::StationheadBoundaryReloadClock(                                     \
-      (lastReloadAtStorage_), IsSecondary(), webViewConfigured_))
+      (lastReloadAtStorage_), webViewConfigured_))
 #define nextAutoClickAt_                                                     \
   (::hp::StationheadAutoClickDeadlineStorage(                                \
-      (nextAutoClickAt_), IsSecondary()))
+      (nextAutoClickAt_)))
 #define navigationInFlight_                                                  \
   (::hp::StationheadNavigationInFlightStorage(                               \
       (navigationInFlight_), periodicRefreshStartedAt_,                      \
@@ -367,8 +345,8 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
 
 namespace hp {
 
-// The page-side detector is the single source of in-page interaction state for
-// both A and B. It already raises the existing login-required message when a
+// The page-side detector is the single source of in-page interaction state.
+// It already raises the existing login-required message when a
 // blocking surface appears. This small bridge publishes the opposite edge once
 // the same detector has observed a stable non-blocking page, so native state is
 // current rather than a sticky login-history latch.
@@ -409,35 +387,11 @@ inline std::wstring StationheadAutoplayScriptCurrentInteraction(
   return script;
 }
 
-// Window B no longer asks Stationhead's account API whether a historical auth
-// token is still accepted. Its legacy five-minute probe is retained only as a
-// local safety sample of the same live DOM interaction state used by A and B.
-// This removes the second, network-derived login state machine without changing
-// the established scheduler surface.
-inline std::wstring StationheadCurrentInteractionAuthProbeScript(int channelId) {
-  (void)channelId;
-  static constexpr wchar_t kScript[] = LR"JS(
-(() => {
-  const post = message => {
-    try { window.chrome?.webview?.postMessage(message); } catch (_) {}
-  };
-  const blocking = window.__homepanelStationheadBlockingLoginVisible === true;
-  post({ type: 'stationhead-auth-probe',
-         state: blocking ? 'auth-failed' : 'ok', status: 0 });
-  return true;
-})()
-)JS";
-  return kScript;
-}
-
 inline constexpr int64_t kStationheadMeasuredPostPlaybackStopClickDelayMs =
     3'500;
 static_assert(kStationheadMeasuredPostPlaybackStopClickDelayMs < 12'000);
 
 }  // namespace hp
-
-#undef StationheadAuthProbeScript
-#define StationheadAuthProbeScript StationheadCurrentInteractionAuthProbeScript
 
 #define kStationheadPostPlaybackStopClickDelayMs                             \
   (::hp::kStationheadMeasuredPostPlaybackStopClickDelayMs)

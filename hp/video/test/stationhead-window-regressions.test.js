@@ -20,7 +20,7 @@ function section(text, start, end) {
 test('single Stationhead expands to the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(/);
   assert.match(layout, /GetClientRect\(parent, &client\)/);
-  assert.match(layout, /ResolveStationheadWorkspaceBounds\(role_, config_, window_, bounds\)/);
+  assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
 test('background playback placement uses current controller geometry', () => {

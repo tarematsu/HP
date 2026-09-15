@@ -11,27 +11,25 @@ const finalInteractionPolicy = readFileSync(
   'utf8',
 );
 
-test('PR48 stats rollback restores authenticated A polling without restoring B network auth', () => {
+test('authenticated stats polling retains its bounded retry behavior', () => {
   assert.match(activePolicy, /const headers = window\.__homepanelStationheadAuthHeaders/);
   assert.match(activePolicy, /if \(!headers\?\.authorization\)/);
   assert.match(activePolicy, /error: 'no-auth-header'/);
   assert.match(activePolicy, /Date\.now\(\) - lastSuccessAt < 10 \* 60 \* 1000/);
   assert.doesNotMatch(activePolicy, /const requestHeaders = \{ accept: 'application\/json' \}/);
+});
 
-  assert.match(
-    finalInteractionPolicy,
-    /#define StationheadAuthProbeScript StationheadCurrentInteractionAuthProbeScript/,
+test('interaction bridge remains local and network-free', () => {
+  const bridgeAt = finalInteractionPolicy.indexOf(
+    'inline std::wstring StationheadAutoplayScriptCurrentInteraction',
   );
-  const localProbeAt = finalInteractionPolicy.indexOf(
-    'inline std::wstring StationheadCurrentInteractionAuthProbeScript',
+  assert.ok(bridgeAt >= 0);
+  const bridgeEnd = finalInteractionPolicy.indexOf(
+    '#define kStationheadPostPlaybackStopClickDelayMs',
+    bridgeAt,
   );
-  assert.ok(localProbeAt >= 0);
-  const localProbeEnd = finalInteractionPolicy.indexOf(
-    'inline constexpr int64_t kStationheadMeasuredPostPlaybackStopClickDelayMs',
-    localProbeAt,
-  );
-  assert.ok(localProbeEnd > localProbeAt);
-  const localProbe = finalInteractionPolicy.slice(localProbeAt, localProbeEnd);
-  assert.match(localProbe, /__homepanelStationheadBlockingLoginVisible/);
-  assert.doesNotMatch(localProbe, /streakStats|fetch\s*\(/);
+  assert.ok(bridgeEnd > bridgeAt);
+  const bridge = finalInteractionPolicy.slice(bridgeAt, bridgeEnd);
+  assert.match(bridge, /__homepanelStationheadBlockingLoginVisible/);
+  assert.doesNotMatch(bridge, /streakStats|fetch\s*\(/);
 });

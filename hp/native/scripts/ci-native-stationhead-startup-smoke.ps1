@@ -319,10 +319,6 @@ $required = [ordered]@{
   primaryStartupScriptRegistered = "Stationhead A startup script registration completed"
   primaryStationheadUrlNavigated = "Stationhead A navigation (startup): https://www.stationhead.com/sakuramankai"
   primaryStartListeningClickRequested = "Stationhead A auto-clicking Start Listening at"
-  secondaryWebViewConfigured = "Stationhead B registering required startup scripts"
-  secondaryStartupScriptRegistered = "Stationhead B startup script registration completed"
-  secondaryStationheadUrlNavigated = "Stationhead B navigation (startup): https://www.stationhead.com/sakuramankai"
-  secondaryStartListeningClickRequested = "Stationhead B auto-clicking Start Listening at"
 }
 $observed = [ordered]@{}
 $observedAtMs = [ordered]@{}
@@ -360,22 +356,14 @@ $firstSurfaceObservationAtUtc = $null
 $postClickObserveUntilUtc = $null
 $sampleCount = 0
 $primaryHostSeen = $false
-$secondaryHostSeen = $false
 $primaryInteractiveAuthObserved = $false
-$secondaryInteractiveAuthObserved = $false
 $primaryInteractiveFront = $false
-$secondaryInteractiveFront = $false
 $primaryUnexpectedForegroundSamples = 0
-$secondaryUnexpectedForegroundSamples = 0
-# The central native tick is 2 seconds while Stationhead is interactive. Allow
-# one complete tick plus scheduler jitter before declaring a Z-order failure.
 $interactiveAuthSignalGraceSamples = 120
 $violation = $null
 $failureMessage = $null
 $lastPrimaryState = "unobserved"
-$lastSecondaryState = "unobserved"
 $lastPrimaryAuthHidden = $true
-$lastSecondaryAuthHidden = $true
 
 try {
   Write-Host "Starting observational native Stationhead startup smoke: $executablePath"
@@ -398,8 +386,7 @@ try {
       $log = [string](Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue)
       foreach ($name in $required.Keys) {
         if (-not $observed[$name] -and $log.Contains($required[$name])) {
-          $elapsedMs = [int][Math]::Round(
-            ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+          $elapsedMs = [int][Math]::Round(([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
           $observed[$name] = $true
           $observedAtMs[$name] = $elapsedMs
           Write-Host "Observed $name at ${elapsedMs}ms"
@@ -409,90 +396,49 @@ try {
           $log.Contains("Stationhead A audio-loss state=auth_wait detail=authentication surface detected (")) {
         $primaryInteractiveAuthObserved = $true
       }
-      if ($log.Contains("Stationhead B login required; window visible") -or
-          $log.Contains("Stationhead B audio-loss state=auth_wait detail=authentication surface detected (")) {
-        $secondaryInteractiveAuthObserved = $true
-      }
     }
 
     if ($mainWindow -ne [IntPtr]::Zero) {
       $sampleCount += 1
       $primaryHostSeen = $primaryHostSeen -or
-        [HomePanelStationheadObserveNative]::HasDirectChild(
-          $mainWindow, "HomePanelStationheadHost")
-      $secondaryHostSeen = $secondaryHostSeen -or
-        [HomePanelStationheadObserveNative]::HasDirectChild(
-          $mainWindow, "HomePanelSecondaryStationheadHost")
-      if (($primaryHostSeen -or $secondaryHostSeen) -and -not $firstSurfaceObservationAtUtc) {
+        [HomePanelStationheadObserveNative]::HasDirectChild($mainWindow, "HomePanelStationheadHost")
+      if ($primaryHostSeen -and -not $firstSurfaceObservationAtUtc) {
         $firstSurfaceObservationAtUtc = [DateTime]::UtcNow
-        Write-Host "Started non-mutating Stationhead surface observation at first host creation."
       }
 
       $primaryBackgroundSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
         $mainWindow, "HomePanelStationheadHost")
-      $secondaryBackgroundSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
-        $mainWindow, "HomePanelSecondaryStationheadHost")
       $primaryInteractiveFront = $primaryInteractiveAuthObserved -and
         [HomePanelStationheadObserveNative]::InteractiveSurfaceAboveNativePanels(
           $mainWindow, "HomePanelStationheadHost")
-      $secondaryInteractiveFront = $secondaryInteractiveAuthObserved -and
-        [HomePanelStationheadObserveNative]::InteractiveSurfaceAboveNativePanels(
-          $mainWindow, "HomePanelSecondaryStationheadHost")
-
       if ($primaryBackgroundSafe -or $primaryInteractiveFront) {
         $primaryUnexpectedForegroundSamples = 0
         $primaryStartupSafe = $true
       } else {
         $primaryUnexpectedForegroundSamples += 1
-        $primaryStartupSafe =
-          $primaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples
-      }
-      if ($secondaryBackgroundSafe -or $secondaryInteractiveFront) {
-        $secondaryUnexpectedForegroundSamples = 0
-        $secondaryStartupSafe = $true
-      } else {
-        $secondaryUnexpectedForegroundSamples += 1
-        $secondaryStartupSafe =
-          $secondaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples
+        $primaryStartupSafe = $primaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples
       }
 
       $lastPrimaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
         $mainWindow, "HomePanelSpotifyAuthHost")
-      $lastSecondaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
-        $mainWindow, "HomePanelSecondarySpotifyAuthHost")
       $lastPrimaryState = [HomePanelStationheadObserveNative]::SurfaceState(
         $mainWindow, "HomePanelStationheadHost")
-      $lastSecondaryState = [HomePanelStationheadObserveNative]::SurfaceState(
-        $mainWindow, "HomePanelSecondaryStationheadHost")
-
-      if (-not $primaryStartupSafe -or -not $secondaryStartupSafe -or
-          -not $lastPrimaryAuthHidden -or -not $lastSecondaryAuthHidden) {
+      if (-not $primaryStartupSafe -or -not $lastPrimaryAuthHidden) {
         $violation = [ordered]@{
           phase = "startup"
-          observedAtUtc = [DateTime]::UtcNow.ToString("o")
-          elapsedMs = [int][Math]::Round(
-            ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
           primaryPlayback = $lastPrimaryState
-          secondaryPlayback = $lastSecondaryState
           primaryInteractiveAuth = $primaryInteractiveAuthObserved
-          secondaryInteractiveAuth = $secondaryInteractiveAuthObserved
           primaryInteractiveFront = $primaryInteractiveFront
-          secondaryInteractiveFront = $secondaryInteractiveFront
-          primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
-          secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
           primaryAuthHidden = $lastPrimaryAuthHidden
-          secondaryAuthHidden = $lastSecondaryAuthHidden
           foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
         }
-        throw "Stationhead startup invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] interactiveAuth=$primaryInteractiveAuthObserved/$secondaryInteractiveAuthObserved interactiveFront=$primaryInteractiveFront/$secondaryInteractiveFront authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+        throw "Stationhead startup invariant failed: [$lastPrimaryState] authHidden=$lastPrimaryAuthHidden"
       }
 
-      $nativePanelsReady =
-        [HomePanelStationheadObserveNative]::NativePanelCount($mainWindow) -ge 3
+      $nativePanelsReady = [HomePanelStationheadObserveNative]::NativePanelCount($mainWindow) -ge 3
       $dashboardReady = $log.Contains("Native dashboard started")
       if (-not $monitoringStartedAtUtc -and $nativePanelsReady -and $dashboardReady) {
         $monitoringStartedAtUtc = [DateTime]::UtcNow
-        Write-Host "Started non-mutating foreground monitoring after native dashboard readiness."
       }
 
       if ($monitoringStartedAtUtc) {
@@ -502,48 +448,20 @@ try {
           $primaryInteractiveFront -or
           ($primaryUnexpectedForegroundSamples -gt 0 -and
            $primaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples)
-        $secondaryOk =
-          [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
-            $mainWindow, "HomePanelSecondaryStationheadHost") -or
-          $secondaryInteractiveFront -or
-          ($secondaryUnexpectedForegroundSamples -gt 0 -and
-           $secondaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples)
-        if (-not $primaryOk -or -not $secondaryOk -or
-            -not $lastPrimaryAuthHidden -or -not $lastSecondaryAuthHidden) {
-          $violation = [ordered]@{
-            phase = "dashboard"
-            observedAtUtc = [DateTime]::UtcNow.ToString("o")
-            elapsedMs = [int][Math]::Round(
-              ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
-            primaryPlayback = $lastPrimaryState
-            secondaryPlayback = $lastSecondaryState
-            primaryInteractiveAuth = $primaryInteractiveAuthObserved
-            secondaryInteractiveAuth = $secondaryInteractiveAuthObserved
-            primaryInteractiveFront = $primaryInteractiveFront
-            secondaryInteractiveFront = $secondaryInteractiveFront
-            primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
-            secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
-            primaryAuthHidden = $lastPrimaryAuthHidden
-            secondaryAuthHidden = $lastSecondaryAuthHidden
-            foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
-          }
-          throw "Stationhead foreground invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] interactiveAuth=$primaryInteractiveAuthObserved/$secondaryInteractiveAuthObserved interactiveFront=$primaryInteractiveFront/$secondaryInteractiveFront authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+        if (-not $primaryOk -or -not $lastPrimaryAuthHidden) {
+          throw "Stationhead foreground invariant failed: [$lastPrimaryState] authHidden=$lastPrimaryAuthHidden"
         }
       }
     }
 
     $missing = @($required.Keys | Where-Object { -not $observed[$_] })
-    if ($missing.Count -eq 0 -and $monitoringStartedAtUtc -and
-        $primaryHostSeen -and $secondaryHostSeen) {
+    if ($missing.Count -eq 0 -and $monitoringStartedAtUtc -and $primaryHostSeen) {
       if ($null -eq $postClickObserveUntilUtc) {
-        $startupElapsedMs = [Math]::Max(
-          [int]$observedAtMs.primaryStartListeningClickRequested,
-          [int]$observedAtMs.secondaryStartListeningClickRequested)
+        $startupElapsedMs = [int]$observedAtMs.primaryStartListeningClickRequested
         if ($startupElapsedMs -gt ($StartupBudgetSeconds * 1000)) {
           throw "Native Stationhead startup exceeded the ${StartupBudgetSeconds}s budget (${startupElapsedMs}ms)."
         }
         $postClickObserveUntilUtc = [DateTime]::UtcNow.AddSeconds($PostClickSettleSeconds)
-        Write-Host "Continuing invariant monitoring for ${PostClickSettleSeconds}s after both startup clicks."
       } elseif ([DateTime]::UtcNow -ge $postClickObserveUntilUtc) {
         break
       }
@@ -556,19 +474,12 @@ try {
   if ($missing.Count -ne 0) {
     throw "Native Stationhead startup did not reach: $($missing -join ', ')."
   }
-  if (-not $monitoringStartedAtUtc) {
-    throw "Native dashboard never became ready for foreground-invariant monitoring."
+  if (-not $monitoringStartedAtUtc -or -not $primaryHostSeen -or -not $firstSurfaceObservationAtUtc) {
+    throw "Stationhead primary host/dashboard observation did not become ready."
   }
-  if (-not $primaryHostSeen -or -not $secondaryHostSeen -or
-      -not $firstSurfaceObservationAtUtc) {
-    throw "Both Stationhead hosts were not observed from their creation phase."
-  }
-  if ($null -eq $postClickObserveUntilUtc -or
-      [DateTime]::UtcNow -lt $postClickObserveUntilUtc) {
+  if ($null -eq $postClickObserveUntilUtc -or [DateTime]::UtcNow -lt $postClickObserveUntilUtc) {
     throw "The post-click foreground observation window did not complete."
   }
-
-  Write-Host "Observational native Stationhead startup smoke passed with $sampleCount samples."
 } catch {
   $failureMessage = $_.Exception.Message
 } finally {
@@ -586,39 +497,19 @@ try {
 
   [ordered]@{
     executable = $executablePath
-    processId = if ($process) { $process.Id } else { $null }
     startedAtUtc = $startedAtUtc.ToString("o")
     completedAtUtc = [DateTime]::UtcNow.ToString("o")
-    monitoringStartedAtUtc = if ($monitoringStartedAtUtc) {
-      $monitoringStartedAtUtc.ToString("o")
-    } else {
-      $null
-    }
-    firstSurfaceObservationAtUtc = if ($firstSurfaceObservationAtUtc) {
-      $firstSurfaceObservationAtUtc.ToString("o")
-    } else {
-      $null
-    }
     primaryHostSeen = $primaryHostSeen
-    secondaryHostSeen = $secondaryHostSeen
     primaryInteractiveAuthObserved = $primaryInteractiveAuthObserved
-    secondaryInteractiveAuthObserved = $secondaryInteractiveAuthObserved
     finalPrimaryInteractiveFront = $primaryInteractiveFront
-    finalSecondaryInteractiveFront = $secondaryInteractiveFront
     primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
-    secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
-    interactiveAuthSignalGraceSamples = $interactiveAuthSignalGraceSamples
     observationalOnly = $true
-    forbiddenWindowMutationApisChecked = $forbiddenMutationNames
-    sampleIntervalMs = 25
     sampleCount = $sampleCount
     postClickObservationSeconds = $PostClickSettleSeconds
     observed = $observed
     observedAtMs = $observedAtMs
     finalPrimaryPlayback = $lastPrimaryState
-    finalSecondaryPlayback = $lastSecondaryState
     finalPrimaryAuthHidden = $lastPrimaryAuthHidden
-    finalSecondaryAuthHidden = $lastSecondaryAuthHidden
     violation = $violation
     failure = $failureMessage
     passed = [string]::IsNullOrEmpty($failureMessage)

@@ -27,17 +27,13 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Start Listening retry deadlines are retained per Stationhead role', () => {
+test('Start Listening retry deadline is retained for the single Stationhead player', () => {
   assert.match(
     clockPolicy,
     /inline MonotonicProjectedDeadline primaryAutoClickDeadline;/,
   );
-  assert.match(
-    clockPolicy,
-    /inline MonotonicProjectedDeadline secondaryAutoClickDeadline;/,
-  );
+  assert.doesNotMatch(clockPolicy, /secondaryAutoClickDeadline|secondaryAutoClickExposed/);
   assert.match(clockPolicy, /primaryAutoClickExposed = 0;/);
-  assert.match(clockPolicy, /secondaryAutoClickExposed = 0;/);
 });
 
 test('auto-click lvalue storage synchronizes external writes into uptime', () => {
@@ -56,7 +52,7 @@ test('the final PCH alias preserves the existing nextAutoClickAt lvalue API', ()
   assert.match(playerHeader, /int64_t nextAutoClickAt_ = 0;/);
   assert.match(
     clockPolicy,
-    /#define nextAutoClickAt_[\s\S]*StationheadAutoClickDeadlineStorage[\s\S]*\(nextAutoClickAt_\), IsSecondary\(\)/,
+    /#define nextAutoClickAt_[\s\S]*StationheadAutoClickDeadlineStorage[\s\S]*\(nextAutoClickAt_\)\)\)/,
   );
 });
 

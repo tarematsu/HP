@@ -23,7 +23,7 @@ test('single Stationhead mute path uses only the native WebView2 mute API', () =
   assert.match(setMuted, /ApplyMute\(\)/);
 
   const applyMute = section(audio, 'void StationheadPlayer::ApplyMute() const noexcept',
-    'void StationheadPlayer::EnsureDistinctBrowserIdentity() noexcept');
+    '}  // namespace hp');
   assert.match(applyMute, /put_IsMuted/);
   assert.doesNotMatch(audio, /SetVolume|ApplyVolume|StationheadVolumeScript|ExecuteScript/);
 

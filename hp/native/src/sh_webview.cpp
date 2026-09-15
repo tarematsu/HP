@@ -80,7 +80,6 @@ void StationheadPlayer::ConfigureWebView() {
   }
 
   ApplyMute();
-  if (IsSecondary()) EnsureDistinctBrowserIdentity();
 
   log_.Info(L"Stationhead " + std::wstring(RoleTag()) +
             L" registering required startup scripts");
@@ -110,13 +109,9 @@ void StationheadPlayer::ConfigureWebView() {
             HResultHex(authCaptureResult),
         1'000);
   }
-  static const std::wstring primaryStartupScript =
+  static const std::wstring startupScript =
       StationheadAutoplayScript(L"__homepanelPrimaryStationhead", L"stationhead") +
       L"\n" + StationheadTrackBoundaryScript(L"stationhead");
-  static const std::wstring secondaryStartupScript =
-      StationheadAutoplayScript(L"__homepanelSecondaryStationhead", L"secondary") +
-      L"\n" + StationheadTrackBoundaryScript(L"secondary");
-  const std::wstring& startupScript = IsSecondary() ? secondaryStartupScript : primaryStartupScript;
   const HRESULT startupScriptResult = webview_->AddScriptToExecuteOnDocumentCreated(
       startupScript.c_str(),
       Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
@@ -148,19 +143,9 @@ void StationheadPlayer::ConfigureWebView() {
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
             trackBoundaryRefreshPending_ = false;
-            if (!IsSecondary()) {
-              statsDocumentGeneration_ = 0;
-              statsAuthGeneration_ = 0;
-              statsLastAcceptedRequestId_ = 0;
-            }
-            if (IsSecondary()) {
-              // Invalidate a local probe started by the outgoing document.
-              // Internal redirects do not pass through NavigateStationheadUrl(),
-              // so they must clear the execution token here as well.
-              authProbeInFlight_ = false;
-              authProbeStartedAt_ = 0;
-              lastAuthProbeAt_ = 0;
-            }
+            statsDocumentGeneration_ = 0;
+            statsAuthGeneration_ = 0;
+            statsLastAcceptedRequestId_ = 0;
             UINT64 navigationId = 0;
             if (SUCCEEDED(args->get_NavigationId(&navigationId))) {
               activeNavigationId_.store(navigationId, std::memory_order_release);
@@ -282,7 +267,7 @@ void StationheadPlayer::ConfigureWebView() {
       Callback<ICoreWebView2WebMessageReceivedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
-            const std::wstring prefix = IsSecondary() ? L"secondary" : L"stationhead";
+            const std::wstring prefix = L"stationhead";
             LPWSTR rawText = nullptr;
             if (SUCCEEDED(args->TryGetWebMessageAsString(&rawText)) && rawText) {
               const std::wstring message(rawText);
@@ -338,7 +323,6 @@ void StationheadPlayer::ConfigureWebView() {
                 return static_cast<uint64_t>(value);
               };
               if (type == L"stationhead-stats-document") {
-                if (IsSecondary()) return S_OK;
                 const uint64_t documentGeneration = positiveSafeInteger(
                     json::Number(message, L"document_generation", 0));
                 if (documentGeneration == 0) return S_OK;
@@ -348,7 +332,6 @@ void StationheadPlayer::ConfigureWebView() {
                 return S_OK;
               }
               if (type == L"stationhead-play-stats") {
-                if (IsSecondary()) return S_OK;
                 using winrt::Windows::Data::Json::JsonValueType;
                 const uint64_t requestId = positiveSafeInteger(
                     json::Number(message, L"request_id", 0));
@@ -465,7 +448,7 @@ void StationheadPlayer::ConfigureWebView() {
               if (type == L"stationhead-play-stats-auth-failed") {
                 const uint64_t rejectedAuthGeneration = positiveSafeInteger(
                     json::Number(message, L"auth_generation", 0));
-                if (!IsSecondary() && rejectedAuthGeneration > 0 &&
+                if (rejectedAuthGeneration > 0 &&
                     rejectedAuthGeneration == statsAuthGeneration_) {
                   statsAuthGeneration_ = 0;
                 }
@@ -480,12 +463,10 @@ void StationheadPlayer::ConfigureWebView() {
                 return S_OK;
               }
               if (type == L"stationhead-auth-ready") {
-                if (!IsSecondary()) {
-                  const uint64_t authGeneration = positiveSafeInteger(
-                      json::Number(message, L"auth_generation", 0));
-                  if (authGeneration > 0) {
-                    statsAuthGeneration_ = authGeneration;
-                  }
+                const uint64_t authGeneration = positiveSafeInteger(
+                    json::Number(message, L"auth_generation", 0));
+                if (authGeneration > 0) {
+                  statsAuthGeneration_ = authGeneration;
                 }
                 loginRequired_ = false;
                 {
@@ -493,13 +474,7 @@ void StationheadPlayer::ConfigureWebView() {
                   status_.loginRequired = false;
                   status_.detail = L"Stationhead authentication ready";
                 }
-                if (IsSecondary()) {
-                  lastAuthProbeAt_ = 0;
-                  authProbeStartedAt_ = 0;
-                  authProbeInFlight_ = false;
-                } else {
-                  lastDailyPlayStatsAt_ = 0;
-                }
+                lastDailyPlayStatsAt_ = 0;
                 nextAutoClickAt_ = 0;
                 nextTickAt_ = 0;
                 PostChange();
@@ -514,46 +489,6 @@ void StationheadPlayer::ConfigureWebView() {
                       now - (kStationheadDailyPlayStatsIntervalMs -
                              kStationheadDailyPlayStatsRetryMs);
                   nextTickAt_ = now + kStationheadDailyPlayStatsRetryMs;
-                }
-                return S_OK;
-              }
-              if (type == L"stationhead-auth-probe") {
-                const int64_t probeStartedAt = static_cast<int64_t>(
-                    json::Number(message, L"probe_started_at", 0));
-                if (!IsSecondary() || !authProbeInFlight_ || probeStartedAt <= 0 ||
-                    probeStartedAt != authProbeStartedAt_) {
-                  log_.Info(L"Secondary Stationhead ignored a stale auth probe result");
-                  return S_OK;
-                }
-                authProbeInFlight_ = false;
-                authProbeStartedAt_ = 0;
-                const std::wstring state = message.GetNamedString(L"state", L"").c_str();
-                if (state == L"auth-failed") {
-                  loginRequired_ = true;
-                  ShowForLogin();
-                  {
-                    std::lock_guard lock(mutex_);
-                    status_.loginRequired = true;
-                    status_.detail = L"secondary Stationhead authentication expired";
-                  }
-                  log_.Warn(L"Secondary Stationhead authentication probe rejected with HTTP " +
-                            std::to_wstring(static_cast<int>(message.GetNamedNumber(L"status", 0))));
-                  PostChange();
-                } else if (state == L"ok") {
-                  std::lock_guard lock(mutex_);
-                  status_.detail = L"secondary Stationhead authentication probe ok";
-                } else if (state == L"no-auth-header") {
-                  std::lock_guard lock(mutex_);
-                  status_.detail = L"secondary Stationhead auth probe waiting for session";
-                } else if (state == L"forbidden") {
-                  {
-                    std::lock_guard lock(mutex_);
-                    status_.detail = L"secondary Stationhead auth probe forbidden; playback session retained";
-                  }
-                  log_.Warn(L"Secondary Stationhead authentication probe returned HTTP 403; retaining the current playback session");
-                  PostChange();
-                } else {
-                  log_.Warn(L"Secondary Stationhead auth probe returned an error");
                 }
                 return S_OK;
               }
@@ -677,7 +612,7 @@ void StationheadPlayer::ConfigureWebView() {
     status_.created = true;
     status_.navigating = true;
     status_.url = CurrentStationheadUrl();
-    status_.detail = IsSecondary() ? L"creating isolated WebView2 environment" : L"起動中";
+    status_.detail = L"起動中";
     status_.spotifyConfigured = spotifyConfigured;
   }
   createdAt_ = lastReloadAt_ = UnixMillis();
@@ -852,7 +787,6 @@ void StationheadPlayer::CloseWebView() {
   navigationInFlight_.store(false, std::memory_order_relaxed);
   nativeAudioTracking_ = false;
   resourceBlockingArmed_ = false;
-  identityWebview_ = nullptr;
   autoClickInFlight_ = false;
   webViewConfigured_ = false;
   authCaptureScriptRegistrationComplete_ = false;
@@ -872,9 +806,6 @@ void StationheadPlayer::CloseWebView() {
   selectedTab_ = StationheadTabKind::None;
   spotifyAuthorization_ = false;
   loginRequired_ = false;
-  lastAuthProbeAt_ = 0;
-  authProbeStartedAt_ = 0;
-  authProbeInFlight_ = false;
   std::lock_guard lock(mutex_);
   status_.created = false;
   status_.navigating = false;

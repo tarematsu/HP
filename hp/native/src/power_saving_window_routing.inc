@@ -4,8 +4,6 @@ constexpr wchar_t kMainWindowClass[] = L"HomePanelNativeWindow";
 constexpr wchar_t kMvPanelWindowClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
 constexpr wchar_t kStationheadHostWindowClass[] = L"HomePanelStationheadHost";
-constexpr wchar_t kSecondaryStationheadHostWindowClass[] =
-    L"HomePanelSecondaryStationheadHost";
 constexpr UINT_PTR kObservedNativeMvAutoStartTimer = 0x4D56;
 
 bool WindowHasClass(HWND window, const wchar_t* expected) {
@@ -24,8 +22,7 @@ bool IsMvPanelWindow(HWND window) {
 }
 
 bool IsStationheadPlaybackHost(HWND window) {
-  return WindowHasClass(window, kStationheadHostWindowClass) ||
-      WindowHasClass(window, kSecondaryStationheadHostWindowClass);
+  return WindowHasClass(window, kStationheadHostWindowClass);
 }
 
 bool ChildBoundsMatch(HWND window, const RECT& expected) noexcept {
