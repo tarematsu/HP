@@ -45,4 +45,15 @@ inline std::wstring StationheadCompactRuntimeScript(
   return script;
 }
 
+// Compatibility only: sh_track_boundary_message_policy.h still contains an
+// unused historical wrapper that names the old runtime entry point. Map that
+// symbol to the compact runtime so the header can compile without restoring the
+// retired polling/watchdog implementation. The effective startup path calls
+// StationheadCompactRuntimeScript directly from sh_startup_script.h.
+inline std::wstring StationheadAutoplayScriptRuntimeFixed(
+    const wchar_t* globalName,
+    const wchar_t* messagePrefix) {
+  return StationheadCompactRuntimeScript(globalName, messagePrefix);
+}
+
 }  // namespace hp
