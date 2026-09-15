@@ -1,124 +1,32 @@
 namespace hp {
 namespace {
 
-// Reconcile only the requested track surface. Actual media playback is the
-// success signal. Prefer resuming the target AUDIO element directly; Spotify's
-// Play chrome remains a fallback locator when direct media playback does not
-// start for the current target generation.
+// Minimal playback start path for the already-selected Spotify track page:
+// 1) if AUDIO is playing, wait for the observer;
+// 2) otherwise call AUDIO.play() once per target generation;
+// 3) if playback still has not started on the next reconcile, return the
+//    center of Spotify's native Play control for one trusted CDP click.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
   const targetPath = target &&
       (target.path || target.trackPath || target.pagePath || '');
-  if (!targetPath) return null;
+  if (!targetPath || location.hostname !== 'open.spotify.com') return null;
 
-  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-  const sameTrackPath = (value, expected) => {
-    if (!value || !expected) return false;
-    return value === expected ||
-        (expected.startsWith('/track/') && value.endsWith(expected));
-  };
-  const onTargetPage = () =>
-      location.pathname === targetPath ||
+  const onTargetPage = location.pathname === targetPath ||
       (targetPath.startsWith('/track/') && location.pathname.endsWith(targetPath));
+  if (!onTargetPage) return null;
+
   const visible = element => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true') return false;
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+        style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
   };
-  const labelOf = element => normalize(
-      (element && (element.getAttribute('aria-label') ||
-                   element.getAttribute('title'))) || '').toLowerCase();
-  const testIdOf = element =>
-      ((element && element.getAttribute('data-testid')) || '').toLowerCase();
-  const buttonIntent = button => {
-    const label = labelOf(button);
-    const testId = testIdOf(button);
-    if (label.includes('pause') || label.includes('一時停止')) return 'pause';
-    if (testId === 'play-button' || testId === 'control-button-playpause') {
-      return 'play';
-    }
-    if (label === 'play' || label === '再生' ||
-        label.startsWith('play ') || label.endsWith('を再生')) {
-      return 'play';
-    }
-    return 'unknown';
-  };
-  const playerControl = () => {
-    const primary = document.querySelector(
-        'button[data-testid="control-button-playpause"]');
-    if (visible(primary)) return primary;
-    return Array.from(document.querySelectorAll('button, [role="button"]'))
-        .find(button => visible(button) && buttonIntent(button) !== 'unknown') ||
-        null;
-  };
-  const currentTrack = () => {
-    for (const selector of [
-      '[data-testid="now-playing-widget"] a[href*="/track/"]',
-      '[data-testid="now-playing-bar"] [data-testid="context-item-link"][href*="/track/"]',
-      'footer [data-testid="context-item-link"][href*="/track/"]'
-    ]) {
-      const link = document.querySelector(selector);
-      if (!link) continue;
-      try {
-        const path = new URL(link.href, location.href).pathname;
-        if (!path.includes('/track/')) continue;
-        return { path, title: normalize(link.textContent).toLowerCase() };
-      } catch (_) {}
-    }
-    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
-    return { path: '', title: normalize(metadata && metadata.title).toLowerCase() };
-  };
-  const targetMatches = track => {
-    if (targetPath && track.path) return sameTrackPath(track.path, targetPath);
-    return !!target.title && track.title === target.title;
-  };
-  const targetLink = () => Array.from(
-      document.querySelectorAll('a[href*="/track/"]')).find(link => {
-        try {
-          const path = new URL(link.href, location.href).pathname;
-          return sameTrackPath(path, targetPath);
-        } catch (_) { return false; }
-      }) || null;
-  const targetPlayButton = () => {
-    const link = targetLink();
-    if (link) {
-      try { link.scrollIntoView({ block: 'center', inline: 'nearest' }); }
-      catch (_) {}
-      const row = link.closest(
-          '[data-testid="tracklist-row"], [role="row"], li, [aria-rowindex]') ||
-          link.parentElement?.parentElement;
-      if (row) {
-        const buttons = Array.from(row.querySelectorAll(
-            'button[data-testid="play-button"], button, [role="button"]'));
-        const button = buttons.find(candidate => {
-          if (!visible(candidate)) return false;
-          const intent = buttonIntent(candidate);
-          if (intent !== 'unknown') return true;
-          const label = labelOf(candidate);
-          return !!target.title && label.includes(target.title);
-        });
-        if (button) return button;
-      }
-    }
 
-    if (onTargetPage()) {
-      const pageButtons = Array.from(document.querySelectorAll(
-          'button[data-testid="play-button"], '
-          + 'button[data-testid="control-button-playpause"], '
-          + 'button, [role="button"]'));
-      const explicit = pageButtons.find(candidate =>
-          visible(candidate) && testIdOf(candidate) === 'play-button');
-      if (explicit) return explicit;
-      return pageButtons.find(candidate =>
-          visible(candidate) && buttonIntent(candidate) === 'play') || null;
-    }
-    return null;
-  };
   const point = element => {
     if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
       return null;
@@ -138,41 +46,32 @@ LR"JS(
           (centerY / window.innerHeight) * 10000)))
     ];
   };
-  const mediaPlaybackState = () => {
-    const media = Array.from(document.querySelectorAll('audio, video'));
-    const active = media.find(candidate => !candidate.ended && !candidate.paused);
-    if (active) return { known: true, playing: true, element: active };
-    const pending =
-        media.find(candidate => candidate.tagName === 'AUDIO' &&
-            !candidate.ended && candidate.readyState >= 1) ||
-        media.find(candidate => candidate.tagName === 'AUDIO' && !candidate.ended) ||
-        media.find(candidate => !candidate.ended && candidate.readyState >= 1) ||
-        media.find(candidate => !candidate.ended) || null;
-    return { known: !!pending, playing: false, element: pending };
-  };
 
-  if (location.hostname !== 'open.spotify.com' || !onTargetPage()) return null;
+  const audio = document.querySelector('audio');
+  if (audio && !audio.paused && !audio.ended) return true;
 
-  const current = currentTrack();
-  const currentMatchesTarget = targetMatches(current);
-  const control = playerControl();
-  const button = targetPlayButton();
-  const controlIntent = buttonIntent(control);
-  const buttonIntentValue = buttonIntent(button);
-  const mediaState = mediaPlaybackState();
-
-  if (currentMatchesTarget && mediaState.known && mediaState.playing) return true;
-  if (mediaState.known && mediaState.playing) return 'settling';
-  if (currentMatchesTarget && mediaState.known && !mediaState.playing &&
-      typeof window.__homePanelSpotifyTryDirectPlay === 'function' &&
-      window.__homePanelSpotifyTryDirectPlay(mediaState.element)) {
-    return 'direct-play';
+  const generation = String(window.__homePanelSpotifyGeneration || '0');
+  if (audio && typeof audio.play === 'function' &&
+      window.__homePanelSpotifyDirectPlayGeneration !== generation) {
+    window.__homePanelSpotifyDirectPlayGeneration = generation;
+    const runtime = window.__homePanelSpotifyMediaObserverRuntime;
+    if (runtime && typeof runtime.armTrustedStart === 'function') {
+      runtime.armTrustedStart(generation);
+    }
+    try {
+      const result = audio.play();
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+      return 'direct-play';
+    } catch (_) {
+      // Synchronous rejection falls through to the trusted Spotify Play button.
+    }
   }
-  if (controlIntent === 'pause' || buttonIntentValue === 'pause') return 'settling';
-  if (buttonIntentValue === 'play') return point(button);
-  if (currentMatchesTarget && controlIntent === 'play') return point(control);
-  if (currentMatchesTarget || mediaState.known) return 'settling';
-  return null;
+
+  const button = Array.from(document.querySelectorAll(
+      'button[data-testid="play-button"], '
+      + 'button[data-testid="control-button-playpause"]'))
+      .find(visible) || null;
+  return point(button);
 })()
 )JS";
 
