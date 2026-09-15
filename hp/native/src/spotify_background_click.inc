@@ -28,9 +28,6 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
     return;
   }
 
-  // After real playback has started the host intentionally stays 1x1 through
-  // the target song's end, including ad interruptions. Never promote that
-  // established playback surface just to retry a stale Play coordinate.
   if (slot.playbackConfirmed) {
     ArmRobustScheduler();
     return;
@@ -44,8 +41,6 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
     return;
   }
 
-  // Recovery/pre-playback hosts are full-size behind the dashboard. Repair the
-  // cached placement once if an external window operation left this host at 1x1.
   RECT hostClient{};
   if (!GetClientRect(slot.hostWindow, &hostClient) ||
       hostClient.right - hostClient.left <= 1 ||
@@ -56,19 +51,13 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
     return;
   }
 
-  const ULONGLONG now = GetTickCount64();
   if (!slot.timedObserverReady) {
-    // Start the generation-fenced confirmation observer before sending Play,
-    // but never make observer acknowledgement a prerequisite for the click.
-    // The observer's sync path scans already-active media, so it can still
-    // confirm playback when the trusted click wins the race with installation.
     ArmTimedEndObserver(slot);
   }
 
   const ULONGLONG targetGeneration = slot.targetGeneration;
   const ULONGLONG pageEpoch = slot.pageEpoch;
   SetSlotState(slot, SlotState::WaitingTarget);
-  slot.nextRecoveryTick = now + kSpotifyPlaybackStartRetryMs;
 
   std::wstring preflight = L"(() => {";
   preflight += L"const nx=" + std::to_wstring(xTenThousandths) + L";";
@@ -82,10 +71,8 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
       L"const hit=document.elementFromPoint(x,y);"
       L"const button=hit&&hit.closest?hit.closest('button,[role=\"button\"]'):null;"
       L"if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return false;"
-      L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
       L"const testid=((button.getAttribute('data-testid')||'').trim().toLowerCase());"
-      L"if(label.includes('pause')||label.includes('一時停止'))return false;"
-      L"const trustedPlay=testid==='play-button'||testid==='control-button-playpause'||label==='play'||label==='再生'||label.startsWith('play ')||label.endsWith('を再生');"
+      L"const trustedPlay=testid==='play-button'||testid==='control-button-playpause';"
       L"if(!trustedPlay)return false;"
       L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
       L"if(runtime&&typeof runtime.armTrustedStart==='function'){"
@@ -163,7 +150,7 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
 
     const ULONGLONG targetGeneration = slot.targetGeneration;
     const ULONGLONG pageEpoch = slot.pageEpoch;
-    slot.trustedClickBlockedUntilTick = now + kSpotifyPlaybackStartRetryMs;
+    slot.trustedClickBlockedUntilTick = now + kSpotifyCdpPlayConfirmWaitMs;
 
     Slot* const target = &slot;
     const auto alive = alive_;
