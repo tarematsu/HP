@@ -15,7 +15,6 @@ const compactRuntime = source('sh_compact_runtime_script.h');
 const interactionRuntime = source('sh_runtime_interaction_script.h');
 const recoveryRuntime = source('sh_runtime_blank_recovery_script.h');
 const lifecycleRuntime = source('sh_runtime_lifecycle_script.h');
-const profileReuseEnd = source('sh_profile_reuse_policy_end.h');
 const nativeCmake = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
@@ -47,7 +46,10 @@ test('Stationhead startup uses the single compact runtime and current render pol
     startupScript,
     /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript BuildStationheadStartupScript/,
   );
-  assert.match(profileReuseEnd, /#include "sh_startup_script\.h"/);
+  assert.match(
+    nativeCmake,
+    /src\/sh_track_boundary_message_policy\.h[\s\S]*src\/sh_startup_script\.h/,
+  );
 
   for (const retired of [
     'src/sh_runtime_policy_fix.h',
