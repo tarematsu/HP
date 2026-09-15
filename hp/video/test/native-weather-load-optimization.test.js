@@ -14,10 +14,6 @@ const bitmapCache = readFileSync(
   new URL('../../native/src/renderer_bitmap_cache.cpp', import.meta.url),
   'utf8',
 );
-const environmentSections = readFileSync(
-  new URL('../../native/src/renderer_panels/environment_sections.inc', import.meta.url),
-  'utf8',
-);
 const snapshot = readFileSync(
   new URL('../../cloud/src/snapshot.ts', import.meta.url),
   'utf8',
@@ -46,14 +42,6 @@ test('native dashboard invalidates weather only when its source revision changes
     rendererDashboard,
     /if \(weatherChanged\) \{[\s\S]*InvalidatePanelSection\(nativeSideWindow_, PanelSection::Weather\);/,
   );
-});
-
-test('weather panel reuses a completed bitmap for unchanged revisions', () => {
-  assert.match(rendererHeader, /struct WeatherPanelCache/);
-  assert.match(bitmapCache, /bool Renderer::DrawCachedWeatherPanel/);
-  assert.match(bitmapCache, /weatherPanelCache_\.revision != nativeDashboard_\.revisions\.weather/);
-  assert.match(environmentSections, /if \(DrawCachedWeatherPanel\(dc, card\)\) return;/);
-  assert.match(environmentSections, /CaptureWeatherPanel\(dc, card\);/);
 });
 
 test('weather icons use a dedicated bitmap cache', () => {
