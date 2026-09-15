@@ -2,7 +2,9 @@ namespace hp {
 namespace {
 
 // Reconcile only the requested track surface. Actual media playback is the
-// success signal; Spotify's play/pause chrome is only used to locate controls.
+// success signal. Prefer resuming the target AUDIO element directly; Spotify's
+// Play chrome remains a fallback locator when direct media playback does not
+// start for the current target generation.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
@@ -139,14 +141,14 @@ LR"JS(
   const mediaPlaybackState = () => {
     const media = Array.from(document.querySelectorAll('audio, video'));
     const active = media.find(candidate => !candidate.ended && !candidate.paused);
-    if (active) return { known: true, playing: true };
+    if (active) return { known: true, playing: true, element: active };
     const pending =
         media.find(candidate => candidate.tagName === 'AUDIO' &&
             !candidate.ended && candidate.readyState >= 1) ||
         media.find(candidate => candidate.tagName === 'AUDIO' && !candidate.ended) ||
         media.find(candidate => !candidate.ended && candidate.readyState >= 1) ||
         media.find(candidate => !candidate.ended) || null;
-    return { known: !!pending, playing: false };
+    return { known: !!pending, playing: false, element: pending };
   };
 
   if (location.hostname !== 'open.spotify.com' || !onTargetPage()) return null;
@@ -161,6 +163,11 @@ LR"JS(
 
   if (currentMatchesTarget && mediaState.known && mediaState.playing) return true;
   if (mediaState.known && mediaState.playing) return 'settling';
+  if (currentMatchesTarget && mediaState.known && !mediaState.playing &&
+      typeof window.__homePanelSpotifyTryDirectPlay === 'function' &&
+      window.__homePanelSpotifyTryDirectPlay(mediaState.element)) {
+    return 'direct-play';
+  }
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') return 'settling';
   if (buttonIntentValue === 'play') return point(button);
   if (currentMatchesTarget && controlIntent === 'play') return point(control);

@@ -7,11 +7,32 @@ constexpr std::array<std::wstring_view, kSpotifyActiveAccountCount> kSpotifyPane
 
 constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
 (() => {
+  window.__homePanelSpotifyGeneration =
+      window.__homePanelSpotifyGeneration || '0';
+  window.__homePanelSpotifyTryDirectPlay = media => {
+    const generation = String(window.__homePanelSpotifyGeneration || '0');
+    if (!media || media.tagName !== 'AUDIO' ||
+        typeof media.play !== 'function' ||
+        window.__homePanelSpotifyDirectPlayGeneration === generation) {
+      return false;
+    }
+    window.__homePanelSpotifyDirectPlayGeneration = generation;
+    const runtime = window.__homePanelSpotifyMediaObserverRuntime;
+    if (runtime && typeof runtime.armTrustedStart === 'function') {
+      runtime.armTrustedStart(generation);
+    }
+    try {
+      const result = media.play();
+      if (result && typeof result.catch === 'function') result.catch(() => {});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
   if (window.__homePanelSpotifyStaticBridgeInstalled) return true;
   window.__homePanelSpotifyStaticBridgeInstalled = true;
   window.__homePanelSpotifyNativeTarget = null;
-  window.__homePanelSpotifyGeneration =
-      window.__homePanelSpotifyGeneration || '0';
 
   if (window.chrome && window.chrome.webview) {
     window.chrome.webview.addEventListener('message', event => {

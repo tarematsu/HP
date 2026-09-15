@@ -5,6 +5,7 @@ constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTrackTransitionRetryMs = 500ULL;
 constexpr ULONGLONG kSpotifyPlaybackStartRetryMs = 1500ULL;
+constexpr ULONGLONG kSpotifyDirectPlayConfirmWaitMs = 5ULL * 1000ULL;
 
 }  // namespace
 
@@ -209,6 +210,19 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               SetSlotState(*target, SlotState::WaitingTarget);
               target->nextRecoveryTick =
                   callbackNow + kSpotifyPlaybackStartRetryMs;
+              ArmTimedEndObserver(*target);
+              RecomputeForeground();
+              ArmRobustScheduler();
+              return S_OK;
+            }
+
+            if (json && std::wstring_view(json) == L"\"direct-play\"") {
+              // Direct HTMLMediaElement.play() was issued for the confirmed
+              // target AUDIO element. Give Spotify five seconds to emit a
+              // generation-fenced playing event before button-click fallback.
+              SetSlotState(*target, SlotState::WaitingTarget);
+              target->nextRecoveryTick =
+                  callbackNow + kSpotifyDirectPlayConfirmWaitMs;
               ArmTimedEndObserver(*target);
               RecomputeForeground();
               ArmRobustScheduler();

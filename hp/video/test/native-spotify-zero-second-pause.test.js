@@ -15,14 +15,24 @@ const controller = source('spotify_controller_lifecycle.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
-test('zero-second recovery uses only explicit Spotify Play-labelled controls', () => {
+test('zero-second recovery tries target AUDIO play once per generation before Play controls', () => {
   assert.match(scoped, /const mediaPlaybackState = \(\) =>/);
-  assert.match(scoped, /candidate\.tagName === 'AUDIO'/);
-  assert.doesNotMatch(scoped, /requestMediaStart|__homePanelSpotifyPlayAttempt/);
-  const executableScoped = scoped.replace(/\/\/.*$/gm, '');
-  assert.doesNotMatch(executableScoped, /\.play\s*\(|\.click\s*\(/);
+  assert.match(scoped, /element: pending/);
+  assert.match(scripts, /__homePanelSpotifyTryDirectPlay = media =>/);
+  assert.match(scripts, /media\.tagName !== 'AUDIO'/);
+  assert.match(scripts, /typeof media\.play !== 'function'/);
+  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration === generation/);
+  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration = generation/);
+  assert.match(scripts, /const result = media\.play\(\)/);
+  assert.match(scripts, /result\.catch\(\(\) => \{\}\)/);
+  assert.match(scoped, /__homePanelSpotifyTryDirectPlay\(mediaState\.element\)/);
+  assert.match(scoped, /return 'direct-play'/);
   assert.match(scoped, /buttonIntentValue === 'play'/);
   assert.match(scoped, /controlIntent === 'play'/);
+  assert.ok(
+    scoped.indexOf('__homePanelSpotifyTryDirectPlay(mediaState.element)') <
+      scoped.indexOf("if (controlIntent === 'pause'"),
+  );
 });
 
 test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness', () => {
@@ -34,6 +44,30 @@ test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness
   assert.match(startup, /PostSpotifyTargetDescriptorForSlot\(slot\)/);
   assert.doesNotMatch(startup, /PlaybackModeGuard|EnsurePlaybackModeOff|shuffleOffVerified|repeatOffVerified/);
   assert.doesNotMatch(startup, /timedObserverReady|ArmTimedEndObserver/);
+});
+
+test('direct audio play waits five seconds for observer confirmation before trusted-click fallback', () => {
+  assert.match(music, /kSpotifyDirectPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+  const directStart = music.indexOf(
+    'if (json && std::wstring_view(json) == L"\\"direct-play\\"")',
+  );
+  const settlingStart = music.indexOf(
+    'if (json && std::wstring_view(json) == L"\\"settling\\"")',
+    directStart,
+  );
+  assert.ok(directStart >= 0 && settlingStart > directStart);
+  const directBranch = music.slice(directStart, settlingStart);
+  assert.match(directBranch, /SlotState::WaitingTarget/);
+  assert.match(directBranch, /kSpotifyDirectPlayConfirmWaitMs/);
+  assert.doesNotMatch(directBranch, /kSpotifyPlaybackStartRetryMs/);
+  assert.match(directBranch, /ArmTimedEndObserver\(\*target\)/);
+  assert.doesNotMatch(directBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.doesNotMatch(directBranch, /ClickSlotNormalizedPoint/);
+
+  const directAttempt = scoped.indexOf('__homePanelSpotifyTryDirectPlay(mediaState.element)');
+  const buttonFallback = scoped.indexOf("if (buttonIntentValue === 'play')");
+  assert.ok(directAttempt >= 0 && buttonFallback > directAttempt);
+  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration === generation[\s\S]*return false/);
 });
 
 test('settling queues one recovery deadline without a renavigation branch', () => {
@@ -69,7 +103,7 @@ test('DOM reconcile requires active target media and leaves success to the obser
   );
   const trueBranch = music.slice(
     music.indexOf('if (json && std::wstring_view(json) == L"true")'),
-    music.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
+    music.indexOf('if (json && std::wstring_view(json) == L"\\"direct-play\\"")'),
   );
   assert.match(trueBranch, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
   assert.match(trueBranch, /kSpotifyPlaybackStartRetryMs/);
