@@ -45,6 +45,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }
     state.actionCleanup?.();
 
+    const targetCss = element.style.cssText;
+    const targetHidden = element.getAttribute('aria-hidden');
     const touched = [];
     const remember = node => {
       if (!node?.style) return;
@@ -53,9 +55,12 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         pointerValue: node.style.getPropertyValue('pointer-events'),
         pointerPriority: node.style.getPropertyPriority('pointer-events'),
         visibilityValue: node.style.getPropertyValue('visibility'),
-        visibilityPriority: node.style.getPropertyPriority('visibility')
+        visibilityPriority: node.style.getPropertyPriority('visibility'),
+        overflowValue: node.style.getPropertyValue('overflow'),
+        overflowPriority: node.style.getPropertyPriority('overflow')
       });
       node.style.setProperty('pointer-events', 'auto', 'important');
+      node.style.setProperty('overflow', 'visible', 'important');
       if (getComputedStyle(node).visibility === 'hidden') {
         node.style.setProperty('visibility', 'visible', 'important');
       }
@@ -66,13 +71,35 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       if (node === player) break;
     }
 
-    const rect = element.getBoundingClientRect?.();
-    const centerX = Number(rect?.left) + Number(rect?.width) / 2;
-    const centerY = Number(rect?.top) + Number(rect?.height) / 2;
-    if (!rect || rect.width <= 0 || rect.height <= 0 ||
-        !Number.isFinite(centerX) || !Number.isFinite(centerY) ||
-        centerX < 0 || centerY < 0 ||
-        centerX >= window.innerWidth || centerY >= window.innerHeight) {
+    const center = () => {
+      const rect = element.getBoundingClientRect?.();
+      const x = Number(rect?.left) + Number(rect?.width) / 2;
+      const y = Number(rect?.top) + Number(rect?.height) / 2;
+      if (!rect || rect.width <= 0 || rect.height <= 0 ||
+          !Number.isFinite(x) || !Number.isFinite(y) ||
+          x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) {
+        return null;
+      }
+      return { rect, x, y };
+    };
+    const hitOwnControl = point => {
+      if (!point) return false;
+      const hit = document.elementFromPoint(point.x, point.y);
+      return Boolean(hit && (hit === element || element.contains(hit)));
+    };
+
+    let point = center();
+    if (!hitOwnControl(point)) {
+      element.style.cssText +=
+          ';position:fixed!important;left:calc(50vw - 48px)!important;'
+          + 'top:calc(50vh - 48px)!important;width:96px!important;height:96px!important;'
+          + 'margin:0!important;padding:0!important;transform:none!important;'
+          + 'opacity:0.001!important;visibility:visible!important;display:block!important;'
+          + 'pointer-events:auto!important;z-index:2147483647!important';
+      element.removeAttribute('aria-hidden');
+      point = center();
+    }
+    if (!point) {
       for (const entry of touched.reverse()) {
         if (entry.pointerValue) {
           entry.node.style.setProperty(
@@ -86,7 +113,16 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         } else {
           entry.node.style.removeProperty('visibility');
         }
+        if (entry.overflowValue) {
+          entry.node.style.setProperty(
+              'overflow', entry.overflowValue, entry.overflowPriority);
+        } else {
+          entry.node.style.removeProperty('overflow');
+        }
       }
+      element.style.cssText = targetCss;
+      if (targetHidden === null) element.removeAttribute('aria-hidden');
+      else element.setAttribute('aria-hidden', targetHidden);
       return null;
     }
 
@@ -110,6 +146,17 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         } else {
           entry.node.style.removeProperty('visibility');
         }
+        if (entry.overflowValue) {
+          entry.node.style.setProperty(
+              'overflow', entry.overflowValue, entry.overflowPriority);
+        } else {
+          entry.node.style.removeProperty('overflow');
+        }
+      }
+      if (element.isConnected) {
+        element.style.cssText = targetCss;
+        if (targetHidden === null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', targetHidden);
       }
       if (state.actionCleanup === cleanup) state.actionCleanup = null;
     };
@@ -131,9 +178,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     timer = setTimeout(cleanup, 1400);
     return [
       Math.max(0, Math.min(10000, Math.round(
-          (centerX / window.innerWidth) * 10000))),
+          (point.x / window.innerWidth) * 10000))),
       Math.max(0, Math.min(10000, Math.round(
-          (centerY / window.innerHeight) * 10000)))
+          (point.y / window.innerHeight) * 10000)))
     ];
   };
 
@@ -241,17 +288,17 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       }
     }
 
-    if (!fullscreen()) {
-      const action = armFullscreen();
-      if (action) return action;
-    }
-
     const skipSelector =
         '.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,'
         + '.videoAdUiSkipButton,[class*="ytp-ad-skip"],[aria-label*="Skip ad" i],'
         + '[aria-label*="広告をスキップ"],[aria-label*="広告を飛ばす"]';
     const target = Array.from(player.querySelectorAll(skipSelector)).find(valid) || null;
     if (target) return arm(target, 'skip-ad', 600);
+
+    if (!fullscreen()) {
+      const action = armFullscreen();
+      if (action) return action;
+    }
     recheck();
     return 'recovery';
   }
