@@ -3,23 +3,22 @@
 namespace hp {
 
 // Playback-only Stationhead room presentation. The room stays fully interactive
-// until media is actually playing so Start Listening, login and Spotify consent
-// remain usable. Once playback reaches `playing`, rendering of the app tree is
+// until media is actually playing so account and playback interaction remains
+// usable. Once playback reaches `playing`, rendering of the app tree is
 // suppressed without pausing/removing media or changing document visibility.
 // Any playback/recovery edge immediately restores the room UI.
 //
 // This script also claims the historical audio-only sentinel before the legacy
-// autoplay wrapper runs. That prevents its document-wide MutationObserver from
-// being installed; room reduction is CSS + media events only.
+// autoplay wrapper runs. That prevents its document-wide DOM scanner from being
+// installed; room reduction is CSS + media events only.
 inline std::wstring StationheadRoomUiReductionScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
   if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
 
-  // Disable the legacy semantic DOM scanner on every Stationhead surface. Login
-  // and authorization detection are independent native/page policies and do not
-  // depend on that observer.
+  // Disable the legacy semantic DOM scanner on every Stationhead surface.
+  // Account-state detection is independent and does not depend on that scanner.
   window.__homepanelStationheadAudioOnlyUi = true;
   try {
     window.__homepanelStationheadAudioOnlyUiObserver?.disconnect?.();
@@ -46,7 +45,7 @@ inline std::wstring StationheadRoomUiReductionScript() {
     style.id = styleId;
     style.textContent = `
       /* Static room cleanup before playback. These selectors are intentionally
-         presentation-only; auth/start/media elements are not matched. */
+         presentation-only; account/playback/media elements are not matched. */
       aside,
       [role='complementary'],
       [data-testid*='chat' i], [id*='chat' i], [class*='chat' i], [aria-label*='chat' i],
@@ -129,7 +128,7 @@ inline std::wstring StationheadRoomUiReductionScript() {
   };
 
   // Media events are captured because they do not all bubble. No polling,
-  // MutationObserver, geometry read or recurring timer is required.
+  // DOM observer, geometry read or recurring timer is required.
   document.addEventListener('playing', onMediaState, true);
   for (const eventName of [
       'pause', 'waiting', 'stalled', 'ended', 'error', 'emptied', 'abort']) {
