@@ -68,7 +68,31 @@ test('clock waste strip always contains three dated illustrated target categorie
   assert.match(calendar, /DrawCourse36WasteFallbackPictogram\(/);
 });
 
-test('cropped waste illustrations are bundled for offline rendering', () => {
+test('clock waste illustrations keep their 4:3 source aspect ratio', () => {
+  assert.match(calendar, /kCourse36ClockWasteImageAspectWidth = 4/);
+  assert.match(calendar, /kCourse36ClockWasteImageAspectHeight = 3/);
+  assert.match(
+    calendar,
+    /iconWidth \* kCourse36ClockWasteImageAspectHeight \/\s*kCourse36ClockWasteImageAspectWidth/,
+  );
+  assert.match(
+    calendar,
+    /iconHeight \* kCourse36ClockWasteImageAspectWidth \/\s*kCourse36ClockWasteImageAspectHeight/,
+  );
+});
+
+test('transparent waste illustrations use the premultiplied alpha renderer', () => {
+  assert.match(
+    calendar,
+    /void DrawCourse36WasteBitmap\([\s\S]*DrawPremultipliedBitmap\(dc, bitmap, rect\)/,
+  );
+  assert.doesNotMatch(
+    calendar,
+    /void DrawCourse36WasteBitmap\([\s\S]*BitBlt\(/,
+  );
+});
+
+test('cropped waste illustrations are bundled as transparent PNGs for offline rendering', () => {
   for (const [id, name] of [
     [120, 'bottles-cans.png'],
     [121, 'nonburnable-hazardous.png'],
@@ -78,6 +102,9 @@ test('cropped waste illustrations are bundled for offline rendering', () => {
     assert.match(nativeResources, new RegExp(`${id} RCDATA`));
     const bytes = readFileSync(new URL(`../../native/scripts/ui/waste-icons/${name}`, import.meta.url));
     assert.equal(bytes.subarray(1, 4).toString(), 'PNG');
+    assert.equal(bytes.readUInt32BE(16), 128);
+    assert.equal(bytes.readUInt32BE(20), 96);
+    assert.equal(bytes.includes(Buffer.from('tRNS')), true);
   }
 });
 
