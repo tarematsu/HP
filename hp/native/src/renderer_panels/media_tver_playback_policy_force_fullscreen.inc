@@ -1,9 +1,6 @@
 LR"JS(
 (() => {
-  if (window.__homePanelTverFullscreenPending) return;
   const state = window.__homePanelSakuraMeetsState;
-  if (state && state.fullscreenDirty === false) return;
-
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visible = element => {
     if (!element || element.getAttribute('aria-hidden') === 'true') return false;
@@ -23,44 +20,21 @@ LR"JS(
     return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
   });
 
-  // Login is user-controlled. Keep the fullscreen attempt pending so it can be
-  // retried after authentication instead of consuming the one-shot here.
-  if (hasVisibleLoginPrompt()) return;
+  if (hasVisibleLoginPrompt()) {
+    if (state) state.fullscreenDirty = true;
+    return;
+  }
+  if (document.fullscreenElement || document.webkitFullscreenElement ||
+      document.msFullscreenElement) {
+    if (state) state.fullscreenDirty = false;
+    return;
+  }
 
-  // Consume the per-video fullscreen attempt before the asynchronous fallback.
-  // Failure is intentionally not retried until the media identity changes.
-  if (state) state.fullscreenDirty = false;
-  window.__homePanelTverFullscreenPending = true;
-  window.setTimeout(async () => {
-    window.__homePanelTverFullscreenPending = false;
-    try {
-      // The login prompt can appear after the trusted click but before this
-      // delayed fullscreen request. Restore the pending attempt in that case.
-      if (hasVisibleLoginPrompt()) {
-        if (state) state.fullscreenDirty = true;
-        return;
-      }
-      if (document.fullscreenElement || document.webkitFullscreenElement ||
-          document.msFullscreenElement) return;
-      const videos = Array.from(document.querySelectorAll('video'));
-      const video = videos.find(visible) || videos[0] || null;
-      if (!video) return;
-      const candidates = [video, video.parentElement].filter(Boolean);
-      for (const target of candidates) {
-        const request = target.requestFullscreen || target.webkitRequestFullscreen ||
-            target.msRequestFullscreen;
-        if (typeof request !== 'function') continue;
-        try {
-          const result = request.call(target);
-          if (result && typeof result.then === 'function') await result;
-          if (document.fullscreenElement || document.webkitFullscreenElement ||
-              document.msFullscreenElement) {
-            if (state) state.fullscreenDirty = false;
-            return;
-          }
-        } catch (_) {}
-      }
-    } catch (_) {}
-  }, 180);
+  // Never depend on a page-script fullscreen API. If the trusted CDP click did
+  // not enter fullscreen, mark the action dirty again and wake the native
+  // watchdog so it can dispatch another trusted pointer click in background.
+  if (state) state.fullscreenDirty = true;
+  try { window.chrome?.webview?.postMessage('homepanel:tver-wake'); }
+  catch (_) {}
 })()
 )JS"

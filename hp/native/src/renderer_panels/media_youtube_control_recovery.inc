@@ -88,7 +88,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 
   const dismissMessageDialog = () => {
     const popup = document.querySelector('ytd-popup-container');
-    if (!popup) return;
+    if (!popup) return null;
     for (const root of popup.querySelectorAll(
         'tp-yt-paper-dialog[opened],[role="dialog"]:not([aria-hidden="true"]),'
         + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
@@ -98,10 +98,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
           'button,tp-yt-paper-button,[role="button"],[aria-label],[title]'))
           .find(element => element.getClientRects().length &&
               /^(閉じる|close)$/i.test(text(element)));
-      if (!close) continue;
-      try { close.click(); } catch (_) {}
-      return;
+      if (close) return arm(close, 'dialog-close', 500);
     }
+    return null;
   };
 
   const bindVideo = () => {
@@ -136,7 +135,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     });
     const pageState = () => {
       bindVideo();
-      dismissMessageDialog();
       wake(0);
     };
     for (const name of ['yt-navigate-finish', 'yt-page-data-updated',
@@ -147,15 +145,13 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }
     const popup = document.querySelector('ytd-popup-container');
     if (popup) {
-      state.popupObserver = new MutationObserver(() => {
-        dismissMessageDialog();
-        wake(0);
-      });
+      state.popupObserver = new MutationObserver(() => wake(0));
       state.popupObserver.observe(popup, { childList: true, subtree: true });
     }
   }
   bindVideo();
-  dismissMessageDialog();
+  const dialogAction = dismissMessageDialog();
+  if (dialogAction) return dialogAction;
 
   const video = player.querySelector('video');
   if (video?.error || player.classList.contains('ytp-error')) return 'reload';
@@ -287,9 +283,11 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 
   if (!state.captionsApplied) {
     const captions = player.querySelector('.ytp-subtitles-button');
+    if (captions?.getAttribute('aria-pressed') === 'true') {
+      return arm(captions, 'captions-off', 800) || 'recovery';
+    }
     try {
-      if (captions?.getAttribute('aria-pressed') === 'true') captions.click();
-      else if (typeof player.setOption === 'function') player.setOption('captions', 'track', {});
+      if (typeof player.setOption === 'function') player.setOption('captions', 'track', {});
       state.captionsApplied = true;
     } catch (_) {}
   }
