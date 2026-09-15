@@ -51,11 +51,12 @@ test('dashboard sections use source versions and reuse unchanged materialized da
   assert.match(parser, /CompleteTotal\(item, L"currentComplete", L"currentTotal"\)/);
   assert.match(parser, /bool ParseSwitchBotDevices/);
   assert.match(parser, /Compatibility fallback for old cached dashboard files/);
-  assert.doesNotMatch(parser, /SectionRevision\(|BuildOctopusRenderProjection|octopusRender/);
+  assert.doesNotMatch(parser, /StringifyUtf8|next\.loaded|SectionRevision\(|BuildOctopusRenderProjection|octopusRender/);
   assert.match(dashboardHeader, /uint64_t octopus = 0;/);
-  assert.doesNotMatch(dashboardHeader, /uint64_t switchbot = 0;|std::wstring\* error/);
+  assert.doesNotMatch(dashboardHeader, /bool loaded|uint64_t switchbot = 0;|std::wstring\* error/);
   assert.doesNotMatch(dashboardHeader, /OctopusRenderProjection|currentComplete|previousComplete/);
   assert.doesNotMatch(dashboardHeader, /uint64_t energy = 0;/);
+  assert.match(dashboardLoader, /dashboardSourceStamp_\.valid \? &nativeDashboard_ : nullptr/);
   assert.match(dashboardLoader, /ParseDashboardSnapshot\(text, snapshot, previous\)/);
 });
 
@@ -131,9 +132,9 @@ test('Octopus aggregation stays inside the bitmap rebuild path without duplicate
   assert.doesNotMatch(parser, /currentWeekUsage|previousWeekUsage|OctopusRenderProjection/);
 });
 
-test('plug state parser contains only the reachable Plug Mini path', () => {
-  assert.match(parser, /std::wstring PlugState/);
-  assert.doesNotMatch(parser, /Contact|Motion|Presence/);
+test('plug parser keeps only the reachable Plug Mini path', () => {
+  assert.match(parser, /const double watts = NumberOrNaN\(item, L"watts"\)/);
+  assert.doesNotMatch(parser, /PlugState|Contact|Motion|Presence/);
 });
 
 test('clock paint consumes cached network-clock strings', () => {

@@ -15,36 +15,22 @@ const layout = readFileSync(
   'utf8',
 );
 
-function functionBody(source, signature) {
-  const start = source.indexOf(signature);
-  assert.notEqual(start, -1, `${signature} is missing`);
-  const open = source.indexOf('{', start);
-  let depth = 0;
-  for (let index = open; index < source.length; index += 1) {
-    if (source[index] === '{') depth += 1;
-    if (source[index] === '}') {
-      depth -= 1;
-      if (depth === 0) return source.slice(start, index + 1);
-    }
-  }
-  assert.fail(`${signature} has no closing brace`);
-}
-
 test('Plug Mini footer shows rounded integer watts without ON/OFF state', () => {
-  const plugState = functionBody(dashboardParser, 'std::wstring PlugState');
-  assert.match(plugState, /std::isfinite\(watts\)/);
+  assert.match(dashboardParser, /const double watts = NumberOrNaN\(item, L"watts"\)/);
   assert.match(
-    plugState,
+    dashboardParser,
     /std::to_wstring\(static_cast<int>\(std::round\(watts\)\)\) \+ L"W"/,
   );
-  assert.doesNotMatch(plugState, /Contact|Motion|Presence|battery|json::Text\(item, L"power"/);
-  assert.doesNotMatch(plugState, /L"ON"|L"OFF"/);
+  assert.doesNotMatch(
+    dashboardParser,
+    /PlugState|Contact|Motion|Presence|battery|json::Text\(item, L"power"|L"ON"|L"OFF"/,
+  );
 });
 
 test('Plug Mini footer filters non-plug devices and parses only the four visible plugs', () => {
   assert.match(
     dashboardParser,
-    /if \(type\.find\(L"Plug"\) == std::wstring::npos\) continue;/,
+    /json::Text\(item, L"deviceType"\)\.find\(L"Plug"\) == std::wstring::npos/,
   );
   assert.match(
     dashboardParser,

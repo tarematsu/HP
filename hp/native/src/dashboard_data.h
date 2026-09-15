@@ -30,8 +30,6 @@ struct DashboardSectionRevisions {
 };
 
 struct DashboardSnapshot {
-  bool loaded = false;
-
   bool weatherOutage = false;
   std::vector<WeatherHourData> weatherHours;
 
