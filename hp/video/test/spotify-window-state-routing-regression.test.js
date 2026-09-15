@@ -15,7 +15,7 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('Spotify stable playback is parked offscreen while work states stay onscreen behind the dashboard', () => {
+test('Spotify initial work is onscreen but later track transitions stay parked offscreen', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
@@ -24,7 +24,10 @@ test('Spotify stable playback is parked offscreen while work states stay onscree
 
   assert.match(layout, /kSpotifyBackgroundWidth = 480/);
   assert.match(layout, /kSpotifyBackgroundHeight = 270/);
-  assert.match(placeHosts, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\);/);
+  assert.match(
+    placeHosts,
+    /const bool backgroundWork =\s*slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\);/,
+  );
   assert.match(
     placeHosts,
     /int hostX = backgroundWork \|\| authentication \? x : client\.right \+ 1;/,
@@ -55,14 +58,18 @@ test('Spotify authentication is onscreen foreground and Monitor C remains full-s
   );
 });
 
-test('layout refresh observes both health transitions and authentication transitions', () => {
+test('layout refresh ignores normal post-first-track handoff but observes explicit recovery and authentication', () => {
   const refresh = section(
     layout,
     'void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {',
     '}  // namespace hp',
   );
 
-  assert.match(refresh, /if \(!SlotStateIsHealthy\(slots_\[i\]\.state\)\) mask \|= \(1u << i\);/);
+  assert.match(
+    refresh,
+    /const bool backgroundWork =\s*slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\);/,
+  );
+  assert.match(refresh, /if \(backgroundWork\) mask \|= \(1u << i\);/);
   assert.match(refresh, /foregroundAuthenticationIndex/);
   assert.match(refresh, /hostLayoutMask_ == mask/);
   assert.match(refresh, /hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex/);
