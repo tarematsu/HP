@@ -26,7 +26,11 @@ test('Spotify initial work is onscreen but later track transitions stay parked o
   assert.match(layout, /kSpotifyBackgroundHeight = 270/);
   assert.match(
     placeHosts,
-    /const bool backgroundWork =\s*slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\);/,
+    /const bool routineTrackTransition =\s*slot\.targetGeneration > 1 && !slot\.playbackConfirmed;/,
+  );
+  assert.match(
+    placeHosts,
+    /const bool backgroundWork =\s*!routineTrackTransition &&\s*\(slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\)\);/,
   );
   assert.match(
     placeHosts,
@@ -58,7 +62,7 @@ test('Spotify authentication is onscreen foreground and Monitor C remains full-s
   );
 });
 
-test('layout refresh ignores normal post-first-track handoff but observes explicit recovery and authentication', () => {
+test('layout refresh suppresses transient recovery during generation 2+ handoff', () => {
   const refresh = section(
     layout,
     'void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {',
@@ -67,7 +71,11 @@ test('layout refresh ignores normal post-first-track handoff but observes explic
 
   assert.match(
     refresh,
-    /const bool backgroundWork =\s*slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\);/,
+    /const bool routineTrackTransition =\s*slot\.targetGeneration > 1 && !slot\.playbackConfirmed;/,
+  );
+  assert.match(
+    refresh,
+    /const bool backgroundWork =\s*!routineTrackTransition &&\s*\(slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\)\);/,
   );
   assert.match(refresh, /if \(backgroundWork\) mask \|= \(1u << i\);/);
   assert.match(refresh, /foregroundAuthenticationIndex/);
