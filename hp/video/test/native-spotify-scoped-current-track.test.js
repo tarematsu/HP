@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 
 const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
@@ -10,6 +11,90 @@ const scoped = source('spotify_scoped_track_reconcile.inc');
 const music = source('spotify_music_target.inc');
 const observerRuntime = source('spotify_media_observer_runtime.inc');
 
+function rawScopedScript() {
+  const symbol = 'kSpotifyScopedTrackReconcileScript';
+  const assignment = `constexpr wchar_t ${symbol}[] =`;
+  let cursor = scoped.indexOf(assignment);
+  assert.notEqual(cursor, -1, `${symbol} assignment not found`);
+  cursor += assignment.length;
+
+  const opener = 'LR"JS(\n';
+  const closer = '\n)JS"';
+  while (/\s/.test(scoped[cursor] || '')) cursor += 1;
+  assert.ok(scoped.startsWith(opener, cursor), `${symbol} raw string not found`);
+  const bodyStart = cursor + opener.length;
+  const end = scoped.indexOf(closer, bodyStart);
+  assert.notEqual(end, -1, `${symbol} raw string terminator not found`);
+  return scoped.slice(bodyStart, end);
+}
+
+function fakeButton(label, visible = false) {
+  return {
+    disabled: false,
+    isConnected: true,
+    __visible: visible,
+    getAttribute(name) {
+      if (name === 'aria-disabled') return 'false';
+      if (name === 'aria-label') return label;
+      return null;
+    },
+    getBoundingClientRect() {
+      return visible
+        ? { left: 4, top: 4, width: 20, height: 20 }
+        : { left: 0, top: 0, width: 0, height: 0 };
+    },
+    scrollIntoView() {},
+  };
+}
+
+function runScoped({
+  pageButtons = [],
+  playerButtons = [],
+  currentTrack = null,
+  metadataTitle = '',
+} = {}) {
+  const window = {
+    __homePanelSpotifyNativeTarget: { path: '/track/A', title: 'Target A' },
+    innerWidth: 320,
+    innerHeight: 180,
+    getComputedStyle(element) {
+      return {
+        display: element.__visible ? 'block' : 'none',
+        visibility: 'visible',
+        pointerEvents: 'auto',
+      };
+    },
+  };
+  const document = {
+    querySelectorAll(selector) {
+      if (selector === 'button[data-testid="play-button"]') return pageButtons;
+      if (selector === 'button[data-testid="control-button-playpause"]') {
+        return playerButtons;
+      }
+      return [];
+    },
+    querySelector(selector) {
+      if (selector.includes('/track/')) return currentTrack;
+      return null;
+    },
+  };
+  const context = vm.createContext({
+    window,
+    document,
+    navigator: { mediaSession: { metadata: metadataTitle ? { title: metadataTitle } : null } },
+    location: {
+      hostname: 'open.spotify.com',
+      pathname: '/track/A',
+      href: 'https://open.spotify.com/track/A',
+    },
+    URL,
+    String,
+    Number,
+    Array,
+  });
+  return vm.runInContext(rawScopedScript(), context);
+}
+
 test('active music reconcile directly uses the scoped playback script', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.match(music, /ExecuteScript\(\s*kSpotifyScopedTrackReconcileScript/);
@@ -17,21 +102,65 @@ test('active music reconcile directly uses the scoped playback script', () => {
   assert.doesNotMatch(music, /kSpotifyStaticTrackReconcileScript/);
 });
 
-test('reconcile trusts the already-selected target URL instead of re-identifying the current track', () => {
+test('target URL stays authoritative while global-player confirmation requires target identity', () => {
   assert.match(scoped, /location\.hostname !== 'open\.spotify\.com'/);
   assert.match(scoped, /location\.pathname === targetPath/);
   assert.match(scoped, /targetPath\.startsWith\('\/track\/'\)/);
-  assert.match(scoped, /location\.pathname\.endsWith\(targetPath\)/);
-  assert.doesNotMatch(scoped, /now-playing-widget|now-playing-bar|context-item-link|navigator\.mediaSession|currentTrack|targetMatches/);
+  assert.match(scoped, /currentTrackMatchesTarget/);
+  assert.match(scoped, /now-playing-widget/);
+  assert.match(scoped, /navigator\.mediaSession/);
 });
 
-test('Spotify Play starts only through the returned trusted-click point', () => {
+test('Spotify Play clicks are returned only for the visible target-page button', () => {
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /if \(!button\) return null/);
-  assert.match(scoped, /if \(isPauseControl\(button\)\) return true/);
-  assert.match(scoped, /return point\(button\)/);
+  assert.match(scoped, /const visiblePageButton = pageButtons\.find\(visible\)/);
+  assert.match(scoped, /return point\(visiblePageButton\)/);
+  assert.match(scoped, /playerPause && currentTrackMatchesTarget\(\)/);
+  assert.doesNotMatch(scoped, /point\(playerPause\)|point\(playerButton\)/);
   assert.doesNotMatch(scoped, /querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay|buttonIntent|settling/);
+});
+
+test('hidden target-page Pause confirms playback without Monitor C', () => {
+  assert.equal(runScoped({ pageButtons: [fakeButton('Pause', false)] }), true);
+});
+
+test('global Pause confirms background playback when now-playing track matches', () => {
+  assert.equal(runScoped({
+    playerButtons: [fakeButton('Pause', false)],
+    currentTrack: {
+      href: 'https://open.spotify.com/track/A',
+      textContent: 'Target A',
+    },
+  }), true);
+});
+
+test('global Pause is rejected when now-playing track is a different song', () => {
+  assert.equal(runScoped({
+    playerButtons: [fakeButton('Pause', false)],
+    currentTrack: {
+      href: 'https://open.spotify.com/track/B',
+      textContent: 'Other Track',
+    },
+    metadataTitle: 'Target A',
+  }), null);
+});
+
+test('Media Session title is a fallback identity when compact layout has no track link', () => {
+  assert.equal(runScoped({
+    playerButtons: [fakeButton('Pause', false)],
+    metadataTitle: 'Target A',
+  }), true);
+});
+
+test('global Play is never returned as a CDP click target', () => {
+  assert.equal(runScoped({
+    playerButtons: [fakeButton('Play', true)],
+    currentTrack: {
+      href: 'https://open.spotify.com/track/A',
+      textContent: 'Target A',
+    },
+  }), null);
 });
 
 test('observer runtime still tolerates localized Spotify track paths for confirmation', () => {

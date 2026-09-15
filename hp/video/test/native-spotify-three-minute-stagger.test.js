@@ -98,8 +98,11 @@ test('direct tracks use the CDP-only scoped reconcile script without runtime rew
   assert.match(music, /kSpotifyScopedTrackReconcileScript/);
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /const pageButton =/);
-  assert.doesNotMatch(scoped, /document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
-  assert.doesNotMatch(scoped, /targetLink|currentTrack|navigator\.mediaSession|settling/);
+  assert.match(scoped, /const pageButtons =/);
+  assert.match(scoped, /currentTrackMatchesTarget/);
+  assert.match(scoped, /navigator\.mediaSession/);
+  assert.match(scoped, /return point\(visiblePageButton\)/);
+  assert.doesNotMatch(scoped, /point\(playerPause\)|document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
+  assert.doesNotMatch(scoped, /targetLink|settling/);
   assert.doesNotMatch(wrapper, /RewriteSpotify|#define ExecuteScript|kSpotifyStaticTrackReconcileScript/);
 });
