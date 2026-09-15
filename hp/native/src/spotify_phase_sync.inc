@@ -109,7 +109,11 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   };
 
   for (const Slot& slot : slots_) {
-    if (!slot.processTitleEventRegistered && slot.webview) {
+    // DocumentTitleChanged is the fast path, but a registered WebView2 event
+    // can still be delayed while the Spotify surface stays in the background.
+    // Always keep the 60-second title watchdog scheduled as an independent
+    // source of truth for the native status strip.
+    if (slot.webview) {
       considerTick(slot.nextProcessTitlePollTick == 0
                        ? now
                        : slot.nextProcessTitlePollTick);
