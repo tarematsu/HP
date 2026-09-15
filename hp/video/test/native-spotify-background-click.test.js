@@ -41,15 +41,18 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('Spotify stays full-size behind the dashboard until real playback is confirmed', () => {
+test('Spotify stays exactly behind the YouTube/TVer panel until real playback is confirmed', () => {
   assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
+  assert.match(layout, /int x = mediaPanelRect\.left;/);
+  assert.match(layout, /int y = mediaPanelRect\.top;/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
 });
 
-test('trusted click uses the full-size background viewport and repairs accidental 1x1 placement', () => {
+test('trusted click uses the media-panel background viewport and repairs accidental 1x1 placement', () => {
   assert.match(helper, /bool SpotifyWebViews::ParseNormalizedPoint/);
   assert.match(helper, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
   assert.match(helper, /if \(slot\.playbackConfirmed\) \{[\s\S]*return;/);
