@@ -22,19 +22,14 @@ const nativeCmake = readFileSync(
   'utf8',
 );
 
-test('Spotify suppresses paint-only media and visual effects without hiding control SVGs', () => {
-  assert.match(spotify, /__homePanelSpotifyStaticLightweight/);
-  assert.match(spotify, /animation: none !important/);
-  assert.match(spotify, /background-image: none !important/);
-  assert.match(spotify, /text-shadow: none !important/);
-  assert.match(spotify, /will-change: auto !important/);
-  assert.match(spotify, /img, picture, video, canvas\s*\{[\s\S]*display: none !important/);
-  assert.doesNotMatch(
-    spotify,
-    /svg\[aria-hidden='true'\]\s*\{[\s\S]{0,120}display: none !important/,
-  );
-  assert.match(spotify, /\[data-testid="play-button"\] svg/);
-  assert.match(spotify, /\[data-testid="control-button-playpause"\] svg/);
+test('Spotify page bootstrap leaves Spotify rendering and controls completely untouched', () => {
+  assert.match(spotify, /kSpotifyStaticPageBootstrapScript/);
+  assert.match(spotify, /spotify:target/);
+  assert.doesNotMatch(spotify, /createElement\(['"]style['"]\)/);
+  assert.doesNotMatch(spotify, /__homePanelSpotifyStaticLightweight/);
+  assert.doesNotMatch(spotify, /!important/);
+  assert.doesNotMatch(spotify, /animation\s*:|transition\s*:|background-image\s*:/);
+  assert.doesNotMatch(spotify, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
 });
 
 test('Stationhead startup composition names the actual runtime pieces once', () => {
