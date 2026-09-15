@@ -35,6 +35,11 @@ const snapshots = query(`WITH previous AS (
 const comments = query(`SELECT station_id,bucket_start,comment_count
   FROM sh_comment_minute_counts
   WHERE bucket_start>=${start} AND bucket_start<${end}
+    AND station_id IN (
+      SELECT DISTINCT station_id FROM sh_channel_snapshots
+      WHERE channel_id=${channelId} AND observed_at>=${start} AND observed_at<${end}
+        AND station_id IS NOT NULL
+    )
   ORDER BY bucket_start ASC,station_id ASC`);
 writeFileSync(resolve(outputDirectory, 'snapshots.json'), snapshots);
 writeFileSync(resolve(outputDirectory, 'comments.json'), comments);
