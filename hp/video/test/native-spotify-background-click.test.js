@@ -59,18 +59,18 @@ test('trusted click uses the full-size background viewport and repairs accidenta
   assert.match(helper, /PlaceHosts\(\);/);
 });
 
-test('trusted click preflight is minimal and only accepts Spotify Play controls when no media is active', () => {
+test('trusted click preflight ignores unrelated media but refuses a Pause control', () => {
   const preflight = helper.slice(
     helper.indexOf('void SpotifyWebViews::ClickSlotNormalizedPoint'),
     helper.indexOf('UINT SpotifyWebViews::DispatchSpotifyDevToolsClick'),
   );
   assert.match(preflight, /if \(!slot\.timedObserverReady\)/);
   assert.match(preflight, /ArmTimedEndObserver\(slot\)/);
-  assert.match(preflight, /document\.querySelectorAll\('audio, video'\)/);
-  assert.match(preflight, /media\.some\(m=>!m\.ended&&!m\.paused\)/);
+  assert.doesNotMatch(preflight, /document\.querySelectorAll\('audio, video'\)/);
+  assert.doesNotMatch(preflight, /media\.some\(m=>!m\.ended&&!m\.paused\)/);
   assert.match(preflight, /document\.elementFromPoint\(x,y\)/);
   assert.match(preflight, /testid==='play-button'\|\|testid==='control-button-playpause'/);
-  assert.doesNotMatch(preflight, /label\.includes|label==='play'|label==='再生'|一時停止/);
+  assert.match(preflight, /label\.includes\('pause'\)\|\|label\.includes\('一時停止'\)/);
   assert.match(preflight, /runtime&&typeof runtime\.armTrustedStart==='function'/);
   assert.match(preflight, /ExecuteScript\(/);
   assert.match(preflight, /DispatchSpotifyDevToolsClick/);
