@@ -12,19 +12,14 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
   if (drawStats) {
     HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
     const bool connected = nativeSensors_.co2Connected;
-    struct AirStat {
-      std::wstring label;
-      std::wstring value;
-      COLORREF color;
-    };
-    const std::array<AirStat, 3> stats{{
-        {L"CO2", connected ? std::to_wstring(nativeSensors_.co2) + L" ppm" : L"--- ppm",
-         connected ? kWidgetGreen : kWidgetMuted},
-        {L"温度", connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃",
-         connected ? kWidgetText : kWidgetMuted},
-        {L"湿度", connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%",
-         kWidgetMuted},
-    }};
+    const std::array labels{L"CO2", L"温度", L"湿度"};
+    const std::array<std::wstring, 3> values{
+        connected ? std::to_wstring(nativeSensors_.co2) + L" ppm" : L"--- ppm",
+        connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃",
+        connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%"};
+    const std::array<COLORREF, 3> colors{
+        connected ? kWidgetGreen : kWidgetMuted,
+        connected ? kWidgetText : kWidgetMuted, kWidgetMuted};
     const int statsHeight = SpanY(body, 270);
     const int statsGap = std::max(4, SpanX(body, 30));
     const int cardWidth = (static_cast<int>(body.right - body.left) - statsGap * 2) / 3;
@@ -33,11 +28,11 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
       RECT labelRect{left, body.top, left + cardWidth, body.top + statsHeight * 40 / 100};
       SetTextColor(dc, kWidgetSubtle);
       SelectObject(dc, TierFont(FontTier::Small));
-      DrawTextInRect(dc, stats[i].label, labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+      DrawTextInRect(dc, labels[i], labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
       RECT valueRect{left, labelRect.bottom, left + cardWidth, body.top + statsHeight};
-      SetTextColor(dc, stats[i].color);
+      SetTextColor(dc, colors[i]);
       SelectObject(dc, TierFont(FontTier::Medium));
-      DrawTextInRect(dc, stats[i].value, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+      DrawTextInRect(dc, values[i], valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     }
     SelectObject(dc, previousFont);
   }
@@ -55,8 +50,7 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
       });
 
   if (plot.right > plot.left + 4 && plot.bottom > plot.top + 4) {
-    HPEN gridPen = CreatePen(PS_SOLID, 1, kWidgetTrack);
-    HGDIOBJ previousPen = SelectObject(dc, gridPen);
+    HGDIOBJ previousPen = SelectObject(dc, CachedPen(PS_SOLID, 1, kWidgetTrack));
     for (int i = 0; i < 4; ++i) {
       const int y = plot.top + (plot.bottom - plot.top) * i / 3;
       MoveToEx(dc, plot.left, y, nullptr);
@@ -68,7 +62,6 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
       LineTo(dc, x, plot.bottom);
     }
     SelectObject(dc, previousPen);
-    DeleteObject(gridPen);
   }
 
   if (first != samples.end() && plot.bottom > plot.top + 4) {
