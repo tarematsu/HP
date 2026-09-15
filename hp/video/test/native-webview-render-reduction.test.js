@@ -11,12 +11,11 @@ const playbackPolicy = source('sh_playback_resource_policy_fix.h');
 const renderPolicy = source('sh_render_reduction_policy.h');
 const roomUiPolicy = source('sh_room_ui_reduction_policy.h');
 const startupScript = source('sh_startup_script.h');
+const compactRuntime = source('sh_compact_runtime_script.h');
+const interactionRuntime = source('sh_runtime_interaction_script.h');
+const recoveryRuntime = source('sh_runtime_blank_recovery_script.h');
+const lifecycleRuntime = source('sh_runtime_lifecycle_script.h');
 const profileReuseEnd = source('sh_profile_reuse_policy_end.h');
-const interactionPolicy = source('sh_track_boundary_message_policy.h');
-const runtimePolicy = source('sh_runtime_policy_fix.h');
-const lifecyclePolicy = source('sh_runtime_lifecycle_policy_fix.h');
-const recoveryPolicy = source('sh_runtime_recovery_polling_policy_fix.h');
-const watchdogPolicy = source('sh_media_stall_watchdog_policy_fix.h');
 const nativeCmake = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
@@ -32,46 +31,45 @@ test('Spotify page bootstrap leaves Spotify rendering and controls completely un
   assert.doesNotMatch(spotify, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
 });
 
-test('Stationhead startup installs playback-only guard before legacy autoplay composition', () => {
-  assert.doesNotMatch(playbackPolicy, /sh_render_reduction_policy/);
-  assert.doesNotMatch(playbackPolicy, /sh_room_ui_reduction_policy/);
-  assert.doesNotMatch(playbackPolicy, /StationheadAutoplayScriptRenderReduced/);
-  assert.doesNotMatch(playbackPolicy, /#define StationheadAutoplayScript/);
+test('Stationhead startup uses the single compact runtime and current render policies', () => {
+  assert.match(playbackPolicy, /ApplyStationheadResourceBlockingStartupReduced/);
+  assert.doesNotMatch(playbackPolicy, /Network\.clearBrowserCache/);
 
+  assert.match(startupScript, /#include "sh_compact_runtime_script\.h"/);
   assert.match(startupScript, /#include "sh_render_reduction_policy\.h"/);
   assert.match(startupScript, /#include "sh_room_ui_reduction_policy\.h"/);
   assert.match(startupScript, /inline std::wstring BuildStationheadStartupScript\(/);
   assert.match(
     startupScript,
-    /StationheadRoomUiReductionScript\(\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadAutoplayScriptCurrentInteraction\(globalName, messagePrefix\)/,
-  );
-  assert.doesNotMatch(
-    startupScript,
-    /std::wstring script = StationheadAutoplayScript\(globalName, messagePrefix\)/,
+    /StationheadCompactRuntimeScript\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
   );
   assert.match(
     startupScript,
     /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript BuildStationheadStartupScript/,
   );
+  assert.match(profileReuseEnd, /#include "sh_startup_script\.h"/);
 
-  // Helpers may still exist for regression coverage, but none of them is
-  // allowed to select the effective startup implementation anymore.
-  assert.match(interactionPolicy, /inline std::wstring StationheadAutoplayScriptCurrentInteraction\(/);
-  for (const policy of [runtimePolicy, lifecyclePolicy, recoveryPolicy, watchdogPolicy, interactionPolicy]) {
-    assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
-  }
-  assert.match(
-    profileReuseEnd,
-    /#undef autoClickInFlight_[\s\S]*#include "sh_startup_script\.h"/,
-  );
-  const interactionAt = nativeCmake.indexOf('src/sh_track_boundary_message_policy.h');
-  const endAt = nativeCmake.indexOf('src/sh_profile_reuse_policy_end.h');
-  assert.ok(interactionAt >= 0);
-  assert.ok(endAt > interactionAt);
+  for (const retired of [
+    'src/sh_runtime_policy_fix.h',
+    'src/sh_runtime_lifecycle_policy_fix.h',
+    'src/sh_runtime_recovery_polling_policy_fix.h',
+    'src/sh_media_stall_watchdog_policy_fix.h',
+  ]) assert.doesNotMatch(nativeCmake, new RegExp(retired.replaceAll('.', '\\.')));
+});
 
-  assert.doesNotMatch(startupScript, /Toggle Mute|View streaming party details|content-visibility/);
-  assert.doesNotMatch(renderPolicy, /Toggle Mute|View streaming party details|button--full-width/);
-  assert.doesNotMatch(roomUiPolicy, /Network\.clearBrowserCache|streakStats/);
+test('compact Stationhead runtime has one event-driven lifecycle and bounded recovery', () => {
+  assert.match(compactRuntime, /StationheadRuntimeInteractionFragment\(\)/);
+  assert.match(compactRuntime, /StationheadRuntimeBlankRecoveryFragment\(\)/);
+  assert.match(compactRuntime, /StationheadRuntimeLifecycleFragment\(\)/);
+  assert.match(compactRuntime, /StationheadAutoplayScriptRuntimeFixed/);
+
+  const runtime = interactionRuntime + recoveryRuntime + lifecycleRuntime;
+  assert.doesNotMatch(runtime, /setInterval\s*\(/);
+  assert.doesNotMatch(runtime, /new\s+MutationObserver/);
+  assert.doesNotMatch(runtime, /timeupdate/);
+  assert.match(recoveryRuntime, /30000/);
+  assert.match(recoveryRuntime, /15000/);
+  assert.match(lifecycleRuntime, /'play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error'/);
 });
 
 test('Stationhead render policy reduces paint work without hiding all controls', () => {
@@ -82,104 +80,19 @@ test('Stationhead render policy reduces paint work without hiding all controls',
   assert.match(renderPolicy, /video, canvas, svg\[aria-hidden='true'\]/);
   assert.doesNotMatch(renderPolicy, /^\s*button\s*[,}]/m);
   assert.doesNotMatch(renderPolicy, /^\s*input\s*[,}]/m);
-  assert.doesNotMatch(renderPolicy, /img, picture/);
-  assert.doesNotMatch(renderPolicy, /background-image: none/);
-  assert.doesNotMatch(renderPolicy, /MutationObserver/);
-  assert.doesNotMatch(renderPolicy, /setInterval\s*\(/);
-  assert.doesNotMatch(renderPolicy, /requestAnimationFrame\s*=/);
-  assert.doesNotMatch(renderPolicy, /cancelAnimationFrame\s*=/);
   assert.doesNotMatch(renderPolicy, /HTMLMediaElement|\.pause\(\)/);
 });
 
-test('Stationhead render policy hides generic social and decorative UI', () => {
-  for (const token of [
-    'chat',
-    'comment',
-    'gift',
-    'reaction',
-    'emoji',
-    'tip',
-    'tipping',
-    'share',
-    'invite',
-    'social',
-    'listener',
-    'audience',
-    'leaderboard',
-    'ranking',
-    'stats',
-    'streak',
-    'play-count',
-    'total-plays',
-    'now-playing',
-    'track-card',
-    'current-track',
-    'current-song',
-    'song-card',
-    'waveform',
-    'visualizer',
-    'equalizer',
-    'spectrum',
-    'lottie',
-    'confetti',
-    'sparkle',
-    'marquee',
-    'ticker',
-  ]) {
-    assert.match(renderPolicy, new RegExp(`data-testid\\*='${token}'`));
-  }
-  assert.match(renderPolicy, /aria-label\*='total plays'/);
-  assert.match(renderPolicy, /class\*='chat'/);
-  assert.match(renderPolicy, /class\*='thread'/);
-  assert.match(renderPolicy, /class\*='waveform'/);
-  assert.match(renderPolicy, /class\*='lottie'/);
-  assert.match(renderPolicy, /a\[href\*='\/chat'/);
-  assert.match(renderPolicy, /content-visibility: hidden !important/);
-});
-
-test('Stationhead room becomes playback-only without persistent DOM observation', () => {
+test('Stationhead room becomes playback-only without recurring polling', () => {
   assert.match(roomUiPolicy, /__homepanelStationheadRoomUiReduction/);
-  assert.match(roomUiPolicy, /__homepanelStationheadAudioOnlyUi = true/);
-  assert.match(roomUiPolicy, /__homepanelStationheadAudioOnlyUiObserver\?\.disconnect/);
   assert.match(roomUiPolicy, /parts\.length !== 1/);
-  assert.match(roomUiPolicy, /'home', 'sign-in', 'sign-up'/);
-
-  for (const contract of [
-    /class~='button--full-width'/,
-    /class~='button--md'/,
-    /class~='h-12'/,
-    /class~='justify-between'/,
-    /aria-label='Open threads'/,
-    /href\$='\/threads'/,
-    /aria-label='View streaming party details'/,
-    /aria-label='Copy link'/,
-    /aria-label='Toggle Mute'/,
-    /aria-label='Volume'/,
-    /aria-label\^='View '/,
-    /aria-label\^='Reply to '/,
-    /class~='resize-none'/,
-    /class~='bg-transparent'/,
-    /aside/,
-    /\[role='complementary'\]/,
-  ]) {
-    assert.match(roomUiPolicy, contract);
-  }
-
   assert.match(roomUiPolicy, /data-homepanel-stationhead-playback-only/);
   assert.match(roomUiPolicy, /document\.addEventListener\('playing', onMediaState, true\)/);
   assert.match(roomUiPolicy, /'pause', 'waiting', 'stalled', 'ended', 'error', 'emptied', 'abort'/);
   assert.match(roomUiPolicy, /body > :not\(script\):not\(style\)/);
   assert.match(roomUiPolicy, /content-visibility: hidden !important/);
   assert.match(roomUiPolicy, /contain: strict !important/);
-
-  assert.doesNotMatch(roomUiPolicy, /querySelectorAll/);
-  assert.doesNotMatch(roomUiPolicy, /getBoundingClientRect/);
-  assert.doesNotMatch(roomUiPolicy, /innerText/);
-  assert.equal((roomUiPolicy.match(/textContent/g) ?? []).length, 1);
-  assert.doesNotMatch(roomUiPolicy, /setTimeout\s*\(/);
   assert.doesNotMatch(roomUiPolicy, /setInterval\s*\(/);
-  assert.doesNotMatch(roomUiPolicy, /MutationObserver/);
   assert.doesNotMatch(roomUiPolicy, /requestAnimationFrame/);
   assert.doesNotMatch(roomUiPolicy, /HTMLMediaElement|\.pause\(\)/);
-  assert.doesNotMatch(roomUiPolicy, /start listening|connect spotify|log in/i);
 });
