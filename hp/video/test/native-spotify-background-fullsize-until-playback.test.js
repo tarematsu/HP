@@ -10,14 +10,15 @@ const rotation = source('spotify_timed_end_rotation.inc');
 const click = source('spotify_background_click.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('Spotify uses 480x270 only for initial/recovery work, offscreen later transitions, and full-size Monitor C', () => {
+test('Spotify uses 480x270 only for initial or confirmed-playback recovery work, offscreen later transitions, and full-size Monitor C', () => {
   assert.match(layout, /kSpotifyBackgroundWidth = 480/);
   assert.match(layout, /kSpotifyBackgroundHeight = 270/);
   assert.match(layout, /const int x = client\.left/);
   assert.match(layout, /const int y = client\.top/);
+  assert.match(layout, /const bool routineTrackTransition =\s*slot\.targetGeneration > 1 && !slot\.playbackConfirmed/);
   assert.match(
     layout,
-    /const bool backgroundWork =\s*slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\)/,
+    /const bool backgroundWork =\s*!routineTrackTransition &&\s*\(slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\)\)/,
   );
   assert.match(layout, /int hostX = backgroundWork \|\| authentication \? x : client\.right \+ 1/);
   assert.match(layout, /int hostY = backgroundWork \|\| authentication \? y : client\.bottom \+ 1/);
@@ -51,7 +52,7 @@ test('ad interruption keeps confirmed playback state until the target song ends'
   assert.doesNotMatch(branch, /playbackConfirmed = false/);
 });
 
-test('track advance clears per-track confirmation without bringing generation 2+ back onscreen', () => {
+test('track advance clears per-track confirmation and generation 2+ stays offscreen even on transient Recovering', () => {
   const applyStart = rotation.indexOf('void SpotifyWebViews::ApplyTimedRotationTarget');
   const applyEnd = rotation.indexOf('\nvoid SpotifyWebViews::InitializeTimedRotationSlot', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
@@ -59,10 +60,8 @@ test('track advance clears per-track confirmation without bringing generation 2+
   assert.match(apply, /slot\.playbackConfirmed = false/);
   assert.match(apply, /BumpSpotifyTargetGeneration\(slot\)/);
   assert.match(apply, /SetSlotState\(slot, SlotState::WaitingTarget\)/);
-  assert.match(
-    layout,
-    /slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)/,
-  );
+  assert.match(layout, /slot\.targetGeneration > 1 && !slot\.playbackConfirmed/);
+  assert.match(layout, /!routineTrackTransition &&[\s\S]*slot\.state == SlotState::Recovering/);
 
   const probeStart = schedule.indexOf('ProbeDueTimedCompletions(now);');
   const layoutRefresh = schedule.indexOf('RefreshSpotifyHostLayout();', probeStart);
