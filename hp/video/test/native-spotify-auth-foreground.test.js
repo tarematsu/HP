@@ -40,10 +40,9 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
     layout,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/,
   );
-  assert.match(
-    layout,
-    /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr;/,
-  );
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+  assert.doesNotMatch(layout, /compactPlayback/);
 });
 
 test('authentication foreground repair is conditional instead of running every scheduler pass', () => {
