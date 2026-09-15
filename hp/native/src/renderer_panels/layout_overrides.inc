@@ -62,7 +62,7 @@ MainSections SplitRearrangedMainSections(const RECT& client) {
 
 RECT RearrangedClockTimeRectFromCard(const RECT& card) {
   const RECT content = CardContentRect(card);
-  // The one-second tick changes only the large time text. The waste summary and
+  // The one-second tick changes only the large time text. The waste strip and
   // version footer are date/static content and do not need second-by-second repainting.
   RECT timeRect{content.left, content.top + SpanY(content, 170),
                 content.right, content.top + SpanY(content, 650)};
@@ -155,10 +155,9 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
   DrawFixedWidthClockTime((dc), nativeClockTimeText_, hpTimeRect); \
-  const std::wstring hpWasteText = nativeClockReady_ ? Course36ClockWasteSummary(nativeClockNow_) : std::wstring{}; \
-  SelectObject((dc), TierFont(FontTier::Medium)); \
-  SetTextColor((dc), kWidgetText); \
-  DrawTextInRect((dc), hpWasteText, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  SYSTEMTIME hpWasteNow{}; \
+  if (nativeClockReady_) hpWasteNow = nativeClockNow_; \
+  DrawCourse36ClockWasteNotices((dc), hpWasteNow, hpWasteRect); \
   const std::wstring hpVersionText = kVersion; \
   const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 205), 74, 110); \
   const int hpControlButtonGap = std::clamp(SpanX(hpStatusRect, 20), 6, 12); \
