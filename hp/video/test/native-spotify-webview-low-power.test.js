@@ -15,22 +15,23 @@ const environment = readFileSync(
   'utf8',
 );
 
-test('Spotify confirmed playback keeps a visible 1x1 host without memory-policy COM calls in layout', () => {
-  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
+test('Spotify confirmed playback keeps a visible 480x270 host without memory-policy COM calls in layout', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+  assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
+  assert.match(layout, /int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
-test('Spotify pre-playback recovery matches the YouTube/TVer panel behind native UI', () => {
-  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
-  assert.match(layout, /int x = mediaPanelRect\.left;/);
-  assert.match(layout, /int y = mediaPanelRect\.top;/);
-  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
+test('Spotify pre-playback recovery uses the same fixed background surface behind native UI', () => {
+  assert.match(layout, /int x = client\.left;/);
+  assert.match(layout, /int y = client\.top;/);
+  assert.match(layout, /std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
+  assert.match(layout, /std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
 });

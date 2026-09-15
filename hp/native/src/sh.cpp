@@ -1,6 +1,7 @@
 #include "sh.h"
 #include "shared_webview_environment.h"
 #include "sh_shared.h"
+#include "webview_startup_cache_reset.h"
 
 namespace hp {
 namespace {
@@ -99,12 +100,6 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
   const bool changed =
       audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
   const bool preserveLoginRequired = loginRequired_;
-  // Give the page's own auto-click scanners the same ground truth WebView2's
-  // native audio detection already established, instead of leaving them to
-  // infer "is it playing" from page-reported signals (like mediaSession
-  // metadata) that a site can set before audio is actually audible - which
-  // would make the scanners think Start Listening was already handled and
-  // stop trying to press it.
   if (webview_) {
     webview_->ExecuteScript(
         playing ? L"window.__homepanelAudioPlaying = true;"
@@ -112,10 +107,6 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
         nullptr);
   }
   if (playing) {
-    // WebView2 may report audio from the outgoing document before the matching
-    // NavigationCompleted event. Keep the navigation watchdog armed and avoid
-    // treating that early signal as recovery until the new document is known
-    // to be committed.
     if (awaitingTrackBoundaryNavigation) {
       audioPlayingSinceAt_.store(0, std::memory_order_relaxed);
       {
@@ -170,10 +161,6 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
   }
 
   audioPlayingSinceAt_.store(0, std::memory_order_relaxed);
-  // Un-arm stylesheet blocking while audio isn't playing: Stationhead can
-  // briefly stop the audio element between tracks and needs to load styles
-  // for a Resume/Continue control, and a stale "ever played" latch would
-  // keep that CSS blocked until the next full navigation.
   resourceBlockingArmed_ = false;
   {
     std::lock_guard lock(mutex_);
@@ -186,11 +173,6 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
     nextAutoClickAt_ = UnixMillis() + kStationheadPostPlaybackStopClickDelayMs;
     log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" audio stopped (" + source + L")");
   }
-  // Don't reveal the player here: a stop can be a brief track-transition gap,
-  // and the App layer's RefreshVisibility()/SelectTab(None) calls (which know
-  // about the transition grace period) already re-evaluate visibility on the
-  // next tick. Showing it unconditionally on every stop made the window pop
-  // to the front for an instant on every track change.
   PostChange();
 }
 
@@ -270,9 +252,6 @@ void StationheadPlayer::RecoverTrackBoundaryPlayback() {
       return '';
     }
   };
-  // Failure diagnostics have a strict observability budget: sampling a bounded
-  // number of media elements avoids allocating and serializing an unbounded DOM
-  // snapshot immediately before the WebView is rebuilt.
   const elements = document.querySelectorAll('audio,video');
   const sampledCount = Math.min(elements.length, 8);
   const media = [];
@@ -308,8 +287,6 @@ void StationheadPlayer::RecoverTrackBoundaryPlayback() {
     omittedMediaCount: Math.max(0, elements.length - sampledCount),
     media,
   };
-  // Leave headroom for WebView2's result encoding and the native log prefix.
-  // Preserve the first elements and exact total/omitted counts when trimming.
   while (diagnostics.media.length > 1 &&
          JSON.stringify(diagnostics).length > 1_800) {
     diagnostics.media.pop();
@@ -462,12 +439,6 @@ void StationheadPlayer::PollAuthProbe(int64_t nowMs) {
   }
 }
 
-// Locates the Start Listening control and clicks it entirely from native
-// code: a page-side signal (or the periodic Tick() retry below) only tells
-// us a candidate is probably visible, then this re-locates it fresh right
-// before dispatching a trusted CDP click, so the coordinates can never go
-// stale between detection and dispatch the way an earlier page-computed
-// position could.
 void StationheadPlayer::AttemptNativeStartClick(int64_t nowMs) {
   if (!webview_ || autoClickInFlight_ ||
       navigationInFlight_.load(std::memory_order_acquire) ||
@@ -585,7 +556,21 @@ void StationheadPlayer::Create() {
                 ScheduleRecreate(L"WebView unavailable after controller creation");
                 return S_OK;
               }
-              ConfigureWebView();
+              ComPtr<ICoreWebView2> startupView = webview_;
+              ResetWebViewStartupCaches(
+                  startupView.Get(),
+                  [this, alive, startupView](HRESULT clearResult) {
+                    if (!CallbackAlive(alive) ||
+                        startupView.Get() != webview_.Get() || shuttingDown_) {
+                      return;
+                    }
+                    if (FAILED(clearResult)) {
+                      log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
+                                L" startup cache reset unavailable " +
+                                HResultHex(clearResult) + L"; continuing");
+                    }
+                    ConfigureWebView();
+                  });
               return S_OK;
             });
         const HRESULT started =
@@ -756,9 +741,6 @@ void StationheadPlayer::Tick(int64_t nowMs) {
         consider(trackBoundaryPlaybackRecoveryDeadline_);
       } else {
         trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
-        // The atomic flag may still contain an outgoing-document event. Query
-        // WebView2 again only after NavigationCompleted released the navigating
-        // state, then use that fresh value as the recovery baseline.
         bool playingAfterNavigation = false;
         ComPtr<ICoreWebView2_8> audioView;
         BOOL nativePlaying = FALSE;
@@ -793,9 +775,6 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     }
   }
 
-  // Do not run auth probes, stats scripts, or click scans against a document
-  // while WebView2 is replacing it. Window B used to run its local auth probe
-  // in this gap, adding avoidable callbacks to the most fragile transition.
   if (navigationActive) {
     nextTickAt_ = nowMs + 1'000;
     return;

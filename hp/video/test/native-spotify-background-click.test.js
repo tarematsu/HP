@@ -41,14 +41,16 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('Spotify stays exactly behind the YouTube/TVer panel until real playback is confirmed', () => {
-  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
-  assert.match(layout, /int x = mediaPanelRect\.left;/);
-  assert.match(layout, /int y = mediaPanelRect\.top;/);
-  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
+test('Spotify keeps a 480x270 background surface for recovery and playback', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+  assert.match(layout, /int x = client\.left;/);
+  assert.match(layout, /int y = client\.top;/);
+  assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
+  assert.match(layout, /int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
 });
 

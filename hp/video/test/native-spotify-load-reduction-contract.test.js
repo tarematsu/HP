@@ -32,28 +32,32 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
   assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify layout keeps pre-playback behind the YouTube/TVer panel and confirmed playback at 1x1', () => {
-  assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
-  assert.match(layout, /int x = mediaPanelRect\.left;/);
-  assert.match(layout, /int y = mediaPanelRect\.top;/);
-  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
+test('Spotify layout keeps a fixed 480x270 background surface while Monitor C restores full size', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+  assert.match(layout, /int x = client\.left;/);
+  assert.match(layout, /int y = client\.top;/);
+  assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
+  assert.match(layout, /int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
   assert.match(layout, /const bool zOrderChanged =/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.match(layout, /SWP_SHOWWINDOW/);
+  assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
 });
 
-test('Spotify recovery uses the YouTube/TVer panel viewport for trusted CDP input', () => {
+test('Spotify recovery keeps the same 480x270 background viewport used during steady playback', () => {
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
-  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
-  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
+  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+  assert.match(layout, /std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
+  assert.match(layout, /std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
+  assert.doesNotMatch(layout, /playbackConfirmed[\s\S]*\? 1/);
 });
 
 test('Spotify does not override WebView2 memory target and controller visibility stays true', () => {
