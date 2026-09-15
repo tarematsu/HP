@@ -11,9 +11,10 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 void RequestStationheadMonitorDomProbe() noexcept;
 
 // Stationhead keeps a real 480x270 surface even while it is not presented.
-// Only startup and the scheduled 50-minute reload use the in-client background
-// preview. Stable playback is parked offscreen; authentication has its own
-// foreground surface.
+// Startup begins in the in-client background preview immediately, before the
+// WebView is created, and the scheduled 50-minute reload reuses that preview.
+// Stable playback is parked offscreen; authentication has its own foreground
+// surface.
 inline constexpr LONG kStationheadSurfaceWidth = 480;
 inline constexpr LONG kStationheadSurfaceHeight = 270;
 inline constexpr LONG kStationheadOffscreenGap = 32;
@@ -29,7 +30,11 @@ inline RECT StationheadOffscreenBounds(const RECT& workspaceBounds) noexcept {
   };
 }
 
-inline std::atomic<bool> gStationheadBackgroundPreview{false};
+// The first Stationhead host layout happens before the deferred Start() call.
+// Arm the startup preview by default so that first layout is already 480x270
+// inside the client area and HWND_BOTTOM; it stays there through initial
+// navigation and Start Listening until stable audio explicitly clears it.
+inline std::atomic<bool> gStationheadBackgroundPreview{true};
 
 inline bool SetStationheadBackgroundPreview(bool active) noexcept {
   return gStationheadBackgroundPreview.exchange(
