@@ -165,14 +165,6 @@ class Renderer {
     int height = 0;
   };
 
-  struct WeatherPanelCache {
-    HBITMAP bitmap = nullptr;
-    int width = 0;
-    int height = 0;
-    uint64_t revision = 0;
-    bool outage = false;
-  };
-
   struct EnergyBitmapCache {
     HBITMAP bitmap = nullptr;
     int width = 0;
@@ -266,8 +258,6 @@ class Renderer {
   void RebuildNativeAirGraph(int64_t nowMs);
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
-  bool DrawCachedWeatherPanel(HDC dc, const RECT& card);
-  void CaptureWeatherPanel(HDC dc, const RECT& card);
   void ReleaseNativePanelSurfaces() noexcept;
   void ResetNativeBitmapCaches() noexcept;
   void QueueAction(UiAction action);
@@ -346,7 +336,6 @@ class Renderer {
   std::map<std::wstring, BitmapCacheEntry> nativeWeatherIconBitmaps_;
   uint64_t nativeWeatherIconUseCounter_ = 0;
   std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
-  WeatherPanelCache weatherPanelCache_{};
   EnergyBitmapCache energyBitmapCache_{};
   std::atomic<bool> nativePlaybackStarted_{false};
   std::atomic<bool> nativePlaybackStopping_{false};

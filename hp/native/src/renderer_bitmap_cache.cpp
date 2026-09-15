@@ -8,17 +8,6 @@ constexpr size_t kWeatherIconBitmapCacheLimit = 32;
 constexpr size_t kRadarBitmapCacheLimit = 12;
 constexpr int64_t kNativeImageDecodeRetryMs = 60'000;
 
-struct CachedBitmapMemoryDc {
-  HDC value = nullptr;
-  ~CachedBitmapMemoryDc() { if (value) DeleteDC(value); }
-};
-
-HDC BitmapMemoryDc(HDC compatibleDc) {
-  thread_local CachedBitmapMemoryDc cached;
-  if (!cached.value) cached.value = CreateCompatibleDC(compatibleDc);
-  return cached.value;
-}
-
 bool IsPersistentRadarBitmap(const std::wstring& key) {
   return key.rfind(L"radar-satellite#", 0) == 0 ||
          key.rfind(L"radar-map#", 0) == 0;
@@ -41,49 +30,6 @@ void Renderer::ReleaseNativePanelBackBuffer(HWND hwnd) {
   if (found == nativeBackBuffers_.end()) return;
   if (found->second.bitmap) DeleteObject(found->second.bitmap);
   nativeBackBuffers_.erase(found);
-}
-
-bool Renderer::DrawCachedWeatherPanel(HDC dc, const RECT& card) {
-  const int width = static_cast<int>(card.right - card.left);
-  const int height = static_cast<int>(card.bottom - card.top);
-  if (!dc || width <= 0 || height <= 0 || !weatherPanelCache_.bitmap ||
-      weatherPanelCache_.width != width || weatherPanelCache_.height != height ||
-      weatherPanelCache_.revision != nativeDashboard_.revisions.weather ||
-      weatherPanelCache_.outage != nativeDashboard_.weatherOutage) return false;
-  HDC source = BitmapMemoryDc(dc);
-  if (!source) return false;
-  HGDIOBJ previous = SelectObject(source, weatherPanelCache_.bitmap);
-  if (!previous || previous == HGDI_ERROR) return false;
-  const BOOL copied = BitBlt(dc, card.left, card.top, width, height, source, 0, 0, SRCCOPY);
-  SelectObject(source, previous);
-  return copied != FALSE;
-}
-
-void Renderer::CaptureWeatherPanel(HDC dc, const RECT& card) {
-  const int width = static_cast<int>(card.right - card.left);
-  const int height = static_cast<int>(card.bottom - card.top);
-  if (!dc || width <= 0 || height <= 0) return;
-  RECT clip{};
-  if (GetClipBox(dc, &clip) == ERROR || clip.left > card.left || clip.top > card.top ||
-      clip.right < card.right || clip.bottom < card.bottom) return;
-  if (!weatherPanelCache_.bitmap || weatherPanelCache_.width != width ||
-      weatherPanelCache_.height != height) {
-    HBITMAP replacement = CreateCompatibleBitmap(dc, width, height);
-    if (!replacement) return;
-    if (weatherPanelCache_.bitmap) DeleteObject(weatherPanelCache_.bitmap);
-    weatherPanelCache_.bitmap = replacement;
-    weatherPanelCache_.width = width;
-    weatherPanelCache_.height = height;
-  }
-  HDC target = BitmapMemoryDc(dc);
-  if (!target) return;
-  HGDIOBJ previous = SelectObject(target, weatherPanelCache_.bitmap);
-  if (!previous || previous == HGDI_ERROR) return;
-  const BOOL copied = BitBlt(target, 0, 0, width, height, dc, card.left, card.top, SRCCOPY);
-  SelectObject(target, previous);
-  if (!copied) return;
-  weatherPanelCache_.revision = nativeDashboard_.revisions.weather;
-  weatherPanelCache_.outage = nativeDashboard_.weatherOutage;
 }
 
 HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int height) {
@@ -218,8 +164,6 @@ void Renderer::ReleaseNativePanelSurfaces() noexcept {
 
 void Renderer::ResetNativeBitmapCaches() noexcept {
   ReleaseNativePanelSurfaces();
-  if (weatherPanelCache_.bitmap) DeleteObject(weatherPanelCache_.bitmap);
-  weatherPanelCache_ = {};
   if (energyBitmapCache_.bitmap) DeleteObject(energyBitmapCache_.bitmap);
   energyBitmapCache_ = {};
   const auto deleteBitmaps = [](auto& entries) {

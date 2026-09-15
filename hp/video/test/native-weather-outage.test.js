@@ -19,9 +19,8 @@ test('native weather panel replaces stale forecasts with a prominent outage stat
   assert.match(dashboardHeader, /bool weatherOutage = false;/);
   assert.match(
     dashboardParser,
-    /const std::wstring weatherStatus = json::Text\(weather, L"__status", L"ok"\);/,
+    /next\.weatherOutage = json::Text\(weather, L"__status", L"ok"\) != L"ok";/,
   );
-  assert.match(dashboardParser, /next\.weatherOutage = weatherStatus != L"ok";/);
   assert.match(
     environmentSections,
     /if \(nativeDashboard_\.weatherOutage\) \{[\s\S]*TierFont\(FontTier::Large\)[\s\S]*L"障害中"[\s\S]*return;/,

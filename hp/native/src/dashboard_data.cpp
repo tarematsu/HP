@@ -123,34 +123,27 @@ bool ParseDashboardSnapshot(
 
     const JsonObject weather = json::Object(root, L"weather");
     next.revisions.weather = SourceRevision(weather);
-    const std::wstring weatherStatus = json::Text(weather, L"__status", L"ok");
-    next.weatherOutage = weatherStatus != L"ok";
+    next.weatherOutage = json::Text(weather, L"__status", L"ok") != L"ok";
     if (CanReuseSection(previous, &DashboardSectionRevisions::weather,
                         next.revisions.weather)) {
       next.weatherHours = previous->weatherHours;
     } else {
       const JsonObject hourly = json::Object(weather, L"hourly");
-      const double startHourValue = json::Number(weather, L"startHour", 22);
-      const int startHour = std::isfinite(startHourValue) && startHourValue >= 0 && startHourValue < 24
-          ? static_cast<int>(startHourValue)
-          : 22;
+      const double rawStartHour = json::Number(weather, L"startHour", 22);
+      const int startHour = rawStartHour >= 0 && rawStartHour < 24
+          ? static_cast<int>(rawStartHour) : 22;
       next.weatherHours.reserve(12);
       for (int offset = 0; offset < 12; ++offset) {
-        try {
-          const int hour = (startHour + offset) % 24;
-          const std::wstring key = std::to_wstring(hour);
-          if (!hourly.HasKey(key.c_str())) continue;
-          const auto value = hourly.GetNamedValue(key.c_str());
-          if (value.ValueType() != JsonValueType::Object) continue;
-          const JsonObject item = value.GetObject();
-          next.weatherHours.push_back({
-              hour,
-              json::Text(item, L"icon"),
-              NumberOrNaN(item, L"temp"),
-              NumberOrNaN(item, L"rainMm"),
-          });
-        } catch (...) {
-        }
+        const int hour = (startHour + offset) % 24;
+        const std::wstring key = std::to_wstring(hour);
+        const JsonObject item = json::Object(hourly, key.c_str());
+        if (item.Size() == 0) continue;
+        next.weatherHours.push_back({
+            hour,
+            json::Text(item, L"icon"),
+            NumberOrNaN(item, L"temp"),
+            NumberOrNaN(item, L"rainMm"),
+        });
       }
     }
 
