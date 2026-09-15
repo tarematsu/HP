@@ -190,7 +190,6 @@ void Renderer::ApplyDashboardVisibility() {
 
   if (!visibilityChanged) return;
   if (visible) {
-    RebuildNativeAirGraph(UnixMillis());
     StartRadarCompose();
     NotifyRadarUpdated();
     InvalidateAllNativePanels();
@@ -206,7 +205,6 @@ void Renderer::ApplyDashboardVisibility() {
   }
   radarFailedTiles_.clear();
   ResetNativeBitmapCaches();
-  nativeAirGraph_ = {};
 }
 
 void Renderer::QueueAction(UiAction action) {
