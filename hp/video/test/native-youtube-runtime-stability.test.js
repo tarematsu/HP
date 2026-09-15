@@ -46,12 +46,15 @@ test('fullscreen and ad clicks keep independent action state', () => {
   const firstFullscreen = runtime.indexOf('const fullscreenAction = armFullscreen();');
   const adStart = runtime.indexOf('if (ad()) {');
   assert.ok(firstFullscreen >= 0 && adStart > firstFullscreen);
-  assert.match(runtime, /if \(!ad\(\) && !fullscreen\(\)\)/);
+  assert.match(runtime, /state\.fullscreenApplied = fullscreen\(\);\s*if \(!ad\(\) && !state\.fullscreenApplied\)/);
 });
 
-test('fullscreen recovery stays authoritative to actual fullscreen state', () => {
-  assert.doesNotMatch(runtime, /state\.fullscreenApplied|fullscreenApplied:/);
-  assert.match(runtime, /if \(fullscreen\(\)\) return null;/);
+test('fullscreen recovery refreshes state instead of trusting old success', () => {
+  assert.match(runtime, /fullscreenApplied: false/);
+  assert.doesNotMatch(runtime, /state\.fullscreenApplied = true/);
+  assert.doesNotMatch(runtime, /else if \(!state\.fullscreenApplied\)/);
+  const refreshes = runtime.match(/state\.fullscreenApplied = fullscreen\(\);/g) || [];
+  assert.ok(refreshes.length >= 2);
   const finalFullscreen = runtime.lastIndexOf('const fullscreenAction = armFullscreen();');
   const finalRecovery = runtime.lastIndexOf("return 'recovery';");
   assert.ok(finalFullscreen >= 0 && finalRecovery > finalFullscreen);
