@@ -49,27 +49,22 @@ test('status title and confirmation clock come from the page playback observer',
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
-test('active target media arms the observer and only observer events confirm playback', () => {
-  assert.match(reconcile, /currentMatchesTarget/);
-  assert.match(reconcile, /mediaState\.known && mediaState\.playing/);
-  assert.match(reconcile, /controlIntent === 'pause'/);
-  assert.match(reconcile, /buttonIntentValue === 'pause'/);
-  assert.doesNotMatch(
-    reconcile,
-    /currentMatchesTarget &&[\s\S]{0,180}controlIntent === 'pause'[\s\S]{0,180}return true/,
-  );
+test('active audio only arms observer confirmation and never confirms from DOM labels', () => {
+  assert.match(reconcile, /const audio = document\.querySelector\('audio'\)/);
+  assert.match(reconcile, /audio && !audio\.paused && !audio\.ended\) return true/);
+  assert.doesNotMatch(reconcile, /currentMatchesTarget|mediaState|controlIntent|buttonIntent|aria-label|settling/);
   assert.doesNotMatch(reconcile, /runtime\.scheduleTargetChecks/);
   assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
 
-  const trueBranch = musicTarget.slice(
-    musicTarget.indexOf('if (json && std::wstring_view(json) == L"true")'),
-    musicTarget.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
-  );
-  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
-  assert.match(trueBranch, /kSpotifyPlaybackStartRetryMs/);
-  assert.match(trueBranch, /ArmTimedEndObserver\(\*target\)/);
-  assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.doesNotMatch(trueBranch, /SetMusicCompletionDeadline/);
+  const start = musicTarget.indexOf('if (json &&');
+  const pointStart = musicTarget.indexOf('int x = 0;', start);
+  assert.ok(start >= 0 && pointStart > start);
+  const confirmation = musicTarget.slice(start, pointStart);
+  assert.match(confirmation, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
+  assert.match(confirmation, /kSpotifyDirectPlayConfirmWaitMs/);
+  assert.match(confirmation, /ArmTimedEndObserver\(\*target\)/);
+  assert.doesNotMatch(confirmation, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.doesNotMatch(confirmation, /SetMusicCompletionDeadline/);
 
   assert.match(rotation, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(rotation, /SetMusicCompletionDeadline\([\s\S]*remainingMs, resumed/);
