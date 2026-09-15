@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Stationhead interaction tab presents the playback host fullscreen and keeps rendering visible', () => {
+test('Stationhead playback host is fullscreen only for confirmed login or Monitor B', () => {
   const policy = section(
     layout,
     'struct StationheadSurfacePolicy {',
@@ -28,11 +28,15 @@ test('Stationhead interaction tab presents the playback host fullscreen and keep
   assert.match(policy, /bool showPlayback = false;/);
   assert.match(
     policy,
-    /const bool playbackSelected = selectedTab == StationheadTabKind::Stationhead;/,
+    /selectedTab == StationheadTabKind::Stationhead && loginRequired/,
   );
   assert.match(
     policy,
-    /StationheadTabKind::Stationhead, true\)\.showPlayback/,
+    /!ResolveStationheadSurfacePolicy\(StationheadTabKind::Stationhead, true, false\)\.showPlayback/,
+  );
+  assert.match(
+    policy,
+    /ResolveStationheadSurfacePolicy\(StationheadTabKind::Stationhead, true, true\)\.showPlayback/,
   );
 
   const childLayout = section(
@@ -41,6 +45,7 @@ test('Stationhead interaction tab presents the playback host fullscreen and keep
     '}  // namespace',
   );
   assert.match(childLayout, /const bool playbackForeground\s*=\s*[\s\S]*showPlayback \|\|/);
+  assert.match(childLayout, /!showAuth && !hidePlayback && monitorForeground/);
   assert.match(childLayout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
   assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
   assert.match(childLayout, /controller->put_IsVisible\(TRUE\)/);
