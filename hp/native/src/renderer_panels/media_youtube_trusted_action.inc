@@ -1,8 +1,5 @@
-// Trusted YouTube action bridge.
-//
-// The watchdog decides WHAT should happen. This module owns HOW a verified DOM
-// control receives the native WebView2 CDP click without stale coordinates
-// falling through to the video surface. It is installed once per WebView source.
+// Minimal trusted YouTube control bridge. The watchdog chooses the action; this
+// helper only exposes a verified real control at a stable CDP click target.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeTrustedActionBootstrapScript[] = LR"JS(
 (() => {
@@ -10,58 +7,46 @@ constexpr wchar_t kNativeMediaYoutubeTrustedActionBootstrapScript[] = LR"JS(
 
   const player = () => document.querySelector('#movie_player');
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-  const text = element => normalize([
-    element?.getAttribute?.('aria-label'),
-    element?.getAttribute?.('title'),
-    element?.textContent
-  ].filter(Boolean).join(' '));
+  const text = element => normalize(
+      element?.getAttribute?.('aria-label') ||
+      element?.getAttribute?.('title') ||
+      element?.textContent);
   const valid = element => Boolean(
-    element && element.isConnected && !element.disabled &&
-    element.getAttribute?.('aria-disabled') !== 'true');
+      element?.isConnected && !element.disabled &&
+      element.getAttribute?.('aria-disabled') !== 'true');
   const ad = () => {
     const root = player();
     return Boolean(root && (root.classList.contains('ad-showing') ||
         root.classList.contains('ad-interrupting')));
   };
-  const fullscreen = () => {
-    const root = player();
-    return Boolean(document.fullscreenElement || document.webkitFullscreenElement ||
-        root?.classList.contains('ytp-fullscreen'));
-  };
+  const fullscreen = () => Boolean(
+      document.fullscreenElement || document.webkitFullscreenElement ||
+      player()?.classList.contains('ytp-fullscreen'));
 
   const state = { action: '', at: 0, cleanup: null };
-  const reserve = (action, cooldownMs) => {
+  const arm = (element, action, cooldownMs) => {
     const now = Date.now();
-    if (state.action === action && now - state.at < cooldownMs) return false;
+    if (!valid(element) ||
+        (state.action === action && now - state.at < cooldownMs)) return null;
+    state.cleanup?.();
     state.action = action;
     state.at = now;
-    return true;
-  };
 
-  const arm = (element, action, cooldownMs) => {
-    if (!valid(element) || !reserve(action, cooldownMs)) return null;
-    if (typeof state.cleanup === 'function') state.cleanup();
-
-    const originalStyle = element.getAttribute('style');
-    const originalAriaHidden = element.getAttribute('aria-hidden');
+    const css = element.style.cssText;
+    const hidden = element.getAttribute('aria-hidden');
     let timer = 0;
-    let cleaned = false;
     const cleanup = () => {
-      if (cleaned) return;
-      cleaned = true;
       clearTimeout(timer);
       element.removeEventListener('click', onClick, true);
       if (element.isConnected) {
-        if (originalStyle === null) element.removeAttribute('style');
-        else element.setAttribute('style', originalStyle);
-        if (originalAriaHidden === null) element.removeAttribute('aria-hidden');
-        else element.setAttribute('aria-hidden', originalAriaHidden);
+        element.style.cssText = css;
+        if (hidden === null) element.removeAttribute('aria-hidden');
+        else element.setAttribute('aria-hidden', hidden);
       }
       if (state.cleanup === cleanup) state.cleanup = null;
     };
     const reject = event => {
       event.preventDefault();
-      event.stopPropagation();
       event.stopImmediatePropagation();
       cleanup();
     };
@@ -72,32 +57,20 @@ constexpr wchar_t kNativeMediaYoutubeTrustedActionBootstrapScript[] = LR"JS(
         const video = player()?.querySelector('video');
         if (ad() || !video || video.ended || !video.paused) return reject(event);
       }
-      if (action === 'fullscreen' && (fullscreen() || !player())) {
-        return reject(event);
-      }
-      // Keep the accepted event untouched. It is the real YouTube control that
-      // receives the CDP-generated isTrusted click, so YouTube owns the action
-      // semantics and its internal fullscreen/ad state remains consistent.
-      // Fullscreen is intentionally valid during ads as well as content.
+      if (action === 'fullscreen' && fullscreen()) return reject(event);
       setTimeout(cleanup, 0);
     }
 
-    // Move the REAL validated control to a stable hit target. The CDP click is
-    // therefore delivered to YouTube as an isTrusted event; skip-ad does not
-    // depend on a synthetic element.click().
-    element.style.setProperty('position', 'fixed', 'important');
-    element.style.setProperty('left', 'calc(50vw - 48px)', 'important');
-    element.style.setProperty('top', 'calc(50vh - 48px)', 'important');
-    element.style.setProperty('width', '96px', 'important');
-    element.style.setProperty('height', '96px', 'important');
-    element.style.setProperty('margin', '0', 'important');
-    element.style.setProperty('padding', '0', 'important');
-    element.style.setProperty('transform', 'none', 'important');
-    element.style.setProperty('opacity', '0', 'important');
-    element.style.setProperty('visibility', 'visible', 'important');
-    element.style.setProperty('display', 'block', 'important');
-    element.style.setProperty('pointer-events', 'auto', 'important');
-    element.style.setProperty('z-index', '2147483647', 'important');
+    const style = {
+      position: 'fixed', left: 'calc(50vw - 48px)',
+      top: 'calc(50vh - 48px)', width: '96px', height: '96px',
+      margin: '0', padding: '0', transform: 'none', opacity: '0',
+      visibility: 'visible', display: 'block', 'pointer-events': 'auto',
+      'z-index': '2147483647'
+    };
+    for (const [name, value] of Object.entries(style)) {
+      element.style.setProperty(name, value, 'important');
+    }
     element.removeAttribute('aria-hidden');
     element.addEventListener('click', onClick, true);
     state.cleanup = cleanup;
