@@ -130,7 +130,7 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   unsigned mask = 0;
   size_t foregroundAuthenticationIndex = slots_.size();
   for (size_t i = 0; i < slots_.size(); ++i) {
-    if (slots_[i].state != SlotState::Playing) mask |= (1u << i);
+    if (!SlotStateIsHealthy(slots_[i].state)) mask |= (1u << i);
     if (foregroundAuthenticationIndex == slots_.size() && slots_[i].webview &&
         SlotIsLoginPage(slots_[i])) {
       foregroundAuthenticationIndex = i;
