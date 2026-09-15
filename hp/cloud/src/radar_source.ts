@@ -120,6 +120,8 @@ export function selectLatestShortTermEntry(
     ? jmaTimestampToMillis(referenceValidTime)
     : 0;
   const referenceAt = explicitReferenceAt > 0 ? explicitReferenceAt : latestAt;
+  if (explicitReferenceAt > 0 && latestAt < explicitReferenceAt) return undefined;
+
   const jstOffsetMs = 9 * 60 * 60 * 1000;
   const referenceJst = new Date(referenceAt + jstOffsetMs);
   const nineAt = Date.UTC(
@@ -145,7 +147,7 @@ export function selectLatestShortTermEntry(
       : null;
   if (targetAt === null) return latest;
 
-  if (explicitReferenceAt > 0 && targetAt <= explicitReferenceAt) {
+  if (explicitReferenceAt > 0 && targetAt < explicitReferenceAt) {
     return ordered.filter(entry => jmaTimestampToMillis(entry.validtime) > explicitReferenceAt).at(-1);
   }
 
