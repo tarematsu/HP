@@ -19,15 +19,14 @@ test('Spotify page bootstrap injects no lightweight CSS or style overrides', () 
   assert.doesNotMatch(scripts, /content-visibility\s*:/);
 });
 
-test('track reconcile prioritizes the target-page Play control before media state', () => {
+test('track reconcile is CDP-only for playback start', () => {
   assert.match(reconcile, /button\[data-testid="play-button"\]/);
   assert.match(reconcile, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(reconcile, /const labelOf = element =>/);
-  assert.match(reconcile, /label\.includes\('pause'\) \|\| label\.includes\('一時停止'\)/);
-  assert.match(reconcile, /if \(pagePlay\) \{[\s\S]*isPauseControl\(pagePlay\)[\s\S]*return point\(pagePlay\)/);
-  const targetControl = reconcile.indexOf('const pagePlay');
-  const audio = reconcile.indexOf("const audio = document.querySelector('audio')");
-  assert.ok(targetControl >= 0 && audio > targetControl);
+  assert.match(reconcile, /if \(isPauseControl\(button\)\) return true/);
+  assert.match(reconcile, /return point\(button\)/);
+  assert.doesNotMatch(reconcile, /querySelector\('audio'\)/);
+  assert.doesNotMatch(reconcile, /audio\.play\(/);
+  assert.doesNotMatch(reconcile, /direct-play|DirectPlay/);
 });
 
 test('trusted CDP preflight accepts target Play despite unrelated media and rejects Pause', () => {
