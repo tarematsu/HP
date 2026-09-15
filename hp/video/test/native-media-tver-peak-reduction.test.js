@@ -77,10 +77,12 @@ test('TVer quality discovery is event driven and player-local', () => {
   assert.match(loop, /scheduleEnsure\(40\)/);
 });
 
-test('TVer fullscreen is consumed once per current video', () => {
+test('TVer fullscreen is consumed after success and rearmed after a failed trusted click', () => {
   assert.match(watchdog, /if \(state && state\.fullscreenDirty === false\) return null/);
   assert.match(watchdog, /if \(fullscreenButton && state\) state\.fullscreenDirty = false/);
-  assert.match(watchdog, /Failure is intentionally not retried until the media identity changes/);
+  assert.match(watchdog, /if \(state\) state\.fullscreenDirty = true/);
+  assert.match(watchdog, /homepanel:tver-wake/);
+  assert.doesNotMatch(watchdog, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
 });
 
 test('healthy TVer watchdog avoids page-wide control enumeration', () => {
