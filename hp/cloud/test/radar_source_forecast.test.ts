@@ -141,6 +141,20 @@ describe("radar fixed endpoint selection", () => {
     );
   });
 
+  it("keeps the right panel at the reference day's 22:00 JST when the forecast crosses midnight", () => {
+    const shortTerm: RadarTimeEntry[] = [
+      rasrf("20260915110000", "20260915120000"),
+      rasrf("20260915120000", "20260915130000"),
+      rasrf("20260915130000", "20260915150000"),
+    ];
+
+    expect(selectLatestShortTermEntry(shortTerm, "20260915010000")).toEqual(
+      expect.objectContaining({
+        validtime: "20260915130000",
+      }),
+    );
+  });
+
   it("keeps the latest RASRF time when it has not passed 09:00 JST", () => {
     const shortTerm: RadarTimeEntry[] = [
       rasrf("20260914210000", "20260914220000"),
