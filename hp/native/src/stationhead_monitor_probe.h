@@ -12,10 +12,9 @@ void RequestStationheadMonitorDomProbe() noexcept;
 
 // Stationhead keeps a real 480x270 surface even while it is not presented.
 // Normal background placement stays inside the parent client area behind the
-// dashboard. Offscreen placement is reserved for cases such as auth promotion.
+// dashboard. Foreground presentation may use the full workspace.
 inline constexpr LONG kStationheadSurfaceWidth = 480;
 inline constexpr LONG kStationheadSurfaceHeight = 270;
-inline constexpr LONG kStationheadOffscreenGap = 32;
 
 inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
   const LONG left = workspaceBounds.left;
@@ -28,15 +27,11 @@ inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
   };
 }
 
+// Compatibility name retained for the existing layout call sites. Background
+// WebViews are intentionally kept in the client area instead of being moved
+// outside the window; z-order keeps them behind the dashboard.
 inline RECT StationheadOffscreenBounds(const RECT& workspaceBounds) noexcept {
-  const LONG left = workspaceBounds.right + kStationheadOffscreenGap;
-  const LONG top = workspaceBounds.top;
-  return RECT{
-      left,
-      top,
-      left + kStationheadSurfaceWidth,
-      top + kStationheadSurfaceHeight,
-  };
+  return StationheadBackgroundBounds(workspaceBounds);
 }
 
 // Monitor placement and Stationhead WebView layout live in separate modules.
