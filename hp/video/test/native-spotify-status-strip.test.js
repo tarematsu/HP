@@ -52,9 +52,9 @@ test('status title and confirmation clock are native-owned from the verified Pau
 test('reconcile uses Spotify controls and confirms verified Pause without observer acknowledgement', () => {
   assert.match(reconcile, /button\[data-testid="play-button"\]/);
   assert.match(reconcile, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(reconcile, /if \(isPauseControl\(pageButton\)\) return true/);
-  assert.match(reconcile, /playerMatchesTarget\(\)/);
-  assert.match(reconcile, /return point\(pageButton\)/);
+  assert.match(reconcile, /const playerButton = pageButton \? null :/);
+  assert.match(reconcile, /if \(isPauseControl\(button\)\) return true/);
+  assert.match(reconcile, /return point\(button\)/);
   assert.doesNotMatch(reconcile, /querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
   assert.doesNotMatch(reconcile, /currentMatchesTarget|mediaState|controlIntent|buttonIntent|settling/);
   assert.doesNotMatch(reconcile, /runtime\.scheduleTargetChecks/);
