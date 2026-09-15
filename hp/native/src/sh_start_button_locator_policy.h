@@ -27,25 +27,42 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     element?.getAttribute?.('data-testid'),
   ].map(normalize).filter(Boolean);
   const labelOf = element => normalize(labelsOf(element).join(' '));
-  const visible = element => {
+  const rendered = element => {
     if (!(element instanceof HTMLElement) || !element.isConnected || element.disabled ||
         element.getAttribute('aria-disabled') === 'true' ||
         element.getAttribute('aria-hidden') === 'true') return false;
     const rect = element.getBoundingClientRect();
-    if (!rect || rect.width <= 2 || rect.height <= 2 || rect.right <= 0 ||
-        rect.bottom <= 0 || rect.left >= innerWidth || rect.top >= innerHeight) {
-      return false;
-    }
+    if (!rect || rect.width <= 2 || rect.height <= 2) return false;
     const style = getComputedStyle(element);
     return style.display !== 'none' && style.visibility !== 'hidden' &&
       Number(style.opacity || 1) > 0 && style.pointerEvents !== 'none';
   };
+  const intersectsViewport = rect =>
+    rect && rect.right > 0 && rect.bottom > 0 &&
+    rect.left < innerWidth && rect.top < innerHeight;
+  const visible = element =>
+    rendered(element) && intersectsViewport(element.getBoundingClientRect());
   const pointOf = element => {
-    if (!visible(element)) return null;
-    const rect = element.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
+    if (!rendered(element)) return null;
+    let rect = element.getBoundingClientRect();
+    let x = rect.left + rect.width / 2;
+    let y = rect.top + rect.height / 2;
+    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) {
+      // The 480x270 background surface can leave a genuine Start Listening
+      // control below the physical viewport even though Stationhead rendered it.
+      // Scroll only the Stationhead document; the native host stays background
+      // and CDP still performs the trusted click at the fresh coordinates.
+      try {
+        element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
+      } catch (_) {
+        try { element.scrollIntoView(); } catch (_) {}
+      }
+      rect = element.getBoundingClientRect();
+      x = rect.left + rect.width / 2;
+      y = rect.top + rect.height / 2;
+    }
+    if (!intersectsViewport(rect) || x < 0 || y < 0 ||
+        x >= innerWidth || y >= innerHeight) return null;
     const hit = document.elementFromPoint(x, y);
     if (!hit || (hit !== element && !element.contains(hit))) return null;
     return { x, y };
@@ -89,7 +106,7 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   if (playing() || accountInteractionVisible()) return null;
 
   for (const element of document.querySelectorAll(selector)) {
-    if (!visible(element) || !startPattern.test(labelOf(element))) continue;
+    if (!rendered(element) || !startPattern.test(labelOf(element))) continue;
     if (element.matches('audio,video') || element.querySelector?.('audio,video')) continue;
     const href = String(element.getAttribute?.('href') || '').toLowerCase();
     if (/(^|\/)(login|signin|sign-in|auth|account|settings)(\/|$)|spotify|authorize|consent/.test(href)) {
