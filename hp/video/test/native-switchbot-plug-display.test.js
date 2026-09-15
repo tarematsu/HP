@@ -31,14 +31,14 @@ function functionBody(source, signature) {
 }
 
 test('Plug Mini footer shows rounded integer watts without ON/OFF state', () => {
-  const deviceState = functionBody(dashboardParser, 'std::wstring DeviceState');
-  assert.match(deviceState, /state = L"--W";/);
+  const plugState = functionBody(dashboardParser, 'std::wstring PlugState');
+  assert.match(plugState, /std::isfinite\(watts\)/);
   assert.match(
-    deviceState,
-    /swprintf_s\(buffer, L"%dW", static_cast<int>\(std::round\(watts\)\)\);/,
+    plugState,
+    /std::to_wstring\(static_cast<int>\(std::round\(watts\)\)\) \+ L"W"/,
   );
-  assert.doesNotMatch(deviceState, /json::Text\(item, L"power"/);
-  assert.doesNotMatch(deviceState, /L"ON"|L"OFF"/);
+  assert.doesNotMatch(plugState, /Contact|Motion|Presence|json::Text\(item, L"power"/);
+  assert.doesNotMatch(plugState, /L"ON"|L"OFF"/);
 });
 
 test('Plug Mini footer filters non-plug devices and parses only the four visible plugs', () => {

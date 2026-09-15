@@ -15,18 +15,6 @@ struct OctopusProfileData {
   std::wstring day;
   double currentTotal = std::numeric_limits<double>::quiet_NaN();
   double previousTotal = std::numeric_limits<double>::quiet_NaN();
-  bool currentComplete = false;
-  bool previousComplete = false;
-};
-
-struct OctopusRenderProjection {
-  double maximum = 0.1;
-  double currentWeekUsage = 0.0;
-  double previousWeekUsage = 0.0;
-  bool currentWeekComplete = false;
-  bool previousWeekComplete = false;
-  std::wstring currentLegend;
-  std::wstring previousLegend;
 };
 
 struct SwitchBotDeviceData {
@@ -53,7 +41,6 @@ struct DashboardSnapshot {
   std::wstring currentEnergyLabel = L"今週";
   std::wstring previousEnergyLabel = L"先週";
   std::vector<OctopusProfileData> octopusProfile;
-  OctopusRenderProjection octopusRender;
   std::vector<SwitchBotDeviceData> switchBotDevices;
 
   // Source-version-backed revisions let unchanged native sections reuse their
