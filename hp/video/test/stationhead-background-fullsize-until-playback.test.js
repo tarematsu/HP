@@ -10,6 +10,10 @@ const routing = readFileSync(
   new URL('../../native/src/power_saving_window_routing.inc', import.meta.url),
   'utf8',
 );
+const bridge = readFileSync(
+  new URL('../../native/src/stationhead_monitor_probe.h', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const from = source.indexOf(start);
@@ -19,102 +23,86 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead keeps a 480x270 surface until playback is established', () => {
-  assert.match(layout, /kStationheadBackgroundWidth = 480/);
-  assert.match(layout, /kStationheadBackgroundHeight = 270/);
-  const bounds = section(
-    layout,
-    'RECT ResolveStationheadBackgroundBounds(',
-    'bool PlaybackSurfaceMatches(',
-  );
-  assert.match(bounds, /std::min\(kStationheadBackgroundWidth, width\)/);
-  assert.match(bounds, /std::min\(kStationheadBackgroundHeight, height\)/);
+test('Stationhead background surface is always 480x270 and offscreen', () => {
+  assert.match(bridge, /kStationheadSurfaceWidth = 480/);
+  assert.match(bridge, /kStationheadSurfaceHeight = 270/);
+  assert.match(bridge, /StationheadOffscreenBounds/);
+  assert.match(bridge, /workspaceBounds\.right \+ kStationheadOffscreenGap/);
 
+  const createHost = section(
+    layout,
+    'HWND CreateStationheadChildHost(',
+    'bool WindowClientSizeMatches(',
+  );
+  assert.match(createHost, /StationheadOffscreenBounds\(bounds\)/);
+  assert.match(createHost, /kStationheadSurfaceWidth, kStationheadSurfaceHeight/);
+  assert.doesNotMatch(createHost, /, 1, 1,/);
+});
+
+test('normal startup and reload layout do not depend on audio confirmation', () => {
   const keepBehind = section(
     layout,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()',
   );
-  assert.match(
-    keepBehind,
-    /trackBoundaryPlaybackRecoveryPending_\s*\|\|\s*\(!AudioPlaying\(\) && !audioLossPlaybackObserved_\)/,
+  assert.match(keepBehind, /selectedTab_ = StationheadTabKind::None/);
+  assert.match(keepBehind, /ApplyStationheadChildLayout/);
+  assert.doesNotMatch(keepBehind, /AudioPlaying/);
+  assert.doesNotMatch(keepBehind, /audioLossPlaybackObserved_/);
+  assert.doesNotMatch(keepBehind, /trackBoundaryPlaybackRecoveryPending_/);
+
+  const startup = section(
+    layout,
+    'void StationheadPlayer::SetStartupBounds()',
+    'void StationheadPlayer::SetStartupPreviewBounds(',
   );
-  assert.match(
-    keepBehind,
-    /keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
-  );
-  assert.doesNotMatch(
-    keepBehind,
-    /!monitorForeground && keepPlaybackFullSizeInBackground/,
-  );
+  assert.match(startup, /selectedTab_ = StationheadTabKind::None/);
+  assert.match(startup, /LayoutControllers\(\)/);
 });
 
-test('playback size has only 480x270 pre-confirmation and 1x1 post-confirmation states', () => {
+test('Monitor B presents Stationhead fullscreen and normal mode returns it offscreen', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
-    '}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+    '}  // namespace',
   );
+  assert.match(apply, /const bool monitorForeground = StationheadMonitorForeground\(\)/);
   assert.match(
     apply,
-    /playbackFullSize\s*=\s*keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback/,
+    /playbackForeground\s*=\s*[\s\S]*showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,
   );
-  assert.match(apply, /hostWidth = playbackFullSize \? width : 1/);
-  assert.match(apply, /hostHeight = playbackFullSize \? height : 1/);
+  assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
   assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
-  assert.doesNotMatch(apply, /playbackFullSize = playbackForeground \|\|/);
 
-  const layoutControllers = section(
-    layout,
-    'void StationheadPlayer::LayoutControllers()',
-    'void StationheadPlayer::SetBounds(',
-  );
-  assert.match(
-    layoutControllers,
-    /selectedTab_ != StationheadTabKind::Auth &&[\s\S]*keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
-  );
-});
-
-test('monitor routing may change z-order but not Stationhead playback dimensions', () => {
   const placement = section(
     routing,
     'void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept',
     'void PowerSavingController::Detach() noexcept',
   );
+  assert.match(placement, /monitorMode_ == MonitorMode::Stationhead/);
   assert.match(
     placement,
-    /if \(context->stationheadForeground\)[\s\S]*else \{[\s\S]*SetWindowPos\([\s\S]*child, HWND_BOTTOM,[\s\S]*SWP_NOMOVE \| SWP_NOSIZE/,
+    /if \(context->stationheadForeground\)[\s\S]*context->foregroundBounds[\s\S]*SWP_SHOWWINDOW/,
   );
-  assert.doesNotMatch(
-    placement,
-    /IsStationheadPlaybackHost[\s\S]*backgroundBounds/,
-  );
+  assert.match(placement, /child, HWND_BOTTOM/);
 });
 
-test('confirmed playback stays 1x1 even when Monitor B is foreground', () => {
-  const setVisible = section(
+test('authentication is foreground fullscreen while playback remains a 480x270 offscreen surface', () => {
+  const apply = section(
     layout,
-    'void StationheadPlayer::SetVisible(bool visible)',
-    'void StationheadPlayer::LayoutControllers()',
+    'void ApplyStationheadChildLayout(',
+    '}  // namespace',
   );
-  assert.match(
-    setVisible,
-    /const bool playbackFullSize = keepPlaybackFullSizeInBackground;/,
-  );
-  assert.match(
-    setVisible,
-    /keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
-  );
-  assert.match(setVisible, /monitorForeground \? HWND_TOP : nullptr/);
-  assert.doesNotMatch(
-    setVisible,
-    /playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground/,
-  );
+  assert.match(apply, /authHostBounds = showAuth \? workspaceBounds : offscreen/);
+  assert.match(apply, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
 
-  const surfaceMatch = section(
+  const activeAuth = section(
     layout,
-    'bool PlaybackSurfaceMatches(',
-    'bool BackgroundAuthSurfaceMatches(',
+    'bool ActiveAuthSurfaceMatches(',
+    'RECT ResolveStationheadWorkspaceBounds(',
   );
-  assert.match(surfaceMatch, /hostWidth > 1 \|\| hostHeight > 1/);
+  assert.match(activeAuth, /StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(activeAuth, /SurfaceMatches\(hostWindow, controller, offscreen, nullptr\)/);
+  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, workspaceBounds, HWND_TOP\)/);
 });
