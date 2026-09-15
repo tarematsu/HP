@@ -272,7 +272,7 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
     OutputDebugStringW(L"HomePanel native dashboard callback failed\n");
     if (message == WM_PAINT) ValidateRect(hwnd, nullptr);
     if (message == WM_TIMER && hwnd == nativeMainWindow_) {
-      KillTimer(nativeMainWindow_, kNativePanelTickTimer);
+      KillTimer(hwnd, kNativePanelTickTimer);
       nativePanelTimerActive_ = false;
     }
     return 0;
