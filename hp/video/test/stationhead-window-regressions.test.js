@@ -23,7 +23,7 @@ test('single Stationhead expands to the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background playback placement uses the fixed offscreen 480x270 geometry', () => {
+test('background playback placement uses fixed 480x270 geometry with auth-only offscreen fallback', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
@@ -31,7 +31,8 @@ test('background playback placement uses the fixed offscreen 480x270 geometry', 
 
   const apply = section(layout, 'void ApplyStationheadChildLayout(',
     '}  // namespace');
-  assert.match(apply, /const RECT offscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(apply, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(apply, /const RECT offscreen = hidePlayback[\s\S]*StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
   assert.ok(apply.indexOf('SetWindowPos(hostWindow') < apply.indexOf('if (controller)'));
   assert.ok(apply.indexOf('SetWindowPos(authHostWindow') < apply.indexOf('if (authController)'));
