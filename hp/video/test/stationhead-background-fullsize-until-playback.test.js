@@ -23,11 +23,16 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead background surface is always 480x270 and offscreen', () => {
+test('Stationhead background surface stays 480x270 inside the client area', () => {
   assert.match(bridge, /kStationheadSurfaceWidth = 480/);
   assert.match(bridge, /kStationheadSurfaceHeight = 270/);
-  assert.match(bridge, /StationheadOffscreenBounds/);
-  assert.match(bridge, /workspaceBounds\.right \+ kStationheadOffscreenGap/);
+  assert.match(bridge, /StationheadBackgroundBounds/);
+  assert.match(bridge, /left = workspaceBounds\.left/);
+  assert.match(bridge, /top = workspaceBounds\.top/);
+  assert.match(
+    bridge,
+    /StationheadOffscreenBounds[\s\S]*return StationheadBackgroundBounds\(workspaceBounds\)/,
+  );
 
   const createHost = section(
     layout,
@@ -60,7 +65,7 @@ test('normal startup and reload layout do not depend on audio confirmation', () 
   assert.match(startup, /LayoutControllers\(\)/);
 });
 
-test('Monitor B presents Stationhead fullscreen and normal mode returns it offscreen', () => {
+test('Monitor B presents Stationhead fullscreen and normal mode returns it behind the dashboard', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -87,7 +92,7 @@ test('Monitor B presents Stationhead fullscreen and normal mode returns it offsc
   assert.match(placement, /child, HWND_BOTTOM/);
 });
 
-test('authentication is foreground fullscreen while playback remains a 480x270 offscreen surface', () => {
+test('authentication is foreground fullscreen while playback stays 480x270 behind it', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
