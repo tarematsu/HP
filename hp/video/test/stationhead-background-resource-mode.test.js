@@ -19,10 +19,11 @@ const appMessages = readFileSync(
   'utf8',
 );
 
-test('Stationhead background playback may suppress 1x1 rendering without forcing a LOW memory target', () => {
-  assert.doesNotMatch(layout, /SetControllerMemoryUsageTarget/);
-  assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel/);
-  assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/);
+test('Stationhead background playback may suppress 1x1 rendering while staying LOW memory', () => {
+  assert.match(layout, /SetControllerMemoryUsageTarget/);
+  assert.match(layout, /put_MemoryUsageTargetLevel/);
+  assert.match(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+  assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
   assert.match(layout, /StationheadPlaybackRenderingSuppressed\(controller\)/);
   assert.match(
     layout,
@@ -31,9 +32,15 @@ test('Stationhead background playback may suppress 1x1 rendering without forcing
   assert.match(layout, /controller->put_IsVisible\(playbackControllerVisible\)/);
 });
 
-test('Stationhead playback and auth leave WebView2 memory targets unmanaged in foreground', () => {
-  assert.doesNotMatch(layout, /SetControllerMemoryUsageTarget/);
-  assert.doesNotMatch(layout, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/);
+test('Stationhead playback and auth keep the LOW WebView2 memory target in foreground', () => {
+  assert.match(
+    layout,
+    /SetControllerMemoryUsageTarget\(\s*controller,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\);/,
+  );
+  assert.match(
+    layout,
+    /SetControllerMemoryUsageTarget\(\s*authController,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\);/,
+  );
   assert.match(layout, /StationheadMonitorForeground\(\)/);
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
 });
