@@ -5,6 +5,7 @@
 #include "shared_webview_environment.h"
 #include "spotify_webviews.h"
 #include "version.h"
+#include "webview_startup_cache_reset.h"
 #include "winhttp_helpers.h"
 #include "renderer_panels/primitives.inc"
 
