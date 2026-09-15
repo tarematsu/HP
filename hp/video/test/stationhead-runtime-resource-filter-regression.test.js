@@ -32,15 +32,14 @@ test('resource filter reduction is the final resource PCH layer', () => {
     cmakeSource,
     /set\(HOMEPANEL_STATIONHEAD_SOURCES[\s\S]*src\/sh_runtime_resource_boundary_policy_fix\.h[\s\S]*src\/sh_runtime_resource_filter_policy_fix\.h[\s\S]*src\/sh_track_boundary_message_policy\.h/,
   );
-  const boundaryAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_boundary_policy_fix.h)',
+  const pch = section(
+    cmakeSource,
+    'target_precompile_headers(HomePanel PRIVATE',
+    'add_dependencies(HomePanel',
   );
-  const filterAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_filter_policy_fix.h)',
-  );
-  const boundaryMessageAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_track_boundary_message_policy.h)',
-  );
+  const boundaryAt = pch.indexOf('src/sh_runtime_resource_boundary_policy_fix.h');
+  const filterAt = pch.indexOf('src/sh_runtime_resource_filter_policy_fix.h');
+  const boundaryMessageAt = pch.indexOf('src/sh_track_boundary_message_policy.h');
   assert.ok(boundaryAt >= 0 && boundaryAt < filterAt);
   assert.ok(filterAt < boundaryMessageAt);
   assert.match(
