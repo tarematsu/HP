@@ -23,5 +23,6 @@ test('normal YouTube fullscreen has no fixed readiness deadline', () => {
 test('trusted fullscreen remains valid during ads', () => {
   assert.match(runtime, /action !== 'fullscreen' \|\| !fullscreen\(\)/);
   assert.doesNotMatch(runtime, /action !== 'fullscreen' \|\| \(!ad\(\)/);
-  assert.match(runtime, /return arm\(target, 'fullscreen', 1200\)/);
+  assert.match(runtime, /const canonicalAction = arm\(canonical, 'fullscreen', 1200\)/);
+  assert.match(runtime, /return arm\(fallback, 'fullscreen', 1200\)/);
 });
