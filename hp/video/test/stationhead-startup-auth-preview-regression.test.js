@@ -29,7 +29,25 @@ test('pending Spotify auth hides playback until its surface is usable', () => {
     'constexpr StationheadSurfacePolicy ResolveStationheadSurfacePolicy(',
     'static_assert(!ResolveStationheadSurfacePolicy(');
   assert.match(policy, /return \{authSelected && authSurfaceReady, playbackSelected, authSelected\};/);
-  assert.match(layout, /StationheadTabKind::Auth, false\)\.hidePlayback/);
+  assert.match(layout, /StationheadTabKind::Auth, false, false\)\.hidePlayback/);
+});
+
+test('Stationhead playback surface is foreground only for confirmed in-page authentication', () => {
+  const policy = section(layout,
+    'constexpr StationheadSurfacePolicy ResolveStationheadSurfacePolicy(',
+    'static_assert(!ResolveStationheadSurfacePolicy(');
+  assert.match(
+    policy,
+    /selectedTab == StationheadTabKind::Stationhead && loginRequired/,
+  );
+  assert.match(
+    layout,
+    /!ResolveStationheadSurfacePolicy\(StationheadTabKind::Stationhead, true, false\)\.showPlayback/,
+  );
+  assert.match(
+    layout,
+    /ResolveStationheadSurfacePolicy\(StationheadTabKind::Stationhead, true, true\)\.showPlayback/,
+  );
 });
 
 test('auth callback publishes readiness before exposing the auth surface', () => {
