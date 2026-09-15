@@ -3,28 +3,23 @@
 
 namespace hp {
 
-// Playback/data boundary policy. Presentation reduction is registered directly
-// at the WebView document-start call site so later autoplay policy wrappers
-// cannot accidentally replace it.
+// Use the single audited resource boundary for playback as well. It blocks
+// images/fonts, telemetry, social/UI chunks and non-playback media while keeping
+// Stationhead/Spotify playback and authenticated data requests fail-open. Do not
+// clear the HTTP cache: retaining safe cached assets reduces startup network and
+// CPU work on every periodic navigation.
 inline void ApplyStationheadResourceBlockingPlaybackSafe(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
     const StationheadConfig& config,
     std::atomic<bool>& armed,
     EventRegistrationToken& token) {
-  (void)config;
-  (void)armed;
-  (void)token;
-  if (!environment || !webview) return;
-
-  // Only the HTTP cache is cleared. Cookies and DOM storage remain intact so
-  // the persistent Stationhead login profile is preserved across restarts.
-  webview->CallDevToolsProtocolMethod(
-      L"Network.clearBrowserCache", L"{}", nullptr);
+  ApplyStationheadResourceBlockingStartupReduced(
+      environment, webview, config, armed, token);
 }
 
-// Authenticated statistics acquisition remains independent from presentation
-// reduction so UI changes cannot affect the request/auth state machine.
+// Preserve the established PR48 stats/auth behavior while keeping it separate
+// from presentation and resource-reduction policy.
 inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
