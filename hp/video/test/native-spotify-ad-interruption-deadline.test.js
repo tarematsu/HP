@@ -26,7 +26,7 @@ test('observer posts one generation-fenced interruption event after target playb
 
 test('pre-confirmation playback start path has no separate non-target settling branch', () => {
   assert.match(runtime, /if \(!media\.paused\) \{[\s\S]*state\.startPosted && !state\.interrupted[\s\S]*return 'interruption'/);
-  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
+  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return 'observing'/);
   assert.doesNotMatch(scoped, /return 'wrong'|return 'settling'|currentMatchesTarget/);
   assert.doesNotMatch(music, /"\\"wrong\\""|"\\"settling\\""/);
   assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
