@@ -68,6 +68,31 @@ bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
           current == expected;
 }
 
+RECT ResolveStationheadBackgroundBounds(HWND hostWindow,
+                                        const RECT& workspaceBounds) noexcept {
+  if (!hostWindow || !IsWindow(hostWindow)) return workspaceBounds;
+  const HWND parent = GetParent(hostWindow);
+  if (!parent || !IsWindow(parent)) return workspaceBounds;
+  const HWND mediaWindow = FindWindowExW(
+      parent, nullptr, L"HomePanelNativeStaticPanel", L"HomePanelNativeMedia");
+  if (!mediaWindow || !IsWindow(mediaWindow)) return workspaceBounds;
+
+  RECT screenRect{};
+  if (!GetWindowRect(mediaWindow, &screenRect)) return workspaceBounds;
+  POINT topLeft{screenRect.left, screenRect.top};
+  POINT bottomRight{screenRect.right, screenRect.bottom};
+  if (!ScreenToClient(parent, &topLeft) ||
+      !ScreenToClient(parent, &bottomRight)) {
+    return workspaceBounds;
+  }
+  const RECT panelBounds{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
+  if (panelBounds.right <= panelBounds.left ||
+      panelBounds.bottom <= panelBounds.top) {
+    return workspaceBounds;
+  }
+  return panelBounds;
+}
+
 bool PlaybackSurfaceMatches(HWND hostWindow,
                             ICoreWebView2Controller* controller,
                             const RECT& workspaceBounds,
@@ -193,22 +218,30 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback &&
       !playbackForeground;
   const bool playbackFullSize = playbackForeground || playbackBackgroundFullSize;
+  const RECT playbackBounds = playbackBackgroundFullSize
+      ? ResolveStationheadBackgroundBounds(hostWindow, bounds)
+      : bounds;
   const BOOL playbackControllerVisible =
       playbackFullSize || !StationheadPlaybackRenderingSuppressed(controller)
           ? TRUE
           : FALSE;
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
-  const int hostWidth = playbackFullSize ? width : 1;
-  const int hostHeight = playbackFullSize ? height : 1;
+  const int playbackWidth =
+      std::max(1L, playbackBounds.right - playbackBounds.left);
+  const int playbackHeight =
+      std::max(1L, playbackBounds.bottom - playbackBounds.top);
+  const int hostWidth = playbackFullSize ? playbackWidth : 1;
+  const int hostHeight = playbackFullSize ? playbackHeight : 1;
   const int authHostWidth = showAuth ? width : 1;
   const int authHostHeight = showAuth ? height : 1;
   const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
   const HWND authPlacement = showAuth ? HWND_TOP : HWND_BOTTOM;
   const RECT contentBounds{0, 0, hostWidth, hostHeight};
   const RECT authBounds{0, 0, authHostWidth, authHostHeight};
-  const RECT hostBounds{bounds.left, bounds.top,
-                        bounds.left + hostWidth, bounds.top + hostHeight};
+  const RECT hostBounds{playbackBounds.left, playbackBounds.top,
+                        playbackBounds.left + hostWidth,
+                        playbackBounds.top + hostHeight};
   const RECT authHostBounds{bounds.left, bounds.top,
                             bounds.left + authHostWidth, bounds.top + authHostHeight};
   const bool hostValid = hostWindow && IsWindow(hostWindow);
@@ -226,7 +259,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (hostValid &&
       (!hostSizeMatches || !hostPlacementMatches || !IsWindowVisible(hostWindow))) {
-    SetWindowPos(hostWindow, hostPlacement, bounds.left, bounds.top,
+    SetWindowPos(hostWindow, hostPlacement, hostBounds.left, hostBounds.top,
                  hostWidth, hostHeight,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   }
@@ -332,13 +365,17 @@ void StationheadPlayer::SetVisible(bool visible) {
         (!AudioPlaying() && !audioLossPlaybackObserved_);
     const bool playbackFullSize =
         monitorForeground || keepPlaybackFullSizeInBackground;
+    const RECT playbackBounds =
+        !monitorForeground && keepPlaybackFullSizeInBackground
+            ? ResolveStationheadBackgroundBounds(hostWindow_, bounds_)
+            : bounds_;
     if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
-        PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
+        PlaybackSurfaceMatches(hostWindow_, controller_.Get(), playbackBounds,
                                playbackFullSize
-                                   ? std::max(1L, bounds_.right - bounds_.left)
+                                   ? std::max(1L, playbackBounds.right - playbackBounds.left)
                                    : 1,
                                playbackFullSize
-                                   ? std::max(1L, bounds_.bottom - bounds_.top)
+                                   ? std::max(1L, playbackBounds.bottom - playbackBounds.top)
                                    : 1,
                                monitorForeground ? HWND_TOP : nullptr) &&
         BackgroundAuthSurfaceMatches(authHostWindow_, authController_.Get(), bounds_)) {
