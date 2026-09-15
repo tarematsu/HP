@@ -23,25 +23,26 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead background surface stays 480x270 inside the client area', () => {
+test('Stationhead normal background surface stays 480x270 inside the client area', () => {
   assert.match(bridge, /kStationheadSurfaceWidth = 480/);
   assert.match(bridge, /kStationheadSurfaceHeight = 270/);
   assert.match(bridge, /StationheadBackgroundBounds/);
   assert.match(bridge, /left = workspaceBounds\.left/);
   assert.match(bridge, /top = workspaceBounds\.top/);
-  assert.match(
-    bridge,
-    /StationheadOffscreenBounds[\s\S]*return StationheadBackgroundBounds\(workspaceBounds\)/,
-  );
+  assert.match(bridge, /StationheadOffscreenBounds/);
+  assert.match(bridge, /workspaceBounds\.right \+ kStationheadOffscreenGap/);
 
-  const createHost = section(
+  const apply = section(
     layout,
-    'HWND CreateStationheadChildHost(',
-    'bool WindowClientSizeMatches(',
+    'void ApplyStationheadChildLayout(',
+    '}  // namespace',
   );
-  assert.match(createHost, /StationheadOffscreenBounds\(bounds\)/);
-  assert.match(createHost, /kStationheadSurfaceWidth, kStationheadSurfaceHeight/);
-  assert.doesNotMatch(createHost, /, 1, 1,/);
+  assert.match(apply, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(
+    apply,
+    /const RECT offscreen = hidePlayback[\s\S]*StationheadBackgroundBounds\(workspaceBounds\)/,
+  );
+  assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
 });
 
 test('normal startup and reload layout do not depend on audio confirmation', () => {
@@ -92,12 +93,14 @@ test('Monitor B presents Stationhead fullscreen and normal mode returns it behin
   assert.match(placement, /child, HWND_BOTTOM/);
 });
 
-test('authentication is foreground fullscreen while playback stays 480x270 behind it', () => {
+test('authentication keeps playback alive offscreen while auth is foreground fullscreen', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
+  assert.match(apply, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(apply, /const RECT offscreen = hidePlayback[\s\S]*authOffscreen/);
   assert.match(apply, /authHostBounds = showAuth \? workspaceBounds : offscreen/);
   assert.match(apply, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
   assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
