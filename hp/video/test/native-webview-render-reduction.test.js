@@ -32,7 +32,7 @@ test('Spotify page bootstrap leaves Spotify rendering and controls completely un
   assert.doesNotMatch(spotify, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
 });
 
-test('Stationhead startup composition names the actual runtime pieces once', () => {
+test('Stationhead startup installs playback-only guard before legacy autoplay composition', () => {
   assert.doesNotMatch(playbackPolicy, /sh_render_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /sh_room_ui_reduction_policy/);
   assert.doesNotMatch(playbackPolicy, /StationheadAutoplayScriptRenderReduced/);
@@ -43,7 +43,7 @@ test('Stationhead startup composition names the actual runtime pieces once', () 
   assert.match(startupScript, /inline std::wstring BuildStationheadStartupScript\(/);
   assert.match(
     startupScript,
-    /StationheadAutoplayScriptCurrentInteraction\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
+    /StationheadRoomUiReductionScript\(\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadAutoplayScriptCurrentInteraction\(globalName, messagePrefix\)/,
   );
   assert.doesNotMatch(
     startupScript,
@@ -137,8 +137,10 @@ test('Stationhead render policy hides generic social and decorative UI', () => {
   assert.match(renderPolicy, /content-visibility: hidden !important/);
 });
 
-test('Stationhead room UI uses audited static selectors instead of semantic polling', () => {
+test('Stationhead room becomes playback-only without persistent DOM observation', () => {
   assert.match(roomUiPolicy, /__homepanelStationheadRoomUiReduction/);
+  assert.match(roomUiPolicy, /__homepanelStationheadAudioOnlyUi = true/);
+  assert.match(roomUiPolicy, /__homepanelStationheadAudioOnlyUiObserver\?\.disconnect/);
   assert.match(roomUiPolicy, /parts\.length !== 1/);
   assert.match(roomUiPolicy, /'home', 'sign-in', 'sign-up'/);
 
@@ -157,11 +159,18 @@ test('Stationhead room UI uses audited static selectors instead of semantic poll
     /aria-label\^='Reply to '/,
     /class~='resize-none'/,
     /class~='bg-transparent'/,
-    /aside:has\(textarea/,
-    /\[role='complementary'\]:has\(textarea/,
+    /aside/,
+    /\[role='complementary'\]/,
   ]) {
     assert.match(roomUiPolicy, contract);
   }
+
+  assert.match(roomUiPolicy, /data-homepanel-stationhead-playback-only/);
+  assert.match(roomUiPolicy, /document\.addEventListener\('playing', onMediaState, true\)/);
+  assert.match(roomUiPolicy, /'pause', 'waiting', 'stalled', 'ended', 'error', 'emptied', 'abort'/);
+  assert.match(roomUiPolicy, /body > :not\(script\):not\(style\)/);
+  assert.match(roomUiPolicy, /content-visibility: hidden !important/);
+  assert.match(roomUiPolicy, /contain: strict !important/);
 
   assert.doesNotMatch(roomUiPolicy, /querySelectorAll/);
   assert.doesNotMatch(roomUiPolicy, /getBoundingClientRect/);
