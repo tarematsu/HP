@@ -65,17 +65,6 @@ bool SensorHub::RewriteOutboxLocked(const std::deque<Sample>& samples) {
   return AtomicWriteText(outboxPath_, text.str());
 }
 
-void SensorHub::CompactOutboxLocked() {
-  std::error_code error;
-  const uintmax_t bytes = fs::exists(outboxPath_, error) ? fs::file_size(outboxPath_, error) : 0;
-  if (acknowledgedSinceCompaction_ < kCompactAfterAck && bytes < kCompactBytes) return;
-  if (!RewriteOutboxLocked(outbox_)) {
-    log_.Warn(L"Failed to compact telemetry outbox");
-    return;
-  }
-  acknowledgedSinceCompaction_ = 0;
-}
-
 std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId,
                                              const std::string& appVersion) {
   std::lock_guard lock(mutex_);
@@ -96,23 +85,19 @@ std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId,
 void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedSequences,
                                       uint64_t nextSequence) {
   std::lock_guard lock(mutex_);
-  std::vector<uint64_t> acknowledged = acknowledgedSequences;
-  std::sort(acknowledged.begin(), acknowledged.end());
-  acknowledged.erase(std::unique(acknowledged.begin(), acknowledged.end()), acknowledged.end());
-
   uint64_t persistedAck = acknowledgedSequence_;
-  if (!acknowledged.empty()) persistedAck = std::max(persistedAck, acknowledged.back());
-  if (nextSequence > 0) persistedAck = std::max(persistedAck, nextSequence - 1);
-
-  std::deque<Sample> updated;
-  size_t removed = 0;
-  for (const auto& sample : outbox_) {
-    if (std::binary_search(acknowledged.begin(), acknowledged.end(), sample.sequence)) {
-      ++removed;
-      continue;
-    }
-    updated.push_back(sample);
+  if (nextSequence) persistedAck = std::max(persistedAck, nextSequence - 1);
+  if (!acknowledgedSequences.empty()) {
+    persistedAck = std::max(persistedAck, acknowledgedSequences.back());
   }
+
+  std::deque<Sample> updated = outbox_;
+  const size_t before = updated.size();
+  std::erase_if(updated, [&](const Sample& sample) {
+    return std::binary_search(
+        acknowledgedSequences.begin(), acknowledgedSequences.end(), sample.sequence);
+  });
+  const size_t removed = before - updated.size();
 
   uint64_t candidate = persistedAck == std::numeric_limits<uint64_t>::max()
       ? persistedAck
@@ -134,32 +119,18 @@ void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedS
     }
   }
 
-  const bool sequencesChanged = rebased > 0;
-  if (sequencesChanged && !RewriteOutboxLocked(updated)) {
-    log_.Warn(L"Failed to persist telemetry sequence rebase; retaining the existing outbox");
+  if ((removed || rebased) && !RewriteOutboxLocked(updated)) {
+    log_.Warn(L"Failed to persist telemetry outbox update; retaining the existing outbox");
     return;
   }
-  bool acknowledgementPersisted = true;
-  if (persistedAck > acknowledgedSequence_) {
-    acknowledgementPersisted = AtomicWriteText(outboxAckPath_, std::to_string(persistedAck));
-    if (!acknowledgementPersisted) {
-      log_.Warn(L"Failed to persist the telemetry acknowledgement high-water mark");
-    }
+  if (persistedAck > acknowledgedSequence_ &&
+      !AtomicWriteText(outboxAckPath_, std::to_string(persistedAck))) {
+    log_.Warn(L"Failed to persist the telemetry acknowledgement high-water mark");
   }
-
-  if (removed > 0 || sequencesChanged) {
-    outbox_ = std::move(updated);
-    if (sequencesChanged) {
-      acknowledgedSinceCompaction_ = 0;
-    } else {
-      acknowledgedSinceCompaction_ += removed;
-      if (!acknowledgementPersisted) acknowledgedSinceCompaction_ = kCompactAfterAck;
-      CompactOutboxLocked();
-    }
-  }
+  if (removed || rebased) outbox_ = std::move(updated);
   acknowledgedSequence_ = std::max(acknowledgedSequence_, persistedAck);
   nextSequence_ = std::max(nextSequence_, candidate);
-  if (rebased > 0) {
+  if (rebased) {
     log_.Warn(L"Rebased " + std::to_wstring(rebased) +
               L" telemetry samples above the server sequence high-water mark");
   }

@@ -6,8 +6,6 @@ namespace hp {
 namespace {
 constexpr auto kCommandTimeout = std::chrono::seconds(10);
 constexpr auto kSampleTimeout = std::chrono::seconds(10);
-constexpr size_t kCompactAfterAck = 48;
-constexpr uintmax_t kCompactBytes = 1024 * 1024;
 constexpr int64_t kEarliestSampleTime = 946'684'800'000;
 constexpr int64_t kTelemetryBucketMs = 30 * 60'000;
 
@@ -150,35 +148,18 @@ SensorHub::~SensorHub() { Stop(); }
 
 void SensorHub::Start() {
   stopping_ = false;
-  try {
-    serialThread_ = std::thread([this] {
-      const auto publishFailure = [this]() noexcept {
-        try {
-          std::lock_guard lock(mutex_);
-          state_.co2Connected = false;
-        } catch (...) {
-        }
-        if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
-      };
-
-      try {
-        SerialLoop();
-      } catch (const std::exception& error) {
-        try {
-          log_.Warn(L"Sensor thread stopped after exception: " + Utf8ToWide(error.what()));
-        } catch (...) {
-          log_.Warn(L"Sensor thread stopped while formatting exception diagnostics");
-        }
-        publishFailure();
-      } catch (...) {
-        log_.Warn(L"Sensor thread stopped after an unknown exception");
-        publishFailure();
+  serialThread_ = std::thread([this] {
+    try {
+      SerialLoop();
+    } catch (...) {
+      log_.Warn(L"Sensor thread stopped unexpectedly");
+      {
+        std::lock_guard lock(mutex_);
+        state_.co2Connected = false;
       }
-    });
-  } catch (...) {
-    stopping_ = true;
-    throw;
-  }
+      if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+    }
+  });
 }
 
 void SensorHub::Stop() {
