@@ -132,7 +132,6 @@ set(HOMEPANEL_CORE_SOURCES
   src/app.cpp
   src/app_startup_tick_fallback.cpp
   src/app_air_history.cpp
-  src/app_stationhead_history.cpp
   src/app_stationhead_handles.cpp
   src/shared_webview_environment.cpp
   src/app_update.cpp
