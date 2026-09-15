@@ -15,10 +15,10 @@ test('music reconcile leaves playback acceptance and deadline ownership to the o
   assert.ok(start >= 0 && pointStart > start);
   const confirmation = music.slice(start, pointStart);
   assert.match(confirmation, /std::wstring_view\(json\) == L"true"/);
-  assert.match(confirmation, /std::wstring_view\(json\) == L"\\"direct-play\\""/);
   assert.match(confirmation, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
-  assert.match(confirmation, /nextRecoveryTick =[\s\S]*kSpotifyDirectPlayConfirmWaitMs/);
+  assert.match(confirmation, /nextRecoveryTick =[\s\S]*kSpotifyCdpPlayConfirmWaitMs/);
   assert.match(confirmation, /ArmTimedEndObserver\(\*target\)/);
+  assert.doesNotMatch(confirmation, /direct-play|DirectPlay/);
   assert.doesNotMatch(confirmation, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.doesNotMatch(confirmation, /SetMusicCompletionDeadline/);
 
