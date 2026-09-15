@@ -22,10 +22,11 @@ function section(text, start, end) {
 
 test('Stationhead build contains only active sources', () => {
   for (const source of ['sh.cpp', 'sh_webview.cpp', 'sh_layout.cpp', 'sh_audio.cpp',
-    'sh_audio_loss.cpp', 'stationhead_native_stats.cpp']) {
+    'sh_audio_loss.cpp']) {
     assert.match(cmake, new RegExp(`src/${source.replaceAll('.', '\\.')}`));
   }
-  assert.doesNotMatch(cmake, /app_stationhead_(?:state|history)|stationhead_disabled_stubs|sh_profile_reuse_policy_(?:begin|end)/);
+  assert.doesNotMatch(cmake,
+    /app_stationhead_(?:state|history)|stationhead_(?:disabled_stubs|native_stats)|sh_profile_reuse_policy_(?:begin|end)/);
 });
 
 test('App owns exactly one Stationhead handle and creates one primary player', () => {

@@ -14,10 +14,6 @@ const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
-const nativeStats = readFileSync(
-  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url),
-  'utf8',
-);
 const sharedEnvironment = readFileSync(
   new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
   'utf8',
@@ -43,9 +39,8 @@ test('final July 19 resource boundary remains fail-open', () => {
   assert.doesNotMatch(july19Policy, /AttachStationheadNativeStats/);
 });
 
-test('playback boundary no longer attaches a native statistics observer', () => {
+test('playback boundary has no native statistics observer', () => {
   assert.doesNotMatch(playbackPolicy, /AttachStationheadNativeStats/);
-  assert.doesNotMatch(nativeStats, /WebResourceResponseReceived|WinHttpDownload|std::thread/);
   assert.match(july19Policy, /StationheadJuly19ApiPlayStatsScript/);
   assert.match(july19Policy, /credentials: 'include'/);
 });
