@@ -9,6 +9,7 @@ const anchors = source('media_surface_anchor.h');
 const stationhead = source('stationhead_monitor_probe.h');
 const spotify = source('spotify_host_layout.inc');
 const windows = source('renderer_panels/windows.inc');
+const layout = source('renderer_panels/layout_overrides.inc');
 
 test('Stationhead and Spotify use portrait 160x320 surfaces anchored to clock and air cards', () => {
   assert.match(stationhead, /kStationheadSurfaceWidth = 160/);
@@ -28,4 +29,8 @@ test('lower dashboard cards shift energy to old weather, weather to old radar, a
   assert.match(windows, /DrawEnergySection\(scope\.dc, sections\.weather\)/);
   assert.match(windows, /DrawWeatherSection\(scope\.dc, sections\.radar\)/);
   assert.match(windows, /DrawRadarSection\(scope\.dc, sections\.energy\)/);
+});
+
+test('weather keeps the left slot while radar takes the larger right-side width', () => {
+  assert.match(layout, /leftWidth = std::max\(1, rowWidth \* 35 \/ 100\)/);
 });
