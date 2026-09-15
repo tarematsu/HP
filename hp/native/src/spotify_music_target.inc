@@ -4,7 +4,6 @@ namespace {
 constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTrackTransitionRetryMs = 500ULL;
-constexpr ULONGLONG kSpotifyDirectPlayConfirmWaitMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyCdpPlayConfirmWaitMs = 5ULL * 1000ULL;
 
 }  // namespace
@@ -197,12 +196,10 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
-            if (json &&
-                (std::wstring_view(json) == L"true" ||
-                 std::wstring_view(json) == L"\"direct-play\"")) {
+            if (json && std::wstring_view(json) == L"true") {
               SetSlotState(*target, SlotState::WaitingTarget);
               target->nextRecoveryTick =
-                  callbackNow + kSpotifyDirectPlayConfirmWaitMs;
+                  callbackNow + kSpotifyCdpPlayConfirmWaitMs;
               ArmTimedEndObserver(*target);
               RecomputeForeground();
               ArmRobustScheduler();
@@ -219,8 +216,8 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             // The page URL is already the managed target. If Spotify has not
-            // created AUDIO or its Play control yet, simply inspect again soon
-            // instead of entering a second recovery state machine.
+            // created its Play control yet, inspect again soon instead of
+            // entering a second recovery state machine.
             SetSlotState(*target, SlotState::WaitingTarget);
             target->nextRecoveryTick =
                 callbackNow + kSpotifyTrackTransitionRetryMs;
