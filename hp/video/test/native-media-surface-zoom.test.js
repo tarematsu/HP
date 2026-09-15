@@ -11,32 +11,34 @@ const stationheadLifecycle = readFileSync(
   'utf8',
 );
 
-test('Spotify zooms out every surface larger than 1x1 and restores normal zoom at 1x1', () => {
-  assert.match(spotifyLayout, /kSpotifyExpandedSurfaceZoom = 0\.50/);
-  assert.match(spotifyLayout, /const bool reducedZoom = width > 1 \|\| height > 1/);
+test('Spotify always uses the fixed 50% zoom factor regardless of host size', () => {
+  assert.match(spotifyLayout, /kSpotifySurfaceZoom = 0\.50/);
+  assert.match(spotifyLayout, /constexpr bool reducedZoom = true/);
   assert.match(
     spotifyLayout,
-    /put_ZoomFactor\(\s*reducedZoom \? kSpotifyExpandedSurfaceZoom : 1\.0\)/,
+    /put_ZoomFactor\(kSpotifySurfaceZoom\)/,
   );
   assert.doesNotMatch(
     spotifyLayout,
-    /const bool reducedZoom = !monitorForeground_ && authentication/,
+    /width > 1|height > 1|kSpotifyExpandedSurfaceZoom|\? kSpotifySurfaceZoom : 1\.0/,
   );
 });
 
-test('Stationhead follows WebView size changes and zooms the page out above 1x1', () => {
+test('Stationhead always applies 50% document zoom without size-dependent switching', () => {
   assert.match(
     stationheadLifecycle,
-    /const zoom = innerWidth > 1 \|\| innerHeight > 1 \? '0\.5' : '1'/,
+    /document\.documentElement\?\.style\.setProperty\('zoom', '0\.5'\)/,
   );
-  assert.match(stationheadLifecycle, /root\.style\.zoom = zoom/);
+  assert.doesNotMatch(
+    stationheadLifecycle,
+    /innerWidth > 1|innerHeight > 1|window\.addEventListener\('resize'/,
+  );
   assert.match(
     stationheadLifecycle,
-    /window\.addEventListener\('resize', syncSurfaceZoom, true\)/,
+    /window\.addEventListener\('pageshow',[\s\S]*zoomOut\(\)/,
   );
   assert.match(
     stationheadLifecycle,
-    /window\.addEventListener\('pageshow',[\s\S]*syncSurfaceZoom\(\)/,
+    /zoomOut\(\);\s*run\(\);\s*armBlankRecovery\(\);\s*\}\)\(\)/,
   );
-  assert.match(stationheadLifecycle, /syncSurfaceZoom\(\);\s*run\(\);\s*armBlankRecovery\(\);\s*\}\)\(\)/);
 });
