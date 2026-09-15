@@ -5,10 +5,10 @@
 namespace hp {
 
 struct WeatherHourData {
-  int hour = 0;
+  int hour;
   std::wstring icon;
-  double temperature = std::numeric_limits<double>::quiet_NaN();
-  double rainMm = std::numeric_limits<double>::quiet_NaN();
+  double temperature;
+  double rainMm;
 };
 
 struct OctopusProfileData {
@@ -32,7 +32,6 @@ struct DashboardSectionRevisions {
 struct DashboardSnapshot {
   bool loaded = false;
 
-  bool weatherOutage = false;
   std::vector<WeatherHourData> weatherHours;
 
   double lastMonthUsage = std::numeric_limits<double>::quiet_NaN();
