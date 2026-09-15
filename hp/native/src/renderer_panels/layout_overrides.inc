@@ -37,7 +37,9 @@ RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
   const int width = std::max(1L, client.right - client.left);
   const int gapX = std::max(8, width * 16 / 1000);
   const int rowWidth = std::max(2, width - gapX);
-  const int leftWidth = std::max(1, rowWidth * 65 / 100);
+  // Keep Weather in the left slot and Radar in the right slot, but exchange
+  // their widths: Weather uses the former narrow size and Radar the wide size.
+  const int leftWidth = std::max(1, rowWidth * 35 / 100);
 
   RearrangedMainLayout layout;
   layout.sections.radar =
