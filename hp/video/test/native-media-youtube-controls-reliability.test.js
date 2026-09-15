@@ -35,15 +35,15 @@ test('ad skip stays player-local and variant tolerant', () => {
   assert.match(runtime, /\.ytp-skip-ad-button/);
   assert.match(runtime, /aria-label\*=\"Skip ad\" i/);
   assert.match(runtime, /aria-label\*=\"広告をスキップ\"/);
-  assert.match(runtime, /player\.querySelectorAll\(skipSelectors\.join\(','\)\)/);
-  assert.doesNotMatch(runtime, /document\.querySelectorAll\(skipSelectors/);
+  assert.match(runtime, /player\.querySelectorAll\(skipSelector\)/);
+  assert.doesNotMatch(runtime, /document\.querySelectorAll\([^)]*skip/);
 });
 
 test('message dialogs close explicit Close controls and exclude surveys', () => {
   assert.match(runtime, /document\.querySelector\('ytd-popup-container'\)/);
   assert.match(runtime, /\^\(閉じる\|close\)\$/);
-  assert.match(runtime, /root\.matches\(survey\)/);
-  assert.match(runtime, /root\.querySelector\(survey\)/);
+  assert.match(runtime, /root\.matches\(surveySelector\)/);
+  assert.match(runtime, /root\.querySelector\(surveySelector\)/);
   assert.match(runtime, /close\.click\(\)/);
 });
 

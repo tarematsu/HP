@@ -47,10 +47,9 @@ test('TVer cloud refresh uses the dedicated native cloud-feed client directly', 
   assert.doesNotMatch(wrapper, /NativeMediaTverSeriesWatchdogPolicyScript/);
 });
 
-test('YouTube playlist and watchdog routing remain explicit', () => {
-  assert.match(wrapper, /script == kNativeMediaPlayAllScript/);
-  assert.match(wrapper, /return kNativeMediaYoutubeReliablePlayAllScript/);
+test('YouTube routing keeps only the watchdog bridge special case', () => {
+  assert.doesNotMatch(wrapper, /script == kNativeMediaPlayAllScript/);
   assert.match(wrapper, /script == kNativeMediaYoutubeWatchdogScript/);
-  assert.match(wrapper, /NativeMediaEnsureYoutubeTrustedAction\(webview, hostWindow, alive\)/);
-  assert.match(wrapper, /return kNativeMediaYoutubeControlRecoveryScript/);
+  assert.match(wrapper, /NativeMediaEnsureEventWakeBridge\(webview, hostWindow, alive\)/);
+  assert.doesNotMatch(wrapper, /YoutubeTrustedAction|YoutubeEventAgent/);
 });

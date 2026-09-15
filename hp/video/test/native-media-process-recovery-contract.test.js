@@ -17,13 +17,18 @@ const hostWindow = readFileSync(
 
 test('media WebView recreates only for browser and renderer process failures', () => {
   assert.match(section, /add_ProcessFailed\(/);
+  assert.match(section, /bool NativeMediaProcessNeedsRecreate\(/);
   for (const kind of [
     'COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED',
     'COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED',
     'COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE',
   ]) {
-    assert.match(section, new RegExp(`case ${kind}:`));
+    assert.match(section, new RegExp(kind));
   }
+  assert.match(
+    section,
+    /return kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED[\s\S]*COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED[\s\S]*COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE/,
+  );
   assert.match(section, /PostMessageW\(hostWindow, kNativeMediaRecreateMessage, 0, 0\)/);
   assert.match(base, /kNativeMediaRecreateMessage = WM_USER \+ 0x4D/);
 });

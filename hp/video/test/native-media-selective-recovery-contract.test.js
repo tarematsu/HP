@@ -9,12 +9,12 @@ const tverEpisode = readExpandedNativeSource(
 const tverPlayback = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 
-test('YouTube recovery owns its event wake and bounded recheck timers', () => {
+test('YouTube recovery uses one wake timer for events and rechecks', () => {
   assert.match(youtubeRecovery, /const wake = \(delay = 80\) =>/);
-  assert.match(youtubeRecovery, /const recheck = \(delay = 2000\) =>/);
+  assert.match(youtubeRecovery, /const recheck = \(\) => wake\(2000\)/);
   assert.match(youtubeRecovery, /postMessage\('homepanel:youtube-wake'\)/);
   assert.match(youtubeRecovery, /\['playing', 'pause', 'waiting', 'stalled', 'ended', 'error'\]/);
-  assert.doesNotMatch(youtubeRecovery, /setInterval\s*\(/);
+  assert.doesNotMatch(youtubeRecovery, /recheckTimer|setInterval\s*\(/);
 });
 
 test('TVer stalled or paused playback wakes native every two seconds only until progress resumes', () => {

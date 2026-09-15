@@ -14,8 +14,8 @@ test('YouTube startup normally lands on cloud-resolved watch item', () => {
   assert.match(mediaBase, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/youtube-start/);
   assert.match(reliablePlayAll, /ytd-playlist-video-renderer a#thumbnail/);
   assert.match(reliablePlayAll, /url\.searchParams\.set\('list', list\)/);
-  assert.match(reliablePlayAll, /referrerPolicy = 'no-referrer'/);
-  assert.match(composition, /kNativeMediaYoutubeReliablePlayAllScript/);
+  assert.match(reliablePlayAll, /location\.assign\(url\.href\)/);
+  assert.match(mediaBase, /kNativeMediaPlayAllScript = kNativeMediaYoutubeReliablePlayAllScript/);
 });
 
 test('paused playback recovers through direct play then trusted Play', () => {

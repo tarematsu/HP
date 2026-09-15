@@ -23,17 +23,7 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
 
       #movie_player:not(.ad-showing):not(.ad-interrupting) > :not(.html5-video-container),
       #movie_player .html5-video-container > :not(video),
-      #movie_player .ytp-chrome-top,
-      #movie_player .ytp-chrome-bottom,
-      #movie_player .ytp-gradient-top,
-      #movie_player .ytp-gradient-bottom,
-      #movie_player .ytp-title,
-      #movie_player .ytp-pause-overlay,
-      #movie_player .ytp-ce-element,
-      #movie_player .ytp-cards-button,
-      #movie_player .ytp-watermark,
-      #movie_player .ytp-caption-window-container,
-      #movie_player .ytp-tooltip {
+      #movie_player :is(.ytp-chrome-top,.ytp-chrome-bottom,.ytp-gradient-top,.ytp-gradient-bottom) {
         opacity:0 !important;
         transition:none !important;
         animation:none !important;
