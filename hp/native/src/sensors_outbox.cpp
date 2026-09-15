@@ -85,7 +85,8 @@ std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId,
 void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedSequences,
                                       uint64_t nextSequence) {
   std::lock_guard lock(mutex_);
-  uint64_t persistedAck = std::max(acknowledgedSequence_, nextSequence - 1);
+  uint64_t persistedAck = acknowledgedSequence_;
+  if (nextSequence) persistedAck = std::max(persistedAck, nextSequence - 1);
   if (!acknowledgedSequences.empty()) {
     persistedAck = std::max(persistedAck, acknowledgedSequences.back());
   }
