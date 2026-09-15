@@ -85,7 +85,7 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
       L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
       L"const testid=((button.getAttribute('data-testid')||'').trim().toLowerCase());"
       L"if(label.includes('pause')||label.includes('一時停止'))return false;"
-      L"const trustedPlay=testid==='play-button'||label==='play'||label==='再生'||label.startsWith('play ')||label.endsWith('を再生');"
+      L"const trustedPlay=testid==='play-button'||testid==='control-button-playpause'||label==='play'||label==='再生'||label.startsWith('play ')||label.endsWith('を再生');"
       L"if(!trustedPlay)return false;"
       L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
       L"if(runtime&&typeof runtime.armTrustedStart==='function'){"

@@ -22,18 +22,24 @@ test('Spotify lightweight CSS never hides Play/Pause glyphs', () => {
   assert.match(css, /\[data-testid="control-button-playpause"\] svg/);
 });
 
-test('track reconcile accepts Spotify play-button identity even without aria-label', () => {
+test('track reconcile accepts Spotify Play controls by test id without aria-label', () => {
   assert.match(reconcile, /const testIdOf = element/);
-  assert.match(reconcile, /if \(testId === 'play-button'\) return 'play'/);
   assert.match(
     reconcile,
-    /pageButtons\.find\(candidate =>\s*visible\(candidate\) && testIdOf\(candidate\) === 'play-button'\)/,
+    /testId === 'play-button' \|\| testId === 'control-button-playpause'/,
+  );
+  assert.match(
+    reconcile,
+    /button\[data-testid="control-button-playpause"\]/,
   );
 });
 
-test('trusted CDP preflight accepts data-testid play-button without requiring text label', () => {
+test('trusted CDP preflight accepts Spotify Play controls by test id without text label', () => {
   assert.match(click, /const testid=\(\(button\.getAttribute\('data-testid'\)\|\|''\)\.trim\(\)\.toLowerCase\(\)\)/);
-  assert.match(click, /const trustedPlay=testid==='play-button'\|\|label==='play'/);
+  assert.match(
+    click,
+    /const trustedPlay=testid==='play-button'\|\|testid==='control-button-playpause'\|\|label==='play'/,
+  );
   assert.doesNotMatch(click, /if\(!label\|\|label\.includes\('pause'\)/);
   assert.match(click, /if\(label\.includes\('pause'\)\|\|label\.includes\('一時停止'\)\)return false/);
 });
