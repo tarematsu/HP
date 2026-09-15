@@ -110,8 +110,7 @@ void App::StartServices() {
 
   const fs::path stationheadUserData = dataDir_ / L"webview2-youtube-mv";
   auto stationheadPlayer = std::make_unique<StationheadPlayer>(
-      StationheadRole::Primary, window_, config_.stationhead,
-      stationheadUserData, *logger_);
+      window_, config_.stationhead, stationheadUserData, *logger_);
   stationheadPlayer->ReuseWebViewProfile(kStationheadAmazonProfile);
   stationhead_ = std::move(stationheadPlayer);
   logger_->Info(L"Single Stationhead prepared with existing amazon WebView2 profile");

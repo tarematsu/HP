@@ -5,8 +5,6 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kAuthProbeIntervalMs = 5 * 60'000;
-constexpr int64_t kAuthProbeTimeoutMs = 30'000;
 constexpr int64_t kStationheadTrackBoundaryRefreshDelayMs = 52 * 60'000;
 constexpr int64_t kStationheadTrackBoundaryNavigationTimeoutMs = 30'000;
 constexpr int64_t kStationheadTrackBoundaryPlaybackRecoveryTimeoutMs = 30'000;
@@ -23,31 +21,13 @@ std::wstring HResultHex(HRESULT hr) {
   return output.str();
 }
 
-std::wstring StationheadAuthProbeScriptForRun(
-    int channelId, int64_t probeStartedAt) {
-  std::wstring script = StationheadAuthProbeScript(channelId);
-  static constexpr std::wstring_view marker =
-      L"post({ type: 'stationhead-auth-probe',";
-  std::wstring replacement(marker);
-  replacement += L" probe_started_at: ";
-  replacement += std::to_wstring(probeStartedAt);
-  replacement += L",";
-  for (size_t at = script.find(marker); at != std::wstring::npos;
-       at = script.find(marker, at + replacement.size())) {
-    script.replace(at, marker.size(), replacement);
-  }
-  return script;
-}
 }
 
-StationheadPlayer::StationheadPlayer(StationheadRole role, HWND window, StationheadConfig config,
+StationheadPlayer::StationheadPlayer(HWND window, StationheadConfig config,
                                      fs::path userDataFolder, Logger& log)
-    : role_(role), window_(window), config_(std::move(config)),
-      userDataFolder_(std::move(userDataFolder)),
-      profileName_(role == StationheadRole::Secondary ? L"stationhead-secondary" : L"Default"),
-      log_(log) {
-  if (IsSecondary()) status_.url = config_.secondaryUrl;
-}
+    : window_(window), config_(std::move(config)),
+      userDataFolder_(std::move(userDataFolder)), profileName_(L"Default"),
+      log_(log) {}
 
 StationheadPlayer::~StationheadPlayer() { Stop(); }
 
@@ -207,10 +187,7 @@ void StationheadPlayer::HandleTrackEnded(int64_t nowMs, bool retry) {
     trackBoundaryRefreshPending_ = false;
     return;
   }
-  const UINT readyMessage = IsSecondary()
-      ? WM_HP_SECONDARY_RELOAD_READY
-      : WM_HP_PRIMARY_RELOAD_READY;
-  if (SendMessageW(window_, readyMessage, 0, 0) == 0) {
+  if (SendMessageW(window_, WM_HP_PRIMARY_RELOAD_READY, 0, 0) == 0) {
     log_.Info(L"Stationhead " + std::wstring(RoleTag()) +
               L" track-boundary refresh waiting for stable handoff audio");
     return;
@@ -345,7 +322,7 @@ void StationheadPlayer::TryStartInitialNavigation() {
 
 std::wstring StationheadPlayer::CurrentStationheadUrl() const {
   if (usingFallback_ && !config_.fallbackUrl.empty()) return config_.fallbackUrl;
-  return IsSecondary() ? config_.secondaryUrl : config_.url;
+  return config_.url;
 }
 
 void StationheadPlayer::SetPlaybackFallback(bool active, const std::wstring& reason) {
@@ -381,9 +358,6 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
   usingFallback_ = fallbackActive;
   resourceBlockingArmed_ = false;
   loginRequired_ = false;
-  lastAuthProbeAt_ = 0;
-  authProbeStartedAt_ = 0;
-  authProbeInFlight_ = false;
   {
     std::lock_guard lock(mutex_);
     status_.navigating = true;
@@ -417,26 +391,11 @@ void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
         nowMs - (kStationheadDailyPlayStatsIntervalMs -
                  kStationheadDailyPlayStatsRetryMs);
     nextTickAt_ = nowMs + kStationheadDailyPlayStatsRetryMs;
-    log_.Warn(L"Stationhead A authenticated stats script could not start " +
+    log_.Warn(L"Stationhead authenticated stats script could not start " +
               HResultHex(result));
     return;
   }
   lastDailyPlayStatsAt_ = nowMs;
-}
-
-void StationheadPlayer::PollAuthProbe(int64_t nowMs) {
-  if (!webview_ || spotifyAuthorization_ || loginRequired_ || authProbeInFlight_) return;
-  authProbeInFlight_ = true;
-  authProbeStartedAt_ = nowMs;
-  lastAuthProbeAt_ = nowMs;
-  const HRESULT result = webview_->ExecuteScript(
-      StationheadAuthProbeScriptForRun(config_.channelId, authProbeStartedAt_).c_str(),
-      nullptr);
-  if (FAILED(result)) {
-    authProbeInFlight_ = false;
-    authProbeStartedAt_ = 0;
-    log_.Warn(L"Secondary Stationhead auth probe could not start " + HResultHex(result));
-  }
 }
 
 void StationheadPlayer::AttemptNativeStartClick(int64_t nowMs) {
@@ -780,21 +739,8 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
 
-  if (!IsSecondary()) {
-    if (nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs) PollDailyPlayStats(nowMs);
-    consider(lastDailyPlayStatsAt_ + kStationheadDailyPlayStatsIntervalMs);
-  } else {
-    if (authProbeInFlight_ && nowMs - authProbeStartedAt_ >= kAuthProbeTimeoutMs) {
-      authProbeInFlight_ = false;
-      authProbeStartedAt_ = 0;
-      log_.Warn(L"Secondary Stationhead auth probe timed out");
-    }
-    if (lastAuthProbeAt_ == 0 || nowMs - lastAuthProbeAt_ >= kAuthProbeIntervalMs) {
-      PollAuthProbe(nowMs);
-    }
-    if (authProbeInFlight_) consider(authProbeStartedAt_ + kAuthProbeTimeoutMs);
-    if (lastAuthProbeAt_ > 0 && !authProbeInFlight_) consider(lastAuthProbeAt_ + kAuthProbeIntervalMs);
-  }
+  if (nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs) PollDailyPlayStats(nowMs);
+  consider(lastDailyPlayStatsAt_ + kStationheadDailyPlayStatsIntervalMs);
   if (!audioPlaying_.load(std::memory_order_relaxed)) {
     if (nowMs >= nextAutoClickAt_) AttemptNativeStartClick(nowMs);
     consider(nextAutoClickAt_);

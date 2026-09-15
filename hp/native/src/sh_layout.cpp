@@ -147,16 +147,9 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
          ControllerVisibilityMatches(authController, TRUE);
 }
 
-bool ConfiguresSecondaryStationheadWindow(const StationheadConfig& config) noexcept {
-  return config.secondaryEnabled && !config.secondaryUrl.empty();
-}
-
-RECT ResolveStationheadWorkspaceBounds(StationheadRole role,
-                                        const StationheadConfig& config,
-                                        HWND parent,
+RECT ResolveStationheadWorkspaceBounds(HWND parent,
                                         const RECT& requested) noexcept {
-  if (role == StationheadRole::Secondary || ConfiguresSecondaryStationheadWindow(config) ||
-      !parent || !IsWindow(parent)) return requested;
+  if (!parent || !IsWindow(parent)) return requested;
   RECT client{};
   if (!GetClientRect(parent, &client) || client.right <= client.left || client.bottom <= client.top) {
     return requested;
@@ -279,18 +272,16 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
 bool StationheadPlayer::EnsureHostWindow() {
   if (hostWindow_ && IsWindow(hostWindow_)) return true;
-  hostWindow_ = IsSecondary()
-      ? CreateStationheadChildHost(window_, L"HomePanelSecondaryStationheadHost", L"SecondaryStationheadHost", bounds_)
-      : CreateStationheadChildHost(window_, L"HomePanelStationheadHost", L"StationheadHost", bounds_);
+  hostWindow_ = CreateStationheadChildHost(
+      window_, L"HomePanelStationheadHost", L"StationheadHost", bounds_);
   return hostWindow_ && IsWindow(hostWindow_);
 }
 
 bool StationheadPlayer::EnsureAuthHostWindow() {
   if (authControllerStartedAt_.Active() && !authController_) return false;
   if (authHostWindow_ && IsWindow(authHostWindow_)) return true;
-  authHostWindow_ = IsSecondary()
-      ? CreateStationheadChildHost(window_, L"HomePanelSecondarySpotifyAuthHost", L"SecondarySpotifyAuthHost", bounds_)
-      : CreateStationheadChildHost(window_, L"HomePanelSpotifyAuthHost", L"SpotifyAuthHost", bounds_);
+  authHostWindow_ = CreateStationheadChildHost(
+      window_, L"HomePanelSpotifyAuthHost", L"SpotifyAuthHost", bounds_);
   return authHostWindow_ && IsWindow(authHostWindow_);
 }
 
@@ -433,7 +424,7 @@ void StationheadPlayer::LayoutControllers() {
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {
-  const RECT resolved = ResolveStationheadWorkspaceBounds(role_, config_, window_, bounds);
+  const RECT resolved = ResolveStationheadWorkspaceBounds(window_, bounds);
   if (!EqualRect(&bounds_, &resolved)) bounds_ = resolved;
   LayoutControllers();
 }

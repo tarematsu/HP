@@ -25,12 +25,7 @@ bool IsPlaybackFallbackUrl(const std::wstring& url, const std::wstring& fallback
 }
 
 bool SelectedStationheadIsOnFallback(const StationheadStatus& state) {
-  const bool secondarySelected =
-      !state.primaryAudioSelected && !state.secondaryUrl.empty();
-  const std::wstring& selectedUrl = secondarySelected
-      ? state.secondaryUrl
-      : state.url;
-  return IsPlaybackFallbackUrl(selectedUrl, state.fallbackUrl);
+  return IsPlaybackFallbackUrl(state.url, state.fallbackUrl);
 }
 
 struct ProjectedTrackPosition {
@@ -148,8 +143,8 @@ bool ProjectionFreshForFallback(const NativePlaybackProjection& projection,
 
 bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
   // A persisted snapshot is loaded synchronously during dashboard startup. It
-  // may describe a queue that ended hours earlier and must not navigate both
-  // live Stationhead WebViews away in the same tick that the dashboard appears.
+  // may describe a queue that ended hours earlier and must not navigate the
+  // live Stationhead WebView away in the same tick that the dashboard appears.
   // Only a recent, non-stale observation made by this process may drive the
   // fallback route.
   if (!projection.available || projection.setupRequired ||
