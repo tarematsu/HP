@@ -40,7 +40,6 @@ void SpotifyWebViews::Start() noexcept {
 
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
-  robustSchedulerStarted_ = false;
 
   for (Slot& slot : slots_) {
     CloseSlot(slot);
@@ -110,7 +109,6 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.timedRotationActive = false;
   slot.targetGeneration = 0;
   slot.state = SlotState::NotCreated;
-  slot.playerPage = false;
   slot.loginPage = false;
   slot.timedObserverReady = false;
   slot.observedTrackTitle.clear();
@@ -127,12 +125,8 @@ void SpotifyWebViews::Shutdown() noexcept {
     CloseThreadpoolTimer(schedulerTimer_);
     schedulerTimer_ = nullptr;
   }
-  schedulerWakePosted_.store(false, std::memory_order_release);
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
-  robustSchedulerStarted_ = false;
-  schedulerCursor_ = 0;
-  scheduleStartTick_ = 0;
 }
 
 LRESULT CALLBACK SpotifyWebViews::HostWndProc(

@@ -13,7 +13,6 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
 
   BeginInitialCloudPlaylistWait(now);
   nextCloudPlaylistCheckTick_ = 0;
-  robustSchedulerStarted_ = true;
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
 

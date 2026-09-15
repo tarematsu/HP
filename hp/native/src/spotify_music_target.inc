@@ -149,8 +149,6 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
     BeginControllerCreate(slot);
     return;
   }
-  slot.controllerCreating = false;
-  slot.controllerCreateTick = 0;
 
   if (SlotIsLoginPage(slot) || !CurrentMusicTrack(slot)) return;
 

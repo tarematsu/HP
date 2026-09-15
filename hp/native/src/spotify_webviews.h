@@ -100,7 +100,6 @@ class SpotifyWebViews final {
     SlotState state = SlotState::NotCreated;
     AsyncWork asyncWork = AsyncWork::None;
     bool controllerCreating = false;
-    bool playerPage = false;
     bool loginPage = false;
     bool timedObserverReady = false;
     bool timedRotationActive = false;
@@ -189,7 +188,6 @@ class SpotifyWebViews final {
   size_t hostLayoutActiveSlot_ = kAccountCount;
   size_t hostLayoutAuthenticationSlot_ = kAccountCount;
   bool started_ = false;
-  bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
   bool monitorForeground_ = false;
 };
