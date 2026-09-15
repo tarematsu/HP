@@ -17,6 +17,13 @@ LR"JS(
       (element.getAttribute('title') || '') + ' ' +
       (element.getAttribute('data-testid') || '') + ' ' +
       (element.textContent || ''));
+  const hasVisibleLoginPrompt = () => Array.from(document.querySelectorAll(
+      'button, a, [role="button"], [role="dialog"], [aria-modal="true"], '
+      + 'h1, h2, h3, [aria-label], [title]')).some(element => {
+    if (!visible(element)) return false;
+    const label = labelOf(element).toLowerCase();
+    return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
+  });
   const point = element => {
     if (window.innerWidth <= 0 || window.innerHeight <= 0) return null;
     const rect = visibleRect(element);
@@ -79,6 +86,10 @@ LR"JS(
       return /(?:広告|CM).{0,12}スキップ|^スキップ$|skip\s+(?:this\s+)?ads?/i.test(label);
     }) || null;
     if (skipButton) return point(skipButton);
+
+    // Keep the page interactive for account sign-in. Do not consume the
+    // per-video fullscreen attempt while TVer exposes a visible login prompt.
+    if (hasVisibleLoginPrompt()) return null;
 
     const browserFullscreen = document.fullscreenElement ||
         document.webkitFullscreenElement || document.msFullscreenElement;

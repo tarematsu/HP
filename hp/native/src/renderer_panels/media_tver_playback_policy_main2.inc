@@ -137,6 +137,10 @@ LR"JS(
     return null;
   }
 
+  // Login is user-controlled. Leave playback recovery/quality handling alone,
+  // but pause fullscreen automation until the visible login UI disappears.
+  if (hasVisibleLoginPrompt()) return null;
+
   const browserFullscreen = document.fullscreenElement ||
       document.webkitFullscreenElement || document.msFullscreenElement;
   if (browserFullscreen) {
