@@ -42,14 +42,14 @@ test('CDP Play waits five seconds for observer confirmation', () => {
   assert.match(music, /std::wstring_view\(json\) == L"true"/);
   assert.match(music, /callbackNow \+ kSpotifyCdpPlayConfirmWaitMs/);
   assert.match(music, /ArmTimedEndObserver\(\*target\)/);
-  assert.match(music, /ParseNormalizedPoint\(json, &x, &y\)/);
-  assert.match(music, /ClickSlotNormalizedPoint\(\*target, x, y\)/);
+  assert.match(music, /ParseCssPoint\(json, &cssX, &cssY\)/);
+  assert.match(music, /ClickSlotCssPoint\(\*target, cssX, cssY\)/);
   assert.doesNotMatch(music, /kSpotifyDirectPlayConfirmWaitMs/);
   assert.doesNotMatch(music, /"\\"direct-play\\""/);
 });
 
 test('not-yet-created Play control is retried without a recovery sub-state machine', () => {
-  const pointStart = music.indexOf('if (ParseNormalizedPoint(json, &x, &y))');
+  const pointStart = music.indexOf('if (ParseCssPoint(json, &cssX, &cssY))');
   const executeFailure = music.indexOf('if (FAILED(started))', pointStart);
   assert.ok(pointStart >= 0 && executeFailure > pointStart);
   const fallback = music.slice(pointStart, executeFailure);

@@ -60,7 +60,7 @@ test('reconcile uses Spotify controls only and leaves confirmation to the observ
   assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
 
   const start = musicTarget.indexOf('if (json &&');
-  const pointStart = musicTarget.indexOf('int x = 0;', start);
+  const pointStart = musicTarget.indexOf('double cssX = 0.0;', start);
   assert.ok(start >= 0 && pointStart > start);
   const confirmation = musicTarget.slice(start, pointStart);
   assert.match(confirmation, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);

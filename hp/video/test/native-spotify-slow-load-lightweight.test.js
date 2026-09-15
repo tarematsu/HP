@@ -34,10 +34,10 @@ test('healthy scheduler uses an hourly safety ceiling and exact one-minute start
 });
 
 test('usable Spotify controls are recovered through the dedicated trusted-input module', () => {
-  assert.match(click, /ParseNormalizedPoint/);
-  assert.match(click, /ClickSlotNormalizedPoint/);
+  assert.match(click, /ParseCssPoint/);
+  assert.match(click, /ClickSlotCssPoint/);
   assert.match(click, /RefreshSpotifyHostLayout\(\)/);
-  assert.doesNotMatch(phaseSync, /ParseNormalizedPoint|ClickSlotNormalizedPoint/);
+  assert.doesNotMatch(phaseSync, /ParseCssPoint|ClickSlotCssPoint/);
 });
 
 test('Spotify bootstrap keeps only the native bridge and injects no styling', () => {

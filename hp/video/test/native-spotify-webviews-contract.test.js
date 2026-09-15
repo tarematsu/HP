@@ -187,15 +187,15 @@ test('rotation construction is isolated from music navigation and target routing
 });
 
 test('trusted recovery input is fully owned by the background click module', () => {
-  assert.match(header, /ParseNormalizedPoint/);
-  assert.match(header, /ClickSlotNormalizedPoint/);
-  assert.match(click, /bool SpotifyWebViews::ParseNormalizedPoint/);
-  assert.match(click, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
+  assert.match(header, /ParseCssPoint/);
+  assert.match(header, /ClickSlotCssPoint/);
+  assert.match(click, /bool SpotifyWebViews::ParseCssPoint/);
+  assert.match(click, /void SpotifyWebViews::ClickSlotCssPoint/);
   assert.match(click, /PlaceHosts\(\)/);
   assert.match(click, /DispatchSpotifyDevToolsClick/);
   assert.match(click, /Input\.dispatchMouseEvent/);
-  assert.doesNotMatch(phaseSync, /ParseNormalizedPoint|ClickSlotNormalizedPoint|DispatchSpotifyDevToolsClick/);
-  assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow/);
+  assert.doesNotMatch(phaseSync, /ParseCssPoint|ClickSlotCssPoint|DispatchSpotifyDevToolsClick/);
+  assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow|get_ZoomFactor|GetDpiForWindow|cssWidth|cssHeight/);
 });
 
 test('Spotify defaults muted but can be explicitly unmuted by audio mode C', () => {

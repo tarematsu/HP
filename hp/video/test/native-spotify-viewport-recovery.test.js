@@ -19,18 +19,18 @@ const wrapper = readFileSync(
   'utf8',
 );
 
-test('Spotify music reconcile scrolls the selected Play control before returning normalized click points', () => {
+test('Spotify music reconcile scrolls the selected Play control before returning CSS click points', () => {
   assert.match(scoped, /element\.scrollIntoView\(\{ block: 'center', inline: 'nearest' \}\)/);
   assert.match(scoped, /if \(!element\.isConnected\) return null/);
-  assert.match(scoped, /centerX \/ window\.innerWidth/);
-  assert.match(scoped, /centerY \/ window\.innerHeight/);
+  assert.match(scoped, /return \[centerX, centerY\]/);
+  assert.doesNotMatch(scoped, /centerX \/ window\.innerWidth|centerY \/ window\.innerHeight|10000/);
 });
 
 test('music reconcile needs no requested-row discovery before trusted recovery input', () => {
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
   assert.doesNotMatch(scoped, /targetLink|tracklist-row|context-item-link/);
-  assert.match(click, /ClickSlotNormalizedPoint/);
+  assert.match(click, /ClickSlotCssPoint/);
   assert.match(click, /RefreshSpotifyHostLayout\(\)/);
   assert.doesNotMatch(scripts + scoped, /\/episode\//);
 });

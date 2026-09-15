@@ -11,7 +11,7 @@ const rotation = source('spotify_timed_end_rotation.inc');
 
 test('music reconcile leaves playback acceptance and deadline ownership to the observer', () => {
   const start = music.indexOf('if (json &&');
-  const pointStart = music.indexOf('int x = 0;', start);
+  const pointStart = music.indexOf('double cssX = 0.0;', start);
   assert.ok(start >= 0 && pointStart > start);
   const confirmation = music.slice(start, pointStart);
   assert.match(confirmation, /std::wstring_view\(json\) == L"true"/);

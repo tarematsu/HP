@@ -3,7 +3,7 @@ namespace {
 
 // Minimal playback start path for the already-selected Spotify track page:
 // 1) prefer the target page Play/Pause control over the global player control;
-// 2) if it is Play, return its center for one trusted CDP click;
+// 2) if it is Play, return its exact CSS-pixel center for one trusted CDP click;
 // 3) if it is already Pause, wait for observer confirmation.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
@@ -42,14 +42,10 @@ LR"JS(
     const rect = element.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    if (centerX < 0 || centerX > window.innerWidth ||
+    if (!Number.isFinite(centerX) || !Number.isFinite(centerY) ||
+        centerX < 0 || centerX > window.innerWidth ||
         centerY < 0 || centerY > window.innerHeight) return null;
-    return [
-      Math.max(0, Math.min(10000, Math.round(
-          (centerX / window.innerWidth) * 10000))),
-      Math.max(0, Math.min(10000, Math.round(
-          (centerY / window.innerHeight) * 10000)))
-    ];
+    return [centerX, centerY];
   };
 
   const pageButton = Array.from(document.querySelectorAll(

@@ -52,9 +52,9 @@ test('Spotify stays exactly behind the YouTube/TVer panel until real playback is
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
 });
 
-test('trusted click uses the media-panel background viewport and repairs accidental 1x1 placement', () => {
-  assert.match(helper, /bool SpotifyWebViews::ParseNormalizedPoint/);
-  assert.match(helper, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
+test('trusted click uses CSS viewport points and repairs accidental 1x1 placement', () => {
+  assert.match(helper, /bool SpotifyWebViews::ParseCssPoint/);
+  assert.match(helper, /void SpotifyWebViews::ClickSlotCssPoint/);
   assert.match(helper, /if \(slot\.playbackConfirmed\) \{[\s\S]*return;/);
   assert.match(helper, /const bool recoveryViewportReady = SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(helper, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
@@ -62,20 +62,30 @@ test('trusted click uses the media-panel background viewport and repairs acciden
   assert.match(helper, /PlaceHosts\(\);/);
 });
 
-test('trusted click preflight ignores unrelated media but refuses a Pause control', () => {
+test('trusted click preflight returns the exact current CSS center and rejects Pause', () => {
   const preflight = helper.slice(
-    helper.indexOf('void SpotifyWebViews::ClickSlotNormalizedPoint'),
+    helper.indexOf('void SpotifyWebViews::ClickSlotCssPoint'),
     helper.indexOf('UINT SpotifyWebViews::DispatchSpotifyDevToolsClick'),
   );
   assert.match(preflight, /if \(!slot\.timedObserverReady\)/);
   assert.match(preflight, /ArmTimedEndObserver\(slot\)/);
   assert.doesNotMatch(preflight, /document\.querySelectorAll\('audio, video'\)/);
-  assert.doesNotMatch(preflight, /media\.some\(m=>!m\.ended&&!m\.paused\)/);
   assert.match(preflight, /document\.elementFromPoint\(x,y\)/);
   assert.match(preflight, /testid==='play-button'\|\|testid==='control-button-playpause'/);
   assert.match(preflight, /label\.includes\('pause'\)\|\|label\.includes\('一時停止'\)/);
-  assert.match(preflight, /runtime&&typeof runtime\.armTrustedStart==='function'/);
-  assert.match(preflight, /ExecuteScript\(/);
-  assert.match(preflight, /DispatchSpotifyDevToolsClick/);
-  assert.doesNotMatch(preflight, /nextRecoveryTick = now \+ kSpotifyPlaybackStartRetryMs/);
+  assert.match(preflight, /const centerX=rect\.left\+rect\.width\/2/);
+  assert.match(preflight, /const centerY=rect\.top\+rect\.height\/2/);
+  assert.match(preflight, /return \[centerX,centerY\]/);
+  assert.match(preflight, /ParseCssPoint\(json, &verifiedX, &verifiedY\)/);
+  assert.match(preflight, /DispatchSpotifyDevToolsClick\(\*target, verifiedX, verifiedY\)/);
+});
+
+test('CDP dispatch uses the verified CSS coordinates verbatim with no DPI or zoom reconstruction', () => {
+  const dispatch = helper.slice(
+    helper.indexOf('UINT SpotifyWebViews::DispatchSpotifyDevToolsClick'),
+  );
+  assert.match(dispatch, /const double x = cssX;/);
+  assert.match(dispatch, /const double y = cssY;/);
+  assert.doesNotMatch(dispatch, /get_ZoomFactor|get_RasterizationScale|GetDpiForWindow|cssWidth|cssHeight|xTenThousandths|yTenThousandths/);
+  assert.match(dispatch, /Input\.dispatchMouseEvent/);
 });
