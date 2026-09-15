@@ -27,12 +27,15 @@ inline std::wstring StationheadRoomUiReductionScript() {
 
   const path = String(location.pathname || '/').replace(/\/+$/, '') || '/';
   const parts = path.split('/').filter(Boolean);
-  if (parts.length !== 1) return true;
   const reserved = new Set([
     'home', 'sign-in', 'sign-up', 'search', 'discover', 'settings',
     'profile', 'account', 'terms', 'privacy', 'api'
   ]);
-  if (reserved.has(parts[0].toLowerCase())) return true;
+  const singleSegmentRoom =
+      parts.length === 1 && !reserved.has(parts[0].toLowerCase());
+  const channelRoom =
+      parts.length === 2 && parts[0].toLowerCase() === 'c' && parts[1].length > 0;
+  if (!singleSegmentRoom && !channelRoom) return true;
 
   const styleId = '__homepanelStationheadRoomUiReduction';
   const playbackAttribute = 'data-homepanel-stationhead-playback-only';
