@@ -12,7 +12,8 @@ inline constexpr bool StationheadPlaybackNavigationActive(
 
 inline constexpr int64_t StationheadPeriodicRefreshIntervalMs(
     bool secondary) noexcept {
-  return (secondary ? 54 : 53) * 60'000;
+  (void)secondary;
+  return 50 * 60'000;
 }
 
 static_assert(StationheadPlaybackNavigationActive(true, false, false));
@@ -20,16 +21,14 @@ static_assert(StationheadPlaybackNavigationActive(true, true, true));
 static_assert(StationheadPlaybackNavigationActive(false, true, false));
 static_assert(!StationheadPlaybackNavigationActive(false, true, true));
 static_assert(!StationheadPlaybackNavigationActive(false, false, false));
-static_assert(StationheadPeriodicRefreshIntervalMs(false) == 53 * 60'000);
-static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
+static_assert(StationheadPeriodicRefreshIntervalMs(false) == 50 * 60'000);
+static_assert(StationheadPeriodicRefreshIntervalMs(true) == 50 * 60'000);
 
 }  // namespace hp
 
 // Extend StationheadPlayer while sh.h is parsed, then remove the temporary
-// source-rewriting macros before any implementation file is compiled. Periodic
-// refresh is intentionally independent per role: A uses 53 minutes and B uses
-// 54 minutes. The one-minute skew prevents the normal refreshes from starting
-// together without changing the active audio profile.
+// source-rewriting macros before any implementation file is compiled. Every
+// Stationhead role uses the same 50-minute periodic refresh interval.
 #define NextWakeAt()                                                          \
   NextWakeAt() const noexcept {                                               \
     int64_t next = NextWakeAtBase();                                          \
@@ -63,15 +62,15 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
     const auto lifecycle = createCallbackAlive_;                              \
     const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
     if (!webview_ || previousLifecycle != lifecycle) {                        \
-      periodicRefreshLifecycle_ = lifecycle;                                 \
+      periodicRefreshLifecycle_ = lifecycle;                                  \
       periodicRefreshStartedAt_ = 0;                                          \
       periodicRefreshNavigationObserved_ = 0;                                 \
-      if (!webview_) return;                                                   \
+      if (!webview_) return;                                                  \
     }                                                                         \
                                                                                 \
     bool statusNavigating = false;                                            \
     {                                                                         \
-      std::lock_guard lock(mutex_);                                            \
+      std::lock_guard lock(mutex_);                                           \
       statusNavigating = status_.navigating;                                  \
     }                                                                         \
     const bool navigationActive =                                             \
@@ -101,9 +100,10 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
     if (nowMs - periodicRefreshStartedAt_ < intervalMs) return;               \
                                                                                 \
     periodicRefreshStartedAt_ = nowMs;                                        \
-    NavigateCurrentUrl(                                                       \
-        nowMs, IsSecondary() ? L"54-minute periodic refresh"                  \
-                             : L"53-minute periodic refresh");                \
+    audioPlayingSinceAt_.store(0, std::memory_order_relaxed);                 \
+    audioLossPlaybackObserved_ = false;                                       \
+    SetStartupBounds();                                                       \
+    NavigateCurrentUrl(nowMs, L"50-minute periodic refresh");                \
   }                                                                           \
   MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
   std::weak_ptr<std::atomic<bool>> periodicRefreshLifecycle_;                 \
@@ -352,14 +352,14 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
 }  // namespace hp
 
 #define lastReloadAt_                                                        \
-  (::hp::StationheadBoundaryReloadClock(                                    \
+  (::hp::StationheadBoundaryReloadClock(                                     \
       (lastReloadAtStorage_), IsSecondary(), webViewConfigured_))
 #define nextAutoClickAt_                                                     \
-  (::hp::StationheadAutoClickDeadlineStorage(                               \
+  (::hp::StationheadAutoClickDeadlineStorage(                                \
       (nextAutoClickAt_), IsSecondary()))
 #define navigationInFlight_                                                  \
-  (::hp::StationheadNavigationInFlightStorage(                              \
-      (navigationInFlight_), periodicRefreshStartedAt_,                     \
+  (::hp::StationheadNavigationInFlightStorage(                               \
+      (navigationInFlight_), periodicRefreshStartedAt_,                      \
       periodicRefreshNavigationObserved_))
 #define SetFocus(target) (::hp::SetFocusAfterStationheadHide((target)))
 
