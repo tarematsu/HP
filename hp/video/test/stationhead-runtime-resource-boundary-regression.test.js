@@ -20,12 +20,13 @@ function section(source, start, end) {
 }
 
 test('strict resource boundary policy is the final Stationhead PCH layer', () => {
-  const oldPolicyAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_policy_fix.h)',
+  const pch = section(
+    cmakeSource,
+    'target_precompile_headers(HomePanel PRIVATE',
+    'add_dependencies(HomePanel',
   );
-  const boundaryAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_boundary_policy_fix.h)',
-  );
+  const oldPolicyAt = pch.indexOf('src/sh_runtime_resource_policy_fix.h');
+  const boundaryAt = pch.indexOf('src/sh_runtime_resource_boundary_policy_fix.h');
   assert.ok(oldPolicyAt >= 0 && oldPolicyAt < boundaryAt);
   assert.match(
     boundarySource,
