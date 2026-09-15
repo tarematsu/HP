@@ -19,7 +19,7 @@ const RADAR_BASE_CROP_WIDTH = 480;
 const RADAR_BASE_CROP_HEIGHT = 960;
 const RADAR_OUTPUT_WIDTH = 1440;
 const RADAR_OUTPUT_HEIGHT = 960;
-const RADAR_COMPOSITION_VERSION = "radar-frame-v9-z10-1440x960-native-scale-location-marker";
+const RADAR_COMPOSITION_VERSION = "radar-frame-v10-z10-1440x960-native-scale-location-marker-day-cap";
 const RADAR_LEGEND = [0, 1, 2, 4, 8, 16, 32, 64] as const;
 const RADAR_FRAME_PATH = "/v1/radar/frame/representative/latest.png";
 const RADAR_LEGACY_FRAME_PREFIX = "radar/frames/";
@@ -98,7 +98,10 @@ export function selectOneHourForecastEntry(entries: RadarTimeEntry[]): RadarTime
   return entries.find(entry => jmaTimestampToMillis(entry.validtime) === targetAt);
 }
 
-export function selectLatestShortTermEntry(entries: RadarTimeEntry[]): RadarTimeEntry | undefined {
+export function selectLatestShortTermEntry(
+  entries: RadarTimeEntry[],
+  referenceValidTime?: string,
+): RadarTimeEntry | undefined {
   const available = entries.filter(entry => (
     hasElement(entry, "rasrf")
     && (entry.member === undefined || entry.member === "none")
@@ -112,30 +115,35 @@ export function selectLatestShortTermEntry(entries: RadarTimeEntry[]): RadarTime
   const latest = ordered.at(-1);
   if (!latest) return undefined;
 
+  const latestAt = jmaTimestampToMillis(latest.validtime);
+  const referenceAt = referenceValidTime
+    ? jmaTimestampToMillis(referenceValidTime)
+    : latestAt;
   const jstOffsetMs = 9 * 60 * 60 * 1000;
-  const latestJst = new Date(jmaTimestampToMillis(latest.validtime) + jstOffsetMs);
-  const secondsIntoDay = (
-    latestJst.getUTCHours() * 60 * 60
-    + latestJst.getUTCMinutes() * 60
-    + latestJst.getUTCSeconds()
-  );
-  const nineOClock = 9 * 60 * 60;
-  const twentyTwoOClock = 22 * 60 * 60;
-  const targetHour = secondsIntoDay > twentyTwoOClock
-    ? 22
-    : secondsIntoDay > nineOClock && secondsIntoDay < twentyTwoOClock
-      ? 9
-      : null;
-  if (targetHour === null) return latest;
-
-  const targetAt = Date.UTC(
-    latestJst.getUTCFullYear(),
-    latestJst.getUTCMonth(),
-    latestJst.getUTCDate(),
-    targetHour,
+  const referenceJst = new Date((referenceAt > 0 ? referenceAt : latestAt) + jstOffsetMs);
+  const nineAt = Date.UTC(
+    referenceJst.getUTCFullYear(),
+    referenceJst.getUTCMonth(),
+    referenceJst.getUTCDate(),
+    9,
     0,
     0,
   ) - jstOffsetMs;
+  const twentyTwoAt = Date.UTC(
+    referenceJst.getUTCFullYear(),
+    referenceJst.getUTCMonth(),
+    referenceJst.getUTCDate(),
+    22,
+    0,
+    0,
+  ) - jstOffsetMs;
+  const targetAt = latestAt > twentyTwoAt
+    ? twentyTwoAt
+    : latestAt > nineAt && latestAt < twentyTwoAt
+      ? nineAt
+      : null;
+  if (targetAt === null) return latest;
+
   return ordered.filter(entry => jmaTimestampToMillis(entry.validtime) === targetAt).at(-1);
 }
 
@@ -281,7 +289,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   const availableEntries = selectRadarForecastEntries(observed, forecast);
   const currentEntry = availableEntries[0];
   const oneHourEntry = selectOneHourForecastEntry(availableEntries);
-  const latestEntry = selectLatestShortTermEntry(shortTerm);
+  const latestEntry = selectLatestShortTermEntry(shortTerm, currentEntry?.validtime);
   if (!currentEntry || !oneHourEntry || !latestEntry) {
     throw new Error("JMA current, +60-minute, or latest short-term radar frame is unavailable");
   }
