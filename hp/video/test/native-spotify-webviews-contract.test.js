@@ -102,27 +102,19 @@ test('Spotify browser behavior uses responsibility-split playback modules', () =
   assert.doesNotMatch(wrapper, /#define ExecuteScript|RewriteSpotify|spotify_viewport_recovery\.inc|spotify_lonesome_guard\.inc/);
 });
 
-test('Spotify blocks passive player resources without touching playback-critical network contexts', () => {
+test('Spotify player pages receive no injected CSS and no network resource blocking', () => {
   assert.doesNotMatch(scripts, /createElement\(['"]style['"]\)/);
   assert.doesNotMatch(scripts, /__homePanelSpotifyStaticLightweight/);
   assert.doesNotMatch(scripts, /!important/);
   assert.doesNotMatch(scripts, /animation\s*:|transition\s*:|background-image\s*:/);
   assert.doesNotMatch(scripts, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
   assert.doesNotMatch(spotify, /Network\.setBlockedURLs/);
-  assert.match(spotify, /AddWebResourceRequestedFilter/);
-  assert.match(spotify, /CreateWebResourceResponse/);
-  for (const context of ['IMAGE', 'FONT', 'TEXT_TRACK', 'MANIFEST', 'PING', 'CSP_VIOLATION_REPORT']) {
-    assert.match(spotify, new RegExp(`COREWEBVIEW2_WEB_RESOURCE_CONTEXT_${context}`));
-  }
-  assert.match(spotify, /target->loginPage[\s\S]*return S_OK/);
-  assert.match(header, /EventRegistrationToken webResourceRequestedToken/);
-  assert.match(spotify, /remove_WebResourceRequested\(slot\.webResourceRequestedToken\)/);
-  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
-  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
-  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST/);
-  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH/);
-  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET/);
-  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET/);
+  assert.doesNotMatch(spotify, /kSpotifyBlockedDecorativeUrls|kSpotifyUnblockedDecorativeUrls/);
+  assert.doesNotMatch(spotify, /SetSpotifyDecorativeResourceBlocking/);
+  assert.doesNotMatch(spotify, /AddWebResourceRequestedFilter/);
+  assert.doesNotMatch(spotify, /CreateWebResourceResponse/);
+  assert.doesNotMatch(header, /webResourceRequestedToken/);
+  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_/);
 });
 
 test('Spotify uses in-page track routing before full Navigate fallback', () => {

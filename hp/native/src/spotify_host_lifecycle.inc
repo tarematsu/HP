@@ -79,16 +79,12 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
     if (slot.navigationCompletedToken.value != 0) {
       slot.webview->remove_NavigationCompleted(slot.navigationCompletedToken);
     }
-    if (slot.webResourceRequestedToken.value != 0) {
-      slot.webview->remove_WebResourceRequested(slot.webResourceRequestedToken);
-    }
     if (slot.timedEndMessageReceivedToken.value != 0) {
       slot.webview->remove_WebMessageReceived(slot.timedEndMessageReceivedToken);
     }
   }
   slot.navigationStartingToken = {};
   slot.navigationCompletedToken = {};
-  slot.webResourceRequestedToken = {};
   slot.timedEndMessageReceivedToken = {};
   slot.timedEndHandlerWebview = nullptr;
   slot.webview.Reset();
