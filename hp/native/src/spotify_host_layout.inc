@@ -30,8 +30,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
   if (!GetClientRect(parentWindow_, &client)) return;
   const int clientWidth = std::max(1L, client.right - client.left);
   const int clientHeight = std::max(1L, client.bottom - client.top);
-  const int activeWidth = std::max(1, clientWidth * 3 / 5);
-  const int activeHeight = std::max(1, clientHeight * 9 / 10);
 
   for (size_t i = 0; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
@@ -40,24 +38,17 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
 
-    // Keep the background renderer large enough for Spotify's desktop-like
-    // responsive controls while cutting its native raster surface to 480x270.
-    // At the existing 0.50 zoom this still exposes roughly a 960x540 CSS
-    // viewport. Monitor C restores the full parent surface for inspection.
-    int x = client.left;
-    int y = client.top;
+    // Every background Spotify state, including authentication and recovery,
+    // stays on the same 480x270 native surface. Monitor C is the only mode
+    // allowed to expand the Spotify host to the full parent surface.
+    const int x = client.left;
+    const int y = client.top;
     int width = std::min(kSpotifyBackgroundWidth, clientWidth);
     int height = std::min(kSpotifyBackgroundHeight, clientHeight);
-    HWND insertAfter = HWND_BOTTOM;
+    HWND insertAfter = authentication ? HWND_TOP : HWND_BOTTOM;
     if (monitorForeground_) {
       width = clientWidth;
       height = clientHeight;
-      insertAfter = HWND_TOP;
-    } else if (authentication) {
-      x = client.left + (clientWidth - activeWidth) / 2;
-      y = client.top + (clientHeight - activeHeight) / 2;
-      width = activeWidth;
-      height = activeHeight;
       insertAfter = HWND_TOP;
     }
 

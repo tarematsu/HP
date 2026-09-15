@@ -35,12 +35,13 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
 test('Spotify layout keeps a fixed 480x270 background surface while Monitor C restores full size', () => {
   assert.match(layout, /kSpotifyBackgroundWidth = 480/);
   assert.match(layout, /kSpotifyBackgroundHeight = 270/);
-  assert.match(layout, /int x = client\.left;/);
-  assert.match(layout, /int y = client\.top;/);
+  assert.match(layout, /const int x = client\.left;/);
+  assert.match(layout, /const int y = client\.top;/);
   assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
   assert.match(layout, /int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
-  assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.match(layout, /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM;/);
   assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.doesNotMatch(layout, /else if \(authentication\)|activeWidth|activeHeight/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
   assert.match(layout, /const bool zOrderChanged =/);
@@ -108,7 +109,7 @@ test('Spotify page bootstrap performs no CSS or DOM styling reduction', () => {
   assert.doesNotMatch(scripts, /animation\s*:|transition\s*:|background-image\s*:/);
   assert.doesNotMatch(scripts, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
   assert.doesNotMatch(scripts, /new\s+MutationObserver\s*\(/);
-  assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment/);
+  assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment|thread_local std::wstring/);
 });
 
 test('Spotify resource blocking is completely disabled', () => {
