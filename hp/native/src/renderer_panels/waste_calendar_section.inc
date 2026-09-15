@@ -173,7 +173,7 @@ const std::array<Course36ClockWasteNotice, 3>& Course36ClockWasteNotices(
   // contains a future date for one or more categories.
   for (size_t index = 0; index < kCourse36ClockWasteKinds.size(); ++index) {
     if (found[index] || foundCount >= cache.notices.size()) continue;
-    cache.notices[foundCount++].kind = kCourse36ClockWasteKinds[index];
+    cache.notices.at(foundCount++).kind = kCourse36ClockWasteKinds[index];
   }
   return cache.notices;
 }
