@@ -24,15 +24,14 @@ test('expanded script policy is the final Stationhead resource layer', () => {
     cmakeSource,
     /src\/sh_runtime_resource_filter_policy_fix\.h[\s\S]*src\/sh_runtime_script_resource_policy_fix\.h[\s\S]*src\/sh_track_boundary_message_policy\.h/,
   );
-  const filterAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_filter_policy_fix.h)',
+  const pch = section(
+    cmakeSource,
+    'target_precompile_headers(HomePanel PRIVATE',
+    'add_dependencies(HomePanel',
   );
-  const scriptAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_script_resource_policy_fix.h)',
-  );
-  const boundaryMessageAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_track_boundary_message_policy.h)',
-  );
+  const filterAt = pch.indexOf('src/sh_runtime_resource_filter_policy_fix.h');
+  const scriptAt = pch.indexOf('src/sh_runtime_script_resource_policy_fix.h');
+  const boundaryMessageAt = pch.indexOf('src/sh_track_boundary_message_policy.h');
   assert.ok(filterAt >= 0 && filterAt < scriptAt && scriptAt < boundaryMessageAt);
   assert.match(
     policySource,

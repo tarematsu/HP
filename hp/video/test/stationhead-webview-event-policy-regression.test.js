@@ -32,15 +32,14 @@ test('WebView event policy is compiled without disturbing resource policy order'
     cmakeSource,
     /src\/sh_auth_capture_origin_policy\.h[\s\S]*src\/sh_webview_event_policy\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
   );
-  const authCaptureAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_auth_capture_origin_policy.h)',
+  const pch = section(
+    cmakeSource,
+    'target_precompile_headers(HomePanel PRIVATE',
+    'add_dependencies(HomePanel',
   );
-  const eventsAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_webview_event_policy.h)',
-  );
-  const resourcesAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_policy_fix.h)',
-  );
+  const authCaptureAt = pch.indexOf('src/sh_auth_capture_origin_policy.h');
+  const eventsAt = pch.indexOf('src/sh_webview_event_policy.h');
+  const resourcesAt = pch.indexOf('src/sh_runtime_resource_policy_fix.h');
   assert.ok(authCaptureAt >= 0 && authCaptureAt < eventsAt);
   assert.ok(eventsAt >= 0 && eventsAt < resourcesAt);
 });

@@ -24,12 +24,13 @@ test('final resource policy is compiled after focused Stationhead interaction/au
     cmakeSource,
     /set\(HOMEPANEL_STATIONHEAD_SOURCES[\s\S]*src\/sh_polling_policy\.h[\s\S]*src\/sh_start_button_locator_policy\.h[\s\S]*src\/sh_auth_capture_reuse_policy\.h[\s\S]*src\/sh_auth_capture_origin_policy\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
   );
-  const basePchAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_polling_policy.h\n  src/sh_start_button_locator_policy.h\n  src/sh_auth_capture_reuse_policy.h)',
+  const pch = section(
+    cmakeSource,
+    'target_precompile_headers(HomePanel PRIVATE',
+    'add_dependencies(HomePanel',
   );
-  const finalPchAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_policy_fix.h)',
-  );
+  const basePchAt = pch.indexOf('src/sh_polling_policy.h');
+  const finalPchAt = pch.indexOf('src/sh_runtime_resource_policy_fix.h');
   assert.ok(basePchAt >= 0 && basePchAt < finalPchAt);
   assert.doesNotMatch(cmakeSource, /sh_runtime_policy_fix\.h/);
   assert.match(

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const memoryPolicy = readFileSync(
-  new URL('../../native/src/sh_auth_interactive_memory_policy_fix.h', import.meta.url),
+const navigationPolicy = readFileSync(
+  new URL('../../native/src/sh_auth_navigation_policy_fix.h', import.meta.url),
   'utf8',
 );
 const processPolicy = readFileSync(
@@ -24,13 +24,10 @@ function section(source, start, end) {
 }
 
 test('auth process-failure policy remains in the final policy chain without a memory-target override', () => {
-  const processIncludeAt = memoryPolicy.indexOf(
-    '#include "sh_auth_process_failure_policy_fix.h"',
-  );
-  assert.ok(processIncludeAt >= 0);
-  assert.doesNotMatch(memoryPolicy, /kInteractiveAuthMemoryTarget/);
+  assert.match(navigationPolicy, /#include "sh_auth_process_failure_policy_fix\.h"/);
+  assert.doesNotMatch(navigationPolicy, /kInteractiveAuthMemoryTarget/);
   assert.doesNotMatch(
-    memoryPolicy,
+    navigationPolicy,
     /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)|put_MemoryUsageTargetLevel/,
   );
 });

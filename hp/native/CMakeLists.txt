@@ -165,9 +165,7 @@ set(HOMEPANEL_STATIONHEAD_SOURCES
   src/sh_runtime_resource_filter_policy_fix.h
   src/sh_runtime_script_resource_policy_fix.h
   src/sh_playback_resource_policy_fix.h
-  src/sh_profile_reuse_policy_begin.h
   src/sh_track_boundary_message_policy.h
-  src/sh_profile_reuse_policy_end.h
   src/sh_runtime_interaction_script.h
   src/sh_runtime_blank_recovery_script.h
   src/sh_runtime_lifecycle_script.h
@@ -207,29 +205,17 @@ homepanel_configure_common_target(HomePanel)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_polling_policy.h
   src/sh_start_button_locator_policy.h
-  src/sh_auth_capture_reuse_policy.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_auth_capture_origin_policy.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_webview_event_policy.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_resource_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_resource_boundary_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_resource_filter_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_script_resource_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_playback_resource_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_profile_reuse_policy_begin.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_compact_runtime_script.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_track_boundary_message_policy.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_profile_reuse_policy_end.h)
+  src/sh_auth_capture_reuse_policy.h
+  src/sh_auth_capture_origin_policy.h
+  src/sh_webview_event_policy.h
+  src/sh_runtime_resource_policy_fix.h
+  src/sh_runtime_resource_boundary_policy_fix.h
+  src/sh_runtime_resource_filter_policy_fix.h
+  src/sh_runtime_script_resource_policy_fix.h
+  src/sh_playback_resource_policy_fix.h
+  src/sh_compact_runtime_script.h
+  src/sh_track_boundary_message_policy.h
+  src/sh_startup_script.h)
 add_dependencies(HomePanel homepanel_version_files)
 target_link_libraries(HomePanel PRIVATE
   "${WEBVIEW2_NATIVE_DIR}/WebView2Loader.dll.lib"
