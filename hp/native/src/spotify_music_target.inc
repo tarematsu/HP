@@ -83,6 +83,10 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   PostSpotifyTargetDescriptorForSlot(slot);
   RecomputeForeground();
 
+  // Try a real Spotify React link first. When the target link exists in the
+  // current tree this normally stays inside the SPA and avoids rebuilding the
+  // whole renderer. If no exact link exists (or the script fails), fall back to
+  // the previous top-level Navigate path.
   ++slot.asyncEpoch;
   if (slot.asyncEpoch == 0) ++slot.asyncEpoch;
   const ULONGLONG asyncEpoch = slot.asyncEpoch;
@@ -200,6 +204,9 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
+              // DOM/media inspection may notice the active target first, but
+              // only the generation-fenced media observer is allowed to start
+              // the completion clock or publish Playing.
               SetSlotState(*target, SlotState::WaitingTarget);
               target->nextRecoveryTick =
                   callbackNow + kSpotifyPlaybackStartRetryMs;
@@ -210,6 +217,9 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"\"direct-play\"") {
+              // Direct HTMLMediaElement.play() was issued for the confirmed
+              // target AUDIO element. Give Spotify five seconds to emit a
+              // generation-fenced playing event before button-click fallback.
               SetSlotState(*target, SlotState::WaitingTarget);
               target->nextRecoveryTick =
                   callbackNow + kSpotifyDirectPlayConfirmWaitMs;
