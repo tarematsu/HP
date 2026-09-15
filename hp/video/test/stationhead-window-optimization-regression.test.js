@@ -37,7 +37,7 @@ test('startup preview keeps normal playback backgrounded but preserves explicit 
   assert.match(setPreviewBounds, /viewVisible_ = true;[\s\S]*LayoutControllers\(\);/);
 });
 
-test('established background playback shrinks to 1x1 while startup and reload recovery use the media panel', () => {
+test('established background playback shrinks to 1x1 while startup and reload recovery may stay full-size', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
@@ -49,16 +49,12 @@ test('established background playback shrinks to 1x1 while startup and reload re
     /const bool playbackBackgroundFullSize\s*=\s*keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback &&\s*!playbackForeground;/,
   );
   assert.match(applyLayout, /const bool playbackFullSize = playbackForeground \|\| playbackBackgroundFullSize;/);
-  assert.match(
-    applyLayout,
-    /playbackBackgroundFullSize[\s\S]*ResolveStationheadBackgroundBounds\(hostWindow, bounds\)/,
-  );
-  assert.match(applyLayout, /const int hostWidth = playbackFullSize \? playbackWidth : 1;/);
-  assert.match(applyLayout, /const int hostHeight = playbackFullSize \? playbackHeight : 1;/);
+  assert.match(applyLayout, /const int hostWidth = playbackFullSize \? width : 1;/);
+  assert.match(applyLayout, /const int hostHeight = playbackFullSize \? height : 1;/);
   assert.match(applyLayout, /const RECT contentBounds\{0, 0, hostWidth, hostHeight\};/);
   assert.match(
     applyLayout,
-    /SetWindowPos\(hostWindow, hostPlacement, hostBounds\.left, hostBounds\.top,[\s\S]*hostWidth, hostHeight,[\s\S]*SWP_SHOWWINDOW/,
+    /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*hostWidth, hostHeight,[\s\S]*SWP_SHOWWINDOW/,
   );
   assert.match(applyLayout, /controller->put_Bounds\(contentBounds\);/);
   assert.match(
@@ -95,11 +91,7 @@ test('duplicate background notifications verify effective playback geometry and 
   );
   assert.match(
     setVisible,
-    /!monitorForeground && keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(hostWindow_, bounds_\)/,
-  );
-  assert.match(
-    setVisible,
-    /PlaybackSurfaceMatches\([\s\S]*playbackBounds[\s\S]*playbackFullSize[\s\S]*monitorForeground \? HWND_TOP : nullptr\)[\s\S]*BackgroundAuthSurfaceMatches\([\s\S]*return;/,
+    /PlaybackSurfaceMatches\([\s\S]*playbackFullSize[\s\S]*monitorForeground \? HWND_TOP : nullptr\)[\s\S]*BackgroundAuthSurfaceMatches\([\s\S]*return;/,
   );
   assert.match(setVisible, /const bool hadInteractiveSurface/);
   assert.match(setVisible, /const bool interactiveSurfaceHadFocus/);
@@ -126,15 +118,6 @@ test('explicit Stationhead interaction may expand the playback surface', () => {
 });
 
 test('fast-path helpers validate controller size and the expected render state together', () => {
-  const backgroundBounds = section(
-    layoutSource,
-    'RECT ResolveStationheadBackgroundBounds(',
-    'bool PlaybackSurfaceMatches(',
-  );
-  assert.match(backgroundBounds, /FindWindowExW\([\s\S]*L"HomePanelNativeStaticPanel"[\s\S]*L"HomePanelNativeMedia"/);
-  assert.match(backgroundBounds, /ScreenToClient\(parent, &topLeft\)/);
-  assert.match(backgroundBounds, /ScreenToClient\(parent, &bottomRight\)/);
-
   const playbackMatches = section(
     layoutSource,
     'bool PlaybackSurfaceMatches(',

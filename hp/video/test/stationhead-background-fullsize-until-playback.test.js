@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead keeps a media-panel-sized background surface until initial playback is established', () => {
+test('Stationhead keeps a full-size background surface until initial playback is established', () => {
   const keepBehind = section(
     layout,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -35,20 +35,7 @@ test('Stationhead keeps a media-panel-sized background surface until initial pla
   );
 });
 
-test('startup and track-boundary recovery fit exactly behind the YouTube/TVer media panel', () => {
-  const resolver = section(
-    layout,
-    'RECT ResolveStationheadBackgroundBounds(',
-    'bool PlaybackSurfaceMatches(',
-  );
-  assert.match(
-    resolver,
-    /FindWindowExW\([\s\S]*L"HomePanelNativeStaticPanel"[\s\S]*L"HomePanelNativeMedia"/,
-  );
-  assert.match(resolver, /GetWindowRect\(mediaWindow, &screenRect\)/);
-  assert.match(resolver, /ScreenToClient\(parent, &topLeft\)/);
-  assert.match(resolver, /ScreenToClient\(parent, &bottomRight\)/);
-
+test('track-boundary refresh keeps Stationhead full-size behind the dashboard', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -59,25 +46,13 @@ test('startup and track-boundary recovery fit exactly behind the YouTube/TVer me
     /playbackBackgroundFullSize\s*=\s*keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback &&\s*!playbackForeground/,
   );
   assert.match(apply, /playbackFullSize\s*=\s*playbackForeground \|\| playbackBackgroundFullSize/);
-  assert.match(
-    apply,
-    /playbackBackgroundFullSize[\s\S]*ResolveStationheadBackgroundBounds\(hostWindow, bounds\)/,
-  );
-  assert.match(apply, /hostWidth = playbackFullSize \? playbackWidth : 1/);
-  assert.match(apply, /hostHeight = playbackFullSize \? playbackHeight : 1/);
+  assert.match(apply, /hostWidth = playbackFullSize \? width : 1/);
+  assert.match(apply, /hostHeight = playbackFullSize \? height : 1/);
   assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(apply, /playbackControllerVisible\s*=\s*playbackFullSize \|\|/);
   assert.match(
     apply,
-    /const RECT hostBounds\{playbackBounds\.left, playbackBounds\.top,[\s\S]*playbackBounds\.left \+ hostWidth,[\s\S]*playbackBounds\.top \+ hostHeight\}/,
-  );
-  assert.match(
-    apply,
     /ChildWindowPlacementMatches\(\s*hostWindow, hostBounds, playbackForeground \? HWND_TOP : nullptr\)/,
-  );
-  assert.match(
-    apply,
-    /SetWindowPos\(hostWindow, hostPlacement, hostBounds\.left, hostBounds\.top/,
   );
 });
 
@@ -106,10 +81,6 @@ test('normal established playback still collapses to 1x1 in Monitor A while Moni
   assert.match(
     setVisible,
     /const bool playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground/,
-  );
-  assert.match(
-    setVisible,
-    /!monitorForeground && keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(hostWindow_, bounds_\)/,
   );
   assert.match(setVisible, /monitorForeground \? HWND_TOP : nullptr/);
 
