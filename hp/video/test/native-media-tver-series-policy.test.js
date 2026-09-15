@@ -29,7 +29,9 @@ test('native cloud feed client is bounded and contains no series API fallback', 
   assert.match(wrapper, /#include "media_tver_cloud_feed_native\.inc"/);
   assert.match(wrapper, /#include "media_tver_cloud_queue_refresh\.inc"/);
   assert.match(feed, /kNativeMediaTverMaximumFeedBytes = 2U \* 1024U \* 1024U/);
-  assert.match(feed, /WinHttpSetTimeouts\(session, 8000, 8000, 8000, 8000\)/);
+  assert.match(feed, /hp::WinHttpDownload/);
+  assert.match(feed, /Referer: https:\/\/tver\.jp\//);
+  assert.doesNotMatch(feed, /WinHttpOpen\(|WinHttpConnect\(|WinHttpReadData\(/);
   assert.match(feed, /NativeMediaTverFetchCloudFeed/);
   assert.match(feed, /NativeMediaTverCloudFeedEpisodeIds/);
   assert.doesNotMatch(feed, /callSeriesSeasons|callSeasonEpisodes|platform_users\/browser\/create/);
