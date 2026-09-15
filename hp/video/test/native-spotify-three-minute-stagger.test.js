@@ -93,12 +93,13 @@ test('invalid cloud rotation retains the fallback catalog and runtime remains mu
   );
 });
 
-test('direct tracks use the minimal scoped reconcile script without runtime rewriting', () => {
+test('direct tracks use the CDP-only scoped reconcile script without runtime rewriting', () => {
   assert.match(music, /PostSpotifyTargetDescriptorForSlot\(slot\)/);
   assert.match(music, /kSpotifyScopedTrackReconcileScript/);
-  assert.match(scoped, /document\.querySelector\('audio'\)/);
-  assert.match(scoped, /audio\.play\(\)/);
   assert.match(scoped, /button\[data-testid="play-button"\]/);
+  assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
+  assert.match(scoped, /const pageButton =/);
+  assert.doesNotMatch(scoped, /document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
   assert.doesNotMatch(scoped, /targetLink|currentTrack|navigator\.mediaSession|settling/);
   assert.doesNotMatch(wrapper, /RewriteSpotify|#define ExecuteScript|kSpotifyStaticTrackReconcileScript/);
 });
