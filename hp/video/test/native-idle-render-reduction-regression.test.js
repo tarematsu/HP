@@ -11,12 +11,12 @@ const panelState = readFileSync(
   'utf8',
 );
 
-test('hidden dashboard defers air graph projection and window invalidation', () => {
+test('hidden dashboard suspends air invalidation without a projection cache', () => {
   assert.match(
     panelState,
-    /void Renderer::UpdateAirHistory[\s\S]*if \(!nativeDashboardVisible_\) \{\s*nativeAirGraph_ = \{\};\s*return;\s*\}[\s\S]*const int64_t nowMs = UnixMillis\(\);[\s\S]*RebuildNativeAirGraph\(nowMs\);[\s\S]*EnsureNativeStaticWindows\(\)/,
+    /void Renderer::UpdateAirHistory[\s\S]*nativeAirHistory_ = history;[\s\S]*if \(!nativeDashboardVisible_ \|\| !EnsureNativeStaticWindows\(\)\) return;[\s\S]*PanelSection::AirGraph/,
   );
-  assert.doesNotMatch(panelState, /airGraphExpired|airCutoff/);
-  assert.match(lifecycle, /if \(visible\) \{[\s\S]*RebuildNativeAirGraph\(UnixMillis\(\)\);[\s\S]*StartRadarCompose\(\)/);
-  assert.match(lifecycle, /ResetNativeBitmapCaches\(\);[\s\S]*nativeAirGraph_ = \{\};/);
+  assert.match(lifecycle, /KillTimer\(nativeMainWindow_, kNativePanelTickTimer\)/);
+  assert.doesNotMatch(panelState, /nativeAirGraph_|RebuildNativeAirGraph/);
+  assert.doesNotMatch(lifecycle, /nativeAirGraph_|RebuildNativeAirGraph/);
 });
