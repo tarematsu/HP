@@ -276,7 +276,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (state.videoKey !== videoKey) {
     Object.assign(state, {
       videoKey, qualityApplied: false, captionsApplied: false,
-      fullscreenApplied: false,
       pausedSince: 0, lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
     });
   }
@@ -293,9 +292,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return arm(fallback, 'fullscreen', 1200);
   };
 
-  if (fullscreen()) {
-    state.fullscreenApplied = true;
-  } else if (!state.fullscreenApplied) {
+  if (!ad() && !fullscreen()) {
     const fullscreenAction = armFullscreen();
     if (fullscreenAction) return fullscreenAction;
   }
@@ -415,11 +412,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     } catch (_) {}
   }
 
-  if (fullscreen()) {
-    state.fullscreenApplied = true;
-    return null;
-  }
-  if (state.fullscreenApplied) return null;
+  if (fullscreen()) return null;
+  const fullscreenAction = armFullscreen();
+  if (fullscreenAction) return fullscreenAction;
   recheck();
   return 'recovery';
 })()
