@@ -81,6 +81,9 @@ jobs:
       - name: Verify repaired 24-hour window
         if: steps.audit.outputs.needs_repair == 'true'
         id: verify
+        env:
+          AUDIT_WINDOW_START_MS: ${{ steps.audit.outputs.window_start_ms }}
+          AUDIT_WINDOW_END_MS: ${{ steps.audit.outputs.window_end_ms }}
         run: node worker/scripts/audit-facts-24h.mjs
 
       - name: Report source gaps that cannot be reconstructed
