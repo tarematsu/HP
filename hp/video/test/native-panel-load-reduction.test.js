@@ -53,10 +53,10 @@ test('dashboard sections use source versions and reuse unchanged materialized da
   assert.match(parser, /Compatibility fallback for old cached dashboard files/);
   assert.doesNotMatch(parser, /SectionRevision\(|BuildOctopusRenderProjection|octopusRender/);
   assert.match(dashboardHeader, /uint64_t octopus = 0;/);
-  assert.match(dashboardHeader, /uint64_t switchbot = 0;/);
+  assert.doesNotMatch(dashboardHeader, /uint64_t switchbot = 0;|std::wstring\* error/);
   assert.doesNotMatch(dashboardHeader, /OctopusRenderProjection|currentComplete|previousComplete/);
   assert.doesNotMatch(dashboardHeader, /uint64_t energy = 0;/);
-  assert.match(dashboardLoader, /ParseDashboardSnapshot\(text, snapshot, nullptr, previous\)/);
+  assert.match(dashboardLoader, /ParseDashboardSnapshot\(text, snapshot, previous\)/);
 });
 
 test('air sensor values and five-minute history update renderer independently', () => {
@@ -87,11 +87,12 @@ test('Octopus and SwitchBot own independent invalidation paths', () => {
     /if \(octopusChanged\) \{\s*InvalidatePanelSection\(nativeMainWindow_, PanelSection::Energy\);/s,
   );
   assert.match(dashboardLoader, /bool Renderer::LoadSwitchBot/);
-  assert.match(dashboardLoader, /ParseSwitchBotDevices\(text, devices, nullptr\)/);
+  assert.match(dashboardLoader, /ParseSwitchBotDevices\(text, devices\)/);
   assert.match(
     dashboardLoader,
-    /previousRows == nextRows \? PanelSection::EnergySwitchBot : PanelSection::Energy/s,
+    /rowCountChanged \? PanelSection::Energy : PanelSection::EnergySwitchBot/s,
   );
+  assert.doesNotMatch(dashboardLoader, /revisions\.switchbot|PlugRows\(/);
   assert.match(panelState, /LoadSwitchBot\(dataDir_ \/ L"switchbot\.json"\)/);
   assert.doesNotMatch(rendererHeader, /renderedDashboardRevisions_|dashboardRevisions_/);
 });

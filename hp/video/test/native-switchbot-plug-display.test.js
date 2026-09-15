@@ -37,7 +37,7 @@ test('Plug Mini footer shows rounded integer watts without ON/OFF state', () => 
     plugState,
     /std::to_wstring\(static_cast<int>\(std::round\(watts\)\)\) \+ L"W"/,
   );
-  assert.doesNotMatch(plugState, /Contact|Motion|Presence|json::Text\(item, L"power"/);
+  assert.doesNotMatch(plugState, /Contact|Motion|Presence|battery|json::Text\(item, L"power"/);
   assert.doesNotMatch(plugState, /L"ON"|L"OFF"/);
 });
 

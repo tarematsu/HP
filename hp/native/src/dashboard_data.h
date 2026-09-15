@@ -27,7 +27,6 @@ struct SwitchBotDeviceData {
 struct DashboardSectionRevisions {
   uint64_t weather = 0;
   uint64_t octopus = 0;
-  uint64_t switchbot = 0;
 };
 
 struct DashboardSnapshot {
@@ -49,10 +48,8 @@ struct DashboardSnapshot {
 };
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
-                            std::wstring* error = nullptr,
                             const DashboardSnapshot* previous = nullptr);
 bool ParseSwitchBotDevices(const std::string& text,
-                           std::vector<SwitchBotDeviceData>& output,
-                           std::wstring* error = nullptr);
+                           std::vector<SwitchBotDeviceData>& output);
 
 }  // namespace hp
