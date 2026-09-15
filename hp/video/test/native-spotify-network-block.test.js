@@ -7,6 +7,7 @@ const source = name => readFileSync(
 
 const header = source('spotify_webviews.h');
 const network = source('spotify_network_block.inc');
+const host = source('spotify_host_lifecycle.inc');
 const lifecycle = source('renderer_lifecycle.cpp');
 const schedule = source('spotify_stagger_schedule.inc');
 
@@ -17,17 +18,20 @@ test('Spotify network block destroys all configured WebView/controller slots', (
   assert.match(network, /for \(Slot& slot : slots_\) CloseSlot\(slot\)/);
 });
 
-test('Spotify unmute resets the simplified async recovery and playback state', () => {
+test('Spotify unmute reuses the CloseSlot reset and recreates hosts', () => {
   assert.match(network, /alive_ = std::make_shared<std::atomic<bool>>\(true\)/);
-  assert.match(network, /for \(Slot& slot : slots_\)[\s\S]*CreateHost\(slot\)/);
+  assert.match(network, /for \(Slot& slot : slots_\) CreateHost\(slot\)/);
   assert.doesNotMatch(network, /CreateController\(slots_\[0\]\)/);
-  assert.match(network, /slot\.timedRotationActive = false/);
-  assert.match(network, /slot\.timedCompletionDeadlineTick = 0/);
-  assert.match(network, /slot\.nextRecoveryTick = 0/);
-  assert.match(network, /\+\+slot\.asyncEpoch/);
-  assert.match(network, /\+\+slot\.pageEpoch/);
-  assert.match(network, /slot\.asyncWork = AsyncWork::None/);
-  assert.match(network, /slot\.trustedClickBlockedUntilTick = 0/);
+  assert.match(host, /slot\.timedRotationActive = false/);
+  assert.match(host, /slot\.timedCompletionDeadlineTick = 0/);
+  assert.match(host, /slot\.nextRecoveryTick = 0/);
+  assert.match(host, /\+\+slot\.asyncEpoch/);
+  assert.match(host, /\+\+slot\.pageEpoch/);
+  assert.match(host, /slot\.asyncWork = AsyncWork::None/);
+  assert.match(host, /slot\.trustedClickBlockedUntilTick = 0/);
+  assert.match(host, /slot\.timedRotationCycle = 0/);
+  assert.match(host, /slot\.timedRotationPosition = 0/);
+  assert.match(host, /slot\.targetGeneration = 0/);
   assert.doesNotMatch(network + header, /timedInterruptionStartTick|reconcileInFlight|lastTimedReconcileTick|TimedSpotifyTarget/);
   assert.match(network, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
   assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);

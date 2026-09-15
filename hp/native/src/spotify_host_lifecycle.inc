@@ -130,9 +130,12 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.asyncStartedTick = 0;
   slot.nextRecoveryTick = 0;
   slot.trustedClickBlockedUntilTick = 0;
+  slot.timedRotationCycle = 0;
+  slot.timedRotationPosition = 0;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
   slot.timedRotationActive = false;
+  slot.targetGeneration = 0;
   slot.state = SlotState::NotCreated;
   slot.playerPage = false;
   slot.loginPage = false;
