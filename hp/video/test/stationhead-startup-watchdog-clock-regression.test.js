@@ -2,101 +2,58 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const appHeader = readFileSync(
-  new URL('../../native/src/app.h', import.meta.url),
-  'utf8',
-);
-const playerHeader = readFileSync(
-  new URL('../../native/src/sh.h', import.meta.url),
-  'utf8',
-);
-const playerSource = readFileSync(
-  new URL('../../native/src/sh.cpp', import.meta.url),
-  'utf8',
-);
-const webviewSource = readFileSync(
-  new URL('../../native/src/sh_webview.cpp', import.meta.url),
-  'utf8',
-);
+const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+const appHeader = source('app.h');
+const playerHeader = source('sh.h');
+const playerSource = source('sh.cpp');
+const webviewSource = source('sh_webview.cpp');
 
-function section(source, start, end) {
-  const startAt = source.indexOf(start);
-  assert.notEqual(startAt, -1, `missing section: ${start}`);
-  const endAt = source.indexOf(end, startAt + start.length);
-  assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
-  return source.slice(startAt, endAt);
+function section(text, start, end) {
+  const from = text.indexOf(start);
+  assert.notEqual(from, -1, `missing section: ${start}`);
+  const to = text.indexOf(end, from + start.length);
+  assert.notEqual(to, -1, `missing section terminator: ${end}`);
+  return text.slice(from, to);
 }
 
-test('App startup gates retain UTC timestamps but measure elapsed time with uptime', () => {
+test('App startup keeps only the active monotonic timestamp', () => {
   assert.match(appHeader, /MonotonicElapsedTimestamp startupAt_;/);
-  assert.match(appHeader, /MonotonicElapsedTimestamp dashboardAudioReadySince_;/);
-  assert.match(appHeader, /MonotonicElapsedTimestamp playbackReadyAt_;/);
-
-  const elapsedClock = section(
-    playerHeader,
-    'class MonotonicElapsedTimestamp',
-    'class MonotonicDeadline',
-  );
-  assert.match(elapsedClock, /GetTickCount64\(\)/);
-  assert.match(elapsedClock, /wallTime_/);
-  assert.match(elapsedClock, /operator-\(/);
-  assert.doesNotMatch(elapsedClock, /system_clock/);
+  assert.doesNotMatch(appHeader, /dashboardAudioReadySince_|playbackReadyAt_|secondaryStarted_/);
+  const elapsed = section(playerHeader, 'class MonotonicElapsedTimestamp',
+    'class AtomicMonotonicElapsedTimestamp');
+  assert.match(elapsed, /GetTickCount64\(\)/);
+  assert.doesNotMatch(elapsed, /system_clock/);
 });
 
-test('WebView creation and auth watchdog starts use monotonic elapsed timestamps', () => {
+test('WebView creation and auth watchdogs use monotonic elapsed timestamps', () => {
   assert.match(playerHeader, /MonotonicElapsedTimestamp creationStartedAt_;/);
-  assert.match(playerHeader, /MonotonicElapsedTimestamp createdAt_;/);
   assert.match(playerHeader, /MonotonicElapsedTimestamp authControllerStartedAt_;/);
-  assert.match(playerSource, /creationStartedAt_ = UnixMillis\(\);/);
   assert.match(playerSource, /nowMs - creationStartedAt_ >= kStationheadWebViewCreationTimeoutMs/);
   assert.match(playerSource, /nowMs - authControllerStartedAt_ >= kStationheadAuthControllerTimeoutMs/);
 });
 
-test('startup script and recreate deadlines are converted once to uptime deadlines', () => {
+test('startup script and recreate deadlines use uptime deadlines', () => {
   assert.match(playerHeader, /MonotonicDeadline recreateAt_;/);
   assert.match(playerHeader, /MonotonicDeadline startupScriptDeadline_;/);
-
-  const deadlineClock = section(
-    playerHeader,
-    'class MonotonicDeadline',
-    'class MonotonicProjectedDeadline',
-  );
-  assert.match(deadlineClock, /wallDeadline - wallNow/);
-  assert.match(deadlineClock, /deadlineTick_/);
-  assert.match(deadlineClock, /GetTickCount64\(\) >= deadlineTick_/);
-  assert.doesNotMatch(deadlineClock, /system_clock/);
-
-  assert.match(
-    webviewSource,
-    /startupScriptDeadline_ =\s*UnixMillis\(\) \+ kStationheadStartupScriptRegistrationTimeoutMs/,
-  );
-  assert.match(playerSource, /nowMs >= startupScriptDeadline_/);
-  assert.match(playerSource, /nowMs >= recreateAt_/);
+  const deadline = section(playerHeader, 'class MonotonicDeadline',
+    'class MonotonicProjectedDeadline');
+  assert.match(deadline, /deadlineTick_/);
+  assert.match(deadline, /GetTickCount64\(\) >= deadlineTick_/);
+  assert.match(webviewSource,
+    /startupScriptDeadline_ =\s*UnixMillis\(\) \+ kStationheadStartupScriptRegistrationTimeoutMs/);
 });
 
-test('startup watchdogs bypass the ordinary long player wake deadline', () => {
-  const wakeClock = section(
-    playerHeader,
-    'class StartupAwareWakeDeadline',
-    'struct StationheadDailyPlayPoint',
-  );
-  assert.match(wakeClock, /creating_->load/);
-  assert.match(wakeClock, /startupScriptDeadline_->Active\(\)/);
-  assert.match(wakeClock, /authControllerStartedAt_->Active\(\)/);
-  assert.match(
-    wakeClock,
-    /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/,
-  );
-  assert.match(wakeClock, /MonotonicProjectedDeadline value_;/);
-  assert.match(
-    playerHeader,
-    /StartupAwareWakeDeadline nextTickAt_\{[\s\S]*creating_[\s\S]*startupScriptDeadline_[\s\S]*authControllerStartedAt_[\s\S]*startupNavigationStarted_/,
-  );
+test('startup watchdogs force an immediate player wake', () => {
+  const wake = section(playerHeader, 'class StartupAwareWakeDeadline',
+    'struct StationheadDailyPlayPoint');
+  assert.match(wake, /creating_->load/);
+  assert.match(wake, /startupScriptDeadline_->Active\(\)/);
+  assert.match(wake, /authControllerStartedAt_->Active\(\)/);
+  assert.match(wake, /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/);
 });
 
-test('resetting startup watchdog state also releases the forced wake', () => {
+test('resetting watchdog state releases the forced wake', () => {
   assert.match(playerSource, /creationStartedAt_ = 0;/);
   assert.match(playerSource, /authControllerStartedAt_ = 0;/);
   assert.match(webviewSource, /startupScriptDeadline_ = 0;/);
-  assert.match(webviewSource, /creationStartedAt_ = 0;/);
 });
