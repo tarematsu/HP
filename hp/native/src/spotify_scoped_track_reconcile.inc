@@ -37,7 +37,9 @@ LR"JS(
     const label = labelOf(button);
     const testId = testIdOf(button);
     if (label.includes('pause') || label.includes('一時停止')) return 'pause';
-    if (testId === 'play-button') return 'play';
+    if (testId === 'play-button' || testId === 'control-button-playpause') {
+      return 'play';
+    }
     if (label === 'play' || label === '再生' ||
         label.startsWith('play ') || label.endsWith('を再生')) {
       return 'play';
