@@ -74,7 +74,14 @@ LR"JS(
       enforceVolume(video);
     });
     video.addEventListener('ended', () => {
-      if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
+      if (window.__homePanelSakuraMeetsState !== state) return;
+      // Ad state can lag the media event by one ensure pass. Re-check the rare
+      // ended event before arming episode completion so a pre-roll ending can
+      // never advance the native episode queue.
+      if (state.adActive || detectAd(video, state)) {
+        scheduleEnsure(0);
+        return;
+      }
       clearProgressSampler();
       sampleProgress(video, state, true);
       clearRecovery();
