@@ -4,7 +4,6 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kAirGraphWindowMs = 24LL * 60 * 60 * 1000;
 constexpr int kAirStatsCo2InvalidateDeltaPpm = 5;
 constexpr double kAirStatsTemperatureInvalidateDeltaC = 0.1;
 constexpr double kAirStatsHumidityInvalidateDeltaPercent = 1.0;
@@ -36,62 +35,22 @@ std::wstring ClockTimeText(const SYSTEMTIME& now) {
 }
 }  // namespace
 
-void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
-  AirGraphProjection next;
-  next.cutoff = nowMs - kAirGraphWindowMs;
-  for (const auto& sample : nativeAirHistory_) {
-    if (sample.timestamp < next.cutoff) continue;
-    if (next.samples.empty()) {
-      next.co2Min = next.co2Max = sample.co2;
-      next.temperatureMin = next.temperatureMax = sample.temperature;
-      next.humidityMin = next.humidityMax = sample.humidity;
-    } else {
-      next.co2Min = std::min(next.co2Min, static_cast<double>(sample.co2));
-      next.co2Max = std::max(next.co2Max, static_cast<double>(sample.co2));
-      next.temperatureMin = std::min(next.temperatureMin, sample.temperature);
-      next.temperatureMax = std::max(next.temperatureMax, sample.temperature);
-      next.humidityMin = std::min(next.humidityMin, sample.humidity);
-      next.humidityMax = std::max(next.humidityMax, sample.humidity);
-    }
-    next.samples.push_back(sample);
-  }
-  nativeAirGraph_ = std::move(next);
-}
-
 void Renderer::UpdateSensors(const SensorSnapshot& sensors) {
   // SwitchBot publishes through the same sensor-update path at startup and on
   // WM_HP_SWITCHBOT_UPDATED. Load its independently versioned cache here so the
   // one-second clock timer never needs to probe the filesystem for SwitchBot.
   LoadSwitchBot(dataDir_ / L"switchbot.json");
 
-  if (nativeSensors_ == sensors) return;
-  const bool repaintAirStats = AirStatsNeedRepaint(nativeSensors_, sensors);
-  if (repaintAirStats) {
-    nativeSensors_ = sensors;
-  } else {
-    nativeSensors_.observedAt = sensors.observedAt;
-    nativeSensors_.presence = sensors.presence;
-    nativeSensors_.light = sensors.light;
-    nativeSensors_.motion = sensors.motion;
-    nativeSensors_.doorOpen = sensors.doorOpen;
-    nativeSensors_.outboxCount = sensors.outboxCount;
-    nativeSensors_.lastError = sensors.lastError;
-  }
-  if (!repaintAirStats || !nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;
+  if (!AirStatsNeedRepaint(nativeSensors_, sensors)) return;
+  nativeSensors_ = sensors;
+  if (!nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;
   InvalidatePanelSection(nativeSideWindow_, PanelSection::AirStats);
 }
 
 void Renderer::UpdateAirHistory(const std::vector<AirHistorySample>& history) {
   if (nativeAirHistory_ == history) return;
   nativeAirHistory_ = history;
-  if (!nativeDashboardVisible_) {
-    nativeAirGraph_ = {};
-    return;
-  }
-
-  const int64_t nowMs = UnixMillis();
-  RebuildNativeAirGraph(nowMs);
-  if (!EnsureNativeStaticWindows()) return;
+  if (!nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;
   InvalidatePanelSection(nativeSideWindow_, PanelSection::AirGraph);
 }
 

@@ -173,17 +173,6 @@ class Renderer {
     size_t plugRows = 0;
   };
 
-  struct AirGraphProjection {
-    std::vector<AirHistorySample> samples;
-    int64_t cutoff = 0;
-    double co2Min = 0;
-    double co2Max = 0;
-    double temperatureMin = 0;
-    double temperatureMax = 0;
-    double humidityMin = 0;
-    double humidityMax = 0;
-  };
-
   struct DashboardSourceStamp {
     fs::path path;
     std::uintmax_t size = 0;
@@ -255,7 +244,6 @@ class Renderer {
   void DrawEnergySection(HDC dc, const RECT& card);
   void DrawEnergySectionUncached(HDC dc, const RECT& card);
   void DrawEnergySwitchBotSection(HDC dc, const RECT& card);
-  void RebuildNativeAirGraph(int64_t nowMs);
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
   void ReleaseNativePanelSurfaces() noexcept;
@@ -295,7 +283,6 @@ class Renderer {
   HWND nativeMediaWindow_{};
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;
-  AirGraphProjection nativeAirGraph_{};
   StationheadStatus nativeStationhead_{};
   DashboardSnapshot nativeDashboard_{};
   int width_ = 0;

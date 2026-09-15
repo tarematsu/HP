@@ -30,11 +30,11 @@ HBRUSH CachedSolidBrush(COLORREF color) {
   return entry->second;
 }
 
-HPEN CachedSolidPen(int width, COLORREF color) {
-  static std::map<std::pair<int, COLORREF>, HPEN> cache;
-  const auto key = std::make_pair(width, color);
+HPEN CachedPen(int style, int width, COLORREF color) {
+  static std::map<std::tuple<int, int, COLORREF>, HPEN> cache;
+  const auto key = std::make_tuple(style, width, color);
   auto [entry, inserted] = cache.try_emplace(key, nullptr);
-  if (inserted) entry->second = CreatePen(PS_SOLID, width, color);
+  if (inserted) entry->second = CreatePen(style, width, color);
   return entry->second;
 }
 
@@ -189,9 +189,9 @@ bool IsWeatherNightHour(int hour) {
 template <typename ValueOf>
 void DrawHistoryLine(HDC dc, const std::vector<AirHistorySample>& samples, const RECT& plot,
                      int64_t cutoff, int64_t spanMs, double minValue, double maxValue,
-                     COLORREF color, int width, ValueOf&& valueOf) {
+                     COLORREF color, int width, ValueOf&& valueOf, int style = PS_SOLID) {
   if (samples.empty() || maxValue <= minValue) return;
-  HGDIOBJ previousPen = SelectObject(dc, CachedSolidPen(width, color));
+  HGDIOBJ previousPen = SelectObject(dc, CachedPen(style, width, color));
   bool started = false;
   for (const auto& sample : samples) {
     const double value = valueOf(sample);
@@ -238,7 +238,7 @@ RECT CardContentRect(const RECT& card) {
 
 void DrawCardOutline(HDC dc, const RECT& rect, int radius) {
   if (rect.right <= rect.left || rect.bottom <= rect.top) return;
-  HGDIOBJ previousPen = SelectObject(dc, CachedSolidPen(1, kWidgetOutline));
+  HGDIOBJ previousPen = SelectObject(dc, CachedPen(PS_SOLID, 1, kWidgetOutline));
   HGDIOBJ previousBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
   RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
   SelectObject(dc, previousBrush);
