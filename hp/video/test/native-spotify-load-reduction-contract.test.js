@@ -32,10 +32,13 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
   assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify layout keeps pre-playback full-size behind native UI and confirmed playback at 1x1', () => {
+test('Spotify layout keeps pre-playback behind the YouTube/TVer panel and confirmed playback at 1x1', () => {
   assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
+  assert.match(layout, /int x = mediaPanelRect\.left;/);
+  assert.match(layout, /int y = mediaPanelRect\.top;/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
@@ -45,11 +48,12 @@ test('Spotify layout keeps pre-playback full-size behind native UI and confirmed
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
 });
 
-test('Spotify recovery uses the full dashboard viewport for trusted CDP input', () => {
+test('Spotify recovery uses the YouTube/TVer panel viewport for trusted CDP input', () => {
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
 });
 
 test('Spotify does not override WebView2 memory target and controller visibility stays true', () => {

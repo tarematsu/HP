@@ -41,15 +41,18 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('Spotify stays full-size behind the dashboard until real playback is confirmed', () => {
+test('Spotify stays exactly behind the YouTube/TVer panel until real playback is confirmed', () => {
   assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
+  assert.match(layout, /int x = mediaPanelRect\.left;/);
+  assert.match(layout, /int y = mediaPanelRect\.top;/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
 });
 
-test('trusted click uses the full-size background viewport and repairs accidental 1x1 placement', () => {
+test('trusted click uses the media-panel background viewport and repairs accidental 1x1 placement', () => {
   assert.match(helper, /bool SpotifyWebViews::ParseNormalizedPoint/);
   assert.match(helper, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
   assert.match(helper, /if \(slot\.playbackConfirmed\) \{[\s\S]*return;/);
@@ -59,18 +62,18 @@ test('trusted click uses the full-size background viewport and repairs accidenta
   assert.match(helper, /PlaceHosts\(\);/);
 });
 
-test('trusted click preflight is minimal and only accepts Spotify Play controls when no media is active', () => {
+test('trusted click preflight ignores unrelated media but refuses a Pause control', () => {
   const preflight = helper.slice(
     helper.indexOf('void SpotifyWebViews::ClickSlotNormalizedPoint'),
     helper.indexOf('UINT SpotifyWebViews::DispatchSpotifyDevToolsClick'),
   );
   assert.match(preflight, /if \(!slot\.timedObserverReady\)/);
   assert.match(preflight, /ArmTimedEndObserver\(slot\)/);
-  assert.match(preflight, /document\.querySelectorAll\('audio, video'\)/);
-  assert.match(preflight, /media\.some\(m=>!m\.ended&&!m\.paused\)/);
+  assert.doesNotMatch(preflight, /document\.querySelectorAll\('audio, video'\)/);
+  assert.doesNotMatch(preflight, /media\.some\(m=>!m\.ended&&!m\.paused\)/);
   assert.match(preflight, /document\.elementFromPoint\(x,y\)/);
   assert.match(preflight, /testid==='play-button'\|\|testid==='control-button-playpause'/);
-  assert.doesNotMatch(preflight, /label\.includes|label==='play'|label==='再生'|一時停止/);
+  assert.match(preflight, /label\.includes\('pause'\)\|\|label\.includes\('一時停止'\)/);
   assert.match(preflight, /runtime&&typeof runtime\.armTrustedStart==='function'/);
   assert.match(preflight, /ExecuteScript\(/);
   assert.match(preflight, /DispatchSpotifyDevToolsClick/);

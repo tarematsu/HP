@@ -24,11 +24,12 @@ test('observer posts one generation-fenced interruption event after target playb
   assert.doesNotMatch(events, /addEventListener\('(?:timeupdate|pause|waiting|stalled)'/);
 });
 
-test('pre-confirmation playback start path has no separate non-target settling branch', () => {
+test('pre-confirmation playback start path has no raw-media or settling branch', () => {
   assert.match(runtime, /if \(!media\.paused\) \{[\s\S]*state\.startPosted && !state\.interrupted[\s\S]*return 'interruption'/);
-  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
-  assert.doesNotMatch(scoped, /return 'wrong'|return 'settling'|currentMatchesTarget/);
-  assert.doesNotMatch(music, /"\\"wrong\\""|"\\"settling\\""/);
+  assert.match(scoped, /button\[data-testid="play-button"\]/);
+  assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
+  assert.doesNotMatch(scoped, /querySelector\('audio'\)|audio\.play\(|direct-play|return 'wrong'|return 'settling'|currentMatchesTarget/);
+  assert.doesNotMatch(music, /"\\"wrong\\""|"\\"settling\\""|"\\"direct-play\\""/);
   assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
   assert.doesNotMatch(music, /ShouldRenavigateUnhealthySlot|lastModeNavigateTick/);
 });

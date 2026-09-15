@@ -2,10 +2,9 @@ namespace hp {
 namespace {
 
 // Minimal playback start path for the already-selected Spotify track page:
-// 1) if AUDIO is playing, wait for the observer;
-// 2) otherwise call AUDIO.play() once per target generation;
-// 3) if playback still has not started on the next reconcile, return the
-//    center of Spotify's native Play control for one trusted CDP click.
+// 1) prefer the target page Play/Pause control over the global player control;
+// 2) if it is Play, return its center for one trusted CDP click;
+// 3) if it is already Pause, wait for observer confirmation.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
@@ -25,6 +24,12 @@ LR"JS(
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
         style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+  };
+  const isPauseControl = element => {
+    const label = ((element.getAttribute('aria-label') ||
+                    element.getAttribute('title')) || '')
+        .replace(/\s+/g, ' ').trim().toLowerCase();
+    return label.includes('pause') || label.includes('一時停止');
   };
 
   const point = element => {
@@ -47,30 +52,13 @@ LR"JS(
     ];
   };
 
-  const audio = document.querySelector('audio');
-  if (audio && !audio.paused && !audio.ended) return true;
-
-  const generation = String(window.__homePanelSpotifyGeneration || '0');
-  if (audio && typeof audio.play === 'function' &&
-      window.__homePanelSpotifyDirectPlayGeneration !== generation) {
-    window.__homePanelSpotifyDirectPlayGeneration = generation;
-    const runtime = window.__homePanelSpotifyMediaObserverRuntime;
-    if (runtime && typeof runtime.armTrustedStart === 'function') {
-      runtime.armTrustedStart(generation);
-    }
-    try {
-      const result = audio.play();
-      if (result && typeof result.catch === 'function') result.catch(() => {});
-      return 'direct-play';
-    } catch (_) {
-      // Synchronous rejection falls through to the trusted Spotify Play button.
-    }
-  }
-
-  const button = Array.from(document.querySelectorAll(
-      'button[data-testid="play-button"], '
-      + 'button[data-testid="control-button-playpause"]'))
-      .find(visible) || null;
+  const pageButton = Array.from(document.querySelectorAll(
+      'button[data-testid="play-button"]')).find(visible) || null;
+  const playerButton = pageButton ? null : Array.from(document.querySelectorAll(
+      'button[data-testid="control-button-playpause"]')).find(visible) || null;
+  const button = pageButton || playerButton;
+  if (!button) return null;
+  if (isPauseControl(button)) return true;
   return point(button);
 })()
 )JS";

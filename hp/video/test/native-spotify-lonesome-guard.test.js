@@ -19,17 +19,21 @@ const routing = readFileSync(
 const click = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 
-test('all configured tracks use the current ManagedTrack and minimal scoped reconcile implementation', () => {
+test('all configured tracks use the current ManagedTrack and CDP-only scoped reconcile implementation', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_lonesome_guard\.inc|RewriteSpotify|#define ExecuteScript/);
   assert.match(music, /const SpotifyWebViews::ManagedTrack\* SpotifyWebViews::CurrentMusicTrack/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(routing, /CurrentMusicTrack\(slot\)/);
   assert.doesNotMatch(routing, /kind = L"music"|trackPath|pagePath/);
-  assert.match(scoped, /document\.querySelector\('audio'\)/);
-  assert.match(scoped, /audio\.play\(\)/);
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
+  assert.match(scoped, /const pageButton =/);
+  assert.match(scoped, /const playerButton = pageButton \? null :/);
+  assert.match(scoped, /const button = pageButton \|\| playerButton/);
+  assert.match(scoped, /if \(isPauseControl\(button\)\) return true/);
+  assert.match(scoped, /return point\(button\)/);
+  assert.doesNotMatch(scoped, /document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
   assert.doesNotMatch(scoped, /now-playing-widget|now-playing-bar|navigator\.mediaSession|targetMatches|targetPlayButton/);
 });
 

@@ -17,17 +17,20 @@ const environment = readFileSync(
 
 test('Spotify confirmed playback keeps a visible 1x1 host without memory-policy COM calls in layout', () => {
   assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
-test('Spotify pre-playback recovery uses the full dashboard viewport behind native UI', () => {
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+test('Spotify pre-playback recovery matches the YouTube/TVer panel behind native UI', () => {
+  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
+  assert.match(layout, /int x = mediaPanelRect\.left;/);
+  assert.match(layout, /int y = mediaPanelRect\.top;/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
 });

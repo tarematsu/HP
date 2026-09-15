@@ -49,10 +49,13 @@ test('status title and confirmation clock come from the page playback observer',
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
-test('active audio only arms observer confirmation and never confirms from DOM labels', () => {
-  assert.match(reconcile, /const audio = document\.querySelector\('audio'\)/);
-  assert.match(reconcile, /audio && !audio\.paused && !audio\.ended\) return true/);
-  assert.doesNotMatch(reconcile, /currentMatchesTarget|mediaState|controlIntent|buttonIntent|aria-label|settling/);
+test('reconcile uses Spotify controls only and leaves confirmation to the observer', () => {
+  assert.match(reconcile, /button\[data-testid="play-button"\]/);
+  assert.match(reconcile, /button\[data-testid="control-button-playpause"\]/);
+  assert.match(reconcile, /if \(isPauseControl\(button\)\) return true/);
+  assert.match(reconcile, /return point\(button\)/);
+  assert.doesNotMatch(reconcile, /querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
+  assert.doesNotMatch(reconcile, /currentMatchesTarget|mediaState|controlIntent|buttonIntent|settling/);
   assert.doesNotMatch(reconcile, /runtime\.scheduleTargetChecks/);
   assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
 
@@ -61,7 +64,7 @@ test('active audio only arms observer confirmation and never confirms from DOM l
   assert.ok(start >= 0 && pointStart > start);
   const confirmation = musicTarget.slice(start, pointStart);
   assert.match(confirmation, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
-  assert.match(confirmation, /kSpotifyDirectPlayConfirmWaitMs/);
+  assert.match(confirmation, /kSpotifyCdpPlayConfirmWaitMs/);
   assert.match(confirmation, /ArmTimedEndObserver\(\*target\)/);
   assert.doesNotMatch(confirmation, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.doesNotMatch(confirmation, /SetMusicCompletionDeadline/);

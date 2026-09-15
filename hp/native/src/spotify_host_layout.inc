@@ -12,6 +12,31 @@ bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
          left.bottom - left.top == right.bottom - right.top;
 }
 
+bool SpotifyMediaPanelRect(HWND parentWindow, RECT* rect) noexcept {
+  if (!parentWindow || !rect) return false;
+  const HWND mediaWindow = FindWindowExW(
+      parentWindow, nullptr, L"HomePanelNativeStaticPanel",
+      L"HomePanelNativeMedia");
+  if (!mediaWindow || !IsWindow(mediaWindow)) return false;
+
+  RECT screenRect{};
+  if (!GetWindowRect(mediaWindow, &screenRect)) return false;
+  POINT topLeft{screenRect.left, screenRect.top};
+  POINT bottomRight{screenRect.right, screenRect.bottom};
+  if (!ScreenToClient(parentWindow, &topLeft) ||
+      !ScreenToClient(parentWindow, &bottomRight)) {
+    return false;
+  }
+
+  RECT clientRect{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
+  if (clientRect.right <= clientRect.left ||
+      clientRect.bottom <= clientRect.top) {
+    return false;
+  }
+  *rect = clientRect;
+  return true;
+}
+
 }  // namespace
 
 void SpotifyWebViews::SetMonitorForeground(bool foreground) noexcept {
@@ -31,6 +56,13 @@ void SpotifyWebViews::PlaceHosts() noexcept {
   const int activeWidth = std::max(1, clientWidth * 3 / 5);
   const int activeHeight = std::max(1, clientHeight * 9 / 10);
 
+  RECT mediaPanelRect = client;
+  SpotifyMediaPanelRect(parentWindow_, &mediaPanelRect);
+  const int mediaPanelWidth =
+      std::max(1L, mediaPanelRect.right - mediaPanelRect.left);
+  const int mediaPanelHeight =
+      std::max(1L, mediaPanelRect.bottom - mediaPanelRect.top);
+
   for (size_t i = 0; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
     if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
@@ -40,19 +72,22 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool compactPlayback =
         slot.playbackConfirmed && CurrentMusicTrack(slot) != nullptr;
 
-    // Keep the player at the dashboard's full viewport behind native content
-    // until real media playback is confirmed. The larger viewport gives Spotify
-    // its normal responsive layout and makes the trusted Play target much less
-    // fragile. Once playback starts, keep the renderer alive at 1x1 until that
-    // target song finishes (including any mid-song ad interruption). Monitor C
-    // remains the explicit full-size foreground inspection mode. Authentication
-    // keeps its existing foreground surface so login remains usable.
-    int x = client.left;
-    int y = client.top;
-    int width = compactPlayback ? 1 : clientWidth;
-    int height = compactPlayback ? 1 : clientHeight;
+    // Keep background Spotify exactly underneath the existing YouTube/TVer
+    // panel before playback is confirmed. This preserves a normal responsive
+    // viewport for trusted CDP clicks without exposing Spotify through gaps in
+    // the surrounding native dashboard. Once playback starts, keep the renderer
+    // alive at 1x1 until that target song finishes (including any mid-song ad
+    // interruption). Monitor C remains the explicit full-size foreground
+    // inspection mode. Authentication keeps its existing foreground surface so
+    // login remains usable.
+    int x = mediaPanelRect.left;
+    int y = mediaPanelRect.top;
+    int width = compactPlayback ? 1 : mediaPanelWidth;
+    int height = compactPlayback ? 1 : mediaPanelHeight;
     HWND insertAfter = HWND_BOTTOM;
     if (monitorForeground_) {
+      x = client.left;
+      y = client.top;
       width = clientWidth;
       height = clientHeight;
       insertAfter = HWND_TOP;

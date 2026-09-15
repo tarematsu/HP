@@ -27,7 +27,7 @@ test('trusted Spotify CDP play click gets a five-second confirmation window end 
   assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayConfirmWaitMs/);
 });
 
-test('direct play and CDP click both use five-second confirmation windows', () => {
-  assert.match(music, /kSpotifyDirectPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+test('playback startup has one CDP confirmation window and no direct-play path', () => {
   assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+  assert.doesNotMatch(music, /kSpotifyDirectPlayConfirmWaitMs|direct-play|DirectPlay/);
 });

@@ -147,19 +147,34 @@ SensorHub::SensorHub(HWND window, AppConfig config, fs::path dataDir, Logger& lo
 SensorHub::~SensorHub() { Stop(); }
 
 void SensorHub::Start() {
-  stopping_ = false;
-  serialThread_ = std::thread([this] {
+  const auto publishFailure = [this]() noexcept {
     try {
-      SerialLoop();
-    } catch (...) {
       log_.Warn(L"Sensor thread stopped unexpectedly");
       {
         std::lock_guard lock(mutex_);
         state_.co2Connected = false;
       }
       if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+    } catch (...) {
     }
-  });
+  };
+
+  stopping_ = false;
+  try {
+    serialThread_ = std::thread([this, publishFailure] {
+      try {
+        SerialLoop();
+      } catch (const std::exception& error) {
+        (void)error;
+        publishFailure();
+      } catch (...) {
+        publishFailure();
+      }
+    });
+  } catch (...) {
+    stopping_ = true;
+    throw;
+  }
 }
 
 void SensorHub::Stop() {

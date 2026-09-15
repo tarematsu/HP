@@ -49,7 +49,7 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('Spotify is full-size behind native UI until playback confirmation and then stays 1x1 through the target song', () => {
+test('Spotify matches the YouTube/TVer panel behind native UI until playback confirmation and then stays 1x1 through the target song', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
@@ -58,10 +58,13 @@ test('Spotify is full-size behind native UI until playback confirmation and then
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
   assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
+  assert.match(layout, /int x = mediaPanelRect\.left;/);
+  assert.match(layout, /int y = mediaPanelRect\.top;/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
-  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*x = client\.left;[\s\S]*y = client\.top;[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
   assert.match(layout, /else if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
   assert.match(layout, /const bool placementChanged = positionChanged \|\| sizeChanged \|\| zOrderChanged/);
