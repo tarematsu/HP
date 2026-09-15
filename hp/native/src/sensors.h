@@ -38,7 +38,6 @@ class SensorHub {
   bool AppendOutbox(const Sample& sample);
   void LoadOutbox();
   bool RewriteOutboxLocked(const std::deque<Sample>& samples);
-  void CompactOutboxLocked();
   std::wstring FindSerialPort();
 
   HWND window_;
@@ -51,7 +50,6 @@ class SensorHub {
   std::deque<Sample> outbox_;
   uint64_t nextSequence_ = 1;
   uint64_t acknowledgedSequence_ = 0;
-  size_t acknowledgedSinceCompaction_ = 0;
   int64_t lastPersistedBucket_ = -1;
   std::atomic<bool> stopping_{false};
   std::thread serialThread_;
