@@ -21,11 +21,15 @@ test('playlist fallback is bounded and event driven', () => {
 
 test('unified runtime owns trusted real-control actions', () => {
   assert.match(runtime, /const arm = \(element, action, cooldownMs\) =>/);
-  assert.match(runtime, /element\.style\.cssText \+=/);
-  assert.match(runtime, /return \[5000, 5000\]/);
+  assert.match(runtime, /getBoundingClientRect\?\.\(\)/);
+  assert.match(runtime, /setProperty\('pointer-events', 'auto', 'important'\)/);
+  assert.match(runtime, /centerX \/ window\.innerWidth/);
+  assert.match(runtime, /centerY \/ window\.innerHeight/);
+  assert.doesNotMatch(runtime, /return \[5000, 5000\]/);
   assert.match(runtime, /arm\(target, 'skip-ad', 600\)/);
   assert.match(runtime, /'play', 1500/);
-  assert.match(runtime, /arm\(target, 'fullscreen', 1200\)/);
+  assert.match(runtime, /arm\(canonical, 'fullscreen', 1200\)/);
+  assert.match(runtime, /fullscreenPattern = \/\(全画面\|fullscreen\|full screen\)\/i/);
 });
 
 test('unified runtime stays player-local and event driven', () => {
