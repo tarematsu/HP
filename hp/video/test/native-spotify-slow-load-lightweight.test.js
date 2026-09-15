@@ -68,7 +68,8 @@ test('pre-playback recovery and confirmed playback share the same 480x270 backgr
   assert.match(layout, /kSpotifyBackgroundHeight = 270/);
   assert.match(layout, /std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
   assert.match(layout, /std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
-  assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.match(layout, /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM;/);
+  assert.doesNotMatch(layout, /else if \(authentication\)|activeWidth|activeHeight/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
