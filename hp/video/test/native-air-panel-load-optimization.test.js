@@ -34,12 +34,11 @@ test('air stats repaint only after user-visible deltas', () => {
   assert.match(panelState, /if \(!repaintAirStats \|\| !nativeDashboardVisible_/);
 });
 
-test('air graph projection advances incrementally for normal five-minute history updates', () => {
+test('air graph uses one rebuild path for five-minute history updates', () => {
   assert.match(airHistory, /kAirHistoryBucketMs = 5LL \* 60 \* 1000/);
-  assert.match(panelState, /const bool appended = history\.size\(\) == nativeAirHistory_\.size\(\) \+ 1/);
-  assert.match(panelState, /const bool rolled = history\.size\(\) == nativeAirHistory_\.size\(\)/);
-  assert.match(panelState, /nativeAirGraph_\.samples\.push_back\(history\.back\(\)\)/);
-  assert.match(panelState, /if \(!incremental \|\| nativeAirGraph_\.samples\.empty\(\)\)/);
+  assert.match(panelState, /nativeAirHistory_ = history;/);
+  assert.match(panelState, /const int64_t nowMs = UnixMillis\(\);\s*RebuildNativeAirGraph\(nowMs\);/);
+  assert.doesNotMatch(panelState, /const bool appended|const bool rolled|incremental/);
 });
 
 test('hidden dashboard suspends native panel timer and air graph rendering work', () => {
