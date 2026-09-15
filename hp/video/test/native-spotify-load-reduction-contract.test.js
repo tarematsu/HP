@@ -107,14 +107,21 @@ test('Spotify page bootstrap performs no CSS or DOM styling reduction', () => {
   assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment/);
 });
 
-test('Spotify resource blocking is completely disabled', () => {
+test('Spotify blocks passive resources but preserves playback and app transport contexts', () => {
   assert.doesNotMatch(spotify, /Network\.setBlockedURLs/);
-  assert.doesNotMatch(spotify, /kSpotifyBlockedDecorativeUrls|kSpotifyUnblockedDecorativeUrls/);
-  assert.doesNotMatch(spotify, /SetSpotifyDecorativeResourceBlocking/);
-  assert.doesNotMatch(spotify, /AddWebResourceRequestedFilter/);
-  assert.doesNotMatch(spotify, /CreateWebResourceResponse/);
+  assert.match(spotify, /AddWebResourceRequestedFilter/);
+  assert.match(spotify, /CreateWebResourceResponse/);
+  assert.match(spotify, /target->loginPage[\s\S]*return S_OK/);
+  assert.match(spotifyHeader, /EventRegistrationToken webResourceRequestedToken/);
+  for (const context of ['IMAGE', 'FONT', 'TEXT_TRACK', 'MANIFEST', 'PING', 'CSP_VIOLATION_REPORT']) {
+    assert.match(spotify, new RegExp(`COREWEBVIEW2_WEB_RESOURCE_CONTEXT_${context}`));
+  }
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
+  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST/);
+  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH/);
+  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET/);
+  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET/);
 });
 
 test('Spotify trims browser UI services without disabling script or web messages', () => {
