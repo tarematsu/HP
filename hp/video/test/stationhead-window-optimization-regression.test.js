@@ -135,7 +135,7 @@ test('fast-path helpers validate controller size and the expected render state t
   const activeAuthMatches = section(
     layoutSource,
     'bool ActiveAuthSurfaceMatches(',
-    'bool ConfiguresSecondaryStationheadWindow(',
+    'RECT ResolveStationheadWorkspaceBounds(',
   );
   assert.match(activeAuthMatches, /playbackBackground/);
   assert.match(activeAuthMatches, /WindowClientSizeMatches\(hostWindow, 1, 1\)/);
