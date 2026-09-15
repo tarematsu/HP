@@ -39,7 +39,7 @@ void StationheadPlayer::ConfigureWebView() {
     COREWEBVIEW2_COLOR background{255, 7, 17, 28};
     controller2->put_DefaultBackgroundColor(background);
   }
-  ApplyMediaWebViewFeaturePolicy(webview_.Get(), true);
+  ApplyMediaWebViewFeaturePolicy(controller_.Get(), webview_.Get(), true);
   ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_,
                                    resourceBlockingArmed_, resourceRequestedToken_);
 
@@ -624,7 +624,8 @@ void StationheadPlayer::ConfigureAuthWebView() {
     COREWEBVIEW2_COLOR background{255, 7, 17, 28};
     controller2->put_DefaultBackgroundColor(background);
   }
-  ApplyMediaWebViewFeaturePolicy(authWebview_.Get(), true);
+  ApplyMediaWebViewFeaturePolicy(
+      authController_.Get(), authWebview_.Get(), true);
 
   const HRESULT authNavigationResult = authWebview_->add_NavigationCompleted(
       Callback<ICoreWebView2NavigationCompletedEventHandler>(

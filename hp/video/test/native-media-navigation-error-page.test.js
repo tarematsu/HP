@@ -12,7 +12,7 @@ const policy = readFileSync(
 );
 
 test('media panel hides the built-in WebView error page while retrying', () => {
-  assert.match(host, /ApplyMediaWebViewFeaturePolicy\(webview_\.Get\(\), false\)/);
+  assert.match(host, /controller_\.Get\(\), webview_\.Get\(\), false/);
   assert.match(policy, /settings->put_IsBuiltInErrorPageEnabled\(FALSE\)/);
   assert.match(host, /if \(FAILED\(args->get_IsSuccess\(&succeeded\)\) \|\| !succeeded\)/);
   assert.match(

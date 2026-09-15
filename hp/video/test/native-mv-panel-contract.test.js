@@ -205,7 +205,7 @@ test('media WebView blocks image requests while leaving fonts and playback resou
   assert.match(fullResourceArguments, /AutofillServerCommunication/);
   assert.doesNotMatch(fullResourceArguments, /BackForwardCache|HardwareSecureDecryption/);
 
-  assert.match(mediaHost, /ApplyMediaWebViewFeaturePolicy\(webview_\.Get\(\), false\)/);
+  assert.match(mediaHost, /controller_\.Get\(\), webview_\.Get\(\), false/);
   assert.match(webviewPolicy, /put_IsScriptEnabled\(TRUE\)/);
   assert.match(webviewPolicy, /put_AreDevToolsEnabled\(FALSE\)/);
   assert.doesNotMatch(lifecycle, /StopNativeMvPlayback/);

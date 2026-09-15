@@ -125,7 +125,7 @@ test('Spotify resource blocking is completely disabled', () => {
 });
 
 test('Spotify trims browser UI services without disabling script or web messages', () => {
-  assert.match(spotify, /ApplyMediaWebViewFeaturePolicy\(slot\.webview\.Get\(\), true\)/);
+  assert.match(spotify, /slot\.controller\.Get\(\), slot\.webview\.Get\(\), true/);
   assert.match(webviewPolicy, /put_AreDefaultScriptDialogsEnabled\(FALSE\)/);
   assert.match(webviewPolicy, /put_IsPasswordAutosaveEnabled\(TRUE\)/);
   assert.match(webviewPolicy, /put_IsGeneralAutofillEnabled\(TRUE\)/);

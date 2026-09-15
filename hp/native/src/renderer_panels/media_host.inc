@@ -252,7 +252,8 @@ class NativeMediaPanelHost final {
         COREWEBVIEW2_COLOR background{255, 0, 0, 0};
         controller2->put_DefaultBackgroundColor(background);
       }
-      ApplyMediaWebViewFeaturePolicy(webview_.Get(), false);
+      ApplyMediaWebViewFeaturePolicy(
+          controller_.Get(), webview_.Get(), false);
 
       const auto alive = alive_;
       webview_->AddWebResourceRequestedFilter(

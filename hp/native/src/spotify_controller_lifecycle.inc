@@ -91,7 +91,8 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
       COREWEBVIEW2_COLOR background{255, 0, 0, 0};
       controller2->put_DefaultBackgroundColor(background);
     }
-    ApplyMediaWebViewFeaturePolicy(slot.webview.Get(), true);
+    ApplyMediaWebViewFeaturePolicy(
+        slot.controller.Get(), slot.webview.Get(), true);
 
     Slot* const target = &slot;
     const auto alive = alive_;
