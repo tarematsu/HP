@@ -180,7 +180,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       ? authOffscreen
       : StationheadBackgroundBounds(workspaceBounds);
   const RECT playbackHostBounds = playbackForeground ? workspaceBounds : offscreen;
-  const RECT authHostBounds = showAuth ? workspaceBounds : offscreen;
+  const RECT authHostBounds = showAuth ? workspaceBounds : authOffscreen;
   const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
   const HWND authPlacement = showAuth ? HWND_TOP : HWND_BOTTOM;
 
