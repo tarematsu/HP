@@ -20,17 +20,19 @@ LR"JS(
     return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
   });
 
-  if (hasVisibleLoginPrompt()) return;
+  if (hasVisibleLoginPrompt()) {
+    if (state) state.fullscreenDirty = true;
+    return;
+  }
   if (document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement) {
     if (state) state.fullscreenDirty = false;
     return;
   }
 
-  // Never depend on requestFullscreen() from page script. If the trusted CDP
-  // click did not enter fullscreen, mark the action dirty again and wake the
-  // native watchdog so it can locate the real control and dispatch another
-  // trusted pointer click while the WebView remains in the background.
+  // Never depend on a page-script fullscreen API. If the trusted CDP click did
+  // not enter fullscreen, mark the action dirty again and wake the native
+  // watchdog so it can dispatch another trusted pointer click in background.
   if (state) state.fullscreenDirty = true;
   try { window.chrome?.webview?.postMessage('homepanel:tver-wake'); }
   catch (_) {}
