@@ -15,7 +15,7 @@ test('YouTube startup normally lands on cloud-resolved watch item', () => {
   assert.match(reliablePlayAll, /ytd-playlist-video-renderer a#thumbnail/);
   assert.match(reliablePlayAll, /url\.searchParams\.set\('list', list\)/);
   assert.match(reliablePlayAll, /location\.assign\(url\.href\)/);
-  assert.match(composition, /kNativeMediaYoutubeReliablePlayAllScript/);
+  assert.match(mediaBase, /kNativeMediaPlayAllScript = kNativeMediaYoutubeReliablePlayAllScript/);
 });
 
 test('paused playback recovers through direct play then trusted Play', () => {
