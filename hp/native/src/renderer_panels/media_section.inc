@@ -251,11 +251,8 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     return NativeMediaWebViewSourceContains(webview, L"tver.jp/")
         ? kNativeMediaTverUnexpectedPageScript : kNativeMediaNoopScript;
   }
-  if (script == kNativeMediaPlayAllScript) return kNativeMediaYoutubeReliablePlayAllScript;
-  if (script == kNativeMediaYoutubeWatchdogScript) {
+  if (script == kNativeMediaYoutubeWatchdogScript)
     NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
-    return kNativeMediaYoutubeControlRecoveryScript;
-  }
   return script;
 }
 
