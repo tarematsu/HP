@@ -49,10 +49,14 @@ test('status title and confirmation clock come from the page playback observer',
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
-test('active audio only arms observer confirmation and never confirms from DOM labels', () => {
+test('reconcile UI state guides Play recovery while observer remains the confirmation source', () => {
+  assert.match(reconcile, /const pagePlay =/);
+  assert.match(reconcile, /isPauseControl\(pagePlay\)\) return true/);
+  assert.match(reconcile, /return point\(pagePlay\)/);
   assert.match(reconcile, /const audio = document\.querySelector\('audio'\)/);
-  assert.match(reconcile, /audio && !audio\.paused && !audio\.ended\) return true/);
-  assert.doesNotMatch(reconcile, /currentMatchesTarget|mediaState|controlIntent|buttonIntent|aria-label|settling/);
+  assert.match(reconcile, /audio && !audio\.paused && !audio\.ended\) return 'observing'/);
+  assert.match(reconcile, /aria-label/);
+  assert.doesNotMatch(reconcile, /currentMatchesTarget|mediaState|controlIntent|buttonIntent|settling/);
   assert.doesNotMatch(reconcile, /runtime\.scheduleTargetChecks/);
   assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
 
