@@ -225,6 +225,8 @@ target_precompile_headers(HomePanel PRIVATE
 target_precompile_headers(HomePanel PRIVATE
   src/sh_profile_reuse_policy_begin.h)
 target_precompile_headers(HomePanel PRIVATE
+  src/sh_compact_runtime_script.h)
+target_precompile_headers(HomePanel PRIVATE
   src/sh_track_boundary_message_policy.h)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_profile_reuse_policy_end.h)
