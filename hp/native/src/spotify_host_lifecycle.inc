@@ -92,7 +92,6 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.hostLayoutRect = {};
   slot.hostLayoutInsertAfter = nullptr;
   slot.hostLayoutApplied = false;
-  slot.hostLayoutReducedZoomApplied = false;
   slot.environment.Reset();
   if (slot.hostWindow && IsWindow(slot.hostWindow)) DestroyWindow(slot.hostWindow);
   slot.hostWindow = nullptr;
