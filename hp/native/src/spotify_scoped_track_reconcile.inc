@@ -54,16 +54,12 @@ LR"JS(
 
   const pageButton = Array.from(document.querySelectorAll(
       'button[data-testid="play-button"]')).find(visible) || null;
-  if (pageButton) {
-    if (isPauseControl(pageButton)) return true;
-    return point(pageButton);
-  }
-
-  const playerButton = Array.from(document.querySelectorAll(
+  const playerButton = pageButton ? null : Array.from(document.querySelectorAll(
       'button[data-testid="control-button-playpause"]')).find(visible) || null;
-  if (!playerButton) return null;
-  if (isPauseControl(playerButton)) return true;
-  return point(playerButton);
+  const button = pageButton || playerButton;
+  if (!button) return null;
+  if (isPauseControl(button)) return true;
+  return point(button);
 })()
 )JS";
 
