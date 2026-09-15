@@ -28,13 +28,15 @@ test('all configured tracks use the current ManagedTrack and CDP-only scoped rec
   assert.doesNotMatch(routing, /kind = L"music"|trackPath|pagePath/);
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /const pageButton =/);
-  assert.match(scoped, /const playerButton = pageButton \? null :/);
-  assert.match(scoped, /const button = pageButton \|\| playerButton/);
-  assert.match(scoped, /if \(isPauseControl\(button\)\) return true/);
-  assert.match(scoped, /return point\(button\)/);
-  assert.doesNotMatch(scoped, /document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
-  assert.doesNotMatch(scoped, /now-playing-widget|now-playing-bar|navigator\.mediaSession|targetMatches|targetPlayButton/);
+  assert.match(scoped, /const pageButtons =/);
+  assert.match(scoped, /const visiblePageButton = pageButtons\.find\(visible\)/);
+  assert.match(scoped, /pageButtons\.some\(isPauseControl\)/);
+  assert.match(scoped, /const playerPause = playerButtons\.find\(isPauseControl\)/);
+  assert.match(scoped, /playerPause && currentTrackMatchesTarget\(\)/);
+  assert.match(scoped, /return point\(visiblePageButton\)/);
+  assert.doesNotMatch(scoped, /point\(playerPause\)|document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
+  assert.match(scoped, /now-playing-widget|now-playing-bar/);
+  assert.match(scoped, /navigator\.mediaSession/);
 });
 
 test('track reconcile never forces repeat-one and completion remains one native deadline', () => {
@@ -67,6 +69,7 @@ test('wrong target URL is corrected only by scheduler-owned target navigation', 
   assert.match(music, /if \(!SlotMatchesMusicTarget\(slot\)\) \{\s*NavigateMusicTarget\(slot\);\s*return;/);
   assert.match(scoped, /location\.pathname === targetPath/);
   assert.match(scoped, /location\.pathname\.endsWith\(targetPath\)/);
-  assert.doesNotMatch(scoped, /a\[href\*="\/track\/"\]|tracklist-row|spotify:playing|spotify:not-playing/);
+  assert.match(scoped, /currentTrackMatchesTarget/);
+  assert.doesNotMatch(scoped, /tracklist-row|spotify:playing|spotify:not-playing/);
   assert.doesNotMatch(scoped, /NavigateMusicTarget|location\.assign|location\.replace/);
 });
