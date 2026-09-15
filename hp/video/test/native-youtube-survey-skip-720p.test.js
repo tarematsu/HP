@@ -36,9 +36,13 @@ test('YouTube surveys stay inside active ad handling', () => {
 
 test('ad skip and fullscreen use verified real controls without a fixed wait', () => {
   assert.match(runtime, /arm\(target, 'skip-ad', 600\)/);
-  assert.match(runtime, /return arm\(target, 'fullscreen', 1200\)/);
+  assert.match(runtime, /arm\(canonical, 'fullscreen', 1200\)/);
+  assert.match(runtime, /return arm\(fallback, 'fullscreen', 1200\)/);
   assert.doesNotMatch(runtime, /fullscreenSettleMs|fullscreenReadyAt|adFullscreenReadyAt/);
-  assert.match(runtime, /return \[5000, 5000\]/);
+  assert.match(runtime, /getBoundingClientRect\?\.\(\)/);
+  assert.match(runtime, /centerX \/ window\.innerWidth/);
+  assert.match(runtime, /centerY \/ window\.innerHeight/);
+  assert.doesNotMatch(runtime, /return \[5000, 5000\]/);
   assert.doesNotMatch(runtime, /requestFullscreen|webkitRequestFullscreen/);
 });
 
