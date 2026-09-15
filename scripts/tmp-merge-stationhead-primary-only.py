@@ -16,34 +16,8 @@ def regex_once(text, pattern, repl, label):
     return out
 
 
-p = Path('hp/native/src/sh_layout.cpp')
-s = p.read_text(encoding='utf-8')
-s = regex_once(
-    s,
-    r'bool ConfiguresSecondaryStationheadWindow\(const StationheadConfig& config\) noexcept \{[\s\S]*?\n\}\n\nRECT ResolveStationheadWorkspaceBounds\(StationheadRole role,\n                                        const StationheadConfig& config,\n                                        HWND parent,\n                                        const RECT& requested\) noexcept \{\n  if \(role == StationheadRole::Secondary \|\| ConfiguresSecondaryStationheadWindow\(config\) \|\|\n      !parent \|\| !IsWindow\(parent\)\) return requested;',
-    'RECT ResolveStationheadWorkspaceBounds(HWND parent,\n                                        const RECT& requested) noexcept {\n  if (!parent || !IsWindow(parent)) return requested;',
-    'workspace resolver',
-)
-s = replace_once(
-    s,
-    '  hostWindow_ = IsSecondary()\n      ? CreateStationheadChildHost(window_, L"HomePanelSecondaryStationheadHost", L"SecondaryStationheadHost", bounds_)\n      : CreateStationheadChildHost(window_, L"HomePanelStationheadHost", L"StationheadHost", bounds_);',
-    '  hostWindow_ = CreateStationheadChildHost(\n      window_, L"HomePanelStationheadHost", L"StationheadHost", bounds_);',
-    'playback host',
-)
-s = replace_once(
-    s,
-    '  authHostWindow_ = IsSecondary()\n      ? CreateStationheadChildHost(window_, L"HomePanelSecondarySpotifyAuthHost", L"SecondarySpotifyAuthHost", bounds_)\n      : CreateStationheadChildHost(window_, L"HomePanelSpotifyAuthHost", L"SpotifyAuthHost", bounds_);',
-    '  authHostWindow_ = CreateStationheadChildHost(\n      window_, L"HomePanelSpotifyAuthHost", L"SpotifyAuthHost", bounds_);',
-    'auth host',
-)
-s = replace_once(
-    s,
-    '  const RECT resolved = ResolveStationheadWorkspaceBounds(role_, config_, window_, bounds);\n',
-    '  const RECT resolved = ResolveStationheadWorkspaceBounds(window_, bounds);\n',
-    'SetBounds resolver',
-)
-p.write_text(s, encoding='utf-8')
-
+# sh_layout.cpp already auto-merges the primary-only architecture with main's
+# 480x270 recovery surface. Only the policy file needs conflict reconstruction.
 p = Path('hp/native/src/sh_track_boundary_message_policy.h')
 s = p.read_text(encoding='utf-8')
 s = replace_once(
@@ -145,4 +119,17 @@ s = s.replace(
     '// The page-side detector is the single source of in-page interaction state for\n// both A and B. It already raises the existing login-required message when a\n',
     '// The page-side detector is the single source of in-page interaction state.\n// It already raises the existing login-required message when a\n',
 )
+
+# Main #1046 intentionally resets recovery state before the 50-minute reload.
+required = [
+    "return 50 * 60'000;",
+    'audioPlayingSinceAt_.store(0, std::memory_order_relaxed);',
+    'audioLossPlaybackObserved_ = false;',
+    'SetStartupBounds();',
+    'NavigateCurrentUrl(nowMs, L"50-minute periodic refresh");',
+]
+for marker in required:
+    if marker not in s:
+        raise RuntimeError(f'missing preserved 50-minute recovery marker: {marker}')
+
 p.write_text(s, encoding='utf-8')
