@@ -157,17 +157,13 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (video?.error || player.classList.contains('ytp-error')) return 'reload';
 
   const now = Date.now();
-  const fullscreenSettleMs = 1500;
   const armFullscreen = () => {
     const target = player.querySelector('.ytp-fullscreen-button');
     return arm(target, 'fullscreen', 1200);
   };
 
   if (ad()) {
-    if (!state.adActive) {
-      state.adActive = true;
-      state.adFullscreenReadyAt = now + fullscreenSettleMs;
-    }
+    state.adActive = true;
     const submitPattern = /^(送信|回答を送信|submit|send)$/i;
     for (const root of player.querySelectorAll(`${surveySelector},[role="dialog"]`)) {
       if (!valid(root)) continue;
@@ -187,7 +183,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       }
     }
 
-    if (!fullscreen() && now >= state.adFullscreenReadyAt) {
+    if (!fullscreen()) {
       const action = armFullscreen();
       if (action) return action;
     }
@@ -210,7 +206,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (state.videoKey !== videoKey) {
     Object.assign(state, {
       videoKey, qualityApplied: false, captionsApplied: false,
-      fullscreenApplied: false, fullscreenReadyAt: now + fullscreenSettleMs,
+      fullscreenApplied: false,
       pausedSince: 0, lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
     });
   }
@@ -297,11 +293,10 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return null;
   }
   if (state.fullscreenApplied) return null;
-  if (now < state.fullscreenReadyAt) {
-    recheck();
-    return 'recovery';
-  }
-  return armFullscreen();
+  const fullscreenAction = armFullscreen();
+  if (fullscreenAction) return fullscreenAction;
+  recheck();
+  return 'recovery';
 })()
 )JS";
 }  // namespace
