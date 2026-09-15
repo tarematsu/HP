@@ -1,0 +1,97 @@
+name: Audit and repair Stationhead 24h facts
+
+on:
+  schedule:
+    - cron: "0 0,12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stationhead-24h-facts-audit-repair
+  cancel-in-progress: false
+
+jobs:
+  audit-repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FACTS_DATABASE_NAME: stationhead-minute
+      BUDDIES_DATABASE_NAME: stationhead-buddies
+      CHANNEL_ID: '318'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          show-progress: false
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --no-audit --no-fund --ignore-scripts
+
+      - name: Audit last 24 hours
+        id: audit
+        run: node worker/scripts/audit-facts-24h.mjs
+
+      - name: Export matching Buddies source window
+        if: steps.audit.outputs.needs_repair == 'true'
+        env:
+          WINDOW_START_MS: ${{ steps.audit.outputs.window_start_ms }}
+          WINDOW_END_MS: ${{ steps.audit.outputs.window_end_ms }}
+        run: node worker/scripts/export-buddies-24h.mjs
+
+      - name: Reconstruct facts locally from Buddies DB
+        if: steps.audit.outputs.needs_repair == 'true'
+        run: >-
+          python scripts/rebuild-minute-facts-from-buddies.py
+          --snapshots-json .facts-24h-repair/snapshots.json
+          --comments-json .facts-24h-repair/comments.json
+          --out-dir .facts-24h-repair/generated
+          --now-ms ${{ steps.audit.outputs.window_end_ms }}
+          --recent-guard-ms 0
+
+      - name: Upload source-verified reconstruction
+        if: steps.audit.outputs.needs_repair == 'true'
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          chunks=(../.facts-24h-repair/generated/minute-facts-*.sql)
+          for chunk in "${chunks[@]}"; do
+            echo "Uploading $(basename "$chunk")"
+            npx wrangler d1 execute "$FACTS_DATABASE_NAME" --remote --yes --file "$chunk"
+          done
+
+      - name: Verify repaired 24-hour window
+        if: steps.audit.outputs.needs_repair == 'true'
+        id: verify
+        env:
+          AUDIT_WINDOW_START_MS: ${{ steps.audit.outputs.window_start_ms }}
+          AUDIT_WINDOW_END_MS: ${{ steps.audit.outputs.window_end_ms }}
+        run: node worker/scripts/audit-facts-24h.mjs
+
+      - name: Report source gaps that cannot be reconstructed
+        if: steps.audit.outputs.needs_repair == 'true' && steps.verify.outputs.needs_repair == 'true'
+        run: |
+          echo "::warning title=Unrecoverable minute gaps::Some 24-hour minute buckets remain absent after source-verified Buddies DB reconstruction. The source window did not contain enough data to reconstruct them safely."
+          echo "- Remaining gaps after Buddies DB reconstruction are source-unavailable and were not fabricated." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary source data
+        if: always()
+        run: rm -rf .facts-24h-repair
