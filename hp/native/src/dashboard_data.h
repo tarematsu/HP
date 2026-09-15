@@ -17,13 +17,6 @@ struct OctopusProfileData {
   double previousTotal = std::numeric_limits<double>::quiet_NaN();
 };
 
-struct SwitchBotDeviceData {
-  std::wstring name;
-  std::wstring state;
-
-  bool operator==(const SwitchBotDeviceData&) const = default;
-};
-
 struct DashboardSectionRevisions {
   uint64_t weather = 0;
   uint64_t octopus = 0;
@@ -37,7 +30,7 @@ struct DashboardSnapshot {
   std::wstring currentEnergyLabel = L"今週";
   std::wstring previousEnergyLabel = L"先週";
   std::vector<OctopusProfileData> octopusProfile;
-  std::vector<SwitchBotDeviceData> switchBotDevices;
+  std::vector<std::wstring> switchBotDevices;
 
   // Source-version-backed revisions let unchanged native sections reuse their
   // already-materialized data without stringifying or hashing whole JSON objects.
@@ -47,6 +40,6 @@ struct DashboardSnapshot {
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
                             const DashboardSnapshot* previous = nullptr);
 bool ParseSwitchBotDevices(const std::string& text,
-                           std::vector<SwitchBotDeviceData>& output);
+                           std::vector<std::wstring>& output);
 
 }  // namespace hp

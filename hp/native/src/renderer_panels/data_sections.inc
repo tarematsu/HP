@@ -276,9 +276,7 @@ void Renderer::DrawEnergySwitchBotSection(HDC dc, const RECT& card) {
       const int left = plugRowLeft + plugColumn * (plugColumnWidth + plugColumnGap);
       const int top = plugRect.top + plugRow * (plugLineHeight + plugRowGap);
       RECT deviceRect{left, top, left + plugColumnWidth, top + plugLineHeight};
-      const std::wstring deviceText = nativeDashboard_.switchBotDevices[i].name + L" " +
-                                      nativeDashboard_.switchBotDevices[i].state;
-      DrawTextInRect(dc, deviceText, deviceRect,
+      DrawTextInRect(dc, nativeDashboard_.switchBotDevices[i], deviceRect,
                      DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
     }
   }
