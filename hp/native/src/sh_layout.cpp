@@ -145,23 +145,25 @@ struct StationheadSurfacePolicy {
 };
 
 constexpr StationheadSurfacePolicy ResolveStationheadSurfacePolicy(
-    StationheadTabKind selectedTab, bool authSurfaceReady) noexcept {
+    StationheadTabKind selectedTab, bool authSurfaceReady,
+    bool loginRequired) noexcept {
   const bool authSelected = selectedTab == StationheadTabKind::Auth;
-  const bool playbackSelected = selectedTab == StationheadTabKind::Stationhead;
+  const bool playbackSelected =
+      selectedTab == StationheadTabKind::Stationhead && loginRequired;
   return {authSelected && authSurfaceReady, playbackSelected, authSelected};
 }
 
-static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false).showAuth);
-static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false).showPlayback);
-static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false).hidePlayback);
-static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true).showAuth);
-static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true).showPlayback);
-static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true).hidePlayback);
-static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, false).showAuth);
-static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, false).hidePlayback);
-static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true).showAuth);
-static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true).showPlayback);
-static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true).hidePlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false, false).showAuth);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false, false).showPlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::None, false, false).hidePlayback);
+static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true, false).showAuth);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true, false).showPlayback);
+static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, true, false).hidePlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, false, false).showAuth);
+static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Auth, false, false).hidePlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true, false).showPlayback);
+static_assert(ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true, true).showPlayback);
+static_assert(!ResolveStationheadSurfacePolicy(StationheadTabKind::Stationhead, true, true).hidePlayback);
 
 void ApplyStationheadChildLayout(HWND hostWindow,
                                  HWND authHostWindow,
@@ -357,7 +359,7 @@ void StationheadPlayer::SetVisible(bool visible) {
         WindowContainsFocus(authHostWindow_)) {
       return;
     }
-  } else if (viewVisible_ &&
+  } else if (loginRequired_ && viewVisible_ &&
              SurfaceMatches(hostWindow_, controller_.Get(), bounds_, HWND_TOP) &&
              BackgroundAuthSurfaceMatches(
                  authHostWindow_, authController_.Get(), bounds_) &&
@@ -374,7 +376,8 @@ void StationheadPlayer::SetVisible(bool visible) {
         !WindowContainsFocus(authHostWindow_)) {
       authController_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
     }
-  } else if (controller_ && hostWindow_ && !WindowContainsFocus(hostWindow_)) {
+  } else if (loginRequired_ && controller_ && hostWindow_ &&
+             !WindowContainsFocus(hostWindow_)) {
     controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
   }
 }
@@ -388,7 +391,8 @@ void StationheadPlayer::LayoutControllers() {
 
   const bool authSurfaceReady = authController_ && authWebview_;
   const StationheadSurfacePolicy policy =
-      ResolveStationheadSurfacePolicy(selectedTab_, authSurfaceReady);
+      ResolveStationheadSurfacePolicy(
+          selectedTab_, authSurfaceReady, loginRequired_);
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
                               policy.showAuth,
@@ -397,8 +401,7 @@ void StationheadPlayer::LayoutControllers() {
 
   const bool monitorForeground = StationheadMonitorForeground();
   std::lock_guard lock(mutex_);
-  status_.visible = policy.showAuth || policy.showPlayback ||
-                    (selectedTab_ == StationheadTabKind::None && monitorForeground);
+  status_.visible = policy.showAuth || policy.showPlayback || monitorForeground;
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {
@@ -449,7 +452,7 @@ HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
 }
 
 bool StationheadPlayer::NeedsInteractiveWindow() const {
-  return selectedTab_ == StationheadTabKind::Stationhead ||
+  return (selectedTab_ == StationheadTabKind::Stationhead && loginRequired_) ||
          selectedTab_ == StationheadTabKind::Auth || spotifyAuthorization_;
 }
 
