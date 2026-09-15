@@ -37,14 +37,17 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
+    const bool backgroundWork = !SlotStateIsHealthy(slot.state);
 
-    // Keep every background Spotify state on the same 480x270 native surface,
-    // but park the child window completely outside the parent client area.
-    // Monitor C is the only mode that returns it onscreen and expands it.
+    // Match the Stationhead placement model: startup/navigation/recovery work
+    // keeps a real 480x270 surface inside the client area behind the dashboard,
+    // confirmed authentication moves that surface to the foreground, and stable
+    // playback is parked completely outside the client area. Monitor C is the
+    // only mode that expands Spotify to the full client area.
     const int x = client.left;
     const int y = client.top;
-    int hostX = client.right + 1;
-    int hostY = client.bottom + 1;
+    int hostX = backgroundWork || authentication ? x : client.right + 1;
+    int hostY = backgroundWork || authentication ? y : client.bottom + 1;
     int width = std::min(kSpotifyBackgroundWidth, clientWidth);
     int height = std::min(kSpotifyBackgroundHeight, clientHeight);
     HWND insertAfter = authentication ? HWND_TOP : HWND_BOTTOM;
