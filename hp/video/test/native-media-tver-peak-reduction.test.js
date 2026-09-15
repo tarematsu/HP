@@ -70,7 +70,7 @@ test('TVer playback rate is initialized once per current video', () => {
 
 test('TVer quality discovery is event driven and player-local', () => {
   assert.doesNotMatch(loop, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
-  assert.match(loop, /if \(!state\.lowQualitySet\)/);
+  assert.match(loop, /!state\.lowQualitySet && !state\.qualityAttemptExhausted/);
   assert.match(loop, /const root = playerRootFor\(video\)/);
   assert.match(loop, /for \(const element of root\.querySelectorAll\(/);
   assert.match(loop, /state\.lowQualitySet = true/);
@@ -86,7 +86,7 @@ test('TVer fullscreen is consumed once per current video', () => {
 test('healthy TVer watchdog avoids page-wide control enumeration', () => {
   assert.match(watchdog, /if \(!video \|\| video\.paused\)/);
   assert.match(watchdog, /const playerControls = \(\) =>/);
-  assert.match(watchdog, /const root = playerRootFor\(video\)/);
+  assert.match(watchdog, /playerRootFor\(video\)\?\.querySelectorAll/);
   assert.doesNotMatch(
     watchdog,
     /Array\.from\(document\.querySelectorAll\(\s*'button, \[role="button"\], a, \[aria-label\], \[title\]'/,
