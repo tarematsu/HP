@@ -130,7 +130,7 @@ class App {
   bool rendererStarted_ = false;
   bool stationheadStarted_ = false;
   bool spotifyStarted_ = false;
-  int64_t stationheadStartedAt_ = 0;
+  MonotonicElapsedTimestamp stationheadStartedAt_;
   bool cloudStarted_ = false;
   bool startupUpdateScheduled_ = false;
   bool stationheadPlaybackFallbackActive_ = false;
