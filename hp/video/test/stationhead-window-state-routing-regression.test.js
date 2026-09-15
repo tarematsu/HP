@@ -40,12 +40,19 @@ test('initial startup explicitly arms the in-client background preview', () => {
 });
 
 test('50-minute refresh re-arms preview and stable audio returns it offscreen', () => {
+  const periodic = section(
+    handles,
+    'bool IsStationheadPeriodicRefresh(',
+    'void SyncStationheadBackgroundPreview(',
+  );
+  assert.match(periodic, /status\.navigating && status\.detail == kStationheadPeriodicRefreshDetail/);
+
   const sync = section(
     handles,
     'void SyncStationheadBackgroundPreview(',
     'static_assert(',
   );
-  assert.match(sync, /status\.navigating && status\.detail == kStationheadPeriodicRefreshDetail/);
+  assert.match(sync, /IsStationheadPeriodicRefresh\(status\)/);
   assert.match(sync, /SetStationheadBackgroundPreview\(true\)/);
   assert.match(sync, /player\.AudioPlaying\(\) && !status\.navigating/);
   assert.match(sync, /!status\.loginRequired && !status\.spotifyAuthorization/);
