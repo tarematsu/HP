@@ -47,7 +47,7 @@ void SpotifyWebViews::Start() noexcept {
   }
 
   Resize();
-  StartAutonomousSchedule();
+  StartAutonomousSchedule(GetTickCount64());
 }
 
 void SpotifyWebViews::RecomputeForeground() noexcept {
@@ -126,11 +126,8 @@ void SpotifyWebViews::Shutdown() noexcept {
     CloseThreadpoolTimer(schedulerTimer_);
     schedulerTimer_ = nullptr;
   }
-  schedulerWakePosted_.store(false, std::memory_order_release);
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
-  schedulerCursor_ = 0;
-  scheduleStartTick_ = 0;
 }
 
 LRESULT CALLBACK SpotifyWebViews::HostWndProc(
