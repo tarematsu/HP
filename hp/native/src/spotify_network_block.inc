@@ -10,17 +10,15 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     schedulerWakePosted_.store(false, std::memory_order_release);
     if (alive_) alive_->store(false, std::memory_order_release);
     for (Slot& slot : slots_) CloseSlot(slot);
-    robustSchedulerStarted_ = false;
     return;
   }
 
   alive_ = std::make_shared<std::atomic<bool>>(true);
-  robustSchedulerStarted_ = false;
   schedulerWakePosted_.store(false, std::memory_order_release);
   timedRandomState_ = 0;
   for (Slot& slot : slots_) CreateHost(slot);
   Resize();
-  StartAutonomousSchedule(GetTickCount64());
+  StartAutonomousSchedule();
 }
 
 }  // namespace hp
