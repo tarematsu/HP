@@ -2,6 +2,8 @@ namespace hp {
 namespace {
 
 constexpr double kSpotifySurfaceZoom = 0.50;
+constexpr int kSpotifyBackgroundWidth = 480;
+constexpr int kSpotifyBackgroundHeight = 270;
 
 bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top;
@@ -38,15 +40,18 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
 
-    // Spotify always keeps a full-size viewport, even while it is behind the
-    // native UI. This keeps startup, trusted CDP input and playback/status DOM
-    // updates independent of whether Monitor C has ever foregrounded the host.
+    // Keep the background renderer large enough for Spotify's desktop-like
+    // responsive controls while cutting its native raster surface to 480x270.
+    // At the existing 0.50 zoom this still exposes roughly a 960x540 CSS
+    // viewport. Monitor C restores the full parent surface for inspection.
     int x = client.left;
     int y = client.top;
-    int width = clientWidth;
-    int height = clientHeight;
+    int width = std::min(kSpotifyBackgroundWidth, clientWidth);
+    int height = std::min(kSpotifyBackgroundHeight, clientHeight);
     HWND insertAfter = HWND_BOTTOM;
     if (monitorForeground_) {
+      width = clientWidth;
+      height = clientHeight;
       insertAfter = HWND_TOP;
     } else if (authentication) {
       x = client.left + (clientWidth - activeWidth) / 2;
