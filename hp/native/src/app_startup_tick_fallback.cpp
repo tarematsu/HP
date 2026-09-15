@@ -141,12 +141,7 @@ class StartupUpdateFallback final {
     if (WaitFor(kStartupFallbackFirstDelayMs)) return;
     for (int attempt = 0; attempt < kStartupFallbackAttempts; ++attempt) {
       if (!WindowStillOwnedBy(window, owner)) return;
-
-      // This is an ordinary posted application message rather than a synthesized
-      // low-priority WM_TIMER. A foreground WebView2 therefore cannot postpone
-      // the startup update decision by continuously keeping the UI queue busy.
       if (!PostMessageW(window, kStartupUpdateWakeMessage, 0, 0)) return;
-
       if (attempt + 1 < kStartupFallbackAttempts &&
           WaitFor(kStartupFallbackRetryMs)) {
         return;
@@ -186,7 +181,7 @@ void StopStartupUpdateFallback() noexcept {
 
 void App::HandleStartupUpdateWake() {
   if (!startupUpdateScheduled_ && renderer_ && sensors_ && stationhead_ && cloud_) {
-    StartDeferredServices(UnixMillis(), renderState_.stationhead);
+    StartDeferredServices(UnixMillis());
   }
   if (startupUpdateScheduled_) CompleteStartupUpdateFallback();
 }

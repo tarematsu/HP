@@ -4,44 +4,12 @@
 
 namespace hp {
 
-// Give the refreshed side enough time to rebuild its EME/Widevine playback
-// pipeline before the other side is allowed to start its own boundary refresh.
 inline constexpr int64_t kStationheadTrackTransitionGraceMs =
     kStationheadAudioLossGraceMs;
-inline constexpr uint64_t kStationheadSecondaryStartupFallbackMs = 8'000;
 
 inline bool StationheadNeedsForeground(const StationheadStatus& status) noexcept {
   return !status.audioPlaying;
 }
-
-inline constexpr bool SecondaryStationheadStartupReady(
-    bool primaryCreated,
-    uint64_t nowTick,
-    uint64_t requestedAtTick) noexcept {
-  if (primaryCreated) return true;
-  return requestedAtTick > 0 && nowTick >= requestedAtTick &&
-      nowTick - requestedAtTick >= kStationheadSecondaryStartupFallbackMs;
-}
-
-// A configured controller is not yet a useful startup surface: required script
-// registration and the first navigation can still be pending. Keep A covering
-// both halves until B has either produced audio, reached a usable login surface,
-// or completed its first Stationhead navigation successfully. Active Spotify
-// auth always takes precedence over playback: the playback document may remain
-// audible while the pending-auth layout intentionally hides both B surfaces.
-inline bool StationheadStartupPreviewReady(
-    const StationheadStatus& status) noexcept {
-  if (status.spotifyAuthorization) {
-    return !status.navigating && status.detail == L"Spotify login ready";
-  }
-  if (status.audioPlaying || status.loginRequired) return true;
-  return status.created && !status.navigating && !status.processFailed &&
-      status.detail == L"station loaded";
-}
-
-static_assert(SecondaryStationheadStartupReady(true, 1, 1));
-static_assert(!SecondaryStationheadStartupReady(false, 7'999, 1));
-static_assert(SecondaryStationheadStartupReady(false, 8'001, 1));
 
 enum class WorkspaceTab {
   Main = 0,
@@ -55,27 +23,14 @@ class StationheadHandleBase {
   StationheadHandleBase& operator=(const StationheadHandleBase&) = delete;
 
   explicit operator bool() const noexcept;
-  [[nodiscard]] bool AudioPlaying() const noexcept {
-    return player_ && player_->AudioPlaying();
-  }
-  [[nodiscard]] int64_t AudioPlayingSince() const noexcept {
-    return player_ ? player_->AudioPlayingSince() : 0;
-  }
   void Stop();
   void SetAudioMuted(bool muted) noexcept;
   void SetBounds(const RECT& bounds);
-  void SetStartupPreviewBounds(const RECT& bounds);
-  void ClearStartupPreviewBounds();
-  StationheadStatus RawStatus() const;
   StationheadStatus Status() const;
   int64_t NextWakeAt() const noexcept;
   void RefreshVisibility();
   void Start();
   void Tick(int64_t nowMs);
-  void Reconnect();
-  void RetryPendingTrackBoundaryRefresh(int64_t nowMs);
-  void CancelPendingTrackBoundaryRefresh() noexcept;
-  void SetPlaybackFallback(bool active, const std::wstring& reason);
   void ShowAfterAudioStop();
   void ReleaseCompletedAuth();
   uint32_t ConsumeChangeFlags();
@@ -83,54 +38,33 @@ class StationheadHandleBase {
  protected:
   StationheadHandleBase() = default;
   ~StationheadHandleBase() = default;
-
   void AssignPlayer(std::unique_ptr<StationheadPlayer> player) noexcept;
   void ResetPlayer() noexcept;
-  bool HasAuthTabPlayer() const;
-  void SelectPlayerTab(StationheadTabKind tab);
-  [[nodiscard]] bool CanStartPlayer() const noexcept {
-    return player_ && !startIssued_ && !stopIssued_;
-  }
-  [[nodiscard]] bool PlayerStarted() const noexcept {
-    return player_ && startIssued_ && !stopIssued_;
-  }
-  static void SetStartupPrimaryHandle(StationheadHandleBase* handle) noexcept {
-    startupPrimaryHandle_ = handle;
-  }
-  [[nodiscard]] static StationheadHandleBase* StartupPrimaryHandle() noexcept {
-    return startupPrimaryHandle_;
-  }
 
  private:
+  StationheadStatus RawStatus() const;
   bool IsInteractive(const StationheadStatus& status) const noexcept;
   bool SuppressTrackTransitionGap(bool playing, bool forceInteractive) const noexcept;
   void ApplyAudioState() const noexcept;
   void BringMainWindowToFront(HWND host) const noexcept;
   void RaiseActiveHost() const;
-  void ApplyInteractiveBounds();
   void ApplyBounds();
 
   std::unique_ptr<StationheadPlayer> player_;
   RECT workspaceBounds_{0, 0, 1, 1};
-  RECT startupPreviewBounds_{0, 0, 1, 1};
-  bool startupPreviewActive_ = false;
   bool audioMuted_ = false;
-  // A handle owns exactly one StationheadPlayer lifecycle. Duplicate Start()
-  // calls must not create a second WebView2 controller, and a final Stop() must
-  // not restart the same player with stale asynchronous/recreate state.
   bool startIssued_ = false;
   bool stopIssued_ = false;
   mutable bool playbackObserved_ = false;
   mutable MonotonicElapsedTimestamp playbackMissingSinceAt_;
   mutable bool transitionSuppressed_ = false;
   mutable uint64_t contentRevision_ = 1;
-  inline static StationheadHandleBase* startupPrimaryHandle_ = nullptr;
 };
 
 class AppStationheadHandle final : public StationheadHandleBase {
  public:
-  AppStationheadHandle();
-  ~AppStationheadHandle();
+  AppStationheadHandle() = default;
+  ~AppStationheadHandle() = default;
   AppStationheadHandle(const AppStationheadHandle&) = delete;
   AppStationheadHandle& operator=(const AppStationheadHandle&) = delete;
 
@@ -138,209 +72,14 @@ class AppStationheadHandle final : public StationheadHandleBase {
   const AppStationheadHandle* operator->() const noexcept;
   AppStationheadHandle& operator=(std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
-  void SetStartupPreviewBounds(const RECT& bounds) {
-    requestedStartupPreviewBounds_ = bounds;
-    startupPreviewRequested_ = true;
-    StationheadHandleBase::SetStartupPreviewBounds(bounds);
-  }
-  void ClearStartupPreviewBounds() {
-    startupPreviewRequested_ = false;
-    StationheadHandleBase::ClearStartupPreviewBounds();
-  }
-  void ExpandStartupPreviewForSecondary(const RECT& secondaryBounds) {
-    if (!startupPreviewRequested_) return;
-    const RECT expanded{
-        std::min(requestedStartupPreviewBounds_.left, secondaryBounds.left),
-        std::min(requestedStartupPreviewBounds_.top, secondaryBounds.top),
-        std::max(requestedStartupPreviewBounds_.right, secondaryBounds.right),
-        std::max(requestedStartupPreviewBounds_.bottom, secondaryBounds.bottom)};
-    StationheadHandleBase::SetStartupPreviewBounds(expanded);
-  }
-  void RestoreRequestedStartupPreviewBounds() {
-    if (startupPreviewRequested_) {
-      StationheadHandleBase::SetStartupPreviewBounds(requestedStartupPreviewBounds_);
-    }
-  }
-  void Start() {
-    if (!CanStartPlayer()) return;
-    SetStartupPrimaryHandle(this);
-    StationheadHandleBase::Start();
-  }
-  void Stop() {
-    StationheadHandleBase::Stop();
-    ResetStartupPreviewState();
-  }
-  bool HasAuthTab() const;
-  void SelectTab(StationheadTabKind tab);
   StationheadStatus Status() const {
     StationheadStatus status = StationheadHandleBase::Status();
     if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
-      // Window A can also keep streaming while its interactive account surface
-      // needs attention. In a dual-window layout, keep that surface in the left
-      // half instead of exposing it as reusable healthy playback.
       status.audioPlaying = false;
       status.playing = false;
     }
     return status;
   }
-
- private:
-  void ResetStartupPreviewState() noexcept {
-    if (StartupPrimaryHandle() == this) SetStartupPrimaryHandle(nullptr);
-    requestedStartupPreviewBounds_ = RECT{0, 0, 1, 1};
-    startupPreviewRequested_ = false;
-  }
-
-  RECT requestedStartupPreviewBounds_{0, 0, 1, 1};
-  bool startupPreviewRequested_ = false;
-};
-
-class AppSecondaryStationheadHandle final : public StationheadHandleBase {
- public:
-  AppSecondaryStationheadHandle();
-  ~AppSecondaryStationheadHandle();
-  AppSecondaryStationheadHandle(const AppSecondaryStationheadHandle&) = delete;
-  AppSecondaryStationheadHandle& operator=(const AppSecondaryStationheadHandle&) = delete;
-
-  AppSecondaryStationheadHandle* operator->() noexcept;
-  const AppSecondaryStationheadHandle* operator->() const noexcept;
-  AppSecondaryStationheadHandle& operator=(
-      std::unique_ptr<StationheadPlayer> player) noexcept;
-  void reset() noexcept;
-  void SetStartupPreviewBounds(const RECT& bounds) {
-    pendingStartupPreviewBounds_ = bounds;
-    startupPreviewRequested_ = true;
-    startupPreviewApplied_ = false;
-    startupAuthReadyObserved_ = false;
-    if (AppStationheadHandle* primary = StartupPrimary()) {
-      primary->ExpandStartupPreviewForSecondary(bounds);
-    }
-    ApplyDeferredStartupPreview();
-  }
-  void ClearStartupPreviewBounds() {
-    ResetDeferredStartupState(true);
-    StationheadHandleBase::ClearStartupPreviewBounds();
-  }
-  void Start() {
-    if (!CanStartPlayer()) return;
-    // A has now registered its real one-way lifecycle. Expand A before the main
-    // window is shown, while B keeps only the requested bounds in memory.
-    if (startupPreviewRequested_) {
-      if (AppStationheadHandle* primary = StartupPrimary()) {
-        primary->ExpandStartupPreviewForSecondary(pendingStartupPreviewBounds_);
-      }
-    }
-    if (startupRequestedAtTick_ == 0) {
-      const uint64_t nowTick = GetTickCount64();
-      startupRequestedAtTick_ = nowTick == 0 ? 1 : nowTick;
-    }
-    TryStartDeferred();
-  }
-  void Tick(int64_t nowMs) {
-    TryStartDeferred();
-    if (PlayerStarted()) {
-      StationheadHandleBase::Tick(nowMs);
-      ApplyDeferredStartupPreview();
-    }
-  }
-  void Stop() {
-    ResetDeferredStartupState(true);
-    StationheadHandleBase::Stop();
-  }
-  uint32_t ConsumeChangeFlags() {
-    const uint32_t flags = StationheadHandleBase::ConsumeChangeFlags();
-    // Navigation/auth callbacks post WM_HP_STATIONHEAD_CHANGED immediately.
-    // Re-evaluate before waiting for the next timer tick so A continues covering
-    // B until the destination surface is complete, then hands over in one event.
-    ApplyDeferredStartupPreview();
-    return flags;
-  }
-  StationheadStatus Status() const {
-    StationheadStatus status = StationheadHandleBase::Status();
-    if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
-      // Window B can keep streaming after its authenticated API session expires.
-      // Treat that state as placement-pending so the App keeps the interactive
-      // surface in the right half and does not reuse a healthy-playback snapshot.
-      status.audioPlaying = false;
-      status.playing = false;
-    }
-    return status;
-  }
-
- private:
-  [[nodiscard]] static AppStationheadHandle* StartupPrimary() noexcept {
-    return static_cast<AppStationheadHandle*>(StartupPrimaryHandle());
-  }
-
-  void ResetDeferredStartupState(bool restorePrimary) noexcept {
-    if (restorePrimary && startupPreviewRequested_ && !startupPreviewApplied_) {
-      if (AppStationheadHandle* primary = StartupPrimary()) {
-        primary->RestoreRequestedStartupPreviewBounds();
-      }
-    }
-    pendingStartupPreviewBounds_ = RECT{0, 0, 1, 1};
-    startupRequestedAtTick_ = 0;
-    startupPreviewRequested_ = false;
-    startupPreviewApplied_ = false;
-    startupAuthReadyObserved_ = false;
-  }
-
-  void TryStartDeferred() {
-    if (!CanStartPlayer() || startupRequestedAtTick_ == 0) return;
-    StationheadHandleBase* primary = StartupPrimaryHandle();
-    const bool primaryCreated = primary && primary->RawStatus().created;
-    if (primary && !SecondaryStationheadStartupReady(
-                       primaryCreated, GetTickCount64(), startupRequestedAtTick_)) {
-      return;
-    }
-    StationheadHandleBase::Start();
-    if (PlayerStarted()) startupRequestedAtTick_ = 0;
-  }
-
-  void ApplyDeferredStartupPreview() {
-    if (!startupPreviewRequested_ || startupPreviewApplied_ || !PlayerStarted()) {
-      return;
-    }
-    const StationheadStatus status = RawStatus();
-    if (!status.spotifyAuthorization) {
-      startupAuthReadyObserved_ = false;
-    } else {
-      // A new direct navigation reports navigating=true. A popup controller has
-      // no available Auth surface until its controller/WebView has been created.
-      // Clear the previous session's ready latch in either pending state.
-      if (status.navigating || !status.authAvailable) {
-        startupAuthReadyObserved_ = false;
-      }
-      if (!status.navigating && status.authAvailable &&
-          status.detail == L"Spotify login ready") {
-        // Keep the completed Auth surface ready even if a later playback audio
-        // callback updates the shared status detail before the next App tick.
-        startupAuthReadyObserved_ = true;
-      }
-    }
-    if (status.spotifyAuthorization && startupAuthReadyObserved_) {
-      StationheadStatus authReadyStatus = status;
-      authReadyStatus.navigating = false;
-      authReadyStatus.detail = L"Spotify login ready";
-      if (!StationheadStartupPreviewReady(authReadyStatus)) return;
-    } else if (!StationheadStartupPreviewReady(status)) {
-      return;
-    }
-    // The controller and its first useful document are ready before the host is
-    // exposed. Prepare B first while A still covers both halves, then restore A
-    // to the requested left half.
-    StationheadHandleBase::SetStartupPreviewBounds(pendingStartupPreviewBounds_);
-    startupPreviewApplied_ = true;
-    if (AppStationheadHandle* primary = StartupPrimary()) {
-      primary->RestoreRequestedStartupPreviewBounds();
-    }
-  }
-
-  RECT pendingStartupPreviewBounds_{0, 0, 1, 1};
-  uint64_t startupRequestedAtTick_ = 0;
-  bool startupPreviewRequested_ = false;
-  bool startupPreviewApplied_ = false;
-  bool startupAuthReadyObserved_ = false;
 };
 
 }  // namespace hp

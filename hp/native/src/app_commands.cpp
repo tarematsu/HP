@@ -131,11 +131,7 @@ void App::SendTelemetryAsync() {
   try {
     static const std::string versionUtf8 = WideToUtf8(kVersion);
     const auto sensor = sensors_->Snapshot();
-#if 0  // Stationhead disabled; telemetry no longer reads its audio state.
-    const bool stationPlaying = stationhead_->AudioPlaying();
-#else
     constexpr bool stationPlaying = false;
-#endif
     const size_t count = std::min<size_t>(60, sensor.outboxCount);
     const std::string body = sensors_->BuildTelemetryPayload(
         config_.deviceId, versionUtf8, stationPlaying, count);
