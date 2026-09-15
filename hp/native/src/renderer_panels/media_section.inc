@@ -1,7 +1,6 @@
 // Media-panel composition wrapper. Playback policies remain fixed constexpr
 // scripts while this layer provides trusted WebView2 input, page-specific
 // routing and event-driven wakeups for the low-frequency native watchdogs.
-#include "media_tver_ad_guard.inc"
 #include "media_tver_episode_loop_policy.inc"
 #include "media_tver_playback_policy.inc"
 #define kNativeMediaTverForceFullscreenAdSafeScript \
@@ -44,9 +43,6 @@ void NativeMediaTverMarkMediaReady(std::wstring_view source) noexcept;
 bool NativeMediaTverStartupExpired(
     std::wstring_view source, ULONGLONG now) noexcept;
 bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept;
-void PrepareNativeMediaTverCloudQueueRefresh(
-    ICoreWebView2* webview, HWND hostWindow,
-    const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
 
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
@@ -321,7 +317,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
   if (script == kNativeMediaTverWatchdogScript) {
     NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
-      PrepareNativeMediaTverCloudQueueRefresh(webview, hostWindow, alive);
+      NativeMediaTverPrepareCloudQueueRefresh(hostWindow, alive, false);
       return kNativeMediaTverPlaybackWatchdogPolicyScript;
     }
     return NativeMediaWebViewSourceContains(webview, L"tver.jp/")
