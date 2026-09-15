@@ -77,6 +77,7 @@ class SpotifyWebViews final {
     ComPtr<ICoreWebView2> webview;
     EventRegistrationToken navigationStartingToken{};
     EventRegistrationToken navigationCompletedToken{};
+    EventRegistrationToken documentTitleChangedToken{};
     EventRegistrationToken timedEndMessageReceivedToken{};
     ICoreWebView2* timedEndHandlerWebview = nullptr;
     ICoreWebView2Controller* hostLayoutController = nullptr;
@@ -88,12 +89,15 @@ class SpotifyWebViews final {
     ULONGLONG timedCompletionDeadlineTick = 0;
     ULONGLONG timedCompletionDeadlineGeneration = 0;
     ULONGLONG nextRecoveryTick = 0;
+    ULONGLONG nextProcessTitlePollTick = 0;
     ULONGLONG asyncEpoch = 0;
     ULONGLONG asyncStartedTick = 0;
     ULONGLONG pageEpoch = 0;
     ULONGLONG targetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
     std::wstring observedTrackTitle;
+    std::wstring processTrackDisplay;
+    SYSTEMTIME processTitleObservedAt{};
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
     ULONGLONG timedCloudRotationRevision = 0;
@@ -104,6 +108,8 @@ class SpotifyWebViews final {
     bool timedObserverReady = false;
     bool timedRotationActive = false;
     bool playbackConfirmed = false;
+    bool processTitleEventRegistered = false;
+    bool processTitleObserved = false;
     bool hostLayoutApplied = false;
   };
 
@@ -155,6 +161,8 @@ class SpotifyWebViews final {
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void ProbeDueTimedCompletions(ULONGLONG now) noexcept;
   void RecomputeForeground() noexcept;
+  void RefreshProcessTitleStatus(Slot& slot, ICoreWebView2* webview) noexcept;
+  void PollProcessTitleStatusFallback(ULONGLONG now) noexcept;
   void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;
   void StartAutonomousSchedule(ULONGLONG now) noexcept;

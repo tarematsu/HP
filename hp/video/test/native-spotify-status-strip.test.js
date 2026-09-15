@@ -6,6 +6,8 @@ const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
 const scripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
+const processTitle = readFileSync(
+  new URL('../../native/src/spotify_process_title_status.inc', import.meta.url), 'utf8');
 const controller = readFileSync(
   new URL('../../native/src/spotify_controller_lifecycle.inc', import.meta.url), 'utf8');
 const runtime = readFileSync(
@@ -31,11 +33,15 @@ test('only yuukiar Spotify slot is active for single-window diagnostics', () => 
   assert.doesNotMatch(scripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });
 
-test('status title and confirmation clock are native-owned from the verified Pause state', () => {
+test('status title and confirmation clock come from the Spotify process title event', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
-  assert.match(header, /SYSTEMTIME playbackConfirmedAt/);
-  assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
-  assert.doesNotMatch(controller, /get_DocumentTitle/);
+  assert.match(header, /std::wstring processTrackDisplay/);
+  assert.match(header, /SYSTEMTIME processTitleObservedAt/);
+  assert.match(controller, /add_DocumentTitleChanged/);
+  assert.match(processTitle, /get_DocumentTitle/);
+  assert.match(processTitle, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
+  assert.match(processTitle, /display\.push_back\(L'・'\)/);
+  assert.match(processTitle, /GetLocalTime\(&slot\.processTitleObservedAt\)/);
   assert.match(musicTarget, /target->observedTrackTitle = currentTrack->title/);
   assert.match(musicTarget, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(musicTarget, /target->playbackConfirmed = true/);
@@ -45,7 +51,8 @@ test('status title and confirmation clock are native-owned from the verified Pau
   assert.match(runtime, /postFields\('spotify:timed-resumed', String\(remainingMs\)\)/);
   assert.match(rotation, /slot\.observedTrackTitle\.clear\(\)/);
   assert.match(rotation, /slot\.playbackConfirmed = false/);
-  assert.match(scripts, /result\[i\]\.trackTitle = slots_\[i\]\.observedTrackTitle/);
+  assert.match(scripts, /result\[i\]\.trackTitle = slots_\[i\]\.processTrackDisplay/);
+  assert.match(scripts, /result\[i\]\.confirmedAt = slots_\[i\]\.processTitleObservedAt/);
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
