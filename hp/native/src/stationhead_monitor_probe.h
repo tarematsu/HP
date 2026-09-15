@@ -10,30 +10,15 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 // access on the existing UI thread and avoids adding another polling thread.
 void RequestStationheadMonitorDomProbe() noexcept;
 
-// Stationhead keeps a real 480x270 surface even while it is not presented.
-// Startup begins in the in-client background preview immediately, before the
-// WebView is created, and the scheduled 50-minute reload reuses that preview.
-// Stable playback is parked offscreen; authentication has its own foreground
-// surface.
-inline constexpr LONG kStationheadSurfaceWidth = 480;
-inline constexpr LONG kStationheadSurfaceHeight = 270;
-inline constexpr LONG kStationheadOffscreenGap = 32;
+// Stationhead always keeps a real 320x160 surface inside the client area.
+// Normal playback, startup and scheduled refreshes stay behind the dashboard;
+// authentication/interactive inspection only changes z-order to foreground.
+inline constexpr LONG kStationheadSurfaceWidth = 320;
+inline constexpr LONG kStationheadSurfaceHeight = 160;
 
-inline RECT StationheadOffscreenBounds(const RECT& workspaceBounds) noexcept {
-  const LONG left = workspaceBounds.right + kStationheadOffscreenGap;
-  const LONG top = workspaceBounds.top;
-  return RECT{
-      left,
-      top,
-      left + kStationheadSurfaceWidth,
-      top + kStationheadSurfaceHeight,
-  };
-}
-
-// The first Stationhead host layout happens before the deferred Start() call.
-// Arm the startup preview by default so that first layout is already 480x270
-// inside the client area and HWND_BOTTOM; it stays there through initial
-// navigation and Start Listening until stable audio explicitly clears it.
+// Keep the existing preview state as the reload/startup signal used by the
+// Stationhead lifecycle. Geometry no longer depends on it because the surface
+// is never parked outside the client area.
 inline std::atomic<bool> gStationheadBackgroundPreview{true};
 
 inline bool SetStationheadBackgroundPreview(bool active) noexcept {
@@ -46,9 +31,6 @@ inline bool StationheadBackgroundPreview() noexcept {
 }
 
 inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
-  if (!StationheadBackgroundPreview()) {
-    return StationheadOffscreenBounds(workspaceBounds);
-  }
   const LONG left = workspaceBounds.left;
   const LONG top = workspaceBounds.top;
   return RECT{
