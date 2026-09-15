@@ -10,12 +10,12 @@ const trustedInput = read('../../native/src/renderer_panels/media_trusted_input.
 
 test('playlist fallback is bounded and event driven', () => {
   assert.match(reliablePlayAll, /window\.__homePanelYoutubePlaylistFallbackInstalled/);
-  assert.match(reliablePlayAll, /window\.ytInitialData/);
-  assert.match(reliablePlayAll, /visited\+\+ < 2500/);
-  assert.match(reliablePlayAll, /new MutationObserver\(resolve\)/);
+  assert.match(reliablePlayAll, /ytd-playlist-video-renderer a#thumbnail/);
   assert.match(reliablePlayAll, /yt-page-data-updated/);
+  assert.match(reliablePlayAll, /yt-navigate-finish/);
   assert.match(reliablePlayAll, /7000/);
-  assert.doesNotMatch(reliablePlayAll, /setInterval\(/);
+  assert.match(reliablePlayAll, /v1\/native\/youtube-start/);
+  assert.doesNotMatch(reliablePlayAll, /ytInitialData|MutationObserver|setInterval\(/);
   assert.match(host, /BeginYoutubePlaylistFallback\(\)/);
 });
 

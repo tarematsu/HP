@@ -8,7 +8,7 @@ const runtime = readExpandedNativeSource(
 test('YouTube ads settle before fullscreen and skip lookup', () => {
   const adBranch = runtime.indexOf('if (ad()) {');
   const fullscreen = runtime.indexOf('const action = armFullscreen()', adBranch);
-  const skip = runtime.indexOf('const skipSelectors = [', adBranch);
+  const skip = runtime.indexOf('const skipSelector =', adBranch);
   const guard = runtime.indexOf("return 'recovery';", skip);
   assert.ok(adBranch >= 0 && fullscreen > adBranch && skip > fullscreen && guard > skip);
   assert.match(runtime, /state\.adFullscreenReadyAt = now \+ fullscreenSettleMs/);

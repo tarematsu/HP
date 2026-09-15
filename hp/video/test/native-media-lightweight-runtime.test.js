@@ -125,10 +125,10 @@ test('playlist startup fallback is event driven with one seven-second escape hat
     mediaBase + mediaHost,
     /kNativeMediaPlayAllTimer|kNativeMediaPlayAllRetryMs|kNativeMediaPlayAllRetryLimit|playAllProbeAttempts_|ProbePlayAll/,
   );
-  assert.match(youtubePlaylistFallback, /new MutationObserver\(resolve\)/);
   assert.match(youtubePlaylistFallback, /yt-page-data-updated/);
+  assert.match(youtubePlaylistFallback, /yt-navigate-finish/);
   assert.match(youtubePlaylistFallback, /7000/);
-  assert.doesNotMatch(youtubePlaylistFallback, /setInterval\(/);
+  assert.doesNotMatch(youtubePlaylistFallback, /ytInitialData|MutationObserver|setInterval\(/);
 });
 
 test('media responsibilities remain separate from radar rendering', () => {
