@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Stationhead playback host is fullscreen only for confirmed login or Monitor B', () => {
+test('Stationhead playback host moves to foreground only for confirmed login or Monitor B without resizing', () => {
   const policy = section(
     layout,
     'struct StationheadSurfacePolicy {',
@@ -46,8 +46,9 @@ test('Stationhead playback host is fullscreen only for confirmed login or Monito
   );
   assert.match(childLayout, /const bool playbackForeground\s*=\s*[\s\S]*showPlayback \|\|/);
   assert.match(childLayout, /!showAuth && !hidePlayback && monitorForeground/);
-  assert.match(childLayout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(childLayout, /const RECT playbackHostBounds = surfaceBounds/);
   assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
+  assert.doesNotMatch(childLayout, /playbackHostBounds = playbackForeground \? workspaceBounds|StationheadOffscreenBounds/);
   assert.match(childLayout, /controller->put_IsVisible\(TRUE\)/);
 });
 
