@@ -56,24 +56,15 @@ double CompleteTotal(const JsonObject& object, const wchar_t* complete,
 
 std::wstring PlugState(const JsonObject& item) {
   const double watts = NumberOrNaN(item, L"watts");
-  std::wstring state = std::isfinite(watts)
+  return std::isfinite(watts)
       ? std::to_wstring(static_cast<int>(std::round(watts))) + L"W" : L"--W";
-  const double battery = NumberOrNaN(item, L"battery");
-  if (std::isfinite(battery)) {
-    state += L" " + std::to_wstring(static_cast<int>(std::round(battery))) + L"%";
-  }
-  return state;
 }
 }  // namespace
 
-bool ParseDashboardSnapshot(
-    const std::string& text, DashboardSnapshot& output, std::wstring* error,
-    const DashboardSnapshot* previous) {
+bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
+                            const DashboardSnapshot* previous) {
   try {
-    if (text.empty()) {
-      if (error) *error = L"dashboard.json is empty";
-      return false;
-    }
+    if (text.empty()) return false;
 
     const JsonObject root = JsonObject::Parse(Utf8ToWide(text));
     DashboardSnapshot next;
@@ -147,35 +138,20 @@ bool ParseDashboardSnapshot(
       }
     }
 
-    // SwitchBot is synchronized through switchbot.json and is intentionally not
-    // materialized from dashboard.json. Preserve an already-loaded independent
-    // snapshot while dashboard weather/Octopus revisions are replaced.
-    if (previous) {
-      next.revisions.switchbot = previous->revisions.switchbot;
-      next.switchBotDevices = previous->switchBotDevices;
-    }
+    // SwitchBot is synchronized independently through switchbot.json.
+    if (previous) next.switchBotDevices = previous->switchBotDevices;
 
     output = std::move(next);
-    if (error) error->clear();
     return true;
-  } catch (const winrt::hresult_error& exception) {
-    if (error) *error = exception.message().c_str();
-  } catch (const std::exception& exception) {
-    if (error) *error = Utf8ToWide(exception.what());
   } catch (...) {
-    if (error) *error = L"unknown dashboard parse error";
+    return false;
   }
-  return false;
 }
 
 bool ParseSwitchBotDevices(const std::string& text,
-                           std::vector<SwitchBotDeviceData>& output,
-                           std::wstring* error) {
+                           std::vector<SwitchBotDeviceData>& output) {
   try {
-    if (text.empty()) {
-      if (error) *error = L"switchbot.json is empty";
-      return false;
-    }
+    if (text.empty()) return false;
     const JsonObject root = JsonObject::Parse(Utf8ToWide(text));
     const JsonArray devices = json::Array(root, L"devices");
     std::vector<SwitchBotDeviceData> next;
@@ -196,16 +172,10 @@ bool ParseSwitchBotDevices(const std::string& text,
       }
     }
     output = std::move(next);
-    if (error) error->clear();
     return true;
-  } catch (const winrt::hresult_error& exception) {
-    if (error) *error = exception.message().c_str();
-  } catch (const std::exception& exception) {
-    if (error) *error = Utf8ToWide(exception.what());
   } catch (...) {
-    if (error) *error = L"unknown SwitchBot parse error";
+    return false;
   }
-  return false;
 }
 
 }  // namespace hp

@@ -1,11 +1,6 @@
 #include "web_renderer.h"
 
 namespace hp {
-namespace {
-size_t PlugRows(const DashboardSnapshot& value) {
-  return std::min<size_t>(4, value.switchBotDevices.size()) > 2 ? 2 : 1;
-}
-}
 
 bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
   if (changed) *changed = false;
@@ -51,14 +46,12 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
 
     DashboardSnapshot snapshot;
     const DashboardSnapshot* previous = nativeDashboard_.loaded ? &nativeDashboard_ : nullptr;
-    if (!ParseDashboardSnapshot(text, snapshot, nullptr, previous)) return false;
+    if (!ParseDashboardSnapshot(text, snapshot, previous)) return false;
     const bool firstSnapshot = !nativeDashboard_.loaded;
     const bool weatherChanged = firstSnapshot ||
         snapshot.revisions.weather != nativeDashboard_.revisions.weather;
     const bool octopusChanged = firstSnapshot ||
         snapshot.revisions.octopus != nativeDashboard_.revisions.octopus;
-    // Keep the legacy aggregate name for source-contract compatibility. SwitchBot
-    // is intentionally excluded and owns its independent update path below.
     const bool energyChanged = octopusChanged;
     const bool contentChanged = weatherChanged || energyChanged;
 
@@ -123,18 +116,16 @@ bool Renderer::LoadSwitchBot(const fs::path& jsonPath, bool* changed) {
     }
 
     std::vector<SwitchBotDeviceData> devices;
-    if (!ParseSwitchBotDevices(text, devices, nullptr)) return false;
-    const size_t previousRows = PlugRows(nativeDashboard_);
-    const bool devicesChanged = devices != nativeDashboard_.switchBotDevices;
-    if (!devicesChanged) {
+    if (!ParseSwitchBotDevices(text, devices)) return false;
+    const bool rowCountChanged =
+        (devices.size() > 2) != (nativeDashboard_.switchBotDevices.size() > 2);
+    if (devices == nativeDashboard_.switchBotDevices) {
       switchbotUtf8_ = contentSignature;
       switchbotSourceStamp_ = nextStamp;
       return true;
     }
 
     nativeDashboard_.switchBotDevices = std::move(devices);
-    nativeDashboard_.revisions.switchbot = Fnv1a64(text);
-    const size_t nextRows = PlugRows(nativeDashboard_);
     switchbotUtf8_ = contentSignature;
     switchbotSourceStamp_ = nextStamp;
     if (changed) *changed = true;
@@ -142,7 +133,7 @@ bool Renderer::LoadSwitchBot(const fs::path& jsonPath, bool* changed) {
     if (nativeDashboardVisible_) {
       InvalidatePanelSection(
           nativeMainWindow_,
-          previousRows == nextRows ? PanelSection::EnergySwitchBot : PanelSection::Energy);
+          rowCountChanged ? PanelSection::Energy : PanelSection::EnergySwitchBot);
     }
     return true;
   } catch (...) {
