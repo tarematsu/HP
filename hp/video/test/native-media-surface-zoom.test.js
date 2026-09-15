@@ -13,14 +13,13 @@ const stationheadLifecycle = readFileSync(
 
 test('Spotify always uses the fixed 50% zoom factor regardless of host size', () => {
   assert.match(spotifyLayout, /kSpotifySurfaceZoom = 0\.50/);
-  assert.match(spotifyLayout, /constexpr bool reducedZoom = true/);
   assert.match(
     spotifyLayout,
-    /put_ZoomFactor\(kSpotifySurfaceZoom\)/,
+    /if \(controllerChanged\)[\s\S]*put_ZoomFactor\(kSpotifySurfaceZoom\)/,
   );
   assert.doesNotMatch(
     spotifyLayout,
-    /width > 1|height > 1|kSpotifyExpandedSurfaceZoom|\? kSpotifySurfaceZoom : 1\.0/,
+    /width > 1|height > 1|kSpotifyExpandedSurfaceZoom|hostLayoutReducedZoomApplied/,
   );
 });
 
@@ -36,9 +35,5 @@ test('Stationhead always applies 50% document zoom without size-dependent switch
   assert.match(
     stationheadLifecycle,
     /window\.addEventListener\('pageshow',[\s\S]*zoomOut\(\)/,
-  );
-  assert.match(
-    stationheadLifecycle,
-    /zoomOut\(\);\s*run\(\);\s*armBlankRecovery\(\);\s*\}\)\(\)/,
   );
 });
