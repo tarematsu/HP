@@ -13,6 +13,7 @@ const mediaHost = read('../../native/src/renderer_panels/media_host.inc');
 test('startup reset removes only transient WebView cache state', () => {
   assert.match(helper, /ICoreWebView2_13/);
   assert.match(helper, /get_Profile/);
+  assert.match(helper, /get_ProfilePath/);
   assert.match(helper, /ICoreWebView2Profile2/);
   assert.match(helper, /ClearBrowsingData/);
   assert.match(helper, /BROWSING_DATA_KINDS_DISK_CACHE/);
@@ -22,6 +23,13 @@ test('startup reset removes only transient WebView cache state', () => {
     helper,
     /BROWSING_DATA_KINDS_(COOKIES|LOCAL_STORAGE|INDEXED_DB|ALL_DOM_STORAGE|ALL_SITE|ALL_PROFILE)|DeleteAllCookies/,
   );
+});
+
+test('startup reset is claimed once per persistent WebView profile in one app run', () => {
+  assert.match(helper, /ClaimWebViewStartupCacheReset\(profilePath\)/);
+  assert.match(helper, /WebViewStartupCacheResetProfiles\(\)\.try_emplace\(profilePath, true\)/);
+  assert.match(helper, /if \(!ClaimWebViewStartupCacheReset\(profilePath\)\)[\s\S]*finish\(S_FALSE\)/);
+  assert.match(helper, /ReleaseWebViewStartupCacheResetClaim\(profilePath\)/);
 });
 
 test('Stationhead waits for startup cache reset before WebView configuration', () => {
@@ -40,7 +48,7 @@ test('Spotify waits for startup cache reset before its first navigation', () => 
   assert.ok(configure >= 0 && reset > configure && navigate > reset);
 });
 
-test('YouTube/TVer reset startup caches once per controller, not on phase switches', () => {
+test('YouTube/TVer reset startup caches before initial navigation and not on phase switches', () => {
   assert.match(rendererPanels, /#include "webview_startup_cache_reset\.h"/);
   const configure = mediaHost.indexOf('void Configure() noexcept');
   const switchYoutube = mediaHost.indexOf('void SwitchToYouTube() noexcept');
