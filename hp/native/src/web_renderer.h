@@ -192,6 +192,7 @@ class Renderer {
     PAINTSTRUCT paint{};
     HDC paintDc = nullptr;
     HDC dc = nullptr;
+    HGDIOBJ previousBitmap = nullptr;
     RECT bounds{};
     RECT dirty{};
   };
