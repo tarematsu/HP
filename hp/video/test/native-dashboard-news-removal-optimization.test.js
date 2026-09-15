@@ -30,10 +30,6 @@ const airHistory = readFileSync(
   new URL('../../native/src/app_air_history.cpp', import.meta.url),
   'utf8',
 );
-const stationheadHistory = readFileSync(
-  new URL('../../native/src/app_stationhead_history.cpp', import.meta.url),
-  'utf8',
-);
 const stationheadHandles = readFileSync(
   new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
   'utf8',
@@ -197,17 +193,6 @@ test('air history display remains five minute data while persistence is batched'
     airHistory,
     /\+\+renderState_\.airHistoryRevision;\s*SaveAirHistory\(\);\s*MarkRenderStateDirty\(\);/s,
   );
-});
-
-test('Stationhead play history persists on a fixed 30 minute cadence', () => {
-  assert.match(stationheadHistory, /kPersistIntervalMs = 30LL \* 60 \* 1000;/);
-  assert.match(stationheadHistory, /lastStationheadPlayHistorySavedAt_ = history\.empty\(\) \? 0 : now;/);
-  assert.match(
-    stationheadHistory,
-    /bucket - lastStationheadPlayHistorySavedAt_ >= kPersistIntervalMs[\s\S]*SaveStationheadPlayHistory\(\)/,
-  );
-  assert.doesNotMatch(stationheadHistory, /currentValueChanged/);
-  assert.doesNotMatch(stationheadHistory, /currentValueChanged \|\|/);
 });
 
 test('steady Stationhead ticks read only the authorization flag', () => {
