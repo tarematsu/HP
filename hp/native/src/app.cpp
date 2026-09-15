@@ -118,7 +118,7 @@ void App::StartServices() {
   startupAt_ = UnixMillis();
 
   // Stage 1: initialize the native dashboard and YouTube/MV WebView immediately.
-  // Stationhead and Spotify are intentionally deferred by the app timer so
+  // Spotify and Stationhead are intentionally deferred by the app timer so
   // Chromium/WebView2 startup work does not land in the same burst.
   renderer_->Initialize();
   rendererStarted_ = true;
@@ -128,7 +128,7 @@ void App::StartServices() {
   }
   LayoutWorkspace();
   renderer_->TickNativePanels(startupAt_);
-  logger_->Info(L"YouTube/native dashboard started; Stationhead scheduled after 10 seconds");
+  logger_->Info(L"YouTube/native dashboard started; Spotify scheduled after 10 seconds");
 
   ShowWindow(window_, startupShowCommand_);
   UpdateWindow(window_);
@@ -160,24 +160,24 @@ void App::StartDeferredServices(int64_t now) {
     logger_->Warn(L"Native dashboard/YouTube started by deferred recovery");
   }
 
-  // Stage 2: Stationhead starts ten seconds after YouTube/native initialization.
-  if (!stationheadStarted_ && stationhead_ &&
+  // Stage 2: Spotify starts ten seconds after YouTube/native initialization.
+  if (!spotifyStarted_ &&
       now - startupAt_ >= kMediaStartupStageDelayMs) {
+    renderer_->StartSpotify();
+    spotifyStarted_ = true;
+    spotifyStartedAt_ = now;
+    logger_->Info(L"Spotify started 10 seconds after YouTube; Stationhead scheduled after 10 more seconds");
+  }
+
+  // Stage 3: Stationhead starts ten seconds after Spotify actually starts.
+  if (spotifyStarted_ && !stationheadStarted_ && stationhead_ &&
+      now - spotifyStartedAt_ >= kMediaStartupStageDelayMs) {
     stationhead_->Start();
     stationheadStarted_ = true;
-    stationheadStartedAt_ = now;
     stationhead_->SetAudioMuted(stationheadAudioMuted_);
     MarkStationheadPlacementDirty();
     ApplyStationheadWindowPlacement(stationhead_->Status());
-    logger_->Info(L"Stationhead started 10 seconds after YouTube; Spotify scheduled after 10 more seconds");
-  }
-
-  // Stage 3: Spotify starts ten seconds after Stationhead actually starts.
-  if (stationheadStarted_ && !spotifyStarted_ &&
-      now - stationheadStartedAt_ >= kMediaStartupStageDelayMs) {
-    renderer_->StartSpotify();
-    spotifyStarted_ = true;
-    logger_->Info(L"Spotify started 10 seconds after Stationhead");
+    logger_->Info(L"Stationhead started 10 seconds after Spotify");
   }
 
   if (!cloudStarted_ && cloud_) {
@@ -231,16 +231,16 @@ void App::Tick() {
   }
 
   uint32_t nextTickMs = kMaxAppTimerMs;
-  if (!stationheadStarted_) {
+  if (!spotifyStarted_) {
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(
             now, startupAt_ + kMediaStartupStageDelayMs, kMaxAppTimerMs));
-  } else if (!spotifyStarted_) {
+  } else if (!stationheadStarted_) {
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(
-            now, stationheadStartedAt_ + kMediaStartupStageDelayMs,
+            now, spotifyStartedAt_ + kMediaStartupStageDelayMs,
             kMaxAppTimerMs));
   }
   if (!startupUpdateScheduled_ && cloudStarted_) {
