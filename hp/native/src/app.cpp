@@ -9,41 +9,7 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
 constexpr uint32_t kMaxAppTimerMs = 24U * 60U * 60U * 1000U;
-constexpr int64_t kDashboardStartupFallbackMs = 30'000;
-constexpr int64_t kDashboardAudioStabilityMs = 1'500;
 constexpr wchar_t kStationheadAmazonProfile[] = L"spotify-v2-1";
-
-constexpr bool DashboardAudioReady(bool primaryAudioReady,
-                                   bool secondaryEnabled,
-                                   bool secondaryAudioReady) noexcept {
-  return primaryAudioReady && (!secondaryEnabled || secondaryAudioReady);
-}
-
-constexpr bool CanReuseStationheadSnapshots(
-    bool rendererStarted,
-    bool primaryAudioPlaying,
-    bool cachedPrimaryAudioPlaying,
-    bool secondaryEnabled,
-    bool secondaryAudioPlaying,
-    bool cachedSecondaryPlaying) noexcept {
-  return rendererStarted && primaryAudioPlaying && cachedPrimaryAudioPlaying &&
-      (!secondaryEnabled || (secondaryAudioPlaying && cachedSecondaryPlaying));
-}
-
-static_assert(DashboardAudioReady(true, false, false));
-static_assert(!DashboardAudioReady(false, false, false));
-static_assert(DashboardAudioReady(true, true, true));
-static_assert(!DashboardAudioReady(true, true, false));
-static_assert(!DashboardAudioReady(false, true, true));
-static_assert(kDashboardStartupFallbackMs == 30'000);
-static_assert(kDashboardAudioStabilityMs >= 1'000);
-static_assert(CanReuseStationheadSnapshots(true, true, true, false, false, false));
-static_assert(CanReuseStationheadSnapshots(true, true, true, true, true, true));
-static_assert(!CanReuseStationheadSnapshots(false, true, true, false, false, false));
-static_assert(!CanReuseStationheadSnapshots(true, false, true, false, false, false));
-static_assert(!CanReuseStationheadSnapshots(true, true, false, false, false, false));
-static_assert(!CanReuseStationheadSnapshots(true, true, true, true, false, true));
-static_assert(!CanReuseStationheadSnapshots(true, true, true, true, true, false));
 
 uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackMs) {
   if (deadline <= 0) return fallbackMs;
@@ -142,9 +108,6 @@ void App::StartServices() {
     logger_->Warn(L"No valid dashboard cache; local layers will remain available");
   }
 
-  // Replace the former amazon Spotify window with one Stationhead player. Both
-  // use the same shared UDF, and Stationhead explicitly selects amazon's
-  // existing spotify-v2-1 profile so cookies/storage are reused in place.
   const fs::path stationheadUserData = dataDir_ / L"webview2-youtube-mv";
   auto stationheadPlayer = std::make_unique<StationheadPlayer>(
       StationheadRole::Primary, window_, config_.stationhead,
@@ -152,18 +115,6 @@ void App::StartServices() {
   stationheadPlayer->ReuseWebViewProfile(kStationheadAmazonProfile);
   stationhead_ = std::move(stationheadPlayer);
   logger_->Info(L"Single Stationhead prepared with existing amazon WebView2 profile");
-
-#if 0  // Legacy dual-window setup retained only as reference; B is not created.
-  const fs::path legacyStationheadUserData = dataDir_ / L"webview2-stationhead";
-  stationhead_ = std::make_unique<StationheadPlayer>(
-      StationheadRole::Primary, window_, config_.stationhead,
-      legacyStationheadUserData, *logger_);
-  if (config_.stationhead.secondaryEnabled && !config_.stationhead.secondaryUrl.empty()) {
-    secondaryStationhead_ = std::make_unique<StationheadPlayer>(
-        StationheadRole::Secondary, window_, config_.stationhead,
-        legacyStationheadUserData, *logger_);
-  }
-#endif
 
   startupAt_ = UnixMillis();
 
@@ -200,14 +151,7 @@ void App::StartServices() {
   InvalidateAll();
 }
 
-void App::ApplyStartupStationheadPreview() {
-  // The single Stationhead player starts behind the dashboard. It promotes its
-  // own full-size surface only when login/auth interaction is required.
-}
-
-void App::ClearStartupStationheadPreview() {}
-
-void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
+void App::StartDeferredServices(int64_t now) {
   if (!rendererStarted_) {
     renderer_->Initialize();
     rendererStarted_ = true;
@@ -237,15 +181,10 @@ void App::StopServices() {
   if (sensors_) sensors_->Stop();
   if (telemetryThread_.joinable()) telemetryThread_.join();
   if (updateThread_.joinable()) updateThread_.join();
-  secondaryStationhead_.reset();
   stationhead_.reset();
   cloud_.reset();
   sensors_.reset();
   renderer_.reset();
-}
-
-void App::UpdateStationheadPlaybackFallback(int64_t nowMs) {
-  (void)nowMs;
 }
 
 void App::Tick() {
@@ -256,10 +195,10 @@ void App::Tick() {
   if (stationhead_) {
     stationhead_->Tick(now);
     stationheadStatus = stationhead_->Status();
-    ApplyStationheadWindowPlacement(stationheadStatus, StationheadStatus{});
+    ApplyStationheadWindowPlacement(stationheadStatus);
   }
 
-  StartDeferredServices(now, stationheadStatus);
+  StartDeferredServices(now);
 
   const int64_t telemetryIntervalMs =
       static_cast<int64_t>(std::max(1, config_.telemetryMinutes)) * 60'000;
@@ -324,13 +263,6 @@ void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
   if (invalidate) InvalidateAll();
 }
 
-bool App::UpdateRenderStationheadState(StationheadStatus nextState) {
-  if (renderState_.stationhead == nextState) return false;
-  renderState_.stationhead = std::move(nextState);
-  MarkRenderStateDirty();
-  return true;
-}
-
 void App::LayoutWorkspace() {
   if (!renderer_) return;
   RECT client{};
@@ -340,31 +272,23 @@ void App::LayoutWorkspace() {
   renderer_->SetBounds(workspaceBounds_);
   renderer_->SetVisible(rendererStarted_);
   MarkStationheadPlacementDirty();
-  if (stationhead_) {
-    ApplyStationheadWindowPlacement(stationhead_->Status(), StationheadStatus{});
-  }
+  if (stationhead_) ApplyStationheadWindowPlacement(stationhead_->Status());
   InvalidateAll();
 }
 
-void App::ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus,
-                                          const StationheadStatus& secondaryStatus) {
-  (void)secondaryStatus;
+void App::ApplyStationheadWindowPlacement(const StationheadStatus& status) {
   if (!stationhead_ || selectedTab_ != WorkspaceTab::Main) return;
   RECT bounds = workspaceBounds_;
   if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
 
-  const bool primaryPending = !primaryStatus.audioPlaying;
-  if (!stationheadPlacementDirty_ && primaryPending == placedPrimaryPending_ &&
+  const bool pending = !status.audioPlaying;
+  if (!stationheadPlacementDirty_ && pending == placedPrimaryPending_ &&
       EqualRect(&bounds, &placedBounds_)) {
     return;
   }
   stationheadPlacementDirty_ = false;
-  placedPrimaryPending_ = primaryPending;
-  placedSecondaryPending_ = false;
+  placedPrimaryPending_ = pending;
   placedBounds_ = bounds;
-
-  // There is no B window anymore. Login/recovery and hidden playback both own
-  // the same full workspace geometry, eliminating the old half-screen handoff.
   stationhead_->SetBounds(bounds);
   stationhead_->RefreshVisibility();
 }
@@ -379,12 +303,6 @@ void App::PublishRenderStateNow() {
   MarkRenderStateDirty();
   if (!rendererStarted_) return;
   PublishRenderState();
-}
-
-void App::ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept {
-  scheduledPrimaryAudioAudible_ = primaryAudible;
-  const bool primaryMuted = stationheadAudioMuted_ || !primaryAudible;
-  if (stationhead_) stationhead_->SetAudioMuted(primaryMuted);
 }
 
 void App::ScheduleNextTick(uint32_t milliseconds) {
