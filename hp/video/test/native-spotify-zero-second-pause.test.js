@@ -15,15 +15,21 @@ const controller = source('spotify_controller_lifecycle.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
-test('zero-second recovery uses the minimal AUDIO play path once per generation', () => {
+test('zero-second recovery prioritizes target Play before AUDIO fallback', () => {
+  assert.match(scoped, /button\[data-testid="play-button"\]/);
+  assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
+  assert.match(scoped, /isPauseControl\(pagePlay\)\) return true/);
+  assert.match(scoped, /return point\(pagePlay\)/);
   assert.match(scoped, /const audio = document\.querySelector\('audio'\)/);
-  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
+  assert.doesNotMatch(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
+  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return 'observing'/);
   assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration !== generation/);
   assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration = generation/);
   assert.match(scoped, /const result = audio\.play\(\)/);
   assert.match(scoped, /return 'direct-play'/);
-  assert.match(scoped, /button\[data-testid="play-button"\]/);
-  assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
+  const targetControl = scoped.indexOf('const pagePlay');
+  const audio = scoped.indexOf("const audio = document.querySelector('audio')");
+  assert.ok(targetControl >= 0 && audio > targetControl);
   assert.doesNotMatch(scoped, /currentTrack|currentMatchesTarget|navigator\.mediaSession|buttonIntent|settling/);
   assert.doesNotMatch(scripts, /__homePanelSpotifyTryDirectPlay/);
 });
@@ -69,9 +75,10 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('actual playback remains observer-owned rather than DOM-label-owned', () => {
-  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
-  assert.doesNotMatch(scoped, /aria-label|title\)\)\.toLowerCase|pause'|一時停止/);
+test('raw media activity is not accepted as target playback confirmation', () => {
+  assert.doesNotMatch(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
+  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return 'observing'/);
+  assert.match(scoped, /label\.includes\('pause'\) \|\| label\.includes\('一時停止'\)/);
   assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
   assert.doesNotMatch(controller, /get_DocumentTitle/);
   assert.match(rotation, /ParseSpotifyStartedEvent/);
