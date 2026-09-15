@@ -6,8 +6,10 @@ const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const databaseName = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const channelId = Math.max(1, Math.trunc(Number(process.env.CHANNEL_ID || 318)));
-const windowMs = 24 * 60 * 60 * 1000;
-const endMinute = Math.floor(Date.now() / 60000) * 60000;
+const minuteMs = 60_000;
+const windowMs = 24 * 60 * minuteMs;
+const recentGuardMs = 5 * minuteMs;
+const endMinute = Math.floor((Date.now() - recentGuardMs) / minuteMs) * minuteMs;
 const startMinute = endMinute - windowMs;
 
 function wrangler(args) {
