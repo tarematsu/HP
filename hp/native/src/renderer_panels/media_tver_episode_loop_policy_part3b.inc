@@ -52,6 +52,7 @@ LR"JS(
       if (event.target instanceof HTMLMediaElement) scheduleEnsure(40);
     }, true);
   }
+  const fullscreenEvents = ['fullscreenchange', 'webkitfullscreenchange'];
   const onFullscreenChange = () => {
     scheduleEnsure(40);
     const fullscreen = !!(document.fullscreenElement ||
@@ -61,7 +62,7 @@ LR"JS(
       wakeNative('fullscreen-change:' + (fullscreen ? '1' : '0'));
     }
   };
-  for (const eventName of ['fullscreenchange', 'webkitfullscreenchange']) {
+  for (const eventName of fullscreenEvents) {
     document.addEventListener(eventName, onFullscreenChange, true);
   }
   ensure();
