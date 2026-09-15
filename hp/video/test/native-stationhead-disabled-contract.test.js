@@ -13,8 +13,7 @@ const cmakeSource = readFileSync(
 const appSource = source('app.cpp');
 const messages = source('app_messages.cpp');
 const sharedEnvironment = source('shared_webview_environment.h');
-const profilePolicyBegin = source('sh_profile_reuse_policy_begin.h');
-const profilePolicyEnd = source('sh_profile_reuse_policy_end.h');
+const stationheadHeader = source('sh.h');
 
 function section(sourceText, start, end) {
   const startAt = sourceText.indexOf(start);
@@ -24,7 +23,7 @@ function section(sourceText, start, end) {
   return sourceText.slice(startAt, endAt);
 }
 
-test('Stationhead implementation is compiled while disabled stubs stay out', () => {
+test('Stationhead implementation is compiled without profile-reuse shim headers', () => {
   const stationheadSources = section(
     cmakeSource,
     'set(HOMEPANEL_STATIONHEAD_SOURCES',
@@ -44,9 +43,13 @@ test('Stationhead implementation is compiled while disabled stubs stay out', () 
     );
   }
   assert.doesNotMatch(cmakeSource, /^\s{2}src\/stationhead_disabled_stubs\.cpp/m);
-  assert.match(cmakeSource, /src\/sh_profile_reuse_policy_begin\.h/);
+  assert.doesNotMatch(cmakeSource, /sh_profile_reuse_policy_(?:begin|end)\.h/);
   assert.match(cmakeSource, /src\/sh_track_boundary_message_policy\.h/);
-  assert.match(cmakeSource, /src\/sh_profile_reuse_policy_end\.h/);
+  assert.match(cmakeSource, /src\/sh_startup_script\.h/);
+  assert.ok(
+    cmakeSource.indexOf('src/sh_track_boundary_message_policy.h') <
+      cmakeSource.lastIndexOf('src/sh_startup_script.h'),
+  );
 });
 
 test('App creates one Stationhead player using the former amazon WebView profile', () => {
@@ -76,7 +79,6 @@ test('single Stationhead has no A-B handoff dependency', () => {
 
 test('Stationhead reuses the full-resource shared environment and profile data in place', () => {
   assert.match(sharedEnvironment, /Acquire\(userDataFolder, false, false, std::move\(completion\)\)/);
-  assert.match(profilePolicyBegin, /void ReuseWebViewProfile\(std::wstring profileName\)/);
-  assert.match(profilePolicyBegin, /profileName_ = std::move\(profileName\)/);
-  assert.match(profilePolicyEnd, /#undef autoClickInFlight_/);
+  assert.match(stationheadHeader, /void ReuseWebViewProfile\(std::wstring profileName\)/);
+  assert.match(stationheadHeader, /profileName_ = std::move\(profileName\)/);
 });
