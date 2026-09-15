@@ -1,37 +1,56 @@
 LR"JS(
 
+  const playbackDefaults = () => ({
+    progressSampleAt: 0,
+    progressTimer: 0,
+    lowQualitySet: false,
+    lowClickPending: false,
+    qualityActionCount: 0,
+    qualityAttemptExhausted: false,
+    playbackSettingsApplied: false,
+    fullscreenDirty: true,
+    recoveryPending: false,
+    recoverySince: 0,
+    recoveryWakeTimer: 0,
+  });
+  const clearRuntimeTimers = state => {
+    try { state.clearRecoveryWake?.(); } catch (_) {}
+    try { state.clearProgressSampler?.(); } catch (_) {}
+  };
+  const resetPlaybackSetup = (state, video = state.video) => {
+    clearRuntimeTimers(state);
+    Object.assign(state, playbackDefaults(), { video });
+  };
+  const resetMediaState = (state, video = state.video) => {
+    resetPlaybackSetup(state, video);
+    state.maxDuration = 0;
+    state.maxTime = 0;
+    state.endCandidateAt = 0;
+  };
+  const createEpisodeState = path => ({
+    path,
+    video: null,
+    nativeWakeVideo: null,
+    nativeWakeSource: '',
+    maxDuration: 0,
+    maxTime: 0,
+    endCandidateAt: 0,
+    endReported: false,
+    adActive: false,
+    adVideo: null,
+    adIdentity: '',
+    adEndedAt: 0,
+    postrollAfterProgram: false,
+    ...playbackDefaults(),
+  });
+
   const ensure = () => {
     try {
       if (!location.pathname.startsWith('/episodes/')) return;
       let state = window.__homePanelSakuraMeetsState;
       if (!state || state.path !== location.pathname) {
-        try { state?.clearProgressSampler?.(); } catch (_) {}
-        state = {
-          path: location.pathname,
-          video: null,
-          nativeWakeVideo: null,
-          nativeWakeSource: '',
-          maxDuration: 0,
-          maxTime: 0,
-          progressSampleAt: 0,
-          progressTimer: 0,
-          endCandidateAt: 0,
-          endReported: false,
-          lowQualitySet: false,
-          lowClickPending: false,
-          qualityActionCount: 0,
-          qualityAttemptExhausted: false,
-          playbackSettingsApplied: false,
-          fullscreenDirty: true,
-          adActive: false,
-          adVideo: null,
-          adIdentity: '',
-          adEndedAt: 0,
-          postrollAfterProgram: false,
-          recoveryPending: false,
-          recoverySince: 0,
-          recoveryWakeTimer: 0,
-        };
+        clearRuntimeTimers(state || {});
+        state = createEpisodeState(location.pathname);
         window.__homePanelSakuraMeetsState = state;
       }
 
@@ -44,9 +63,6 @@ LR"JS(
           !state.recoveryPending && state.playbackSettingsApplied &&
           (state.lowQualitySet || state.qualityAttemptExhausted) &&
           !state.fullscreenDirty && !video.paused && !video.ended;
-      // Healthy playback stays on the numeric/media-event fast path. Avoid the
-      // style/layout-heavy ad marker scan until the media identity changes,
-      // playback rolls back, or recovery/configuration becomes necessary.
       const advertisementActive = healthyProgram && !playbackRolledBack
           ? false : detectAd(video, state);
       if (advertisementActive) {
@@ -57,25 +73,13 @@ LR"JS(
               state.maxDuration >= 5 &&
               state.maxTime >= Math.max(3, state.maxDuration - 10);
           if (!state.adActive) state.postrollAfterProgram = completedProgram;
-          try { state.clearRecoveryWake?.(); } catch (_) {}
-          try { state.clearProgressSampler?.(); } catch (_) {}
-          state.adActive = true;
-          state.adVideo = video || null;
-          state.adIdentity = identity;
-          state.adEndedAt = 0;
-          state.endCandidateAt = 0;
-          state.maxDuration = 0;
-          state.maxTime = 0;
-          state.progressSampleAt = 0;
-          state.lowQualitySet = false;
-          state.lowClickPending = false;
-          state.qualityActionCount = 0;
-          state.qualityAttemptExhausted = false;
-          state.playbackSettingsApplied = false;
-          state.fullscreenDirty = true;
-          state.recoveryPending = false;
-          state.recoverySince = 0;
-          state.recoveryWakeTimer = 0;
+          resetMediaState(state);
+          Object.assign(state, {
+            adActive: true,
+            adVideo: video || null,
+            adIdentity: identity,
+            adEndedAt: 0,
+          });
         }
         window.__homePanelTverAdActive = true;
         if (video) bindPlayerObserver(video);
@@ -87,28 +91,14 @@ LR"JS(
 
       if (state.adActive) {
         const completedPostroll = state.postrollAfterProgram;
-        try { state.clearRecoveryWake?.(); } catch (_) {}
-        try { state.clearProgressSampler?.(); } catch (_) {}
-        state.adActive = false;
-        state.adVideo = null;
-        state.adIdentity = '';
-        state.adEndedAt = 0;
-        state.video = null;
-        state.maxDuration = 0;
-        state.maxTime = 0;
-        state.progressSampleAt = 0;
-        state.progressTimer = 0;
-        state.endCandidateAt = 0;
-        state.lowQualitySet = false;
-        state.lowClickPending = false;
-        state.qualityActionCount = 0;
-        state.qualityAttemptExhausted = false;
-        state.playbackSettingsApplied = false;
-        state.fullscreenDirty = true;
-        state.postrollAfterProgram = false;
-        state.recoveryPending = false;
-        state.recoverySince = 0;
-        state.recoveryWakeTimer = 0;
+        resetMediaState(state, null);
+        Object.assign(state, {
+          adActive: false,
+          adVideo: null,
+          adIdentity: '',
+          adEndedAt: 0,
+          postrollAfterProgram: false,
+        });
         window.__homePanelTverAdActive = false;
         if (completedPostroll) {
           if (postEpisodeEnded(state)) return;
@@ -119,22 +109,7 @@ LR"JS(
         window.__homePanelTverAdActive = false;
       }
 
-      if (state.video !== video) {
-        try { state.clearRecoveryWake?.(); } catch (_) {}
-        try { state.clearProgressSampler?.(); } catch (_) {}
-        state.video = video;
-        state.progressSampleAt = 0;
-        state.progressTimer = 0;
-        state.lowQualitySet = false;
-        state.lowClickPending = false;
-        state.qualityActionCount = 0;
-        state.qualityAttemptExhausted = false;
-        state.playbackSettingsApplied = false;
-        state.fullscreenDirty = true;
-        state.recoveryPending = false;
-        state.recoverySince = 0;
-        state.recoveryWakeTimer = 0;
-      }
+      if (state.video !== video) resetPlaybackSetup(state, video);
       if (!video) return;
       bindVideoEvents(video, state);
       const observerNeeded = state.adActive || state.recoveryPending ||
@@ -146,8 +121,6 @@ LR"JS(
         try { state.requestRecoveryWake?.('initial-pause'); } catch (_) {}
       }
 
-      // Playback settings are initialized once for the current video. Volume
-      // changes after initialization are handled by the volumechange listener.
       if (!state.playbackSettingsApplied) {
         try {
           video.defaultPlaybackRate = playbackRate;
