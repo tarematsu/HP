@@ -33,7 +33,7 @@ test('only yuukiar Spotify slot is active for single-window diagnostics', () => 
   assert.doesNotMatch(scripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });
 
-test('status title and confirmation clock come from the Spotify process title event', () => {
+test('status title and confirmation clock use the title event plus a 60-second watchdog', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
   assert.match(header, /std::wstring processTrackDisplay/);
   assert.match(header, /SYSTEMTIME processTitleObservedAt/);
@@ -41,7 +41,16 @@ test('status title and confirmation clock come from the Spotify process title ev
   assert.match(processTitle, /get_DocumentTitle/);
   assert.match(processTitle, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
   assert.match(processTitle, /display\.push_back\(L'・'\)/);
+  assert.match(processTitle, /if \(display\.empty\(\)\) return;/);
   assert.match(processTitle, /GetLocalTime\(&slot\.processTitleObservedAt\)/);
+  assert.match(processTitle, /if \(!slot\.webview\) continue;/);
+  assert.doesNotMatch(
+    processTitle,
+    /slot\.processTitleEventRegistered \|\| !slot\.webview/,
+  );
+  assert.match(controller, /GetTickCount64\(\) \+ kSpotifyProcessTitlePollMs/);
+  assert.match(phase, /if \(slot\.webview\) \{/);
+  assert.match(phase, /considerTick\(slot\.nextProcessTitlePollTick/);
   assert.match(musicTarget, /target->observedTrackTitle = currentTrack->title/);
   assert.match(musicTarget, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(musicTarget, /target->playbackConfirmed = true/);
