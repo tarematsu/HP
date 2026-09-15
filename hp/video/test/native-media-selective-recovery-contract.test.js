@@ -12,16 +12,14 @@ const tverEpisode = readExpandedNativeSource(
 const tverPlayback = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 
-test('YouTube recovery reuses the event-agent timer with a bounded startup fallback', () => {
-  assert.match(youtubeAgent, /state\.scheduleRecoveryWake = scheduleRecoveryWake/);
-  assert.match(youtubeRecovery, /scheduleRecoveryWake\?\.\(2000\)/);
-  assert.match(youtubeRecovery, /__homePanelYoutubeStartupRecoveryAttempts/);
+test('YouTube recovery reuses one event-agent timer with a startup fallback', () => {
+  assert.match(youtubeAgent, /state\.scheduleRecoveryWake = delay =>/);
+  assert.match(youtubeRecovery, /agent\.scheduleRecoveryWake\(2000\)/);
   assert.match(youtubeRecovery, /__homePanelYoutubeStartupRecoveryTimer/);
-  assert.match(youtubeRecovery, /attempts >= 3/);
   assert.match(youtubeRecovery, /setTimeout\(\(\) =>/);
   assert.match(youtubeRecovery, /postMessage\('homepanel:youtube-wake'\)/);
   assert.doesNotMatch(youtubeRecovery, /setInterval\s*\(/);
-  assert.ok((youtubeRecovery.match(/requestRecoveryRecheck\(\)/g) || []).length >= 5);
+  assert.ok((youtubeRecovery.match(/recheck\(\)/g) || []).length >= 5);
 });
 
 test('TVer stalled or paused playback wakes native every two seconds only until progress resumes', () => {
