@@ -326,14 +326,7 @@ void DrawCourse36WasteFallbackPictogram(
 }
 
 void DrawCourse36WasteBitmap(HDC dc, HBITMAP bitmap, const RECT& rect) {
-  if (!bitmap || rect.right <= rect.left || rect.bottom <= rect.top) return;
-  HDC sourceDc = SourceMemoryDc(dc);
-  if (!sourceDc) return;
-  HGDIOBJ previous = SelectObject(sourceDc, bitmap);
-  if (!previous || previous == HGDI_ERROR) return;
-  BitBlt(dc, rect.left, rect.top, rect.right - rect.left,
-         rect.bottom - rect.top, sourceDc, 0, 0, SRCCOPY);
-  SelectObject(sourceDc, previous);
+  DrawPremultipliedBitmap(dc, bitmap, rect);
 }
 
 void DrawCourse36ClockWasteNotices(
