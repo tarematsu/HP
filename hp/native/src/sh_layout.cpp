@@ -175,7 +175,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool playbackForeground =
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
 
-  const RECT offscreen = StationheadOffscreenBounds(workspaceBounds);
+  const RECT authOffscreen = StationheadOffscreenBounds(workspaceBounds);
+  const RECT offscreen = hidePlayback
+      ? authOffscreen
+      : StationheadBackgroundBounds(workspaceBounds);
   const RECT playbackHostBounds = playbackForeground ? workspaceBounds : offscreen;
   const RECT authHostBounds = showAuth ? workspaceBounds : offscreen;
   const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
@@ -303,7 +306,7 @@ void StationheadPlayer::SetVisible(bool visible) {
     const bool monitorForeground = StationheadMonitorForeground();
     const RECT expectedPlayback = monitorForeground
         ? bounds_
-        : StationheadOffscreenBounds(bounds_);
+        : StationheadBackgroundBounds(bounds_);
     const HWND expectedPlacement = monitorForeground ? HWND_TOP : HWND_BOTTOM;
 
     if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
