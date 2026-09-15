@@ -52,11 +52,11 @@ test('TVer stale, expired, or redirected pages fail forward under native control
 });
 
 test('TVer queue never retries an episode rejected after an id redirect', () => {
+  assert.match(queue, /NativeMediaTverContainsId\(state\.rejectedEpisodeIds, id\)/);
   assert.match(
     queue,
-    /NativeMediaTverContainsId\(state\.rejectedEpisodeIds, id\)/,
+    /if \(!NativeMediaTverContainsId\(state\.rejectedEpisodeIds, id\)\) \{\s*rebuilt\.push_back\(id\);/,
   );
-  assert.match(queue, /never retries an episode that redirected away from its requested id/);
   assert.match(queue, /state\.rejectedEpisodeIds\.clear\(\)/);
   assert.match(queue, /Queue exhaustion starts a fresh cycle/);
   assert.doesNotMatch(
