@@ -10,6 +10,8 @@ constexpr wchar_t kNativeMediaTverCloudFeedUrl[] =
 constexpr wchar_t kNativeMediaTverUserAgent[] =
     L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     L"(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+constexpr wchar_t kNativeMediaTverHeaders[] =
+    L"Accept: application/json\r\nReferer: https://tver.jp/\r\n";
 
 struct NativeMediaTverComApartment {
   HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -35,102 +37,10 @@ std::vector<uint8_t> NativeMediaTverFetchCloudFeed() {
           kNativeMediaTverFeedFailureBackoffMs,
           [] {
             hp::CoordinatedNetworkResult result;
-            URL_COMPONENTS parts{sizeof(parts)};
-            wchar_t host[256]{};
-            wchar_t path[4096]{};
-            wchar_t extra[2048]{};
-            parts.lpszHostName = host;
-            parts.dwHostNameLength = _countof(host);
-            parts.lpszUrlPath = path;
-            parts.dwUrlPathLength = _countof(path);
-            parts.lpszExtraInfo = extra;
-            parts.dwExtraInfoLength = _countof(extra);
-            if (!WinHttpCrackUrl(kNativeMediaTverCloudFeedUrl, 0, 0, &parts) ||
-                parts.nScheme != INTERNET_SCHEME_HTTPS) {
-              result.error = L"invalid TVer cloud feed URL";
-              return result;
-            }
-
-            const std::wstring hostName(host, parts.dwHostNameLength);
-            const std::wstring requestPath = WinHttpRequestPathFromUrl(parts);
-            constexpr wchar_t kHeaders[] = L"Accept: application/json\r\n";
-
-            for (const DWORD accessType : kWinHttpAccessTypes) {
-              WinHttpHandle session(WinHttpOpen(
-                  kNativeMediaTverUserAgent, accessType,
-                  WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
-              if (!session) continue;
-              WinHttpSetTimeouts(session, 8000, 8000, 8000, 8000);
-              DWORD protocols = WINHTTP_PROTOCOL_FLAG_HTTP2;
-              WinHttpSetOption(
-                  session, WINHTTP_OPTION_ENABLE_HTTP_PROTOCOL, &protocols,
-                  sizeof(protocols));
-
-              WinHttpHandle connection(
-                  WinHttpConnect(session, hostName.c_str(), parts.nPort, 0));
-              if (!connection) continue;
-              WinHttpHandle request(WinHttpOpenRequest(
-                  connection, L"GET", requestPath.c_str(), nullptr,
-                  L"https://tver.jp/", WINHTTP_DEFAULT_ACCEPT_TYPES,
-                  WINHTTP_FLAG_SECURE));
-              if (!request) continue;
-
-              DWORD decompression =
-                  WINHTTP_DECOMPRESSION_FLAG_GZIP |
-                  WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
-              WinHttpSetOption(
-                  request, WINHTTP_OPTION_DECOMPRESSION, &decompression,
-                  sizeof(decompression));
-              if (!WinHttpSendRequest(
-                      request, kHeaders,
-                      static_cast<DWORD>(wcslen(kHeaders)),
-                      WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-                  !WinHttpReceiveResponse(request, nullptr)) {
-                continue;
-              }
-
-              DWORD status = 0;
-              DWORD statusBytes = sizeof(status);
-              if (!WinHttpQueryHeaders(
-                      request,
-                      WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                      WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusBytes,
-                      WINHTTP_NO_HEADER_INDEX) || status != 200) {
-                continue;
-              }
-
-              std::vector<uint8_t> response;
-              for (;;) {
-                DWORD available = 0;
-                if (!WinHttpQueryDataAvailable(request, &available)) {
-                  response.clear();
-                  break;
-                }
-                if (!available) break;
-                if (response.size() > kNativeMediaTverMaximumFeedBytes ||
-                    static_cast<size_t>(available) >
-                        kNativeMediaTverMaximumFeedBytes - response.size()) {
-                  response.clear();
-                  break;
-                }
-                const size_t offset = response.size();
-                response.resize(offset + available);
-                DWORD read = 0;
-                if (!WinHttpReadData(
-                        request, response.data() + offset, available, &read)) {
-                  response.clear();
-                  break;
-                }
-                response.resize(offset + read);
-                if (!read) break;
-              }
-              if (!response.empty()) {
-                result.ok = true;
-                result.body = std::move(response);
-                return result;
-              }
-            }
-            result.error = L"TVer cloud feed request failed";
+            result.ok = hp::WinHttpDownload(
+                kNativeMediaTverCloudFeedUrl, kNativeMediaTverMaximumFeedBytes,
+                &result.body, nullptr, &result.error,
+                kNativeMediaTverUserAgent, kNativeMediaTverHeaders);
             return result;
           });
 
