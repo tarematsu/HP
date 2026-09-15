@@ -10,13 +10,19 @@ const rotation = source('spotify_timed_end_rotation.inc');
 const click = source('spotify_background_click.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('Spotify is full-size and behind native UI before confirmed playback', () => {
+test('Spotify fits exactly behind the YouTube/TVer panel before confirmed playback', () => {
   assert.match(
     layout,
     /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/,
   );
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight/);
+  assert.match(layout, /bool SpotifyMediaPanelRect\(HWND parentWindow, RECT\* rect\)/);
+  assert.match(layout, /FindWindowExW\([\s\S]*L"HomePanelNativeStaticPanel"[\s\S]*L"HomePanelNativeMedia"/);
+  assert.match(layout, /ScreenToClient\(parentWindow, &topLeft\)/);
+  assert.match(layout, /ScreenToClient\(parentWindow, &bottomRight\)/);
+  assert.match(layout, /int x = mediaPanelRect\.left/);
+  assert.match(layout, /int y = mediaPanelRect\.top/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
 });
@@ -40,7 +46,7 @@ test('ad interruption keeps confirmed playback compact until the target song end
   assert.doesNotMatch(branch, /playbackConfirmed = false/);
 });
 
-test('track advance clears confirmation so the next target returns to full-size background', () => {
+test('track advance clears confirmation so the next target returns behind the media panel', () => {
   const applyStart = rotation.indexOf('void SpotifyWebViews::ApplyTimedRotationTarget');
   const applyEnd = rotation.indexOf('\nvoid SpotifyWebViews::InitializeTimedRotationSlot', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
