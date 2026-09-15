@@ -3,9 +3,9 @@ namespace {
 
 // Minimal playback start/status probe for the already-selected Spotify track:
 // 1) prefer the target page Play/Pause control over the global player control;
-// 2) only trust the global player when its now-playing Track ID matches target;
-// 3) Pause means native may confirm playback directly; Play returns one trusted
-//    CDP click point. No observer/WebMessage acknowledgement is required.
+// 2) if it is Play, return its exact CSS-pixel center for one trusted CDP click;
+// 3) if it is already Pause, native confirms playback directly without waiting
+//    for observer/WebMessage acknowledgement.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
@@ -14,9 +14,8 @@ LR"JS(
       (target.path || target.trackPath || target.pagePath || '');
   if (!targetPath || location.hostname !== 'open.spotify.com') return null;
 
-  const sameTrackPath = value => value === targetPath ||
-      (targetPath.startsWith('/track/') && value.endsWith(targetPath));
-  const onTargetPage = sameTrackPath(location.pathname);
+  const onTargetPage = location.pathname === targetPath ||
+      (targetPath.startsWith('/track/') && location.pathname.endsWith(targetPath));
   if (!onTargetPage) return null;
 
   const visible = element => {
@@ -32,20 +31,6 @@ LR"JS(
                     element.getAttribute('title')) || '')
         .replace(/\s+/g, ' ').trim().toLowerCase();
     return label.includes('pause') || label.includes('一時停止');
-  };
-  const playerMatchesTarget = () => {
-    for (const selector of [
-      '[data-testid="now-playing-widget"] a[href*="/track/"]',
-      '[data-testid="now-playing-bar"] [data-testid="context-item-link"][href*="/track/"]',
-      'footer [data-testid="context-item-link"][href*="/track/"]'
-    ]) {
-      const link = document.querySelector(selector);
-      if (!link) continue;
-      try {
-        if (sameTrackPath(new URL(link.href, location.href).pathname)) return true;
-      } catch (_) {}
-    }
-    return false;
   };
 
   const point = element => {
@@ -66,16 +51,12 @@ LR"JS(
 
   const pageButton = Array.from(document.querySelectorAll(
       'button[data-testid="play-button"]')).find(visible) || null;
-  if (pageButton) {
-    if (isPauseControl(pageButton)) return true;
-    return point(pageButton);
-  }
-
-  const playerButton = Array.from(document.querySelectorAll(
+  const playerButton = pageButton ? null : Array.from(document.querySelectorAll(
       'button[data-testid="control-button-playpause"]')).find(visible) || null;
-  if (!playerButton || !playerMatchesTarget()) return null;
-  if (isPauseControl(playerButton)) return true;
-  return point(playerButton);
+  const button = pageButton || playerButton;
+  if (!button) return null;
+  if (isPauseControl(button)) return true;
+  return point(button);
 })()
 )JS";
 
