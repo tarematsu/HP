@@ -24,20 +24,13 @@ test('observer posts one generation-fenced interruption event after target playb
   assert.doesNotMatch(events, /addEventListener\('(?:timeupdate|pause|waiting|stalled)'/);
 });
 
-test('active non-target playback before the requested song waits without creating a deadline', () => {
+test('pre-confirmation playback start path has no separate non-target settling branch', () => {
   assert.match(runtime, /if \(!media\.paused\) \{[\s\S]*state\.startPosted && !state\.interrupted[\s\S]*return 'interruption'/);
-  assert.match(scoped, /if \(mediaState\.known && mediaState\.playing\) return 'settling'/);
-  assert.doesNotMatch(scoped, /return 'wrong'/);
-  assert.doesNotMatch(music, /"\\"wrong\\""/);
-  const waitingStart = music.indexOf(
-    'if (json && std::wstring_view(json) == L"\\"settling\\"")',
-  );
-  const pointStart = music.indexOf('int x = 0;', waitingStart);
-  assert.ok(waitingStart >= 0 && pointStart > waitingStart);
-  const waiting = music.slice(waitingStart, pointStart);
-  assert.match(waiting, /SlotState::WaitingTarget/);
-  assert.match(waiting, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
-  assert.doesNotMatch(waiting, /NavigateMusicTarget/);
+  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
+  assert.doesNotMatch(scoped, /return 'wrong'|return 'settling'|currentMatchesTarget/);
+  assert.doesNotMatch(music, /"\\"wrong\\""|"\\"settling\\""/);
+  assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
+  assert.doesNotMatch(music, /ShouldRenavigateUnhealthySlot|lastModeNavigateTick/);
 });
 
 test('native clears the target completion deadline as soon as interruption is observed', () => {
