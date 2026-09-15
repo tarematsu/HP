@@ -19,14 +19,15 @@ const appMessages = readFileSync(
   'utf8',
 );
 
-test('Stationhead background playback remains visible at 480x270 without forcing a memory target', () => {
+test('Stationhead background playback remains visible onscreen at 320x160 without forcing a memory target', () => {
   assert.doesNotMatch(
     layout,
     /SetControllerMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
-  assert.match(bridge, /kStationheadSurfaceWidth = 480/);
-  assert.match(bridge, /kStationheadSurfaceHeight = 270/);
-  assert.match(layout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(bridge, /kStationheadSurfaceWidth = 320/);
+  assert.match(bridge, /kStationheadSurfaceHeight = 160/);
+  assert.match(layout, /playbackHostBounds = surfaceBounds/);
+  assert.doesNotMatch(layout, /StationheadOffscreenBounds/);
   assert.match(layout, /controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
 });
