@@ -23,12 +23,12 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead normal background surface stays 320x160 inside the client area', () => {
-  assert.match(bridge, /kStationheadSurfaceWidth = 320/);
-  assert.match(bridge, /kStationheadSurfaceHeight = 160/);
+test('Stationhead normal background surface stays 160x320 behind the clock panel', () => {
+  assert.match(bridge, /kStationheadSurfaceWidth = 160/);
+  assert.match(bridge, /kStationheadSurfaceHeight = 320/);
   assert.match(bridge, /StationheadBackgroundBounds/);
-  assert.match(bridge, /left = workspaceBounds\.left/);
-  assert.match(bridge, /top = workspaceBounds\.top/);
+  assert.match(bridge, /ComputeMediaSurfaceAnchors\(workspaceBounds\)/);
+  assert.match(bridge, /anchors\.clock/);
   assert.doesNotMatch(bridge, /StationheadOffscreenBounds|kStationheadOffscreenGap/);
 
   const apply = section(
@@ -63,7 +63,7 @@ test('normal startup and reload layout do not depend on audio confirmation', () 
   assert.match(startup, /LayoutControllers\(\)/);
 });
 
-test('Monitor B changes Stationhead z-order only and preserves the 320x160 geometry', () => {
+test('Monitor B changes Stationhead z-order only and preserves the 160x320 geometry', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -84,14 +84,14 @@ test('Monitor B changes Stationhead z-order only and preserves the 320x160 geome
     'void PowerSavingController::Detach() noexcept',
   );
   assert.match(placement, /monitorMode_ == MonitorMode::Stationhead/);
-  assert.match(placement, /StationheadPlayer exclusively owns the fixed 320x160 geometry/);
+  assert.match(placement, /StationheadPlayer exclusively owns the fixed/);
   assert.match(placement, /if \(context->stationheadForeground\)/);
   assert.match(placement, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
   assert.doesNotMatch(placement, /foregroundBounds/);
   assert.match(placement, /child, HWND_BOTTOM/);
 });
 
-test('authentication keeps playback alive onscreen behind the 320x160 foreground auth surface', () => {
+test('authentication keeps playback alive onscreen behind the 160x320 foreground auth surface', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
