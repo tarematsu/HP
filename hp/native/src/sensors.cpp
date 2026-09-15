@@ -101,9 +101,7 @@ bool ConfigurePort(HANDLE serial) {
 
   COMMTIMEOUTS timeouts{};
   timeouts.ReadIntervalTimeout = MAXDWORD;
-  timeouts.ReadTotalTimeoutMultiplier = 0;
   timeouts.ReadTotalTimeoutConstant = 1000;
-  timeouts.WriteTotalTimeoutMultiplier = 0;
   timeouts.WriteTotalTimeoutConstant = 1000;
   if (!SetCommTimeouts(serial, &timeouts)) return false;
   SetupComm(serial, 4096, 4096);
@@ -136,38 +134,10 @@ LineResult ReadLine(HANDLE serial, std::string& buffer, std::string& line,
 bool WriteCommand(HANDLE serial, const char* command) {
   const std::string payload = std::string(command) + "\r\n";
   DWORD written = 0;
-  return WriteFile(serial, payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr) && written == payload.size();
+  return WriteFile(serial, payload.data(), static_cast<DWORD>(payload.size()), &written, nullptr) &&
+      written == payload.size();
 }
-
-bool PrepareSensor(HANDLE serial, std::string& buffer, const std::atomic<bool>& stopping, Logger& log) {
-  for (const char* command : {"STP", "ID?", "STA"}) {
-    if (!WriteCommand(serial, command)) return false;
-    Sleep(100);
-    const auto deadline = std::chrono::steady_clock::now() + kCommandTimeout;
-    for (;;) {
-      const auto now = std::chrono::steady_clock::now();
-      if (now >= deadline) {
-        log.Warn(L"UD-CO2S command timeout: " + Utf8ToWide(command));
-        return false;
-      }
-      std::string line;
-      const LineResult result = ReadLine(serial, buffer, line, stopping, deadline - now);
-      if (result != LineResult::Line) {
-        log.Warn(L"UD-CO2S command timeout/read failure: " + Utf8ToWide(command));
-        return false;
-      }
-      if (line.rfind("OK", 0) == 0) break;
-      if (line.rfind("NG", 0) == 0) {
-        log.Warn(L"UD-CO2S rejected command: " + Utf8ToWide(command));
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-
-}
+}  // namespace
 
 SensorHub::SensorHub(HWND window, AppConfig config, fs::path dataDir, Logger& log)
     : window_(window), config_(std::move(config)), switchbotPath_(dataDir / L"switchbot.json"),
@@ -249,10 +219,7 @@ void SensorHub::ApplyCloudSwitchBot(const fs::path& path) {
   }
 }
 
-}
-
-
-
+}  // namespace hp
 
 #include "sensors_serial.cpp"
 #include "sensors_outbox.cpp"
