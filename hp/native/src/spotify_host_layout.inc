@@ -47,6 +47,10 @@ void SpotifyWebViews::PlaceHosts() noexcept {
   if (!GetClientRect(parentWindow_, &client)) return;
   const int clientWidth = std::max(1L, client.right - client.left);
   const int clientHeight = std::max(1L, client.bottom - client.top);
+  // Authentication still owns foreground z-order, but no longer gets a larger
+  // renderer. These aliases keep every non-Monitor-C mode on the same surface.
+  const int activeWidth = std::min(kSpotifyBackgroundWidth, clientWidth);
+  const int activeHeight = std::min(kSpotifyBackgroundHeight, clientHeight);
 
   for (size_t i = 0; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
@@ -56,8 +60,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
 
     // Background Spotify is always a real 480x270 HWND (or parent-clamped
-    // smaller). Authentication only changes z-order; it must not silently
-    // enlarge the renderer. Monitor C is the one explicit full-size exception.
+    // smaller). Monitor C is the one explicit full-size exception.
     int x = client.left;
     int y = client.top;
     int width = std::min(kSpotifyBackgroundWidth, clientWidth);
@@ -68,6 +71,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       height = clientHeight;
       insertAfter = HWND_TOP;
     } else if (authentication) {
+      width = activeWidth;
+      height = activeHeight;
       insertAfter = HWND_TOP;
     }
 
@@ -157,9 +162,8 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
 
   if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == recoveryIndex &&
       hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex) {
-    // Recheck actual HWND geometry even when logical layout state is unchanged.
-    // This self-heals any external/full-size resize instead of trusting stale
-    // cached bounds indefinitely.
+    // Logical state can be unchanged even if another layout path resized the
+    // child HWND. Rechecking actual geometry here makes 480x270 self-healing.
     PlaceHosts();
     maintainAuthenticationForeground(false);
     return;
