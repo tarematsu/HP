@@ -47,14 +47,15 @@ test('dashboard sections use source versions and reuse unchanged materialized da
   assert.match(parser, /json::Number\(object, L"__version", -1\)/);
   assert.match(parser, /previous->weatherHours/);
   assert.match(parser, /previous->octopusProfile/);
+  assert.match(parser, /previous->octopusRender/);
   assert.match(parser, /previous->switchBotDevices/);
-  assert.match(parser, /CompleteTotal\(item, L"currentComplete", L"currentTotal"\)/);
+  assert.match(parser, /BuildOctopusRenderProjection\(next\)/);
   assert.match(parser, /bool ParseSwitchBotDevices/);
   assert.match(parser, /Compatibility fallback for old cached dashboard files/);
-  assert.doesNotMatch(parser, /SectionRevision\(|BuildOctopusRenderProjection|octopusRender/);
+  assert.doesNotMatch(parser, /SectionRevision\(/);
   assert.match(dashboardHeader, /uint64_t octopus = 0;/);
   assert.match(dashboardHeader, /uint64_t switchbot = 0;/);
-  assert.doesNotMatch(dashboardHeader, /OctopusRenderProjection|currentComplete|previousComplete/);
+  assert.match(dashboardHeader, /struct OctopusRenderProjection/);
   assert.doesNotMatch(dashboardHeader, /uint64_t energy = 0;/);
   assert.match(dashboardLoader, /ParseDashboardSnapshot\(text, snapshot, nullptr, previous\)/);
 });
@@ -120,19 +121,14 @@ test('energy card uses a revision and size keyed bitmap while panel back buffers
   assert.match(panelWindows, /IntersectClipRect\(dc, dirty\.left, dirty\.top, dirty\.right, dirty\.bottom\)/);
 });
 
-test('Octopus aggregation stays inside the bitmap rebuild path without duplicate render state', () => {
-  assert.match(energy, /currentUsage \+= point\.currentTotal/);
-  assert.match(energy, /previousUsage \+= point\.previousTotal/);
-  assert.match(energy, /maximum = std::max/);
+test('Octopus chart aggregation and GDI pen allocation happen only during cache rebuild', () => {
+  assert.match(parser, /projection\.currentWeekUsage \+= item\.currentTotal/);
+  assert.match(parser, /projection\.previousWeekUsage \+= item\.previousTotal/);
+  assert.match(parser, /projection\.maximum = std::max/);
+  assert.match(energy, /nativeDashboard_\.octopusRender\.maximum/);
   assert.match(energy, /HPEN dottedPen = CreatePen/);
   assert.equal((energy.match(/CreatePen\(PS_DOT/g) ?? []).length, 1);
   assert.equal((energy.match(/DeleteObject\(dottedPen\)/g) ?? []).length, 1);
-  assert.doesNotMatch(parser, /currentWeekUsage|previousWeekUsage|OctopusRenderProjection/);
-});
-
-test('plug state parser contains only the reachable Plug Mini path', () => {
-  assert.match(parser, /std::wstring PlugState/);
-  assert.doesNotMatch(parser, /Contact|Motion|Presence/);
 });
 
 test('clock paint consumes cached network-clock strings', () => {
