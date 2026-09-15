@@ -22,14 +22,23 @@ test('playlist fallback is bounded and event driven', () => {
 test('unified runtime owns trusted real-control actions', () => {
   assert.match(runtime, /const arm = \(element, action, cooldownMs\) =>/);
   assert.match(runtime, /getBoundingClientRect\?\.\(\)/);
+  assert.match(runtime, /document\.elementFromPoint\(point\.x, point\.y\)/);
   assert.match(runtime, /setProperty\('pointer-events', 'auto', 'important'\)/);
-  assert.match(runtime, /centerX \/ window\.innerWidth/);
-  assert.match(runtime, /centerY \/ window\.innerHeight/);
+  assert.match(runtime, /position:fixed!important/);
+  assert.match(runtime, /point\.x \/ window\.innerWidth/);
+  assert.match(runtime, /point\.y \/ window\.innerHeight/);
   assert.doesNotMatch(runtime, /return \[5000, 5000\]/);
   assert.match(runtime, /arm\(target, 'skip-ad', 600\)/);
   assert.match(runtime, /'play', 1500/);
   assert.match(runtime, /arm\(canonical, 'fullscreen', 1200\)/);
   assert.match(runtime, /fullscreenPattern = \/\(全画面\|fullscreen\|full screen\)\/i/);
+});
+
+test('skippable ads are handled before fullscreen recovery', () => {
+  const adStart = runtime.indexOf('if (ad()) {');
+  const skip = runtime.indexOf("arm(target, 'skip-ad', 600)", adStart);
+  const fullscreen = runtime.indexOf('const action = armFullscreen();', adStart);
+  assert.ok(adStart >= 0 && skip > adStart && fullscreen > skip);
 });
 
 test('unified runtime stays player-local and event driven', () => {
