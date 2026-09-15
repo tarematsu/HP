@@ -33,10 +33,12 @@ test('startup preview keeps Stationhead backgrounded unless an explicit foregrou
   );
 });
 
-test('background rendering keeps a real onscreen 320x160 Stationhead surface', () => {
-  assert.match(bridgeSource, /kStationheadSurfaceWidth = 320/);
-  assert.match(bridgeSource, /kStationheadSurfaceHeight = 160/);
+test('background rendering keeps a real onscreen 160x320 Stationhead surface behind the clock card', () => {
+  assert.match(bridgeSource, /kStationheadSurfaceWidth = 160/);
+  assert.match(bridgeSource, /kStationheadSurfaceHeight = 320/);
   assert.match(bridgeSource, /StationheadBackgroundBounds/);
+  assert.match(bridgeSource, /ComputeMediaSurfaceAnchors\(workspaceBounds\)/);
+  assert.match(bridgeSource, /anchors\.clock/);
   assert.doesNotMatch(bridgeSource, /StationheadOffscreenBounds|kStationheadOffscreenGap/);
 
   const createHost = section(
@@ -111,7 +113,7 @@ test('Monitor B and explicit Stationhead presentation promote the fixed surface 
   assert.match(visible, /HWND_TOP/);
 });
 
-test('authentication uses the same 320x160 onscreen surface and foreground z-order', () => {
+test('authentication uses the same 160x320 onscreen surface and foreground z-order', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',

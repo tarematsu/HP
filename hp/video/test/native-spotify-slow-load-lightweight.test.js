@@ -63,11 +63,14 @@ test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('pre-playback recovery and confirmed playback share the same onscreen 320x160 viewport', () => {
-  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
-  assert.match(layout, /std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
-  assert.match(layout, /std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
+test('pre-playback recovery and confirmed playback share the same onscreen 160x320 air-panel viewport', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
+  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
+  assert.match(layout, /anchors\.air/);
+  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
+  assert.match(layout, /backgroundSurface\.right - backgroundSurface\.left/);
+  assert.match(layout, /backgroundSurface\.bottom - backgroundSurface\.top/);
   assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
   assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
   assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);

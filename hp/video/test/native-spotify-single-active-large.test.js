@@ -23,13 +23,14 @@ const header = readFileSync(
   'utf8',
 );
 
-test('Spotify keeps the same onscreen 320x160 surface for background and Monitor C foreground inspection', () => {
-  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /const int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
-  assert.match(layout, /const int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
+test('Spotify keeps the same onscreen 160x320 air-panel surface for background and Monitor C foreground inspection', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
+  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
+  assert.match(layout, /anchors\.air/);
+  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
+  assert.match(layout, /const int hostX = backgroundSurface\.left;/);
+  assert.match(layout, /const int hostY = backgroundSurface\.top;/);
   assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
   assert.match(layout, /const bool authentication =/);
   assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
@@ -37,7 +38,7 @@ test('Spotify keeps the same onscreen 320x160 surface for background and Monitor
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
 });
 
-test('background Spotify controllers stay visible while playback geometry changes', () => {
+test('background Spotify controllers stay visible while z-order changes', () => {
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
   assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyLowPowerPlaybackWidth/);

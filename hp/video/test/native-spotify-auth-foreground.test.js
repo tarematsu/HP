@@ -41,8 +41,11 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
     layout,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/,
   );
-  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
+  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
+  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
+  assert.match(layout, /anchors\.air/);
+  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);
   assert.doesNotMatch(layout, /compactPlayback/);
 });

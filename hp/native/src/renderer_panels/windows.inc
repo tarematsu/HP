@@ -160,7 +160,17 @@ void Renderer::InvalidateAllNativePanels() {
 }
 
 void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
+  // The lower cards are intentionally shifted one slot to the right:
+  // energy -> old weather slot, weather -> old radar slot, radar -> old energy slot.
+  if (section == PanelSection::Weather && window == nativeSideWindow_) {
+    window = nativeMainWindow_;
+  } else if ((section == PanelSection::Energy ||
+              section == PanelSection::EnergySwitchBot) &&
+             window == nativeMainWindow_) {
+    window = nativeSideWindow_;
+  }
   if (!window || !IsWindow(window)) return;
+
   RECT client{};
   GetClientRect(window, &client);
   RECT rect = client;
@@ -169,24 +179,26 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
     switch (section) {
       case PanelSection::Clock: rect = sections.clock; break;
       case PanelSection::ClockTime: rect = ClockTimeRectFromCard(sections.clock); break;
-      case PanelSection::Weather: rect = sections.weather; break;
       case PanelSection::AirStats:
         rect = RearrangedAirStatsRectFromCard(sections.controls);
         break;
       case PanelSection::AirGraph:
         rect = RearrangedAirGraphRectFromCard(sections.controls);
         break;
+      case PanelSection::Energy:
+        rect = sections.weather;
+        break;
+      case PanelSection::EnergySwitchBot:
+        rect = EnergySwitchBotRectFromCard(
+            sections.weather, nativeDashboard_.switchBotDevices.size());
+        break;
       default: break;
     }
   } else if (window == nativeMainWindow_) {
     const MainSections sections = SplitMainSections(client);
     switch (section) {
-      case PanelSection::Radar: rect = sections.radar; break;
-      case PanelSection::Energy: rect = sections.energy; break;
-      case PanelSection::EnergySwitchBot:
-        rect = EnergySwitchBotRectFromCard(
-            sections.energy, nativeDashboard_.switchBotDevices.size());
-        break;
+      case PanelSection::Weather: rect = sections.radar; break;
+      case PanelSection::Radar: rect = sections.energy; break;
       default: break;
     }
   }
@@ -275,11 +287,23 @@ void Renderer::PaintNativeSide(HWND hwnd) {
   if (IntersectRect(&overlap, &scope.dirty, &sections.clock)) {
     DrawClockSection(scope.dc, sections.clock);
   }
-  if (IntersectRect(&overlap, &scope.dirty, &sections.weather)) {
-    DrawWeatherSection(scope.dc, sections.weather);
-  }
   if (IntersectRect(&overlap, &scope.dirty, &sections.controls)) {
     DrawControlsSection(scope.dc, sections.controls);
+  }
+  if (IntersectRect(&overlap, &scope.dirty, &sections.weather)) {
+    const RECT switchBotRect = EnergySwitchBotRectFromCard(
+        sections.weather, nativeDashboard_.switchBotDevices.size());
+    const bool switchBotOnly =
+        scope.dirty.left >= switchBotRect.left &&
+        scope.dirty.top >= switchBotRect.top &&
+        scope.dirty.right <= switchBotRect.right &&
+        scope.dirty.bottom <= switchBotRect.bottom;
+    if (!switchBotOnly) DrawEnergySection(scope.dc, sections.weather);
+
+    RECT switchBotOverlap{};
+    if (IntersectRect(&switchBotOverlap, &scope.dirty, &switchBotRect)) {
+      DrawEnergySwitchBotSection(scope.dc, sections.weather);
+    }
   }
 }
 
@@ -289,22 +313,10 @@ void Renderer::PaintNativeMain(HWND hwnd) {
   const MainSections sections = SplitMainSections(scope.bounds);
   RECT overlap{};
   if (IntersectRect(&overlap, &scope.dirty, &sections.radar)) {
-    DrawRadarSection(scope.dc, sections.radar);
+    DrawWeatherSection(scope.dc, sections.radar);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.energy)) {
-    const RECT switchBotRect = EnergySwitchBotRectFromCard(
-        sections.energy, nativeDashboard_.switchBotDevices.size());
-    const bool switchBotOnly =
-        scope.dirty.left >= switchBotRect.left &&
-        scope.dirty.top >= switchBotRect.top &&
-        scope.dirty.right <= switchBotRect.right &&
-        scope.dirty.bottom <= switchBotRect.bottom;
-    if (!switchBotOnly) DrawEnergySection(scope.dc, sections.energy);
-
-    RECT switchBotOverlap{};
-    if (IntersectRect(&switchBotOverlap, &scope.dirty, &switchBotRect)) {
-      DrawEnergySwitchBotSection(scope.dc, sections.energy);
-    }
+    DrawRadarSection(scope.dc, sections.energy);
   }
 }
 

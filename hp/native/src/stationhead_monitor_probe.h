@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "media_surface_anchor.h"
 
 namespace hp {
 
@@ -10,11 +11,11 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 // access on the existing UI thread and avoids adding another polling thread.
 void RequestStationheadMonitorDomProbe() noexcept;
 
-// Stationhead always keeps a real 320x160 surface inside the client area.
-// Normal playback, startup and scheduled refreshes stay behind the dashboard;
-// authentication/interactive inspection only changes z-order to foreground.
-inline constexpr LONG kStationheadSurfaceWidth = 320;
-inline constexpr LONG kStationheadSurfaceHeight = 160;
+// Stationhead always keeps a real 160x320 portrait surface inside the client
+// area. Normal playback, startup and scheduled refreshes stay behind the clock
+// panel; authentication/interactive inspection only changes z-order.
+inline constexpr LONG kStationheadSurfaceWidth = 160;
+inline constexpr LONG kStationheadSurfaceHeight = 320;
 
 // Keep the existing preview state as the reload/startup signal used by the
 // Stationhead lifecycle. Geometry no longer depends on it because the surface
@@ -31,14 +32,13 @@ inline bool StationheadBackgroundPreview() noexcept {
 }
 
 inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
-  const LONG left = workspaceBounds.left;
-  const LONG top = workspaceBounds.top;
-  return RECT{
-      left,
-      top,
-      left + kStationheadSurfaceWidth,
-      top + kStationheadSurfaceHeight,
-  };
+  const MediaSurfaceAnchors anchors =
+      ComputeMediaSurfaceAnchors(workspaceBounds);
+  return CenterMediaSurfaceOnAnchor(
+      workspaceBounds,
+      anchors.clock,
+      kStationheadSurfaceWidth,
+      kStationheadSurfaceHeight);
 }
 
 // Monitor placement and Stationhead WebView layout live in separate modules.

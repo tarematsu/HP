@@ -33,13 +33,14 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
   assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify layout keeps a fixed onscreen 320x160 surface and changes only z-order', () => {
-  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /const int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
-  assert.match(layout, /const int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
+test('Spotify layout keeps a fixed onscreen 160x320 surface behind the air panel and changes only z-order', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
+  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
+  assert.match(layout, /anchors\.air/);
+  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
+  assert.match(layout, /const int hostX = backgroundSurface\.left;/);
+  assert.match(layout, /const int hostY = backgroundSurface\.top;/);
   assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
   assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
   assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);
@@ -52,13 +53,13 @@ test('Spotify layout keeps a fixed onscreen 320x160 surface and changes only z-o
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
 });
 
-test('Spotify recovery keeps the same 320x160 background viewport used during steady playback', () => {
+test('Spotify recovery keeps the same 160x320 air-panel background viewport used during steady playback', () => {
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
-  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
-  assert.match(layout, /std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
-  assert.match(layout, /std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
+  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
+  assert.match(layout, /backgroundSurface\.right - backgroundSurface\.left/);
+  assert.match(layout, /backgroundSurface\.bottom - backgroundSurface\.top/);
   assert.doesNotMatch(layout, /playbackConfirmed[\s\S]*\? 1/);
 });
 

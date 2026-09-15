@@ -49,22 +49,25 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('Spotify keeps one onscreen 320x160 surface for recovery, playback and authentication', () => {
+test('Spotify keeps one onscreen 160x320 air-panel surface for recovery, playback and authentication', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySurfaceZoom = 0\.50/);
   assert.match(layout, /put_ZoomFactor\(kSpotifySurfaceZoom\)/);
-  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
+  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
   assert.doesNotMatch(layout, /kSpotifySerializedRecoveryZoom/);
   assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyParkedPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyLowPowerPlaybackWidth|kSpotifyLowPowerPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /const int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
-  assert.match(layout, /const int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
+  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
+  assert.match(layout, /anchors\.air/);
+  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
+  assert.match(layout, /const int hostX = backgroundSurface\.left;/);
+  assert.match(layout, /const int hostY = backgroundSurface\.top;/);
+  assert.match(layout, /const int width = std::max\(1L, backgroundSurface\.right - backgroundSurface\.left\);/);
+  assert.match(layout, /const int height = std::max\(1L, backgroundSurface\.bottom - backgroundSurface\.top\);/);
   assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
   assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
   assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);
