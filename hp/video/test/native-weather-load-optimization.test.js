@@ -44,10 +44,12 @@ test('native dashboard invalidates weather only when its source revision changes
   );
 });
 
-test('weather icons use a dedicated bitmap cache', () => {
+test('weather icons keep a dedicated bitmap cache', () => {
   assert.match(rendererHeader, /nativeWeatherIconBitmaps_/);
   assert.match(rendererHeader, /nativeWeatherIconUseCounter_/);
-  assert.match(bitmapCache, /auto found = nativeWeatherIconBitmaps_\.find\(key\);/);
-  assert.match(bitmapCache, /CacheNativeWeatherIconBitmap\(key, bitmap\)/);
+  assert.match(
+    bitmapCache,
+    /CachedBitmap\(nativeWeatherIconBitmaps_, nativeWeatherIconUseCounter_,[\s\S]*kWeatherIconBitmapCacheLimit/,
+  );
   assert.match(bitmapCache, /deleteBitmaps\(nativeWeatherIconBitmaps_\);/);
 });
