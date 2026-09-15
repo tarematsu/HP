@@ -42,8 +42,8 @@ test('Stationhead interaction tab expands the playback host and forces rendering
   );
   assert.match(childLayout, /const bool playbackForeground\s*=\s*showPlayback \|\|/);
   assert.match(childLayout, /const bool playbackFullSize = playbackForeground \|\| playbackBackgroundFullSize;/);
-  assert.match(childLayout, /const int hostWidth = playbackFullSize \? width : 1;/);
-  assert.match(childLayout, /const int hostHeight = playbackFullSize \? height : 1;/);
+  assert.match(childLayout, /const int hostWidth = playbackFullSize \? playbackWidth : 1;/);
+  assert.match(childLayout, /const int hostHeight = playbackFullSize \? playbackHeight : 1;/);
   assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
   assert.match(
     childLayout,
