@@ -23,14 +23,16 @@ test('single Stationhead expands to the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background playback placement uses current controller geometry', () => {
+test('background playback placement uses the fixed offscreen 480x270 geometry', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
-  assert.match(behind, /keepPlaybackFullSizeInBackground/);
+  assert.doesNotMatch(behind, /AudioPlaying|trackBoundaryPlaybackRecoveryPending_/);
 
   const apply = section(layout, 'void ApplyStationheadChildLayout(',
-    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()');
+    '}  // namespace');
+  assert.match(apply, /const RECT offscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
+  assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
   assert.ok(apply.indexOf('SetWindowPos(hostWindow') < apply.indexOf('if (controller)'));
   assert.ok(apply.indexOf('SetWindowPos(authHostWindow') < apply.indexOf('if (authController)'));
 });
