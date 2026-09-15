@@ -1,6 +1,7 @@
 // Media-panel composition wrapper. Playback policies remain fixed constexpr
 // scripts while this layer provides trusted WebView2 input, page-specific
 // routing and event-driven wakeups for the low-frequency native watchdogs.
+#include "../webview_startup_cache_reset.h"
 #include "media_tver_episode_loop_policy.inc"
 #include "media_tver_playback_policy.inc"
 #define kNativeMediaTverForceFullscreenAdSafeScript \
