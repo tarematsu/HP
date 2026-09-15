@@ -44,11 +44,16 @@ LR"JS(
       }
       return explicitAdMarker(video);
     }
+
+    // A pre-roll can be the first media item and may not expose its ad badge
+    // before metadata arrives. Treat a short item at the very beginning as an
+    // ad candidate so its `ended` event can never become episode completion.
+    const startupShortMedia = state.maxTime < 5 && shortAdLength;
     const replacementVideo = state.video && state.video !== video &&
         state.maxTime >= 5 && shortAdLength;
     const sameVideoReset = state.video === video && state.maxTime >= 10 &&
         shortAdLength && currentTime < 5 && video.playbackRate <= 1.05;
-    if (replacementVideo || sameVideoReset) return true;
+    if (startupShortMedia || replacementVideo || sameVideoReset) return true;
     return explicitAdMarker(video);
   };
 
