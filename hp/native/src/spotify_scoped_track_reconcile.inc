@@ -150,33 +150,6 @@ LR"JS(
         media.find(candidate => !candidate.ended) || null;
     return { known: !!pending, playing: false, element: pending };
   };
-  const tryDirectTargetPlayback = (state, matchesTarget) => {
-    const media = state && state.element;
-    if (!matchesTarget || !state || !state.known || state.playing ||
-        !media || media.tagName !== 'AUDIO' || typeof media.play !== 'function') {
-      return false;
-    }
-
-    const generation = String(window.__homePanelSpotifyGeneration || '0');
-    if (window.__homePanelSpotifyDirectPlayGeneration === generation) {
-      return false;
-    }
-    // Exactly one direct play() attempt per target generation. If it is
-    // rejected or does not produce a playing event, the next reconcile pass
-    // falls through to the existing trusted Play-button click path.
-    window.__homePanelSpotifyDirectPlayGeneration = generation;
-    const runtime = window.__homePanelSpotifyMediaObserverRuntime;
-    if (runtime && typeof runtime.armTrustedStart === 'function') {
-      runtime.armTrustedStart(generation);
-    }
-    try {
-      const result = media.play();
-      if (result && typeof result.catch === 'function') result.catch(() => {});
-      return true;
-    } catch (_) {
-      return false;
-    }
-  };
 
   if (location.hostname !== 'open.spotify.com' || !onTargetPage()) return null;
 
@@ -190,7 +163,9 @@ LR"JS(
 
   if (currentMatchesTarget && mediaState.known && mediaState.playing) return true;
   if (mediaState.known && mediaState.playing) return 'settling';
-  if (tryDirectTargetPlayback(mediaState, currentMatchesTarget)) {
+  if (currentMatchesTarget && mediaState.known && !mediaState.playing &&
+      typeof window.__homePanelSpotifyTryDirectPlay === 'function' &&
+      window.__homePanelSpotifyTryDirectPlay(mediaState.element)) {
     return 'direct-play';
   }
   if (controlIntent === 'pause' || buttonIntentValue === 'pause') return 'settling';
