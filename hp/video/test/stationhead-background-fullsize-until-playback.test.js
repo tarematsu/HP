@@ -63,7 +63,7 @@ test('normal startup and reload layout do not depend on audio confirmation', () 
   assert.match(startup, /LayoutControllers\(\)/);
 });
 
-test('Monitor B presents Stationhead in foreground at 320x160 and normal mode returns it behind the dashboard', () => {
+test('Monitor B changes Stationhead z-order only and preserves the 320x160 geometry', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -84,10 +84,10 @@ test('Monitor B presents Stationhead in foreground at 320x160 and normal mode re
     'void PowerSavingController::Detach() noexcept',
   );
   assert.match(placement, /monitorMode_ == MonitorMode::Stationhead/);
-  assert.match(
-    placement,
-    /if \(context->stationheadForeground\)[\s\S]*context->foregroundBounds[\s\S]*SWP_SHOWWINDOW/,
-  );
+  assert.match(placement, /StationheadPlayer exclusively owns the fixed 320x160 geometry/);
+  assert.match(placement, /if \(context->stationheadForeground\)/);
+  assert.match(placement, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
+  assert.doesNotMatch(placement, /foregroundBounds/);
   assert.match(placement, /child, HWND_BOTTOM/);
 });
 
