@@ -11,11 +11,22 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 void RequestStationheadMonitorDomProbe() noexcept;
 
 // Stationhead keeps a real 480x270 surface even while it is not presented.
-// Background placement is outside the parent client area instead of collapsing
-// the WebView to 1x1. Foreground presentation may use the full workspace.
+// Normal background placement stays inside the parent client area behind the
+// dashboard. Offscreen placement is reserved for cases such as auth promotion.
 inline constexpr LONG kStationheadSurfaceWidth = 480;
 inline constexpr LONG kStationheadSurfaceHeight = 270;
 inline constexpr LONG kStationheadOffscreenGap = 32;
+
+inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
+  const LONG left = workspaceBounds.left;
+  const LONG top = workspaceBounds.top;
+  return RECT{
+      left,
+      top,
+      left + kStationheadSurfaceWidth,
+      top + kStationheadSurfaceHeight,
+  };
+}
 
 inline RECT StationheadOffscreenBounds(const RECT& workspaceBounds) noexcept {
   const LONG left = workspaceBounds.right + kStationheadOffscreenGap;
