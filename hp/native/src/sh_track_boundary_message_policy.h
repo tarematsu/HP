@@ -59,15 +59,15 @@ static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
     const auto lifecycle = createCallbackAlive_;                              \
     const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
     if (!webview_ || previousLifecycle != lifecycle) {                        \
-      periodicRefreshLifecycle_ = lifecycle;                                 \
+      periodicRefreshLifecycle_ = lifecycle;                                  \
       periodicRefreshStartedAt_ = 0;                                          \
       periodicRefreshNavigationObserved_ = 0;                                 \
-      if (!webview_) return;                                                   \
+      if (!webview_) return;                                                  \
     }                                                                         \
                                                                                 \
     bool statusNavigating = false;                                            \
     {                                                                         \
-      std::lock_guard lock(mutex_);                                            \
+      std::lock_guard lock(mutex_);                                           \
       statusNavigating = status_.navigating;                                  \
     }                                                                         \
     const bool navigationActive =                                             \
@@ -97,7 +97,10 @@ static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
     if (nowMs - periodicRefreshStartedAt_ < intervalMs) return;               \
                                                                                 \
     periodicRefreshStartedAt_ = nowMs;                                        \
-    NavigateCurrentUrl(nowMs, L"50-minute periodic refresh");                 \
+    audioPlayingSinceAt_.store(0, std::memory_order_relaxed);                 \
+    audioLossPlaybackObserved_ = false;                                       \
+    SetStartupBounds();                                                       \
+    NavigateCurrentUrl(nowMs, L"50-minute periodic refresh");                \
   }                                                                           \
   MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
   std::weak_ptr<std::atomic<bool>> periodicRefreshLifecycle_;                 \
@@ -327,14 +330,14 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
 }  // namespace hp
 
 #define lastReloadAt_                                                        \
-  (::hp::StationheadBoundaryReloadClock(                                    \
+  (::hp::StationheadBoundaryReloadClock(                                     \
       (lastReloadAtStorage_), webViewConfigured_))
 #define nextAutoClickAt_                                                     \
-  (::hp::StationheadAutoClickDeadlineStorage(                               \
+  (::hp::StationheadAutoClickDeadlineStorage(                                \
       (nextAutoClickAt_)))
 #define navigationInFlight_                                                  \
-  (::hp::StationheadNavigationInFlightStorage(                              \
-      (navigationInFlight_), periodicRefreshStartedAt_,                     \
+  (::hp::StationheadNavigationInFlightStorage(                               \
+      (navigationInFlight_), periodicRefreshStartedAt_,                      \
       periodicRefreshNavigationObserved_))
 #define SetFocus(target) (::hp::SetFocusAfterStationheadHide((target)))
 
@@ -342,8 +345,8 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
 
 namespace hp {
 
-// The page-side detector is the single source of in-page interaction state for
-// both A and B. It already raises the existing login-required message when a
+// The page-side detector is the single source of in-page interaction state.
+// It already raises the existing login-required message when a
 // blocking surface appears. This small bridge publishes the opposite edge once
 // the same detector has observed a stable non-blocking page, so native state is
 // current rather than a sticky login-history latch.

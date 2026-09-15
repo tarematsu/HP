@@ -19,7 +19,17 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead keeps a full-size background surface until initial playback is established', () => {
+test('Stationhead keeps a 480x270 background surface until initial playback is established', () => {
+  assert.match(layout, /kStationheadBackgroundWidth = 480/);
+  assert.match(layout, /kStationheadBackgroundHeight = 270/);
+  const bounds = section(
+    layout,
+    'RECT ResolveStationheadBackgroundBounds(',
+    'bool PlaybackSurfaceMatches(',
+  );
+  assert.match(bounds, /std::min\(kStationheadBackgroundWidth, width\)/);
+  assert.match(bounds, /std::min\(kStationheadBackgroundHeight, height\)/);
+
   const keepBehind = section(
     layout,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -31,11 +41,15 @@ test('Stationhead keeps a full-size background surface until initial playback is
   );
   assert.match(
     keepBehind,
-    /ApplyStationheadChildLayout[\s\S]*keepPlaybackFullSizeInBackground/,
+    /!monitorForeground && keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
+  );
+  assert.match(
+    keepBehind,
+    /ApplyStationheadChildLayout[\s\S]*playbackBounds[\s\S]*keepPlaybackFullSizeInBackground/,
   );
 });
 
-test('track-boundary refresh keeps Stationhead full-size behind the dashboard', () => {
+test('reload and recovery keep Stationhead at 480x270 behind the dashboard', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -53,6 +67,16 @@ test('track-boundary refresh keeps Stationhead full-size behind the dashboard', 
   assert.match(
     apply,
     /ChildWindowPlacementMatches\(\s*hostWindow, hostBounds, playbackForeground \? HWND_TOP : nullptr\)/,
+  );
+
+  const layoutControllers = section(
+    layout,
+    'void StationheadPlayer::LayoutControllers()',
+    'void StationheadPlayer::SetBounds(',
+  );
+  assert.match(
+    layoutControllers,
+    /selectedTab_ == StationheadTabKind::None && !monitorForeground &&[\s\S]*keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
   );
 });
 
@@ -81,6 +105,10 @@ test('normal established playback still collapses to 1x1 in Monitor A while Moni
   assert.match(
     setVisible,
     /const bool playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground/,
+  );
+  assert.match(
+    setVisible,
+    /!monitorForeground && keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
   );
   assert.match(setVisible, /monitorForeground \? HWND_TOP : nullptr/);
 
