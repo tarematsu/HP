@@ -23,16 +23,16 @@ function ordered(text, markers) {
   }
 }
 
-test('dashboard initializes before the top-level window is exposed', () => {
+test('dashboard and YouTube initialize before the top-level window is exposed', () => {
   const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   ordered(start, [
     'renderer_->Initialize();',
     'rendererStarted_ = true;',
     'LayoutWorkspace();',
     'renderer_->TickNativePanels(startupAt_);',
-    'stationhead_->Start();',
     'ShowWindow(window_, startupShowCommand_);',
   ]);
+  assert.doesNotMatch(start, /stationhead_->Start\(\)|StartSpotify\(\)/);
 });
 
 test('single Stationhead workspace keeps the dashboard visible', () => {
@@ -42,10 +42,12 @@ test('single Stationhead workspace keeps the dashboard visible', () => {
   assert.match(layout, /renderer_->SetVisible\(rendererStarted_\);/);
 });
 
-test('cold startup has exactly one Stationhead player', () => {
+test('cold startup has exactly one Stationhead player and defers its start', () => {
   const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
+  const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
   assert.match(start, /StationheadRole::Primary/);
-  assert.match(start, /stationhead_->Start\(\)/);
+  assert.doesNotMatch(start, /stationhead_->Start\(\)/);
+  assert.match(deferred, /stationhead_->Start\(\)/);
   assert.doesNotMatch(start, /#if 0|StationheadRole::Secondary|secondaryStationhead_/);
   assert.doesNotMatch(handles, /AppSecondaryStationheadHandle|SecondaryStationheadStartupReady/);
 });
