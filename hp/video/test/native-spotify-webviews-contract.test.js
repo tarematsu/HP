@@ -52,7 +52,9 @@ test('WebView implementation is composed by responsibility instead of numbered s
 test('Spotify matches the YouTube/TVer panel behind native UI until playback confirmation and then stays 1x1 through the target song', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
-  assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
+  assert.match(layout, /kSpotifySurfaceZoom = 0\.50/);
+  assert.match(layout, /put_ZoomFactor\(kSpotifySurfaceZoom\)/);
+  assert.doesNotMatch(layout, /kSpotifySerializedRecoveryZoom/);
   assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyParkedPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyLowPowerPlaybackWidth|kSpotifyLowPowerPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);

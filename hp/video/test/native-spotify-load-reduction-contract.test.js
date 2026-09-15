@@ -67,9 +67,9 @@ test('Spotify does not override WebView2 memory target and controller visibility
 
 test('Spotify layout avoids redundant controller geometry COM calls', () => {
   assert.match(spotifyHeader, /ICoreWebView2Controller\* hostLayoutController = nullptr/);
-  assert.match(spotifyHeader, /bool hostLayoutReducedZoomApplied = false/);
+  assert.doesNotMatch(spotifyHeader, /hostLayoutReducedZoomApplied/);
   assert.match(layout, /const bool controllerChanged =/);
-  assert.match(layout, /hostLayoutReducedZoomApplied != reducedZoom/);
+  assert.match(layout, /if \(controllerChanged\)[\s\S]*put_ZoomFactor\(kSpotifySurfaceZoom\)/);
   assert.doesNotMatch(layout, /get_ZoomFactor\(/);
 });
 

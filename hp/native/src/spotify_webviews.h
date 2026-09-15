@@ -106,7 +106,6 @@ class SpotifyWebViews final {
     bool timedRotationActive = false;
     bool playbackConfirmed = false;
     bool hostLayoutApplied = false;
-    bool hostLayoutReducedZoomApplied = false;
   };
 
   static LRESULT CALLBACK HostWndProc(

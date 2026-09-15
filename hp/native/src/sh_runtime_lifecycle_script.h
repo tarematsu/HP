@@ -8,6 +8,7 @@ namespace hp {
 // their timers down when the document leaves the page lifecycle.
 inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
+  const zoomOut = () => document.documentElement?.style.setProperty('zoom', '0.5');
   const run = () => {
     if (!pageActive) return;
     publishAudio();
@@ -30,10 +31,12 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   document.addEventListener('click', onInteractiveEvent, true);
   document.addEventListener('submit', onInteractiveEvent, true);
   document.addEventListener('DOMContentLoaded', () => {
+    zoomOut();
     run();
     armBlankRecovery();
   }, { once: true });
   window.addEventListener('load', () => {
+    zoomOut();
     run();
     armBlankRecovery();
   }, { once: true });
@@ -53,10 +56,12 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   }, true);
   window.addEventListener('pageshow', () => {
     pageActive = true;
+    zoomOut();
     run();
     armBlankRecovery();
   }, true);
 
+  zoomOut();
   run();
   armBlankRecovery();
 })()

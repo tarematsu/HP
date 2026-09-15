@@ -1,7 +1,7 @@
 namespace hp {
 namespace {
 
-constexpr double kSpotifySerializedRecoveryZoom = 0.80;
+constexpr double kSpotifySurfaceZoom = 0.50;
 
 bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top;
@@ -73,13 +73,11 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         slot.playbackConfirmed && CurrentMusicTrack(slot) != nullptr;
 
     // Keep background Spotify exactly underneath the existing YouTube/TVer
-    // panel before playback is confirmed. This preserves a normal responsive
-    // viewport for trusted CDP clicks without exposing Spotify through gaps in
-    // the surrounding native dashboard. Once playback starts, keep the renderer
-    // alive at 1x1 until that target song finishes (including any mid-song ad
-    // interruption). Monitor C remains the explicit full-size foreground
-    // inspection mode. Authentication keeps its existing foreground surface so
-    // login remains usable.
+    // panel before playback is confirmed. Once playback starts, keep the
+    // renderer alive at 1x1 until that target song finishes. Monitor C remains
+    // the explicit full-size foreground inspection mode. Authentication keeps
+    // its existing foreground surface so login remains usable. WebView zoom is
+    // fixed at 50% for every surface size.
     int x = mediaPanelRect.left;
     int y = mediaPanelRect.top;
     int width = compactPlayback ? 1 : mediaPanelWidth;
@@ -127,23 +125,13 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     if (!slot.controller) {
       slot.hostLayoutController = nullptr;
-      slot.hostLayoutReducedZoomApplied = false;
       continue;
     }
 
     if (controllerChanged) {
       slot.hostLayoutController = slot.controller.Get();
-      slot.hostLayoutReducedZoomApplied = false;
       slot.controller->put_IsVisible(TRUE);
-    }
-
-    const bool reducedZoom = !monitorForeground_ && authentication;
-    if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
-      const HRESULT zoomResult = slot.controller->put_ZoomFactor(
-          reducedZoom ? kSpotifySerializedRecoveryZoom : 1.0);
-      if (SUCCEEDED(zoomResult)) {
-        slot.hostLayoutReducedZoomApplied = reducedZoom;
-      }
+      slot.controller->put_ZoomFactor(kSpotifySurfaceZoom);
     }
 
     if (positionChanged || controllerChanged) {
