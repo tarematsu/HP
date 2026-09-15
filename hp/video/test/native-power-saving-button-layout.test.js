@@ -105,8 +105,9 @@ test('monitor button cycles A to B to Spotify C to black OFF', () => {
   );
   assert.match(schedule, /SetSpotifyMonitorForeground\(mode == MonitorMode::Spotify\)/);
   assert.match(spotifyLayout, /void SpotifyWebViews::SetMonitorForeground/);
-  assert.match(spotifyLayout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(spotifyLayout, /kSpotifyBackgroundHeight = 160/);
+  assert.match(spotifyLayout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(spotifyLayout, /kSpotifyBackgroundHeight = 320/);
+  assert.match(spotifyLayout, /anchors\.air/);
   assert.match(spotifyLayout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
   assert.doesNotMatch(spotifyLayout, /width = clientWidth|height = clientHeight/);
   assert.match(schedule, /powerSaving_ = nextPowerSaving/);
