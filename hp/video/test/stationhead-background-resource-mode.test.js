@@ -19,17 +19,16 @@ const appMessages = readFileSync(
   'utf8',
 );
 
-test('Stationhead background playback may suppress 1x1 rendering without forcing a memory target', () => {
+test('Stationhead background playback remains visible at 480x270 without forcing a memory target', () => {
   assert.doesNotMatch(
     layout,
     /SetControllerMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
-  assert.match(layout, /StationheadPlaybackRenderingSuppressed\(controller\)/);
-  assert.match(
-    layout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
-  );
-  assert.match(layout, /controller->put_IsVisible\(playbackControllerVisible\)/);
+  assert.match(bridge, /kStationheadSurfaceWidth = 480/);
+  assert.match(bridge, /kStationheadSurfaceHeight = 270/);
+  assert.match(layout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(layout, /controller->put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);
 });
 
 test('Stationhead playback and auth leave the WebView2 memory target unmanaged in foreground', () => {
