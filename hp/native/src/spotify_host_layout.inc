@@ -38,15 +38,17 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
 
-    // Every background Spotify state, including authentication and recovery,
-    // stays on the same 480x270 native surface. Monitor C is the only mode
-    // allowed to expand the Spotify host to the full parent surface.
-    const int x = client.left;
-    const int y = client.top;
+    // Keep every background Spotify state on the same 480x270 native surface,
+    // but park the child window completely outside the parent client area.
+    // Monitor C is the only mode that returns it onscreen and expands it.
+    int x = client.right + 1;
+    int y = client.bottom + 1;
     int width = std::min(kSpotifyBackgroundWidth, clientWidth);
     int height = std::min(kSpotifyBackgroundHeight, clientHeight);
     HWND insertAfter = authentication ? HWND_TOP : HWND_BOTTOM;
     if (monitorForeground_) {
+      x = client.left;
+      y = client.top;
       width = clientWidth;
       height = clientHeight;
       insertAfter = HWND_TOP;
