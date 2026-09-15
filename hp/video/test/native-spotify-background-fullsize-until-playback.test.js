@@ -60,12 +60,13 @@ test('track advance clears confirmation so the next target returns behind the me
 });
 
 test('trusted Play no longer depends on the scheduler active slot or a small recovery viewport', () => {
-  const clickStart = click.indexOf('void SpotifyWebViews::ClickSlotNormalizedPoint');
+  const clickStart = click.indexOf('void SpotifyWebViews::ClickSlotCssPoint');
   const clickEnd = click.indexOf('\nUINT SpotifyWebViews::DispatchSpotifyDevToolsClick', clickStart);
   assert.ok(clickStart >= 0 && clickEnd > clickStart);
   const handler = click.slice(clickStart, clickEnd);
   assert.match(handler, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(handler, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
   assert.match(handler, /PlaceHosts\(\)/);
+  assert.match(handler, /return \[centerX,centerY\]/);
   assert.doesNotMatch(handler, /hostLayoutActiveSlot_ == slot\.index/);
 });
