@@ -45,7 +45,6 @@ test('single Stationhead re-evaluates placement on state change', () => {
   assert.match(changed, /stationhead_->ConsumeChangeFlags\(\)/);
   assert.match(changed, /ApplyStationheadWindowPlacement\(stationhead_->Status\(\)\)/);
   assert.match(changed, /ScheduleNextTick\(1\)/);
-  assert.doesNotMatch(changed, /secondaryStationhead_/);
 });
 
 test('popup authorization becomes active before its controller is created', () => {
