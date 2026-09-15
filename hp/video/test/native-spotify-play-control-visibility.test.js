@@ -7,19 +7,16 @@ const source = name => readFileSync(
   'utf8',
 );
 
-const css = source('spotify_static_scripts.inc');
+const scripts = source('spotify_static_scripts.inc');
 const reconcile = source('spotify_scoped_track_reconcile.inc');
 const click = source('spotify_background_click.inc');
 
-test('Spotify lightweight CSS never hides Play/Pause glyphs', () => {
-  assert.doesNotMatch(
-    css,
-    /svg\[aria-hidden='true'\]\s*\{[\s\S]{0,120}display:\s*none\s*!important/,
-  );
-  assert.match(css, /\[data-testid="play-button"\][\s\S]*visibility: visible !important/);
-  assert.match(css, /\[data-testid="control-button-playpause"\][\s\S]*pointer-events: auto !important/);
-  assert.match(css, /\[data-testid="play-button"\] svg/);
-  assert.match(css, /\[data-testid="control-button-playpause"\] svg/);
+test('Spotify page bootstrap injects no lightweight CSS or style overrides', () => {
+  assert.doesNotMatch(scripts, /createElement\(['"]style['"]\)/);
+  assert.doesNotMatch(scripts, /__homePanelSpotifyStaticLightweight/);
+  assert.doesNotMatch(scripts, /!important/);
+  assert.doesNotMatch(scripts, /pointer-events\s*:/);
+  assert.doesNotMatch(scripts, /content-visibility\s*:/);
 });
 
 test('track reconcile accepts Spotify Play controls by test id without aria-label', () => {
