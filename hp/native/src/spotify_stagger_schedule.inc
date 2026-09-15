@@ -7,13 +7,12 @@ constexpr ULONGLONG kSpotifyInitialStartDelayMs = 4ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyCloudReloadMinIntervalMs = 60ULL * 1000ULL;
 }
 
-void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
+void SpotifyWebViews::StartAutonomousSchedule() noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
-  if (now == 0) now = GetTickCount64();
+  const ULONGLONG now = GetTickCount64();
 
   BeginInitialCloudPlaylistWait(now);
   nextCloudPlaylistCheckTick_ = 0;
-  robustSchedulerStarted_ = true;
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
 
@@ -62,7 +61,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     return slot.nextRecoveryTick == 0 || now >= slot.nextRecoveryTick;
   };
   const auto healthyPlaybackNeedsNoWork = [](const Slot& slot) noexcept {
-    return SlotStateIsHealthy(slot.state) &&
+    return slot.state == SlotState::Playing &&
            slot.timedCompletionDeadlineTick != 0 &&
            slot.timedCompletionDeadlineGeneration == slot.targetGeneration;
   };
