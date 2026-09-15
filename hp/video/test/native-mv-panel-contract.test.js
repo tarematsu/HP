@@ -17,10 +17,8 @@ const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
 const youtubeClean = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url), 'utf8');
-const youtubeRecovery = readExpandedNativeSource(
+const youtubeRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
-const youtubeAgent = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
 const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const tverWatchdog = readExpandedNativeSource(
@@ -88,16 +86,16 @@ test('YouTube preserves playlist playback, one-shot 360p, captions off, skip and
   assert.match(mediaBase, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/youtube-start/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
-  assert.match(youtubeRecovery, /const preferredQuality = 'medium'/);
-  assert.match(youtubeRecovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
-  assert.doesNotMatch(youtubeRecovery, /getPlaybackQuality\(\)/);
-  assert.match(youtubeRecovery, /setOption\('captions', 'track', \{\}\)/);
-  assert.match(youtubeRecovery, /\.ytp-ad-skip-button-modern/);
-  assert.match(youtubeRecovery, /\.ytp-fullscreen-button/);
-  assert.match(youtubeRecovery, /fullscreenApplied: false/);
-  assert.match(youtubeAgent, /homepanel:youtube-wake/);
-  assert.match(youtubeAgent, /attributeFilter: \['class'\]/);
-  assert.doesNotMatch(youtubeAgent, /document\.documentElement.*observe/);
+  assert.match(youtubeRuntime, /const preferredQuality = 'medium'/);
+  assert.match(youtubeRuntime, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
+  assert.doesNotMatch(youtubeRuntime, /getPlaybackQuality\(\)/);
+  assert.match(youtubeRuntime, /setOption\('captions', 'track', \{\}\)/);
+  assert.match(youtubeRuntime, /\.ytp-ad-skip-button-modern/);
+  assert.match(youtubeRuntime, /\.ytp-fullscreen-button/);
+  assert.match(youtubeRuntime, /fullscreenApplied: false/);
+  assert.match(youtubeRuntime, /homepanel:youtube-wake/);
+  assert.match(youtubeRuntime, /attributeFilter: \['class'\]/);
+  assert.doesNotMatch(youtubeRuntime, /document\.documentElement.*observe/);
 });
 
 test('YouTube clean player renders content video while preserving Skip Ad', () => {

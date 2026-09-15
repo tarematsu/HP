@@ -17,8 +17,8 @@ const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const tverQueue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
-const youtubeAgent = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
+const youtubeRuntime = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
 test('media cadence remains 60 minutes per YouTube/TVer phase', () => {
   assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
@@ -76,12 +76,12 @@ test('TVer media wake is one-shot and the steady watchdog stays low frequency', 
   assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
 });
 
-test('YouTube health uses a 30-second backstop plus event wakeups', () => {
+test('YouTube health uses a 30-second backstop plus unified event wakeups', () => {
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(mediaWrapper, /#include "media_youtube_control_recovery\.inc"/);
-  assert.match(mediaWrapper, /#include "media_youtube_event_agent\.inc"/);
-  assert.match(youtubeAgent, /homepanel:youtube-wake/);
+  assert.match(youtubeRuntime, /homepanel:youtube-wake/);
+  assert.match(youtubeRuntime, /attributeFilter: \['class'\]/);
   assert.match(mediaWrapper, /homepanel:youtube-wake/);
   assert.doesNotMatch(mediaWrapper, /kNativeMediaYoutubeHealthScript|kNativeMediaYoutubeHealthPolicyScript/);
 });
