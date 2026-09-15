@@ -7,8 +7,8 @@ const episode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const playbackPolicy = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
-const routingKeys = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url), 'utf8');
+const mediaBase = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 
 test('TVer event policy never owns program playback recovery', () => {
   assert.doesNotMatch(episode, /video\.play\s*\(/);
@@ -32,8 +32,10 @@ test('TVer fullscreen recovery only targets an explicit fullscreen control once'
   assert.doesNotMatch(playbackPolicy, /fullscreenButton \? point\(fullscreenButton\) : point\(video\)/);
 });
 
-test('legacy TVer static module contains routing keys only', () => {
-  assert.match(routingKeys, /homepanel-tver-loop-routing-key/);
-  assert.match(routingKeys, /homepanel-tver-watchdog-routing-key/);
-  assert.doesNotMatch(routingKeys, /querySelectorAll|MutationObserver|video\.play/);
+test('TVer routing keys live directly in the shared media base', () => {
+  assert.match(mediaBase, /kNativeMediaTverLoopScript\[\]/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogScript\[\]/);
+  assert.match(mediaBase, /homepanel-tver-loop-routing-key/);
+  assert.match(mediaBase, /homepanel-tver-watchdog-routing-key/);
+  assert.doesNotMatch(mediaBase, /MutationObserver|querySelectorAll|video\.play/);
 });
