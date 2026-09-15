@@ -29,8 +29,10 @@ test('all configured tracks use the current ManagedTrack and CDP-only scoped rec
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
   assert.match(scoped, /const pageButton =/);
-  assert.match(scoped, /if \(pageButton\) \{[\s\S]*return point\(pageButton\)/);
-  assert.match(scoped, /const playerButton =/);
+  assert.match(scoped, /const playerButton = pageButton \? null :/);
+  assert.match(scoped, /const button = pageButton \|\| playerButton/);
+  assert.match(scoped, /if \(isPauseControl\(button\)\) return true/);
+  assert.match(scoped, /return point\(button\)/);
   assert.doesNotMatch(scoped, /document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
   assert.doesNotMatch(scoped, /now-playing-widget|now-playing-bar|navigator\.mediaSession|targetMatches|targetPlayButton/);
 });
