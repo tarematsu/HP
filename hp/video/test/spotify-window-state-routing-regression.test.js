@@ -15,23 +15,25 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('Spotify stable playback and non-playing transitions stay onscreen at 320x160 behind the dashboard', () => {
+test('Spotify stable playback and non-playing transitions stay onscreen at 160x320 behind the air panel', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
     'void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {',
   );
 
-  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
+  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
   assert.doesNotMatch(placeHosts, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\);/);
-  assert.match(placeHosts, /const int hostX = client\.left;/);
-  assert.match(placeHosts, /const int hostY = client\.top;/);
+  assert.match(placeHosts, /ComputeMediaSurfaceAnchors\(client\)/);
+  assert.match(placeHosts, /anchors\.air/);
+  assert.match(placeHosts, /const int hostX = backgroundSurface\.left;/);
+  assert.match(placeHosts, /const int hostY = backgroundSurface\.top;/);
   assert.doesNotMatch(placeHosts, /client\.right \+ 1|client\.bottom \+ 1/);
   assert.match(placeHosts, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
 });
 
-test('Spotify authentication and Monitor C use foreground z-order without changing the 320x160 geometry', () => {
+test('Spotify authentication and Monitor C use foreground z-order without changing the 160x320 air-panel geometry', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
@@ -42,8 +44,9 @@ test('Spotify authentication and Monitor C use foreground z-order without changi
     placeHosts,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/,
   );
-  assert.match(placeHosts, /const int hostX = client\.left;/);
-  assert.match(placeHosts, /const int hostY = client\.top;/);
+  assert.match(placeHosts, /CenterMediaSurfaceOnAnchor/);
+  assert.match(placeHosts, /const int hostX = backgroundSurface\.left;/);
+  assert.match(placeHosts, /const int hostY = backgroundSurface\.top;/);
   assert.match(placeHosts, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
   assert.doesNotMatch(placeHosts, /width = clientWidth|height = clientHeight/);
 });
