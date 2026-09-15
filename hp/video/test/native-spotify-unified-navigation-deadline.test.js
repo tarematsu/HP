@@ -46,13 +46,12 @@ test('trusted Play input never starts the completion clock by itself', () => {
   assert.doesNotMatch(header + music, /timedPlaybackStartTick/);
 });
 
-test('startup retries are limited to target handoff, observer confirmation, and missing controls', () => {
+test('startup retries are limited to target handoff, CDP confirmation, and missing controls', () => {
   assert.match(music, /kSpotifyTrackTransitionRetryMs = 500ULL/);
-  assert.match(music, /kSpotifyDirectPlayConfirmWaitMs = 5ULL \* 1000ULL/);
   assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
   assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
-  assert.match(music, /callbackNow \+ kSpotifyDirectPlayConfirmWaitMs/);
   assert.match(music, /callbackNow \+ kSpotifyCdpPlayConfirmWaitMs/);
+  assert.doesNotMatch(music, /kSpotifyDirectPlayConfirmWaitMs|direct-play|DirectPlay/);
   assert.doesNotMatch(music + click, /kSpotifyPlaybackStartRetryMs/);
   assert.doesNotMatch(click, /nextRecoveryTick = now/);
 });
