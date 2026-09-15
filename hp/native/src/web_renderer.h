@@ -120,6 +120,7 @@ class Renderer {
   ~Renderer();
   static void SetGlobalPowerSavingMode(bool enabled);
   void Initialize();
+  void StartSpotify();
   void Resize(int width, int height);
   void SetBounds(const RECT& bounds);
   void SetVisible(bool visible);
@@ -191,7 +192,6 @@ class Renderer {
     PAINTSTRUCT paint{};
     HDC paintDc = nullptr;
     HDC dc = nullptr;
-    HGDIOBJ previousBitmap = nullptr;
     RECT bounds{};
     RECT dirty{};
   };
