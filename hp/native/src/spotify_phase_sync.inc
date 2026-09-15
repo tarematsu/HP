@@ -97,9 +97,7 @@ void CALLBACK SpotifyWebViews::SchedulerTimerProc(
 
 UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
-  if (!robustSchedulerStarted_ || !initialCloudPlaylistReady_) {
-    return kSpotifySchedulerBootstrapMs;
-  }
+  if (!initialCloudPlaylistReady_) return kSpotifySchedulerBootstrapMs;
 
   // Healthy playback normally wakes at its exact completion deadline. The
   // one-hour ceiling is only a coarse safety audit for unexpected state loss.
@@ -210,9 +208,6 @@ void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
     return;
   }
 
-  SetSlotState(slot, SlotState::NotCreated);
-  slot.controllerCreating = true;
-  slot.controllerCreateTick = now;
   CreateController(slot);
 }
 
