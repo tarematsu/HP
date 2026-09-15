@@ -139,6 +139,7 @@ test('native startup smoke observes real window state without mutating it', () =
   assert.match(nativeStartupSmoke, /\[int\]\$StartupBudgetSeconds = 60/);
   assert.match(nativeStartupSmoke, /\[int\]\$PostClickSettleSeconds = 15/);
   assert.match(nativeStartupSmoke, /PlaybackStartupSafe/);
+  // The single-player observer starts as soon as the primary host first appears.
   assert.match(nativeStartupSmoke, /if \(\$primaryHostSeen -and -not \$firstSurfaceObservationAtUtc\)/);
   assert.match(nativeStartupSmoke, /\$firstSurfaceObservationAtUtc = \[DateTime\]::UtcNow/);
   assert.match(nativeStartupSmoke, /PlaybackBehindNativePanels/);
