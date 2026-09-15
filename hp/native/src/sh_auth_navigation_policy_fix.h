@@ -96,4 +96,4 @@ static_assert(kAuthControllerStableTimeoutMs <=
 // WebResourceResponseReceived event in stationhead_native_stats.h.
 #include "sh_auth_capture_validation_policy_fix.h"
 #include "sh_auth_candidate_rotation_policy_fix.h"
-#include "sh_auth_interactive_memory_policy_fix.h"
+#include "sh_auth_process_failure_policy_fix.h"

@@ -26,12 +26,12 @@ test('validated candidate rotation remains in the authentication chain', () => {
   const rotationAt = navigationPolicy.indexOf(
     '#include "sh_auth_candidate_rotation_policy_fix.h"',
   );
-  const interactiveAt = navigationPolicy.indexOf(
-    '#include "sh_auth_interactive_memory_policy_fix.h"',
+  const processAt = navigationPolicy.indexOf(
+    '#include "sh_auth_process_failure_policy_fix.h"',
   );
   assert.ok(validationAt >= 0 && validationAt < rotationAt);
-  assert.ok(rotationAt < interactiveAt);
-  assert.doesNotMatch(navigationPolicy, /sh_stats_/);
+  assert.ok(rotationAt < processAt);
+  assert.doesNotMatch(navigationPolicy, /sh_stats_|sh_auth_interactive_memory_policy_fix/);
   assert.match(
     rotationPolicy,
     /#undef StationheadAuthCaptureScript[\s\S]*#define StationheadAuthCaptureScript[\s\\]+StationheadAuthCaptureScriptValidatedRotation/,
