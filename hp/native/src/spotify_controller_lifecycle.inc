@@ -125,6 +125,55 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     Slot* const target = &slot;
     const auto alive = alive_;
 
+    // Only strip decorative/passive resources on the player page. Login and
+    // authorization pages stay untouched, while playback-critical CSS, script,
+    // XHR/fetch, WebSocket and media requests are never filtered.
+    constexpr COREWEBVIEW2_WEB_RESOURCE_CONTEXT kBlockedContexts[] = {
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE,
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT,
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK,
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST,
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING,
+        COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT,
+    };
+    for (const auto context : kBlockedContexts) {
+      slot.webview->AddWebResourceRequestedFilter(L"*", context);
+    }
+    ComPtr<ICoreWebView2Environment> requestEnvironment = slot.environment;
+    slot.webview->add_WebResourceRequested(
+        Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+            [alive, requestEnvironment, target](
+                ICoreWebView2*,
+                ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) || !args ||
+                  !requestEnvironment || target->loginPage) {
+                return S_OK;
+              }
+              COREWEBVIEW2_WEB_RESOURCE_CONTEXT context =
+                  COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
+              if (FAILED(args->get_ResourceContext(&context))) return S_OK;
+              switch (context) {
+                case COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE:
+                case COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT:
+                case COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK:
+                case COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST:
+                case COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING:
+                case COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT:
+                  break;
+                default:
+                  return S_OK;
+              }
+              ComPtr<ICoreWebView2WebResourceResponse> response;
+              if (SUCCEEDED(requestEnvironment->CreateWebResourceResponse(
+                      nullptr, 204, L"No Content",
+                      L"Cache-Control: no-store\r\n", &response)) &&
+                  response) {
+                args->put_Response(response.Get());
+              }
+              return S_OK;
+            }).Get(),
+        &slot.webResourceRequestedToken);
+
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
             [this, alive, target](ICoreWebView2* sender, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
