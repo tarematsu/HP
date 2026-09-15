@@ -6,9 +6,34 @@ namespace hp {
 
 using WebViewStartupCacheResetCompletion = std::function<void(HRESULT)>;
 
-// Drop only transient browser state that can make a restarted media WebView
-// reuse stale page/runtime assets. Authentication and durable site data stay
-// intact: cookies, localStorage and IndexedDB are deliberately not included.
+inline std::mutex& WebViewStartupCacheResetMutex() noexcept {
+  static std::mutex mutex;
+  return mutex;
+}
+
+inline std::map<std::wstring, bool>& WebViewStartupCacheResetProfiles() noexcept {
+  static std::map<std::wstring, bool> profiles;
+  return profiles;
+}
+
+inline bool ClaimWebViewStartupCacheReset(const std::wstring& profilePath) {
+  std::lock_guard lock(WebViewStartupCacheResetMutex());
+  return WebViewStartupCacheResetProfiles().try_emplace(profilePath, true).second;
+}
+
+inline void ReleaseWebViewStartupCacheResetClaim(
+    const std::wstring& profilePath) noexcept {
+  try {
+    std::lock_guard lock(WebViewStartupCacheResetMutex());
+    WebViewStartupCacheResetProfiles().erase(profilePath);
+  } catch (...) {
+  }
+}
+
+// Drop only transient browser state once per profile for this app process.
+// Authentication and durable site data stay intact: cookies, localStorage and
+// IndexedDB are deliberately not included. Controller recovery later in the
+// same run skips the reset so Service Workers are not repeatedly destroyed.
 inline void ResetWebViewStartupCaches(
     ICoreWebView2* webview,
     WebViewStartupCacheResetCompletion completion) noexcept {
@@ -44,9 +69,25 @@ inline void ResetWebViewStartupCaches(
       return;
     }
 
+    LPWSTR rawProfilePath = nullptr;
+    result = profile->get_ProfilePath(&rawProfilePath);
+    if (FAILED(result) || !rawProfilePath || !*rawProfilePath) {
+      if (rawProfilePath) CoTaskMemFree(rawProfilePath);
+      finish(FAILED(result) ? result : E_FAIL);
+      return;
+    }
+    const std::wstring profilePath(rawProfilePath);
+    CoTaskMemFree(rawProfilePath);
+
+    if (!ClaimWebViewStartupCacheReset(profilePath)) {
+      finish(S_FALSE);
+      return;
+    }
+
     ComPtr<ICoreWebView2Profile2> profile2;
     result = profile.As(&profile2);
     if (FAILED(result) || !profile2) {
+      ReleaseWebViewStartupCacheResetClaim(profilePath);
       finish(FAILED(result) ? result : E_NOINTERFACE);
       return;
     }
@@ -56,12 +97,18 @@ inline void ResetWebViewStartupCaches(
         COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE |
         COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS);
     auto handler = Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
-        [finish](HRESULT clearResult) -> HRESULT {
+        [finish, profilePath](HRESULT clearResult) -> HRESULT {
+          if (FAILED(clearResult)) {
+            ReleaseWebViewStartupCacheResetClaim(profilePath);
+          }
           finish(clearResult);
           return S_OK;
         });
     result = profile2->ClearBrowsingData(kinds, handler.Get());
-    if (FAILED(result)) finish(result);
+    if (FAILED(result)) {
+      ReleaseWebViewStartupCacheResetClaim(profilePath);
+      finish(result);
+    }
   } catch (...) {
     finish(E_FAIL);
   }
