@@ -73,11 +73,6 @@ constexpr wchar_t kSpotifySpaRouteScript[] = LR"JS(
 
 }  // namespace
 
-void SpotifyWebViews::PostSpotifyPageContext(Slot& slot) noexcept {
-  if (!slot.webview) return;
-  PostSpotifyTargetDescriptorForSlot(slot);
-}
-
 std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
 SpotifyWebViews::PlaybackStatuses() const noexcept {
   std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount> result{};
