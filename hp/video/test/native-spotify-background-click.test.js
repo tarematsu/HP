@@ -41,15 +41,16 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('Spotify keeps a 480x270 background surface for recovery and playback', () => {
+test('Spotify keeps a 480x270 background surface for recovery, playback and authentication', () => {
   assert.match(layout, /kSpotifyBackgroundWidth = 480/);
   assert.match(layout, /kSpotifyBackgroundHeight = 270/);
-  assert.match(layout, /int x = client\.left;/);
-  assert.match(layout, /int y = client\.top;/);
+  assert.match(layout, /const int x = client\.left;/);
+  assert.match(layout, /const int y = client\.top;/);
   assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
   assert.match(layout, /int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
-  assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
+  assert.match(layout, /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM;/);
   assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.doesNotMatch(layout, /else if \(authentication\)|activeWidth|activeHeight/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
 });
