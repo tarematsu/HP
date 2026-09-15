@@ -14,10 +14,16 @@ inline std::wstring BuildStationheadStartupScript(
     const wchar_t* messagePrefix) {
   std::wstring script =
       StationheadCompactRuntimeScript(globalName, messagePrefix);
-  script.push_back(L'\n');
+  // Each fragment is an immediately-invoked function expression. A line break
+  // before the next '(' is not an automatic-semicolon boundary in JavaScript;
+  // without an explicit separator the next fragment is parsed as a call on the
+  // previous fragment's return value and the render-reduction fragments never
+  // execute.
+  script.append(L";\n");
   script.append(StationheadRenderReductionScript());
-  script.push_back(L'\n');
+  script.append(L";\n");
   script.append(StationheadRoomUiReductionScript());
+  script.push_back(L';');
   return script;
 }
 
