@@ -11,28 +11,19 @@ constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
-// Healthy YouTube playback is event-driven; the timer is only a backstop.
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 
-// Routing sentinel only. The exceptional /playlist fallback installs one
-// event-driven resolver in media_youtube_playall_reliable.inc.
 constexpr wchar_t kNativeMediaPlayAllScript[] = L"null";
-
-// Legacy symbol retained as a routing key for media_host.inc. The wrapper
-// resolves it to the event-aware policy in media_youtube_control_recovery.inc.
 constexpr wchar_t kNativeMediaYoutubeWatchdogScript[] = LR"JS(
 (() => null)()
 )JS";
-
-// TVer uses one routing key as well; episode pages resolve to the event-driven
-// policy and trusted watchdog in media_section.inc.
-constexpr const wchar_t* kNativeMediaTverLoopScript =
-    kNativeMediaTverLoopStaticScript;
-constexpr const wchar_t* kNativeMediaTverWatchdogScript =
-    kNativeMediaTverWatchdogStaticScript;
+constexpr wchar_t kNativeMediaTverLoopScript[] =
+    L"null/*homepanel-tver-loop-routing-key*/";
+constexpr wchar_t kNativeMediaTverWatchdogScript[] =
+    L"null/*homepanel-tver-watchdog-routing-key*/";
 
 bool NativeMediaWatchdogExecutionTimedOut(
     HWND hostWindow, UINT_PTR timerId) noexcept;
