@@ -195,15 +195,13 @@ int Course36ClockWasteImageIndex(Course36WasteKind kind) {
   }
 }
 
-constexpr std::array<const wchar_t*, 3> kCourse36ClockWasteImageUrls{{
-    L"https://www.city.kawagoe.saitama.jp/_res/projects/default_project/_page_/001/002/393/bin_kan_1.jpg",
-    L"https://www.city.kawagoe.saitama.jp/_res/projects/default_project/_page_/001/002/395/yuugai_1.jpg",
-    L"https://www.city.kawagoe.saitama.jp/_res/projects/default_project/_page_/001/002/388/kami_1.jpg",
+constexpr std::array<const wchar_t*, 3> kCourse36ClockWasteImageFiles{{
+    L"bottles-cans.png",
+    L"nonburnable-hazardous.png",
+    L"paper.png",
 }};
 
 struct Course36ClockWasteImageAsset {
-  enum class State { Empty, Loading, Ready, Failed };
-
   ~Course36ClockWasteImageAsset() {
     for (const auto& item : bitmaps) {
       if (item.second) DeleteObject(item.second);
@@ -211,8 +209,6 @@ struct Course36ClockWasteImageAsset {
   }
 
   std::mutex mutex;
-  State state = State::Empty;
-  std::vector<uint8_t> bytes;
   std::map<uint64_t, HBITMAP> bitmaps;
 };
 
@@ -226,64 +222,26 @@ Course36ClockWasteImageAssets() {
   return assets;
 }
 
-void Course36RequestWasteImage(
-    const std::shared_ptr<Course36ClockWasteImageAsset>& asset,
-    const wchar_t* url) {
-  if (!asset || !url || !*url) return;
-  {
-    std::lock_guard lock(asset->mutex);
-    if (asset->state != Course36ClockWasteImageAsset::State::Empty) return;
-    asset->state = Course36ClockWasteImageAsset::State::Loading;
-  }
-
-  // Keep city-owned illustrations out of this repository. Fetch the official
-  // image at runtime for the local dashboard and retain only an in-memory copy.
-  std::thread([asset, url = std::wstring(url)] {
-    std::vector<uint8_t> bytes;
-    std::wstring contentType;
-    const bool downloaded = WinHttpDownload(
-        url.c_str(), 4U * 1024U * 1024U, &bytes, &contentType) &&
-        contentType.rfind(L"image/", 0) == 0;
-    {
-      std::lock_guard lock(asset->mutex);
-      if (downloaded) asset->bytes = std::move(bytes);
-      asset->state = downloaded
-          ? Course36ClockWasteImageAsset::State::Ready
-          : Course36ClockWasteImageAsset::State::Failed;
-    }
-
-    HWND root = FindWindowW(L"HomePanelNativeWindow", nullptr);
-    HWND side = root ? GetDlgItem(root, kNativeSideId) : nullptr;
-    if (side && IsWindow(side)) InvalidateRect(side, nullptr, FALSE);
-  }).detach();
-}
-
 HBITMAP Course36ClockWasteImageBitmap(
     Course36WasteKind kind, int width, int height) {
   const int index = Course36ClockWasteImageIndex(kind);
   if (index < 0 || width <= 0 || height <= 0) return nullptr;
   const auto& asset = Course36ClockWasteImageAssets()[static_cast<size_t>(index)];
 
-  bool request = false;
-  {
-    std::lock_guard lock(asset->mutex);
-    if (asset->state == Course36ClockWasteImageAsset::State::Empty) request = true;
-    if (asset->state == Course36ClockWasteImageAsset::State::Ready) {
-      const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(width)) << 32) |
-          static_cast<uint32_t>(height);
-      const auto found = asset->bitmaps.find(key);
-      if (found != asset->bitmaps.end()) return found->second;
-      HBITMAP bitmap = DecodeImageBytesToBitmap(
-          asset->bytes.data(), asset->bytes.size(), width, height);
-      if (bitmap) asset->bitmaps.emplace(key, bitmap);
-      return bitmap;
-    }
-  }
-  if (request) {
-    Course36RequestWasteImage(
-        asset, kCourse36ClockWasteImageUrls[static_cast<size_t>(index)]);
-  }
-  return nullptr;
+  std::lock_guard lock(asset->mutex);
+  const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(width)) << 32) |
+      static_cast<uint32_t>(height);
+  const auto found = asset->bitmaps.find(key);
+  if (found != asset->bitmaps.end()) return found->second;
+
+  wchar_t executableRaw[MAX_PATH * 4]{};
+  if (!GetModuleFileNameW(nullptr, executableRaw, _countof(executableRaw))) return nullptr;
+  const fs::path imagePath = fs::path(executableRaw).parent_path() / L"ui" /
+      L"waste-icons" /
+      kCourse36ClockWasteImageFiles[static_cast<size_t>(index)];
+  HBITMAP bitmap = DecodeImageFileToBitmap(imagePath, width, height);
+  if (bitmap) asset->bitmaps.emplace(key, bitmap);
+  return bitmap;
 }
 
 void DrawCourse36WasteFallbackPictogram(
