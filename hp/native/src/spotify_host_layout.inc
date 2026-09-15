@@ -2,8 +2,6 @@ namespace hp {
 namespace {
 
 constexpr double kSpotifySurfaceZoom = 0.50;
-constexpr int kSpotifyBackgroundWidth = 160;
-constexpr int kSpotifyBackgroundHeight = 320;
 
 bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top;
@@ -28,9 +26,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
   RECT client{};
   if (!GetClientRect(parentWindow_, &client)) return;
-  const MediaSurfaceAnchors anchors = ComputeMediaSurfaceAnchors(client);
-  const RECT backgroundSurface = CenterMediaSurfaceOnAnchor(
-      client, anchors.air, kSpotifyBackgroundWidth, kSpotifyBackgroundHeight);
 
   for (size_t i = 0; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
@@ -39,12 +34,12 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
 
-    // Spotify always keeps a real 160x320 portrait surface centered behind the
-    // air panel. Authentication and Monitor C only promote that same surface.
-    const int hostX = backgroundSurface.left;
-    const int hostY = backgroundSurface.top;
-    const int width = std::max(1L, backgroundSurface.right - backgroundSurface.left);
-    const int height = std::max(1L, backgroundSurface.bottom - backgroundSurface.top);
+    // Spotify always fills the dashboard client area. Authentication and
+    // Monitor C only promote that same full-size surface.
+    const int hostX = client.left;
+    const int hostY = client.top;
+    const int width = std::max(1L, client.right - client.left);
+    const int height = std::max(1L, client.bottom - client.top);
     const HWND insertAfter =
         authentication || monitorForeground_ ? HWND_TOP : HWND_BOTTOM;
 
