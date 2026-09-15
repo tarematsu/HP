@@ -7,8 +7,6 @@ namespace {
 constexpr int64_t kAirHistoryWindowMs = 24LL * 60 * 60 * 1000;
 constexpr int64_t kAirHistoryBucketMs = 5LL * 60 * 1000;
 constexpr int64_t kAirHistoryPersistIntervalMs = 30LL * 60 * 1000;
-constexpr size_t kAirHistoryMaxSamples =
-    static_cast<size_t>(kAirHistoryWindowMs / kAirHistoryBucketMs) + 1;
 
 bool ValidAirValues(const AirHistorySample& sample) noexcept {
   return sample.co2 >= 250 && sample.co2 <= 10000 &&
@@ -24,9 +22,6 @@ void TrimAirHistory(std::vector<AirHistorySample>& history, int64_t cutoff) {
   history.erase(
       history.begin(),
       std::lower_bound(history.begin(), history.end(), cutoff, BeforeTimestamp));
-  if (history.size() > kAirHistoryMaxSamples) {
-    history.erase(history.begin(), history.end() - kAirHistoryMaxSamples);
-  }
 }
 }  // namespace
 
@@ -75,12 +70,6 @@ void App::LoadAirHistory() {
                 [](const auto& left, const auto& right) {
                   return left.timestamp < right.timestamp;
                 });
-      history.erase(
-          std::unique(history.begin(), history.end(),
-                      [](const auto& left, const auto& right) {
-                        return left.timestamp == right.timestamp;
-                      }),
-          history.end());
       TrimAirHistory(history, now - kAirHistoryWindowMs);
       airHistory_ = std::move(history);
       lastAirHistorySavedAt_ = now;
