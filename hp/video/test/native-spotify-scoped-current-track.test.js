@@ -10,33 +10,29 @@ const scoped = source('spotify_scoped_track_reconcile.inc');
 const music = source('spotify_music_target.inc');
 const observerRuntime = source('spotify_media_observer_runtime.inc');
 
-test('active music reconcile directly uses the now-playing-scoped script', () => {
+test('active music reconcile directly uses the scoped playback script', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.match(music, /ExecuteScript\(\s*kSpotifyScopedTrackReconcileScript/);
   assert.doesNotMatch(wrapper, /#define kSpotifyStaticTrackReconcileScript|#undef kSpotifyStaticTrackReconcileScript/);
   assert.doesNotMatch(music, /kSpotifyStaticTrackReconcileScript/);
 });
 
-test('current-track identity never falls back to an arbitrary track-list row', () => {
-  assert.match(scoped, /\[data-testid="now-playing-widget"\] a\[href\*="\/track\/"\]/);
-  assert.match(scoped, /\[data-testid="now-playing-bar"\] \[data-testid="context-item-link"\]/);
-  assert.match(scoped, /footer \[data-testid="context-item-link"\]/);
-  assert.doesNotMatch(scoped, /^\s*'\[data-testid="context-item-link"\]\[href\*="\/track\/"\]'\s*,?\s*$/m);
-  assert.match(scoped, /navigator\.mediaSession/);
-});
-
-test('play-button fallback is limited to the requested direct track page and explicit Play', () => {
-  assert.match(scoped, /const onTargetPage = \(\) =>/);
+test('reconcile trusts the already-selected target URL instead of re-identifying the current track', () => {
+  assert.match(scoped, /location\.hostname !== 'open\.spotify\.com'/);
+  assert.match(scoped, /location\.pathname === targetPath/);
   assert.match(scoped, /targetPath\.startsWith\('\/track\/'\)/);
   assert.match(scoped, /location\.pathname\.endsWith\(targetPath\)/);
-  assert.match(scoped, /button\[data-testid="play-button"\]/);
-  assert.match(scoped, /if \(buttonIntentValue === 'play'\) return point\(button\)/);
-  assert.match(scoped, /controlIntent === 'pause'[\s\S]*return 'settling'/);
+  assert.doesNotMatch(scoped, /now-playing-widget|now-playing-bar|context-item-link|navigator\.mediaSession|currentTrack|targetMatches/);
 });
 
-test('reconcile and observer runtime tolerate localized Spotify track paths', () => {
-  assert.match(scoped, /const sameTrackPath =/);
-  assert.match(scoped, /value\.endsWith\(expected\)/);
+test('play fallback is limited to Spotify native Play controls', () => {
+  assert.match(scoped, /button\[data-testid="play-button"\]/);
+  assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
+  assert.match(scoped, /return point\(button\)/);
+  assert.doesNotMatch(scoped, /buttonIntent|aria-label|一時停止|settling/);
+});
+
+test('observer runtime still tolerates localized Spotify track paths for confirmation', () => {
   assert.match(observerRuntime, /const sameTrackPath =/);
   assert.match(observerRuntime, /value\.endsWith\(expected\)/);
 });
