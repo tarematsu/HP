@@ -10,15 +10,19 @@ const rotation = source('spotify_timed_end_rotation.inc');
 const click = source('spotify_background_click.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('Spotify keeps a 480x270 background renderer and expands only for Monitor C', () => {
+test('Spotify parks a 480x270 background renderer offscreen and expands only for Monitor C', () => {
   assert.match(layout, /kSpotifyBackgroundWidth = 480/);
   assert.match(layout, /kSpotifyBackgroundHeight = 270/);
   assert.match(layout, /const int x = client\.left/);
   assert.match(layout, /const int y = client\.top/);
+  assert.match(layout, /int hostX = client\.right \+ 1/);
+  assert.match(layout, /int hostY = client\.bottom \+ 1/);
   assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
   assert.match(layout, /int height = std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
   assert.match(layout, /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*hostX = x;[\s\S]*hostY = y;[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /const RECT desired\{hostX, hostY, hostX \+ width, hostY \+ height\}/);
+  assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter,[\s\S]*hostX, hostY, width, height, flags\)/);
   assert.doesNotMatch(layout, /else if \(authentication\)|activeWidth|activeHeight/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
