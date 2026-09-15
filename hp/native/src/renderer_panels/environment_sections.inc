@@ -128,8 +128,6 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
 }
 
 void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
-  if (DrawCachedWeatherPanel(dc, card)) return;
-
   DrawSectionCard(dc, card);
   const RECT body = CardContentRect(card);
   const auto& hours = nativeDashboard_.weatherHours;
@@ -142,7 +140,6 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
     SetTextColor(dc, kWidgetDanger);
     DrawTextInRect(dc, L"障害中", body, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SelectObject(dc, previousFont);
-    CaptureWeatherPanel(dc, card);
     return;
   }
 
@@ -215,5 +212,4 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
                    rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
   SelectObject(dc, previousFont);
-  CaptureWeatherPanel(dc, card);
 }
