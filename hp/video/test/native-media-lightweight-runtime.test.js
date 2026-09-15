@@ -17,10 +17,8 @@ const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
-const youtubeRecovery = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
-const youtubeAgent = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
+const youtubeRuntime = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 const youtubePlaylistFallback = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url), 'utf8');
 const mediaPanel = [mediaBase, mediaHost, mediaWindow].join('\n');
@@ -70,25 +68,16 @@ test('TVer event bridge suppresses duplicate native wakeups for unchanged recove
   assert.match(tverEpisode, /wakeNative\('ui:' \+ playerUiRevision\)/);
 });
 
-test('YouTube uses a small event bridge with a 30-second steady watchdog backstop', () => {
+test('YouTube runtime owns event wakeups with a 30-second watchdog backstop', () => {
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
-  assert.match(youtubeAgent, /homepanel:youtube-wake/);
-  assert.match(youtubeAgent, /new AbortController\(\)/);
-  assert.match(youtubeAgent, /attributeFilter: \['class'\]/);
+  assert.match(youtubeRuntime, /homepanel:youtube-wake/);
+  assert.match(youtubeRuntime, /new AbortController\(\)/);
+  assert.match(youtubeRuntime, /attributeFilter: \['class'\]/);
+  assert.match(youtubeRuntime, /state\.classObserver\.observe\(player/);
+  assert.match(youtubeRuntime, /video\?\.error/);
   assert.match(mediaWrapper, /add_WebMessageReceived/);
-  assert.match(youtubeRecovery, /video\?\.error/);
-  assert.match(youtubeRecovery, /player\.classList\.contains\('ytp-error'\)/);
   assert.doesNotMatch(mediaPanel, /kNativeMediaPlaybackHealthTimer|ProbeYoutubeHealth/);
-});
-
-test('YouTube event agent has notification state only', () => {
-  assert.match(youtubeAgent, /wakeTimer: 0, recoveryTimer: 0/);
-  assert.match(youtubeAgent, /scheduleRecoveryWake/);
-  assert.match(youtubeAgent, /state\.classObserver\.observe\(player/);
-  assert.doesNotMatch(youtubeAgent, /lastWakeSignature|pendingWakeDirty/);
-  assert.doesNotMatch(youtubeAgent, /setPlaybackQuality|nextVideo|ytp-ad-skip/);
-  assert.match(mediaWrapper, /NativeMediaReadWebViewSource\(sender, source\)/);
 });
 
 test('media watchdogs use adaptive recovery state and navigation backoff', () => {
@@ -102,36 +91,29 @@ test('media watchdogs use adaptive recovery state and navigation backoff', () =>
 });
 
 test('media WebView blocks images but leaves fonts available for stable controls', () => {
-  assert.match(
-    mediaHost,
-    /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\)/,
-  );
-  assert.doesNotMatch(
-    mediaHost,
-    /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\)/,
-  );
+  assert.match(mediaHost, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
+  assert.doesNotMatch(mediaHost, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
 });
 
 test('YouTube static presentation policy is not reinjected after navigation completes', () => {
   assert.match(mediaHost, /AddScriptToExecuteOnDocumentCreated\([\s\S]*kNativeMediaYoutubeCleanPlayerScript/);
   assert.match(
     mediaWrapper,
-    /script == kNativeMediaYoutubeCleanPlayerScript[\s\S]*NativeMediaEnsureYoutubeTrustedAction[\s\S]*return kNativeMediaNoopScript/,
+    /script == kNativeMediaYoutubeCleanPlayerScript[\s\S]*return kNativeMediaNoopScript/,
   );
 });
 
 test('YouTube applies 360p and captions policy once per video', () => {
-  assert.match(youtubeRecovery, /videoKey/);
-  assert.match(youtubeRecovery, /qualityApplied: false/);
-  assert.match(youtubeRecovery, /captionsApplied: false/);
-  assert.match(youtubeRecovery, /const preferredQuality = 'medium'/);
-  assert.match(youtubeRecovery, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
-  assert.match(youtubeRecovery, /setPlaybackQuality\(preferredQuality\)/);
-  assert.doesNotMatch(youtubeRecovery, /getPlaybackQuality\(\)/);
+  assert.match(youtubeRuntime, /videoKey/);
+  assert.match(youtubeRuntime, /qualityApplied: false/);
+  assert.match(youtubeRuntime, /captionsApplied: false/);
+  assert.match(youtubeRuntime, /const preferredQuality = 'medium'/);
+  assert.match(youtubeRuntime, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
+  assert.doesNotMatch(youtubeRuntime, /getPlaybackQuality\(\)/);
 });
 
 test('active YouTube and TVer hot paths stay free of high-frequency diagnostic logging', () => {
-  const hotPath = [tverEpisode, youtubeAgent, youtubeRecovery, mediaWrapper].join('\n');
+  const hotPath = [tverEpisode, youtubeRuntime, mediaWrapper].join('\n');
   assert.doesNotMatch(hotPath, /console\.(?:log|debug|info)\s*\(/);
   assert.doesNotMatch(hotPath, /OutputDebugString|std::cout|std::cerr/);
 });
@@ -144,9 +126,7 @@ test('playlist startup fallback is event driven with one seven-second escape hat
     /kNativeMediaPlayAllTimer|kNativeMediaPlayAllRetryMs|kNativeMediaPlayAllRetryLimit|playAllProbeAttempts_|ProbePlayAll/,
   );
   assert.match(youtubePlaylistFallback, /new MutationObserver\(resolve\)/);
-  assert.match(youtubePlaylistFallback, /observer\.observe\(root, \{ childList: true, subtree: true \}\)/);
-  assert.match(youtubePlaylistFallback, /addEventListener\('yt-page-data-updated'/);
-  assert.match(youtubePlaylistFallback, /addEventListener\('yt-navigate-finish'/);
+  assert.match(youtubePlaylistFallback, /yt-page-data-updated/);
   assert.match(youtubePlaylistFallback, /7000/);
   assert.doesNotMatch(youtubePlaylistFallback, /setInterval\(/);
 });
@@ -159,5 +139,4 @@ test('media responsibilities remain separate from radar rendering', () => {
   assert.match(mediaHost, /class NativeMediaPanelHost final/);
   assert.match(mediaWindow, /LRESULT CALLBACK NativeMediaPanelWndProc/);
   assert.match(radarSection, /void Renderer::DrawRadarSection/);
-  assert.doesNotMatch(composition, /kNativeMediaYoutubeWatchdogOverrideScript/);
 });

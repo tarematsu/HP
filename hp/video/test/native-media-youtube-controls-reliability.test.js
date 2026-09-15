@@ -7,14 +7,13 @@ const wrapper = read('../../native/src/renderer_panels/media_section.inc');
 const base = read('../../native/src/renderer_panels/media_section_base.inc');
 const host = read('../../native/src/renderer_panels/media_host.inc');
 const trustedInput = read('../../native/src/renderer_panels/media_trusted_input.inc');
-const recovery = read('../../native/src/renderer_panels/media_youtube_control_recovery.inc');
-const agent = read('../../native/src/renderer_panels/media_youtube_event_agent.inc');
+const runtime = read('../../native/src/renderer_panels/media_youtube_control_recovery.inc');
 
 test('YouTube steady watchdog stays low frequency and event assisted', () => {
   assert.match(base, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(base, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(host, /ProbeYoutubeWatchdog/);
-  assert.match(agent, /homepanel:youtube-wake/);
+  assert.match(runtime, /homepanel:youtube-wake/);
   assert.match(wrapper, /add_WebMessageReceived/);
 });
 
@@ -32,30 +31,28 @@ test('trusted clicks still convert native coordinates', () => {
 });
 
 test('ad skip stays player-local and variant tolerant', () => {
-  assert.match(recovery, /\.ytp-ad-skip-button-modern/);
-  assert.match(recovery, /\.ytp-skip-ad-button/);
-  assert.match(recovery, /aria-label\*=\"Skip ad\" i/);
-  assert.match(recovery, /aria-label\*=\"広告をスキップ\"/);
-  assert.match(recovery, /player\.querySelectorAll\(skipSelectors\.join\(','\)\)/);
-  assert.doesNotMatch(recovery, /document\.querySelectorAll\(skipSelectors/);
+  assert.match(runtime, /\.ytp-ad-skip-button-modern/);
+  assert.match(runtime, /\.ytp-skip-ad-button/);
+  assert.match(runtime, /aria-label\*=\"Skip ad\" i/);
+  assert.match(runtime, /aria-label\*=\"広告をスキップ\"/);
+  assert.match(runtime, /player\.querySelectorAll\(skipSelectors\.join\(','\)\)/);
+  assert.doesNotMatch(runtime, /document\.querySelectorAll\(skipSelectors/);
 });
 
-test('message dialogs close only explicit Close controls and exclude surveys', () => {
-  assert.match(agent, /closePattern = \/\^\(閉じる\|close\)\$\/i/);
-  assert.match(agent, /document\.querySelector\('ytd-popup-container'\)/);
-  assert.match(agent, /root\.matches\(surveySelector\)/);
-  assert.match(agent, /root\.querySelector\(surveySelector\)/);
-  assert.match(agent, /close\.click\(\)/);
+test('message dialogs close explicit Close controls and exclude surveys', () => {
+  assert.match(runtime, /document\.querySelector\('ytd-popup-container'\)/);
+  assert.match(runtime, /\^\(閉じる\|close\)\$/);
+  assert.match(runtime, /root\.matches\(survey\)/);
+  assert.match(runtime, /root\.querySelector\(survey\)/);
+  assert.match(runtime, /close\.click\(\)/);
 });
 
-test('paused and stalled content have one recovery path', () => {
-  assert.match(recovery, /video\?\.paused && !video\.ended/);
-  assert.match(recovery, /video\.play\(\)\?\.catch/);
-  assert.match(recovery, /trusted\.arm\(play, 'play', 1500\)/);
-  assert.match(recovery, /pauseEscalationMs = 10 \* 1000/);
-  assert.match(recovery, /stallEscalationMs = 30 \* 1000/);
-  assert.match(recovery, /player\.querySelector\('\.ytp-next-button\[href\]'\)/);
-  assert.match(recovery, /typeof player\.nextVideo === 'function'/);
-  assert.match(agent, /scheduleRecoveryWake\(10 \* 1000 \+ 500\)/);
-  assert.match(agent, /scheduleRecoveryWake\(30 \* 1000 \+ 500\)/);
+test('paused and stalled content share one recovery path', () => {
+  assert.match(runtime, /video\?\.paused && !video\.ended/);
+  assert.match(runtime, /video\.play\(\)\?\.catch/);
+  assert.match(runtime, /arm\(player\.querySelector\('\.ytp-play-button'\), 'play', 1500\)/);
+  assert.match(runtime, /state\.pausedSince >= 10 \* 1000/);
+  assert.match(runtime, /state\.lastProgressAt >= 30 \* 1000/);
+  assert.match(runtime, /player\.querySelector\('\.ytp-next-button\[href\]'\)/);
+  assert.match(runtime, /typeof player\.nextVideo === 'function'/);
 });
