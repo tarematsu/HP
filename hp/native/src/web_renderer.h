@@ -271,8 +271,6 @@ class Renderer {
   HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
   HBITMAP NativeWeatherIconBitmap(
       const std::wstring& icon, bool night, int width, int height);
-  HBITMAP CacheNativeImageBitmap(const std::wstring& key, HBITMAP bitmap);
-  HBITMAP CacheNativeWeatherIconBitmap(const std::wstring& key, HBITMAP bitmap);
   HBITMAP CachedRadarBitmap(
       const std::wstring& key, const fs::path& path,
       const std::string& fileStamp, int width, int height);
