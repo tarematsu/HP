@@ -109,7 +109,7 @@ test('YouTube clean player renders content video while preserving Skip Ad', () =
   assert.match(youtubeClean, /#movie_player \.html5-video-container > :not\(video\)/);
   assert.match(youtubeClean, /#movie_player \.ytp-ad-skip-button-modern/);
   assert.match(youtubeClean, /#movie_player \.ytp-share-button/);
-  assert.match(youtubeClean, /opacity: 1 !important/);
+  assert.match(youtubeClean, /opacity:\s*1 !important/);
 });
 
 test('TVer episode playback is one-shot 1.75x, native-queue based and player-local', () => {

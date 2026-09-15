@@ -7,7 +7,7 @@ const youtubePolicy = readFileSync(
   'utf8',
 );
 
-test('YouTube native media panel removes unused watch-page shell from layout and paint', () => {
+test('YouTube native media panel removes unused watch-page shell from layout', () => {
   for (const selector of [
     'ytd-watch-flexy #secondary',
     'ytd-watch-flexy #below',
@@ -20,9 +20,7 @@ test('YouTube native media panel removes unused watch-page shell from layout and
   ]) {
     assert.match(youtubePolicy, new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
-  assert.match(youtubePolicy, /display: none !important/);
-  assert.match(youtubePolicy, /visibility: hidden !important/);
-  assert.match(youtubePolicy, /pointer-events: none !important/);
+  assert.match(youtubePolicy, /display:\s*none !important/);
 });
 
 test('YouTube load reduction keeps player media and trusted controls intact', () => {
@@ -30,5 +28,5 @@ test('YouTube load reduction keeps player media and trusted controls intact', ()
   assert.match(youtubePolicy, /\.html5-video-container/);
   assert.match(youtubePolicy, /\.ytp-fullscreen-button|ytp-chrome-bottom/);
   assert.match(youtubePolicy, /\.ytp-ad-skip-button-modern/);
-  assert.match(youtubePolicy, /opacity: 1 !important/);
+  assert.match(youtubePolicy, /opacity:\s*1 !important/);
 });

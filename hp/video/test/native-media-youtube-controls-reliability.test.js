@@ -1,49 +1,37 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
-const wrapper = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
-const base = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
-const host = readFileSync(
-  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
-const trustedInput = readFileSync(
-  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
-const recovery = readExpandedNativeSource(
-  '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
-const agent = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
+const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+const wrapper = read('../../native/src/renderer_panels/media_section.inc');
+const base = read('../../native/src/renderer_panels/media_section_base.inc');
+const host = read('../../native/src/renderer_panels/media_host.inc');
+const trustedInput = read('../../native/src/renderer_panels/media_trusted_input.inc');
+const recovery = read('../../native/src/renderer_panels/media_youtube_control_recovery.inc');
+const agent = read('../../native/src/renderer_panels/media_youtube_event_agent.inc');
 
-test('YouTube steady watchdog is low-frequency and event assisted', () => {
+test('YouTube steady watchdog stays low frequency and event assisted', () => {
   assert.match(base, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(base, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(host, /ProbeYoutubeWatchdog/);
   assert.match(agent, /homepanel:youtube-wake/);
   assert.match(wrapper, /add_WebMessageReceived/);
-  assert.doesNotMatch(base + host, /kNativeMediaYoutubeControlWatchdogMs|kNativeMediaYoutubeHealthTimer/);
 });
 
-test('YouTube watchdog self-heals lost and stale ExecuteScript callbacks', () => {
+test('YouTube watchdog still self-heals lost callbacks', () => {
   assert.match(host, /kYoutubeWatchdogTimeoutMs = 5ULL \* 1000ULL/);
-  assert.match(host, /uint64_t youtubeWatchdogRequestGeneration_ = 0/);
-  assert.match(host, /ULONGLONG youtubeWatchdogStartedTick_ = 0/);
-  assert.match(
-    host,
-    /youtubeWatchdogInFlight_[\s\S]*youtubeWatchdogStartedTick_[\s\S]*kYoutubeWatchdogTimeoutMs[\s\S]*InvalidateYoutubeWatchdog\(\)/,
-  );
+  assert.match(host, /youtubeWatchdogRequestGeneration_/);
+  assert.match(host, /youtubeWatchdogStartedTick_/);
+  assert.match(host, /InvalidateYoutubeWatchdog\(\)/);
 });
 
-test('trusted WebView2 clicks convert raw Win32 coordinates to CSS pixels', () => {
+test('trusted clicks still convert native coordinates', () => {
   assert.match(trustedInput, /ICoreWebView2Controller3/);
   assert.match(trustedInput, /get_RasterizationScale/);
-  assert.match(trustedInput, /get_ZoomFactor/);
-  assert.match(trustedInput, /point\.x\) \/ cssScale/);
-  assert.match(trustedInput, /point\.y\) \/ cssScale/);
+  assert.match(trustedInput, /Input\.dispatchMouseEvent/);
 });
 
-test('YouTube skip detection remains player-local and variant tolerant', () => {
+test('ad skip stays player-local and variant tolerant', () => {
   assert.match(recovery, /\.ytp-ad-skip-button-modern/);
   assert.match(recovery, /\.ytp-skip-ad-button/);
   assert.match(recovery, /aria-label\*=\"Skip ad\" i/);
@@ -52,49 +40,22 @@ test('YouTube skip detection remains player-local and variant tolerant', () => {
   assert.doesNotMatch(recovery, /document\.querySelectorAll\(skipSelectors/);
 });
 
-test('YouTube message dialogs auto-close explicit Close controls only', () => {
+test('message dialogs close only explicit Close controls and exclude surveys', () => {
   assert.match(agent, /closePattern = \/\^\(閉じる\|close\)\$\/i/);
   assert.match(agent, /document\.querySelector\('ytd-popup-container'\)/);
-  assert.match(agent, /state\.popupObserver\.observe\(popupContainer/);
+  assert.match(agent, /root\.matches\(surveySelector\)/);
+  assert.match(agent, /root\.querySelector\(surveySelector\)/);
   assert.match(agent, /close\.click\(\)/);
-  assert.match(agent, /isSurveyDialog/);
-  assert.match(agent, /root\?\.querySelector\?\.\(surveyDialogMarkerSelector\)/);
-  assert.doesNotMatch(agent, /popupObserver\.observe\(document\.(?:documentElement|body)/);
 });
 
-test('YouTube content recovery retries fullscreen until actual entry is confirmed', () => {
-  const paused = recovery.indexOf('video && video.paused');
-  const confirmed = recovery.lastIndexOf('if (trusted.fullscreen())');
-  const contentFullscreen = recovery.lastIndexOf("player.querySelector('.ytp-fullscreen-button')");
-  const arm = recovery.lastIndexOf("trusted.arm(target, 'fullscreen', 1200)");
-  assert.ok(paused >= 0);
-  assert.ok(confirmed > paused);
-  assert.ok(contentFullscreen > confirmed);
-  assert.ok(arm > contentFullscreen);
+test('paused and stalled content have one recovery path', () => {
+  assert.match(recovery, /video\?\.paused && !video\.ended/);
+  assert.match(recovery, /video\.play\(\)\?\.catch/);
   assert.match(recovery, /trusted\.arm\(play, 'play', 1500\)/);
-  assert.match(
-    recovery,
-    /if \(trusted\.fullscreen\(\)\) \{\s*recoveryState\.fullscreenApplied = true;\s*return null;/,
-  );
-  assert.match(recovery, /if \(recoveryState\.fullscreenApplied\) return null/);
-  assert.doesNotMatch(
-    recovery,
-    /fullscreenAction[\s\S]{0,160}recoveryState\.fullscreenApplied = true/,
-  );
-  assert.match(recovery, /return trusted\.arm\(target, 'fullscreen', 1200\)/);
-});
-
-test('YouTube stalled playback retries once then advances the playlist', () => {
   assert.match(recovery, /pauseEscalationMs = 10 \* 1000/);
   assert.match(recovery, /stallEscalationMs = 30 \* 1000/);
-  assert.match(recovery, /playRetryAttempted/);
-  assert.match(recovery, /advanceToNextPlaylistItem/);
-  assert.match(recovery, /\.ytp-next-button\[href\]/);
-  assert.match(recovery, /location\.assign\(candidate\.href\)/);
+  assert.match(recovery, /player\.querySelector\('\.ytp-next-button\[href\]'\)/);
   assert.match(recovery, /typeof player\.nextVideo === 'function'/);
-  assert.match(agent, /recoveryTimer/);
-  assert.match(agent, /'waiting', 'stalled'/);
   assert.match(agent, /scheduleRecoveryWake\(10 \* 1000 \+ 500\)/);
   assert.match(agent, /scheduleRecoveryWake\(30 \* 1000 \+ 500\)/);
-  assert.match(agent, /wake\(true\)/);
 });

@@ -1,256 +1,131 @@
-// Event-driven YouTube wake agent.
-//
-// The expensive recovery policy remains native-owned and trusted-input based.
-// This page-local helper reports only meaningful player-state transitions, so
-// repeated DOM mutations do not bounce through WebView2/native unnecessarily.
+// Minimal YouTube event bridge. It reports only state transitions that can change
+// recovery decisions; the recovery script owns all policy.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeEventAgentScript[] = LR"JS(
 (() => {
-  if ((location.hostname !== 'www.youtube.com' &&
-       location.hostname !== 'youtube.com') ||
+  if (!/^(www\.)?youtube\.com$/.test(location.hostname) ||
       !location.pathname.startsWith('/watch')) return null;
-
   const player = document.querySelector('#movie_player');
   if (!player) return null;
-  const existing = window.__homePanelYoutubeEventAgent;
-  if (existing && existing.player === player) return true;
-  if (existing) {
-    try { existing.classObserver?.disconnect(); } catch (_) {}
-    try { existing.popupObserver?.disconnect(); } catch (_) {}
-    try {
-      if (existing.navigationHandler) {
-        document.removeEventListener(
-            'yt-navigate-finish', existing.navigationHandler, true);
-        document.removeEventListener(
-            'yt-page-data-updated', existing.navigationHandler, true);
-      }
-    } catch (_) {}
-    try { if (existing.wakeTimer) clearTimeout(existing.wakeTimer); } catch (_) {}
-    try { if (existing.recoveryTimer) clearTimeout(existing.recoveryTimer); } catch (_) {}
-  }
+
+  const old = window.__homePanelYoutubeEventAgent;
+  if (old?.player === player) return true;
+  old?.dispose?.();
 
   const state = {
-    player,
-    video: null,
-    wakeAt: 0,
-    wakeTimer: 0,
-    recoveryTimer: 0,
-    lastWakeSignature: '',
-    pendingWakeDirty: false,
-    classObserver: null,
-    popupObserver: null,
-    navigationHandler: null,
-    adActive: player.classList.contains('ad-showing') ||
-        player.classList.contains('ad-interrupting'),
-    dialogCloseAt: 0,
+    player, video: null, pageAbort: new AbortController(), videoAbort: null,
+    classObserver: null, popupObserver: null, wakeTimer: 0, recoveryTimer: 0
   };
   window.__homePanelYoutubeEventAgent = state;
 
-  const messageDialogSelector = [
-    'tp-yt-paper-dialog[opened]',
-    '[role="dialog"]:not([aria-hidden="true"])',
-    'yt-confirm-dialog-renderer',
-    'ytd-confirm-dialog-renderer'
-  ].join(',');
-  const messageControlSelector =
-      'button, tp-yt-paper-button, [role="button"], [aria-label], [title]';
-  const surveyDialogMarkerSelector =
-      '.ytp-ad-survey, .ytp-ad-feedback-dialog, '
-      + 'yt-survey-renderer, ytd-survey-renderer';
-  const closePattern = /^(閉じる|close)$/i;
-  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-  const controlText = element => {
-    for (const value of [
-        element?.getAttribute?.('aria-label'),
-        element?.getAttribute?.('title'),
-        element?.textContent]) {
-      const normalized = normalize(value);
-      if (normalized) return normalized;
-    }
-    return '';
+  const postWake = () => {
+    state.wakeTimer = 0;
+    try { window.chrome?.webview?.postMessage('homepanel:youtube-wake'); }
+    catch (_) {}
   };
-  const isSurveyDialog = root => Boolean(
-      root?.matches?.(surveyDialogMarkerSelector) ||
-      root?.closest?.(surveyDialogMarkerSelector) ||
-      root?.querySelector?.(surveyDialogMarkerSelector));
-  const dismissMessageDialog = () => {
-    const now = Date.now();
-    if (now - state.dialogCloseAt < 500) return false;
-    const scopes = [player, document.querySelector('ytd-popup-container')]
-        .filter(Boolean);
-    for (const scope of scopes) {
-      for (const root of scope.querySelectorAll(messageDialogSelector)) {
-        if (!root.getClientRects().length || isSurveyDialog(root)) continue;
-        const close = Array.from(root.querySelectorAll(messageControlSelector))
-            .find(element => element.getClientRects().length &&
-                closePattern.test(controlText(element)));
-        if (!close) continue;
-        state.dialogCloseAt = now;
-        try { close.click(); } catch (_) {}
-        return true;
-      }
-    }
-    return false;
+  const wake = (delay = 80) => {
+    clearTimeout(state.wakeTimer);
+    state.wakeTimer = setTimeout(postWake, delay);
   };
-
-  const signature = () => {
-    const video = state.video || player.querySelector('video');
-    const ad = player.classList.contains('ad-showing') ||
-        player.classList.contains('ad-interrupting');
-    const paused = !video || video.paused;
-    const ended = !!video?.ended;
-    const failed = !!video?.error || player.classList.contains('ytp-error');
-    const fullscreen = !!(document.fullscreenElement ||
-        document.webkitFullscreenElement || document.msFullscreenElement);
-    return [location.href, ad, paused, ended, failed, fullscreen].join('|');
-  };
-
-  const postWake = nextSignature => {
-    state.wakeAt = Date.now();
-    state.lastWakeSignature = nextSignature;
-    state.pendingWakeDirty = false;
-    try {
-      window.chrome?.webview?.postMessage('homepanel:youtube-wake');
-    } catch (_) {}
-  };
-
-  // Coalesce bursts into one trailing notification and suppress an unchanged
-  // state entirely. The signature is intentionally media-only; skip/survey DOM
-  // discovery is deferred to ad/recovery wakes instead of every event burst.
-  const wake = (force = false) => {
-    const delay = Math.max(0, 250 - (Date.now() - state.wakeAt));
-    if (!force && delay > 0 && state.wakeTimer) {
-      state.pendingWakeDirty = true;
-      return;
-    }
-
-    const nextSignature = signature();
-    if (!force && nextSignature === state.lastWakeSignature && !state.wakeTimer) {
-      return;
-    }
-    state.pendingWakeDirty = true;
-    if (delay === 0) {
-      if (state.wakeTimer) {
-        clearTimeout(state.wakeTimer);
-        state.wakeTimer = 0;
-      }
-      if (force || nextSignature !== state.lastWakeSignature) {
-        postWake(nextSignature);
-      } else {
-        state.pendingWakeDirty = false;
-      }
-      return;
-    }
-    if (state.wakeTimer) return;
-    state.wakeTimer = setTimeout(() => {
-      state.wakeTimer = 0;
-      if (!state.pendingWakeDirty) return;
-      const pending = signature();
-      state.pendingWakeDirty = false;
-      if (pending !== state.lastWakeSignature) postWake(pending);
-    }, delay);
-  };
-  state.wake = wake;
-)JS" LR"JS(
-
-  const clearRecoveryWake = () => {
-    if (!state.recoveryTimer) return;
+  state.scheduleRecoveryWake = delay => {
     clearTimeout(state.recoveryTimer);
-    state.recoveryTimer = 0;
-  };
-  const scheduleRecoveryWake = delayMs => {
-    clearRecoveryWake();
     state.recoveryTimer = setTimeout(() => {
       state.recoveryTimer = 0;
-      // The player state can remain bit-for-bit identical while it is stuck, so
-      // this delayed escalation intentionally bypasses signature suppression.
-      wake(true);
-    }, delayMs);
+      postWake();
+    }, delay);
   };
-  state.scheduleRecoveryWake = scheduleRecoveryWake;
+
+  const surveySelector =
+      '.ytp-ad-survey,.ytp-ad-feedback-dialog,yt-survey-renderer,ytd-survey-renderer';
+  const closePattern = /^(閉じる|close)$/i;
+  const dismissMessageDialog = () => {
+    const popup = document.querySelector('ytd-popup-container');
+    if (!popup) return;
+    for (const root of popup.querySelectorAll(
+        'tp-yt-paper-dialog[opened],[role="dialog"]:not([aria-hidden="true"]),'
+        + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
+      if (!root.getClientRects().length || root.matches(surveySelector) ||
+          root.querySelector(surveySelector)) continue;
+      const close = Array.from(root.querySelectorAll(
+          'button,tp-yt-paper-button,[role="button"],[aria-label],[title]'))
+          .find(element => element.getClientRects().length &&
+              closePattern.test((element.getAttribute('aria-label') ||
+                  element.getAttribute('title') || element.textContent || '').trim()));
+      if (!close) continue;
+      try { close.click(); } catch (_) {}
+      return;
+    }
+  };
 
   const bindVideo = () => {
     const video = player.querySelector('video');
     if (!video || state.video === video) return;
+    state.videoAbort?.abort();
+    state.videoAbort = new AbortController();
     state.video = video;
-    const onVideoState = event => {
-      if (event.currentTarget !== state.video) return;
+    const handler = event => {
       if (event.type === 'pause') {
-        scheduleRecoveryWake(10 * 1000 + 500);
+        state.scheduleRecoveryWake(10 * 1000 + 500);
       } else if (event.type === 'waiting' || event.type === 'stalled') {
-        scheduleRecoveryWake(30 * 1000 + 500);
-      } else if (event.type === 'play' || event.type === 'playing' ||
-                 event.type === 'ended' || event.type === 'error' ||
-                 event.type === 'loadedmetadata' || event.type === 'emptied') {
-        clearRecoveryWake();
+        state.scheduleRecoveryWake(30 * 1000 + 500);
+      } else if (/^(play|playing|ended|error)$/.test(event.type)) {
+        clearTimeout(state.recoveryTimer);
+        state.recoveryTimer = 0;
       }
-      wake(event.type === 'waiting' || event.type === 'stalled');
+      wake(event.type === 'waiting' || event.type === 'stalled' ? 0 : 80);
     };
-    for (const eventName of [
+    for (const name of [
         'play', 'playing', 'pause', 'waiting', 'stalled', 'ended', 'error',
-        'loadedmetadata', 'emptied']) {
-      video.addEventListener(eventName, onVideoState, { passive: true });
+        'loadedmetadata']) {
+      video.addEventListener(name, handler, {
+        passive: true, signal: state.videoAbort.signal
+      });
     }
-    if (video.paused && !video.ended) scheduleRecoveryWake(10 * 1000 + 500);
-    wake(true);
+    wake(0);
   };
 
-  // YouTube already emits SPA navigation events. Use those plus media events
-  // instead of observing the entire #movie_player subtree, which mutates heavily
-  // during normal playback and ads.
-  state.navigationHandler = () => {
+  const onPageState = () => {
     bindVideo();
-    if (dismissMessageDialog()) wake(true);
-    else wake(true);
+    dismissMessageDialog();
+    wake(0);
   };
-  document.addEventListener(
-      'yt-navigate-finish', state.navigationHandler, true);
-  document.addEventListener(
-      'yt-page-data-updated', state.navigationHandler, true);
+  for (const name of ['yt-navigate-finish', 'yt-page-data-updated']) {
+    document.addEventListener(name, onPageState, {
+      capture: true, signal: state.pageAbort.signal
+    });
+  }
+  for (const name of ['fullscreenchange', 'webkitfullscreenchange']) {
+    document.addEventListener(name, () => wake(0), {
+      capture: true, signal: state.pageAbort.signal
+    });
+  }
 
   if (typeof MutationObserver === 'function') {
-    // Ad transitions are represented on the player itself. A delayed wake after
-    // entering an ad gives the skip control time to appear without a subtree
-    // observer continuously walking ad DOM mutations.
-    state.classObserver = new MutationObserver(() => {
-      const nextAdActive = player.classList.contains('ad-showing') ||
-          player.classList.contains('ad-interrupting');
-      if (nextAdActive !== state.adActive) {
-        state.adActive = nextAdActive;
-        if (nextAdActive) {
-          scheduleRecoveryWake(5 * 1000 + 500);
-        } else if (!state.video?.paused) {
-          clearRecoveryWake();
-        }
-      }
-      wake();
-    });
+    state.classObserver = new MutationObserver(() => wake());
     state.classObserver.observe(player, {
-      attributes: true,
-      attributeFilter: ['class']
+      attributes: true, attributeFilter: ['class']
     });
-
-    // Message windows are rendered in YouTube's dedicated popup host. Observe
-    // only that host; do not add a page-wide MutationObserver.
-    const popupContainer = document.querySelector('ytd-popup-container');
-    if (popupContainer) {
+    const popup = document.querySelector('ytd-popup-container');
+    if (popup) {
       state.popupObserver = new MutationObserver(() => {
-        if (dismissMessageDialog()) wake(true);
+        dismissMessageDialog();
+        wake(0);
       });
-      state.popupObserver.observe(popupContainer, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['opened', 'aria-hidden']
-      });
+      state.popupObserver.observe(popup, { childList: true, subtree: true });
     }
   }
 
-  document.addEventListener('fullscreenchange', () => wake(), true);
-  document.addEventListener('webkitfullscreenchange', () => wake(), true);
+  state.dispose = () => {
+    state.pageAbort.abort();
+    state.videoAbort?.abort();
+    state.classObserver?.disconnect();
+    state.popupObserver?.disconnect();
+    clearTimeout(state.wakeTimer);
+    clearTimeout(state.recoveryTimer);
+  };
   bindVideo();
-  if (dismissMessageDialog()) wake(true);
-  else wake(true);
+  dismissMessageDialog();
+  wake(0);
   return true;
 })()
 )JS";

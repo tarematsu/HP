@@ -14,17 +14,18 @@ test('YouTube clean-player exposes Skip Ad without restoring normal chrome', () 
     '#movie_player:not(.ad-showing):not(.ad-interrupting) > :not(.html5-video-container),',
   ));
   assert.equal(clean.includes('#movie_player.ad-showing *,'), false);
-  assert.ok(clean.includes('#movie_player .ytp-ad-skip-button-container,'));
+  assert.ok(clean.includes('#movie_player .ytp-ad-skip-button-modern,'));
+  assert.ok(clean.includes('#movie_player [class*="ytp-ad-skip"],'));
   assert.ok(clean.includes('#movie_player [aria-label*="広告をスキップ"]'));
   assert.ok(clean.includes('#movie_player .ytp-share-button,'));
-  assert.ok(clean.includes('opacity: 1 !important;'));
-  assert.ok(clean.includes('pointer-events: auto !important;'));
+  assert.match(clean, /opacity:\s*1 !important/);
+  assert.match(clean, /pointer-events:\s*auto !important/);
 });
 
-test('YouTube recovery accepts current and legacy skip layouts inside the player', () => {
-  assert.ok(recovery.includes('.ytp-ad-skip-button-slot [role="button"]'));
-  assert.ok(recovery.includes('.ytp-ad-skip-button-container [role="button"]'));
-  assert.ok(recovery.includes('[class*="ytp-ad-skip"][role="button"]'));
+test('YouTube recovery accepts current skip layouts inside the player', () => {
+  assert.ok(recovery.includes('.ytp-ad-skip-button-modern'));
+  assert.ok(recovery.includes('.ytp-skip-ad-button'));
+  assert.ok(recovery.includes('[class*="ytp-ad-skip"]'));
   assert.ok(recovery.includes('[aria-label*="Skip ad" i]'));
   assert.ok(recovery.includes('[aria-label*="広告を飛ばす"]'));
   assert.ok(recovery.includes("return trusted.arm(target, 'skip-ad', 600)"));
