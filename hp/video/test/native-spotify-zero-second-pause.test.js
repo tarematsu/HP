@@ -45,7 +45,8 @@ test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness
   assert.doesNotMatch(startup, /timedObserverReady|ArmTimedEndObserver/);
 });
 
-test('direct audio play waits for observer confirmation before trusted-click fallback', () => {
+test('direct audio play waits five seconds for observer confirmation before trusted-click fallback', () => {
+  assert.match(music, /kSpotifyDirectPlayConfirmWaitMs = 5ULL \* 1000ULL/);
   const directStart = music.indexOf(
     'if (json && std::wstring_view(json) == L"\\"direct-play\\"")',
   );
@@ -56,7 +57,8 @@ test('direct audio play waits for observer confirmation before trusted-click fal
   assert.ok(directStart >= 0 && settlingStart > directStart);
   const directBranch = music.slice(directStart, settlingStart);
   assert.match(directBranch, /SlotState::WaitingTarget/);
-  assert.match(directBranch, /kSpotifyPlaybackStartRetryMs/);
+  assert.match(directBranch, /kSpotifyDirectPlayConfirmWaitMs/);
+  assert.doesNotMatch(directBranch, /kSpotifyPlaybackStartRetryMs/);
   assert.match(directBranch, /ArmTimedEndObserver\(\*target\)/);
   assert.doesNotMatch(directBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.doesNotMatch(directBranch, /ClickSlotNormalizedPoint/);
