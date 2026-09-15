@@ -53,8 +53,26 @@ void StretchRadarIntoLowPeak(
 #include "renderer_panels/layout_overrides.inc"
 #include "renderer_panels/waste_calendar_section.inc"
 
+namespace {
+MainSections SplitWeatherRadarWidthSwappedMainSections(const RECT& client) {
+  MainSections sections = SplitRearrangedMainSections(client);
+  const LONG weatherWidth =
+      std::max<LONG>(1, sections.energy.right - sections.energy.left);
+  const LONG radarWidth =
+      std::max<LONG>(1, sections.radar.right - sections.radar.left);
+  const LONG left = sections.radar.left;
+  const LONG right = sections.energy.right;
+
+  // Keep the weather panel anchored on the left and the rain radar anchored on
+  // the right. Only exchange their horizontal sizes; vertical bounds stay put.
+  sections.radar.right = std::min<LONG>(right, left + weatherWidth);
+  sections.energy.left = std::max<LONG>(left, right - radarWidth);
+  return sections;
+}
+}  // namespace
+
 #define SplitSidebarSections SplitRearrangedSidebarSections
-#define SplitMainSections SplitRearrangedMainSections
+#define SplitMainSections SplitWeatherRadarWidthSwappedMainSections
 #define ClockTimeRectFromCard RearrangedClockTimeRectFromCard
 #define DrawClockSection HP_DRAW_CLOCK_WITH_STATUS
 #define DrawControlsSection DrawAirSection
