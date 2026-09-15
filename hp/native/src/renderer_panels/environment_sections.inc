@@ -130,10 +130,6 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
 void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT body = CardContentRect(card);
-  const auto& hours = nativeDashboard_.weatherHours;
-  constexpr int kColumns = 6;
-  constexpr int kSlots = 12;
-
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   if (nativeDashboard_.weatherOutage) {
     SelectObject(dc, TierFont(FontTier::Large));
@@ -143,55 +139,44 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
     return;
   }
 
-  const int bodyWidth = std::max(1, static_cast<int>(body.right - body.left));
-  const int bodyHeight = std::max(1, static_cast<int>(body.bottom - body.top));
+  constexpr int kColumns = 6;
   const int columnGap = std::max(3, SpanX(body, 18));
   const int rowGap = std::max(4, SpanY(body, 20));
-  const int columnWidth = std::max(1, (bodyWidth - columnGap * (kColumns - 1)) / kColumns);
-  const int rowHeight = std::max(1, (bodyHeight - rowGap) / 2);
-  const int count = std::min(kSlots, static_cast<int>(hours.size()));
+  const int columnWidth = std::max(
+      1, (static_cast<int>(body.right - body.left) - columnGap * (kColumns - 1)) / kColumns);
+  const int rowHeight = std::max(1, (static_cast<int>(body.bottom - body.top) - rowGap) / 2);
 
-  for (int i = 0; i < count; ++i) {
-    const int row = i / kColumns;
-    const int columnIndex = i % kColumns;
+  int index = 0;
+  for (const auto& hourData : nativeDashboard_.weatherHours) {
+    const int row = index / kColumns;
+    const int columnIndex = index++ % kColumns;
     const int left = body.left + columnIndex * (columnWidth + columnGap);
     const int top = body.top + row * (rowHeight + rowGap);
     const RECT column{
-        left,
-        top,
+        left, top,
         columnIndex == kColumns - 1 ? body.right : left + columnWidth,
         row == 1 ? body.bottom : top + rowHeight,
     };
-    const auto& hourData = hours[static_cast<size_t>(i)];
     const int columnHeight = std::max(1, static_cast<int>(column.bottom - column.top));
     const int hourHeight = std::max(1, columnHeight * 18 / 100);
     const int iconSlotHeight = std::max(1, columnHeight * 42 / 100);
     const int temperatureHeight = std::max(1, columnHeight * 22 / 100);
 
     SetTextColor(dc, kWidgetMuted);
-    SelectObject(dc, TierFont(FontTier::Small));
     RECT hourRect{column.left, column.top, column.right, column.top + hourHeight};
     DrawTextInRect(dc, std::to_wstring(hourData.hour) + L"時",
                    hourRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 
-    RECT iconSlot{column.left, hourRect.bottom, column.right,
-                  std::min(static_cast<int>(column.bottom),
-                           static_cast<int>(hourRect.bottom) + iconSlotHeight)};
-    if (!hourData.icon.empty() && iconSlot.bottom > iconSlot.top) {
-      int iconWidth = std::min(static_cast<int>(column.right - column.left),
-                               iconSlotHeight * 90 / 48);
-      iconWidth = std::max(1, iconWidth);
+    RECT iconSlot{column.left, hourRect.bottom, column.right, hourRect.bottom + iconSlotHeight};
+    if (!hourData.icon.empty()) {
+      const int slotWidth = static_cast<int>(column.right - column.left);
+      const int iconWidth = std::max(1, std::min(slotWidth, iconSlotHeight * 90 / 48));
       const int iconHeight = std::max(1, std::min(iconSlotHeight, iconWidth * 48 / 90));
-      iconWidth = std::max(1, std::min(iconWidth, iconHeight * 90 / 48));
-      RECT iconRect{
-          column.left + (static_cast<int>(column.right - column.left) - iconWidth) / 2,
-          iconSlot.top + (static_cast<int>(iconSlot.bottom - iconSlot.top) - iconHeight) / 2,
-          column.left + (static_cast<int>(column.right - column.left) + iconWidth) / 2,
-          iconSlot.top + (static_cast<int>(iconSlot.bottom - iconSlot.top) + iconHeight) / 2,
-      };
+      const int iconLeft = column.left + (slotWidth - iconWidth) / 2;
+      const int iconTop = iconSlot.top + (iconSlotHeight - iconHeight) / 2;
+      const RECT iconRect{iconLeft, iconTop, iconLeft + iconWidth, iconTop + iconHeight};
       DrawPremultipliedBitmap(dc,
-          NativeWeatherIconBitmap(hourData.icon,
-                                  IsWeatherNightHour(hourData.hour),
+          NativeWeatherIconBitmap(hourData.icon, IsWeatherNightHour(hourData.hour),
                                   iconWidth, iconHeight),
           iconRect);
     }
@@ -199,8 +184,7 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
     SetTextColor(dc, kWidgetText);
     SelectObject(dc, TierFont(FontTier::Medium));
     RECT tempRect{column.left, iconSlot.bottom, column.right,
-                  std::min(static_cast<int>(column.bottom),
-                           static_cast<int>(iconSlot.bottom) + temperatureHeight)};
+                  iconSlot.bottom + temperatureHeight};
     DrawTextInRect(dc, NumberOrDash(hourData.temperature, 0) + L"℃",
                    tempRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 
