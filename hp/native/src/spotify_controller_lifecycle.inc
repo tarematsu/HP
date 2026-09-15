@@ -124,6 +124,8 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
 
     Slot* const target = &slot;
     const auto alive = alive_;
+    ConfigureSpotifyLightweightResourcePolicy(
+        slot.environment.Get(), slot.webview.Get(), alive);
 
     const HRESULT titleEventResult = slot.webview->add_DocumentTitleChanged(
         Callback<ICoreWebView2DocumentTitleChangedEventHandler>(
@@ -190,6 +192,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               RecomputeForeground();
               if (!playerPage) { ArmRobustScheduler(); return S_OK; }
 
+              ApplySpotifyLightweightCss(sender);
               const ULONGLONG pageEpoch = target->pageEpoch;
               const HRESULT bootstrap = sender->ExecuteScript(
                   kSpotifyStaticPageBootstrapScript,
