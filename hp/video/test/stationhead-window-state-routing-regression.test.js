@@ -15,12 +15,10 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('Stationhead startup preview is armed before the deferred WebView start and stays onscreen behind the clock card', () => {
+test('Stationhead startup preview is armed before the deferred WebView start and stays fullscreen behind the dashboard', () => {
   assert.match(bridge, /gStationheadBackgroundPreview\{true\}/);
-  assert.match(bridge, /ComputeMediaSurfaceAnchors\(workspaceBounds\)/);
-  assert.match(bridge, /anchors\.clock/);
-  assert.match(bridge, /kStationheadSurfaceWidth = 160/);
-  assert.match(bridge, /kStationheadSurfaceHeight = 320/);
+  assert.match(bridge, /StationheadBackgroundBounds\(const RECT& workspaceBounds\)[\s\S]*return workspaceBounds;/);
+  assert.doesNotMatch(bridge, /ComputeMediaSurfaceAnchors|anchors\.clock|kStationheadSurfaceWidth|kStationheadSurfaceHeight|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(bridge, /StationheadOffscreenBounds|kStationheadOffscreenGap/);
 });
 
