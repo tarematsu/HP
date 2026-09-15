@@ -41,14 +41,13 @@ test('Stationhead keeps the HTTP cache and applies one audited resource boundary
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
 
-test('long-lived roles use only their independent 53-minute and 54-minute native navigation clocks', () => {
+test('long-lived roles use one 50-minute native navigation clock', () => {
   assert.match(refreshPolicy, /StationheadPeriodicRefreshIntervalMs/);
-  assert.match(refreshPolicy, /secondary \? 54 : 53/);
+  assert.match(refreshPolicy, /return 50 \* 60'000/);
   assert.match(refreshPolicy, /RefreshPeriodicNavigation/);
   assert.match(refreshPolicy, /periodicRefreshStartedAt_/);
-  assert.match(refreshPolicy, /L"53-minute periodic refresh"/);
-  assert.match(refreshPolicy, /L"54-minute periodic refresh"/);
-  assert.doesNotMatch(refreshPolicy, /56-minute/);
+  assert.match(refreshPolicy, /L"50-minute periodic refresh"/);
+  assert.doesNotMatch(refreshPolicy, /53-minute|54-minute|56-minute/);
   assert.doesNotMatch(refreshPolicy, /StationheadClockSwitch|even-minute|odd-minute/);
 
   const boundaryStart = trackBoundaryScript.indexOf(

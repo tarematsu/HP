@@ -80,6 +80,20 @@ void SetControllerMemoryUsageTarget(
   }
 }
 
+inline constexpr LONG kStationheadBackgroundWidth = 480;
+inline constexpr LONG kStationheadBackgroundHeight = 270;
+
+RECT ResolveStationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
+  const LONG width = std::max(1L, workspaceBounds.right - workspaceBounds.left);
+  const LONG height = std::max(1L, workspaceBounds.bottom - workspaceBounds.top);
+  return RECT{
+      workspaceBounds.left,
+      workspaceBounds.top,
+      workspaceBounds.left + std::min(kStationheadBackgroundWidth, width),
+      workspaceBounds.top + std::min(kStationheadBackgroundHeight, height),
+  };
+}
+
 bool PlaybackSurfaceMatches(HWND hostWindow,
                             ICoreWebView2Controller* controller,
                             const RECT& workspaceBounds,
@@ -306,11 +320,16 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
   const bool keepPlaybackFullSizeInBackground =
       trackBoundaryPlaybackRecoveryPending_ ||
       (!AudioPlaying() && !audioLossPlaybackObserved_);
+  const bool monitorForeground = StationheadMonitorForeground();
+  const RECT playbackBounds =
+      !monitorForeground && keepPlaybackFullSizeInBackground
+          ? ResolveStationheadBackgroundBounds(bounds_)
+          : bounds_;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
-                              authController_.Get(), bounds_, false, false, false,
+                              authController_.Get(), playbackBounds, false, false, false,
                               keepPlaybackFullSizeInBackground);
   std::lock_guard lock(mutex_);
-  status_.visible = StationheadMonitorForeground();
+  status_.visible = monitorForeground;
 }
 
 void StationheadPlayer::SetStartupBounds() {
@@ -350,13 +369,17 @@ void StationheadPlayer::SetVisible(bool visible) {
         (!AudioPlaying() && !audioLossPlaybackObserved_);
     const bool playbackFullSize =
         monitorForeground || keepPlaybackFullSizeInBackground;
+    const RECT playbackBounds =
+        !monitorForeground && keepPlaybackFullSizeInBackground
+            ? ResolveStationheadBackgroundBounds(bounds_)
+            : bounds_;
     if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
-        PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
+        PlaybackSurfaceMatches(hostWindow_, controller_.Get(), playbackBounds,
                                playbackFullSize
-                                   ? std::max(1L, bounds_.right - bounds_.left)
+                                   ? std::max(1L, playbackBounds.right - playbackBounds.left)
                                    : 1,
                                playbackFullSize
-                                   ? std::max(1L, bounds_.bottom - bounds_.top)
+                                   ? std::max(1L, playbackBounds.bottom - playbackBounds.top)
                                    : 1,
                                monitorForeground ? HWND_TOP : nullptr) &&
         BackgroundAuthSurfaceMatches(authHostWindow_, authController_.Get(), bounds_)) {
@@ -424,12 +447,18 @@ void StationheadPlayer::LayoutControllers() {
   const bool keepPlaybackFullSizeInBackground =
       trackBoundaryPlaybackRecoveryPending_ ||
       (!AudioPlaying() && !audioLossPlaybackObserved_);
-  ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(), bounds_,
+  const bool monitorForeground = StationheadMonitorForeground();
+  const RECT playbackBounds =
+      selectedTab_ == StationheadTabKind::None && !monitorForeground &&
+              keepPlaybackFullSizeInBackground
+          ? ResolveStationheadBackgroundBounds(bounds_)
+          : bounds_;
+  ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(), playbackBounds,
                               policy.showAuth, policy.showPlayback, policy.hidePlayback,
                               keepPlaybackFullSizeInBackground);
   std::lock_guard lock(mutex_);
   status_.visible = policy.showAuth || policy.showPlayback ||
-                    (selectedTab_ == StationheadTabKind::None && StationheadMonitorForeground());
+                    (selectedTab_ == StationheadTabKind::None && monitorForeground);
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {

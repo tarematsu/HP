@@ -55,7 +55,7 @@ test('Window B legacy auth probe is local-only and shares the same interaction s
   );
 });
 
-test('53/54-minute refresh has one direct interactive-state gate', () => {
+test('50-minute refresh has one direct interactive-state gate', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
 
   assert.match(
@@ -63,7 +63,7 @@ test('53/54-minute refresh has one direct interactive-state gate', () => {
     /spotifyAuthorization_ \|\| loginRequired_ \|\|[\s\S]*recreating_/,
   );
   assert.doesNotMatch(injected, /unresolvedInteractiveLogin/);
-  assert.match(policy, /secondary \? 54 : 53/);
-  assert.match(injected, /L"54-minute periodic refresh"/);
-  assert.match(injected, /L"53-minute periodic refresh"/);
+  assert.match(policy, /return 50 \* 60'000/);
+  assert.match(injected, /L"50-minute periodic refresh"/);
+  assert.doesNotMatch(injected, /53-minute|54-minute/);
 });
