@@ -114,7 +114,7 @@ class SpotifyWebViews final {
       PTP_CALLBACK_INSTANCE instance, PVOID context, PTP_TIMER timer);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
   static bool IsSpotifyLoginUri(const wchar_t* uri) noexcept;
-  static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept;
+  static bool ParseCssPoint(LPCWSTR json, double* x, double* y) noexcept;
   static bool SlotStateIsHealthy(SlotState state) noexcept;
   static bool SlotStateNeedsRecovery(SlotState state) noexcept;
 
@@ -130,10 +130,9 @@ class SpotifyWebViews final {
   void MarkSlotRecovering(Slot& slot, ULONGLONG now) noexcept;
   bool ExpireStaleAsyncWork(Slot& slot, ULONGLONG now) noexcept;
   void BumpSpotifyTargetGeneration(Slot& slot) noexcept;
-  void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
-                                int yTenThousandths) noexcept;
-  UINT DispatchSpotifyDevToolsClick(Slot& slot, int xTenThousandths,
-                                    int yTenThousandths) noexcept;
+  void ClickSlotCssPoint(Slot& slot, double cssX, double cssY) noexcept;
+  UINT DispatchSpotifyDevToolsClick(Slot& slot, double cssX,
+                                    double cssY) noexcept;
   void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
   void BeginInitialCloudPlaylistWait(ULONGLONG now) noexcept;
