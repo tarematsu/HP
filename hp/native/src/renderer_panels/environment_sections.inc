@@ -1,39 +1,3 @@
-HPEN CachedAirDottedPen(COLORREF color) {
-  static std::map<COLORREF, HPEN> cache;
-  auto [entry, inserted] = cache.try_emplace(color, nullptr);
-  if (inserted) entry->second = CreatePen(PS_DOT, 1, color);
-  return entry->second;
-}
-
-template <typename ValueOf>
-void DrawDottedAirHistoryLine(
-    HDC dc, const std::vector<AirHistorySample>& samples, const RECT& plot,
-    int64_t cutoff, int64_t spanMs, double minValue, double maxValue,
-    COLORREF color, ValueOf&& valueOf) {
-  if (samples.empty() || maxValue <= minValue) return;
-  HGDIOBJ previousPen = SelectObject(dc, CachedAirDottedPen(color));
-  bool started = false;
-  for (const auto& sample : samples) {
-    const double value = valueOf(sample);
-    if (!std::isfinite(value) || sample.timestamp < cutoff) continue;
-    const double xRatio = std::clamp(
-        static_cast<double>(sample.timestamp - cutoff) / spanMs, 0.0, 1.0);
-    const double yRatio = std::clamp(
-        (value - minValue) / (maxValue - minValue), 0.0, 1.0);
-    const int x = plot.left +
-        static_cast<int>((plot.right - plot.left) * xRatio);
-    const int y = plot.bottom -
-        static_cast<int>((plot.bottom - plot.top) * yRatio);
-    if (!started) {
-      MoveToEx(dc, x, y, nullptr);
-      started = true;
-    } else {
-      LineTo(dc, x, y);
-    }
-  }
-  SelectObject(dc, previousPen);
-}
-
 void Renderer::DrawAirSection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT body = CardContentRect(card);
@@ -82,8 +46,13 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
 
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   constexpr int64_t kWindowMs = 24LL * 60 * 60 * 1000;
-  const auto& samples = nativeAirGraph_.samples;
-  const int64_t cutoff = nativeAirGraph_.cutoff;
+  const auto& samples = nativeAirHistory_;
+  const int64_t cutoff = UnixMillis() - kWindowMs;
+  const auto first = std::lower_bound(
+      samples.begin(), samples.end(), cutoff,
+      [](const AirHistorySample& sample, int64_t timestamp) {
+        return sample.timestamp < timestamp;
+      });
 
   if (plot.right > plot.left + 4 && plot.bottom > plot.top + 4) {
     HPEN gridPen = CreatePen(PS_SOLID, 1, kWidgetTrack);
@@ -102,23 +71,27 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
     DeleteObject(gridPen);
   }
 
-  if (!samples.empty() && plot.bottom > plot.top + 4) {
+  if (first != samples.end() && plot.bottom > plot.top + 4) {
+    double co2Min = first->co2, co2Max = first->co2;
+    double temperatureMin = first->temperature, temperatureMax = first->temperature;
+    double humidityMin = first->humidity, humidityMax = first->humidity;
+    for (auto item = std::next(first); item != samples.end(); ++item) {
+      co2Min = std::min(co2Min, static_cast<double>(item->co2));
+      co2Max = std::max(co2Max, static_cast<double>(item->co2));
+      temperatureMin = std::min(temperatureMin, item->temperature);
+      temperatureMax = std::max(temperatureMax, item->temperature);
+      humidityMin = std::min(humidityMin, item->humidity);
+      humidityMax = std::max(humidityMax, item->humidity);
+    }
     DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs,
-                    nativeAirGraph_.co2Min - 80, nativeAirGraph_.co2Max + 80,
-                    kWidgetGreen, 2,
+                    co2Min - 80, co2Max + 80, kWidgetGreen, 2,
                     [](const AirHistorySample& s) { return static_cast<double>(s.co2); });
-    DrawHistoryLine(
-        dc, samples, plot, cutoff, kWindowMs,
-        nativeAirGraph_.temperatureMin - 0.5,
-        nativeAirGraph_.temperatureMax + 0.5,
-        kWidgetText, 1,
-        [](const AirHistorySample& s) { return s.temperature; });
-    DrawDottedAirHistoryLine(
-        dc, samples, plot, cutoff, kWindowMs,
-        nativeAirGraph_.humidityMin - 2,
-        nativeAirGraph_.humidityMax + 2,
-        kWidgetMuted,
-        [](const AirHistorySample& s) { return s.humidity; });
+    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs,
+                    temperatureMin - 0.5, temperatureMax + 0.5, kWidgetText, 1,
+                    [](const AirHistorySample& s) { return s.temperature; });
+    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs,
+                    humidityMin - 2, humidityMax + 2, kWidgetMuted, 1,
+                    [](const AirHistorySample& s) { return s.humidity; }, PS_DOT);
   } else {
     SetTextColor(dc, kWidgetSubtle);
     DrawTextInRect(dc, L"履歴を取得中", plot, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
