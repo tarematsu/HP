@@ -1,9 +1,12 @@
 #include "app_stationhead_handles.h"
+#include "stationhead_monitor_probe.h"
 
 namespace hp {
 namespace {
 
 constexpr int64_t kStationheadBoundaryRetryWindowMs = 3 * 60'000;
+constexpr wchar_t kStationheadPeriodicRefreshDetail[] =
+    L"50-minute periodic refresh";
 
 struct TrackBoundaryRetryState {
   bool armed = false;
@@ -24,6 +27,26 @@ void ArmBoundaryRetryState(int64_t nowMs) noexcept {
 
 bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
   return status.loginRequired || status.spotifyAuthorization || status.processFailed;
+}
+
+bool IsStationheadPeriodicRefresh(const StationheadStatus& status) noexcept {
+  return status.navigating && status.detail == kStationheadPeriodicRefreshDetail;
+}
+
+void SyncStationheadBackgroundPreview(
+    StationheadPlayer& player, const RECT& workspaceBounds) {
+  const StationheadStatus status = player.Status();
+  if (IsStationheadPeriodicRefresh(status)) {
+    if (SetStationheadBackgroundPreview(true)) player.SetBounds(workspaceBounds);
+    return;
+  }
+
+  const bool settledPlayback =
+      player.AudioPlaying() && !status.navigating &&
+      !status.loginRequired && !status.spotifyAuthorization;
+  if (settledPlayback && SetStationheadBackgroundPreview(false)) {
+    player.SetBounds(workspaceBounds);
+  }
 }
 
 static_assert(kStationheadBoundaryRetryWindowMs >
@@ -102,6 +125,7 @@ void StationheadHandleBase::Start() {
   if (!player_ || startIssued_ || stopIssued_) return;
   startIssued_ = true;
   ClearBoundaryRetryState();
+  SetStationheadBackgroundPreview(true);
   ApplyBounds();
   player_->Start();
   ApplyAudioState();
@@ -111,9 +135,11 @@ void StationheadHandleBase::Start() {
 void StationheadHandleBase::Tick(int64_t nowMs) {
   if (!player_ || !startIssued_ || stopIssued_) return;
   player_->RecoverUnavailableAuthorization();
+  SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   if (player_->SpotifyAuthorizationActive()) player_->RequestImmediateTick();
   player_->Tick(nowMs);
   player_->EvaluateAudioLossRecovery(nowMs);
+  SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   RaiseActiveHost();
 
   if (!boundaryRetry.armed && !player_->AudioPlaying()) {
