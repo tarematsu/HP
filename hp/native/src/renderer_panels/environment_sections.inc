@@ -142,7 +142,7 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
       const int iconTop = iconSlot.top + (iconSlotHeight - iconHeight) / 2;
       const RECT iconRect{iconLeft, iconTop, iconLeft + iconWidth, iconTop + iconHeight};
       DrawPremultipliedBitmap(dc,
-          NativeWeatherIconBitmap(hourData.icon, IsWeatherNightHour(hourData.hour),
+          NativeWeatherIconBitmap(hourData.icon, hourData.hour < 6 || hourData.hour >= 18,
                                   iconWidth, iconHeight),
           iconRect);
     }
