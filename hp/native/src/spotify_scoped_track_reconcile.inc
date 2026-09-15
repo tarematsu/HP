@@ -1,10 +1,13 @@
 namespace hp {
 namespace {
 
-// Minimal playback start path for the already-selected Spotify track page:
-// 1) prefer the target page Play/Pause control over the global player control;
+// Minimal playback start/status probe for the already-selected Spotify track:
+// 1) use the target page Play/Pause control as the managed-track authority;
 // 2) if it is Play, return its exact CSS-pixel center for one trusted CDP click;
-// 3) if it is already Pause, wait for observer confirmation.
+// 3) if it is already Pause, native confirms playback directly without waiting
+//    for observer/WebMessage acknowledgement;
+// 4) never accept or click the global player alone: without observer identity it
+//    may still represent the previous track while the target page is loading.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
@@ -54,6 +57,7 @@ LR"JS(
       'button[data-testid="control-button-playpause"]')).find(visible) || null;
   const button = pageButton || playerButton;
   if (!button) return null;
+  if (!pageButton) return null;
   if (isPauseControl(button)) return true;
   return point(button);
 })()

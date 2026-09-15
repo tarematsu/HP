@@ -52,10 +52,6 @@ void SpotifyWebViews::ClickSlotCssPoint(
     return;
   }
 
-  if (!slot.timedObserverReady) {
-    ArmTimedEndObserver(slot);
-  }
-
   const ULONGLONG targetGeneration = slot.targetGeneration;
   const ULONGLONG pageEpoch = slot.pageEpoch;
   SetSlotState(slot, SlotState::WaitingTarget);
@@ -85,9 +81,6 @@ void SpotifyWebViews::ClickSlotCssPoint(
       L"if(!Number.isFinite(centerX)||!Number.isFinite(centerY)||"
       L"centerX<0||centerX>window.innerWidth||"
       L"centerY<0||centerY>window.innerHeight)return null;"
-      L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
-      L"if(runtime&&typeof runtime.armTrustedStart==='function'){"
-      L"runtime.armTrustedStart('" + std::to_wstring(targetGeneration) + L"');}"
       L"return [centerX,centerY];})()";
 
   Slot* const target = &slot;

@@ -38,12 +38,23 @@ test('target routing does not start the completion clock before playback confirm
   assert.doesNotMatch(navigate, /timedCompletionDeadlineTick\s*=/);
 });
 
-test('trusted Play input never starts the completion clock by itself', () => {
-  assert.match(click, /ArmTimedEndObserver\(slot\)/);
+test('trusted Play input is observer-independent and does not start the clock by itself', () => {
+  assert.doesNotMatch(click, /ArmTimedEndObserver|timedObserverReady|armTrustedStart/);
   assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayConfirmWaitMs/);
   assert.doesNotMatch(click, /SetMusicCompletionDeadline/);
   assert.doesNotMatch(click, /playbackStartTick/);
   assert.doesNotMatch(header + music, /timedPlaybackStartTick/);
+});
+
+test('verified Pause state starts the native completion clock', () => {
+  const start = music.indexOf('if (json &&');
+  const end = music.indexOf('double cssX = 0.0;', start);
+  assert.ok(start >= 0 && end > start);
+  const confirm = music.slice(start, end);
+  assert.match(confirm, /target->playbackConfirmed = true/);
+  assert.match(confirm, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(confirm, /SetMusicCompletionDeadline\(\*target, callbackNow\)/);
+  assert.doesNotMatch(confirm, /ArmTimedEndObserver|observer-synced/);
 });
 
 test('startup retries are limited to target handoff, CDP confirmation, and missing controls', () => {
@@ -56,7 +67,7 @@ test('startup retries are limited to target handoff, CDP confirmation, and missi
   assert.doesNotMatch(click, /nextRecoveryTick = now/);
 });
 
-test('direct playback start and resume enter the same deadline helper', () => {
+test('optional observer start and resume still enter the same deadline helper if used', () => {
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
   assert.match(rotation, /SetMusicCompletionDeadline\([\s\S]*\*target, now, remainingMs, resumed/);

@@ -37,13 +37,14 @@ test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness
   assert.doesNotMatch(startup, /timedObserverReady|ArmTimedEndObserver/);
 });
 
-test('CDP Play waits five seconds for observer confirmation', () => {
+test('CDP Play waits five seconds for native Pause-state confirmation', () => {
   assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
   assert.match(music, /std::wstring_view\(json\) == L"true"/);
   assert.match(music, /callbackNow \+ kSpotifyCdpPlayConfirmWaitMs/);
-  assert.match(music, /ArmTimedEndObserver\(\*target\)/);
   assert.match(music, /ParseCssPoint\(json, &cssX, &cssY\)/);
   assert.match(music, /ClickSlotCssPoint\(\*target, cssX, cssY\)/);
+  assert.match(music, /target->playbackConfirmed = true/);
+  assert.match(music, /SetMusicCompletionDeadline\(\*target, callbackNow\)/);
   assert.doesNotMatch(music, /kSpotifyDirectPlayConfirmWaitMs/);
   assert.doesNotMatch(music, /"\\"direct-play\\""/);
 });
@@ -67,18 +68,19 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('playback confirmation stays observer-owned', () => {
+test('playback confirmation is native-owned while observer support remains isolated', () => {
   assert.match(scoped, /label\.includes\('pause'\) \|\| label\.includes\('一時停止'\)/);
   assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
   assert.doesNotMatch(controller, /get_DocumentTitle/);
+  assert.match(music, /target->observedTrackTitle = currentTrack->title/);
+  assert.match(music, /GetLocalTime\(&target->playbackConfirmedAt\)/);
+  assert.match(music, /target->playbackConfirmed = true/);
+  assert.match(music, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
-  assert.match(rotation, /target->observedTrackTitle = currentTrack->title/);
-  assert.match(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
-  assert.match(rotation, /target->playbackConfirmed = true/);
 });
 
-test('observer adoption of already-playing media still emits one start deadline if used', () => {
+test('observer adoption of already-playing media can still emit one start deadline if explicitly used', () => {
   assert.match(
     runtime,
     /spotify:observer-sync[\s\S]*document\.querySelectorAll\('audio, video'\)[\s\S]*scheduleTargetChecks\(media\)/,

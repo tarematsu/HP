@@ -197,10 +197,16 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              SetSlotState(*target, SlotState::WaitingTarget);
-              target->nextRecoveryTick =
-                  callbackNow + kSpotifyCdpPlayConfirmWaitMs;
-              ArmTimedEndObserver(*target);
+              const ManagedTrack* const currentTrack = CurrentMusicTrack(*target);
+              if (!currentTrack) return S_OK;
+
+              target->observedTrackTitle = currentTrack->title;
+              GetLocalTime(&target->playbackConfirmedAt);
+              target->playbackConfirmed = true;
+              target->nextRecoveryTick = 0;
+              InvalidateSpotifyStatusForHost(target->hostWindow);
+              SetSlotState(*target, SlotState::Playing);
+              SetMusicCompletionDeadline(*target, callbackNow);
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
