@@ -132,7 +132,7 @@ constexpr std::array<Course36WasteKind, 3> kCourse36ClockWasteKinds{{
 const std::array<Course36ClockWasteNotice, 3>& Course36ClockWasteNotices(
     const SYSTEMTIME& now) {
   struct Cache {
-    WORD year = 0;
+    WORD year = 0xFFFF;
     WORD month = 0;
     WORD day = 0;
     std::array<Course36ClockWasteNotice, 3> notices{};
