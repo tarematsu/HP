@@ -6,6 +6,7 @@ constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTrackTransitionRetryMs = 500ULL;
 constexpr ULONGLONG kSpotifyPlaybackStartRetryMs = 1500ULL;
 constexpr ULONGLONG kSpotifyDirectPlayConfirmWaitMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyCdpPlayConfirmWaitMs = 5ULL * 1000ULL;
 
 }  // namespace
 
@@ -240,8 +241,11 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             int x = 0;
             int y = 0;
             if (ParseNormalizedPoint(json, &x, &y)) {
+              // A trusted CDP click may take a few seconds to transition the
+              // Spotify player. Give it the same confirmation window as direct
+              // HTMLMediaElement.play() before retry/recovery logic runs.
               target->nextRecoveryTick =
-                  callbackNow + kSpotifyPlaybackStartRetryMs;
+                  callbackNow + kSpotifyCdpPlayConfirmWaitMs;
               ClickSlotNormalizedPoint(*target, x, y);
               return S_OK;
             }
