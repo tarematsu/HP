@@ -105,6 +105,6 @@ test('native TVer refresh preserves valid state but rejects stale or redirected 
   );
   assert.match(
     mediaSection,
-    /tver\.jp\/episodes\/[\s\S]*PrepareNativeMediaTverCloudQueueRefresh\(webview, hostWindow, alive\)[\s\S]*kNativeMediaTverPlaybackWatchdogPolicyScript/,
+    /tver\.jp\/episodes\/[\s\S]*NativeMediaTverPrepareCloudQueueRefresh\(hostWindow, alive, false\)[\s\S]*kNativeMediaTverPlaybackWatchdogPolicyScript/,
   );
 });

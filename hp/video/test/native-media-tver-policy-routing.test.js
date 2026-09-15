@@ -39,10 +39,11 @@ test('event wake bridge accepts only fixed messages and revalidates current sour
   assert.match(wrapper, /PostMessageW\(hostWindow, WM_TIMER/);
 });
 
-test('TVer cloud refresh uses the dedicated native cloud-feed client', () => {
+test('TVer cloud refresh uses the dedicated native cloud-feed client directly', () => {
   assert.match(wrapper, /#include "media_tver_cloud_feed_native\.inc"/);
   assert.match(wrapper, /#include "media_tver_cloud_queue_refresh\.inc"/);
-  assert.match(wrapper, /PrepareNativeMediaTverCloudQueueRefresh\(webview, hostWindow, alive\)/);
+  assert.match(wrapper, /NativeMediaTverPrepareCloudQueueRefresh\(hostWindow, alive, false\)/);
+  assert.doesNotMatch(wrapper, /PrepareNativeMediaTverCloudQueueRefresh/);
   assert.doesNotMatch(wrapper, /NativeMediaTverSeriesWatchdogPolicyScript/);
 });
 

@@ -21,7 +21,7 @@ test('TVer program playback settings are one-shot and event driven', () => {
 
 test('TVer quality discovery is event driven and player-local', () => {
   assert.doesNotMatch(episode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
-  assert.match(episode, /if \(!state\.lowQualitySet\)/);
+  assert.match(episode, /!state\.lowQualitySet && !state\.qualityAttemptExhausted/);
   assert.match(episode, /const root = playerRootFor\(video\)/);
   assert.match(episode, /state\.lowQualitySet = true/);
   assert.match(episode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
@@ -37,13 +37,21 @@ test('TVer ads do not receive program speed, volume or recovery mutation', () =>
   assert.doesNotMatch(adBranch, /video\.playbackRate/);
   assert.doesNotMatch(adBranch, /video\.volume/);
   assert.doesNotMatch(adBranch, /video\.play\(/);
-  assert.match(watchdog, /During ads the watchdog may only click Skip or the fullscreen control/);
+
+  const watchdogAdStart = watchdog.indexOf('if (adActive) {');
+  const watchdogAdEnd = watchdog.indexOf('if (video && state', watchdogAdStart);
+  const watchdogAdBranch = watchdog.slice(watchdogAdStart, watchdogAdEnd);
+  assert.match(watchdogAdBranch, /skipButton/);
+  assert.match(watchdogAdBranch, /fullscreenButton/);
+  assert.doesNotMatch(watchdogAdBranch, /video\.play\(/);
+  assert.doesNotMatch(watchdogAdBranch, /video\.volume/);
+  assert.doesNotMatch(watchdogAdBranch, /video\.playbackRate/);
 });
 
 test('TVer ad identity is tracked across a complete ad pod', () => {
   assert.match(episode, /const mediaIdentity = video =>/);
   assert.match(episode, /video\.currentSrc \|\| video\.src/);
   assert.match(episode, /state\.adIdentity && identity && state\.adIdentity !== identity/);
-  assert.match(episode, /state\.adIdentity = identity/);
-  assert.match(episode, /state\.adIdentity = ''/);
+  assert.match(episode, /adIdentity: identity/);
+  assert.match(episode, /adIdentity: ''/);
 });

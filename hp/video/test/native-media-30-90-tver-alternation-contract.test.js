@@ -13,8 +13,6 @@ const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
-const tverKeys = readFileSync(
-  new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url), 'utf8');
 const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const tverQueue = readFileSync(
@@ -28,12 +26,12 @@ test('media cadence remains 60 minutes per YouTube/TVer phase', () => {
   assert.doesNotMatch(composition, /PhaseOverrideMs/);
 });
 
-test('TVer old static implementation is reduced to routing keys', () => {
-  assert.match(tverKeys, /kNativeMediaTverLoopStaticScript\[\]/);
-  assert.match(tverKeys, /kNativeMediaTverWatchdogStaticScript\[\]/);
-  assert.match(tverKeys, /homepanel-tver-loop-routing-key/);
-  assert.match(tverKeys, /homepanel-tver-watchdog-routing-key/);
-  assert.doesNotMatch(tverKeys, /MutationObserver|querySelectorAll|playbackRate/);
+test('TVer routing keys are direct shared-media constants', () => {
+  assert.match(mediaBase, /kNativeMediaTverLoopScript\[\]/);
+  assert.match(mediaBase, /kNativeMediaTverWatchdogScript\[\]/);
+  assert.match(mediaBase, /homepanel-tver-loop-routing-key/);
+  assert.match(mediaBase, /homepanel-tver-watchdog-routing-key/);
+  assert.doesNotMatch(mediaWrapper, /media_tver_ad_guard\.inc/);
 });
 
 test('TVer queue, progression and cycle restart are native-owned', () => {

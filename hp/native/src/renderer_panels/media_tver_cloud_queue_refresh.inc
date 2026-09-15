@@ -1,8 +1,4 @@
 // Native-owned TVer episode queue and cloud refresh.
-//
-// The WebView reports media lifecycle events only. Episode ordering, consumed
-// state, cloud refreshes, queue exhaustion and startup deadlines all live here
-// so page JavaScript never owns playback progression.
 namespace {
 constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
     30ULL * 60ULL * 1000ULL;
@@ -11,7 +7,6 @@ constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
 struct NativeMediaTverCloudQueueRefreshResult {
   std::wstring generatedAt;
   std::vector<std::wstring> episodeIds;
-  bool success = false;
 };
 
 struct NativeMediaTverNativeQueueState {
@@ -72,17 +67,13 @@ void NativeMediaTverRebuildQueueLocked(
   for (const auto& id : state.latestEpisodeIds) {
     if (id == state.currentEpisodeId ||
         NativeMediaTverContainsId(state.consumedEpisodeIds, id) ||
-        NativeMediaTverContainsId(state.rejectedEpisodeIds, id) ||
-        NativeMediaTverContainsId(rebuilt, id)) {
+        NativeMediaTverContainsId(state.rejectedEpisodeIds, id)) {
       continue;
     }
     rebuilt.push_back(id);
   }
 
-  // Queue exhaustion starts a fresh cycle from the newest cloud snapshot, but
-  // never retries an episode that redirected away from its requested id during
-  // this TVer phase. That prevents expired URLs from repeatedly opening TVer's
-  // replacement/recommendation content.
+  // Queue exhaustion starts a fresh cycle, excluding bad redirects for this phase.
   if (rebuilt.empty() && !state.latestEpisodeIds.empty()) {
     state.consumedEpisodeIds.clear();
     for (const auto& id : state.latestEpisodeIds) {
@@ -98,7 +89,6 @@ void NativeMediaTverApplyReadyLocked(NativeMediaTverNativeQueueState& state) {
   if (!state.ready) return;
   NativeMediaTverCloudQueueRefreshResult result = std::move(*state.ready);
   state.ready.reset();
-  if (!result.success || result.episodeIds.empty()) return;
   if (!state.appliedGeneratedAt.empty() &&
       result.generatedAt < state.appliedGeneratedAt) {
     return;
@@ -108,29 +98,45 @@ void NativeMediaTverApplyReadyLocked(NativeMediaTverNativeQueueState& state) {
   NativeMediaTverRebuildQueueLocked(state);
 }
 
+void NativeMediaTverResetQueuePhaseLocked(
+    NativeMediaTverNativeQueueState& state, bool active) noexcept {
+  ++state.generation;
+  if (state.generation == 0) ++state.generation;
+  state.lastAttemptAt = 0;
+  state.phaseActive = active;
+  state.inFlight = false;
+  state.ready.reset();
+  state.latestEpisodeIds.clear();
+  state.queueEpisodeIds.clear();
+  state.consumedEpisodeIds.clear();
+  state.rejectedEpisodeIds.clear();
+  state.currentEpisodeId.clear();
+  state.appliedGeneratedAt.clear();
+  state.navigationStartedAt = 0;
+  state.mediaReady = false;
+}
+
 void NativeMediaTverPrepareCloudQueueRefresh(
     HWND hostWindow, const std::shared_ptr<std::atomic<bool>>& alive,
     bool force) noexcept {
   if (!hostWindow || !IsWindow(hostWindow) || !alive) return;
   auto& state = NativeMediaTverNativeQueue();
   uint64_t generation = 0;
-  bool startWorker = false;
   {
     std::lock_guard lock(state.mutex);
     if (!state.phaseActive) return;
     NativeMediaTverApplyReadyLocked(state);
     ULONGLONG now = GetTickCount64();
     if (now == 0) now = 1;
-    if (!state.inFlight &&
-        (force || !state.lastAttemptAt ||
-         now - state.lastAttemptAt >= kNativeMediaTverCloudQueueRefreshMs)) {
-      state.inFlight = true;
-      state.lastAttemptAt = now;
-      generation = state.generation;
-      startWorker = true;
+    if (state.inFlight ||
+        (!force && state.lastAttemptAt &&
+         now - state.lastAttemptAt < kNativeMediaTverCloudQueueRefreshMs)) {
+      return;
     }
+    state.inFlight = true;
+    state.lastAttemptAt = now;
+    generation = state.generation;
   }
-  if (!startWorker) return;
 
   try {
     std::thread([generation, hostWindow, alive] {
@@ -143,11 +149,7 @@ void NativeMediaTverPrepareCloudQueueRefresh(
           result.generatedAt =
               cloudFeed.GetNamedString(L"generatedAt", L"").c_str();
           result.episodeIds = NativeMediaTverCloudFeedEpisodeIds(cloudFeed);
-          result.success = !result.generatedAt.empty() &&
-              !result.episodeIds.empty();
-        } catch (...) {
-          result.success = false;
-        }
+        } catch (...) {}
       }
 
       if (!alive->load(std::memory_order_acquire)) return;
@@ -157,13 +159,11 @@ void NativeMediaTverPrepareCloudQueueRefresh(
         std::lock_guard lock(shared.mutex);
         if (!shared.phaseActive || shared.generation != generation) return;
         shared.inFlight = false;
-        if (result.success) {
+        if (!result.generatedAt.empty() && !result.episodeIds.empty()) {
           shared.ready = std::move(result);
           postWake = true;
         } else {
-          // The 30-minute interval applies only after a successful refresh.
-          // A transient startup failure must remain eligible for the ordinary
-          // three-second navigation retry instead of blanking TVer for 30 min.
+          // Failed startup stays eligible for the normal navigation retry.
           shared.lastAttemptAt = 0;
         }
       }
@@ -186,20 +186,7 @@ void NativeMediaTverBeginQueuePhase(
   auto& state = NativeMediaTverNativeQueue();
   {
     std::lock_guard lock(state.mutex);
-    ++state.generation;
-    if (state.generation == 0) ++state.generation;
-    state.lastAttemptAt = 0;
-    state.phaseActive = true;
-    state.inFlight = false;
-    state.ready.reset();
-    state.latestEpisodeIds.clear();
-    state.queueEpisodeIds.clear();
-    state.consumedEpisodeIds.clear();
-    state.rejectedEpisodeIds.clear();
-    state.currentEpisodeId.clear();
-    state.appliedGeneratedAt.clear();
-    state.navigationStartedAt = 0;
-    state.mediaReady = false;
+    NativeMediaTverResetQueuePhaseLocked(state, true);
   }
   NativeMediaTverPrepareCloudQueueRefresh(hostWindow, alive, true);
 }
@@ -207,19 +194,7 @@ void NativeMediaTverBeginQueuePhase(
 void NativeMediaTverEndQueuePhase() noexcept {
   auto& state = NativeMediaTverNativeQueue();
   std::lock_guard lock(state.mutex);
-  ++state.generation;
-  if (state.generation == 0) ++state.generation;
-  state.phaseActive = false;
-  state.inFlight = false;
-  state.ready.reset();
-  state.latestEpisodeIds.clear();
-  state.queueEpisodeIds.clear();
-  state.consumedEpisodeIds.clear();
-  state.rejectedEpisodeIds.clear();
-  state.currentEpisodeId.clear();
-  state.appliedGeneratedAt.clear();
-  state.navigationStartedAt = 0;
-  state.mediaReady = false;
+  NativeMediaTverResetQueuePhaseLocked(state, false);
 }
 
 std::wstring NativeMediaTverCurrentEpisodeUrl(
@@ -231,9 +206,7 @@ std::wstring NativeMediaTverCurrentEpisodeUrl(
   if (!state.phaseActive) return {};
   NativeMediaTverApplyReadyLocked(state);
   if (state.currentEpisodeId.empty()) {
-    if (state.queueEpisodeIds.empty()) {
-      NativeMediaTverRebuildQueueLocked(state);
-    }
+    if (state.queueEpisodeIds.empty()) NativeMediaTverRebuildQueueLocked(state);
     if (state.queueEpisodeIds.empty()) return {};
     state.currentEpisodeId = state.queueEpisodeIds.front();
     state.navigationStartedAt = 0;
@@ -272,23 +245,14 @@ bool NativeMediaTverStartupExpired(
   if (!state.phaseActive || state.currentEpisodeId.empty() || source.empty()) {
     return false;
   }
-
-  // An expired TVer episode can redirect to a different /episodes/{id}. Treat
-  // any top-level source mismatch as an immediate startup failure instead of
-  // letting TVer's replacement/recommendation episode become playable.
   if (!NativeMediaTverSourceMatchesEpisode(source, state.currentEpisodeId)) {
     return true;
   }
-
-  // A refreshed authoritative cloud feed can also retire an episode while its
-  // navigation is still starting. Do not interrupt media that already became
-  // ready, but fail forward immediately before playback begins.
   if (!state.mediaReady && !state.latestEpisodeIds.empty() &&
       !NativeMediaTverContainsId(
           state.latestEpisodeIds, state.currentEpisodeId)) {
     return true;
   }
-
   if (state.mediaReady || state.navigationStartedAt == 0) return false;
   return now >= state.navigationStartedAt &&
       now - state.navigationStartedAt >= kNativeMediaTverStartupTimeoutMs;
@@ -310,9 +274,6 @@ bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
             state.rejectedEpisodeIds, state.currentEpisodeId)) {
       state.rejectedEpisodeIds.push_back(state.currentEpisodeId);
     }
-    // Make the next navigation eligible to refresh the cloud snapshot
-    // immediately; a redirect is stronger evidence of staleness than the
-    // ordinary 30-minute queue refresh cadence.
     state.lastAttemptAt = 0;
   }
 
@@ -323,19 +284,11 @@ bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
   const auto current = std::find(
       state.queueEpisodeIds.begin(), state.queueEpisodeIds.end(),
       state.currentEpisodeId);
-  if (current != state.queueEpisodeIds.end()) {
-    state.queueEpisodeIds.erase(current);
-  }
+  if (current != state.queueEpisodeIds.end()) state.queueEpisodeIds.erase(current);
   state.currentEpisodeId.clear();
   state.navigationStartedAt = 0;
   state.mediaReady = false;
   NativeMediaTverRebuildQueueLocked(state);
   return !state.queueEpisodeIds.empty();
-}
-
-void PrepareNativeMediaTverCloudQueueRefresh(
-    ICoreWebView2*, HWND hostWindow,
-    const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
-  NativeMediaTverPrepareCloudQueueRefresh(hostWindow, alive, false);
 }
 }  // namespace
