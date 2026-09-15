@@ -8,12 +8,7 @@ namespace hp {
 // their timers down when the document leaves the page lifecycle.
 inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
-  const syncSurfaceZoom = () => {
-    const root = document.documentElement;
-    if (!root) return;
-    const zoom = innerWidth > 1 || innerHeight > 1 ? '0.5' : '1';
-    if (root.style.zoom !== zoom) root.style.zoom = zoom;
-  };
+  const zoomOut = () => document.documentElement?.style.setProperty('zoom', '0.5');
   const run = () => {
     if (!pageActive) return;
     publishAudio();
@@ -36,16 +31,15 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   document.addEventListener('click', onInteractiveEvent, true);
   document.addEventListener('submit', onInteractiveEvent, true);
   document.addEventListener('DOMContentLoaded', () => {
-    syncSurfaceZoom();
+    zoomOut();
     run();
     armBlankRecovery();
   }, { once: true });
   window.addEventListener('load', () => {
-    syncSurfaceZoom();
+    zoomOut();
     run();
     armBlankRecovery();
   }, { once: true });
-  window.addEventListener('resize', syncSurfaceZoom, true);
   window.addEventListener('focus', onStateEvent, true);
   window.addEventListener('popstate', onStateEvent, true);
   window.addEventListener('hashchange', onStateEvent, true);
@@ -62,12 +56,12 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   }, true);
   window.addEventListener('pageshow', () => {
     pageActive = true;
-    syncSurfaceZoom();
+    zoomOut();
     run();
     armBlankRecovery();
   }, true);
 
-  syncSurfaceZoom();
+  zoomOut();
   run();
   armBlankRecovery();
 })()
