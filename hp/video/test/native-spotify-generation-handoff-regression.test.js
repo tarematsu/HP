@@ -10,15 +10,17 @@ const music = source('spotify_music_target.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
 
 test('music reconcile leaves playback acceptance and deadline ownership to the observer', () => {
-  const trueBranch = music.slice(
-    music.indexOf('if (json && std::wstring_view(json) == L"true")'),
-    music.indexOf('if (json && std::wstring_view(json) == L"\\"settling\\"")'),
-  );
-  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
-  assert.match(trueBranch, /nextRecoveryTick =[\s\S]*kSpotifyPlaybackStartRetryMs/);
-  assert.match(trueBranch, /ArmTimedEndObserver\(\*target\)/);
-  assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.doesNotMatch(trueBranch, /SetMusicCompletionDeadline/);
+  const start = music.indexOf('if (json &&');
+  const pointStart = music.indexOf('int x = 0;', start);
+  assert.ok(start >= 0 && pointStart > start);
+  const confirmation = music.slice(start, pointStart);
+  assert.match(confirmation, /std::wstring_view\(json\) == L"true"/);
+  assert.match(confirmation, /std::wstring_view\(json\) == L"\\"direct-play\\""/);
+  assert.match(confirmation, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
+  assert.match(confirmation, /nextRecoveryTick =[\s\S]*kSpotifyDirectPlayConfirmWaitMs/);
+  assert.match(confirmation, /ArmTimedEndObserver\(\*target\)/);
+  assert.doesNotMatch(confirmation, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.doesNotMatch(confirmation, /SetMusicCompletionDeadline/);
 
   assert.match(runtime, /fields\[0\] === 'spotify:observer-sync'/);
   assert.match(runtime, /post\('spotify:observer-synced'\)/);
