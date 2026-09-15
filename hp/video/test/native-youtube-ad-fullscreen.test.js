@@ -12,7 +12,7 @@ test('YouTube ads settle before fullscreen and skip lookup', () => {
   const guard = runtime.indexOf("return 'recovery';", skip);
   assert.ok(adBranch >= 0 && fullscreen > adBranch && skip > fullscreen && guard > skip);
   assert.match(runtime, /state\.adFullscreenReadyAt = now \+ fullscreenSettleMs/);
-  assert.match(runtime, /now >= Number\(state\.adFullscreenReadyAt \|\| 0\)/);
+  assert.match(runtime, /now >= state\.adFullscreenReadyAt/);
 });
 
 test('trusted fullscreen remains valid during ads', () => {
