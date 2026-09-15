@@ -26,10 +26,14 @@ test('Spotify music reconcile scrolls the selected Play control before returning
   assert.doesNotMatch(scoped, /centerX \/ window\.innerWidth|centerY \/ window\.innerHeight|10000/);
 });
 
-test('music reconcile needs no requested-row discovery before trusted recovery input', () => {
+test('music reconcile uses now-playing identity only for background Pause confirmation', () => {
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.doesNotMatch(scoped, /targetLink|tracklist-row|context-item-link/);
+  assert.match(scoped, /currentTrackMatchesTarget/);
+  assert.match(scoped, /context-item-link/);
+  assert.match(scoped, /playerPause && currentTrackMatchesTarget\(\)/);
+  assert.doesNotMatch(scoped, /targetLink|tracklist-row/);
+  assert.doesNotMatch(scoped, /point\(playerPause\)/);
   assert.match(click, /ClickSlotCssPoint/);
   assert.match(click, /RefreshSpotifyHostLayout\(\)/);
   assert.doesNotMatch(scripts + scoped, /\/episode\//);
