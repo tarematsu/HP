@@ -257,10 +257,10 @@ test('radar updates invalidate only the relocated radar section', () => {
   assert.doesNotMatch(radarUi, /CachedRadarSourceDc|BlendBitmap|CreateCompatibleDC/);
 });
 
-test('native image caches use reduced LRU entry limits', () => {
-  assert.match(bitmapCache, /kNativeImageBitmapCacheLimit = 16;/);
+test('native image caches keep bounded aggregate LRU entry limits', () => {
+  assert.match(bitmapCache, /kNativeImageBitmapCacheLimit = 48;/);
   assert.match(bitmapCache, /kRadarBitmapCacheLimit = 12;/);
-  assert.doesNotMatch(bitmapCache, /kNativeImageBitmapCacheLimit = 24;/);
+  assert.doesNotMatch(bitmapCache, /kWeatherIconBitmapCacheLimit/);
   assert.doesNotMatch(bitmapCache, /kRadarBitmapCacheLimit = 16;/);
 });
 

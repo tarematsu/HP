@@ -3,8 +3,7 @@
 
 namespace hp {
 namespace {
-constexpr size_t kNativeImageBitmapCacheLimit = 16;
-constexpr size_t kWeatherIconBitmapCacheLimit = 32;
+constexpr size_t kNativeImageBitmapCacheLimit = 48;
 constexpr size_t kRadarBitmapCacheLimit = 12;
 constexpr int64_t kNativeImageDecodeRetryMs = 60'000;
 
@@ -78,12 +77,10 @@ HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int he
 
 HBITMAP Renderer::NativeWeatherIconBitmap(
     const std::wstring& icon, bool night, int width, int height) {
-  if (icon.empty() || width <= 0 || height <= 0) return nullptr;
-  for (wchar_t character : icon) if (character < L'0' || character > L'9') return nullptr;
   const std::wstring fileName = icon + (night ? L"_night.png" : L"_day.png");
   const std::wstring key = fileName + L"#" + std::to_wstring(width) + L"x" + std::to_wstring(height);
-  return CachedBitmap(nativeWeatherIconBitmaps_, nativeWeatherIconUseCounter_,
-                      kWeatherIconBitmapCacheLimit, key, [&] {
+  return CachedBitmap(nativeImageBitmaps_, nativeImageUseCounter_,
+                      kNativeImageBitmapCacheLimit, key, [&] {
     const auto decodeIcon = [&](const std::wstring& name) {
       return DecodeImageFileToBitmap(rootDir_ / L"ui" / L"weather-icons" / name, width, height);
     };
@@ -151,8 +148,6 @@ void Renderer::ResetNativeBitmapCaches() noexcept {
   };
   deleteBitmaps(nativeImageBitmaps_);
   nativeImageUseCounter_ = 0;
-  deleteBitmaps(nativeWeatherIconBitmaps_);
-  nativeWeatherIconUseCounter_ = 0;
   deleteBitmaps(nativeRadarBitmaps_);
   nativeRadarBitmapUseCounter_ = 0;
 }

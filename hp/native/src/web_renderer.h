@@ -318,8 +318,6 @@ class Renderer {
   NativePlaybackTickState nativePlaybackTickState_{};
   std::map<std::wstring, BitmapCacheEntry> nativeImageBitmaps_;
   uint64_t nativeImageUseCounter_ = 0;
-  std::map<std::wstring, BitmapCacheEntry> nativeWeatherIconBitmaps_;
-  uint64_t nativeWeatherIconUseCounter_ = 0;
   std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
   EnergyBitmapCache energyBitmapCache_{};
   std::atomic<bool> nativePlaybackStarted_{false};
