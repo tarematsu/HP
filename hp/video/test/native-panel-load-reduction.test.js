@@ -69,9 +69,9 @@ test('air sensor values and five-minute history update renderer independently', 
   );
   assert.match(
     panelState,
-    /void Renderer::UpdateAirHistory[\s\S]*const bool incremental = appended \|\| rolled;[\s\S]*RebuildNativeAirGraph\(nowMs\)[\s\S]*PanelSection::AirGraph/s,
+    /void Renderer::UpdateAirHistory[\s\S]*nativeAirHistory_ = history;[\s\S]*RebuildNativeAirGraph\(nowMs\)[\s\S]*PanelSection::AirGraph/s,
   );
-  assert.doesNotMatch(panelState, /airGraphExpired|airCutoff/);
+  assert.doesNotMatch(panelState, /const bool appended|const bool rolled|incremental|airGraphExpired|airCutoff/);
   assert.match(environment, /GetClipBox\(dc, &clip\)/);
   assert.match(environment, /if \(!drawGraph\) return;/);
   assert.match(panelWindows, /RearrangedAirStatsRectFromCard\(sections\.controls\)/);

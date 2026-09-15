@@ -75,7 +75,7 @@ test('sensor notifications update renderer directly without aggregate publicatio
 });
 
 test('air history owns its vector and pushes only history changes to renderer', () => {
-  assert.match(airHistory, /auto& history = airHistory_/);
+  assert.match(airHistory, /airHistory_\.insert\(position, sample\)/);
   assert.match(airHistory, /renderer_->UpdateAirHistory\(airHistory_\)/);
   assert.doesNotMatch(airHistory, /renderState_\.airHistory|airHistoryRevision|MarkRenderStateDirty/);
 });

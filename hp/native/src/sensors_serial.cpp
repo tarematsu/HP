@@ -34,7 +34,7 @@ bool RunSensorCommand(HANDLE serial, std::string& buffer, const char* command,
     }
   }
 }
-}
+}  // namespace
 
 std::wstring SensorHub::FindSerialPort() {
   if (!config_.serialPort.empty()) return config_.serialPort;
@@ -43,12 +43,12 @@ std::wstring SensorHub::FindSerialPort() {
   SP_DEVINFO_DATA info{sizeof(info)};
   std::wstring result;
   std::vector<std::wstring> usb;
-  for (DWORD index = 0;
-       SetupDiEnumDeviceInfo(devices, index, &info);
-       ++index) {
+  for (DWORD index = 0; SetupDiEnumDeviceInfo(devices, index, &info); ++index) {
     wchar_t friendly[512]{};
     if (!SetupDiGetDeviceRegistryPropertyW(devices, &info, SPDRP_FRIENDLYNAME, nullptr,
-                                           reinterpret_cast<PBYTE>(friendly), sizeof(friendly), nullptr)) continue;
+                                           reinterpret_cast<PBYTE>(friendly), sizeof(friendly), nullptr)) {
+      continue;
+    }
     std::wstring name = friendly;
     const auto open = name.rfind(L"(COM");
     const auto close = name.rfind(L')');
@@ -74,17 +74,21 @@ void SensorHub::SerialLoop() {
     stopWake_.wait_for(lock, retryDelay, [this] { return stopping_.load(); });
     retryDelay = std::min(retryDelay * 2, kSerialRetryMaximum);
   };
+  const auto publishUnavailable = [this](const wchar_t* message) {
+    bool changed = false;
+    {
+      std::lock_guard lock(mutex_);
+      changed = state_.co2Connected || state_.lastError != message;
+      state_.co2Connected = false;
+      state_.lastError = message;
+    }
+    if (changed) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+  };
+
   while (!stopping_) {
     const std::wstring port = FindSerialPort();
     if (port.empty()) {
-      bool changed = false;
-      {
-        std::lock_guard lock(mutex_);
-        changed = state_.co2Connected || state_.lastError != L"UD-CO2S not found";
-        state_.co2Connected = false;
-        state_.lastError = L"UD-CO2S not found";
-      }
-      if (changed) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+      publishUnavailable(L"UD-CO2S not found");
       waitForRetry();
       continue;
     }
@@ -93,42 +97,24 @@ void SensorHub::SerialLoop() {
     HANDLE serial = CreateFileW(serialPath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (serial == INVALID_HANDLE_VALUE) {
-      bool changed = false;
-      {
-        std::lock_guard lock(mutex_);
-        changed = state_.co2Connected || state_.lastError != L"UD-CO2S port open failed";
-        state_.co2Connected = false;
-        state_.lastError = L"UD-CO2S port open failed";
-      }
-      if (changed) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+      publishUnavailable(L"UD-CO2S port open failed");
       waitForRetry();
       continue;
     }
 
     std::string buffer;
-    if (!ConfigurePort(serial) || !PrepareSensor(serial, buffer, stopping_, log_)) {
+    if (!ConfigurePort(serial) ||
+        !RunSensorCommand(serial, buffer, "STP", stopping_, log_) ||
+        !RunSensorCommand(serial, buffer, "ID?", stopping_, log_) ||
+        !RunSensorCommand(serial, buffer, "STA", stopping_, log_)) {
       CloseHandle(serial);
-      bool changed = false;
-      {
-        std::lock_guard lock(mutex_);
-        changed = state_.co2Connected || state_.lastError != L"UD-CO2S initialization failed";
-        state_.co2Connected = false;
-        state_.lastError = L"UD-CO2S initialization failed";
-      }
-      if (changed) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+      publishUnavailable(L"UD-CO2S initialization failed");
       waitForRetry();
       continue;
     }
 
     retryDelay = kSerialRetryInitial;
-    bool waitingChanged = false;
-    {
-      std::lock_guard lock(mutex_);
-      waitingChanged = state_.co2Connected || state_.lastError != L"UD-CO2S waiting for data";
-      state_.co2Connected = false;
-      state_.lastError = L"UD-CO2S waiting for data";
-    }
-    if (waitingChanged) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+    publishUnavailable(L"UD-CO2S waiting for data");
 
     // STA emits measurements about every two seconds. Accept one valid sample,
     // stop the serial stream, and do not start another read for a full minute.
@@ -154,7 +140,9 @@ void SensorHub::SerialLoop() {
         int co2 = 0;
         double humidity = 0, temperature = 0;
         if (sscanf_s(line.c_str(), "CO2=%d,HUM=%lf,TMP=%lf", &co2, &humidity, &temperature) != 3 ||
-            !MeasurementValuesValid(co2, humidity, temperature)) continue;
+            !MeasurementValuesValid(co2, humidity, temperature)) {
+          continue;
+        }
 
         Sample sample;
         sample.observedAt = UnixMillis();
@@ -176,16 +164,15 @@ void SensorHub::SerialLoop() {
           std::lock_guard lock(mutex_);
           state_.co2Connected = true;
           state_.co2 = sample.co2;
-          state_.temperatureRaw = temperature;
-          state_.humidityRaw = humidity;
           state_.temperatureCorrected = sample.temperatureCorrected;
           state_.humidityCorrected = sample.humidityCorrected;
           state_.observedAt = sample.observedAt;
           state_.lastError.clear();
         }
         const int64_t bucket = sample.observedAt / kTelemetryBucketMs;
-        const bool historyBucketAdvanced = bucket != lastPersistedBucket_;
-        if (historyBucketAdvanced && AppendOutbox(sample)) lastPersistedBucket_ = bucket;
+        if (bucket != lastPersistedBucket_ && AppendOutbox(sample)) {
+          lastPersistedBucket_ = bucket;
+        }
 
         sampleReceived = true;
         sampleAcceptedAt = std::chrono::steady_clock::now();
@@ -208,14 +195,7 @@ void SensorHub::SerialLoop() {
     // when its acknowledgement was lost, in which case the local state is unknown.
     WriteCommand(serial, "STP");
     CloseHandle(serial);
-    bool disconnectedChanged = false;
-    {
-      std::lock_guard lock(mutex_);
-      disconnectedChanged = state_.co2Connected || state_.lastError != L"UD-CO2S disconnected";
-      state_.co2Connected = false;
-      state_.lastError = L"UD-CO2S disconnected";
-    }
-    if (disconnectedChanged) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+    publishUnavailable(L"UD-CO2S disconnected");
     if (!stopping_) {
       std::unique_lock lock(stopMutex_);
       stopWake_.wait_for(lock, std::chrono::seconds(5), [this] { return stopping_.load(); });
