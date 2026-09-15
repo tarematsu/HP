@@ -21,7 +21,7 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
   assert.doesNotMatch(helper, /SetForegroundWindow|SendInput|MOUSEEVENTF_/);
 });
 
-test('Spotify trusted click uses the same five-second confirmation gate as native recovery', () => {
+test('Spotify trusted click uses the same five-second native confirmation gate', () => {
   assert.match(header, /ULONGLONG trustedClickBlockedUntilTick = 0/);
   assert.match(header, /ULONGLONG pageEpoch = 0/);
   assert.doesNotMatch(header, /trustedClickGeneration|trustedClickTargetGeneration|trustedClickInFlight|trustedClickStartTick/);
@@ -62,13 +62,12 @@ test('trusted click uses CSS viewport points and repairs accidental 1x1 placemen
   assert.match(helper, /PlaceHosts\(\);/);
 });
 
-test('trusted click preflight returns the exact current CSS center and rejects Pause', () => {
+test('trusted click preflight is observer-independent and rejects Pause', () => {
   const preflight = helper.slice(
     helper.indexOf('void SpotifyWebViews::ClickSlotCssPoint'),
     helper.indexOf('UINT SpotifyWebViews::DispatchSpotifyDevToolsClick'),
   );
-  assert.match(preflight, /if \(!slot\.timedObserverReady\)/);
-  assert.match(preflight, /ArmTimedEndObserver\(slot\)/);
+  assert.doesNotMatch(preflight, /timedObserverReady|ArmTimedEndObserver|__homePanelSpotifyMediaObserverRuntime|armTrustedStart/);
   assert.doesNotMatch(preflight, /document\.querySelectorAll\('audio, video'\)/);
   assert.match(preflight, /document\.elementFromPoint\(x,y\)/);
   assert.match(preflight, /testid==='play-button'\|\|testid==='control-button-playpause'/);
