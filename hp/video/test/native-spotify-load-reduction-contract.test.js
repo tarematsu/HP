@@ -91,18 +91,14 @@ test('scheduler state does not duplicate slot recovery or async state', () => {
   assert.doesNotMatch(spotifyHeader, /lastTimedReconcileTick|lastModeNavigateTick|unhealthySinceTick|reconcileRequestGeneration|timedObserverInstallGeneration/);
 });
 
-test('lightweight Spotify styling protects player timing and progress surfaces', () => {
+test('Spotify page bootstrap performs no CSS or DOM styling reduction', () => {
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
-  assert.match(scripts, /background-image: none !important/);
-  assert.match(scripts, /img, picture, video, canvas/);
-  assert.match(scripts, /Keep player controls, elapsed-time text and progress\/slider trees out/);
-  assert.match(scripts, /data-testid\*="playback"/);
-  assert.match(scripts, /data-testid\*="progress"/);
-  assert.match(scripts, /role="slider"/);
-  assert.match(scripts, /aria-valuenow/);
-  assert.match(scripts, /\[data-testid="now-playing-bar"\]/);
-  assert.match(scripts, /footer/);
-  assert.doesNotMatch(scripts, /audio\s*,?\s*\{/);
+  assert.match(scripts, /window\.chrome\.webview\.addEventListener\('message'/);
+  assert.doesNotMatch(scripts, /createElement\(['"]style['"]\)/);
+  assert.doesNotMatch(scripts, /__homePanelSpotifyStaticLightweight/);
+  assert.doesNotMatch(scripts, /!important/);
+  assert.doesNotMatch(scripts, /animation\s*:|transition\s*:|background-image\s*:/);
+  assert.doesNotMatch(scripts, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
   assert.doesNotMatch(scripts, /new\s+MutationObserver\s*\(/);
   assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment/);
 });
