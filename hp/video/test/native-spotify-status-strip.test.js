@@ -49,14 +49,16 @@ test('status title and confirmation clock are native-owned from the verified Pau
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
-test('reconcile uses Spotify controls and confirms verified Pause without observer acknowledgement', () => {
+test('reconcile confirms verified Pause without observer acknowledgement or Monitor C visibility', () => {
   assert.match(reconcile, /button\[data-testid="play-button"\]/);
   assert.match(reconcile, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(reconcile, /const playerButton = pageButton \? null :/);
-  assert.match(reconcile, /if \(isPauseControl\(button\)\) return true/);
-  assert.match(reconcile, /return point\(button\)/);
-  assert.doesNotMatch(reconcile, /querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
-  assert.doesNotMatch(reconcile, /currentMatchesTarget|mediaState|controlIntent|buttonIntent|settling/);
+  assert.match(reconcile, /const visiblePageButton = pageButtons\.find\(visible\)/);
+  assert.match(reconcile, /pageButtons\.some\(isPauseControl\)/);
+  assert.match(reconcile, /const playerPause = playerButtons\.find\(isPauseControl\)/);
+  assert.match(reconcile, /playerPause && currentTrackMatchesTarget\(\)/);
+  assert.match(reconcile, /return point\(visiblePageButton\)/);
+  assert.doesNotMatch(reconcile, /point\(playerPause\)|querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
+  assert.doesNotMatch(reconcile, /mediaState|controlIntent|buttonIntent|settling/);
   assert.doesNotMatch(reconcile, /runtime\.scheduleTargetChecks/);
   assert.doesNotMatch(reconcile, /setInterval|SetTimer|CreateThreadpoolTimer/);
 
