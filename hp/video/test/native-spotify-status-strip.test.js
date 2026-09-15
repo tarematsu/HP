@@ -31,29 +31,30 @@ test('only yuukiar Spotify slot is active for single-window diagnostics', () => 
   assert.doesNotMatch(scripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });
 
-test('status title and confirmation clock come from the page playback observer', () => {
+test('status title and confirmation clock are native-owned from the verified Pause state', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
   assert.match(header, /SYSTEMTIME playbackConfirmedAt/);
   assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
   assert.doesNotMatch(controller, /get_DocumentTitle/);
+  assert.match(musicTarget, /target->observedTrackTitle = currentTrack->title/);
+  assert.match(musicTarget, /GetLocalTime\(&target->playbackConfirmedAt\)/);
+  assert.match(musicTarget, /target->playbackConfirmed = true/);
+  assert.match(musicTarget, /SetMusicCompletionDeadline\(\*target, callbackNow\)/);
+  assert.match(rotation, /target->observedTrackTitle = currentTrack->title/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(runtime, /postFields\('spotify:timed-resumed', String\(remainingMs\)\)/);
-  assert.match(musicTarget, /ArmTimedEndObserver\(\*target\)/);
-  assert.match(rotation, /target->observedTrackTitle = currentTrack->title/);
-  assert.match(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
-  assert.match(rotation, /target->playbackConfirmed = true/);
   assert.match(rotation, /slot\.observedTrackTitle\.clear\(\)/);
   assert.match(rotation, /slot\.playbackConfirmed = false/);
   assert.match(scripts, /result\[i\]\.trackTitle = slots_\[i\]\.observedTrackTitle/);
-  assert.doesNotMatch(musicTarget, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
-test('reconcile uses Spotify controls only and leaves confirmation to the observer', () => {
+test('reconcile uses Spotify controls and confirms verified Pause without observer acknowledgement', () => {
   assert.match(reconcile, /button\[data-testid="play-button"\]/);
   assert.match(reconcile, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(reconcile, /if \(isPauseControl\(button\)\) return true/);
-  assert.match(reconcile, /return point\(button\)/);
+  assert.match(reconcile, /if \(isPauseControl\(pageButton\)\) return true/);
+  assert.match(reconcile, /playerMatchesTarget\(\)/);
+  assert.match(reconcile, /return point\(pageButton\)/);
   assert.doesNotMatch(reconcile, /querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
   assert.doesNotMatch(reconcile, /currentMatchesTarget|mediaState|controlIntent|buttonIntent|settling/);
   assert.doesNotMatch(reconcile, /runtime\.scheduleTargetChecks/);
@@ -63,14 +64,10 @@ test('reconcile uses Spotify controls only and leaves confirmation to the observ
   const pointStart = musicTarget.indexOf('double cssX = 0.0;', start);
   assert.ok(start >= 0 && pointStart > start);
   const confirmation = musicTarget.slice(start, pointStart);
-  assert.match(confirmation, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
-  assert.match(confirmation, /kSpotifyCdpPlayConfirmWaitMs/);
-  assert.match(confirmation, /ArmTimedEndObserver\(\*target\)/);
-  assert.doesNotMatch(confirmation, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.doesNotMatch(confirmation, /SetMusicCompletionDeadline/);
-
-  assert.match(rotation, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.match(rotation, /SetMusicCompletionDeadline\([\s\S]*remainingMs, resumed/);
+  assert.match(confirmation, /SetSlotState\(\*target, SlotState::Playing\)/);
+  assert.match(confirmation, /SetMusicCompletionDeadline\(\*target, callbackNow\)/);
+  assert.match(confirmation, /target->playbackConfirmed = true/);
+  assert.doesNotMatch(confirmation, /ArmTimedEndObserver/);
 });
 
 test('Spotify status strip repaints from state/page events without its own timer', () => {
