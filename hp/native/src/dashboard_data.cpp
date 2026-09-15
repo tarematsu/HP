@@ -23,12 +23,6 @@ uint64_t SourceRevision(const JsonObject& object) {
   return Fnv1a64(WideToUtf8(std::wstring{object.Stringify().c_str()}));
 }
 
-bool CanReuseSection(const DashboardSnapshot* previous,
-                     uint64_t DashboardSectionRevisions::* member,
-                     uint64_t revision) {
-  return previous && previous->revisions.*member == revision;
-}
-
 double NumberOrNaN(const JsonObject& object, const wchar_t* name) {
   return json::Number(object, name, std::numeric_limits<double>::quiet_NaN());
 }
@@ -46,15 +40,13 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
     if (text.empty()) return false;
 
     const JsonObject root = JsonObject::Parse(Utf8ToWide(text));
-    DashboardSnapshot next;
+    DashboardSnapshot next = previous ? *previous : DashboardSnapshot{};
 
     const JsonObject weather = json::Object(root, L"weather");
     next.revisions.weather = SourceRevision(weather);
-    if (json::Text(weather, L"__status", L"ok") == L"ok") {
-      if (CanReuseSection(previous, &DashboardSectionRevisions::weather,
-                          next.revisions.weather)) {
-        next.weatherHours = previous->weatherHours;
-      } else {
+    if (!previous || previous->revisions.weather != next.revisions.weather) {
+      next.weatherHours.clear();
+      if (json::Text(weather, L"__status", L"ok") == L"ok") {
         const JsonObject hourly = json::Object(weather, L"hourly");
         const int startHour = static_cast<int>(json::Number(weather, L"startHour", 22));
         for (int offset = 0; offset < 12; ++offset) {
@@ -71,21 +63,9 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
       }
     }
 
-    // The native News panel has been removed. Do not materialize up to ten
-    // titles/descriptions or stringify the News object solely for a revision
-    // that no visible panel consumes. The legacy snapshot fields stay empty so
-    // older call sites remain harmless while using no dynamic News storage.
-
     const JsonObject octopus = json::Object(root, L"octopus");
     next.revisions.octopus = SourceRevision(octopus);
-    if (CanReuseSection(previous, &DashboardSectionRevisions::octopus,
-                        next.revisions.octopus)) {
-      next.lastMonthUsage = previous->lastMonthUsage;
-      next.projectedUsage = previous->projectedUsage;
-      next.currentEnergyLabel = previous->currentEnergyLabel;
-      next.previousEnergyLabel = previous->previousEnergyLabel;
-      next.octopusProfile = previous->octopusProfile;
-    } else {
+    if (!previous || previous->revisions.octopus != next.revisions.octopus) {
       next.lastMonthUsage = NumberOrNaN(json::Object(octopus, L"lastMonth"), L"usage");
       next.projectedUsage =
           NumberOrNaN(json::Object(octopus, L"thisMonth"), L"projectedUsage");
@@ -93,6 +73,7 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
       next.currentEnergyLabel = json::Text(comparison, L"currentLabel", L"今週");
       next.previousEnergyLabel = json::Text(comparison, L"previousLabel", L"先週");
 
+      next.octopusProfile.clear();
       const JsonArray profile = json::Array(octopus, L"profile");
       next.octopusProfile.reserve(7);
       for (uint32_t index = 0;
@@ -109,9 +90,6 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
         });
       }
     }
-
-    // SwitchBot is synchronized independently through switchbot.json.
-    if (previous) next.switchBotDevices = previous->switchBotDevices;
 
     output = std::move(next);
     return true;

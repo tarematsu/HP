@@ -45,12 +45,13 @@ const layout = readFileSync(
 
 test('dashboard sections use source versions and reuse unchanged materialized data', () => {
   assert.match(parser, /json::Number\(object, L"__version", -1\)/);
-  assert.match(parser, /previous->weatherHours/);
-  assert.match(parser, /previous->octopusProfile/);
-  assert.match(parser, /previous->switchBotDevices/);
+  assert.match(parser, /DashboardSnapshot next = previous \? \*previous : DashboardSnapshot\{\};/);
+  assert.match(parser, /previous->revisions\.weather != next\.revisions\.weather/);
+  assert.match(parser, /previous->revisions\.octopus != next\.revisions\.octopus/);
   assert.match(parser, /CompleteTotal\(item, L"currentComplete", L"currentTotal"\)/);
   assert.match(parser, /bool ParseSwitchBotDevices/);
   assert.match(parser, /Compatibility fallback for old cached dashboard files/);
+  assert.doesNotMatch(parser, /CanReuseSection|previous->weatherHours|previous->octopusProfile|previous->switchBotDevices/);
   assert.doesNotMatch(parser, /StringifyUtf8|next\.loaded|SectionRevision\(|BuildOctopusRenderProjection|octopusRender/);
   assert.match(dashboardHeader, /uint64_t octopus = 0;/);
   assert.doesNotMatch(dashboardHeader, /bool loaded|uint64_t switchbot = 0;|std::wstring\* error/);
