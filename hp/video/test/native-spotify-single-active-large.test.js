@@ -42,11 +42,12 @@ test('background Spotify controllers stay visible while playback geometry change
   assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyLowPowerPlaybackWidth/);
 });
 
-test('trusted click recovery uses the media-panel host geometry and still accounts for controller zoom', () => {
+test('trusted click recovery uses the verified CSS point without DPI or zoom reconstruction', () => {
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(click, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
-  assert.match(click, /controller->get_ZoomFactor\(&controllerZoom\)/);
-  assert.match(click, /cssWidth = static_cast<double>\(width\) \/ zoom/);
+  assert.match(click, /const double x = cssX;/);
+  assert.match(click, /const double y = cssY;/);
+  assert.doesNotMatch(click, /controller->get_ZoomFactor|get_RasterizationScale|GetDpiForWindow|cssWidth|cssHeight/);
   assert.match(click, /Input\.dispatchMouseEvent/);
 });
 
