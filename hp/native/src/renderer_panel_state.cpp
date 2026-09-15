@@ -41,20 +41,9 @@ void Renderer::UpdateSensors(const SensorSnapshot& sensors) {
   // one-second clock timer never needs to probe the filesystem for SwitchBot.
   LoadSwitchBot(dataDir_ / L"switchbot.json");
 
-  if (nativeSensors_ == sensors) return;
-  const bool repaintAirStats = AirStatsNeedRepaint(nativeSensors_, sensors);
-  if (repaintAirStats) {
-    nativeSensors_ = sensors;
-  } else {
-    nativeSensors_.observedAt = sensors.observedAt;
-    nativeSensors_.presence = sensors.presence;
-    nativeSensors_.light = sensors.light;
-    nativeSensors_.motion = sensors.motion;
-    nativeSensors_.doorOpen = sensors.doorOpen;
-    nativeSensors_.outboxCount = sensors.outboxCount;
-    nativeSensors_.lastError = sensors.lastError;
-  }
-  if (!repaintAirStats || !nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;
+  if (!AirStatsNeedRepaint(nativeSensors_, sensors)) return;
+  nativeSensors_ = sensors;
+  if (!nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;
   InvalidatePanelSection(nativeSideWindow_, PanelSection::AirStats);
 }
 
