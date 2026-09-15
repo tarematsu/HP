@@ -15,13 +15,14 @@ const environment = readFileSync(
   'utf8',
 );
 
-test('Spotify confirmed playback keeps a visible onscreen 320x160 host without memory-policy COM calls in layout', () => {
-  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /const int width = std::min\(kSpotifyBackgroundWidth, clientWidth\);/);
-  assert.match(layout, /const int height = std::min\(kSpotifyBackgroundHeight, clientHeight\);/);
+test('Spotify confirmed playback keeps a visible onscreen 160x320 host behind the air panel without memory-policy COM calls in layout', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
+  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
+  assert.match(layout, /anchors\.air/);
+  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
+  assert.match(layout, /const int hostX = backgroundSurface\.left;/);
+  assert.match(layout, /const int hostY = backgroundSurface\.top;/);
   assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
   assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
   assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);
@@ -31,11 +32,12 @@ test('Spotify confirmed playback keeps a visible onscreen 320x160 host without m
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
-test('Spotify pre-playback recovery uses the same fixed background surface behind native UI', () => {
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
-  assert.match(layout, /std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
+test('Spotify pre-playback recovery uses the same fixed air-panel background surface behind native UI', () => {
+  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
+  assert.match(layout, /anchors\.air/);
+  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
+  assert.match(layout, /backgroundSurface\.right - backgroundSurface\.left/);
+  assert.match(layout, /backgroundSurface\.bottom - backgroundSurface\.top/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
 });
