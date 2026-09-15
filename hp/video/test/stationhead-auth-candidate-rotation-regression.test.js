@@ -44,7 +44,7 @@ test('the exact first-candidate pin is replaced once', () => {
   assert.ok(rotationPolicy.includes(pin));
   assert.match(
     rotationPolicy,
-    /ReplaceStationheadRuntimeFragment\([\s\S]*kPinnedCandidatePolicy,[\s\S]*kRotatingCandidatePolicy\)/,
+    /ReplaceStationheadAuthCaptureFragment\([\s\S]*kPinnedCandidatePolicy,[\s\S]*kRotatingCandidatePolicy\)/,
   );
 });
 

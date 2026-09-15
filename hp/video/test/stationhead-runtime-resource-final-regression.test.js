@@ -19,25 +19,26 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('final resource policy is compiled after every earlier Stationhead policy', () => {
+test('final resource policy is compiled after focused Stationhead interaction/auth policies', () => {
   assert.match(
     cmakeSource,
-    /set\(HOMEPANEL_STATIONHEAD_SOURCES[\s\S]*src\/sh_polling_policy\.h[\s\S]*src\/sh_runtime_policy_fix\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
+    /set\(HOMEPANEL_STATIONHEAD_SOURCES[\s\S]*src\/sh_polling_policy\.h[\s\S]*src\/sh_start_button_locator_policy\.h[\s\S]*src\/sh_auth_capture_reuse_policy\.h[\s\S]*src\/sh_auth_capture_origin_policy\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
   );
   const basePchAt = cmakeSource.indexOf(
-    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_polling_policy.h\n  src/sh_runtime_policy_fix.h)',
+    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_polling_policy.h\n  src/sh_start_button_locator_policy.h\n  src/sh_auth_capture_reuse_policy.h)',
   );
   const finalPchAt = cmakeSource.indexOf(
     'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_policy_fix.h)',
   );
   assert.ok(basePchAt >= 0 && basePchAt < finalPchAt);
+  assert.doesNotMatch(cmakeSource, /sh_runtime_policy_fix\.h/);
   assert.match(
     finalPolicySource,
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingFinalFixed/,
   );
 });
 
-test('final resource setup does not register legacy blank-page recovery', () => {
+test('final resource setup does not register blank-page recovery', () => {
   const finalPolicy = section(
     finalPolicySource,
     'inline void ApplyStationheadResourceBlockingFinalFixed(',

@@ -48,25 +48,13 @@ function section(source, start, end) {
 }
 
 test('both roles normally use sakuramankai and buddy46 remains configured as fallback', () => {
-  assert.match(
-    configHeader,
-    /url = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
-  );
-  assert.match(
-    configHeader,
-    /fallbackUrl = L"https:\/\/www\.stationhead\.com\/buddy46"/,
-  );
-  assert.match(
-    configHeader,
-    /secondaryUrl = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
-  );
+  assert.match(configHeader, /url = L"https:\/\/www\.stationhead\.com\/sakuramankai"/);
+  assert.match(configHeader, /fallbackUrl = L"https:\/\/www\.stationhead\.com\/buddy46"/);
+  assert.match(configHeader, /secondaryUrl = L"https:\/\/www\.stationhead\.com\/sakuramankai"/);
   assert.match(cloudConfig, /kCanonicalPrimaryStationheadUrl/);
   assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl/);
   assert.match(cloudConfig, /kCanonicalSecondaryStationheadUrl/);
-  assert.match(
-    cloudConfig,
-    /config\.stationhead\.fallbackUrl = kCanonicalFallbackStationheadUrl/,
-  );
+  assert.match(cloudConfig, /config\.stationhead\.fallbackUrl = kCanonicalFallbackStationheadUrl/);
 });
 
 test('Primary refreshes at 53 minutes and retained Secondary role at 54 minutes', () => {
@@ -76,27 +64,14 @@ test('Primary refreshes at 53 minutes and retained Secondary role at 54 minutes'
     'static_assert(StationheadPlaybackNavigationActive',
   );
   assert.match(interval, /secondary \? 54 : 53/);
-  assert.match(
-    policy,
-    /static_assert\(StationheadPeriodicRefreshIntervalMs\(false\) == 53 \* 60'000\);/,
-  );
-  assert.match(
-    policy,
-    /static_assert\(StationheadPeriodicRefreshIntervalMs\(true\) == 54 \* 60'000\);/,
-  );
+  assert.match(policy, /static_assert\(StationheadPeriodicRefreshIntervalMs\(false\) == 53 \* 60'000\);/);
+  assert.match(policy, /static_assert\(StationheadPeriodicRefreshIntervalMs\(true\) == 54 \* 60'000\);/);
 });
 
 test('the central scheduler uses each role elapsed-time deadline', () => {
-  const wake = section(
-    policy,
-    '#define NextWakeAt()',
-    '#define RecoverUnavailableAuthorization()',
-  );
+  const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
   assert.match(wake, /NextWakeAtBase\(\)/);
-  assert.match(
-    wake,
-    /periodicRefreshStartedAt_ \+[\s\S]*StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/,
-  );
+  assert.match(wake, /periodicRefreshStartedAt_ \+[\s\S]*StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/);
   const wrapper = section(
     policy,
     '#define RecoverUnavailableAuthorization()',
@@ -123,14 +98,8 @@ test('navigation restarts only the affected role periodic clock', () => {
     'class StationheadBoundaryReloadClockProxy',
   );
   assert.match(proxy, /void store\(bool value, std::memory_order order\)/);
-  assert.match(
-    proxy,
-    /if \(value\) \{[\s\S]*refreshStartedAt_ = 0;[\s\S]*navigationObserved_ = 1;/,
-  );
-  assert.match(
-    policy,
-    /periodicRefreshNavigationObserved_ != 0 \|\|[\s\S]*!periodicRefreshStartedAt_\.Active\(\)[\s\S]*periodicRefreshStartedAt_ = nowMs;/,
-  );
+  assert.match(proxy, /if \(value\) \{[\s\S]*refreshStartedAt_ = 0;[\s\S]*navigationObserved_ = 1;/);
+  assert.match(policy, /periodicRefreshNavigationObserved_ != 0 \|\|[\s\S]*!periodicRefreshStartedAt_\.Active\(\)[\s\S]*periodicRefreshStartedAt_ = nowMs;/);
 });
 
 test('all two-minute and even-odd clock switching code is removed', () => {
@@ -145,30 +114,27 @@ test('all two-minute and even-odd clock switching code is removed', () => {
   assert.doesNotMatch(workflow, /clock-click-order|clock-switch/);
 });
 
-test('track-boundary reload remains disabled while boundary events only control rendering', () => {
-  assert.match(policy, /#define RetryPendingTrackBoundaryRefresh\(parameters\)/);
-  assert.match(policy, /RetryPendingTrackBoundaryRefreshDisabled\(parameters\)/);
-  assert.match(policy, /trackBoundaryRefreshPending_ = false;[\s\S]*return false;/);
+test('periodic refresh is native-owned and page-side boundary polling is removed', () => {
+  assert.match(policy, /RefreshPeriodicNavigation\(UnixMillis\(\)\)/);
+  assert.match(policy, /NavigateCurrentUrl\(/);
+
   const boundaryScript = section(
     trackScript,
     'inline std::wstring StationheadTrackBoundaryScript(',
     '}  // namespace hp',
   );
-  assert.match(boundaryScript, /const hideDelayMs = 5000;/);
-  assert.match(boundaryScript, /const revealBeforeEndSeconds = 10;/);
-  assert.match(boundaryScript, /post\('track-boundary-retry'\)/);
-  assert.match(boundaryScript, /post\('track-ended'\)/);
-  assert.doesNotMatch(boundaryScript, /NavigateCurrentUrl\(|ScheduleRecreate\(|location\.reload/);
+  assert.match(boundaryScript, /return L"void 0;"/);
+  assert.doesNotMatch(boundaryScript, /timeupdate|setInterval|MutationObserver/);
+  assert.doesNotMatch(boundaryScript, /track-boundary-retry|track-ended/);
 
-  const renderMacro = section(
+  const staleMessageMacro = section(
     trackScript,
     '#define HandleTrackEnded(now_ms, suppress_rendering)',
     '#undef StationheadAuthCaptureScript',
   );
-  assert.match(renderMacro, /SetStationheadPlaybackRenderingSuppressed/);
-  assert.match(renderMacro, /controller_\.Get\(\)/);
-  assert.match(renderMacro, /LayoutControllers\(\)/);
-  assert.doesNotMatch(renderMacro, /NavigateCurrentUrl\(|ScheduleRecreate\(/);
+  assert.match(staleMessageMacro, /\(void\)\(now_ms\)/);
+  assert.match(staleMessageMacro, /\(void\)\(suppress_rendering\)/);
+  assert.doesNotMatch(staleMessageMacro, /NavigateCurrentUrl\(|ScheduleRecreate\(|LayoutControllers\(/);
 });
 
 test('single-window runtime removes the old cross-window abnormal-state fallback', () => {

@@ -48,6 +48,7 @@ test('Stationhead playback rendering suppression is disabled', () => {
     stationheadVisibility,
     /StationheadPlaybackRenderingSuppressed\([\s\S]*?\) noexcept \{\s*return false;\s*\}/,
   );
+  assert.doesNotMatch(stationheadVisibility, /LOW memory|permanent LOW/);
 });
 
 test('Stationhead layout keeps full-size playback visible in foreground or background recovery', () => {
@@ -60,39 +61,25 @@ test('Stationhead layout keeps full-size playback visible in foreground or backg
     layout,
     /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)[\s\S]*\? TRUE\s*:\s*FALSE;/,
   );
-  assert.match(
-    layout,
-    /controller->put_IsVisible\(playbackControllerVisible\)/,
-  );
-  assert.match(
-    layout,
-    /authController->put_IsVisible\(TRUE\)/,
-  );
+  assert.match(layout, /controller->put_IsVisible\(playbackControllerVisible\)/);
+  assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
 });
 
-test('Stationhead track-boundary observer remains available without hiding playback', () => {
+test('obsolete Stationhead page-side track-boundary observer is a no-op', () => {
   const boundary = section(
     stationheadBoundary,
     'inline std::wstring StationheadTrackBoundaryScript(',
     '}  // namespace hp',
   );
-  assert.match(boundary, /const hideDelayMs = 5000;/);
-  assert.match(boundary, /const revealBeforeEndSeconds = 10;/);
-  assert.match(boundary, /Number\.isFinite\(duration\)/);
-  assert.match(boundary, /'timeupdate'/);
-  assert.match(boundary, /post\('track-boundary-retry'\)/);
-  assert.match(boundary, /post\('track-ended'\)/);
-  assert.match(boundary, /event\.type === 'pause'/);
-  assert.match(boundary, /event\.type === 'stalled'/);
+  assert.match(boundary, /return L"void 0;"/);
+  assert.doesNotMatch(boundary, /timeupdate|setInterval|MutationObserver/);
+  assert.doesNotMatch(boundary, /track-boundary-retry|track-ended/);
 });
 
 test('Spotify trusted Play click never hides the controller', () => {
   const releasedAt = spotifyClick.indexOf('L"Input.dispatchMouseEvent", released.c_str()');
   assert.ok(releasedAt >= 0);
-  assert.doesNotMatch(
-    spotifyClick.slice(releasedAt),
-    /put_IsVisible\(FALSE\)/,
-  );
+  assert.doesNotMatch(spotifyClick.slice(releasedAt), /put_IsVisible\(FALSE\)/);
 });
 
 test('Spotify remains visible after the observer confirms playback', () => {

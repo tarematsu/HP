@@ -3,121 +3,101 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const composition = readFileSync(
-  new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
-  'utf8',
-);
-const july19Policy = readFileSync(
-  new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
-  'utf8',
-);
-const webview = readFileSync(
-  new URL('../../native/src/sh_webview.cpp', import.meta.url),
-  'utf8',
-);
+const source = name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+const composition = source('sh_track_boundary_script.h');
+const interaction = source('sh_runtime_interaction_script.h');
+const recovery = source('sh_runtime_blank_recovery_script.h');
+const lifecycle = source('sh_runtime_lifecycle_script.h');
+const compact = source('sh_compact_runtime_script.h');
+const july19Policy = source('sh_july19_stats_policy_fix.h');
+const webview = source('sh_webview.cpp');
 
-function section(source, start, end) {
-  const startAt = source.indexOf(start);
+function section(text, start, end) {
+  const startAt = text.indexOf(start);
   assert.notEqual(startAt, -1, `missing section: ${start}`);
-  const endAt = source.indexOf(end, startAt + start.length);
+  const endAt = text.indexOf(end, startAt + start.length);
   assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
-  return source.slice(startAt, endAt);
+  return text.slice(startAt, endAt);
 }
 
-function settlementSection() {
-  return section(
+function rawScript(text) {
+  const raw = text.match(/LR"JS\(([\s\S]*?)\)JS"/);
+  assert.ok(raw, 'missing Stationhead raw JavaScript fragment');
+  return raw[1];
+}
+
+test('legacy login-settlement registration is inert', () => {
+  const settlement = section(
     composition,
     'inline std::wstring StationheadLoginSettlementScript()',
     'inline std::wstring StationheadTrackBoundaryScript(',
   );
-}
-
-test('current login settlement remains intact', () => {
-  const settlement = settlementSection();
-  assert.match(settlement, /stationhead-auth-ready/);
-  assert.match(settlement, /document\.elementsFromPoint/);
-  assert.match(settlement, /now - accountSince >= 3000/);
-  assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest/);
+  assert.match(settlement, /return L"void 0;"/);
+  assert.doesNotMatch(settlement, /setInterval|new\s+MutationObserver|elementsFromPoint/);
 });
 
-test('signed-in account wins over a stray standalone Log in affordance', () => {
-  const settlement = settlementSection();
-  const blockingSurface = section(
-    settlement,
-    'const blockingLoginSurfaceVisible = authenticated => {',
-    'const accountNode = element => {',
-  );
-  const check = section(
-    settlement,
-    'const check = () => {',
-    'const schedule = (delay = 1000) => {',
-  );
-
-  assert.match(blockingSurface, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true;/);
-  assert.match(blockingSurface, /credentialSelector/);
-  assert.match(blockingSurface, /serviceConnectPattern/);
-  assert.match(check, /const account = topRightAccountControl\(\);/);
-  assert.match(check, /blockingLoginSurfaceVisible\(Boolean\(account\)\)/);
-  assert.match(check, /if \(!account\)/);
+test('interaction runtime owns login-required and stable auth-ready edges', () => {
+  assert.match(interaction, /const accountVisible = \(\) =>/);
+  assert.match(interaction, /const blockingLogin = authenticated =>/);
+  assert.match(interaction, /postText\('login-required'\)/);
+  assert.match(interaction, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
+  assert.match(interaction, /authReadyTimer = nativeTimeout[\s\S]*3000/);
+  assert.match(interaction, /if \(!authenticated \|\| lastBlocking === false \|\| authReadyTimer\) return;/);
+  assert.doesNotMatch(interaction, /setInterval\s*\(|new\s+MutationObserver/);
 });
 
-test('real blocking authentication surfaces still beat a stale account icon', () => {
-  const settlement = settlementSection();
-  const blockingSurface = section(
-    settlement,
-    'const blockingLoginSurfaceVisible = authenticated => {',
-    'const accountNode = element => {',
+test('real blocking auth surfaces beat stale account presentation', () => {
+  const blocking = section(
+    interaction,
+    'const blockingLogin = authenticated => {',
+    'const cancelAuthReady = () => {',
   );
-
-  assert.match(blockingSurface, /if \(loginRoute\(\)\) return true;/);
-  assert.match(blockingSurface, /if \(visible\(input\)\) return true;/);
-  assert.match(blockingSurface, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
-  assert.match(blockingSurface, /element\.closest\?\.\(blockingShellSelector\)/);
+  assert.match(blocking, /if \(loginRoute\(\)\) return true;/);
+  assert.match(blocking, /if \(visible\(input\)\) return true;/);
+  assert.match(blocking, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
+  assert.match(blocking, /element\.closest\?\.\(blockingShellSelector\)/);
+  assert.match(blocking, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true;/);
 });
 
-test('July 19 credential capture is composed before login settlement', () => {
+test('July 19 credential capture remains before the inert settlement slot', () => {
   assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
   assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
   assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
-  assert.match(
-    july19Policy,
-    /std::wstring script = StationheadJuly19AuthCaptureScript\(\)/,
-  );
-  assert.match(
-    july19Policy,
-    /script\.append\(StationheadLoginSettlementScript\(\)\)/,
-  );
+  assert.match(july19Policy, /script\.append\(StationheadLoginSettlementScript\(\)\)/);
   assert.match(
     july19Policy,
     /#define StationheadAuthCaptureScript StationheadJuly19AuthAndLoginSettlementScript/,
   );
 });
 
-test('embedded login settlement JavaScript parses independently', () => {
-  const settlement = settlementSection();
-  const raw = settlement.match(/LR"JS\(([\s\S]*?)\)JS"/);
-  assert.ok(raw, 'missing Stationhead login settlement raw JavaScript');
-  assert.doesNotThrow(() => new vm.Script(raw[1]));
+test('responsibility fragments assemble into one valid compact runtime', () => {
+  const script = [interaction, recovery, lifecycle]
+    .map(rawScript)
+    .join('\n')
+    .replaceAll('{{GLOBAL}}', '__homepanelPrimaryStationhead')
+    .replaceAll('{{PREFIX}}', 'stationhead');
+  assert.doesNotThrow(() => new vm.Script(script));
+  assert.match(compact, /StationheadRuntimeInteractionFragment\(\)/);
+  assert.match(compact, /StationheadRuntimeBlankRecoveryFragment\(\)/);
+  assert.match(compact, /StationheadRuntimeLifecycleFragment\(\)/);
 });
 
-test('document-start registration still occurs before startup script', () => {
-  const firstRegistration = webview.indexOf(
+test('auth capture registration still precedes startup runtime registration', () => {
+  const authAt = webview.indexOf(
     'const HRESULT authCaptureResult = webview_->AddScriptToExecuteOnDocumentCreated(',
   );
-  const startupRegistration = webview.indexOf(
+  const startupAt = webview.indexOf(
     'const HRESULT startupScriptResult = webview_->AddScriptToExecuteOnDocumentCreated(',
   );
-  assert.ok(firstRegistration >= 0);
-  assert.ok(startupRegistration > firstRegistration);
+  assert.ok(authAt >= 0 && startupAt > authAt);
 });
 
-test('only a stable signed-in account slot clears the native login latch', () => {
-  const authReadyAt = webview.indexOf(
-    'if (type == L"stationhead-auth-ready") {',
-  );
-  assert.ok(authReadyAt >= 0);
-  const authReadyHandler = webview.slice(authReadyAt, authReadyAt + 2200);
-  assert.match(authReadyHandler, /loginRequired_ = false;/);
-  assert.match(authReadyHandler, /status_\.loginRequired = false;/);
-  assert.match(authReadyHandler, /nextTickAt_ = 0;/);
+test('only auth-ready clears the native login latch', () => {
+  const at = webview.indexOf('if (type == L"stationhead-auth-ready") {');
+  assert.ok(at >= 0);
+  const handler = webview.slice(at, at + 2200);
+  assert.match(handler, /loginRequired_ = false;/);
+  assert.match(handler, /status_\.loginRequired = false;/);
+  assert.match(handler, /nextTickAt_ = 0;/);
 });

@@ -23,7 +23,7 @@ const playbackPolicy = readFileSync(
   'utf8',
 );
 
-test('Stationhead WebView resets browser cache before first navigation', () => {
+test('Stationhead keeps the HTTP cache and applies one audited resource boundary', () => {
   assert.doesNotMatch(environment, /--disable-http-cache/);
   assert.match(environment, /--disable-features=BackForwardCache,/);
   assert.match(environment, /kStationheadWebView2Arguments/);
@@ -33,14 +33,15 @@ test('Stationhead WebView resets browser cache before first navigation', () => {
     /put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/,
   );
   assert.doesNotMatch(environment, /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/);
+  assert.doesNotMatch(playbackPolicy, /Network\.clearBrowserCache/);
   assert.match(
     playbackPolicy,
-    /CallDevToolsProtocolMethod\(\s*L"Network\.clearBrowserCache", L"\{\}", nullptr\);/,
+    /ApplyStationheadResourceBlockingStartupReduced\([\s\S]*environment, webview, config, armed, token/,
   );
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
 
-test('long-lived A and B pages use only their independent 53-minute and 54-minute navigation clocks', () => {
+test('long-lived roles use only their independent 53-minute and 54-minute native navigation clocks', () => {
   assert.match(refreshPolicy, /StationheadPeriodicRefreshIntervalMs/);
   assert.match(refreshPolicy, /secondary \? 54 : 53/);
   assert.match(refreshPolicy, /RefreshPeriodicNavigation/);
@@ -56,23 +57,19 @@ test('long-lived A and B pages use only their independent 53-minute and 54-minut
   const boundaryEnd = trackBoundaryScript.indexOf('}  // namespace hp', boundaryStart);
   assert.ok(boundaryStart >= 0 && boundaryEnd > boundaryStart);
   const boundary = trackBoundaryScript.slice(boundaryStart, boundaryEnd);
-  assert.match(boundary, /track-boundary-retry/);
-  assert.match(boundary, /track-ended/);
+  assert.match(boundary, /return L"void 0;"/);
+  assert.doesNotMatch(boundary, /track-boundary-retry|track-ended|timeupdate/);
   assert.doesNotMatch(boundary, /NavigateCurrentUrl\(|ScheduleRecreate\(|location\.reload/);
-  assert.match(trackBoundaryScript, /SetStationheadPlaybackRenderingSuppressed/);
 
-  assert.equal(playbackPolicy.match(/Network\.clearBrowserCache/g)?.length, 1,
-    'controller configuration should clear cache once');
   assert.equal(environment.match(/BackForwardCache/g)?.length, 1,
     'the shared Stationhead environment should have one page-state cache policy');
 });
 
-test('cache reset does not replace or erase the persistent Stationhead login profile', () => {
+test('cache retention does not replace or erase the persistent Stationhead login profile', () => {
   const combined = environment + playbackPolicy;
   assert.doesNotMatch(environment, /--incognito|--guest|--user-data-dir/);
   assert.doesNotMatch(
     combined,
-    /ClearBrowsingDataAll|BROWSING_DATA_KINDS_COOKIES|ALL_SITE|ALL_PROFILE|LOCAL_STORAGE|ALL_DOM_STORAGE|DeleteAllCookies/,
+    /ClearBrowsingDataAll|BROWSING_DATA_KINDS_COOKIES|ALL_SITE|ALL_PROFILE|LOCAL_STORAGE|ALL_DOM_STORAGE|DeleteAllCookies|clearBrowserCache/,
   );
-  assert.match(playbackPolicy, /Cookies and DOM storage remain intact/);
 });
