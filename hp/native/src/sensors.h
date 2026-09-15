@@ -8,8 +8,6 @@ enum class PresenceState { Unknown, Home, Away };
 struct SensorSnapshot {
   bool co2Connected = false;
   int co2 = 0;
-  double temperatureRaw = 0;
-  double humidityRaw = 0;
   double temperatureCorrected = 0;
   double humidityCorrected = 0;
   int64_t observedAt = 0;
