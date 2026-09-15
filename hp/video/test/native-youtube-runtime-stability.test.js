@@ -34,6 +34,20 @@ test('unified runtime owns trusted real-control actions', () => {
   assert.match(runtime, /fullscreenPattern = \/\(全画面\|fullscreen\|full screen\)\/i/);
 });
 
+test('fullscreen and ad clicks keep independent action state', () => {
+  assert.match(runtime, /if \(action === 'fullscreen'\) return 'fullscreen'/);
+  assert.match(runtime, /action === 'skip-ad' \|\| action\.startsWith\('survey-'\)/);
+  assert.match(runtime, /const lane = actionState\(action\)/);
+  assert.match(runtime, /lane\.cleanup\?\.\(\)/);
+  assert.doesNotMatch(runtime, /state\.action = action/);
+  assert.doesNotMatch(runtime, /state\.actionAt = now/);
+  assert.doesNotMatch(runtime, /state\.actionCleanup = cleanup/);
+
+  const firstFullscreen = runtime.indexOf('const fullscreenAction = armFullscreen();');
+  const adStart = runtime.indexOf('if (ad()) {');
+  assert.ok(firstFullscreen >= 0 && adStart > firstFullscreen);
+});
+
 test('skippable ads are handled before fullscreen recovery', () => {
   const adStart = runtime.indexOf('if (ad()) {');
   const skip = runtime.indexOf("arm(target, 'skip-ad', 600)", adStart);

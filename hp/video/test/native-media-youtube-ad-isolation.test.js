@@ -7,7 +7,7 @@ const runtime = readExpandedNativeSource(
 
 test('YouTube ad handling precedes content settings', () => {
   const adStart = runtime.indexOf('if (ad()) {');
-  const contentStart = runtime.indexOf('const url = new URL(location.href);');
+  const contentStart = runtime.indexOf('const currentTime = Number(video?.currentTime);');
   assert.ok(adStart >= 0 && contentStart > adStart);
   const adBranch = runtime.slice(adStart, contentStart);
   assert.match(adBranch, /skipSelector/);

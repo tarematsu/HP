@@ -28,7 +28,7 @@ test('paused playback recovers through direct play then trusted Play', () => {
 test('YouTube surveys stay inside active ad handling', () => {
   const adStart = runtime.indexOf('if (ad()) {');
   const survey = runtime.indexOf('for (const root of player.querySelectorAll', adStart);
-  const content = runtime.indexOf('const url = new URL(location.href);');
+  const content = runtime.indexOf('const currentTime = Number(video?.currentTime);');
   assert.ok(adStart >= 0 && survey > adStart && content > survey);
   assert.match(runtime, /arm\(option, 'survey-option', 500\)/);
   assert.match(runtime, /arm\(submit, 'survey-submit', 500\)/);
