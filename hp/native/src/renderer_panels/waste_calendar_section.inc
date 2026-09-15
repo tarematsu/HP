@@ -338,11 +338,11 @@ void DrawCourse36ClockWasteNotices(
   const int gap = std::max(2, width * 12 / 1000);
   const int availableWidth = std::max(3, width - gap * 2);
   const int baseCellWidth = availableWidth / 3;
-  const int dateHeight = std::clamp(height * 36 / 100, 12, 18);
-  const int iconTopGap = std::max(1, height * 4 / 100);
+  const int contentGap = std::max(2, width * 8 / 1000);
+  const int fontHeight = std::clamp(height * 30 / 100, 10, 15);
 
   HGDIOBJ previousFont = SelectObject(
-      dc, CachedUiFont(std::clamp(dateHeight * 80 / 100, 10, 15), FW_SEMIBOLD));
+      dc, CachedUiFont(fontHeight, FW_SEMIBOLD));
   SetTextColor(dc, kWidgetText);
 
   for (size_t index = 0; index < notices.size(); ++index) {
@@ -351,15 +351,22 @@ void DrawCourse36ClockWasteNotices(
     const LONG cellRight = index + 1 == notices.size()
         ? rect.right
         : cellLeft + baseCellWidth;
-    RECT dateRect{cellLeft, rect.top, cellRight, rect.top + dateHeight};
+    const int cellWidth = std::max(1L, cellRight - cellLeft);
+    const int dateWidth = std::clamp(cellWidth * 36 / 100, 30, 52);
+    RECT dateRect{cellLeft, rect.top, cellLeft + dateWidth, rect.bottom};
     DrawTextInRect(dc, Course36ClockWasteDateText(notices[index]), dateRect,
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 
-    RECT iconArea{cellLeft, dateRect.bottom + iconTopGap, cellRight, rect.bottom};
+    RECT iconArea{
+        std::min<LONG>(cellRight, dateRect.right + contentGap),
+        rect.top,
+        cellRight,
+        rect.bottom,
+    };
     const int areaWidth = std::max(1L, iconArea.right - iconArea.left);
     const int areaHeight = std::max(1L, iconArea.bottom - iconArea.top);
-    const int maxIconWidth = std::max(1, areaWidth * 78 / 100);
-    const int maxIconHeight = std::max(1, areaHeight * 92 / 100);
+    const int maxIconWidth = std::max(1, areaWidth * 96 / 100);
+    const int maxIconHeight = std::max(1, areaHeight * 94 / 100);
     int iconWidth = maxIconWidth;
     int iconHeight = std::max(
         1, iconWidth * kCourse36ClockWasteImageAspectHeight /
