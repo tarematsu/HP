@@ -11,14 +11,15 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 void RequestStationheadMonitorDomProbe() noexcept;
 
 // Stationhead keeps a real 480x270 surface even while it is not presented.
-// Normal playback stays inside the parent client area behind the dashboard;
-// explicit authentication handoff may still park a surface offscreen.
+// Only startup and the scheduled 50-minute reload use the in-client background
+// preview. Stable playback is parked offscreen; authentication has its own
+// foreground surface.
 inline constexpr LONG kStationheadSurfaceWidth = 480;
 inline constexpr LONG kStationheadSurfaceHeight = 270;
 inline constexpr LONG kStationheadOffscreenGap = 32;
 
-inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
-  const LONG left = workspaceBounds.left;
+inline RECT StationheadOffscreenBounds(const RECT& workspaceBounds) noexcept {
+  const LONG left = workspaceBounds.right + kStationheadOffscreenGap;
   const LONG top = workspaceBounds.top;
   return RECT{
       left,
@@ -28,8 +29,25 @@ inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
   };
 }
 
-inline RECT StationheadOffscreenBounds(const RECT& workspaceBounds) noexcept {
-  const LONG left = workspaceBounds.right + kStationheadOffscreenGap;
+// A fresh process begins in startup preview mode. The periodic-refresh policy
+// re-arms this bit before its navigation and clears it after stable audio is
+// observed again.
+inline std::atomic<bool> gStationheadBackgroundPreview{true};
+
+inline bool SetStationheadBackgroundPreview(bool active) noexcept {
+  return gStationheadBackgroundPreview.exchange(
+             active, std::memory_order_acq_rel) != active;
+}
+
+inline bool StationheadBackgroundPreview() noexcept {
+  return gStationheadBackgroundPreview.load(std::memory_order_acquire);
+}
+
+inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
+  if (!StationheadBackgroundPreview()) {
+    return StationheadOffscreenBounds(workspaceBounds);
+  }
+  const LONG left = workspaceBounds.left;
   const LONG top = workspaceBounds.top;
   return RECT{
       left,
