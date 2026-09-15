@@ -5,8 +5,10 @@ namespace hp {
 
 // Service-worker and shared-worker requests are environment-wide. WebView2
 // requires those source filters on one CoreWebView per environment; otherwise
-// the same request is delivered to multiple native handlers. The restored
-// single Stationhead instance owns the former amazon profile (spotify-v2-1).
+// the same request is delivered to multiple native handlers. The current
+// Stationhead primary controller uses the Default profile, while the secondary
+// controller uses stationhead-secondary. Keep worker ownership on the primary
+// only so Service Worker requests are covered without duplicate callbacks.
 inline bool StationheadOwnsWorkerRequestFilters(ICoreWebView2* webview) {
   if (!webview) return false;
   ComPtr<ICoreWebView2> base = webview;
@@ -19,7 +21,7 @@ inline bool StationheadOwnsWorkerRequestFilters(ICoreWebView2* webview) {
     return true;
   }
   const bool ownsWorkerFilters =
-      _wcsicmp(profileNameRaw, L"spotify-v2-1") == 0;
+      _wcsicmp(profileNameRaw, L"Default") == 0;
   CoTaskMemFree(profileNameRaw);
   return ownsWorkerFilters;
 }
