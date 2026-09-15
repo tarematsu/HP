@@ -29,10 +29,7 @@ inline RECT StationheadOffscreenBounds(const RECT& workspaceBounds) noexcept {
   };
 }
 
-// A fresh process begins in startup preview mode. The periodic-refresh policy
-// re-arms this bit before its navigation and clears it after stable audio is
-// observed again.
-inline std::atomic<bool> gStationheadBackgroundPreview{true};
+inline std::atomic<bool> gStationheadBackgroundPreview{false};
 
 inline bool SetStationheadBackgroundPreview(bool active) noexcept {
   return gStationheadBackgroundPreview.exchange(
