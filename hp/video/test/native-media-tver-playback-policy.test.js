@@ -106,11 +106,13 @@ test('paused TVer program recovery is idempotent and never toggles the video sur
   assert.doesNotMatch(policy, /findPlayButton/);
 });
 
-test('TVer fullscreen setup is one-shot and still uses the trusted path', () => {
+test('TVer fullscreen retries only through the trusted CDP path', () => {
   assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
   assert.match(policy, /if \(state && state\.fullscreenDirty === false\) return null/);
   assert.match(policy, /if \(fullscreenButton && state\) state\.fullscreenDirty = false/);
-  assert.match(policy, /Failure is intentionally not retried until the media identity changes/);
+  assert.match(policy, /homepanel:tver-wake/);
+  assert.match(policy, /state\.fullscreenDirty = true/);
+  assert.doesNotMatch(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
   assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
   assert.match(
     mediaSection,
