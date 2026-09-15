@@ -23,12 +23,15 @@ const header = readFileSync(
   'utf8',
 );
 
-test('Spotify is full-size behind native UI until confirmed playback and then collapses to 1x1', () => {
+test('Spotify stays behind the YouTube/TVer panel until confirmed playback and then collapses to 1x1', () => {
   assert.match(layout, /const bool compactPlayback =\s*slot\.playbackConfirmed && CurrentMusicTrack\(slot\) != nullptr/);
-  assert.match(layout, /int width = compactPlayback \? 1 : clientWidth;/);
-  assert.match(layout, /int height = compactPlayback \? 1 : clientHeight;/);
+  assert.match(layout, /SpotifyMediaPanelRect\(parentWindow_, &mediaPanelRect\)/);
+  assert.match(layout, /int x = mediaPanelRect\.left;/);
+  assert.match(layout, /int y = mediaPanelRect\.top;/);
+  assert.match(layout, /int width = compactPlayback \? 1 : mediaPanelWidth;/);
+  assert.match(layout, /int height = compactPlayback \? 1 : mediaPanelHeight;/);
   assert.match(layout, /HWND insertAfter = HWND_BOTTOM;/);
-  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
+  assert.match(layout, /if \(monitorForeground_\) \{[\s\S]*x = client\.left;[\s\S]*y = client\.top;[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/);
   assert.match(layout, /const bool authentication =/);
   assert.match(layout, /if \(authentication\) \{[\s\S]*width = activeWidth;[\s\S]*height = activeHeight;[\s\S]*insertAfter = HWND_TOP;/);
 });
@@ -39,7 +42,7 @@ test('background Spotify controllers stay visible while playback geometry change
   assert.doesNotMatch(layout, /kSpotifyParkedPlaybackWidth|kSpotifyLowPowerPlaybackWidth/);
 });
 
-test('trusted click recovery uses full-size host geometry and still accounts for controller zoom', () => {
+test('trusted click recovery uses the media-panel host geometry and still accounts for controller zoom', () => {
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(click, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
   assert.match(click, /controller->get_ZoomFactor\(&controllerZoom\)/);
