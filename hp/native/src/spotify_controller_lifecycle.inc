@@ -203,7 +203,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                           }
                           return S_OK;
                         }
-                        PostSpotifyPageContext(*target);
+                        PostSpotifyTargetDescriptorForSlot(*target);
                         ArmRobustScheduler();
                         return S_OK;
                       }).Get());

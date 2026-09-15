@@ -30,8 +30,6 @@ struct DashboardSectionRevisions {
 };
 
 struct DashboardSnapshot {
-  bool loaded = false;
-
   std::vector<WeatherHourData> weatherHours;
 
   double lastMonthUsage = std::numeric_limits<double>::quiet_NaN();

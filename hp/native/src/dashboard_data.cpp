@@ -8,21 +8,6 @@ using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
 
-std::string StringifyUtf8(const JsonObject& object) {
-  const winrt::hstring text = object.Stringify();
-  if (text.empty()) return {};
-  const int inputSize = static_cast<int>(text.size());
-  const int size = WideCharToMultiByte(
-      CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), inputSize,
-      nullptr, 0, nullptr, nullptr);
-  if (size <= 0) return {};
-  std::string output(static_cast<size_t>(size), '\0');
-  WideCharToMultiByte(
-      CP_UTF8, WC_ERR_INVALID_CHARS, text.data(), inputSize,
-      output.data(), size, nullptr, nullptr);
-  return output;
-}
-
 uint64_t SourceRevision(const JsonObject& object) {
   const double rawVersion = json::Number(object, L"__version", -1);
   if (std::isfinite(rawVersion) && rawVersion >= 0 &&
@@ -35,13 +20,13 @@ uint64_t SourceRevision(const JsonObject& object) {
 
   // Compatibility fallback for old cached dashboard files that predate
   // source-level __version metadata. Normal cloud payloads never take this path.
-  return Fnv1a64(StringifyUtf8(object));
+  return Fnv1a64(WideToUtf8(std::wstring{object.Stringify().c_str()}));
 }
 
 bool CanReuseSection(const DashboardSnapshot* previous,
                      uint64_t DashboardSectionRevisions::* member,
                      uint64_t revision) {
-  return previous && previous->loaded && previous->revisions.*member == revision;
+  return previous && previous->revisions.*member == revision;
 }
 
 double NumberOrNaN(const JsonObject& object, const wchar_t* name) {
@@ -53,12 +38,6 @@ double CompleteTotal(const JsonObject& object, const wchar_t* complete,
   return json::Boolean(object, complete) ? NumberOrNaN(object, total)
                                          : std::numeric_limits<double>::quiet_NaN();
 }
-
-std::wstring PlugState(const JsonObject& item) {
-  const double watts = NumberOrNaN(item, L"watts");
-  return std::isfinite(watts)
-      ? std::to_wstring(static_cast<int>(std::round(watts))) + L"W" : L"--W";
-}
 }  // namespace
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
@@ -68,7 +47,6 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
 
     const JsonObject root = JsonObject::Parse(Utf8ToWide(text));
     DashboardSnapshot next;
-    next.loaded = true;
 
     const JsonObject weather = json::Object(root, L"weather");
     next.revisions.weather = SourceRevision(weather);
@@ -119,19 +97,16 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
       next.octopusProfile.reserve(7);
       for (uint32_t index = 0;
            index < profile.Size() && next.octopusProfile.size() < 7; ++index) {
-        try {
-          const auto value = profile.GetAt(index);
-          if (value.ValueType() != JsonValueType::Object) continue;
-          const JsonObject item = value.GetObject();
-          const std::wstring day = json::Text(item, L"day");
-          if (day.empty()) continue;
-          next.octopusProfile.push_back({
-              day,
-              CompleteTotal(item, L"currentComplete", L"currentTotal"),
-              CompleteTotal(item, L"previousComplete", L"previousTotal"),
-          });
-        } catch (...) {
-        }
+        const auto value = profile.GetAt(index);
+        if (value.ValueType() != JsonValueType::Object) continue;
+        const JsonObject item = value.GetObject();
+        const std::wstring day = json::Text(item, L"day");
+        if (day.empty()) continue;
+        next.octopusProfile.push_back({
+            day,
+            CompleteTotal(item, L"currentComplete", L"currentTotal"),
+            CompleteTotal(item, L"previousComplete", L"previousTotal"),
+        });
       }
     }
 
@@ -149,24 +124,21 @@ bool ParseSwitchBotDevices(const std::string& text,
                            std::vector<SwitchBotDeviceData>& output) {
   try {
     if (text.empty()) return false;
-    const JsonObject root = JsonObject::Parse(Utf8ToWide(text));
-    const JsonArray devices = json::Array(root, L"devices");
+    const JsonArray devices = json::Array(JsonObject::Parse(Utf8ToWide(text)), L"devices");
     std::vector<SwitchBotDeviceData> next;
     next.reserve(4);
     for (uint32_t index = 0; index < devices.Size() && next.size() < 4; ++index) {
-      try {
-        const auto value = devices.GetAt(index);
-        if (value.ValueType() != JsonValueType::Object) continue;
-        const JsonObject item = value.GetObject();
-        const std::wstring type = json::Text(item, L"deviceType");
-        if (type.find(L"Plug") == std::wstring::npos) continue;
-        next.push_back({
-            json::Text(item, L"deviceName",
-                       json::Text(item, L"deviceId", L"SwitchBot")),
-            PlugState(item),
-        });
-      } catch (...) {
-      }
+      const auto value = devices.GetAt(index);
+      if (value.ValueType() != JsonValueType::Object) continue;
+      const JsonObject item = value.GetObject();
+      if (json::Text(item, L"deviceType").find(L"Plug") == std::wstring::npos) continue;
+      const double watts = NumberOrNaN(item, L"watts");
+      next.push_back({
+          json::Text(item, L"deviceName",
+                     json::Text(item, L"deviceId", L"SwitchBot")),
+          std::isfinite(watts)
+              ? std::to_wstring(static_cast<int>(std::round(watts))) + L"W" : L"--W",
+      });
     }
     output = std::move(next);
     return true;

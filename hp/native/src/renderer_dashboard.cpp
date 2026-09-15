@@ -45,9 +45,9 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
     }
 
     DashboardSnapshot snapshot;
-    const DashboardSnapshot* previous = nativeDashboard_.loaded ? &nativeDashboard_ : nullptr;
+    const DashboardSnapshot* previous = dashboardSourceStamp_.valid ? &nativeDashboard_ : nullptr;
     if (!ParseDashboardSnapshot(text, snapshot, previous)) return false;
-    const bool firstSnapshot = !nativeDashboard_.loaded;
+    const bool firstSnapshot = !dashboardSourceStamp_.valid;
     const bool weatherChanged = firstSnapshot ||
         snapshot.revisions.weather != nativeDashboard_.revisions.weather;
     const bool octopusChanged = firstSnapshot ||

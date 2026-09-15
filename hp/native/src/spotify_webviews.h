@@ -135,7 +135,6 @@ class SpotifyWebViews final {
                                 int yTenThousandths) noexcept;
   UINT DispatchSpotifyDevToolsClick(Slot& slot, int xTenThousandths,
                                     int yTenThousandths) noexcept;
-  void PostSpotifyPageContext(Slot& slot) noexcept;
   void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
   void BeginInitialCloudPlaylistWait(ULONGLONG now) noexcept;
