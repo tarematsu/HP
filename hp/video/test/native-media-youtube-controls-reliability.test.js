@@ -24,10 +24,12 @@ test('YouTube watchdog still self-heals lost callbacks', () => {
   assert.match(host, /InvalidateYoutubeWatchdog\(\)/);
 });
 
-test('trusted clicks still convert native coordinates', () => {
+test('trusted media clicks are foreground independent WebView dispatches', () => {
   assert.match(trustedInput, /ICoreWebView2Controller3/);
   assert.match(trustedInput, /get_RasterizationScale/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
+  assert.doesNotMatch(trustedInput, /\bSendInput\s*\(/);
+  assert.doesNotMatch(trustedInput, /SetForegroundWindow|GetForegroundWindow/);
 });
 
 test('ad skip stays player-local and variant tolerant', () => {

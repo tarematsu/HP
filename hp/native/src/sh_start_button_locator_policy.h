@@ -2,9 +2,10 @@
 
 namespace hp {
 
-// Locate only a genuine playback control. Account, consent, Spotify, and login
-// surfaces can contain generic Continue buttons and must never receive an
-// automated native click.
+// Locate genuine playback controls plus the two explicitly allowed onboarding
+// actions. CONNECT SPOTIFY and Continue are intentionally handled before the
+// generic account/auth guard so they can be clicked even while Stationhead is
+// in the background. Other login/account controls remain excluded.
 inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -12,18 +13,20 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
       window.top !== window) return null;
   const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|let(?:'|’)?s\s+go|続ける|続行|次へ)$/i;
+  const allowedOnboardingPattern = /^(connect(?:\s+with)?\s+spotify|continue)$/i;
   const accountPattern = /\b(log\s*in|sign\s*in|login|spotify|connect|authorize|consent|account|password|email)\b|ログイン|サインイン|認証|接続|同意|アカウント|パスワード/i;
   const credentialSelector = "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const labelOf = element => normalize([
+  const labelsOf = element => [
     element?.innerText,
     element?.getAttribute?.('aria-label'),
     element?.textContent,
     element?.getAttribute?.('title'),
     element?.getAttribute?.('value'),
     element?.getAttribute?.('data-testid'),
-  ].filter(Boolean).join(' '));
+  ].map(normalize).filter(Boolean);
+  const labelOf = element => normalize(labelsOf(element).join(' '));
   const visible = element => {
     if (!(element instanceof HTMLElement) || !element.isConnected || element.disabled ||
         element.getAttribute('aria-disabled') === 'true' ||
@@ -36,6 +39,16 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     const style = getComputedStyle(element);
     return style.display !== 'none' && style.visibility !== 'hidden' &&
       Number(style.opacity || 1) > 0 && style.pointerEvents !== 'none';
+  };
+  const pointOf = element => {
+    if (!visible(element)) return null;
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || (hit !== element && !element.contains(hit))) return null;
+    return { x, y };
   };
   const playing = () => {
     if (typeof window.__homepanelAudioPlaying === 'boolean') {
@@ -62,7 +75,18 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     }
     return false;
   };
-  if (!document.body || playing() || accountInteractionVisible()) return null;
+  if (!document.body) return null;
+
+  // Explicitly allow only these two onboarding controls through the account
+  // guard. Native code dispatches the click through CDP, so no foreground HWND
+  // or real mouse cursor is required.
+  for (const element of document.querySelectorAll(selector)) {
+    if (!labelsOf(element).some(label => allowedOnboardingPattern.test(label))) continue;
+    const point = pointOf(element);
+    if (point) return point;
+  }
+
+  if (playing() || accountInteractionVisible()) return null;
 
   for (const element of document.querySelectorAll(selector)) {
     if (!visible(element) || !startPattern.test(labelOf(element))) continue;
@@ -75,13 +99,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     if (shell && (shell.querySelector?.(credentialSelector) || accountPattern.test(labelOf(shell)))) {
       continue;
     }
-    const rect = element.getBoundingClientRect();
-    const x = rect.left + rect.width / 2;
-    const y = rect.top + rect.height / 2;
-    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
-    const hit = document.elementFromPoint(x, y);
-    if (!hit || (hit !== element && !element.contains(hit))) continue;
-    return { x, y };
+    const point = pointOf(element);
+    if (point) return point;
   }
   return null;
 })()

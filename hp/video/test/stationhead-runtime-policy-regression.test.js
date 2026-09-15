@@ -31,17 +31,22 @@ test('mixed Stationhead runtime policy is removed from source and PCH lists', ()
   assert.match(cmake, /src\/sh_runtime_lifecycle_script\.h/);
 });
 
-test('native Start click locator cannot target account or authorization controls', () => {
+test('native Stationhead click locator allows only explicit onboarding actions through auth guard', () => {
   const body = section(
     locator,
     'inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed()',
     '}  // namespace hp',
   );
   assert.match(body, /window\.top !== window/);
+  assert.match(body, /allowedOnboardingPattern/);
+  assert.match(body, /connect\(\?:\\s\+with\)\?\\s\+spotify\|continue/);
+  assert.match(body, /labelsOf\(element\)\.some\(label => allowedOnboardingPattern\.test\(label\)\)/);
   assert.match(body, /const accountInteractionVisible = \(\) =>/);
   assert.match(body, /credentialSelector/);
   assert.match(body, /homepanelStationheadBlockingLoginVisible === true/);
-  assert.match(body, /if \(!document\.body \|\| playing\(\) \|\| accountInteractionVisible\(\)\) return null;/);
+  const allowedAt = body.indexOf('allowedOnboardingPattern.test(label)');
+  const authGuardAt = body.indexOf('if (playing() || accountInteractionVisible()) return null;');
+  assert.ok(allowedAt >= 0 && authGuardAt > allowedAt);
   assert.match(body, /login\|signin\|sign-in\|auth\|account\|settings/);
   assert.match(body, /spotify\|authorize\|consent/);
   assert.match(body, /document\.elementFromPoint\(x, y\)/);
