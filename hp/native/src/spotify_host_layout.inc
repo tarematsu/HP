@@ -14,6 +14,23 @@ bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
          left.bottom - left.top == right.bottom - right.top;
 }
 
+bool SpotifyHostActualPositionEqual(
+    HWND hostWindow, HWND parentWindow, int x, int y) noexcept {
+  POINT origin{0, 0};
+  return hostWindow && parentWindow &&
+      ClientToScreen(hostWindow, &origin) &&
+      ScreenToClient(parentWindow, &origin) &&
+      origin.x == x && origin.y == y;
+}
+
+bool SpotifyHostActualSizeEqual(
+    HWND hostWindow, int width, int height) noexcept {
+  RECT client{};
+  return hostWindow && GetClientRect(hostWindow, &client) &&
+      client.right - client.left == width &&
+      client.bottom - client.top == height;
+}
+
 }  // namespace
 
 void SpotifyWebViews::SetMonitorForeground(bool foreground) noexcept {
@@ -30,8 +47,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
   if (!GetClientRect(parentWindow_, &client)) return;
   const int clientWidth = std::max(1L, client.right - client.left);
   const int clientHeight = std::max(1L, client.bottom - client.top);
-  const int activeWidth = std::max(1, clientWidth * 3 / 5);
-  const int activeHeight = std::max(1, clientHeight * 9 / 10);
 
   for (size_t i = 0; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
@@ -40,10 +55,9 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
 
-    // Keep the background renderer large enough for Spotify's desktop-like
-    // responsive controls while cutting its native raster surface to 480x270.
-    // At the existing 0.50 zoom this still exposes roughly a 960x540 CSS
-    // viewport. Monitor C restores the full parent surface for inspection.
+    // Background Spotify is always a real 480x270 HWND (or parent-clamped
+    // smaller). Authentication only changes z-order; it must not silently
+    // enlarge the renderer. Monitor C is the one explicit full-size exception.
     int x = client.left;
     int y = client.top;
     int width = std::min(kSpotifyBackgroundWidth, clientWidth);
@@ -54,20 +68,18 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       height = clientHeight;
       insertAfter = HWND_TOP;
     } else if (authentication) {
-      x = client.left + (clientWidth - activeWidth) / 2;
-      y = client.top + (clientHeight - activeHeight) / 2;
-      width = activeWidth;
-      height = activeHeight;
       insertAfter = HWND_TOP;
     }
 
     const RECT desired{x, y, x + width, y + height};
     const bool positionChanged =
         !slot.hostLayoutApplied ||
-        !SpotifyHostPositionEqual(slot.hostLayoutRect, desired);
+        !SpotifyHostPositionEqual(slot.hostLayoutRect, desired) ||
+        !SpotifyHostActualPositionEqual(slot.hostWindow, parentWindow_, x, y);
     const bool sizeChanged =
         !slot.hostLayoutApplied ||
-        !SpotifyHostSizeEqual(slot.hostLayoutRect, desired);
+        !SpotifyHostSizeEqual(slot.hostLayoutRect, desired) ||
+        !SpotifyHostActualSizeEqual(slot.hostWindow, width, height);
     const bool zOrderChanged =
         !slot.hostLayoutApplied || slot.hostLayoutInsertAfter != insertAfter;
     const bool placementChanged = positionChanged || sizeChanged || zOrderChanged;
@@ -145,6 +157,10 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
 
   if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == recoveryIndex &&
       hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex) {
+    // Recheck actual HWND geometry even when logical layout state is unchanged.
+    // This self-heals any external/full-size resize instead of trusting stale
+    // cached bounds indefinitely.
+    PlaceHosts();
     maintainAuthenticationForeground(false);
     return;
   }
