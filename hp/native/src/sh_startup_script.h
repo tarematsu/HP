@@ -8,16 +8,19 @@ namespace hp {
 
 // Final Stationhead document-start composition. Runtime state, recovery,
 // lifecycle and presentation policies each live in their own responsibility
-// file; this function only defines their execution order.
+// file; this function only defines their execution order. Keep explicit
+// semicolons between IIFEs: a bare newline before the next '(' is not an ASI
+// boundary and can turn the next policy into a call on the previous result.
 inline std::wstring BuildStationheadStartupScript(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
   std::wstring script =
       StationheadCompactRuntimeScript(globalName, messagePrefix);
-  script.push_back(L'\n');
+  script.append(L";\n");
   script.append(StationheadRenderReductionScript());
-  script.push_back(L'\n');
+  script.append(L";\n");
   script.append(StationheadRoomUiReductionScript());
+  script.push_back(L';');
   return script;
 }
 
