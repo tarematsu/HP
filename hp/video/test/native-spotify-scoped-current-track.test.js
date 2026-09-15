@@ -25,14 +25,13 @@ test('reconcile trusts the already-selected target URL instead of re-identifying
   assert.doesNotMatch(scoped, /now-playing-widget|now-playing-bar|context-item-link|navigator\.mediaSession|currentTrack|targetMatches/);
 });
 
-test('target-page Play is preferred and Pause is never clicked', () => {
+test('Spotify Play starts only through the returned trusted-click point', () => {
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /return point\(pagePlay\)/);
-  assert.match(scoped, /isPauseControl\(pagePlay\)\) return true/);
-  assert.match(scoped, /isPauseControl\(playerControl\)\) return 'observing'/);
-  assert.match(scoped, /isPlayControl\(playerControl\)\) return point\(playerControl\)/);
-  assert.doesNotMatch(scoped, /buttonIntent|settling/);
+  assert.match(scoped, /if \(!button\) return null/);
+  assert.match(scoped, /if \(isPauseControl\(button\)\) return true/);
+  assert.match(scoped, /return point\(button\)/);
+  assert.doesNotMatch(scoped, /querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay|buttonIntent|settling/);
 });
 
 test('observer runtime still tolerates localized Spotify track paths for confirmation', () => {
