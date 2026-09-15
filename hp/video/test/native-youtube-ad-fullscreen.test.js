@@ -5,14 +5,19 @@ import { readExpandedNativeSource } from './helpers/read-expanded-native-source.
 const runtime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
-test('YouTube ads settle before fullscreen and skip lookup', () => {
+test('YouTube ads attempt fullscreen immediately before skip lookup', () => {
   const adBranch = runtime.indexOf('if (ad()) {');
   const fullscreen = runtime.indexOf('const action = armFullscreen()', adBranch);
   const skip = runtime.indexOf('const skipSelector =', adBranch);
   const guard = runtime.indexOf("return 'recovery';", skip);
   assert.ok(adBranch >= 0 && fullscreen > adBranch && skip > fullscreen && guard > skip);
-  assert.match(runtime, /state\.adFullscreenReadyAt = now \+ fullscreenSettleMs/);
-  assert.match(runtime, /now >= state\.adFullscreenReadyAt/);
+  assert.doesNotMatch(runtime, /adFullscreenReadyAt|fullscreenSettleMs/);
+});
+
+test('normal YouTube fullscreen has no fixed readiness deadline', () => {
+  assert.doesNotMatch(runtime, /fullscreenReadyAt/);
+  assert.match(runtime, /const fullscreenAction = armFullscreen\(\);/);
+  assert.match(runtime, /if \(fullscreenAction\) return fullscreenAction;/);
 });
 
 test('trusted fullscreen remains valid during ads', () => {
