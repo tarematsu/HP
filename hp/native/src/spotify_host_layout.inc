@@ -1,7 +1,7 @@
 namespace hp {
 namespace {
 
-constexpr double kSpotifyExpandedSurfaceZoom = 0.50;
+constexpr double kSpotifySurfaceZoom = 0.50;
 
 bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top;
@@ -79,8 +79,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     // alive at 1x1 until that target song finishes (including any mid-song ad
     // interruption). Monitor C remains the explicit full-size foreground
     // inspection mode. Authentication keeps its existing foreground surface so
-    // login remains usable. Any host surface larger than 1x1 is zoomed out so
-    // controls are more likely to remain inside the viewport even at small sizes.
+    // login remains usable. The WebView itself always stays zoomed out.
     int x = mediaPanelRect.left;
     int y = mediaPanelRect.top;
     int width = compactPlayback ? 1 : mediaPanelWidth;
@@ -138,10 +137,9 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.controller->put_IsVisible(TRUE);
     }
 
-    const bool reducedZoom = width > 1 || height > 1;
+    constexpr bool reducedZoom = true;
     if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
-      const HRESULT zoomResult = slot.controller->put_ZoomFactor(
-          reducedZoom ? kSpotifyExpandedSurfaceZoom : 1.0);
+      const HRESULT zoomResult = slot.controller->put_ZoomFactor(kSpotifySurfaceZoom);
       if (SUCCEEDED(zoomResult)) {
         slot.hostLayoutReducedZoomApplied = reducedZoom;
       }
