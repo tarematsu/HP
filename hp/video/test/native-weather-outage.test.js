@@ -2,10 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const dashboardHeader = readFileSync(
-  new URL('../../native/src/dashboard_data.h', import.meta.url),
-  'utf8',
-);
 const dashboardParser = readFileSync(
   new URL('../../native/src/dashboard_data.cpp', import.meta.url),
   'utf8',
@@ -15,14 +11,13 @@ const environmentSections = readFileSync(
   'utf8',
 );
 
-test('native weather panel replaces stale forecasts with a prominent outage state', () => {
-  assert.match(dashboardHeader, /bool weatherOutage = false;/);
+test('native weather panel replaces unavailable forecasts with a prominent outage state', () => {
   assert.match(
     dashboardParser,
-    /next\.weatherOutage = json::Text\(weather, L"__status", L"ok"\) != L"ok";/,
+    /if \(json::Text\(weather, L"__status", L"ok"\) == L"ok"\) \{/,
   );
   assert.match(
     environmentSections,
-    /if \(nativeDashboard_\.weatherOutage\) \{[\s\S]*TierFont\(FontTier::Large\)[\s\S]*L"障害中"[\s\S]*return;/,
+    /if \(nativeDashboard_\.weatherHours\.empty\(\)\) \{[\s\S]*TierFont\(FontTier::Large\)[\s\S]*L"障害中"[\s\S]*return;/,
   );
 });

@@ -50,27 +50,24 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
 
     const JsonObject weather = json::Object(root, L"weather");
     next.revisions.weather = SourceRevision(weather);
-    next.weatherOutage = json::Text(weather, L"__status", L"ok") != L"ok";
-    if (CanReuseSection(previous, &DashboardSectionRevisions::weather,
-                        next.revisions.weather)) {
-      next.weatherHours = previous->weatherHours;
-    } else {
-      const JsonObject hourly = json::Object(weather, L"hourly");
-      const double rawStartHour = json::Number(weather, L"startHour", 22);
-      const int startHour = rawStartHour >= 0 && rawStartHour < 24
-          ? static_cast<int>(rawStartHour) : 22;
-      next.weatherHours.reserve(12);
-      for (int offset = 0; offset < 12; ++offset) {
-        const int hour = (startHour + offset) % 24;
-        const std::wstring key = std::to_wstring(hour);
-        const JsonObject item = json::Object(hourly, key.c_str());
-        if (item.Size() == 0) continue;
-        next.weatherHours.push_back({
-            hour,
-            json::Text(item, L"icon"),
-            NumberOrNaN(item, L"temp"),
-            NumberOrNaN(item, L"rainMm"),
-        });
+    if (json::Text(weather, L"__status", L"ok") == L"ok") {
+      if (CanReuseSection(previous, &DashboardSectionRevisions::weather,
+                          next.revisions.weather)) {
+        next.weatherHours = previous->weatherHours;
+      } else {
+        const JsonObject hourly = json::Object(weather, L"hourly");
+        const int startHour = static_cast<int>(json::Number(weather, L"startHour", 22));
+        for (int offset = 0; offset < 12; ++offset) {
+          const int hour = (startHour + offset) % 24;
+          const JsonObject item = json::Object(hourly, std::to_wstring(hour).c_str());
+          if (item.Size() == 0) continue;
+          next.weatherHours.push_back({
+              hour,
+              json::Text(item, L"icon"),
+              NumberOrNaN(item, L"temp"),
+              NumberOrNaN(item, L"rainMm"),
+          });
+        }
       }
     }
 

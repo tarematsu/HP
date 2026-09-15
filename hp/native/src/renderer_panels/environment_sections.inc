@@ -97,7 +97,7 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT body = CardContentRect(card);
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  if (nativeDashboard_.weatherOutage) {
+  if (nativeDashboard_.weatherHours.empty()) {
     SelectObject(dc, TierFont(FontTier::Large));
     SetTextColor(dc, kWidgetDanger);
     DrawTextInRect(dc, L"障害中", body, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
@@ -142,7 +142,7 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
       const int iconTop = iconSlot.top + (iconSlotHeight - iconHeight) / 2;
       const RECT iconRect{iconLeft, iconTop, iconLeft + iconWidth, iconTop + iconHeight};
       DrawPremultipliedBitmap(dc,
-          NativeWeatherIconBitmap(hourData.icon, IsWeatherNightHour(hourData.hour),
+          NativeWeatherIconBitmap(hourData.icon, hourData.hour < 6 || hourData.hour >= 18,
                                   iconWidth, iconHeight),
           iconRect);
     }

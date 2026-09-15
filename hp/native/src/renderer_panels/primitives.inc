@@ -182,10 +182,6 @@ std::wstring NumberOrDash(double value, int digits = 0) {
   return Fixed(value, digits);
 }
 
-bool IsWeatherNightHour(int hour) {
-  return hour < 6 || hour >= 18;
-}
-
 template <typename ValueOf>
 void DrawHistoryLine(HDC dc, const std::vector<AirHistorySample>& samples, const RECT& plot,
                      int64_t cutoff, int64_t spanMs, double minValue, double maxValue,
