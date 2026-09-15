@@ -100,7 +100,6 @@ class SpotifyWebViews final {
     SlotState state = SlotState::NotCreated;
     AsyncWork asyncWork = AsyncWork::None;
     bool controllerCreating = false;
-    bool playerPage = false;
     bool loginPage = false;
     bool timedObserverReady = false;
     bool timedRotationActive = false;
