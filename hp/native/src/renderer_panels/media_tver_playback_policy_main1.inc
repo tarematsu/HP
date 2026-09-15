@@ -25,13 +25,15 @@ LR"JS(
     return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
   });
   const isExitFullscreenControl = element => {
+    if (!visible(element)) return false;
     const label = labelOf(element).toLowerCase();
     return /全画面を終了|全画面解除|フルスクリーンを終了/.test(label) ||
         label.includes('exit fullscreen');
   };
   const isEnterFullscreenControl = element => {
-    if (!visible(element) || isExitFullscreenControl(element)) return false;
+    if (!visible(element)) return false;
     const label = labelOf(element).toLowerCase();
+    if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
     return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
   };
   const point = element => {
