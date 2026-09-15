@@ -87,6 +87,7 @@ void Renderer::Initialize() {
   }
 
   try {
+    LoadSwitchBot(dataDir_ / L"switchbot.json");
     PrepareParentWindow(window_);
     if (!EnsureNativeStaticWindows()) {
       throw std::runtime_error("native dashboard window initialization failed");

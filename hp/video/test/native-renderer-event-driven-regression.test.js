@@ -68,10 +68,10 @@ test('sensor notifications update renderer directly without aggregate publicatio
   assert.doesNotMatch(sensorCase, /renderState_|PublishRenderState/);
 
   const switchBotCase = appMessages.match(
-    /case WM_HP_SWITCHBOT_UPDATED:[\s\S]*?return 0;\s*\}/,
+    /case WM_HP_SWITCHBOT_UPDATED:[\s\S]*?return 0;/,
   )?.[0] ?? '';
-  assert.match(switchBotCase, /renderer_->UpdateSensors\(sensors_->Snapshot\(\)\)/);
-  assert.doesNotMatch(switchBotCase, /renderState_|PublishRenderState/);
+  assert.match(switchBotCase, /renderer_->LoadSwitchBot\(dataDir_ \/ L"switchbot\.json"\)/);
+  assert.doesNotMatch(switchBotCase, /UpdateSensors|sensors_->Snapshot|renderState_|PublishRenderState/);
 });
 
 test('air history owns its vector and pushes only history changes to renderer', () => {

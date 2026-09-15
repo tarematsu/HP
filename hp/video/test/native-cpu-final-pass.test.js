@@ -7,6 +7,8 @@ const source = name => readFileSync(
 
 const runtime = source('spotify_media_observer_runtime.inc');
 const panelState = source('renderer_panel_state.cpp');
+const lifecycle = source('renderer_lifecycle.cpp');
+const appMessages = source('app_messages.cpp');
 
 test('Spotify identity adoption uses one immediate check plus one coalesced fallback', () => {
   assert.match(runtime, /const enforceTarget = media =>/);
@@ -17,15 +19,12 @@ test('Spotify identity adoption uses one immediate check plus one coalesced fall
   assert.doesNotMatch(runtime, /forEach\(delay =>/);
 });
 
-test('SwitchBot cache is refreshed by sensor/update events instead of the one-second clock timer', () => {
-  const updateStart = panelState.indexOf('void Renderer::UpdateSensors');
-  const airStart = panelState.indexOf('void Renderer::UpdateAirHistory', updateStart);
-  const updateSensors = panelState.slice(updateStart, airStart);
+test('SwitchBot cache uses startup and update events instead of the one-second clock timer', () => {
   const tickStart = panelState.indexOf('void Renderer::TickNativePanels');
   const tick = panelState.slice(tickStart);
 
-  assert.match(updateSensors, /LoadSwitchBot\(dataDir_ \/ L"switchbot\.json"\)/);
-  assert.doesNotMatch(panelState, /kSwitchBotPanelProbeMs/);
-  assert.doesNotMatch(panelState, /nextSwitchBotProbeAt/);
+  assert.match(lifecycle, /LoadSwitchBot\(dataDir_ \/ L"switchbot\.json"\)/);
+  assert.match(appMessages, /case WM_HP_SWITCHBOT_UPDATED:[\s\S]*renderer_->LoadSwitchBot/);
+  assert.doesNotMatch(panelState, /kSwitchBotPanelProbeMs|nextSwitchBotProbeAt|LoadSwitchBot/);
   assert.doesNotMatch(tick, /LoadSwitchBot/);
 });

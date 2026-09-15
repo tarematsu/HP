@@ -1,9 +1,3 @@
-
-
-
-
-
-
 #include "sensors.h"
 #include <limits>
 #include <winrt/Windows.Data.Json.h>
@@ -14,7 +8,6 @@ constexpr uint64_t kMaxTelemetrySequence = 9'007'199'254'740'990ULL;
 }
 
 bool SensorHub::AppendOutbox(const Sample& sample) {
-  if (!SampleValuesValid(sample)) return false;
   std::lock_guard lock(mutex_);
   const std::string line = SampleJson(sample) + "\n";
   HANDLE file = CreateFileW(outboxPath_.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ, nullptr,
@@ -26,7 +19,6 @@ bool SensorHub::AppendOutbox(const Sample& sample) {
   CloseHandle(file);
   if (!ok) return false;
   outbox_.push_back(sample);
-  state_.outboxCount = outbox_.size();
   return true;
 }
 
@@ -61,7 +53,6 @@ void SensorHub::LoadOutbox() {
       repairNeeded = true;
     }
   }
-  state_.outboxCount = outbox_.size();
   if (repairNeeded) {
     if (RewriteOutboxLocked(outbox_)) log_.Warn(L"Removed invalid CO2 records from telemetry outbox");
     else log_.Warn(L"Failed to repair invalid CO2 telemetry outbox");
@@ -72,10 +63,6 @@ bool SensorHub::RewriteOutboxLocked(const std::deque<Sample>& samples) {
   std::ostringstream text;
   for (const auto& sample : samples) text << SampleJson(sample) << '\n';
   return AtomicWriteText(outboxPath_, text.str());
-}
-
-bool SensorHub::WriteAcknowledgedSequenceLocked(uint64_t sequence) {
-  return AtomicWriteText(outboxAckPath_, std::to_string(sequence));
 }
 
 void SensorHub::CompactOutboxLocked() {
@@ -89,14 +76,15 @@ void SensorHub::CompactOutboxLocked() {
   acknowledgedSinceCompaction_ = 0;
 }
 
-std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId, const std::string& appVersion,
-                                             bool stationheadOk, size_t maxSamples) {
+std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId,
+                                             const std::string& appVersion) {
   std::lock_guard lock(mutex_);
   std::ostringstream out;
   out << "{\"deviceId\":\"" << EscapeJson(WideToUtf8(deviceId)) << "\",\"appVersion\":\""
-      << EscapeJson(appVersion) << "\",\"stationheadOk\":" << (stationheadOk ? "true" : "false")
-      << ",\"outboxCount\":" << outbox_.size() << ",\"samples\":[";
-  const size_t count = std::min(maxSamples, outbox_.size());
+      << EscapeJson(appVersion)
+      << "\",\"stationheadOk\":false,\"outboxCount\":" << outbox_.size()
+      << ",\"samples\":[";
+  const size_t count = std::min<size_t>(60, outbox_.size());
   for (size_t i = 0; i < count; ++i) {
     if (i) out << ',';
     out << SampleJson(outbox_[i]);
@@ -153,7 +141,7 @@ void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedS
   }
   bool acknowledgementPersisted = true;
   if (persistedAck > acknowledgedSequence_) {
-    acknowledgementPersisted = WriteAcknowledgedSequenceLocked(persistedAck);
+    acknowledgementPersisted = AtomicWriteText(outboxAckPath_, std::to_string(persistedAck));
     if (!acknowledgementPersisted) {
       log_.Warn(L"Failed to persist the telemetry acknowledgement high-water mark");
     }
@@ -171,7 +159,6 @@ void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedS
   }
   acknowledgedSequence_ = std::max(acknowledgedSequence_, persistedAck);
   nextSequence_ = std::max(nextSequence_, candidate);
-  state_.outboxCount = outbox_.size();
   if (rebased > 0) {
     log_.Warn(L"Rebased " + std::to_wstring(rebased) +
               L" telemetry samples above the server sequence high-water mark");

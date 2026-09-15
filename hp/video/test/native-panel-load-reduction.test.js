@@ -22,6 +22,18 @@ const panelState = readFileSync(
   new URL('../../native/src/renderer_panel_state.cpp', import.meta.url),
   'utf8',
 );
+const lifecycle = readFileSync(
+  new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url),
+  'utf8',
+);
+const appMessages = readFileSync(
+  new URL('../../native/src/app_messages.cpp', import.meta.url),
+  'utf8',
+);
+const sensorHeader = readFileSync(
+  new URL('../../native/src/sensors.h', import.meta.url),
+  'utf8',
+);
 const panelWindows = readFileSync(
   new URL('../../native/src/renderer_panels/windows.inc', import.meta.url),
   'utf8',
@@ -79,7 +91,7 @@ test('air sensor values and five-minute history update renderer independently', 
   assert.match(panelWindows, /RearrangedAirGraphRectFromCard\(sections\.controls\)/);
 });
 
-test('Octopus and SwitchBot own independent invalidation paths', () => {
+test('SwitchBot owns an independent renderer path instead of SensorHub state', () => {
   assert.match(
     dashboardLoader,
     /if \(weatherChanged\) \{\s*InvalidatePanelSection\(nativeSideWindow_, PanelSection::Weather\);/s,
@@ -95,7 +107,10 @@ test('Octopus and SwitchBot own independent invalidation paths', () => {
     /rowCountChanged \? PanelSection::Energy : PanelSection::EnergySwitchBot/s,
   );
   assert.doesNotMatch(dashboardLoader, /revisions\.switchbot|PlugRows\(/);
-  assert.match(panelState, /LoadSwitchBot\(dataDir_ \/ L"switchbot\.json"\)/);
+  assert.match(lifecycle, /LoadSwitchBot\(dataDir_ \/ L"switchbot\.json"\)/);
+  assert.match(appMessages, /case WM_HP_SWITCHBOT_UPDATED:[\s\S]*renderer_->LoadSwitchBot/);
+  assert.doesNotMatch(panelState, /LoadSwitchBot/);
+  assert.doesNotMatch(sensorHeader, /PresenceState|ApplyCloudSwitchBot|switchbotPath_|outboxCount|lastError/);
   assert.doesNotMatch(rendererHeader, /renderedDashboardRevisions_|dashboardRevisions_/);
 });
 
