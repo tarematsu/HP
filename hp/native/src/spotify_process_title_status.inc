@@ -69,23 +69,22 @@ void SpotifyWebViews::RefreshProcessTitleStatus(
     return;
   }
   CoTaskMemFree(rawTitle);
-  const bool observed = !display.empty();
-  const bool visibleStateChanged = slot.processTitleObserved != observed ||
-      slot.processTrackDisplay != display;
+
+  // Spotify can briefly expose a generic document title while the WebView is
+  // navigating, backgrounded, or re-rendering. Do not erase the last known
+  // track on that transient state; the periodic watchdog below will refresh it
+  // as soon as a valid track title is observable again.
+  if (display.empty()) return;
+
   slot.processTrackDisplay = std::move(display);
-  slot.processTitleObserved = observed;
-  if (observed) {
-    GetLocalTime(&slot.processTitleObservedAt);
-  } else {
-    slot.processTitleObservedAt = {};
-  }
-  if (!visibleStateChanged && !observed) return;
+  slot.processTitleObserved = true;
+  GetLocalTime(&slot.processTitleObservedAt);
   InvalidateSpotifyStatusForHost(slot.hostWindow);
 }
 
 void SpotifyWebViews::PollProcessTitleStatusFallback(ULONGLONG now) noexcept {
   for (Slot& slot : slots_) {
-    if (slot.processTitleEventRegistered || !slot.webview) continue;
+    if (!slot.webview) continue;
     if (slot.nextProcessTitlePollTick != 0 && now < slot.nextProcessTitlePollTick) {
       continue;
     }
