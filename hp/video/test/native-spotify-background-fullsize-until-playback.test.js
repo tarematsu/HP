@@ -10,15 +10,12 @@ const rotation = source('spotify_timed_end_rotation.inc');
 const click = source('spotify_background_click.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('Spotify uses 480x270 only for initial/recovery work, offscreen later transitions, and full-size Monitor C', () => {
+test('Spotify uses 480x270 for startup and every non-playing transition, offscreen while Playing, and full-size Monitor C', () => {
   assert.match(layout, /kSpotifyBackgroundWidth = 480/);
   assert.match(layout, /kSpotifyBackgroundHeight = 270/);
   assert.match(layout, /const int x = client\.left/);
   assert.match(layout, /const int y = client\.top/);
-  assert.match(
-    layout,
-    /const bool backgroundWork =\s*slot\.state == SlotState::Recovering \|\|\s*\(slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)\)/,
-  );
+  assert.match(layout, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\)/);
   assert.match(layout, /int hostX = backgroundWork \|\| authentication \? x : client\.right \+ 1/);
   assert.match(layout, /int hostY = backgroundWork \|\| authentication \? y : client\.bottom \+ 1/);
   assert.match(layout, /int width = std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
@@ -38,20 +35,19 @@ test('real media start records playback confirmation and parks stable playback o
   const startBranch = rotation.slice(confirmed, recompute + 'RecomputeForeground();'.length);
   assert.match(startBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
   assert.match(startBranch, /SetMusicCompletionDeadline/);
-  assert.doesNotMatch(layout, /playbackConfirmed[\s\S]*\? 1/);
 });
 
-test('ad interruption keeps confirmed playback state until the target song ends', () => {
+test('ad interruption returns Spotify from offscreen playback to the background surface', () => {
   const interrupted = rotation.indexOf('if (interrupted) {');
   const ended = rotation.indexOf('if (ended) {', interrupted);
   assert.ok(interrupted >= 0 && ended > interrupted);
   const branch = rotation.slice(interrupted, ended);
   assert.match(branch, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
   assert.match(branch, /RecomputeForeground\(\)/);
-  assert.doesNotMatch(branch, /playbackConfirmed = false/);
+  assert.match(layout, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\)/);
 });
 
-test('track advance clears per-track confirmation without bringing generation 2+ back onscreen', () => {
+test('normal track advance leaves Playing and therefore returns the host to 480x270 background until the next start', () => {
   const applyStart = rotation.indexOf('void SpotifyWebViews::ApplyTimedRotationTarget');
   const applyEnd = rotation.indexOf('\nvoid SpotifyWebViews::InitializeTimedRotationSlot', applyStart);
   assert.ok(applyStart >= 0 && applyEnd > applyStart);
@@ -59,10 +55,7 @@ test('track advance clears per-track confirmation without bringing generation 2+
   assert.match(apply, /slot\.playbackConfirmed = false/);
   assert.match(apply, /BumpSpotifyTargetGeneration\(slot\)/);
   assert.match(apply, /SetSlotState\(slot, SlotState::WaitingTarget\)/);
-  assert.match(
-    layout,
-    /slot\.targetGeneration <= 1 && !SlotStateIsHealthy\(slot\.state\)/,
-  );
+  assert.match(layout, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\)/);
 
   const probeStart = schedule.indexOf('ProbeDueTimedCompletions(now);');
   const layoutRefresh = schedule.indexOf('RefreshSpotifyHostLayout();', probeStart);

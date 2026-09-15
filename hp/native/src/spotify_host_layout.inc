@@ -37,15 +37,13 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
-    const bool backgroundWork =
-        slot.state == SlotState::Recovering ||
-        (slot.targetGeneration <= 1 && !SlotStateIsHealthy(slot.state));
+    const bool backgroundWork = !SlotStateIsHealthy(slot.state);
 
-    // Initial startup/navigation uses a real 480x270 surface behind the
-    // dashboard so Spotify can finish bootstrapping. Once the first managed
-    // target has completed, ordinary track-to-track Navigating/WaitingTarget
-    // transitions stay parked offscreen. Only explicit Recovering work returns
-    // the surface behind the dashboard; authentication still comes to front.
+    // Match the Stationhead placement model: startup/navigation/recovery work
+    // keeps a real 480x270 surface inside the client area behind the dashboard,
+    // confirmed authentication moves that surface to the foreground, and stable
+    // playback is parked completely outside the client area. Monitor C is the
+    // only mode that expands Spotify to the full client area.
     const int x = client.left;
     const int y = client.top;
     int hostX = backgroundWork || authentication ? x : client.right + 1;
@@ -117,13 +115,9 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   unsigned mask = 0;
   size_t foregroundAuthenticationIndex = slots_.size();
   for (size_t i = 0; i < slots_.size(); ++i) {
-    const Slot& slot = slots_[i];
-    const bool backgroundWork =
-        slot.state == SlotState::Recovering ||
-        (slot.targetGeneration <= 1 && !SlotStateIsHealthy(slot.state));
-    if (backgroundWork) mask |= (1u << i);
-    if (foregroundAuthenticationIndex == slots_.size() && slot.webview &&
-        SlotIsLoginPage(slot)) {
+    if (!SlotStateIsHealthy(slots_[i].state)) mask |= (1u << i);
+    if (foregroundAuthenticationIndex == slots_.size() && slots_[i].webview &&
+        SlotIsLoginPage(slots_[i])) {
       foregroundAuthenticationIndex = i;
     }
   }
