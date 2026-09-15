@@ -7,7 +7,7 @@ const helper = read('../../native/src/webview_startup_cache_reset.h');
 const stationhead = read('../../native/src/sh.cpp');
 const spotifyFoundation = read('../../native/src/spotify_webview_foundation.inc');
 const spotifyLifecycle = read('../../native/src/spotify_controller_lifecycle.inc');
-const mediaSection = read('../../native/src/renderer_panels/media_section.inc');
+const rendererPanels = read('../../native/src/renderer_panels.cpp');
 const mediaHost = read('../../native/src/renderer_panels/media_host.inc');
 
 test('startup reset removes only transient WebView cache state', () => {
@@ -41,7 +41,7 @@ test('Spotify waits for startup cache reset before its first navigation', () => 
 });
 
 test('YouTube/TVer reset startup caches once per controller, not on phase switches', () => {
-  assert.match(mediaSection, /#include "\.\.\/webview_startup_cache_reset\.h"/);
+  assert.match(rendererPanels, /#include "webview_startup_cache_reset\.h"/);
   const configure = mediaHost.indexOf('void Configure() noexcept');
   const switchYoutube = mediaHost.indexOf('void SwitchToYouTube() noexcept');
   const reset = mediaHost.indexOf('ResetWebViewStartupCaches(', configure);
