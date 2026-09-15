@@ -117,67 +117,310 @@ bool Course36AddDays(const SYSTEMTIME& source, int days, SYSTEMTIME& result) {
   return FileTimeToSystemTime(&fileTime, &result) != FALSE;
 }
 
-const wchar_t* Course36ClockWasteLabel(Course36WasteKind kind) {
-  switch (kind) {
-    case Course36WasteKind::BottlesCansPet: return L"びんかん";
-    case Course36WasteKind::NonBurnableHazardous: return L"不燃有害";
-    case Course36WasteKind::Paper: return L"紙類";
-    default: return L"";
-  }
-}
+struct Course36ClockWasteNotice {
+  Course36WasteKind kind = Course36WasteKind::None;
+  SYSTEMTIME date{};
+  bool hasDate = false;
+};
 
-const std::wstring& Course36ClockWasteSummary(const SYSTEMTIME& now) {
+constexpr std::array<Course36WasteKind, 3> kCourse36ClockWasteKinds{{
+    Course36WasteKind::BottlesCansPet,
+    Course36WasteKind::NonBurnableHazardous,
+    Course36WasteKind::Paper,
+}};
+
+const std::array<Course36ClockWasteNotice, 3>& Course36ClockWasteNotices(
+    const SYSTEMTIME& now) {
   struct Cache {
     WORD year = 0;
     WORD month = 0;
     WORD day = 0;
-    std::wstring text;
+    std::array<Course36ClockWasteNotice, 3> notices{};
   };
   static Cache cache;
-  if (cache.year == now.wYear && cache.month == now.wMonth && cache.day == now.wDay) {
-    return cache.text;
+  if (cache.year == now.wYear && cache.month == now.wMonth &&
+      cache.day == now.wDay) {
+    return cache.notices;
   }
 
   cache.year = now.wYear;
   cache.month = now.wMonth;
   cache.day = now.wDay;
-  cache.text.clear();
+  cache.notices = {};
 
-  bool foundBottlesCans = false;
-  bool foundNonBurnableHazardous = false;
-  bool foundPaper = false;
-  int foundCount = 0;
+  std::array<bool, 3> found{};
+  size_t foundCount = 0;
   constexpr int kSearchDays = 62;
-
-  for (int offset = 0; offset <= kSearchDays && foundCount < 2; ++offset) {
+  for (int offset = 0; offset <= kSearchDays && foundCount < 3; ++offset) {
     SYSTEMTIME date{};
     if (!Course36AddDays(now, offset, date)) break;
     const Course36WasteKind kind = Course36WasteForDate(date);
 
-    bool* found = nullptr;
-    switch (kind) {
-      case Course36WasteKind::BottlesCansPet:
-        found = &foundBottlesCans;
+    size_t kindIndex = kCourse36ClockWasteKinds.size();
+    for (size_t index = 0; index < kCourse36ClockWasteKinds.size(); ++index) {
+      if (kCourse36ClockWasteKinds[index] == kind) {
+        kindIndex = index;
         break;
-      case Course36WasteKind::NonBurnableHazardous:
-        found = &foundNonBurnableHazardous;
-        break;
-      case Course36WasteKind::Paper:
-        found = &foundPaper;
-        break;
-      default:
-        continue;
+      }
     }
-    if (*found) continue;
-    *found = true;
-    ++foundCount;
+    if (kindIndex >= found.size() || found[kindIndex]) continue;
 
-    wchar_t item[40]{};
-    swprintf_s(item, L"%d日後 %ls", offset, Course36ClockWasteLabel(kind));
-    if (!cache.text.empty()) cache.text += L"　";
-    cache.text += item;
+    found[kindIndex] = true;
+    cache.notices[foundCount++] = Course36ClockWasteNotice{kind, date, true};
   }
-  return cache.text;
+
+  // Keep the strip at three entries even when the published calendar no longer
+  // contains a future date for one or more categories.
+  for (size_t index = 0; index < kCourse36ClockWasteKinds.size(); ++index) {
+    if (found[index] || foundCount >= cache.notices.size()) continue;
+    cache.notices[foundCount++].kind = kCourse36ClockWasteKinds[index];
+  }
+  return cache.notices;
+}
+
+std::wstring Course36ClockWasteDateText(const Course36ClockWasteNotice& notice) {
+  if (!notice.hasDate) return L"--/--";
+  wchar_t text[16]{};
+  swprintf_s(text, L"%u/%u", static_cast<unsigned>(notice.date.wMonth),
+             static_cast<unsigned>(notice.date.wDay));
+  return text;
+}
+
+int Course36ClockWasteImageIndex(Course36WasteKind kind) {
+  switch (kind) {
+    case Course36WasteKind::BottlesCansPet: return 0;
+    case Course36WasteKind::NonBurnableHazardous: return 1;
+    case Course36WasteKind::Paper: return 2;
+    default: return -1;
+  }
+}
+
+constexpr std::array<const wchar_t*, 3> kCourse36ClockWasteImageUrls{{
+    L"https://www.city.kawagoe.saitama.jp/_res/projects/default_project/_page_/001/002/393/bin_kan_1.jpg",
+    L"https://www.city.kawagoe.saitama.jp/_res/projects/default_project/_page_/001/002/395/yuugai_1.jpg",
+    L"https://www.city.kawagoe.saitama.jp/_res/projects/default_project/_page_/001/002/388/kami_1.jpg",
+}};
+
+struct Course36ClockWasteImageAsset {
+  enum class State { Empty, Loading, Ready, Failed };
+
+  ~Course36ClockWasteImageAsset() {
+    for (const auto& item : bitmaps) {
+      if (item.second) DeleteObject(item.second);
+    }
+  }
+
+  std::mutex mutex;
+  State state = State::Empty;
+  std::vector<uint8_t> bytes;
+  std::map<uint64_t, HBITMAP> bitmaps;
+};
+
+const std::array<std::shared_ptr<Course36ClockWasteImageAsset>, 3>&
+Course36ClockWasteImageAssets() {
+  static const std::array<std::shared_ptr<Course36ClockWasteImageAsset>, 3> assets{{
+      std::make_shared<Course36ClockWasteImageAsset>(),
+      std::make_shared<Course36ClockWasteImageAsset>(),
+      std::make_shared<Course36ClockWasteImageAsset>(),
+  }};
+  return assets;
+}
+
+void Course36RequestWasteImage(
+    const std::shared_ptr<Course36ClockWasteImageAsset>& asset,
+    const wchar_t* url) {
+  if (!asset || !url || !*url) return;
+  {
+    std::lock_guard lock(asset->mutex);
+    if (asset->state != Course36ClockWasteImageAsset::State::Empty) return;
+    asset->state = Course36ClockWasteImageAsset::State::Loading;
+  }
+
+  // Keep city-owned illustrations out of this repository. Fetch the official
+  // image at runtime for the local dashboard and retain only an in-memory copy.
+  std::thread([asset, url = std::wstring(url)] {
+    std::vector<uint8_t> bytes;
+    std::wstring contentType;
+    const bool downloaded = WinHttpDownload(
+        url.c_str(), 4U * 1024U * 1024U, &bytes, &contentType) &&
+        contentType.rfind(L"image/", 0) == 0;
+    {
+      std::lock_guard lock(asset->mutex);
+      if (downloaded) asset->bytes = std::move(bytes);
+      asset->state = downloaded
+          ? Course36ClockWasteImageAsset::State::Ready
+          : Course36ClockWasteImageAsset::State::Failed;
+    }
+
+    HWND root = FindWindowW(L"HomePanelNativeWindow", nullptr);
+    HWND side = root ? GetDlgItem(root, kNativeSideId) : nullptr;
+    if (side && IsWindow(side)) InvalidateRect(side, nullptr, FALSE);
+  }).detach();
+}
+
+HBITMAP Course36ClockWasteImageBitmap(
+    Course36WasteKind kind, int width, int height) {
+  const int index = Course36ClockWasteImageIndex(kind);
+  if (index < 0 || width <= 0 || height <= 0) return nullptr;
+  const auto& asset = Course36ClockWasteImageAssets()[static_cast<size_t>(index)];
+
+  bool request = false;
+  {
+    std::lock_guard lock(asset->mutex);
+    if (asset->state == Course36ClockWasteImageAsset::State::Empty) request = true;
+    if (asset->state == Course36ClockWasteImageAsset::State::Ready) {
+      const uint64_t key = (static_cast<uint64_t>(static_cast<uint32_t>(width)) << 32) |
+          static_cast<uint32_t>(height);
+      const auto found = asset->bitmaps.find(key);
+      if (found != asset->bitmaps.end()) return found->second;
+      HBITMAP bitmap = DecodeImageBytesToBitmap(
+          asset->bytes.data(), asset->bytes.size(), width, height);
+      if (bitmap) asset->bitmaps.emplace(key, bitmap);
+      return bitmap;
+    }
+  }
+  if (request) {
+    Course36RequestWasteImage(
+        asset, kCourse36ClockWasteImageUrls[static_cast<size_t>(index)]);
+  }
+  return nullptr;
+}
+
+void DrawCourse36WasteFallbackPictogram(
+    HDC dc, Course36WasteKind kind, const RECT& rect) {
+  const int width = std::max(1L, rect.right - rect.left);
+  const int height = std::max(1L, rect.bottom - rect.top);
+  const int stroke = std::clamp(std::min(width, height) / 12, 1, 3);
+  HGDIOBJ previousPen = SelectObject(dc, CachedPen(PS_SOLID, stroke, kWidgetText));
+  HGDIOBJ previousBrush = SelectObject(dc, GetStockObject(HOLLOW_BRUSH));
+
+  const int left = rect.left;
+  const int top = rect.top;
+  const int right = rect.right;
+  const int bottom = rect.bottom;
+  const int cx = (left + right) / 2;
+  const int cy = (top + bottom) / 2;
+
+  switch (kind) {
+    case Course36WasteKind::BottlesCansPet: {
+      const int bottleLeft = left + width * 14 / 100;
+      const int bottleRight = left + width * 46 / 100;
+      const int neckInset = std::max(1, (bottleRight - bottleLeft) / 4);
+      RECT bottleBody{bottleLeft, top + height * 32 / 100,
+                      bottleRight, bottom - height * 8 / 100};
+      RoundRect(dc, bottleBody.left, bottleBody.top, bottleBody.right,
+                bottleBody.bottom, stroke * 3, stroke * 3);
+      Rectangle(dc, bottleLeft + neckInset, top + height * 10 / 100,
+                bottleRight - neckInset, bottleBody.top + stroke);
+      RECT can{left + width * 58 / 100, top + height * 22 / 100,
+               right - width * 10 / 100, bottom - height * 8 / 100};
+      RoundRect(dc, can.left, can.top, can.right, can.bottom,
+                stroke * 4, stroke * 4);
+      MoveToEx(dc, can.left + stroke, can.top + height / 7, nullptr);
+      LineTo(dc, can.right - stroke, can.top + height / 7);
+      break;
+    }
+    case Course36WasteKind::NonBurnableHazardous: {
+      RECT battery{left + width * 8 / 100, cy - height * 18 / 100,
+                   cx - width * 4 / 100, cy + height * 18 / 100};
+      Rectangle(dc, battery.left, battery.top, battery.right, battery.bottom);
+      const int terminalWidth = std::max(2, width / 14);
+      Rectangle(dc, battery.right, cy - terminalWidth,
+                battery.right + terminalWidth, cy + terminalWidth);
+      RECT bulb{cx + width * 4 / 100, top + height * 8 / 100,
+                right - width * 8 / 100, top + height * 62 / 100};
+      Ellipse(dc, bulb.left, bulb.top, bulb.right, bulb.bottom);
+      const int stemLeft = bulb.left + (bulb.right - bulb.left) * 30 / 100;
+      const int stemRight = bulb.right - (bulb.right - bulb.left) * 30 / 100;
+      MoveToEx(dc, stemLeft, bulb.bottom, nullptr);
+      LineTo(dc, stemLeft, bottom - height * 10 / 100);
+      MoveToEx(dc, stemRight, bulb.bottom, nullptr);
+      LineTo(dc, stemRight, bottom - height * 10 / 100);
+      MoveToEx(dc, stemLeft, bottom - height * 10 / 100, nullptr);
+      LineTo(dc, stemRight, bottom - height * 10 / 100);
+      break;
+    }
+    case Course36WasteKind::Paper: {
+      const int insetX = width * 12 / 100;
+      const int insetY = height * 10 / 100;
+      for (int layer = 2; layer >= 0; --layer) {
+        const int offset = layer * std::max(1, stroke * 2);
+        Rectangle(dc, left + insetX + offset, top + insetY + offset,
+                  right - insetX, bottom - insetY);
+      }
+      const int lineLeft = left + width * 28 / 100;
+      const int lineRight = right - width * 20 / 100;
+      for (int row = 0; row < 3; ++row) {
+        const int y = top + height * (34 + row * 16) / 100;
+        MoveToEx(dc, lineLeft, y, nullptr);
+        LineTo(dc, lineRight, y);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+
+  SelectObject(dc, previousBrush);
+  SelectObject(dc, previousPen);
+}
+
+void DrawCourse36WasteBitmap(HDC dc, HBITMAP bitmap, const RECT& rect) {
+  if (!bitmap || rect.right <= rect.left || rect.bottom <= rect.top) return;
+  HDC sourceDc = SourceMemoryDc(dc);
+  if (!sourceDc) return;
+  HGDIOBJ previous = SelectObject(sourceDc, bitmap);
+  if (!previous || previous == HGDI_ERROR) return;
+  BitBlt(dc, rect.left, rect.top, rect.right - rect.left,
+         rect.bottom - rect.top, sourceDc, 0, 0, SRCCOPY);
+  SelectObject(sourceDc, previous);
+}
+
+void DrawCourse36ClockWasteNotices(
+    HDC dc, const SYSTEMTIME& now, const RECT& rect) {
+  if (!dc || rect.right <= rect.left || rect.bottom <= rect.top) return;
+  const auto& notices = Course36ClockWasteNotices(now);
+  const int width = std::max(1L, rect.right - rect.left);
+  const int height = std::max(1L, rect.bottom - rect.top);
+  const int gap = std::max(2, width * 12 / 1000);
+  const int availableWidth = std::max(3, width - gap * 2);
+  const int baseCellWidth = availableWidth / 3;
+  const int dateHeight = std::clamp(height * 36 / 100, 12, 18);
+  const int iconTopGap = std::max(1, height * 4 / 100);
+
+  HGDIOBJ previousFont = SelectObject(
+      dc, CachedUiFont(std::clamp(dateHeight * 80 / 100, 10, 15), FW_SEMIBOLD));
+  SetTextColor(dc, kWidgetText);
+
+  for (size_t index = 0; index < notices.size(); ++index) {
+    const LONG cellLeft = rect.left +
+        static_cast<LONG>(index) * (baseCellWidth + gap);
+    const LONG cellRight = index + 1 == notices.size()
+        ? rect.right
+        : cellLeft + baseCellWidth;
+    RECT dateRect{cellLeft, rect.top, cellRight, rect.top + dateHeight};
+    DrawTextInRect(dc, Course36ClockWasteDateText(notices[index]), dateRect,
+                   DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+    RECT iconArea{cellLeft, dateRect.bottom + iconTopGap, cellRight, rect.bottom};
+    const int areaWidth = std::max(1L, iconArea.right - iconArea.left);
+    const int areaHeight = std::max(1L, iconArea.bottom - iconArea.top);
+    const int iconWidth = std::max(1, areaWidth * 78 / 100);
+    const int iconHeight = std::max(1, areaHeight * 92 / 100);
+    RECT iconRect{
+        iconArea.left + (areaWidth - iconWidth) / 2,
+        iconArea.top + (areaHeight - iconHeight) / 2,
+        iconArea.left + (areaWidth - iconWidth) / 2 + iconWidth,
+        iconArea.top + (areaHeight - iconHeight) / 2 + iconHeight,
+    };
+
+    HBITMAP bitmap = Course36ClockWasteImageBitmap(
+        notices[index].kind, iconWidth, iconHeight);
+    if (bitmap) DrawCourse36WasteBitmap(dc, bitmap, iconRect);
+    else DrawCourse36WasteFallbackPictogram(dc, notices[index].kind, iconRect);
+  }
+
+  SelectObject(dc, previousFont);
 }
 
 }  // namespace
