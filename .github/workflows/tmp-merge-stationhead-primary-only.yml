@@ -20,6 +20,8 @@ jobs:
       - name: Merge current main
         shell: bash
         run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git fetch origin main
           set +e
           git merge --no-commit --no-ff origin/main
@@ -49,7 +51,5 @@ jobs:
           rm -f .github/workflows/tmp-merge-stationhead-primary-only.yml
           git add -A
           git diff --cached --check
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git commit -m "Merge main into Stationhead primary-only refactor"
           git push origin HEAD:refactor/stationhead-primary-only
