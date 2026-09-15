@@ -1,5 +1,5 @@
-bool SpotifyWebViews::ParseNormalizedPoint(
-    LPCWSTR json, int* x, int* y) noexcept {
+bool SpotifyWebViews::ParseCssPoint(
+    LPCWSTR json, double* x, double* y) noexcept {
   if (!json || !x || !y) return false;
   try {
     const std::wstring value(json);
@@ -8,9 +8,10 @@ bool SpotifyWebViews::ParseNormalizedPoint(
     const size_t close = value.find(
         L']', comma == std::wstring::npos ? 0 : comma + 1);
     if (comma == std::wstring::npos || close == std::wstring::npos) return false;
-    const int parsedX = std::stoi(value.substr(1, comma - 1));
-    const int parsedY = std::stoi(value.substr(comma + 1, close - comma - 1));
-    if (parsedX < 0 || parsedX > 10000 || parsedY < 0 || parsedY > 10000) {
+    const double parsedX = std::stod(value.substr(1, comma - 1));
+    const double parsedY = std::stod(value.substr(comma + 1, close - comma - 1));
+    if (!(parsedX >= 0.0 && parsedX <= 100000.0) ||
+        !(parsedY >= 0.0 && parsedY <= 100000.0)) {
       return false;
     }
     *x = parsedX;
@@ -21,8 +22,8 @@ bool SpotifyWebViews::ParseNormalizedPoint(
   }
 }
 
-void SpotifyWebViews::ClickSlotNormalizedPoint(
-    Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
+void SpotifyWebViews::ClickSlotCssPoint(
+    Slot& slot, double cssX, double cssY) noexcept {
   if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow) ||
       !CurrentMusicTrack(slot)) {
     return;
@@ -59,25 +60,35 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   const ULONGLONG pageEpoch = slot.pageEpoch;
   SetSlotState(slot, SlotState::WaitingTarget);
 
+  // The reconcile script already returned CSS viewport coordinates. Verify the
+  // same point still resolves to a Spotify Play control, then return the exact
+  // current button center. The returned coordinates are sent to CDP verbatim;
+  // never reconstruct them from HWND pixels, DPI, or WebView zoom.
   std::wstring preflight = L"(() => {";
-  preflight += L"const nx=" + std::to_wstring(xTenThousandths) + L";";
-  preflight += L"const ny=" + std::to_wstring(yTenThousandths) + L";";
+  preflight += L"const x=" + std::to_wstring(cssX) + L";";
+  preflight += L"const y=" + std::to_wstring(cssY) + L";";
   preflight +=
-      L"if(window.innerWidth<=0||window.innerHeight<=0)return false;"
-      L"const x=window.innerWidth*nx/10000;"
-      L"const y=window.innerHeight*ny/10000;"
+      L"if(!Number.isFinite(x)||!Number.isFinite(y)||"
+      L"window.innerWidth<=0||window.innerHeight<=0||"
+      L"x<0||x>window.innerWidth||y<0||y>window.innerHeight)return null;"
       L"const hit=document.elementFromPoint(x,y);"
       L"const button=hit&&hit.closest?hit.closest('button,[role=\"button\"]'):null;"
-      L"if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return false;"
+      L"if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return null;"
       L"const testid=((button.getAttribute('data-testid')||'').trim().toLowerCase());"
       L"const trustedPlay=testid==='play-button'||testid==='control-button-playpause';"
-      L"if(!trustedPlay)return false;"
+      L"if(!trustedPlay)return null;"
       L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
-      L"if(label.includes('pause')||label.includes('一時停止'))return false;"
+      L"if(label.includes('pause')||label.includes('一時停止'))return null;"
+      L"const rect=button.getBoundingClientRect();"
+      L"const centerX=rect.left+rect.width/2;"
+      L"const centerY=rect.top+rect.height/2;"
+      L"if(!Number.isFinite(centerX)||!Number.isFinite(centerY)||"
+      L"centerX<0||centerX>window.innerWidth||"
+      L"centerY<0||centerY>window.innerHeight)return null;"
       L"const runtime=window.__homePanelSpotifyMediaObserverRuntime;"
       L"if(runtime&&typeof runtime.armTrustedStart==='function'){"
       L"runtime.armTrustedStart('" + std::to_wstring(targetGeneration) + L"');}"
-      L"return true;})()";
+      L"return [centerX,centerY];})()";
 
   Slot* const target = &slot;
   ComPtr<ICoreWebView2> requestedView = slot.webview;
@@ -85,9 +96,8 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
   const HRESULT started = requestedView->ExecuteScript(
       preflight.c_str(),
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, target, requestedView, targetGeneration, pageEpoch,
-           xTenThousandths, yTenThousandths](HRESULT result, LPCWSTR json)
-              -> HRESULT {
+          [this, alive, target, requestedView, targetGeneration, pageEpoch](
+              HRESULT result, LPCWSTR json) -> HRESULT {
             if (!alive->load(std::memory_order_acquire) ||
                 target->targetGeneration != targetGeneration ||
                 target->pageEpoch != pageEpoch ||
@@ -98,10 +108,10 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
               ArmRobustScheduler();
               return S_OK;
             }
-            if (SUCCEEDED(result) && json &&
-                std::wstring_view(json) == L"true") {
-              DispatchSpotifyDevToolsClick(
-                  *target, xTenThousandths, yTenThousandths);
+            double verifiedX = 0.0;
+            double verifiedY = 0.0;
+            if (SUCCEEDED(result) && ParseCssPoint(json, &verifiedX, &verifiedY)) {
+              DispatchSpotifyDevToolsClick(*target, verifiedX, verifiedY);
             }
             ArmRobustScheduler();
             return S_OK;
@@ -110,10 +120,12 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
 }
 
 UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
-    Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
+    Slot& slot, double cssX, double cssY) noexcept {
   try {
     if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow) ||
-        !CurrentMusicTrack(slot)) {
+        !CurrentMusicTrack(slot) ||
+        !(cssX >= 0.0 && cssX <= 100000.0) ||
+        !(cssY >= 0.0 && cssY <= 100000.0)) {
       return 0;
     }
 
@@ -123,27 +135,11 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
       return 0;
     }
 
-    RECT client{};
-    if (!GetClientRect(slot.hostWindow, &client)) return 0;
-    const int width = client.right - client.left;
-    const int height = client.bottom - client.top;
-    if (width <= 1 || height <= 1) return 0;
-
-    double zoom = 1.0;
-    if (slot.controller) {
-      double controllerZoom = 1.0;
-      if (SUCCEEDED(slot.controller->get_ZoomFactor(&controllerZoom)) &&
-          controllerZoom > 0.05) {
-        zoom = controllerZoom;
-      }
-    }
-    const double cssWidth = static_cast<double>(width) / zoom;
-    const double cssHeight = static_cast<double>(height) / zoom;
-    const double rawX = cssWidth * xTenThousandths / 10000.0;
-    const double rawY = cssHeight * yTenThousandths / 10000.0;
-    const double x = std::max(0.0, std::min(cssWidth - 1.0, rawX));
-    const double y = std::max(0.0, std::min(cssHeight - 1.0, rawY));
-
+    // CDP Input.dispatchMouseEvent consumes CSS viewport coordinates. Use the
+    // exact point verified in JavaScript; applying HWND DPI/raster/zoom scaling
+    // here would move the click away from the Play control.
+    const double x = cssX;
+    const double y = cssY;
     const std::wstring moved =
         L"{\"type\":\"mouseMoved\",\"x\":" + std::to_wstring(x) +
         L",\"y\":" + std::to_wstring(y) + L"}";
