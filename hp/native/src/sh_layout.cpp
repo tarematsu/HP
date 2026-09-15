@@ -196,12 +196,11 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool monitorForeground = StationheadMonitorForeground();
   const bool playbackForeground =
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
-  const bool playbackBackgroundFullSize =
-      keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback &&
-      !playbackForeground;
-  const bool playbackFullSize = playbackForeground || playbackBackgroundFullSize;
+  const bool playbackFullSize =
+      keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback;
   const BOOL playbackControllerVisible =
-      playbackFullSize || !StationheadPlaybackRenderingSuppressed(controller)
+      playbackForeground || playbackFullSize ||
+              !StationheadPlaybackRenderingSuppressed(controller)
           ? TRUE
           : FALSE;
   const int width = std::max(1L, bounds.right - bounds.left);
@@ -295,7 +294,7 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
       (!AudioPlaying() && !audioLossPlaybackObserved_);
   const bool monitorForeground = StationheadMonitorForeground();
   const RECT playbackBounds =
-      !monitorForeground && keepPlaybackFullSizeInBackground
+      keepPlaybackFullSizeInBackground
           ? ResolveStationheadBackgroundBounds(bounds_)
           : bounds_;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
@@ -340,10 +339,9 @@ void StationheadPlayer::SetVisible(bool visible) {
     const bool keepPlaybackFullSizeInBackground =
         trackBoundaryPlaybackRecoveryPending_ ||
         (!AudioPlaying() && !audioLossPlaybackObserved_);
-    const bool playbackFullSize =
-        monitorForeground || keepPlaybackFullSizeInBackground;
+    const bool playbackFullSize = keepPlaybackFullSizeInBackground;
     const RECT playbackBounds =
-        !monitorForeground && keepPlaybackFullSizeInBackground
+        keepPlaybackFullSizeInBackground
             ? ResolveStationheadBackgroundBounds(bounds_)
             : bounds_;
     if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
@@ -384,14 +382,27 @@ void StationheadPlayer::SetVisible(bool visible) {
     return;
   }
 
-  const int width = std::max(1L, bounds_.right - bounds_.left);
-  const int height = std::max(1L, bounds_.bottom - bounds_.top);
+  const bool keepPlaybackFullSizeInBackground =
+      trackBoundaryPlaybackRecoveryPending_ ||
+      (!AudioPlaying() && !audioLossPlaybackObserved_);
+  const bool playbackFullSize = keepPlaybackFullSizeInBackground;
+  const RECT playbackBounds =
+      playbackFullSize ? ResolveStationheadBackgroundBounds(bounds_) : bounds_;
+  const int playbackWidth =
+      playbackFullSize
+          ? std::max(1L, playbackBounds.right - playbackBounds.left)
+          : 1;
+  const int playbackHeight =
+      playbackFullSize
+          ? std::max(1L, playbackBounds.bottom - playbackBounds.top)
+          : 1;
   if (selectedTab_ == StationheadTabKind::Auth) {
     if (viewVisible_ && authController_ && authWebview_ &&
         ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(), bounds_) &&
         WindowContainsFocus(authHostWindow_)) return;
   } else if (viewVisible_ &&
-             PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_, width, height, HWND_TOP) &&
+             PlaybackSurfaceMatches(hostWindow_, controller_.Get(), playbackBounds,
+                                    playbackWidth, playbackHeight, HWND_TOP) &&
              BackgroundAuthSurfaceMatches(authHostWindow_, authController_.Get(), bounds_) && WindowContainsFocus(hostWindow_)) {
     return;
   }
@@ -422,7 +433,7 @@ void StationheadPlayer::LayoutControllers() {
       (!AudioPlaying() && !audioLossPlaybackObserved_);
   const bool monitorForeground = StationheadMonitorForeground();
   const RECT playbackBounds =
-      selectedTab_ == StationheadTabKind::None && !monitorForeground &&
+      selectedTab_ != StationheadTabKind::Auth &&
               keepPlaybackFullSizeInBackground
           ? ResolveStationheadBackgroundBounds(bounds_)
           : bounds_;

@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead keeps a 480x270 background surface until initial playback is established', () => {
+test('Stationhead keeps a 480x270 surface until playback is established', () => {
   assert.match(layout, /kStationheadBackgroundWidth = 480/);
   assert.match(layout, /kStationheadBackgroundHeight = 270/);
   const bounds = section(
@@ -41,15 +41,15 @@ test('Stationhead keeps a 480x270 background surface until initial playback is e
   );
   assert.match(
     keepBehind,
-    /!monitorForeground && keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
+    /keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
   );
-  assert.match(
+  assert.doesNotMatch(
     keepBehind,
-    /ApplyStationheadChildLayout[\s\S]*playbackBounds[\s\S]*keepPlaybackFullSizeInBackground/,
+    /!monitorForeground && keepPlaybackFullSizeInBackground/,
   );
 });
 
-test('reload and recovery keep Stationhead at 480x270 behind the dashboard', () => {
+test('playback size has only 480x270 pre-confirmation and 1x1 post-confirmation states', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -57,17 +57,12 @@ test('reload and recovery keep Stationhead at 480x270 behind the dashboard', () 
   );
   assert.match(
     apply,
-    /playbackBackgroundFullSize\s*=\s*keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback &&\s*!playbackForeground/,
+    /playbackFullSize\s*=\s*keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback/,
   );
-  assert.match(apply, /playbackFullSize\s*=\s*playbackForeground \|\| playbackBackgroundFullSize/);
   assert.match(apply, /hostWidth = playbackFullSize \? width : 1/);
   assert.match(apply, /hostHeight = playbackFullSize \? height : 1/);
   assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(apply, /playbackControllerVisible\s*=\s*playbackFullSize \|\|/);
-  assert.match(
-    apply,
-    /ChildWindowPlacementMatches\(\s*hostWindow, hostBounds, playbackForeground \? HWND_TOP : nullptr\)/,
-  );
+  assert.doesNotMatch(apply, /playbackFullSize = playbackForeground \|\|/);
 
   const layoutControllers = section(
     layout,
@@ -76,11 +71,11 @@ test('reload and recovery keep Stationhead at 480x270 behind the dashboard', () 
   );
   assert.match(
     layoutControllers,
-    /selectedTab_ == StationheadTabKind::None && !monitorForeground &&[\s\S]*keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
+    /selectedTab_ != StationheadTabKind::Auth &&[\s\S]*keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
   );
 });
 
-test('monitor routing preserves player-owned background size while forcing Stationhead behind the dashboard', () => {
+test('monitor routing may change z-order but not Stationhead playback dimensions', () => {
   const placement = section(
     routing,
     'void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept',
@@ -96,7 +91,7 @@ test('monitor routing preserves player-owned background size while forcing Stati
   );
 });
 
-test('normal established playback still collapses to 1x1 in Monitor A while Monitor B stays foreground', () => {
+test('confirmed playback stays 1x1 even when Monitor B is foreground', () => {
   const setVisible = section(
     layout,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -104,13 +99,17 @@ test('normal established playback still collapses to 1x1 in Monitor A while Moni
   );
   assert.match(
     setVisible,
-    /const bool playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground/,
+    /const bool playbackFullSize = keepPlaybackFullSizeInBackground;/,
   );
   assert.match(
     setVisible,
-    /!monitorForeground && keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
+    /keepPlaybackFullSizeInBackground[\s\S]*ResolveStationheadBackgroundBounds\(bounds_\)/,
   );
   assert.match(setVisible, /monitorForeground \? HWND_TOP : nullptr/);
+  assert.doesNotMatch(
+    setVisible,
+    /playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground/,
+  );
 
   const surfaceMatch = section(
     layout,

@@ -37,7 +37,7 @@ test('startup preview keeps normal playback backgrounded but preserves explicit 
   assert.match(setPreviewBounds, /viewVisible_ = true;[\s\S]*LayoutControllers\(\);/);
 });
 
-test('established background playback shrinks to 1x1 while startup and reload recovery may stay full-size', () => {
+test('playback uses 480x270 before confirmation and 1x1 after confirmation', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
@@ -46,9 +46,10 @@ test('established background playback shrinks to 1x1 while startup and reload re
   assert.match(applyLayout, /const bool playbackForeground =/);
   assert.match(
     applyLayout,
-    /const bool playbackBackgroundFullSize\s*=\s*keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback &&\s*!playbackForeground;/,
+    /const bool playbackFullSize\s*=\s*keepPlaybackFullSizeInBackground && !showAuth && !hidePlayback;/,
   );
-  assert.match(applyLayout, /const bool playbackFullSize = playbackForeground \|\| playbackBackgroundFullSize;/);
+  assert.doesNotMatch(applyLayout, /playbackBackgroundFullSize/);
+  assert.doesNotMatch(applyLayout, /playbackFullSize = playbackForeground \|\|/);
   assert.match(applyLayout, /const int hostWidth = playbackFullSize \? width : 1;/);
   assert.match(applyLayout, /const int hostHeight = playbackFullSize \? height : 1;/);
   assert.match(applyLayout, /const RECT contentBounds\{0, 0, hostWidth, hostHeight\};/);
@@ -59,7 +60,7 @@ test('established background playback shrinks to 1x1 while startup and reload re
   assert.match(applyLayout, /controller->put_Bounds\(contentBounds\);/);
   assert.match(
     applyLayout,
-    /const BOOL playbackControllerVisible\s*=\s*playbackFullSize \|\|\s*!StationheadPlaybackRenderingSuppressed\(controller\)/,
+    /const BOOL playbackControllerVisible\s*=\s*playbackForeground \|\| playbackFullSize \|\|[\s\S]*!StationheadPlaybackRenderingSuppressed\(controller\)/,
   );
   assert.match(applyLayout, /controller->put_IsVisible\(playbackControllerVisible\);/);
 });
@@ -78,7 +79,7 @@ test('background auth WebView also stays visible at 1x1', () => {
   assert.doesNotMatch(applyLayout, /ShowWindow\([^\n]*SW_HIDE/);
 });
 
-test('duplicate background notifications verify effective playback geometry and auth surface', () => {
+test('duplicate background notifications verify the two-state playback geometry and auth surface', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -87,17 +88,21 @@ test('duplicate background notifications verify effective playback geometry and 
   assert.match(setVisible, /const bool monitorForeground = StationheadMonitorForeground\(\);/);
   assert.match(
     setVisible,
-    /const bool playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground;/,
+    /const bool playbackFullSize = keepPlaybackFullSizeInBackground;/,
   );
   assert.match(
     setVisible,
     /PlaybackSurfaceMatches\([\s\S]*playbackFullSize[\s\S]*monitorForeground \? HWND_TOP : nullptr\)[\s\S]*BackgroundAuthSurfaceMatches\([\s\S]*return;/,
   );
+  assert.doesNotMatch(
+    setVisible,
+    /playbackFullSize =\s*monitorForeground \|\| keepPlaybackFullSizeInBackground/,
+  );
   assert.match(setVisible, /const bool hadInteractiveSurface/);
   assert.match(setVisible, /const bool interactiveSurfaceHadFocus/);
 });
 
-test('explicit Stationhead interaction may expand the playback surface', () => {
+test('explicit Stationhead interaction changes z-order without adding a third playback size', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -109,7 +114,11 @@ test('explicit Stationhead interaction may expand the playback surface', () => {
   );
   assert.match(
     setVisible,
-    /PlaybackSurfaceMatches\([\s\S]*width, height, HWND_TOP\)[\s\S]*WindowContainsFocus\(hostWindow_\)/,
+    /PlaybackSurfaceMatches\([\s\S]*playbackBounds,[\s\S]*playbackWidth, playbackHeight, HWND_TOP\)[\s\S]*WindowContainsFocus\(hostWindow_\)/,
+  );
+  assert.doesNotMatch(
+    setVisible,
+    /PlaybackSurfaceMatches\([\s\S]*bounds_, width, height, HWND_TOP/,
   );
   assert.match(
     setVisible,
