@@ -2,6 +2,8 @@
 #include "app_startup_tick_fallback.h"
 #include "update_shutdown_protocol.h"
 
+#include <tlhelp32.h>
+
 namespace hp {
 namespace {
 
@@ -14,6 +16,60 @@ HWND gProtectedWindow = nullptr;
 WNDPROC gOriginalWindowProc = nullptr;
 App* gProtectedOwner = nullptr;
 bool gUserCloseRequested = false;
+
+struct UpdateChildProcess {
+  DWORD pid = 0;
+  bool updaterTree = false;
+};
+
+bool IsUpdateRunner(const PROCESSENTRY32W& entry) noexcept {
+  return _wcsicmp(entry.szExeFile, L"HomePanelUpdater.exe") == 0;
+}
+
+void TerminateUpdateChildProcesses() noexcept {
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return;
+
+  std::vector<PROCESSENTRY32W> entries;
+  PROCESSENTRY32W entry{sizeof(entry)};
+  if (Process32FirstW(snapshot, &entry)) {
+    do {
+      entries.push_back(entry);
+      entry.dwSize = sizeof(entry);
+    } while (Process32NextW(snapshot, &entry));
+  }
+  CloseHandle(snapshot);
+
+  const DWORD appPid = GetCurrentProcessId();
+  std::vector<UpdateChildProcess> tree{{appPid, false}};
+  for (size_t index = 0; index < tree.size(); ++index) {
+    const UpdateChildProcess parent = tree[index];
+    for (const auto& candidate : entries) {
+      if (candidate.th32ParentProcessID != parent.pid ||
+          candidate.th32ProcessID == appPid) {
+        continue;
+      }
+      tree.push_back(UpdateChildProcess{
+          candidate.th32ProcessID,
+          parent.updaterTree || IsUpdateRunner(candidate)});
+    }
+  }
+
+  // The verified updater can itself be a direct child of HomePanel. Preserve
+  // that process tree so the installation can continue, but terminate every
+  // other descendant (WebView2 browser/renderer/GPU/audio helpers included)
+  // before the application closes. Deepest descendants are handled first.
+  for (auto current = tree.rbegin(); current != tree.rend(); ++current) {
+    if (current->pid == appPid || current->updaterTree) continue;
+    HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, current->pid);
+    if (!process) continue;
+    if (WaitForSingleObject(process, 0) == WAIT_TIMEOUT &&
+        TerminateProcess(process, 0)) {
+      WaitForSingleObject(process, 2'000);
+    }
+    CloseHandle(process);
+  }
+}
 
 void LogWindowCallbackFailure() noexcept {
   try {
@@ -33,6 +89,7 @@ LRESULT CALLBACK ProtectedWindowProc(
     gUserCloseRequested = true;
   }
   if (message == kUpdateShutdownMessage) {
+    TerminateUpdateChildProcesses();
     return CallWindowProcW(original, window, WM_CLOSE, 0, 0);
   }
   if (message == WM_CLOSE) {
