@@ -180,11 +180,11 @@ inline std::wstring StationheadAuthCaptureScriptResponseValidated() {
   }
 )JS";
 
-  const bool acceptanceHelpersReplaced = ReplaceStationheadRuntimeFragment(
+  const bool acceptanceHelpersReplaced = ReplaceStationheadAuthCaptureFragment(
       script, kAcceptanceHelpers, kAcceptanceHelpersFixed);
-  const bool fetchCaptureReplaced = ReplaceStationheadRuntimeFragment(
+  const bool fetchCaptureReplaced = ReplaceStationheadAuthCaptureFragment(
       script, kFetchCapture, kFetchCaptureFixed);
-  const bool xhrCaptureReplaced = ReplaceStationheadRuntimeFragment(
+  const bool xhrCaptureReplaced = ReplaceStationheadAuthCaptureFragment(
       script, kXhrCapture, kXhrCaptureFixed);
   (void)acceptanceHelpersReplaced;
   (void)fetchCaptureReplaced;

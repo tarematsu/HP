@@ -2,93 +2,50 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const sharedSource = readFileSync(
-  new URL('../../native/src/sh_shared.h', import.meta.url),
-  'utf8',
-);
-const lifecycleSource = readFileSync(
-  new URL('../../native/src/sh_runtime_lifecycle_policy_fix.h', import.meta.url),
-  'utf8',
-);
+const cmake = readFileSync(
+  new URL('../../native/CMakeLists.txt', import.meta.url), 'utf8');
+const policy = readFileSync(
+  new URL('../../native/src/sh_auth_capture_origin_policy.h', import.meta.url), 'utf8');
 
-function occurrences(source, fragment) {
-  let count = 0;
-  for (let at = source.indexOf(fragment); at >= 0; at = source.indexOf(fragment, at + 1)) {
-    count += 1;
-  }
-  return count;
+function section(source, start, end) {
+  const startAt = source.indexOf(start);
+  assert.notEqual(startAt, -1, `missing section: ${start}`);
+  const endAt = source.indexOf(end, startAt + start.length);
+  assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
+  return source.slice(startAt, endAt);
 }
 
-test('auth capture origin fix replaces each base marker exactly once', () => {
-  assert.equal(
-    occurrences(
-      sharedSource,
-      "if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;",
-    ),
-    2,
-  );
-  assert.equal(
-    occurrences(
-      sharedSource,
-      "const relevant = url => /(^|\\.)stationhead\\.com/i.test(String(url || ''));",
-    ),
-    1,
-  );
-  assert.equal(
-    occurrences(
-      sharedSource,
-      "const url = typeof input === 'string' ? input : (input && input.url) || '';",
-    ),
-    1,
-  );
-  for (const marker of [
-    'authDocumentGateReplaced',
-    'authRelevantUrlReplaced',
-    'authFetchUrlReplaced',
-  ]) {
-    assert.match(lifecycleSource, new RegExp(`const bool ${marker}`));
-    assert.match(lifecycleSource, new RegExp(`\\(void\\)${marker};`));
-  }
+test('auth capture origin policy has an explicit PCH slot', () => {
+  assert.match(cmake, /src\/sh_auth_capture_origin_policy\.h/);
+  assert.doesNotMatch(cmake, /sh_runtime_lifecycle_policy_fix\.h/);
 });
 
-test('auth capture is top-level and accepts only HTTPS Stationhead hosts', () => {
-  assert.match(
-    lifecycleSource,
-    /window\.top !== window\) return;/,
-  );
-  assert.match(
-    lifecycleSource,
-    /const NativeURL = window\.URL;/,
-  );
-  assert.match(
-    lifecycleSource,
-    /const parsed = new NativeURL\(String\(value \|\| ''\), location\.href\);/,
-  );
-  assert.match(
-    lifecycleSource,
-    /parsed\.protocol === 'https:'/,
-  );
-  assert.match(
-    lifecycleSource,
-    /targetHost === 'stationhead\.com' \|\| targetHost\.endsWith\('\.stationhead\.com'\)/,
-  );
-  assert.doesNotMatch(
-    lifecycleSource,
-    /kRelevantUrlFixed[\s\S]*\/\(\^\|\\\.\)stationhead\\\.com\/i\.test/,
-  );
+test('auth capture policy owns no playback lifecycle work', () => {
+  assert.doesNotMatch(policy, /StationheadAutoplayScript|setInterval|setTimeout|MutationObserver|pagehide|pageshow/);
+  assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
 });
 
-test('fetch URL objects and Request URLs remain observable', () => {
-  assert.match(
-    lifecycleSource,
-    /NativeURL && input instanceof NativeURL \? input\.href/,
+test('source rewrite helper is scoped to authentication capture', () => {
+  assert.match(policy, /inline bool ReplaceStationheadAuthCaptureFragment\(/);
+  assert.match(policy, /script\.find\(from\)/);
+  assert.match(policy, /script\.replace\(at, from\.size\(\), to\)/);
+  assert.doesNotMatch(policy, /ReplaceStationheadRuntimeFragment/);
+});
+
+test('authentication capture is restricted to top-level trusted HTTPS Stationhead URLs', () => {
+  const auth = section(
+    policy,
+    'inline std::wstring StationheadAuthCaptureScriptOriginFixed()',
+    '}  // namespace hp',
   );
+  assert.match(auth, /window\.top !== window/);
+  assert.match(auth, /const NativeURL = window\.URL/);
+  assert.match(auth, /parsed\.protocol === 'https:'/);
+  assert.match(auth, /targetHost === 'stationhead\.com'/);
+  assert.match(auth, /targetHost\.endsWith\('\.stationhead\.com'\)/);
+  assert.match(auth, /NativeURL && input instanceof NativeURL/);
   assert.match(
-    lifecycleSource,
-    /\(input && input\.url\) \|\| ''/,
-  );
-  assert.match(
-    lifecycleSource,
-    /#undef StationheadAuthCaptureScript[\s\S]*#define StationheadAuthCaptureScript StationheadAuthCaptureScriptOriginFixed/,
+    policy,
+    /#define StationheadAuthCaptureScript StationheadAuthCaptureScriptOriginFixed/,
   );
 });
