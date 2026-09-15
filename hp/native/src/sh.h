@@ -329,6 +329,9 @@ class StationheadPlayer {
   void Start();
   void Stop();
   void Tick(int64_t nowMs);
+  void ReuseWebViewProfile(std::wstring profileName) {
+    if (!profileName.empty()) profileName_ = std::move(profileName);
+  }
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void RequestImmediateTick() noexcept { nextTickAt_ = 0; }
   [[nodiscard]] bool AudioPlaying() const noexcept {
