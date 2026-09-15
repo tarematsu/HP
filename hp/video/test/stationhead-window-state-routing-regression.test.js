@@ -15,8 +15,8 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('stable Stationhead background is offscreen unless startup or periodic preview is armed', () => {
-  assert.match(bridge, /gStationheadBackgroundPreview\{false\}/);
+test('Stationhead startup preview is armed before the deferred WebView start', () => {
+  assert.match(bridge, /gStationheadBackgroundPreview\{true\}/);
   assert.match(
     bridge,
     /if \(!StationheadBackgroundPreview\(\)\)[\s\S]*return StationheadOffscreenBounds\(workspaceBounds\)/,
@@ -26,7 +26,7 @@ test('stable Stationhead background is offscreen unless startup or periodic prev
   assert.match(bridge, /kStationheadSurfaceHeight = 270/);
 });
 
-test('initial startup explicitly arms the in-client background preview', () => {
+test('initial startup keeps the in-client background preview armed through WebView creation', () => {
   const start = section(
     handles,
     'void StationheadHandleBase::Start()',
