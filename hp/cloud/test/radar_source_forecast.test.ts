@@ -155,6 +155,42 @@ describe("radar fixed endpoint selection", () => {
     );
   });
 
+  it("uses the latest future frame when the 22:00 JST cap is already behind the current radar time", () => {
+    const shortTerm: RadarTimeEntry[] = [
+      rasrf("20260915120000", "20260915130000"),
+      rasrf("20260915130000", "20260915140000"),
+      rasrf("20260915140000", "20260915150000"),
+    ];
+
+    expect(selectLatestShortTermEntry(shortTerm, "20260915135500")).toEqual(
+      expect.objectContaining({
+        validtime: "20260915150000",
+      }),
+    );
+  });
+
+  it("uses the latest future frame when the 09:00 JST cap is already behind the current radar time", () => {
+    const shortTerm: RadarTimeEntry[] = [
+      rasrf("20260914230000", "20260915000000"),
+      rasrf("20260915000000", "20260915030000"),
+      rasrf("20260915010000", "20260915060000"),
+    ];
+
+    expect(selectLatestShortTermEntry(shortTerm, "20260915003000")).toEqual(
+      expect.objectContaining({
+        validtime: "20260915060000",
+      }),
+    );
+  });
+
+  it("returns no past right-panel frame when no short-term forecast remains ahead of the current radar time", () => {
+    const shortTerm: RadarTimeEntry[] = [
+      rasrf("20260915120000", "20260915130000"),
+    ];
+
+    expect(selectLatestShortTermEntry(shortTerm, "20260915135500")).toBeUndefined();
+  });
+
   it("keeps the latest RASRF time when it has not passed 09:00 JST", () => {
     const shortTerm: RadarTimeEntry[] = [
       rasrf("20260914210000", "20260914220000"),
