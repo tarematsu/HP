@@ -24,13 +24,14 @@ test('primary room and fallback URLs remain configured', () => {
   assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl/);
 });
 
-test('player periodic refresh clocks remain native-owned', () => {
-  assert.match(policy, /secondary \? 54 : 53/);
+test('single player periodic refresh is fixed at 50 minutes', () => {
+  assert.match(policy, /return 50 \* 60'000;/);
+  assert.match(policy, /StationheadPeriodicRefreshIntervalMs\(\) == 50 \* 60'000/);
   const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
   assert.match(wake, /periodicRefreshStartedAt_/);
-  assert.match(wake, /StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/);
+  assert.match(wake, /StationheadPeriodicRefreshIntervalMs\(\)/);
   assert.match(policy, /RefreshPeriodicNavigation\(UnixMillis\(\)\)/);
-  assert.match(policy, /NavigateCurrentUrl\(/);
+  assert.match(policy, /NavigateCurrentUrl\(nowMs, L"50-minute periodic refresh"\)/);
 });
 
 test('page-side track-boundary polling stays removed', () => {
@@ -40,7 +41,7 @@ test('page-side track-boundary polling stays removed', () => {
   assert.doesNotMatch(script, /timeupdate|setInterval|MutationObserver|track-ended/);
 });
 
-test('single App has no cross-window fallback scheduler', () => {
-  assert.doesNotMatch(app,
-    /UpdateStationheadPlaybackFallback|secondaryStationhead_|ApplyScheduledStationheadAudioProfile/);
+test('App keeps exactly one Stationhead scheduler', () => {
+  assert.match(app, /stationhead_->NextWakeAt\(\)/);
+  assert.doesNotMatch(app, /UpdateStationheadPlaybackFallback|ApplyScheduledStationheadAudioProfile/);
 });
