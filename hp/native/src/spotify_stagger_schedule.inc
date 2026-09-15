@@ -17,12 +17,6 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
 
-  for (Slot& slot : slots_) {
-    slot.controllerCreating = false;
-    slot.controllerCreateTick = 0;
-    if (!slot.webview) SetSlotState(slot, SlotState::NotCreated);
-  }
-
   RunStaggeredReconcile();
   ArmRobustScheduler();
 }
