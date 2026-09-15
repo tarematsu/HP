@@ -135,10 +135,9 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               return S_OK;
             }).Get(), &slot.documentTitleChangedToken);
     slot.processTitleEventRegistered = SUCCEEDED(titleEventResult);
-    slot.nextProcessTitlePollTick = slot.processTitleEventRegistered
-        ? 0
-        : GetTickCount64();
     RefreshProcessTitleStatus(slot, slot.webview.Get());
+    slot.nextProcessTitlePollTick =
+        GetTickCount64() + kSpotifyProcessTitlePollMs;
 
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
