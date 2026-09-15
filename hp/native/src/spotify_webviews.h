@@ -116,7 +116,6 @@ class SpotifyWebViews final {
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
   static bool IsSpotifyLoginUri(const wchar_t* uri) noexcept;
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept;
-  static bool SlotStateIsHealthy(SlotState state) noexcept;
   static bool SlotStateNeedsRecovery(SlotState state) noexcept;
 
   bool EnsureHostClass() noexcept;
@@ -160,7 +159,7 @@ class SpotifyWebViews final {
   void RecomputeForeground() noexcept;
   void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;
-  void StartAutonomousSchedule(ULONGLONG now) noexcept;
+  void StartAutonomousSchedule() noexcept;
   void RunStaggeredReconcile() noexcept;
 
   HWND parentWindow_ = nullptr;
@@ -189,7 +188,6 @@ class SpotifyWebViews final {
   size_t hostLayoutActiveSlot_ = kAccountCount;
   size_t hostLayoutAuthenticationSlot_ = kAccountCount;
   bool started_ = false;
-  bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
   bool monitorForeground_ = false;
 };
