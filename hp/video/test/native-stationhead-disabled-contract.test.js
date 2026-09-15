@@ -29,24 +29,23 @@ test('Stationhead build contains only active sources', () => {
     /app_stationhead_(?:state|history)|stationhead_(?:disabled_stubs|native_stats)|sh_profile_reuse_policy_(?:begin|end)/);
 });
 
-test('App owns exactly one Stationhead handle and creates one primary player', () => {
+test('App owns exactly one Stationhead player and defers its start', () => {
   const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
-  assert.match(start, /StationheadRole::Primary/);
+  assert.match(start, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
   assert.match(start, /ReuseWebViewProfile\(kStationheadAmazonProfile\)/);
   assert.doesNotMatch(start, /stationhead_->Start\(\)/);
   assert.match(deferred, /stationhead_->Start\(\)/);
-  assert.doesNotMatch(start, /#if 0|Secondary|secondaryStationhead_/);
-  assert.doesNotMatch(appHeader, /AppSecondaryStationheadHandle|secondaryStationhead_/);
-  assert.doesNotMatch(handles, /AppSecondaryStationheadHandle|PeerAudioHandle|StartupPrimaryHandle/);
+  assert.doesNotMatch(stationheadHeader, /enum class StationheadRole/);
+  assert.doesNotMatch(appHeader, /AppSecondaryStationheadHandle/);
+  assert.doesNotMatch(handles, /PeerAudioHandle|StartupPrimaryHandle/);
 });
 
-test('single Stationhead has no A-B handoff or dormant render-state path', () => {
+test('single Stationhead keeps one handoff message and one placement path', () => {
   assert.match(messages, /case WM_HP_PRIMARY_RELOAD_READY:[\s\S]*return stationhead_ \? 1 : 0/);
-  assert.doesNotMatch(messages, /WM_HP_SECONDARY_RELOAD_READY/);
   const placement = section(app, 'void App::ApplyStationheadWindowPlacement(', 'void App::ScheduleNextTick(');
   assert.match(placement, /stationhead_->SetBounds\(bounds\)/);
-  assert.doesNotMatch(placement, /secondary|RECT left|RECT right/);
+  assert.doesNotMatch(placement, /RECT left|RECT right/);
   assert.doesNotMatch(app, /PublishRenderState/);
   assert.doesNotMatch(appHeader, /renderState_|renderStateDirty_|PublishRenderState/);
 });
