@@ -83,10 +83,10 @@ static_assert(!StationheadOptionalStylesheetBoundaryFixed(
 static_assert(!StationheadOptionalStylesheetBoundaryFixed(
     L"https://stationhead.com.evil.example/assets/tooltip-u7w9wxcq.css"));
 
-// Keep authenticated account/statistics requests fail-open, but restore the
-// audited SelectedGIF module stub now that statistics session acquisition is
-// independent of that mixed UI bundle. Tooltip CSS is also unnecessary after
-// the child-preserving Tooltip JavaScript stub is installed.
+// Keep authenticated account/statistics and every media request fail-open.
+// Stationhead playback URLs are intentionally not filtered here: CDN and DRM
+// endpoints can change independently of the visible room UI. Tooltip CSS and
+// audited presentation-only modules remain safe to replace locally.
 inline void ApplyStationheadResourceBlockingStartupReduced(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -116,7 +116,6 @@ inline void ApplyStationheadResourceBlockingStartupReduced(
   if (blockImages) addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
   if (blockFonts) addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET);
-  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH);
@@ -138,6 +137,12 @@ inline void ApplyStationheadResourceBlockingStartupReduced(
                 COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
             const bool hasContext =
                 SUCCEEDED(args->get_ResourceContext(&context));
+            // Defensive fail-open: even if a future broad filter causes MEDIA
+            // requests to reach this callback, never synthesize a response.
+            if (hasContext &&
+                context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
+              return S_OK;
+            }
             bool block = false;
             bool emptyScript = false;
             bool emptyResource = false;
@@ -192,12 +197,6 @@ inline void ApplyStationheadResourceBlockingStartupReduced(
                     StationheadRequestLooksLikeImage(lower)) {
                   block = true;
                   emptyResource = true;
-                }
-                if (!block && hasContext &&
-                    context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
-                  block = !lower.empty() &&
-                          !StationheadCorePlaybackRequestBoundaryFixed(lower);
-                  emptyResource = block;
                 }
               }
             }

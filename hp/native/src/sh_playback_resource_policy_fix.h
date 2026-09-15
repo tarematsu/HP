@@ -4,10 +4,9 @@
 namespace hp {
 
 // Use the single audited resource boundary for playback as well. It blocks
-// images/fonts, telemetry, social/UI chunks and non-playback media while keeping
-// Stationhead/Spotify playback and authenticated data requests fail-open. Do not
-// clear the HTTP cache: retaining safe cached assets reduces startup network and
-// CPU work on every periodic navigation.
+// images/fonts, telemetry and presentation-only UI chunks while every media
+// request remains fail-open. Do not clear the HTTP cache: retaining safe cached
+// assets reduces startup network and CPU work on every periodic navigation.
 inline void ApplyStationheadResourceBlockingPlaybackSafe(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,

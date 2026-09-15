@@ -42,6 +42,7 @@ test('Stationhead startup uses the single compact runtime and current render pol
     startupScript,
     /StationheadCompactRuntimeScript\(globalName, messagePrefix\)[\s\S]*StationheadRenderReductionScript\(\)[\s\S]*StationheadRoomUiReductionScript\(\)/,
   );
+  assert.match(startupScript, /script\.append\(L";\\n"\)/);
   assert.match(
     startupScript,
     /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript BuildStationheadStartupScript/,
@@ -87,7 +88,9 @@ test('Stationhead render policy reduces paint work without hiding all controls',
 
 test('Stationhead room becomes playback-only without recurring polling', () => {
   assert.match(roomUiPolicy, /__homepanelStationheadRoomUiReduction/);
-  assert.match(roomUiPolicy, /parts\.length !== 1/);
+  assert.match(roomUiPolicy, /singleSegmentRoom/);
+  assert.match(roomUiPolicy, /channelRoom/);
+  assert.match(roomUiPolicy, /parts\[0\]\.toLowerCase\(\) === 'c'/);
   assert.match(roomUiPolicy, /data-homepanel-stationhead-playback-only/);
   assert.match(roomUiPolicy, /document\.addEventListener\('playing', onMediaState, true\)/);
   assert.match(roomUiPolicy, /'pause', 'waiting', 'stalled', 'ended', 'error', 'emptied', 'abort'/);
