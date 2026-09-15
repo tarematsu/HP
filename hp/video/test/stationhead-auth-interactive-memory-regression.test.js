@@ -34,7 +34,7 @@ test('auth policy chain retains process-failure policy without a memory override
   assert.doesNotMatch(navigationPolicy, /sh_auth_interactive_memory_policy_fix/);
 });
 
-test('ConfigureAuthWebView leaves memory targeting to the shared Stationhead layout', () => {
+test('ConfigureAuthWebView does not override the WebView2 memory target', () => {
   const authConfiguration = section(
     webviewSource,
     'void StationheadPlayer::ConfigureAuthWebView()',
@@ -51,18 +51,13 @@ test('obsolete interactive auth memory-target remapping is absent', () => {
   assert.doesNotMatch(navigationPolicy, /put_MemoryUsageTargetLevel/);
 });
 
-test('playback and auth layout always force the LOW WebView2 memory target', () => {
-  assert.match(layoutSource, /void SetControllerMemoryUsageTarget\(/);
-  assert.match(layoutSource, /put_MemoryUsageTargetLevel\(level\)/);
-  assert.match(
+test('playback and auth layout leave the WebView2 memory target unmanaged', () => {
+  assert.doesNotMatch(layoutSource, /SetControllerMemoryUsageTarget/);
+  assert.doesNotMatch(layoutSource, /put_MemoryUsageTargetLevel/);
+  assert.doesNotMatch(
     layoutSource,
-    /SetControllerMemoryUsageTarget\(\s*controller,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\);/,
+    /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
-  assert.match(
-    layoutSource,
-    /SetControllerMemoryUsageTarget\(\s*authController,\s*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW\s*\);/,
-  );
-  assert.doesNotMatch(layoutSource, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
   assert.match(layoutSource, /controller->put_IsVisible\(playbackControllerVisible\)/);
   assert.match(layoutSource, /authController->put_IsVisible\(TRUE\)/);
 });
