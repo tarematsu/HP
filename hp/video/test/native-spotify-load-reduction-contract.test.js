@@ -11,6 +11,7 @@ const spotify = [
   'spotify_controller_lifecycle.inc',
 ].map(sourcePart).join('\n');
 const spotifyHeader = sourcePart('spotify_webviews.h');
+const webviewPolicy = sourcePart('webview_feature_policy.h');
 const phase = sourcePart('spotify_phase_sync.inc');
 const schedule = sourcePart('spotify_stagger_schedule.inc');
 const scripts = sourcePart('spotify_static_scripts.inc');
@@ -123,13 +124,14 @@ test('Spotify resource blocking is completely disabled', () => {
 });
 
 test('Spotify trims browser UI services without disabling script or web messages', () => {
-  assert.match(spotify, /put_AreDefaultScriptDialogsEnabled\(FALSE\)/);
-  assert.match(spotify, /put_IsPasswordAutosaveEnabled\(FALSE\)/);
-  assert.match(spotify, /put_IsGeneralAutofillEnabled\(FALSE\)/);
-  assert.match(spotify, /put_IsPinchZoomEnabled\(FALSE\)/);
-  assert.match(spotify, /put_IsSwipeNavigationEnabled\(FALSE\)/);
-  assert.match(spotify, /put_IsScriptEnabled\(TRUE\)/);
-  assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
+  assert.match(spotify, /ApplyMediaWebViewFeaturePolicy\(slot\.webview\.Get\(\), true\)/);
+  assert.match(webviewPolicy, /put_AreDefaultScriptDialogsEnabled\(FALSE\)/);
+  assert.match(webviewPolicy, /put_IsPasswordAutosaveEnabled\(TRUE\)/);
+  assert.match(webviewPolicy, /put_IsGeneralAutofillEnabled\(TRUE\)/);
+  assert.match(webviewPolicy, /put_IsPinchZoomEnabled\(FALSE\)/);
+  assert.match(webviewPolicy, /put_IsSwipeNavigationEnabled\(FALSE\)/);
+  assert.match(webviewPolicy, /put_IsScriptEnabled\(TRUE\)/);
+  assert.match(webviewPolicy, /put_IsWebMessageEnabled\(webMessagesEnabled \? TRUE : FALSE\)/);
 });
 
 test('track changes prefer Spotify SPA links and retain full navigation as fallback', () => {

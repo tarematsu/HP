@@ -252,22 +252,7 @@ class NativeMediaPanelHost final {
         COREWEBVIEW2_COLOR background{255, 0, 0, 0};
         controller2->put_DefaultBackgroundColor(background);
       }
-      ComPtr<ICoreWebView2Settings> settings;
-      if (SUCCEEDED(webview_->get_Settings(&settings)) && settings) {
-        settings->put_IsScriptEnabled(TRUE);
-        settings->put_IsWebMessageEnabled(FALSE);
-        settings->put_AreDefaultScriptDialogsEnabled(FALSE);
-        settings->put_AreDefaultContextMenusEnabled(FALSE);
-        settings->put_AreDevToolsEnabled(FALSE);
-        settings->put_IsStatusBarEnabled(FALSE);
-        settings->put_AreHostObjectsAllowed(FALSE);
-        settings->put_IsZoomControlEnabled(FALSE);
-        settings->put_IsBuiltInErrorPageEnabled(FALSE);
-        ComPtr<ICoreWebView2Settings3> settings3;
-        if (SUCCEEDED(settings.As(&settings3)) && settings3) {
-          settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
-        }
-      }
+      ApplyMediaWebViewFeaturePolicy(webview_.Get(), false);
 
       const auto alive = alive_;
       webview_->AddWebResourceRequestedFilter(

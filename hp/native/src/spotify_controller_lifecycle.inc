@@ -91,36 +91,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
       COREWEBVIEW2_COLOR background{255, 0, 0, 0};
       controller2->put_DefaultBackgroundColor(background);
     }
-    ComPtr<ICoreWebView2Settings> settings;
-    if (SUCCEEDED(slot.webview->get_Settings(&settings)) && settings) {
-      settings->put_IsScriptEnabled(TRUE);
-      settings->put_IsWebMessageEnabled(TRUE);
-      settings->put_AreDefaultScriptDialogsEnabled(FALSE);
-      settings->put_AreDefaultContextMenusEnabled(FALSE);
-      settings->put_AreDevToolsEnabled(FALSE);
-      settings->put_IsStatusBarEnabled(FALSE);
-      settings->put_AreHostObjectsAllowed(FALSE);
-      settings->put_IsZoomControlEnabled(FALSE);
-      settings->put_IsBuiltInErrorPageEnabled(TRUE);
-
-      ComPtr<ICoreWebView2Settings3> settings3;
-      if (SUCCEEDED(settings.As(&settings3)) && settings3) {
-        settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
-      }
-      ComPtr<ICoreWebView2Settings4> settings4;
-      if (SUCCEEDED(settings.As(&settings4)) && settings4) {
-        settings4->put_IsPasswordAutosaveEnabled(FALSE);
-        settings4->put_IsGeneralAutofillEnabled(FALSE);
-      }
-      ComPtr<ICoreWebView2Settings5> settings5;
-      if (SUCCEEDED(settings.As(&settings5)) && settings5) {
-        settings5->put_IsPinchZoomEnabled(FALSE);
-      }
-      ComPtr<ICoreWebView2Settings6> settings6;
-      if (SUCCEEDED(settings.As(&settings6)) && settings6) {
-        settings6->put_IsSwipeNavigationEnabled(FALSE);
-      }
-    }
+    ApplyMediaWebViewFeaturePolicy(slot.webview.Get(), true);
 
     Slot* const target = &slot;
     const auto alive = alive_;

@@ -7,6 +7,8 @@ const mediaBase = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const mediaHost = readFileSync(
   new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
+const webviewPolicy = readFileSync(
+  new URL('../../native/src/webview_feature_policy.h', import.meta.url), 'utf8');
 const mediaWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
 const radarSection = readFileSync(
@@ -203,8 +205,9 @@ test('media WebView blocks image requests while leaving fonts and playback resou
   assert.match(fullResourceArguments, /AutofillServerCommunication/);
   assert.doesNotMatch(fullResourceArguments, /BackForwardCache|HardwareSecureDecryption/);
 
-  assert.match(mediaHost, /put_IsScriptEnabled\(TRUE\)/);
-  assert.match(mediaHost, /put_AreDevToolsEnabled\(FALSE\)/);
+  assert.match(mediaHost, /ApplyMediaWebViewFeaturePolicy\(webview_\.Get\(\), false\)/);
+  assert.match(webviewPolicy, /put_IsScriptEnabled\(TRUE\)/);
+  assert.match(webviewPolicy, /put_AreDevToolsEnabled\(FALSE\)/);
   assert.doesNotMatch(lifecycle, /StopNativeMvPlayback/);
   assert.match(nativeWindows, /nativeDashboardVisible_ && nativeMediaWindow_/);
 });
