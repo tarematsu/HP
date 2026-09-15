@@ -115,12 +115,12 @@ test('SwitchBot owns an independent renderer path instead of SensorHub state', (
   assert.doesNotMatch(rendererHeader, /renderedDashboardRevisions_|dashboardRevisions_/);
 });
 
-test('SwitchBot-only paint skips Octopus chart execution', () => {
+test('SwitchBot-only paint skips Octopus chart execution in the shifted energy slot', () => {
   assert.match(rendererHeader, /EnergySwitchBot/);
   assert.match(rendererHeader, /DrawEnergySwitchBotSection/);
   assert.match(panelWindows, /const bool switchBotOnly =/);
   assert.match(panelWindows, /if \(!switchBotOnly\) DrawEnergySection/);
-  assert.match(panelWindows, /DrawEnergySwitchBotSection\(scope\.dc, sections\.energy\)/);
+  assert.match(panelWindows, /DrawEnergySwitchBotSection\(scope\.dc, sections\.weather\)/);
   assert.match(energy, /void Renderer::DrawEnergySwitchBotSection/);
   assert.match(layout, /RECT EnergySwitchBotRectFromCard/);
 });
