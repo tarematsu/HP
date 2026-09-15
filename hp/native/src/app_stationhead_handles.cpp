@@ -173,6 +173,7 @@ void StationheadHandleBase::ReleaseCompletedAuth() {
 
 uint32_t StationheadHandleBase::ConsumeChangeFlags() {
   if (!player_ || !startIssued_ || stopIssued_) return StationheadChangeNone;
+  SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   uint32_t flags = player_->ConsumeChangeFlags();
   if ((flags & StationheadChangeReleaseAuth) != 0) {
     player_->FinalizeCompletedAuth();
@@ -210,9 +211,7 @@ void StationheadHandleBase::ResetPlayer() noexcept {
 
 bool StationheadHandleBase::IsInteractive(
     const StationheadStatus& status) const noexcept {
-  if (RequiresInteractiveStationhead(status)) return true;
-  return !status.audioPlaying &&
-         !SuppressTrackTransitionGap(status.audioPlaying, false);
+  return status.loginRequired || status.spotifyAuthorization;
 }
 
 bool StationheadHandleBase::SuppressTrackTransitionGap(
