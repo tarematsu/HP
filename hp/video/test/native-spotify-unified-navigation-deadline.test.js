@@ -40,18 +40,21 @@ test('target routing does not start the completion clock before playback confirm
 
 test('trusted Play input never starts the completion clock by itself', () => {
   assert.match(click, /ArmTimedEndObserver\(slot\)/);
-  assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyPlaybackStartRetryMs/);
+  assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayConfirmWaitMs/);
   assert.doesNotMatch(click, /SetMusicCompletionDeadline/);
   assert.doesNotMatch(click, /playbackStartTick/);
   assert.doesNotMatch(header + music, /timedPlaybackStartTick/);
 });
 
-test('failed Play and SPA handoff use short targeted retries', () => {
+test('startup retries are limited to target handoff, observer confirmation, and missing controls', () => {
   assert.match(music, /kSpotifyTrackTransitionRetryMs = 500ULL/);
-  assert.match(music, /kSpotifyPlaybackStartRetryMs = 1500ULL/);
+  assert.match(music, /kSpotifyDirectPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
   assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
-  assert.match(music, /callbackNow \+ kSpotifyPlaybackStartRetryMs/);
-  assert.match(click, /nextRecoveryTick = now \+ kSpotifyPlaybackStartRetryMs/);
+  assert.match(music, /callbackNow \+ kSpotifyDirectPlayConfirmWaitMs/);
+  assert.match(music, /callbackNow \+ kSpotifyCdpPlayConfirmWaitMs/);
+  assert.doesNotMatch(music + click, /kSpotifyPlaybackStartRetryMs/);
+  assert.doesNotMatch(click, /nextRecoveryTick = now/);
 });
 
 test('direct playback start and resume enter the same deadline helper', () => {

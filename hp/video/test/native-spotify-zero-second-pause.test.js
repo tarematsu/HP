@@ -15,24 +15,17 @@ const controller = source('spotify_controller_lifecycle.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
-test('zero-second recovery tries target AUDIO play once per generation before Play controls', () => {
-  assert.match(scoped, /const mediaPlaybackState = \(\) =>/);
-  assert.match(scoped, /element: pending/);
-  assert.match(scripts, /__homePanelSpotifyTryDirectPlay = media =>/);
-  assert.match(scripts, /media\.tagName !== 'AUDIO'/);
-  assert.match(scripts, /typeof media\.play !== 'function'/);
-  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration === generation/);
-  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration = generation/);
-  assert.match(scripts, /const result = media\.play\(\)/);
-  assert.match(scripts, /result\.catch\(\(\) => \{\}\)/);
-  assert.match(scoped, /__homePanelSpotifyTryDirectPlay\(mediaState\.element\)/);
+test('zero-second recovery uses the minimal AUDIO play path once per generation', () => {
+  assert.match(scoped, /const audio = document\.querySelector\('audio'\)/);
+  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
+  assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration !== generation/);
+  assert.match(scoped, /__homePanelSpotifyDirectPlayGeneration = generation/);
+  assert.match(scoped, /const result = audio\.play\(\)/);
   assert.match(scoped, /return 'direct-play'/);
-  assert.match(scoped, /buttonIntentValue === 'play'/);
-  assert.match(scoped, /controlIntent === 'play'/);
-  assert.ok(
-    scoped.indexOf('__homePanelSpotifyTryDirectPlay(mediaState.element)') <
-      scoped.indexOf("if (controlIntent === 'pause'"),
-  );
+  assert.match(scoped, /button\[data-testid="play-button"\]/);
+  assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
+  assert.doesNotMatch(scoped, /currentTrack|currentMatchesTarget|navigator\.mediaSession|buttonIntent|settling/);
+  assert.doesNotMatch(scripts, /__homePanelSpotifyTryDirectPlay/);
 });
 
 test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness', () => {
@@ -48,39 +41,23 @@ test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness
 
 test('direct audio play waits five seconds for observer confirmation before trusted-click fallback', () => {
   assert.match(music, /kSpotifyDirectPlayConfirmWaitMs = 5ULL \* 1000ULL/);
-  const directStart = music.indexOf(
-    'if (json && std::wstring_view(json) == L"\\"direct-play\\"")',
+  assert.match(
+    music,
+    /std::wstring_view\(json\) == L"true"[\s\S]*std::wstring_view\(json\) == L"\\"direct-play\\""[\s\S]*callbackNow \+ kSpotifyDirectPlayConfirmWaitMs/,
   );
-  const settlingStart = music.indexOf(
-    'if (json && std::wstring_view(json) == L"\\"settling\\"")',
-    directStart,
-  );
-  assert.ok(directStart >= 0 && settlingStart > directStart);
-  const directBranch = music.slice(directStart, settlingStart);
-  assert.match(directBranch, /SlotState::WaitingTarget/);
-  assert.match(directBranch, /kSpotifyDirectPlayConfirmWaitMs/);
-  assert.doesNotMatch(directBranch, /kSpotifyPlaybackStartRetryMs/);
-  assert.match(directBranch, /ArmTimedEndObserver\(\*target\)/);
-  assert.doesNotMatch(directBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.doesNotMatch(directBranch, /ClickSlotNormalizedPoint/);
-
-  const directAttempt = scoped.indexOf('__homePanelSpotifyTryDirectPlay(mediaState.element)');
-  const buttonFallback = scoped.indexOf("if (buttonIntentValue === 'play')");
-  assert.ok(directAttempt >= 0 && buttonFallback > directAttempt);
-  assert.match(scripts, /__homePanelSpotifyDirectPlayGeneration === generation[\s\S]*return false/);
+  assert.match(music, /ArmTimedEndObserver\(\*target\)/);
+  assert.match(music, /ParseNormalizedPoint\(json, &x, &y\)/);
+  assert.doesNotMatch(music, /kSpotifyPlaybackStartRetryMs/);
 });
 
-test('settling queues one recovery deadline without a renavigation branch', () => {
-  const callbackStart = music.indexOf(
-    'if (json && std::wstring_view(json) == L"\\"settling\\"")',
-  );
-  const pointStart = music.indexOf('int x = 0;', callbackStart);
-  assert.ok(callbackStart >= 0 && pointStart > callbackStart);
-  const callbackBranch = music.slice(callbackStart, pointStart);
-  assert.match(callbackBranch, /SlotState::WaitingTarget/);
-  assert.match(callbackBranch, /nextRecoveryTick = callbackNow \+ kSpotifyRecoveryRetryMs/);
-  assert.doesNotMatch(callbackBranch, /NavigateMusicTarget|ShouldRenavigateUnhealthySlot|unhealthySinceTick/);
-  assert.doesNotMatch(music, /"\\"wrong\\""|"\\"starting\\""|ShouldRenavigateUnhealthySlot|lastModeNavigateTick/);
+test('not-yet-created AUDIO or Play control is retried without a recovery sub-state machine', () => {
+  const pointStart = music.indexOf('if (ParseNormalizedPoint(json, &x, &y))');
+  const executeFailure = music.indexOf('if (FAILED(started))', pointStart);
+  assert.ok(pointStart >= 0 && executeFailure > pointStart);
+  const fallback = music.slice(pointStart, executeFailure);
+  assert.match(fallback, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
+  assert.match(fallback, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
+  assert.doesNotMatch(fallback, /MarkSlotRecovering|NavigateMusicTarget|settling/);
 });
 
 test('startup and target-transition paths contain no executable generic media stop actuator', () => {
@@ -92,43 +69,16 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('DOM reconcile requires active target media and leaves success to the observer', () => {
-  assert.match(
-    scoped,
-    /currentMatchesTarget && mediaState\.known && mediaState\.playing\) return true/,
-  );
-  assert.doesNotMatch(
-    scoped,
-    /currentMatchesTarget &&[\s\S]{0,180}controlIntent === 'pause'[\s\S]{0,180}return true/,
-  );
-  const trueBranch = music.slice(
-    music.indexOf('if (json && std::wstring_view(json) == L"true")'),
-    music.indexOf('if (json && std::wstring_view(json) == L"\\"direct-play\\"")'),
-  );
-  assert.match(trueBranch, /SetSlotState\(\*target, SlotState::WaitingTarget\)/);
-  assert.match(trueBranch, /kSpotifyPlaybackStartRetryMs/);
-  assert.match(trueBranch, /ArmTimedEndObserver\(\*target\)/);
-  assert.doesNotMatch(trueBranch, /SetSlotState\(\*target, SlotState::Playing\)/);
-  assert.doesNotMatch(trueBranch, /SetMusicCompletionDeadline/);
+test('actual playback remains observer-owned rather than DOM-label-owned', () => {
+  assert.match(scoped, /audio && !audio\.paused && !audio\.ended\) return true/);
+  assert.doesNotMatch(scoped, /aria-label|title\)\)\.toLowerCase|pause'|一時停止/);
   assert.doesNotMatch(controller, /add_DocumentTitleChanged/);
   assert.doesNotMatch(controller, /get_DocumentTitle/);
-});
-
-test('generation-tagged page observer owns status confirmation timing', () => {
   assert.match(rotation, /ParseSpotifyStartedEvent/);
   assert.match(rotation, /ParseSpotifyResumedEvent/);
-  assert.match(rotation, /eventGeneration != target->targetGeneration/);
   assert.match(rotation, /target->observedTrackTitle = currentTrack->title/);
   assert.match(rotation, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(rotation, /target->playbackConfirmed = true/);
-  assert.match(music, /ArmTimedEndObserver\(\*target\)/);
-});
-
-test('DOM detection can arm the observer without title-based status confirmation', () => {
-  assert.doesNotMatch(music, /DocumentTitleChanged|get_DocumentTitle/);
-  assert.match(music, /ArmTimedEndObserver\(\*target\)/);
-  assert.match(scoped, /controlIntent === 'pause'/);
-  assert.match(scoped, /buttonIntentValue === 'pause'/);
 });
 
 test('observer adoption of already-playing media still emits one start deadline if used', () => {

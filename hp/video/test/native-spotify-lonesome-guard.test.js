@@ -19,18 +19,18 @@ const routing = readFileSync(
 const click = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 
-test('all configured tracks use the current ManagedTrack and scoped reconcile implementation', () => {
+test('all configured tracks use the current ManagedTrack and minimal scoped reconcile implementation', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_lonesome_guard\.inc|RewriteSpotify|#define ExecuteScript/);
   assert.match(music, /const SpotifyWebViews::ManagedTrack\* SpotifyWebViews::CurrentMusicTrack/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(routing, /CurrentMusicTrack\(slot\)/);
   assert.doesNotMatch(routing, /kind = L"music"|trackPath|pagePath/);
-  assert.match(scoped, /now-playing-widget/);
-  assert.match(scoped, /now-playing-bar/);
-  assert.match(scoped, /navigator\.mediaSession/);
-  assert.match(scoped, /targetMatches\(current\)/);
-  assert.match(scoped, /targetPlayButton/);
+  assert.match(scoped, /document\.querySelector\('audio'\)/);
+  assert.match(scoped, /audio\.play\(\)/);
+  assert.match(scoped, /button\[data-testid="play-button"\]/);
+  assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
+  assert.doesNotMatch(scoped, /now-playing-widget|now-playing-bar|navigator\.mediaSession|targetMatches|targetPlayButton/);
 });
 
 test('track reconcile never forces repeat-one and completion remains one native deadline', () => {
@@ -57,11 +57,10 @@ test('returned Spotify control points flow through the single CDP trusted-click 
   assert.doesNotMatch(click, /SendInput|MOUSEEVENTF_/);
 });
 
-test('wrong queue items are corrected by scheduler-owned target navigation', () => {
-  assert.match(scoped, /a\[href\*="\/track\/"\]/);
-  assert.match(scoped, /tracklist-row/);
-  assert.match(scoped, /onTargetPage\(\)/);
-  assert.doesNotMatch(scoped, /spotify:playing|spotify:not-playing/);
-  assert.match(music, /MarkSlotRecovering\(\*target, callbackNow\)/);
-  assert.match(music, /NavigateMusicTarget\(slot\)/);
+test('wrong target URL is corrected only by scheduler-owned target navigation', () => {
+  assert.match(music, /if \(!SlotMatchesMusicTarget\(slot\)\) \{\s*NavigateMusicTarget\(slot\);\s*return;/);
+  assert.match(scoped, /location\.pathname === targetPath/);
+  assert.match(scoped, /location\.pathname\.endsWith\(targetPath\)/);
+  assert.doesNotMatch(scoped, /a\[href\*="\/track\/"\]|tracklist-row|spotify:playing|spotify:not-playing/);
+  assert.doesNotMatch(scoped, /NavigateMusicTarget|location\.assign|location\.replace/);
 });
