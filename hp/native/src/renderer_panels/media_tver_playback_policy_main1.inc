@@ -19,9 +19,11 @@ LR"JS(
       (element.textContent || ''));
   const hasVisibleLoginPrompt = () => Array.from(document.querySelectorAll(
       'button, a, [role="button"], [role="dialog"], [aria-modal="true"], '
-      + 'h1, h2, h3, [aria-label], [title]')).some(element =>
-          visible(element) && (labelOf(element).includes('ログイン') ||
-          /\b(?:log\s*in|sign\s*in)\b/i.test(labelOf(element))));
+      + 'h1, h2, h3, [aria-label], [title]')).some(element => {
+    if (!visible(element)) return false;
+    const label = labelOf(element).toLowerCase();
+    return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
+  });
   const isExitFullscreenControl = element => {
     const label = labelOf(element).toLowerCase();
     return /全画面を終了|全画面解除|フルスクリーンを終了/.test(label) ||
