@@ -32,7 +32,7 @@ HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wch
   return CreateWindowExW(0, className, title,
                          WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
                          background.left, background.top,
-                         kStationheadSurfaceWidth, kStationheadSurfaceHeight,
+                         RectWidth(background), RectHeight(background),
                          parent, nullptr, instance, nullptr);
 }
 
@@ -106,8 +106,8 @@ bool BackgroundAuthSurfaceMatches(HWND authHostWindow,
   if (!authController) {
     return IsWindowVisible(authHostWindow) &&
            WindowClientSizeMatches(authHostWindow,
-                                   kStationheadSurfaceWidth,
-                                   kStationheadSurfaceHeight) &&
+                                   RectWidth(background),
+                                   RectHeight(background)) &&
            ChildWindowPlacementMatches(authHostWindow, background, nullptr);
   }
   return SurfaceMatches(authHostWindow, authController, background, nullptr);
@@ -191,7 +191,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
   // Move the inactive auth host first, then playback. This keeps the normal
-  // playback host at the bottom while both 320x160 surfaces remain onscreen.
+  // playback host at the bottom while both surfaces fill the client area.
   if (authHostWindow && IsWindow(authHostWindow)) {
     const bool geometryMatches =
         WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
