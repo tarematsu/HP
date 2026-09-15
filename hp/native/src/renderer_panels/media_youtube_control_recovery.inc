@@ -293,9 +293,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return arm(fallback, 'fullscreen', 1200);
   };
 
-  if (fullscreen()) {
-    state.fullscreenApplied = true;
-  } else if (!state.fullscreenApplied) {
+  state.fullscreenApplied = fullscreen();
+  if (!ad() && !state.fullscreenApplied) {
     const fullscreenAction = armFullscreen();
     if (fullscreenAction) return fullscreenAction;
   }
@@ -415,11 +414,10 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     } catch (_) {}
   }
 
-  if (fullscreen()) {
-    state.fullscreenApplied = true;
-    return null;
-  }
+  state.fullscreenApplied = fullscreen();
   if (state.fullscreenApplied) return null;
+  const fullscreenAction = armFullscreen();
+  if (fullscreenAction) return fullscreenAction;
   recheck();
   return 'recovery';
 })()
