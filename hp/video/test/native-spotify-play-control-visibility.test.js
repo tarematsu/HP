@@ -19,19 +19,25 @@ test('Spotify page bootstrap injects no lightweight CSS or style overrides', () 
   assert.doesNotMatch(scripts, /content-visibility\s*:/);
 });
 
-test('track reconcile finds Spotify Play controls directly by test id without aria-label parsing', () => {
+test('track reconcile prioritizes the target-page Play control before media state', () => {
   assert.match(reconcile, /button\[data-testid="play-button"\]/);
   assert.match(reconcile, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(reconcile, /\.find\(visible\) \|\| null/);
-  assert.doesNotMatch(reconcile, /testIdOf|aria-label|buttonIntent|labelOf/);
+  assert.match(reconcile, /const labelOf = element =>/);
+  assert.match(reconcile, /label\.includes\('pause'\) \|\| label\.includes\('一時停止'\)/);
+  assert.match(reconcile, /if \(pagePlay\) \{[\s\S]*isPauseControl\(pagePlay\)[\s\S]*return point\(pagePlay\)/);
+  const targetControl = reconcile.indexOf('const pagePlay');
+  const audio = reconcile.indexOf("const audio = document.querySelector('audio')");
+  assert.ok(targetControl >= 0 && audio > targetControl);
 });
 
-test('trusted CDP preflight accepts only Spotify Play controls by test id without text labels', () => {
+test('trusted CDP preflight accepts target Play despite unrelated media and rejects Pause', () => {
   assert.match(click, /const testid=\(\(button\.getAttribute\('data-testid'\)\|\|''\)\.trim\(\)\.toLowerCase\(\)\)/);
   assert.match(
     click,
     /const trustedPlay=testid==='play-button'\|\|testid==='control-button-playpause';/,
   );
-  assert.doesNotMatch(click, /const label=|label\.includes|label==='play'|label==='再生'|一時停止/);
-  assert.match(click, /media\.some\(m=>!m\.ended&&!m\.paused\)\)return false/);
+  assert.doesNotMatch(click, /document\.querySelectorAll\('audio, video'\)/);
+  assert.doesNotMatch(click, /media\.some\(m=>!m\.ended&&!m\.paused\)/);
+  assert.match(click, /const label=\(\(button\.getAttribute\('aria-label'\)\|\|button\.getAttribute\('title'\)\|\|''\)\.trim\(\)\.toLowerCase\(\)\)/);
+  assert.match(click, /label\.includes\('pause'\)\|\|label\.includes\('一時停止'\)/);
 });
