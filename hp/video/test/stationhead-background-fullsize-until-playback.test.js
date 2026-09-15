@@ -43,6 +43,7 @@ test('Stationhead normal background surface stays 480x270 inside the client area
     /const RECT offscreen = hidePlayback[\s\S]*StationheadBackgroundBounds\(workspaceBounds\)/,
   );
   assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(apply, /authHostBounds = showAuth \? workspaceBounds : authOffscreen/);
 });
 
 test('normal startup and reload layout do not depend on audio confirmation', () => {
@@ -101,7 +102,7 @@ test('authentication keeps playback alive offscreen while auth is foreground ful
   );
   assert.match(apply, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
   assert.match(apply, /const RECT offscreen = hidePlayback[\s\S]*authOffscreen/);
-  assert.match(apply, /authHostBounds = showAuth \? workspaceBounds : offscreen/);
+  assert.match(apply, /authHostBounds = showAuth \? workspaceBounds : authOffscreen/);
   assert.match(apply, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
   assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
 
