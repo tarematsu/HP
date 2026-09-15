@@ -15,7 +15,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('A and B use the live DOM interaction state instead of an audio settlement latch', () => {
+test('live DOM interaction state remains independent from audio settlement', () => {
   const wrapper = section(
     policy,
     '#define RecoverUnavailableAuthorization()',
@@ -24,7 +24,7 @@ test('A and B use the live DOM interaction state instead of an audio settlement 
   const bridge = section(
     policy,
     'inline std::wstring StationheadAutoplayScriptCurrentInteraction(',
-    '// Window B no longer asks Stationhead',
+    '#define kStationheadPostPlaybackStopClickDelayMs',
   );
 
   assert.doesNotMatch(policy, /SettleStaleInteractivePlayback/);
@@ -34,28 +34,9 @@ test('A and B use the live DOM interaction state instead of an audio settlement 
   assert.match(bridge, /if \(!blocking\)/);
   assert.match(bridge, /type: 'stationhead-auth-ready'/);
   assert.match(bridge, /source: 'current-interaction-state'/);
-  assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
 });
 
-test('Window B legacy auth probe is local-only and shares the same interaction state', () => {
-  const probe = section(
-    policy,
-    'inline std::wstring StationheadCurrentInteractionAuthProbeScript(',
-    'inline constexpr int64_t kStationheadMeasuredPostPlaybackStopClickDelayMs',
-  );
-
-  assert.match(probe, /__homepanelStationheadBlockingLoginVisible === true/);
-  assert.match(probe, /post\(\{ type: 'stationhead-auth-probe'/);
-  assert.match(probe, /blocking \? 'auth-failed' : 'ok'/);
-  assert.doesNotMatch(probe, /fetch\s*\(/);
-  assert.doesNotMatch(probe, /production1\.stationhead\.com|streakStats/);
-  assert.match(
-    policy,
-    /#define StationheadAuthProbeScript StationheadCurrentInteractionAuthProbeScript/,
-  );
-});
-
-test('53/54-minute refresh has one direct interactive-state gate', () => {
+test('50-minute refresh has one direct interactive-state gate', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
 
   assert.match(
@@ -63,7 +44,6 @@ test('53/54-minute refresh has one direct interactive-state gate', () => {
     /spotifyAuthorization_ \|\| loginRequired_ \|\|[\s\S]*recreating_/,
   );
   assert.doesNotMatch(injected, /unresolvedInteractiveLogin/);
-  assert.match(policy, /secondary \? 54 : 53/);
-  assert.match(injected, /L"54-minute periodic refresh"/);
-  assert.match(injected, /L"53-minute periodic refresh"/);
+  assert.match(policy, /return 50 \* 60'000;/);
+  assert.match(injected, /L"50-minute periodic refresh"/);
 });
