@@ -1,0 +1,57 @@
+name: Temporary merge Stationhead primary-only
+
+on:
+  push:
+    branches:
+      - refactor/stationhead-primary-only
+
+permissions:
+  contents: write
+
+jobs:
+  merge-main:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/stationhead-primary-only
+          fetch-depth: 0
+      - name: Merge current main
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin main
+          set +e
+          git merge --no-commit --no-ff origin/main
+          merge_status=$?
+          set -e
+          if [ "$merge_status" -ne 0 ]; then
+            git checkout --theirs hp/native/src/sh_track_boundary_message_policy.h
+            git checkout --ours hp/video/test/stationhead-periodic-refresh-regression.test.js || true
+            git checkout --ours hp/video/test/stationhead-playing-settlement-refresh-regression.test.js || true
+          fi
+          python scripts/tmp-merge-stationhead-primary-only.py
+          git add -A
+          unresolved=$(git diff --name-only --diff-filter=U)
+          if [ -n "$unresolved" ]; then
+            echo "Unresolved merge files:"
+            echo "$unresolved"
+            exit 1
+          fi
+          if git grep -nE 'StationheadRole::Secondary|IsSecondary\(|secondaryEnabled|secondaryUrl|HomePanelSecondaryStationhead|HomePanelSecondarySpotifyAuthHost|WM_HP_SECONDARY_RELOAD_READY|stationhead-secondary|PollAuthProbe|authProbeInFlight_|authProbeStartedAt_|lastAuthProbeAt_|secondaryAutoClick|secondaryReloadMonotonicAt|StationheadAuthProbeScript|Stationhead B|AppSecondaryStationheadHandle|secondaryStationhead_' -- hp/native hp/video/test; then
+            echo "Secondary Stationhead references remain"
+            exit 1
+          fi
+          grep -q 'kStationheadBackgroundWidth = 480' hp/native/src/sh_layout.cpp
+          grep -q 'kStationheadBackgroundHeight = 270' hp/native/src/sh_layout.cpp
+          grep -q "return 50 \* 60'000;" hp/native/src/sh_track_boundary_message_policy.h
+          grep -q 'audioLossPlaybackObserved_ = false;' hp/native/src/sh_track_boundary_message_policy.h
+          grep -q 'SetStartupBounds();' hp/native/src/sh_track_boundary_message_policy.h
+          rm -f scripts/tmp-merge-stationhead-primary-only.py
+          rm -f .github/workflows/tmp-merge-stationhead-primary-only.yml
+          git add -A
+          git diff --cached --check
+          git commit -m "Merge main into Stationhead primary-only refactor"
+          git push origin HEAD:refactor/stationhead-primary-only
