@@ -19,8 +19,9 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('media startup is YouTube then Spotify then Stationhead with ten second gaps', () => {
+test('media startup is YouTube then Spotify then Stationhead at fixed ten second offsets', () => {
   assert.match(appHeader, /kMediaStartupStageDelayMs\s*=\s*10'000/);
+  assert.doesNotMatch(appHeader, /spotifyStartedAt_/);
 
   const startup = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   assert.match(startup, /renderer_->Initialize\(\)/);
@@ -31,15 +32,16 @@ test('media startup is YouTube then Spotify then Stationhead with ten second gap
   const spotifyAt = deferred.indexOf('renderer_->StartSpotify()');
   const stationheadAt = deferred.indexOf('stationhead_->Start()');
   assert.ok(spotifyAt >= 0, 'Spotify staged start is missing');
-  assert.ok(stationheadAt > spotifyAt, 'Stationhead must start after Spotify');
+  assert.ok(stationheadAt > spotifyAt, 'Stationhead launch must be issued after Spotify launch');
   assert.match(
     deferred,
     /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs[\s\S]*renderer_->StartSpotify\(\)/,
   );
   assert.match(
     deferred,
-    /now\s*-\s*spotifyStartedAt_\s*>=\s*kMediaStartupStageDelayMs[\s\S]*stationhead_->Start\(\)/,
+    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*2[\s\S]*stationhead_->Start\(\)/,
   );
+  assert.doesNotMatch(deferred, /spotifyStartedAt_/);
 });
 
 test('renderer initialization no longer starts Spotify alongside YouTube', () => {
