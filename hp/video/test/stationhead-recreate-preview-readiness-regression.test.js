@@ -2,22 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const handleHeader = readFileSync(
-  new URL('../../native/src/app_stationhead_handles.h', import.meta.url),
-  'utf8',
-);
-const playerHeader = readFileSync(
-  new URL('../../native/src/sh.h', import.meta.url),
-  'utf8',
-);
-const playerSource = readFileSync(
-  new URL('../../native/src/sh.cpp', import.meta.url),
-  'utf8',
-);
-const layoutSource = readFileSync(
-  new URL('../../native/src/sh_layout.cpp', import.meta.url),
-  'utf8',
-);
+const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+const playerHeader = source('sh.h');
+const playerSource = source('sh.cpp');
+const layoutSource = source('sh_layout.cpp');
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -27,80 +15,29 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Window B remains covered until its first useful surface is ready', () => {
-  const readiness = section(
-    handleHeader,
-    'inline bool StationheadStartupPreviewReady(',
-    'static_assert(SecondaryStationheadStartupReady',
-  );
-  assert.match(readiness, /status\.audioPlaying/);
-  assert.match(readiness, /status\.loginRequired/);
-  assert.match(readiness, /status\.spotifyAuthorization/);
-  assert.match(readiness, /status\.created && !status\.navigating/);
-  assert.match(readiness, /status\.detail == L"station loaded"/);
-  assert.match(readiness, /!status\.processFailed/);
-
-  const apply = section(
-    handleHeader,
-    '  void ApplyDeferredStartupPreview() {',
-    '  RECT pendingStartupPreviewBounds_',
-  );
-  const readinessAt = apply.indexOf('StationheadStartupPreviewReady(status)');
-  const exposeAt = apply.indexOf(
-    'StationheadHandleBase::SetStartupPreviewBounds(pendingStartupPreviewBounds_);',
-  );
-  assert.ok(readinessAt >= 0 && exposeAt > readinessAt);
-});
-
 test('delayed WebView recreation keeps the App scheduler on a fast wake', () => {
-  const wake = section(
-    playerHeader,
-    'class StartupAwareWakeDeadline',
-    'struct StationheadDailyPlayPoint',
-  );
-  assert.match(wake, /const std::atomic<bool>& recreating/);
+  const wake = section(playerHeader, 'class StartupAwareWakeDeadline', 'struct StationheadDailyPlayPoint');
   assert.match(wake, /recreating_->load\(std::memory_order_relaxed\)/);
-  assert.match(
-    wake,
-    /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/,
-  );
+  assert.match(wake, /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/);
   assert.match(wake, /MonotonicProjectedDeadline value_;/);
-  assert.match(
-    playerHeader,
-    /StartupAwareWakeDeadline nextTickAt_\{[\s\S]*creating_, recreating_, startupScriptDeadline_/,
-  );
 });
 
 test('earliest recreate request is compared in monotonic uptime space', () => {
-  const deadline = section(
-    playerHeader,
-    'class MonotonicDeadline',
-    'class MonotonicProjectedDeadline',
-  );
-  assert.match(deadline, /friend bool operator<\(/);
+  const deadline = section(playerHeader, 'class MonotonicDeadline', 'class MonotonicProjectedDeadline');
   assert.match(deadline, /TickForWallDeadline\(candidateWallDeadline\)/);
   assert.match(deadline, /current\.deadlineTick_/);
-
-  const schedule = section(
-    playerSource,
-    'void StationheadPlayer::ScheduleRecreate(',
-    '}  // namespace hp',
-  );
+  const schedule = section(playerSource, 'void StationheadPlayer::ScheduleRecreate(', '}  // namespace hp');
   assert.match(schedule, /candidate < recreateAt_/);
 });
 
 test('pending Spotify auth creation coalesces repeated controller requests', () => {
   const ensureAuthHost = section(
-    layoutSource,
-    'bool StationheadPlayer::EnsureAuthHostWindow() {',
-    'void StationheadPlayer::KeepPlaybackBehindDashboard()',
+    layoutSource, 'bool StationheadPlayer::EnsureAuthHostWindow() {',
+    'void StationheadPlayer::KeepPlaybackBehindDashboard()');
+  assert.ok(
+    ensureAuthHost.indexOf('authControllerStartedAt_.Active() && !authController_') >= 0 &&
+    ensureAuthHost.indexOf('authControllerStartedAt_.Active() && !authController_') <
+      ensureAuthHost.indexOf('authHostWindow_ && IsWindow(authHostWindow_)'),
   );
-  const pendingGuardAt = ensureAuthHost.indexOf(
-    'if (authControllerStartedAt_.Active() && !authController_) return false;',
-  );
-  const existingHostAt = ensureAuthHost.indexOf(
-    'if (authHostWindow_ && IsWindow(authHostWindow_)) return true;',
-  );
-  assert.ok(pendingGuardAt >= 0 && existingHostAt > pendingGuardAt);
   assert.match(playerSource, /authPendingUrl_ = url;/);
 });

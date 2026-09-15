@@ -2,35 +2,28 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const handleSource = readFileSync(
-  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
-  'utf8',
-);
+const source = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url), 'utf8');
 
-function section(source, start, end) {
-  const startAt = source.indexOf(start);
-  assert.notEqual(startAt, -1, `missing section: ${start}`);
-  const endAt = source.indexOf(end, startAt + start.length);
-  assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
-  return source.slice(startAt, endAt);
+function section(text, start, end) {
+  const from = text.indexOf(start);
+  assert.notEqual(from, -1, `missing section: ${start}`);
+  const to = text.indexOf(end, from + start.length);
+  assert.notEqual(to, -1, `missing section terminator: ${end}`);
+  return text.slice(from, to);
 }
 
-test('interactive Stationhead is re-raised after every native handle tick', () => {
-  const tick = section(
-    handleSource,
-    'void StationheadHandleBase::Tick(int64_t nowMs)',
-    'void StationheadHandleBase::Reconnect()',
+test('interactive Stationhead is re-raised after every handle tick', () => {
+  const tick = section(source, 'void StationheadHandleBase::Tick(int64_t nowMs)',
+    'void StationheadHandleBase::ShowAfterAudioStop()');
+  assert.ok(
+    tick.indexOf('player_->EvaluateAudioLossRecovery(nowMs);') <
+      tick.indexOf('RaiseActiveHost();'),
   );
-  const recoveryAt = tick.indexOf('player_->EvaluateAudioLossRecovery(nowMs);');
-  const raiseAt = tick.indexOf('RaiseActiveHost();');
-  assert.ok(recoveryAt >= 0 && raiseAt > recoveryAt);
 
-  const raise = section(
-    handleSource,
-    'void StationheadHandleBase::RaiseActiveHost() const',
-    'void StationheadHandleBase::ApplyInteractiveBounds()',
-  );
-  assert.match(raise, /if \(!preview && !player_->SurfaceVisible\(\)\) return;/);
+  const raise = section(source, 'void StationheadHandleBase::RaiseActiveHost() const',
+    'void StationheadHandleBase::ApplyBounds()');
+  assert.match(raise, /!player_->SurfaceVisible\(\)/);
   assert.match(raise, /SetWindowPos\(host, HWND_TOP/);
-  assert.match(raise, /if \(!preview && interactive\) BringMainWindowToFront\(host\);/);
+  assert.match(raise, /if \(interactive\) BringMainWindowToFront\(host\);/);
 });

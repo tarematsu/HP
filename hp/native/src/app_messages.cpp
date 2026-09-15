@@ -26,18 +26,9 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
   return result;
 }
 
-void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
-  // A single Stationhead player has no peer handoff window to coordinate.
-  (void)nowMs;
-}
-
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
-      // PowerSavingController posts a zero-id WM_TIMER when the effective
-      // Stationhead monitor foreground state changes. The ordinary app timer
-      // uses kCentralTimer, so only this explicit wake needs to invalidate the
-      // placement cache before Tick reapplies the WebView2 bounds/visibility.
       if (wParam == 0) MarkStationheadPlacementDirty();
       Tick();
       return 0;
@@ -89,22 +80,15 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     }
 
     case WM_HP_PRIMARY_RELOAD_READY:
-      // There is no B window to wait for. The single player may refresh as soon
-      // as its own track-boundary policy decides a navigation is due.
       return stationhead_ ? 1 : 0;
-    case WM_HP_SECONDARY_RELOAD_READY:
-      return 0;
     case WM_HP_STATIONHEAD_CHANGED: {
       if (!stationhead_) return 0;
       const uint32_t changes = stationhead_->ConsumeChangeFlags();
-      if ((changes & StationheadChangeReleaseAuth) != 0) {
-        stationhead_->ReleaseCompletedAuth();
-      }
       if ((changes & StationheadChangeShowPlayer) != 0) {
         stationhead_->ShowAfterAudioStop();
       }
       MarkStationheadPlacementDirty();
-      ApplyStationheadWindowPlacement(stationhead_->Status(), StationheadStatus{});
+      ApplyStationheadWindowPlacement(stationhead_->Status());
       ScheduleNextTick(1);
       return 0;
     }

@@ -134,7 +134,6 @@ set(HOMEPANEL_CORE_SOURCES
   src/app_air_history.cpp
   src/app_stationhead_history.cpp
   src/app_stationhead_handles.cpp
-  src/app_stationhead_state.cpp
   src/shared_webview_environment.cpp
   src/app_update.cpp
   src/app_messages.cpp
@@ -147,9 +146,6 @@ set(HOMEPANEL_CORE_SOURCES
   src/update_client.cpp
   src/sensors.cpp)
 
-# Restore the retained Stationhead implementation, but the App creates only the
-# primary player. Secondary/A-B coordination code remains available to the
-# implementation without creating a second runtime WebView.
 set(HOMEPANEL_STATIONHEAD_SOURCES
   src/stationhead_native_stats.cpp
   src/stationhead_native_stats.h
