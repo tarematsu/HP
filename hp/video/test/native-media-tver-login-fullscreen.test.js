@@ -21,11 +21,14 @@ test('TVer pauses fullscreen while a visible login prompt is present', () => {
   );
 });
 
-test('trusted fullscreen keeps its one-shot pending across login', () => {
-  assert.match(immediateFullscreen, /if \(hasVisibleLoginPrompt\(\)\) return;/);
+test('trusted fullscreen keeps its retry pending across login', () => {
   assert.match(
     immediateFullscreen,
     /if \(hasVisibleLoginPrompt\(\)\) \{[\s\S]*if \(state\) state\.fullscreenDirty = true;[\s\S]*return;/,
   );
-  assert.match(immediateFullscreen, /Failure is intentionally not retried until the media identity changes/);
+  assert.match(immediateFullscreen, /homepanel:tver-wake/);
+  assert.doesNotMatch(
+    immediateFullscreen,
+    /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/,
+  );
 });
