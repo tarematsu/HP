@@ -81,7 +81,18 @@ test('clock waste illustrations keep their 4:3 source aspect ratio', () => {
   );
 });
 
-test('cropped waste illustrations are bundled for offline rendering', () => {
+test('transparent waste illustrations use the premultiplied alpha renderer', () => {
+  assert.match(
+    calendar,
+    /void DrawCourse36WasteBitmap\([\s\S]*DrawPremultipliedBitmap\(dc, bitmap, rect\)/,
+  );
+  assert.doesNotMatch(
+    calendar,
+    /void DrawCourse36WasteBitmap\([\s\S]*BitBlt\(/,
+  );
+});
+
+test('cropped waste illustrations are bundled as transparent PNGs for offline rendering', () => {
   for (const [id, name] of [
     [120, 'bottles-cans.png'],
     [121, 'nonburnable-hazardous.png'],
@@ -93,6 +104,7 @@ test('cropped waste illustrations are bundled for offline rendering', () => {
     assert.equal(bytes.subarray(1, 4).toString(), 'PNG');
     assert.equal(bytes.readUInt32BE(16), 128);
     assert.equal(bytes.readUInt32BE(20), 96);
+    assert.equal(bytes.includes(Buffer.from('tRNS')), true);
   }
 });
 
