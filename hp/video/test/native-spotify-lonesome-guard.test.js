@@ -50,15 +50,17 @@ test('track reconcile never forces repeat-one and completion remains one native 
   assert.doesNotMatch(runtime + events, /spotify:timed-plan/);
 });
 
-test('returned Spotify control points flow through the single CDP trusted-click module', () => {
-  assert.match(click, /bool SpotifyWebViews::ParseNormalizedPoint/);
-  assert.match(click, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
+test('returned Spotify CSS control points flow through the single CDP trusted-click module', () => {
+  assert.match(click, /bool SpotifyWebViews::ParseCssPoint/);
+  assert.match(click, /void SpotifyWebViews::ClickSlotCssPoint/);
   assert.match(
     click,
-    /DispatchSpotifyDevToolsClick\(\s*(?:slot|\*target),\s*xTenThousandths,\s*yTenThousandths\)/,
+    /DispatchSpotifyDevToolsClick\(\*target, verifiedX, verifiedY\)/,
   );
+  assert.match(click, /const double x = cssX/);
+  assert.match(click, /const double y = cssY/);
   assert.match(click, /Input\.dispatchMouseEvent/);
-  assert.doesNotMatch(click, /SendInput|MOUSEEVENTF_/);
+  assert.doesNotMatch(click, /SendInput|MOUSEEVENTF_|get_ZoomFactor|GetDpiForWindow|cssWidth|cssHeight/);
 });
 
 test('wrong target URL is corrected only by scheduler-owned target navigation', () => {
