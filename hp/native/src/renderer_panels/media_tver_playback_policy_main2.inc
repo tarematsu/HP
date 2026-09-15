@@ -1,8 +1,8 @@
 LR"JS(
 
   if (video && state && !state.lowQualitySet && !state.qualityAttemptExhausted) {
-    const qualityRoot = playerRootFor(video);
-    if (qualityRoot) {
+    const root = playerRootFor(video);
+    if (root) {
       try {
         const rect = visibleRect(video);
         if (rect) {
@@ -14,7 +14,7 @@ LR"JS(
         }
       } catch (_) {}
 
-      const qualityControls = Array.from(qualityRoot.querySelectorAll(
+      const qualityControls = Array.from(root.querySelectorAll(
           'button, [role="button"], [role="menuitem"], [role="radio"], '
           + '[role="option"], li, [aria-label], [title]')).filter(visible);
       const qualityName = element => labelOf(element)
