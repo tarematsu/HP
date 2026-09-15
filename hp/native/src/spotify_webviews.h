@@ -77,6 +77,7 @@ class SpotifyWebViews final {
     ComPtr<ICoreWebView2> webview;
     EventRegistrationToken navigationStartingToken{};
     EventRegistrationToken navigationCompletedToken{};
+    EventRegistrationToken webResourceRequestedToken{};
     EventRegistrationToken timedEndMessageReceivedToken{};
     ICoreWebView2* timedEndHandlerWebview = nullptr;
     ICoreWebView2Controller* hostLayoutController = nullptr;
