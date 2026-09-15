@@ -270,8 +270,6 @@ class NativeMediaPanelHost final {
       }
 
       const auto alive = alive_;
-      // Images are intentionally blocked, but fonts remain available so player
-      // controls and glyph-based icons do not become brittle recovery targets.
       webview_->AddWebResourceRequestedFilter(
           L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
       ComPtr<ICoreWebView2Environment> requestEnvironment = environment_;
@@ -353,7 +351,18 @@ class NativeMediaPanelHost final {
 
       Resize();
       controller_->put_IsVisible(TRUE);
-      NavigateCurrentPhase();
+      ComPtr<ICoreWebView2> startupView = webview_;
+      const uint64_t generation = controllerGeneration_;
+      ResetWebViewStartupCaches(
+          startupView.Get(),
+          [this, alive, startupView, generation](HRESULT) {
+            if (!alive->load(std::memory_order_acquire) ||
+                generation != controllerGeneration_ ||
+                webview_.Get() != startupView.Get()) {
+              return;
+            }
+            NavigateCurrentPhase();
+          });
     } catch (...) {
       Fail();
     }
