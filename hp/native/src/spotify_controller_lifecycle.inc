@@ -143,12 +143,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               target->asyncWork = AsyncWork::None;
               target->asyncStartedTick = 0;
               target->trustedClickBlockedUntilTick = 0;
-              target->playerPage = false;
               target->loginPage = false;
               target->timedObserverReady = false;
               LPWSTR rawUri = nullptr;
               if (SUCCEEDED(args->get_Uri(&rawUri)) && rawUri) {
-                target->playerPage = IsSpotifyPlayerUri(rawUri);
                 target->loginPage = IsSpotifyLoginUri(rawUri);
                 CoTaskMemFree(rawUri);
               }
@@ -168,7 +166,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               if (target->controller) target->controller->put_IsVisible(TRUE);
               BOOL success = FALSE;
               if (FAILED(args->get_IsSuccess(&success)) || !success) {
-                target->playerPage = false;
                 MarkSlotRecovering(*target, GetTickCount64());
                 RecomputeForeground();
                 ArmRobustScheduler();
@@ -182,7 +179,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 loginPage = IsSpotifyLoginUri(rawUri);
                 CoTaskMemFree(rawUri);
               }
-              target->playerPage = playerPage;
               target->loginPage = loginPage;
               const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, loginPage ? SlotState::Authenticating : (playerPage ? SlotState::WaitingTarget : SlotState::Navigating));
