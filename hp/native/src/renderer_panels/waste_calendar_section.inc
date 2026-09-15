@@ -200,6 +200,8 @@ constexpr std::array<const wchar_t*, 3> kCourse36ClockWasteImageFiles{{
     L"nonburnable-hazardous.png",
     L"paper.png",
 }};
+constexpr int kCourse36ClockWasteImageAspectWidth = 4;
+constexpr int kCourse36ClockWasteImageAspectHeight = 3;
 
 struct Course36ClockWasteImageAsset {
   ~Course36ClockWasteImageAsset() {
@@ -363,8 +365,18 @@ void DrawCourse36ClockWasteNotices(
     RECT iconArea{cellLeft, dateRect.bottom + iconTopGap, cellRight, rect.bottom};
     const int areaWidth = std::max(1L, iconArea.right - iconArea.left);
     const int areaHeight = std::max(1L, iconArea.bottom - iconArea.top);
-    const int iconWidth = std::max(1, areaWidth * 78 / 100);
-    const int iconHeight = std::max(1, areaHeight * 92 / 100);
+    const int maxIconWidth = std::max(1, areaWidth * 78 / 100);
+    const int maxIconHeight = std::max(1, areaHeight * 92 / 100);
+    int iconWidth = maxIconWidth;
+    int iconHeight = std::max(
+        1, iconWidth * kCourse36ClockWasteImageAspectHeight /
+            kCourse36ClockWasteImageAspectWidth);
+    if (iconHeight > maxIconHeight) {
+      iconHeight = maxIconHeight;
+      iconWidth = std::max(
+          1, iconHeight * kCourse36ClockWasteImageAspectWidth /
+              kCourse36ClockWasteImageAspectHeight);
+    }
     RECT iconRect{
         iconArea.left + (areaWidth - iconWidth) / 2,
         iconArea.top + (areaHeight - iconHeight) / 2,
