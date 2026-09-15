@@ -41,20 +41,22 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     // Keep every background Spotify state on the same 480x270 native surface,
     // but park the child window completely outside the parent client area.
     // Monitor C is the only mode that returns it onscreen and expands it.
-    int x = client.right + 1;
-    int y = client.bottom + 1;
+    const int x = client.left;
+    const int y = client.top;
+    int hostX = client.right + 1;
+    int hostY = client.bottom + 1;
     int width = std::min(kSpotifyBackgroundWidth, clientWidth);
     int height = std::min(kSpotifyBackgroundHeight, clientHeight);
     HWND insertAfter = authentication ? HWND_TOP : HWND_BOTTOM;
     if (monitorForeground_) {
-      x = client.left;
-      y = client.top;
+      hostX = x;
+      hostY = y;
       width = clientWidth;
       height = clientHeight;
       insertAfter = HWND_TOP;
     }
 
-    const RECT desired{x, y, x + width, y + height};
+    const RECT desired{hostX, hostY, hostX + width, hostY + height};
     const bool positionChanged =
         !slot.hostLayoutApplied ||
         !SpotifyHostPositionEqual(slot.hostLayoutRect, desired);
@@ -73,7 +75,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       if (!sizeChanged) flags |= SWP_NOSIZE;
       if (!zOrderChanged) flags |= SWP_NOZORDER;
       if (SetWindowPos(slot.hostWindow, insertAfter,
-                       x, y, width, height, flags)) {
+                       hostX, hostY, width, height, flags)) {
         slot.hostLayoutRect = desired;
         slot.hostLayoutInsertAfter = insertAfter;
         slot.hostLayoutApplied = true;
