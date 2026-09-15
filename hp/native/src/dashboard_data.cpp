@@ -99,11 +99,11 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
 }
 
 bool ParseSwitchBotDevices(const std::string& text,
-                           std::vector<SwitchBotDeviceData>& output) {
+                           std::vector<std::wstring>& output) {
   try {
     if (text.empty()) return false;
     const JsonArray devices = json::Array(JsonObject::Parse(Utf8ToWide(text)), L"devices");
-    std::vector<SwitchBotDeviceData> next;
+    std::vector<std::wstring> next;
     next.reserve(4);
     for (uint32_t index = 0; index < devices.Size() && next.size() < 4; ++index) {
       const auto value = devices.GetAt(index);
@@ -111,12 +111,10 @@ bool ParseSwitchBotDevices(const std::string& text,
       const JsonObject item = value.GetObject();
       if (json::Text(item, L"deviceType").find(L"Plug") == std::wstring::npos) continue;
       const double watts = NumberOrNaN(item, L"watts");
-      next.push_back({
-          json::Text(item, L"deviceName",
-                     json::Text(item, L"deviceId", L"SwitchBot")),
-          std::isfinite(watts)
-              ? std::to_wstring(static_cast<int>(std::round(watts))) + L"W" : L"--W",
-      });
+      next.push_back(
+          json::Text(item, L"deviceName", json::Text(item, L"deviceId", L"SwitchBot")) + L" " +
+          (std::isfinite(watts)
+              ? std::to_wstring(static_cast<int>(std::round(watts))) + L"W" : L"--W"));
     }
     output = std::move(next);
     return true;
