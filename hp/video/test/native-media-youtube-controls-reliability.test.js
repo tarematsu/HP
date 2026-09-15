@@ -41,12 +41,19 @@ test('ad skip stays player-local and variant tolerant', () => {
   assert.doesNotMatch(runtime, /document\.querySelectorAll\([^)]*skip/);
 });
 
-test('message dialogs close explicit Close controls and exclude surveys', () => {
+test('message dialogs close through the same trusted CDP action path', () => {
   assert.match(runtime, /document\.querySelector\('ytd-popup-container'\)/);
   assert.match(runtime, /\^\(閉じる\|close\)\$/);
   assert.match(runtime, /root\.matches\(surveySelector\)/);
   assert.match(runtime, /root\.querySelector\(surveySelector\)/);
-  assert.match(runtime, /close\.click\(\)/);
+  assert.match(runtime, /return arm\(close, 'dialog-close', 500\)/);
+  assert.doesNotMatch(runtime, /\.click\(\)/);
+});
+
+test('captions off uses trusted input when the UI toggle is active', () => {
+  assert.match(runtime, /aria-pressed'\) === 'true'/);
+  assert.match(runtime, /return arm\(captions, 'captions-off', 800\) \|\| 'recovery'/);
+  assert.doesNotMatch(runtime, /captions\.click\(\)/);
 });
 
 test('paused and stalled content share one recovery path', () => {
