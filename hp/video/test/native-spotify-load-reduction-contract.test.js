@@ -33,33 +33,27 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
   assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify layout keeps a fixed onscreen 160x320 surface behind the air panel and changes only z-order', () => {
-  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
-  assert.match(layout, /ComputeMediaSurfaceAnchors\(client\)/);
-  assert.match(layout, /anchors\.air/);
-  assert.match(layout, /CenterMediaSurfaceOnAnchor/);
-  assert.match(layout, /const int hostX = backgroundSurface\.left;/);
-  assert.match(layout, /const int hostY = backgroundSurface\.top;/);
+test('Spotify layout keeps a full-client onscreen surface and changes only z-order', () => {
+  assert.match(layout, /const int hostX = client\.left;/);
+  assert.match(layout, /const int hostY = client\.top;/);
+  assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\);/);
+  assert.match(layout, /const int height = std::max\(1L, client\.bottom - client\.top\);/);
   assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
-  assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
-  assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
   assert.match(layout, /const bool zOrderChanged =/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.match(layout, /SWP_SHOWWINDOW/);
+  assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
 });
 
-test('Spotify recovery keeps the same 160x320 air-panel background viewport used during steady playback', () => {
+test('Spotify recovery keeps the same full-client viewport used during steady playback', () => {
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
-  assert.match(layout, /kSpotifyBackgroundWidth = 160/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 320/);
-  assert.match(layout, /backgroundSurface\.right - backgroundSurface\.left/);
-  assert.match(layout, /backgroundSurface\.bottom - backgroundSurface\.top/);
+  assert.match(layout, /client\.right - client\.left/);
+  assert.match(layout, /client\.bottom - client\.top/);
   assert.doesNotMatch(layout, /playbackConfirmed[\s\S]*\? 1/);
 });
 
