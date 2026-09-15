@@ -32,6 +32,10 @@ bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
 
 }  // namespace
 
+bool SpotifyWebViews::SlotStateIsHealthy(SlotState state) noexcept {
+  return state == SlotState::Playing;
+}
+
 bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
   return state == SlotState::NotCreated || state == SlotState::Navigating ||
          state == SlotState::WaitingTarget || state == SlotState::Recovering;
