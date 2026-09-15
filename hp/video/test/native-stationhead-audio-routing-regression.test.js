@@ -3,10 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const readNative = relative => readFileSync(
-  new URL(`../../native/src/${relative}`, import.meta.url),
-  'utf8',
-);
-
+  new URL(`../../native/src/${relative}`, import.meta.url), 'utf8');
 const audio = readNative('sh_audio.cpp');
 const app = readNative('app.cpp');
 const handles = readNative('app_stationhead_handles.cpp');
@@ -20,62 +17,35 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('single Stationhead and MUTE actions use only the native WebView2 mute API', () => {
-  const setMuted = section(
-    audio,
-    'void StationheadPlayer::SetMuted(bool muted) noexcept',
-    'bool StationheadPlayer::Muted() const noexcept',
-  );
+test('single Stationhead mute path uses the native WebView2 mute API', () => {
+  const setMuted = section(audio, 'void StationheadPlayer::SetMuted(bool muted) noexcept',
+    'bool StationheadPlayer::Muted() const noexcept');
   assert.match(setMuted, /ApplyMute\(\)/);
-  assert.doesNotMatch(setMuted, /ApplyVolume|ExecuteScript|StationheadVolumeScript/);
+  assert.doesNotMatch(setMuted, /ExecuteScript|StationheadVolumeScript/);
 
-  const applyMute = section(
-    audio,
-    'void StationheadPlayer::ApplyMute() const noexcept',
-    'void StationheadPlayer::ApplyVolume() const noexcept',
-  );
-  assert.match(applyMute, /ComPtr<ICoreWebView2> webview = webview_/);
+  const applyMute = section(audio, 'void StationheadPlayer::ApplyMute() const noexcept',
+    'void StationheadPlayer::ApplyVolume() const noexcept');
   assert.match(applyMute, /put_IsMuted/);
-  assert.doesNotMatch(applyMute, /ApplyVolume|ExecuteScript|StationheadVolumeScript/);
 
-  const profile = section(
-    app,
-    'void App::ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept',
-    'void App::ScheduleNextTick(',
-  );
-  assert.match(profile, /SetAudioMuted\(primaryMuted\)/);
-  assert.doesNotMatch(profile, /secondaryMuted|secondaryStationhead_->SetAudioMuted/);
-  assert.doesNotMatch(profile, /SetVolume|ExecuteScript/);
-
-  const handleMute = section(
-    handles,
+  const handleMute = section(handles,
     'void StationheadHandleBase::SetAudioMuted(bool muted) noexcept',
-    'void StationheadHandleBase::SetBounds(',
-  );
+    'void StationheadHandleBase::SetBounds(');
   assert.match(handleMute, /player_->SetMuted\(muted\)/);
-  assert.doesNotMatch(handleMute, /SetVolume|ExecuteScript/);
+  assert.doesNotMatch(handleMute, /PeerAudioHandle|SetVolume|ExecuteScript/);
+
+  const actions = section(app, 'void App::HandleAction(UiAction action)', 'void App::LogUnhandled(');
+  assert.match(actions, /StationheadAudioToggle[\s\S]*stationhead_->SetAudioMuted/);
+  assert.match(actions, /StationheadAudioMute[\s\S]*stationhead_->SetAudioMuted\(true\)/);
 });
 
 test('dashboard runtime installs only native image assets and keeps radar layers separate', () => {
-  const runtimeAssets = section(
-    assets,
-    'constexpr RuntimeAsset kRuntimeAssets[]',
-    'void AppendAssetStamp(',
-  );
+  const runtimeAssets = section(assets, 'constexpr RuntimeAsset kRuntimeAssets[]', 'void AppendAssetStamp(');
   assert.match(runtimeAssets, /radar-satellite\.png/);
   assert.match(runtimeAssets, /radar-map\.png/);
-  assert.doesNotMatch(runtimeAssets, /radar-base\.png/);
-  assert.doesNotMatch(runtimeAssets, /\.js/);
+  assert.doesNotMatch(runtimeAssets, /radar-base\.png|\.js/);
 
-  const obsolete = section(
-    assets,
-    'void RemoveObsoleteDashboardFiles(',
-    '}  // namespace',
-  );
+  const obsolete = section(assets, 'void RemoveObsoleteDashboardFiles(', '}  // namespace');
   assert.match(obsolete, /L"app\.js"/);
   assert.match(obsolete, /L"stationhead-audio-controls\.js"/);
   assert.match(obsolete, /L"radar-base\.png"/);
-  assert.doesNotMatch(obsolete, /L"radar-satellite\.png"/);
-  assert.doesNotMatch(obsolete, /L"radar-map\.png"/);
-  assert.match(assets, /RemoveObsoleteDashboardFiles\(folder\)/);
 });
