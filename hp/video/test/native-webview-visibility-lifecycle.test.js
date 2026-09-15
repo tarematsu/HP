@@ -47,13 +47,16 @@ test('Stationhead playback rendering suppression remains disabled', () => {
   );
 });
 
-test('Stationhead layout keeps the playback WebView visible both offscreen and fullscreen', () => {
+test('Stationhead layout keeps playback and auth WebViews visible on the same onscreen surface', () => {
   const layout = section(
     stationheadLayout,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(layout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(layout, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(layout, /playbackHostBounds = surfaceBounds/);
+  assert.match(layout, /authHostBounds = surfaceBounds/);
+  assert.doesNotMatch(layout, /StationheadOffscreenBounds|authOffscreen/);
   assert.match(layout, /controller->put_IsVisible\(TRUE\)/);
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /put_IsVisible\(FALSE\)/);

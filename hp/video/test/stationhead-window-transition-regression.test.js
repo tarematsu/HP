@@ -17,19 +17,23 @@ function section(text, start, end) {
 const applyLayout = section(layout, 'void ApplyStationheadChildLayout(',
   '}  // namespace');
 
-test('auth promotion keeps playback host alive offscreen', () => {
-  assert.match(applyLayout, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+test('auth promotion keeps playback host alive onscreen behind the auth surface', () => {
+  assert.match(applyLayout, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(applyLayout, /playbackHostBounds = surfaceBounds/);
+  assert.match(applyLayout, /authHostBounds = surfaceBounds/);
+  assert.match(applyLayout, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(applyLayout, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
   assert.match(applyLayout, /controller->put_IsVisible\(TRUE\)/);
   assert.match(applyLayout, /authController->put_IsVisible\(TRUE\)/);
-  assert.doesNotMatch(applyLayout, /ShowWindow\([^\n]*SW_HIDE/);
+  assert.doesNotMatch(applyLayout, /StationheadOffscreenBounds|offscreen|SW_HIDE/);
 });
 
-test('background surfaces are moved offscreen instead of hidden or collapsed', () => {
+test('background surfaces stay onscreen at fixed geometry instead of being hidden or collapsed', () => {
   assert.match(applyLayout, /SetWindowPos\(hostWindow, hostPlacement/);
   assert.match(applyLayout, /SetWindowPos\(authHostWindow, authPlacement/);
   assert.match(applyLayout, /const RECT playbackControllerBounds\{0, 0, playbackWidth, playbackHeight\};/);
   assert.match(applyLayout, /const RECT authControllerBounds\{0, 0, authWidth, authHeight\};/);
-  assert.doesNotMatch(applyLayout, /hostWidth = .*: 1/);
+  assert.doesNotMatch(applyLayout, /hostWidth = .*: 1|StationheadOffscreenBounds/);
 });
 
 test('only interactive surfaces receive WebView2 focus', () => {

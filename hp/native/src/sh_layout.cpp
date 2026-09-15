@@ -28,10 +28,10 @@ HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wch
     }
   }
 
-  const RECT offscreen = StationheadOffscreenBounds(bounds);
+  const RECT background = StationheadBackgroundBounds(bounds);
   return CreateWindowExW(0, className, title,
                          WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-                         offscreen.left, offscreen.top,
+                         background.left, background.top,
                          kStationheadSurfaceWidth, kStationheadSurfaceHeight,
                          parent, nullptr, instance, nullptr);
 }
@@ -102,15 +102,15 @@ bool BackgroundAuthSurfaceMatches(HWND authHostWindow,
                                   ICoreWebView2Controller* authController,
                                   const RECT& workspaceBounds) noexcept {
   if (!authHostWindow || !IsWindow(authHostWindow)) return authController == nullptr;
-  const RECT offscreen = StationheadOffscreenBounds(workspaceBounds);
+  const RECT background = StationheadBackgroundBounds(workspaceBounds);
   if (!authController) {
     return IsWindowVisible(authHostWindow) &&
            WindowClientSizeMatches(authHostWindow,
                                    kStationheadSurfaceWidth,
                                    kStationheadSurfaceHeight) &&
-           ChildWindowPlacementMatches(authHostWindow, offscreen, nullptr);
+           ChildWindowPlacementMatches(authHostWindow, background, nullptr);
   }
-  return SurfaceMatches(authHostWindow, authController, offscreen, nullptr);
+  return SurfaceMatches(authHostWindow, authController, background, nullptr);
 }
 
 bool ActiveAuthSurfaceMatches(HWND hostWindow,
@@ -122,9 +122,9 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
       !IsWindowVisible(authHostWindow)) {
     return false;
   }
-  const RECT offscreen = StationheadOffscreenBounds(workspaceBounds);
-  return SurfaceMatches(hostWindow, controller, offscreen, nullptr) &&
-         SurfaceMatches(authHostWindow, authController, workspaceBounds, HWND_TOP);
+  const RECT surface = StationheadBackgroundBounds(workspaceBounds);
+  return SurfaceMatches(hostWindow, controller, surface, HWND_BOTTOM) &&
+         SurfaceMatches(authHostWindow, authController, surface, HWND_TOP);
 }
 
 RECT ResolveStationheadWorkspaceBounds(HWND parent,
@@ -177,12 +177,9 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool playbackForeground =
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
 
-  const RECT authOffscreen = StationheadOffscreenBounds(workspaceBounds);
-  const RECT offscreen = hidePlayback
-      ? authOffscreen
-      : StationheadBackgroundBounds(workspaceBounds);
-  const RECT playbackHostBounds = playbackForeground ? workspaceBounds : offscreen;
-  const RECT authHostBounds = showAuth ? workspaceBounds : authOffscreen;
+  const RECT surfaceBounds = StationheadBackgroundBounds(workspaceBounds);
+  const RECT playbackHostBounds = surfaceBounds;
+  const RECT authHostBounds = surfaceBounds;
   const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
   const HWND authPlacement = showAuth ? HWND_TOP : HWND_BOTTOM;
 
@@ -192,6 +189,21 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int authHeight = RectHeight(authHostBounds);
   const RECT playbackControllerBounds{0, 0, playbackWidth, playbackHeight};
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
+
+  // Move the inactive auth host first, then playback. This keeps the normal
+  // playback host at the bottom while both 320x160 surfaces remain onscreen.
+  if (authHostWindow && IsWindow(authHostWindow)) {
+    const bool geometryMatches =
+        WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
+        ChildWindowPlacementMatches(
+            authHostWindow, authHostBounds, showAuth ? HWND_TOP : nullptr);
+    if (!geometryMatches || !IsWindowVisible(authHostWindow)) {
+      SetWindowPos(authHostWindow, authPlacement,
+                   authHostBounds.left, authHostBounds.top,
+                   authWidth, authHeight,
+                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+    }
+  }
 
   if (hostWindow && IsWindow(hostWindow)) {
     const bool geometryMatches =
@@ -203,19 +215,6 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       SetWindowPos(hostWindow, hostPlacement,
                    playbackHostBounds.left, playbackHostBounds.top,
                    playbackWidth, playbackHeight,
-                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-    }
-  }
-
-  if (authHostWindow && IsWindow(authHostWindow)) {
-    const bool geometryMatches =
-        WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
-        ChildWindowPlacementMatches(
-            authHostWindow, authHostBounds, showAuth ? HWND_TOP : nullptr);
-    if (!geometryMatches || !IsWindowVisible(authHostWindow)) {
-      SetWindowPos(authHostWindow, authPlacement,
-                   authHostBounds.left, authHostBounds.top,
-                   authWidth, authHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
   }
@@ -306,9 +305,7 @@ void StationheadPlayer::ClearStartupPreviewBounds() {
 void StationheadPlayer::SetVisible(bool visible) {
   if (!visible) {
     const bool monitorForeground = StationheadMonitorForeground();
-    const RECT expectedPlayback = monitorForeground
-        ? bounds_
-        : StationheadBackgroundBounds(bounds_);
+    const RECT expectedPlayback = StationheadBackgroundBounds(bounds_);
     const HWND expectedPlacement = monitorForeground ? HWND_TOP : HWND_BOTTOM;
 
     if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
@@ -360,7 +357,8 @@ void StationheadPlayer::SetVisible(bool visible) {
       return;
     }
   } else if (loginRequired_ && viewVisible_ &&
-             SurfaceMatches(hostWindow_, controller_.Get(), bounds_, HWND_TOP) &&
+             SurfaceMatches(hostWindow_, controller_.Get(),
+                            StationheadBackgroundBounds(bounds_), HWND_TOP) &&
              BackgroundAuthSurfaceMatches(
                  authHostWindow_, authController_.Get(), bounds_) &&
              WindowContainsFocus(hostWindow_)) {

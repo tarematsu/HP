@@ -15,28 +15,23 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('Spotify stable playback is offscreen while every non-playing transition is 480x270 behind the dashboard', () => {
+test('Spotify stable playback and non-playing transitions stay onscreen at 320x160 behind the dashboard', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
     'void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {',
   );
 
-  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
-  assert.match(placeHosts, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\);/);
-  assert.match(
-    placeHosts,
-    /int hostX = backgroundWork \|\| authentication \? x : client\.right \+ 1;/,
-  );
-  assert.match(
-    placeHosts,
-    /int hostY = backgroundWork \|\| authentication \? y : client\.bottom \+ 1;/,
-  );
-  assert.match(placeHosts, /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM;/);
+  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
+  assert.doesNotMatch(placeHosts, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\);/);
+  assert.match(placeHosts, /const int hostX = client\.left;/);
+  assert.match(placeHosts, /const int hostY = client\.top;/);
+  assert.doesNotMatch(placeHosts, /client\.right \+ 1|client\.bottom \+ 1/);
+  assert.match(placeHosts, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
 });
 
-test('Spotify authentication is onscreen foreground and Monitor C remains full-size foreground', () => {
+test('Spotify authentication and Monitor C use foreground z-order without changing the 320x160 geometry', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
@@ -47,12 +42,10 @@ test('Spotify authentication is onscreen foreground and Monitor C remains full-s
     placeHosts,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/,
   );
-  assert.match(placeHosts, /backgroundWork \|\| authentication \? x/);
-  assert.match(placeHosts, /authentication \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(
-    placeHosts,
-    /if \(monitorForeground_\) \{[\s\S]*hostX = x;[\s\S]*hostY = y;[\s\S]*width = clientWidth;[\s\S]*height = clientHeight;[\s\S]*insertAfter = HWND_TOP;/,
-  );
+  assert.match(placeHosts, /const int hostX = client\.left;/);
+  assert.match(placeHosts, /const int hostY = client\.top;/);
+  assert.match(placeHosts, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.doesNotMatch(placeHosts, /width = clientWidth|height = clientHeight/);
 });
 
 test('layout refresh reacts to Playing-to-transition and transition-to-Playing changes', () => {

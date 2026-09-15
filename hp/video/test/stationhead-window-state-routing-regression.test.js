@@ -15,15 +15,13 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('Stationhead startup preview is armed before the deferred WebView start', () => {
+test('Stationhead startup preview is armed before the deferred WebView start and stays onscreen', () => {
   assert.match(bridge, /gStationheadBackgroundPreview\{true\}/);
-  assert.match(
-    bridge,
-    /if \(!StationheadBackgroundPreview\(\)\)[\s\S]*return StationheadOffscreenBounds\(workspaceBounds\)/,
-  );
   assert.match(bridge, /left = workspaceBounds\.left/);
-  assert.match(bridge, /kStationheadSurfaceWidth = 480/);
-  assert.match(bridge, /kStationheadSurfaceHeight = 270/);
+  assert.match(bridge, /top = workspaceBounds\.top/);
+  assert.match(bridge, /kStationheadSurfaceWidth = 320/);
+  assert.match(bridge, /kStationheadSurfaceHeight = 160/);
+  assert.doesNotMatch(bridge, /StationheadOffscreenBounds|kStationheadOffscreenGap/);
 });
 
 test('initial startup keeps the in-client background preview armed through WebView creation', () => {
@@ -39,7 +37,7 @@ test('initial startup keeps the in-client background preview armed through WebVi
   );
 });
 
-test('50-minute refresh re-arms preview and stable audio returns it offscreen', () => {
+test('50-minute refresh re-arms preview and stable audio keeps the same onscreen background surface', () => {
   const periodic = section(
     handles,
     'bool IsStationheadPeriodicRefresh(',
@@ -57,6 +55,8 @@ test('50-minute refresh re-arms preview and stable audio returns it offscreen', 
   assert.match(sync, /player\.AudioPlaying\(\) && !status\.navigating/);
   assert.match(sync, /!status\.loginRequired && !status\.spotifyAuthorization/);
   assert.match(sync, /SetStationheadBackgroundPreview\(false\)/);
+  assert.match(bridge, /StationheadBackgroundBounds/);
+  assert.doesNotMatch(bridge, /StationheadOffscreenBounds/);
 
   const tick = section(
     handles,
@@ -74,7 +74,7 @@ test('50-minute refresh re-arms preview and stable audio returns it offscreen', 
   assert.match(changes, /SyncStationheadBackgroundPreview\(\*player_, workspaceBounds_\)/);
 });
 
-test('non-auth playback selection cannot move Stationhead onscreen', () => {
+test('non-auth playback selection changes only foreground state, not onscreen geometry', () => {
   const policy = section(
     layout,
     'constexpr StationheadSurfacePolicy ResolveStationheadSurfacePolicy(',
@@ -99,14 +99,16 @@ test('non-auth playback selection cannot move Stationhead onscreen', () => {
   assert.doesNotMatch(interactive, /!status\.audioPlaying/);
 });
 
-test('authentication remains a foreground surface while playback is parked offscreen', () => {
+test('authentication and playback remain onscreen while z-order selects the foreground surface', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(apply, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
-  assert.match(apply, /const RECT offscreen = hidePlayback[\s\S]*authOffscreen/);
-  assert.match(apply, /authHostBounds = showAuth \? workspaceBounds : authOffscreen/);
+  assert.match(apply, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(apply, /playbackHostBounds = surfaceBounds/);
+  assert.match(apply, /authHostBounds = surfaceBounds/);
+  assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(apply, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
+  assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
 });

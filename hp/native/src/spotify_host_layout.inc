@@ -2,8 +2,8 @@ namespace hp {
 namespace {
 
 constexpr double kSpotifySurfaceZoom = 0.50;
-constexpr int kSpotifyBackgroundWidth = 480;
-constexpr int kSpotifyBackgroundHeight = 270;
+constexpr int kSpotifyBackgroundWidth = 320;
+constexpr int kSpotifyBackgroundHeight = 160;
 
 bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top;
@@ -37,27 +37,16 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
-    const bool backgroundWork = !SlotStateIsHealthy(slot.state);
 
-    // Match the Stationhead placement model: startup/navigation/recovery work
-    // keeps a real 480x270 surface inside the client area behind the dashboard,
-    // confirmed authentication moves that surface to the foreground, and stable
-    // playback is parked completely outside the client area. Monitor C is the
-    // only mode that expands Spotify to the full client area.
-    const int x = client.left;
-    const int y = client.top;
-    int hostX = backgroundWork || authentication ? x : client.right + 1;
-    int hostY = backgroundWork || authentication ? y : client.bottom + 1;
-    int width = std::min(kSpotifyBackgroundWidth, clientWidth);
-    int height = std::min(kSpotifyBackgroundHeight, clientHeight);
-    HWND insertAfter = authentication ? HWND_TOP : HWND_BOTTOM;
-    if (monitorForeground_) {
-      hostX = x;
-      hostY = y;
-      width = clientWidth;
-      height = clientHeight;
-      insertAfter = HWND_TOP;
-    }
+    // Spotify always keeps a real 320x160 surface inside the client area.
+    // Normal playback/recovery stays behind the dashboard; authentication and
+    // Monitor C inspection only change z-order to foreground.
+    const int hostX = client.left;
+    const int hostY = client.top;
+    const int width = std::min(kSpotifyBackgroundWidth, clientWidth);
+    const int height = std::min(kSpotifyBackgroundHeight, clientHeight);
+    const HWND insertAfter =
+        authentication || monitorForeground_ ? HWND_TOP : HWND_BOTTOM;
 
     const RECT desired{hostX, hostY, hostX + width, hostY + height};
     const bool positionChanged =

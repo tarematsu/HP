@@ -63,13 +63,14 @@ test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('pre-playback recovery and confirmed playback share the same 480x270 background viewport', () => {
-  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+test('pre-playback recovery and confirmed playback share the same onscreen 320x160 viewport', () => {
+  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
   assert.match(layout, /std::min\(kSpotifyBackgroundWidth, clientWidth\)/);
   assert.match(layout, /std::min\(kSpotifyBackgroundHeight, clientHeight\)/);
-  assert.match(layout, /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM;/);
-  assert.doesNotMatch(layout, /else if \(authentication\)|activeWidth|activeHeight/);
+  assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
+  assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);

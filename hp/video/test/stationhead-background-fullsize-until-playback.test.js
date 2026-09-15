@@ -23,27 +23,23 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead normal background surface stays 480x270 inside the client area', () => {
-  assert.match(bridge, /kStationheadSurfaceWidth = 480/);
-  assert.match(bridge, /kStationheadSurfaceHeight = 270/);
+test('Stationhead normal background surface stays 320x160 inside the client area', () => {
+  assert.match(bridge, /kStationheadSurfaceWidth = 320/);
+  assert.match(bridge, /kStationheadSurfaceHeight = 160/);
   assert.match(bridge, /StationheadBackgroundBounds/);
   assert.match(bridge, /left = workspaceBounds\.left/);
   assert.match(bridge, /top = workspaceBounds\.top/);
-  assert.match(bridge, /StationheadOffscreenBounds/);
-  assert.match(bridge, /workspaceBounds\.right \+ kStationheadOffscreenGap/);
+  assert.doesNotMatch(bridge, /StationheadOffscreenBounds|kStationheadOffscreenGap/);
 
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(apply, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
-  assert.match(
-    apply,
-    /const RECT offscreen = hidePlayback[\s\S]*StationheadBackgroundBounds\(workspaceBounds\)/,
-  );
-  assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
-  assert.match(apply, /authHostBounds = showAuth \? workspaceBounds : authOffscreen/);
+  assert.match(apply, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(apply, /playbackHostBounds = surfaceBounds/);
+  assert.match(apply, /authHostBounds = surfaceBounds/);
+  assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
 });
 
 test('normal startup and reload layout do not depend on audio confirmation', () => {
@@ -67,7 +63,7 @@ test('normal startup and reload layout do not depend on audio confirmation', () 
   assert.match(startup, /LayoutControllers\(\)/);
 });
 
-test('Monitor B presents Stationhead fullscreen and normal mode returns it behind the dashboard', () => {
+test('Monitor B changes Stationhead z-order only and preserves the 320x160 geometry', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -78,8 +74,9 @@ test('Monitor B presents Stationhead fullscreen and normal mode returns it behin
     apply,
     /playbackForeground\s*=\s*[\s\S]*showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,
   );
-  assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.doesNotMatch(apply, /playbackHostBounds = playbackForeground \? workspaceBounds/);
 
   const placement = section(
     routing,
@@ -87,31 +84,30 @@ test('Monitor B presents Stationhead fullscreen and normal mode returns it behin
     'void PowerSavingController::Detach() noexcept',
   );
   assert.match(placement, /monitorMode_ == MonitorMode::Stationhead/);
-  assert.match(
-    placement,
-    /if \(context->stationheadForeground\)[\s\S]*context->foregroundBounds[\s\S]*SWP_SHOWWINDOW/,
-  );
+  assert.match(placement, /StationheadPlayer exclusively owns the fixed 320x160 geometry/);
+  assert.match(placement, /if \(context->stationheadForeground\)/);
+  assert.match(placement, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
+  assert.doesNotMatch(placement, /foregroundBounds/);
   assert.match(placement, /child, HWND_BOTTOM/);
 });
 
-test('authentication keeps playback alive offscreen while auth is foreground fullscreen', () => {
+test('authentication keeps playback alive onscreen behind the 320x160 foreground auth surface', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(apply, /const RECT authOffscreen = StationheadOffscreenBounds\(workspaceBounds\)/);
-  assert.match(apply, /const RECT offscreen = hidePlayback[\s\S]*authOffscreen/);
-  assert.match(apply, /authHostBounds = showAuth \? workspaceBounds : authOffscreen/);
+  assert.match(apply, /playbackHostBounds = surfaceBounds/);
+  assert.match(apply, /authHostBounds = surfaceBounds/);
   assert.match(apply, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(apply, /playbackHostBounds = playbackForeground \? workspaceBounds : offscreen/);
+  assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
 
   const activeAuth = section(
     layout,
     'bool ActiveAuthSurfaceMatches(',
     'RECT ResolveStationheadWorkspaceBounds(',
   );
-  assert.match(activeAuth, /StationheadOffscreenBounds\(workspaceBounds\)/);
-  assert.match(activeAuth, /SurfaceMatches\(hostWindow, controller, offscreen, nullptr\)/);
-  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, workspaceBounds, HWND_TOP\)/);
+  assert.match(activeAuth, /StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(activeAuth, /SurfaceMatches\(hostWindow, controller, surface, HWND_BOTTOM\)/);
+  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, surface, HWND_TOP\)/);
 });

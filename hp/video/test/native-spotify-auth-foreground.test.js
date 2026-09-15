@@ -22,9 +22,9 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
   );
   assert.match(
     layout,
-    /HWND insertAfter = authentication \? HWND_TOP : HWND_BOTTOM;/,
+    /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/,
   );
-  assert.doesNotMatch(layout, /else if \(authentication\)|activeWidth|activeHeight/);
+  assert.doesNotMatch(layout, /client\.right \+ 1|client\.bottom \+ 1/);
   assert.match(layout, /if \(placementChanged\)/);
   assert.match(layout, /UINT flags = SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
@@ -41,8 +41,9 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
     layout,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/,
   );
-  assert.match(layout, /kSpotifyBackgroundWidth = 480/);
-  assert.match(layout, /kSpotifyBackgroundHeight = 270/);
+  assert.match(layout, /kSpotifyBackgroundWidth = 320/);
+  assert.match(layout, /kSpotifyBackgroundHeight = 160/);
+  assert.doesNotMatch(layout, /width = clientWidth|height = clientHeight/);
   assert.doesNotMatch(layout, /compactPlayback/);
 });
 
