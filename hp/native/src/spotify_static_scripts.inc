@@ -10,6 +10,82 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
   window.__homePanelSpotifyGeneration =
       window.__homePanelSpotifyGeneration || '0';
 
+  // Visual-only reduction for the Spotify player page. Keep the native
+  // playback/status contract untouched: media elements, the target-page Play
+  // control, the global play/pause control and now-playing identity nodes are
+  // deliberately not selected here.
+  const visualStyleId = 'homepanel-spotify-render-reduction';
+  if (!document.getElementById(visualStyleId)) {
+    const style = document.createElement('style');
+    style.id = visualStyleId;
+    style.textContent = `
+      html { scroll-behavior: auto !important; }
+      body { background: #000 !important; }
+
+      aside,
+      nav,
+      canvas,
+      [role="tooltip"],
+      [data-testid="global-nav-bar"],
+      [data-testid="left-sidebar"],
+      [data-testid="right-sidebar"],
+      [data-testid="buddy-feed"],
+      [data-testid="download-app"],
+      [data-testid="upgrade-button"],
+      [class*="Root__nav-bar"],
+      [class*="Root__right-sidebar"],
+      [class*="main-yourLibraryX-library"],
+      [class*="main-buddyFeed-buddyFeedRoot"] {
+        display: none !important;
+        visibility: hidden !important;
+        content-visibility: hidden !important;
+        contain: strict !important;
+      }
+
+      /* Preserve the section that owns Spotify's target-page Play button, but
+         skip paint/layout work for recommendation and auxiliary sections. */
+      main section:not(:has(button[data-testid="play-button"])) {
+        content-visibility: hidden !important;
+        contain: strict !important;
+      }
+
+      /* Image requests are already blocked natively on player pages; this also
+         prevents placeholder/fallback image paint without removing DOM nodes. */
+      img,
+      picture {
+        visibility: hidden !important;
+        opacity: 0 !important;
+      }
+
+      [aria-hidden="true"],
+      [role="presentation"],
+      [data-testid*="skeleton"],
+      [class*="Skeleton"],
+      [class*="skeleton"],
+      [class*="shimmer"],
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+        filter: none !important;
+        backdrop-filter: none !important;
+        box-shadow: none !important;
+        text-shadow: none !important;
+      }
+
+      main,
+      [data-testid="main-view-container"] {
+        background: #000 !important;
+        box-shadow: none !important;
+        filter: none !important;
+        backdrop-filter: none !important;
+      }
+
+      ::-webkit-scrollbar { display: none !important; }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
+
   if (window.__homePanelSpotifyStaticBridgeInstalled) return true;
   window.__homePanelSpotifyStaticBridgeInstalled = true;
   window.__homePanelSpotifyNativeTarget = null;
