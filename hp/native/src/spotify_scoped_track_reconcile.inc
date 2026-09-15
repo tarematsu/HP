@@ -2,10 +2,10 @@ namespace hp {
 namespace {
 
 // Minimal playback start path for the already-selected Spotify track page:
-// 1) if AUDIO is playing, wait for the observer;
-// 2) otherwise call AUDIO.play() once per target generation;
-// 3) if playback still has not started on the next reconcile, return the
-//    center of Spotify's native Play control for one trusted CDP click.
+// 1) prefer Spotify's target-page Play control over raw media state;
+// 2) only the target-page control's Pause state counts as already playing;
+// 3) otherwise use the player Play control or AUDIO.play() as fallbacks and
+//    wait for the observer instead of treating unrelated media as success.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
 (() => {
@@ -25,6 +25,18 @@ LR"JS(
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
         style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+  };
+  const labelOf = element =>
+      ((element && (element.getAttribute('aria-label') ||
+                    element.getAttribute('title'))) || '')
+          .replace(/\s+/g, ' ').trim().toLowerCase();
+  const isPauseControl = element => {
+    const label = labelOf(element);
+    return label.includes('pause') || label.includes('一時停止');
+  };
+  const isPlayControl = element => {
+    const label = labelOf(element);
+    return label.includes('play') || label.includes('再生');
   };
 
   const point = element => {
@@ -47,8 +59,22 @@ LR"JS(
     ];
   };
 
+  const pagePlay = Array.from(document.querySelectorAll(
+      'button[data-testid="play-button"]')).find(visible) || null;
+  if (pagePlay) {
+    if (isPauseControl(pagePlay)) return true;
+    return point(pagePlay);
+  }
+
+  const playerControl = Array.from(document.querySelectorAll(
+      'button[data-testid="control-button-playpause"]')).find(visible) || null;
+  if (playerControl) {
+    if (isPauseControl(playerControl)) return 'observing';
+    if (isPlayControl(playerControl)) return point(playerControl);
+  }
+
   const audio = document.querySelector('audio');
-  if (audio && !audio.paused && !audio.ended) return true;
+  if (audio && !audio.paused && !audio.ended) return 'observing';
 
   const generation = String(window.__homePanelSpotifyGeneration || '0');
   if (audio && typeof audio.play === 'function' &&
@@ -62,16 +88,9 @@ LR"JS(
       const result = audio.play();
       if (result && typeof result.catch === 'function') result.catch(() => {});
       return 'direct-play';
-    } catch (_) {
-      // Synchronous rejection falls through to the trusted Spotify Play button.
-    }
+    } catch (_) {}
   }
-
-  const button = Array.from(document.querySelectorAll(
-      'button[data-testid="play-button"], '
-      + 'button[data-testid="control-button-playpause"]'))
-      .find(visible) || null;
-  return point(button);
+  return null;
 })()
 )JS";
 
