@@ -1,4 +1,5 @@
 #include "spotify_webview_foundation.inc"
 #include "spotify_lightweight_policy.inc"
 #include "spotify_host_lifecycle.inc"
+#include "webview_feature_policy.h"
 #include "spotify_controller_lifecycle.inc"

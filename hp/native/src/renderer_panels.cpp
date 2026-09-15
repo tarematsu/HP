@@ -6,6 +6,7 @@
 #include "spotify_webviews.h"
 #include "version.h"
 #include "webview_startup_cache_reset.h"
+#include "webview_feature_policy.h"
 #include "winhttp_helpers.h"
 #include "renderer_panels/primitives.inc"
 

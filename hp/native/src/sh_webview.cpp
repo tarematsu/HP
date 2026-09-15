@@ -2,6 +2,7 @@
 #include "json_helpers.h"
 #include "sh_shared.h"
 #include "sh_track_boundary_script.h"
+#include "webview_feature_policy.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -38,16 +39,7 @@ void StationheadPlayer::ConfigureWebView() {
     COREWEBVIEW2_COLOR background{255, 7, 17, 28};
     controller2->put_DefaultBackgroundColor(background);
   }
-  ComPtr<ICoreWebView2Settings> settings;
-  webview_->get_Settings(&settings);
-  if (settings) {
-    settings->put_AreDefaultContextMenusEnabled(FALSE);
-    settings->put_AreDevToolsEnabled(FALSE);
-    settings->put_IsStatusBarEnabled(FALSE);
-    settings->put_IsZoomControlEnabled(FALSE);
-    ComPtr<ICoreWebView2Settings3> settings3;
-    if (SUCCEEDED(settings.As(&settings3))) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
-  }
+  ApplyMediaWebViewFeaturePolicy(webview_.Get(), true);
   ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_,
                                    resourceBlockingArmed_, resourceRequestedToken_);
 
@@ -632,14 +624,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
     COREWEBVIEW2_COLOR background{255, 7, 17, 28};
     controller2->put_DefaultBackgroundColor(background);
   }
-  ComPtr<ICoreWebView2Settings> settings;
-  authWebview_->get_Settings(&settings);
-  if (settings) {
-    settings->put_AreDefaultContextMenusEnabled(FALSE);
-    settings->put_AreDevToolsEnabled(FALSE);
-    settings->put_IsStatusBarEnabled(FALSE);
-    settings->put_IsZoomControlEnabled(FALSE);
-  }
+  ApplyMediaWebViewFeaturePolicy(authWebview_.Get(), true);
 
   const HRESULT authNavigationResult = authWebview_->add_NavigationCompleted(
       Callback<ICoreWebView2NavigationCompletedEventHandler>(

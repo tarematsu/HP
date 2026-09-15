@@ -6,9 +6,14 @@ const host = readFileSync(
   new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
   'utf8',
 );
+const policy = readFileSync(
+  new URL('../../native/src/webview_feature_policy.h', import.meta.url),
+  'utf8',
+);
 
 test('media panel hides the built-in WebView error page while retrying', () => {
-  assert.match(host, /settings->put_IsBuiltInErrorPageEnabled\(FALSE\)/);
+  assert.match(host, /ApplyMediaWebViewFeaturePolicy\(webview_\.Get\(\), false\)/);
+  assert.match(policy, /settings->put_IsBuiltInErrorPageEnabled\(FALSE\)/);
   assert.match(host, /if \(FAILED\(args->get_IsSuccess\(&succeeded\)\) \|\| !succeeded\)/);
   assert.match(
     host,
