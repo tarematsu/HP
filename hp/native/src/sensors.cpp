@@ -140,7 +140,7 @@ bool WriteCommand(HANDLE serial, const char* command) {
 }  // namespace
 
 SensorHub::SensorHub(HWND window, AppConfig config, fs::path dataDir, Logger& log)
-    : window_(window), config_(std::move(config)), switchbotPath_(dataDir / L"switchbot.json"),
+    : window_(window), config_(std::move(config)),
       outboxPath_(dataDir / L"outbox.ndjson"), outboxAckPath_(std::move(dataDir) / L"outbox.ack"), log_(log) {
   LoadOutbox();
   nextSequence_ = std::max(nextSequence_, static_cast<uint64_t>(std::max<int64_t>(1, UnixMillis())));
@@ -150,14 +150,12 @@ SensorHub::~SensorHub() { Stop(); }
 
 void SensorHub::Start() {
   stopping_ = false;
-  ApplyCloudSwitchBot(switchbotPath_);
   try {
     serialThread_ = std::thread([this] {
       const auto publishFailure = [this]() noexcept {
         try {
           std::lock_guard lock(mutex_);
           state_.co2Connected = false;
-          state_.lastError = L"UD-CO2S sensor thread failed";
         } catch (...) {
         }
         if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
@@ -181,7 +179,6 @@ void SensorHub::Start() {
     stopping_ = true;
     throw;
   }
-  log_.Info(L"SwitchBot input uses Cloudflare/OpenAPI; native BLE watcher is disabled");
 }
 
 void SensorHub::Stop() {
@@ -193,30 +190,6 @@ void SensorHub::Stop() {
 SensorSnapshot SensorHub::Snapshot() const {
   std::lock_guard lock(mutex_);
   return state_;
-}
-
-void SensorHub::ApplyCloudSwitchBot(const fs::path& path) {
-  try {
-    std::ifstream input(path, std::ios::binary);
-    std::string text((std::istreambuf_iterator<char>(input)), {});
-    if (text.empty()) return;
-    const auto object = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(text));
-    const std::wstring presence = object.GetNamedString(L"presence", L"unknown").c_str();
-    const std::wstring brightness = object.GetNamedString(L"brightness", L"unknown").c_str();
-    {
-      std::lock_guard lock(mutex_);
-      state_.doorOpen = object.GetNamedBoolean(L"doorOpen", false);
-      state_.motion = object.GetNamedBoolean(L"motion", false);
-      if (brightness == L"bright") state_.light = true;
-      else if (brightness == L"dim") state_.light = false;
-      state_.presence = presence == L"home" ? PresenceState::Home :
-                        presence == L"away" ? PresenceState::Away : PresenceState::Unknown;
-    }
-  } catch (const std::exception& error) {
-    log_.Warn(L"SwitchBot cloud state error: " + Utf8ToWide(error.what()));
-  } catch (...) {
-    log_.Warn(L"SwitchBot cloud state parse failed");
-  }
 }
 
 }  // namespace hp

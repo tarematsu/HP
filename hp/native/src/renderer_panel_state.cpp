@@ -36,11 +36,6 @@ std::wstring ClockTimeText(const SYSTEMTIME& now) {
 }  // namespace
 
 void Renderer::UpdateSensors(const SensorSnapshot& sensors) {
-  // SwitchBot publishes through the same sensor-update path at startup and on
-  // WM_HP_SWITCHBOT_UPDATED. Load its independently versioned cache here so the
-  // one-second clock timer never needs to probe the filesystem for SwitchBot.
-  LoadSwitchBot(dataDir_ / L"switchbot.json");
-
   if (!AirStatsNeedRepaint(nativeSensors_, sensors)) return;
   nativeSensors_ = sensors;
   if (!nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;

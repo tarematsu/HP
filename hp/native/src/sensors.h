@@ -4,21 +4,12 @@
 #include "logger.h"
 
 namespace hp {
-enum class PresenceState { Unknown, Home, Away };
 struct SensorSnapshot {
   bool co2Connected = false;
   int co2 = 0;
   double temperatureCorrected = 0;
   double humidityCorrected = 0;
   int64_t observedAt = 0;
-  PresenceState presence = PresenceState::Unknown;
-  bool light = true;
-  bool motion = false;
-  bool doorOpen = false;
-  size_t outboxCount = 0;
-  std::wstring lastError;
-
-  bool operator==(const SensorSnapshot&) const = default;
 };
 
 class SensorHub {
@@ -28,13 +19,10 @@ class SensorHub {
   void Start();
   void Stop();
   SensorSnapshot Snapshot() const;
-  void ApplyCloudSwitchBot(const fs::path& path);
-  std::string BuildTelemetryPayload(const std::wstring& deviceId, const std::string& appVersion,
-                                    bool stationheadOk, size_t maxSamples = 500);
+  std::string BuildTelemetryPayload(const std::wstring& deviceId, const std::string& appVersion);
   void ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedSequences,
                              uint64_t nextSequence);
 
- public:
   struct Sample {
     uint64_t sequence = 0;
     int64_t observedAt = 0;
@@ -50,13 +38,11 @@ class SensorHub {
   bool AppendOutbox(const Sample& sample);
   void LoadOutbox();
   bool RewriteOutboxLocked(const std::deque<Sample>& samples);
-  bool WriteAcknowledgedSequenceLocked(uint64_t sequence);
   void CompactOutboxLocked();
   std::wstring FindSerialPort();
 
   HWND window_;
   AppConfig config_;
-  fs::path switchbotPath_;
   fs::path outboxPath_;
   fs::path outboxAckPath_;
   Logger& log_;

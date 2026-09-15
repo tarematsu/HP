@@ -74,21 +74,10 @@ void SensorHub::SerialLoop() {
     stopWake_.wait_for(lock, retryDelay, [this] { return stopping_.load(); });
     retryDelay = std::min(retryDelay * 2, kSerialRetryMaximum);
   };
-  const auto publishUnavailable = [this](const wchar_t* message) {
-    bool changed = false;
-    {
-      std::lock_guard lock(mutex_);
-      changed = state_.co2Connected || state_.lastError != message;
-      state_.co2Connected = false;
-      state_.lastError = message;
-    }
-    if (changed) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
-  };
 
   while (!stopping_) {
     const std::wstring port = FindSerialPort();
     if (port.empty()) {
-      publishUnavailable(L"UD-CO2S not found");
       waitForRetry();
       continue;
     }
@@ -97,7 +86,6 @@ void SensorHub::SerialLoop() {
     HANDLE serial = CreateFileW(serialPath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (serial == INVALID_HANDLE_VALUE) {
-      publishUnavailable(L"UD-CO2S port open failed");
       waitForRetry();
       continue;
     }
@@ -108,13 +96,11 @@ void SensorHub::SerialLoop() {
         !RunSensorCommand(serial, buffer, "ID?", stopping_, log_) ||
         !RunSensorCommand(serial, buffer, "STA", stopping_, log_)) {
       CloseHandle(serial);
-      publishUnavailable(L"UD-CO2S initialization failed");
       waitForRetry();
       continue;
     }
 
     retryDelay = kSerialRetryInitial;
-    publishUnavailable(L"UD-CO2S waiting for data");
 
     // STA emits measurements about every two seconds. Accept one valid sample,
     // stop the serial stream, and do not start another read for a full minute.
@@ -158,7 +144,6 @@ void SensorHub::SerialLoop() {
             absolute * (273.15 + sample.temperatureCorrected) /
             (216.7 * 6.112 * std::exp((17.62 * sample.temperatureCorrected) /
             (243.12 + sample.temperatureCorrected))) * 100.0, 0.0, 100.0);
-        if (!SampleValuesValid(sample)) continue;
 
         {
           std::lock_guard lock(mutex_);
@@ -167,7 +152,6 @@ void SensorHub::SerialLoop() {
           state_.temperatureCorrected = sample.temperatureCorrected;
           state_.humidityCorrected = sample.humidityCorrected;
           state_.observedAt = sample.observedAt;
-          state_.lastError.clear();
         }
         const int64_t bucket = sample.observedAt / kTelemetryBucketMs;
         if (bucket != lastPersistedBucket_ && AppendOutbox(sample)) {
@@ -195,7 +179,13 @@ void SensorHub::SerialLoop() {
     // when its acknowledgement was lost, in which case the local state is unknown.
     WriteCommand(serial, "STP");
     CloseHandle(serial);
-    publishUnavailable(L"UD-CO2S disconnected");
+    bool changed;
+    {
+      std::lock_guard lock(mutex_);
+      changed = state_.co2Connected;
+      state_.co2Connected = false;
+    }
+    if (changed) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
     if (!stopping_) {
       std::unique_lock lock(stopMutex_);
       stopWake_.wait_for(lock, std::chrono::seconds(5), [this] { return stopping_.load(); });

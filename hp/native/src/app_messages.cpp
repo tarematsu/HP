@@ -65,12 +65,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_HP_RADAR_UPDATED:
       if (renderer_) renderer_->NotifyRadarUpdated();
       return 0;
-    case WM_HP_SWITCHBOT_UPDATED: {
-      if (!sensors_ || !renderer_) return 0;
-      sensors_->ApplyCloudSwitchBot(dataDir_ / L"switchbot.json");
-      renderer_->UpdateSensors(sensors_->Snapshot());
+    case WM_HP_SWITCHBOT_UPDATED:
+      if (renderer_) renderer_->LoadSwitchBot(dataDir_ / L"switchbot.json");
       return 0;
-    }
     case WM_HP_SENSOR_UPDATED: {
       if (!sensors_ || !renderer_) return 0;
       const SensorSnapshot snapshot = sensors_->Snapshot();
