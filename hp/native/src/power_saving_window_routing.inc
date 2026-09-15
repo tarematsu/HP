@@ -32,7 +32,8 @@ bool ChildBoundsMatch(HWND window, const RECT& expected) noexcept {
   if (!parent || !GetWindowRect(window, &current)) return false;
   POINT topLeft{current.left, current.top};
   POINT bottomRight{current.right, current.bottom};
-  if (!ScreenToClient(parent, &topLeft) || !ScreenToClient(parent, &bottomRight)) {
+  if (!ScreenToClient(parent, &topLeft) ||
+      !ScreenToClient(parent, &bottomRight)) {
     return false;
   }
   const RECT relative{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
@@ -250,19 +251,11 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
     PostMessageW(parent_, WM_TIMER, 0, 0);
   }
 
-  RECT client{};
-  if (!GetClientRect(parent_, &client)) return;
-  const RECT foregroundBounds{
-      client.left, client.top,
-      std::max<LONG>(client.left + 1, client.right),
-      std::max<LONG>(client.top + 1, client.bottom)};
-
   struct Context {
     PowerSavingController* controller;
-    RECT foregroundBounds;
     bool stationheadForeground;
     bool nativeMediaForeground;
-  } context{this, foregroundBounds, stationheadForeground, nativeMediaForeground};
+  } context{this, stationheadForeground, nativeMediaForeground};
 
   EnumChildWindows(
       parent_,
@@ -288,24 +281,22 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
 
         if (!IsStationheadPlaybackHost(child)) return TRUE;
 
+        // StationheadPlayer exclusively owns the fixed 320x160 geometry.
+        // Monitor routing changes only z-order, never position or size.
         if (context->stationheadForeground) {
-          const bool boundsMatch = ChildBoundsMatch(child, context->foregroundBounds);
-          const bool zOrderMatch = controller->overlay_ &&
-              GetWindow(child, GW_HWNDPREV) == controller->overlay_;
-          if (!boundsMatch || !zOrderMatch || !IsWindowVisible(child)) {
+          const HWND insertAfter =
+              controller->overlay_ ? controller->overlay_ : HWND_TOP;
+          const bool zOrderMatch = controller->overlay_
+              ? GetWindow(child, GW_HWNDPREV) == controller->overlay_
+              : GetWindow(child, GW_HWNDPREV) == nullptr;
+          if (!zOrderMatch || !IsWindowVisible(child)) {
             SetWindowPos(
-                child,
-                controller->overlay_ ? controller->overlay_ : HWND_TOP,
-                context->foregroundBounds.left,
-                context->foregroundBounds.top,
-                context->foregroundBounds.right - context->foregroundBounds.left,
-                context->foregroundBounds.bottom - context->foregroundBounds.top,
-                SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+                child, insertAfter,
+                0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW |
+                    SWP_NOSENDCHANGING);
           }
         } else {
-          // Background geometry belongs to StationheadPlayer: it is full-size
-          // while startup/reload is waiting for audio, then 1x1 during stable
-          // playback. Monitor routing owns only the background Z-order here.
           const bool zOrderMatch = GetWindow(child, GW_HWNDNEXT) == nullptr;
           if (!zOrderMatch || !IsWindowVisible(child)) {
             SetWindowPos(
