@@ -206,12 +206,12 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
-            int x = 0;
-            int y = 0;
-            if (ParseNormalizedPoint(json, &x, &y)) {
+            double cssX = 0.0;
+            double cssY = 0.0;
+            if (ParseCssPoint(json, &cssX, &cssY)) {
               target->nextRecoveryTick =
                   callbackNow + kSpotifyCdpPlayConfirmWaitMs;
-              ClickSlotNormalizedPoint(*target, x, y);
+              ClickSlotCssPoint(*target, cssX, cssY);
               return S_OK;
             }
 
