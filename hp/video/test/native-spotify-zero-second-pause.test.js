@@ -18,8 +18,8 @@ const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 test('zero-second recovery starts playback only through trusted CDP Play click', () => {
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /if \(isPauseControl\(pageButton\)\) return true/);
-  assert.match(scoped, /return point\(pageButton\)/);
+  assert.match(scoped, /if \(isPauseControl\(button\)\) return true/);
+  assert.match(scoped, /return point\(button\)/);
   assert.doesNotMatch(scoped, /querySelector\('audio'\)/);
   assert.doesNotMatch(scoped, /audio\.play\(/);
   assert.doesNotMatch(scoped, /direct-play|DirectPlay/);
