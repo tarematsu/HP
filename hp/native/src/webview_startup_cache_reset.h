@@ -30,10 +30,30 @@ inline void ReleaseWebViewStartupCacheResetClaim(
   }
 }
 
-// Drop only transient browser state once per profile for this app process.
-// Authentication and durable site data stay intact: cookies, localStorage and
-// IndexedDB are deliberately not included. Controller recovery later in the
-// same run skips the reset so Service Workers are not repeatedly destroyed.
+inline bool PreserveStationheadPlaybackWorkerState(
+    ICoreWebView2Profile* profile, const std::wstring& profilePath) noexcept {
+  if (profile) {
+    LPWSTR rawProfileName = nullptr;
+    if (SUCCEEDED(profile->get_ProfileName(&rawProfileName)) && rawProfileName) {
+      const bool stationheadProfile =
+          _wcsicmp(rawProfileName, L"spotify-v2-1") == 0;
+      CoTaskMemFree(rawProfileName);
+      return stationheadProfile;
+    }
+    if (rawProfileName) CoTaskMemFree(rawProfileName);
+  }
+  try {
+    return _wcsicmp(fs::path(profilePath).filename().c_str(), L"spotify-v2-1") == 0;
+  } catch (...) {
+    return false;
+  }
+}
+
+// Reset transient browser state once per profile for this app process. The
+// Stationhead player intentionally owns the former Spotify/Amazon profile
+// `spotify-v2-1`; for that profile keep CacheStorage and Service Workers paired
+// with its persistent Spotify cookies/localStorage/IndexedDB and clear only the
+// HTTP disk cache. Other media profiles retain the prior full transient reset.
 inline void ResetWebViewStartupCaches(
     ICoreWebView2* webview,
     WebViewStartupCacheResetCompletion completion) noexcept {
@@ -92,10 +112,15 @@ inline void ResetWebViewStartupCaches(
       return;
     }
 
-    constexpr auto kinds = static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(
-        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE |
-        COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE |
-        COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS);
+    const bool preservePlaybackWorkers =
+        PreserveStationheadPlaybackWorkerState(profile.Get(), profilePath);
+    auto kinds = COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE;
+    if (!preservePlaybackWorkers) {
+      kinds = static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(
+          COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE |
+          COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE |
+          COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS);
+    }
     auto handler = Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
         [finish, profilePath](HRESULT clearResult) -> HRESULT {
           if (FAILED(clearResult)) {

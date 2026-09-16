@@ -11,15 +11,28 @@ constexpr wchar_t kStandaloneMutexName[] = L"Local\\HomePanelUpdaterStandalone";
 constexpr wchar_t kInstallerMutexName[] = L"Local\\HomePanelUpdaterInstaller";
 constexpr DWORD kGracefulExitTimeoutMs = 15'000;
 constexpr DWORD kForcedExitTimeoutMs = 5'000;
+constexpr DWORD kWebView2GracefulExitTimeoutMs = 5'000;
 bool gRunnerMode = false;
 
 struct ScopedHandle {
   HANDLE value = nullptr;
-  ~ScopedHandle() { if (value) CloseHandle(value); }
+  ~ScopedHandle() {
+    if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value);
+  }
   ScopedHandle() = default;
   explicit ScopedHandle(HANDLE handle) : value(handle) {}
   ScopedHandle(const ScopedHandle&) = delete;
   ScopedHandle& operator=(const ScopedHandle&) = delete;
+  ScopedHandle(ScopedHandle&& other) noexcept : value(other.value) {
+    other.value = nullptr;
+  }
+  ScopedHandle& operator=(ScopedHandle&& other) noexcept {
+    if (this == &other) return *this;
+    if (value && value != INVALID_HANDLE_VALUE) CloseHandle(value);
+    value = other.value;
+    other.value = nullptr;
+    return *this;
+  }
 };
 
 struct Arguments {
@@ -235,15 +248,149 @@ void RequestHomePanelExit(DWORD pid) {
   EnumWindows(CloseHomePanelWindow, static_cast<LPARAM>(pid));
 }
 
+struct ProcessTreeEntry {
+  DWORD pid = 0;
+  DWORD parentPid = 0;
+  std::wstring executableName;
+};
+
+struct TrackedWebViewProcess {
+  DWORD pid = 0;
+  ScopedHandle process;
+
+  TrackedWebViewProcess(DWORD processId, HANDLE handle)
+      : pid(processId), process(handle) {}
+  TrackedWebViewProcess(TrackedWebViewProcess&&) noexcept = default;
+  TrackedWebViewProcess& operator=(TrackedWebViewProcess&&) noexcept = default;
+  TrackedWebViewProcess(const TrackedWebViewProcess&) = delete;
+  TrackedWebViewProcess& operator=(const TrackedWebViewProcess&) = delete;
+};
+
+bool ContainsPid(const std::vector<DWORD>& pids, DWORD pid) {
+  return std::find(pids.begin(), pids.end(), pid) != pids.end();
+}
+
+bool ProcessBaseNameMatches(HANDLE process, const wchar_t* expectedName) {
+  if (!process || !expectedName) return false;
+  std::vector<wchar_t> path(32768);
+  DWORD length = static_cast<DWORD>(path.size());
+  if (!QueryFullProcessImageNameW(process, 0, path.data(), &length)) return false;
+  const fs::path image(std::wstring(path.data(), length));
+  return _wcsicmp(image.filename().c_str(), expectedName) == 0;
+}
+
+std::vector<TrackedWebViewProcess> CaptureWebView2Descendants(DWORD rootPid) {
+  std::vector<TrackedWebViewProcess> tracked;
+  if (!rootPid) return tracked;
+
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return tracked;
+
+  std::vector<ProcessTreeEntry> entries;
+  PROCESSENTRY32W entry{sizeof(entry)};
+  if (Process32FirstW(snapshot, &entry)) {
+    do {
+      entries.push_back(
+          {entry.th32ProcessID, entry.th32ParentProcessID, entry.szExeFile});
+    } while (Process32NextW(snapshot, &entry));
+  }
+  CloseHandle(snapshot);
+
+  std::vector<DWORD> descendants{rootPid};
+  for (size_t cursor = 0; cursor < descendants.size(); ++cursor) {
+    const DWORD parentPid = descendants[cursor];
+    for (const auto& candidate : entries) {
+      if (!candidate.pid || candidate.parentPid != parentPid ||
+          ContainsPid(descendants, candidate.pid)) {
+        continue;
+      }
+      descendants.push_back(candidate.pid);
+    }
+  }
+
+  for (const auto& candidate : entries) {
+    if (candidate.pid == rootPid ||
+        !ContainsPid(descendants, candidate.pid) ||
+        _wcsicmp(candidate.executableName.c_str(), L"msedgewebview2.exe") != 0) {
+      continue;
+    }
+    HANDLE process = OpenProcess(
+        SYNCHRONIZE | PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION,
+        FALSE, candidate.pid);
+    if (!process) continue;
+    if (!ProcessBaseNameMatches(process, L"msedgewebview2.exe")) {
+      CloseHandle(process);
+      continue;
+    }
+    tracked.emplace_back(candidate.pid, process);
+  }
+  return tracked;
+}
+
+void EnsureTrackedWebViewProcessesStopped(
+    std::vector<TrackedWebViewProcess>& tracked, const fs::path& root) {
+  if (tracked.empty()) return;
+
+  const ULONGLONG deadline = GetTickCount64() + kWebView2GracefulExitTimeoutMs;
+  for (;;) {
+    bool anyRunning = false;
+    for (const auto& child : tracked) {
+      if (WaitForSingleObject(child.process.value, 0) == WAIT_TIMEOUT) {
+        anyRunning = true;
+        break;
+      }
+    }
+    if (!anyRunning) return;
+    if (GetTickCount64() >= deadline) break;
+    Sleep(50);
+  }
+
+  size_t terminated = 0;
+  for (auto& child : tracked) {
+    if (WaitForSingleObject(child.process.value, 0) != WAIT_TIMEOUT) continue;
+    if (!TerminateProcess(child.process.value, 1)) {
+      if (WaitForSingleObject(child.process.value, 0) == WAIT_OBJECT_0) continue;
+      throw std::runtime_error(
+          "lingering WebView2 process could not be terminated before update");
+    }
+    ++terminated;
+  }
+
+  for (const auto& child : tracked) {
+    const DWORD wait = WaitForSingleObject(child.process.value, kForcedExitTimeoutMs);
+    if (wait != WAIT_OBJECT_0) {
+      throw std::runtime_error(
+          "lingering WebView2 process did not stop before update restart");
+    }
+  }
+  if (terminated) {
+    Log(root, L"Terminated " + std::to_wstring(terminated) +
+                  L" lingering WebView2 process(es) before update restart");
+  }
+}
+
 void EnsureHomePanelStopped(DWORD pid, const fs::path& root) {
   if (!pid) return;
   const fs::path expected = root / L"HomePanel.exe";
   ScopedHandle process(OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
   if (!process.value || !ProcessMatchesExecutable(process.value, expected)) return;
 
+  // Capture exact process handles before HomePanel exits. Keeping handles rather
+  // than acting on PIDs later prevents PID reuse from ever targeting an
+  // unrelated process while still letting the updater drain WebView2 children
+  // that outlive their browser owner during an application update.
+  auto webViewProcesses = CaptureWebView2Descendants(pid);
+  if (!webViewProcesses.empty()) {
+    Log(root, L"Tracking " + std::to_wstring(webViewProcesses.size()) +
+                  L" WebView2 descendant process(es) across update shutdown");
+  }
+
   RequestHomePanelExit(pid);
   const DWORD graceful = WaitForSingleObject(process.value, kGracefulExitTimeoutMs);
-  if (graceful == WAIT_OBJECT_0) return;
+  if (graceful == WAIT_OBJECT_0) {
+    EnsureTrackedWebViewProcessesStopped(webViewProcesses, root);
+    return;
+  }
   if (graceful == WAIT_FAILED) throw std::runtime_error("cannot wait for HomePanel to exit");
 
   ScopedHandle terminator(OpenProcess(
@@ -257,6 +404,7 @@ void EnsureHomePanelStopped(DWORD pid, const fs::path& root) {
   const DWORD forced = WaitForSingleObject(terminator.value, kForcedExitTimeoutMs);
   if (forced != WAIT_OBJECT_0) throw std::runtime_error("HomePanel did not stop after forced termination");
   Log(root, L"Unresponsive HomePanel process was terminated before update");
+  EnsureTrackedWebViewProcessesStopped(webViewProcesses, root);
 }
 
 bool LaunchRunner(const fs::path& root, const fs::path& manifest, const std::wstring& version, DWORD appPid) {
