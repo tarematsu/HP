@@ -27,14 +27,15 @@ const lifecycle = readFileSync(
 const hostWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
 
-test('yuukiar, ten and nagi Spotify slots are active with existing profile numbers', () => {
+test('yuukiar, ten, nagi and hinata Spotify slots are active with existing profile numbers', () => {
   assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
-  assert.match(header, /kSpotifyActiveAccountCount = 3/);
+  assert.match(header, /kSpotifyActiveAccountCount = 4/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
   assert.match(scripts, /L"yuukiar"/);
   assert.match(scripts, /L"ten"/);
   assert.match(scripts, /L"nagi"/);
-  assert.doesNotMatch(scripts, /L"hinata"|L"amazon"|L"ozeki"/);
+  assert.match(scripts, /L"hinata"/);
+  assert.doesNotMatch(scripts, /L"amazon"|L"ozeki"/);
 });
 
 test('status track comes only from the Web Player now-playing surface', () => {
@@ -61,11 +62,11 @@ test('status track comes only from the Web Player now-playing surface', () => {
   assert.match(processTitle, /TrySpotifyNowPlayingTrackFromJson/);
   assert.match(processTitle, /ExecuteScript\(\s*kSpotifyNowPlayingDomScript/);
 
-  // Each slot is read once per minute, phased 20 seconds apart. A single
+  // Each slot is read once per minute, phased 15 seconds apart. A single
   // scheduler pass may probe at most one slot, including after sleep/stalls.
   assert.match(processTitle, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
   assert.match(processTitle, /kSpotifyProcessTitlePollPhaseMs/);
-  assert.match(processTitle, /kSpotifyProcessTitlePollPhaseMs == 20ULL \* 1000ULL/);
+  assert.match(processTitle, /kSpotifyProcessTitlePollPhaseMs == 15ULL \* 1000ULL/);
   assert.match(processTitle, /size_t selected = slots_\.size\(\)/);
   assert.match(processTitle, /break;/);
   assert.match(processTitle, /catchUpDelay = kSpotifyProcessTitlePollPhaseMs/);
