@@ -106,10 +106,15 @@ test('paused TVer program recovery is idempotent and never toggles the video sur
   assert.doesNotMatch(policy, /findPlayButton/);
 });
 
-test('TVer fullscreen retries only through the trusted CDP path', () => {
+test('TVer fullscreen retries after the trusted click has settled', () => {
   assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
   assert.match(policy, /if \(state && state\.fullscreenDirty === false\) return null/);
   assert.match(policy, /if \(fullscreenButton && state\) state\.fullscreenDirty = false/);
+  assert.match(policy, /document\.elementFromPoint\(centerX, centerY\)/);
+  assert.match(policy, /hit !== element && !element\.contains\(hit\)/);
+  assert.match(policy, /__homePanelTverFullscreenPending/);
+  assert.match(policy, /window\.setTimeout\(\(\) => \{/);
+  assert.match(policy, /\}, 800\)/);
   assert.match(policy, /homepanel:tver-wake/);
   assert.match(policy, /state\.fullscreenDirty = true/);
   assert.doesNotMatch(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
@@ -120,10 +125,23 @@ test('TVer fullscreen retries only through the trusted CDP path', () => {
   );
 });
 
+test('TVer completion requires forward playback on the current program video', () => {
+  assert.match(episodeLoop, /programProgressOrigin: Number\.NaN/);
+  assert.match(episodeLoop, /programPlaybackConfirmed: false/);
+  assert.match(episodeLoop, /currentTime >= state\.programProgressOrigin \+ 1/);
+  assert.match(
+    episodeLoop,
+    /if \(!state\.programPlaybackConfirmed\) \{[\s\S]*scheduleEnsure\(0\);[\s\S]*return;/,
+  );
+  assert.match(episodeLoop, /if \(state\.video !== video\) resetMediaState\(state, video\)/);
+  assert.match(episodeLoop, /if \(state\.programPlaybackConfirmed && video\.ended/);
+  assert.match(episodeLoop, /const completedItem = state\.programPlaybackConfirmed &&/);
+});
+
 test('TVer holds completion for post-roll then reports completion to native', () => {
   assert.match(episodeLoop, /postrollGraceMs = 12000/);
   assert.match(episodeLoop, /postrollAfterProgram: false/);
-  assert.match(episodeLoop, /const completedProgram = state\.endCandidateAt > 0/);
+  assert.match(episodeLoop, /const completedProgram = state\.programPlaybackConfirmed &&/);
   assert.ok(episodeLoop.includes('if (!duration || shortAdLength) return true;'));
   assert.match(episodeLoop, /const completedPostroll = state\.postrollAfterProgram/);
   assert.match(episodeLoop, /Date\.now\(\) - state\.endCandidateAt >= postrollGraceMs/);

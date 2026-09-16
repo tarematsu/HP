@@ -28,7 +28,7 @@ test('TVer advances only through the native cloud-owned episode queue', () => {
 
 test('TVer completed program waits for post-roll before native advancement', () => {
   assert.match(episode, /postrollGraceMs = 12000/);
-  assert.match(episode, /completedItem = state\.maxDuration >= 5/);
+  assert.match(episode, /completedItem = state\.programPlaybackConfirmed &&/);
   assert.match(episode, /state\.maxTime >= Math\.max\(3, state\.maxDuration - 10\)/);
   assert.match(episode, /Date\.now\(\) - state\.endCandidateAt >= postrollGraceMs/);
   assert.match(episode, /postrollAfterProgram/);

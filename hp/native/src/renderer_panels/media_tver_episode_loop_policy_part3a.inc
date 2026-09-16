@@ -3,6 +3,8 @@ LR"JS(
   const playbackDefaults = () => ({
     progressSampleAt: 0,
     progressTimer: 0,
+    programProgressOrigin: Number.NaN,
+    programPlaybackConfirmed: false,
     lowQualitySet: false,
     lowClickPending: false,
     qualityActionCount: 0,
@@ -69,7 +71,8 @@ LR"JS(
         const identity = mediaIdentity(video);
         const adMediaChanged = state.adVideo !== video || state.adIdentity !== identity;
         if (!state.adActive || adMediaChanged) {
-          const completedProgram = state.endCandidateAt > 0 &&
+          const completedProgram = state.programPlaybackConfirmed &&
+              state.endCandidateAt > 0 &&
               state.maxDuration >= 5 &&
               state.maxTime >= Math.max(3, state.maxDuration - 10);
           if (!state.adActive) state.postrollAfterProgram = completedProgram;
@@ -109,7 +112,7 @@ LR"JS(
         window.__homePanelTverAdActive = false;
       }
 
-      if (state.video !== video) resetPlaybackSetup(state, video);
+      if (state.video !== video) resetMediaState(state, video);
       if (!video) return;
       bindVideoEvents(video, state);
       const observerNeeded = state.adActive || state.recoveryPending ||
@@ -132,11 +135,12 @@ LR"JS(
       sampleProgress(video, state, true);
       try { state.armProgressSampler?.(); } catch (_) {}
 
-      if (video.ended && !state.endCandidateAt) {
+      if (state.programPlaybackConfirmed && video.ended && !state.endCandidateAt) {
         state.endCandidateAt = Date.now();
         window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
       }
-      const completedItem = state.maxDuration >= 5 &&
+      const completedItem = state.programPlaybackConfirmed &&
+          state.maxDuration >= 5 &&
           state.maxTime >= Math.max(3, state.maxDuration - 10);
       const stableEnd = state.endCandidateAt > 0 &&
           Date.now() - state.endCandidateAt >= postrollGraceMs;
