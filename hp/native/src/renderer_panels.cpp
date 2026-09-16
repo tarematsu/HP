@@ -54,25 +54,39 @@ void StretchRadarIntoLowPeak(
 #include "renderer_panels/waste_calendar_section.inc"
 
 namespace {
-MainSections SplitWeatherRadarWidthSwappedMainSections(const RECT& client) {
-  MainSections sections = SplitRearrangedMainSections(client);
-  const LONG weatherWidth =
-      std::max<LONG>(1, sections.energy.right - sections.energy.left);
-  const LONG radarWidth =
-      std::max<LONG>(1, sections.radar.right - sections.radar.left);
-  const LONG left = sections.radar.left;
-  const LONG right = sections.energy.right;
+MainSections SplitWeatherRadarMatchedMainSections(
+    const RECT& client, const RECT& dashboardBounds) {
+  const NativeDashboardLayout dashboard =
+      ComputeNativeDashboardLayout(dashboardBounds);
+  const LONG sideWidth =
+      std::max<LONG>(1, dashboard.side.right - dashboard.side.left);
+  const LONG sideHeight =
+      std::max<LONG>(1, dashboard.side.bottom - dashboard.side.top);
+  const LONG sideGap = std::max<LONG>(6, sideHeight * 18 / 1000);
+  const LONG rowHeight = std::max<LONG>(1, (sideHeight - sideGap * 2) / 3);
 
-  // Keep the weather panel anchored on the left and the rain radar anchored on
-  // the right. Only exchange their horizontal sizes; vertical bounds stay put.
-  sections.radar.right = std::min<LONG>(right, left + weatherWidth);
-  sections.energy.left = std::max<LONG>(left, right - radarWidth);
+  const LONG width = std::max<LONG>(1, client.right - client.left);
+  const LONG gapX = std::max<LONG>(8, width * 16 / 1000);
+  const LONG maxWeatherWidth = std::max<LONG>(1, width - gapX - 1);
+  const LONG weatherWidth = std::clamp<LONG>(
+      sideWidth, 1L, maxWeatherWidth);
+  const LONG bottom = std::min<LONG>(client.bottom, client.top + rowHeight);
+
+  MainSections sections;
+  // windows.inc paints Weather through the historical radar slot and Rain Radar
+  // through the historical energy slot. Give Weather exactly the same pixel
+  // width and row height as Clock/Air/Electricity.
+  sections.radar = RECT{
+      client.left, client.top, client.left + weatherWidth, bottom};
+  sections.energy = RECT{
+      sections.radar.right + gapX, client.top, client.right, bottom};
   return sections;
 }
 }  // namespace
 
 #define SplitSidebarSections SplitRearrangedSidebarSections
-#define SplitMainSections SplitWeatherRadarWidthSwappedMainSections
+#define SplitMainSections(client) \
+  SplitWeatherRadarMatchedMainSections((client), bounds_)
 #define ClockTimeRectFromCard RearrangedClockTimeRectFromCard
 #define DrawClockSection HP_DRAW_CLOCK_WITH_STATUS
 #define DrawControlsSection DrawAirSection
