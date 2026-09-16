@@ -23,7 +23,7 @@ test('single Stationhead resolves placement against the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background host, auth and playback controller stay full-client', () => {
+test('background host stays full-client while playback controller stays fixed at 720x480', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
@@ -35,14 +35,16 @@ test('background host, auth and playback controller stay full-client', () => {
   assert.match(apply, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /authHostBounds = surfaceBounds/);
-  assert.match(apply, /const RECT playbackControllerBounds\{0, 0, playbackWidth, playbackHeight\};/);
-  assert.doesNotMatch(apply, /PlaybackControllerBounds|compactPlayback|useCompactPlayback/);
+  assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
+  assert.match(layout, /kStationheadPlaybackViewportWidth = 720/);
+  assert.match(layout, /kStationheadPlaybackViewportHeight = 480/);
+  assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
   assert.ok(apply.indexOf('SetWindowPos(hostWindow') < apply.indexOf('if (controller)'));
   assert.ok(apply.indexOf('SetWindowPos(authHostWindow') < apply.indexOf('if (authController)'));
 });
 
-test('startup and reload keep the full Stationhead controller viewport', () => {
+test('startup and reload keep the same fixed Stationhead controller viewport', () => {
   const startup = section(layout, 'void StationheadPlayer::SetStartupBounds()',
     'void StationheadPlayer::SetStartupPreviewBounds(');
   assert.match(startup, /ApplyStationheadChildLayout\([\s\S]*false, false, false\)/);
