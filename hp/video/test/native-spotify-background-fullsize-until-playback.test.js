@@ -10,13 +10,13 @@ const rotation = source('spotify_timed_end_rotation.inc');
 const click = source('spotify_background_click.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('Spotify uses one full-client internal surface for startup, playback, recovery and Monitor C/D', () => {
+test('Spotify uses one full-client internal surface for startup, playback, recovery and Monitor B/C/D', () => {
   assert.match(layout, /const int hostX = client\.left/);
   assert.match(layout, /const int hostY = client\.top/);
   assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\)/);
   assert.match(layout, /const int height = std::max\(1L, client\.bottom - client\.top\)/);
   assert.doesNotMatch(layout, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\)/);
-  assert.match(layout, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_/);
+  assert.match(layout, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
   assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(layout, /authentication \|\| monitorForeground/);
   assert.match(layout, /const RECT desired\{hostX, hostY, hostX \+ width, hostY \+ height\}/);

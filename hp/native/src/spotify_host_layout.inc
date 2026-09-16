@@ -26,7 +26,8 @@ void ApplySpotifyHostVisualClip(HWND window, bool fullSize) noexcept {
 }  // namespace
 
 void SpotifyWebViews::SetMonitorForegroundSlot(int slotIndex) noexcept {
-  if (slotIndex < 0 || slotIndex >= static_cast<int>(slots_.size())) {
+  if (slotIndex < 0 ||
+      slotIndex >= static_cast<int>(kSpotifyRuntimeLaneCount)) {
     slotIndex = -1;
   }
   if (monitorForegroundSlot_ == slotIndex) return;
@@ -49,7 +50,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
     const bool monitorForeground =
-        static_cast<int>(i) == monitorForegroundSlot_;
+        SpotifyRuntimeLaneForAccount(i) == monitorForegroundSlot_;
     const bool authenticationForeground =
         authentication && monitorForegroundSlot_ < 0;
 

@@ -35,8 +35,12 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
       client.left, client.top, width, height,
       parentWindow_, nullptr, GetModuleHandleW(nullptr), &slot);
   const bool created = slot.hostWindow && IsWindow(slot.hostWindow);
-  if (created && slot.index == 0) {
-    schedulerHost_.store(slot.hostWindow, std::memory_order_release);
+  if (created) {
+    HWND schedulerHost = schedulerHost_.load(std::memory_order_acquire);
+    if (!schedulerHost || !IsWindow(schedulerHost)) {
+      schedulerHost_.store(slot.hostWindow, std::memory_order_release);
+      schedulerWakePosted_.store(false, std::memory_order_release);
+    }
   }
   return created;
 }
@@ -46,11 +50,11 @@ void SpotifyWebViews::Start() noexcept {
 
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
-  gSpotifyAlternatingActiveSlot = kSpotifyTenSlotIndex;
 
+  for (Slot& slot : slots_) CloseSlot(slot);
+  ResetSpotifyRuntimeLanes();
   for (Slot& slot : slots_) {
-    CloseSlot(slot);
-    if (SpotifySlotShouldOwnHost(slot.index)) CreateHost(slot);
+    if (SpotifyAccountShouldOwnHost(slot.index)) CreateHost(slot);
   }
 
   Resize();
@@ -69,7 +73,10 @@ void SpotifyWebViews::Resize() noexcept {
 }
 
 void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
-  if (slot.index == 0) {
+  const HWND closingHost = slot.hostWindow;
+  const bool wasSchedulerHost =
+      closingHost && schedulerHost_.load(std::memory_order_acquire) == closingHost;
+  if (wasSchedulerHost) {
     schedulerHost_.store(nullptr, std::memory_order_release);
     schedulerWakePosted_.store(false, std::memory_order_release);
   }
@@ -126,6 +133,15 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.playbackConfirmed = false;
   slot.processTitleObserved = false;
   slot.playbackConfirmedAt = {};
+
+  if (wasSchedulerHost) {
+    for (const Slot& candidate : slots_) {
+      if (candidate.hostWindow && IsWindow(candidate.hostWindow)) {
+        schedulerHost_.store(candidate.hostWindow, std::memory_order_release);
+        break;
+      }
+    }
+  }
 }
 
 void SpotifyWebViews::Shutdown() noexcept {
@@ -150,7 +166,8 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(slot));
   }
   if (slot) {
-    if (message == kSpotifySchedulerMessage && slot->index == 0 && slot->owner) {
+    if (message == kSpotifySchedulerMessage && slot->owner &&
+        slot->owner->schedulerHost_.load(std::memory_order_acquire) == hwnd) {
       SpotifyWebViews* const owner = slot->owner;
       owner->schedulerWakePosted_.store(false, std::memory_order_release);
       if (owner->started_ && !owner->networkBlocked_) {
@@ -165,8 +182,10 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
       return 0;
     }
     if (message == WM_NCDESTROY) {
-      if (slot->index == 0 && slot->owner) {
+      if (slot->owner &&
+          slot->owner->schedulerHost_.load(std::memory_order_acquire) == hwnd) {
         slot->owner->schedulerHost_.store(nullptr, std::memory_order_release);
+        slot->owner->schedulerWakePosted_.store(false, std::memory_order_release);
       }
       if (slot->hostWindow == hwnd) slot->hostWindow = nullptr;
       SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);

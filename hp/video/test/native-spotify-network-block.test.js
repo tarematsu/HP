@@ -18,9 +18,9 @@ test('Spotify network block destroys all configured WebView/controller slots', (
   assert.match(network, /for \(Slot& slot : slots_\) CloseSlot\(slot\)/);
 });
 
-test('Spotify unmute reuses the CloseSlot reset and recreates only eligible hosts', () => {
+test('Spotify unmute recreates only the three active runtime accounts', () => {
   assert.match(network, /alive_ = std::make_shared<std::atomic<bool>>\(true\)/);
-  assert.match(network, /for \(Slot& slot : slots_\)[\s\S]*SpotifySlotShouldOwnHost\(slot\.index\)[\s\S]*CreateHost\(slot\)/);
+  assert.match(network, /SpotifyAccountShouldOwnHost\(slot\.index\)[\s\S]*CreateHost\(slot\)/);
   assert.doesNotMatch(network, /CreateController\(slots_\[0\]\)/);
   assert.match(host, /slot\.timedRotationActive = false/);
   assert.match(host, /slot\.timedCompletionDeadlineTick = 0/);

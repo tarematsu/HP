@@ -12,23 +12,8 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 // launches reuse the newly authenticated sessions instead of resetting again.
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
-// ten (slot 1/profile 3) and hinata (slot 3/profile 5) share one live WebView
-// budget. ten starts first; after either account completes one full cloud
-// rotation, that WebView is destroyed and the other account is generated.
-constexpr size_t kSpotifyTenSlotIndex = 1;
-constexpr size_t kSpotifyHinataSlotIndex = 3;
-size_t gSpotifyAlternatingActiveSlot = kSpotifyTenSlotIndex;
-
-bool IsSpotifyAlternatingPairSlot(size_t index) noexcept {
-  return index == kSpotifyTenSlotIndex || index == kSpotifyHinataSlotIndex;
-}
-
-bool SpotifySlotShouldOwnHost(size_t index) noexcept {
-  return !IsSpotifyAlternatingPairSlot(index) ||
-         index == gSpotifyAlternatingActiveSlot;
-}
-
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
+// These are runtime-lane selections (B/C/D => 0/1/2), not logical account ids.
 int gSpotifyAudioOutputSlot = -1;
 int gSpotifyMonitorForegroundSlot = -1;
 
@@ -36,10 +21,14 @@ void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
-    const int slotIndex = gSpotifyControlInstance
+    const int accountIndex = gSpotifyControlInstance
         ? gSpotifyControlInstance->SlotIndexForWebView(webview.Get())
         : -1;
-    const bool muted = slotIndex < 0 || slotIndex != gSpotifyAudioOutputSlot;
+    const int runtimeLane = accountIndex >= 0
+        ? SpotifyRuntimeLaneForAccount(static_cast<size_t>(accountIndex))
+        : -1;
+    const bool muted =
+        runtimeLane < 0 || runtimeLane != gSpotifyAudioOutputSlot;
     audio->put_IsMuted(muted ? TRUE : FALSE);
   }
 }
@@ -60,7 +49,7 @@ SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
       // isolate cookies/local storage for every Spotify account.
       userDataFolder_(std::move(dataDir) / L"webview2-youtube-mv") {
   gSpotifyControlInstance = this;
-  gSpotifyAlternatingActiveSlot = kSpotifyTenSlotIndex;
+  ResetSpotifyRuntimeLanes();
   monitorForegroundSlot_ = gSpotifyMonitorForegroundSlot;
   for (size_t i = 0; i < slots_.size(); ++i) {
     slots_[i].owner = this;
@@ -83,14 +72,15 @@ int SpotifyWebViews::SlotIndexForWebView(ICoreWebView2* webview) const noexcept 
 
 void SpotifyWebViews::SetAudioOutputSlot(int slotIndex) noexcept {
   gSpotifyAudioOutputSlot =
-      slotIndex >= 0 && slotIndex < static_cast<int>(slots_.size())
+      slotIndex >= 0 && slotIndex < static_cast<int>(kSpotifyRuntimeLaneCount)
           ? slotIndex
           : -1;
   for (Slot& slot : slots_) SetSpotifyOutputMuted(slot.webview);
 }
 
 void SetSpotifyAudioOutputSlot(int slotIndex) noexcept {
-  if (slotIndex < 0 || slotIndex >= static_cast<int>(kSpotifyActiveAccountCount)) {
+  if (slotIndex < 0 ||
+      slotIndex >= static_cast<int>(kSpotifyRuntimeLaneCount)) {
     slotIndex = -1;
   }
   gSpotifyAudioOutputSlot = slotIndex;
@@ -100,7 +90,8 @@ void SetSpotifyAudioOutputSlot(int slotIndex) noexcept {
 }
 
 void SetSpotifyMonitorForegroundSlot(int slotIndex) noexcept {
-  if (slotIndex < 0 || slotIndex >= static_cast<int>(kSpotifyActiveAccountCount)) {
+  if (slotIndex < 0 ||
+      slotIndex >= static_cast<int>(kSpotifyRuntimeLaneCount)) {
     slotIndex = -1;
   }
   gSpotifyMonitorForegroundSlot = slotIndex;

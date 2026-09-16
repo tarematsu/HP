@@ -38,13 +38,13 @@ test('monitor A probes targeted Stationhead controls every five minutes', () => 
   assert.match(bridge, /kStationheadMonitorProbeResultMessage/);
 });
 
-test('monitor B is unconditional foreground and does not own DOM polling', () => {
+test('monitor E is unconditional Stationhead foreground and does not own DOM polling', () => {
   assert.match(
     routing,
-    /monitorMode_ == MonitorMode::Stationhead \|\|[\s\S]*monitorMode_ == MonitorMode::Native &&[\s\S]*monitorAuthForeground_/,
+    /monitorMode_ == MonitorMode::SpotifyTertiary \|\|[\s\S]*monitorMode_ == MonitorMode::Native &&[\s\S]*monitorAuthForeground_/,
   );
   assert.match(schedule, /if \(monitorMode_ == MonitorMode::Native\) \{[\s\S]*kMonitorAuthProbeIntervalMs/);
-  assert.doesNotMatch(schedule, /MonitorMode::Stationhead[\s\S]{0,120}RequestMonitorAuthProbe/);
+  assert.doesNotMatch(schedule, /MonitorMode::SpotifyTertiary[\s\S]{0,120}RequestMonitorAuthProbe/);
 });
 
 test('monitor A returns Stationhead behind the dashboard after a clean probe', () => {

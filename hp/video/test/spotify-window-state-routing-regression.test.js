@@ -31,7 +31,7 @@ test('Spotify stable playback and non-playing transitions stay full-client behin
   assert.match(placeHosts, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
 });
 
-test('Spotify authentication and Monitor C/D use foreground z-order without changing full-client geometry', () => {
+test('Spotify authentication and Monitor B/C/D use foreground z-order without changing full-client geometry', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
@@ -39,7 +39,7 @@ test('Spotify authentication and Monitor C/D use foreground z-order without chan
   );
 
   assert.match(placeHosts, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/);
-  assert.match(placeHosts, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_;/);
+  assert.match(placeHosts, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_;/);
   assert.match(placeHosts, /const int hostX = client\.left;/);
   assert.match(placeHosts, /const int hostY = client\.top;/);
   assert.match(placeHosts, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);

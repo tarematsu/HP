@@ -102,9 +102,9 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
 void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
   slot.timedRotationActive = true;
   slot.timedRotationPosition = 0;
-  // ten/hinata preserve their completed-cycle counter across WebView teardown so
-  // each later activation receives a fresh deterministic random permutation.
-  if (!IsSpotifyAlternatingPairSlot(slot.index)) slot.timedRotationCycle = 0;
+  // timedRotationCycle is preserved when an account leaves a runtime lane so
+  // the account receives a fresh deterministic random permutation when it
+  // returns later.
   PrepareTimedRotationCycle(slot);
   slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
@@ -155,27 +155,35 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
       ++slot.timedRotationCycle;
       slot.timedRotationPosition = 0;
 
-      if (IsSpotifyAlternatingPairSlot(slot.index) &&
-          slot.index == gSpotifyAlternatingActiveSlot) {
+      const int completedLane = SpotifyRuntimeLaneForAccount(slot.index);
+      if (completedLane >= 0) {
         const ULONGLONG completedCycles = slot.timedRotationCycle;
-        const size_t nextSlotIndex =
-            slot.index == kSpotifyTenSlotIndex
-                ? kSpotifyHinataSlotIndex
-                : kSpotifyTenSlotIndex;
+        const size_t completedAccountIndex = slot.index;
+        const size_t nextAccountIndex = gSpotifyInactiveAccountIndex;
         HWND completedHost = slot.hostWindow;
         if (completedHost && IsWindow(completedHost)) {
           InvalidateSpotifyStatusForHost(completedHost);
         }
-        CloseSlot(slot);
-        // CloseSlot intentionally resets runtime state. Preserve only the cycle
-        // counter so re-creating this account later does not repeat cycle zero.
-        slot.timedRotationCycle = completedCycles;
-        gSpotifyAlternatingActiveSlot = nextSlotIndex;
 
-        Slot& nextSlot = slots_[nextSlotIndex];
+        CloseSlot(slot);
+        // CloseSlot clears runtime state. Keep only this account's completed
+        // cycle counter so its next activation advances the random seed.
+        slot.timedRotationCycle = completedCycles;
+
+        gSpotifyRuntimeLaneAccounts[static_cast<size_t>(completedLane)] =
+            nextAccountIndex;
+        gSpotifyInactiveAccountIndex = completedAccountIndex;
+
+        Slot& nextSlot = slots_[nextAccountIndex];
         if (!nextSlot.hostWindow || !IsWindow(nextSlot.hostWindow)) {
           CreateHost(nextSlot);
         }
+
+        // B/C/D represent runtime lanes. Force layout refresh so a selected
+        // lane immediately follows the newly activated account.
+        hostLayoutMask_ = ~0u;
+        hostLayoutActiveSlot_ = kAccountCount;
+        hostLayoutAuthenticationSlot_ = kAccountCount;
         RecomputeForeground();
         ArmRobustScheduler();
         return;

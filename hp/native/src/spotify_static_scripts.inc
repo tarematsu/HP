@@ -82,6 +82,12 @@ SpotifyWebViews::PlaybackStatuses() const noexcept {
   std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount> result{};
   for (size_t i = 0; i < result.size(); ++i) {
     result[i].windowName.assign(kSpotifyPanelNames[i]);
+    if (!SpotifyAccountShouldOwnHost(i)) {
+      result[i].trackTitle = L"待機中";
+      result[i].confirmedAt = {};
+      result[i].confirmed = false;
+      continue;
+    }
     result[i].trackTitle = slots_[i].processTrackDisplay;
     result[i].confirmedAt = slots_[i].processTitleObservedAt;
     result[i].confirmed = slots_[i].processTitleObserved;

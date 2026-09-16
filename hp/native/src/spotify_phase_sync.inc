@@ -153,6 +153,7 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
 
   if (scheduleStartTick_ != 0) {
     for (size_t i = 0; i < slots_.size(); ++i) {
+      if (!SpotifyAccountShouldOwnHost(i)) continue;
       const ULONGLONG boundary =
           scheduleStartTick_ +
           static_cast<ULONGLONG>(i) * kSpotifyAccountStartOffsetMs;
