@@ -187,8 +187,11 @@ RECT PowerSavingController::ParentControlStackRect() const {
   const int sideWidth = std::max(1L, side.right - side.left);
   const int sideHeight = std::max(1L, side.bottom - side.top);
   const int gap = std::max(6, sideHeight * 18 / 1000);
-  const int availableHeight = std::max(2, sideHeight - gap);
-  const int clockHeight = std::max(1, availableHeight * 55 / 100);
+  const int upperMediaHeight = sideHeight * 480 / 1000;
+  const int weatherHeight = std::max(1, sideHeight - upperMediaHeight - gap);
+  const int compactAvailable =
+      std::max(2, sideHeight - weatherHeight - gap * 2);
+  const int clockHeight = std::max(1, compactAvailable * 55 / 100);
   const RECT clock{side.left, side.top, side.right, side.top + clockHeight};
   const int pad = std::clamp(
       std::min(sideWidth, clockHeight) * 10 / 100, 8, 26);

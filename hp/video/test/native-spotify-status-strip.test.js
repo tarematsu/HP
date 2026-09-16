@@ -151,31 +151,27 @@ test('reconcile confirms verified Pause without observer acknowledgement or Moni
   assert.doesNotMatch(confirmation, /ArmTimedEndObserver/);
 });
 
-test('Spotify status overlays the independent 16:9 media surface', () => {
+test('Spotify status strip keeps an independent fallback timer without monitor switching', () => {
   assert.match(hostWindow, /kNativeSpotifyStatusHeight = 56/);
   assert.match(hostWindow, /kNativeSpotifyStatusPollTimer = 0x5350/);
   assert.match(hostWindow, /kNativeSpotifyStatusPollMs = 60U \* 1000U/);
   assert.match(hostWindow, /case WM_TIMER:/);
   assert.match(hostWindow, /PollSpotifyPlaybackStatusesNow\(\)/);
-  assert.match(hostWindow, /InvalidateRect\(hwnd, nullptr, FALSE\)/);
   assert.match(hostWindow, /SetTimer\(status, kNativeSpotifyStatusPollTimer/);
   assert.match(hostWindow, /KillTimer\(hwnd, kNativeSpotifyStatusPollTimer\)/);
   assert.match(hostWindow, /GetSpotifyPlaybackStatuses\(\)/);
-  assert.match(hostWindow, /const size_t cellCount = statuses\.size\(\) \+ 1/);
-  assert.match(hostWindow, /StationheadStatusStripTodayPlayCount\(\)/);
-  assert.match(hostWindow, /drawStatusCard\(statuses\.size\(\), L"Stationhead", stationheadDetail\)/);
+  assert.match(hostWindow, /const std::wstring& heading = statuses\[i\]\.windowName/);
+  assert.match(hostWindow, /const std::wstring& track = statuses\[i\]\.trackTitle/);
+  assert.doesNotMatch(hostWindow, /SpotifyStatusClock|確認|confirmedAt/);
+  assert.match(hostWindow, /statuses\.size\(\)/);
   assert.match(hostWindow, /kSpotifyStatusSurface = RGB\(20, 26, 36\)/);
   assert.match(hostWindow, /kSpotifyStatusOutline = RGB\(43, 54, 69\)/);
   assert.match(hostWindow, /RoundRect\(paintDc, card\.left/);
   assert.match(hostWindow, /CreateCompatibleDC\(dc\)/);
   assert.match(hostWindow, /BitBlt\(dc, 0, 0, width, height, paintDc/);
-  assert.match(hostWindow, /case WM_NCHITTEST:[\s\S]*return HTTRANSPARENT/);
-  assert.match(hostWindow, /videoHeight = std::max<LONG>\(1, videoWidth \* 9 \/ 16\)/);
-  assert.match(hostWindow, /videoWidth = std::max<LONG>\(1, videoHeight \* 16 \/ 9\)/);
-  assert.match(hostWindow, /RECT statusBounds = videoBounds/);
-  assert.doesNotMatch(hostWindow, /videoBounds\.top =[^;]*statusBounds\.bottom/);
-  assert.match(hostWindow, /SetWindowPos\(status, nullptr[\s\S]*SWP_NOZORDER/);
-  assert.match(hostWindow, /DestroyWindow\(status\)/);
+  assert.match(hostWindow, /RECT statusBounds = bounds/);
+  assert.match(hostWindow, /RECT videoBounds = bounds/);
+  assert.match(hostWindow, /videoBounds\.top =/);
   assert.match(phase, /InvalidateSpotifyStatusForHost/);
   assert.match(phase, /InvalidateRect\(status, nullptr, FALSE\)/);
 });
