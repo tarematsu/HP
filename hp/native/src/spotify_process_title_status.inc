@@ -3,6 +3,16 @@ namespace {
 
 constexpr ULONGLONG kSpotifyProcessTitlePollMs = 60ULL * 1000ULL;
 
+constexpr wchar_t kSpotifyPlaybackMetadataScript[] = LR"JS(
+(() => {
+  const media = navigator.mediaSession && navigator.mediaSession.metadata;
+  return {
+    mediaTitle: media && typeof media.title === 'string' ? media.title : '',
+    documentTitle: typeof document.title === 'string' ? document.title : ''
+  };
+})()
+)JS";
+
 std::wstring_view TrimSpotifyProcessTitle(std::wstring_view value) noexcept {
   while (!value.empty() && iswspace(value.front())) value.remove_prefix(1);
   while (!value.empty() && iswspace(value.back())) value.remove_suffix(1);
@@ -76,6 +86,24 @@ std::wstring SpotifyProcessTrackDisplay(std::wstring_view processTitle) {
       processTitle.substr(separator + separatorLength));
   if (track.empty() || artist.empty()) return {};
   return std::wstring(track);
+}
+
+std::wstring SpotifyTrackFromMetadataJson(LPCWSTR json) {
+  if (!json || !*json) return {};
+  try {
+    const auto root = winrt::Windows::Data::Json::JsonObject::Parse(json);
+    std::wstring mediaTitle(
+        root.GetNamedString(L"mediaTitle", L"").c_str());
+    const std::wstring_view trimmedMediaTitle =
+        TrimSpotifyProcessTitle(mediaTitle);
+    if (!trimmedMediaTitle.empty()) return std::wstring(trimmedMediaTitle);
+
+    std::wstring documentTitle(
+        root.GetNamedString(L"documentTitle", L"").c_str());
+    return SpotifyProcessTrackDisplay(documentTitle);
+  } catch (...) {
+    return {};
+  }
 }
 
 std::wstring ReadNativeWindowTitle(HWND hwnd) {
@@ -195,6 +223,44 @@ void SpotifyWebViews::RefreshProcessTitleStatus(
     Slot& slot, ICoreWebView2* webview) noexcept {
   if (!webview || slot.webview.Get() != webview) return;
 
+  // Read the now-playing value from the WebView itself first. Unlike the native
+  // HWND/renderer title, Media Session metadata and document.title remain
+  // queryable while the Spotify surface is clipped to 1x1 in the background.
+  Slot* const metadataTarget = &slot;
+  const auto metadataAlive = alive_;
+  ComPtr<ICoreWebView2> metadataWebview = slot.webview;
+  const HRESULT metadataStarted = metadataWebview->ExecuteScript(
+      kSpotifyPlaybackMetadataScript,
+      Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+          [metadataAlive, metadataTarget, metadataWebview](
+              HRESULT result, LPCWSTR json) -> HRESULT {
+            if (!metadataAlive->load(std::memory_order_acquire) ||
+                metadataTarget->webview.Get() != metadataWebview.Get() ||
+                FAILED(result)) {
+              return S_OK;
+            }
+            std::wstring display;
+            try {
+              display = SpotifyTrackFromMetadataJson(json);
+            } catch (...) {
+              return S_OK;
+            }
+            if (display.empty() ||
+                (metadataTarget->processTitleObserved &&
+                 metadataTarget->processTrackDisplay == display)) {
+              return S_OK;
+            }
+            metadataTarget->processTrackDisplay = std::move(display);
+            metadataTarget->processTitleObserved = true;
+            GetLocalTime(&metadataTarget->processTitleObservedAt);
+            InvalidateSpotifyStatusForHost(metadataTarget->hostWindow);
+            return S_OK;
+          }).Get());
+  if (SUCCEEDED(metadataStarted)) return;
+
+  // Fallback only when script dispatch itself is unavailable. This path keeps
+  // compatibility with older WebView2 failure modes but is no longer the normal
+  // status source because native window titles can stop changing while clipped.
   std::wstring display;
   try {
     display = ProbeSpotifyChildWindowTrack(slot.hostWindow);

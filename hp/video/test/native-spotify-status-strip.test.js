@@ -37,7 +37,7 @@ test('yuukiar, ten and nagi Spotify slots are active with existing profile numbe
   assert.doesNotMatch(scripts, /L"hinata"|L"amazon"|L"ozeki"/);
 });
 
-test('status track comes from each Spotify renderer window with fixed polling only', () => {
+test('status track comes from WebView metadata with native-title fallback and fixed polling only', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
   assert.match(header, /std::wstring processTrackDisplay/);
   assert.match(header, /SYSTEMTIME processTitleObservedAt/);
@@ -50,6 +50,12 @@ test('status track comes from each Spotify renderer window with fixed polling on
     /add_DocumentTitleChanged|ICoreWebView2DocumentTitleChangedEventHandler/,
   );
   assert.doesNotMatch(processTitle, /get_DocumentTitle|PollProcessTitleStatusFallback/);
+  assert.match(processTitle, /kSpotifyPlaybackMetadataScript/);
+  assert.match(processTitle, /navigator\.mediaSession/);
+  assert.match(processTitle, /document\.title/);
+  assert.match(processTitle, /SpotifyTrackFromMetadataJson/);
+  assert.match(processTitle, /ExecuteScript\(\s*kSpotifyPlaybackMetadataScript/);
+  assert.match(processTitle, /if \(SUCCEEDED\(metadataStarted\)\) return;/);
   assert.match(processTitle, /GetWindowTextW/);
   assert.match(processTitle, /EnumChildWindows/);
   assert.match(processTitle, /webview->get_Source/);
@@ -69,6 +75,7 @@ test('status track comes from each Spotify renderer window with fixed polling on
   assert.match(processTitle, /substr\(separator \+ separatorLength\)/);
   assert.match(processTitle, /return std::wstring\(track\)/);
   assert.doesNotMatch(processTitle, /display\.push_back\(L'・'\)/);
+  assert.match(processTitle, /GetLocalTime\(&metadataTarget->processTitleObservedAt\)/);
   assert.match(processTitle, /rendererDisplay\.empty\(\)/);
   assert.match(processTitle, /GetLocalTime\(&target->processTitleObservedAt\)/);
   assert.match(processTitle, /if \(!slot\.webview\) continue;/);
