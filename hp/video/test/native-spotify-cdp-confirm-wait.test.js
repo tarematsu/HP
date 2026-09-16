@@ -8,13 +8,16 @@ const source = name => readFileSync(
 const music = source('spotify_music_target.inc');
 const click = source('spotify_background_click.inc');
 
-test('trusted Spotify CDP play click is state-probed with a long duplicate-click failsafe', () => {
-  assert.match(music, /kSpotifyPlaybackStateProbeMs = 1ULL \* 1000ULL/);
-  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 30ULL \* 1000ULL/);
+test('trusted Spotify CDP play click uses two-second probes and five-second retry spacing', () => {
+  assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
   assert.doesNotMatch(music, /kSpotifyCdpPlayConfirmWaitMs/);
 
   assert.match(click, /nextRecoveryTick = stateProbeAt \+ kSpotifyPlaybackStateProbeMs/);
   assert.match(click, /trustedClickBlockedUntilTick =\s*now \+ kSpotifyCdpPlayRetryFailsafeMs/);
+  assert.match(click, /now-retry\.lastAttemptAt<5000/);
+  assert.match(click, /retry\.count>=2/);
+  assert.match(click, /requestedView->Reload\(\)/);
   assert.match(music, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
   assert.match(music, /target->trustedClickBlockedUntilTick = 0/);
 });
