@@ -71,7 +71,10 @@ void App::CreateMainWindow(int showCommand) {
   windowClass.lpfnWndProc = WindowProc;
   windowClass.hInstance = instance_;
   windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-  windowClass.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+  // Keep the initial hidden HWND unpainted until Renderer installs the real
+  // dashboard background. A BLACK_BRUSH here can become the first DWM frame
+  // before child panels have produced their initial paint.
+  windowClass.hbrBackground = nullptr;
   windowClass.lpszClassName = kWindowClass;
   if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_ALREADY_EXISTS) {
     ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()), "RegisterClassEx");
@@ -130,6 +133,12 @@ void App::StartServices() {
   renderer_->TickNativePanels(startupAt_);
   logger_->Info(L"YouTube/native dashboard started; Spotify #1 at +10s, Spotify #2 at +20s, Stationhead at +30s");
 
+  // The top-level HWND is still hidden. Prime both the parent background and
+  // every visible child panel before allowing DWM to expose the window. This
+  // prevents the creation-time surface from flashing ahead of the dashboard.
+  renderer_->Render();
+  RedrawWindow(window_, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
   ShowWindow(window_, startupShowCommand_);
   UpdateWindow(window_);
   ScheduleNextTick(kFastTickMs);
