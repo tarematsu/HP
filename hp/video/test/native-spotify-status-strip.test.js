@@ -38,7 +38,7 @@ test('yuukiar, ten, nagi and hinata Spotify slots are active with existing profi
   assert.doesNotMatch(scripts, /L"amazon"|L"ozeki"/);
 });
 
-test('status track comes only from the Web Player now-playing surface', () => {
+test('status track comes from confirmed playback state with hidden-WebView metadata fallback', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
   assert.match(header, /std::wstring processTrackDisplay/);
   assert.match(header, /SYSTEMTIME processTitleObservedAt/);
@@ -52,6 +52,13 @@ test('status track comes only from the Web Player now-playing surface', () => {
   );
 
   assert.match(processTitle, /kSpotifyNowPlayingDomScript/);
+  assert.match(processTitle, /state && state\.actualTrackTitle/);
+  assert.match(processTitle, /const ownedMedia = state && state\.targetMedia/);
+  assert.match(processTitle, /state && state\.startPosted && ownedMedia/);
+  assert.match(processTitle, /!ownedMedia\.paused && !ownedMedia\.ended/);
+  assert.match(processTitle, /Number\.isFinite\(currentTime\) && currentTime > 0/);
+  assert.match(processTitle, /navigator\.mediaSession && navigator\.mediaSession\.metadata/);
+  assert.match(processTitle, /metadata && metadata\.title/);
   assert.match(processTitle, /\[data-testid="now-playing-widget"\]/);
   assert.match(processTitle, /\[data-testid="now-playing-bar"\]/);
   assert.match(processTitle, /\[data-testid="main-view-player-bar"\]/);
@@ -75,10 +82,10 @@ test('status track comes only from the Web Player now-playing surface', () => {
   assert.match(controller, /statusPhaseBase/);
   assert.match(controller, /static_cast<ULONGLONG>\(slot\.index\) \* kSpotifyProcessTitlePollPhaseMs/);
 
-  // Status must never be synthesized from the next managed target or other
-  // stale metadata/title surfaces.
+  // Status must never be synthesized from the managed target, document title,
+  // native window title, or process-title heuristics. MediaSession is allowed
+  // only behind the confirmed targetMedia/startPosted gate above.
   assert.doesNotMatch(processTitle, /__homePanelSpotifyNativeTarget/);
-  assert.doesNotMatch(processTitle, /navigator\.mediaSession/);
   assert.doesNotMatch(processTitle, /document\.title/);
   assert.doesNotMatch(processTitle, /GetWindowTextW/);
   assert.doesNotMatch(processTitle, /EnumChildWindows|EnumWindows/);
