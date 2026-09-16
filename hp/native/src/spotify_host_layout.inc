@@ -63,7 +63,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const int height = std::max(1L, client.bottom - client.top);
     const HWND insertAfter =
         monitorForeground || authenticationForeground ? HWND_TOP : HWND_BOTTOM;
-    const bool fullSize = authentication || monitorForeground;
 
     const RECT desired{hostX, hostY, hostX + width, hostY + height};
     const bool positionChanged =
@@ -81,7 +80,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     // Apply the visual region before exposing the child HWND. Spotify host
     // windows use a black class brush, so showing a full-client background host
     // even briefly can produce a DWM black flash before the 1x1 clip lands.
-    ApplySpotifyHostVisualClip(slot.hostWindow, fullSize);
+    ApplySpotifyHostVisualClip(
+        slot.hostWindow, authentication || monitorForeground);
 
     if (placementChanged) {
       UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;
