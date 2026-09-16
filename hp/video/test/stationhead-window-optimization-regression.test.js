@@ -61,7 +61,7 @@ test('background rendering keeps a real full-client Stationhead host behind the 
   assert.doesNotMatch(applyLayout, /put_IsVisible\(FALSE\)/);
 });
 
-test('normal background state stays in the client area and may compact only the controller', () => {
+test('normal background state keeps a full host with a fixed 720x480 playback viewport', () => {
   const keepBehind = section(
     layoutSource,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -70,8 +70,9 @@ test('normal background state stays in the client area and may compact only the 
   assert.match(keepBehind, /selectedTab_ = StationheadTabKind::None/);
   assert.match(
     keepBehind,
-    /ApplyStationheadChildLayout\([\s\S]*false, false, false, compactPlayback\)/,
+    /ApplyStationheadChildLayout\([\s\S]*false, false, false\)/,
   );
+  assert.doesNotMatch(keepBehind, /AudioPlayingSince|compactPlayback|kStationheadCompactPlayback/);
 
   const applyLayout = section(
     layoutSource,
@@ -80,14 +81,17 @@ test('normal background state stays in the client area and may compact only the 
   );
   assert.match(applyLayout, /StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(applyLayout, /PlaybackControllerBounds\(playbackHostBounds, useCompactPlayback\)/);
+  assert.match(applyLayout, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
+  assert.match(layoutSource, /kStationheadPlaybackViewportWidth = 720/);
+  assert.match(layoutSource, /kStationheadPlaybackViewportHeight = 480/);
+  assert.doesNotMatch(applyLayout, /compactPlayback|useCompactPlayback/);
   assert.match(
     applyLayout,
     /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*playbackHostBounds\.left, playbackHostBounds\.top/,
   );
 });
 
-test('Monitor B and explicit Stationhead presentation promote the full-client surface and controller', () => {
+test('Monitor B and explicit Stationhead presentation preserve the fixed playback viewport', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
@@ -98,9 +102,10 @@ test('Monitor B and explicit Stationhead presentation promote the full-client su
     applyLayout,
     /showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,
   );
-  assert.match(applyLayout, /useCompactPlayback =\s*compactPlayback && !playbackForeground/);
   assert.match(applyLayout, /playbackHostBounds = surfaceBounds/);
   assert.match(applyLayout, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(applyLayout, /StationheadPlaybackControllerBounds\(\)/);
+  assert.doesNotMatch(applyLayout, /compactPlayback|useCompactPlayback/);
   assert.doesNotMatch(applyLayout, /playbackHostBounds = playbackForeground \? workspaceBounds/);
 
   const visible = section(
@@ -109,11 +114,10 @@ test('Monitor B and explicit Stationhead presentation promote the full-client su
     'void StationheadPlayer::LayoutControllers()',
   );
   assert.match(visible, /StationheadBackgroundBounds\(bounds_\)/);
-  assert.match(visible, /!monitorForeground/);
   assert.match(visible, /HWND_TOP/);
 });
 
-test('authentication uses the same full-client onscreen surface and foreground z-order', () => {
+test('authentication keeps its full-client auth viewport and fixed playback viewport', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
@@ -121,6 +125,7 @@ test('authentication uses the same full-client onscreen surface and foreground z
   );
   assert.match(applyLayout, /authHostBounds = surfaceBounds/);
   assert.match(applyLayout, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(applyLayout, /const RECT authControllerBounds\{0, 0, authWidth, authHeight\};/);
   assert.doesNotMatch(applyLayout, /StationheadOffscreenBounds|authOffscreen/);
 
   const activeAuth = section(
@@ -130,10 +135,10 @@ test('authentication uses the same full-client onscreen surface and foreground z
   );
   assert.match(activeAuth, /StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(activeAuth, /SurfaceMatches\(hostWindow, controller, surface, HWND_BOTTOM\)/);
-  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, surface, HWND_TOP\)/);
+  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, surface, HWND_TOP, false\)/);
 });
 
-test('adaptive layout requires stable playback but startup and navigation restore full viewport', () => {
+test('playback viewport no longer depends on stable-audio or navigation state', () => {
   const keepBehind = section(
     layoutSource,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -145,10 +150,8 @@ test('adaptive layout requires stable playback but startup and navigation restor
     'void StationheadPlayer::SetBounds(',
   );
   for (const source of [keepBehind, layout]) {
-    assert.match(source, /AudioPlayingSince\(\)/);
-    assert.match(source, /kStationheadCompactPlaybackStabilityMs/);
-    assert.match(source, /navigationInFlight_/);
-    assert.match(source, /recreating_/);
+    assert.doesNotMatch(source, /AudioPlayingSince\(\)|kStationheadCompactPlayback|compactPlayback/);
+    assert.doesNotMatch(source, /navigationInFlight_|recreating_/);
   }
 
   const startup = section(
@@ -156,6 +159,6 @@ test('adaptive layout requires stable playback but startup and navigation restor
     'void StationheadPlayer::SetStartupBounds()',
     'void StationheadPlayer::SetStartupPreviewBounds(',
   );
-  assert.match(startup, /false, false, false, false/);
+  assert.match(startup, /false, false, false/);
   assert.doesNotMatch(startup, /AudioPlaying|compactPlayback/);
 });

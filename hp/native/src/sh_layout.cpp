@@ -4,9 +4,8 @@
 namespace hp {
 namespace {
 
-constexpr int kStationheadCompactPlaybackWidth = 320;
-constexpr int kStationheadCompactPlaybackHeight = 180;
-constexpr int64_t kStationheadCompactPlaybackStabilityMs = 15'000;
+constexpr int kStationheadPlaybackViewportWidth = 720;
+constexpr int kStationheadPlaybackViewportHeight = 480;
 
 int RectWidth(const RECT& bounds) noexcept {
   return std::max(1L, bounds.right - bounds.left);
@@ -16,14 +15,10 @@ int RectHeight(const RECT& bounds) noexcept {
   return std::max(1L, bounds.bottom - bounds.top);
 }
 
-RECT PlaybackControllerBounds(const RECT& hostBounds,
-                              bool compactPlayback) noexcept {
-  const int fullWidth = RectWidth(hostBounds);
-  const int fullHeight = RectHeight(hostBounds);
-  if (!compactPlayback) return RECT{0, 0, fullWidth, fullHeight};
+RECT StationheadPlaybackControllerBounds() noexcept {
   return RECT{0, 0,
-              std::min(fullWidth, kStationheadCompactPlaybackWidth),
-              std::min(fullHeight, kStationheadCompactPlaybackHeight)};
+              kStationheadPlaybackViewportWidth,
+              kStationheadPlaybackViewportHeight};
 }
 
 void ApplyHostVisualClip(HWND window, bool fullSize) noexcept {
@@ -111,14 +106,15 @@ bool SurfaceMatches(HWND hostWindow,
                     ICoreWebView2Controller* controller,
                     const RECT& expectedHostBounds,
                     HWND placement,
-                    bool compactPlayback = false) noexcept {
+                    bool playbackViewport = true) noexcept {
   if (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) {
     return false;
   }
   const int width = RectWidth(expectedHostBounds);
   const int height = RectHeight(expectedHostBounds);
-  const RECT controllerBounds =
-      PlaybackControllerBounds(expectedHostBounds, compactPlayback);
+  const RECT controllerBounds = playbackViewport
+      ? StationheadPlaybackControllerBounds()
+      : RECT{0, 0, width, height};
   return WindowClientSizeMatches(hostWindow, width, height) &&
          ChildWindowPlacementMatches(hostWindow, expectedHostBounds, placement) &&
          ControllerBoundsMatch(controller, controllerBounds) &&
@@ -137,7 +133,7 @@ bool BackgroundAuthSurfaceMatches(HWND authHostWindow,
                                    RectHeight(background)) &&
            ChildWindowPlacementMatches(authHostWindow, background, nullptr);
   }
-  return SurfaceMatches(authHostWindow, authController, background, nullptr);
+  return SurfaceMatches(authHostWindow, authController, background, nullptr, false);
 }
 
 bool ActiveAuthSurfaceMatches(HWND hostWindow,
@@ -151,7 +147,7 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
   }
   const RECT surface = StationheadBackgroundBounds(workspaceBounds);
   return SurfaceMatches(hostWindow, controller, surface, HWND_BOTTOM) &&
-         SurfaceMatches(authHostWindow, authController, surface, HWND_TOP);
+         SurfaceMatches(authHostWindow, authController, surface, HWND_TOP, false);
 }
 
 RECT ResolveStationheadWorkspaceBounds(HWND parent,
@@ -199,13 +195,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                                  const RECT& workspaceBounds,
                                  bool showAuth,
                                  bool showPlayback,
-                                 bool hidePlayback,
-                                 bool compactPlayback) {
+                                 bool hidePlayback) {
   const bool monitorForeground = StationheadMonitorForeground();
   const bool playbackForeground =
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
-  const bool useCompactPlayback =
-      compactPlayback && !playbackForeground && !showAuth && !hidePlayback;
 
   const RECT surfaceBounds = StationheadBackgroundBounds(workspaceBounds);
   const RECT playbackHostBounds = surfaceBounds;
@@ -217,14 +210,12 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int playbackHeight = RectHeight(playbackHostBounds);
   const int authWidth = RectWidth(authHostBounds);
   const int authHeight = RectHeight(authHostBounds);
-  const RECT playbackControllerBounds =
-      PlaybackControllerBounds(playbackHostBounds, useCompactPlayback);
+  const RECT playbackControllerBounds = StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep the host HWND full-size so placement and z-order remain stable. Once
-  // playback has been continuously healthy for fifteen seconds, shrink only
-  // the background WebView viewport to reduce renderer surfaces. Any
-  // interactive/auth/monitor path restores the full viewport before use.
+  // Keep the playback WebView viewport fixed at 720x480 in every state.
+  // The host HWND remains full workspace size for stable z-order and is
+  // visually clipped to 1x1 while backgrounded.
   if (authHostWindow && IsWindow(authHostWindow)) {
     const bool geometryMatches =
         WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
@@ -311,18 +302,9 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
     authHostWindow_ = nullptr;
   }
 
-  const int64_t playingSince = AudioPlayingSince();
-  const int64_t nowMs = UnixMillis();
-  const bool compactPlayback =
-      playingSince > 0 && nowMs >= playingSince &&
-      nowMs - playingSince >= kStationheadCompactPlaybackStabilityMs &&
-      audioLossState_ == L"playing" && !startupPreviewActive_ &&
-      !spotifyAuthorization_ && !loginRequired_ &&
-      !navigationInFlight_.load(std::memory_order_acquire) &&
-      !recreating_.load(std::memory_order_acquire);
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
-                              false, false, false, compactPlayback);
+                              false, false, false);
 
   std::lock_guard lock(mutex_);
   status_.visible = StationheadMonitorForeground();
@@ -336,12 +318,9 @@ void StationheadPlayer::SetStartupBounds() {
     status_.visible = false;
     return;
   }
-  // Startup, reload and recovery navigation must restore a full controller
-  // viewport before the new document is created. This avoids carrying the
-  // compact 320x180 responsive layout into Start Listening discovery/clicks.
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
-                              false, false, false, false);
+                              false, false, false);
   std::lock_guard lock(mutex_);
   status_.visible = StationheadMonitorForeground();
 }
@@ -374,19 +353,10 @@ void StationheadPlayer::SetVisible(bool visible) {
     const bool monitorForeground = StationheadMonitorForeground();
     const RECT expectedPlayback = StationheadBackgroundBounds(bounds_);
     const HWND expectedPlacement = monitorForeground ? HWND_TOP : HWND_BOTTOM;
-    const int64_t playingSince = AudioPlayingSince();
-    const int64_t nowMs = UnixMillis();
-    const bool compactPlayback =
-        playingSince > 0 && nowMs >= playingSince &&
-        nowMs - playingSince >= kStationheadCompactPlaybackStabilityMs &&
-        audioLossState_ == L"playing" && !startupPreviewActive_ &&
-        !spotifyAuthorization_ && !loginRequired_ && !monitorForeground &&
-        !navigationInFlight_.load(std::memory_order_acquire) &&
-        !recreating_.load(std::memory_order_acquire);
 
     if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
         SurfaceMatches(hostWindow_, controller_.Get(),
-                       expectedPlayback, expectedPlacement, compactPlayback) &&
+                       expectedPlayback, expectedPlacement) &&
         BackgroundAuthSurfaceMatches(
             authHostWindow_, authController_.Get(), bounds_)) {
       return;
@@ -468,22 +438,11 @@ void StationheadPlayer::LayoutControllers() {
       ResolveStationheadSurfacePolicy(
           selectedTab_, authSurfaceReady, loginRequired_);
   const bool monitorForeground = StationheadMonitorForeground();
-  const int64_t playingSince = AudioPlayingSince();
-  const int64_t nowMs = UnixMillis();
-  const bool compactPlayback =
-      selectedTab_ == StationheadTabKind::None && !viewVisible_ &&
-      playingSince > 0 && nowMs >= playingSince &&
-      nowMs - playingSince >= kStationheadCompactPlaybackStabilityMs &&
-      audioLossState_ == L"playing" && !startupPreviewActive_ &&
-      !spotifyAuthorization_ && !loginRequired_ && !monitorForeground &&
-      !navigationInFlight_.load(std::memory_order_acquire) &&
-      !recreating_.load(std::memory_order_acquire);
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
                               policy.showAuth,
                               policy.showPlayback,
-                              policy.hidePlayback,
-                              compactPlayback);
+                              policy.hidePlayback);
 
   std::lock_guard lock(mutex_);
   status_.visible = policy.showAuth || policy.showPlayback || monitorForeground;

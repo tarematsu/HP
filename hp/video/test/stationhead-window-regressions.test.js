@@ -23,12 +23,11 @@ test('single Stationhead resolves placement against the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background host and auth stay onscreen while stable playback may compact only its controller', () => {
+test('background host stays full-client while playback controller stays fixed at 720x480', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
-  assert.match(behind, /AudioPlayingSince\(\)/);
-  assert.match(behind, /kStationheadCompactPlaybackStabilityMs/);
+  assert.doesNotMatch(behind, /AudioPlayingSince\(\)|kStationheadCompactPlayback|compactPlayback/);
   assert.doesNotMatch(behind, /trackBoundaryPlaybackRecoveryPending_/);
 
   const apply = section(layout, 'void ApplyStationheadChildLayout(',
@@ -36,17 +35,20 @@ test('background host and auth stay onscreen while stable playback may compact o
   assert.match(apply, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /authHostBounds = surfaceBounds/);
-  assert.match(apply, /PlaybackControllerBounds\(playbackHostBounds, useCompactPlayback\)/);
+  assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
+  assert.match(layout, /kStationheadPlaybackViewportWidth = 720/);
+  assert.match(layout, /kStationheadPlaybackViewportHeight = 480/);
+  assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
   assert.ok(apply.indexOf('SetWindowPos(hostWindow') < apply.indexOf('if (controller)'));
   assert.ok(apply.indexOf('SetWindowPos(authHostWindow') < apply.indexOf('if (authController)'));
 });
 
-test('startup and reload explicitly restore the full Stationhead controller viewport', () => {
+test('startup and reload keep the same fixed Stationhead controller viewport', () => {
   const startup = section(layout, 'void StationheadPlayer::SetStartupBounds()',
     'void StationheadPlayer::SetStartupPreviewBounds(');
-  assert.match(startup, /ApplyStationheadChildLayout\([\s\S]*false, false, false, false\)/);
-  assert.doesNotMatch(startup, /AudioPlaying|compactPlayback/);
+  assert.match(startup, /ApplyStationheadChildLayout\([\s\S]*false, false, false\)/);
+  assert.doesNotMatch(startup, /AudioPlaying|compactPlayback|kStationheadCompactPlayback/);
 });
 
 test('failed host creation clears public visibility', () => {
