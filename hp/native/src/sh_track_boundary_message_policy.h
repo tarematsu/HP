@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "audio_health_scan_coordinator.h"
 
 namespace hp {
 
@@ -15,7 +16,7 @@ inline constexpr int64_t StationheadPeriodicRefreshIntervalMs() noexcept {
 }
 
 inline constexpr int64_t StationheadAudioHealthCheckIntervalMs() noexcept {
-  return 2 * 60'000;
+  return 1 * 60'000;
 }
 
 inline void RestoreStationheadPlaybackMemoryTargetForReload(
@@ -41,14 +42,14 @@ static_assert(StationheadPlaybackNavigationActive(false, true, false));
 static_assert(!StationheadPlaybackNavigationActive(false, true, true));
 static_assert(!StationheadPlaybackNavigationActive(false, false, false));
 static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
-static_assert(StationheadAudioHealthCheckIntervalMs() == 2 * 60'000);
+static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
 
 }  // namespace hp
 
 // Extend StationheadPlayer while sh.h is parsed, then remove the temporary
 // source-rewriting macros before any implementation file is compiled. The
 // single Stationhead player refreshes every 50 minutes and independently polls
-// WebView2's native audio state every two minutes.
+// WebView2's native audio state once per minute in shared scan slot 0.
 #define NextWakeAt()                                                          \
   NextWakeAt() const noexcept {                                               \
     int64_t next = NextWakeAtBase();                                          \
@@ -110,25 +111,42 @@ static_assert(StationheadAudioHealthCheckIntervalMs() == 2 * 60'000);
       return;                                                                 \
     }                                                                         \
                                                                                 \
-    if (!audioHealthCheckStartedAt_.Active()) {                               \
-      audioHealthCheckStartedAt_ = nowMs;                                     \
-      return;                                                                 \
-    }                                                                         \
     const int64_t intervalMs =                                                \
         ::hp::StationheadAudioHealthCheckIntervalMs();                        \
+    const auto scheduleAfter = [&](ULONGLONG delayMs) {                       \
+      const int64_t boundedDelay = static_cast<int64_t>(                      \
+          std::min<ULONGLONG>(delayMs, static_cast<ULONGLONG>(intervalMs)));  \
+      audioHealthCheckStartedAt_ = nowMs - (intervalMs - boundedDelay);       \
+    };                                                                        \
+    if (!audioHealthCheckStartedAt_.Active()) {                               \
+      scheduleAfter(::hp::AudioHealthScanDelayMs(GetTickCount64(), 0));       \
+      return;                                                                 \
+    }                                                                         \
     if (nowMs - audioHealthCheckStartedAt_ < intervalMs) return;              \
                                                                                 \
-    audioHealthCheckStartedAt_ = nowMs;                                       \
-    ComPtr<ICoreWebView2_8> audioView;                                        \
-    BOOL nativePlaying = FALSE;                                               \
-    if (FAILED(webview_.As(&audioView)) || !audioView ||                      \
-        FAILED(audioView->get_IsDocumentPlayingAudio(&nativePlaying))) {      \
-      audioHealthCheckStartedAt_ = nowMs - (intervalMs - 10'000);             \
+    const ULONGLONG scanTick = GetTickCount64();                              \
+    if (!::hp::TryClaimAudioHealthScan(scanTick)) {                           \
+      scheduleAfter(::hp::kAudioHealthScanRetryMs);                           \
       return;                                                                 \
     }                                                                         \
                                                                                 \
+    ComPtr<ICoreWebView2_8> audioView;                                        \
+    BOOL nativePlaying = FALSE;                                               \
+    const HRESULT audioInterfaceResult = webview_.As(&audioView);             \
+    const HRESULT audioStateResult =                                          \
+        SUCCEEDED(audioInterfaceResult) && audioView                          \
+            ? audioView->get_IsDocumentPlayingAudio(&nativePlaying)           \
+            : E_NOINTERFACE;                                                  \
+    ::hp::ReleaseAudioHealthScan();                                           \
+    if (FAILED(audioInterfaceResult) || !audioView ||                         \
+        FAILED(audioStateResult)) {                                           \
+      scheduleAfter(::hp::kAudioHealthScanRetryMs);                           \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    scheduleAfter(::hp::AudioHealthScanDelayMs(scanTick, 0));                 \
     const bool playing = nativePlaying != FALSE;                              \
-    ApplyAudioPlaybackState(playing, L"2-minute native audio health check");  \
+    ApplyAudioPlaybackState(playing, L"1-minute native audio health check");  \
     if (playing) return;                                                      \
                                                                                 \
     static constexpr wchar_t kPeriodicAudioRecoveryScript[] = LR"JS(          \
