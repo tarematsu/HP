@@ -21,12 +21,16 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('media startup is YouTube, Spotify 1/2/3, then Stationhead at ten-second offsets', () => {
+test('media startup keeps four Spotify slots at ten-second offsets', () => {
   assert.match(appHeader, /kMediaStartupStageDelayMs\s*=\s*10'000/);
   assert.doesNotMatch(appHeader, /spotifyStartedAt_/);
-  assert.match(spotifyHeader, /kSpotifyActiveAccountCount = 3/);
+  assert.match(spotifyHeader, /kSpotifyActiveAccountCount = 4/);
   assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(spotifySchedule, /kSpotifyInitialStartDelayMs = 0/);
+  assert.match(
+    spotifySchedule,
+    /scheduleStartTick_ \+\s*static_cast<ULONGLONG>\(index\) \* kSpotifyAccountStartOffsetMs/,
+  );
 
   const startup = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   assert.match(startup, /renderer_->Initialize\(\)/);
@@ -46,8 +50,6 @@ test('media startup is YouTube, Spotify 1/2/3, then Stationhead at ten-second of
     deferred,
     /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*4[\s\S]*stationhead_->Start\(\)/,
   );
-  assert.match(deferred, /Spotify #1 launch issued at \+10 seconds; #2 and #3 follow at 10-second offsets/);
-  assert.match(deferred, /Stationhead launch issued at \+40 seconds/);
   assert.doesNotMatch(deferred, /spotifyStartedAt_/);
 });
 
