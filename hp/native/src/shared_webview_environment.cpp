@@ -56,10 +56,11 @@ void ApplyEfficiencyModeToProcess(INT32 processId) noexcept {
                                static_cast<DWORD>(processId));
   if (!process) return;
 
-  // Keep every WebView2 child in EcoQoS, but do not combine that with IDLE
-  // priority. BELOW_NORMAL still reduces contention while allowing Spotify's
-  // renderer/DRM/audio startup work to make timely forward progress.
-  SetPriorityClass(process, BELOW_NORMAL_PRIORITY_CLASS);
+  // Match Task Manager Efficiency mode's CPU policy: low base priority plus
+  // explicit EcoQoS execution-speed throttling. Failures are deliberately
+  // best-effort because a WebView2 child may exit between enumeration and the
+  // policy calls.
+  SetPriorityClass(process, IDLE_PRIORITY_CLASS);
 
   PROCESS_POWER_THROTTLING_STATE throttling{};
   throttling.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
