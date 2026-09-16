@@ -75,12 +75,15 @@ test('compact Stationhead runtime has one event-driven lifecycle and bounded rec
   assert.match(lifecycleRuntime, /'play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error'/);
 });
 
-test('Stationhead render policy reduces paint work without hiding all controls', () => {
+test('Stationhead render policy reduces paint work without hiding controls', () => {
   assert.match(renderPolicy, /__homepanelStationheadRenderReduction/);
   assert.match(renderPolicy, /animation: none !important/);
+  assert.match(renderPolicy, /animation-play-state: paused !important/);
   assert.match(renderPolicy, /transition: none !important/);
   assert.match(renderPolicy, /view-transition-name: none !important/);
-  assert.match(renderPolicy, /video, canvas, svg\[aria-hidden='true'\]/);
+  assert.match(renderPolicy, /picture, img,[\s\S]*video, canvas, svg\[aria-hidden='true'\]/);
+  assert.match(renderPolicy, /content-visibility: hidden !important/);
+  assert.match(renderPolicy, /contain: strict !important/);
   assert.doesNotMatch(renderPolicy, /^\s*button\s*[,}]/m);
   assert.doesNotMatch(renderPolicy, /^\s*input\s*[,}]/m);
   assert.doesNotMatch(renderPolicy, /HTMLMediaElement|\.pause\(\)/);
