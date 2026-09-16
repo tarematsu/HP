@@ -10,16 +10,16 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 // access on the existing UI thread and avoids adding another polling thread.
 void RequestStationheadMonitorDomProbe() noexcept;
 
-// Stationhead keeps a full dashboard-sized HWND/controller viewport so normal
-// responsive layout, DOM geometry and CDP coordinates remain stable. The host
-// window region is clipped to 1x1 during background playback and restored to
-// full size only for authentication/account interaction.
+// Stationhead keeps the dashboard-sized host HWND so placement and z-order stay
+// stable. During healthy background playback the WebView controller viewport may
+// be reduced independently; interactive, authentication and Monitor B paths
+// restore the controller to the full workspace before user/native interaction.
 inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
   return workspaceBounds;
 }
 
 // Keep the existing preview state as the reload/startup signal used by the
-// Stationhead lifecycle. Geometry no longer depends on it because the internal
+// Stationhead lifecycle. Host geometry no longer depends on it because the HWND
 // surface always follows the full client area.
 inline std::atomic<bool> gStationheadBackgroundPreview{true};
 
