@@ -11,20 +11,20 @@ const spotifyLayout = readFileSync(
   'utf8',
 );
 
-test('Stationhead keeps a full internal viewport while normal display is clipped to 1x1', () => {
+test('Stationhead keeps a full internal viewport and Monitor B removes the 1x1 clip', () => {
   assert.match(stationheadLayout, /CreateRectRgn\(0, 0, 1, 1\)/);
   assert.match(stationheadLayout, /SetWindowRgn\(window, nullptr, TRUE\)/);
   assert.match(stationheadLayout, /const RECT playbackHostBounds = surfaceBounds/);
   assert.match(stationheadLayout, /const RECT playbackControllerBounds\{0, 0, playbackWidth, playbackHeight\}/);
-  assert.match(stationheadLayout, /ApplyHostVisualClip\(hostWindow, showPlayback\)/);
+  assert.match(stationheadLayout, /ApplyHostVisualClip\(hostWindow, playbackForeground\)/);
   assert.match(stationheadLayout, /ApplyHostVisualClip\(authHostWindow, showAuth\)/);
 });
 
-test('Spotify keeps a full internal viewport while only authentication is fully visible', () => {
+test('Spotify keeps a full internal viewport and Monitor C/D remove the selected slot clip', () => {
   assert.match(spotifyLayout, /CreateRectRgn\(0, 0, 1, 1\)/);
   assert.match(spotifyLayout, /SetWindowRgn\(window, nullptr, TRUE\)/);
   assert.match(spotifyLayout, /const int width = std::max\(1L, client\.right - client\.left\)/);
   assert.match(spotifyLayout, /const int height = std::max\(1L, client\.bottom - client\.top\)/);
-  assert.match(spotifyLayout, /ApplySpotifyHostVisualClip\(slot\.hostWindow, authentication\)/);
-  assert.doesNotMatch(spotifyLayout, /ApplySpotifyHostVisualClip\(slot\.hostWindow, monitorForeground_\)/);
+  assert.match(spotifyLayout, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_/);
+  assert.match(spotifyLayout, /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground\)/);
 });
