@@ -2,10 +2,11 @@
 
 namespace hp {
 
-// Locate genuine playback controls plus the two explicitly allowed onboarding
-// actions. CONNECT SPOTIFY and Continue are intentionally handled before the
-// generic account/auth guard so they can be clicked even while Stationhead is
-// in the background. Other login/account controls remain excluded.
+// Locate genuine playback controls plus explicitly allowed onboarding/recovery
+// actions. Connect/Reconnect Music or Spotify and Continue are intentionally
+// handled before the generic account/auth guard so they can be clicked even
+// while Stationhead is in the background. Other login/account controls remain
+// excluded.
 inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -13,8 +14,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
       window.top !== window) return null;
   const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|let(?:'|’)?s\s+go|続ける|続行|次へ)$/i;
-  const allowedOnboardingPattern = /^(connect(?:\s+with)?\s+spotify|continue)$/i;
-  const accountPattern = /\b(log\s*in|sign\s*in|login|spotify|connect|authorize|consent|account|password|email)\b|ログイン|サインイン|認証|接続|同意|アカウント|パスワード/i;
+  const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\s+with)?\s+(?:spotify|music)|continue)$/i;
+  const accountPattern = /\b(log\s*in|sign\s*in|login|spotify|connect|reconnect|authorize|consent|account|password|email)\b|ログイン|サインイン|認証|接続|再接続|同意|アカウント|パスワード/i;
   const credentialSelector = "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
@@ -48,8 +49,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     let x = rect.left + rect.width / 2;
     let y = rect.top + rect.height / 2;
     if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) {
-      // The 480x270 background surface can leave a genuine Start Listening
-      // control below the physical viewport even though Stationhead rendered it.
+      // The 480x270 background surface can leave a genuine Stationhead action
+      // below the physical viewport even though Stationhead rendered it.
       // Scroll only the Stationhead document; the native host stays background
       // and CDP still performs the trusted click at the fresh coordinates.
       try {
@@ -94,9 +95,10 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   };
   if (!document.body) return null;
 
-  // Explicitly allow only these two onboarding controls through the account
-  // guard. Native code dispatches the click through CDP, so no foreground HWND
-  // or real mouse cursor is required.
+  // Explicitly allow the known music connection/reconnection controls through
+  // the account guard. The /i flag makes matching case-insensitive. Native code
+  // dispatches the click through CDP, so no foreground HWND or real mouse cursor
+  // is required.
   for (const element of document.querySelectorAll(selector)) {
     if (!labelsOf(element).some(label => allowedOnboardingPattern.test(label))) continue;
     const point = pointOf(element);
