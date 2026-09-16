@@ -10,6 +10,10 @@ const spotifyLayout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
 );
+const stationheadLayout = readFileSync(
+  new URL('../../native/src/sh_layout.cpp', import.meta.url),
+  'utf8',
+);
 
 test('native app primes the dashboard before exposing the top-level HWND', () => {
   const createWindow = app.slice(
@@ -48,4 +52,16 @@ test('deferred Spotify hosts are clipped before SWP_SHOWWINDOW can expose them',
     placeHosts,
     /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground\)/,
   );
+});
+
+test('deferred Stationhead hosts are clipped before SWP_SHOWWINDOW can expose them', () => {
+  const start = stationheadLayout.indexOf('void ApplyStationheadChildLayout(');
+  const end = stationheadLayout.indexOf('}  // namespace', start);
+  const layout = stationheadLayout.slice(start, end);
+  const authClipAt = layout.indexOf('ApplyHostVisualClip(authHostWindow, showAuth);');
+  const authShowAt = layout.indexOf('SetWindowPos(authHostWindow, authPlacement');
+  const playbackClipAt = layout.indexOf('ApplyHostVisualClip(hostWindow, playbackForeground);');
+  const playbackShowAt = layout.indexOf('SetWindowPos(hostWindow, hostPlacement');
+  assert.ok(authClipAt >= 0 && authShowAt > authClipAt);
+  assert.ok(playbackClipAt >= 0 && playbackShowAt > playbackClipAt);
 });
