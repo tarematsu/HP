@@ -80,12 +80,14 @@ test('update, monitor and audio output controls share one horizontal clock foote
   assert.match(overlay, /L"モニターA"/);
   assert.match(overlay, /L"モニターB"/);
   assert.match(overlay, /L"モニターC"/);
+  assert.match(overlay, /L"モニターD"/);
   assert.match(overlay, /L"モニターOFF"/);
   assert.match(overlay, /L"音声出力A"/);
   assert.match(overlay, /L"音声出力B"/);
   assert.match(overlay, /L"音声出力C"/);
+  assert.match(overlay, /L"音声出力D"/);
   assert.match(overlay, /L"音声出力OFF"/);
-  assert.doesNotMatch(overlay, /L"ミュート(?:A|B|C|AB)"/);
+  assert.doesNotMatch(overlay, /L"ミュート(?:A|B|C|D|AB)"/);
   assert.match(header, /enum class MonitorMode/);
   assert.match(header, /MonitorMode monitorMode_ = MonitorMode::Native/);
   assert.match(header, /enum class AudioMode/);
@@ -97,19 +99,22 @@ test('update, monitor and audio output controls share one horizontal clock foote
   assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 3 \+ hpControlButtonGap \* 2/);
 });
 
-test('monitor button cycles A to B to Spotify C to black OFF', () => {
+test('monitor button cycles A to B to Spotify C/D to black OFF', () => {
   assert.match(overlay, /controller->CycleMonitorMode\(\)/);
   assert.match(
     schedule,
-    /case MonitorMode::Native:[\s\S]*ApplyMonitorMode\(MonitorMode::Stationhead\)[\s\S]*case MonitorMode::Stationhead:[\s\S]*ApplyMonitorMode\(MonitorMode::Spotify\)[\s\S]*case MonitorMode::Spotify:[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)[\s\S]*case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/,
+    /case MonitorMode::Native:[\s\S]*ApplyMonitorMode\(MonitorMode::Stationhead\)[\s\S]*case MonitorMode::Stationhead:[\s\S]*ApplyMonitorMode\(MonitorMode::SpotifyPrimary\)[\s\S]*case MonitorMode::SpotifyPrimary:[\s\S]*ApplyMonitorMode\(MonitorMode::SpotifySecondary\)[\s\S]*case MonitorMode::SpotifySecondary:[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)[\s\S]*case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/,
   );
-  assert.match(schedule, /SetSpotifyMonitorForeground\(mode == MonitorMode::Spotify\)/);
-  assert.match(spotifyLayout, /void SpotifyWebViews::SetMonitorForeground/);
+  assert.match(schedule, /mode == MonitorMode::SpotifyPrimary \? 0/);
+  assert.match(schedule, /mode == MonitorMode::SpotifySecondary \? 1 : -1/);
+  assert.match(schedule, /SetSpotifyMonitorForegroundSlot\(spotifyMonitorSlot\)/);
+  assert.match(spotifyLayout, /void SpotifyWebViews::SetMonitorForegroundSlot\(int slotIndex\) noexcept/);
   assert.match(spotifyLayout, /const int hostX = client\.left;/);
   assert.match(spotifyLayout, /const int hostY = client\.top;/);
   assert.match(spotifyLayout, /client\.right - client\.left/);
   assert.match(spotifyLayout, /client\.bottom - client\.top/);
-  assert.match(spotifyLayout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(spotifyLayout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(spotifyLayout, /authentication \|\| monitorForeground/);
   assert.doesNotMatch(spotifyLayout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|anchors\.air/);
   assert.match(schedule, /powerSaving_ = nextPowerSaving/);
   assert.match(schedule, /Renderer::SetGlobalPowerSavingMode\(powerSaving_\)/);
@@ -136,17 +141,19 @@ test('compact overlay clips the complete three-button control row', () => {
   assert.match(overlay, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
 });
 
-test('single audio output button cycles A to B to Spotify C to OFF', () => {
+test('single audio output button cycles A to B to Spotify C/D to OFF', () => {
   assert.match(overlay, /controller->CycleAudioMode\(\)/);
   assert.match(
     schedule,
-    /case AudioMode::Media:[\s\S]*ApplyAudioMode\(AudioMode::Stationhead\)[\s\S]*case AudioMode::Stationhead:[\s\S]*ApplyAudioMode\(AudioMode::Spotify\)[\s\S]*case AudioMode::Spotify:[\s\S]*ApplyAudioMode\(AudioMode::Muted\)[\s\S]*case AudioMode::Muted:[\s\S]*ApplyAudioMode\(AudioMode::Media\)/,
+    /case AudioMode::Media:[\s\S]*ApplyAudioMode\(AudioMode::Stationhead\)[\s\S]*case AudioMode::Stationhead:[\s\S]*ApplyAudioMode\(AudioMode::SpotifyPrimary\)[\s\S]*case AudioMode::SpotifyPrimary:[\s\S]*ApplyAudioMode\(AudioMode::SpotifySecondary\)[\s\S]*case AudioMode::SpotifySecondary:[\s\S]*ApplyAudioMode\(AudioMode::Muted\)[\s\S]*case AudioMode::Muted:[\s\S]*ApplyAudioMode\(AudioMode::Media\)/,
   );
   assert.match(schedule, /mediaMuted_ = mode != AudioMode::Media/);
   assert.match(schedule, /SetNativeMediaPanelMuted\(mediaMuted_\)/);
-  assert.match(schedule, /SetSpotifyAudioMuted\(mode != AudioMode::Spotify\)/);
-  assert.match(spotifyFoundation, /gSpotifyAudioMuted = true/);
-  assert.match(spotifyFoundation, /audio->put_IsMuted\(gSpotifyAudioMuted \? TRUE : FALSE\)/);
+  assert.match(schedule, /mode == AudioMode::SpotifyPrimary \? 0/);
+  assert.match(schedule, /mode == AudioMode::SpotifySecondary \? 1 : -1/);
+  assert.match(schedule, /SetSpotifyAudioOutputSlot\(spotifyAudioSlot\)/);
+  assert.match(spotifyFoundation, /int gSpotifyAudioOutputSlot = -1/);
+  assert.match(spotifyFoundation, /slotIndex != gSpotifyAudioOutputSlot/);
   assert.match(
     schedule,
     /mode == AudioMode::Stationhead[\s\S]*UiAction::StationheadAudioToggle[\s\S]*UiAction::StationheadAudioMute/,
