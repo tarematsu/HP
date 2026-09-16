@@ -27,6 +27,13 @@ test('zero-second recovery starts playback only through trusted CDP Play click',
   assert.doesNotMatch(music, /direct-play|DirectPlay/);
 });
 
+test('first Play click waits one second after page bootstrap', () => {
+  assert.match(scripts, /__homePanelSpotifyNativeLoadedAt = performance\.now\(\)/);
+  assert.match(scoped, /const nativeLoadedAt = Number\(window\.__homePanelSpotifyNativeLoadedAt\)/);
+  assert.match(scoped, /performance\.now\(\) - nativeLoadedAt >= 1000/);
+  assert.match(scoped, /if \(!initialPlayDelayElapsed\) return null;\s*return point\(visiblePageButton\)/);
+});
+
 test('Pause confirmation requires media-clock progress and restarts a zero-second stall', () => {
   assert.match(scoped, /document\.querySelectorAll\('audio, video'\)/);
   assert.match(scoped, /__homePanelSpotifyProgressProbe/);
