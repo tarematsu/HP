@@ -1,22 +1,14 @@
 #pragma once
-#include "stationhead_play_summary.h"
 
-namespace hp {
-
-// The Stationhead player and the native media strip live in separate translation
-// units. Publish only the already-fetched daily count so the status strip never
-// adds another Stationhead request or polling loop.
+// This header is intentionally namespace-neutral because both callers include it
+// from inside namespace hp. It carries only the already-computed value; API
+// parsing and date summarization remain owned by the Stationhead side.
 inline std::atomic<int64_t> stationheadStatusStripTodayPlayCount{-1};
 
-inline void PublishStationheadStatusStripPlayCount(
-    const StationheadStatus& status, int64_t nowMs) noexcept {
-  const auto summary = SummarizeStationheadDailyPlays(status.dailyPlayCounts, nowMs);
-  stationheadStatusStripTodayPlayCount.store(
-      summary.today, std::memory_order_release);
+inline void PublishStationheadStatusStripPlayCount(int64_t count) noexcept {
+  stationheadStatusStripTodayPlayCount.store(count, std::memory_order_release);
 }
 
 inline int64_t StationheadStatusStripTodayPlayCount() noexcept {
   return stationheadStatusStripTodayPlayCount.load(std::memory_order_acquire);
 }
-
-}  // namespace hp
