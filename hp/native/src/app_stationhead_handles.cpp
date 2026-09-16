@@ -1,5 +1,6 @@
 #include "app_stationhead_handles.h"
 #include "stationhead_monitor_probe.h"
+#include "stationhead_status_strip_bridge.h"
 
 namespace hp {
 namespace {
@@ -102,6 +103,7 @@ StationheadStatus StationheadHandleBase::Status() const {
     ++contentRevision_;
   }
   status.contentRevision = contentRevision_;
+  PublishStationheadStatusStripPlayCount(status, UnixMillis());
   return status;
 }
 
