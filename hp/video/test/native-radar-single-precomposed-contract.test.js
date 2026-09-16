@@ -39,9 +39,9 @@ const wrangler = readFileSync(
   'utf8',
 );
 
-test('native radar only decodes one 1296x729 representative PNG', () => {
-  assert.match(rendererHeader, /kRadarCanvasWidth = 1296/);
-  assert.match(rendererHeader, /kRadarCanvasHeight = 729/);
+test('native radar only decodes one 640x360 representative PNG', () => {
+  assert.match(rendererHeader, /kRadarCanvasWidth = 640/);
+  assert.match(rendererHeader, /kRadarCanvasHeight = 360/);
   assert.match(renderer, /kRepresentativeRadarPath/);
   assert.match(renderer, /representative\/latest\.png/);
   assert.match(renderer, /json::Boolean\(root, L"precomposed"\)/);
@@ -70,7 +70,7 @@ test('radar cache localization is isolated from device version negotiation', () 
   assert.doesNotMatch(cloudClientSync, /std::vector<uint8_t> CloudClient::LocalizeRadarTiles/);
   assert.match(radarCache, /std::vector<uint8_t> CloudClient::LocalizeRadarTiles/);
   assert.match(radarCache, /HasPngSignature\(response\.body\)/);
-  assert.match(radarCache, /width != 1296 \|\| height != 729/);
+  assert.match(radarCache, /width != 640 \|\| height != 360/);
   assert.match(radarCache, /frames\.Size\(\) != 1/);
   assert.match(radarCache, /tiles\.Size\(\) != 1/);
   assert.match(radarCache, /precomposed radar frame unavailable/);
@@ -93,16 +93,16 @@ test('cloud radar composition has an explicit public origin for Browser Renderin
   assert.match(wrangler, /"browser": \{\s*"binding": "BROWSER"/);
 });
 
-test('cloud radar contract remains one z10 native-scale precomposed three-panel representative frame', () => {
-  assert.match(cloud, /const RADAR_OUTPUT_WIDTH = 1296/);
-  assert.match(cloud, /const RADAR_OUTPUT_HEIGHT = 729/);
+test('cloud radar contract remains one z10 downsampled precomposed three-panel representative frame', () => {
+  assert.match(cloud, /const RADAR_OUTPUT_WIDTH = 640/);
+  assert.match(cloud, /const RADAR_OUTPUT_HEIGHT = 360/);
   assert.match(cloud, /const RADAR_BASE_ZOOM = 10/);
   assert.match(cloud, /const RADAR_DISPLAY_ZOOM = 10/);
   assert.match(cloud, /const RADAR_PANEL_SOURCE_WIDTH = 432/);
   assert.match(cloud, /const RADAR_PANEL_SOURCE_HEIGHT = 729/);
   assert.match(cloud, /const RADAR_BASE_CROP_WIDTH = 432/);
   assert.match(cloud, /const RADAR_BASE_CROP_HEIGHT = 729/);
-  assert.match(cloud, /native-scale/);
+  assert.match(cloud, /downsampled/);
   assert.match(cloud, /RADAR_FRAME_PATH = "\/v1\/radar\/frame\/representative\/latest\.png"/);
   assert.match(cloud, /JMA_SHORT_TERM_TIMES_URL/);
   assert.match(cloud, /panelRequest\(env, "jma", currentEntry/);
@@ -111,8 +111,9 @@ test('cloud radar contract remains one z10 native-scale precomposed three-panel 
   assert.match(cloud, /precomposed: true/);
   assert.match(cloud, /frames: \[frame\]/);
   assert.match(cloud, /one cloud-composited representative frame/);
-  assert.match(browserFrame, /payload\.outputWidth \/ payload\.panels\.length/);
-  assert.match(browserFrame, /must match output pixels at 1:1 scale/);
+  assert.match(browserFrame, /const logicalPanelWidth = payload\.panels\[0\]\?\.sourceWidth \?\? 0;/);
+  assert.match(browserFrame, /const logicalOutputHeight = payload\.panels\[0\]\?\.sourceHeight \?\? 0;/);
+  assert.match(browserFrame, /context\.scale\(/);
   assert.match(browserFrame, /panelIndex < payload\.panels\.length/);
   assert.match(browserFrame, /divider < payload\.panels\.length/);
 });
@@ -156,7 +157,7 @@ test('native skips radar JSON parsing when its stamp is unchanged but still chec
   assert.match(renderer, /const std::string stamp = file::Stamp\(\*framePath\)/);
 });
 
-test('all three radar panels render only an enlarged timestamp chip', () => {
+test('all three radar panels render only an enlarged timestamp chip in logical coordinates', () => {
   assert.match(browserFrame, /const chipTop = 70;/);
   assert.match(browserFrame, /panelWidth - chipLeft \* 2/);
   assert.match(browserFrame, /context\.roundRect\(panelX \+ chipLeft, chipTop/);
@@ -167,5 +168,5 @@ test('all three radar panels render only an enlarged timestamp chip', () => {
   assert.doesNotMatch(cloud, /title:/);
   assert.doesNotMatch(cloud, /現在|1時間後|取得可能な最後/);
   assert.match(browserFrame, /context\.fillStyle = "rgba\(0,0,0,0\.92\)"/);
-  assert.match(browserFrame, /context\.fillRect\(divider \* panelWidth - 1, 0, 3, payload\.outputHeight\)/);
+  assert.match(browserFrame, /context\.fillRect\(divider \* panelWidth - 1, 0, 3, logicalOutputHeight\)/);
 });
