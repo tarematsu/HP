@@ -24,14 +24,16 @@ class PowerSavingController {
   enum class AudioMode {
     Media,
     Stationhead,
-    Spotify,
+    SpotifyPrimary,
+    SpotifySecondary,
     Muted,
   };
 
   enum class MonitorMode {
     Native,
     Stationhead,
-    Spotify,
+    SpotifyPrimary,
+    SpotifySecondary,
     Off,
   };
 
