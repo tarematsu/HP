@@ -19,7 +19,7 @@ const bridge = readFileSync(
   'utf8',
 );
 
-test('monitor A probes targeted Stationhead controls every five minutes', () => {
+test('monitor YT probes targeted Stationhead controls every five minutes', () => {
   assert.match(schedule, /kMonitorAuthProbeIntervalMs = 5 \* 60'000/);
   assert.match(schedule, /monitorMode_ == MonitorMode::Native[\s\S]*RequestMonitorAuthProbe\(\)/);
   assert.match(schedule, /monitorMode_ == MonitorMode::Native[\s\S]*kMonitorAuthProbeIntervalMs/);
@@ -38,16 +38,16 @@ test('monitor A probes targeted Stationhead controls every five minutes', () => 
   assert.match(bridge, /kStationheadMonitorProbeResultMessage/);
 });
 
-test('monitor E is unconditional Stationhead foreground and does not own DOM polling', () => {
+test('monitor SH is unconditional Stationhead foreground and does not own DOM polling', () => {
   assert.match(
     routing,
-    /monitorMode_ == MonitorMode::SpotifyTertiary \|\|[\s\S]*monitorMode_ == MonitorMode::Native &&[\s\S]*monitorAuthForeground_/,
+    /monitorMode_ == MonitorMode::Stationhead \|\|[\s\S]*monitorMode_ == MonitorMode::Native &&[\s\S]*monitorAuthForeground_/,
   );
   assert.match(schedule, /if \(monitorMode_ == MonitorMode::Native\) \{[\s\S]*kMonitorAuthProbeIntervalMs/);
-  assert.doesNotMatch(schedule, /MonitorMode::SpotifyTertiary[\s\S]{0,120}RequestMonitorAuthProbe/);
+  assert.doesNotMatch(schedule, /MonitorMode::Stationhead[\s\S]{0,120}RequestMonitorAuthProbe/);
 });
 
-test('monitor A returns Stationhead behind the dashboard after a clean probe', () => {
+test('monitor YT returns Stationhead behind the dashboard after a clean probe', () => {
   assert.match(
     routing,
     /case kStationheadMonitorProbeResultMessage:[\s\S]*const bool detected = wParam != 0;[\s\S]*monitorAuthForeground_ = detected;[\s\S]*ApplyStationheadMonitorPlacement\(\)/,
