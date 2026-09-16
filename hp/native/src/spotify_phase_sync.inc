@@ -4,7 +4,7 @@ namespace {
 constexpr UINT kSpotifySchedulerBootstrapMs = 2U * 1000U;
 constexpr UINT kSpotifyHealthyAuditMs = 60U * 60U * 1000U;
 constexpr UINT kSpotifySchedulerFloorMs = 100U;
-constexpr ULONGLONG kSpotifyLowMemoryStablePlaybackMs = 10ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyLowMemoryStablePlaybackMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 12ULL * 1000ULL;
