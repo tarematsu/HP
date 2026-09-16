@@ -18,26 +18,19 @@ constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--disable-sync "
     L"--metrics-recording-only";
 
-// Full-resource playback surfaces keep DRM/media plumbing intact while turning
-// off browser subsystems that are unrelated to YouTube/TVer/Spotify playback.
-// The media controller alternates YouTube and TVer in one WebView, so BFCache is
-// disabled to avoid retaining the previous phase's renderer after navigation.
+// Keep media/DRM plumbing intact for YouTube, TVer, Spotify and Stationhead
+// while turning off browser subsystems unrelated to playback.
 constexpr wchar_t kFullResourceWebView2Arguments[] =
     L"--disable-features=BackForward"
     L"Cache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
 
+// Retain the historical symbol because tests and policy code distinguish the
+// reduced-resource path, but keep it DRM-safe now that the same UDF policy is
+// shared by Stationhead, Spotify, YouTube and TVer.
 constexpr wchar_t kStationheadWebView2Arguments[] =
-    // Keep page-state restoration disabled across Stationhead navigations. HTTP
-    // cache is enabled during a live controller session and is explicitly reset
-    // when each playback controller is created or recreated. Stationhead alone
-    // keeps its historical hardware-decryption switches; full-resource media
-    // surfaces intentionally do not inherit them.
-    L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
+    L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
 
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
-  // YouTube/TVer/Spotify use the full-resource path and only receive safe
-  // browser-service reductions here. Resource blocking remains per-WebView so
-  // Spotify authentication is not affected by media-panel image/font policy.
   if (!blockImages && !blockFonts) return kFullResourceWebView2Arguments;
 
   std::wstring arguments = kStationheadWebView2Arguments;
@@ -92,6 +85,12 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
                                        bool blockFonts,
                                        Completion completion) {
   if (!completion) return;
+
+  // All current playback surfaces intentionally share one UDF. Normalize every
+  // caller to the same environment-level policy so whichever component starts
+  // first cannot accidentally create an unrestricted environment for the rest.
+  blockImages = true;
+  blockFonts = true;
 
   std::wstring requestedKey;
   ComPtr<ICoreWebView2Environment> readyEnvironment;
