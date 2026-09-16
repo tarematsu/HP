@@ -103,6 +103,7 @@ class SpotifyWebViews final {
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
     ULONGLONG timedCloudRotationRevision = 0;
+    int memoryUsageTargetLevel = -1;
     SlotState state = SlotState::NotCreated;
     AsyncWork asyncWork = AsyncWork::None;
     bool controllerCreating = false;
