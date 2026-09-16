@@ -22,7 +22,7 @@ test('observer bundle contains only runtime and minimal event bindings', () => {
   assert.doesNotMatch(wrapper + bundle, /spotify_media_observer_heartbeat|spotify_media_observer_completion/);
 });
 
-test('delegated media events cover startup identity and ended discovery without timers', () => {
+test('delegated media events cover startup ended and bounded interruption recovery', () => {
   assert.match(events, /document\.addEventListener\('playing'/);
   assert.match(events, /document\.addEventListener\('durationchange'/);
   assert.match(events, /document\.addEventListener\('loadedmetadata'/);
@@ -30,7 +30,9 @@ test('delegated media events cover startup identity and ended discovery without 
   assert.match(events, /document\.addEventListener\('timeupdate'/);
   assert.match(events, /document\.addEventListener\('ended', observeEnded, true\)/);
   assert.doesNotMatch(events, /document\.addEventListener\('play'/);
-  assert.doesNotMatch(events, /media\.addEventListener|MutationObserver|setInterval|setTimeout/);
+  assert.doesNotMatch(events, /media\.addEventListener|MutationObserver|setInterval/);
+  assert.match(events, /recoveryGraceMs = 6000/);
+  assert.match(events, /nativeSetTimeout\(\(\) => \{/);
 });
 
 test('confirmed target media publishes generation-tagged start resume and ended signals', () => {
