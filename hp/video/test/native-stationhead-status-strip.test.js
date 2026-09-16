@@ -5,38 +5,42 @@ import test from 'node:test';
 const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
-const statsPolicy = source('sh_july19_stats_policy_fix.h');
-const player = source('sh.cpp');
 const bridge = source('stationhead_status_strip_bridge.h');
-const handles = source('app_stationhead_handles.cpp');
+const startupReset = source('webview_startup_cache_reset.h');
 const mediaBase = source('renderer_panels/media_section_base.inc');
 const statusStrip = source('renderer_panels/media_host_window.inc');
 
-test('Stationhead authenticated daily play count acquisition remains active', () => {
-  assert.match(statsPolicy, /production1\.stationhead\.com\/me\/channel\//);
-  assert.match(statsPolicy, /\/streakStats/);
-  assert.match(statsPolicy, /type: 'stationhead-play-stats'/);
-  assert.match(statsPolicy, /kStationheadJuly19StatsIntervalMs = 5 \* 60'000/);
-  assert.match(player, /PollDailyPlayStats\(int64_t nowMs\)/);
-  assert.match(player, /StationheadApiPlayStatsScript\(config_\.channelId\)/);
+test('Stationhead play-count polling is retired from the active player path', () => {
+  assert.match(
+    startupReset,
+    /#define kStationheadDailyPlayStatsIntervalMs 4'000'000'000'000'000'000LL/,
+  );
+  assert.match(
+    startupReset,
+    /#define StationheadApiPlayStatsScript\(channelId\) std::wstring\(L"void 0;"\)/,
+  );
+  assert.doesNotMatch(statusStrip, /StationheadStatusStripTodayPlayCount|再生数/);
 });
 
-test('Stationhead today count is reused by the existing native status strip', () => {
-  assert.match(handles, /SummarizeStationheadDailyPlays\(status\.dailyPlayCounts, UnixMillis\(\)\)/);
-  assert.match(handles, /PublishStationheadStatusStripPlayCount\(playSummary\.today\)/);
-  assert.match(bridge, /stationheadStatusStripTodayPlayCount/);
+test('Stationhead card renders only the projected current track title', () => {
   assert.match(mediaBase, /stationhead_status_strip_bridge\.h/);
-
+  assert.match(bridge, /native-playback-a\.json/);
+  assert.match(bridge, /GetNamedBoolean\(L"playing", false\)/);
+  assert.match(bridge, /GetNamedBoolean\(L"stale", false\)/);
+  assert.match(bridge, /currentIndex/);
+  assert.match(bridge, /queueEndAt/);
+  assert.match(bridge, /kTrackTransitionHoldMs = 500/);
   assert.match(statusStrip, /const size_t cellCount = statuses\.size\(\) \+ 1/);
-  assert.match(statusStrip, /StationheadStatusStripTodayPlayCount\(\)/);
+  assert.match(
+    statusStrip,
+    /StationheadStatusStripCurrentTrackTitle\(gNativeMediaDataDir, UnixMillis\(\)\)/,
+  );
   assert.match(statusStrip, /L"Stationhead"/);
-  assert.match(statusStrip, /L"再生数 " \+ std::to_wstring\(stationheadPlayCount\)/);
-  assert.match(statusStrip, /L"再生数 --"/);
+  assert.match(statusStrip, /stationheadTrack\.empty\(\) \? L"--" : stationheadTrack/);
   assert.match(statusStrip, /InvalidateRect\(hwnd, nullptr, FALSE\)/);
 });
 
-test('Stationhead status strip does not add a new request loop', () => {
-  assert.doesNotMatch(bridge, /fetch\(|ExecuteScript|SetTimer|setInterval/);
-  assert.doesNotMatch(handles, /streakStats|fetch\(/);
+test('Stationhead status title adds no extra network request loop', () => {
+  assert.doesNotMatch(bridge, /fetch\(|ExecuteScript|WinHttp|SetTimer|setInterval/);
   assert.match(statusStrip, /kNativeSpotifyStatusPollMs = 60U \* 1000U/);
 });
