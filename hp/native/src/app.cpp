@@ -18,22 +18,6 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
   return static_cast<uint32_t>(std::clamp<int64_t>(delta, 1, fallbackMs));
 }
 
-bool ApplyEfficiencyModeToCurrentProcess() noexcept {
-  HANDLE process = GetCurrentProcess();
-  const bool priorityApplied =
-      SetPriorityClass(process, IDLE_PRIORITY_CLASS) != FALSE;
-
-  PROCESS_POWER_THROTTLING_STATE throttling{};
-  throttling.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
-  throttling.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
-  throttling.StateMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
-  const bool ecoQosApplied =
-      SetProcessInformation(process, ProcessPowerThrottling, &throttling,
-                            sizeof(throttling)) != FALSE;
-
-  return priorityApplied && ecoQosApplied;
-}
-
 }
 
 App::App(HINSTANCE instance) : instance_(instance) { current_ = this; }
@@ -49,15 +33,9 @@ App* App::Current() { return current_; }
 int App::Run(int showCommand) {
   mutex_ = CreateMutexW(nullptr, TRUE, kMutexName);
   if (!mutex_ || GetLastError() == ERROR_ALREADY_EXISTS) return 0;
-  const bool appEfficiencyModeEnabled = ApplyEfficiencyModeToCurrentProcess();
   InitializePaths();
   logger_ = std::make_unique<Logger>(dataDir_ / L"homepanel.log", 2 * 1024 * 1024, 3);
   logger_->Info(L"HomePanel starting version " + std::wstring(kVersion));
-  if (appEfficiencyModeEnabled) {
-    logger_->Info(L"Native process Efficiency mode enabled (idle priority + EcoQoS)");
-  } else {
-    logger_->Warn(L"Native process Efficiency mode could not be fully enabled");
-  }
   CreateMainWindow(showCommand);
   StartServices();
   MSG message{};
