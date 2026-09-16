@@ -106,15 +106,26 @@ export async function renderRepresentativeRadarFrame(
       canvas.height = payload.outputHeight;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("radar render context unavailable");
-      const panelWidth = Math.floor(payload.outputWidth / payload.panels.length);
+
+      const logicalPanelWidth = payload.panels[0]?.sourceWidth ?? 0;
+      const logicalOutputHeight = payload.panels[0]?.sourceHeight ?? 0;
+      const logicalOutputWidth = logicalPanelWidth * payload.panels.length;
+      if (logicalPanelWidth <= 0 || logicalOutputHeight <= 0 || logicalOutputWidth <= 0) {
+        throw new Error("radar logical render size is invalid");
+      }
       for (const panel of payload.panels) {
-        if (panel.sourceWidth !== panelWidth
-            || panel.sourceHeight !== payload.outputHeight
-            || panel.baseCropWidth !== panelWidth
-            || panel.baseCropHeight !== payload.outputHeight) {
-          throw new Error("radar panel source/crop must match output pixels at 1:1 scale");
+        if (panel.sourceWidth !== logicalPanelWidth
+            || panel.sourceHeight !== logicalOutputHeight
+            || panel.baseCropWidth !== logicalPanelWidth
+            || panel.baseCropHeight !== logicalOutputHeight) {
+          throw new Error("radar panel source/crop must match logical render pixels");
         }
       }
+      context.scale(
+        payload.outputWidth / logicalOutputWidth,
+        payload.outputHeight / logicalOutputHeight,
+      );
+      const panelWidth = logicalPanelWidth;
 
       const loadRequired = async (url: string) => {
         const response = await fetch(url, { cache: "force-cache" });
@@ -148,7 +159,7 @@ export async function renderRepresentativeRadarFrame(
           panelX,
           0,
           panelWidth,
-          payload.outputHeight,
+          logicalOutputHeight,
         );
       };
 
@@ -172,7 +183,7 @@ export async function renderRepresentativeRadarFrame(
           throw new Error("radar location marker coordinates are invalid");
         }
         const scaleX = panelWidth / panel.sourceWidth;
-        const scaleY = payload.outputHeight / panel.sourceHeight;
+        const scaleY = logicalOutputHeight / panel.sourceHeight;
         const world = worldPixel(lon, lat, panel.zoom);
         const x = panelX + (world.x - panel.worldLeft) * scaleX;
         const y = (world.y - panel.worldTop) * scaleY;
@@ -226,12 +237,12 @@ export async function renderRepresentativeRadarFrame(
         const panelX = panelIndex * panelWidth;
         context.save();
         context.beginPath();
-        context.rect(panelX, 0, panelWidth, payload.outputHeight);
+        context.rect(panelX, 0, panelWidth, logicalOutputHeight);
         context.clip();
 
         drawBase(satellite, panel, panelX);
         const scaleX = panelWidth / panel.sourceWidth;
-        const scaleY = payload.outputHeight / panel.sourceHeight;
+        const scaleY = logicalOutputHeight / panel.sourceHeight;
 
         for (const tile of panel.tiles as Array<{ url: string; destX: number; destY: number }>) {
           const bitmap = await loadRain(tile.url);
@@ -253,7 +264,7 @@ export async function renderRepresentativeRadarFrame(
 
       context.fillStyle = "rgba(0,0,0,0.92)";
       for (let divider = 1; divider < payload.panels.length; divider += 1) {
-        context.fillRect(divider * panelWidth - 1, 0, 3, payload.outputHeight);
+        context.fillRect(divider * panelWidth - 1, 0, 3, logicalOutputHeight);
       }
 
       for (let panelIndex = 0; panelIndex < payload.panels.length; panelIndex += 1) {

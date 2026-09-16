@@ -35,25 +35,30 @@ const buildRadarBase = readFileSync(
   'utf8',
 );
 
-test('cloud radar renders a z10 1296x729 three-panel image at 1:1 panel scale', () => {
+test('cloud radar renders a z10 640x360 three-panel image from the original logical map extent', () => {
   assert.match(cloudRadar, /const RADAR_BASE_ZOOM = 10;/);
   assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM = 10;/);
   assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 432;/);
   assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 729;/);
   assert.match(cloudRadar, /const RADAR_BASE_CROP_WIDTH = 432;/);
   assert.match(cloudRadar, /const RADAR_BASE_CROP_HEIGHT = 729;/);
-  assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 1296;/);
-  assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 729;/);
-  assert.match(cloudRadar, /native-scale/);
+  assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 640;/);
+  assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 360;/);
+  assert.match(cloudRadar, /downsampled/);
   assert.match(cloudRadar, /renderRepresentativeRadarFrame/);
   assert.match(cloudRadar, /precomposed: true/);
   assert.match(cloudRadar, /frames: \[frame\]/);
-  assert.match(browserRadar, /payload\.outputWidth \/ payload\.panels\.length/);
-  assert.match(browserRadar, /panel\.sourceWidth !== panelWidth/);
-  assert.match(browserRadar, /panel\.sourceHeight !== payload\.outputHeight/);
-  assert.match(browserRadar, /panel\.baseCropWidth !== panelWidth/);
-  assert.match(browserRadar, /panel\.baseCropHeight !== payload\.outputHeight/);
-  assert.match(browserRadar, /must match output pixels at 1:1 scale/);
+  assert.match(browserRadar, /const logicalPanelWidth = payload\.panels\[0\]\?\.sourceWidth \?\? 0;/);
+  assert.match(browserRadar, /const logicalOutputHeight = payload\.panels\[0\]\?\.sourceHeight \?\? 0;/);
+  assert.match(browserRadar, /const logicalOutputWidth = logicalPanelWidth \* payload\.panels\.length;/);
+  assert.match(browserRadar, /context\.scale\(/);
+  assert.match(browserRadar, /payload\.outputWidth \/ logicalOutputWidth/);
+  assert.match(browserRadar, /payload\.outputHeight \/ logicalOutputHeight/);
+  assert.match(browserRadar, /panel\.sourceWidth !== logicalPanelWidth/);
+  assert.match(browserRadar, /panel\.sourceHeight !== logicalOutputHeight/);
+  assert.match(browserRadar, /panel\.baseCropWidth !== logicalPanelWidth/);
+  assert.match(browserRadar, /panel\.baseCropHeight !== logicalOutputHeight/);
+  assert.match(browserRadar, /must match logical render pixels/);
   assert.match(browserRadar, /const cropWidth = panel\.baseCropWidth as number/);
   assert.match(browserRadar, /const cropHeight = panel\.baseCropHeight as number/);
   assert.match(browserRadar, /drawLocationMarker\(panel, panelX\)/);
@@ -86,7 +91,7 @@ test('cloud selects current, exact one-hour, and latest short-term panels', () =
   assert.match(radarUi, /frames\.Size\(\) != 1/);
   assert.doesNotMatch(radarUi, /frameIntervalMs|animationIntervalMs|selectedIndex/);
   assert.match(radarCache, /const bool precomposed = root\.GetNamedBoolean\(L"precomposed", false\);/);
-  assert.match(radarCache, /width != 1296 \|\| height != 729/);
+  assert.match(radarCache, /width != 640 \|\| height != 360/);
   assert.match(radarCache, /frames\.Size\(\) != 1/);
   assert.match(radarCache, /tiles\.Size\(\) != 1/);
 });

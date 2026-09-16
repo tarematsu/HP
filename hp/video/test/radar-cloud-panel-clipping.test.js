@@ -15,23 +15,26 @@ const radarTile = readFileSync(
   'utf8',
 );
 
-test('cloud radar clips every panel before drawing partial edge tiles', () => {
+test('cloud radar clips every logical panel before drawing partial edge tiles', () => {
   assert.match(
     browserRadar,
-    /context\.save\(\);[\s\S]*context\.rect\(panelX, 0, panelWidth, payload\.outputHeight\);[\s\S]*context\.clip\(\);[\s\S]*for \(const tile of panel\.tiles[\s\S]*context\.restore\(\);/,
+    /context\.save\(\);[\s\S]*context\.rect\(panelX, 0, panelWidth, logicalOutputHeight\);[\s\S]*context\.clip\(\);[\s\S]*for \(const tile of panel\.tiles[\s\S]*context\.restore\(\);/,
   );
 });
 
-test('cloud radar composes z10 tiles at 1:1 output pixel scale', () => {
+test('cloud radar downsamples the existing z10 logical canvas to 640x360', () => {
   assert.match(radarSource, /const RADAR_PANEL_SOURCE_WIDTH = 432;/);
   assert.match(radarSource, /const RADAR_PANEL_SOURCE_HEIGHT = 729;/);
   assert.match(radarSource, /const RADAR_BASE_CROP_WIDTH = 432;/);
   assert.match(radarSource, /const RADAR_BASE_CROP_HEIGHT = 729;/);
-  assert.match(radarSource, /const RADAR_OUTPUT_WIDTH = 1296;/);
-  assert.match(radarSource, /const RADAR_OUTPUT_HEIGHT = 729;/);
-  assert.match(browserRadar, /panel\.sourceWidth !== panelWidth/);
-  assert.match(browserRadar, /panel\.sourceHeight !== payload\.outputHeight/);
-  assert.match(browserRadar, /must match output pixels at 1:1 scale/);
+  assert.match(radarSource, /const RADAR_OUTPUT_WIDTH = 640;/);
+  assert.match(radarSource, /const RADAR_OUTPUT_HEIGHT = 360;/);
+  assert.match(browserRadar, /const logicalPanelWidth = payload\.panels\[0\]\?\.sourceWidth \?\? 0;/);
+  assert.match(browserRadar, /const logicalOutputHeight = payload\.panels\[0\]\?\.sourceHeight \?\? 0;/);
+  assert.match(browserRadar, /context\.scale\(/);
+  assert.match(browserRadar, /payload\.outputWidth \/ logicalOutputWidth/);
+  assert.match(browserRadar, /payload\.outputHeight \/ logicalOutputHeight/);
+  assert.match(browserRadar, /must match logical render pixels/);
 });
 
 test('cloud radar uses the same z10 XYZ/WebMercator layout for JMA tiles and panel projection', () => {
