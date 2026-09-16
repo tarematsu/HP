@@ -38,11 +38,13 @@ test('TVer ads do not receive program speed, volume or recovery mutation', () =>
   assert.doesNotMatch(adBranch, /video\.volume/);
   assert.doesNotMatch(adBranch, /video\.play\(/);
 
+  const fullscreenIndex = watchdog.indexOf('const fullscreenPoint = videoFullscreenPoint(video)');
   const watchdogAdStart = watchdog.indexOf('if (adActive) {');
-  const watchdogAdEnd = watchdog.indexOf('if (video && state', watchdogAdStart);
+  const watchdogAdEnd = watchdog.indexOf('const surveyRoots = Array.from', watchdogAdStart);
   const watchdogAdBranch = watchdog.slice(watchdogAdStart, watchdogAdEnd);
+  assert.ok(fullscreenIndex >= 0 && watchdogAdStart > fullscreenIndex);
   assert.match(watchdogAdBranch, /skipButton/);
-  assert.match(watchdogAdBranch, /fullscreenButton/);
+  assert.doesNotMatch(watchdogAdBranch, /fullscreenButton|isEnterFullscreenControl/);
   assert.doesNotMatch(watchdogAdBranch, /video\.play\(/);
   assert.doesNotMatch(watchdogAdBranch, /video\.volume/);
   assert.doesNotMatch(watchdogAdBranch, /video\.playbackRate/);
