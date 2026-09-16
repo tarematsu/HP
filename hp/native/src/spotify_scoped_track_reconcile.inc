@@ -2,7 +2,8 @@ namespace hp {
 namespace {
 
 // Minimal playback start/status probe for the already-selected Spotify track:
-// 1) the target page remains the navigation authority;
+// 1) the target page remains the navigation authority and first Play waits one
+//    second after NavigationCompleted bootstrap before trusted input is sent;
 // 2) Pause is confirmed only after an available media element has actually
 //    advanced; a zero-second stall is toggled back to Play before retrying;
 // 3) if the target-page control is omitted entirely, the global Pause control
