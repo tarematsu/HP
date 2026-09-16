@@ -16,3 +16,9 @@ constexpr wchar_t kNativeMediaTverForceFullscreenAnyMediaScript[] =
 constexpr const wchar_t* kNativeMediaTverForceFullscreenAdSafeScript =
     kNativeMediaTverForceFullscreenAnyMediaScript;
 }  // namespace
+
+#ifdef _MSC_VER
+// MSVC /analyze misclassifies the 365-character embedded TVer focus script in
+// media_section.inc as a day-of-year lookup table. No day index is used here.
+#pragma warning(disable : 6393)
+#endif
