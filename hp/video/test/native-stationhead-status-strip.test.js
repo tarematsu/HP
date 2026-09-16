@@ -22,7 +22,7 @@ test('Stationhead play-count polling is retired from the active player path', ()
   assert.doesNotMatch(statusStrip, /StationheadStatusStripTodayPlayCount|再生数/);
 });
 
-test('Stationhead card renders only the projected current track title', () => {
+test('Stationhead card renders only the cached projected current track title', () => {
   assert.match(mediaBase, /stationhead_status_strip_bridge\.h/);
   assert.match(bridge, /native-playback-a\.json/);
   assert.match(bridge, /GetNamedBoolean\(L"playing", false\)/);
@@ -30,17 +30,41 @@ test('Stationhead card renders only the projected current track title', () => {
   assert.match(bridge, /currentIndex/);
   assert.match(bridge, /queueEndAt/);
   assert.match(bridge, /kTrackTransitionHoldMs = 500/);
+  assert.match(bridge, /PollStationheadStatusStripCurrentTrackTitle/);
+  assert.match(bridge, /stationheadStatusStripTrackTitle = std::move\(next\)/);
   assert.match(statusStrip, /const size_t cellCount = statuses\.size\(\) \+ 1/);
-  assert.match(
+  assert.match(statusStrip, /StationheadStatusStripCurrentTrackTitle\(\)/);
+  assert.doesNotMatch(
     statusStrip,
     /StationheadStatusStripCurrentTrackTitle\(gNativeMediaDataDir, UnixMillis\(\)\)/,
   );
   assert.match(statusStrip, /L"Stationhead"/);
   assert.match(statusStrip, /stationheadTrack\.empty\(\) \? L"--" : stationheadTrack/);
-  assert.match(statusStrip, /InvalidateRect\(hwnd, nullptr, FALSE\)/);
 });
 
-test('Stationhead status title adds no extra network request loop', () => {
-  assert.doesNotMatch(bridge, /fetch\(|ExecuteScript|WinHttp|SetTimer|setInterval/);
+test('Stationhead status polling is one minute and staggered between Spotify phases', () => {
   assert.match(statusStrip, /kNativeSpotifyStatusPollMs = 60U \* 1000U/);
+  assert.match(statusStrip, /kNativeStationheadStatusPollTimer = 0x5351/);
+  assert.match(statusStrip, /kNativeStationheadStatusPollMs = 60U \* 1000U/);
+  assert.match(
+    statusStrip,
+    /kNativeStationheadStatusInitialPhaseMs = 7U \* 1000U \+ 500U/,
+  );
+  assert.match(
+    statusStrip,
+    /PollStationheadStatusStripCurrentTrackTitle\([\s\S]*gNativeMediaDataDir, UnixMillis\(\)\)/,
+  );
+  assert.match(
+    statusStrip,
+    /SetTimer\(status, kNativeStationheadStatusPollTimer,[\s\S]*kNativeStationheadStatusInitialPhaseMs/,
+  );
+  assert.match(
+    statusStrip,
+    /SetTimer\(hwnd, kNativeStationheadStatusPollTimer,[\s\S]*kNativeStationheadStatusPollMs/,
+  );
+  assert.match(statusStrip, /KillTimer\(hwnd, kNativeStationheadStatusPollTimer\)/);
+});
+
+test('Stationhead status title adds no network request loop', () => {
+  assert.doesNotMatch(bridge, /fetch\(|ExecuteScript|WinHttp|SetTimer|setInterval/);
 });
