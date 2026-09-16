@@ -15,6 +15,7 @@ constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
 int gSpotifyAudioOutputSlot = -1;
+int gSpotifyMonitorForegroundSlot = -1;
 
 void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
@@ -44,6 +45,7 @@ SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
       // isolate cookies/local storage for every Spotify account.
       userDataFolder_(std::move(dataDir) / L"webview2-youtube-mv") {
   gSpotifyControlInstance = this;
+  monitorForegroundSlot_ = gSpotifyMonitorForegroundSlot;
   for (size_t i = 0; i < slots_.size(); ++i) {
     slots_[i].owner = this;
     slots_[i].index = i;
@@ -82,6 +84,10 @@ void SetSpotifyAudioOutputSlot(int slotIndex) noexcept {
 }
 
 void SetSpotifyMonitorForegroundSlot(int slotIndex) noexcept {
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(kSpotifyActiveAccountCount)) {
+    slotIndex = -1;
+  }
+  gSpotifyMonitorForegroundSlot = slotIndex;
   if (gSpotifyControlInstance) {
     gSpotifyControlInstance->SetMonitorForegroundSlot(slotIndex);
   }
