@@ -116,12 +116,12 @@ test('invalid duration waits for durationchange instead of arming a bad timer', 
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f23\x1f179000']);
 });
 
-test('observer uses only playing durationchange and ended lifecycle events', () => {
+test('observer uses lifecycle events instead of renderer timers for startup identity', () => {
   const h = createHarness();
-  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause', 'play', 'loadedmetadata']) {
+  for (const type of ['seeking', 'seeked', 'waiting', 'stalled', 'pause', 'play']) {
     assert.equal(h.listeners.has(type), false, `${type} must not be observed`);
   }
-  for (const type of ['playing', 'durationchange', 'ended']) {
+  for (const type of ['playing', 'durationchange', 'loadedmetadata', 'canplay', 'timeupdate', 'ended']) {
     assert.equal(h.listeners.has(type), true, `${type} must be observed`);
   }
 });

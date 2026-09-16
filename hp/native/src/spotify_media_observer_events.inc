@@ -15,6 +15,12 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const observe = event => {
     if (!isMedia(event.target) || event.target.ended) return;
+    // timeupdate is useful while startup identity is still settling, but once
+    // the owned target is confirmed it would only create redundant DOM probes.
+    if (event.type === 'timeupdate' && state.startPosted &&
+        state.targetMedia === event.target && !state.interrupted) {
+      return;
+    }
     scheduleTargetChecks(event.target);
   };
   const armManualPlay = event => {
@@ -53,6 +59,9 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.addEventListener('click', armManualPlay, true);
   document.addEventListener('playing', observe, true);
   document.addEventListener('durationchange', observe, true);
+  document.addEventListener('loadedmetadata', observe, true);
+  document.addEventListener('canplay', observe, true);
+  document.addEventListener('timeupdate', observe, true);
   document.addEventListener('ended', observeEnded, true);
 
   document.querySelectorAll('audio, video').forEach(media => {

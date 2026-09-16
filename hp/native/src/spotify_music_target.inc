@@ -4,7 +4,26 @@ namespace {
 constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTrackTransitionRetryMs = 500ULL;
-constexpr ULONGLONG kSpotifyCdpPlayConfirmWaitMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyPlaybackStateProbeMs = 1ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyCdpPlayRetryFailsafeMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTrackTransitionRetryMaxMs = 2ULL * 1000ULL;
+
+ULONGLONG ParseSpotifyRetryDelay(LPCWSTR json) noexcept {
+  if (!json) return 0;
+  try {
+    const std::wstring value(json);
+    if (value.empty() || value.front() < L'0' || value.front() > L'9') return 0;
+    size_t consumed = 0;
+    const unsigned long long parsed = std::stoull(value, &consumed, 10);
+    if (consumed != value.size() || parsed < kSpotifyTrackTransitionRetryMs ||
+        parsed > kSpotifyTrackTransitionRetryMaxMs) {
+      return 0;
+    }
+    return static_cast<ULONGLONG>(parsed);
+  } catch (...) {
+    return 0;
+  }
+}
 
 }  // namespace
 
@@ -203,6 +222,7 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               target->observedTrackTitle = currentTrack->title;
               GetLocalTime(&target->playbackConfirmedAt);
               target->playbackConfirmed = true;
+              target->trustedClickBlockedUntilTick = 0;
               target->nextRecoveryTick = 0;
               InvalidateSpotifyStatusForHost(target->hostWindow);
               SetSlotState(*target, SlotState::Playing);
@@ -212,21 +232,37 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
+            if (json && std::wstring_view(json) == L"\"restart\"") {
+              target->trustedClickBlockedUntilTick = 0;
+              SetSlotState(*target, SlotState::WaitingTarget);
+              target->nextRecoveryTick =
+                  callbackNow + kSpotifyTrackTransitionRetryMs;
+              RecomputeForeground();
+              ArmRobustScheduler();
+              return S_OK;
+            }
+
+            const ULONGLONG retryDelayMs = ParseSpotifyRetryDelay(json);
+            if (retryDelayMs != 0) {
+              SetSlotState(*target, SlotState::WaitingTarget);
+              target->nextRecoveryTick = callbackNow + retryDelayMs;
+              RecomputeForeground();
+              ArmRobustScheduler();
+              return S_OK;
+            }
+
             double cssX = 0.0;
             double cssY = 0.0;
             if (ParseCssPoint(json, &cssX, &cssY)) {
-              target->nextRecoveryTick =
-                  callbackNow + kSpotifyCdpPlayConfirmWaitMs;
               ClickSlotCssPoint(*target, cssX, cssY);
               return S_OK;
             }
 
-            // The page URL is already the managed target. If Spotify has not
-            // created its Play control yet, inspect again soon instead of
-            // entering a second recovery state machine.
+            // Unknown intermediate state: keep probing without treating delayed
+            // EcoQoS renderer work as a hard playback failure.
             SetSlotState(*target, SlotState::WaitingTarget);
             target->nextRecoveryTick =
-                callbackNow + kSpotifyTrackTransitionRetryMs;
+                callbackNow + kSpotifyPlaybackStateProbeMs;
             RecomputeForeground();
             ArmRobustScheduler();
             return S_OK;

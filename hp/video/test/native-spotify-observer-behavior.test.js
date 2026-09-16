@@ -245,10 +245,10 @@ test('observer has no heartbeat recovery completion planner or interruption cloc
   assert.equal(runtime.startHeartbeat, undefined);
   assert.equal(runtime.postCompletionPlan, undefined);
   assert.equal('interruptionStartedAt' in runtime.state, false);
-  for (const type of ['timeupdate', 'seeking', 'seeked', 'waiting', 'stalled', 'pause', 'play', 'loadedmetadata']) {
+  for (const type of ['seeking', 'seeked', 'waiting', 'stalled', 'pause', 'play']) {
     assert.equal(h.documentListeners.has(type), false);
   }
-  assert.equal(h.documentListeners.has('playing'), true);
-  assert.equal(h.documentListeners.has('durationchange'), true);
-  assert.equal(h.documentListeners.has('ended'), true);
+  for (const type of ['playing', 'durationchange', 'loadedmetadata', 'canplay', 'timeupdate', 'ended']) {
+    assert.equal(h.documentListeners.has(type), true);
+  }
 });

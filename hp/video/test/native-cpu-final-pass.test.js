@@ -6,17 +6,19 @@ const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
 const runtime = source('spotify_media_observer_runtime.inc');
+const events = source('spotify_media_observer_events.inc');
 const panelState = source('renderer_panel_state.cpp');
 const lifecycle = source('renderer_lifecycle.cpp');
 const appMessages = source('app_messages.cpp');
 
-test('Spotify identity adoption uses one immediate check plus one coalesced fallback', () => {
+test('Spotify identity adoption is event driven without renderer fallback timers', () => {
   assert.match(runtime, /const enforceTarget = media =>/);
-  assert.match(runtime, /const status = enforceTarget\(media\)/);
-  assert.match(runtime, /identityFallbackTimer = setTimeout\([\s\S]*1500\)/);
-  assert.match(runtime, /clearIdentityFallback\(\)/);
-  assert.doesNotMatch(runtime, /\[0,\s*250,\s*1000,\s*2500,\s*5000\]/);
-  assert.doesNotMatch(runtime, /forEach\(delay =>/);
+  assert.match(runtime, /const scheduleTargetChecks = media => enforceTarget\(media\)/);
+  assert.doesNotMatch(runtime, /identityFallbackTimer|setTimeout\(/);
+  assert.match(events, /addEventListener\('playing', observe, true\)/);
+  assert.match(events, /addEventListener\('loadedmetadata', observe, true\)/);
+  assert.match(events, /addEventListener\('canplay', observe, true\)/);
+  assert.match(events, /addEventListener\('timeupdate', observe, true\)/);
 });
 
 test('SwitchBot cache uses startup and update events instead of the one-second clock timer', () => {

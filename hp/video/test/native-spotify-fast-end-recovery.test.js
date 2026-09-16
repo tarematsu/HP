@@ -22,13 +22,15 @@ test('observer bundle contains only runtime and minimal event bindings', () => {
   assert.doesNotMatch(wrapper + bundle, /spotify_media_observer_heartbeat|spotify_media_observer_completion/);
 });
 
-test('delegated media events cover active playback and ended discovery without polling', () => {
+test('delegated media events cover startup identity and ended discovery without timers', () => {
   assert.match(events, /document\.addEventListener\('playing'/);
   assert.match(events, /document\.addEventListener\('durationchange'/);
+  assert.match(events, /document\.addEventListener\('loadedmetadata'/);
+  assert.match(events, /document\.addEventListener\('canplay'/);
+  assert.match(events, /document\.addEventListener\('timeupdate'/);
   assert.match(events, /document\.addEventListener\('ended', observeEnded, true\)/);
   assert.doesNotMatch(events, /document\.addEventListener\('play'/);
-  assert.doesNotMatch(events, /document\.addEventListener\('loadedmetadata'/);
-  assert.doesNotMatch(events, /media\.addEventListener|MutationObserver|setInterval|timeupdate/);
+  assert.doesNotMatch(events, /media\.addEventListener|MutationObserver|setInterval|setTimeout/);
 });
 
 test('confirmed target media publishes generation-tagged start resume and ended signals', () => {
@@ -53,13 +55,13 @@ test('completion does not mutate media and advances directly at the native deadl
   assert.doesNotMatch(rotation + phase, /SpotifyDeadlineWithInterruptionHold/);
 });
 
-test('observer injection uses the unified async epoch and timeout', () => {
+test('observer injection uses the unified async epoch and EcoQoS-tolerant timeout', () => {
   assert.match(header, /bool timedObserverReady = false/);
   assert.match(header, /enum class AsyncWork/);
   assert.match(header, /ULONGLONG asyncEpoch = 0/);
   assert.match(rotation, /slot\.asyncWork != AsyncWork::None/);
   assert.match(rotation, /observerTarget->asyncEpoch != asyncEpoch/);
-  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 30ULL \* 1000ULL/);
   assert.doesNotMatch(header, /timedObserverInstallGeneration|timedObserverInstallInFlight/);
 });
 

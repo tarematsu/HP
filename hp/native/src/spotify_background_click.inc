@@ -54,7 +54,9 @@ void SpotifyWebViews::ClickSlotCssPoint(
 
   const ULONGLONG targetGeneration = slot.targetGeneration;
   const ULONGLONG pageEpoch = slot.pageEpoch;
+  const ULONGLONG stateProbeAt = GetTickCount64();
   SetSlotState(slot, SlotState::WaitingTarget);
+  slot.nextRecoveryTick = stateProbeAt + kSpotifyPlaybackStateProbeMs;
 
   // The reconcile script already returned CSS viewport coordinates. Verify the
   // same point still resolves to a Spotify Play control, then return the exact
@@ -139,7 +141,11 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
 
     const ULONGLONG targetGeneration = slot.targetGeneration;
     const ULONGLONG pageEpoch = slot.pageEpoch;
-    slot.trustedClickBlockedUntilTick = now + kSpotifyCdpPlayConfirmWaitMs;
+    // Playback state is probed independently every second. This longer window
+    // is only a duplicate-click failsafe; an observed zero-second restart clears
+    // it immediately so recovery never waits for the wall clock.
+    slot.trustedClickBlockedUntilTick =
+        now + kSpotifyCdpPlayRetryFailsafeMs;
 
     Slot* const target = &slot;
     const auto alive = alive_;

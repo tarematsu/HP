@@ -40,7 +40,8 @@ test('target routing does not start the completion clock before playback confirm
 
 test('trusted Play input is observer-independent and does not start the clock by itself', () => {
   assert.doesNotMatch(click, /ArmTimedEndObserver|timedObserverReady|armTrustedStart/);
-  assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayConfirmWaitMs/);
+  assert.match(click, /trustedClickBlockedUntilTick =\s*now \+ kSpotifyCdpPlayRetryFailsafeMs/);
+  assert.match(click, /nextRecoveryTick = stateProbeAt \+ kSpotifyPlaybackStateProbeMs/);
   assert.doesNotMatch(click, /SetMusicCompletionDeadline/);
   assert.doesNotMatch(click, /playbackStartTick/);
   assert.doesNotMatch(header + music, /timedPlaybackStartTick/);
@@ -57,14 +58,16 @@ test('verified Pause state starts the native completion clock', () => {
   assert.doesNotMatch(confirm, /ArmTimedEndObserver|observer-synced/);
 });
 
-test('startup retries are limited to target handoff, CDP confirmation, and missing controls', () => {
+test('startup retries use target handoff state probes and bounded adaptive backoff', () => {
   assert.match(music, /kSpotifyTrackTransitionRetryMs = 500ULL/);
-  assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyPlaybackStateProbeMs = 1ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 30ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyTrackTransitionRetryMaxMs = 2ULL \* 1000ULL/);
+  assert.match(music, /ParseSpotifyRetryDelay\(json\)/);
+  assert.match(music, /callbackNow \+ retryDelayMs/);
   assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
-  assert.match(music, /callbackNow \+ kSpotifyCdpPlayConfirmWaitMs/);
-  assert.doesNotMatch(music, /kSpotifyDirectPlayConfirmWaitMs|direct-play|DirectPlay/);
+  assert.doesNotMatch(music, /kSpotifyCdpPlayConfirmWaitMs|kSpotifyDirectPlayConfirmWaitMs|direct-play|DirectPlay/);
   assert.doesNotMatch(music + click, /kSpotifyPlaybackStartRetryMs/);
-  assert.doesNotMatch(click, /nextRecoveryTick = now/);
 });
 
 test('optional observer start and resume still enter the same deadline helper if used', () => {

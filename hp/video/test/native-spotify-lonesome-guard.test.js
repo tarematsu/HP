@@ -43,9 +43,12 @@ test('track reconcile never forces repeat-one and completion remains one native 
   assert.doesNotMatch(scoped, /repeatState|control-button-repeat|repeatMode/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
   assert.match(events, /addEventListener\('ended', observeEnded, true\)/);
+  assert.match(events, /addEventListener\('loadedmetadata', observe, true\)/);
+  assert.match(events, /addEventListener\('canplay', observe, true\)/);
+  assert.match(events, /addEventListener\('timeupdate', observe, true\)/);
   assert.doesNotMatch(
     events,
-    /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause)'/,
+    /addEventListener\('(?:seeking|seeked|waiting|stalled|pause)'/,
   );
   assert.match(events, /post\('spotify:timed-ended'\)/);
   assert.match(rotation, /ShortenMusicCompletionDeadlineAtEnd/);

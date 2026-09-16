@@ -20,8 +20,10 @@ test('observer posts one generation-fenced interruption event after target playb
   assert.match(runtime, /post\('spotify:timed-interrupted'\)/);
   assert.match(runtime, /return 'interruption'/);
   assert.match(events, /state\.interrupted/);
+  assert.match(events, /addEventListener\('timeupdate', observe, true\)/);
+  assert.match(events, /addEventListener\('loadedmetadata', observe, true\)/);
   assert.doesNotMatch(runtime, /interruptionStartedAt|timed-interruption-started|timed-interruption-ended|timed-interruption-cancelled/);
-  assert.doesNotMatch(events, /addEventListener\('(?:timeupdate|pause|waiting|stalled)'/);
+  assert.doesNotMatch(events, /addEventListener\('(?:pause|waiting|stalled)'/);
 });
 
 test('pre-confirmation playback start path has no raw-media or settling branch', () => {
