@@ -24,15 +24,17 @@ test('primary room and fallback URLs remain configured', () => {
   assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl/);
 });
 
-test('single player periodic refresh is fixed at 50 minutes with a two-minute audio wake', () => {
+test('single player periodic refresh is fixed at 50 minutes with a one-minute staggered audio wake', () => {
   assert.match(policy, /return 50 \* 60'000;/);
   assert.match(policy, /StationheadPeriodicRefreshIntervalMs\(\) == 50 \* 60'000/);
-  assert.match(policy, /StationheadAudioHealthCheckIntervalMs\(\) == 2 \* 60'000/);
+  assert.match(policy, /StationheadAudioHealthCheckIntervalMs\(\) == 1 \* 60'000/);
   const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
   assert.match(wake, /periodicRefreshStartedAt_/);
   assert.match(wake, /StationheadPeriodicRefreshIntervalMs\(\)/);
   assert.match(wake, /audioHealthCheckStartedAt_/);
   assert.match(wake, /StationheadAudioHealthCheckIntervalMs\(\)/);
+  assert.match(policy, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
+  assert.match(policy, /TryClaimAudioHealthScan\(scanTick\)/);
   assert.match(policy, /const int64_t nowMs = UnixMillis\(\)/);
   assert.match(policy, /PollPeriodicAudioHealth\(nowMs\)/);
   assert.match(policy, /RefreshPeriodicNavigation\(nowMs\)/);
