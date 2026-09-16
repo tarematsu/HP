@@ -25,13 +25,14 @@ const lifecycle = readFileSync(new URL('../../native/src/renderer_lifecycle.cpp'
 const mediaPanel = readFileSync(new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const mediaHost = readFileSync(new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 
-test('only yuukiar keeps its existing isolated profile during single-window diagnostics', () => {
+test('yuukiar and ten keep their existing isolated profiles', () => {
   assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
-  assert.match(header, /kSpotifyActiveAccountCount = 1/);
+  assert.match(header, /kSpotifyActiveAccountCount = 2/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
   assert.match(scripts, /std::array<std::wstring_view, kSpotifyActiveAccountCount> kSpotifyPanelNames/);
   assert.match(scripts, /L"yuukiar"/);
-  assert.doesNotMatch(scripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
+  assert.match(scripts, /L"ten"/);
+  assert.doesNotMatch(scripts, /L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
   assert.match(spotify, /webview2-youtube-mv/);
   assert.match(mediaHost, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
@@ -134,7 +135,7 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
 test('one adaptive threadpool timer services the state queue and exact deadlines', () => {
   assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(header, /std::atomic<bool> schedulerWakePosted_\{false\}/);
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 60ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
   assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
   assert.match(phaseSync, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
@@ -156,7 +157,7 @@ test('controller creation is serialized and bounded on slow machines', () => {
   assert.match(phaseSync, /void SpotifyWebViews::BeginControllerCreate/);
   assert.match(phaseSync, /CreateController\(slot\)/);
   assert.doesNotMatch(spotify, /CreateController\(slots_\[0\]\)/);
-  assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifyInitialStartDelayMs = 0/);
   assert.match(schedule, /BeginControllerCreate\(slot\)/);
 });
 
@@ -200,7 +201,7 @@ test('trusted recovery input is fully owned by the background click module', () 
 });
 
 test('Spotify defaults muted but can be explicitly unmuted by audio mode C', () => {
-  assert.match(header, /kSpotifyActiveAccountCount = 1/);
+  assert.match(header, /kSpotifyActiveAccountCount = 2/);
   assert.match(header, /void SetOutputMuted\(bool muted\) noexcept/);
   assert.match(spotify, /bool gSpotifyAudioMuted = true/);
   assert.match(spotify, /audio->put_IsMuted\(gSpotifyAudioMuted \? TRUE : FALSE\)/);
