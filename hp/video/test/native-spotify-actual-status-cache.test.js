@@ -36,14 +36,23 @@ test('Spotify status keeps probing only until the actual title is captured', () 
   assert.match(events, /state\.actualTrackPath = ''/);
 });
 
-test('one-minute phased poll reads confirmed playback cache before touching live DOM', () => {
-  assert.match(status, /runtime\.state\.actualTrackTitle/);
-  const cacheRead = status.indexOf('runtime.state.actualTrackTitle');
+test('one-minute phased poll reads confirmed cache and gated media session before live DOM', () => {
+  assert.match(status, /const state = runtime && runtime\.state/);
+  assert.match(status, /state && state\.actualTrackTitle/);
+  const cacheRead = status.indexOf('state.actualTrackTitle');
+  const mediaSessionRead = status.indexOf('navigator.mediaSession');
   const firstDomRead = status.indexOf("document.querySelector('[data-testid=\"now-playing-widget\"]')");
-  assert.ok(cacheRead >= 0 && firstDomRead > cacheRead);
+  assert.ok(cacheRead >= 0 && mediaSessionRead > cacheRead && firstDomRead > mediaSessionRead);
+
+  assert.match(status, /const ownedMedia = state && state\.targetMedia/);
+  assert.match(status, /state && state\.startPosted && ownedMedia/);
+  assert.match(status, /!ownedMedia\.paused && !ownedMedia\.ended/);
+  assert.match(status, /Number\.isFinite\(currentTime\) && currentTime > 0/);
+  assert.match(status, /if \(confirmedPlayback\) \{[\s\S]*navigator\.mediaSession[\s\S]*metadata\.title/);
+
   assert.match(status, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
   assert.match(status, /kSpotifyProcessTitlePollPhaseMs == 15ULL \* 1000ULL/);
   assert.match(status, /size_t selected = slots_\.size\(\)/);
   assert.doesNotMatch(status, /__homePanelSpotifyNativeTarget/);
-  assert.doesNotMatch(status, /navigator\.mediaSession/);
+  assert.doesNotMatch(status, /document\.title/);
 });
