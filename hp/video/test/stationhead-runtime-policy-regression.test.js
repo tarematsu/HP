@@ -43,7 +43,7 @@ test('native Stationhead click locator allows explicit music connect/reconnect a
     body,
     /\(\?:re\)\?connect\(\?:\\s\+with\)\?\\s\+\(\?:spotify\|music\)\|continue/,
   );
-  assert.match(body, /\)\/i;/);
+  assert.ok(body.includes("const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\\s+with)?\\s+(?:spotify|music)|continue)$/i;"));
   assert.match(body, /labelsOf\(element\)\.some\(label => allowedOnboardingPattern\.test\(label\)\)/);
   assert.match(body, /const accountInteractionVisible = \(\) =>/);
   assert.match(body, /credentialSelector/);
