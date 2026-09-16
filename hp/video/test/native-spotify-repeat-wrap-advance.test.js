@@ -20,8 +20,9 @@ test('native Spotify does not manage shuffle or repeat modes', () => {
 test('playback wrap cannot postpone the native deadline and ended may only shorten it', () => {
   assert.match(runtime, /state\.startPosted = true/);
   assert.match(runtime, /postFields\('spotify:timed-started', String\(remainingMs\)\)/);
+  assert.match(events, /addEventListener\('timeupdate', observe, true\)/);
   assert.match(events, /addEventListener\('ended', observeEnded, true\)/);
-  assert.doesNotMatch(events, /addEventListener\('(?:timeupdate|seeking|seeked)'/);
+  assert.doesNotMatch(events, /addEventListener\('(?:seeking|seeked)'/);
   assert.doesNotMatch(runtime + events, /terminalWrapObserved|completionPlanExpired|postCompletionPlan/);
   assert.match(rotation, /slot\.timedCompletionDeadlineTick > now/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(slot\)/);
