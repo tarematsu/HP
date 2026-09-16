@@ -34,16 +34,38 @@ void ApplyStationheadPlaybackMemoryTarget(
 std::atomic<bool> monitorDomProbeRequested{false};
 std::atomic<bool> monitorDomProbeInFlight{false};
 
-// Monitor A intentionally uses a much simpler policy than audio-loss recovery:
-// every five minutes it looks only for the two operator-requested phrases. B is
-// unconditional foreground, so this probe is never requested in monitor B.
+// Monitor A runs only every five minutes. Keep the probe cheap and avoid the
+// old document.body.innerText read, which could force layout for the full room.
+// Inspect only likely interactive/heading nodes and a small ancestor window for
+// split `Connect` + `Spotify` surfaces.
 constexpr wchar_t kMonitorDomProbeScript[] = LR"JS(
 (() => {
   if (document.readyState === 'loading' || !document.body) return false;
-  const text = String(document.body.innerText || document.body.textContent || '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return /\blog\s+in\b/i.test(text) || /\bconnect\s+spotify\b/i.test(text);
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const selector = [
+    'button', "[role='button']", 'a',
+    "input[type='button']", "input[type='submit']",
+    'h1', 'h2', 'h3', "[role='heading']",
+    '[aria-label]', '[data-testid]'
+  ].join(',');
+  for (const element of document.querySelectorAll(selector)) {
+    const text = normalize([
+      element.getAttribute?.('aria-label'),
+      element.getAttribute?.('title'),
+      element.getAttribute?.('value'),
+      element.textContent
+    ].filter(Boolean).join(' '));
+    if (/\blog\s+in\b/i.test(text) || /\bconnect\s+spotify\b/i.test(text)) {
+      return true;
+    }
+    if (!/\bconnect\b/i.test(text)) continue;
+    let surface = element.parentElement;
+    for (let depth = 0; surface && surface !== document.body && depth < 4;
+         surface = surface.parentElement, depth += 1) {
+      if (/\bspotify\b/i.test(normalize(surface.textContent))) return true;
+    }
+  }
+  return false;
 })()
 )JS";
 
