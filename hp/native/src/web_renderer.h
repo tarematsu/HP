@@ -94,7 +94,7 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int innerWidth = std::max(1L, inner.right - inner.left);
   const int innerHeight = std::max(1L, inner.bottom - inner.top);
   const int sideWidth = innerWidth * 285 / 1000;
-  const int mediaHeight = innerHeight * 600 / 1000;
+  const int mediaHeight = innerHeight * 480 / 1000;
 
   NativeDashboardLayout layout;
   layout.side = RECT{inner.left, inner.top, inner.left + sideWidth, inner.bottom};
