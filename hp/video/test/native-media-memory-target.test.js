@@ -7,10 +7,12 @@ const source = name => readFileSync(
 
 const spotifyController = source('spotify_controller_lifecycle.inc');
 const spotifyPhase = source('spotify_phase_sync.inc');
+const spotifySchedule = source('spotify_stagger_schedule.inc');
 const spotifyPolicy = source('spotify_runtime_policy.inc');
 const stationheadLayout = source('sh_layout.cpp');
 const stationheadWebview = source('sh_webview.cpp');
 const stationheadAudioLoss = source('sh_audio_loss.cpp');
+const stationheadAudioLossPolicy = source('sh_audio_loss_policy.h');
 const stationheadBoundaryPolicy = source('sh_track_boundary_message_policy.h');
 const mediaHost = source('renderer_panels/media_host.inc');
 const featurePolicy = source('webview_feature_policy.h');
@@ -28,7 +30,11 @@ test('YouTube/TVer keep the experimental WebView2 low-memory target', () => {
   );
 });
 
-test('Stationhead switches LOW only after stable playback and NORMAL otherwise', () => {
+test('Stationhead switches LOW only after five seconds stable playback and NORMAL otherwise', () => {
+  assert.match(
+    stationheadAudioLossPolicy,
+    /kStationheadAudioLossArmStabilityMs = 5'000/,
+  );
   assert.match(stationheadAudioLoss, /ICoreWebView2_19/);
   assert.match(stationheadAudioLoss, /get_MemoryUsageTargetLevel/);
   assert.match(
@@ -94,11 +100,19 @@ test('Spotify and Stationhead layout/auth setup do not apply an unconditional me
   );
 });
 
-test('Spotify switches NORMAL before interaction and LOW after playback confirmation', () => {
+test('Spotify keeps NORMAL for five seconds after playback confirmation then switches LOW', () => {
   assert.match(spotifyPolicy, /put_MemoryUsageTargetLevel\(level\)/);
   assert.match(
     spotifyPhase,
-    /state == SlotState::Playing[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+    /kSpotifyLowMemoryStablePlaybackMs = 5ULL \* 1000ULL/,
+  );
+  assert.match(
+    spotifyPhase,
+    /enteringPlaying[\s\S]*nextRecoveryTick[\s\S]*kSpotifyLowMemoryStablePlaybackMs[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+  );
+  assert.match(
+    spotifySchedule,
+    /slot\.state == SlotState::Playing[\s\S]*now >= slot\.nextRecoveryTick[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*slot\.nextRecoveryTick = 0/,
   );
   assert.match(
     spotifyPhase,
