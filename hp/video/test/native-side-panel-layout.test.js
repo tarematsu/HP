@@ -11,20 +11,18 @@ const layoutOverrides = readFileSync(
   'utf8',
 );
 
-test('weather and air are swapped and weather matches visible rain radar height', () => {
+test('left column uses three equal rows and media spans the top two', () => {
   assert.match(dashboardHeader, /const int sideWidth = innerWidth \* 285 \/ 1000;/);
-  assert.match(dashboardHeader, /const int mediaHeight = innerHeight \* 480 \/ 1000;/);
-  assert.match(layoutOverrides, /const int upperMediaHeight = height \* 480 \/ 1000;/);
-  assert.match(
-    layoutOverrides,
-    /const int weatherHeight =\s*std::max\(1, height - upperMediaHeight - gap\);/,
-  );
+  assert.match(dashboardHeader, /const int rowHeight = std::max\(1, \(innerHeight - gapY \* 2\) \/ 3\);/);
+  assert.match(dashboardHeader, /const int mediaHeight = rowHeight \* 2 \+ gapY;/);
+  assert.match(dashboardHeader, /const int mainTop = inner\.top \+ mediaHeight \+ gapY;/);
+  assert.match(layoutOverrides, /const int rowHeight = std::max\(1, \(height - gap \* 2\) \/ 3\);/);
   assert.match(
     layoutOverrides,
     /sections\.clock = RECT[\s\S]*sections\.controls = RECT[\s\S]*sections\.weather = RECT/,
   );
   assert.match(
     layoutOverrides,
-    /sections\.weather = RECT\{client\.left, top, client\.right, top \+ weatherHeight\};/,
+    /sections\.weather = RECT\{client\.left, sections\.controls\.bottom \+ gap,[\s\S]*client\.right, client\.bottom\};/,
   );
 });
