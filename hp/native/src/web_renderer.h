@@ -63,6 +63,7 @@ struct NativeMinuteFactsProjection {
 
 inline constexpr int kRadarCanvasWidth = 1296;
 inline constexpr int kRadarCanvasHeight = 729;
+inline constexpr int kNativeSpotifyStatusStripHeight = 56;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
 struct NativeDashboardLayout {
@@ -97,8 +98,12 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int mediaWidth = std::clamp(clientWidth / 2, 1, maxMediaWidth);
   const int sideWidth = std::max(1, innerWidth - gapX - mediaWidth);
   const int maxMediaHeight = std::max(1, innerHeight - gapY - 1);
-  const int mediaHeight =
-      std::clamp(mediaWidth * 9 / 16, 1, maxMediaHeight);
+  const int maxVideoHeight =
+      std::max(1, maxMediaHeight - kNativeSpotifyStatusStripHeight);
+  const int videoHeight =
+      std::clamp(mediaWidth * 9 / 16, 1, maxVideoHeight);
+  const int mediaHeight = std::min(
+      maxMediaHeight, videoHeight + kNativeSpotifyStatusStripHeight);
 
   NativeDashboardLayout layout;
   layout.side = RECT{inner.left, inner.top, inner.left + sideWidth,
