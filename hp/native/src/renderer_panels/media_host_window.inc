@@ -12,14 +12,6 @@ HBRUSH SpotifyStatusBackgroundBrush() noexcept {
   return brush;
 }
 
-std::wstring SpotifyStatusClock(const SpotifyPlaybackStatus& status) {
-  if (!status.confirmed) return L"--:--:--";
-  wchar_t text[16]{};
-  swprintf_s(text, L"%02u:%02u:%02u", status.confirmedAt.wHour,
-             status.confirmedAt.wMinute, status.confirmedAt.wSecond);
-  return text;
-}
-
 LRESULT CALLBACK NativeSpotifyStatusWndProc(
     HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
   switch (message) {
@@ -76,9 +68,7 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
 
         RECT first{card.left + 8, card.top + 3, card.right - 8, card.top + 22};
         RECT second{card.left + 8, card.top + 24, card.right - 8, card.bottom - 3};
-        std::wstring heading = statuses[i].windowName;
-        heading.append(L"  確認 ");
-        heading.append(SpotifyStatusClock(statuses[i]));
+        const std::wstring& heading = statuses[i].windowName;
         const std::wstring& track = statuses[i].trackTitle;
         const wchar_t* trackText = track.empty() ? L"--" : track.c_str();
         DrawTextW(paintDc, heading.c_str(), -1, &first,

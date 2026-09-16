@@ -34,16 +34,28 @@ test('yuukiar and ten Spotify slots are active with existing profile numbers', (
   assert.doesNotMatch(scripts, /L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });
 
-test('status title and confirmation clock use the title event plus a 60-second watchdog', () => {
+test('status track comes from each Spotify renderer window with a 60-second watchdog', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
   assert.match(header, /std::wstring processTrackDisplay/);
   assert.match(header, /SYSTEMTIME processTitleObservedAt/);
   assert.match(controller, /add_DocumentTitleChanged/);
-  assert.match(processTitle, /get_DocumentTitle/);
+  assert.doesNotMatch(processTitle, /get_DocumentTitle/);
+  assert.match(processTitle, /GetWindowTextW/);
+  assert.match(processTitle, /EnumChildWindows/);
+  assert.match(processTitle, /webview->get_Source/);
+  assert.match(processTitle, /ICoreWebView2Environment13/);
+  assert.match(processTitle, /GetProcessExtendedInfos/);
+  assert.match(processTitle, /get_AssociatedFrameInfos/);
+  assert.match(processTitle, /get_Source/);
+  assert.match(processTitle, /EqualsSpotifySourceInsensitive/);
+  assert.match(processTitle, /kind != COREWEBVIEW2_PROCESS_KIND_RENDERER/);
+  assert.match(processTitle, /processId != probe->processId/);
+  assert.match(processTitle, /ProbeSpotifyRendererWindowTrack\(\s*processCollection, expectedSource\)/);
   assert.match(processTitle, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
-  assert.match(processTitle, /display\.push_back\(L'・'\)/);
-  assert.match(processTitle, /if \(display\.empty\(\)\) return;/);
-  assert.match(processTitle, /GetLocalTime\(&slot\.processTitleObservedAt\)/);
+  assert.match(processTitle, /return std::wstring\(track\)/);
+  assert.doesNotMatch(processTitle, /display\.push_back\(L'・'\)/);
+  assert.match(processTitle, /rendererDisplay\.empty\(\)/);
+  assert.match(processTitle, /GetLocalTime\(&target->processTitleObservedAt\)/);
   assert.match(processTitle, /if \(!slot\.webview\) continue;/);
   assert.doesNotMatch(
     processTitle,
@@ -62,7 +74,6 @@ test('status title and confirmation clock use the title event plus a 60-second w
   assert.match(rotation, /slot\.observedTrackTitle\.clear\(\)/);
   assert.match(rotation, /slot\.playbackConfirmed = false/);
   assert.match(scripts, /result\[i\]\.trackTitle = slots_\[i\]\.processTrackDisplay/);
-  assert.match(scripts, /result\[i\]\.confirmedAt = slots_\[i\]\.processTitleObservedAt/);
   assert.match(lifecycle, /GetSpotifyPlaybackStatuses\(\) noexcept/);
 });
 
@@ -89,10 +100,12 @@ test('reconcile confirms verified Pause without observer acknowledgement or Moni
   assert.doesNotMatch(confirmation, /ArmTimedEndObserver/);
 });
 
-test('Spotify status strip repaints from state/page events without its own timer', () => {
+test('Spotify status strip shows only window name and track and repaints without its own timer', () => {
   assert.match(hostWindow, /kNativeSpotifyStatusHeight = 56/);
   assert.match(hostWindow, /GetSpotifyPlaybackStatuses\(\)/);
-  assert.match(hostWindow, /heading\.append\(L"  確認 "\)/);
+  assert.match(hostWindow, /const std::wstring& heading = statuses\[i\]\.windowName/);
+  assert.match(hostWindow, /const std::wstring& track = statuses\[i\]\.trackTitle/);
+  assert.doesNotMatch(hostWindow, /SpotifyStatusClock|確認|confirmedAt/);
   assert.match(hostWindow, /statuses\.size\(\)/);
   assert.match(hostWindow, /kSpotifyStatusSurface = RGB\(20, 26, 36\)/);
   assert.match(hostWindow, /kSpotifyStatusOutline = RGB\(43, 54, 69\)/);
