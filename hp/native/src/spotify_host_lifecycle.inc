@@ -46,10 +46,11 @@ void SpotifyWebViews::Start() noexcept {
 
   alive_ = std::make_shared<std::atomic<bool>>(true);
   started_ = true;
+  gSpotifyAlternatingActiveSlot = kSpotifyTenSlotIndex;
 
   for (Slot& slot : slots_) {
     CloseSlot(slot);
-    CreateHost(slot);
+    if (SpotifySlotShouldOwnHost(slot.index)) CreateHost(slot);
   }
 
   Resize();
