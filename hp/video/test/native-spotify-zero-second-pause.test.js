@@ -27,8 +27,9 @@ test('zero-second recovery starts playback only through trusted CDP Play click',
   assert.doesNotMatch(music, /direct-play|DirectPlay/);
 });
 
-test('first Play click waits one second after page bootstrap while remaining probeable', () => {
+test('first Play click waits one second after page bootstrap while status probes use two seconds', () => {
   assert.match(scripts, /__homePanelSpotifyNativeLoadedAt = Date\.now\(\)/);
+  assert.match(scoped, /const playbackProbeMs = 2000/);
   assert.match(scoped, /const nativeLoadedAt = Number\(window\.__homePanelSpotifyNativeLoadedAt\)/);
   assert.match(scoped, /Date\.now\(\) - nativeLoadedAt >= 1000/);
   assert.match(scoped, /if \(!initialPlayDelayElapsed && !restartPending\(\)\) return playbackProbeMs;/);
@@ -66,9 +67,9 @@ test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness
   assert.doesNotMatch(startup, /timedObserverReady|ArmTimedEndObserver/);
 });
 
-test('CDP Play is checked by one-second state probes with a thirty-second duplicate-click failsafe', () => {
-  assert.match(music, /kSpotifyPlaybackStateProbeMs = 1ULL \* 1000ULL/);
-  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 30ULL \* 1000ULL/);
+test('CDP Play is checked by two-second state probes with a five-second duplicate-click failsafe', () => {
+  assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
   assert.match(music, /std::wstring_view\(json\) == L"true"/);
   assert.match(music, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
   assert.match(music, /ParseCssPoint\(json, &cssX, &cssY\)/);
