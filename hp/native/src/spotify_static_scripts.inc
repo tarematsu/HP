@@ -9,6 +9,10 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
 (() => {
   window.__homePanelSpotifyGeneration =
       window.__homePanelSpotifyGeneration || '0';
+  // NavigationCompleted installs this bootstrap. Remember that moment so the
+  // first trusted Play click cannot race Spotify's post-load player startup.
+  // Date.now() is also available in the lightweight VM contract harness.
+  window.__homePanelSpotifyNativeLoadedAt = Date.now();
 
   if (window.__homePanelSpotifyStaticBridgeInstalled) return true;
   window.__homePanelSpotifyStaticBridgeInstalled = true;
