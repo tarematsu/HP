@@ -27,14 +27,15 @@ const lifecycle = readFileSync(
 const hostWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
 
-test('yuukiar, ten and nagi Spotify slots are active with existing profile numbers', () => {
+test('yuukiar, ten, nagi and hinata Spotify slots are active with existing profile numbers', () => {
   assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
-  assert.match(header, /kSpotifyActiveAccountCount = 3/);
+  assert.match(header, /kSpotifyActiveAccountCount = 4/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
   assert.match(scripts, /L"yuukiar"/);
   assert.match(scripts, /L"ten"/);
   assert.match(scripts, /L"nagi"/);
-  assert.doesNotMatch(scripts, /L"hinata"|L"amazon"|L"ozeki"/);
+  assert.match(scripts, /L"hinata"/);
+  assert.doesNotMatch(scripts, /L"amazon"|L"ozeki"/);
 });
 
 test('status track comes only from the Web Player now-playing surface', () => {
