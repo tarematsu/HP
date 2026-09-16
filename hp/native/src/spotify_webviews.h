@@ -125,6 +125,7 @@ class SpotifyWebViews final {
     ULONGLONG targetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
     ULONGLONG playRecoveryReloadGeneration = 0;
+    ULONGLONG playRecoveryRecreateGeneration = 0;
     std::wstring observedTrackTitle;
     std::wstring processTrackDisplay;
     SYSTEMTIME processTitleObservedAt{};
