@@ -10,6 +10,10 @@ const policySource = readFileSync(
   new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url),
   'utf8',
 );
+const sharedEnvironment = readFileSync(
+  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -154,4 +158,6 @@ test('final Stationhead callback leaves UDF-owned images and fonts unintercepted
   assert.match(policy, /Cache-Control: public, max-age=31536000, immutable/);
   assert.doesNotMatch(policy, /Cache-Control: no-store/);
   assert.doesNotMatch(policy, /MutationObserver|querySelector|createElement|display:none|ExecuteScript/);
+  assert.match(sharedEnvironment, /imagesEnabled=false,loadsImagesAutomatically=false/);
+  assert.match(sharedEnvironment, /downloadableBinaryFontsEnabled=false/);
 });
