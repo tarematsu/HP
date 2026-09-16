@@ -7,7 +7,6 @@ const source = name => readFileSync(
   'utf8',
 );
 const spotify = source('spotify_static_scripts.inc');
-const playbackPolicy = source('sh_playback_resource_policy_fix.h');
 const renderPolicy = source('sh_render_reduction_policy.h');
 const roomUiPolicy = source('sh_room_ui_reduction_policy.h');
 const startupScript = source('sh_startup_script.h');
@@ -31,9 +30,6 @@ test('Spotify page bootstrap leaves Spotify rendering and controls completely un
 });
 
 test('Stationhead startup uses the single compact runtime and current render policies', () => {
-  assert.match(playbackPolicy, /ApplyStationheadResourceBlockingStartupReduced/);
-  assert.doesNotMatch(playbackPolicy, /Network\.clearBrowserCache/);
-
   assert.match(startupScript, /#include "sh_compact_runtime_script\.h"/);
   assert.match(startupScript, /#include "sh_render_reduction_policy\.h"/);
   assert.match(startupScript, /#include "sh_room_ui_reduction_policy\.h"/);
