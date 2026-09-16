@@ -65,8 +65,9 @@ void PowerSavingController::ArmScheduleTimer() {
   KillTimer(overlay_, kScheduleTimer);
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
-  // Monitor A owns the only periodic DOM inspection. B/C/D/E are unconditional
-  // foreground selections and OFF is black, so those modes do no DOM polling.
+  // Monitor A owns the only periodic DOM inspection. B/C/D/E/F are
+  // unconditional foreground selections and OFF is black, so those modes do no
+  // DOM polling.
   if (monitorMode_ == MonitorMode::Native) {
     remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
   }
@@ -118,6 +119,9 @@ void PowerSavingController::CycleMonitorMode() noexcept {
       ApplyMonitorMode(MonitorMode::SpotifyTertiary);
       break;
     case MonitorMode::SpotifyTertiary:
+      ApplyMonitorMode(MonitorMode::SpotifyQuaternary);
+      break;
+    case MonitorMode::SpotifyQuaternary:
       ApplyMonitorMode(MonitorMode::Off);
       break;
     case MonitorMode::Off:
@@ -147,7 +151,8 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   const int spotifyMonitorSlot =
       mode == MonitorMode::SpotifyPrimary ? 0 :
       mode == MonitorMode::SpotifySecondary ? 1 :
-      mode == MonitorMode::SpotifyTertiary ? 2 : -1;
+      mode == MonitorMode::SpotifyTertiary ? 2 :
+      mode == MonitorMode::SpotifyQuaternary ? 3 : -1;
   SetSpotifyMonitorForegroundSlot(spotifyMonitorSlot);
   ApplyStationheadMonitorPlacement();
   if (layoutChanged) LayoutOverlay();
@@ -171,6 +176,9 @@ void PowerSavingController::CycleAudioMode() noexcept {
       ApplyAudioMode(AudioMode::SpotifyTertiary);
       break;
     case AudioMode::SpotifyTertiary:
+      ApplyAudioMode(AudioMode::SpotifyQuaternary);
+      break;
+    case AudioMode::SpotifyQuaternary:
       ApplyAudioMode(AudioMode::Muted);
       break;
     case AudioMode::Muted:
@@ -186,7 +194,8 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
   const int spotifyAudioSlot =
       mode == AudioMode::SpotifyPrimary ? 0 :
       mode == AudioMode::SpotifySecondary ? 1 :
-      mode == AudioMode::SpotifyTertiary ? 2 : -1;
+      mode == AudioMode::SpotifyTertiary ? 2 :
+      mode == AudioMode::SpotifyQuaternary ? 3 : -1;
   SetSpotifyAudioOutputSlot(spotifyAudioSlot);
 
   if (parent_ && IsWindow(parent_)) {
