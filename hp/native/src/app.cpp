@@ -131,7 +131,7 @@ void App::StartServices() {
   }
   LayoutWorkspace();
   renderer_->TickNativePanels(startupAt_);
-  logger_->Info(L"YouTube/native dashboard started; Spotify #1 at +10s, Spotify #2 at +20s, Spotify #3 at +30s, Spotify #4 at +40s, Stationhead at +50s");
+  logger_->Info(L"YouTube/native dashboard started; Spotify #1 at +30s, Spotify #2 at +60s, Spotify #3 at +90s, Spotify #4 at +120s, Stationhead at +150s");
 
   // The top-level HWND is still hidden. Prime both the parent background and
   // every visible child panel before allowing DWM to expose the window. This
@@ -169,17 +169,17 @@ void App::StartDeferredServices(int64_t now) {
     logger_->Warn(L"Native dashboard/YouTube started by deferred recovery");
   }
 
-  // Stage 2: issue Spotify launch at app startup +10 seconds. Its internal
-  // scheduler starts slot 1 immediately, slot 2 at +20 seconds, slot 3 at
-  // +30 seconds, and slot 4 at +40 seconds.
+  // Stage 2: issue Spotify launch at app startup +30 seconds. Its internal
+  // scheduler starts slot 1 immediately, slot 2 at +60 seconds, slot 3 at
+  // +90 seconds, and slot 4 at +120 seconds.
   if (!spotifyStarted_ &&
       now - startupAt_ >= kMediaStartupStageDelayMs) {
     renderer_->StartSpotify();
     spotifyStarted_ = true;
-    logger_->Info(L"Spotify #1 launch issued at +10 seconds; #2, #3 and #4 follow at 10-second offsets");
+    logger_->Info(L"Spotify #1 launch issued at +30 seconds; #2, #3 and #4 follow at 30-second offsets");
   }
 
-  // Stage 3: issue Stationhead launch at app startup +50 seconds, ten seconds
+  // Stage 3: issue Stationhead launch at app startup +150 seconds, thirty seconds
   // after Spotify slot 4, regardless of Spotify readiness.
   if (!stationheadStarted_ && stationhead_ &&
       now - startupAt_ >= kMediaStartupStageDelayMs * 5) {
@@ -188,7 +188,7 @@ void App::StartDeferredServices(int64_t now) {
     stationhead_->SetAudioMuted(stationheadAudioMuted_);
     MarkStationheadPlacementDirty();
     ApplyStationheadWindowPlacement(stationhead_->Status());
-    logger_->Info(L"Stationhead launch issued at +50 seconds");
+    logger_->Info(L"Stationhead launch issued at +150 seconds");
   }
 
   if (!cloudStarted_ && cloud_) {

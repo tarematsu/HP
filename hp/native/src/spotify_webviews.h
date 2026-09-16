@@ -3,7 +3,7 @@
 
 namespace hp {
 
-inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 10ULL * 1000ULL;
+inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 30ULL * 1000ULL;
 // spotify-v2-1 (the former amazon window) is owned by the single Stationhead
 // player. Restore the next four Spotify profiles without shifting their
 // existing cookies/storage: yuukiar is profile 2, ten is profile 3, nagi is

@@ -20,7 +20,7 @@ const music = sourcePart('spotify_music_target.inc');
 
 test('Spotify WebViews serialize startup without UI-thread blocking or polling timers', () => {
   assert.doesNotMatch(spotify, /CreateController\(slots_\[0\]\)/);
-  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 30ULL \* 1000ULL/);
   assert.match(spotifyHeader, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(schedule, /kSpotifyInitialStartDelayMs = 0/);
   assert.match(schedule, /scheduleStartTick_ = now \+ kSpotifyInitialStartDelayMs/);
