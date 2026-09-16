@@ -189,12 +189,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     element.addEventListener('click', onClick, true);
     lane.cleanup = cleanup;
     timer = setTimeout(cleanup, 1400);
-    return [
-      Math.max(0, Math.min(10000, Math.round(
-          (point.x / window.innerWidth) * 10000))),
-      Math.max(0, Math.min(10000, Math.round(
-          (point.y / window.innerHeight) * 10000)))
-    ];
+    return [point.x, point.y];
   };
 
   const dismissMessageDialog = () => {

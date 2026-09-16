@@ -41,8 +41,39 @@ class NativeMediaPanelHost final {
   void Resize() noexcept {
     if (!controller_ || !hostWindow_ || !IsWindow(hostWindow_)) return;
     RECT client{};
-    GetClientRect(hostWindow_, &client);
-    if (client.right <= client.left || client.bottom <= client.top) return;
+    if (!GetClientRect(hostWindow_, &client)) return;
+    const LONG width = client.right - client.left;
+    const LONG height = client.bottom - client.top;
+    if (width <= 0 || height <= 0) return;
+
+    // Power-saving monitor routing may clip the host HWND to 1x1. Keep the
+    // WebView viewport at its normal video size so responsive page layout and
+    // DOM coordinates remain stable while the surface is behind the dashboard.
+    if (width <= 1 || height <= 1) {
+      HWND parent = GetParent(hostWindow_);
+      RECT parentClient{};
+      if (parent && IsWindow(parent) && GetClientRect(parent, &parentClient) &&
+          parentClient.right > parentClient.left &&
+          parentClient.bottom > parentClient.top) {
+        LONG videoTop = parentClient.top;
+        HWND status = FindWindowExW(
+            parent, nullptr, L"HomePanelNativeSpotifyStatus", nullptr);
+        if (status && IsWindow(status)) {
+          RECT statusBounds{};
+          if (GetWindowRect(status, &statusBounds) &&
+              MapWindowPoints(nullptr, parent,
+                              reinterpret_cast<POINT*>(&statusBounds), 2)) {
+            videoTop = std::clamp<LONG>(
+                statusBounds.bottom, parentClient.top, parentClient.bottom - 1);
+          }
+        }
+        client = RECT{
+            0,
+            0,
+            std::max<LONG>(1, parentClient.right - parentClient.left),
+            std::max<LONG>(1, parentClient.bottom - videoTop)};
+      }
+    }
     controller_->put_Bounds(client);
   }
 
@@ -548,6 +579,92 @@ class NativeMediaPanelHost final {
     }
   }
 
+  static bool ParseCssPoint(LPCWSTR json, double* x, double* y) noexcept {
+    if (!json || !x || !y) return false;
+    try {
+      const std::wstring value(json);
+      if (value.size() < 5 || value.front() != L'[') return false;
+      const size_t comma = value.find(L',');
+      const size_t close = value.find(
+          L']', comma == std::wstring::npos ? 0 : comma + 1);
+      if (comma == std::wstring::npos || close == std::wstring::npos) return false;
+      const double parsedX = std::stod(value.substr(1, comma - 1));
+      const double parsedY = std::stod(value.substr(comma + 1, close - comma - 1));
+      if (!(parsedX >= 0.0 && parsedX <= 100000.0) ||
+          !(parsedY >= 0.0 && parsedY <= 100000.0)) {
+        return false;
+      }
+      *x = parsedX;
+      *y = parsedY;
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  void DispatchYoutubeCssPoint(
+      ICoreWebView2* webview, double cssX, double cssY) noexcept {
+    if (!webview || !(cssX >= 0.0 && cssX <= 100000.0) ||
+        !(cssY >= 0.0 && cssY <= 100000.0)) {
+      return;
+    }
+
+    const ULONGLONG clickToken = NativeMediaAcquireTrustedClick();
+    if (clickToken == 0) return;
+
+    ComPtr<ICoreWebView2> view = webview;
+    const auto alive = alive_;
+    const std::wstring moved =
+        NativeMediaTrustedMouseParams(L"mouseMoved", cssX, cssY, false);
+    const HRESULT dispatched = view->CallDevToolsProtocolMethod(
+        L"Input.dispatchMouseEvent", moved.c_str(),
+        Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+            [alive, view, cssX, cssY, clickToken](
+                HRESULT moveResult, LPCWSTR) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) ||
+                  FAILED(moveResult) || !view) {
+                NativeMediaReleaseTrustedClick(clickToken);
+                return S_OK;
+              }
+              const std::wstring pressed =
+                  NativeMediaTrustedMouseParams(
+                      L"mousePressed", cssX, cssY, true);
+              const HRESULT pressDispatched = view->CallDevToolsProtocolMethod(
+                  L"Input.dispatchMouseEvent", pressed.c_str(),
+                  Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                      [alive, view, cssX, cssY, clickToken](
+                          HRESULT pressedResult, LPCWSTR) -> HRESULT {
+                        if (!alive->load(std::memory_order_acquire) ||
+                            FAILED(pressedResult) || !view) {
+                          NativeMediaReleaseTrustedClick(clickToken);
+                          return S_OK;
+                        }
+                        const std::wstring released =
+                            NativeMediaTrustedMouseParams(
+                                L"mouseReleased", cssX, cssY, false);
+                        const HRESULT releaseDispatched =
+                            view->CallDevToolsProtocolMethod(
+                                L"Input.dispatchMouseEvent", released.c_str(),
+                                Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                                    [clickToken](HRESULT, LPCWSTR) -> HRESULT {
+                                      NativeMediaReleaseTrustedClick(clickToken);
+                                      return S_OK;
+                                    }).Get());
+                        if (FAILED(releaseDispatched)) {
+                          NativeMediaReleaseTrustedClick(clickToken);
+                        }
+                        return S_OK;
+                      }).Get());
+              if (FAILED(pressDispatched)) {
+                NativeMediaReleaseTrustedClick(clickToken);
+              }
+              return S_OK;
+            }).Get());
+    if (FAILED(dispatched)) {
+      NativeMediaReleaseTrustedClick(clickToken);
+    }
+  }
+
   void ProbeYoutubeWatchdog() noexcept {
     if (phase_ != Phase::YouTube || !webview_ || !IsYoutubeWatchPage()) return;
 
@@ -595,13 +712,14 @@ class NativeMediaPanelHost final {
                 ReloadYoutubePlaylist();
                 return S_OK;
               }
-              int x = 0;
-              int y = 0;
-              if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
+              double cssX = 0.0;
+              double cssY = 0.0;
+              if (SUCCEEDED(result) &&
+                  ParseCssPoint(json, &cssX, &cssY)) {
                 SetRecoveryState(
                     RecoveryState::Recovering,
                     kNativeMediaYoutubeWatchdogRecoveryMs);
-                ClickNormalizedPoint(x, y);
+                DispatchYoutubeCssPoint(requestView.Get(), cssX, cssY);
                 if (hostWindow_ && IsWindow(hostWindow_)) {
                   ArmTimer(kNativeMediaYoutubeWatchdogTimer,
                            kNativeMediaYoutubeWatchdogRecoveryMs);
