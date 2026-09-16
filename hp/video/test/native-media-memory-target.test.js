@@ -9,6 +9,7 @@ const spotify = source('spotify_controller_lifecycle.inc');
 const stationheadLayout = source('sh_layout.cpp');
 const stationheadWebview = source('sh_webview.cpp');
 const stationheadAudioLoss = source('sh_audio_loss.cpp');
+const stationheadBoundaryPolicy = source('sh_track_boundary_message_policy.h');
 const mediaHost = source('renderer_panels/media_host.inc');
 const featurePolicy = source('webview_feature_policy.h');
 
@@ -47,6 +48,23 @@ test('Stationhead switches LOW only after stable playback and NORMAL otherwise',
   assert.match(
     stationheadAudioLoss,
     /managedPlaybackReturnRequested_[\s\S]*ApplyStationheadPlaybackMemoryTarget\(webview_\.Get\(\), false\)[\s\S]*SetManagedPlaybackFallback/,
+  );
+});
+
+test('Stationhead restores NORMAL before the 50-minute periodic navigation starts', () => {
+  assert.match(
+    stationheadBoundaryPolicy,
+    /RestoreStationheadPlaybackMemoryTargetForReload[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+  );
+  assert.doesNotMatch(
+    stationheadBoundaryPolicy.match(
+      /inline void RestoreStationheadPlaybackMemoryTargetForReload[\s\S]*?\n}\n/,
+    )?.[0] ?? '',
+    /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
+  );
+  assert.match(
+    stationheadBoundaryPolicy,
+    /RestoreStationheadPlaybackMemoryTargetForReload\(webview_\.Get\(\)\);[\s\S]*SetStartupBounds\(\);[\s\S]*NavigateCurrentUrl\(nowMs, L"50-minute periodic refresh"\)/,
   );
 });
 
