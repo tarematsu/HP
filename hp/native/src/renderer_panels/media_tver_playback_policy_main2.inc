@@ -87,10 +87,6 @@ LR"JS(
     if (video.volume !== 1.0) video.volume = 1.0;
   } catch (_) {}
 
-  let cachedPlayerControls = null;
-  const playerControls = () => cachedPlayerControls || (cachedPlayerControls =
-      Array.from(playerRootFor(video)?.querySelectorAll(
-          'button, [role="button"], a, [aria-label], [title]') || []));
   const resumeVideo = () => {
     try {
       const pending = video.play();
@@ -113,23 +109,6 @@ LR"JS(
   }
 
   if (hasVisibleLoginPrompt()) return null;
-
-  const browserFullscreen = document.fullscreenElement ||
-      document.webkitFullscreenElement || document.msFullscreenElement;
-  if (browserFullscreen) {
-    if (state) state.fullscreenDirty = false;
-    return null;
-  }
-  if (state && state.fullscreenDirty === false) return null;
-
-  const controls = playerControls();
-  const exitFullscreenControl = controls.some(isExitFullscreenControl);
-  if (exitFullscreenControl) {
-    if (state) state.fullscreenDirty = false;
-    return null;
-  }
-  const fullscreenButton = controls.find(isEnterFullscreenControl) || null;
-  if (fullscreenButton && state) state.fullscreenDirty = false;
-  return fullscreenButton ? point(fullscreenButton) : null;
+  return null;
 })()
 )JS"
