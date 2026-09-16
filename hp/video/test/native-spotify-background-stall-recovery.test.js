@@ -40,12 +40,12 @@ test('queue scans once and runs at most one music reconciliation per pass', () =
   assert.match(schedule, /schedulerCursor_ = selected/);
 });
 
-test('lost scheduler-owned async work uses one epoch and one timeout', () => {
+test('lost scheduler-owned async work uses one epoch and EcoQoS-tolerant timeout', () => {
   assert.match(header, /enum class AsyncWork/);
   assert.match(header, /ULONGLONG asyncEpoch = 0/);
   assert.match(header, /ULONGLONG asyncStartedTick = 0/);
   assert.match(header, /AsyncWork asyncWork = AsyncWork::None/);
-  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 30ULL \* 1000ULL/);
   assert.match(phase, /ExpireStaleAsyncWork/);
   assert.match(music, /target->asyncEpoch != asyncEpoch/);
   assert.match(rotation, /observerTarget->asyncEpoch != asyncEpoch/);
