@@ -110,7 +110,12 @@ LR"JS(
         currentTime: current,
         sampledAt: now
       };
-      return current > 0.25 ? 'confirmed' : 'pending';
+      if (current > 0.25) {
+        clearProgressProbe();
+        clearRestartPending();
+        return 'confirmed';
+      }
+      return 'pending';
     }
 
     if (current > previous.currentTime + 0.05 || current > 0.25) {
