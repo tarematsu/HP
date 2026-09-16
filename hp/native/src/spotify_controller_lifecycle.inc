@@ -97,9 +97,13 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     Slot* const target = &slot;
     const auto alive = alive_;
 
-    // Spotify status has one update path: fixed polling. Start the first poll
-    // immediately; every successful scheduler pass advances it by 60 seconds.
-    slot.nextProcessTitlePollTick = GetTickCount64();
+    // Each account is sampled once per minute, with C/D/E phased 20 seconds
+    // apart from the common schedule start so their DOM probes never bunch up.
+    const ULONGLONG statusPhaseBase =
+        scheduleStartTick_ != 0 ? scheduleStartTick_ : GetTickCount64();
+    slot.nextProcessTitlePollTick =
+        statusPhaseBase +
+        static_cast<ULONGLONG>(slot.index) * kSpotifyProcessTitlePollPhaseMs;
 
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
