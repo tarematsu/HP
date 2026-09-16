@@ -1,7 +1,11 @@
 namespace hp {
 namespace {
 
-constexpr ULONGLONG kSpotifyProcessTitlePollMs = 10ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyProcessTitlePollMs = 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyProcessTitlePollPhaseMs =
+    kSpotifyProcessTitlePollMs / kSpotifyActiveAccountCount;
+static_assert(kSpotifyActiveAccountCount == 3);
+static_assert(kSpotifyProcessTitlePollPhaseMs == 20ULL * 1000ULL);
 
 // Status is intentionally independent from the managed/queued target. Read only
 // the Web Player's bottom now-playing surface so a scheduled track can never be
@@ -112,15 +116,36 @@ void SpotifyWebViews::RefreshProcessTitleStatus(
 }
 
 void SpotifyWebViews::PollProcessTitleStatus(ULONGLONG now) noexcept {
-  for (Slot& slot : slots_) {
+  size_t selected = slots_.size();
+  for (size_t i = 0; i < slots_.size(); ++i) {
+    const Slot& slot = slots_[i];
     if (!slot.webview) continue;
     if (slot.nextProcessTitlePollTick != 0 &&
         now < slot.nextProcessTitlePollTick) {
       continue;
     }
-    RefreshProcessTitleStatus(slot, slot.webview.Get());
-    slot.nextProcessTitlePollTick = now + kSpotifyProcessTitlePollMs;
+    selected = i;
+    break;
   }
+  if (selected >= slots_.size()) return;
+
+  // Never execute multiple DOM probes in one scheduler pass. If Windows was
+  // asleep or the UI thread was stalled long enough for multiple phases to
+  // expire, spread the overdue probes back out at 20-second intervals.
+  ULONGLONG catchUpDelay = kSpotifyProcessTitlePollPhaseMs;
+  for (size_t i = selected + 1; i < slots_.size(); ++i) {
+    Slot& slot = slots_[i];
+    if (!slot.webview) continue;
+    if (slot.nextProcessTitlePollTick == 0 ||
+        now >= slot.nextProcessTitlePollTick) {
+      slot.nextProcessTitlePollTick = now + catchUpDelay;
+      catchUpDelay += kSpotifyProcessTitlePollPhaseMs;
+    }
+  }
+
+  Slot& slot = slots_[selected];
+  RefreshProcessTitleStatus(slot, slot.webview.Get());
+  slot.nextProcessTitlePollTick = now + kSpotifyProcessTitlePollMs;
 }
 
 }  // namespace hp
