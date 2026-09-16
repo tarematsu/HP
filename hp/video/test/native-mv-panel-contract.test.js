@@ -168,28 +168,19 @@ test('TVer completion reuses the existing controller through the host navigation
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });
 
-test('media WebView blocks image requests while leaving fonts and playback resources available', () => {
+test('media WebView delegates image and font suppression to the shared UDF', () => {
   assert.match(
     mediaHost,
     /SharedWebViewEnvironment::Instance\(\)\.Acquire\(\s*userDataFolder_, false, false,/,
   );
-  assert.match(
-    mediaHost,
-    /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\)/,
-  );
-  assert.doesNotMatch(
-    mediaHost,
-    /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\)/,
-  );
-  assert.doesNotMatch(
-    mediaHost,
-    /AddWebResourceRequestedFilter\(\s*L"\*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA\)/,
-  );
-  assert.match(
-    mediaHost,
-    /CreateWebResourceResponse\(\s*nullptr, 204, L"No Content"/,
-  );
-  assert.match(mediaHost, /remove_WebResourceRequested\(webResourceRequestedToken_\)/);
+  assert.doesNotMatch(mediaHost, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
+  assert.doesNotMatch(mediaHost, /webResourceRequestedToken_/);
+  assert.doesNotMatch(mediaHost, /add_WebResourceRequested|AddWebResourceRequestedFilter/);
+
+  assert.match(webviewEnvironment, /blockImages = true;/);
+  assert.match(webviewEnvironment, /blockFonts = true;/);
+  assert.match(webviewEnvironment, /imagesEnabled=false,loadsImagesAutomatically=false/);
+  assert.match(webviewEnvironment, /downloadableBinaryFontsEnabled=false/);
 
   const fullResourceStart = webviewEnvironment.indexOf(
     'constexpr wchar_t kFullResourceWebView2Arguments[]',
