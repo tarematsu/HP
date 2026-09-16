@@ -30,10 +30,11 @@ inline void ReleaseWebViewStartupCacheResetClaim(
   }
 }
 
-// Drop only transient browser state once per profile for this app process.
-// Authentication and durable site data stay intact: cookies, localStorage and
-// IndexedDB are deliberately not included. Controller recovery later in the
-// same run skips the reset so Service Workers are not repeatedly destroyed.
+// Drop only the transient HTTP disk cache once per profile for this app process.
+// Keep CacheStorage and Service Workers paired with the profile's persistent
+// cookies/localStorage/IndexedDB. Clearing workers while retaining Spotify auth
+// state can leave Stationhead apparently authorized but without a coherent
+// playback/DRM bootstrap on the first navigation after an app update.
 inline void ResetWebViewStartupCaches(
     ICoreWebView2* webview,
     WebViewStartupCacheResetCompletion completion) noexcept {
@@ -92,10 +93,7 @@ inline void ResetWebViewStartupCaches(
       return;
     }
 
-    constexpr auto kinds = static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(
-        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE |
-        COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE |
-        COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS);
+    constexpr auto kinds = COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE;
     auto handler = Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
         [finish, profilePath](HRESULT clearResult) -> HRESULT {
           if (FAILED(clearResult)) {
