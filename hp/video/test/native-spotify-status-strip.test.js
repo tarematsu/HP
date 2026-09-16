@@ -174,7 +174,8 @@ test('Spotify status overlays the independent 16:9 media surface', () => {
   assert.match(hostWindow, /videoWidth = std::max<LONG>\(1, videoHeight \* 16 \/ 9\)/);
   assert.match(hostWindow, /RECT statusBounds = videoBounds/);
   assert.doesNotMatch(hostWindow, /videoBounds\.top =[^;]*statusBounds\.bottom/);
-  assert.match(hostWindow, /SetWindowPos\(status, HWND_TOP/);
+  assert.match(hostWindow, /SetWindowPos\(status, nullptr[\s\S]*SWP_NOZORDER/);
+  assert.match(hostWindow, /DestroyWindow\(status\)/);
   assert.match(phase, /InvalidateSpotifyStatusForHost/);
   assert.match(phase, /InvalidateRect\(status, nullptr, FALSE\)/);
 });
