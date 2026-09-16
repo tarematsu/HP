@@ -291,13 +291,39 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
   });
   if (!registered) return false;
 
+  const LONG totalWidth = std::max(1L, bounds.right - bounds.left);
   const LONG totalHeight = std::max(1L, bounds.bottom - bounds.top);
   const LONG statusHeight = std::min(
       kNativeSpotifyStatusHeight, std::max(1L, totalHeight / 3));
+  const LONG availableVideoHeight = std::max<LONG>(1, totalHeight - statusHeight);
+
+  // Fit the actual YouTube/TVer host into the two-row media cell at 16:9.
+  // In the normal dashboard geometry height is the limiting dimension, so the
+  // host is narrowed and centered without changing the surrounding three-row grid.
+  LONG videoWidth = std::min<LONG>(
+      totalWidth, std::max<LONG>(1, availableVideoHeight * 16 / 9));
+  LONG videoHeight = std::max<LONG>(1, videoWidth * 9 / 16);
+  if (videoHeight > availableVideoHeight) {
+    videoHeight = availableVideoHeight;
+    videoWidth = std::min<LONG>(
+        totalWidth, std::max<LONG>(1, videoHeight * 16 / 9));
+  }
+  const LONG contentLeft =
+      bounds.left + std::max<LONG>(0, (totalWidth - videoWidth) / 2);
+  const LONG groupHeight = statusHeight + videoHeight;
+  const LONG groupTop =
+      bounds.top + std::max<LONG>(0, (totalHeight - groupHeight) / 2);
+
   RECT statusBounds = bounds;
+  statusBounds.left = contentLeft;
+  statusBounds.top = groupTop;
+  statusBounds.right = contentLeft + videoWidth;
   statusBounds.bottom = statusBounds.top + statusHeight;
   RECT videoBounds = bounds;
-  videoBounds.top = std::min(videoBounds.bottom - 1, statusBounds.bottom);
+  videoBounds.left = contentLeft;
+  videoBounds.top = std::min(bounds.bottom - 1, statusBounds.bottom);
+  videoBounds.right = contentLeft + videoWidth;
+  videoBounds.bottom = std::min<LONG>(bounds.bottom, videoBounds.top + videoHeight);
 
   if (!EnsureNativeSpotifyStatusPanel(parentWindow, statusBounds)) return false;
 
