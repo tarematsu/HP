@@ -5,7 +5,7 @@ namespace hp {
 namespace {
 
 constexpr int kStationheadPlaybackViewportWidth = 720;
-constexpr int kStationheadPlaybackViewportHeight = 480;
+constexpr int kStationheadPlaybackViewportHeight = 960;
 
 int RectWidth(const RECT& bounds) noexcept {
   return std::max(1L, bounds.right - bounds.left);
@@ -213,7 +213,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const RECT playbackControllerBounds = StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep the playback WebView viewport fixed at 720x480 in every state.
+  // Keep the playback WebView viewport fixed at 720x960 in every state.
   // The host HWND remains full workspace size for stable z-order and is
   // visually clipped to 1x1 while backgrounded.
   if (authHostWindow && IsWindow(authHostWindow)) {
