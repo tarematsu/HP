@@ -61,10 +61,16 @@ void SpotifyWebViews::ClickSlotCssPoint(
   // The reconcile script already returned CSS viewport coordinates. Verify the
   // same point still resolves to a Spotify Play control, then return the exact
   // current button center. The returned coordinates are sent to CDP verbatim;
-  // never reconstruct them from HWND pixels, DPI, or WebView zoom.
+  // never reconstruct them from HWND pixels, DPI, or WebView zoom. This
+  // preflight also owns the staged recovery policy: failed Play starts are
+  // retried after five seconds, and the third attempt requests one page Reload
+  // for this target generation before falling back to click-only retries.
   std::wstring preflight = L"(() => {";
   preflight += L"const x=" + std::to_wstring(cssX) + L";";
   preflight += L"const y=" + std::to_wstring(cssY) + L";";
+  preflight +=
+      std::wstring(L"const reloadUsed=") +
+      (slot.playRecoveryReloadGeneration == targetGeneration ? L"true;" : L"false;");
   preflight +=
       L"if(!Number.isFinite(x)||!Number.isFinite(y)||"
       L"window.innerWidth<=0||window.innerHeight<=0||"
@@ -77,12 +83,23 @@ void SpotifyWebViews::ClickSlotCssPoint(
       L"if(!trustedPlay)return null;"
       L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
       L"if(label.includes('pause')||label.includes('一時停止'))return null;"
+      L"const target=window.__homePanelSpotifyNativeTarget;"
+      L"const targetPath=target&&(target.path||target.trackPath||target.pagePath||'');"
+      L"if(!targetPath)return null;"
+      L"let retry=window.__homePanelSpotifyNativePlayRetry;"
+      L"if(!retry||retry.path!==targetPath){retry={path:targetPath,count:0,lastAttemptAt:0};window.__homePanelSpotifyNativePlayRetry=retry;}"
+      L"const now=Date.now();"
+      L"if(retry.lastAttemptAt&&now-retry.lastAttemptAt>30000){retry.count=0;retry.lastAttemptAt=0;}"
+      L"if(window.__homePanelSpotifyZeroSecondRestartPath===targetPath){retry.count=0;retry.lastAttemptAt=0;}"
+      L"if(retry.count>0&&now-retry.lastAttemptAt<5000)return null;"
+      L"if(retry.count>=2){if(!reloadUsed)return 'reload';retry.count=0;}"
       L"const rect=button.getBoundingClientRect();"
       L"const centerX=rect.left+rect.width/2;"
       L"const centerY=rect.top+rect.height/2;"
       L"if(!Number.isFinite(centerX)||!Number.isFinite(centerY)||"
       L"centerX<0||centerX>window.innerWidth||"
       L"centerY<0||centerY>window.innerHeight)return null;"
+      L"retry.count+=1;retry.lastAttemptAt=now;"
       L"return [centerX,centerY];})()";
 
   Slot* const target = &slot;
@@ -100,6 +117,21 @@ void SpotifyWebViews::ClickSlotCssPoint(
               return S_OK;
             }
             if (target->state == SlotState::Playing) {
+              ArmRobustScheduler();
+              return S_OK;
+            }
+            if (SUCCEEDED(result) && json &&
+                std::wstring_view(json) == L"\"reload\"" &&
+                target->playRecoveryReloadGeneration != targetGeneration) {
+              target->playRecoveryReloadGeneration = targetGeneration;
+              target->trustedClickBlockedUntilTick = 0;
+              SetSlotState(*target, SlotState::Navigating);
+              target->nextRecoveryTick =
+                  GetTickCount64() + kSpotifyRecoveryRetryMs;
+              if (FAILED(requestedView->Reload())) {
+                MarkSlotRecovering(*target, GetTickCount64());
+              }
+              RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
             }
@@ -141,9 +173,9 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
 
     const ULONGLONG targetGeneration = slot.targetGeneration;
     const ULONGLONG pageEpoch = slot.pageEpoch;
-    // Playback state is probed independently every second. This longer window
-    // is only a duplicate-click failsafe; an observed zero-second restart clears
-    // it immediately so recovery never waits for the wall clock.
+    // Playback state is probed independently every two seconds. This five-second
+    // window prevents duplicate trusted clicks while still allowing fast
+    // recovery when a heavily loaded renderer drops the first Play gesture.
     slot.trustedClickBlockedUntilTick =
         now + kSpotifyCdpPlayRetryFailsafeMs;
 
