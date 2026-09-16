@@ -50,7 +50,7 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('Spotify keeps one full-client onscreen surface for recovery, playback and authentication', () => {
+test('Spotify keeps full-client internal surfaces and exposes only the selected monitor slot full-size', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySurfaceZoom = 0\.50/);
@@ -60,11 +60,15 @@ test('Spotify keeps one full-client onscreen surface for recovery, playback and 
   assert.doesNotMatch(layout, /kSpotifyLowPowerPlaybackWidth|kSpotifyLowPowerPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
+  assert.match(layout, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_/);
   assert.match(layout, /const int hostX = client\.left;/);
   assert.match(layout, /const int hostY = client\.top;/);
   assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\);/);
   assert.match(layout, /const int height = std::max\(1L, client\.bottom - client\.top\);/);
-  assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground\)/);
+  assert.match(header, /int monitorForegroundSlot_ = -1/);
+  assert.match(layout, /void SpotifyWebViews::SetMonitorForegroundSlot\(int slotIndex\) noexcept/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /else if \(authentication\)|activeWidth|activeHeight/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
@@ -200,12 +204,13 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow|get_ZoomFactor|GetDpiForWindow|cssWidth|cssHeight/);
 });
 
-test('Spotify defaults muted but can be explicitly unmuted by audio mode C', () => {
+test('Spotify defaults muted and audio modes C/D select exactly one slot', () => {
   assert.match(header, /kSpotifyActiveAccountCount = 2/);
-  assert.match(header, /void SetOutputMuted\(bool muted\) noexcept/);
-  assert.match(spotify, /bool gSpotifyAudioMuted = true/);
-  assert.match(spotify, /audio->put_IsMuted\(gSpotifyAudioMuted \? TRUE : FALSE\)/);
-  assert.match(spotify, /void SetSpotifyAudioMuted\(bool muted\) noexcept/);
+  assert.match(header, /void SetAudioOutputSlot\(int slotIndex\) noexcept/);
+  assert.match(header, /int SlotIndexForWebView\(ICoreWebView2\* webview\) const noexcept/);
+  assert.match(spotify, /int gSpotifyAudioOutputSlot = -1/);
+  assert.match(spotify, /slotIndex != gSpotifyAudioOutputSlot/);
+  assert.match(spotify, /void SetSpotifyAudioOutputSlot\(int slotIndex\) noexcept/);
   assert.match(spotify, /SetSpotifyOutputMuted\(slot\.webview\)/);
 });
 
