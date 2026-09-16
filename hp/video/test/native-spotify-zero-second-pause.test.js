@@ -32,7 +32,7 @@ test('first Play click waits one second after page bootstrap while status probes
   assert.match(scoped, /const playbackProbeMs = 2000/);
   assert.match(scoped, /const nativeLoadedAt = Number\(window\.__homePanelSpotifyNativeLoadedAt\)/);
   assert.match(scoped, /Date\.now\(\) - nativeLoadedAt >= 1000/);
-  assert.match(scoped, /if \(!initialPlayDelayElapsed && !restartPending\(\)\) return playbackProbeMs;/);
+  assert.match(scoped, /if \(!initialPlayDelayElapsed && !restartPending\(\)\) return 1000;/);
   assert.doesNotMatch(scripts + scoped, /performance\.now\(\)/);
 });
 
