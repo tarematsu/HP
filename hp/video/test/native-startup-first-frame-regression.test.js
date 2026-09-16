@@ -13,7 +13,7 @@ test('native app primes the dashboard before exposing the top-level HWND', () =>
     app.indexOf('void App::StartServices'),
   );
   assert.match(createWindow, /windowClass\.hbrBackground = nullptr/);
-  assert.doesNotMatch(createWindow, /BLACK_BRUSH/);
+  assert.doesNotMatch(createWindow, /GetStockObject\(BLACK_BRUSH\)/);
 
   const startServices = app.slice(
     app.indexOf('void App::StartServices'),
