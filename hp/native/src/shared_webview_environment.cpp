@@ -49,6 +49,82 @@ std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
   return arguments;
 }
 
+void ApplyEfficiencyModeToProcess(INT32 processId) noexcept {
+  if (processId <= 0) return;
+
+  HANDLE process = OpenProcess(PROCESS_SET_INFORMATION, FALSE,
+                               static_cast<DWORD>(processId));
+  if (!process) return;
+
+  // Match Task Manager Efficiency mode's CPU policy: low base priority plus
+  // explicit EcoQoS execution-speed throttling. Failures are deliberately
+  // best-effort because a WebView2 child may exit between enumeration and the
+  // policy calls.
+  SetPriorityClass(process, IDLE_PRIORITY_CLASS);
+
+  PROCESS_POWER_THROTTLING_STATE throttling{};
+  throttling.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+  throttling.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+  throttling.StateMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED;
+  SetProcessInformation(process, ProcessPowerThrottling, &throttling,
+                        sizeof(throttling));
+
+  CloseHandle(process);
+}
+
+void ApplyEfficiencyModeToEnvironment(
+    ICoreWebView2Environment* environment) noexcept {
+  if (!environment) return;
+
+  ComPtr<ICoreWebView2Environment8> environment8;
+  if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment8))) ||
+      !environment8) {
+    return;
+  }
+
+  ComPtr<ICoreWebView2ProcessInfoCollection> processes;
+  if (FAILED(environment8->GetProcessInfos(&processes)) || !processes) return;
+
+  UINT count = 0;
+  if (FAILED(processes->get_Count(&count))) return;
+  for (UINT index = 0; index < count; ++index) {
+    ComPtr<ICoreWebView2ProcessInfo> processInfo;
+    if (FAILED(processes->GetValueAtIndex(index, &processInfo)) ||
+        !processInfo) {
+      continue;
+    }
+    INT32 processId = 0;
+    if (SUCCEEDED(processInfo->get_ProcessId(&processId))) {
+      ApplyEfficiencyModeToProcess(processId);
+    }
+  }
+}
+
+void EnableEfficiencyModeForEnvironment(
+    ICoreWebView2Environment* environment) noexcept {
+  if (!environment) return;
+
+  ComPtr<ICoreWebView2Environment8> environment8;
+  if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment8))) ||
+      !environment8) {
+    return;
+  }
+
+  EventRegistrationToken processInfosChangedToken{};
+  environment8->add_ProcessInfosChanged(
+      Callback<ICoreWebView2ProcessInfosChangedEventHandler>(
+          [](ICoreWebView2Environment* sender, IUnknown*) -> HRESULT {
+            ApplyEfficiencyModeToEnvironment(sender);
+            return S_OK;
+          })
+          .Get(),
+      &processInfosChangedToken);
+
+  // ProcessInfosChanged only covers later topology changes. Apply immediately
+  // as well so the initial browser/GPU/renderer set enters Efficiency mode.
+  ApplyEfficiencyModeToEnvironment(environment);
+}
+
 void InvokeEnvironmentCompletionNoexcept(
     SharedWebViewEnvironment::Completion& completion,
     HRESULT result,
@@ -248,6 +324,10 @@ void SharedWebViewEnvironment::Complete(const std::wstring& key,
       readyEnvironment = entry.environment;
     }
     callbacks.swap(entry.pending);
+  }
+
+  if (readyEnvironment) {
+    EnableEfficiencyModeForEnvironment(readyEnvironment.Get());
   }
 
   for (auto& callback : callbacks) {
