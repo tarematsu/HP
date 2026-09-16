@@ -1,5 +1,7 @@
 // Native MV host HWND registration, Spotify status strip, message dispatch and
 // bounds management.
+extern fs::path gNativeMediaDataDir;
+
 namespace {
 constexpr wchar_t kNativeSpotifyStatusClass[] = L"HomePanelNativeSpotifyStatus";
 constexpr LONG kNativeSpotifyStatusHeight = 56;
@@ -94,11 +96,10 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
         drawStatusCard(i, heading, track.empty() ? L"--" : track);
       }
 
-      const int64_t stationheadPlayCount = StationheadStatusStripTodayPlayCount();
-      const std::wstring stationheadDetail = stationheadPlayCount >= 0
-          ? L"再生数 " + std::to_wstring(stationheadPlayCount)
-          : L"再生数 --";
-      drawStatusCard(statuses.size(), L"Stationhead", stationheadDetail);
+      const std::wstring stationheadTrack =
+          StationheadStatusStripCurrentTrackTitle(gNativeMediaDataDir, UnixMillis());
+      drawStatusCard(statuses.size(), L"Stationhead",
+                     stationheadTrack.empty() ? L"--" : stationheadTrack);
 
       SelectObject(paintDc, previousPen);
       SelectObject(paintDc, previousBrush);
