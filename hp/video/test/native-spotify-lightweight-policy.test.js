@@ -28,12 +28,12 @@ test('Spotify CSS reduction stays visual-only and avoids playback DOM', () => {
   assert.doesNotMatch(policy, /MutationObserver/);
 });
 
-test('Spotify resource blocking is limited to player-page images and fonts', () => {
+test('Spotify blocks images and fonts at the request layer for every page', () => {
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
-  assert.match(policy, /StartsWithInsensitive\([\s\S]*source, L"https:\/\/open\.spotify\.com\/"\)/);
-  assert.match(policy, /!StartsWithInsensitive\([\s\S]*source, L"https:\/\/open\.spotify\.com\/login"\)/);
   assert.match(policy, /CreateWebResourceResponse\([\s\S]*204, L"No Content"/);
+  assert.doesNotMatch(policy, /get_Source\(/);
+  assert.doesNotMatch(policy, /playerPage/);
 
   for (const context of [
     'MEDIA', 'SCRIPT', 'STYLESHEET', 'XML_HTTP_REQUEST', 'FETCH', 'WEBSOCKET',
