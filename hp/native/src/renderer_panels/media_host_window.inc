@@ -20,6 +20,7 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
     case WM_TIMER:
       if (static_cast<UINT_PTR>(wparam) == kNativeSpotifyStatusPollTimer) {
         PollSpotifyPlaybackStatusesNow();
+        InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
       }
       break;
@@ -46,6 +47,7 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
           SelectObject(paintDc, GetStockObject(DEFAULT_GUI_FONT));
 
       const auto statuses = GetSpotifyPlaybackStatuses();
+      const size_t cellCount = statuses.size() + 1;
       const LONG stripWidth = std::max(1L, client.right - client.left);
       constexpr LONG outerInset = 3;
       constexpr LONG cardGap = 4;
@@ -54,16 +56,18 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
       HGDIOBJ previousBrush = SelectObject(paintDc, cardBrush);
       HGDIOBJ previousPen = SelectObject(paintDc, cardPen);
 
-      for (size_t i = 0; i < statuses.size(); ++i) {
+      const auto drawStatusCard = [&](size_t index,
+                                      const std::wstring& heading,
+                                      const std::wstring& detail) {
         const LONG cellLeft = client.left +
-            static_cast<LONG>((static_cast<long long>(stripWidth) * i) /
-                              statuses.size());
+            static_cast<LONG>((static_cast<long long>(stripWidth) * index) /
+                              cellCount);
         const LONG cellRight = client.left +
-            static_cast<LONG>((static_cast<long long>(stripWidth) * (i + 1)) /
-                              statuses.size());
-        const LONG leftInset = outerInset + (i == 0 ? 0 : cardGap / 2);
+            static_cast<LONG>((static_cast<long long>(stripWidth) * (index + 1)) /
+                              cellCount);
+        const LONG leftInset = outerInset + (index == 0 ? 0 : cardGap / 2);
         const LONG rightInset = outerInset +
-            (i + 1 == statuses.size() ? 0 : cardGap - cardGap / 2);
+            (index + 1 == cellCount ? 0 : cardGap - cardGap / 2);
         RECT card{
             cellLeft + leftInset,
             client.top + outerInset,
@@ -76,16 +80,25 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
 
         RECT first{card.left + 8, card.top + 3, card.right - 8, card.top + 22};
         RECT second{card.left + 8, card.top + 24, card.right - 8, card.bottom - 3};
-        const std::wstring& heading = statuses[i].windowName;
-        const std::wstring& track = statuses[i].trackTitle;
-        const wchar_t* trackText = track.empty() ? L"--" : track.c_str();
         DrawTextW(paintDc, heading.c_str(), -1, &first,
                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
                       DT_NOPREFIX);
-        DrawTextW(paintDc, trackText, -1, &second,
+        DrawTextW(paintDc, detail.c_str(), -1, &second,
                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
                       DT_NOPREFIX);
+      };
+
+      for (size_t i = 0; i < statuses.size(); ++i) {
+        const std::wstring& track = statuses[i].trackTitle;
+        drawStatusCard(
+            i, statuses[i].windowName, track.empty() ? L"--" : track);
       }
+
+      const int64_t stationheadPlayCount = StationheadStatusStripTodayPlayCount();
+      const std::wstring stationheadDetail = stationheadPlayCount >= 0
+          ? L"再生数 " + std::to_wstring(stationheadPlayCount)
+          : L"再生数 --";
+      drawStatusCard(statuses.size(), L"Stationhead", stationheadDetail);
 
       SelectObject(paintDc, previousPen);
       SelectObject(paintDc, previousBrush);
