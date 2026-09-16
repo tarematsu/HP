@@ -25,15 +25,16 @@ const lifecycle = readFileSync(new URL('../../native/src/renderer_lifecycle.cpp'
 const mediaPanel = readFileSync(new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const mediaHost = readFileSync(new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 
-test('yuukiar, ten and nagi keep their existing isolated profiles', () => {
+test('yuukiar, ten, nagi and hinata keep their existing isolated profiles', () => {
   assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
-  assert.match(header, /kSpotifyActiveAccountCount = 3/);
+  assert.match(header, /kSpotifyActiveAccountCount = 4/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
   assert.match(scripts, /std::array<std::wstring_view, kSpotifyActiveAccountCount> kSpotifyPanelNames/);
   assert.match(scripts, /L"yuukiar"/);
   assert.match(scripts, /L"ten"/);
   assert.match(scripts, /L"nagi"/);
-  assert.doesNotMatch(scripts, /L"hinata"|L"amazon"|L"ozeki"/);
+  assert.match(scripts, /L"hinata"/);
+  assert.doesNotMatch(scripts, /L"amazon"|L"ozeki"/);
   assert.match(spotify, /webview2-youtube-mv/);
   assert.match(mediaHost, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
@@ -183,8 +184,11 @@ test('all managed Spotify targets use the current ManagedTrack as the single tar
   assert.doesNotMatch(scripts, /__homePanelLonesomeRabbitLoop|ensureRepeatOne/);
 });
 
-test('rotation construction is isolated from music navigation and target routing', () => {
+test('rotation construction is isolated from music navigation and starts each account at A/B/C/D', () => {
   assert.match(cycle, /PrepareTimedRotationCycle/);
+  assert.match(cycle, /const size_t startGroupIndex = slot\.index % cloudRotationGroups_\.size\(\)/);
+  assert.match(cycle, /\(startGroupIndex \+ offset\) % cloudRotationGroups_\.size\(\)/);
+  assert.match(cycle, /appendGroup\(cloudRotationGroups_\[groupIndex\], groupIndex\)/);
   assert.doesNotMatch(cycle, /NavigateMusicTarget|PostSpotifyTargetDescriptorForSlot/);
   assert.match(music, /NavigateMusicTarget/);
   assert.doesNotMatch(music, /PrepareTimedRotationCycle/);
@@ -205,8 +209,8 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow|get_ZoomFactor|GetDpiForWindow|cssWidth|cssHeight/);
 });
 
-test('Spotify defaults muted and audio modes C/D/E select exactly one slot', () => {
-  assert.match(header, /kSpotifyActiveAccountCount = 3/);
+test('Spotify defaults muted and audio modes C/D/E/F select exactly one slot', () => {
+  assert.match(header, /kSpotifyActiveAccountCount = 4/);
   assert.match(header, /void SetAudioOutputSlot\(int slotIndex\) noexcept/);
   assert.match(header, /int SlotIndexForWebView\(ICoreWebView2\* webview\) const noexcept/);
   assert.match(spotify, /int gSpotifyAudioOutputSlot = -1/);
