@@ -12,20 +12,10 @@ const music = source('spotify_music_target.inc');
 const observerRuntime = source('spotify_media_observer_runtime.inc');
 
 function rawScopedScript() {
-  const symbol = 'kSpotifyScopedTrackReconcileScript';
-  const assignment = `constexpr wchar_t ${symbol}[] =`;
-  let cursor = scoped.indexOf(assignment);
-  assert.notEqual(cursor, -1, `${symbol} assignment not found`);
-  cursor += assignment.length;
-
-  const opener = 'LR"JS(\n';
-  const closer = '\n)JS"';
-  while (/\s/.test(scoped[cursor] || '')) cursor += 1;
-  assert.ok(scoped.startsWith(opener, cursor), `${symbol} raw string not found`);
-  const bodyStart = cursor + opener.length;
-  const end = scoped.indexOf(closer, bodyStart);
-  assert.notEqual(end, -1, `${symbol} raw string terminator not found`);
-  return scoped.slice(bodyStart, end);
+  const chunks = [...scoped.matchAll(/LR"JS\(\n([\s\S]*?)\n\)JS"/g)]
+    .map(match => match[1]);
+  assert.ok(chunks.length >= 2, 'scoped reconcile raw string chunks not found');
+  return chunks.join('\n');
 }
 
 function fakeButton(label, visible = false) {
