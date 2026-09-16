@@ -12,8 +12,11 @@ namespace {
 // 4) CDP clicks normally target the visible target-page Play control. After a
 //    verified zero-second stall, the matching global Play may be used as a
 //    recovery-only trusted click target when Spotify omits the page control.
-constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
-LR"JS(
+//
+// Keep this JavaScript in two literals: MSVC has a relatively small limit for
+// one wide string literal, and this reconcile probe intentionally carries more
+// state validation than the other Spotify scripts.
+constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart1[] = LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
   const targetPath = target &&
@@ -91,7 +94,9 @@ LR"JS(
     const metadataTitle = normalize(metadata && metadata.title);
     return !!targetTitle && !!metadataTitle && metadataTitle === targetTitle;
   };
+)JS";
 
+constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
   const clearProgressProbe = () => {
     window.__homePanelSpotifyProgressProbe = null;
   };
@@ -228,9 +233,19 @@ LR"JS(
   }
 
   clearProgressProbe();
+  // If Spotify already exposes a global player control but its identity does
+  // not prove this target, do not treat that as a missing-control transition.
+  // Returning null preserves the existing wrong-track/global-Play rejection.
+  if (playerButtons.length > 0) return null;
   return nextTransitionRetryDelay();
 })()
 )JS";
+
+const std::wstring kSpotifyScopedTrackReconcileScriptStorage =
+    std::wstring(kSpotifyScopedTrackReconcileScriptPart1) + L"\n" +
+    kSpotifyScopedTrackReconcileScriptPart2;
+const wchar_t* const kSpotifyScopedTrackReconcileScript =
+    kSpotifyScopedTrackReconcileScriptStorage.c_str();
 
 }  // namespace
 }  // namespace hp
