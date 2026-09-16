@@ -10,13 +10,15 @@ const rotation = source('spotify_timed_end_rotation.inc');
 const click = source('spotify_background_click.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('Spotify uses one full-client surface for startup, playback, recovery and Monitor C', () => {
+test('Spotify uses one full-client internal surface for startup, playback, recovery and Monitor C/D', () => {
   assert.match(layout, /const int hostX = client\.left/);
   assert.match(layout, /const int hostY = client\.top/);
   assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\)/);
   assert.match(layout, /const int height = std::max\(1L, client\.bottom - client\.top\)/);
   assert.doesNotMatch(layout, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\)/);
-  assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_/);
+  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /authentication \|\| monitorForeground/);
   assert.match(layout, /const RECT desired\{hostX, hostY, hostX \+ width, hostY \+ height\}/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter,[\s\S]*hostX, hostY, width, height, flags\)/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor|compactPlayback|SpotifyMediaPanelRect/);
