@@ -41,12 +41,14 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('Spotify keeps a full-client onscreen surface for recovery, playback and authentication', () => {
+test('Spotify keeps full-client internal surfaces and selected Monitor C/D foregrounds one slot', () => {
   assert.match(layout, /const int hostX = client\.left;/);
   assert.match(layout, /const int hostY = client\.top;/);
   assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\);/);
   assert.match(layout, /const int height = std::max\(1L, client\.bottom - client\.top\);/);
-  assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_/);
+  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /authentication \|\| monitorForeground/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
