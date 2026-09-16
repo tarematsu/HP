@@ -14,6 +14,10 @@ inline constexpr int64_t StationheadPeriodicRefreshIntervalMs() noexcept {
   return 50 * 60'000;
 }
 
+inline constexpr int64_t StationheadAudioHealthCheckIntervalMs() noexcept {
+  return 2 * 60'000;
+}
+
 inline void RestoreStationheadPlaybackMemoryTargetForReload(
     ICoreWebView2* webview) noexcept {
   if (!webview) return;
@@ -37,18 +41,25 @@ static_assert(StationheadPlaybackNavigationActive(false, true, false));
 static_assert(!StationheadPlaybackNavigationActive(false, true, true));
 static_assert(!StationheadPlaybackNavigationActive(false, false, false));
 static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
+static_assert(StationheadAudioHealthCheckIntervalMs() == 2 * 60'000);
 
 }  // namespace hp
 
 // Extend StationheadPlayer while sh.h is parsed, then remove the temporary
 // source-rewriting macros before any implementation file is compiled. The
-// single Stationhead player refreshes every 50 minutes.
+// single Stationhead player refreshes every 50 minutes and independently polls
+// WebView2's native audio state every two minutes.
 #define NextWakeAt()                                                          \
   NextWakeAt() const noexcept {                                               \
     int64_t next = NextWakeAtBase();                                          \
     if (periodicRefreshStartedAt_.Active()) {                                 \
       const int64_t due = periodicRefreshStartedAt_ +                         \
           ::hp::StationheadPeriodicRefreshIntervalMs();                       \
+      if (next <= 0 || due < next) next = due;                                \
+    }                                                                         \
+    if (audioHealthCheckStartedAt_.Active()) {                                \
+      const int64_t due = audioHealthCheckStartedAt_ +                        \
+          ::hp::StationheadAudioHealthCheckIntervalMs();                      \
       if (next <= 0 || due < next) next = due;                                \
     }                                                                         \
     return next;                                                              \
@@ -58,7 +69,9 @@ static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
 #define RecoverUnavailableAuthorization()                                    \
   RecoverUnavailableAuthorization() {                                        \
     RecoverUnavailableAuthorizationBase();                                   \
-    RefreshPeriodicNavigation(UnixMillis());                                  \
+    const int64_t nowMs = UnixMillis();                                       \
+    PollPeriodicAudioHealth(nowMs);                                           \
+    RefreshPeriodicNavigation(nowMs);                                         \
   }                                                                           \
   void RecoverUnavailableAuthorizationBase()
 
@@ -72,6 +85,71 @@ static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
 
 #define nextAutoClickAt_                                                      \
   nextAutoClickAt_ = 0;                                                       \
+  void PollPeriodicAudioHealth(int64_t nowMs) {                               \
+    const auto lifecycle = createCallbackAlive_;                              \
+    const auto previousLifecycle = audioHealthLifecycle_.lock();              \
+    if (!webview_ || previousLifecycle != lifecycle) {                        \
+      audioHealthLifecycle_ = lifecycle;                                      \
+      audioHealthCheckStartedAt_ = 0;                                         \
+      if (!webview_) return;                                                  \
+    }                                                                         \
+                                                                                \
+    bool statusNavigating = false;                                            \
+    {                                                                         \
+      std::lock_guard lock(mutex_);                                           \
+      statusNavigating = status_.navigating;                                  \
+    }                                                                         \
+    const bool navigationActive =                                             \
+        ::hp::StationheadPlaybackNavigationActive(                            \
+            navigationInFlight_.load(std::memory_order_acquire),              \
+            statusNavigating, spotifyAuthorization_);                         \
+    if (!webViewConfigured_ || !startupNavigationStarted_ ||                  \
+        spotifyAuthorization_ || loginRequired_ || navigationActive ||        \
+        recreating_.load(std::memory_order_relaxed)) {                        \
+      audioHealthCheckStartedAt_ = 0;                                         \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    if (!audioHealthCheckStartedAt_.Active()) {                               \
+      audioHealthCheckStartedAt_ = nowMs;                                     \
+      return;                                                                 \
+    }                                                                         \
+    const int64_t intervalMs =                                                \
+        ::hp::StationheadAudioHealthCheckIntervalMs();                        \
+    if (nowMs - audioHealthCheckStartedAt_ < intervalMs) return;              \
+                                                                                \
+    audioHealthCheckStartedAt_ = nowMs;                                       \
+    ComPtr<ICoreWebView2_8> audioView;                                        \
+    BOOL nativePlaying = FALSE;                                               \
+    if (FAILED(webview_.As(&audioView)) || !audioView ||                      \
+        FAILED(audioView->get_IsDocumentPlayingAudio(&nativePlaying))) {      \
+      audioHealthCheckStartedAt_ = nowMs - (intervalMs - 10'000);             \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    const bool playing = nativePlaying != FALSE;                              \
+    ApplyAudioPlaybackState(playing, L"2-minute native audio health check");  \
+    if (playing) return;                                                      \
+                                                                                \
+    static constexpr wchar_t kPeriodicAudioRecoveryScript[] = LR"JS(          \
+(() => {                                                                      \
+  try { window.__homepanelPrimaryStationhead?.scan?.(0); } catch (_) {}       \
+  for (const media of document.querySelectorAll('audio,video')) {             \
+    if (!media || media.ended || media.readyState < 2) continue;              \
+    try {                                                                     \
+      if (media.paused) {                                                     \
+        const result = media.play?.();                                        \
+        if (result?.catch) result.catch(() => {});                            \
+      }                                                                       \
+    } catch (_) {}                                                            \
+  }                                                                           \
+  return true;                                                                \
+})()                                                                          \
+)JS";                                                                         \
+    webview_->ExecuteScript(kPeriodicAudioRecoveryScript, nullptr);           \
+    nextAutoClickAt_ = nowMs;                                                 \
+    AttemptNativeStartClick(nowMs);                                           \
+  }                                                                           \
   void RefreshPeriodicNavigation(int64_t nowMs) {                             \
     const auto lifecycle = createCallbackAlive_;                              \
     const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
@@ -120,6 +198,8 @@ static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
     SetStartupBounds();                                                       \
     NavigateCurrentUrl(nowMs, L"50-minute periodic refresh");                \
   }                                                                           \
+  MonotonicElapsedTimestamp audioHealthCheckStartedAt_;                       \
+  std::weak_ptr<std::atomic<bool>> audioHealthLifecycle_;                     \
   MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
   std::weak_ptr<std::atomic<bool>> periodicRefreshLifecycle_;                 \
   int64_t periodicRefreshNavigationObserved_
