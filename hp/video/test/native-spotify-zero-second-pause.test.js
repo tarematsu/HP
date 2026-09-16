@@ -69,9 +69,12 @@ test('startup and target-transition paths contain no executable generic media st
   assert.doesNotMatch(runtime, executablePause);
 });
 
-test('playback confirmation remains native-owned independently of status title events', () => {
+test('playback confirmation remains native-owned independently of status polling', () => {
   assert.match(scoped, /label\.includes\('pause'\) \|\| label\.includes\('一時停止'\)/);
-  assert.match(controller, /add_DocumentTitleChanged/);
+  assert.doesNotMatch(
+    controller,
+    /add_DocumentTitleChanged|ICoreWebView2DocumentTitleChangedEventHandler/,
+  );
   assert.match(music, /target->observedTrackTitle = currentTrack->title/);
   assert.match(music, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(music, /target->playbackConfirmed = true/);
