@@ -21,7 +21,7 @@ const wrapper = readFileSync(
 
 test('Spotify music reconcile scrolls the selected Play control before returning CSS click points', () => {
   assert.match(scoped, /element\.scrollIntoView\(\{ block: 'center', inline: 'nearest' \}\)/);
-  assert.match(scoped, /if \(!element\.isConnected\) return null/);
+  assert.match(scoped, /if \(element\.isConnected === false\) return null/);
   assert.match(scoped, /return \[centerX, centerY\]/);
   assert.doesNotMatch(scoped, /centerX \/ window\.innerWidth|centerY \/ window\.innerHeight|10000/);
 });

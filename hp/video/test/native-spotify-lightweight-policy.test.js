@@ -16,10 +16,12 @@ test('Spotify lightweight CSS is wired before controller lifecycle code', () => 
   assert.match(controller, /if \(!playerPage\) \{ ArmRobustScheduler\(\); return S_OK; \}[\s\S]*ApplySpotifyLightweightCss\(sender\)/);
 });
 
-test('Spotify CSS disables presentation effects and removes non-playback DOM', () => {
+test('Spotify CSS narrows presentation suppression and removes non-playback DOM', () => {
   assert.match(policy, /location\.hostname !== 'open\.spotify\.com'/);
   assert.match(policy, /homepanel-spotify-lightweight/);
-  assert.match(policy, /\*, \*::before, \*::after/);
+  assert.doesNotMatch(policy, /\*, \*::before, \*::after/);
+  assert.match(policy, /html,[\s\S]*body,[\s\S]*#main,[\s\S]*main,[\s\S]*nav,[\s\S]*aside,[\s\S]*footer/);
+  assert.match(policy, /data-testid="main-view-container"/);
   assert.match(policy, /animation: none !important/);
   assert.match(policy, /animation-play-state: paused !important/);
   assert.match(policy, /transition: none !important/);

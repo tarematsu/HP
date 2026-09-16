@@ -58,14 +58,16 @@ test('verified Pause state starts the native completion clock', () => {
   assert.doesNotMatch(confirm, /ArmTimedEndObserver|observer-synced/);
 });
 
-test('startup retries use target handoff state probes and bounded adaptive backoff', () => {
+test('startup retries use two-second state probes, five-second Play spacing, and bounded adaptive backoff', () => {
   assert.match(music, /kSpotifyTrackTransitionRetryMs = 500ULL/);
-  assert.match(music, /kSpotifyPlaybackStateProbeMs = 1ULL \* 1000ULL/);
-  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 30ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
   assert.match(music, /kSpotifyTrackTransitionRetryMaxMs = 2ULL \* 1000ULL/);
   assert.match(music, /ParseSpotifyRetryDelay\(json\)/);
   assert.match(music, /callbackNow \+ retryDelayMs/);
   assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
+  assert.match(click, /now-retry\.lastAttemptAt<5000/);
+  assert.match(click, /requestedView->Reload\(\)/);
   assert.doesNotMatch(music, /kSpotifyCdpPlayConfirmWaitMs|kSpotifyDirectPlayConfirmWaitMs|direct-play|DirectPlay/);
   assert.doesNotMatch(music + click, /kSpotifyPlaybackStartRetryMs/);
 });

@@ -2,14 +2,16 @@ namespace hp {
 namespace {
 
 // Minimal playback start/status probe for the already-selected Spotify track:
-// 1) the target page remains the navigation authority and first Play waits one
-//    second after NavigationCompleted bootstrap before trusted input is sent;
+// 1) the target page remains the navigation authority and first Play waits two
+//    seconds after NavigationCompleted bootstrap before trusted input is sent;
 // 2) Pause is confirmed only after an available media element has actually
 //    advanced; a zero-second stall is recovered only after repeated unchanged
 //    observations instead of a wall-clock timeout;
 // 3) if the target-page control is omitted entirely, the global Pause control
 //    is trusted only after now-playing identity matches the target;
-// 4) CDP clicks normally target the visible target-page Play control. After a
+// 4) DOM controls/media are cached per target while they remain connected, so
+//    recovery probes avoid repeating full selector scans under renderer load;
+// 5) CDP clicks normally target the visible target-page Play control. After a
 //    verified zero-second stall, the matching global Play may be used as a
 //    recovery-only trusted click target when Spotify omits the page control.
 //
@@ -27,7 +29,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart1[] = LR"JS(
       (targetPath.startsWith('/track/') && location.pathname.endsWith(targetPath));
   if (!onTargetPage) return null;
 
-  const playbackProbeMs = 1000;
+  const playbackProbeMs = 2000;
   const stalledObservationLimit = 4;
   const transitionRetryDelays = [500, 1000, 2000];
   const transitionState = window.__homePanelSpotifyTransitionRetry ||
@@ -49,10 +51,35 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart1[] = LR"JS(
     return delay;
   };
 
+  const domCache = window.__homePanelSpotifyDomCache ||
+      (window.__homePanelSpotifyDomCache = {
+        path: '', pageButtons: null, playerButtons: null,
+        nowPlayingLink: null, media: null
+      });
+  if (domCache.path !== targetPath) {
+    domCache.path = targetPath;
+    domCache.pageButtons = null;
+    domCache.playerButtons = null;
+    domCache.nowPlayingLink = null;
+    domCache.media = null;
+  }
+
   const normalize = value =>
       String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const enabled = element => !!element && !element.disabled &&
-      element.getAttribute('aria-disabled') !== 'true';
+  const enabled = element => !!element && element.isConnected !== false &&
+      !element.disabled && element.getAttribute('aria-disabled') !== 'true';
+  const cachedButtons = (key, selector) => {
+    const cached = Array.isArray(domCache[key])
+        ? domCache[key].filter(element => enabled(element))
+        : [];
+    if (cached.length > 0) {
+      domCache[key] = cached;
+      return cached;
+    }
+    const fresh = Array.from(document.querySelectorAll(selector)).filter(enabled);
+    domCache[key] = fresh.length > 0 ? fresh : null;
+    return fresh;
+  };
   const visible = element => {
     if (!enabled(element)) return false;
     const style = window.getComputedStyle(element);
@@ -76,17 +103,28 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart1[] = LR"JS(
       (value === targetPath ||
        (targetPath.startsWith('/track/') && value.endsWith(targetPath)));
   const currentTrackMatchesTarget = () => {
-    for (const selector of [
-      '[data-testid="now-playing-widget"] a[href*="/track/"]',
-      '[data-testid="now-playing-bar"] [data-testid="context-item-link"][href*="/track/"]',
-      'footer [data-testid="context-item-link"][href*="/track/"]'
-    ]) {
-      const link = document.querySelector(selector);
-      if (!link) continue;
+    let link = domCache.nowPlayingLink;
+    if (!link || link.isConnected === false) {
+      link = null;
+      for (const selector of [
+        '[data-testid="now-playing-widget"] a[href*="/track/"]',
+        '[data-testid="now-playing-bar"] [data-testid="context-item-link"][href*="/track/"]',
+        'footer [data-testid="context-item-link"][href*="/track/"]'
+      ]) {
+        const candidate = document.querySelector(selector);
+        if (!candidate) continue;
+        link = candidate;
+        break;
+      }
+      domCache.nowPlayingLink = link;
+    }
+    if (link) {
       try {
         const path = new URL(link.href, location.href).pathname;
         if (path.includes('/track/')) return sameTrackPath(path);
-      } catch (_) {}
+      } catch (_) {
+        domCache.nowPlayingLink = null;
+      }
     }
 
     const targetTitle = normalize(target && target.title);
@@ -106,12 +144,21 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
     if (restartPending()) window.__homePanelSpotifyZeroSecondRestartPath = null;
   };
   const targetMedia = () => {
+    const cached = domCache.media;
+    if (cached && cached.isConnected !== false && !cached.ended) {
+      const current = Number(cached.currentTime);
+      if (Number.isFinite(current) && current >= 0 && !cached.paused) {
+        return cached;
+      }
+    }
     const media = Array.from(document.querySelectorAll('audio, video')).filter(candidate => {
-      if (!candidate || candidate.ended) return false;
+      if (!candidate || candidate.isConnected === false || candidate.ended) return false;
       const current = Number(candidate.currentTime);
       return Number.isFinite(current) && current >= 0;
     });
-    return media.find(candidate => !candidate.paused) || media[0] || null;
+    const selected = media.find(candidate => !candidate.paused) || media[0] || null;
+    domCache.media = selected;
+    return selected;
   };
   const verifyPauseProgress = button => {
     const media = targetMedia();
@@ -177,7 +224,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
     }
     try { element.scrollIntoView({ block: 'center', inline: 'nearest' }); }
     catch (_) {}
-    if (!element.isConnected) return null;
+    if (element.isConnected === false) return null;
     const rect = element.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -189,10 +236,10 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
 
   const nativeLoadedAt = Number(window.__homePanelSpotifyNativeLoadedAt);
   const initialPlayDelayElapsed = Number.isFinite(nativeLoadedAt) &&
-      Date.now() - nativeLoadedAt >= 1000;
+      Date.now() - nativeLoadedAt >= 2000;
 
-  const pageButtons = Array.from(document.querySelectorAll(
-      'button[data-testid="play-button"]')).filter(enabled);
+  const pageButtons = cachedButtons(
+      'pageButtons', 'button[data-testid="play-button"]');
   const visiblePageButton = pageButtons.find(visible) || null;
   if (visiblePageButton) {
     resetTransitionRetry();
@@ -218,8 +265,8 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
   // Global Pause remains confirmation-only during normal playback. A global
   // Play becomes eligible only after this target itself was proven stalled at
   // zero seconds, and only while now-playing identity still matches the target.
-  const playerButtons = Array.from(document.querySelectorAll(
-      'button[data-testid="control-button-playpause"]')).filter(enabled);
+  const playerButtons = cachedButtons(
+      'playerButtons', 'button[data-testid="control-button-playpause"]');
   const playerPause = playerButtons.find(isPauseControl) || null;
   if (playerPause && currentTrackMatchesTarget()) {
     resetTransitionRetry();

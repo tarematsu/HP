@@ -21,18 +21,30 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
   assert.doesNotMatch(helper, /SetForegroundWindow|SendInput|MOUSEEVENTF_/);
 });
 
-test('Spotify trusted click probes playback state while keeping a duplicate-click failsafe', () => {
+test('Spotify trusted click probes every two seconds with a five-second retry guard', () => {
   assert.match(header, /ULONGLONG trustedClickBlockedUntilTick = 0/);
+  assert.match(header, /ULONGLONG playRecoveryReloadGeneration = 0/);
   assert.match(header, /ULONGLONG pageEpoch = 0/);
   assert.doesNotMatch(header, /trustedClickGeneration|trustedClickTargetGeneration|trustedClickInFlight|trustedClickStartTick/);
-  assert.match(music, /kSpotifyPlaybackStateProbeMs = 1ULL \* 1000ULL/);
-  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 30ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
   assert.match(helper, /now < slot\.trustedClickBlockedUntilTick/);
   assert.match(helper, /trustedClickBlockedUntilTick =\s*now \+ kSpotifyCdpPlayRetryFailsafeMs/);
   assert.match(helper, /nextRecoveryTick = stateProbeAt \+ kSpotifyPlaybackStateProbeMs/);
   assert.match(helper, /target->targetGeneration != targetGeneration/);
   assert.match(helper, /target->pageEpoch != pageEpoch/);
   assert.match(helper, /target->webview\.Get\(\) != view\.Get\(\)/);
+});
+
+test('two failed Play attempts escalate to one Reload per target generation', () => {
+  assert.match(helper, /__homePanelSpotifyNativePlayRetry/);
+  assert.match(helper, /now-retry\.lastAttemptAt<5000/);
+  assert.match(helper, /retry\.count>=2/);
+  assert.match(helper, /if\(!reloadUsed\)return 'reload'/);
+  assert.match(helper, /playRecoveryReloadGeneration != targetGeneration/);
+  assert.match(helper, /playRecoveryReloadGeneration = targetGeneration/);
+  assert.match(helper, /requestedView->Reload\(\)/);
+  assert.match(helper, /slot\.playRecoveryReloadGeneration == targetGeneration \? L"true;" : L"false;"/);
 });
 
 test('target changes and WebView rebuilds invalidate old trusted click chains', () => {
