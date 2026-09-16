@@ -21,9 +21,9 @@ const runtime = source('spotify_media_observer_runtime.inc');
 const events = source('spotify_media_observer_events.inc');
 const cloud = source('spotify_cloud_playlist.inc');
 
-test('Spotify startup uses ten-second stagger and one adaptive scheduler timer', () => {
+test('Spotify startup uses thirty-second stagger and one adaptive scheduler timer', () => {
   assert.match(wrapper, /spotify_stagger_schedule\.inc/);
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 30ULL \* 1000ULL/);
   assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(phase, /SchedulerTimerProc/);
   assert.match(schedule, /const auto startupReady/);

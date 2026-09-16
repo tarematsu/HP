@@ -25,9 +25,9 @@ test('slow multi-window recovery uses one time-based retry instead of layered wa
   assert.doesNotMatch(header, /lastModeNavigateTick|unhealthySinceTick|unhealthyChecks/);
 });
 
-test('healthy scheduler uses an hourly safety ceiling and exact ten-second startup boundaries', () => {
+test('healthy scheduler uses an hourly safety ceiling and exact thirty-second startup boundaries', () => {
   assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 30ULL \* 1000ULL/);
   assert.match(phaseSync, /static_cast<ULONGLONG>\(i\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(phaseSync, /considerTick\(boundary\)/);
   assert.doesNotMatch(phaseSync, /::SetTimer\(|KillTimer\(/);

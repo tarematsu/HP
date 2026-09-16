@@ -141,7 +141,7 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
 test('one adaptive threadpool timer services the state queue and exact deadlines', () => {
   assert.match(header, /PTP_TIMER schedulerTimer_ = nullptr/);
   assert.match(header, /std::atomic<bool> schedulerWakePosted_\{false\}/);
-  assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 30ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifySchedulerBootstrapMs = 2U \* 1000U/);
   assert.match(phaseSync, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
   assert.match(phaseSync, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
