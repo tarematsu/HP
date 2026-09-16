@@ -198,6 +198,7 @@ class SpotifyWebViews final {
   int monitorForegroundSlot_ = -1;
 };
 
+void PollSpotifyPlaybackStatusesNow() noexcept;
 std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
 GetSpotifyPlaybackStatuses() noexcept;
 
