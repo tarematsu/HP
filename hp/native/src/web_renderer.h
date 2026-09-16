@@ -63,7 +63,6 @@ struct NativeMinuteFactsProjection {
 
 inline constexpr int kRadarCanvasWidth = 1296;
 inline constexpr int kRadarCanvasHeight = 729;
-inline constexpr int kNativeSpotifyStatusStripHeight = 56;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
 struct NativeDashboardLayout {
@@ -86,32 +85,29 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
   const int marginX = clientWidth * 14 / 1000;
-  const int marginY = clientHeight * 20 / 1000;
+  const int marginY = clientHeight * 14 / 1000;
   const int gapX = std::max(6, clientWidth * 11 / 1000);
-  const int gapY = std::max(6, clientHeight * 18 / 1000);
+  const int gapY = std::max(6, clientHeight * 11 / 1000);
 
   const RECT inner{bounds.left + marginX, bounds.top + marginY,
                    bounds.right - marginX, bounds.bottom - marginY};
   const int innerWidth = std::max(1L, inner.right - inner.left);
   const int innerHeight = std::max(1L, inner.bottom - inner.top);
-  const int maxMediaWidth = std::max(1, innerWidth - gapX - 1);
-  const int mediaWidth = std::clamp(clientWidth / 2, 1, maxMediaWidth);
-  const int sideWidth = std::max(1, innerWidth - gapX - mediaWidth);
-  const int maxMediaHeight = std::max(1, innerHeight - gapY - 1);
-  const int maxVideoHeight =
-      std::max(1, maxMediaHeight - kNativeSpotifyStatusStripHeight);
-  const int videoHeight =
-      std::clamp(mediaWidth * 9 / 16, 1, maxVideoHeight);
-  const int mediaHeight = std::min(
-      maxMediaHeight, videoHeight + kNativeSpotifyStatusStripHeight);
+  const int availableWidth = std::max(2, innerWidth - gapX);
+  const int availableHeight = std::max(2, innerHeight - gapY);
+  const int sideWidth = std::max(1, availableWidth / 2);
+  const int mediaWidth = std::max(1, innerWidth - gapX - sideWidth);
+  const int topHeight = std::max(1, availableHeight / 2);
+  const int bottomHeight = std::max(1, innerHeight - gapY - topHeight);
 
   NativeDashboardLayout layout;
   layout.side = RECT{inner.left, inner.top, inner.left + sideWidth,
-                     inner.top + mediaHeight};
-  layout.media = RECT{inner.left + sideWidth + gapX, inner.top, inner.right,
-                      inner.top + mediaHeight};
-  layout.main = RECT{inner.left, inner.top + mediaHeight + gapY,
-                     inner.right, inner.bottom};
+                     inner.top + topHeight};
+  layout.media = RECT{inner.left + sideWidth + gapX, inner.top,
+                      inner.left + sideWidth + gapX + mediaWidth,
+                      inner.top + topHeight};
+  layout.main = RECT{inner.left, inner.top + topHeight + gapY,
+                     inner.right, inner.top + topHeight + gapY + bottomHeight};
   if (layout.side.right <= layout.side.left) {
     layout.side.right = layout.side.left + 1;
   }
@@ -120,6 +116,9 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   }
   if (layout.media.right <= layout.media.left) {
     layout.media.right = layout.media.left + 1;
+  }
+  if (layout.media.bottom <= layout.media.top) {
+    layout.media.bottom = layout.media.top + 1;
   }
   if (layout.main.right <= layout.main.left) {
     layout.main.right = layout.main.left + 1;
