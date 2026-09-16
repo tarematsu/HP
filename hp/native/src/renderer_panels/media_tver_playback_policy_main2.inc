@@ -114,15 +114,22 @@ LR"JS(
 
   if (hasVisibleLoginPrompt()) return null;
 
+  const browserFullscreen = document.fullscreenElement ||
+      document.webkitFullscreenElement || document.msFullscreenElement;
+  if (browserFullscreen) {
+    if (state) state.fullscreenDirty = false;
+    return null;
+  }
+  if (state && state.fullscreenDirty === false) return null;
+
   const controls = playerControls();
   const exitFullscreenControl = controls.some(isExitFullscreenControl);
   if (exitFullscreenControl) {
-    if (state) {
-      state.fullscreenDirty = false;
-      state.fullscreenKeyRequestedAt = 0;
-    }
+    if (state) state.fullscreenDirty = false;
     return null;
   }
-  return fullscreenAction(controls);
+  const fullscreenButton = controls.find(isEnterFullscreenControl) || null;
+  if (fullscreenButton && state) state.fullscreenDirty = false;
+  return fullscreenButton ? point(fullscreenButton) : null;
 })()
 )JS"
