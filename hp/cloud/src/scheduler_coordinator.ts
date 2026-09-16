@@ -6,7 +6,7 @@ import {
 import type { Env } from "./sources";
 
 const COORDINATOR_NAME = "global";
-const WATCHDOG_THROTTLE_MS = 24 * 60 * 60_000;
+const WATCHDOG_THROTTLE_MS = 60 * 60_000;
 const MIN_ALARM_DELAY_MS = 1_000;
 const RECOVERY_ALARM_DELAY_MS = 60_000;
 
