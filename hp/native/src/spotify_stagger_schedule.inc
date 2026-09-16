@@ -41,15 +41,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (now < scheduleStartTick_) return;
 
   ProbeDueTimedCompletions(now);
-  for (Slot& slot : slots_) {
-    if (slot.state == SlotState::Playing && slot.nextRecoveryTick != 0 &&
-        now >= slot.nextRecoveryTick) {
-      SetSpotifyMemoryUsageTarget(
-          slot.webview.Get(), COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-      slot.nextRecoveryTick = 0;
-    }
-    ExpireStaleAsyncWork(slot, now);
-  }
+  for (Slot& slot : slots_) ExpireStaleAsyncWork(slot, now);
 
   const size_t count = slots_.size();
   const size_t scanStart = (schedulerCursor_ + 1) % count;

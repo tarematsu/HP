@@ -7,7 +7,6 @@ const source = name => readFileSync(
 
 const spotifyController = source('spotify_controller_lifecycle.inc');
 const spotifyPhase = source('spotify_phase_sync.inc');
-const spotifySchedule = source('spotify_stagger_schedule.inc');
 const spotifyPolicy = source('spotify_runtime_policy.inc');
 const stationheadLayout = source('sh_layout.cpp');
 const stationheadWebview = source('sh_webview.cpp');
@@ -30,10 +29,11 @@ test('YouTube/TVer keep the experimental WebView2 low-memory target', () => {
   );
 });
 
-test('Stationhead switches LOW only after five seconds stable playback and NORMAL otherwise', () => {
+test('Stationhead switches LOW immediately after playback confirmation and NORMAL otherwise', () => {
   assert.match(
     stationheadAudioLossPolicy,
     /kStationheadAudioLossArmStabilityMs = 5'000/,
+    'audio-loss fallback keeps its independent five-second stability guard',
   );
   assert.match(stationheadAudioLoss, /ICoreWebView2_19/);
   assert.match(stationheadAudioLoss, /get_MemoryUsageTargetLevel/);
@@ -43,19 +43,20 @@ test('Stationhead switches LOW only after five seconds stable playback and NORMA
   );
   assert.match(
     stationheadAudioLoss,
-    /StationheadAudioLossCanArm\(audioPlaying, navigationActive, playingForMs\)/,
+    /const bool playbackConfirmed =\s*audioPlaying && !navigationActive &&[\s\S]*!snapshot\.loginRequired && !snapshot\.spotifyAuthorization[\s\S]*!loginRequired_ && !spotifyAuthorization_/,
   );
   assert.match(
     stationheadAudioLoss,
-    /!snapshot\.loginRequired && !snapshot\.spotifyAuthorization[\s\S]*!loginRequired_ && !spotifyAuthorization_/,
-  );
-  assert.match(
-    stationheadAudioLoss,
-    /ApplyStationheadPlaybackMemoryTarget\(webview_\.Get\(\), stablePlayback\)/,
+    /ApplyStationheadPlaybackMemoryTarget\(webview_\.Get\(\), playbackConfirmed\)/,
   );
   assert.match(
     stationheadAudioLoss,
     /managedPlaybackReturnRequested_[\s\S]*ApplyStationheadPlaybackMemoryTarget\(webview_\.Get\(\), false\)[\s\S]*SetManagedPlaybackFallback/,
+  );
+  assert.match(
+    stationheadAudioLoss,
+    /StationheadAudioLossCanArm\(\s*true, navigationActive, playingForMs\)/,
+    'audio-loss fallback arming remains separate from the memory-target switch',
   );
 });
 
@@ -100,19 +101,19 @@ test('Spotify and Stationhead layout/auth setup do not apply an unconditional me
   );
 });
 
-test('Spotify keeps NORMAL for five seconds after playback confirmation then switches LOW', () => {
+test('Spotify switches LOW immediately after playback confirmation', () => {
   assert.match(spotifyPolicy, /put_MemoryUsageTargetLevel\(level\)/);
   assert.match(
     spotifyPhase,
-    /kSpotifyLowMemoryStablePlaybackMs = 5ULL \* 1000ULL/,
+    /slot\.state = state;[\s\S]*state == SlotState::Playing[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+  );
+  assert.doesNotMatch(
+    spotifyPhase,
+    /kSpotifyLowMemoryStablePlaybackMs/,
   );
   assert.match(
     spotifyPhase,
-    /enteringPlaying[\s\S]*nextRecoveryTick[\s\S]*kSpotifyLowMemoryStablePlaybackMs[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
-  );
-  assert.match(
-    spotifySchedule,
-    /slot\.state == SlotState::Playing[\s\S]*now >= slot\.nextRecoveryTick[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*slot\.nextRecoveryTick = 0/,
+    /state == SlotState::NotCreated \|\| state == SlotState::Authenticating \|\|\s*state == SlotState::Playing[\s\S]*slot\.nextRecoveryTick = 0/,
   );
   assert.match(
     spotifyPhase,
