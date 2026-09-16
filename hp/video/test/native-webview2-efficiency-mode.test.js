@@ -18,13 +18,12 @@ test('native app process does not enable Windows Efficiency mode', () => {
   assert.doesNotMatch(app, /Native process Efficiency mode/);
 });
 
-test('all shared WebView2 processes use IDLE priority with EcoQoS', () => {
-  assert.match(sharedEnvironment, /ICoreWebView2Environment8/);
-  assert.match(sharedEnvironment, /GetProcessInfos/);
-  assert.match(sharedEnvironment, /add_ProcessInfosChanged/);
-  assert.match(sharedEnvironment, /PROCESS_POWER_THROTTLING_EXECUTION_SPEED/);
-  assert.match(sharedEnvironment, /SetProcessInformation\(process, ProcessPowerThrottling/);
-  assert.match(sharedEnvironment, /SetPriorityClass\(process, IDLE_PRIORITY_CLASS\)/);
-  assert.doesNotMatch(sharedEnvironment, /SetPriorityClass\(process, BELOW_NORMAL_PRIORITY_CLASS\)/);
-  assert.match(sharedEnvironment, /EnableEfficiencyModeForEnvironment\(readyEnvironment\.Get\(\)\)/);
+test('shared WebView2 processes do not force Windows Efficiency mode', () => {
+  assert.doesNotMatch(sharedEnvironment, /ApplyEfficiencyModeToProcess/);
+  assert.doesNotMatch(sharedEnvironment, /ApplyEfficiencyModeToEnvironment/);
+  assert.doesNotMatch(sharedEnvironment, /EnableEfficiencyModeForEnvironment/);
+  assert.doesNotMatch(sharedEnvironment, /PROCESS_POWER_THROTTLING_EXECUTION_SPEED/);
+  assert.doesNotMatch(sharedEnvironment, /ProcessPowerThrottling/);
+  assert.doesNotMatch(sharedEnvironment, /SetPriorityClass\(/);
+  assert.doesNotMatch(sharedEnvironment, /IDLE_PRIORITY_CLASS/);
 });
