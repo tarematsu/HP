@@ -40,8 +40,8 @@ LR"JS(
     if (!(media instanceof HTMLMediaElement) ||
         media.readyState < HTMLMediaElement.HAVE_METADATA ||
         window.innerWidth <= 0 || window.innerHeight <= 0) return null;
-    const rect = visibleRect(media);
-    if (!rect) return null;
+    const rect = media.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
     const insetX = Math.min(24, Math.max(8, rect.width / 8));
     const insetY = Math.min(24, Math.max(8, rect.height / 8));
     const x = rect.right - insetX;
