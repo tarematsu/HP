@@ -50,10 +50,6 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   const SlotState previousState = slot.state;
   slot.state = state;
-  // Reassert the native WebView2 mute route whenever playback state changes.
-  // The selected output is derived from the live runtime lane, so this is
-  // idempotent and repairs a stale/missed mute transition without DOM state.
-  if (slot.webview) SetSpotifyOutputMuted(slot.webview);
   if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
     ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
     if (state == SlotState::Playing) {
