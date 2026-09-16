@@ -331,7 +331,19 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
 void StationheadPlayer::SetStartupBounds() {
   selectedTab_ = StationheadTabKind::None;
   viewVisible_ = false;
-  LayoutControllers();
+  if (!EnsureHostWindow()) {
+    std::lock_guard lock(mutex_);
+    status_.visible = false;
+    return;
+  }
+  // Startup, reload and recovery navigation must restore a full controller
+  // viewport before the new document is created. This avoids carrying the
+  // compact 320x180 responsive layout into Start Listening discovery/clicks.
+  ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
+                              authController_.Get(), bounds_,
+                              false, false, false, false);
+  std::lock_guard lock(mutex_);
+  status_.visible = StationheadMonitorForeground();
 }
 
 void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
