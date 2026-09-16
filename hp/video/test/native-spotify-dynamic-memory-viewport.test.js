@@ -8,15 +8,21 @@ const source = name => readFileSync(
 const wrapper = source('spotify_webviews.inc');
 const policy = source('spotify_runtime_policy.inc');
 const phase = source('spotify_phase_sync.inc');
+const schedule = source('spotify_stagger_schedule.inc');
 const controller = source('spotify_controller_lifecycle.inc');
 const layout = source('spotify_host_layout.inc');
 const host = source('spotify_host_lifecycle.inc');
 
-test('Spotify uses LOW memory only after playback is confirmed', () => {
+test('Spotify uses LOW memory only after five seconds of confirmed playback', () => {
   assert.match(wrapper, /#include "spotify_runtime_policy\.inc"/);
+  assert.match(phase, /kSpotifyLowMemoryStablePlaybackMs = 5ULL \* 1000ULL/);
   assert.match(
     phase,
-    /state == SlotState::Playing[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+    /enteringPlaying[\s\S]*nextRecoveryTick[\s\S]*kSpotifyLowMemoryStablePlaybackMs[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+  );
+  assert.match(
+    schedule,
+    /slot\.state == SlotState::Playing[\s\S]*now >= slot\.nextRecoveryTick[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*slot\.nextRecoveryTick = 0/,
   );
   assert.match(phase, /MarkSlotRecovering[\s\S]*SetSlotState\(slot, SlotState::Recovering\)/);
 });

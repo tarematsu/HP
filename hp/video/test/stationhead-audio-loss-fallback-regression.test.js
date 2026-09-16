@@ -15,7 +15,7 @@ const rendererHeader = source('web_renderer.h');
 const cmake = readFileSync(new URL('../../native/CMakeLists.txt', import.meta.url), 'utf8');
 
 test('audio loss timing boundaries remain fixed', () => {
-  assert.match(policy, /kStationheadAudioLossArmStabilityMs = 15'000/);
+  assert.match(policy, /kStationheadAudioLossArmStabilityMs = 5'000/);
   assert.match(policy, /kStationheadAudioLossGraceMs = 11'000/);
   assert.match(policy, /kStationheadAudioLossDomSettleMs = 1'000/);
   assert.match(policy, /kStationheadFallbackMinimumDwellMs = 15'000/);
