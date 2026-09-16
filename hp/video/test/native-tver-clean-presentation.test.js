@@ -47,8 +47,11 @@ test('TVer clean presentation aggressively reduces the page to the video branch'
   assert.match(aggressivePresentation, /data-testid\*="episode-info"/);
   assert.match(aggressivePresentation, /overflow:hidden !important/);
   assert.match(aggressivePresentation, /max-height:100vh !important/);
+  assert.match(aggressivePresentation, /:not\(\[role="dialog"\]\)/);
+  assert.match(aggressivePresentation, /:not\(:has\(\[role="dialog"\]\)\)/);
+  assert.match(aggressivePresentation, /:not\(\[aria-modal="true"\]\)/);
+  assert.match(aggressivePresentation, /:not\(:has\(\[aria-modal="true"\]\)\)/);
   assert.doesNotMatch(aggressivePresentation, /\[data-testid\*="ad"/i);
   assert.doesNotMatch(aggressivePresentation, /\[class\*="advert"/i);
-  assert.doesNotMatch(aggressivePresentation, /\[role=["']dialog["']\]/i);
   assert.doesNotMatch(aggressivePresentation, /video\s*\{[\s\S]*?display\s*:\s*none/i);
 });
