@@ -665,39 +665,6 @@ class NativeMediaPanelHost final {
     }
   }
 
-  void ClickYoutubeNormalizedPoint(
-      int xTenThousandths, int yTenThousandths) noexcept {
-    if (phase_ != Phase::YouTube || !webview_) return;
-
-    // The watchdog script reports a viewport-relative point. Re-project that
-    // point inside the page and send the resulting CSS coordinates directly to
-    // CDP. Do not route through HWND, screen coordinates, DPI or WebView zoom.
-    std::wstring script = L"(() => {const w=window.innerWidth;const h=window.innerHeight;";
-    script += L"if(!(w>0&&h>0))return null;return [w*" +
-              std::to_wstring(xTenThousandths) + L"/10000,h*" +
-              std::to_wstring(yTenThousandths) + L"/10000];})()";
-
-    const auto alive = alive_;
-    ComPtr<ICoreWebView2> requestedView = webview_;
-    const HRESULT started = requestedView->ExecuteScript(
-        script.c_str(),
-        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-            [this, alive, requestedView](HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) ||
-                  phase_ != Phase::YouTube ||
-                  webview_.Get() != requestedView.Get()) {
-                return S_OK;
-              }
-              double cssX = 0.0;
-              double cssY = 0.0;
-              if (SUCCEEDED(result) && ParseCssPoint(json, &cssX, &cssY)) {
-                DispatchYoutubeCssPoint(requestedView.Get(), cssX, cssY);
-              }
-              return S_OK;
-            }).Get());
-    (void)started;
-  }
-
   void ProbeYoutubeWatchdog() noexcept {
     if (phase_ != Phase::YouTube || !webview_ || !IsYoutubeWatchPage()) return;
 
@@ -745,13 +712,14 @@ class NativeMediaPanelHost final {
                 ReloadYoutubePlaylist();
                 return S_OK;
               }
-              int x = 0;
-              int y = 0;
-              if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
+              double cssX = 0.0;
+              double cssY = 0.0;
+              if (SUCCEEDED(result) &&
+                  ParseCssPoint(json, &cssX, &cssY)) {
                 SetRecoveryState(
                     RecoveryState::Recovering,
                     kNativeMediaYoutubeWatchdogRecoveryMs);
-                ClickYoutubeNormalizedPoint(x, y);
+                DispatchYoutubeCssPoint(requestView.Get(), cssX, cssY);
                 if (hostWindow_ && IsWindow(hostWindow_)) {
                   ArmTimer(kNativeMediaYoutubeWatchdogTimer,
                            kNativeMediaYoutubeWatchdogRecoveryMs);
