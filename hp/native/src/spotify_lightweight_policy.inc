@@ -18,7 +18,15 @@ constexpr wchar_t kSpotifyLightweightCssScript[] = LR"JS(
       background: #000 !important;
     }
 
-    *, *::before, *::after {
+    html,
+    body,
+    #main,
+    main,
+    nav,
+    aside,
+    footer,
+    [data-testid="main-view-container"],
+    [data-testid="main-view-container"] > * {
       animation: none !important;
       animation-play-state: paused !important;
       transition: none !important;
