@@ -107,11 +107,11 @@ test('YouTube static presentation policy is not reinjected after navigation comp
   );
 });
 
-test('YouTube applies 360p and captions policy once per video', () => {
+test('YouTube applies 720p and captions policy once per video', () => {
   assert.match(youtubeRuntime, /videoKey/);
   assert.match(youtubeRuntime, /qualityApplied: false/);
   assert.match(youtubeRuntime, /captionsApplied: false/);
-  assert.match(youtubeRuntime, /const preferredQuality = 'medium'/);
+  assert.match(youtubeRuntime, /const preferredQuality = 'hd720'/);
   assert.match(youtubeRuntime, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
   assert.doesNotMatch(youtubeRuntime, /getPlaybackQuality\(\)/);
 });
