@@ -29,7 +29,11 @@ void SpotifyWebViews::ClickSlotCssPoint(
     return;
   }
 
-  if (slot.playbackConfirmed) {
+  // playbackConfirmed describes the last proven start. A later media
+  // interruption deliberately moves the slot out of Playing while retaining
+  // that historical confirmation, so only suppress duplicate clicks while the
+  // slot is still actually healthy.
+  if (slot.playbackConfirmed && slot.state == SlotState::Playing) {
     ArmRobustScheduler();
     return;
   }
@@ -225,8 +229,7 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
 
                         const std::wstring released =
                             L"{\"type\":\"mouseReleased\",\"x\":" +
-                            std::to_wstring(x) + L",\"y\":" +
-                            std::to_wstring(y) +
+                            std::to_wstring(x) + L",\"y\":" + std::to_wstring(y) +
                             L",\"button\":\"left\",\"buttons\":0,"
                             L"\"clickCount\":1}";
                         const HRESULT releaseDispatched =
