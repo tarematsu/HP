@@ -22,6 +22,10 @@ LR"JS(
   const isFullscreen = () => !!(
       document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement);
+  const wake = () => {
+    try { window.chrome?.webview?.postMessage('homepanel:tver-wake'); }
+    catch (_) {}
+  };
 
   if (hasVisibleLoginPrompt()) {
     if (state) state.fullscreenDirty = true;
@@ -33,6 +37,7 @@ LR"JS(
       state.fullscreenDirty = false;
       state.fullscreenKeyRequestedAt = 0;
     }
+    wake();
     return;
   }
   if (window.__homePanelTverFullscreenPending) return;
@@ -55,11 +60,11 @@ LR"JS(
         latestState.fullscreenDirty = false;
         latestState.fullscreenKeyRequestedAt = 0;
       }
+      wake();
       return;
     }
     if (latestState) latestState.fullscreenDirty = true;
-    try { window.chrome?.webview?.postMessage('homepanel:tver-wake'); }
-    catch (_) {}
+    wake();
   }, 800);
 })()
 )JS"
