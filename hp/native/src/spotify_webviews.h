@@ -77,7 +77,6 @@ class SpotifyWebViews final {
     ComPtr<ICoreWebView2> webview;
     EventRegistrationToken navigationStartingToken{};
     EventRegistrationToken navigationCompletedToken{};
-    EventRegistrationToken documentTitleChangedToken{};
     EventRegistrationToken timedEndMessageReceivedToken{};
     ICoreWebView2* timedEndHandlerWebview = nullptr;
     ICoreWebView2Controller* hostLayoutController = nullptr;
@@ -108,7 +107,6 @@ class SpotifyWebViews final {
     bool timedObserverReady = false;
     bool timedRotationActive = false;
     bool playbackConfirmed = false;
-    bool processTitleEventRegistered = false;
     bool processTitleObserved = false;
     bool hostLayoutApplied = false;
   };
@@ -162,7 +160,7 @@ class SpotifyWebViews final {
   void ProbeDueTimedCompletions(ULONGLONG now) noexcept;
   void RecomputeForeground() noexcept;
   void RefreshProcessTitleStatus(Slot& slot, ICoreWebView2* webview) noexcept;
-  void PollProcessTitleStatusFallback(ULONGLONG now) noexcept;
+  void PollProcessTitleStatus(ULONGLONG now) noexcept;
   void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;
   void StartAutonomousSchedule(ULONGLONG now) noexcept;
