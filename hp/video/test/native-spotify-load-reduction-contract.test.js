@@ -33,12 +33,14 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
   assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify layout keeps a full-client onscreen surface and changes only z-order', () => {
+test('Spotify layout keeps a full-client internal surface and exposes the selected Monitor C/D slot', () => {
   assert.match(layout, /const int hostX = client\.left;/);
   assert.match(layout, /const int hostY = client\.top;/);
   assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\);/);
   assert.match(layout, /const int height = std::max\(1L, client\.bottom - client\.top\);/);
-  assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_/);
+  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /authentication \|\| monitorForeground/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
   assert.match(layout, /const bool zOrderChanged =/);

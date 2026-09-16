@@ -14,13 +14,18 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
-bool gSpotifyAudioMuted = true;
+int gSpotifyAudioOutputSlot = -1;
+int gSpotifyMonitorForegroundSlot = -1;
 
 void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
-    audio->put_IsMuted(gSpotifyAudioMuted ? TRUE : FALSE);
+    const int slotIndex = gSpotifyControlInstance
+        ? gSpotifyControlInstance->SlotIndexForWebView(webview.Get())
+        : -1;
+    const bool muted = slotIndex < 0 || slotIndex != gSpotifyAudioOutputSlot;
+    audio->put_IsMuted(muted ? TRUE : FALSE);
   }
 }
 
@@ -40,6 +45,7 @@ SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
       // isolate cookies/local storage for every Spotify account.
       userDataFolder_(std::move(dataDir) / L"webview2-youtube-mv") {
   gSpotifyControlInstance = this;
+  monitorForegroundSlot_ = gSpotifyMonitorForegroundSlot;
   for (size_t i = 0; i < slots_.size(); ++i) {
     slots_[i].owner = this;
     slots_[i].index = i;
@@ -51,19 +57,39 @@ SpotifyWebViews::~SpotifyWebViews() {
   if (gSpotifyControlInstance == this) gSpotifyControlInstance = nullptr;
 }
 
-void SpotifyWebViews::SetOutputMuted(bool muted) noexcept {
-  gSpotifyAudioMuted = muted;
+int SpotifyWebViews::SlotIndexForWebView(ICoreWebView2* webview) const noexcept {
+  if (!webview) return -1;
+  for (const Slot& slot : slots_) {
+    if (slot.webview.Get() == webview) return static_cast<int>(slot.index);
+  }
+  return -1;
+}
+
+void SpotifyWebViews::SetAudioOutputSlot(int slotIndex) noexcept {
+  gSpotifyAudioOutputSlot =
+      slotIndex >= 0 && slotIndex < static_cast<int>(slots_.size())
+          ? slotIndex
+          : -1;
   for (Slot& slot : slots_) SetSpotifyOutputMuted(slot.webview);
 }
 
-void SetSpotifyAudioMuted(bool muted) noexcept {
-  gSpotifyAudioMuted = muted;
-  if (gSpotifyControlInstance) gSpotifyControlInstance->SetOutputMuted(muted);
+void SetSpotifyAudioOutputSlot(int slotIndex) noexcept {
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(kSpotifyActiveAccountCount)) {
+    slotIndex = -1;
+  }
+  gSpotifyAudioOutputSlot = slotIndex;
+  if (gSpotifyControlInstance) {
+    gSpotifyControlInstance->SetAudioOutputSlot(slotIndex);
+  }
 }
 
-void SetSpotifyMonitorForeground(bool foreground) noexcept {
+void SetSpotifyMonitorForegroundSlot(int slotIndex) noexcept {
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(kSpotifyActiveAccountCount)) {
+    slotIndex = -1;
+  }
+  gSpotifyMonitorForegroundSlot = slotIndex;
   if (gSpotifyControlInstance) {
-    gSpotifyControlInstance->SetMonitorForeground(foreground);
+    gSpotifyControlInstance->SetMonitorForegroundSlot(slotIndex);
   }
 }
 

@@ -20,7 +20,7 @@ test('Spotify confirmed playback keeps a visible full-client host behind native 
   assert.match(layout, /const int hostY = client\.top;/);
   assert.match(layout, /client\.right - client\.left/);
   assert.match(layout, /client\.bottom - client\.top/);
-  assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);

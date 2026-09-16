@@ -25,9 +25,12 @@ void ApplySpotifyHostVisualClip(HWND window, bool fullSize) noexcept {
 
 }  // namespace
 
-void SpotifyWebViews::SetMonitorForeground(bool foreground) noexcept {
-  if (monitorForeground_ == foreground) return;
-  monitorForeground_ = foreground;
+void SpotifyWebViews::SetMonitorForegroundSlot(int slotIndex) noexcept {
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(slots_.size())) {
+    slotIndex = -1;
+  }
+  if (monitorForegroundSlot_ == slotIndex) return;
+  monitorForegroundSlot_ = slotIndex;
   for (Slot& slot : slots_) slot.hostLayoutApplied = false;
   PlaceHosts();
 }
@@ -44,17 +47,21 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
+    const bool monitorForeground =
+        static_cast<int>(i) == monitorForegroundSlot_;
+    const bool authenticationForeground =
+        authentication && monitorForegroundSlot_ < 0;
 
     // Keep the HWND and WebView2 controller full-size at all times so Spotify
     // retains a normal responsive viewport and stable DOM/CDP coordinates.
-    // Normal playback is visually clipped to 1x1; authentication removes the
-    // clip and exposes the same full-size surface without resizing WebView2.
+    // Background playback is visually clipped to 1x1. The explicitly selected
+    // monitor slot and authentication surfaces expose the full-size surface.
     const int hostX = client.left;
     const int hostY = client.top;
     const int width = std::max(1L, client.right - client.left);
     const int height = std::max(1L, client.bottom - client.top);
     const HWND insertAfter =
-        authentication || monitorForeground_ ? HWND_TOP : HWND_BOTTOM;
+        monitorForeground || authenticationForeground ? HWND_TOP : HWND_BOTTOM;
 
     const RECT desired{hostX, hostY, hostX + width, hostY + height};
     const bool positionChanged =
@@ -82,7 +89,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       }
     }
 
-    ApplySpotifyHostVisualClip(slot.hostWindow, authentication);
+    ApplySpotifyHostVisualClip(
+        slot.hostWindow, authentication || monitorForeground);
 
     if (!slot.controller) {
       slot.hostLayoutController = nullptr;
@@ -123,7 +131,8 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
 
   const auto maintainAuthenticationForeground =
       [this, foregroundAuthenticationIndex](bool layoutChanged) noexcept {
-        if (monitorForeground_ || foregroundAuthenticationIndex >= slots_.size() ||
+        if (monitorForegroundSlot_ >= 0 ||
+            foregroundAuthenticationIndex >= slots_.size() ||
             !parentWindow_ || !IsWindow(parentWindow_)) {
           return;
         }

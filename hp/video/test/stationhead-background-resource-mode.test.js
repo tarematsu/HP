@@ -19,7 +19,7 @@ const appMessages = readFileSync(
   'utf8',
 );
 
-test('Stationhead background playback remains visible fullscreen without forcing a memory target', () => {
+test('Stationhead background playback keeps a full internal surface without forcing a memory target', () => {
   assert.doesNotMatch(
     layout,
     /SetControllerMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
@@ -49,6 +49,7 @@ test('Monitor B and Monitor A auth promotion drive the effective foreground bit'
   assert.match(routing, /SetStationheadMonitorForeground\(stationheadForeground\)/);
   assert.match(routing, /PostMessageW\(parent_, WM_TIMER, 0, 0\)/);
   assert.match(bridge, /inline std::atomic<bool> gStationheadMonitorForeground\{false\}/);
+  assert.match(layout, /ApplyHostVisualClip\(hostWindow, playbackForeground\)/);
 });
 
 test('Stationhead monitor wake invalidates cached placement before Tick relayout', () => {
