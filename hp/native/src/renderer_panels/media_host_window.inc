@@ -23,6 +23,8 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
         return 0;
       }
       break;
+    case WM_NCHITTEST:
+      return HTTRANSPARENT;
     case WM_ERASEBKGND:
       return 1;
     case WM_PAINT: {
@@ -133,7 +135,7 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
   HWND status = FindWindowExW(parentWindow, nullptr, kNativeSpotifyStatusClass, nullptr);
   if (!status) {
     status = CreateWindowExW(
-        0, kNativeSpotifyStatusClass, L"",
+        WS_EX_TRANSPARENT, kNativeSpotifyStatusClass, L"",
         WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
         bounds.left, bounds.top, std::max(1L, bounds.right - bounds.left),
         std::max(1L, bounds.bottom - bounds.top), parentWindow, nullptr,
@@ -141,18 +143,11 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
     if (!status) return false;
     SetTimer(status, kNativeSpotifyStatusPollTimer,
              kNativeSpotifyStatusPollMs, nullptr);
-  } else {
-    RECT current{};
-    GetWindowRect(status, &current);
-    MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
-    if (!EqualRect(&current, &bounds)) {
-      SetWindowPos(status, nullptr, bounds.left, bounds.top,
-                   std::max(1L, bounds.right - bounds.left),
-                   std::max(1L, bounds.bottom - bounds.top),
-                   SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER |
-                       SWP_SHOWWINDOW);
-    }
   }
+  SetWindowPos(status, HWND_TOP, bounds.left, bounds.top,
+               std::max(1L, bounds.right - bounds.left),
+               std::max(1L, bounds.bottom - bounds.top),
+               SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
   return true;
 }
 }  // namespace
@@ -259,13 +254,23 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
   });
   if (!registered) return false;
 
+  const LONG totalWidth = std::max(1L, bounds.right - bounds.left);
   const LONG totalHeight = std::max(1L, bounds.bottom - bounds.top);
+  LONG videoWidth = totalWidth;
+  LONG videoHeight = std::max<LONG>(1, videoWidth * 9 / 16);
+  if (videoHeight > totalHeight) {
+    videoHeight = totalHeight;
+    videoWidth = std::max<LONG>(1, videoHeight * 16 / 9);
+  }
+  const LONG videoLeft = bounds.left + std::max<LONG>(0, (totalWidth - videoWidth) / 2);
+  const LONG videoTop = bounds.top + std::max<LONG>(0, (totalHeight - videoHeight) / 2);
+  RECT videoBounds{
+      videoLeft, videoTop, videoLeft + videoWidth, videoTop + videoHeight};
+
   const LONG statusHeight = std::min(
-      kNativeSpotifyStatusHeight, std::max(1L, totalHeight / 3));
-  RECT statusBounds = bounds;
+      kNativeSpotifyStatusHeight, std::max(1L, videoHeight / 3));
+  RECT statusBounds = videoBounds;
   statusBounds.bottom = statusBounds.top + statusHeight;
-  RECT videoBounds = bounds;
-  videoBounds.top = std::min(videoBounds.bottom - 1, statusBounds.bottom);
 
   if (!EnsureNativeSpotifyStatusPanel(parentWindow, statusBounds)) return false;
 
@@ -286,18 +291,26 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
       return false;
     }
     state->Start();
-    return true;
+  } else {
+    RECT current{};
+    GetWindowRect(host, &current);
+    MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
+    if (!EqualRect(&current, &videoBounds)) {
+      SetWindowPos(
+          host, nullptr, videoBounds.left, videoBounds.top,
+          std::max(1L, videoBounds.right - videoBounds.left),
+          std::max(1L, videoBounds.bottom - videoBounds.top),
+          SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_SHOWWINDOW);
+    }
   }
 
-  RECT current{};
-  GetWindowRect(host, &current);
-  MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
-  if (!EqualRect(&current, &videoBounds)) {
-    SetWindowPos(
-        host, nullptr, videoBounds.left, videoBounds.top,
-        std::max(1L, videoBounds.right - videoBounds.left),
-        std::max(1L, videoBounds.bottom - videoBounds.top),
-        SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER | SWP_SHOWWINDOW);
+  HWND status = FindWindowExW(
+      parentWindow, nullptr, kNativeSpotifyStatusClass, nullptr);
+  if (status) {
+    SetWindowPos(status, HWND_TOP, statusBounds.left, statusBounds.top,
+                 std::max(1L, statusBounds.right - statusBounds.left),
+                 std::max(1L, statusBounds.bottom - statusBounds.top),
+                 SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
   }
   return true;
 }
