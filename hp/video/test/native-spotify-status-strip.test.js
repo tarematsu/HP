@@ -60,9 +60,19 @@ test('status track comes only from the Web Player now-playing surface', () => {
   assert.match(processTitle, /now-playing-widget-title/);
   assert.match(processTitle, /TrySpotifyNowPlayingTrackFromJson/);
   assert.match(processTitle, /ExecuteScript\(\s*kSpotifyNowPlayingDomScript/);
-  assert.match(processTitle, /kSpotifyProcessTitlePollMs = 10ULL \* 1000ULL/);
-  assert.match(processTitle, /void SpotifyWebViews::PollProcessTitleStatus\(ULONGLONG now\) noexcept/);
+
+  // Each slot is read once per minute, phased 20 seconds apart. A single
+  // scheduler pass may probe at most one slot, including after sleep/stalls.
+  assert.match(processTitle, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
+  assert.match(processTitle, /kSpotifyProcessTitlePollPhaseMs/);
+  assert.match(processTitle, /kSpotifyProcessTitlePollPhaseMs == 20ULL \* 1000ULL/);
+  assert.match(processTitle, /size_t selected = slots_\.size\(\)/);
+  assert.match(processTitle, /break;/);
+  assert.match(processTitle, /catchUpDelay = kSpotifyProcessTitlePollPhaseMs/);
+  assert.match(processTitle, /slot\.nextProcessTitlePollTick = now \+ catchUpDelay/);
   assert.match(processTitle, /slot\.nextProcessTitlePollTick = now \+ kSpotifyProcessTitlePollMs/);
+  assert.match(controller, /statusPhaseBase/);
+  assert.match(controller, /static_cast<ULONGLONG>\(slot\.index\) \* kSpotifyProcessTitlePollPhaseMs/);
 
   // Status must never be synthesized from the next managed target or other
   // stale metadata/title surfaces.
@@ -82,7 +92,10 @@ test('status track comes only from the Web Player now-playing surface', () => {
   assert.match(processTitle, /target->processTitleObservedAt = \{\}/);
   assert.match(processTitle, /InvalidateSpotifyStatusForHost\(target->hostWindow\)/);
 
-  assert.match(controller, /slot\.nextProcessTitlePollTick = GetTickCount64\(\)/);
+  assert.doesNotMatch(
+    controller,
+    /slot\.nextProcessTitlePollTick = GetTickCount64\(\)/,
+  );
   assert.doesNotMatch(
     controller,
     /RefreshProcessTitleStatus\(slot, slot\.webview\.Get\(\)\)/,
@@ -133,6 +146,7 @@ test('reconcile confirms verified Pause without observer acknowledgement or Moni
 test('Spotify status strip keeps an independent fallback timer without monitor switching', () => {
   assert.match(hostWindow, /kNativeSpotifyStatusHeight = 56/);
   assert.match(hostWindow, /kNativeSpotifyStatusPollTimer = 0x5350/);
+  assert.match(hostWindow, /kNativeSpotifyStatusPollMs = 60U \* 1000U/);
   assert.match(hostWindow, /case WM_TIMER:/);
   assert.match(hostWindow, /PollSpotifyPlaybackStatusesNow\(\)/);
   assert.match(hostWindow, /SetTimer\(status, kNativeSpotifyStatusPollTimer/);
