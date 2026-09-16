@@ -10,15 +10,21 @@ const spotifyLifecycle = read('../../native/src/spotify_controller_lifecycle.inc
 const rendererPanels = read('../../native/src/renderer_panels.cpp');
 const mediaHost = read('../../native/src/renderer_panels/media_host.inc');
 
-test('startup reset removes HTTP disk cache without invalidating auth workers', () => {
+test('startup reset preserves auth workers only for the Stationhead-owned profile', () => {
   assert.match(helper, /ICoreWebView2_13/);
   assert.match(helper, /get_Profile/);
   assert.match(helper, /get_ProfilePath/);
+  assert.match(helper, /get_ProfileName/);
   assert.match(helper, /ICoreWebView2Profile2/);
   assert.match(helper, /ClearBrowsingData/);
   assert.match(helper, /BROWSING_DATA_KINDS_DISK_CACHE/);
-  assert.doesNotMatch(helper, /BROWSING_DATA_KINDS_CACHE_STORAGE/);
-  assert.doesNotMatch(helper, /BROWSING_DATA_KINDS_SERVICE_WORKERS/);
+  assert.match(helper, /BROWSING_DATA_KINDS_CACHE_STORAGE/);
+  assert.match(helper, /BROWSING_DATA_KINDS_SERVICE_WORKERS/);
+  assert.match(helper, /_wcsicmp\(rawProfileName, L"spotify-v2-1"\) == 0/);
+  assert.match(
+    helper,
+    /if \(!preservePlaybackWorkers\) \{[\s\S]*BROWSING_DATA_KINDS_CACHE_STORAGE[\s\S]*BROWSING_DATA_KINDS_SERVICE_WORKERS/,
+  );
   assert.doesNotMatch(
     helper,
     /BROWSING_DATA_KINDS_(COOKIES|LOCAL_STORAGE|INDEXED_DB|ALL_DOM_STORAGE|ALL_SITE|ALL_PROFILE)|DeleteAllCookies/,
