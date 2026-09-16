@@ -10,6 +10,10 @@ const finalPolicySource = readFileSync(
   new URL('../../native/src/sh_runtime_resource_policy_fix.h', import.meta.url),
   'utf8',
 );
+const activePolicySource = readFileSync(
+  new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -106,23 +110,14 @@ test('script blocking is consolidated into the single final callback', () => {
   );
 });
 
-test('final resource callback preserves playback and immutable-state guards', () => {
-  const finalPolicy = section(
-    finalPolicySource,
-    'inline void ApplyStationheadResourceBlockingFinalFixed(',
+test('active Stationhead resource layer leaves UDF-owned image/font suppression alone', () => {
+  const activePolicy = section(
+    activePolicySource,
+    'inline void ApplyStationheadResourceBlockingScriptFixed(',
     '}  // namespace hp',
   );
-  assert.match(finalPolicy, /\(void\)armed;/);
-  assert.match(finalPolicy, /\[env, blockImages, blockFonts\]/);
-  assert.doesNotMatch(finalPolicy, /&armed/);
-  assert.match(finalPolicy, /StationheadRequestIsBlockable\(lower\)/);
-  assert.match(finalPolicy, /StationheadCorePlaybackRequest\(lower\)/);
-  assert.match(
-    finalPolicy,
-    /BlockStationheadTelemetrySockets\(webview, config\.blockImages\)/,
-  );
-  assert.match(
-    finalPolicy,
-    /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA[\s\S]*!StationheadCorePlaybackRequest\(lower\)/,
-  );
+  assert.doesNotMatch(activePolicy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
+  assert.doesNotMatch(activePolicy, /StationheadRequestLooksLikeImage/);
+  assert.match(activePolicy, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
+  assert.match(activePolicy, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
 });
