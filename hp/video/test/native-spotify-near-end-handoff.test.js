@@ -72,7 +72,7 @@ function createHarness() {
   });
   vm.runInContext(observerScript, context);
   const dispatch = type => {
-    for (const handler of listeners.get(type) || []) handler({ target: media });
+    for (const handler of listeners.get(type) || []) handler({ target: media, type });
   };
   const hostMessage = data => {
     for (const handler of webviewListeners) handler({ data });
@@ -116,12 +116,15 @@ test('invalid duration waits for durationchange instead of arming a bad timer', 
   assert.deepEqual(h.messages, ['spotify:timed-started\x1f23\x1f179000']);
 });
 
-test('observer uses lifecycle events instead of renderer timers for startup identity', () => {
+test('observer uses lifecycle events plus bounded playback-loss events', () => {
   const h = createHarness();
-  for (const type of ['seeking', 'seeked', 'waiting', 'stalled', 'pause', 'play']) {
+  for (const type of ['seeking', 'seeked', 'play']) {
     assert.equal(h.listeners.has(type), false, `${type} must not be observed`);
   }
-  for (const type of ['playing', 'durationchange', 'loadedmetadata', 'canplay', 'timeupdate', 'ended']) {
+  for (const type of [
+    'playing', 'durationchange', 'loadedmetadata', 'canplay', 'timeupdate',
+    'pause', 'waiting', 'stalled', 'error', 'ended',
+  ]) {
     assert.equal(h.listeners.has(type), true, `${type} must be observed`);
   }
 });
