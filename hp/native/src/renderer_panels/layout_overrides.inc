@@ -11,7 +11,8 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   sections.controls = RECT{client.left, sections.clock.bottom + gap,
                            client.right, sections.clock.bottom + gap + rowHeight};
   sections.weather = RECT{client.left, sections.controls.bottom + gap,
-                          client.right, client.bottom};
+                          client.right,
+                          sections.controls.bottom + gap + rowHeight};
   // Electricity is painted through the historical weather slot by windows.inc.
   sections.energy = RECT{client.right, client.bottom,
                          client.right + 1, client.bottom + 1};
@@ -26,11 +27,7 @@ RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
   const int width = std::max(1L, client.right - client.left);
   const int gapX = std::max(8, width * 16 / 1000);
   const int rowWidth = std::max(2, width - gapX);
-  // After SplitWeatherRadarWidthSwappedMainSections exchanges the two widths,
-  // Weather receives 41.2% of the usable right-row width. With the dashboard's
-  // 28.5% left column and outer gap this matches the Clock/Air/Electricity card
-  // width to within normal integer-pixel rounding.
-  const int leftWidth = std::max(1, rowWidth * 588 / 1000);
+  const int leftWidth = std::max(1, rowWidth * 65 / 100);
 
   RearrangedMainLayout layout;
   layout.sections.radar =
