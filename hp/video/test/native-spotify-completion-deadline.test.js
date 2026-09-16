@@ -49,7 +49,8 @@ test('ended is best-effort deadline shortening, not a second completion path', (
 
 test('observer has no completion planner heartbeat or interruption clock', () => {
   assert.doesNotMatch(wrapper, /spotify_media_observer_completion\.inc/);
-  assert.doesNotMatch(events, /addEventListener\('(?:timeupdate|seeking|seeked|waiting|stalled|pause)'/);
+  assert.match(events, /addEventListener\('timeupdate', observe, true\)/);
+  assert.doesNotMatch(events, /addEventListener\('(?:seeking|seeked|waiting|stalled|pause)'/);
   assert.doesNotMatch(runtime, /postCompletionPlan|clearCompletionPlan|completionPlan|interruptionStartedAt/);
   assert.doesNotMatch(rotation + phase, /SpotifyDeadlineWithInterruptionHold|kSpotifyMaxInterruptionHoldMs/);
 });
@@ -87,7 +88,7 @@ test('one threadpool timer owns every Spotify timed wake-up', () => {
 test('scheduler considers completion startup recovery async timeout and hourly safety audit deadlines', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(phase, /kSpotifyRecoveryRetryMs = 5ULL \* 1000ULL/);
-  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
+  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 30ULL \* 1000ULL/);
   assert.match(phase, /kSpotifyHealthyAuditMs = 60U \* 60U \* 1000U/);
   assert.match(phase, /considerTick\(slot\.timedCompletionDeadlineTick\)/);
   assert.match(phase, /considerTick\(slot\.nextRecoveryTick\)/);
