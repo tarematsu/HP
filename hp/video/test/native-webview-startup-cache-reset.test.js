@@ -10,12 +10,20 @@ const spotifyLifecycle = read('../../native/src/spotify_controller_lifecycle.inc
 const rendererPanels = read('../../native/src/renderer_panels.cpp');
 const mediaHost = read('../../native/src/renderer_panels/media_host.inc');
 
-test('startup cache/data deletion engine is removed', () => {
-  assert.doesNotMatch(helper, /ICoreWebView2_13|ICoreWebView2Profile|ICoreWebView2Profile2/);
-  assert.doesNotMatch(helper, /get_Profile|get_ProfilePath|get_ProfileName/);
-  assert.doesNotMatch(helper, /ClearBrowsingData|DeleteAllCookies|RemoveAllCookies/);
-  assert.doesNotMatch(helper, /COREWEBVIEW2_BROWSING_DATA_KINDS|BROWSING_DATA_KINDS_/);
-  assert.match(helper, /completion\(S_OK\)/);
+test('startup cache deletion is restricted to Stationhead HTTP disk cache', () => {
+  assert.match(helper, /ICoreWebView2_13/);
+  assert.match(helper, /ICoreWebView2Profile2/);
+  assert.match(helper, /IsStationheadStartupCacheProfile/);
+  assert.match(helper, /L"spotify-v2-1"/);
+  assert.match(
+    helper,
+    /ClearBrowsingData\(\s*COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE/,
+  );
+  assert.doesNotMatch(helper, /DeleteAllCookies|RemoveAllCookies/);
+  assert.doesNotMatch(
+    helper,
+    /BROWSING_DATA_KINDS_(?:ALL_DOM_STORAGE|COOKIES|INDEXED_DB|LOCAL_STORAGE|SERVICE_WORKERS|CACHE_STORAGE)/,
+  );
 });
 
 test('Spotify no longer routes startup through the cache-reset compatibility shim', () => {
@@ -27,10 +35,12 @@ test('Spotify no longer routes startup through the cache-reset compatibility shi
   );
 });
 
-test('remaining legacy startup call sites can only pass through synchronously', () => {
+test('legacy reset call sites are gated by the Stationhead profile and once-per-process claim', () => {
   assert.match(stationhead, /#include "webview_startup_cache_reset\.h"/);
   assert.match(rendererPanels, /#include "webview_startup_cache_reset\.h"/);
   assert.match(stationhead, /ResetWebViewStartupCaches\(/);
   assert.match(mediaHost, /ResetWebViewStartupCaches\(/);
-  assert.doesNotMatch(helper, /std::mutex|std::map|try_emplace|profilePath/);
+  assert.match(helper, /ClaimWebViewStartupCacheReset\(profilePath\)/);
+  assert.match(helper, /WebViewStartupCacheResetProfiles\(\)\.try_emplace/);
+  assert.match(helper, /if \(!IsStationheadStartupCacheProfile\(profile\.Get\(\), profilePath\)\)/);
 });
