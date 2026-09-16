@@ -1,10 +1,13 @@
 #pragma once
 
 // Namespace-neutral because the native media composition includes this header
-// from inside namespace hp. The status strip reads the compact projection that
-// the native playback bridge already maintains; no Stationhead play-count API
-// request is needed for the header display.
-inline std::wstring StationheadStatusStripCurrentTrackTitle(
+// from inside namespace hp. Stationhead uses the same low-frequency status
+// polling model as the Spotify cards: polling updates this cache, while WM_PAINT
+// only reads the already-computed title.
+inline std::mutex stationheadStatusStripTrackMutex;
+inline std::wstring stationheadStatusStripTrackTitle;
+
+inline std::wstring ReadStationheadStatusStripCurrentTrackTitle(
     const fs::path& dataDir, int64_t nowMs) noexcept {
   try {
     std::ifstream input(dataDir / L"native-playback-a.json", std::ios::binary);
@@ -61,6 +64,18 @@ inline std::wstring StationheadStatusStripCurrentTrackTitle(
   } catch (...) {
     return {};
   }
+}
+
+inline void PollStationheadStatusStripCurrentTrackTitle(
+    const fs::path& dataDir, int64_t nowMs) noexcept {
+  std::wstring next = ReadStationheadStatusStripCurrentTrackTitle(dataDir, nowMs);
+  std::lock_guard lock(stationheadStatusStripTrackMutex);
+  stationheadStatusStripTrackTitle = std::move(next);
+}
+
+inline std::wstring StationheadStatusStripCurrentTrackTitle() noexcept {
+  std::lock_guard lock(stationheadStatusStripTrackMutex);
+  return stationheadStatusStripTrackTitle;
 }
 
 // Compatibility no-op while old Stationhead status objects age out. The native
