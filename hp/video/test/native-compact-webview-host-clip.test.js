@@ -11,13 +11,26 @@ const spotifyLayout = readFileSync(
   'utf8',
 );
 
-test('Stationhead keeps a full internal viewport and Monitor B removes the 1x1 clip', () => {
+test('Stationhead compacts only stable background playback and Monitor B restores full viewport', () => {
   assert.match(stationheadLayout, /CreateRectRgn\(0, 0, 1, 1\)/);
   assert.match(stationheadLayout, /SetWindowRgn\(window, nullptr, TRUE\)/);
-  assert.match(stationheadLayout, /const RECT playbackHostBounds = surfaceBounds/);
-  assert.match(stationheadLayout, /const RECT playbackControllerBounds\{0, 0, playbackWidth, playbackHeight\}/);
+  assert.match(stationheadLayout, /kStationheadCompactPlaybackWidth = 320/);
+  assert.match(stationheadLayout, /kStationheadCompactPlaybackHeight = 180/);
+  assert.match(stationheadLayout, /kStationheadCompactPlaybackStabilityMs = 15'000/);
+  assert.match(stationheadLayout, /PlaybackControllerBounds\(playbackHostBounds, useCompactPlayback\)/);
+  assert.match(stationheadLayout, /compactPlayback && !playbackForeground && !showAuth && !hidePlayback/);
+  assert.match(stationheadLayout, /audioLossState_ == L"playing"/);
+  assert.match(stationheadLayout, /!monitorForeground/);
   assert.match(stationheadLayout, /ApplyHostVisualClip\(hostWindow, playbackForeground\)/);
   assert.match(stationheadLayout, /ApplyHostVisualClip\(authHostWindow, showAuth\)/);
+});
+
+test('Stationhead releases the empty auth host after completed authorization', () => {
+  assert.match(
+    stationheadLayout,
+    /!spotifyAuthorization_ && !authController_[\s\S]*authPendingUrl_\.empty\(\)[\s\S]*DestroyWindow\(authHostWindow_\)[\s\S]*authHostWindow_ = nullptr/,
+  );
+  assert.match(stationheadLayout, /EnsureAuthHostWindow\(\)/);
 });
 
 test('Spotify keeps a full internal viewport and Monitor C/D remove the selected slot clip', () => {
