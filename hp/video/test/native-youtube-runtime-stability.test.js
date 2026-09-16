@@ -35,7 +35,7 @@ test('unified runtime owns trusted real-control actions', () => {
   assert.match(runtime, /fullscreenPattern = \/\(全画面\|fullscreen\|full screen\)\/i/);
 });
 
-test('fullscreen and ad clicks keep independent action state', () => {
+test('fullscreen fallback and ad clicks keep independent action state', () => {
   assert.match(runtime, /if \(action === 'fullscreen'\) return 'fullscreen'/);
   assert.match(runtime, /action === 'skip-ad' \|\| action\.startsWith\('survey-'\)/);
   assert.match(runtime, /const lane = actionState\(action\)/);
@@ -44,10 +44,12 @@ test('fullscreen and ad clicks keep independent action state', () => {
   assert.doesNotMatch(runtime, /state\.actionAt = now/);
   assert.doesNotMatch(runtime, /state\.actionCleanup = cleanup/);
 
-  const firstFullscreen = runtime.indexOf('const fullscreenAction = armFullscreen();');
+  const firstFullscreen = runtime.indexOf(
+    'if (!ad() && !state.fullscreenApplied) return requestFullscreen();',
+  );
   const adStart = runtime.indexOf('if (ad()) {');
   assert.ok(firstFullscreen >= 0 && adStart > firstFullscreen);
-  assert.match(runtime, /state\.fullscreenApplied = fullscreen\(\);\s*if \(!ad\(\) && !state\.fullscreenApplied\)/);
+  assert.match(runtime, /homepanel:youtube-fullscreen-key/);
 });
 
 test('fullscreen recovery refreshes state instead of trusting old success', () => {
@@ -56,15 +58,15 @@ test('fullscreen recovery refreshes state instead of trusting old success', () =
   assert.doesNotMatch(runtime, /else if \(!state\.fullscreenApplied\)/);
   const refreshes = runtime.match(/state\.fullscreenApplied = fullscreen\(\);/g) || [];
   assert.ok(refreshes.length >= 2);
-  const finalFullscreen = runtime.lastIndexOf('const fullscreenAction = armFullscreen();');
-  const finalRecovery = runtime.lastIndexOf("return 'recovery';");
-  assert.ok(finalFullscreen >= 0 && finalRecovery > finalFullscreen);
+  const finalRefresh = runtime.lastIndexOf('state.fullscreenApplied = fullscreen();');
+  const finalRequest = runtime.lastIndexOf('return requestFullscreen();');
+  assert.ok(finalRefresh >= 0 && finalRequest > finalRefresh);
 });
 
 test('skippable ads are handled before fullscreen recovery', () => {
   const adStart = runtime.indexOf('if (ad()) {');
   const skip = runtime.indexOf("arm(target, 'skip-ad', 600)", adStart);
-  const fullscreen = runtime.indexOf('const action = armFullscreen();', adStart);
+  const fullscreen = runtime.indexOf('return requestFullscreen();', skip);
   assert.ok(adStart >= 0 && skip > adStart && fullscreen > skip);
 });
 
