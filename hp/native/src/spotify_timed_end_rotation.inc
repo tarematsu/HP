@@ -104,6 +104,11 @@ void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
+  if (!slot.timedCycleTracks.empty()) {
+    // The managed seven-slot cycle is A..G. Offset each restored account by its
+    // stable slot index so yuukiar/ten/nagi/hinata begin at A/B/C/D.
+    slot.timedRotationPosition = slot.index % slot.timedCycleTracks.size();
+  }
   slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
 }
