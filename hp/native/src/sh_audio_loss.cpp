@@ -366,11 +366,11 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
   const int64_t playingForMs = playingSince > 0 && nowMs >= playingSince
       ? nowMs - playingSince
       : 0;
-  const bool stablePlayback =
-      StationheadAudioLossCanArm(audioPlaying, navigationActive, playingForMs) &&
+  const bool playbackConfirmed =
+      audioPlaying && !navigationActive &&
       !snapshot.loginRequired && !snapshot.spotifyAuthorization &&
       !loginRequired_ && !spotifyAuthorization_;
-  ApplyStationheadPlaybackMemoryTarget(webview_.Get(), stablePlayback);
+  ApplyStationheadPlaybackMemoryTarget(webview_.Get(), playbackConfirmed);
 
   if (managedPlaybackFallbackActive_) {
     if (managedPlaybackReturnRequested_ &&
