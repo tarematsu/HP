@@ -34,7 +34,7 @@ test('Spotify unmute reuses the CloseSlot reset and recreates hosts', () => {
   assert.match(host, /slot\.targetGeneration = 0/);
   assert.doesNotMatch(network + header, /timedInterruptionStartTick|reconcileInFlight|lastTimedReconcileTick|TimedSpotifyTarget/);
   assert.match(network, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
-  assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifyInitialStartDelayMs = 0/);
 });
 
 test('global media mute remains the only media-to-Spotify state coupling', () => {

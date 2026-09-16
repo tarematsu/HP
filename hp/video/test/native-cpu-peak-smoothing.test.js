@@ -13,8 +13,8 @@ const mediaBase = source('renderer_panels/media_section_base.inc');
 const mediaWindow = source('renderer_panels/media_host_window.inc');
 const phase = source('spotify_phase_sync.inc');
 
-test('Spotify startup defers the first WebView and keeps later accounts serialized', () => {
-  assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
+test('Spotify first WebView starts immediately when staged and later accounts stay serialized', () => {
+  assert.match(schedule, /kSpotifyInitialStartDelayMs = 0/);
   assert.match(schedule, /scheduleStartTick_ = now \+ kSpotifyInitialStartDelayMs/);
   assert.match(schedule, /scheduleStartTick_ \+[\s\S]*kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /if \(now < scheduleStartTick_\) return/);

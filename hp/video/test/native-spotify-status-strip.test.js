@@ -25,12 +25,13 @@ const lifecycle = readFileSync(
 const hostWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
 
-test('only yuukiar Spotify slot is active for single-window diagnostics', () => {
+test('yuukiar and ten Spotify slots are active with existing profile numbers', () => {
   assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
-  assert.match(header, /kSpotifyActiveAccountCount = 1/);
+  assert.match(header, /kSpotifyActiveAccountCount = 2/);
   assert.match(header, /kAccountCount = kSpotifyActiveAccountCount/);
   assert.match(scripts, /L"yuukiar"/);
-  assert.doesNotMatch(scripts, /L"ten"|L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
+  assert.match(scripts, /L"ten"/);
+  assert.doesNotMatch(scripts, /L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });
 
 test('status title and confirmation clock use the title event plus a 60-second watchdog', () => {

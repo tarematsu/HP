@@ -3,7 +3,7 @@
 // for startup, recovery, async timeout, completion deadline, or the healthy audit.
 
 namespace {
-constexpr ULONGLONG kSpotifyInitialStartDelayMs = 4ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyInitialStartDelayMs = 0;
 constexpr ULONGLONG kSpotifyCloudReloadMinIntervalMs = 60ULL * 1000ULL;
 }
 

@@ -3,7 +3,7 @@ namespace {
 
 constexpr wchar_t kSpotifyMessageSeparator = L'\x1f';
 constexpr std::array<std::wstring_view, kSpotifyActiveAccountCount> kSpotifyPanelNames = {
-    L"yuukiar"};
+    L"yuukiar", L"ten"};
 
 constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
 (() => {

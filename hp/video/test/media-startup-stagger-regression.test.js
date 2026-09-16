@@ -10,6 +10,8 @@ const readNative = relative => readFileSync(
 const app = readNative('app.cpp');
 const appHeader = readNative('app.h');
 const lifecycle = readNative('renderer_lifecycle.cpp');
+const spotifyHeader = readNative('spotify_webviews.h');
+const spotifySchedule = readNative('spotify_stagger_schedule.inc');
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -19,9 +21,12 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('media startup is YouTube then Spotify then Stationhead at fixed ten second offsets', () => {
+test('media startup is YouTube, Spotify 1, Spotify 2, then Stationhead at ten-second offsets', () => {
   assert.match(appHeader, /kMediaStartupStageDelayMs\s*=\s*10'000/);
   assert.doesNotMatch(appHeader, /spotifyStartedAt_/);
+  assert.match(spotifyHeader, /kSpotifyActiveAccountCount = 2/);
+  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
+  assert.match(spotifySchedule, /kSpotifyInitialStartDelayMs = 0/);
 
   const startup = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   assert.match(startup, /renderer_->Initialize\(\)/);
@@ -39,7 +44,7 @@ test('media startup is YouTube then Spotify then Stationhead at fixed ten second
   );
   assert.match(
     deferred,
-    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*2[\s\S]*stationhead_->Start\(\)/,
+    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*3[\s\S]*stationhead_->Start\(\)/,
   );
   assert.doesNotMatch(deferred, /spotifyStartedAt_/);
 });
