@@ -15,9 +15,10 @@ const staticScripts = readFileSync(
   'utf8',
 );
 
-test('unfinished Spotify authentication keeps visual foreground ownership without owning playback recovery', () => {
+test('unfinished Spotify authentication keeps visual foreground ownership when no monitor slot is selected', () => {
   assert.match(layout, /foregroundAuthenticationIndex[\s\S]*SlotIsLoginPage\(slots_\[i\]\)/);
-  assert.match(layout, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(layout, /const bool authenticationForeground =\s*authentication && monitorForegroundSlot_ < 0/);
+  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(layout, /if \(placementChanged\)/);
   assert.match(layout, /UINT flags = SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
   assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
@@ -33,6 +34,7 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
 });
 
 test('authentication foreground repair is conditional instead of running every scheduler pass', () => {
+  assert.match(layout, /monitorForegroundSlot_ >= 0/);
   assert.match(layout, /!layoutChanged && GetWindow\(slot\.hostWindow, GW_HWNDPREV\) != nullptr/);
   assert.doesNotMatch(layout, /maintainAuthenticationForeground[\s\S]{0,800}SetWindowPos\(slot\.hostWindow, HWND_TOP[\s\S]{0,200}else/);
 });
