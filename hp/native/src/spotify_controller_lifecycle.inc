@@ -97,17 +97,9 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     Slot* const target = &slot;
     const auto alive = alive_;
 
-    const HRESULT titleEventResult = slot.webview->add_DocumentTitleChanged(
-        Callback<ICoreWebView2DocumentTitleChangedEventHandler>(
-            [this, alive, target](ICoreWebView2* sender, IUnknown*) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) || !sender) return S_OK;
-              RefreshProcessTitleStatus(*target, sender);
-              return S_OK;
-            }).Get(), &slot.documentTitleChangedToken);
-    slot.processTitleEventRegistered = SUCCEEDED(titleEventResult);
-    RefreshProcessTitleStatus(slot, slot.webview.Get());
-    slot.nextProcessTitlePollTick =
-        GetTickCount64() + kSpotifyProcessTitlePollMs;
+    // Spotify status has one update path: fixed polling. Start the first poll
+    // immediately; every successful scheduler pass advances it by 60 seconds.
+    slot.nextProcessTitlePollTick = GetTickCount64();
 
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
