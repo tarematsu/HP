@@ -9,6 +9,9 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
 (() => {
   window.__homePanelSpotifyGeneration =
       window.__homePanelSpotifyGeneration || '0';
+  // NavigationCompleted installs this bootstrap. Remember that moment so the
+  // first trusted Play click cannot race Spotify's post-load player startup.
+  window.__homePanelSpotifyNativeLoadedAt = performance.now();
 
   if (window.__homePanelSpotifyStaticBridgeInstalled) return true;
   window.__homePanelSpotifyStaticBridgeInstalled = true;
