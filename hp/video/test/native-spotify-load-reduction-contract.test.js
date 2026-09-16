@@ -20,9 +20,9 @@ const music = sourcePart('spotify_music_target.inc');
 
 test('Spotify WebViews serialize startup without UI-thread blocking or polling timers', () => {
   assert.doesNotMatch(spotify, /CreateController\(slots_\[0\]\)/);
-  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 60ULL \* 1000ULL/);
+  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 10ULL \* 1000ULL/);
   assert.match(spotifyHeader, /PTP_TIMER schedulerTimer_ = nullptr/);
-  assert.match(schedule, /kSpotifyInitialStartDelayMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifyInitialStartDelayMs = 0/);
   assert.match(schedule, /scheduleStartTick_ = now \+ kSpotifyInitialStartDelayMs/);
   assert.match(schedule, /startupReady/);
   assert.match(schedule, /if \(!slot\.webview\)[\s\S]*BeginControllerCreate\(slot\)/);
@@ -74,7 +74,7 @@ test('Spotify layout avoids redundant controller geometry COM calls', () => {
   assert.doesNotMatch(layout, /get_ZoomFactor\(/);
 });
 
-test('single-window authentication keeps foreground repair without account badge work', () => {
+test('authentication keeps foreground repair without account badge work', () => {
   assert.doesNotMatch(spotifyHeader, /authenticationBadgeTick/);
   assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeBootstrapScript|ExecuteScript/);
   assert.match(layout, /maintainAuthenticationForeground/);
