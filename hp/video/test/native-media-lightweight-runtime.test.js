@@ -15,6 +15,8 @@ const radarSection = readFileSync(
   new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url), 'utf8');
 const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
+const sharedEnvironment = readFileSync(
+  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url), 'utf8');
 const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const youtubeRuntime = readExpandedNativeSource(
@@ -90,9 +92,11 @@ test('media watchdogs use adaptive recovery state and navigation backoff', () =>
   assert.match(mediaHost, /RecoveryCoolingDown\(now\)/);
 });
 
-test('media WebView blocks images but leaves fonts available for stable controls', () => {
-  assert.match(mediaHost, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
-  assert.doesNotMatch(mediaHost, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
+test('media WebView relies only on UDF-level image and font suppression', () => {
+  assert.doesNotMatch(mediaHost, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
+  assert.doesNotMatch(mediaHost, /AddWebResourceRequestedFilter|add_WebResourceRequested/);
+  assert.match(sharedEnvironment, /imagesEnabled=false,loadsImagesAutomatically=false/);
+  assert.match(sharedEnvironment, /downloadableBinaryFontsEnabled=false/);
 });
 
 test('YouTube static presentation policy is not reinjected after navigation completes', () => {
