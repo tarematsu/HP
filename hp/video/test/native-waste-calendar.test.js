@@ -60,9 +60,12 @@ test('clock waste strip always contains three dated text target categories', () 
   assert.doesNotMatch(calendar, /DecodeImageFileToBitmap|AlphaBlend|FallbackPictogram/);
 });
 
-test('clock waste category names render as centered single-line text', () => {
-  assert.match(calendar, /DrawTextInRect\(dc, Course36ClockWasteKindText\(notices\[index\]\.kind\), kindRect,/);
+test('clock waste date and category render as one centered compact line', () => {
+  assert.match(calendar, /Course36ClockWasteLineText\(/);
+  assert.match(calendar, /Course36ClockWasteDateText\(notice\) \+ L" - " \+/);
+  assert.match(calendar, /DrawTextInRect\(dc, Course36ClockWasteLineText\(notices\[index\]\), cellRect,/);
   assert.match(calendar, /DT_CENTER \| DT_SINGLELINE \| DT_VCENTER \| DT_END_ELLIPSIS/);
+  assert.doesNotMatch(calendar, /dateRect|kindRect|contentGap|dateWidth/);
 });
 
 test('course 36 fiscal-year table includes the published July week', () => {
