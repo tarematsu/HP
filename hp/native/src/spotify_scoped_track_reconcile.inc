@@ -200,7 +200,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
       return pauseDecision(visiblePageButton);
     }
     clearProgressProbe();
-    if (!initialPlayDelayElapsed && !restartPending()) return playbackProbeMs;
+    if (!initialPlayDelayElapsed && !restartPending()) return 1000;
     return point(visiblePageButton);
   }
 
