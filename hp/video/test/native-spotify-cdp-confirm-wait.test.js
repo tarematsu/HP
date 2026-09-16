@@ -8,27 +8,20 @@ const source = name => readFileSync(
 const music = source('spotify_music_target.inc');
 const click = source('spotify_background_click.inc');
 
-test('trusted Spotify CDP play click gets a five-second confirmation window end to end', () => {
-  assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+test('trusted Spotify CDP play click is state-probed with a long duplicate-click failsafe', () => {
+  assert.match(music, /kSpotifyPlaybackStateProbeMs = 1ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 30ULL \* 1000ULL/);
+  assert.doesNotMatch(music, /kSpotifyCdpPlayConfirmWaitMs/);
 
-  const pointStart = music.indexOf('if (ParseCssPoint(json, &cssX, &cssY))');
-  const retryStart = music.indexOf('SetSlotState(*target, SlotState::WaitingTarget)', pointStart);
-  assert.ok(pointStart >= 0 && retryStart > pointStart);
-
-  const pointBranch = music.slice(pointStart, retryStart);
-  assert.match(
-    pointBranch,
-    /nextRecoveryTick =\s*callbackNow \+ kSpotifyCdpPlayConfirmWaitMs/,
-  );
-  assert.match(pointBranch, /ClickSlotCssPoint\(\*target, cssX, cssY\)/);
-  assert.doesNotMatch(pointBranch, /kSpotifyPlaybackStartRetryMs/);
-
-  assert.doesNotMatch(click, /nextRecoveryTick = now \+ kSpotifyPlaybackStartRetryMs/);
-  assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayConfirmWaitMs/);
+  assert.match(click, /nextRecoveryTick = stateProbeAt \+ kSpotifyPlaybackStateProbeMs/);
+  assert.match(click, /trustedClickBlockedUntilTick =\s*now \+ kSpotifyCdpPlayRetryFailsafeMs/);
+  assert.match(music, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
+  assert.match(music, /target->trustedClickBlockedUntilTick = 0/);
 });
 
-test('playback startup has one CDP confirmation window and no direct-play path', () => {
-  assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+test('playback startup uses state observation and no direct-play path', () => {
+  assert.match(music, /ParseSpotifyRetryDelay\(json\)/);
+  assert.match(music, /ClickSlotCssPoint\(\*target, cssX, cssY\)/);
   assert.doesNotMatch(music, /kSpotifyDirectPlayConfirmWaitMs|direct-play|DirectPlay/);
 });
 
