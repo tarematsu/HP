@@ -1,4 +1,6 @@
 // Native media composition: shared constants/scripts plus focused host/window modules.
+#include "../stationhead_status_strip_bridge.h"
+
 namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMediaYoutubeUrl[] =
