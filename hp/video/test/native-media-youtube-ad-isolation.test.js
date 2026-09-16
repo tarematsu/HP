@@ -16,11 +16,11 @@ test('YouTube ad handling precedes content settings', () => {
   assert.doesNotMatch(adBranch, /setPlaybackQuality|video\.play\(|setOption\('captions'/);
 });
 
-test('YouTube content quality is one-shot 360p and never read back', () => {
+test('YouTube content quality is one-shot 720p and never read back', () => {
   assert.match(runtime, /window\.__homePanelYoutubeRuntime/);
   assert.match(runtime, /qualityApplied: false/);
   assert.match(runtime, /if \(!state\.qualityApplied\)/);
-  assert.match(runtime, /const preferredQuality = 'medium'/);
+  assert.match(runtime, /const preferredQuality = 'hd720'/);
   assert.doesNotMatch(runtime, /getPlaybackQuality\(\)/);
 });
 
