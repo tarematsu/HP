@@ -128,7 +128,7 @@ void App::StartServices() {
   }
   LayoutWorkspace();
   renderer_->TickNativePanels(startupAt_);
-  logger_->Info(L"YouTube/native dashboard started; Spotify at +10s, Stationhead at +20s");
+  logger_->Info(L"YouTube/native dashboard started; Spotify #1 at +10s, Spotify #2 at +20s, Stationhead at +30s");
 
   ShowWindow(window_, startupShowCommand_);
   UpdateWindow(window_);
@@ -160,24 +160,25 @@ void App::StartDeferredServices(int64_t now) {
     logger_->Warn(L"Native dashboard/YouTube started by deferred recovery");
   }
 
-  // Stage 2: issue Spotify launch at app startup +10 seconds.
+  // Stage 2: issue Spotify launch at app startup +10 seconds. Its internal
+  // scheduler starts slot 1 immediately and slot 2 at +20 seconds.
   if (!spotifyStarted_ &&
       now - startupAt_ >= kMediaStartupStageDelayMs) {
     renderer_->StartSpotify();
     spotifyStarted_ = true;
-    logger_->Info(L"Spotify launch issued at +10 seconds");
+    logger_->Info(L"Spotify #1 launch issued at +10 seconds; #2 follows 10 seconds later");
   }
 
-  // Stage 3: issue Stationhead launch at app startup +20 seconds, regardless
-  // of Spotify readiness.
+  // Stage 3: issue Stationhead launch at app startup +30 seconds, ten seconds
+  // after Spotify slot 2, regardless of Spotify readiness.
   if (!stationheadStarted_ && stationhead_ &&
-      now - startupAt_ >= kMediaStartupStageDelayMs * 2) {
+      now - startupAt_ >= kMediaStartupStageDelayMs * 3) {
     stationhead_->Start();
     stationheadStarted_ = true;
     stationhead_->SetAudioMuted(stationheadAudioMuted_);
     MarkStationheadPlacementDirty();
     ApplyStationheadWindowPlacement(stationhead_->Status());
-    logger_->Info(L"Stationhead launch issued at +20 seconds");
+    logger_->Info(L"Stationhead launch issued at +30 seconds");
   }
 
   if (!cloudStarted_ && cloud_) {
@@ -241,7 +242,7 @@ void App::Tick() {
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(
-            now, startupAt_ + static_cast<int>(kMediaStartupStageDelayMs * 2),
+            now, startupAt_ + static_cast<int>(kMediaStartupStageDelayMs * 3),
             kMaxAppTimerMs));
   }
   if (!startupUpdateScheduled_ && cloudStarted_) {

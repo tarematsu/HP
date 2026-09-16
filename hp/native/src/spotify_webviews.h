@@ -3,13 +3,12 @@
 
 namespace hp {
 
-inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 60ULL * 1000ULL;
-// spotify-v2-1 (the former amazon window) is now owned by the single
-// Stationhead player. Keep yuukiar on its existing profile number so
-// cookies/storage are not shifted while the other Spotify slots are paused
-// for single-window diagnostics.
+inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 10ULL * 1000ULL;
+// spotify-v2-1 (the former amazon window) is owned by the single Stationhead
+// player. Restore the next two Spotify profiles without shifting their existing
+// cookies/storage: yuukiar is profile 2 and ten is profile 3.
 inline constexpr size_t kSpotifyProfileFirstAccountNumber = 2;
-inline constexpr size_t kSpotifyActiveAccountCount = 1;
+inline constexpr size_t kSpotifyActiveAccountCount = 2;
 
 struct SpotifyPlaybackStatus {
   std::wstring windowName;
@@ -202,7 +201,7 @@ std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
 GetSpotifyPlaybackStatuses() noexcept;
 
 // Spotify runs independently from the YouTube/TVer media phase. Accounts become
-// scheduler-eligible one minute apart and then run from cloud rotation blocks.
+// scheduler-eligible ten seconds apart and then run from cloud rotation blocks.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 void SetSpotifyAudioMuted(bool muted) noexcept;
