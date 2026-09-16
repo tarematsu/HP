@@ -15,7 +15,7 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('Spotify stable playback and non-playing transitions stay fullscreen behind native UI', () => {
+test('Spotify stable playback and non-playing transitions stay full-client behind native UI', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
@@ -28,10 +28,10 @@ test('Spotify stable playback and non-playing transitions stay fullscreen behind
   assert.match(placeHosts, /client\.right - client\.left/);
   assert.match(placeHosts, /client\.bottom - client\.top/);
   assert.doesNotMatch(placeHosts, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
-  assert.match(placeHosts, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(placeHosts, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
 });
 
-test('Spotify authentication and Monitor C use foreground z-order without changing full-client geometry', () => {
+test('Spotify authentication and Monitor C/D use foreground z-order without changing full-client geometry', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
@@ -39,9 +39,11 @@ test('Spotify authentication and Monitor C use foreground z-order without changi
   );
 
   assert.match(placeHosts, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/);
+  assert.match(placeHosts, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_;/);
   assert.match(placeHosts, /const int hostX = client\.left;/);
   assert.match(placeHosts, /const int hostY = client\.top;/);
-  assert.match(placeHosts, /authentication \|\| monitorForeground_ \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(placeHosts, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(placeHosts, /authentication \|\| monitorForeground/);
 });
 
 test('layout refresh reacts to Playing-to-transition and transition-to-Playing changes', () => {
