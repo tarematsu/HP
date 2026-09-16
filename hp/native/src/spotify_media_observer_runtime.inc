@@ -23,10 +23,6 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     startPosted: false,
     targetMedia: null,
     trustedStartKey: '',
-    trustedStartUntil: 0,
-    identityFallbackTimer: 0,
-    identityFallbackMedia: null,
-    identityFallbackKey: '',
     interrupted: false
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
@@ -49,19 +45,14 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   const targetKey = target => target
       ? [targetPath(target), normalize(target.title), generation()].join('|')
       : '';
-  const clearIdentityFallback = () => {
-    if (state.identityFallbackTimer) clearTimeout(state.identityFallbackTimer);
-    state.identityFallbackTimer = 0;
-    state.identityFallbackMedia = null;
-    state.identityFallbackKey = '';
+  const clearTrustedStart = () => {
+    state.trustedStartKey = '';
   };
   const resetState = key => {
-    clearIdentityFallback();
     state.key = key;
     state.startPosted = false;
     state.targetMedia = null;
-    state.trustedStartKey = '';
-    state.trustedStartUntil = 0;
+    clearTrustedStart();
     state.interrupted = false;
   };
   const syncTarget = () => {
@@ -117,17 +108,14 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
         !targetPath(target)) {
       return false;
     }
+    // Keep the token valid for this target generation until it is consumed or
+    // target/navigation state changes. EcoQoS scheduling delay must not expire
+    // a legitimate trusted Play transition.
     state.trustedStartKey = targetKey(target);
-    state.trustedStartUntil = Date.now() + 15000;
     return true;
   };
-  const clearTrustedStart = () => {
-    state.trustedStartKey = '';
-    state.trustedStartUntil = 0;
-  };
   const consumeTrustedStart = target => {
-    if (!target || state.trustedStartKey !== targetKey(target) ||
-        state.trustedStartUntil < Date.now()) {
+    if (!target || state.trustedStartKey !== targetKey(target)) {
       return false;
     }
     clearTrustedStart();
@@ -174,27 +162,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     return 'playing';
   };
 
-  const scheduleTargetChecks = media => {
-    const status = enforceTarget(media);
-    if (status === 'playing' || status === 'ignore' ||
-        status === 'interruption') {
-      clearIdentityFallback();
-      return;
-    }
-
-    clearIdentityFallback();
-    state.identityFallbackMedia = media;
-    state.identityFallbackKey = state.key;
-    state.identityFallbackTimer = setTimeout(() => {
-      const expectedMedia = state.identityFallbackMedia;
-      const expectedKey = state.identityFallbackKey;
-      state.identityFallbackTimer = 0;
-      state.identityFallbackMedia = null;
-      state.identityFallbackKey = '';
-      if (expectedMedia !== media || expectedKey !== state.key) return;
-      enforceTarget(media);
-    }, 1500);
-  };
+  // Identity adoption is driven by media lifecycle events. Do not depend on a
+  // renderer setTimeout that can be heavily delayed while WebView2 is in EcoQoS.
+  const scheduleTargetChecks = media => enforceTarget(media);
 
   const runtime = {
     state,
