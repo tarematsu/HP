@@ -9,16 +9,36 @@ static_assert(kSpotifyProcessTitlePollPhaseMs == 15ULL * 1000ULL);
 
 // Status is intentionally independent from the managed/queued target. The
 // playback observer stores a title only after a real media element is confirmed
-// playing. The one-minute poll reads that cheap cache first; the live player DOM
-// remains fallback for startup/recovery only.
+// playing. The one-minute poll reads that cheap cache first, then may read the
+// browser media-session title only while the observer still owns confirmed
+// playback. The live player DOM remains the final startup/recovery fallback.
 constexpr wchar_t kSpotifyNowPlayingDomScript[] = LR"JS(
 (() => {
   if (location.hostname !== 'open.spotify.com') return { title: '' };
 
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim()
+      .replace(/^(?:now playing|currently playing|再生中)\s*[:：-]?\s*/i, '');
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
-  const cached = runtime && runtime.state && runtime.state.actualTrackTitle;
-  if (typeof cached === 'string' && cached.trim()) {
-    return { title: cached.trim() };
+  const state = runtime && runtime.state;
+  const cached = clean(state && state.actualTrackTitle);
+  if (cached) return { title: cached };
+
+  // Background Spotify hosts are visually clipped to 1x1. In that state the
+  // Now Playing React surface can stay stale until Monitor C/D/E is selected.
+  // MediaSession is therefore accepted only when our observer has already
+  // confirmed and owns a real, currently-playing HTMLMediaElement. This keeps
+  // status independent from the planned/native target while removing the
+  // foreground-render dependency.
+  const ownedMedia = state && state.targetMedia;
+  const currentTime = Number(ownedMedia && ownedMedia.currentTime);
+  const confirmedPlayback = !!(
+      state && state.startPosted && ownedMedia &&
+      !ownedMedia.paused && !ownedMedia.ended &&
+      Number.isFinite(currentTime) && currentTime > 0);
+  if (confirmedPlayback) {
+    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+    const mediaSessionTitle = clean(metadata && metadata.title);
+    if (mediaSessionTitle) return { title: mediaSessionTitle };
   }
 
   const roots = [];
@@ -32,8 +52,6 @@ constexpr wchar_t kSpotifyNowPlayingDomScript[] = LR"JS(
   addRoot(document.querySelector('footer[class*="now-playing"]'));
   addRoot(document.querySelector('footer'));
 
-  const clean = value => String(value || '').replace(/\s+/g, ' ').trim()
-      .replace(/^(?:now playing|currently playing|再生中)\s*[:：-]?\s*/i, '');
   const titleOf = element => {
     if (!element) return '';
     for (const value of [
