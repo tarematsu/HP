@@ -1,6 +1,7 @@
 #pragma once
 #include "common.h"
 #include "audio_health_scan_coordinator.h"
+#include "sh_audio_loss_policy.h"
 
 namespace hp {
 
@@ -17,6 +18,10 @@ inline constexpr int64_t StationheadPeriodicRefreshIntervalMs() noexcept {
 
 inline constexpr int64_t StationheadAudioHealthCheckIntervalMs() noexcept {
   return 1 * 60'000;
+}
+
+inline constexpr int64_t StationheadAudioEscalationSettleMs() noexcept {
+  return 15'000;
 }
 
 inline void RestoreStationheadPlaybackMemoryTargetForReload(
@@ -43,6 +48,7 @@ static_assert(!StationheadPlaybackNavigationActive(false, true, true));
 static_assert(!StationheadPlaybackNavigationActive(false, false, false));
 static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
 static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
+static_assert(StationheadAudioEscalationSettleMs() == 15'000);
 
 }  // namespace hp
 
@@ -63,6 +69,11 @@ static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
           ::hp::StationheadAudioHealthCheckIntervalMs();                      \
       if (next <= 0 || due < next) next = due;                                \
     }                                                                         \
+    if (audioLossEscalationStartedAt_.Active()) {                             \
+      const int64_t due = audioLossEscalationStartedAt_ +                     \
+          ::hp::StationheadAudioEscalationSettleMs();                         \
+      if (next <= 0 || due < next) next = due;                                \
+    }                                                                         \
     return next;                                                              \
   }                                                                           \
   [[nodiscard]] int64_t NextWakeAtBase()
@@ -71,6 +82,7 @@ static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
   RecoverUnavailableAuthorization() {                                        \
     RecoverUnavailableAuthorizationBase();                                   \
     const int64_t nowMs = UnixMillis();                                       \
+    EscalateAudioLossRecovery(nowMs);                                         \
     PollPeriodicAudioHealth(nowMs);                                           \
     RefreshPeriodicNavigation(nowMs);                                         \
   }                                                                           \
@@ -86,6 +98,126 @@ static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
 
 #define nextAutoClickAt_                                                      \
   nextAutoClickAt_ = 0;                                                       \
+  void ResetAudioLossEscalation() noexcept {                                  \
+    audioLossEscalationStage_ = 0;                                            \
+    audioLossEscalationAwaitingNavigation_ = false;                           \
+    audioLossEscalationStartedAt_ = 0;                                        \
+    audioLossEscalationLifecycle_.reset();                                    \
+  }                                                                           \
+  void EscalateAudioLossRecovery(int64_t nowMs) {                             \
+    if (audioPlaying_.load(std::memory_order_relaxed)) {                      \
+      ResetAudioLossEscalation();                                             \
+      return;                                                                 \
+    }                                                                         \
+    if (!webview_ || usingFallback_ || managedPlaybackFallbackActive_ ||      \
+        spotifyAuthorization_ || loginRequired_) {                            \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    bool statusNavigating = false;                                            \
+    {                                                                         \
+      std::lock_guard lock(mutex_);                                           \
+      statusNavigating = status_.navigating;                                  \
+    }                                                                         \
+    const bool navigationActive =                                             \
+        ::hp::StationheadPlaybackNavigationActive(                            \
+            navigationInFlight_.load(std::memory_order_acquire),              \
+            statusNavigating, spotifyAuthorization_);                         \
+                                                                                \
+    if (audioLossEscalationStage_ == 0) {                                     \
+      if (navigationActive || recreating_.load(std::memory_order_relaxed) ||  \
+          !audioLossPlaybackObserved_ || !audioLossStartedAt_.Active() ||     \
+          audioLossStartedAt_.ElapsedMilliseconds() <                         \
+              (::hp::kStationheadAudioLossGraceMs +                           \
+               ::hp::kStationheadAudioLossDomSettleMs) ||                     \
+          audioLossProbeInFlight_ || !audioLossProbeComplete_ ||              \
+          audioLossAuthUiDetected_) {                                         \
+        return;                                                               \
+      }                                                                       \
+                                                                                \
+      audioLossEscalationStage_ = 1;                                          \
+      audioLossEscalationAwaitingNavigation_ = true;                          \
+      audioLossEscalationStartedAt_ = 0;                                      \
+      audioLossStartedAt_ = 0;                                                \
+      ResetAudioLossProbe();                                                  \
+      nextAutoClickAt_ = nowMs;                                               \
+      UpdateAudioLossState(                                                   \
+          L"reload_recovery",                                                \
+          L"silence survived Start Listening/media repair; reloading Stationhead page"); \
+      NavigateCurrentUrl(nowMs, L"audio-loss recovery reload");              \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    if (audioLossEscalationStage_ == 1) {                                     \
+      if (navigationActive || recreating_.load(std::memory_order_relaxed)) {  \
+        return;                                                               \
+      }                                                                       \
+      if (audioLossEscalationAwaitingNavigation_) {                           \
+        audioLossEscalationAwaitingNavigation_ = false;                       \
+        audioLossEscalationStartedAt_ = nowMs;                                \
+        nextAutoClickAt_ = nowMs;                                             \
+        AttemptNativeStartClick(nowMs);                                       \
+        UpdateAudioLossState(                                                 \
+            L"reload_settle",                                                \
+            L"Stationhead page reloaded; waiting for automatic Start Listening recovery"); \
+        return;                                                               \
+      }                                                                       \
+      if (!audioLossEscalationStartedAt_.Active() ||                          \
+          audioLossEscalationStartedAt_.ElapsedMilliseconds() <               \
+              ::hp::StationheadAudioEscalationSettleMs()) {                   \
+        return;                                                               \
+      }                                                                       \
+                                                                                \
+      audioLossEscalationStage_ = 2;                                          \
+      audioLossEscalationStartedAt_ = 0;                                      \
+      audioLossEscalationLifecycle_ = createCallbackAlive_;                   \
+      audioLossStartedAt_ = 0;                                                \
+      ResetAudioLossProbe();                                                  \
+      UpdateAudioLossState(                                                   \
+          L"webview_recovery",                                               \
+          L"audio still silent after page reload; rebuilding Stationhead WebView2 session"); \
+      ScheduleRecreate(                                                       \
+          L"audio still silent after page reload; rebuilding playback WebView", \
+          1'000);                                                             \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    if (audioLossEscalationStage_ == 2) {                                     \
+      if (navigationActive || recreating_.load(std::memory_order_relaxed)) {  \
+        return;                                                               \
+      }                                                                       \
+      const auto previousLifecycle = audioLossEscalationLifecycle_.lock();    \
+      if (previousLifecycle != createCallbackAlive_) {                        \
+        audioLossEscalationLifecycle_ = createCallbackAlive_;                 \
+        audioLossEscalationStartedAt_ = nowMs;                                \
+        nextAutoClickAt_ = nowMs;                                             \
+        AttemptNativeStartClick(nowMs);                                       \
+        UpdateAudioLossState(                                                 \
+            L"webview_settle",                                               \
+            L"Stationhead WebView rebuilt; waiting for automatic playback recovery"); \
+        return;                                                               \
+      }                                                                       \
+      if (!audioLossEscalationStartedAt_.Active() ||                          \
+          audioLossEscalationStartedAt_.ElapsedMilliseconds() <               \
+              ::hp::StationheadAudioEscalationSettleMs()) {                   \
+        return;                                                               \
+      }                                                                       \
+      if (audioLossProbeInFlight_) return;                                    \
+      if (!audioLossProbeComplete_) {                                         \
+        BeginAudioLossAuthProbe(nowMs);                                       \
+        return;                                                               \
+      }                                                                       \
+      if (audioLossAuthUiDetected_ || loginRequired_) return;                 \
+                                                                                \
+      audioLossEscalationStage_ = 3;                                          \
+      UpdateAudioLossState(                                                   \
+          L"fallback_after_rebuild",                                         \
+          L"WebView rebuild remained silent; switching to managed playback fallback"); \
+      SetManagedPlaybackFallback(                                             \
+          true,                                                               \
+          L"fallback: Stationhead remained silent after page reload and WebView rebuild"); \
+    }                                                                         \
+  }                                                                           \
   void PollPeriodicAudioHealth(int64_t nowMs) {                               \
     const auto lifecycle = createCallbackAlive_;                              \
     const auto previousLifecycle = audioHealthLifecycle_.lock();              \
@@ -173,7 +305,7 @@ static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
     const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
     if (!webview_ || previousLifecycle != lifecycle) {                        \
       periodicRefreshLifecycle_ = lifecycle;                                  \
-      periodicRefreshStartedAt_ = 0;                                          \
+      periodicRefreshStartedAt_ = 0;                                         \
       periodicRefreshNavigationObserved_ = 0;                                 \
       if (!webview_) return;                                                  \
     }                                                                         \
@@ -188,7 +320,7 @@ static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
             navigationInFlight_.load(std::memory_order_acquire),              \
             statusNavigating, spotifyAuthorization_);                         \
     if (navigationActive) {                                                   \
-      periodicRefreshStartedAt_ = 0;                                          \
+      periodicRefreshStartedAt_ = 0;                                         \
       periodicRefreshNavigationObserved_ = 1;                                 \
       return;                                                                 \
     }                                                                         \
@@ -216,6 +348,10 @@ static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
     SetStartupBounds();                                                       \
     NavigateCurrentUrl(nowMs, L"50-minute periodic refresh");                \
   }                                                                           \
+  int audioLossEscalationStage_ = 0;                                          \
+  bool audioLossEscalationAwaitingNavigation_ = false;                        \
+  MonotonicElapsedTimestamp audioLossEscalationStartedAt_;                    \
+  std::weak_ptr<std::atomic<bool>> audioLossEscalationLifecycle_;             \
   MonotonicElapsedTimestamp audioHealthCheckStartedAt_;                       \
   std::weak_ptr<std::atomic<bool>> audioHealthLifecycle_;                     \
   MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
