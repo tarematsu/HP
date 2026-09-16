@@ -5,8 +5,8 @@ LR"JS(
     if (!style || style.dataset.homepanelAggressive === '1') return;
     style.dataset.homepanelAggressive = '1';
     style.textContent += `
-      body:has(video) > :not(:has(video)):not(script):not(style),
-      body:has(video) main:has(video) > :not(:has(video)):not(video):not(script):not(style),
+      body:has(video) > :not(:has(video)):not(script):not(style):not([role="dialog"]):not([aria-modal="true"]):not(:has([role="dialog"])):not(:has([aria-modal="true"])),
+      body:has(video) main:has(video) > :not(:has(video)):not(video):not(script):not(style):not([role="dialog"]):not([aria-modal="true"]):not(:has([role="dialog"])):not(:has([aria-modal="true"])),
       body:has(video) [data-testid*="breadcrumb" i]:not(:has(video)),
       body:has(video) [class*="breadcrumb" i]:not(:has(video)),
       body:has(video) [data-testid*="recommend" i]:not(:has(video)),
