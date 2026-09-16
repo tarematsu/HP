@@ -101,11 +101,18 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
       std::clamp(mediaWidth * 9 / 16, 1, maxMediaHeight);
 
   NativeDashboardLayout layout;
-  layout.side = RECT{inner.left, inner.top, inner.left + sideWidth, inner.bottom};
+  layout.side = RECT{inner.left, inner.top, inner.left + sideWidth,
+                     inner.top + mediaHeight};
   layout.media = RECT{inner.left + sideWidth + gapX, inner.top, inner.right,
                       inner.top + mediaHeight};
-  layout.main = RECT{inner.left + sideWidth + gapX,
-                     inner.top + mediaHeight + gapY, inner.right, inner.bottom};
+  layout.main = RECT{inner.left, inner.top + mediaHeight + gapY,
+                     inner.right, inner.bottom};
+  if (layout.side.right <= layout.side.left) {
+    layout.side.right = layout.side.left + 1;
+  }
+  if (layout.side.bottom <= layout.side.top) {
+    layout.side.bottom = layout.side.top + 1;
+  }
   if (layout.media.right <= layout.media.left) {
     layout.media.right = layout.media.left + 1;
   }
