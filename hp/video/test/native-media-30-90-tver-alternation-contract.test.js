@@ -20,8 +20,11 @@ const tverQueue = readFileSync(
 const youtubeRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
-test('media cadence remains 60 minutes per YouTube/TVer phase', () => {
+test('media cadence is 60 minutes for YouTube and 30 minutes for TVer', () => {
   assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs = kNativeMediaPhaseMs/);
+  assert.match(mediaBase, /kNativeMediaTverPhaseMs = 30U \* 60U \* 1000U/);
+  assert.match(mediaBase, /phase_ == Phase::Tver \? kNativeMediaTverPhaseMs : kNativeMediaYoutubePhaseMs/);
   assert.match(mediaHost, /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/);
   assert.doesNotMatch(composition, /PhaseOverrideMs/);
 });
