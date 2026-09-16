@@ -3,10 +3,10 @@ namespace {
 
 // Minimal playback start/status probe for the already-selected Spotify track:
 // 1) the target page remains the navigation authority;
-// 2) a target-page Pause control confirms playback even when responsive layout
-//    keeps that control outside the visible viewport;
+// 2) Pause is confirmed only after an available media element has actually
+//    advanced; a zero-second stall is toggled back to Play before retrying;
 // 3) if the target-page control is omitted entirely, the global Pause control
-//    confirms playback only after now-playing identity matches the target;
+//    is trusted only after now-playing identity matches the target;
 // 4) CDP clicks are still returned only for a visible target-page Play control.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] =
 LR"JS(
@@ -60,6 +60,63 @@ LR"JS(
     return !!targetTitle && !!metadataTitle && metadataTitle === targetTitle;
   };
 
+  const clearProgressProbe = () => {
+    window.__homePanelSpotifyProgressProbe = null;
+  };
+  const targetMedia = () => {
+    const media = Array.from(document.querySelectorAll('audio, video')).filter(candidate => {
+      if (!candidate || candidate.ended) return false;
+      const current = Number(candidate.currentTime);
+      return Number.isFinite(current) && current >= 0;
+    });
+    return media.find(candidate => !candidate.paused) || media[0] || null;
+  };
+  const verifyPauseProgress = button => {
+    const media = targetMedia();
+    if (!media) {
+      clearProgressProbe();
+      return 'confirmed';
+    }
+
+    const current = Number(media.currentTime);
+    if (!Number.isFinite(current) || current < 0) {
+      clearProgressProbe();
+      return 'confirmed';
+    }
+
+    const now = performance.now();
+    const previous = window.__homePanelSpotifyProgressProbe;
+    if (!previous || previous.path !== targetPath || previous.media !== media ||
+        current + 0.05 < previous.currentTime) {
+      window.__homePanelSpotifyProgressProbe = {
+        path: targetPath,
+        media,
+        currentTime: current,
+        sampledAt: now
+      };
+      return current > 0.25 ? 'confirmed' : 'pending';
+    }
+
+    if (current > previous.currentTime + 0.05 || current > 0.25) {
+      clearProgressProbe();
+      return 'confirmed';
+    }
+
+    if (now - previous.sampledAt < 1000) return 'pending';
+
+    clearProgressProbe();
+    try {
+      // Pausing does not require a trusted user gesture. The subsequent Play
+      // still flows through the native CDP trusted-click path.
+      button.click();
+    } catch (_) {}
+    return 'restarted';
+  };
+  const confirmPause = button => {
+    const result = verifyPauseProgress(button);
+    return result === 'confirmed';
+  };
+
   const point = element => {
     if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
       return null;
@@ -80,23 +137,34 @@ LR"JS(
       'button[data-testid="play-button"]')).filter(enabled);
   const visiblePageButton = pageButtons.find(visible) || null;
   if (visiblePageButton) {
-    if (isPauseControl(visiblePageButton)) return true;
+    if (isPauseControl(visiblePageButton)) {
+      return confirmPause(visiblePageButton) ? true : null;
+    }
+    clearProgressProbe();
     return point(visiblePageButton);
   }
 
   // A compact/background WebView may keep the page control in the DOM but
-  // outside the rendered viewport. Its Pause state still belongs to this target
-  // page and is safe to use as a confirmation signal.
-  if (pageButtons.some(isPauseControl)) return true;
+  // outside the rendered viewport. It can still prove playback, but only after
+  // the media clock actually advances. A zero-second stall is toggled back to
+  // Play so the next scheduler pass can issue a fresh trusted CDP Play click.
+  if (pageButtons.some(isPauseControl)) {
+    const pagePause = pageButtons.find(isPauseControl) || null;
+    return pagePause && confirmPause(pagePause) ? true : null;
+  }
 
   // Some Spotify responsive layouts omit the target-page button entirely.
-  // Never click the global player; use it only as a Pause-state confirmation
-  // after an independent now-playing identity check proves the target is active.
+  // Use the global player only after an independent now-playing identity check
+  // proves the target is active. A stalled Pause may be toggled to Play here;
+  // playback start itself is still performed only by native CDP input.
   const playerButtons = Array.from(document.querySelectorAll(
       'button[data-testid="control-button-playpause"]')).filter(enabled);
   const playerPause = playerButtons.find(isPauseControl) || null;
-  if (playerPause && currentTrackMatchesTarget()) return true;
+  if (playerPause && currentTrackMatchesTarget()) {
+    return confirmPause(playerPause) ? true : null;
+  }
 
+  clearProgressProbe();
   return null;
 })()
 )JS";
