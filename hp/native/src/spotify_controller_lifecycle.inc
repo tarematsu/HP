@@ -141,15 +141,21 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
         Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
             [this, alive, target](
                 ICoreWebView2*,
-                ICoreWebView2DevToolsProtocolEventReceivedEventArgs*)
+                ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args)
                 -> HRESULT {
               if (!alive->load(std::memory_order_acquire) ||
                   !started_ || !target->webview || target->loginPage ||
                   !CurrentMusicTrack(*target) ||
-                  target->targetGeneration == 0) {
+                  target->targetGeneration == 0 ||
+                  !SlotStateIsHealthy(target->state)) {
                 return S_OK;
               }
               try {
+                const std::wstring parameters =
+                    MediaPipelineErrorParameters(args);
+                if (!MediaPipelineErrorRequiresRebuild(parameters)) {
+                  return S_OK;
+                }
                 if (target->mediaPipelineRecoveryGeneration ==
                     target->targetGeneration) {
                   return S_OK;

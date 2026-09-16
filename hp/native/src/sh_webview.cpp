@@ -83,15 +83,31 @@ void StationheadPlayer::ConfigureWebView() {
               return S_OK;
             }
             try {
+              const std::wstring parameters =
+                  MediaPipelineErrorParameters(args);
+              if (!MediaPipelineErrorRequiresRebuild(parameters) ||
+                  navigationInFlight_.load(std::memory_order_acquire) ||
+                  recreating_.load(std::memory_order_acquire)) {
+                RequestImmediateTick();
+                return S_OK;
+              }
+              const ULONGLONG now = GetTickCount64();
+              if (mediaErrorRecoveryTick_ != 0 &&
+                  now - mediaErrorRecoveryTick_ <
+                      kMediaPipelineRebuildCooldownMs) {
+                RequestImmediateTick();
+                return S_OK;
+              }
               if (mediaErrorRecoveryLifecycle_.lock() == createCallbackAlive_) {
                 return S_OK;
               }
               mediaErrorRecoveryLifecycle_ = createCallbackAlive_;
-              const std::wstring detail = MediaPipelineErrorParameters(args);
+              mediaErrorRecoveryTick_ = now;
+              const std::wstring category(
+                  MediaPipelineErrorCategory(parameters));
               log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
-                        L" Chromium media pipeline failure: " + detail);
-              ApplyAudioPlaybackState(
-                  false, L"Chromium Media.playerErrorsRaised");
+                        L" Chromium media pipeline failure category=" +
+                        category + L"; rebuilding playback WebView");
               UpdateAudioLossState(
                   L"decoder_error",
                   L"Chromium reported a media decode/pipeline failure; rebuilding playback WebView");

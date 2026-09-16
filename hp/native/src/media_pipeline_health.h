@@ -3,6 +3,9 @@
 
 namespace hp {
 
+inline constexpr ULONGLONG kMediaPipelineRebuildCooldownMs =
+    5ULL * 60ULL * 1000ULL;
+
 inline HRESULT SubscribeMediaPipelineErrors(
     ICoreWebView2* webview,
     ICoreWebView2DevToolsProtocolEventReceivedEventHandler* handler,
@@ -45,6 +48,63 @@ inline void UnsubscribeMediaPipelineErrors(
   receiver.Reset();
 }
 
+inline bool MediaPipelineErrorContains(
+    std::wstring_view value, std::wstring_view token) noexcept {
+  if (token.empty() || value.size() < token.size()) return false;
+  for (size_t start = 0; start + token.size() <= value.size(); ++start) {
+    bool matches = true;
+    for (size_t offset = 0; offset < token.size(); ++offset) {
+      if (towlower(value[start + offset]) != token[offset]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return true;
+  }
+  return false;
+}
+
+inline bool MediaPipelineErrorRequiresRebuild(
+    std::wstring_view parameters) noexcept {
+  // A player error can also describe a cancelled request or a temporary
+  // network failure. Those already have bounded page-level recovery and must
+  // not tear down a healthy decoder. Rebuild only failures that identify the
+  // local decode/decrypt/demux/audio-render pipeline.
+  constexpr std::wstring_view kFatalTokens[] = {
+      L"pipeline_error_decode",
+      L"media_error_decode",
+      L"decoder_error",
+      L"decrypt",
+      L"cdm_error",
+      L"key_system_error",
+      L"demuxer_error",
+      L"audio_renderer_error",
+      L"pipeline_error_initialization_failed",
+      L"pipeline_error_could_not_render",
+  };
+  for (const std::wstring_view token : kFatalTokens) {
+    if (MediaPipelineErrorContains(parameters, token)) return true;
+  }
+  return false;
+}
+
+inline std::wstring_view MediaPipelineErrorCategory(
+    std::wstring_view parameters) noexcept {
+  if (MediaPipelineErrorContains(parameters, L"decrypt")) return L"decrypt";
+  if (MediaPipelineErrorContains(parameters, L"decode") ||
+      MediaPipelineErrorContains(parameters, L"decoder")) {
+    return L"decode";
+  }
+  if (MediaPipelineErrorContains(parameters, L"demux")) return L"demux";
+  if (MediaPipelineErrorContains(parameters, L"renderer")) return L"renderer";
+  if (MediaPipelineErrorContains(parameters, L"initialization")) {
+    return L"initialization";
+  }
+  if (MediaPipelineErrorContains(parameters, L"network")) return L"network";
+  if (MediaPipelineErrorContains(parameters, L"abort")) return L"aborted";
+  return L"other";
+}
+
 inline std::wstring MediaPipelineErrorParameters(
     ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args) {
   if (!args) return L"unknown media pipeline error";
@@ -54,10 +114,11 @@ inline std::wstring MediaPipelineErrorParameters(
   }
   std::wstring value(raw);
   CoTaskMemFree(raw);
-  constexpr size_t kMaximumDiagnosticCharacters = 1'024;
-  if (value.size() > kMaximumDiagnosticCharacters) {
-    value.resize(kMaximumDiagnosticCharacters);
-    value += L"...";
+  // The payload is used only for local classification and is never logged.
+  // Bound pathological protocol data without cutting ordinary error tokens.
+  constexpr size_t kMaximumClassificationCharacters = 64 * 1024;
+  if (value.size() > kMaximumClassificationCharacters) {
+    value.resize(kMaximumClassificationCharacters);
   }
   return value;
 }
