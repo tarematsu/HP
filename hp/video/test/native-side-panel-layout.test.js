@@ -6,8 +6,16 @@ const dashboardHeader = readFileSync(
   new URL('../../native/src/web_renderer.h', import.meta.url),
   'utf8',
 );
+const rendererPanels = readFileSync(
+  new URL('../../native/src/renderer_panels.cpp', import.meta.url),
+  'utf8',
+);
 const layoutOverrides = readFileSync(
   new URL('../../native/src/renderer_panels/layout_overrides.inc', import.meta.url),
+  'utf8',
+);
+const mediaHost = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url),
   'utf8',
 );
 
@@ -23,6 +31,29 @@ test('left column uses three equal rows and media spans the top two', () => {
   );
   assert.match(
     layoutOverrides,
-    /sections\.weather = RECT\{client\.left, sections\.controls\.bottom \+ gap,[\s\S]*client\.right, client\.bottom\};/,
+    /sections\.weather = RECT\{client\.left, sections\.controls\.bottom \+ gap,[\s\S]*client\.right,[\s\S]*sections\.controls\.bottom \+ gap \+ rowHeight\};/,
   );
+});
+
+test('clock, air, electricity and weather use the same pixel dimensions', () => {
+  assert.match(rendererPanels, /SplitWeatherRadarMatchedMainSections/);
+  assert.match(rendererPanels, /dashboard\.side\.right - dashboard\.side\.left/);
+  assert.match(rendererPanels, /const LONG rowHeight = std::max<LONG>\(1, \(sideHeight - sideGap \* 2\) \/ 3\);/);
+  assert.match(rendererPanels, /const LONG weatherWidth = std::clamp<LONG>\(\s*sideWidth/);
+  assert.match(rendererPanels, /client\.top \+ rowHeight/);
+  assert.match(
+    rendererPanels,
+    /Give Weather exactly the same pixel[\s\S]*width and row height as Clock\/Air\/Electricity/,
+  );
+});
+
+test('YouTube host is fitted to 16:9 inside the two-row media cell', () => {
+  assert.match(mediaHost, /const LONG availableVideoHeight =/);
+  assert.match(mediaHost, /availableVideoHeight \* 16 \/ 9/);
+  assert.match(mediaHost, /videoWidth \* 9 \/ 16/);
+  assert.match(mediaHost, /const LONG contentLeft =/);
+  assert.match(mediaHost, /statusBounds\.left = contentLeft/);
+  assert.match(mediaHost, /statusBounds\.right = contentLeft \+ videoWidth/);
+  assert.match(mediaHost, /videoBounds\.left = contentLeft/);
+  assert.match(mediaHost, /videoBounds\.right = contentLeft \+ videoWidth/);
 });

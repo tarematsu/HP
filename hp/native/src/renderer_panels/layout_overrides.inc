@@ -11,7 +11,8 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   sections.controls = RECT{client.left, sections.clock.bottom + gap,
                            client.right, sections.clock.bottom + gap + rowHeight};
   sections.weather = RECT{client.left, sections.controls.bottom + gap,
-                          client.right, client.bottom};
+                          client.right,
+                          sections.controls.bottom + gap + rowHeight};
   // Electricity is painted through the historical weather slot by windows.inc.
   sections.energy = RECT{client.right, client.bottom,
                          client.right + 1, client.bottom + 1};
