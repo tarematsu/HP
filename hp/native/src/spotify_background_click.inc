@@ -57,6 +57,11 @@ void SpotifyWebViews::ClickSlotCssPoint(
   const ULONGLONG stateProbeAt = GetTickCount64();
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.nextRecoveryTick = stateProbeAt + kSpotifyPlaybackStateProbeMs;
+  if (slot.trustedClickBlockedUntilTick != 0 &&
+      stateProbeAt < slot.trustedClickBlockedUntilTick) {
+    ArmRobustScheduler();
+    return;
+  }
 
   // The reconcile script already returned CSS viewport coordinates. Verify the
   // same point still resolves to a Spotify Play control, then return the exact
