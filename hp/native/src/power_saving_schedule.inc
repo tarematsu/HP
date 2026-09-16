@@ -195,16 +195,19 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
   SetSpotifyAudioOutputSlot(spotifyAudioSlot);
 
   if (parent_ && IsWindow(parent_)) {
+    const UiAction stationheadAction = mode == AudioMode::Stationhead
+        ? UiAction::StationheadAudioToggle
+        : UiAction::StationheadAudioMute;
     // StationheadAudioToggle is a legacy action. Normalize to muted first so
     // selecting SH always ends unmuted even if App state was stale or this
     // same audio mode is re-applied. SendMessageW keeps the sequence ordered.
     SendMessageW(
         parent_, kRendererActionMessage,
         static_cast<WPARAM>(UiAction::StationheadAudioMute), 0);
-    if (mode == AudioMode::Stationhead) {
+    if (stationheadAction == UiAction::StationheadAudioToggle) {
       SendMessageW(
           parent_, kRendererActionMessage,
-          static_cast<WPARAM>(UiAction::StationheadAudioToggle), 0);
+          static_cast<WPARAM>(stationheadAction), 0);
     }
   }
 
