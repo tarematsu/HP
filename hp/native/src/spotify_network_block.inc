@@ -15,7 +15,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
   alive_ = std::make_shared<std::atomic<bool>>(true);
   timedRandomState_ = 0;
   for (Slot& slot : slots_) {
-    if (SpotifySlotShouldOwnHost(slot.index)) CreateHost(slot);
+    if (SpotifyAccountShouldOwnHost(slot.index)) CreateHost(slot);
   }
   Resize();
   StartAutonomousSchedule(GetTickCount64());
