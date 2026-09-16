@@ -219,10 +219,10 @@ void PowerSavingController::Attach(HWND parent) {
 void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   if (!parent_ || !window || window == overlay_ || !IsWindow(window)) return;
 
-  // The Stationhead playback host is created after the App object has prepared
-  // its player. Reassert non-B audio modes here so mode A is muted before
-  // playback can become audible even though initial controller attach happened earlier.
-  if (audioMode_ != AudioMode::Stationhead && IsStationheadPlaybackHost(window)) {
+  // Stationhead is visible/audible on E. Reassert mute for every other audio
+  // mode when its playback host is created after controller attachment.
+  if (audioMode_ != AudioMode::SpotifyTertiary &&
+      IsStationheadPlaybackHost(window)) {
     SendMessageW(
         parent_, kRendererActionMessage,
         static_cast<WPARAM>(UiAction::StationheadAudioMute), 0);
@@ -240,7 +240,7 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   if (!parent_ || !IsWindow(parent_)) return;
 
   const bool stationheadForeground =
-      monitorMode_ == MonitorMode::Stationhead ||
+      monitorMode_ == MonitorMode::SpotifyTertiary ||
       (monitorMode_ == MonitorMode::Native && monitorAuthForeground_);
   const bool nativeMediaForeground =
       monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
