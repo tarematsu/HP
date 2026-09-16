@@ -37,7 +37,7 @@ test('yuukiar, ten and nagi Spotify slots are active with existing profile numbe
   assert.doesNotMatch(scripts, /L"hinata"|L"amazon"|L"ozeki"/);
 });
 
-test('status track comes from WebView metadata with native-title fallback and fixed polling only', () => {
+test('status track comes only from the Web Player now-playing surface', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
   assert.match(header, /std::wstring processTrackDisplay/);
   assert.match(header, /SYSTEMTIME processTitleObservedAt/);
@@ -49,50 +49,51 @@ test('status track comes from WebView metadata with native-title fallback and fi
     controller,
     /add_DocumentTitleChanged|ICoreWebView2DocumentTitleChangedEventHandler/,
   );
-  assert.doesNotMatch(processTitle, /get_DocumentTitle|PollProcessTitleStatusFallback/);
-  assert.match(processTitle, /kSpotifyPlaybackMetadataScript/);
-  assert.match(processTitle, /navigator\.mediaSession/);
-  assert.match(processTitle, /document\.title/);
-  assert.match(processTitle, /SpotifyTrackFromMetadataJson/);
-  assert.match(processTitle, /ExecuteScript\(\s*kSpotifyPlaybackMetadataScript/);
-  assert.match(processTitle, /if \(SUCCEEDED\(metadataStarted\)\) return;/);
-  assert.match(processTitle, /GetWindowTextW/);
-  assert.match(processTitle, /EnumChildWindows/);
-  assert.match(processTitle, /webview->get_Source/);
-  assert.match(processTitle, /ICoreWebView2Environment13/);
-  assert.match(processTitle, /GetProcessExtendedInfos/);
-  assert.match(processTitle, /get_AssociatedFrameInfos/);
-  assert.match(processTitle, /get_Source/);
-  assert.match(processTitle, /EqualsSpotifySourceInsensitive/);
-  assert.match(processTitle, /kind != COREWEBVIEW2_PROCESS_KIND_RENDERER/);
-  assert.match(processTitle, /processId != probe->processId/);
-  assert.match(processTitle, /ProbeSpotifyRendererWindowTrack\(\s*processCollection, expectedSource\)/);
-  assert.match(processTitle, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
+
+  assert.match(processTitle, /kSpotifyNowPlayingDomScript/);
+  assert.match(processTitle, /\[data-testid="now-playing-widget"\]/);
+  assert.match(processTitle, /\[data-testid="now-playing-bar"\]/);
+  assert.match(processTitle, /\[data-testid="main-view-player-bar"\]/);
+  assert.match(processTitle, /\[data-testid="bottom-bar"\]/);
+  assert.match(processTitle, /\[data-testid="context-item-info-title"\]/);
+  assert.match(processTitle, /nowplaying-track-link/);
+  assert.match(processTitle, /now-playing-widget-title/);
+  assert.match(processTitle, /TrySpotifyNowPlayingTrackFromJson/);
+  assert.match(processTitle, /ExecuteScript\(\s*kSpotifyNowPlayingDomScript/);
+  assert.match(processTitle, /kSpotifyProcessTitlePollMs = 10ULL \* 1000ULL/);
   assert.match(processTitle, /void SpotifyWebViews::PollProcessTitleStatus\(ULONGLONG now\) noexcept/);
-  assert.match(processTitle, /std::array<std::wstring_view, 4> separators/);
-  assert.match(processTitle, /L" - "/);
-  assert.match(processTitle, /separatorLength = candidate\.size\(\)/);
-  assert.match(processTitle, /substr\(separator \+ separatorLength\)/);
-  assert.match(processTitle, /return std::wstring\(track\)/);
-  assert.doesNotMatch(processTitle, /display\.push_back\(L'・'\)/);
-  assert.match(processTitle, /GetLocalTime\(&metadataTarget->processTitleObservedAt\)/);
-  assert.match(processTitle, /rendererDisplay\.empty\(\)/);
-  assert.match(processTitle, /GetLocalTime\(&target->processTitleObservedAt\)/);
-  assert.match(processTitle, /if \(!slot\.webview\) continue;/);
   assert.match(processTitle, /slot\.nextProcessTitlePollTick = now \+ kSpotifyProcessTitlePollMs/);
+
+  // Status must never be synthesized from the next managed target or other
+  // stale metadata/title surfaces.
+  assert.doesNotMatch(processTitle, /__homePanelSpotifyNativeTarget/);
+  assert.doesNotMatch(processTitle, /navigator\.mediaSession/);
+  assert.doesNotMatch(processTitle, /document\.title/);
+  assert.doesNotMatch(processTitle, /GetWindowTextW/);
+  assert.doesNotMatch(processTitle, /EnumChildWindows|EnumWindows/);
+  assert.doesNotMatch(processTitle, /GetProcessExtendedInfos/);
+  assert.doesNotMatch(processTitle, /observedTrackTitle/);
+
+  // A valid empty player reading clears stale UI instead of preserving a prior
+  // track forever.
+  assert.match(processTitle, /const bool observed = !display\.empty\(\)/);
+  assert.match(processTitle, /target->processTrackDisplay = std::move\(display\)/);
+  assert.match(processTitle, /target->processTitleObserved = observed/);
+  assert.match(processTitle, /target->processTitleObservedAt = \{\}/);
+  assert.match(processTitle, /InvalidateSpotifyStatusForHost\(target->hostWindow\)/);
+
   assert.match(controller, /slot\.nextProcessTitlePollTick = GetTickCount64\(\)/);
   assert.doesNotMatch(
     controller,
     /RefreshProcessTitleStatus\(slot, slot\.webview\.Get\(\)\)/,
   );
   assert.match(stagger, /PollProcessTitleStatus\(now\)/);
-  assert.doesNotMatch(stagger, /PollProcessTitleStatusFallback/);
   assert.match(phase, /if \(slot\.webview\) \{/);
   assert.match(phase, /considerTick\(slot\.nextProcessTitlePollTick/);
-  assert.match(phase, /fixed 60-second poll/);
   assert.match(lifecycle, /SpotifyWebViews::PollPlaybackStatusesNow\(\) noexcept/);
   assert.match(lifecycle, /PollProcessTitleStatus\(GetTickCount64\(\)\)/);
   assert.match(lifecycle, /void PollSpotifyPlaybackStatusesNow\(\) noexcept/);
+
   assert.match(musicTarget, /target->observedTrackTitle = currentTrack->title/);
   assert.match(musicTarget, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(musicTarget, /target->playbackConfirmed = true/);
@@ -129,10 +130,9 @@ test('reconcile confirms verified Pause without observer acknowledgement or Moni
   assert.doesNotMatch(confirmation, /ArmTimedEndObserver/);
 });
 
-test('Spotify status strip polls every 60 seconds without monitor switching', () => {
+test('Spotify status strip keeps an independent fallback timer without monitor switching', () => {
   assert.match(hostWindow, /kNativeSpotifyStatusHeight = 56/);
   assert.match(hostWindow, /kNativeSpotifyStatusPollTimer = 0x5350/);
-  assert.match(hostWindow, /kNativeSpotifyStatusPollMs = 60U \* 1000U/);
   assert.match(hostWindow, /case WM_TIMER:/);
   assert.match(hostWindow, /PollSpotifyPlaybackStatusesNow\(\)/);
   assert.match(hostWindow, /SetTimer\(status, kNativeSpotifyStatusPollTimer/);
