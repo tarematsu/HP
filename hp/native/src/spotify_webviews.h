@@ -29,8 +29,8 @@ class SpotifyWebViews final {
   void Resize() noexcept;
   void Shutdown() noexcept;
   void SetNetworkBlocked(bool blocked) noexcept;
-  void SetOutputMuted(bool muted) noexcept;
-  void SetMonitorForeground(bool foreground) noexcept;
+  void SetAudioOutputSlot(int slotIndex) noexcept;
+  void SetMonitorForegroundSlot(int slotIndex) noexcept;
   std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
   PlaybackStatuses() const noexcept;
 
@@ -194,7 +194,7 @@ class SpotifyWebViews final {
   size_t hostLayoutAuthenticationSlot_ = kAccountCount;
   bool started_ = false;
   bool networkBlocked_ = false;
-  bool monitorForeground_ = false;
+  int monitorForegroundSlot_ = -1;
 };
 
 std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
@@ -204,7 +204,7 @@ GetSpotifyPlaybackStatuses() noexcept;
 // scheduler-eligible ten seconds apart and then run from cloud rotation blocks.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
-void SetSpotifyAudioMuted(bool muted) noexcept;
-void SetSpotifyMonitorForeground(bool foreground) noexcept;
+void SetSpotifyAudioOutputSlot(int slotIndex) noexcept;
+void SetSpotifyMonitorForegroundSlot(int slotIndex) noexcept;
 
 }  // namespace hp
