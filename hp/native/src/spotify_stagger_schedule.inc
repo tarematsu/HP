@@ -70,7 +70,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   size_t selected = count;
   for (size_t step = 0; step < count; ++step) {
     const size_t index = (scanStart + step) % count;
-    if (!SpotifySlotShouldOwnHost(index)) continue;
+    if (!SpotifyAccountShouldOwnHost(index)) continue;
     const Slot& candidate = slots_[index];
     if (!startupReady(index) || !controllerReady(candidate) ||
         SlotIsLoginPage(candidate)) {
