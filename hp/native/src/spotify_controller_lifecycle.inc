@@ -97,21 +97,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     Slot* const target = &slot;
     const auto alive = alive_;
 
-    // Track-title changes are normally delivered by WebView2 even while the
-    // Spotify host is visually clipped in the background. Refresh from the
-    // matching renderer immediately on that event, while retaining the fixed
-    // 60-second poll as a watchdog for delayed or dropped title events.
-    EventRegistrationToken documentTitleChangedToken{};
-    slot.webview->add_DocumentTitleChanged(
-        Callback<ICoreWebView2DocumentTitleChangedEventHandler>(
-            [this, alive, target](ICoreWebView2* sender, IUnknown*) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) || !sender) return S_OK;
-              RefreshProcessTitleStatus(*target, sender);
-              return S_OK;
-            }).Get(), &documentTitleChangedToken);
-    RefreshProcessTitleStatus(slot, slot.webview.Get());
-    slot.nextProcessTitlePollTick =
-        GetTickCount64() + kSpotifyProcessTitlePollMs;
+    // Spotify status is refreshed only by the native status polling timer.
 
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
