@@ -1,8 +1,8 @@
 namespace hp {
 namespace {
 
-constexpr LONG kSpotifyInternalViewportWidth = 720;
-constexpr LONG kSpotifyInternalViewportHeight = 480;
+constexpr LONG kSpotifyInternalViewportWidth = 320;
+constexpr LONG kSpotifyInternalViewportHeight = 160;
 
 RECT SpotifyFixedViewportBounds() noexcept {
   return RECT{0, 0, kSpotifyInternalViewportWidth,

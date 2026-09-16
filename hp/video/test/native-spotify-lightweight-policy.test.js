@@ -16,20 +16,29 @@ test('Spotify lightweight CSS is wired before controller lifecycle code', () => 
   assert.match(controller, /if \(!playerPage\) \{ ArmRobustScheduler\(\); return S_OK; \}[\s\S]*ApplySpotifyLightweightCss\(sender\)/);
 });
 
-test('Spotify CSS reduction stays visual-only and avoids image or playback DOM suppression', () => {
+test('Spotify CSS disables presentation effects and removes non-playback DOM', () => {
   assert.match(policy, /location\.hostname !== 'open\.spotify\.com'/);
   assert.match(policy, /homepanel-spotify-lightweight/);
+  assert.match(policy, /\*, \*::before, \*::after/);
+  assert.match(policy, /animation: none !important/);
+  assert.match(policy, /animation-play-state: paused !important/);
+  assert.match(policy, /transition: none !important/);
+  assert.match(policy, /will-change: auto !important/);
+  assert.match(policy, /view-transition-name: none !important/);
   assert.match(policy, /data-testid="global-nav-bar"/);
   assert.match(policy, /data-testid="left-sidebar"/);
   assert.match(policy, /data-testid="right-sidebar"/);
-  assert.match(policy, /data-testid\*="skeleton"/);
-  assert.doesNotMatch(policy, /img,[\s\S]*picture[\s\S]*visibility: hidden/);
-  assert.doesNotMatch(policy, /main section|content-visibility|pointer-events/);
-  assert.doesNotMatch(policy, /play-button|control-button-playpause|audio\b|video\b|now-playing/);
+  assert.match(policy, /data-testid="tracklist-row"/);
+  assert.match(policy, /data-testid\*="recommendation" i/);
+  assert.match(policy, /data-testid\*="related" i/);
+  assert.match(policy, /picture,[\s\S]*img,[\s\S]*canvas/);
+  assert.match(policy, /content-visibility: hidden !important/);
+  assert.match(policy, /contain: strict !important/);
+  assert.doesNotMatch(policy, /audio\b|video\b|now-playing-widget|control-button-playpause/);
   assert.doesNotMatch(policy, /MutationObserver/);
 });
 
-test('Spotify delegates image and downloadable-font suppression to the shared UDF', () => {
+test('Spotify delegates image and downloadable-font network suppression to the shared UDF', () => {
   assert.doesNotMatch(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
   assert.doesNotMatch(policy, /AddWebResourceRequestedFilter|add_WebResourceRequested/);
   assert.match(environment, /blockImages = true;/);

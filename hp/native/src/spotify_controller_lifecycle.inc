@@ -194,19 +194,9 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
         SpotifyControllerBounds(slot.hostWindow, slot.loginPage));
     slot.controller->put_IsVisible(TRUE);
     SetSlotState(slot, SlotState::Authenticating);
-    ComPtr<ICoreWebView2> startupView = slot.webview;
-    ResetWebViewStartupCaches(
-        startupView.Get(),
-        [this, alive, target, startupView](HRESULT) {
-          if (!alive->load(std::memory_order_acquire) ||
-              target->webview.Get() != startupView.Get()) {
-            return;
-          }
-          if (FAILED(startupView->Navigate(kSpotifyLoginUrl))) {
-            MarkSlotRecovering(*target, GetTickCount64());
-          }
-          ArmRobustScheduler();
-        });
+    if (FAILED(slot.webview->Navigate(kSpotifyLoginUrl))) {
+      MarkSlotRecovering(slot, GetTickCount64());
+    }
     ArmRobustScheduler();
   } catch (...) {
     MarkSlotRecovering(slot, GetTickCount64());

@@ -26,9 +26,9 @@ test('Spotify uses LOW memory immediately after confirmed playback', () => {
   assert.match(phase, /MarkSlotRecovering[\s\S]*SetSlotState\(slot, SlotState::Recovering\)/);
 });
 
-test('Spotify keeps a 720x480 controller viewport except on login pages', () => {
-  assert.match(policy, /kSpotifyInternalViewportWidth = 720/);
-  assert.match(policy, /kSpotifyInternalViewportHeight = 480/);
+test('Spotify keeps a 320x160 controller viewport except on login pages', () => {
+  assert.match(policy, /kSpotifyInternalViewportWidth = 320/);
+  assert.match(policy, /kSpotifyInternalViewportHeight = 160/);
   assert.match(
     policy,
     /if \(authentication && hostWindow && IsWindow\(hostWindow\)\)[\s\S]*GetClientRect\(hostWindow, &client\)[\s\S]*return client;[\s\S]*return SpotifyFixedViewportBounds\(\)/,
