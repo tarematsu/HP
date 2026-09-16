@@ -20,3 +20,10 @@ inline void ResetWebViewStartupCaches(
 }
 
 }  // namespace hp
+
+// sh.cpp includes this compatibility header immediately after sh_shared.h.
+// Play-count collection is retired: prevent the old five-minute scheduler from
+// ever becoming due and make the legacy call harmless if it is invoked directly.
+// Other translation units include this header but do not reference these names.
+#define kStationheadDailyPlayStatsIntervalMs 4'000'000'000'000'000'000LL
+#define StationheadApiPlayStatsScript(channelId) std::wstring(L"void 0;")
