@@ -84,7 +84,7 @@ test('phase clock is removed while cursor hiding remains', () => {
   assert.match(mediaWindow, /windowClass\.hCursor = nullptr/);
 });
 
-test('YouTube preserves playlist playback, one-shot 360p, captions off, skip and fullscreen', () => {
+test('YouTube preserves playlist playback, one-shot 360p, captions off, skip and direct fullscreen', () => {
   assert.match(mediaBase, /homepanel-cloud\.tarematsu\.workers\.dev\/v1\/native\/youtube-start/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
@@ -93,8 +93,12 @@ test('YouTube preserves playlist playback, one-shot 360p, captions off, skip and
   assert.doesNotMatch(youtubeRuntime, /getPlaybackQuality\(\)/);
   assert.match(youtubeRuntime, /setOption\('captions', 'track', \{\}\)/);
   assert.match(youtubeRuntime, /\.ytp-ad-skip-button-modern/);
-  assert.match(youtubeRuntime, /\.ytp-fullscreen-button/);
+  assert.match(youtubeRuntime, /const videoFullscreenPoint = media =>/);
+  assert.match(youtubeRuntime, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
+  assert.match(youtubeRuntime, /const x = rect\.right - insetX/);
+  assert.match(youtubeRuntime, /const y = rect\.bottom - insetY/);
   assert.match(youtubeRuntime, /fullscreenApplied: false/);
+  assert.doesNotMatch(youtubeRuntime, /\.ytp-fullscreen-button|homepanel:youtube-fullscreen-key/);
   assert.match(youtubeRuntime, /homepanel:youtube-wake/);
   assert.match(youtubeRuntime, /attributeFilter: \['class'\]/);
   assert.doesNotMatch(youtubeRuntime, /document\.documentElement.*observe/);
@@ -145,13 +149,16 @@ test('TVer media initialization performs one pointer wake without burst polling'
   );
 });
 
-test('TVer ads are isolated to Skip and one-shot fullscreen automation', () => {
+test('TVer ads enter fullscreen before Skip automation', () => {
+  const fullscreen = tverWatchdog.indexOf('const fullscreenPoint = videoFullscreenPoint(video)');
   const adStart = tverWatchdog.indexOf('if (adActive) {');
   const survey = tverWatchdog.indexOf('const surveyRoots = Array.from', adStart);
   const branch = tverWatchdog.slice(adStart, survey);
+  assert.ok(fullscreen >= 0 && adStart > fullscreen);
+  assert.match(tverWatchdog, /const videoFullscreenPoint = media =>/);
+  assert.match(tverWatchdog, /if \(state\) state\.fullscreenDirty = false/);
   assert.match(branch, /skipButton/);
-  assert.match(branch, /fullscreenButton/);
-  assert.match(branch, /fullscreenDirty === false/);
+  assert.doesNotMatch(branch, /fullscreenButton|isEnterFullscreenControl/);
   assert.doesNotMatch(branch, /video\.play\(|video\.volume|playbackRate|surveyRoots/);
 });
 
