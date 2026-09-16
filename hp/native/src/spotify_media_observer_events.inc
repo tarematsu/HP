@@ -22,6 +22,19 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   let recoveryTimer = 0;
   let recoveryMedia = null;
   let recoveryTime = 0;
+  let keyWaitingMedia = null;
+
+  const beginKeyWait = event => {
+    const media = event.target;
+    if (!isMedia(media) || keyWaitingMedia === media) return;
+    keyWaitingMedia = media;
+    post('spotify:drm-waiting');
+  };
+  const finishKeyWait = event => {
+    if (!keyWaitingMedia || (event?.target && event.target !== keyWaitingMedia)) return;
+    keyWaitingMedia = null;
+    post('spotify:drm-ready');
+  };
 
   const clearRecoveryProbe = () => {
     if (recoveryTimer) nativeClearTimeout(recoveryTimer);
@@ -60,6 +73,9 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   };
   const observe = event => {
     if (!isMedia(event.target) || event.target.ended) return;
+    if (event.type === 'playing' || event.type === 'timeupdate') {
+      finishKeyWait(event);
+    }
     if ((event.type === 'playing' || event.type === 'timeupdate') &&
         state.targetMedia === event.target && !event.target.paused) {
       const current = Number(event.target.currentTime);
@@ -123,6 +139,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   };
 
   document.addEventListener('click', armManualPlay, true);
+  document.addEventListener('waitingforkey', beginKeyWait, true);
   document.addEventListener('playing', observe, true);
   document.addEventListener('durationchange', observe, true);
   document.addEventListener('loadedmetadata', observe, true);
@@ -132,6 +149,9 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     document.addEventListener(eventName, observePlaybackProblem, true);
   }
   document.addEventListener('ended', observeEnded, true);
+  for (const eventName of ['emptied', 'abort', 'ended']) {
+    document.addEventListener(eventName, finishKeyWait, true);
+  }
 
   document.querySelectorAll('audio, video').forEach(media => {
     if (!media.paused && !media.ended) scheduleTargetChecks(media);

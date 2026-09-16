@@ -247,13 +247,22 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               const bool ended = !started && !resumed && !interrupted &&
                   ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:timed-ended", &eventGeneration);
+              const bool drmWaiting =
+                  !started && !resumed && !interrupted && !ended &&
+                  ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:drm-waiting", &eventGeneration);
+              const bool drmReady =
+                  !started && !resumed && !interrupted && !ended &&
+                  !drmWaiting && ParseSpotifyGenerationEvent(
+                      rawMessage, L"spotify:drm-ready", &eventGeneration);
               const bool observerSynced =
                   !started && !resumed && !interrupted && !ended &&
+                  !drmWaiting && !drmReady &&
                   ParseSpotifyGenerationEvent(
                       rawMessage, L"spotify:observer-synced", &eventGeneration);
               CoTaskMemFree(rawMessage);
               if (!started && !resumed && !interrupted && !ended &&
-                  !observerSynced) {
+                  !drmWaiting && !drmReady && !observerSynced) {
                 return S_OK;
               }
               if (eventGeneration == 0 ||
@@ -262,6 +271,30 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               }
 
               const ULONGLONG now = GetTickCount64();
+              if (drmWaiting) {
+                target->mediaKeyWaitUntilTick =
+                    now + kMediaKeyWaitProtectionMs;
+                target->mediaKeyWaitFailurePending = true;
+                SetSlotState(*target, SlotState::Recovering);
+                target->nextRecoveryTick =
+                    target->mediaKeyWaitUntilTick;
+                ArmRobustScheduler();
+                return S_OK;
+              }
+              if (drmReady) {
+                const bool wasWaitingForKey =
+                    target->mediaKeyWaitUntilTick != 0 ||
+                    target->mediaKeyWaitFailurePending;
+                target->mediaKeyWaitUntilTick = 0;
+                target->mediaKeyWaitFailurePending = false;
+                if (wasWaitingForKey &&
+                    target->state == SlotState::Recovering) {
+                  SetSlotState(*target, SlotState::WaitingTarget);
+                  target->nextRecoveryTick = now;
+                }
+                ArmRobustScheduler();
+                return S_OK;
+              }
               if (observerSynced) {
                 target->asyncWork = AsyncWork::None;
                 target->asyncStartedTick = 0;
@@ -291,6 +324,11 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               }
 
               target->observedTrackTitle = currentTrack->title;
+              target->mediaKeyWaitUntilTick = 0;
+              target->mediaNetworkRecoveryTick = 0;
+              target->mediaNetworkRecoveryAttempt = 0;
+              target->mediaKeyWaitFailurePending = false;
+              target->mediaNetworkRecoveryPending = false;
               GetLocalTime(&target->playbackConfirmedAt);
               target->playbackConfirmed = true;
               InvalidateSpotifyStatusForHost(target->hostWindow);

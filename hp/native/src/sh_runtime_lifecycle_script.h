@@ -23,12 +23,28 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   };
   const onStateEvent = () => schedule(0);
   const onInteractiveEvent = () => schedule(150);
+  let keyWaitingMedia = null;
+  const beginKeyWait = event => {
+    const media = event.target;
+    if (!(media instanceof HTMLMediaElement) || keyWaitingMedia === media) return;
+    keyWaitingMedia = media;
+    postText('drm-waiting');
+  };
+  const finishKeyWait = event => {
+    if (!keyWaitingMedia || (event?.target && event.target !== keyWaitingMedia)) return;
+    keyWaitingMedia = null;
+    postText('drm-ready');
+  };
 
   for (const eventName of [
       'play', 'playing', 'canplay', 'pause', 'ended', 'stalled', 'waiting', 'error']) {
     document.addEventListener(eventName, onStateEvent, true);
   }
   document.addEventListener('click', onInteractiveEvent, true);
+  document.addEventListener('waitingforkey', beginKeyWait, true);
+  for (const eventName of ['playing', 'emptied', 'abort', 'ended']) {
+    document.addEventListener(eventName, finishKeyWait, true);
+  }
   document.addEventListener('submit', onInteractiveEvent, true);
   document.addEventListener('DOMContentLoaded', () => {
     zoomOut();

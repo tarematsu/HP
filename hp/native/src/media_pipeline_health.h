@@ -5,6 +5,9 @@ namespace hp {
 
 inline constexpr ULONGLONG kMediaPipelineRebuildCooldownMs =
     5ULL * 60ULL * 1000ULL;
+inline constexpr ULONGLONG kMediaKeyWaitProtectionMs = 20ULL * 1000ULL;
+inline constexpr std::array<ULONGLONG, 3> kMediaNetworkRetryDelaysMs{
+    2ULL * 1000ULL, 5ULL * 1000ULL, 15ULL * 1000ULL};
 
 inline HRESULT SubscribeMediaPipelineErrors(
     ICoreWebView2* webview,
@@ -86,6 +89,19 @@ inline bool MediaPipelineErrorRequiresRebuild(
     if (MediaPipelineErrorContains(parameters, token)) return true;
   }
   return false;
+}
+
+inline bool MediaPipelineErrorIsNetwork(
+    std::wstring_view parameters) noexcept {
+  return MediaPipelineErrorContains(parameters, L"network") ||
+      MediaPipelineErrorContains(parameters, L"pipeline_error_read");
+}
+
+inline bool MediaPipelineErrorIsKeyWaitRelated(
+    std::wstring_view parameters) noexcept {
+  return MediaPipelineErrorContains(parameters, L"decrypt") ||
+      MediaPipelineErrorContains(parameters, L"cdm_error") ||
+      MediaPipelineErrorContains(parameters, L"key_system_error");
 }
 
 inline std::wstring_view MediaPipelineErrorCategory(

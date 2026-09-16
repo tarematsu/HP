@@ -87,6 +87,11 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
         nullptr);
   }
   if (playing) {
+    mediaKeyWaitUntil_ = 0;
+    mediaNetworkRecoveryAt_ = 0;
+    mediaNetworkRecoveryAttempt_ = 0;
+    mediaKeyWaitFailurePending_ = false;
+    mediaNetworkRecoveryPending_ = false;
     if (awaitingTrackBoundaryNavigation) {
       audioPlayingSinceAt_.store(0, std::memory_order_relaxed);
       {
@@ -687,6 +692,56 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     if (deadline <= nowMs) next = nowMs + 1'000;
     else next = std::min(next, deadline);
   };
+
+  if (mediaKeyWaitUntil_ > 0) {
+    if (nowMs < mediaKeyWaitUntil_) {
+      nextTickAt_ = mediaKeyWaitUntil_;
+      return;
+    } else {
+      mediaKeyWaitUntil_ = 0;
+      if (mediaKeyWaitFailurePending_) {
+        if (navigationActive) {
+          mediaKeyWaitUntil_ = nowMs + 1'000;
+          nextTickAt_ = mediaKeyWaitUntil_;
+          return;
+        }
+        mediaKeyWaitFailurePending_ = false;
+        if (SUCCEEDED(webview_->Reload())) {
+          log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
+                    L" DRM key wait exceeded twenty seconds; reloading page");
+          nextTickAt_ = nowMs + 1'000;
+          return;
+        }
+        ScheduleRecreate(L"DRM key wait recovery reload failed", 1'000);
+        return;
+      }
+    }
+  }
+
+  if (mediaNetworkRecoveryPending_) {
+    if (mediaKeyWaitUntil_ > nowMs) {
+      nextTickAt_ = mediaKeyWaitUntil_;
+      return;
+    } else if (nowMs < mediaNetworkRecoveryAt_) {
+      nextTickAt_ = mediaNetworkRecoveryAt_;
+      return;
+    } else if (navigationActive) {
+      nextTickAt_ = nowMs + 1'000;
+      return;
+    } else {
+      mediaNetworkRecoveryPending_ = false;
+      mediaNetworkRecoveryAt_ = 0;
+      if (SUCCEEDED(webview_->Reload())) {
+        log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
+                  L" media network recovery reloading page attempt=" +
+                  std::to_wstring(mediaNetworkRecoveryAttempt_));
+        nextTickAt_ = nowMs + 1'000;
+        return;
+      }
+      ScheduleRecreate(L"media network recovery reload failed", 1'000);
+      return;
+    }
+  }
   if (trackBoundaryPlaybackRecoveryPending_) {
     if (trackBoundaryPlaybackRecoveryAwaitingNavigation_) {
       if (navigationActive) {
@@ -755,6 +810,11 @@ void StationheadPlayer::OpenSpotifyAuthorization(const std::wstring& url) {
   trackBoundaryPlaybackRecoveryPending_ = false;
   trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
   trackBoundaryPlaybackRecoveryDeadline_ = 0;
+  mediaKeyWaitUntil_ = 0;
+  mediaNetworkRecoveryAt_ = 0;
+  mediaNetworkRecoveryAttempt_ = 0;
+  mediaKeyWaitFailurePending_ = false;
+  mediaNetworkRecoveryPending_ = false;
   if (!webview_) {
     pendingAuthorizationUrl_ = url;
     if (!creating_) ScheduleRecreate(L"Spotify authorization requested before WebView2 was ready");
@@ -857,6 +917,11 @@ void StationheadPlayer::ScheduleRecreate(const std::wstring& reason, int64_t del
   trackBoundaryPlaybackRecoveryPending_ = false;
   trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
   trackBoundaryPlaybackRecoveryDeadline_ = 0;
+  mediaKeyWaitUntil_ = 0;
+  mediaNetworkRecoveryAt_ = 0;
+  mediaNetworkRecoveryAttempt_ = 0;
+  mediaKeyWaitFailurePending_ = false;
+  mediaNetworkRecoveryPending_ = false;
   const int64_t candidate = UnixMillis() + std::max<int64_t>(0, delayMs);
   const bool wasRecreating = recreating_.exchange(true);
   if (!wasRecreating || candidate < recreateAt_) recreateAt_ = candidate;
