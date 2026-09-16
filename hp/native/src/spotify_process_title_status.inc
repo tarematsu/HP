@@ -4,8 +4,8 @@ namespace {
 constexpr ULONGLONG kSpotifyProcessTitlePollMs = 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyProcessTitlePollPhaseMs =
     kSpotifyProcessTitlePollMs / kSpotifyActiveAccountCount;
-static_assert(kSpotifyActiveAccountCount == 3);
-static_assert(kSpotifyProcessTitlePollPhaseMs == 20ULL * 1000ULL);
+static_assert(kSpotifyActiveAccountCount == 4);
+static_assert(kSpotifyProcessTitlePollPhaseMs == 15ULL * 1000ULL);
 
 // Status is intentionally independent from the managed/queued target. Read only
 // the Web Player's bottom now-playing surface so a scheduled track can never be
@@ -131,7 +131,7 @@ void SpotifyWebViews::PollProcessTitleStatus(ULONGLONG now) noexcept {
 
   // Never execute multiple DOM probes in one scheduler pass. If Windows was
   // asleep or the UI thread was stalled long enough for multiple phases to
-  // expire, spread the overdue probes back out at 20-second intervals.
+  // expire, spread the overdue probes back out at the account phase interval.
   ULONGLONG catchUpDelay = kSpotifyProcessTitlePollPhaseMs;
   for (size_t i = selected + 1; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
