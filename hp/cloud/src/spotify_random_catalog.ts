@@ -112,7 +112,7 @@ export function managedSpotifySevenSlotRotation() {
   return [
     {
       mode: "fixed",
-      tracks: [spotifyRotationTrack("Lonesome Rabbit", "6Vy6hCA2CZwZalGqaX6Sew")],
+      tracks: [spotifyRotationTrack("愛MUST BE", "0excsYy4LOVEcQTN4OPeJE")],
     },
     {
       mode: "random",
