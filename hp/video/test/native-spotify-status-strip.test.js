@@ -10,6 +10,8 @@ const processTitle = readFileSync(
   new URL('../../native/src/spotify_process_title_status.inc', import.meta.url), 'utf8');
 const controller = readFileSync(
   new URL('../../native/src/spotify_controller_lifecycle.inc', import.meta.url), 'utf8');
+const stagger = readFileSync(
+  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 const runtime = readFileSync(
   new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const rotation = readFileSync(
@@ -34,12 +36,17 @@ test('yuukiar and ten Spotify slots are active with existing profile numbers', (
   assert.doesNotMatch(scripts, /L"nagi"|L"hinata"|L"amazon"|L"ozeki"/);
 });
 
-test('status track comes from each Spotify renderer window with a 60-second watchdog', () => {
+test('status track comes from each Spotify renderer window with fixed 60-second polling only', () => {
   assert.match(header, /std::wstring observedTrackTitle/);
   assert.match(header, /std::wstring processTrackDisplay/);
   assert.match(header, /SYSTEMTIME processTitleObservedAt/);
-  assert.match(controller, /add_DocumentTitleChanged/);
-  assert.doesNotMatch(processTitle, /get_DocumentTitle/);
+  assert.match(header, /void PollProcessTitleStatus\(ULONGLONG now\) noexcept/);
+  assert.doesNotMatch(header, /documentTitleChangedToken|processTitleEventRegistered|PollProcessTitleStatusFallback/);
+  assert.doesNotMatch(
+    controller,
+    /add_DocumentTitleChanged|ICoreWebView2DocumentTitleChangedEventHandler/,
+  );
+  assert.doesNotMatch(processTitle, /get_DocumentTitle|PollProcessTitleStatusFallback/);
   assert.match(processTitle, /GetWindowTextW/);
   assert.match(processTitle, /EnumChildWindows/);
   assert.match(processTitle, /webview->get_Source/);
@@ -52,18 +59,23 @@ test('status track comes from each Spotify renderer window with a 60-second watc
   assert.match(processTitle, /processId != probe->processId/);
   assert.match(processTitle, /ProbeSpotifyRendererWindowTrack\(\s*processCollection, expectedSource\)/);
   assert.match(processTitle, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
+  assert.match(processTitle, /void SpotifyWebViews::PollProcessTitleStatus\(ULONGLONG now\) noexcept/);
   assert.match(processTitle, /return std::wstring\(track\)/);
   assert.doesNotMatch(processTitle, /display\.push_back\(L'・'\)/);
   assert.match(processTitle, /rendererDisplay\.empty\(\)/);
   assert.match(processTitle, /GetLocalTime\(&target->processTitleObservedAt\)/);
   assert.match(processTitle, /if \(!slot\.webview\) continue;/);
+  assert.match(processTitle, /slot\.nextProcessTitlePollTick = now \+ kSpotifyProcessTitlePollMs/);
+  assert.match(controller, /slot\.nextProcessTitlePollTick = GetTickCount64\(\)/);
   assert.doesNotMatch(
-    processTitle,
-    /slot\.processTitleEventRegistered \|\| !slot\.webview/,
+    controller,
+    /RefreshProcessTitleStatus\(slot, slot\.webview\.Get\(\)\)/,
   );
-  assert.match(controller, /GetTickCount64\(\) \+ kSpotifyProcessTitlePollMs/);
+  assert.match(stagger, /PollProcessTitleStatus\(now\)/);
+  assert.doesNotMatch(stagger, /PollProcessTitleStatusFallback/);
   assert.match(phase, /if \(slot\.webview\) \{/);
   assert.match(phase, /considerTick\(slot\.nextProcessTitlePollTick/);
+  assert.match(phase, /fixed 60-second poll/);
   assert.match(musicTarget, /target->observedTrackTitle = currentTrack->title/);
   assert.match(musicTarget, /GetLocalTime\(&target->playbackConfirmedAt\)/);
   assert.match(musicTarget, /target->playbackConfirmed = true/);

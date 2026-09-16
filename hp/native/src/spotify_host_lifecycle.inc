@@ -79,16 +79,12 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
     if (slot.navigationCompletedToken.value != 0) {
       slot.webview->remove_NavigationCompleted(slot.navigationCompletedToken);
     }
-    if (slot.documentTitleChangedToken.value != 0) {
-      slot.webview->remove_DocumentTitleChanged(slot.documentTitleChangedToken);
-    }
     if (slot.timedEndMessageReceivedToken.value != 0) {
       slot.webview->remove_WebMessageReceived(slot.timedEndMessageReceivedToken);
     }
   }
   slot.navigationStartingToken = {};
   slot.navigationCompletedToken = {};
-  slot.documentTitleChangedToken = {};
   slot.timedEndMessageReceivedToken = {};
   slot.timedEndHandlerWebview = nullptr;
   slot.webview.Reset();
@@ -125,7 +121,6 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.processTrackDisplay.clear();
   slot.processTitleObservedAt = {};
   slot.playbackConfirmed = false;
-  slot.processTitleEventRegistered = false;
   slot.processTitleObserved = false;
   slot.playbackConfirmedAt = {};
 }
