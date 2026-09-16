@@ -44,6 +44,8 @@ LR"JS(
     const centerY = rect.top + rect.height / 2;
     if (centerX < 0 || centerX > window.innerWidth ||
         centerY < 0 || centerY > window.innerHeight) return null;
+    const hit = document.elementFromPoint(centerX, centerY);
+    if (!hit || (hit !== element && !element.contains(hit))) return null;
     return [
       Math.max(0, Math.min(10000, Math.round((centerX / window.innerWidth) * 10000))),
       Math.max(0, Math.min(10000, Math.round((centerY / window.innerHeight) * 10000)))

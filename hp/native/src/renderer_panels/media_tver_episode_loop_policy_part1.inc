@@ -137,7 +137,17 @@ LR"JS(
         now - state.progressSampleAt < interval) return;
     state.progressSampleAt = now;
     if (Number.isFinite(video.currentTime)) {
-      state.maxTime = Math.max(state.maxTime, video.currentTime);
+      const currentTime = video.currentTime;
+      if (!Number.isFinite(state.programProgressOrigin)) {
+        state.programProgressOrigin = currentTime;
+      } else if (currentTime + 2 < state.programProgressOrigin) {
+        state.programProgressOrigin = currentTime;
+        state.programPlaybackConfirmed = false;
+      } else if (!state.programPlaybackConfirmed && !video.paused && !video.ended &&
+                 currentTime >= state.programProgressOrigin + 1) {
+        state.programPlaybackConfirmed = true;
+      }
+      state.maxTime = Math.max(state.maxTime, currentTime);
     }
     if (Number.isFinite(video.duration)) {
       state.maxDuration = Math.max(state.maxDuration, video.duration);

@@ -19,22 +19,38 @@ LR"JS(
         (element.textContent || '')).toLowerCase();
     return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
   });
+  const isFullscreen = () => !!(
+      document.fullscreenElement || document.webkitFullscreenElement ||
+      document.msFullscreenElement);
 
   if (hasVisibleLoginPrompt()) {
     if (state) state.fullscreenDirty = true;
     return;
   }
-  if (document.fullscreenElement || document.webkitFullscreenElement ||
-      document.msFullscreenElement) {
+  if (isFullscreen()) {
     if (state) state.fullscreenDirty = false;
     return;
   }
+  if (window.__homePanelTverFullscreenPending) return;
 
-  // Never depend on a page-script fullscreen API. If the trusted CDP click did
-  // not enter fullscreen, mark the action dirty again and wake the native
-  // watchdog so it can dispatch another trusted pointer click in background.
-  if (state) state.fullscreenDirty = true;
-  try { window.chrome?.webview?.postMessage('homepanel:tver-wake'); }
-  catch (_) {}
+  // A trusted CDP click completes asynchronously relative to this callback.
+  // Keep the action consumed for a short grace period so a second click cannot
+  // immediately toggle fullscreen back off before fullscreenchange is observed.
+  window.__homePanelTverFullscreenPending = true;
+  window.setTimeout(() => {
+    window.__homePanelTverFullscreenPending = false;
+    const latestState = window.__homePanelSakuraMeetsState;
+    if (hasVisibleLoginPrompt()) {
+      if (latestState) latestState.fullscreenDirty = true;
+      return;
+    }
+    if (isFullscreen()) {
+      if (latestState) latestState.fullscreenDirty = false;
+      return;
+    }
+    if (latestState) latestState.fullscreenDirty = true;
+    try { window.chrome?.webview?.postMessage('homepanel:tver-wake'); }
+    catch (_) {}
+  }, 800);
 })()
 )JS"

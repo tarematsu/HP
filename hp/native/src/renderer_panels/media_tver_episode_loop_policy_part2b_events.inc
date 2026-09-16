@@ -82,6 +82,13 @@ LR"JS(
         scheduleEnsure(0);
         return;
       }
+      // Ignore an ended media surface that never demonstrated forward program
+      // playback after it became current. This blocks stale/replaced video
+      // elements from advancing the native episode queue during player startup.
+      if (!state.programPlaybackConfirmed) {
+        scheduleEnsure(0);
+        return;
+      }
       clearProgressSampler();
       sampleProgress(video, state, true);
       clearRecovery();
