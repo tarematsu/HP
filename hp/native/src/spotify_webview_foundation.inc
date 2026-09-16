@@ -12,6 +12,22 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 // launches reuse the newly authenticated sessions instead of resetting again.
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
+// ten (slot 1/profile 3) and hinata (slot 3/profile 5) share one live WebView
+// budget. ten starts first; after either account completes one full cloud
+// rotation, that WebView is destroyed and the other account is generated.
+constexpr size_t kSpotifyTenSlotIndex = 1;
+constexpr size_t kSpotifyHinataSlotIndex = 3;
+size_t gSpotifyAlternatingActiveSlot = kSpotifyTenSlotIndex;
+
+bool IsSpotifyAlternatingPairSlot(size_t index) noexcept {
+  return index == kSpotifyTenSlotIndex || index == kSpotifyHinataSlotIndex;
+}
+
+bool SpotifySlotShouldOwnHost(size_t index) noexcept {
+  return !IsSpotifyAlternatingPairSlot(index) ||
+         index == gSpotifyAlternatingActiveSlot;
+}
+
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
 int gSpotifyAudioOutputSlot = -1;
 int gSpotifyMonitorForegroundSlot = -1;
@@ -44,6 +60,7 @@ SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
       // isolate cookies/local storage for every Spotify account.
       userDataFolder_(std::move(dataDir) / L"webview2-youtube-mv") {
   gSpotifyControlInstance = this;
+  gSpotifyAlternatingActiveSlot = kSpotifyTenSlotIndex;
   monitorForegroundSlot_ = gSpotifyMonitorForegroundSlot;
   for (size_t i = 0; i < slots_.size(); ++i) {
     slots_[i].owner = this;
