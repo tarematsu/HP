@@ -157,10 +157,11 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
     SetTimer(status, kNativeSpotifyStatusPollTimer,
              kNativeSpotifyStatusPollMs, nullptr);
   }
-  SetWindowPos(status, HWND_TOP, bounds.left, bounds.top,
+  SetWindowPos(status, nullptr, bounds.left, bounds.top,
                std::max(1L, bounds.right - bounds.left),
                std::max(1L, bounds.bottom - bounds.top),
-               SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
+               SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER |
+                   SWP_SHOWWINDOW);
   return true;
 }
 }  // namespace
@@ -187,6 +188,9 @@ bool RecreateNativeMediaPanel(HWND hwnd) noexcept {
   } catch (...) {
     return false;
   }
+  HWND status = FindWindowExW(
+      parentWindow, nullptr, kNativeSpotifyStatusClass, nullptr);
+  if (status && IsWindow(status)) DestroyWindow(status);
   if (!DestroyWindow(hwnd)) return false;
   return EnsureNativeMvPanel(parentWindow, dataDir, bounds);
 }
@@ -285,8 +289,6 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
   RECT statusBounds = videoBounds;
   statusBounds.bottom = statusBounds.top + statusHeight;
 
-  if (!EnsureNativeSpotifyStatusPanel(parentWindow, statusBounds)) return false;
-
   HWND host = FindWindowExW(
       parentWindow, nullptr, kNativeMvPanelHostClass, nullptr);
   if (!host) {
@@ -317,13 +319,6 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
     }
   }
 
-  HWND status = FindWindowExW(
-      parentWindow, nullptr, kNativeSpotifyStatusClass, nullptr);
-  if (status) {
-    SetWindowPos(status, HWND_TOP, statusBounds.left, statusBounds.top,
-                 std::max(1L, statusBounds.right - statusBounds.left),
-                 std::max(1L, statusBounds.bottom - statusBounds.top),
-                 SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_SHOWWINDOW);
-  }
+  if (!EnsureNativeSpotifyStatusPanel(parentWindow, statusBounds)) return false;
   return true;
 }
