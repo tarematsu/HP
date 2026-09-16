@@ -395,7 +395,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
 
   if (!state.qualityApplied) {
-    const preferredQuality = 'medium';
+    const preferredQuality = 'hd720';
     let applied = false;
     try {
       if (typeof player.setPlaybackQualityRange === 'function') {
