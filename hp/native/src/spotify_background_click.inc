@@ -29,7 +29,10 @@ void SpotifyWebViews::ClickSlotCssPoint(
     return;
   }
 
-  if (slot.playbackConfirmed) {
+  // playbackConfirmed records the last proven start. After a later media
+  // interruption the native observer moves the slot out of Playing, and the
+  // trusted click path must be available again.
+  if (slot.playbackConfirmed && slot.state == SlotState::Playing) {
     ArmRobustScheduler();
     return;
   }

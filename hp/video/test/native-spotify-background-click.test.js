@@ -71,7 +71,10 @@ test('Spotify keeps full-client internal surfaces and selected Monitor B/C/D for
 test('trusted click uses CSS viewport points and repairs accidental 1x1 placement', () => {
   assert.match(helper, /bool SpotifyWebViews::ParseCssPoint/);
   assert.match(helper, /void SpotifyWebViews::ClickSlotCssPoint/);
-  assert.match(helper, /if \(slot\.playbackConfirmed\) \{[\s\S]*return;/);
+  assert.match(
+    helper,
+    /if \(slot\.playbackConfirmed && slot\.state == SlotState::Playing\) \{[\s\S]*return;/,
+  );
   assert.match(helper, /const bool recoveryViewportReady = SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(helper, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
   assert.match(helper, /slot\.hostLayoutApplied = false;/);

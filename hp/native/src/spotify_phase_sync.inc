@@ -1,3 +1,5 @@
+#include "audio_health_scan_coordinator.h"
+
 namespace hp {
 namespace {
 
@@ -7,7 +9,11 @@ constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 1ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
+std::array<ULONGLONG, kSpotifyActiveAccountCount>
+    gSpotifyAudioHealthCheckDueTicks{};
 
 void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
   if (!hostWindow || !IsWindow(hostWindow)) return;
@@ -42,7 +48,22 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 }
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
+  const SlotState previousState = slot.state;
   slot.state = state;
+  if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
+    ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
+    if (state == SlotState::Playing) {
+      const int lane = SpotifyRuntimeLaneForAccount(slot.index);
+      if (lane < 0) {
+        due = 0;
+      } else if (previousState != SlotState::Playing || due == 0) {
+        due = NextAudioHealthScanTick(
+            GetTickCount64(), static_cast<size_t>(lane) + 1);
+      }
+    } else {
+      due = 0;
+    }
+  }
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
       state == SlotState::Playing) {
     slot.nextRecoveryTick = 0;
@@ -100,8 +121,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
   if (!initialCloudPlaylistReady_) return kSpotifySchedulerBootstrapMs;
 
-  // Healthy playback normally wakes at its exact completion deadline. The
-  // one-hour ceiling is only a coarse safety audit for unexpected state loss.
+  // Healthy playback wakes at its exact completion deadline and at its assigned
+  // one-minute staggered native audio-health slot. The one-hour ceiling remains
+  // only a coarse safety audit for unrelated state loss.
   ULONGLONG nextDelayMs = kSpotifyHealthyAuditMs;
   const auto considerTick = [&nextDelayMs, now](ULONGLONG dueTick) noexcept {
     if (dueTick == 0) return;
@@ -115,6 +137,11 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
       considerTick(slot.nextProcessTitlePollTick == 0
                        ? now
                        : slot.nextProcessTitlePollTick);
+    }
+    if (slot.index < gSpotifyAudioHealthCheckDueTicks.size() &&
+        slot.webview && CurrentMusicTrack(slot) &&
+        SlotStateIsHealthy(slot.state)) {
+      considerTick(gSpotifyAudioHealthCheckDueTicks[slot.index]);
     }
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&

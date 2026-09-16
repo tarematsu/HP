@@ -109,6 +109,99 @@ inline HRESULT InvokeEventNoexcept(
   }
 }
 
+// Native WebView2 audio is the authoritative signal used by the existing
+// Stationhead audio-loss state machine. During its 0-10 second transition
+// grace, add a bounded page-side repair loop: after four seconds of silence,
+// re-scan Start Listening and re-kick a paused/stalled media element every two
+// seconds. Stop before the existing 11/12-second authentication/fallback path
+// so this helper cannot replace or delay the audited fallback decision.
+inline void UpdateStationheadSilentPlaybackRecovery(ICoreWebView2* sender) noexcept {
+  if (!sender) return;
+  try {
+    ComPtr<ICoreWebView2> view = sender;
+    ComPtr<ICoreWebView2_8> audioView;
+    if (FAILED(view.As(&audioView)) || !audioView) return;
+    BOOL playing = FALSE;
+    if (FAILED(audioView->get_IsDocumentPlayingAudio(&playing))) return;
+
+    if (playing != FALSE) {
+      static constexpr wchar_t kRecoveredScript[] = LR"JS(
+(() => {
+  window.__homepanelStationheadNativeAudioSeen = true;
+  const timer = window.__homepanelStationheadSilentRecoveryTimer;
+  if (timer) {
+    try { clearTimeout(timer); } catch (_) {}
+    try { clearInterval(timer); } catch (_) {}
+    window.__homepanelStationheadSilentRecoveryTimer = 0;
+  }
+  return true;
+})()
+)JS";
+      view->ExecuteScript(kRecoveredScript, nullptr);
+      return;
+    }
+
+    static constexpr wchar_t kStoppedScript[] = LR"JS(
+(() => {
+  if (!window.__homepanelStationheadNativeAudioSeen ||
+      window.__homepanelStationheadSilentRecoveryTimer) {
+    return false;
+  }
+  if (window.__homepanelStationheadBlockingLoginVisible === true) return false;
+
+  const nativeSetTimeout = window.setTimeout.bind(window);
+  const nativeSetInterval = window.setInterval.bind(window);
+  const nativeClearInterval = window.clearInterval.bind(window);
+  const lastTimes = new WeakMap();
+  let attempts = 0;
+
+  const recover = () => {
+    if (window.__homepanelAudioPlaying === true ||
+        window.__homepanelStationheadBlockingLoginVisible === true) {
+      return true;
+    }
+    try { window.__homepanelPrimaryStationhead?.scan?.(0); } catch (_) {}
+    for (const media of document.querySelectorAll('audio,video')) {
+      if (!media || media.ended || media.readyState < 2) continue;
+      const now = Number(media.currentTime);
+      const before = lastTimes.get(media);
+      lastTimes.set(media, now);
+      const stalled = !media.paused && Number.isFinite(now) &&
+          Number.isFinite(before) && now <= before + 0.05;
+      try {
+        if (stalled) media.pause();
+        if (media.paused || stalled) {
+          const result = media.play?.();
+          if (result?.catch) result.catch(() => {});
+        }
+      } catch (_) {}
+    }
+    return false;
+  };
+
+  const begin = () => {
+    window.__homepanelStationheadSilentRecoveryTimer = 0;
+    if (recover()) return;
+    attempts = 1;
+    const interval = nativeSetInterval(() => {
+      if (recover() || ++attempts >= 4) {
+        nativeClearInterval(interval);
+        window.__homepanelStationheadSilentRecoveryTimer = 0;
+      }
+    }, 2000);
+    window.__homepanelStationheadSilentRecoveryTimer = interval;
+  };
+
+  window.__homepanelStationheadSilentRecoveryTimer =
+      nativeSetTimeout(begin, 4000);
+  return true;
+})()
+)JS";
+    view->ExecuteScript(kStoppedScript, nullptr);
+  } catch (...) {
+  }
+}
+
 inline ComPtr<ICoreWebView2WebMessageReceivedEventHandler>
 WrapStationheadWebMessageHandler(
     ICoreWebView2WebMessageReceivedEventHandler* handler) noexcept {
@@ -240,7 +333,9 @@ WrapStationheadAudioChangedHandler(
   return Callback<ICoreWebView2IsDocumentPlayingAudioChangedEventHandler>(
       [inner = std::move(inner)](
           ICoreWebView2* sender, IUnknown* args) noexcept -> HRESULT {
-        return InvokeEventNoexcept(inner, sender, args);
+        const HRESULT result = InvokeEventNoexcept(inner, sender, args);
+        if (SUCCEEDED(result)) UpdateStationheadSilentPlaybackRecovery(sender);
+        return result;
       });
 }
 

@@ -11,7 +11,7 @@ const bundle = source('spotify_fast_end_observer.inc');
 const phase = source('spotify_phase_sync.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 
-test('music observer is event driven with no periodic completion probe', () => {
+test('music observer stays event driven with only a bounded interruption timeout', () => {
   assert.match(events, /document\.addEventListener\('playing'/);
   assert.match(events, /document\.addEventListener\('durationchange'/);
   assert.match(events, /document\.addEventListener\('loadedmetadata'/);
@@ -19,7 +19,10 @@ test('music observer is event driven with no periodic completion probe', () => {
   assert.match(events, /document\.addEventListener\('timeupdate'/);
   assert.match(events, /document\.addEventListener\('ended', observeEnded, true\)/);
   assert.doesNotMatch(events, /document\.addEventListener\('play'/);
-  assert.doesNotMatch(events, /setInterval|setTimeout|MutationObserver/);
+  assert.doesNotMatch(events, /setInterval|MutationObserver/);
+  assert.match(events, /recoveryGraceMs = 6000/);
+  assert.match(events, /nativeSetTimeout\(\(\) => \{/);
+  assert.match(events, /nativeClearTimeout\(recoveryTimer\)/);
   assert.match(runtime, /const enforceTarget = media =>/);
 });
 
