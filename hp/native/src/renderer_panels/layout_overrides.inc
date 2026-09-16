@@ -5,8 +5,8 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   const int gap = std::max(6, height * 18 / 1000);
   // NativeDashboardLayout::media is the upper YouTube/TVer WebView host. The
   // visible rain-radar card is in the lower main row, whose exact height is the
-  // full side height minus that 60% media host and the inter-row gap.
-  const int upperMediaHeight = height * 600 / 1000;
+  // full side height minus that 48% media host and the inter-row gap.
+  const int upperMediaHeight = height * 480 / 1000;
   const int weatherHeight =
       std::max(1, height - upperMediaHeight - gap);
   const int compactAvailable =
