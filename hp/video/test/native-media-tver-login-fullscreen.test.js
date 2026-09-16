@@ -15,10 +15,11 @@ test('TVer pauses fullscreen while a visible login prompt is present', () => {
   assert.match(watchdog, /const hasVisibleLoginPrompt = \(\) =>/);
   assert.match(watchdog, /\[role="dialog"\]/);
   assert.match(watchdog, /label\.includes\('ログイン'\)/);
-  assert.equal(
-    (watchdog.match(/if \(hasVisibleLoginPrompt\(\)\) return null;/g) || []).length,
-    2,
-  );
+  // The fullscreen branch is gated before returning a trusted-click point, and
+  // the later playback watchdog keeps an explicit login short-circuit. Test
+  // behavior rather than requiring the same guard spelling twice.
+  assert.match(watchdog, /else if \(video && !hasVisibleLoginPrompt\(\)\) \{/);
+  assert.match(watchdog, /if \(hasVisibleLoginPrompt\(\)\) return null;/);
 });
 
 test('trusted fullscreen keeps its retry pending across login', () => {
