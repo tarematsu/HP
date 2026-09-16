@@ -27,12 +27,12 @@ test('zero-second recovery starts playback only through trusted CDP Play click',
   assert.doesNotMatch(music, /direct-play|DirectPlay/);
 });
 
-test('first Play click waits one second after page bootstrap while status probes use two seconds', () => {
+test('first Play click and status probes both use a two-second cadence', () => {
   assert.match(scripts, /__homePanelSpotifyNativeLoadedAt = Date\.now\(\)/);
   assert.match(scoped, /const playbackProbeMs = 2000/);
   assert.match(scoped, /const nativeLoadedAt = Number\(window\.__homePanelSpotifyNativeLoadedAt\)/);
-  assert.match(scoped, /Date\.now\(\) - nativeLoadedAt >= 1000/);
-  assert.match(scoped, /if \(!initialPlayDelayElapsed && !restartPending\(\)\) return 1000;/);
+  assert.match(scoped, /Date\.now\(\) - nativeLoadedAt >= 2000/);
+  assert.match(scoped, /if \(!initialPlayDelayElapsed && !restartPending\(\)\) return playbackProbeMs;/);
   assert.doesNotMatch(scripts + scoped, /performance\.now\(\)/);
 });
 
