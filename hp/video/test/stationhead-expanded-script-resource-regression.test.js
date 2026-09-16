@@ -134,7 +134,7 @@ test('script replacement lowercases the URI and short-circuits after a module st
   );
 });
 
-test('all removable resources are stopped before download with minimal cacheable responses', () => {
+test('final Stationhead callback leaves UDF-owned images and fonts unintercepted', () => {
   const policy = section(
     policySource,
     'inline void ApplyStationheadResourceBlockingScriptFixed(',
@@ -142,8 +142,8 @@ test('all removable resources are stopped before download with minimal cacheable
   );
   assert.equal((policy.match(/add_WebResourceRequested\(/g) || []).length, 1);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
-  assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
-  assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
+  assert.doesNotMatch(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
+  assert.doesNotMatch(policy, /StationheadRequestLooksLikeImage/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
   assert.match(policy, /emptyResource = true/);
   assert.match(policy, /SHCreateMemStream\(/);
