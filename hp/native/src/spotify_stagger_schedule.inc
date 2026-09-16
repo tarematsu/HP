@@ -44,42 +44,65 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   ProbeDueTimedCompletions(now);
 
-  // Events remain the fast path, but do not trust them as the only health
-  // signal. Every healthy live Spotify WebView is independently checked through
-  // WebView2's native IsDocumentPlayingAudio property every two minutes. The
-  // property remains true for muted WebViews, so monitor/output routing does not
-  // create false failures. A confirmed silent slot is routed directly into the
-  // existing trusted-Play/reload recovery chain.
+  // Events remain the fast path, but each live Spotify WebView also gets one
+  // native audio probe per minute. Runtime lanes B/C/D occupy the 15/30/45s
+  // phases of the shared Stationhead+Spotify scan clock. Select at most one due
+  // slot per scheduler pass; if a delayed wake makes multiple probes overdue,
+  // the process-wide claim/gap guard serializes the remainder instead of
+  // creating a burst across multiple WebViews.
+  Slot* audioHealthCandidate = nullptr;
+  ULONGLONG earliestAudioHealthDue = 0;
+  size_t audioHealthPhase = 0;
   for (Slot& slot : slots_) {
     if (slot.index >= gSpotifyAudioHealthCheckDueTicks.size()) continue;
     ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
-    if (!slot.webview || slot.loginPage || !CurrentMusicTrack(slot) ||
-        !SlotStateIsHealthy(slot.state)) {
+    const int lane = SpotifyRuntimeLaneForAccount(slot.index);
+    if (!slot.webview || lane < 0 || slot.loginPage ||
+        !CurrentMusicTrack(slot) || !SlotStateIsHealthy(slot.state)) {
       due = 0;
       continue;
     }
-    if (due == 0) {
-      due = now + kSpotifyAudioHealthCheckMs;
-      continue;
-    }
+
+    const size_t phase = static_cast<size_t>(lane) + 1;
+    if (due == 0) due = NextAudioHealthScanTick(now, phase);
     if (now < due) continue;
-
-    ComPtr<ICoreWebView2_8> audioView;
-    BOOL nativePlaying = FALSE;
-    if (FAILED(slot.webview.As(&audioView)) || !audioView ||
-        FAILED(audioView->get_IsDocumentPlayingAudio(&nativePlaying))) {
-      due = now + kSpotifyAudioHealthRetryMs;
-      continue;
+    if (!audioHealthCandidate || due < earliestAudioHealthDue) {
+      audioHealthCandidate = &slot;
+      earliestAudioHealthDue = due;
+      audioHealthPhase = phase;
     }
-    due = now + kSpotifyAudioHealthCheckMs;
-    if (nativePlaying != FALSE) continue;
+  }
 
-    slot.timedCompletionDeadlineTick = 0;
-    slot.timedCompletionDeadlineGeneration = 0;
-    slot.trustedClickBlockedUntilTick = 0;
-    SetSlotState(slot, SlotState::WaitingTarget);
-    slot.nextRecoveryTick = now;
-    RecomputeForeground();
+  if (audioHealthCandidate) {
+    Slot& slot = *audioHealthCandidate;
+    ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
+    if (!TryClaimAudioHealthScan(now)) {
+      due = now + kSpotifyAudioHealthRetryMs;
+    } else {
+      ComPtr<ICoreWebView2_8> audioView;
+      BOOL nativePlaying = FALSE;
+      const HRESULT audioInterfaceResult = slot.webview.As(&audioView);
+      const HRESULT audioStateResult =
+          SUCCEEDED(audioInterfaceResult) && audioView
+              ? audioView->get_IsDocumentPlayingAudio(&nativePlaying)
+              : E_NOINTERFACE;
+      ReleaseAudioHealthScan();
+
+      if (FAILED(audioInterfaceResult) || !audioView ||
+          FAILED(audioStateResult)) {
+        due = now + kSpotifyAudioHealthRetryMs;
+      } else {
+        due = NextAudioHealthScanTick(now, audioHealthPhase);
+        if (nativePlaying == FALSE) {
+          slot.timedCompletionDeadlineTick = 0;
+          slot.timedCompletionDeadlineGeneration = 0;
+          slot.trustedClickBlockedUntilTick = 0;
+          SetSlotState(slot, SlotState::WaitingTarget);
+          slot.nextRecoveryTick = now;
+          RecomputeForeground();
+        }
+      }
+    }
   }
 
   for (Slot& slot : slots_) ExpireStaleAsyncWork(slot, now);
