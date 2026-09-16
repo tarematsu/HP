@@ -102,7 +102,9 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
 void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
   slot.timedRotationActive = true;
   slot.timedRotationPosition = 0;
-  slot.timedRotationCycle = 0;
+  // ten/hinata preserve their completed-cycle counter across WebView teardown so
+  // each later activation receives a fresh deterministic random permutation.
+  if (!IsSpotifyAlternatingPairSlot(slot.index)) slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
   slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
@@ -152,6 +154,33 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
     if (slot.timedRotationPosition >= slot.timedCycleTracks.size()) {
       ++slot.timedRotationCycle;
       slot.timedRotationPosition = 0;
+
+      if (IsSpotifyAlternatingPairSlot(slot.index) &&
+          slot.index == gSpotifyAlternatingActiveSlot) {
+        const ULONGLONG completedCycles = slot.timedRotationCycle;
+        const size_t nextSlotIndex =
+            slot.index == kSpotifyTenSlotIndex
+                ? kSpotifyHinataSlotIndex
+                : kSpotifyTenSlotIndex;
+        HWND completedHost = slot.hostWindow;
+        if (completedHost && IsWindow(completedHost)) {
+          InvalidateSpotifyStatusForHost(completedHost);
+        }
+        CloseSlot(slot);
+        // CloseSlot intentionally resets runtime state. Preserve only the cycle
+        // counter so re-creating this account later does not repeat cycle zero.
+        slot.timedRotationCycle = completedCycles;
+        gSpotifyAlternatingActiveSlot = nextSlotIndex;
+
+        Slot& nextSlot = slots_[nextSlotIndex];
+        if (!nextSlot.hostWindow || !IsWindow(nextSlot.hostWindow)) {
+          CreateHost(nextSlot);
+        }
+        RecomputeForeground();
+        ArmRobustScheduler();
+        return;
+      }
+
       PrepareTimedRotationCycle(slot);
       if (slot.timedCycleTracks.empty()) {
         slot.timedRotationActive = false;
