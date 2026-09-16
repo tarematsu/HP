@@ -5,6 +5,7 @@ import test from 'node:test';
 const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
+const header = source('spotify_webviews.h');
 const foundation = source('spotify_webview_foundation.inc');
 const host = source('spotify_host_lifecycle.inc');
 const layout = source('spotify_host_layout.inc');
@@ -13,11 +14,12 @@ const phase = source('spotify_phase_sync.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
 
 test('four Spotify accounts share exactly three runtime lanes', () => {
-  assert.match(foundation, /kSpotifyRuntimeLaneCount = 3/);
-  assert.match(foundation, /gSpotifyRuntimeLaneAccounts = \{[\s\S]*0, 1, 2/);
-  assert.match(foundation, /gSpotifyInactiveAccountIndex = 3/);
-  assert.match(foundation, /SpotifyRuntimeLaneForAccount/);
-  assert.match(foundation, /SpotifyAccountShouldOwnHost/);
+  assert.match(header, /kSpotifyRuntimeLaneCount = 3/);
+  assert.match(header, /gSpotifyRuntimeLaneAccounts = \{[\s\S]*0, 1, 2/);
+  assert.match(header, /gSpotifyInactiveAccountIndex = 3/);
+  assert.match(header, /SpotifyRuntimeLaneForAccount/);
+  assert.match(header, /SpotifyAccountShouldOwnHost/);
+  assert.doesNotMatch(foundation, /gSpotifyRuntimeLaneAccounts =/);
   assert.match(host, /ResetSpotifyRuntimeLanes\(\)/);
   assert.match(host, /SpotifyAccountShouldOwnHost\(slot\.index\)[\s\S]*CreateHost\(slot\)/);
 });
