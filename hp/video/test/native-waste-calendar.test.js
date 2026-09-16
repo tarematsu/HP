@@ -18,14 +18,6 @@ const mvPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
 );
-const embeddedUi = readFileSync(
-  new URL('../../native/src/embedded_ui.cpp', import.meta.url),
-  'utf8',
-);
-const nativeResources = readFileSync(
-  new URL('../../native/resources/HomePanel.rc.in', import.meta.url),
-  'utf8',
-);
 
 test('course 36 schedule remains isolated from the direct media page', () => {
   assert.match(rendererPanels, /waste_calendar_section\.inc/);
@@ -49,7 +41,7 @@ test('waste collection strip is rendered below the clock instead of on the radar
   assert.match(layout, /TierFont\(FontTier::Small\)/);
 });
 
-test('clock waste strip always contains three dated illustrated target categories', () => {
+test('clock waste strip always contains three dated text target categories', () => {
   assert.match(calendar, /std::array<Course36ClockWasteNotice, 3>/);
   assert.match(calendar, /std::array<Course36WasteKind, 3> kCourse36ClockWasteKinds/);
   assert.match(calendar, /Course36WasteKind::BottlesCansPet/);
@@ -60,50 +52,17 @@ test('clock waste strip always contains three dated illustrated target categorie
   assert.match(calendar, /L"--\/--"/);
   assert.match(calendar, /L"%u\/%u"/);
   assert.doesNotMatch(calendar, /日後/);
-  assert.match(calendar, /bottles-cans\.png/);
-  assert.match(calendar, /nonburnable-hazardous\.png/);
-  assert.match(calendar, /paper\.png/);
-  assert.match(calendar, /DecodeImageFileToBitmap\(/);
-  assert.doesNotMatch(calendar, /WinHttpDownload\(/);
-  assert.match(calendar, /DrawCourse36WasteFallbackPictogram\(/);
+  assert.match(calendar, /L"ビン・缶"/);
+  assert.match(calendar, /L"不燃・有害"/);
+  assert.match(calendar, /L"紙類"/);
+  assert.match(calendar, /Course36ClockWasteKindText\(/);
+  assert.doesNotMatch(calendar, /Course36ClockWasteImage|DrawCourse36WasteBitmap/);
+  assert.doesNotMatch(calendar, /DecodeImageFileToBitmap|AlphaBlend|FallbackPictogram/);
 });
 
-test('clock waste illustrations scale from visible alpha bounds instead of transparent canvas padding', () => {
-  assert.match(calendar, /kCourse36ClockWasteImageWidth = 128/);
-  assert.match(calendar, /kCourse36ClockWasteImageHeight = 96/);
-  assert.match(calendar, /Course36ClockWasteVisibleBounds\(/);
-  assert.match(calendar, /row\[x \* 4 \+ 3\]/);
-  assert.match(calendar, /iconWidth \* sourceHeight \/ sourceWidth/);
-  assert.match(calendar, /iconHeight \* sourceWidth \/ sourceHeight/);
-  assert.doesNotMatch(calendar, /kCourse36ClockWasteImageAspectWidth/);
-  assert.doesNotMatch(calendar, /kCourse36ClockWasteImageAspectHeight/);
-});
-
-test('transparent waste illustrations crop with premultiplied alpha blending', () => {
-  assert.match(
-    calendar,
-    /void DrawCourse36WasteBitmap\([\s\S]*AC_SRC_ALPHA[\s\S]*AlphaBlend\(/,
-  );
-  assert.doesNotMatch(
-    calendar,
-    /void DrawCourse36WasteBitmap\([\s\S]*BitBlt\(/,
-  );
-});
-
-test('cropped waste illustrations are bundled as transparent PNGs for offline rendering', () => {
-  for (const [id, name] of [
-    [120, 'bottles-cans.png'],
-    [121, 'nonburnable-hazardous.png'],
-    [122, 'paper.png'],
-  ]) {
-    assert.match(embeddedUi, new RegExp(`\\{${id}, L"waste-icons/${name.replace('.', '\\.')}"\\}`));
-    assert.match(nativeResources, new RegExp(`${id} RCDATA`));
-    const bytes = readFileSync(new URL(`../../native/scripts/ui/waste-icons/${name}`, import.meta.url));
-    assert.equal(bytes.subarray(1, 4).toString(), 'PNG');
-    assert.equal(bytes.readUInt32BE(16), 128);
-    assert.equal(bytes.readUInt32BE(20), 96);
-    assert.equal(bytes.includes(Buffer.from('tRNS')), true);
-  }
+test('clock waste category names render as centered single-line text', () => {
+  assert.match(calendar, /DrawTextInRect\(dc, Course36ClockWasteKindText\(notices\[index\]\.kind\), kindRect,/);
+  assert.match(calendar, /DT_CENTER \| DT_SINGLELINE \| DT_VCENTER \| DT_END_ELLIPSIS/);
 });
 
 test('course 36 fiscal-year table includes the published July week', () => {
