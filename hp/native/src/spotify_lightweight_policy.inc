@@ -63,9 +63,11 @@ void ConfigureSpotifyLightweightResourcePolicy(
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
   if (!environment || !webview || !alive) return;
 
-  // Keep the interception surface deliberately narrow: only player-page image
-  // and font requests are discarded. Scripts, stylesheets, fetch/XHR,
-  // WebSockets, media, manifests and authentication traffic remain untouched.
+  // Block images and downloadable fonts at WebView2's request layer for the
+  // entire Spotify controller lifetime, including login/navigation. This is
+  // deliberately independent of the current document URL so cached or early
+  // requests cannot slip through during transitions. Playback/authentication
+  // scripts, stylesheets, fetch/XHR, WebSockets and media remain untouched.
   webview->AddWebResourceRequestedFilter(
       L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
   webview->AddWebResourceRequestedFilter(
@@ -76,24 +78,12 @@ void ConfigureSpotifyLightweightResourcePolicy(
   (void)webview->add_WebResourceRequested(
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
           [alive, requestEnvironment](
-              ICoreWebView2* sender,
+              ICoreWebView2*,
               ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
-            if (!alive->load(std::memory_order_acquire) || !sender || !args ||
+            if (!alive->load(std::memory_order_acquire) || !args ||
                 !requestEnvironment) {
               return S_OK;
             }
-
-            LPWSTR rawSource = nullptr;
-            bool playerPage = false;
-            if (SUCCEEDED(sender->get_Source(&rawSource)) && rawSource) {
-              const std::wstring_view source(rawSource);
-              playerPage = StartsWithInsensitive(
-                               source, L"https://open.spotify.com/") &&
-                  !StartsWithInsensitive(
-                      source, L"https://open.spotify.com/login");
-              CoTaskMemFree(rawSource);
-            }
-            if (!playerPage) return S_OK;
 
             COREWEBVIEW2_WEB_RESOURCE_CONTEXT context =
                 COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
