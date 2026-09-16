@@ -104,7 +104,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart1[] = LR"JS(
        (targetPath.startsWith('/track/') && value.endsWith(targetPath)));
   const currentTrackMatchesTarget = () => {
     let link = domCache.nowPlayingLink;
-    if (!link || !link.isConnected) {
+    if (!link || link.isConnected === false) {
       link = null;
       for (const selector of [
         '[data-testid="now-playing-widget"] a[href*="/track/"]',
@@ -145,14 +145,14 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
   };
   const targetMedia = () => {
     const cached = domCache.media;
-    if (cached && cached.isConnected && !cached.ended) {
+    if (cached && cached.isConnected !== false && !cached.ended) {
       const current = Number(cached.currentTime);
       if (Number.isFinite(current) && current >= 0 && !cached.paused) {
         return cached;
       }
     }
     const media = Array.from(document.querySelectorAll('audio, video')).filter(candidate => {
-      if (!candidate || !candidate.isConnected || candidate.ended) return false;
+      if (!candidate || candidate.isConnected === false || candidate.ended) return false;
       const current = Number(candidate.currentTime);
       return Number.isFinite(current) && current >= 0;
     });
@@ -224,7 +224,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
     }
     try { element.scrollIntoView({ block: 'center', inline: 'nearest' }); }
     catch (_) {}
-    if (!element.isConnected) return null;
+    if (element.isConnected === false) return null;
     const rect = element.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
