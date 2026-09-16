@@ -50,8 +50,8 @@ describe('TVer cloud feed', () => {
     expect(sortEpisodesLatestFirst([
       { url: 'old', publishedAt: '2026-09-10T00:00:00.000Z' },
       { url: 'new', publishedAt: '2026-09-11T00:00:00.000Z' },
-      { url: 'unknown-a' },
-      { url: 'unknown-b' },
+      { url: 'unknown-a', expiresAt: '2026-09-12T00:00:00.000Z' },
+      { url: 'unknown-b', expiresAt: '2026-09-13T00:00:00.000Z' },
     ]).map((item) => item.url)).toEqual([
       'new',
       'old',
