@@ -124,6 +124,12 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   const currentTrack = () => {
     for (const root of nowPlayingRoots()) {
       const links = [];
+      // Some lightweight/test DOMs can resolve a now-playing selector directly
+      // to the track anchor. Treat that as an ordinary candidate too.
+      try {
+        const rootHref = typeof root.href === 'string' ? root.href : '';
+        if (rootHref.includes('/track/')) links.push(root);
+      } catch (_) {}
       for (const selector of [
         'a[data-testid="context-item-link"][href*="/track/"]',
         'a[href*="/track/"]'
