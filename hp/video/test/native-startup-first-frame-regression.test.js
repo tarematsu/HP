@@ -40,9 +40,12 @@ test('deferred Spotify hosts are clipped before SWP_SHOWWINDOW can expose them',
     spotifyLayout.indexOf('void SpotifyWebViews::PlaceHosts()'),
     spotifyLayout.indexOf('void SpotifyWebViews::RefreshSpotifyHostLayout()'),
   );
-  const clipAt = placeHosts.indexOf('ApplySpotifyHostVisualClip(slot.hostWindow, fullSize);');
+  const clipAt = placeHosts.indexOf('ApplySpotifyHostVisualClip(');
   const showAt = placeHosts.indexOf('UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;');
   assert.ok(clipAt >= 0);
   assert.ok(showAt > clipAt);
-  assert.match(placeHosts, /const bool fullSize = authentication \|\| monitorForeground;/);
+  assert.match(
+    placeHosts,
+    /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground\)/,
+  );
 });
