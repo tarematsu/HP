@@ -221,13 +221,15 @@ void ApplyStationheadChildLayout(HWND hostWindow,
         WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
         ChildWindowPlacementMatches(
             authHostWindow, authHostBounds, showAuth ? HWND_TOP : nullptr);
+    // Apply the region before exposing the host so a background auth surface
+    // cannot contribute one full-workspace frame during deferred startup.
+    ApplyHostVisualClip(authHostWindow, showAuth);
     if (!geometryMatches || !IsWindowVisible(authHostWindow)) {
       SetWindowPos(authHostWindow, authPlacement,
                    authHostBounds.left, authHostBounds.top,
                    authWidth, authHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
-    ApplyHostVisualClip(authHostWindow, showAuth);
   }
 
   if (hostWindow && IsWindow(hostWindow)) {
@@ -236,13 +238,14 @@ void ApplyStationheadChildLayout(HWND hostWindow,
         ChildWindowPlacementMatches(
             hostWindow, playbackHostBounds,
             playbackForeground ? HWND_TOP : HWND_BOTTOM);
+    // Match Spotify's ordering: clip a background host before SWP_SHOWWINDOW.
+    ApplyHostVisualClip(hostWindow, playbackForeground);
     if (!geometryMatches || !IsWindowVisible(hostWindow)) {
       SetWindowPos(hostWindow, hostPlacement,
                    playbackHostBounds.left, playbackHostBounds.top,
                    playbackWidth, playbackHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
-    ApplyHostVisualClip(hostWindow, playbackForeground);
   }
 
   if (controller) {
