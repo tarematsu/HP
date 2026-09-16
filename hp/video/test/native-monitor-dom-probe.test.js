@@ -19,13 +19,21 @@ const bridge = readFileSync(
   'utf8',
 );
 
-test('monitor A probes Stationhead DOM every five minutes for requested auth words', () => {
+test('monitor A probes targeted Stationhead controls every five minutes', () => {
   assert.match(schedule, /kMonitorAuthProbeIntervalMs = 5 \* 60'000/);
   assert.match(schedule, /monitorMode_ == MonitorMode::Native[\s\S]*RequestMonitorAuthProbe\(\)/);
   assert.match(schedule, /monitorMode_ == MonitorMode::Native[\s\S]*kMonitorAuthProbeIntervalMs/);
   assert.match(audioLoss, /kMonitorDomProbeScript/);
+  assert.match(audioLoss, /document\.querySelectorAll\(selector\)/);
   assert.match(audioLoss, /\\blog\\s\+in\\b/);
   assert.match(audioLoss, /\\bconnect\\s\+spotify\\b/);
+  assert.match(audioLoss, /surface !== document\.body && depth < 4/);
+  const monitorProbe = audioLoss.slice(
+    audioLoss.indexOf('constexpr wchar_t kMonitorDomProbeScript[]'),
+    audioLoss.indexOf('// This probe is based on the live Stationhead DOM'),
+  );
+  assert.doesNotMatch(monitorProbe, /document\.body\.(?:innerText|textContent)/);
+  assert.doesNotMatch(monitorProbe, /getBoundingClientRect|getComputedStyle/);
   assert.match(audioLoss, /RequestStationheadMonitorDomProbe\(\) noexcept/);
   assert.match(bridge, /kStationheadMonitorProbeResultMessage/);
 });
