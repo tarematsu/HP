@@ -34,7 +34,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       player.classList.contains('ad-interrupting');
   const fullscreen = () => Boolean(
       document.fullscreenElement || document.webkitFullscreenElement ||
-      document.msFullscreenElement);
+      document.msFullscreenElement || player.classList.contains('ytp-fullscreen'));
   const surveySelector =
       '.ytp-ad-survey,.ytp-ad-feedback-dialog,yt-survey-renderer,ytd-survey-renderer';
 )JS" LR"JS(
