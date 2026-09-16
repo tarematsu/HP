@@ -77,18 +77,23 @@ test('TVer quality discovery is event driven and player-local', () => {
   assert.match(loop, /scheduleEnsure\(40\)/);
 });
 
-test('TVer fullscreen is consumed after success and rearmed after a failed trusted click', () => {
-  assert.match(watchdog, /if \(state && state\.fullscreenDirty === false\) return null/);
-  assert.match(watchdog, /if \(fullscreenButton && state\) state\.fullscreenDirty = false/);
+test('TVer fullscreen retries the video bottom-right until browser fullscreen succeeds', () => {
+  assert.match(watchdog, /const videoFullscreenPoint = media =>/);
+  assert.match(watchdog, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
+  assert.match(watchdog, /const x = rect\.right - insetX/);
+  assert.match(watchdog, /const y = rect\.bottom - insetY/);
   assert.match(watchdog, /if \(state\) state\.fullscreenDirty = true/);
+  assert.match(watchdog, /if \(fullscreenPoint\) return fullscreenPoint/);
+  assert.match(watchdog, /if \(state\) state\.fullscreenDirty = false/);
   assert.match(watchdog, /homepanel:tver-wake/);
+  assert.doesNotMatch(watchdog, /isEnterFullscreenControl|fullscreenButton/);
   assert.doesNotMatch(watchdog, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
 });
 
-test('healthy TVer watchdog avoids page-wide control enumeration', () => {
+test('healthy TVer watchdog avoids fullscreen control enumeration', () => {
   assert.match(watchdog, /if \(!video \|\| video\.paused\)/);
-  assert.match(watchdog, /const playerControls = \(\) =>/);
-  assert.match(watchdog, /playerRootFor\(video\)\?\.querySelectorAll/);
+  assert.doesNotMatch(watchdog, /const playerControls = \(\) =>/);
+  assert.doesNotMatch(watchdog, /isExitFullscreenControl|isEnterFullscreenControl/);
   assert.doesNotMatch(
     watchdog,
     /Array\.from\(document\.querySelectorAll\(\s*'button, \[role="button"\], a, \[aria-label\], \[title\]'/,
