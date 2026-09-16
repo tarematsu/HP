@@ -69,7 +69,7 @@ test('background, startup and reload all keep the fixed 720x960 playback viewpor
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
 });
 
-test('Monitor B changes Stationhead z-order without changing the fixed controller geometry', () => {
+test('Monitor E changes Stationhead z-order without changing the fixed controller geometry', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -91,7 +91,7 @@ test('Monitor B changes Stationhead z-order without changing the fixed controlle
     'void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept',
     'void PowerSavingController::Detach() noexcept',
   );
-  assert.match(placement, /monitorMode_ == MonitorMode::Stationhead/);
+  assert.match(placement, /monitorMode_ == MonitorMode::SpotifyTertiary/);
   assert.match(placement, /StationheadPlayer exclusively owns the/);
   assert.match(placement, /if \(context->stationheadForeground\)/);
   assert.match(placement, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
