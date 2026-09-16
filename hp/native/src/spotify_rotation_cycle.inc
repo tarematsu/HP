@@ -60,10 +60,9 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
     return true;
   };
 
-  size_t groupIndex = 0;
   const auto appendGroup =
-      [this, &slot, &appendUnique, &groupIndex](const RotationGroup& group) {
-    const size_t currentGroupIndex = groupIndex++;
+      [this, &slot, &appendUnique](
+          const RotationGroup& group, size_t currentGroupIndex) {
     std::vector<ManagedTrack> candidates = group.tracks;
     if (candidates.empty()) return;
 
@@ -76,7 +75,7 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
       // session, cloud revision, cycle, and rotation group. slot.index is
       // intentionally excluded from this seed; per-window diversity comes from
       // the lane rotation below, so no extra polling, DOM work, or network work
-      // is needed to coordinate the six WebViews.
+      // is needed to coordinate the WebViews.
       ULONGLONG shuffleState = MixSpotifyRotationSeed(
           scheduleStartTick_ ^
           (cloudRotationRevision_ * 0x9E3779B97F4A7C15ULL) ^
@@ -95,8 +94,9 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
       // blocks disjoint whenever the pool is large enough. Shuffle groups use
       // one-step lanes so their first/current song differs across windows while
       // retaining every candidate in each account's cycle. If a pool contains
-      // fewer than six candidates, the modulo wrap gives the minimum possible
-      // duplication rather than adding retries or cross-window coordination.
+      // fewer candidates than active accounts, the modulo wrap gives the
+      // minimum possible duplication rather than adding retries or cross-window
+      // coordination.
       const size_t laneWidth = group.mode == RotationGroup::Mode::Random
           ? std::max<size_t>(1, take)
           : 1;
@@ -118,7 +118,18 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
     }
   };
 
-  for (const RotationGroup& group : cloudRotationGroups_) appendGroup(group);
+  // Account slots deliberately enter the cloud rotation at successive groups:
+  // yuukiar=A, ten=B, nagi=C, hinata=D. Continue cyclically from that starting
+  // point while preserving each group's original index for deterministic
+  // shuffle seeds and per-account lane selection.
+  if (!cloudRotationGroups_.empty()) {
+    const size_t startGroupIndex = slot.index % cloudRotationGroups_.size();
+    for (size_t offset = 0; offset < cloudRotationGroups_.size(); ++offset) {
+      const size_t groupIndex =
+          (startGroupIndex + offset) % cloudRotationGroups_.size();
+      appendGroup(cloudRotationGroups_[groupIndex], groupIndex);
+    }
+  }
   if (!slot.timedCycleTracks.empty()) return;
 
   // Fail-safe preserves the former six-song behavior only when cloud rotation

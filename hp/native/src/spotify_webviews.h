@@ -5,11 +5,11 @@ namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 10ULL * 1000ULL;
 // spotify-v2-1 (the former amazon window) is owned by the single Stationhead
-// player. Restore the next three Spotify profiles without shifting their
-// existing cookies/storage: yuukiar is profile 2, ten is profile 3, and nagi is
-// profile 4.
+// player. Restore the next four Spotify profiles without shifting their
+// existing cookies/storage: yuukiar is profile 2, ten is profile 3, nagi is
+// profile 4, and hinata is profile 5.
 inline constexpr size_t kSpotifyProfileFirstAccountNumber = 2;
-inline constexpr size_t kSpotifyActiveAccountCount = 3;
+inline constexpr size_t kSpotifyActiveAccountCount = 4;
 
 struct SpotifyPlaybackStatus {
   std::wstring windowName;
