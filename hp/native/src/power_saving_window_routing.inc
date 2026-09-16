@@ -190,7 +190,7 @@ void PowerSavingController::Attach(HWND parent) {
         HRESULT_FROM_WIN32(error), "SetWindowSubclass power saving parent");
   }
 
-  // Every fresh dashboard starts in monitor A and audio mode A.
+  // Every fresh dashboard starts on YT for monitor and audio output.
   monitorMode_ = MonitorMode::Native;
   monitorAuthForeground_ = false;
   powerSaving_ = false;
@@ -219,9 +219,9 @@ void PowerSavingController::Attach(HWND parent) {
 void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   if (!parent_ || !window || window == overlay_ || !IsWindow(window)) return;
 
-  // Stationhead is visible/audible on E. Reassert mute for every other audio
-  // mode when its playback host is created after controller attachment.
-  if (audioMode_ != AudioMode::SpotifyTertiary &&
+  // SH is the only Stationhead audio mode. Reassert mute for every other mode
+  // when its playback host is created after controller attachment.
+  if (audioMode_ != AudioMode::Stationhead &&
       IsStationheadPlaybackHost(window)) {
     SendMessageW(
         parent_, kRendererActionMessage,
@@ -240,7 +240,7 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   if (!parent_ || !IsWindow(parent_)) return;
 
   const bool stationheadForeground =
-      monitorMode_ == MonitorMode::SpotifyTertiary ||
+      monitorMode_ == MonitorMode::Stationhead ||
       (monitorMode_ == MonitorMode::Native && monitorAuthForeground_);
   const bool nativeMediaForeground =
       monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
