@@ -33,6 +33,7 @@ function fakeButton(label, visible = false) {
     disabled: false,
     isConnected: true,
     __visible: visible,
+    __clicked: false,
     getAttribute(name) {
       if (name === 'aria-disabled') return 'false';
       if (name === 'aria-label') return label;
@@ -44,6 +45,7 @@ function fakeButton(label, visible = false) {
         : { left: 0, top: 0, width: 0, height: 0 };
     },
     scrollIntoView() {},
+    click() { this.__clicked = true; },
   };
 }
 
@@ -52,9 +54,12 @@ function runScoped({
   playerButtons = [],
   currentTrack = null,
   metadataTitle = '',
+  restartPending = false,
 } = {}) {
   const window = {
     __homePanelSpotifyNativeTarget: { path: '/track/A', title: 'Target A' },
+    __homePanelSpotifyNativeLoadedAt: Date.now() - 2000,
+    __homePanelSpotifyZeroSecondRestartPath: restartPending ? '/track/A' : null,
     innerWidth: 320,
     innerHeight: 180,
     getComputedStyle(element) {
@@ -91,6 +96,7 @@ function runScoped({
     String,
     Number,
     Array,
+    Date,
   });
   return vm.runInContext(rawScopedScript(), context);
 }
@@ -111,7 +117,7 @@ test('target URL stays authoritative while global-player confirmation requires t
   assert.match(scoped, /navigator\.mediaSession/);
 });
 
-test('Spotify Play clicks are returned only for the visible target-page button', () => {
+test('normal Spotify Play clicks use the visible target-page button', () => {
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
   assert.match(scoped, /const visiblePageButton = pageButtons\.find\(visible\)/);
@@ -153,13 +159,38 @@ test('Media Session title is a fallback identity when compact layout has no trac
   }), true);
 });
 
-test('global Play is never returned as a CDP click target', () => {
+test('global Play is never returned during normal reconciliation', () => {
   assert.equal(runScoped({
     playerButtons: [fakeButton('Play', true)],
     currentTrack: {
       href: 'https://open.spotify.com/track/A',
       textContent: 'Target A',
     },
+  }), null);
+});
+
+test('global Play is a recovery-only CDP target after a verified zero-second stall', () => {
+  const result = runScoped({
+    playerButtons: [fakeButton('Play', true)],
+    currentTrack: {
+      href: 'https://open.spotify.com/track/A',
+      textContent: 'Target A',
+    },
+    restartPending: true,
+  });
+  assert.equal(Array.isArray(result), true);
+  assert.equal(result[0], 14);
+  assert.equal(result[1], 14);
+});
+
+test('global recovery Play is rejected when now-playing identity changed', () => {
+  assert.equal(runScoped({
+    playerButtons: [fakeButton('Play', true)],
+    currentTrack: {
+      href: 'https://open.spotify.com/track/B',
+      textContent: 'Other Track',
+    },
+    restartPending: true,
   }), null);
 });
 
