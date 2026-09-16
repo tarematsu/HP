@@ -410,7 +410,6 @@ export function sortEpisodesLatestFirst(episodes) {
       episode,
       index,
       publishedAt: publicationMillis(episode?.publishedAt),
-      expiresAt: expirationMillis(episode?.expiresAt),
     }))
     .sort((left, right) => {
       const leftPublished = Number.isFinite(left.publishedAt);
@@ -419,13 +418,6 @@ export function sortEpisodesLatestFirst(episodes) {
         return right.publishedAt - left.publishedAt;
       }
       if (leftPublished !== rightPublished) return leftPublished ? -1 : 1;
-
-      const leftExpires = Number.isFinite(left.expiresAt);
-      const rightExpires = Number.isFinite(right.expiresAt);
-      if (leftExpires && rightExpires && left.expiresAt !== right.expiresAt) {
-        return right.expiresAt - left.expiresAt;
-      }
-      if (leftExpires !== rightExpires) return leftExpires ? -1 : 1;
       return left.index - right.index;
     })
     .map(({ episode }) => episode);
