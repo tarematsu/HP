@@ -27,25 +27,20 @@ inline MediaSurfaceAnchors ComputeMediaSurfaceAnchors(
 
   const int sideHeight = std::max(1L, side.bottom - side.top);
   const int gap = std::max(6, sideHeight * 18 / 1000);
-  const int upperMediaHeight = sideHeight * 480 / 1000;
-  const int lowerHeight = std::max(1, sideHeight - upperMediaHeight - gap);
-  const int compactAvailable =
-      std::max(2, sideHeight - lowerHeight - gap * 2);
-  const int clockHeight = std::max(1, compactAvailable * 55 / 100);
-  const int airHeight = std::max(1, compactAvailable - clockHeight);
+  const int rowHeight = std::max(1, (sideHeight - gap * 2) / 3);
 
   MediaSurfaceAnchors anchors;
   anchors.clock = RECT{
       side.left,
       side.top,
       side.right,
-      side.top + clockHeight,
+      side.top + rowHeight,
   };
   anchors.air = RECT{
       side.left,
       anchors.clock.bottom + gap,
       side.right,
-      anchors.clock.bottom + gap + airHeight,
+      anchors.clock.bottom + gap + rowHeight,
   };
   return anchors;
 }

@@ -3,29 +3,18 @@ namespace {
 SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
-  // NativeDashboardLayout::media is the upper YouTube/TVer WebView host. The
-  // visible rain-radar card is in the lower main row, whose exact height is the
-  // full side height minus that 48% media host and the inter-row gap.
-  const int upperMediaHeight = height * 480 / 1000;
-  const int weatherHeight =
-      std::max(1, height - upperMediaHeight - gap);
-  const int compactAvailable =
-      std::max(2, height - weatherHeight - gap * 2);
-  const int clockHeight = std::max(1, compactAvailable * 55 / 100);
-  const int airHeight = std::max(1, compactAvailable - clockHeight);
+  const int rowHeight = std::max(1, (height - gap * 2) / 3);
 
   SidebarSections sections;
-  int top = client.top;
-  sections.clock = RECT{client.left, top, client.right, top + clockHeight};
-  top = sections.clock.bottom + gap;
-  // Air and Weather intentionally trade their previous positions. Keep Air in
-  // the middle slot and make Weather exactly as tall as the visible radar card.
-  sections.controls = RECT{client.left, top, client.right, top + airHeight};
-  top = sections.controls.bottom + gap;
-  sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
-  // Electricity moved beside the radar in the main column. Keep the legacy
-  // sidebar slot outside the client so old section plumbing cannot paint twice.
-  sections.energy = RECT{client.right, client.bottom, client.right + 1, client.bottom + 1};
+  sections.clock = RECT{client.left, client.top, client.right,
+                        client.top + rowHeight};
+  sections.controls = RECT{client.left, sections.clock.bottom + gap,
+                           client.right, sections.clock.bottom + gap + rowHeight};
+  sections.weather = RECT{client.left, sections.controls.bottom + gap,
+                          client.right, client.bottom};
+  // Electricity is painted through the historical weather slot by windows.inc.
+  sections.energy = RECT{client.right, client.bottom,
+                         client.right + 1, client.bottom + 1};
   return sections;
 }
 
