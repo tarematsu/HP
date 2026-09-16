@@ -5,6 +5,27 @@ LR"JS(
   if (window.__homePanelTverEpisodePolicyInstalled) return true;
   window.__homePanelTverEpisodePolicyInstalled = true;
 
+  const installCleanPresentation = () => {
+    const id = 'homepanel-tver-clean-player';
+    const root = document.head || document.documentElement;
+    if (!root || document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      body:has(video) header:not(:has(video)),
+      body:has(video) footer:not(:has(video)),
+      body:has(video) nav:not(:has(video)),
+      body:has(video) aside:not(:has(video)),
+      body:has(video) [data-testid*="breadcrumb" i],
+      body:has(video) [data-testid*="recommend" i],
+      body:has(video) [data-testid*="related" i] {
+        display:none !important;
+      }
+    `;
+    root.appendChild(style);
+  };
+  installCleanPresentation();
+
   const playbackRate = 1.75;
   const targetVolume = 1.0;
   const postrollGraceMs = 12000;
