@@ -85,29 +85,40 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
   const int marginX = clientWidth * 14 / 1000;
-  const int marginY = clientHeight * 20 / 1000;
+  const int marginY = clientHeight * 14 / 1000;
   const int gapX = std::max(6, clientWidth * 11 / 1000);
-  const int gapY = std::max(6, clientHeight * 18 / 1000);
+  const int gapY = std::max(6, clientHeight * 11 / 1000);
 
   const RECT inner{bounds.left + marginX, bounds.top + marginY,
                    bounds.right - marginX, bounds.bottom - marginY};
   const int innerWidth = std::max(1L, inner.right - inner.left);
   const int innerHeight = std::max(1L, inner.bottom - inner.top);
-  const int originalSideWidth = innerWidth * 285 / 1000;
-  const int originalMediaWidth =
-      std::max(1, innerWidth - originalSideWidth - gapX);
-  const int mediaWidth = std::max(1, originalMediaWidth * 800 / 1000);
-  const int sideWidth = std::max(1, innerWidth - gapX - mediaWidth);
-  const int mediaHeight = innerHeight * 480 / 1000;
+  const int availableWidth = std::max(2, innerWidth - gapX);
+  const int availableHeight = std::max(2, innerHeight - gapY);
+  const int sideWidth = std::max(1, availableWidth / 2);
+  const int mediaWidth = std::max(1, innerWidth - gapX - sideWidth);
+  const int topHeight = std::max(1, availableHeight / 2);
+  const int bottomHeight = std::max(1, innerHeight - gapY - topHeight);
 
   NativeDashboardLayout layout;
-  layout.side = RECT{inner.left, inner.top, inner.left + sideWidth, inner.bottom};
-  layout.media = RECT{inner.left + sideWidth + gapX, inner.top, inner.right,
-                      inner.top + mediaHeight};
-  layout.main = RECT{inner.left + sideWidth + gapX,
-                     inner.top + mediaHeight + gapY, inner.right, inner.bottom};
+  layout.side = RECT{inner.left, inner.top, inner.left + sideWidth,
+                     inner.top + topHeight};
+  layout.media = RECT{inner.left + sideWidth + gapX, inner.top,
+                      inner.left + sideWidth + gapX + mediaWidth,
+                      inner.top + topHeight};
+  layout.main = RECT{inner.left, inner.top + topHeight + gapY,
+                     inner.right, inner.top + topHeight + gapY + bottomHeight};
+  if (layout.side.right <= layout.side.left) {
+    layout.side.right = layout.side.left + 1;
+  }
+  if (layout.side.bottom <= layout.side.top) {
+    layout.side.bottom = layout.side.top + 1;
+  }
   if (layout.media.right <= layout.media.left) {
     layout.media.right = layout.media.left + 1;
+  }
+  if (layout.media.bottom <= layout.media.top) {
+    layout.media.bottom = layout.media.top + 1;
   }
   if (layout.main.right <= layout.main.left) {
     layout.main.right = layout.main.left + 1;
