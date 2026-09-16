@@ -49,10 +49,11 @@ inline bool IsStationheadStartupCacheProfile(
   }
 }
 
-// Restore startup cache deletion only for Stationhead. Stationhead reuses the
-// `spotify-v2-1` profile; clear its HTTP disk cache once per app process while
-// preserving CacheStorage, Service Workers, cookies, localStorage and IndexedDB.
-// All other WebView profiles intentionally remain untouched.
+// Reset transient browser state only for Stationhead. Stationhead reuses the
+// `spotify-v2-1` profile; clear HTTP disk cache, CacheStorage and Service
+// Workers once per app process. Cookies, localStorage and IndexedDB remain
+// persistent. All other WebView profiles, including Spotify windows, are left
+// untouched.
 inline void ResetWebViewStartupCaches(
     ICoreWebView2* webview,
     WebViewStartupCacheResetCompletion completion) noexcept {
@@ -116,6 +117,10 @@ inline void ResetWebViewStartupCaches(
       return;
     }
 
+    const auto kinds = static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(
+        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE |
+        COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE |
+        COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS);
     auto handler = Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
         [finish, profilePath](HRESULT clearResult) -> HRESULT {
           if (FAILED(clearResult)) {
@@ -124,8 +129,7 @@ inline void ResetWebViewStartupCaches(
           finish(clearResult);
           return S_OK;
         });
-    result = profile2->ClearBrowsingData(
-        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE, handler.Get());
+    result = profile2->ClearBrowsingData(kinds, handler.Get());
     if (FAILED(result)) {
       ReleaseWebViewStartupCacheResetClaim(profilePath);
       finish(result);
