@@ -17,9 +17,9 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   const LONG utilityTop = sections.clock.bottom + gapY;
   sections.controls = RECT{
       client.left, utilityTop, client.left + airWidth, utilityTop + utilityHeight};
-  // windows.inc currently paints the electricity card through the historical
-  // weather slot. Keep that plumbing but place it directly beside Air so the
-  // two cards together occupy exactly the same width as the clock above.
+  // windows.inc paints the electricity card through the historical weather
+  // slot. Keep that plumbing but place it directly beside Air so both cards
+  // together occupy exactly the same width as the clock above.
   sections.weather = RECT{
       sections.controls.right + gapX, utilityTop, client.right,
       utilityTop + utilityHeight};
@@ -34,23 +34,20 @@ struct RearrangedMainLayout {
 
 RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
   const int width = std::max(1L, client.right - client.left);
-  // The lower row spans the same inner width as side + gap + media. Reconstruct
-  // the top-row gap and media width from the dashboard's 14/1000 side margins:
-  // innerWidth ~= 972/1000 of the viewport and mediaWidth is 1/2 viewport.
   const int gapX = std::max(6, width * 11 / 972);
-  const int rowWidth = std::max(2, width - gapX);
-  const int mediaWidth = std::clamp(width * 500 / 972, 1, rowWidth - 1);
-  const int sideWidth = std::max(1, rowWidth - mediaWidth);
+  const int availableWidth = std::max(2, width - gapX);
+  const int weatherWidth = std::max(1, availableWidth / 2);
+  const int radarWidth = std::max(1, width - gapX - weatherWidth);
 
   RearrangedMainLayout layout;
-  // renderer_panels.cpp swaps these two legacy widths after this function.
-  // Feed mediaWidth into radar here so the final right-hand radar exactly
-  // matches YouTube, while the final left weather card matches the side column.
+  // windows.inc paints Weather through the legacy radar slot and Rain Radar
+  // through the legacy energy slot. Split the lower row evenly around the same
+  // center gap used by the top-row 50/50 grid.
   layout.sections.radar =
-      RECT{client.left, client.top, client.left + mediaWidth, client.bottom};
+      RECT{client.left, client.top, client.left + weatherWidth, client.bottom};
   layout.sections.energy =
       RECT{layout.sections.radar.right + gapX, client.top,
-           layout.sections.radar.right + gapX + sideWidth, client.bottom};
+           layout.sections.radar.right + gapX + radarWidth, client.bottom};
   if (layout.sections.radar.right <= layout.sections.radar.left) {
     layout.sections.radar.right = layout.sections.radar.left + 1;
   }
