@@ -143,7 +143,8 @@ class App {
   bool stationheadPlacementDirty_ = true;
   bool placedPrimaryPending_ = false;
   RECT placedBounds_{};
-  bool stationheadAudioMuted_ = false;
+  // Fail closed until the audio-routing controller explicitly selects SH.
+  bool stationheadAudioMuted_ = true;
   WorkspaceTab selectedTab_ = WorkspaceTab::Main;
   RECT workspaceBounds_{0, 0, 1, 1};
   HistoryFlushGuard historyFlushGuard_{this};
