@@ -56,11 +56,11 @@ test('skippable ad click is not blocked by fullscreen recovery', () => {
   assert.ok(adStart >= 0 && skip > adStart && fullscreen > skip);
 });
 
-test('content settings remain one-shot per video at 360p with captions off', () => {
+test('content settings remain one-shot per video at 720p with captions off', () => {
   assert.match(runtime, /videoKey/);
   assert.match(runtime, /qualityApplied: false/);
   assert.match(runtime, /captionsApplied: false/);
-  assert.match(runtime, /const preferredQuality = 'medium'/);
+  assert.match(runtime, /const preferredQuality = 'hd720'/);
   assert.match(runtime, /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/);
   assert.match(runtime, /player\.setOption\('captions', 'track', \{\}\)/);
 });
