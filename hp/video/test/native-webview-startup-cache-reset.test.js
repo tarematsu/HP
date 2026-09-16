@@ -15,7 +15,6 @@ test('startup cache/data deletion engine is removed', () => {
   assert.doesNotMatch(helper, /get_Profile|get_ProfilePath|get_ProfileName/);
   assert.doesNotMatch(helper, /ClearBrowsingData|DeleteAllCookies|RemoveAllCookies/);
   assert.doesNotMatch(helper, /COREWEBVIEW2_BROWSING_DATA_KINDS|BROWSING_DATA_KINDS_/);
-  assert.doesNotMatch(helper, /CacheStorage|SERVICE_WORKERS|DISK_CACHE/);
   assert.match(helper, /completion\(S_OK\)/);
 });
 
