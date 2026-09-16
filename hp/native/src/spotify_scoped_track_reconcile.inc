@@ -5,8 +5,8 @@ namespace {
 // 1) the target page remains the navigation authority and first Play waits one
 //    second after NavigationCompleted bootstrap before trusted input is sent;
 // 2) Pause is confirmed only after an available media element has actually
-//    advanced; a zero-second stall gets a five-second grace period before it is
-//    toggled back to Play for retry;
+//    advanced; a zero-second stall is recovered only after repeated unchanged
+//    observations instead of a wall-clock timeout;
 // 3) if the target-page control is omitted entirely, the global Pause control
 //    is trusted only after now-playing identity matches the target;
 // 4) CDP clicks normally target the visible target-page Play control. After a
@@ -23,6 +23,28 @@ LR"JS(
   const onTargetPage = location.pathname === targetPath ||
       (targetPath.startsWith('/track/') && location.pathname.endsWith(targetPath));
   if (!onTargetPage) return null;
+
+  const playbackProbeMs = 1000;
+  const stalledObservationLimit = 4;
+  const transitionRetryDelays = [500, 1000, 2000];
+  const transitionState = window.__homePanelSpotifyTransitionRetry ||
+      (window.__homePanelSpotifyTransitionRetry = { path: '', attempt: 0 });
+  if (transitionState.path !== targetPath) {
+    transitionState.path = targetPath;
+    transitionState.attempt = 0;
+  }
+  const resetTransitionRetry = () => {
+    transitionState.path = targetPath;
+    transitionState.attempt = 0;
+  };
+  const nextTransitionRetryDelay = () => {
+    const index = Math.min(
+        transitionState.attempt, transitionRetryDelays.length - 1);
+    const delay = transitionRetryDelays[index];
+    transitionState.attempt = Math.min(
+        transitionState.attempt + 1, transitionRetryDelays.length - 1);
+    return delay;
+  };
 
   const normalize = value =>
       String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -70,7 +92,6 @@ LR"JS(
     return !!targetTitle && !!metadataTitle && metadataTitle === targetTitle;
   };
 
-  const zeroSecondRecoveryGraceMs = 5000;
   const clearProgressProbe = () => {
     window.__homePanelSpotifyProgressProbe = null;
   };
@@ -102,7 +123,6 @@ LR"JS(
       return 'confirmed';
     }
 
-    const now = Date.now();
     const previous = window.__homePanelSpotifyProgressProbe;
     if (!previous || previous.path !== targetPath || previous.media !== media ||
         current + 0.05 < previous.currentTime) {
@@ -110,7 +130,7 @@ LR"JS(
         path: targetPath,
         media,
         currentTime: current,
-        sampledAt: now
+        stagnantSamples: 0
       };
       if (current > 0.25) {
         clearProgressProbe();
@@ -126,7 +146,9 @@ LR"JS(
       return 'confirmed';
     }
 
-    if (now - previous.sampledAt < zeroSecondRecoveryGraceMs) return 'pending';
+    previous.currentTime = current;
+    previous.stagnantSamples = Number(previous.stagnantSamples || 0) + 1;
+    if (previous.stagnantSamples < stalledObservationLimit) return 'pending';
 
     clearProgressProbe();
     window.__homePanelSpotifyZeroSecondRestartPath = targetPath;
@@ -137,9 +159,11 @@ LR"JS(
     } catch (_) {}
     return 'restarted';
   };
-  const confirmPause = button => {
+  const pauseDecision = button => {
     const result = verifyPauseProgress(button);
-    return result === 'confirmed';
+    if (result === 'confirmed') return true;
+    if (result === 'restarted') return 'restart';
+    return playbackProbeMs;
   };
 
   const point = element => {
@@ -166,21 +190,23 @@ LR"JS(
       'button[data-testid="play-button"]')).filter(enabled);
   const visiblePageButton = pageButtons.find(visible) || null;
   if (visiblePageButton) {
+    resetTransitionRetry();
     if (isPauseControl(visiblePageButton)) {
-      return confirmPause(visiblePageButton) ? true : null;
+      return pauseDecision(visiblePageButton);
     }
     clearProgressProbe();
-    if (!initialPlayDelayElapsed && !restartPending()) return null;
+    if (!initialPlayDelayElapsed && !restartPending()) return playbackProbeMs;
     return point(visiblePageButton);
   }
 
   // A compact/background WebView may keep the page control in the DOM but
   // outside the rendered viewport. It can still prove playback, but only after
-  // the media clock actually advances. A zero-second stall is toggled back to
-  // Play so the next scheduler pass can issue a fresh trusted CDP Play click.
+  // the media clock actually advances. A repeated zero-second stall is toggled
+  // back to Play so the next scheduler pass can issue a fresh trusted click.
   if (pageButtons.some(isPauseControl)) {
+    resetTransitionRetry();
     const pagePause = pageButtons.find(isPauseControl) || null;
-    return pagePause && confirmPause(pagePause) ? true : null;
+    return pagePause ? pauseDecision(pagePause) : playbackProbeMs;
   }
 
   // Some Spotify responsive layouts omit the target-page button entirely.
@@ -191,16 +217,18 @@ LR"JS(
       'button[data-testid="control-button-playpause"]')).filter(enabled);
   const playerPause = playerButtons.find(isPauseControl) || null;
   if (playerPause && currentTrackMatchesTarget()) {
-    return confirmPause(playerPause) ? true : null;
+    resetTransitionRetry();
+    return pauseDecision(playerPause);
   }
   const playerPlay = playerButtons.find(button => isPlayControl(button) && visible(button)) || null;
   if (restartPending() && playerPlay && currentTrackMatchesTarget()) {
+    resetTransitionRetry();
     clearProgressProbe();
     return point(playerPlay);
   }
 
   clearProgressProbe();
-  return null;
+  return nextTransitionRetryDelay();
 })()
 )JS";
 
