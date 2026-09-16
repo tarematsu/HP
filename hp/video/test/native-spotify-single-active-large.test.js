@@ -23,12 +23,12 @@ const header = readFileSync(
   'utf8',
 );
 
-test('Spotify keeps the same full-client surface for background and Monitor C/D foreground inspection', () => {
+test('Spotify keeps the same full-client surface for background and Monitor B/C/D runtime-lane inspection', () => {
   assert.match(layout, /const int hostX = client\.left;/);
   assert.match(layout, /const int hostY = client\.top;/);
   assert.match(layout, /client\.right - client\.left/);
   assert.match(layout, /client\.bottom - client\.top/);
-  assert.match(layout, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_/);
+  assert.match(layout, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
   assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(layout, /const bool authentication =/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
