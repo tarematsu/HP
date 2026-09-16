@@ -455,6 +455,7 @@ class StationheadPlayer {
   ComPtr<ICoreWebView2DevToolsProtocolEventReceiver> mediaErrorReceiver_;
   EventRegistrationToken mediaErrorToken_{};
   std::weak_ptr<std::atomic<bool>> mediaErrorRecoveryLifecycle_;
+  ULONGLONG mediaErrorRecoveryTick_ = 0;
   std::atomic<bool> resourceBlockingArmed_{false};
   EventRegistrationToken authNavigationToken_{};
   EventRegistrationToken authMessageToken_{};

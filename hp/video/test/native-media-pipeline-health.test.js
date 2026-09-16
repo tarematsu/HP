@@ -17,18 +17,44 @@ test('Chromium media errors are subscribed independently of WebView mute state',
   assert.doesNotMatch(health, /put_IsMuted/);
 });
 
+test('only local decode and render failures trigger destructive recovery', () => {
+  assert.match(health, /MediaPipelineErrorRequiresRebuild/);
+  assert.match(health, /pipeline_error_decode/);
+  assert.match(health, /decoder_error/);
+  assert.match(health, /decrypt/);
+  assert.match(health, /cdm_error/);
+  assert.match(health, /key_system_error/);
+  assert.match(health, /demuxer_error/);
+  assert.match(health, /audio_renderer_error/);
+  assert.doesNotMatch(
+    health,
+    /kFatalTokens[\s\S]*?network[\s\S]*?\};/);
+  assert.doesNotMatch(
+    health,
+    /kFatalTokens[\s\S]*?abort[\s\S]*?\};/);
+});
+
 test('Stationhead rebuilds its playback WebView on decoder pipeline failure', () => {
   assert.match(stationhead, /SubscribeMediaPipelineErrors/);
-  assert.match(stationhead, /Chromium Media\.playerErrorsRaised/);
+  assert.match(stationhead, /Chromium media pipeline failure category=/);
   assert.match(stationhead, /ScheduleRecreate\([\s\S]*Chromium media decode\/pipeline failure/);
   assert.match(stationhead, /UnsubscribeMediaPipelineErrors/);
   assert.match(stationhead, /mediaErrorRecoveryLifecycle_\.lock\(\) == createCallbackAlive_/);
+  assert.match(stationhead, /MediaPipelineErrorRequiresRebuild/);
+  assert.match(stationhead, /navigationInFlight_\.load/);
+  assert.match(stationhead, /kMediaPipelineRebuildCooldownMs/);
+  assert.match(stationhead, /mediaErrorRecoveryTick_ = now/);
+  assert.doesNotMatch(stationhead, /ApplyAudioPlaybackState\([\s\S]{0,80}Media\.playerErrorsRaised/);
+  assert.doesNotMatch(stationhead, /Chromium media pipeline failure: /);
+  assert.doesNotMatch(stationhead, /media error observed category=/);
 });
 
 test('Spotify defers decoder recovery and rebuilds only the affected surface', () => {
   assert.match(spotifyController, /SubscribeMediaPipelineErrors/);
   assert.match(spotifyController, /mediaPipelineRecoveryPending = true/);
   assert.match(spotifyController, /mediaPipelineRecoveryGeneration ==[\s\S]*targetGeneration/);
+  assert.match(spotifyController, /MediaPipelineErrorRequiresRebuild/);
+  assert.match(spotifyController, /!SlotStateIsHealthy\(target->state\)/);
   assert.match(spotifyController, /void SpotifyWebViews::RebuildPlaybackSurface/);
   assert.match(spotifyScheduler, /if \(!slot\.mediaPipelineRecoveryPending\) continue/);
   assert.match(spotifyScheduler, /RebuildPlaybackSurface\(slot\)/);
