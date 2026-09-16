@@ -29,11 +29,13 @@ test('lower dashboard cards shift energy to old weather, weather to old radar, a
   assert.match(windows, /DrawRadarSection\(scope\.dc, sections\.energy\)/);
 });
 
-test('weather and radar keep their anchors while exchanging horizontal sizes', () => {
-  assert.match(renderer, /MainSections SplitWeatherRadarWidthSwappedMainSections/);
-  assert.match(renderer, /weatherWidth =\s*std::max<LONG>\(1, sections\.energy\.right - sections\.energy\.left\)/);
-  assert.match(renderer, /radarWidth =\s*std::max<LONG>\(1, sections\.radar\.right - sections\.radar\.left\)/);
-  assert.match(renderer, /sections\.radar\.right = std::min<LONG>\(right, left \+ weatherWidth\)/);
-  assert.match(renderer, /sections\.energy\.left = std::max<LONG>\(left, right - radarWidth\)/);
-  assert.match(renderer, /#define SplitMainSections SplitWeatherRadarWidthSwappedMainSections/);
+test('weather matches the left-column card size and radar uses the remainder', () => {
+  assert.match(renderer, /MainSections SplitWeatherRadarMatchedMainSections/);
+  assert.match(renderer, /dashboard\.side\.right - dashboard\.side\.left/);
+  assert.match(renderer, /const LONG rowHeight = std::max<LONG>\(1, \(sideHeight - sideGap \* 2\) \/ 3\)/);
+  assert.match(renderer, /const LONG weatherWidth = std::clamp<LONG>\(\s*sideWidth/);
+  assert.match(renderer, /const LONG bottom = std::min<LONG>\(client\.bottom, client\.top \+ rowHeight\)/);
+  assert.match(renderer, /sections\.radar = RECT\{\s*client\.left, client\.top, client\.left \+ weatherWidth, bottom\}/);
+  assert.match(renderer, /sections\.energy = RECT\{\s*sections\.radar\.right \+ gapX, client\.top, client\.right, bottom\}/);
+  assert.match(renderer, /#define SplitMainSections\(client\)[\s\\]*SplitWeatherRadarMatchedMainSections\(\(client\), bounds_\)/);
 });
