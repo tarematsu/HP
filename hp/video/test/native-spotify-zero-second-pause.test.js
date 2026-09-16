@@ -28,10 +28,11 @@ test('zero-second recovery starts playback only through trusted CDP Play click',
 });
 
 test('first Play click waits one second after page bootstrap', () => {
-  assert.match(scripts, /__homePanelSpotifyNativeLoadedAt = performance\.now\(\)/);
+  assert.match(scripts, /__homePanelSpotifyNativeLoadedAt = Date\.now\(\)/);
   assert.match(scoped, /const nativeLoadedAt = Number\(window\.__homePanelSpotifyNativeLoadedAt\)/);
-  assert.match(scoped, /performance\.now\(\) - nativeLoadedAt >= 1000/);
-  assert.match(scoped, /if \(!initialPlayDelayElapsed\) return null;\s*return point\(visiblePageButton\)/);
+  assert.match(scoped, /Date\.now\(\) - nativeLoadedAt >= 1000/);
+  assert.match(scoped, /if \(!initialPlayDelayElapsed && !restartPending\(\)\) return null;\s*return point\(visiblePageButton\)/);
+  assert.doesNotMatch(scripts + scoped, /performance\.now\(\)/);
 });
 
 test('Pause confirmation requires media-clock progress and restarts a zero-second stall', () => {
@@ -39,11 +40,14 @@ test('Pause confirmation requires media-clock progress and restarts a zero-secon
   assert.match(scoped, /__homePanelSpotifyProgressProbe/);
   assert.match(scoped, /current > previous\.currentTime \+ 0\.05/);
   assert.match(scoped, /now - previous\.sampledAt < 1000/);
+  assert.match(scoped, /__homePanelSpotifyZeroSecondRestartPath = targetPath/);
   assert.match(scoped, /button\.click\(\)/);
   assert.match(scoped, /return 'restarted'/);
   assert.match(scoped, /return confirmPause\(visiblePageButton\) \? true : null/);
   assert.match(scoped, /return pagePause && confirmPause\(pagePause\) \? true : null/);
   assert.match(scoped, /return confirmPause\(playerPause\) \? true : null/);
+  assert.match(scoped, /restartPending\(\) && playerPlay && currentTrackMatchesTarget\(\)/);
+  assert.match(scoped, /return point\(playerPlay\)/);
   assert.doesNotMatch(scoped, /media\.play\(/);
 });
 
