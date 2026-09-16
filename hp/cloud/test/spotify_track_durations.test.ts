@@ -8,13 +8,13 @@ const FIRST_ID = "6Vy6hCA2CZwZalGqaX6Sew";
 const SECOND_ID = "5EjWZuODqEPQ9eq7XCmITh";
 
 describe("Spotify rotation duration resolver", () => {
-  it("keeps all 30 unique active music targets addressable by trackId", () => {
+  it("keeps all 31 unique active music targets addressable by trackId", () => {
     const rotation = managedSpotifySevenSlotRotation();
     const tracks = rotation.flatMap(group => group.tracks);
     const ids = tracks.map(track => track.trackId);
-    expect(rotation).toHaveLength(7);
-    expect(ids).toHaveLength(76);
-    expect(new Set(ids).size).toBe(30);
+    expect(rotation).toHaveLength(8);
+    expect(ids).toHaveLength(96);
+    expect(new Set(ids).size).toBe(31);
     expect(ids.every(id => /^[A-Za-z0-9]{22}$/.test(id))).toBe(true);
   });
 
@@ -27,7 +27,7 @@ describe("Spotify rotation duration resolver", () => {
       rotation?: unknown[];
     };
     expect(spotify.managedRotation).toBe(true);
-    expect(spotify.rotation).toHaveLength(7);
+    expect(spotify.rotation).toHaveLength(8);
     expect(Object.keys(spotify).sort()).toEqual(["managedRotation", "rotation"]);
   });
 
