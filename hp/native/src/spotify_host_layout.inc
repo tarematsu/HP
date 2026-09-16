@@ -12,6 +12,17 @@ bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
          left.bottom - left.top == right.bottom - right.top;
 }
 
+void ApplySpotifyHostVisualClip(HWND window, bool fullSize) noexcept {
+  if (!window || !IsWindow(window)) return;
+  if (fullSize) {
+    SetWindowRgn(window, nullptr, TRUE);
+    return;
+  }
+  HRGN region = CreateRectRgn(0, 0, 1, 1);
+  if (!region) return;
+  if (!SetWindowRgn(window, region, TRUE)) DeleteObject(region);
+}
+
 }  // namespace
 
 void SpotifyWebViews::SetMonitorForeground(bool foreground) noexcept {
@@ -34,8 +45,10 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
 
-    // Spotify always fills the dashboard client area. Authentication and
-    // Monitor C only promote that same full-size surface.
+    // Keep the HWND and WebView2 controller full-size at all times so Spotify
+    // retains a normal responsive viewport and stable DOM/CDP coordinates.
+    // Normal playback is visually clipped to 1x1; authentication removes the
+    // clip and exposes the same full-size surface without resizing WebView2.
     const int hostX = client.left;
     const int hostY = client.top;
     const int width = std::max(1L, client.right - client.left);
@@ -68,6 +81,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         slot.hostLayoutApplied = true;
       }
     }
+
+    ApplySpotifyHostVisualClip(slot.hostWindow, authentication);
 
     if (!slot.controller) {
       slot.hostLayoutController = nullptr;
