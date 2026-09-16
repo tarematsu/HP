@@ -10,6 +10,10 @@ const policySource = readFileSync(
   new URL('../../native/src/sh_runtime_script_resource_policy_fix.h', import.meta.url),
   'utf8',
 );
+const sharedEnvironment = readFileSync(
+  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -134,7 +138,7 @@ test('script replacement lowercases the URI and short-circuits after a module st
   );
 });
 
-test('all removable resources are stopped before download with minimal cacheable responses', () => {
+test('final Stationhead callback leaves UDF-owned images and fonts unintercepted', () => {
   const policy = section(
     policySource,
     'inline void ApplyStationheadResourceBlockingScriptFixed(',
@@ -142,8 +146,8 @@ test('all removable resources are stopped before download with minimal cacheable
   );
   assert.equal((policy.match(/add_WebResourceRequested\(/g) || []).length, 1);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
-  assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
-  assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
+  assert.doesNotMatch(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
+  assert.doesNotMatch(policy, /StationheadRequestLooksLikeImage/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
   assert.match(policy, /emptyResource = true/);
   assert.match(policy, /SHCreateMemStream\(/);
@@ -154,4 +158,6 @@ test('all removable resources are stopped before download with minimal cacheable
   assert.match(policy, /Cache-Control: public, max-age=31536000, immutable/);
   assert.doesNotMatch(policy, /Cache-Control: no-store/);
   assert.doesNotMatch(policy, /MutationObserver|querySelector|createElement|display:none|ExecuteScript/);
+  assert.match(sharedEnvironment, /imagesEnabled=false,loadsImagesAutomatically=false/);
+  assert.match(sharedEnvironment, /downloadableBinaryFontsEnabled=false/);
 });

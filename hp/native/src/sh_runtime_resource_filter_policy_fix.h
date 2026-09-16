@@ -39,15 +39,16 @@ inline void AddStationheadResourceFilter(
   }
 }
 
-// The shared environment keeps Blink's global resource policy compatible with
-// Spotify/YouTube/TVer. Stationhead therefore applies image/font reduction at
-// this typed per-WebView request boundary instead of changing the environment.
+// Images and downloadable fonts are disabled once at shared-UDF environment
+// creation. Keep only Stationhead-specific request boundaries here so every
+// intercepted request has a playback or telemetry reason to cross into native.
 inline void ApplyStationheadResourceBlockingFilterFixed(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
     const StationheadConfig& config,
     std::atomic<bool>& armed,
     EventRegistrationToken& token) {
+  (void)config;
   (void)armed;
   if (!environment || !webview) return;
 
@@ -66,10 +67,6 @@ inline void ApplyStationheadResourceBlockingFilterFixed(
         webview, sourceAwareWebView.Get(), context, sourceKinds);
   };
 
-  const bool blockImages = config.blockImages;
-  const bool blockFonts = config.blockFonts;
-  if (blockImages) addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
-  if (blockFonts) addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
@@ -84,9 +81,8 @@ inline void ApplyStationheadResourceBlockingFilterFixed(
   ComPtr<ICoreWebView2Environment> env = environment;
   webview->add_WebResourceRequested(
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-          [env, blockImages, blockFonts](
-              ICoreWebView2*,
-              ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+          [env](ICoreWebView2*,
+                ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
             if (!args) return S_OK;
             COREWEBVIEW2_WEB_RESOURCE_CONTEXT context =
                 COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
@@ -95,9 +91,7 @@ inline void ApplyStationheadResourceBlockingFilterFixed(
             bool block = false;
             bool needsUri = true;
             if (hasContext) {
-              if ((blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) ||
-                  (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT) ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
+              if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST ||
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING ||
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
@@ -120,9 +114,6 @@ inline void ApplyStationheadResourceBlockingFilterFixed(
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
                 block = StationheadNonPlaybackScriptUrlRuntimeFixed(lower) ||
                         StationheadAdditionalNonPlaybackScriptUrl(lower);
-              }
-              if (!block && blockImages && StationheadRequestLooksLikeImage(lower)) {
-                block = true;
               }
               if (!block && hasContext &&
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {

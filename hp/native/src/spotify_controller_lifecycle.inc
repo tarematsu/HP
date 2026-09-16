@@ -96,8 +96,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
 
     Slot* const target = &slot;
     const auto alive = alive_;
-    ConfigureSpotifyLightweightResourcePolicy(
-        slot.environment.Get(), slot.webview.Get(), alive);
 
     const HRESULT titleEventResult = slot.webview->add_DocumentTitleChanged(
         Callback<ICoreWebView2DocumentTitleChangedEventHandler>(

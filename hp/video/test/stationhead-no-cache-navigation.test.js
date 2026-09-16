@@ -23,11 +23,13 @@ const playbackPolicy = readFileSync(
   'utf8',
 );
 
-test('Stationhead keeps the HTTP cache and applies one audited resource boundary', () => {
+test('Stationhead keeps the HTTP cache and uses the shared UDF resource boundary', () => {
   assert.doesNotMatch(environment, /--disable-http-cache/);
   assert.match(environment, /--disable-features=BackForwardCache,/);
   assert.match(environment, /kStationheadWebView2Arguments/);
   assert.match(environment, /BuildWebView2Arguments\([\s\S]*CreateCoreWebView2EnvironmentWithOptions/);
+  assert.match(environment, /imagesEnabled=false,loadsImagesAutomatically=false/);
+  assert.match(environment, /downloadableBinaryFontsEnabled=false/);
   assert.match(
     environment,
     /put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/,

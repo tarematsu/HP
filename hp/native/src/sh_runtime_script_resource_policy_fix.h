@@ -196,6 +196,7 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
     const StationheadConfig& config,
     std::atomic<bool>& armed,
     EventRegistrationToken& token) {
+  (void)config;
   (void)armed;
   if (!environment || !webview) return;
 
@@ -214,10 +215,6 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
         webview, sourceAwareWebView.Get(), context, sourceKinds);
   };
 
-  const bool blockImages = config.blockImages;
-  const bool blockFonts = config.blockFonts;
-  if (blockImages) addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
-  if (blockFonts) addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
@@ -232,9 +229,8 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
   ComPtr<ICoreWebView2Environment> env = environment;
   webview->add_WebResourceRequested(
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-          [env, blockImages, blockFonts](
-              ICoreWebView2*,
-              ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+          [env](ICoreWebView2*,
+                ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
             if (!args) return S_OK;
             COREWEBVIEW2_WEB_RESOURCE_CONTEXT context =
                 COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
@@ -246,9 +242,7 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
             std::string_view moduleStub;
             bool needsUri = true;
             if (hasContext) {
-              if ((blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) ||
-                  (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT) ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
+              if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST ||
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING ||
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
@@ -281,10 +275,6 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
                 }
               } else {
                 block = StationheadRequestIsBlockableBoundaryFixed(lower);
-              }
-              if (!block && blockImages && StationheadRequestLooksLikeImage(lower)) {
-                block = true;
-                emptyResource = true;
               }
               if (!block && hasContext &&
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {

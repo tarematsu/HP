@@ -7,12 +7,11 @@ class SharedWebViewEnvironment {
   using Completion = std::function<void(HRESULT, ICoreWebView2Environment*)>;
 
   static SharedWebViewEnvironment& Instance();
-  // The single Stationhead player reuses the same WebView2 user-data folder as
-  // Spotify/YouTube/TVer. A user-data folder can have only one environment
-  // policy, so Stationhead joins the full-resource environment and keeps its
-  // image/font reductions at the per-WebView request-filter layer.
+  // Stationhead, Spotify, YouTube and TVer reuse one WebView2 user-data folder.
+  // The shared environment disables image loading/decoding and downloadable
+  // web fonts for every profile in that UDF while preserving media/DRM paths.
   void Acquire(const fs::path& userDataFolder, Completion completion) {
-    Acquire(userDataFolder, false, false, std::move(completion));
+    Acquire(userDataFolder, true, true, std::move(completion));
   }
   void Acquire(const fs::path& userDataFolder, bool blockImages,
                bool blockFonts, Completion completion);
