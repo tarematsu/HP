@@ -14,6 +14,23 @@ inline constexpr int64_t StationheadPeriodicRefreshIntervalMs() noexcept {
   return 50 * 60'000;
 }
 
+inline void RestoreStationheadPlaybackMemoryTargetForReload(
+    ICoreWebView2* webview) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2> baseWebView = webview;
+  ComPtr<ICoreWebView2_19> webview19;
+  if (FAILED(baseWebView.As(&webview19)) || !webview19) return;
+
+  COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL current =
+      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL;
+  if (SUCCEEDED(webview19->get_MemoryUsageTargetLevel(&current)) &&
+      current == COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL) {
+    return;
+  }
+  webview19->put_MemoryUsageTargetLevel(
+      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+}
+
 static_assert(StationheadPlaybackNavigationActive(true, false, false));
 static_assert(StationheadPlaybackNavigationActive(true, true, true));
 static_assert(StationheadPlaybackNavigationActive(false, true, false));
@@ -31,7 +48,7 @@ static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
     int64_t next = NextWakeAtBase();                                          \
     if (periodicRefreshStartedAt_.Active()) {                                 \
       const int64_t due = periodicRefreshStartedAt_ +                         \
-          ::hp::StationheadPeriodicRefreshIntervalMs();          \
+          ::hp::StationheadPeriodicRefreshIntervalMs();                       \
       if (next <= 0 || due < next) next = due;                                \
     }                                                                         \
     return next;                                                              \
@@ -93,12 +110,13 @@ static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
       return;                                                                 \
     }                                                                         \
     const int64_t intervalMs =                                                \
-        ::hp::StationheadPeriodicRefreshIntervalMs();            \
+        ::hp::StationheadPeriodicRefreshIntervalMs();                         \
     if (nowMs - periodicRefreshStartedAt_ < intervalMs) return;               \
                                                                                 \
     periodicRefreshStartedAt_ = nowMs;                                        \
     audioPlayingSinceAt_.store(0, std::memory_order_relaxed);                 \
     audioLossPlaybackObserved_ = false;                                       \
+    ::hp::RestoreStationheadPlaybackMemoryTargetForReload(webview_.Get());    \
     SetStartupBounds();                                                       \
     NavigateCurrentUrl(nowMs, L"50-minute periodic refresh");                \
   }                                                                           \
