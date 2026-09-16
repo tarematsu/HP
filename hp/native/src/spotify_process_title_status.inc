@@ -254,7 +254,7 @@ void SpotifyWebViews::RefreshProcessTitleStatus(
   (void)queryResult;
 }
 
-void SpotifyWebViews::PollProcessTitleStatusFallback(ULONGLONG now) noexcept {
+void SpotifyWebViews::PollProcessTitleStatus(ULONGLONG now) noexcept {
   for (Slot& slot : slots_) {
     if (!slot.webview) continue;
     if (slot.nextProcessTitlePollTick != 0 && now < slot.nextProcessTitlePollTick) {
