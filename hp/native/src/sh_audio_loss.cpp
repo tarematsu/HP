@@ -12,6 +12,25 @@ bool AudioLossCallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
 }
 
+void ApplyStationheadPlaybackMemoryTarget(
+    ICoreWebView2* webview, bool lowMemory) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2> baseWebView = webview;
+  ComPtr<ICoreWebView2_19> webview19;
+  if (FAILED(baseWebView.As(&webview19)) || !webview19) return;
+
+  const COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL desired = lowMemory
+      ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+      : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL;
+  COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL current =
+      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL;
+  if (SUCCEEDED(webview19->get_MemoryUsageTargetLevel(&current)) &&
+      current == desired) {
+    return;
+  }
+  webview19->put_MemoryUsageTargetLevel(desired);
+}
+
 std::atomic<bool> monitorDomProbeRequested{false};
 std::atomic<bool> monitorDomProbeInFlight{false};
 
@@ -337,10 +356,27 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     }
   }
 
+  const StationheadStatus snapshot = Status();
+  const bool navigationActive =
+      !snapshot.created || snapshot.navigating || snapshot.processFailed ||
+      recreating_.load(std::memory_order_acquire) ||
+      navigationInFlight_.load(std::memory_order_acquire);
+  const bool audioPlaying = AudioPlaying();
+  const int64_t playingSince = AudioPlayingSince();
+  const int64_t playingForMs = playingSince > 0 && nowMs >= playingSince
+      ? nowMs - playingSince
+      : 0;
+  const bool stablePlayback =
+      StationheadAudioLossCanArm(audioPlaying, navigationActive, playingForMs) &&
+      !snapshot.loginRequired && !snapshot.spotifyAuthorization &&
+      !loginRequired_ && !spotifyAuthorization_;
+  ApplyStationheadPlaybackMemoryTarget(webview_.Get(), stablePlayback);
+
   if (managedPlaybackFallbackActive_) {
     if (managedPlaybackReturnRequested_ &&
         StationheadFallbackDwellSatisfied(
             nowMs - managedPlaybackFallbackStartedAt_)) {
+      ApplyStationheadPlaybackMemoryTarget(webview_.Get(), false);
       SetManagedPlaybackFallback(
           false,
           L"returning_primary: newer healthy playback JSON observed");
@@ -348,11 +384,6 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     return;
   }
 
-  const StationheadStatus snapshot = Status();
-  const bool navigationActive =
-      !snapshot.created || snapshot.navigating || snapshot.processFailed ||
-      recreating_.load(std::memory_order_acquire) ||
-      navigationInFlight_.load(std::memory_order_acquire);
   if (navigationActive) {
     // Initial navigation and later page rebuilds can emit a brief native audio
     // pulse before the actual stream is ready. Never arm fallback from that
@@ -365,12 +396,7 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     return;
   }
 
-  const bool audioPlaying = AudioPlaying();
   if (audioPlaying) {
-    const int64_t playingSince = AudioPlayingSince();
-    const int64_t playingForMs = playingSince > 0 && nowMs >= playingSince
-        ? nowMs - playingSince
-        : 0;
     audioLossStartedAt_ = 0;
     ResetAudioLossProbe();
 
