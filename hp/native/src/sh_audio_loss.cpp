@@ -36,7 +36,9 @@ constexpr wchar_t kMonitorDomProbeScript[] = LR"JS(
       element.getAttribute?.('value'),
       element.textContent
     ].filter(Boolean).join(' '));
-    if (/\blog\s+in\b/i.test(text) || /\bconnect\s+spotify\b/i.test(text)) {
+    if (/\blog\s+in\b/i.test(text) ||
+        /\bconnect\s+spotify\b/i.test(text) ||
+        /\breconnect\s+music\b/i.test(text)) {
       return true;
     }
     if (!/\bconnect\b/i.test(text)) continue;
@@ -96,6 +98,19 @@ constexpr wchar_t kAuthenticationUiProbeScript[] = LR"JS(
     reason,
     evidence: evidence.map(normalize).filter(Boolean).slice(0, 6)
   });
+
+  // `Reconnect Music` means the previously authorized music service needs
+  // user interaction again. Treat it exactly like the audited auth surfaces so
+  // the Stationhead host becomes full-size and foregrounded immediately after
+  // the audio-loss probe sees it.
+  const reconnectSurface = [...document.querySelectorAll(
+    "button,[role='button'],a,h1,h2,h3,[role='heading'],p,[role='dialog'],[role='alert'],[role='status'],[aria-label],[data-testid]"
+  )]
+    .filter(visible)
+    .find(element => labelsOf(element).some(label => /\breconnect\s+music\b/i.test(label)));
+  if (reconnectSurface) {
+    return summary('music-service-reconnect', labelsOf(reconnectSurface));
+  }
 
   // The live service selector has no role=dialog. Locate the `Connect music`
   // heading, then require a common visible ancestor that contains a service
