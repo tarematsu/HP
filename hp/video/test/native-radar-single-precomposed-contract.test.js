@@ -39,9 +39,9 @@ const wrangler = readFileSync(
   'utf8',
 );
 
-test('native radar only decodes one 1440x960 representative PNG', () => {
-  assert.match(rendererHeader, /kRadarCanvasWidth = 1440/);
-  assert.match(rendererHeader, /kRadarCanvasHeight = 960/);
+test('native radar only decodes one 1296x729 representative PNG', () => {
+  assert.match(rendererHeader, /kRadarCanvasWidth = 1296/);
+  assert.match(rendererHeader, /kRadarCanvasHeight = 729/);
   assert.match(renderer, /kRepresentativeRadarPath/);
   assert.match(renderer, /representative\/latest\.png/);
   assert.match(renderer, /json::Boolean\(root, L"precomposed"\)/);
@@ -70,7 +70,7 @@ test('radar cache localization is isolated from device version negotiation', () 
   assert.doesNotMatch(cloudClientSync, /std::vector<uint8_t> CloudClient::LocalizeRadarTiles/);
   assert.match(radarCache, /std::vector<uint8_t> CloudClient::LocalizeRadarTiles/);
   assert.match(radarCache, /HasPngSignature\(response\.body\)/);
-  assert.match(radarCache, /width != 1440 \|\| height != 960/);
+  assert.match(radarCache, /width != 1296 \|\| height != 729/);
   assert.match(radarCache, /frames\.Size\(\) != 1/);
   assert.match(radarCache, /tiles\.Size\(\) != 1/);
   assert.match(radarCache, /precomposed radar frame unavailable/);
@@ -94,14 +94,14 @@ test('cloud radar composition has an explicit public origin for Browser Renderin
 });
 
 test('cloud radar contract remains one z10 native-scale precomposed three-panel representative frame', () => {
-  assert.match(cloud, /const RADAR_OUTPUT_WIDTH = 1440/);
-  assert.match(cloud, /const RADAR_OUTPUT_HEIGHT = 960/);
+  assert.match(cloud, /const RADAR_OUTPUT_WIDTH = 1296/);
+  assert.match(cloud, /const RADAR_OUTPUT_HEIGHT = 729/);
   assert.match(cloud, /const RADAR_BASE_ZOOM = 10/);
   assert.match(cloud, /const RADAR_DISPLAY_ZOOM = 10/);
-  assert.match(cloud, /const RADAR_PANEL_SOURCE_WIDTH = 480/);
-  assert.match(cloud, /const RADAR_PANEL_SOURCE_HEIGHT = 960/);
-  assert.match(cloud, /const RADAR_BASE_CROP_WIDTH = 480/);
-  assert.match(cloud, /const RADAR_BASE_CROP_HEIGHT = 960/);
+  assert.match(cloud, /const RADAR_PANEL_SOURCE_WIDTH = 432/);
+  assert.match(cloud, /const RADAR_PANEL_SOURCE_HEIGHT = 729/);
+  assert.match(cloud, /const RADAR_BASE_CROP_WIDTH = 432/);
+  assert.match(cloud, /const RADAR_BASE_CROP_HEIGHT = 729/);
   assert.match(cloud, /native-scale/);
   assert.match(cloud, /RADAR_FRAME_PATH = "\/v1\/radar\/frame\/representative\/latest\.png"/);
   assert.match(cloud, /JMA_SHORT_TERM_TIMES_URL/);

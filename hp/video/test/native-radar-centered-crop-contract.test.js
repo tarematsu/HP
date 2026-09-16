@@ -35,15 +35,15 @@ const buildRadarBase = readFileSync(
   'utf8',
 );
 
-test('cloud radar renders a z10 1440x960 three-panel image at 1:1 panel scale', () => {
+test('cloud radar renders a z10 1296x729 three-panel image at 1:1 panel scale', () => {
   assert.match(cloudRadar, /const RADAR_BASE_ZOOM = 10;/);
   assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM = 10;/);
-  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 480;/);
-  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 960;/);
-  assert.match(cloudRadar, /const RADAR_BASE_CROP_WIDTH = 480;/);
-  assert.match(cloudRadar, /const RADAR_BASE_CROP_HEIGHT = 960;/);
-  assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 1440;/);
-  assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 960;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 432;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 729;/);
+  assert.match(cloudRadar, /const RADAR_BASE_CROP_WIDTH = 432;/);
+  assert.match(cloudRadar, /const RADAR_BASE_CROP_HEIGHT = 729;/);
+  assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 1296;/);
+  assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 729;/);
   assert.match(cloudRadar, /native-scale/);
   assert.match(cloudRadar, /renderRepresentativeRadarFrame/);
   assert.match(cloudRadar, /precomposed: true/);
@@ -86,7 +86,7 @@ test('cloud selects current, exact one-hour, and latest short-term panels', () =
   assert.match(radarUi, /frames\.Size\(\) != 1/);
   assert.doesNotMatch(radarUi, /frameIntervalMs|animationIntervalMs|selectedIndex/);
   assert.match(radarCache, /const bool precomposed = root\.GetNamedBoolean\(L"precomposed", false\);/);
-  assert.match(radarCache, /width != 1440 \|\| height != 960/);
+  assert.match(radarCache, /width != 1296 \|\| height != 729/);
   assert.match(radarCache, /frames\.Size\(\) != 1/);
   assert.match(radarCache, /tiles\.Size\(\) != 1/);
 });

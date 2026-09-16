@@ -61,8 +61,8 @@ struct NativeMinuteFactsProjection {
   int64_t fetchedAt = 0;
 };
 
-inline constexpr int kRadarCanvasWidth = 1440;
-inline constexpr int kRadarCanvasHeight = 960;
+inline constexpr int kRadarCanvasWidth = 1296;
+inline constexpr int kRadarCanvasHeight = 729;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
 struct NativeDashboardLayout {
@@ -221,7 +221,6 @@ class Renderer {
     if (renderer) return (renderer->*Handler)(hwnd, message, wparam, lparam);
     return DefWindowProcW(hwnd, message, wparam, lparam);
   }
-
   LRESULT HandleNativeStaticMessage(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
