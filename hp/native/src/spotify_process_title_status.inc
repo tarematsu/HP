@@ -7,12 +7,19 @@ constexpr ULONGLONG kSpotifyProcessTitlePollPhaseMs =
 static_assert(kSpotifyActiveAccountCount == 4);
 static_assert(kSpotifyProcessTitlePollPhaseMs == 15ULL * 1000ULL);
 
-// Status is intentionally independent from the managed/queued target. Read only
-// the Web Player's bottom now-playing surface so a scheduled track can never be
-// presented as if it were already playing.
+// Status is intentionally independent from the managed/queued target. The
+// playback observer stores a title only after a real media element is confirmed
+// playing. The one-minute poll reads that cheap cache first; the live player DOM
+// remains fallback for startup/recovery only.
 constexpr wchar_t kSpotifyNowPlayingDomScript[] = LR"JS(
 (() => {
   if (location.hostname !== 'open.spotify.com') return { title: '' };
+
+  const runtime = window.__homePanelSpotifyMediaObserverRuntime;
+  const cached = runtime && runtime.state && runtime.state.actualTrackTitle;
+  if (typeof cached === 'string' && cached.trim()) {
+    return { title: cached.trim() };
+  }
 
   const roots = [];
   const addRoot = element => {
@@ -25,30 +32,40 @@ constexpr wchar_t kSpotifyNowPlayingDomScript[] = LR"JS(
   addRoot(document.querySelector('footer[class*="now-playing"]'));
   addRoot(document.querySelector('footer'));
 
-  // Keep this list scoped to the player roots above. Never inspect the main
-  // track page, queue, playlist, native target descriptor, or MediaSession.
-  const titleSelectors = [
-    '[data-testid="context-item-info-title"]',
-    'a[data-testid="context-item-link"][href*="/track/"]',
-    '[data-testid="nowplaying-track-link"]',
-    '[data-testid="now-playing-widget-title"] a',
-    '.track-info__name a',
-    'a[aria-label*="Now playing:" i]',
-    '.now-playing .track-name',
-    '[class*="track-name"]',
-    '.player-track-info__name'
-  ];
+  const clean = value => String(value || '').replace(/\s+/g, ' ').trim()
+      .replace(/^(?:now playing|currently playing|再生中)\s*[:：-]?\s*/i, '');
+  const titleOf = element => {
+    if (!element) return '';
+    for (const value of [
+      element.textContent,
+      element.getAttribute?.('title'),
+      element.getAttribute?.('aria-label')
+    ]) {
+      const title = clean(value);
+      if (title) return title;
+    }
+    return '';
+  };
 
-  const textOf = element => String(
-      element && (element.textContent || element.innerText) || '')
-      .replace(/\s+/g, ' ').trim();
-
+  // Keep selectors scoped to the actual bottom-player roots. Never inspect the
+  // main track page, queue, playlist, or native target descriptor.
   for (const root of roots) {
-    for (const selector of titleSelectors) {
+    for (const selector of [
+      '[data-testid="context-item-info-title"]',
+      'a[data-testid="context-item-link"][href*="/track/"]',
+      'a[href*="/track/"]',
+      '[data-testid="nowplaying-track-link"]',
+      '[data-testid="now-playing-widget-title"] a',
+      '.track-info__name a',
+      'a[aria-label*="Now playing:" i]',
+      '.now-playing .track-name',
+      '[class*="track-name"]',
+      '.player-track-info__name'
+    ]) {
       let element = null;
       try { element = root.matches?.(selector) ? root : root.querySelector(selector); }
       catch (_) { continue; }
-      const title = textOf(element);
+      const title = titleOf(element);
       if (title) return { title };
     }
   }
@@ -129,9 +146,9 @@ void SpotifyWebViews::PollProcessTitleStatus(ULONGLONG now) noexcept {
   }
   if (selected >= slots_.size()) return;
 
-  // Never execute multiple DOM probes in one scheduler pass. If Windows was
+  // Never execute multiple status probes in one scheduler pass. If Windows was
   // asleep or the UI thread was stalled long enough for multiple phases to
-  // expire, spread the overdue probes back out at the account phase interval.
+  // expire, spread overdue reads back out at the account phase interval.
   ULONGLONG catchUpDelay = kSpotifyProcessTitlePollPhaseMs;
   for (size_t i = selected + 1; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
