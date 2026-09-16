@@ -8,7 +8,7 @@ namespace hp {
 // silence remain a track-transition wait. The operation surface is foregrounded
 // at 11 seconds, then gets one second to finish rendering authentication controls
 // before native code probes the DOM.
-inline constexpr int64_t kStationheadAudioLossArmStabilityMs = 15'000;
+inline constexpr int64_t kStationheadAudioLossArmStabilityMs = 5'000;
 inline constexpr int64_t kStationheadAudioLossGraceMs = 11'000;
 inline constexpr int64_t kStationheadAudioLossDomSettleMs = 1'000;
 inline constexpr int64_t kStationheadFallbackMinimumDwellMs = 15'000;
@@ -50,8 +50,8 @@ inline constexpr bool StationheadFallbackDwellSatisfied(
   return fallbackElapsedMs >= kStationheadFallbackMinimumDwellMs;
 }
 
-static_assert(!StationheadAudioLossCanArm(true, false, 14'999));
-static_assert(StationheadAudioLossCanArm(true, false, 15'000));
+static_assert(!StationheadAudioLossCanArm(true, false, 4'999));
+static_assert(StationheadAudioLossCanArm(true, false, 5'000));
 static_assert(!StationheadAudioLossCanArm(true, true, 60'000));
 static_assert(!StationheadAudioLossCanProbe(
     true, false, true, false, false, false, 11'999));
