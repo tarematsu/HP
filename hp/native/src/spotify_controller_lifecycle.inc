@@ -83,7 +83,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
   try {
     SetSpotifyOutputMuted(slot.webview);
     // Keep the renderer active at all times. Background cost is controlled by
-    // shrinking the host/controller surface to 1x1 instead of IsVisible=false.
+    // clipping the host to 1x1 while keeping a stable internal viewport.
     slot.controller->put_IsVisible(TRUE);
 
     ComPtr<ICoreWebView2Controller2> controller2;
@@ -119,6 +119,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               }
               const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, target->loginPage ? SlotState::Authenticating : SlotState::Navigating);
+              if (target->controller) {
+                target->controller->put_Bounds(
+                    SpotifyControllerBounds(target->hostWindow, target->loginPage));
+              }
               if (!target->loginPage) target->nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
               RecomputeForeground();
               ArmRobustScheduler();
@@ -149,6 +153,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               target->loginPage = loginPage;
               const ULONGLONG now = GetTickCount64();
               SetSlotState(*target, loginPage ? SlotState::Authenticating : (playerPage ? SlotState::WaitingTarget : SlotState::Navigating));
+              if (target->controller) {
+                target->controller->put_Bounds(
+                    SpotifyControllerBounds(target->hostWindow, loginPage));
+              }
               target->nextRecoveryTick = playerPage || loginPage ? 0 : now + kSpotifyRecoveryRetryMs;
               RecomputeForeground();
               if (!playerPage) { ArmRobustScheduler(); return S_OK; }
@@ -178,9 +186,8 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               return S_OK;
             }).Get(), &slot.navigationCompletedToken);
 
-    RECT client{};
-    GetClientRect(slot.hostWindow, &client);
-    slot.controller->put_Bounds(client);
+    slot.controller->put_Bounds(
+        SpotifyControllerBounds(slot.hostWindow, slot.loginPage));
     slot.controller->put_IsVisible(TRUE);
     SetSlotState(slot, SlotState::Authenticating);
     ComPtr<ICoreWebView2> startupView = slot.webview;
