@@ -61,6 +61,10 @@ test('status track comes from each Spotify renderer window with fixed 60-second 
   assert.match(processTitle, /ProbeSpotifyRendererWindowTrack\(\s*processCollection, expectedSource\)/);
   assert.match(processTitle, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
   assert.match(processTitle, /void SpotifyWebViews::PollProcessTitleStatus\(ULONGLONG now\) noexcept/);
+  assert.match(processTitle, /std::array<std::wstring_view, 4> separators/);
+  assert.match(processTitle, /L" - "/);
+  assert.match(processTitle, /separatorLength = candidate\.size\(\)/);
+  assert.match(processTitle, /substr\(separator \+ separatorLength\)/);
   assert.match(processTitle, /return std::wstring\(track\)/);
   assert.doesNotMatch(processTitle, /display\.push_back\(L'・'\)/);
   assert.match(processTitle, /rendererDisplay\.empty\(\)/);
