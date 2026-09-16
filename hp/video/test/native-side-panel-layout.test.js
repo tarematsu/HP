@@ -11,22 +11,28 @@ const layoutOverrides = readFileSync(
   'utf8',
 );
 
-test('media panel uses 50% viewport width and a 16:9 height', () => {
+test('dashboard uses a balanced 2x2 grid with proportional gaps', () => {
+  assert.match(dashboardHeader, /const int marginX = clientWidth \* 14 \/ 1000;/);
+  assert.match(dashboardHeader, /const int marginY = clientHeight \* 14 \/ 1000;/);
+  assert.match(dashboardHeader, /const int gapX = std::max\(6, clientWidth \* 11 \/ 1000\);/);
+  assert.match(dashboardHeader, /const int gapY = std::max\(6, clientHeight \* 11 \/ 1000\);/);
+  assert.match(dashboardHeader, /const int sideWidth = std::max\(1, availableWidth \/ 2\);/);
+  assert.match(dashboardHeader, /const int topHeight = std::max\(1, availableHeight \/ 2\);/);
   assert.match(
     dashboardHeader,
-    /const int mediaWidth = std::clamp\(clientWidth \/ 2, 1, maxMediaWidth\);/,
+    /layout\.side = RECT\{inner\.left, inner\.top, inner\.left \+ sideWidth,[\s\S]*inner\.top \+ topHeight\};/,
   );
   assert.match(
     dashboardHeader,
-    /std::clamp\(mediaWidth \* 9 \/ 16, 1, maxMediaHeight\);/,
+    /layout\.media = RECT\{inner\.left \+ sideWidth \+ gapX, inner\.top,[\s\S]*inner\.top \+ topHeight\};/,
+  );
+  assert.match(
+    dashboardHeader,
+    /layout\.main = RECT\{inner\.left, inner\.top \+ topHeight \+ gapY,[\s\S]*inner\.right/,
   );
 });
 
-test('clock shares the left top column with a side-by-side air and energy row', () => {
-  assert.match(
-    dashboardHeader,
-    /layout\.side = RECT\{inner\.left, inner\.top, inner\.left \+ sideWidth,[\s\S]*inner\.top \+ mediaHeight\};/,
-  );
+test('clock shares the top-left cell with a side-by-side air and energy row', () => {
   assert.match(layoutOverrides, /const int utilityWidth = std::max\(2, width - gapX\);/);
   assert.match(layoutOverrides, /const int airWidth = std::max\(1, utilityWidth \/ 2\);/);
   assert.match(
@@ -43,15 +49,12 @@ test('clock shares the left top column with a side-by-side air and energy row', 
   );
 });
 
-test('lower row spans both columns with weather left and radar matching YouTube width', () => {
-  assert.match(
-    dashboardHeader,
-    /layout\.main = RECT\{inner\.left, inner\.top \+ mediaHeight \+ gapY,[\s\S]*inner\.right, inner\.bottom\};/,
-  );
+test('lower row is split evenly between weather and rain radar', () => {
   assert.match(layoutOverrides, /const int gapX = std::max\(6, width \* 11 \/ 972\);/);
+  assert.match(layoutOverrides, /const int availableWidth = std::max\(2, width - gapX\);/);
+  assert.match(layoutOverrides, /const int weatherWidth = std::max\(1, availableWidth \/ 2\);/);
   assert.match(
     layoutOverrides,
-    /const int mediaWidth = std::clamp\(width \* 500 \/ 972, 1, rowWidth - 1\);/,
+    /const int radarWidth = std::max\(1, width - gapX - weatherWidth\);/,
   );
-  assert.match(layoutOverrides, /const int sideWidth = std::max\(1, rowWidth - mediaWidth\);/);
 });
