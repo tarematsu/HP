@@ -4,8 +4,10 @@ import {
   filterEpisodesBeforeNextRefresh,
   normalizeTverEpisodeUrl,
   parseTverExpiration,
+  parseTverPublishedAt,
   refreshTverFeed,
   shouldRefreshTverFeed,
+  sortEpisodesLatestFirst,
   tverFeedResponse,
 } from '../src/tver_feed.js';
 
@@ -37,6 +39,25 @@ describe('TVer cloud feed', () => {
       .toBe('2026-09-11T01:30:00.000Z');
     expect(parseTverExpiration('9月11日(金) 10:45 終了予定', now))
       .toBe('2026-09-11T01:45:00.000Z');
+  });
+
+  it('normalizes publication timestamps and sorts episodes latest first', () => {
+    const epochSeconds = Date.parse('2026-09-11T03:00:00.000Z') / 1000;
+    expect(parseTverPublishedAt(epochSeconds)).toBe('2026-09-11T03:00:00.000Z');
+    expect(parseTverPublishedAt('2026-09-11T04:00:00+09:00'))
+      .toBe('2026-09-10T19:00:00.000Z');
+
+    expect(sortEpisodesLatestFirst([
+      { url: 'old', publishedAt: '2026-09-10T00:00:00.000Z' },
+      { url: 'new', publishedAt: '2026-09-11T00:00:00.000Z' },
+      { url: 'unknown-a', expiresAt: '2026-09-12T00:00:00.000Z' },
+      { url: 'unknown-b', expiresAt: '2026-09-13T00:00:00.000Z' },
+    ]).map((item) => item.url)).toEqual([
+      'new',
+      'old',
+      'unknown-a',
+      'unknown-b',
+    ]);
   });
 
   it('removes episodes that will expire before the next hourly collection', () => {
@@ -91,6 +112,31 @@ describe('TVer cloud feed', () => {
       collectSakamichi: async () => [],
     })).rejects.toThrow(/zero playable URLs/);
     expect(writes).toHaveLength(2);
+  });
+
+  it('writes talent episodes in publication-time descending order', async () => {
+    const writes = [];
+    const feed = await refreshTverFeed({
+      DATA_BUCKET: { put: async (...args) => writes.push(args) },
+    }, {
+      now: new Date('2026-09-11T00:00:00.000Z'),
+      collectTalent: async () => [
+        {
+          url: 'https://tver.jp/episodes/epOLD',
+          publishedAt: '2026-09-09T12:00:00.000Z',
+        },
+        {
+          url: 'https://tver.jp/episodes/epNEW',
+          publishedAt: '2026-09-10T12:00:00.000Z',
+        },
+      ],
+      collectSakamichi: async () => [],
+    });
+    expect(feed.episodes.map((item) => item.url)).toEqual([
+      'https://tver.jp/episodes/epNEW',
+      'https://tver.jp/episodes/epOLD',
+    ]);
+    expect(JSON.parse(writes[0][1]).episodes).toEqual(feed.episodes);
   });
 
   it('filters near-expiry TVer results before writing the feed', async () => {
