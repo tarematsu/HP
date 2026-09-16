@@ -139,18 +139,19 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
         std::max(1L, bounds.bottom - bounds.top), parentWindow, nullptr,
         GetModuleHandleW(nullptr), nullptr);
     if (!status) return false;
-  }
-  SetTimer(status, kNativeSpotifyStatusPollTimer,
-           kNativeSpotifyStatusPollMs, nullptr);
-  RECT current{};
-  GetWindowRect(status, &current);
-  MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
-  if (!EqualRect(&current, &bounds)) {
-    SetWindowPos(status, nullptr, bounds.left, bounds.top,
-                 std::max(1L, bounds.right - bounds.left),
-                 std::max(1L, bounds.bottom - bounds.top),
-                 SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER |
-                     SWP_SHOWWINDOW);
+    SetTimer(status, kNativeSpotifyStatusPollTimer,
+             kNativeSpotifyStatusPollMs, nullptr);
+  } else {
+    RECT current{};
+    GetWindowRect(status, &current);
+    MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
+    if (!EqualRect(&current, &bounds)) {
+      SetWindowPos(status, nullptr, bounds.left, bounds.top,
+                   std::max(1L, bounds.right - bounds.left),
+                   std::max(1L, bounds.bottom - bounds.top),
+                   SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER |
+                       SWP_SHOWWINDOW);
+    }
   }
   return true;
 }
