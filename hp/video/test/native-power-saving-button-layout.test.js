@@ -67,7 +67,7 @@ test('power-saving controller composes focused responsibilities without a thread
 
 test('update, monitor and audio output controls share one horizontal clock footer row', () => {
   assert.match(overlay, /constexpr size_t kControlButtonCount = 3/);
-  assert.match(overlay, /const int upperMediaHeight = sideHeight \* 600 \/ 1000/);
+  assert.match(overlay, /const int upperMediaHeight = sideHeight \* 480 \/ 1000/);
   assert.match(overlay, /compactAvailable \* 55 \/ 100/);
   assert.match(overlay, /contentHeight \* 790 \/ 1000/);
   assert.match(overlay, /contentWidth \* 205 \/ 1000, 74, 110/);

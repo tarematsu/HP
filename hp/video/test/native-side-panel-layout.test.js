@@ -12,8 +12,9 @@ const layoutOverrides = readFileSync(
 );
 
 test('weather and air are swapped and weather matches visible rain radar height', () => {
-  assert.match(dashboardHeader, /const int mediaHeight = innerHeight \* 600 \/ 1000;/);
-  assert.match(layoutOverrides, /const int upperMediaHeight = height \* 600 \/ 1000;/);
+  assert.match(dashboardHeader, /const int mediaWidth = std::max\(1, originalMediaWidth \* 800 \/ 1000\);/);
+  assert.match(dashboardHeader, /const int mediaHeight = innerHeight \* 480 \/ 1000;/);
+  assert.match(layoutOverrides, /const int upperMediaHeight = height \* 480 \/ 1000;/);
   assert.match(
     layoutOverrides,
     /const int weatherHeight =\s*std::max\(1, height - upperMediaHeight - gap\);/,

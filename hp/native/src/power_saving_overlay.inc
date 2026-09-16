@@ -187,7 +187,7 @@ RECT PowerSavingController::ParentControlStackRect() const {
   const int sideWidth = std::max(1L, side.right - side.left);
   const int sideHeight = std::max(1L, side.bottom - side.top);
   const int gap = std::max(6, sideHeight * 18 / 1000);
-  const int upperMediaHeight = sideHeight * 600 / 1000;
+  const int upperMediaHeight = sideHeight * 480 / 1000;
   const int weatherHeight = std::max(1, sideHeight - upperMediaHeight - gap);
   const int compactAvailable =
       std::max(2, sideHeight - weatherHeight - gap * 2);
