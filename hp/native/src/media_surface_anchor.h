@@ -14,6 +14,7 @@ inline MediaSurfaceAnchors ComputeMediaSurfaceAnchors(
   const int clientHeight = std::max(1L, client.bottom - client.top);
   const int marginX = clientWidth * 14 / 1000;
   const int marginY = clientHeight * 20 / 1000;
+  const int gapX = std::max(6, clientWidth * 11 / 1000);
 
   const RECT inner{
       client.left + marginX,
@@ -22,12 +23,16 @@ inline MediaSurfaceAnchors ComputeMediaSurfaceAnchors(
       client.bottom - marginY,
   };
   const int innerWidth = std::max(1L, inner.right - inner.left);
-  const int sideWidth = innerWidth * 285 / 1000;
+  const int originalSideWidth = innerWidth * 285 / 1000;
+  const int originalMediaWidth =
+      std::max(1, innerWidth - originalSideWidth - gapX);
+  const int mediaWidth = std::max(1, originalMediaWidth * 800 / 1000);
+  const int sideWidth = std::max(1, innerWidth - gapX - mediaWidth);
   const RECT side{inner.left, inner.top, inner.left + sideWidth, inner.bottom};
 
   const int sideHeight = std::max(1L, side.bottom - side.top);
   const int gap = std::max(6, sideHeight * 18 / 1000);
-  const int upperMediaHeight = sideHeight * 600 / 1000;
+  const int upperMediaHeight = sideHeight * 480 / 1000;
   const int lowerHeight = std::max(1, sideHeight - upperMediaHeight - gap);
   const int compactAvailable =
       std::max(2, sideHeight - lowerHeight - gap * 2);
