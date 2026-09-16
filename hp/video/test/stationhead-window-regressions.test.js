@@ -23,20 +23,30 @@ test('single Stationhead resolves placement against the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background playback and auth use fixed onscreen 320x160 geometry', () => {
+test('background host and auth stay onscreen while stable playback may compact only its controller', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
-  assert.doesNotMatch(behind, /AudioPlaying|trackBoundaryPlaybackRecoveryPending_/);
+  assert.match(behind, /AudioPlayingSince\(\)/);
+  assert.match(behind, /kStationheadCompactPlaybackStabilityMs/);
+  assert.doesNotMatch(behind, /trackBoundaryPlaybackRecoveryPending_/);
 
   const apply = section(layout, 'void ApplyStationheadChildLayout(',
     '}  // namespace');
   assert.match(apply, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /authHostBounds = surfaceBounds/);
+  assert.match(apply, /PlaybackControllerBounds\(playbackHostBounds, useCompactPlayback\)/);
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
   assert.ok(apply.indexOf('SetWindowPos(hostWindow') < apply.indexOf('if (controller)'));
   assert.ok(apply.indexOf('SetWindowPos(authHostWindow') < apply.indexOf('if (authController)'));
+});
+
+test('startup and reload explicitly restore the full Stationhead controller viewport', () => {
+  const startup = section(layout, 'void StationheadPlayer::SetStartupBounds()',
+    'void StationheadPlayer::SetStartupPreviewBounds(');
+  assert.match(startup, /ApplyStationheadChildLayout\([\s\S]*false, false, false, false\)/);
+  assert.doesNotMatch(startup, /AudioPlaying|compactPlayback/);
 });
 
 test('failed host creation clears public visibility', () => {
