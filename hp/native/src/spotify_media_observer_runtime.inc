@@ -173,6 +173,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       source: 'media-session'
     };
   };
+)JS"
+LR"JS(
   const matchesTarget = (target, track) => {
     if (!target) return false;
     const expectedPath = targetPath(target);
