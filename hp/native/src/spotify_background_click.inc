@@ -150,61 +150,7 @@ void SpotifyWebViews::ClickSlotCssPoint(
                 std::wstring_view(json) == L"\"recreate\"" &&
                 target->playRecoveryRecreateGeneration != targetGeneration) {
               target->playRecoveryRecreateGeneration = targetGeneration;
-
-              // Rebuild only this Spotify playback surface. Keep the host,
-              // profile identity, current rotation, current track and target
-              // generation intact so the recreated controller resumes the same
-              // requested track instead of advancing the playlist.
-              if (target->webview) {
-                if (target->navigationStartingToken.value != 0) {
-                  target->webview->remove_NavigationStarting(
-                      target->navigationStartingToken);
-                }
-                if (target->navigationCompletedToken.value != 0) {
-                  target->webview->remove_NavigationCompleted(
-                      target->navigationCompletedToken);
-                }
-                if (target->timedEndMessageReceivedToken.value != 0) {
-                  target->webview->remove_WebMessageReceived(
-                      target->timedEndMessageReceivedToken);
-                }
-              }
-              target->navigationStartingToken = {};
-              target->navigationCompletedToken = {};
-              target->timedEndMessageReceivedToken = {};
-              target->timedEndHandlerWebview = nullptr;
-              target->webview.Reset();
-              if (target->controller) target->controller->Close();
-              target->controller.Reset();
-              target->environment.Reset();
-              target->hostLayoutController = nullptr;
-              target->hostLayoutRect = {};
-              target->hostLayoutInsertAfter = nullptr;
-              target->hostLayoutApplied = false;
-              target->controllerCreating = false;
-              target->controllerCreateTick = 0;
-              ++target->asyncEpoch;
-              if (target->asyncEpoch == 0) ++target->asyncEpoch;
-              ++target->pageEpoch;
-              if (target->pageEpoch == 0) ++target->pageEpoch;
-              target->asyncWork = AsyncWork::None;
-              target->asyncStartedTick = 0;
-              target->nextProcessTitlePollTick = 0;
-              target->trustedClickBlockedUntilTick = 0;
-              target->memoryUsageTargetLevel = -1;
-              target->timedCompletionDeadlineTick = 0;
-              target->timedCompletionDeadlineGeneration = 0;
-              target->loginPage = false;
-              target->playbackConfirmed = false;
-              target->processTitleObserved = false;
-              target->observedTrackTitle.clear();
-              target->processTrackDisplay.clear();
-              target->processTitleObservedAt = {};
-              target->playbackConfirmedAt = {};
-              SetSlotState(*target, SlotState::NotCreated);
-              target->nextRecoveryTick = GetTickCount64();
-              RecomputeForeground();
-              ArmRobustScheduler();
+              RebuildPlaybackSurface(*target);
               return S_OK;
             }
             double verifiedX = 0.0;

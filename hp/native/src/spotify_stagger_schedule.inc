@@ -42,6 +42,15 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   }
   if (now < scheduleStartTick_) return;
 
+  // Chromium reports decoder, decryptor and media-pipeline failures even when
+  // the WebView is intentionally muted. Rebuild only the affected surface and
+  // preserve its account, track target and rotation position.
+  for (Slot& slot : slots_) {
+    if (!slot.mediaPipelineRecoveryPending) continue;
+    RebuildPlaybackSurface(slot);
+    return;
+  }
+
   ProbeDueTimedCompletions(now);
 
   // Events remain the fast path, but each live Spotify WebView also gets one

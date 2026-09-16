@@ -10,6 +10,7 @@ const source = name => readFileSync(
 const stationhead = source('sh_track_boundary_message_policy.h');
 const spotifyHeader = source('spotify_webviews.h');
 const spotifyClick = source('spotify_background_click.inc');
+const spotifyController = source('spotify_controller_lifecycle.inc');
 const spotifyPhase = source('spotify_phase_sync.inc');
 const spotifyHost = source('spotify_host_lifecycle.inc');
 
@@ -54,20 +55,23 @@ test('Spotify escalates trusted Play recovery through one reload and one full re
   assert.match(spotifyClick, /if\(!recreateUsed\)return 'recreate'/);
   assert.match(spotifyClick, /playRecoveryRecreateGeneration != targetGeneration/);
   assert.match(spotifyClick, /playRecoveryRecreateGeneration = targetGeneration/);
-  assert.match(spotifyClick, /target->webview\.Reset\(\)/);
-  assert.match(spotifyClick, /target->controller->Close\(\)/);
-  assert.match(spotifyClick, /target->environment\.Reset\(\)/);
-  assert.match(spotifyClick, /SetSlotState\(\*target, SlotState::NotCreated\)/);
+  assert.match(spotifyClick, /RebuildPlaybackSurface\(\*target\)/);
+  assert.match(spotifyController, /slot\.webview\.Reset\(\)/);
+  assert.match(spotifyController, /slot\.controller->Close\(\)/);
+  assert.match(spotifyController, /slot\.environment\.Reset\(\)/);
+  assert.match(spotifyController, /SetSlotState\(slot, SlotState::NotCreated\)/);
 });
 
 test('Spotify full rebuild preserves current target and rotation instead of advancing', () => {
-  const start = spotifyClick.indexOf('std::wstring_view(json) == L"\\\"recreate\\\""');
-  const end = spotifyClick.indexOf('double verifiedX', start);
+  const start = spotifyController.indexOf(
+    'void SpotifyWebViews::RebuildPlaybackSurface');
+  const end = spotifyController.indexOf(
+    'void SpotifyWebViews::CreateController', start);
   assert.ok(start >= 0 && end > start);
-  const rebuild = spotifyClick.slice(start, end);
+  const rebuild = spotifyController.slice(start, end);
 
-  assert.doesNotMatch(rebuild, /target->targetGeneration = 0/);
-  assert.doesNotMatch(rebuild, /target->timedRotationPosition = 0/);
-  assert.doesNotMatch(rebuild, /target->timedRotationActive = false/);
-  assert.match(rebuild, /target->nextRecoveryTick = GetTickCount64\(\)/);
+  assert.doesNotMatch(rebuild, /slot\.targetGeneration = 0/);
+  assert.doesNotMatch(rebuild, /slot\.timedRotationPosition = 0/);
+  assert.doesNotMatch(rebuild, /slot\.timedRotationActive = false/);
+  assert.match(rebuild, /slot\.nextRecoveryTick = GetTickCount64\(\)/);
 });
