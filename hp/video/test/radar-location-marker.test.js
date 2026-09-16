@@ -25,7 +25,7 @@ test('cloud radar removes the Kawagoe boundary mask path completely', () => {
 test('radar location marker is projected from RADAR_CENTER and drawn above rain', () => {
   assert.match(cloudRadar, /const RADAR_CENTER = \{ lat: 35\.8923181, lon: 139\.4858691 \}/);
   assert.match(cloudRadar, /location: RADAR_CENTER/);
-  assert.match(cloudRadar, /radar-frame-v11-z10-1296x729-native-scale-location-marker-day-cap/);
+  assert.match(cloudRadar, /radar-frame-v12-z10-640x360-downsampled-location-marker-day-cap/);
   assert.match(browserRadar, /const world = worldPixel\(lon, lat, panel\.zoom\)/);
   assert.match(browserRadar, /const x = panelX \+ \(world\.x - panel\.worldLeft\) \* scaleX/);
   assert.match(browserRadar, /const y = \(world\.y - panel\.worldTop\) \* scaleY/);
