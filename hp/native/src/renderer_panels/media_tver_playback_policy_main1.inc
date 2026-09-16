@@ -24,18 +24,6 @@ LR"JS(
     const label = labelOf(element).toLowerCase();
     return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
   });
-  const isExitFullscreenControl = element => {
-    if (!visible(element)) return false;
-    const label = labelOf(element).toLowerCase();
-    return /全画面を終了|全画面解除|フルスクリーンを終了/.test(label) ||
-        label.includes('exit fullscreen');
-  };
-  const isEnterFullscreenControl = element => {
-    if (!visible(element)) return false;
-    const label = labelOf(element).toLowerCase();
-    if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
-    return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
-  };
   const point = element => {
     if (window.innerWidth <= 0 || window.innerHeight <= 0) return null;
     const rect = visibleRect(element);
@@ -47,6 +35,20 @@ LR"JS(
     const hit = document.elementFromPoint(centerX, centerY);
     if (!hit || (hit !== element && !element.contains(hit))) return null;
     return [centerX, centerY];
+  };
+  const videoFullscreenPoint = media => {
+    if (!(media instanceof HTMLMediaElement) ||
+        media.readyState < HTMLMediaElement.HAVE_METADATA ||
+        window.innerWidth <= 0 || window.innerHeight <= 0) return null;
+    const rect = visibleRect(media);
+    if (!rect) return null;
+    const insetX = Math.min(24, Math.max(8, rect.width / 8));
+    const insetY = Math.min(24, Math.max(8, rect.height / 8));
+    const x = rect.right - insetX;
+    const y = rect.bottom - insetY;
+    if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight)
+      return null;
+    return [x, y];
   };
 
   const videos = Array.from(document.querySelectorAll('video'));
@@ -64,6 +66,16 @@ LR"JS(
 
   const state = window.__homePanelSakuraMeetsState;
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
+  const browserFullscreen = document.fullscreenElement ||
+      document.webkitFullscreenElement || document.msFullscreenElement;
+  if (browserFullscreen) {
+    if (state) state.fullscreenDirty = false;
+  } else if (video && !hasVisibleLoginPrompt()) {
+    if (state) state.fullscreenDirty = true;
+    const fullscreenPoint = videoFullscreenPoint(video);
+    if (fullscreenPoint) return fullscreenPoint;
+  }
+
   const trackedVideo = state && state.video;
   if (state && !adActive && !state.recoveryPending &&
       state.playbackSettingsApplied &&
@@ -85,17 +97,6 @@ LR"JS(
           .test(labelOf(element));
     }) || null;
     if (skipButton) return point(skipButton);
-    if (hasVisibleLoginPrompt()) return null;
-
-    const browserFullscreen = document.fullscreenElement ||
-        document.webkitFullscreenElement || document.msFullscreenElement;
-    if (browserFullscreen) {
-      if (state) state.fullscreenDirty = false;
-      return null;
-    }
-    if (state && state.fullscreenDirty === false) return null;
-    const fullscreenButton = adControls.find(isEnterFullscreenControl) || null;
-    if (fullscreenButton && state) state.fullscreenDirty = false;
-    return fullscreenButton ? point(fullscreenButton) : null;
+    return null;
   }
 )JS"
