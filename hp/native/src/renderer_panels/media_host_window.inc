@@ -89,9 +89,9 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
       };
 
       for (size_t i = 0; i < statuses.size(); ++i) {
+        const std::wstring& heading = statuses[i].windowName;
         const std::wstring& track = statuses[i].trackTitle;
-        drawStatusCard(
-            i, statuses[i].windowName, track.empty() ? L"--" : track);
+        drawStatusCard(i, heading, track.empty() ? L"--" : track);
       }
 
       const int64_t stationheadPlayCount = StationheadStatusStripTodayPlayCount();
