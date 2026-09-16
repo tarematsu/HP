@@ -25,8 +25,9 @@ test('unified runtime owns trusted real-control actions', () => {
   assert.match(runtime, /document\.elementFromPoint\(point\.x, point\.y\)/);
   assert.match(runtime, /setProperty\('pointer-events', 'auto', 'important'\)/);
   assert.match(runtime, /position:fixed!important/);
-  assert.match(runtime, /point\.x \/ window\.innerWidth/);
-  assert.match(runtime, /point\.y \/ window\.innerHeight/);
+  assert.match(runtime, /return \[point\.x, point\.y\]/);
+  assert.doesNotMatch(runtime, /point\.x \/ window\.innerWidth/);
+  assert.doesNotMatch(runtime, /point\.y \/ window\.innerHeight/);
   assert.doesNotMatch(runtime, /return \[5000, 5000\]/);
   assert.match(runtime, /arm\(target, 'skip-ad', 600\)/);
   assert.match(runtime, /'play', 1500/);
