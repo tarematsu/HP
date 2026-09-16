@@ -88,7 +88,7 @@ test('shared media environments permit autonomous playback with normal occluded-
   );
 });
 
-test('Stationhead joins the existing full-resource environment and filters its own image/font requests', () => {
+test('shared UDF disables images and downloadable fonts for every media profile', () => {
   const argumentsBuilder = section(
     environmentSource,
     'std::wstring BuildWebView2Arguments(',
@@ -103,11 +103,15 @@ test('Stationhead joins the existing full-resource environment and filters its o
   assert.match(argumentsBuilder, /downloadableBinaryFontsEnabled=false/);
   assert.match(
     environmentSource,
+    /blockImages = true;[\s\S]*blockFonts = true;/,
+  );
+  assert.match(
+    environmentSource,
     /put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/,
   );
   assert.match(
     environmentHeader,
-    /Acquire\(userDataFolder, false, false, std::move\(completion\)\)/,
+    /Acquire\(userDataFolder, true, true, std::move\(completion\)\)/,
   );
 });
 
