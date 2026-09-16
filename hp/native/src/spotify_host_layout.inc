@@ -45,17 +45,18 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     Slot& slot = slots_[i];
     if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
 
+    const bool loginPage = SlotIsLoginPage(slot);
     const bool authentication =
-        i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
+        i == hostLayoutAuthenticationSlot_ && loginPage;
     const bool monitorForeground =
         static_cast<int>(i) == monitorForegroundSlot_;
     const bool authenticationForeground =
         authentication && monitorForegroundSlot_ < 0;
 
-    // Keep the HWND and WebView2 controller full-size at all times so Spotify
-    // retains a normal responsive viewport and stable DOM/CDP coordinates.
-    // Background playback is visually clipped to 1x1. The explicitly selected
-    // monitor slot and authentication surfaces expose the full-size surface.
+    // The host remains full-client so foreground/auth presentation is stable.
+    // The WebView controller itself uses a fixed 720x480 viewport for normal
+    // playback/recovery and expands to the host client only on login pages.
+    // Background playback is visually clipped to 1x1.
     const int hostX = client.left;
     const int hostY = client.top;
     const int width = std::max(1L, client.right - client.left);
@@ -96,6 +97,9 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       slot.hostLayoutController = nullptr;
       continue;
     }
+
+    slot.controller->put_Bounds(
+        SpotifyControllerBounds(slot.hostWindow, loginPage));
 
     if (controllerChanged) {
       slot.hostLayoutController = slot.controller.Get();
