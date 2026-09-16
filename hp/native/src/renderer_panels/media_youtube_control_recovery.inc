@@ -271,7 +271,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (state.videoKey !== videoKey) {
     Object.assign(state, {
       videoKey, qualityApplied: false, captionsApplied: false,
-      fullscreenApplied: false,
+      fullscreenApplied: false, fullscreenKeyRequestedAt: 0,
       pausedSince: 0, lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
     });
   }
@@ -287,12 +287,27 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
             fullscreenPattern.test(text(element))) || null;
     return arm(fallback, 'fullscreen', 1200);
   };
+  const requestFullscreen = () => {
+    if (fullscreen()) {
+      state.fullscreenKeyRequestedAt = 0;
+      return null;
+    }
+    if (!Number(state.fullscreenKeyRequestedAt || 0)) {
+      state.fullscreenKeyRequestedAt = now;
+      wake(1200);
+      try { window.chrome?.webview?.postMessage('homepanel:youtube-fullscreen-key'); }
+      catch (_) {}
+      return 'recovery';
+    }
+    const fallback = armFullscreen();
+    if (fallback) return fallback;
+    recheck();
+    return 'recovery';
+  };
 
   state.fullscreenApplied = fullscreen();
-  if (!ad() && !state.fullscreenApplied) {
-    const fullscreenAction = armFullscreen();
-    if (fullscreenAction) return fullscreenAction;
-  }
+  if (state.fullscreenApplied) state.fullscreenKeyRequestedAt = 0;
+  if (!ad() && !state.fullscreenApplied) return requestFullscreen();
 
   if (ad()) {
     state.adActive = true;
@@ -322,10 +337,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     const target = Array.from(player.querySelectorAll(skipSelector)).find(valid) || null;
     if (target) return arm(target, 'skip-ad', 600);
 
-    if (!fullscreen()) {
-      const action = armFullscreen();
-      if (action) return action;
-    }
+    if (!fullscreen()) return requestFullscreen();
     recheck();
     return 'recovery';
   }
@@ -410,11 +422,11 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
 
   state.fullscreenApplied = fullscreen();
-  if (state.fullscreenApplied) return null;
-  const fullscreenAction = armFullscreen();
-  if (fullscreenAction) return fullscreenAction;
-  recheck();
-  return 'recovery';
+  if (state.fullscreenApplied) {
+    state.fullscreenKeyRequestedAt = 0;
+    return null;
+  }
+  return requestFullscreen();
 })()
 )JS";
 }  // namespace

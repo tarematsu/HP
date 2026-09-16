@@ -63,6 +63,32 @@ LR"JS(
   };
 
   const state = window.__homePanelSakuraMeetsState;
+  const fullscreenAction = controls => {
+    const browserFullscreen = document.fullscreenElement ||
+        document.webkitFullscreenElement || document.msFullscreenElement;
+    if (browserFullscreen) {
+      if (state) {
+        state.fullscreenDirty = false;
+        state.fullscreenKeyRequestedAt = 0;
+      }
+      return null;
+    }
+    if (state && state.fullscreenDirty === false) {
+      state.fullscreenKeyRequestedAt = 0;
+      return null;
+    }
+    const requestedAt = Number(state?.fullscreenKeyRequestedAt || 0);
+    if (!requestedAt) {
+      if (state) state.fullscreenKeyRequestedAt = Date.now();
+      try { window.chrome?.webview?.postMessage('homepanel:tver-fullscreen-key'); }
+      catch (_) {}
+      return null;
+    }
+    const fullscreenButton = controls.find(isEnterFullscreenControl) || null;
+    if (fullscreenButton && state) state.fullscreenDirty = false;
+    return fullscreenButton ? point(fullscreenButton) : null;
+  };
+
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
   const trackedVideo = state && state.video;
   if (state && !adActive && !state.recoveryPending &&
@@ -86,14 +112,13 @@ LR"JS(
     }) || null;
     if (skipButton) return point(skipButton);
     if (hasVisibleLoginPrompt()) return null;
-
-    const browserFullscreen = document.fullscreenElement ||
-        document.webkitFullscreenElement || document.msFullscreenElement;
-    if (browserFullscreen) {
-      if (state) state.fullscreenDirty = false;
+    if (state && state.fullscreenDirty === false) return null;
+    if (!Number(state?.fullscreenKeyRequestedAt || 0)) {
+      if (state) state.fullscreenKeyRequestedAt = Date.now();
+      try { window.chrome?.webview?.postMessage('homepanel:tver-fullscreen-key'); }
+      catch (_) {}
       return null;
     }
-    if (state && state.fullscreenDirty === false) return null;
     const fullscreenButton = adControls.find(isEnterFullscreenControl) || null;
     if (fullscreenButton && state) state.fullscreenDirty = false;
     return fullscreenButton ? point(fullscreenButton) : null;

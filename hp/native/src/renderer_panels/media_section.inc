@@ -144,6 +144,78 @@ bool NativeMediaProcessNeedsRecreate(
          kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE;
 }
 
+void NativeMediaDispatchFullscreenKeyEvents(
+    ICoreWebView2* webview, bool tver) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2> view = webview;
+  static constexpr wchar_t kKeyDown[] =
+      L"{\"type\":\"keyDown\",\"key\":\"f\",\"code\":\"KeyF\","
+      L"\"windowsVirtualKeyCode\":70,\"nativeVirtualKeyCode\":70}";
+  static constexpr wchar_t kKeyUp[] =
+      L"{\"type\":\"keyUp\",\"key\":\"f\",\"code\":\"KeyF\","
+      L"\"windowsVirtualKeyCode\":70,\"nativeVirtualKeyCode\":70}";
+  view->CallDevToolsProtocolMethod(
+      L"Input.dispatchKeyEvent", kKeyDown,
+      Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+          [view, tver](HRESULT downResult, LPCWSTR) -> HRESULT {
+            if (FAILED(downResult) || !view) return S_OK;
+            const HRESULT upStarted = view->CallDevToolsProtocolMethod(
+                L"Input.dispatchKeyEvent", kKeyUp,
+                Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                    [view, tver](HRESULT upResult, LPCWSTR) -> HRESULT {
+                      if (tver && SUCCEEDED(upResult) && view) {
+                        view->ExecuteScript(
+                            kNativeMediaTverForceFullscreenAdSafeScript, nullptr);
+                      }
+                      return S_OK;
+                    }).Get());
+            if (FAILED(upStarted) && tver && view) {
+              view->ExecuteScript(
+                  kNativeMediaTverForceFullscreenAdSafeScript, nullptr);
+            }
+            return S_OK;
+          }).Get());
+}
+
+void NativeMediaDispatchFullscreenKey(
+    ICoreWebView2* webview, bool tver) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2> view = webview;
+  static constexpr wchar_t kYoutubeFocus[] = LR"JS(
+(() => {
+  const target = document.querySelector('#movie_player') ||
+      document.querySelector('video') || document.body;
+  if (!(target instanceof HTMLElement)) return false;
+  if (target !== document.body && !target.hasAttribute('tabindex'))
+    target.setAttribute('tabindex', '-1');
+  try { target.focus({ preventScroll: true }); }
+  catch (_) { try { target.focus(); } catch (_) {} }
+  return true;
+})()
+)JS";
+  static constexpr wchar_t kTverFocus[] = LR"JS(
+(() => {
+  const target = document.querySelector('video') || document.body;
+  if (!(target instanceof HTMLElement)) return false;
+  if (target !== document.body && !target.hasAttribute('tabindex'))
+    target.setAttribute('tabindex', '-1');
+  try { target.focus({ preventScroll: true }); }
+  catch (_) { try { target.focus(); } catch (_) {} }
+  return true;
+})()
+)JS";
+  const HRESULT focusStarted = view->ExecuteScript(
+      tver ? kTverFocus : kYoutubeFocus,
+      Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+          [view, tver](HRESULT, LPCWSTR) -> HRESULT {
+            NativeMediaDispatchFullscreenKeyEvents(view.Get(), tver);
+            return S_OK;
+          }).Get());
+  if (FAILED(focusStarted)) {
+    NativeMediaDispatchFullscreenKeyEvents(view.Get(), tver);
+  }
+}
+
 void NativeMediaEnsureEventWakeBridge(
     ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
@@ -186,9 +258,16 @@ void NativeMediaEnsureEventWakeBridge(
               return source.find(needle) != std::wstring::npos;
             };
 
-            if (message == L"homepanel:youtube-wake" &&
+            if (message == L"homepanel:youtube-fullscreen-key" &&
                 sourceContains(L"youtube.com/watch") &&
                 sourceContains(L"list=PLMWqSdpIVl30")) {
+              NativeMediaDispatchFullscreenKey(sender, false);
+            } else if (message == L"homepanel:tver-fullscreen-key" &&
+                       sourceContains(L"tver.jp/episodes/")) {
+              NativeMediaDispatchFullscreenKey(sender, true);
+            } else if (message == L"homepanel:youtube-wake" &&
+                       sourceContains(L"youtube.com/watch") &&
+                       sourceContains(L"list=PLMWqSdpIVl30")) {
               PostMessageW(hostWindow, WM_TIMER,
                            kNativeMediaYoutubeWatchdogTimer, 0);
             } else if (message == L"homepanel:tver-media-init" &&
