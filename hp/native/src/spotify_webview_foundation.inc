@@ -12,33 +12,6 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 // launches reuse the newly authenticated sessions instead of resetting again.
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
-// Four logical Spotify accounts share exactly three runtime lanes. The first
-// three accounts start in B/C/D; whichever account completes one full rotation
-// leaves its lane, the waiting account takes that lane, and the completed
-// account becomes the next waiter.
-constexpr size_t kSpotifyRuntimeLaneCount = 3;
-std::array<size_t, kSpotifyRuntimeLaneCount> gSpotifyRuntimeLaneAccounts = {
-    0, 1, 2};
-size_t gSpotifyInactiveAccountIndex = 3;
-
-void ResetSpotifyRuntimeLanes() noexcept {
-  gSpotifyRuntimeLaneAccounts = {0, 1, 2};
-  gSpotifyInactiveAccountIndex = 3;
-}
-
-int SpotifyRuntimeLaneForAccount(size_t accountIndex) noexcept {
-  for (size_t lane = 0; lane < gSpotifyRuntimeLaneAccounts.size(); ++lane) {
-    if (gSpotifyRuntimeLaneAccounts[lane] == accountIndex) {
-      return static_cast<int>(lane);
-    }
-  }
-  return -1;
-}
-
-bool SpotifyAccountShouldOwnHost(size_t accountIndex) noexcept {
-  return SpotifyRuntimeLaneForAccount(accountIndex) >= 0;
-}
-
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
 // These are runtime-lane selections (B/C/D => 0/1/2), not logical account ids.
 int gSpotifyAudioOutputSlot = -1;
