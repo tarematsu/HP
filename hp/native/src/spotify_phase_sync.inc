@@ -4,6 +4,7 @@ namespace {
 constexpr UINT kSpotifySchedulerBootstrapMs = 2U * 1000U;
 constexpr UINT kSpotifyHealthyAuditMs = 60U * 60U * 1000U;
 constexpr UINT kSpotifySchedulerFloorMs = 100U;
+constexpr ULONGLONG kSpotifyLowMemoryStablePlaybackMs = 10ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 12ULL * 1000ULL;
@@ -42,14 +43,27 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 }
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
+  const bool enteringPlaying =
+      state == SlotState::Playing && slot.state != SlotState::Playing;
   slot.state = state;
-  SetSpotifyMemoryUsageTarget(
-      slot.webview.Get(),
-      state == SlotState::Playing
-          ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
-          : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
-  if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
-      state == SlotState::Playing) {
+
+  if (state == SlotState::Playing) {
+    if (enteringPlaying) {
+      // Keep NORMAL while playback proves stable. The scheduler switches to LOW
+      // only after this continuous-playing window has elapsed.
+      slot.nextRecoveryTick =
+          GetTickCount64() + kSpotifyLowMemoryStablePlaybackMs;
+      SetSpotifyMemoryUsageTarget(
+          slot.webview.Get(), COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+    }
+  } else {
+    // Any navigation/recovery/auth transition cancels the pending LOW switch.
+    slot.nextRecoveryTick = 0;
+    SetSpotifyMemoryUsageTarget(
+        slot.webview.Get(), COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+  }
+
+  if (state == SlotState::NotCreated || state == SlotState::Authenticating) {
     slot.nextRecoveryTick = 0;
   }
 }
@@ -124,6 +138,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         CurrentMusicTrack(slot)) {
       considerTick(slot.timedCompletionDeadlineTick);
+    }
+    if (slot.state == SlotState::Playing && slot.nextRecoveryTick != 0) {
+      considerTick(slot.nextRecoveryTick);
     }
 
     if (slot.asyncWork != AsyncWork::None && slot.asyncStartedTick != 0) {
