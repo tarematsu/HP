@@ -230,7 +230,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                    playbackWidth, playbackHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
-    ApplyHostVisualClip(hostWindow, showPlayback);
+    ApplyHostVisualClip(hostWindow, playbackForeground);
   }
 
   if (controller) {
