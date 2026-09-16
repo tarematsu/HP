@@ -27,6 +27,7 @@ class PowerSavingController {
     SpotifyPrimary,
     SpotifySecondary,
     SpotifyTertiary,
+    SpotifyQuaternary,
     Muted,
   };
 
@@ -36,6 +37,7 @@ class PowerSavingController {
     SpotifyPrimary,
     SpotifySecondary,
     SpotifyTertiary,
+    SpotifyQuaternary,
     Off,
   };
 
