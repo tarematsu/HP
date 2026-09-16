@@ -16,6 +16,7 @@ test('YouTube fullscreen directly clicks the loaded video bottom-right corner', 
   assert.match(youtube, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
   assert.match(youtube, /const x = rect\.right - insetX/);
   assert.match(youtube, /const y = rect\.bottom - insetY/);
+  assert.match(youtube, /player\.classList\.contains\('ytp-fullscreen'\)/);
   assert.match(youtube, /if \(!state\.fullscreenApplied\)/);
   assert.match(youtube, /return fullscreenPoint/);
   assert.match(youtube, /wake\(1200\)/);
@@ -28,6 +29,7 @@ test('YouTube fullscreen directly clicks the loaded video bottom-right corner', 
 test('TVer fullscreen directly clicks the loaded video bottom-right corner', () => {
   assert.match(tver, /const videoFullscreenPoint = media =>/);
   assert.match(tver, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
+  assert.match(tver, /const rect = media\.getBoundingClientRect\(\)/);
   assert.match(tver, /const x = rect\.right - insetX/);
   assert.match(tver, /const y = rect\.bottom - insetY/);
   assert.match(tver, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
