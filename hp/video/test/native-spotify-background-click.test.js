@@ -21,13 +21,15 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
   assert.doesNotMatch(helper, /SetForegroundWindow|SendInput|MOUSEEVENTF_/);
 });
 
-test('Spotify trusted click uses the same five-second native confirmation gate', () => {
+test('Spotify trusted click probes playback state while keeping a duplicate-click failsafe', () => {
   assert.match(header, /ULONGLONG trustedClickBlockedUntilTick = 0/);
   assert.match(header, /ULONGLONG pageEpoch = 0/);
   assert.doesNotMatch(header, /trustedClickGeneration|trustedClickTargetGeneration|trustedClickInFlight|trustedClickStartTick/);
-  assert.match(music, /kSpotifyCdpPlayConfirmWaitMs = 5ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyPlaybackStateProbeMs = 1ULL \* 1000ULL/);
+  assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 30ULL \* 1000ULL/);
   assert.match(helper, /now < slot\.trustedClickBlockedUntilTick/);
-  assert.match(helper, /slot\.trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayConfirmWaitMs/);
+  assert.match(helper, /trustedClickBlockedUntilTick =\s*now \+ kSpotifyCdpPlayRetryFailsafeMs/);
+  assert.match(helper, /nextRecoveryTick = stateProbeAt \+ kSpotifyPlaybackStateProbeMs/);
   assert.match(helper, /target->targetGeneration != targetGeneration/);
   assert.match(helper, /target->pageEpoch != pageEpoch/);
   assert.match(helper, /target->webview\.Get\(\) != view\.Get\(\)/);
