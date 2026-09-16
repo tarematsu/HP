@@ -19,6 +19,11 @@ LR"JS(
     try { state.clearRecoveryWake?.(); } catch (_) {}
     try { state.clearProgressSampler?.(); } catch (_) {}
   };
+  const clearEpisodeLimitTimer = state => {
+    if (!state?.episodeLimitTimer) return;
+    try { clearTimeout(state.episodeLimitTimer); } catch (_) {}
+    state.episodeLimitTimer = 0;
+  };
   const resetPlaybackSetup = (state, video = state.video) => {
     clearRuntimeTimers(state);
     Object.assign(state, playbackDefaults(), { video });
@@ -38,6 +43,8 @@ LR"JS(
     maxTime: 0,
     endCandidateAt: 0,
     endReported: false,
+    episodeStartedAt: 0,
+    episodeLimitTimer: 0,
     adActive: false,
     adVideo: null,
     adIdentity: '',
@@ -52,6 +59,7 @@ LR"JS(
       let state = window.__homePanelSakuraMeetsState;
       if (!state || state.path !== location.pathname) {
         clearRuntimeTimers(state || {});
+        clearEpisodeLimitTimer(state || {});
         state = createEpisodeState(location.pathname);
         window.__homePanelSakuraMeetsState = state;
       }
