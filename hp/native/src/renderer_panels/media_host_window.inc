@@ -3,6 +3,8 @@
 namespace {
 constexpr wchar_t kNativeSpotifyStatusClass[] = L"HomePanelNativeSpotifyStatus";
 constexpr LONG kNativeSpotifyStatusHeight = 56;
+constexpr UINT_PTR kNativeSpotifyStatusPollTimer = 0x5350;
+constexpr UINT kNativeSpotifyStatusPollMs = 60U * 1000U;
 constexpr COLORREF kSpotifyStatusBackground = RGB(7, 10, 16);
 constexpr COLORREF kSpotifyStatusSurface = RGB(20, 26, 36);
 constexpr COLORREF kSpotifyStatusOutline = RGB(43, 54, 69);
@@ -15,6 +17,12 @@ HBRUSH SpotifyStatusBackgroundBrush() noexcept {
 LRESULT CALLBACK NativeSpotifyStatusWndProc(
     HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
   switch (message) {
+    case WM_TIMER:
+      if (static_cast<UINT_PTR>(wparam) == kNativeSpotifyStatusPollTimer) {
+        PollSpotifyPlaybackStatusesNow();
+        return 0;
+      }
+      break;
     case WM_ERASEBKGND:
       return 1;
     case WM_PAINT: {
@@ -97,6 +105,9 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
       EndPaint(hwnd, &paint);
       return 0;
     }
+    case WM_NCDESTROY:
+      KillTimer(hwnd, kNativeSpotifyStatusPollTimer);
+      break;
     default:
       break;
   }
@@ -128,7 +139,14 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
         std::max(1L, bounds.bottom - bounds.top), parentWindow, nullptr,
         GetModuleHandleW(nullptr), nullptr);
     if (!status) return false;
+    SetTimer(status, kNativeSpotifyStatusPollTimer,
+             kNativeSpotifyStatusPollMs, nullptr);
   } else {
+    if (!SetTimer(status, kNativeSpotifyStatusPollTimer,
+                  kNativeSpotifyStatusPollMs, nullptr)) {
+      // A failed refresh timer should not prevent the media panel itself from
+      // being laid out; the existing scheduler polling remains a fallback.
+    }
     RECT current{};
     GetWindowRect(status, &current);
     MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
