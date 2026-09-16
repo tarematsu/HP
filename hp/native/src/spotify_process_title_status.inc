@@ -72,24 +72,6 @@ bool TrySpotifyNowPlayingTrackFromJson(
   }
 }
 
-void ApplySpotifyNowPlayingTrack(
-    SpotifyWebViews::Slot& slot, std::wstring display) noexcept {
-  const bool observed = !display.empty();
-  if (slot.processTitleObserved == observed &&
-      slot.processTrackDisplay == display) {
-    return;
-  }
-
-  slot.processTrackDisplay = std::move(display);
-  slot.processTitleObserved = observed;
-  if (observed) {
-    GetLocalTime(&slot.processTitleObservedAt);
-  } else {
-    slot.processTitleObservedAt = {};
-  }
-  InvalidateSpotifyStatusForHost(slot.hostWindow);
-}
-
 }  // namespace
 
 void SpotifyWebViews::RefreshProcessTitleStatus(
@@ -110,7 +92,20 @@ void SpotifyWebViews::RefreshProcessTitleStatus(
 
             std::wstring display;
             if (!TrySpotifyNowPlayingTrackFromJson(json, &display)) return S_OK;
-            ApplySpotifyNowPlayingTrack(*target, std::move(display));
+            const bool observed = !display.empty();
+            if (target->processTitleObserved == observed &&
+                target->processTrackDisplay == display) {
+              return S_OK;
+            }
+
+            target->processTrackDisplay = std::move(display);
+            target->processTitleObserved = observed;
+            if (observed) {
+              GetLocalTime(&target->processTitleObservedAt);
+            } else {
+              target->processTitleObservedAt = {};
+            }
+            InvalidateSpotifyStatusForHost(target->hostWindow);
             return S_OK;
           }).Get());
   (void)started;
