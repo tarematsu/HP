@@ -12,7 +12,7 @@ const tver = readExpandedNativeSource(
 const tverVerify = read(
   '../../native/src/renderer_panels/media_tver_playback_policy_force_fullscreen.inc');
 
-test('media fullscreen uses trusted F key input through WebView2', () => {
+test('YouTube fullscreen uses trusted F key input through WebView2', () => {
   assert.match(wrapper, /Input\.dispatchKeyEvent/);
   assert.match(wrapper, /keyDown/);
   assert.match(wrapper, /keyUp/);
@@ -20,7 +20,6 @@ test('media fullscreen uses trusted F key input through WebView2', () => {
   assert.match(wrapper, /windowsVirtualKeyCode/);
   assert.match(wrapper, /nativeVirtualKeyCode/);
   assert.match(wrapper, /querySelector\('#movie_player'\)/);
-  assert.match(wrapper, /querySelector\('video'\)/);
 });
 
 test('YouTube requests F before falling back to fullscreen button click', () => {
@@ -36,32 +35,24 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.match(youtube, /\.ytp-fullscreen-button/);
 });
 
-test('TVer requests F before falling back to an explicit fullscreen control', () => {
-  const request = tver.slice(
-    tver.indexOf('const fullscreenAction ='),
-    tver.indexOf('const adActive ='),
-  );
-  const key = request.indexOf('homepanel:tver-fullscreen-key');
-  const fallback = request.indexOf('fullscreenButton');
-  assert.ok(key >= 0 && fallback > key);
-  assert.match(request, /fullscreenKeyRequestedAt/);
-  assert.match(request, /return fullscreenButton \? point\(fullscreenButton\) : null/);
+test('TVer uses the explicit fullscreen control directly', () => {
+  assert.doesNotMatch(tver, /homepanel:tver-fullscreen-key/);
+  assert.doesNotMatch(tver, /const fullscreenAction =/);
+  assert.match(tver, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\) \|\| null/);
+  assert.match(tver, /return fullscreenButton \? point\(fullscreenButton\) : null/);
 });
 
-test('TVer ad skip remains higher priority than fullscreen input', () => {
+test('TVer ad skip remains higher priority than fullscreen click', () => {
   const adStart = tver.indexOf('if (adActive) {');
   const survey = tver.indexOf('const surveyRoots = Array.from', adStart);
   const branch = tver.slice(adStart, survey);
   const skip = branch.indexOf('return point(skipButton)');
-  const fullscreenKey = branch.indexOf('homepanel:tver-fullscreen-key');
-  assert.ok(skip >= 0 && fullscreenKey > skip);
+  const fullscreen = branch.indexOf('const fullscreenButton');
+  assert.ok(skip >= 0 && fullscreen > skip);
 });
 
-test('fullscreen key messages are source checked and TVer verification rearms fallback', () => {
+test('YouTube key messages remain source checked and TVer click verification rearms fallback', () => {
   assert.match(wrapper, /homepanel:youtube-fullscreen-key/);
-  assert.match(wrapper, /homepanel:tver-fullscreen-key/);
   assert.match(wrapper, /sourceContains\(L"youtube\.com\/watch"\)/);
-  assert.match(wrapper, /sourceContains\(L"tver\.jp\/episodes\/"\)/);
-  assert.match(tverVerify, /fullscreenKeyRequestedAt = 0/);
   assert.match(tverVerify, /homepanel:tver-wake/);
 });
