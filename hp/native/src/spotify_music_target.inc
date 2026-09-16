@@ -4,8 +4,8 @@ namespace {
 constexpr ULONGLONG kSpotifyNavigationFailsafeMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyNavigationCompletionGraceMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTrackTransitionRetryMs = 500ULL;
-constexpr ULONGLONG kSpotifyPlaybackStateProbeMs = 1ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyCdpPlayRetryFailsafeMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyPlaybackStateProbeMs = 2ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyCdpPlayRetryFailsafeMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTrackTransitionRetryMaxMs = 2ULL * 1000ULL;
 
 ULONGLONG ParseSpotifyRetryDelay(LPCWSTR json) noexcept {
