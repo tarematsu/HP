@@ -56,13 +56,24 @@ std::wstring SpotifyProcessTrackDisplay(std::wstring_view processTitle) {
     return {};
   }
 
-  size_t separator = processTitle.find(L'•');
-  if (separator == std::wstring_view::npos) separator = processTitle.find(L'・');
-  if (separator == std::wstring_view::npos) separator = processTitle.find(L'·');
+  constexpr std::array<std::wstring_view, 4> separators = {
+      L" - ", L"•", L"・", L"·"};
+  size_t separator = std::wstring_view::npos;
+  size_t separatorLength = 0;
+  for (const std::wstring_view candidate : separators) {
+    const size_t found = processTitle.find(candidate);
+    if (found == std::wstring_view::npos ||
+        (separator != std::wstring_view::npos && found >= separator)) {
+      continue;
+    }
+    separator = found;
+    separatorLength = candidate.size();
+  }
   if (separator == std::wstring_view::npos) return {};
 
   const std::wstring_view track = TrimSpotifyProcessTitle(processTitle.substr(0, separator));
-  const std::wstring_view artist = TrimSpotifyProcessTitle(processTitle.substr(separator + 1));
+  const std::wstring_view artist = TrimSpotifyProcessTitle(
+      processTitle.substr(separator + separatorLength));
   if (track.empty() || artist.empty()) return {};
   return std::wstring(track);
 }
