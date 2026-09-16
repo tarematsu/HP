@@ -12,6 +12,8 @@ constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
 constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
+constexpr UINT kNativeMediaYoutubePhaseMs = kNativeMediaPhaseMs;
+constexpr UINT kNativeMediaTverPhaseMs = 30U * 60U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
@@ -30,10 +32,13 @@ bool NativeMediaWatchdogExecutionTimedOut(
 void NativeMediaForgetWatchdogExecution(HWND hostWindow) noexcept;
 LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 
+#define kNativeMediaPhaseMs \
+  (phase_ == Phase::Tver ? kNativeMediaTverPhaseMs : kNativeMediaYoutubePhaseMs)
 #define kNativeMediaTverForceFullscreenAdSafeScript \
   kNativeMediaTverForceFullscreenAnyMediaScript
 #include "media_host.inc"
 #undef kNativeMediaTverForceFullscreenAdSafeScript
+#undef kNativeMediaPhaseMs
 #include "media_host_window.inc"
 
 }  // namespace
