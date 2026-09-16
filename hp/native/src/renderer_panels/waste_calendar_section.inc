@@ -195,6 +195,11 @@ const wchar_t* Course36ClockWasteKindText(Course36WasteKind kind) {
   }
 }
 
+std::wstring Course36ClockWasteLineText(const Course36ClockWasteNotice& notice) {
+  return Course36ClockWasteDateText(notice) + L" - " +
+      Course36ClockWasteKindText(notice.kind);
+}
+
 void DrawCourse36ClockWasteNotices(
     HDC dc, const SYSTEMTIME& now, const RECT& rect) {
   if (!dc || rect.right <= rect.left || rect.bottom <= rect.top) return;
@@ -204,7 +209,6 @@ void DrawCourse36ClockWasteNotices(
   const int gap = std::max(2, width * 12 / 1000);
   const int availableWidth = std::max(3, width - gap * 2);
   const int baseCellWidth = availableWidth / 3;
-  const int contentGap = std::max(2, width * 8 / 1000);
   const int fontHeight = std::clamp(height * 30 / 100, 10, 15);
 
   HGDIOBJ previousFont = SelectObject(
@@ -217,19 +221,8 @@ void DrawCourse36ClockWasteNotices(
     const LONG cellRight = index + 1 == notices.size()
         ? rect.right
         : cellLeft + baseCellWidth;
-    const int cellWidth = std::max(1L, cellRight - cellLeft);
-    const int dateWidth = std::clamp(cellWidth * 36 / 100, 30, 52);
-    RECT dateRect{cellLeft, rect.top, cellLeft + dateWidth, rect.bottom};
-    DrawTextInRect(dc, Course36ClockWasteDateText(notices[index]), dateRect,
-                   DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-
-    RECT kindRect{
-        std::min<LONG>(cellRight, dateRect.right + contentGap),
-        rect.top,
-        cellRight,
-        rect.bottom,
-    };
-    DrawTextInRect(dc, Course36ClockWasteKindText(notices[index].kind), kindRect,
+    RECT cellRect{cellLeft, rect.top, cellRight, rect.bottom};
+    DrawTextInRect(dc, Course36ClockWasteLineText(notices[index]), cellRect,
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
   }
 
