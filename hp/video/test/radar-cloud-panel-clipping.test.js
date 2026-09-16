@@ -23,12 +23,12 @@ test('cloud radar clips every panel before drawing partial edge tiles', () => {
 });
 
 test('cloud radar composes z10 tiles at 1:1 output pixel scale', () => {
-  assert.match(radarSource, /const RADAR_PANEL_SOURCE_WIDTH = 480;/);
-  assert.match(radarSource, /const RADAR_PANEL_SOURCE_HEIGHT = 960;/);
-  assert.match(radarSource, /const RADAR_BASE_CROP_WIDTH = 480;/);
-  assert.match(radarSource, /const RADAR_BASE_CROP_HEIGHT = 960;/);
-  assert.match(radarSource, /const RADAR_OUTPUT_WIDTH = 1440;/);
-  assert.match(radarSource, /const RADAR_OUTPUT_HEIGHT = 960;/);
+  assert.match(radarSource, /const RADAR_PANEL_SOURCE_WIDTH = 432;/);
+  assert.match(radarSource, /const RADAR_PANEL_SOURCE_HEIGHT = 729;/);
+  assert.match(radarSource, /const RADAR_BASE_CROP_WIDTH = 432;/);
+  assert.match(radarSource, /const RADAR_BASE_CROP_HEIGHT = 729;/);
+  assert.match(radarSource, /const RADAR_OUTPUT_WIDTH = 1296;/);
+  assert.match(radarSource, /const RADAR_OUTPUT_HEIGHT = 729;/);
   assert.match(browserRadar, /panel\.sourceWidth !== panelWidth/);
   assert.match(browserRadar, /panel\.sourceHeight !== payload\.outputHeight/);
   assert.match(browserRadar, /must match output pixels at 1:1 scale/);
