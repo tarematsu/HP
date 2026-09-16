@@ -314,36 +314,34 @@ void PowerSavingController::PaintOverlay(HWND window) {
   drawButton(
       updateButton, false, RGB(40, 73, 112), RGB(84, 145, 211), L"更新");
 
-  const wchar_t* monitorLabel = L"モニターA";
+  const wchar_t* monitorLabel = L"モニターYT";
   if (monitorMode_ == MonitorMode::Stationhead) {
-    monitorLabel = L"モニターB";
+    monitorLabel = L"モニターSH";
   } else if (monitorMode_ == MonitorMode::SpotifyPrimary) {
-    monitorLabel = L"モニターC";
+    monitorLabel = L"モニターS1";
   } else if (monitorMode_ == MonitorMode::SpotifySecondary) {
-    monitorLabel = L"モニターD";
+    monitorLabel = L"モニターS2";
   } else if (monitorMode_ == MonitorMode::SpotifyTertiary) {
-    monitorLabel = L"モニターE";
-  } else if (monitorMode_ == MonitorMode::SpotifyQuaternary) {
-    monitorLabel = L"モニターF";
-  } else if (monitorMode_ == MonitorMode::Off) {
+    monitorLabel = L"モニターS3";
+  } else if (monitorMode_ == MonitorMode::SpotifyQuaternary ||
+             monitorMode_ == MonitorMode::Off) {
     monitorLabel = L"モニターOFF";
   }
   drawButton(
       powerButton, monitorMode_ != MonitorMode::Native,
       RGB(30, 92, 55), RGB(74, 180, 105), monitorLabel);
 
-  const wchar_t* audioModeLabel = L"音声出力A";
+  const wchar_t* audioModeLabel = L"音声出力YT";
   if (audioMode_ == AudioMode::Stationhead) {
-    audioModeLabel = L"音声出力B";
+    audioModeLabel = L"音声出力SH";
   } else if (audioMode_ == AudioMode::SpotifyPrimary) {
-    audioModeLabel = L"音声出力C";
+    audioModeLabel = L"音声出力S1";
   } else if (audioMode_ == AudioMode::SpotifySecondary) {
-    audioModeLabel = L"音声出力D";
+    audioModeLabel = L"音声出力S2";
   } else if (audioMode_ == AudioMode::SpotifyTertiary) {
-    audioModeLabel = L"音声出力E";
-  } else if (audioMode_ == AudioMode::SpotifyQuaternary) {
-    audioModeLabel = L"音声出力F";
-  } else if (audioMode_ == AudioMode::Muted) {
+    audioModeLabel = L"音声出力S3";
+  } else if (audioMode_ == AudioMode::SpotifyQuaternary ||
+             audioMode_ == AudioMode::Muted) {
     audioModeLabel = L"音声出力OFF";
   }
   drawButton(

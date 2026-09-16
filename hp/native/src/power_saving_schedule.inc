@@ -65,8 +65,8 @@ void PowerSavingController::ArmScheduleTimer() {
   KillTimer(overlay_, kScheduleTimer);
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
-  // Monitor A owns the only periodic DOM inspection. B/C/D are Spotify runtime
-  // lanes, E is Stationhead, and OFF is black, so those modes do no DOM polling.
+  // Monitor YT owns the only periodic DOM inspection. SH is Stationhead,
+  // S1/S2/S3 are the three live Spotify runtime lanes, and OFF is black.
   if (monitorMode_ == MonitorMode::Native) {
     remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
   }
@@ -145,12 +145,12 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
     RestoreBrightness();
   }
   Renderer::SetGlobalPowerSavingMode(powerSaving_);
-  // Internal enum names are retained for compatibility. B/C/D map to runtime
-  // lanes 0/1/2; SpotifyTertiary is the visible E Stationhead mode.
+  // S1/S2/S3 address live runtime lanes rather than logical accounts, so the
+  // waiting Spotify account is never selected and lane ownership can rotate.
   const int spotifyMonitorSlot =
-      mode == MonitorMode::Stationhead ? 0 :
-      mode == MonitorMode::SpotifyPrimary ? 1 :
-      mode == MonitorMode::SpotifySecondary ? 2 : -1;
+      mode == MonitorMode::SpotifyPrimary ? 0 :
+      mode == MonitorMode::SpotifySecondary ? 1 :
+      mode == MonitorMode::SpotifyTertiary ? 2 : -1;
   SetSpotifyMonitorForegroundSlot(spotifyMonitorSlot);
   ApplyStationheadMonitorPlacement();
   if (layoutChanged) LayoutOverlay();
@@ -187,16 +187,15 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
   audioMode_ = mode;
   mediaMuted_ = mode != AudioMode::Media;
   SetNativeMediaPanelMuted(mediaMuted_);
-  // B/C/D map to the three runtime lanes; E (SpotifyTertiary internally) is
-  // reserved for Stationhead. F is no longer part of the user-visible cycle.
+  // S1/S2/S3 follow the same live runtime-lane assignment as monitor routing.
   const int spotifyAudioSlot =
-      mode == AudioMode::Stationhead ? 0 :
-      mode == AudioMode::SpotifyPrimary ? 1 :
-      mode == AudioMode::SpotifySecondary ? 2 : -1;
+      mode == AudioMode::SpotifyPrimary ? 0 :
+      mode == AudioMode::SpotifySecondary ? 1 :
+      mode == AudioMode::SpotifyTertiary ? 2 : -1;
   SetSpotifyAudioOutputSlot(spotifyAudioSlot);
 
   if (parent_ && IsWindow(parent_)) {
-    const UiAction stationheadAction = mode == AudioMode::SpotifyTertiary
+    const UiAction stationheadAction = mode == AudioMode::Stationhead
         ? UiAction::StationheadAudioToggle
         : UiAction::StationheadAudioMute;
     SendMessageW(
