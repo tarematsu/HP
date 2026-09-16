@@ -57,11 +57,20 @@ test('TVer is event driven and player-local', () => {
   assert.doesNotMatch(tverEpisode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
 });
 
-test('hidden YouTube and TVer share one WebView2 trusted-input path', () => {
+test('hidden YouTube and TVer share direct CSS WebView2 trusted input', () => {
   assert.match(mediaWrapper, /#include "media_trusted_input\.inc"/);
-  assert.match(mediaHost, /NativeMediaDispatchTrustedInput/);
-  assert.match(trustedInput, /CallDevToolsProtocolMethod/);
-  assert.match(trustedInput, /Input\.dispatchMouseEvent/);
+  assert.match(mediaHost, /void DispatchMediaCssPoint\(/);
+  assert.match(mediaHost, /Input\.dispatchMouseEvent/);
+  assert.match(mediaHost, /DispatchMediaCssPoint\(requestView\.Get\(\), cssX, cssY, false\)/);
+  assert.match(mediaHost, /DispatchMediaCssPoint\(requestView\.Get\(\), cssX, cssY, true\)/);
+  assert.match(mediaHost, /kNativeMediaTverForceFullscreenAdSafeScript/);
+  assert.doesNotMatch(
+    mediaHost.slice(
+      mediaHost.indexOf('void DispatchMediaCssPoint('),
+      mediaHost.indexOf('void ProbeYoutubeWatchdog()'),
+    ),
+    /ClientToScreen|ScreenToClient|MOUSEEVENTF_|GetDpiForWindow|get_ZoomFactor|get_RasterizationScale/,
+  );
   assert.doesNotMatch(trustedInput, /::SendInput\(/);
 });
 

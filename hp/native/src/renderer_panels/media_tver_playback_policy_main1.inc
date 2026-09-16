@@ -46,10 +46,7 @@ LR"JS(
         centerY < 0 || centerY > window.innerHeight) return null;
     const hit = document.elementFromPoint(centerX, centerY);
     if (!hit || (hit !== element && !element.contains(hit))) return null;
-    return [
-      Math.max(0, Math.min(10000, Math.round((centerX / window.innerWidth) * 10000))),
-      Math.max(0, Math.min(10000, Math.round((centerY / window.innerHeight) * 10000)))
-    ];
+    return [centerX, centerY];
   };
 
   const videos = Array.from(document.querySelectorAll('video'));

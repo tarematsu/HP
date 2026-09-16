@@ -575,8 +575,9 @@ class NativeMediaPanelHost final {
     }
   }
 
-  void DispatchYoutubeCssPoint(
-      ICoreWebView2* webview, double cssX, double cssY) noexcept {
+  void DispatchMediaCssPoint(
+      ICoreWebView2* webview, double cssX, double cssY,
+      bool runTverPostClick) noexcept {
     if (!webview || !(cssX >= 0.0 && cssX <= 100000.0) ||
         !(cssY >= 0.0 && cssY <= 100000.0)) {
       return;
@@ -592,7 +593,7 @@ class NativeMediaPanelHost final {
     const HRESULT dispatched = view->CallDevToolsProtocolMethod(
         L"Input.dispatchMouseEvent", moved.c_str(),
         Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-            [alive, view, cssX, cssY, clickToken](
+            [alive, view, cssX, cssY, runTverPostClick, clickToken](
                 HRESULT moveResult, LPCWSTR) -> HRESULT {
               if (!alive->load(std::memory_order_acquire) ||
                   FAILED(moveResult) || !view) {
@@ -605,7 +606,7 @@ class NativeMediaPanelHost final {
               const HRESULT pressDispatched = view->CallDevToolsProtocolMethod(
                   L"Input.dispatchMouseEvent", pressed.c_str(),
                   Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                      [alive, view, cssX, cssY, clickToken](
+                      [alive, view, cssX, cssY, runTverPostClick, clickToken](
                           HRESULT pressedResult, LPCWSTR) -> HRESULT {
                         if (!alive->load(std::memory_order_acquire) ||
                             FAILED(pressedResult) || !view) {
@@ -619,8 +620,16 @@ class NativeMediaPanelHost final {
                             view->CallDevToolsProtocolMethod(
                                 L"Input.dispatchMouseEvent", released.c_str(),
                                 Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                                    [clickToken](HRESULT, LPCWSTR) -> HRESULT {
+                                    [view, runTverPostClick, clickToken](
+                                        HRESULT releaseResult,
+                                        LPCWSTR) -> HRESULT {
                                       NativeMediaReleaseTrustedClick(clickToken);
+                                      if (runTverPostClick &&
+                                          SUCCEEDED(releaseResult) && view) {
+                                        view->ExecuteScript(
+                                            kNativeMediaTverForceFullscreenAdSafeScript,
+                                            nullptr);
+                                      }
                                       return S_OK;
                                     }).Get());
                         if (FAILED(releaseDispatched)) {
@@ -692,7 +701,7 @@ class NativeMediaPanelHost final {
                 SetRecoveryState(
                     RecoveryState::Recovering,
                     kNativeMediaYoutubeWatchdogRecoveryMs);
-                DispatchYoutubeCssPoint(requestView.Get(), cssX, cssY);
+                DispatchMediaCssPoint(requestView.Get(), cssX, cssY, false);
                 if (hostWindow_ && IsWindow(hostWindow_)) {
                   ArmTimer(kNativeMediaYoutubeWatchdogTimer,
                            kNativeMediaYoutubeWatchdogRecoveryMs);
@@ -795,12 +804,13 @@ class NativeMediaPanelHost final {
                 NavigateCurrentPhase();
                 return S_OK;
               }
-              int x = 0;
-              int y = 0;
-              if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
+              double cssX = 0.0;
+              double cssY = 0.0;
+              if (SUCCEEDED(result) &&
+                  ParseCssPoint(json, &cssX, &cssY)) {
                 SetRecoveryState(
                     RecoveryState::Recovering, kTverWatchdogRecoveryMs);
-                ClickNormalizedPoint(x, y);
+                DispatchMediaCssPoint(requestView.Get(), cssX, cssY, true);
                 if (hostWindow_ && IsWindow(hostWindow_)) {
                   ArmTimer(kNativeMediaTverWatchdogTimer,
                            kTverWatchdogRecoveryMs);

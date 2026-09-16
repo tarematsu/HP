@@ -28,7 +28,10 @@ bool NativeMediaWatchdogExecutionTimedOut(
 void NativeMediaForgetWatchdogExecution(HWND hostWindow) noexcept;
 LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 
+#define kNativeMediaTverForceFullscreenAdSafeScript \
+  kNativeMediaTverForceFullscreenAnyMediaScript
 #include "media_host.inc"
+#undef kNativeMediaTverForceFullscreenAdSafeScript
 #include "media_host_window.inc"
 
 }  // namespace
