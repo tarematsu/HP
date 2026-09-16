@@ -6,6 +6,7 @@
 #include "spotify_media_observer_runtime.inc"
 #include "spotify_media_observer_events.inc"
 #include "spotify_fast_end_observer.inc"
+#include "spotify_runtime_policy.inc"
 #include "spotify_phase_sync.inc"
 #include "spotify_process_title_status.inc"
 #include "spotify_webviews.cpp"

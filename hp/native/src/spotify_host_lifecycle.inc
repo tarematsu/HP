@@ -157,9 +157,8 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
       return 0;
     }
     if (message == WM_SIZE && slot->controller) {
-      RECT client{};
-      GetClientRect(hwnd, &client);
-      slot->controller->put_Bounds(client);
+      slot->controller->put_Bounds(
+          SpotifyControllerBounds(hwnd, slot->loginPage));
       return 0;
     }
     if (message == WM_NCDESTROY) {

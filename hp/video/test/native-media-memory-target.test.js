@@ -5,7 +5,9 @@ import test from 'node:test';
 const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
-const spotify = source('spotify_controller_lifecycle.inc');
+const spotifyController = source('spotify_controller_lifecycle.inc');
+const spotifyPhase = source('spotify_phase_sync.inc');
+const spotifyPolicy = source('spotify_runtime_policy.inc');
 const stationheadLayout = source('sh_layout.cpp');
 const stationheadWebview = source('sh_webview.cpp');
 const mediaHost = source('renderer_panels/media_host.inc');
@@ -24,7 +26,6 @@ test('YouTube/TVer use experimental WebView2 low-memory target only', () => {
   );
 
   for (const [name, implementation] of [
-    ['Spotify', spotify],
     ['Stationhead layout', stationheadLayout],
     ['Stationhead WebView', stationheadWebview],
   ]) {
@@ -36,13 +37,25 @@ test('YouTube/TVer use experimental WebView2 low-memory target only', () => {
   }
 
   assert.match(
-    spotify,
+    spotifyController,
     /ApplyMediaWebViewFeaturePolicy\([\s\S]*true\)/,
-    'Spotify must stay on the normal media policy path',
+    'Spotify must keep script/web-message media policy enabled',
   );
   assert.match(
     stationheadWebview,
     /ApplyMediaWebViewFeaturePolicy\(controller_\.Get\(\), webview_\.Get\(\), true\)/,
     'Stationhead must stay on the normal media policy path',
+  );
+});
+
+test('Spotify switches NORMAL before interaction and LOW after playback confirmation', () => {
+  assert.match(spotifyPolicy, /put_MemoryUsageTargetLevel\(level\)/);
+  assert.match(
+    spotifyPhase,
+    /state == SlotState::Playing[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+  );
+  assert.match(
+    spotifyPhase,
+    /MarkSlotRecovering[\s\S]*SetSlotState\(slot, SlotState::Recovering\)/,
   );
 });

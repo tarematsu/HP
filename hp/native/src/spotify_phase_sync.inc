@@ -43,6 +43,11 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
+  SetSpotifyMemoryUsageTarget(
+      slot.webview.Get(),
+      state == SlotState::Playing
+          ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+          : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
       state == SlotState::Playing) {
     slot.nextRecoveryTick = 0;
@@ -51,7 +56,7 @@ void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
 
 void SpotifyWebViews::MarkSlotRecovering(
     Slot& slot, ULONGLONG now) noexcept {
-  slot.state = SlotState::Recovering;
+  SetSlotState(slot, SlotState::Recovering);
   slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
 }
 
