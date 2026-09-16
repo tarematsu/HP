@@ -4,6 +4,7 @@
 namespace {
 constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] =
 #include "media_tver_episode_loop_policy_part1.inc"
+#include "media_tver_episode_loop_policy_part1b_presentation.inc"
 #include "media_tver_episode_loop_policy_part2a.inc"
 #include "media_tver_episode_loop_policy_part2b_observer.inc"
 #include "media_tver_episode_loop_policy_part2b_events.inc"

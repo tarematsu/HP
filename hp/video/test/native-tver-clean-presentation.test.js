@@ -9,6 +9,15 @@ const cleanPresentationEnd = tverEpisode.indexOf('installCleanPresentation();', 
 assert.ok(cleanPresentationStart >= 0 && cleanPresentationEnd > cleanPresentationStart);
 const cleanPresentation = tverEpisode.slice(cleanPresentationStart, cleanPresentationEnd);
 
+const aggressivePresentationStart = tverEpisode.indexOf('const strengthenCleanPresentation = () => {');
+const aggressivePresentationEnd = tverEpisode.indexOf(
+  'strengthenCleanPresentation();', aggressivePresentationStart);
+assert.ok(
+  aggressivePresentationStart >= 0 && aggressivePresentationEnd > aggressivePresentationStart,
+);
+const aggressivePresentation = tverEpisode.slice(
+  aggressivePresentationStart, aggressivePresentationEnd);
+
 test('TVer episode playback hides nonessential page chrome with presentation-only CSS', () => {
   assert.match(tverEpisode, /location\.hostname !== 'tver\.jp'/);
   assert.match(tverEpisode, /location\.pathname\.startsWith\('\/episodes\/'\)/);
@@ -22,4 +31,27 @@ test('TVer episode playback hides nonessential page chrome with presentation-onl
   assert.match(cleanPresentation, /data-testid\*="related"/);
   assert.doesNotMatch(cleanPresentation, /video\s*\{[\s\S]*?display\s*:\s*none/i);
   assert.doesNotMatch(cleanPresentation, /\[role=["']dialog["']\]/i);
+});
+
+test('TVer clean presentation aggressively reduces the page to the video branch', () => {
+  assert.match(aggressivePresentation, /body:has\(video\) > :not\(:has\(video\)\)/);
+  assert.match(
+    aggressivePresentation,
+    /main:has\(video\) > :not\(:has\(video\)\):not\(video\)/,
+  );
+  assert.match(aggressivePresentation, /class\*="recommend"/);
+  assert.match(aggressivePresentation, /class\*="related"/);
+  assert.match(aggressivePresentation, /data-testid\*="share"/);
+  assert.match(aggressivePresentation, /data-testid\*="description"/);
+  assert.match(aggressivePresentation, /data-testid\*="program-info"/);
+  assert.match(aggressivePresentation, /data-testid\*="episode-info"/);
+  assert.match(aggressivePresentation, /overflow:hidden !important/);
+  assert.match(aggressivePresentation, /max-height:100vh !important/);
+  assert.match(aggressivePresentation, /:not\(\[role="dialog"\]\)/);
+  assert.match(aggressivePresentation, /:not\(:has\(\[role="dialog"\]\)\)/);
+  assert.match(aggressivePresentation, /:not\(\[aria-modal="true"\]\)/);
+  assert.match(aggressivePresentation, /:not\(:has\(\[aria-modal="true"\]\)\)/);
+  assert.doesNotMatch(aggressivePresentation, /\[data-testid\*="ad"/i);
+  assert.doesNotMatch(aggressivePresentation, /\[class\*="advert"/i);
+  assert.doesNotMatch(aggressivePresentation, /video\s*\{[\s\S]*?display\s*:\s*none/i);
 });
