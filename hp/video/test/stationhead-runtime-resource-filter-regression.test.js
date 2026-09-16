@@ -115,7 +115,7 @@ test('shared UDF disables images and downloadable fonts for every media profile'
   );
 });
 
-test('unused stylesheet callbacks are not registered', () => {
+test('unused stylesheet and UDF-owned image/font callbacks are not registered', () => {
   const policy = section(
     policySource,
     'inline void ApplyStationheadResourceBlockingFilterFixed(',
@@ -125,29 +125,19 @@ test('unused stylesheet callbacks are not registered', () => {
     policy,
     /addFilter\([\s\S]{0,80}COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET/,
   );
+  assert.doesNotMatch(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH/);
-});
-
-test('optional image and font request filters follow their configuration', () => {
-  assert.match(
-    policySource,
-    /if \(blockImages\) addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\);/,
-  );
-  assert.match(
-    policySource,
-    /if \(blockFonts\) addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\);/,
-  );
-  assert.match(policySource, /\[env, blockImages, blockFonts\]/);
+  assert.match(policy, /\(void\)config;/);
 });
 
 test('source-aware filters cover all current request sources without duplicate worker callbacks', () => {
   const filterHelper = section(
     policySource,
     'inline void AddStationheadResourceFilter(',
-    '// The shared environment keeps Blink',
+    '// Images and downloadable fonts are disabled once',
   );
   assert.match(filterHelper, /ICoreWebView2_22\* sourceAwareWebView/);
   assert.match(
@@ -185,14 +175,15 @@ test('the restored amazon profile owns environment-wide worker filters', () => {
   assert.match(policySource, /single Stationhead instance owns the former amazon profile/);
 });
 
-test('resource reduction never relies on DOM scans or post-load hiding', () => {
+test('Stationhead-specific reduction never relies on DOM scans or image/font interception', () => {
   assert.doesNotMatch(
     policySource,
     /MutationObserver|querySelectorAll|createElement\(['"]style|display\s*:\s*none/,
   );
+  assert.doesNotMatch(policySource, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
   assert.match(
     policySource,
-    /shared environment keeps Blink's global resource policy compatible[\s\S]*per-WebView request boundary/,
+    /Images and downloadable fonts are disabled once at shared-UDF environment[\s\S]*Stationhead-specific request boundaries/,
   );
 });
 
@@ -219,7 +210,7 @@ test('strict playback and blocking predicates remain consolidated', () => {
   assert.match(policy, /StationheadRequestIsBlockableBoundaryFixed\(lower\)/);
   assert.match(policy, /StationheadNonPlaybackScriptUrlRuntimeFixed\(lower\)/);
   assert.match(policy, /StationheadAdditionalNonPlaybackScriptUrl\(lower\)/);
-  assert.match(policy, /StationheadRequestLooksLikeImage\(lower\)/);
+  assert.doesNotMatch(policy, /StationheadRequestLooksLikeImage\(lower\)/);
   assert.match(policy, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
   assert.match(policy, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
 });
