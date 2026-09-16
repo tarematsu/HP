@@ -5,7 +5,8 @@ namespace {
 // 1) the target page remains the navigation authority and first Play waits one
 //    second after NavigationCompleted bootstrap before trusted input is sent;
 // 2) Pause is confirmed only after an available media element has actually
-//    advanced; a zero-second stall is toggled back to Play before retrying;
+//    advanced; a zero-second stall gets a five-second grace period before it is
+//    toggled back to Play for retry;
 // 3) if the target-page control is omitted entirely, the global Pause control
 //    is trusted only after now-playing identity matches the target;
 // 4) CDP clicks normally target the visible target-page Play control. After a
@@ -69,6 +70,7 @@ LR"JS(
     return !!targetTitle && !!metadataTitle && metadataTitle === targetTitle;
   };
 
+  const zeroSecondRecoveryGraceMs = 5000;
   const clearProgressProbe = () => {
     window.__homePanelSpotifyProgressProbe = null;
   };
@@ -124,7 +126,7 @@ LR"JS(
       return 'confirmed';
     }
 
-    if (now - previous.sampledAt < 1000) return 'pending';
+    if (now - previous.sampledAt < zeroSecondRecoveryGraceMs) return 'pending';
 
     clearProgressProbe();
     window.__homePanelSpotifyZeroSecondRestartPath = targetPath;
