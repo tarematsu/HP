@@ -10,6 +10,7 @@ const source = name => readFileSync(
 const startup = source('sh_startup_script.h');
 const room = source('sh_room_ui_reduction_policy.h');
 const resources = source('sh_startup_resource_reduction_policy_fix.h');
+const finalResources = source('sh_runtime_script_resource_policy_fix.h');
 
 test('Stationhead startup separates every composed IIFE explicitly', () => {
   const separators = startup.match(/script\.append\(L";\\n"\)/g) || [];
@@ -43,9 +44,8 @@ test('Stationhead resource reduction never blocks media', () => {
     /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA\)[\s\S]*return S_OK/,
   );
 
-  // Non-playback reductions remain active.
-  assert.match(resources, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
-  assert.match(resources, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
-  assert.match(resources, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
-  assert.match(resources, /StationheadExpandedNonPlaybackScriptBoundaryFixed/);
+  // The final active layer leaves UDF-owned image/font suppression alone.
+  assert.doesNotMatch(finalResources, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
+  assert.match(finalResources, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
+  assert.match(finalResources, /StationheadExpandedNonPlaybackScriptBoundaryFixed/);
 });
