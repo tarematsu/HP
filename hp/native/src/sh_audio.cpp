@@ -8,17 +8,29 @@ void StationheadPlayer::SetMuted(bool muted) noexcept {
 }
 
 void StationheadPlayer::ApplyMute() const noexcept {
-  const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
-  if (appliedMuted_.load(std::memory_order_relaxed) == muted) return;
+  const BOOL desired =
+      audioMuted_.load(std::memory_order_relaxed) ? TRUE : FALSE;
+  const int desiredValue = desired ? 1 : 0;
 
-  bool applied = true;
+  bool applied = false;
   ComPtr<ICoreWebView2> webview = webview_;
   if (webview) {
     ComPtr<ICoreWebView2_8> audio;
-    applied = SUCCEEDED(webview.As(&audio)) && audio &&
-        SUCCEEDED(audio->put_IsMuted(muted ? TRUE : FALSE));
+    if (SUCCEEDED(webview.As(&audio)) && audio) {
+      BOOL current = FALSE;
+      const HRESULT readResult = audio->get_IsMuted(&current);
+      if (SUCCEEDED(readResult) && current == desired) {
+        applied = true;
+      } else if (SUCCEEDED(audio->put_IsMuted(desired))) {
+        BOOL confirmed = desired;
+        applied = FAILED(audio->get_IsMuted(&confirmed)) || confirmed == desired;
+      }
+    }
   }
-  appliedMuted_.store(applied ? muted : -1, std::memory_order_relaxed);
+
+  // A missing/recreated WebView is not an applied state. Keeping -1 makes the
+  // next routing pass retry instead of trusting stale bookkeeping.
+  appliedMuted_.store(applied ? desiredValue : -1, std::memory_order_relaxed);
 }
 
 }  // namespace hp
