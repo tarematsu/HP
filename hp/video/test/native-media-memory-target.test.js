@@ -29,38 +29,24 @@ test('YouTube/TVer keep the experimental WebView2 low-memory target', () => {
   );
 });
 
-test('Stationhead switches LOW immediately after playback confirmation and NORMAL otherwise', () => {
+test('Stationhead playback recovery does not apply a LOW memory target', () => {
   assert.match(
     stationheadAudioLossPolicy,
     /kStationheadAudioLossArmStabilityMs = 5'000/,
     'audio-loss fallback keeps its independent five-second stability guard',
   );
-  assert.match(stationheadAudioLoss, /ICoreWebView2_19/);
-  assert.match(stationheadAudioLoss, /get_MemoryUsageTargetLevel/);
-  assert.match(
+  assert.doesNotMatch(
     stationheadAudioLoss,
-    /lowMemory[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
-  );
-  assert.match(
-    stationheadAudioLoss,
-    /const bool playbackConfirmed =\s*audioPlaying && !navigationActive &&[\s\S]*!snapshot\.loginRequired && !snapshot\.spotifyAuthorization[\s\S]*!loginRequired_ && !spotifyAuthorization_/,
-  );
-  assert.match(
-    stationheadAudioLoss,
-    /ApplyStationheadPlaybackMemoryTarget\(webview_\.Get\(\), playbackConfirmed\)/,
-  );
-  assert.match(
-    stationheadAudioLoss,
-    /managedPlaybackReturnRequested_[\s\S]*ApplyStationheadPlaybackMemoryTarget\(webview_\.Get\(\), false\)[\s\S]*SetManagedPlaybackFallback/,
+    /ApplyStationheadPlaybackMemoryTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
   );
   assert.match(
     stationheadAudioLoss,
     /StationheadAudioLossCanArm\(\s*true, navigationActive, playingForMs\)/,
-    'audio-loss fallback arming remains separate from the memory-target switch',
+    'audio-loss fallback arming remains independent from WebView2 memory targeting',
   );
 });
 
-test('Stationhead restores NORMAL before the 50-minute periodic navigation starts', () => {
+test('Stationhead periodic navigation only restores the normal target', () => {
   assert.match(
     stationheadBoundaryPolicy,
     /RestoreStationheadPlaybackMemoryTargetForReload[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
@@ -70,10 +56,6 @@ test('Stationhead restores NORMAL before the 50-minute periodic navigation start
       /inline void RestoreStationheadPlaybackMemoryTargetForReload[\s\S]*?\n}\n/,
     )?.[0] ?? '',
     /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/,
-  );
-  assert.match(
-    stationheadBoundaryPolicy,
-    /RestoreStationheadPlaybackMemoryTargetForReload\(webview_\.Get\(\)\);[\s\S]*SetStartupBounds\(\);[\s\S]*NavigateCurrentUrl\(nowMs, L"50-minute periodic refresh"\)/,
   );
 });
 
@@ -101,15 +83,14 @@ test('Spotify and Stationhead layout/auth setup do not apply an unconditional me
   );
 });
 
-test('Spotify switches LOW immediately after playback confirmation', () => {
-  assert.match(spotifyPolicy, /put_MemoryUsageTargetLevel\(level\)/);
-  assert.match(
-    spotifyPhase,
-    /slot\.state = state;[\s\S]*state == SlotState::Playing[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+test('Spotify leaves the WebView2 memory target unmanaged', () => {
+  assert.doesNotMatch(
+    spotifyPolicy,
+    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
   assert.doesNotMatch(
     spotifyPhase,
-    /kSpotifyLowMemoryStablePlaybackMs/,
+    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)|SetSpotifyMemoryUsageTarget/,
   );
   assert.match(
     spotifyPhase,
