@@ -20,16 +20,5 @@ RECT SpotifyControllerBounds(HWND hostWindow, bool authentication) noexcept {
   return SpotifyFixedViewportBounds();
 }
 
-void SetSpotifyMemoryUsageTarget(
-    ICoreWebView2* webview,
-    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL level) noexcept {
-  if (!webview) return;
-  ComPtr<ICoreWebView2> baseWebView = webview;
-  ComPtr<ICoreWebView2_19> webview19;
-  if (SUCCEEDED(baseWebView.As(&webview19)) && webview19) {
-    (void)webview19->put_MemoryUsageTargetLevel(level);
-  }
-}
-
 }  // namespace
 }  // namespace hp

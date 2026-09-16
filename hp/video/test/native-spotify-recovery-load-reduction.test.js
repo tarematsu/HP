@@ -8,7 +8,6 @@ const source = name => readFileSync(
 const scoped = source('spotify_scoped_track_reconcile.inc');
 const music = source('spotify_music_target.inc');
 const phase = source('spotify_phase_sync.inc');
-const header = source('spotify_webviews.h');
 const lifecycle = source('spotify_host_lifecycle.inc');
 
 test('Spotify recovery reuses connected Play controls and media elements', () => {
@@ -36,12 +35,13 @@ test('healthy Spotify playback exits before source or Play-Pause DOM reconciliat
   assert.match(reconcile, /timedCompletionDeadlineGeneration == slot\.targetGeneration/);
 });
 
-test('Spotify caches the applied WebView2 memory target and resets it with the WebView', () => {
-  assert.match(header, /int memoryUsageTargetLevel = -1/);
-  assert.match(phase, /const int desiredMemoryTargetValue =\s*static_cast<int>\(desiredMemoryTarget\)/);
-  assert.match(phase, /if \(!slot\.webview\) \{[\s\S]*slot\.memoryUsageTargetLevel = -1/);
-  assert.match(phase, /slot\.memoryUsageTargetLevel != desiredMemoryTargetValue/);
-  assert.match(phase, /SetSpotifyMemoryUsageTarget\(slot\.webview\.Get\(\), desiredMemoryTarget\)/);
-  assert.match(phase, /slot\.memoryUsageTargetLevel = desiredMemoryTargetValue/);
-  assert.match(lifecycle, /slot\.memoryUsageTargetLevel = -1/);
+test('Spotify recovery does not change the WebView2 memory target', () => {
+  assert.doesNotMatch(
+    phase,
+    /SetSpotifyMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
+  );
+  assert.doesNotMatch(
+    lifecycle,
+    /SetSpotifyMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
+  );
 });
