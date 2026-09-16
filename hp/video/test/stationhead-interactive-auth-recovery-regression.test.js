@@ -85,8 +85,12 @@ test('opening the dedicated Spotify auth surface releases the in-page interactio
   );
 });
 
-test('auth probe promotes a genuine Connect music or login surface to interactive mode', () => {
+test('auth probe promotes Connect music, Reconnect Music, or login surfaces to interactive mode', () => {
   assert.match(audioLoss, /return summary\('music-service-connect', evidence\);/);
+  assert.match(
+    audioLoss,
+    /return summary\('music-service-reconnect', labelsOf\(reconnectSurface\)\);/,
+  );
   const callback = section(
     audioLoss,
     'audioLossProbeComplete_ = !authentication;',
@@ -96,6 +100,15 @@ test('auth probe promotes a genuine Connect music or login surface to interactiv
   const showAt = callback.indexOf('ShowForLogin();');
   const publishAt = callback.indexOf('status_.loginRequired = true;');
   assert.ok(setRequiredAt >= 0 && showAt > setRequiredAt && publishAt > showAt);
+});
+
+test('lightweight monitor probe also recognizes Reconnect Music', () => {
+  const monitorProbe = section(
+    audioLoss,
+    'constexpr wchar_t kMonitorDomProbeScript[]',
+    'constexpr wchar_t kAuthenticationUiProbeScript[]',
+  );
+  assert.match(monitorProbe, /\\breconnect\\s\+music\\b/);
 });
 
 test('real audio returns Stationhead behind the dashboard only after authentication clears', () => {
