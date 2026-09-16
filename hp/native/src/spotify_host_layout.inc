@@ -47,7 +47,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     const bool loginPage = SlotIsLoginPage(slot);
     const bool authentication =
-        i == hostLayoutAuthenticationSlot_ && loginPage;
+        i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
     const bool monitorForeground =
         static_cast<int>(i) == monitorForegroundSlot_;
     const bool authenticationForeground =
