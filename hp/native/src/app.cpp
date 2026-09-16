@@ -263,7 +263,11 @@ void App::Tick() {
             now, renderer_->NativePlaybackNextWakeAt(now), kMaxAppTimerMs));
   }
   if (stationheadStarted_ && stationhead_) {
-    if (StationheadNeedsForeground(stationheadStatus)) {
+    // Until Stationhead has established audio, keep the App scheduler alive at
+    // the fast cadence even while the WebView stays behind the dashboard. This
+    // makes Start Listening retries independent of monitor-B/foreground wakes.
+    if (StationheadNeedsForeground(stationheadStatus) ||
+        !stationheadStatus.audioPlaying) {
       nextTickMs = std::min(nextTickMs, kFastTickMs);
     } else {
       nextTickMs = std::min(
