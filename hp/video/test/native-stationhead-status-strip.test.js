@@ -22,9 +22,9 @@ test('Stationhead authenticated daily play count acquisition remains active', ()
 });
 
 test('Stationhead today count is reused by the existing native status strip', () => {
-  assert.match(bridge, /SummarizeStationheadDailyPlays\(status\.dailyPlayCounts, nowMs\)/);
+  assert.match(handles, /SummarizeStationheadDailyPlays\(status\.dailyPlayCounts, UnixMillis\(\)\)/);
+  assert.match(handles, /PublishStationheadStatusStripPlayCount\(playSummary\.today\)/);
   assert.match(bridge, /stationheadStatusStripTodayPlayCount/);
-  assert.match(handles, /PublishStationheadStatusStripPlayCount\(status, UnixMillis\(\)\)/);
   assert.match(mediaBase, /stationhead_status_strip_bridge\.h/);
 
   assert.match(statusStrip, /const size_t cellCount = statuses\.size\(\) \+ 1/);
