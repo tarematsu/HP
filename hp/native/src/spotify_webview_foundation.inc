@@ -16,12 +16,14 @@ constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
 int gSpotifyAudioOutputSlot = -1;
 
-void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview,
-                           size_t slotIndex) noexcept {
+void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
-    const bool muted = static_cast<int>(slotIndex) != gSpotifyAudioOutputSlot;
+    const int slotIndex = gSpotifyControlInstance
+        ? gSpotifyControlInstance->SlotIndexForWebView(webview.Get())
+        : -1;
+    const bool muted = slotIndex < 0 || slotIndex != gSpotifyAudioOutputSlot;
     audio->put_IsMuted(muted ? TRUE : FALSE);
   }
 }
@@ -53,12 +55,20 @@ SpotifyWebViews::~SpotifyWebViews() {
   if (gSpotifyControlInstance == this) gSpotifyControlInstance = nullptr;
 }
 
+int SpotifyWebViews::SlotIndexForWebView(ICoreWebView2* webview) const noexcept {
+  if (!webview) return -1;
+  for (const Slot& slot : slots_) {
+    if (slot.webview.Get() == webview) return static_cast<int>(slot.index);
+  }
+  return -1;
+}
+
 void SpotifyWebViews::SetAudioOutputSlot(int slotIndex) noexcept {
   gSpotifyAudioOutputSlot =
       slotIndex >= 0 && slotIndex < static_cast<int>(slots_.size())
           ? slotIndex
           : -1;
-  for (Slot& slot : slots_) SetSpotifyOutputMuted(slot.webview, slot.index);
+  for (Slot& slot : slots_) SetSpotifyOutputMuted(slot.webview);
 }
 
 void SetSpotifyAudioOutputSlot(int slotIndex) noexcept {
