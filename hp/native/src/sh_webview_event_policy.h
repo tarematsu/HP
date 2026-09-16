@@ -109,6 +109,97 @@ inline HRESULT InvokeEventNoexcept(
   }
 }
 
+inline void UpdateStationheadAudioRecovery(ICoreWebView2* sender) noexcept {
+  if (!sender) return;
+  try {
+    ComPtr<ICoreWebView2> view = sender;
+    ComPtr<ICoreWebView2_8> audioView;
+    if (FAILED(view.As(&audioView)) || !audioView) return;
+    BOOL playing = FALSE;
+    if (FAILED(audioView->get_IsDocumentPlayingAudio(&playing))) return;
+
+    if (playing != FALSE) {
+      static constexpr wchar_t kRecoveredScript[] = LR"JS(
+(() => {
+  window.__homepanelStationheadAudioRecoveryHadPlaying = true;
+  const timer = window.__homepanelStationheadAudioRecoveryTimer;
+  if (timer) {
+    try { clearInterval(timer); } catch (_) {}
+    window.__homepanelStationheadAudioRecoveryTimer = 0;
+  }
+  try { sessionStorage.removeItem('__homepanelStationheadAudioRecoveryReloadAt'); } catch (_) {}
+  return true;
+})()
+)JS";
+      view->ExecuteScript(kRecoveredScript, nullptr);
+      return;
+    }
+
+    // Only recover a session that has already produced real WebView2 audio.
+    // This avoids reloading ordinary login/onboarding pages that have never
+    // played anything. Stage 1 repairs media mute/play state every two seconds;
+    // stage 2 performs one session-preserving page reload after eight seconds.
+    // Native Start Listening retries remain active in parallel and take over
+    // after the reload if Stationhead renders a trusted start control.
+    static constexpr wchar_t kStoppedScript[] = LR"JS(
+(() => {
+  if (!window.__homepanelStationheadAudioRecoveryHadPlaying) return false;
+  if (window.__homepanelStationheadAudioRecoveryTimer) return true;
+
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const loginPattern = /^(log\s*in|sign\s*in|login)(?:\s+.*)?$/i;
+  for (const element of document.querySelectorAll(
+      "button,[role='button'],a,input[type='button'],input[type='submit']")) {
+    const label = normalize(
+        element?.getAttribute?.('aria-label') || element?.innerText ||
+        element?.textContent || element?.getAttribute?.('value'));
+    if (loginPattern.test(label)) return false;
+  }
+
+  const reloadKey = '__homepanelStationheadAudioRecoveryReloadAt';
+  const retryMedia = () => {
+    for (const media of document.querySelectorAll('audio,video')) {
+      if (!media || media.ended) continue;
+      try {
+        media.defaultMuted = false;
+        media.muted = false;
+        if (!(media.volume > 0)) media.volume = 1;
+        const result = media.play?.();
+        if (result?.catch) result.catch(() => {});
+      } catch (_) {}
+    }
+  };
+
+  let attempts = 0;
+  retryMedia();
+  const timer = setInterval(() => {
+    if (window.__homepanelAudioPlaying === true) {
+      clearInterval(timer);
+      window.__homepanelStationheadAudioRecoveryTimer = 0;
+      return;
+    }
+    attempts += 1;
+    retryMedia();
+    if (attempts < 4) return;
+
+    let lastReloadAt = 0;
+    try { lastReloadAt = Number(sessionStorage.getItem(reloadKey) || 0); } catch (_) {}
+    const now = Date.now();
+    clearInterval(timer);
+    window.__homepanelStationheadAudioRecoveryTimer = 0;
+    if (lastReloadAt > 0 && now - lastReloadAt < 120000) return;
+    try { sessionStorage.setItem(reloadKey, String(now)); } catch (_) {}
+    location.reload();
+  }, 2000);
+  window.__homepanelStationheadAudioRecoveryTimer = timer;
+  return true;
+})()
+)JS";
+    view->ExecuteScript(kStoppedScript, nullptr);
+  } catch (...) {
+  }
+}
+
 inline ComPtr<ICoreWebView2WebMessageReceivedEventHandler>
 WrapStationheadWebMessageHandler(
     ICoreWebView2WebMessageReceivedEventHandler* handler) noexcept {
@@ -240,7 +331,9 @@ WrapStationheadAudioChangedHandler(
   return Callback<ICoreWebView2IsDocumentPlayingAudioChangedEventHandler>(
       [inner = std::move(inner)](
           ICoreWebView2* sender, IUnknown* args) noexcept -> HRESULT {
-        return InvokeEventNoexcept(inner, sender, args);
+        const HRESULT result = InvokeEventNoexcept(inner, sender, args);
+        if (SUCCEEDED(result)) UpdateStationheadAudioRecovery(sender);
+        return result;
       });
 }
 
