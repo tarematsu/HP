@@ -1,7 +1,9 @@
 #include "app_stationhead_handles.h"
 #include "stationhead_monitor_probe.h"
+#include "stationhead_play_summary.h"
 
 namespace hp {
+#include "stationhead_status_strip_bridge.h"
 namespace {
 
 constexpr int64_t kStationheadBoundaryRetryWindowMs = 3 * 60'000;
@@ -102,6 +104,9 @@ StationheadStatus StationheadHandleBase::Status() const {
     ++contentRevision_;
   }
   status.contentRevision = contentRevision_;
+  const auto playSummary =
+      SummarizeStationheadDailyPlays(status.dailyPlayCounts, UnixMillis());
+  PublishStationheadStatusStripPlayCount(playSummary.today);
   return status;
 }
 
