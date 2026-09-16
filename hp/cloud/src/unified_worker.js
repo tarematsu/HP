@@ -1,4 +1,5 @@
 import homePanelWorker from './worker_core.ts';
+import { queueSchedulerWatchdog } from './scheduler_coordinator.ts';
 import { requestFamily } from './unified_routes.js';
 import { shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
 import { dispatchTverFeedRefresh } from './tver_feed_refresh_coordinator.js';
@@ -215,6 +216,7 @@ export default {
   },
 
   scheduled(controller, env, ctx) {
+    queueSchedulerWatchdog(env, ctx, controller?.scheduledTime);
     const result = videoWorker.scheduled(controller, videoRuntimeEnv(env), ctx);
     if (shouldRefreshTverFeed(controller?.scheduledTime)) {
       ctx.waitUntil(dispatchTverFeedRefresh(env).catch((error) => {
