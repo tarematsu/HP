@@ -94,16 +94,21 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int innerWidth = std::max(1L, inner.right - inner.left);
   const int innerHeight = std::max(1L, inner.bottom - inner.top);
   const int sideWidth = innerWidth * 285 / 1000;
-  const int mediaHeight = innerHeight * 480 / 1000;
+  const int rowHeight = std::max(1, (innerHeight - gapY * 2) / 3);
+  const int mediaHeight = rowHeight * 2 + gapY;
+  const int mainTop = inner.top + mediaHeight + gapY;
 
   NativeDashboardLayout layout;
   layout.side = RECT{inner.left, inner.top, inner.left + sideWidth, inner.bottom};
   layout.media = RECT{inner.left + sideWidth + gapX, inner.top, inner.right,
                       inner.top + mediaHeight};
-  layout.main = RECT{inner.left + sideWidth + gapX,
-                     inner.top + mediaHeight + gapY, inner.right, inner.bottom};
+  layout.main = RECT{inner.left + sideWidth + gapX, mainTop,
+                     inner.right, inner.bottom};
   if (layout.media.right <= layout.media.left) {
     layout.media.right = layout.media.left + 1;
+  }
+  if (layout.media.bottom <= layout.media.top) {
+    layout.media.bottom = layout.media.top + 1;
   }
   if (layout.main.right <= layout.main.left) {
     layout.main.right = layout.main.left + 1;
