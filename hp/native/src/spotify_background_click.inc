@@ -195,7 +195,6 @@ void SpotifyWebViews::ClickSlotCssPoint(
               target->timedCompletionDeadlineTick = 0;
               target->timedCompletionDeadlineGeneration = 0;
               target->loginPage = false;
-              target->timedObserverReady = false;
               target->playbackConfirmed = false;
               target->processTitleObserved = false;
               target->observedTrackTitle.clear();
