@@ -43,6 +43,15 @@ void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept {
   gSpotifyWebViews->SetNetworkBlocked(blocked);
 }
 
+void SpotifyWebViews::PollPlaybackStatusesNow() noexcept {
+  PollProcessTitleStatus(GetTickCount64());
+}
+
+void PollSpotifyPlaybackStatusesNow() noexcept {
+  if (!gSpotifyWebViews || gSpotifyMediaNetworkBlocked) return;
+  gSpotifyWebViews->PollPlaybackStatusesNow();
+}
+
 std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
 GetSpotifyPlaybackStatuses() noexcept {
   return gSpotifyWebViews ? gSpotifyWebViews->PlaybackStatuses()
