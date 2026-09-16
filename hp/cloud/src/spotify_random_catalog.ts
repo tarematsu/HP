@@ -130,6 +130,7 @@ export function managedSpotifySevenSlotRotation() {
       tracks: [
         spotifyRotationTrack("放課後BitterBlue", "5EjWZuODqEPQ9eq7XCmITh"),
         spotifyRotationTrack("紋白蝶が確か飛んでた", "6VIY7OFy8g5ZyLSgQEi8lV"),
+        spotifyRotationTrack("Lonesome Rabbit", "6Vy6hCA2CZwZalGqaX6Sew"),
       ],
     },
     {
