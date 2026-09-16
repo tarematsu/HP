@@ -78,7 +78,7 @@ function createHarness() {
   });
   vm.runInContext(productionObserverScript(), context);
   const dispatch = (type, target = media) => {
-    for (const handler of documentListeners.get(type) || []) handler({ target });
+    for (const handler of documentListeners.get(type) || []) handler({ target, type });
   };
   const hostMessage = data => { for (const handler of webviewListeners) handler({ data }); };
   const setTrack = (path, title) => {
@@ -238,17 +238,53 @@ test('validated requested-track ended publishes one advisory shortening event an
   ]);
 });
 
-test('observer has no heartbeat recovery completion planner or interruption clock API', () => {
+test('sustained target pause promotes the slot into native recovery', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f35');
+  h.setTrack('/track/A', 'Target A');
+  h.media.duration = 180;
+  h.media.currentTime = 10;
+  h.media.paused = false;
+  h.dispatch('playing');
+  h.media.paused = true;
+  h.dispatch('pause');
+  assert.deepEqual(h.messages, ['spotify:timed-started\x1f35\x1f170000']);
+  h.runTimers();
+  assert.deepEqual(h.messages, [
+    'spotify:timed-started\x1f35\x1f170000',
+    'spotify:timed-interrupted\x1f35',
+  ]);
+});
+
+test('brief buffering that resumes progress before grace does not interrupt', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f36');
+  h.setTrack('/track/A', 'Target A');
+  h.media.duration = 180;
+  h.media.currentTime = 10;
+  h.media.paused = false;
+  h.dispatch('playing');
+  h.dispatch('waiting');
+  h.media.currentTime = 11;
+  h.dispatch('timeupdate');
+  h.runTimers();
+  assert.deepEqual(h.messages, ['spotify:timed-started\x1f36\x1f170000']);
+});
+
+test('observer has bounded playback-loss recovery but no heartbeat or completion planner', () => {
   const h = createHarness();
   const runtime = h.window.__homePanelSpotifyMediaObserverRuntime;
   assert.equal(runtime.requestRecovery, undefined);
   assert.equal(runtime.startHeartbeat, undefined);
   assert.equal(runtime.postCompletionPlan, undefined);
   assert.equal('interruptionStartedAt' in runtime.state, false);
-  for (const type of ['seeking', 'seeked', 'waiting', 'stalled', 'pause', 'play']) {
+  for (const type of ['seeking', 'seeked', 'play']) {
     assert.equal(h.documentListeners.has(type), false);
   }
-  for (const type of ['playing', 'durationchange', 'loadedmetadata', 'canplay', 'timeupdate', 'ended']) {
+  for (const type of [
+    'playing', 'durationchange', 'loadedmetadata', 'canplay', 'timeupdate',
+    'pause', 'waiting', 'stalled', 'error', 'ended',
+  ]) {
     assert.equal(h.documentListeners.has(type), true);
   }
 });
