@@ -69,16 +69,19 @@ void SpotifyWebViews::ClickSlotCssPoint(
   // The reconcile script already returned CSS viewport coordinates. Verify the
   // same point still resolves to a Spotify Play control, then return the exact
   // current button center. The returned coordinates are sent to CDP verbatim;
-  // never reconstruct them from HWND pixels, DPI, or WebView zoom. This
-  // preflight also owns the staged recovery policy: failed Play starts are
-  // retried after five seconds, and the third attempt requests one page Reload
-  // for this target generation before falling back to click-only retries.
+  // never reconstruct them from HWND pixels, DPI, or WebView zoom. Recovery is
+  // deliberately staged: trusted Play retries first, then one page Reload, then
+  // one full WebView/controller rebuild for the same target generation. After a
+  // rebuild, retries continue without allowing a tight rebuild loop.
   std::wstring preflight = L"(() => {";
   preflight += L"const x=" + std::to_wstring(cssX) + L";";
   preflight += L"const y=" + std::to_wstring(cssY) + L";";
   preflight +=
       std::wstring(L"const reloadUsed=") +
       (slot.playRecoveryReloadGeneration == targetGeneration ? L"true;" : L"false;");
+  preflight +=
+      std::wstring(L"const recreateUsed=") +
+      (slot.playRecoveryRecreateGeneration == targetGeneration ? L"true;" : L"false;");
   preflight +=
       L"if(!Number.isFinite(x)||!Number.isFinite(y)||"
       L"window.innerWidth<=0||window.innerHeight<=0||"
@@ -100,7 +103,7 @@ void SpotifyWebViews::ClickSlotCssPoint(
       L"if(retry.lastAttemptAt&&now-retry.lastAttemptAt>30000){retry.count=0;retry.lastAttemptAt=0;}"
       L"if(window.__homePanelSpotifyZeroSecondRestartPath===targetPath){retry.count=0;retry.lastAttemptAt=0;}"
       L"if(retry.count>0&&now-retry.lastAttemptAt<5000)return null;"
-      L"if(retry.count>=2){if(!reloadUsed)return 'reload';retry.count=0;}"
+      L"if(retry.count>=2){if(!reloadUsed)return 'reload';if(!recreateUsed)return 'recreate';retry.count=0;}"
       L"const rect=button.getBoundingClientRect();"
       L"const centerX=rect.left+rect.width/2;"
       L"const centerY=rect.top+rect.height/2;"
@@ -139,6 +142,67 @@ void SpotifyWebViews::ClickSlotCssPoint(
               if (FAILED(requestedView->Reload())) {
                 MarkSlotRecovering(*target, GetTickCount64());
               }
+              RecomputeForeground();
+              ArmRobustScheduler();
+              return S_OK;
+            }
+            if (SUCCEEDED(result) && json &&
+                std::wstring_view(json) == L"\"recreate\"" &&
+                target->playRecoveryRecreateGeneration != targetGeneration) {
+              target->playRecoveryRecreateGeneration = targetGeneration;
+
+              // Rebuild only this Spotify playback surface. Keep the host,
+              // profile identity, current rotation, current track and target
+              // generation intact so the recreated controller resumes the same
+              // requested track instead of advancing the playlist.
+              if (target->webview) {
+                if (target->navigationStartingToken.value != 0) {
+                  target->webview->remove_NavigationStarting(
+                      target->navigationStartingToken);
+                }
+                if (target->navigationCompletedToken.value != 0) {
+                  target->webview->remove_NavigationCompleted(
+                      target->navigationCompletedToken);
+                }
+                if (target->timedEndMessageReceivedToken.value != 0) {
+                  target->webview->remove_WebMessageReceived(
+                      target->timedEndMessageReceivedToken);
+                }
+              }
+              target->navigationStartingToken = {};
+              target->navigationCompletedToken = {};
+              target->timedEndMessageReceivedToken = {};
+              target->timedEndHandlerWebview = nullptr;
+              target->webview.Reset();
+              if (target->controller) target->controller->Close();
+              target->controller.Reset();
+              target->environment.Reset();
+              target->hostLayoutController = nullptr;
+              target->hostLayoutRect = {};
+              target->hostLayoutInsertAfter = nullptr;
+              target->hostLayoutApplied = false;
+              target->controllerCreating = false;
+              target->controllerCreateTick = 0;
+              ++target->asyncEpoch;
+              if (target->asyncEpoch == 0) ++target->asyncEpoch;
+              ++target->pageEpoch;
+              if (target->pageEpoch == 0) ++target->pageEpoch;
+              target->asyncWork = AsyncWork::None;
+              target->asyncStartedTick = 0;
+              target->nextProcessTitlePollTick = 0;
+              target->trustedClickBlockedUntilTick = 0;
+              target->memoryUsageTargetLevel = -1;
+              target->timedCompletionDeadlineTick = 0;
+              target->timedCompletionDeadlineGeneration = 0;
+              target->loginPage = false;
+              target->playbackConfirmed = false;
+              target->processTitleObserved = false;
+              target->observedTrackTitle.clear();
+              target->processTrackDisplay.clear();
+              target->processTitleObservedAt = {};
+              target->playbackConfirmedAt = {};
+              SetSlotState(*target, SlotState::NotCreated);
+              target->nextRecoveryTick = GetTickCount64();
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;

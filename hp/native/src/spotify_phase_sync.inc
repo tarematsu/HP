@@ -97,6 +97,7 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   ++slot.targetGeneration;
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
   slot.playRecoveryReloadGeneration = 0;
+  slot.playRecoveryRecreateGeneration = 0;
 }
 
 void CALLBACK SpotifyWebViews::SchedulerTimerProc(
