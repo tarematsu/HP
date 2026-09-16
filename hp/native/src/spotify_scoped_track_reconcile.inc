@@ -2,8 +2,8 @@ namespace hp {
 namespace {
 
 // Minimal playback start/status probe for the already-selected Spotify track:
-// 1) the target page remains the navigation authority and first Play waits one
-//    second after NavigationCompleted bootstrap before trusted input is sent;
+// 1) the target page remains the navigation authority and first Play waits two
+//    seconds after NavigationCompleted bootstrap before trusted input is sent;
 // 2) Pause is confirmed only after an available media element has actually
 //    advanced; a zero-second stall is recovered only after repeated unchanged
 //    observations instead of a wall-clock timeout;
@@ -189,7 +189,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
 
   const nativeLoadedAt = Number(window.__homePanelSpotifyNativeLoadedAt);
   const initialPlayDelayElapsed = Number.isFinite(nativeLoadedAt) &&
-      Date.now() - nativeLoadedAt >= 1000;
+      Date.now() - nativeLoadedAt >= 2000;
 
   const pageButtons = Array.from(document.querySelectorAll(
       'button[data-testid="play-button"]')).filter(enabled);
@@ -200,7 +200,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
       return pauseDecision(visiblePageButton);
     }
     clearProgressProbe();
-    if (!initialPlayDelayElapsed && !restartPending()) return 1000;
+    if (!initialPlayDelayElapsed && !restartPending()) return playbackProbeMs;
     return point(visiblePageButton);
   }
 
