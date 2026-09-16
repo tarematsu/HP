@@ -1,3 +1,5 @@
+#include "audio_health_scan_coordinator.h"
+
 namespace hp {
 namespace {
 
@@ -7,8 +9,8 @@ constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 2ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAudioHealthRetryMs = 10ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 1ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
 std::array<ULONGLONG, kSpotifyActiveAccountCount>
     gSpotifyAudioHealthCheckDueTicks{};
@@ -46,12 +48,21 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 }
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
+  const SlotState previousState = slot.state;
   slot.state = state;
   if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
-    gSpotifyAudioHealthCheckDueTicks[slot.index] =
-        state == SlotState::Playing
-            ? GetTickCount64() + kSpotifyAudioHealthCheckMs
-            : 0;
+    ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
+    if (state == SlotState::Playing) {
+      const int lane = SpotifyRuntimeLaneForAccount(slot.index);
+      if (lane < 0) {
+        due = 0;
+      } else if (previousState != SlotState::Playing || due == 0) {
+        due = NextAudioHealthScanTick(
+            GetTickCount64(), static_cast<size_t>(lane) + 1);
+      }
+    } else {
+      due = 0;
+    }
   }
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
       state == SlotState::Playing) {
@@ -110,9 +121,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
   if (!initialCloudPlaylistReady_) return kSpotifySchedulerBootstrapMs;
 
-  // Healthy playback wakes at its exact completion deadline and at the explicit
-  // two-minute native audio health check. The one-hour ceiling remains only a
-  // coarse safety audit for unrelated state loss.
+  // Healthy playback wakes at its exact completion deadline and at its assigned
+  // one-minute staggered native audio-health slot. The one-hour ceiling remains
+  // only a coarse safety audit for unrelated state loss.
   ULONGLONG nextDelayMs = kSpotifyHealthyAuditMs;
   const auto considerTick = [&nextDelayMs, now](ULONGLONG dueTick) noexcept {
     if (dueTick == 0) return;
