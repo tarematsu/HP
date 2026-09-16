@@ -1,6 +1,5 @@
 #include "spotify_webviews.h"
 #include "shared_webview_environment.h"
-#include "webview_startup_cache_reset.h"
 #include "media_surface_anchor.h"
 
 namespace hp {
