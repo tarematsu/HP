@@ -18,12 +18,12 @@ const trackBoundaryScript = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
-const playbackPolicy = readFileSync(
-  new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url),
+const july19Policy = readFileSync(
+  new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
   'utf8',
 );
 
-test('Stationhead keeps the HTTP cache and uses the shared UDF resource boundary', () => {
+test('Stationhead keeps the HTTP cache and uses shared UDF image/font suppression', () => {
   assert.doesNotMatch(environment, /--disable-http-cache/);
   assert.match(environment, /--disable-features=BackForwardCache,/);
   assert.match(environment, /kStationheadWebView2Arguments/);
@@ -35,10 +35,10 @@ test('Stationhead keeps the HTTP cache and uses the shared UDF resource boundary
     /put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/,
   );
   assert.doesNotMatch(environment, /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/);
-  assert.doesNotMatch(playbackPolicy, /Network\.clearBrowserCache/);
-  assert.match(
-    playbackPolicy,
-    /ApplyStationheadResourceBlockingStartupReduced\([\s\S]*environment, webview, config, armed, token/,
+  assert.doesNotMatch(july19Policy, /Network\.clearBrowserCache|clearBrowserCache/);
+  assert.doesNotMatch(
+    july19Policy,
+    /AddWebResourceRequestedFilter|add_WebResourceRequested|Network\.setBlockedURLs/,
   );
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
@@ -67,7 +67,7 @@ test('long-lived roles use one 50-minute native navigation clock', () => {
 });
 
 test('cache retention does not replace or erase the persistent Stationhead login profile', () => {
-  const combined = environment + playbackPolicy;
+  const combined = environment + july19Policy;
   assert.doesNotMatch(environment, /--incognito|--guest|--user-data-dir/);
   assert.doesNotMatch(
     combined,
