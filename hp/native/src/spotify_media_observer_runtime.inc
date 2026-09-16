@@ -9,8 +9,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 
   window.__homePanelSpotifyGeneration =
       window.__homePanelSpotifyGeneration || '0';
-  const normalize = value =>
-      (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const displayText = value =>
+      String(value || '').replace(/\s+/g, ' ').trim();
+  const normalize = value => displayText(value).toLowerCase();
   const sameTrackPath = (value, expected) => {
     if (!value || !expected) return false;
     return value === expected ||
@@ -23,7 +24,11 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     startPosted: false,
     targetMedia: null,
     trustedStartKey: '',
-    interrupted: false
+    interrupted: false,
+    // Status identity is separate from the managed target. These fields are
+    // populated only after an actual HTMLMediaElement is confirmed playing.
+    actualTrackTitle: '',
+    actualTrackPath: ''
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
@@ -48,12 +53,19 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   const clearTrustedStart = () => {
     state.trustedStartKey = '';
   };
+  const clearActualTrack = () => {
+    state.actualTrackTitle = '';
+    state.actualTrackPath = '';
+  };
   const resetState = key => {
     state.key = key;
     state.startPosted = false;
     state.targetMedia = null;
     clearTrustedStart();
     state.interrupted = false;
+    // A new managed target is not yet an actually playing track. Clear the
+    // previous confirmed identity instead of ever copying the planned title.
+    clearActualTrack();
   };
   const syncTarget = () => {
     const target = window.__homePanelSpotifyNativeTarget;
@@ -61,23 +73,99 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     if (state.key !== key) resetState(key);
     return target;
   };
-  const currentTrack = () => {
-    for (const selector of [
-      '[data-testid="now-playing-widget"] a[href*="/track/"]',
-      '[data-testid="now-playing-bar"] [data-testid="context-item-link"][href*="/track/"]',
-      'footer [data-testid="context-item-link"][href*="/track/"]'
-    ]) {
-      const link = document.querySelector(selector);
-      if (!link) continue;
-      try {
-        const path = new URL(link.href, location.href).pathname;
-        if (path.includes('/track/')) {
-          return { path, title: normalize(link.textContent) };
-        }
-      } catch (_) {}
+
+  const nowPlayingRoots = () => {
+    const roots = [];
+    const add = root => {
+      if (root && !roots.includes(root)) roots.push(root);
+    };
+    add(document.querySelector('[data-testid="now-playing-widget"]'));
+    add(document.querySelector('[data-testid="now-playing-bar"]'));
+    add(document.querySelector('[data-testid="main-view-player-bar"]'));
+    add(document.querySelector('[data-testid="bottom-bar"]'));
+    add(document.querySelector('footer[class*="now-playing"]'));
+    add(document.querySelector('footer'));
+    return roots;
+  };
+  const stripNowPlayingPrefix = value => displayText(value)
+      .replace(/^(?:now playing|currently playing|再生中)\s*[:：-]?\s*/i, '');
+  const titleFromElement = element => {
+    if (!element) return '';
+    const values = [
+      element.textContent,
+      element.getAttribute?.('title'),
+      element.getAttribute?.('aria-label')
+    ];
+    for (const value of values) {
+      const title = stripNowPlayingPrefix(value);
+      if (title) return title;
     }
+    return '';
+  };
+  const titleFromRoot = root => {
+    if (!root) return '';
+    for (const selector of [
+      '[data-testid="context-item-info-title"]',
+      '[data-testid="nowplaying-track-link"]',
+      '[data-testid="now-playing-widget-title"] a',
+      '.track-info__name a',
+      'a[aria-label*="Now playing:" i]',
+      '.now-playing .track-name',
+      '[class*="track-name"]',
+      '.player-track-info__name'
+    ]) {
+      let element = null;
+      try { element = root.querySelector(selector); } catch (_) {}
+      const title = titleFromElement(element);
+      if (title) return title;
+    }
+    return '';
+  };
+  const currentTrack = () => {
+    for (const root of nowPlayingRoots()) {
+      const links = [];
+      for (const selector of [
+        'a[data-testid="context-item-link"][href*="/track/"]',
+        'a[href*="/track/"]'
+      ]) {
+        try {
+          root.querySelectorAll(selector).forEach(link => links.push(link));
+        } catch (_) {}
+      }
+      for (const link of links) {
+        try {
+          const path = new URL(link.href, location.href).pathname;
+          if (!path.includes('/track/')) continue;
+          const displayTitle = titleFromElement(link) || titleFromRoot(root);
+          return {
+            path,
+            title: normalize(displayTitle),
+            displayTitle,
+            source: 'now-playing-dom'
+          };
+        } catch (_) {}
+      }
+
+      const displayTitle = titleFromRoot(root);
+      if (displayTitle) {
+        return {
+          path: '',
+          title: normalize(displayTitle),
+          displayTitle,
+          source: 'now-playing-dom'
+        };
+      }
+    }
+
+    // MediaSession remains identity-only fallback for target validation. It is
+    // deliberately never promoted into status because it can be stale.
     const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
-    return { path: '', title: normalize(metadata && metadata.title) };
+    return {
+      path: '',
+      title: normalize(metadata && metadata.title),
+      displayTitle: '',
+      source: 'media-session'
+    };
   };
   const matchesTarget = (target, track) => {
     if (!target) return false;
@@ -138,6 +226,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     } else if (!targetIdentityConfirmed) {
       clearTrustedStart();
       if (!media.paused) {
+        clearActualTrack();
         if (state.startPosted && !state.interrupted) {
           state.interrupted = true;
           post('spotify:timed-interrupted');
@@ -149,6 +238,14 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 
     if (media.paused) return 'target';
     state.targetMedia = media;
+
+    // Only a Now Playing DOM identity observed while the media element is
+    // actually advancing is eligible for status. Never copy target.title.
+    if (identity.source === 'now-playing-dom' && identity.displayTitle) {
+      state.actualTrackTitle = identity.displayTitle;
+      state.actualTrackPath = identity.path || '';
+    }
+
     const remainingMs = remainingDurationMs(media);
     if (state.interrupted) {
       state.interrupted = false;
@@ -170,6 +267,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     state,
     post,
     syncTarget,
+    currentTrack,
     isMedia,
     armTrustedStart,
     scheduleTargetChecks,
