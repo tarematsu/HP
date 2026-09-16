@@ -7,36 +7,46 @@ const source = name => readFileSync(
 
 const foundation = source('spotify_webview_foundation.inc');
 const host = source('spotify_host_lifecycle.inc');
-const controller = source('spotify_controller_lifecycle.inc');
+const layout = source('spotify_host_layout.inc');
 const schedule = source('spotify_stagger_schedule.inc');
+const phase = source('spotify_phase_sync.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
 
-test('ten starts as the single live member of the ten/hinata pair', () => {
-  assert.match(foundation, /kSpotifyTenSlotIndex = 1/);
-  assert.match(foundation, /kSpotifyHinataSlotIndex = 3/);
-  assert.match(foundation, /gSpotifyAlternatingActiveSlot = kSpotifyTenSlotIndex/);
-  assert.match(foundation, /SpotifySlotShouldOwnHost/);
-  assert.match(host, /gSpotifyAlternatingActiveSlot = kSpotifyTenSlotIndex/);
-  assert.match(host, /SpotifySlotShouldOwnHost\(slot\.index\)[\s\S]*CreateHost\(slot\)/);
+test('four Spotify accounts share exactly three runtime lanes', () => {
+  assert.match(foundation, /kSpotifyRuntimeLaneCount = 3/);
+  assert.match(foundation, /gSpotifyRuntimeLaneAccounts = \{[\s\S]*0, 1, 2/);
+  assert.match(foundation, /gSpotifyInactiveAccountIndex = 3/);
+  assert.match(foundation, /SpotifyRuntimeLaneForAccount/);
+  assert.match(foundation, /SpotifyAccountShouldOwnHost/);
+  assert.match(host, /ResetSpotifyRuntimeLanes\(\)/);
+  assert.match(host, /SpotifyAccountShouldOwnHost\(slot\.index\)[\s\S]*CreateHost\(slot\)/);
 });
 
-test('scheduler never creates or reconciles the inactive paired slot', () => {
-  assert.match(schedule, /if \(!SpotifySlotShouldOwnHost\(index\)\) continue/);
-  assert.match(schedule, /if \(!slot\.hostWindow \|\| !IsWindow\(slot\.hostWindow\)\)[\s\S]*CreateHost\(slot\)/);
+test('scheduler never recreates the waiting fourth account', () => {
+  assert.match(schedule, /if \(!SpotifyAccountShouldOwnHost\(index\)\) continue/);
+  assert.match(phase, /if \(!SpotifyAccountShouldOwnHost\(i\)\) continue/);
 });
 
-test('one completed cycle destroys the current WebView and activates the peer', () => {
-  assert.match(rotation, /if \(IsSpotifyAlternatingPairSlot\(slot\.index\)/);
-  assert.match(rotation, /slot\.index == kSpotifyTenSlotIndex[\s\S]*kSpotifyHinataSlotIndex[\s\S]*kSpotifyTenSlotIndex/);
+test('a completed account leaves its lane and the waiter enters that same lane', () => {
+  assert.match(rotation, /const int completedLane = SpotifyRuntimeLaneForAccount\(slot\.index\)/);
+  assert.match(rotation, /const size_t nextAccountIndex = gSpotifyInactiveAccountIndex/);
   assert.match(rotation, /CloseSlot\(slot\)/);
-  assert.match(rotation, /gSpotifyAlternatingActiveSlot = nextSlotIndex/);
+  assert.match(rotation, /gSpotifyRuntimeLaneAccounts\[static_cast<size_t>\(completedLane\)\] =[\s\S]*nextAccountIndex/);
+  assert.match(rotation, /gSpotifyInactiveAccountIndex = completedAccountIndex/);
   assert.match(rotation, /CreateHost\(nextSlot\)/);
-  assert.match(rotation, /ArmRobustScheduler\(\)/);
+  assert.match(rotation, /slot\.timedRotationCycle = completedCycles/);
 });
 
-test('alternation preserves profile identity and advances random cycle seeds', () => {
-  assert.match(controller, /target->index \+ kSpotifyProfileFirstAccountNumber/);
-  assert.match(rotation, /const ULONGLONG completedCycles = slot\.timedRotationCycle/);
-  assert.match(rotation, /slot\.timedRotationCycle = completedCycles/);
-  assert.match(rotation, /if \(!IsSpotifyAlternatingPairSlot\(slot\.index\)\) slot\.timedRotationCycle = 0/);
+test('B C D foreground and audio choices follow runtime lanes rather than account ids', () => {
+  assert.match(layout, /SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
+  assert.match(foundation, /const int runtimeLane = accountIndex >= 0[\s\S]*SpotifyRuntimeLaneForAccount/);
+  assert.match(foundation, /runtimeLane != gSpotifyAudioOutputSlot/);
+});
+
+test('scheduler host is reassigned when any logical account is swapped out', () => {
+  assert.match(host, /wasSchedulerHost/);
+  assert.match(host, /for \(const Slot& candidate : slots_\)/);
+  assert.match(host, /schedulerHost_\.store\(candidate\.hostWindow/);
+  assert.match(host, /schedulerHost_\.load\(std::memory_order_acquire\) == hwnd/);
+  assert.doesNotMatch(host, /message == kSpotifySchedulerMessage && slot->index == 0/);
 });
