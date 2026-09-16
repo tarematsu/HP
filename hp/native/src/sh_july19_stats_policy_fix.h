@@ -6,18 +6,20 @@ namespace hp {
 
 inline constexpr int64_t kStationheadJuly19StatsIntervalMs = 5 * 60'000;
 
+// Stationhead intentionally leaves the HTTP cache and request pipeline intact.
+// Images/fonts are already suppressed by the shared WebView2 environment, and
+// the final Stationhead request policy must stay fail-open for playback/DRM.
 inline void ApplyStationheadJuly19ResourcePolicy(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
     const StationheadConfig& config,
     std::atomic<bool>& armed,
     EventRegistrationToken& token) {
+  (void)environment;
+  (void)webview;
   (void)config;
   (void)armed;
   (void)token;
-  if (!environment || !webview) return;
-  webview->CallDevToolsProtocolMethod(
-      L"Network.clearBrowserCache", L"{}", nullptr);
 }
 
 // PR #48 treats an Authorization header observed from Stationhead's own page

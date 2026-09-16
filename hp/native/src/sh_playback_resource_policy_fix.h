@@ -1,24 +1,11 @@
 #pragma once
-#include "sh_startup_resource_reduction_policy_fix.h"
 
 namespace hp {
 
-// Use the single audited resource boundary for playback as well. It blocks
-// images/fonts, telemetry and presentation-only UI chunks while every media
-// request remains fail-open. Do not clear the HTTP cache: retaining safe cached
-// assets reduces startup network and CPU work on every periodic navigation.
-inline void ApplyStationheadResourceBlockingPlaybackSafe(
-    ICoreWebView2Environment* environment,
-    ICoreWebView2* webview,
-    const StationheadConfig& config,
-    std::atomic<bool>& armed,
-    EventRegistrationToken& token) {
-  ApplyStationheadResourceBlockingStartupReduced(
-      environment, webview, config, armed, token);
-}
-
-// Preserve the established PR48 stats/auth behavior while keeping it separate
-// from presentation and resource-reduction policy.
+// The historical filename is retained because the playback statistics contract
+// is referenced by the Stationhead startup policy. Runtime request filtering
+// no longer lives here; the final Stationhead resource policy is deliberately
+// fail-open and cache-preserving.
 inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
@@ -79,9 +66,6 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
 }
 
 }  // namespace hp
-
-#undef ApplyStationheadResourceBlocking
-#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
 
 #undef StationheadApiPlayStatsScript
 #define StationheadApiPlayStatsScript StationheadPrimaryPlayStatsScript

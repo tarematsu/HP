@@ -19,7 +19,7 @@ const sharedEnvironment = readFileSync(
   'utf8',
 );
 
-test('July 19 policy is included after the playback boundary', () => {
+test('July 19 policy remains the final Stationhead resource boundary', () => {
   const playbackAt = composition.indexOf('#include "sh_playback_resource_policy_fix.h"');
   const july19At = composition.indexOf('#include "sh_july19_stats_policy_fix.h"');
   assert.ok(playbackAt >= 0);
@@ -30,8 +30,8 @@ test('July 19 policy is included after the playback boundary', () => {
   );
 });
 
-test('final July 19 resource boundary remains fail-open', () => {
-  assert.match(july19Policy, /Network\.clearBrowserCache/);
+test('final July 19 resource boundary is fail-open and cache-preserving', () => {
+  assert.doesNotMatch(july19Policy, /Network\.clearBrowserCache|clearBrowserCache/);
   assert.doesNotMatch(
     july19Policy,
     /AddWebResourceRequestedFilter|add_WebResourceRequested|Network\.setBlockedURLs|CreateWebResourceResponse|put_Response/,
@@ -39,8 +39,11 @@ test('final July 19 resource boundary remains fail-open', () => {
   assert.doesNotMatch(july19Policy, /AttachStationheadNativeStats/);
 });
 
-test('playback boundary has no native statistics observer', () => {
+test('playback policy contains statistics only, not retired request filtering', () => {
+  assert.doesNotMatch(playbackPolicy, /ApplyStationheadResourceBlocking/);
+  assert.doesNotMatch(playbackPolicy, /sh_startup_resource_reduction_policy_fix/);
   assert.doesNotMatch(playbackPolicy, /AttachStationheadNativeStats/);
+  assert.match(playbackPolicy, /StationheadPrimaryPlayStatsScript/);
   assert.match(july19Policy, /StationheadJuly19ApiPlayStatsScript/);
   assert.match(july19Policy, /credentials: 'include'/);
 });
