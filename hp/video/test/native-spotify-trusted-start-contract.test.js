@@ -18,12 +18,13 @@ test('music play preflight is independent from observer trusted-start state', ()
   assert.doesNotMatch(click, /TimedSpotifyTarget/);
 });
 
-test('trusted start remains generation scoped if the optional observer is used elsewhere', () => {
+test('trusted start remains generation scoped without a wall-clock expiry', () => {
   assert.match(runtime, /const armTrustedStart = requestedGeneration =>/);
   assert.match(runtime, /requested !== generation\(\)/);
-  assert.match(runtime, /state\.trustedStartUntil = Date\.now\(\) \+ 15000/);
+  assert.match(runtime, /state\.trustedStartKey = targetKey\(target\)/);
   assert.match(runtime, /state\.trustedStartKey !== targetKey\(target\)/);
   assert.match(runtime, /clearTrustedStart\(\)/);
+  assert.doesNotMatch(runtime, /trustedStartUntil|Date\.now\(\) \+ 15000/);
   assert.match(runtime, /if \(!media\.paused\) \{[\s\S]*return 'interruption'/);
   assert.doesNotMatch(runtime, /return state\.startPosted \? 'wrong'/);
 });
