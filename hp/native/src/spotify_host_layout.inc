@@ -77,6 +77,12 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     const bool controllerChanged =
         slot.hostLayoutController != slot.controller.Get();
 
+    // Apply the visual region before exposing the child HWND. Spotify host
+    // windows use a black class brush, so showing a full-client background host
+    // even briefly can produce a DWM black flash before the 1x1 clip lands.
+    ApplySpotifyHostVisualClip(
+        slot.hostWindow, authentication || monitorForeground);
+
     if (placementChanged) {
       UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;
       if (!positionChanged) flags |= SWP_NOMOVE;
@@ -89,9 +95,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         slot.hostLayoutApplied = true;
       }
     }
-
-    ApplySpotifyHostVisualClip(
-        slot.hostWindow, authentication || monitorForeground);
 
     if (!slot.controller) {
       slot.hostLayoutController = nullptr;
