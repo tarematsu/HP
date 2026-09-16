@@ -11,6 +11,34 @@ inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 10ULL * 1000ULL;
 inline constexpr size_t kSpotifyProfileFirstAccountNumber = 2;
 inline constexpr size_t kSpotifyActiveAccountCount = 4;
 
+// Four logical Spotify accounts share exactly three live WebView runtime lanes.
+// B/C/D always address lanes 0/1/2. The account that completes a full rotation
+// leaves its lane, the waiting account takes it, and the completed account
+// becomes the next waiter. Inline state keeps every Spotify implementation unit
+// on the same process-wide lane assignment.
+inline constexpr size_t kSpotifyRuntimeLaneCount = 3;
+inline std::array<size_t, kSpotifyRuntimeLaneCount> gSpotifyRuntimeLaneAccounts = {
+    0, 1, 2};
+inline size_t gSpotifyInactiveAccountIndex = 3;
+
+inline void ResetSpotifyRuntimeLanes() noexcept {
+  gSpotifyRuntimeLaneAccounts = {0, 1, 2};
+  gSpotifyInactiveAccountIndex = 3;
+}
+
+inline int SpotifyRuntimeLaneForAccount(size_t accountIndex) noexcept {
+  for (size_t lane = 0; lane < gSpotifyRuntimeLaneAccounts.size(); ++lane) {
+    if (gSpotifyRuntimeLaneAccounts[lane] == accountIndex) {
+      return static_cast<int>(lane);
+    }
+  }
+  return -1;
+}
+
+inline bool SpotifyAccountShouldOwnHost(size_t accountIndex) noexcept {
+  return SpotifyRuntimeLaneForAccount(accountIndex) >= 0;
+}
+
 struct SpotifyPlaybackStatus {
   std::wstring windowName;
   std::wstring trackTitle;
