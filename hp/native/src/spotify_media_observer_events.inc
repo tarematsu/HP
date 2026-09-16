@@ -16,8 +16,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const { isMedia, scheduleTargetChecks, syncTarget, state, post,
           armTrustedStart } = runtime;
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const nativeSetTimeout = window.setTimeout.bind(window);
-  const nativeClearTimeout = window.clearTimeout.bind(window);
+  const nativeSetTimeout = setTimeout;
+  const nativeClearTimeout = clearTimeout;
   const recoveryGraceMs = 6000;
   let recoveryTimer = 0;
   let recoveryMedia = null;
