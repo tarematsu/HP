@@ -8,7 +8,7 @@ const readNative = relative => readFileSync(
 const appHeader = readNative('app.h');
 const schedule = readNative('power_saving_schedule.inc');
 const stationheadAudio = readNative('sh_audio.cpp');
-const spotifyPhaseSync = readNative('spotify_phase_sync.inc');
+const spotifyFoundation = readNative('spotify_webview_foundation.inc');
 
 function section(source, start) {
   const startAt = source.indexOf(start);
@@ -53,13 +53,14 @@ test('Stationhead repairs WebView2 mute drift instead of trusting cached state',
   );
 });
 
-test('Spotify reasserts native mute routing whenever slot state changes', () => {
-  const setSlotState = section(
-    spotifyPhaseSync,
-    'void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept',
+test('Spotify output selection remains a deterministic runtime-lane mute map', () => {
+  assert.match(
+    spotifyFoundation,
+    /const int runtimeLane = accountIndex >= 0[\s\S]*SpotifyRuntimeLaneForAccount/,
   );
   assert.match(
-    setSlotState,
-    /if \(slot\.webview\) SetSpotifyOutputMuted\(slot\.webview\)/,
+    spotifyFoundation,
+    /const bool muted =\s*runtimeLane < 0 \|\| runtimeLane != gSpotifyAudioOutputSlot/,
   );
+  assert.match(spotifyFoundation, /audio->put_IsMuted\(muted \? TRUE : FALSE\)/);
 });
