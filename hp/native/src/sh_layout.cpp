@@ -12,6 +12,17 @@ int RectHeight(const RECT& bounds) noexcept {
   return std::max(1L, bounds.bottom - bounds.top);
 }
 
+void ApplyHostVisualClip(HWND window, bool fullSize) noexcept {
+  if (!window || !IsWindow(window)) return;
+  if (fullSize) {
+    SetWindowRgn(window, nullptr, TRUE);
+    return;
+  }
+  HRGN region = CreateRectRgn(0, 0, 1, 1);
+  if (!region) return;
+  if (!SetWindowRgn(window, region, TRUE)) DeleteObject(region);
+}
+
 HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wchar_t* title,
                                 const RECT& bounds) {
   if (!parent || !IsWindow(parent)) return nullptr;
@@ -190,8 +201,9 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const RECT playbackControllerBounds{0, 0, playbackWidth, playbackHeight};
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Move the inactive auth host first, then playback. This keeps the normal
-  // playback host at the bottom while both surfaces fill the client area.
+  // Keep both HWNDs and WebView2 controllers full-size so responsive layout,
+  // DOM geometry and trusted CDP coordinates never collapse to a 1x1 viewport.
+  // Only the visible window region is clipped during normal background use.
   if (authHostWindow && IsWindow(authHostWindow)) {
     const bool geometryMatches =
         WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
@@ -203,6 +215,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                    authWidth, authHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
+    ApplyHostVisualClip(authHostWindow, showAuth);
   }
 
   if (hostWindow && IsWindow(hostWindow)) {
@@ -217,6 +230,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                    playbackWidth, playbackHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
+    ApplyHostVisualClip(hostWindow, showPlayback);
   }
 
   if (controller) {
