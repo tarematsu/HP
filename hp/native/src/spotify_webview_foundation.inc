@@ -14,13 +14,15 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
-bool gSpotifyAudioMuted = true;
+int gSpotifyAudioOutputSlot = -1;
 
-void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
+void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview,
+                           size_t slotIndex) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
-    audio->put_IsMuted(gSpotifyAudioMuted ? TRUE : FALSE);
+    const bool muted = static_cast<int>(slotIndex) != gSpotifyAudioOutputSlot;
+    audio->put_IsMuted(muted ? TRUE : FALSE);
   }
 }
 
@@ -51,19 +53,27 @@ SpotifyWebViews::~SpotifyWebViews() {
   if (gSpotifyControlInstance == this) gSpotifyControlInstance = nullptr;
 }
 
-void SpotifyWebViews::SetOutputMuted(bool muted) noexcept {
-  gSpotifyAudioMuted = muted;
-  for (Slot& slot : slots_) SetSpotifyOutputMuted(slot.webview);
+void SpotifyWebViews::SetAudioOutputSlot(int slotIndex) noexcept {
+  gSpotifyAudioOutputSlot =
+      slotIndex >= 0 && slotIndex < static_cast<int>(slots_.size())
+          ? slotIndex
+          : -1;
+  for (Slot& slot : slots_) SetSpotifyOutputMuted(slot.webview, slot.index);
 }
 
-void SetSpotifyAudioMuted(bool muted) noexcept {
-  gSpotifyAudioMuted = muted;
-  if (gSpotifyControlInstance) gSpotifyControlInstance->SetOutputMuted(muted);
-}
-
-void SetSpotifyMonitorForeground(bool foreground) noexcept {
+void SetSpotifyAudioOutputSlot(int slotIndex) noexcept {
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(kSpotifyActiveAccountCount)) {
+    slotIndex = -1;
+  }
+  gSpotifyAudioOutputSlot = slotIndex;
   if (gSpotifyControlInstance) {
-    gSpotifyControlInstance->SetMonitorForeground(foreground);
+    gSpotifyControlInstance->SetAudioOutputSlot(slotIndex);
+  }
+}
+
+void SetSpotifyMonitorForegroundSlot(int slotIndex) noexcept {
+  if (gSpotifyControlInstance) {
+    gSpotifyControlInstance->SetMonitorForegroundSlot(slotIndex);
   }
 }
 
