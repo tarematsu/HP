@@ -8,9 +8,11 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] =
 #include "media_tver_playback_policy_main2.inc"
 ;
 
-// Invoked immediately after a trusted TVer click. The fallback itself observes
-// fullscreenDirty, so the per-video fullscreen request is never repeated.
+// Invoked immediately after a trusted TVer fullscreen action. The fallback
+// itself observes fullscreenDirty, so the per-video request is never repeated.
 constexpr wchar_t kNativeMediaTverForceFullscreenAnyMediaScript[] =
 #include "media_tver_playback_policy_force_fullscreen.inc"
 ;
+constexpr const wchar_t* kNativeMediaTverForceFullscreenAdSafeScript =
+    kNativeMediaTverForceFullscreenAnyMediaScript;
 }  // namespace
