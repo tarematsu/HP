@@ -6,6 +6,10 @@ const dashboardHeader = readFileSync(
   new URL('../../native/src/web_renderer.h', import.meta.url),
   'utf8',
 );
+const rendererPanels = readFileSync(
+  new URL('../../native/src/renderer_panels.cpp', import.meta.url),
+  'utf8',
+);
 const layoutOverrides = readFileSync(
   new URL('../../native/src/renderer_panels/layout_overrides.inc', import.meta.url),
   'utf8',
@@ -27,19 +31,19 @@ test('left column uses three equal rows and media spans the top two', () => {
   );
   assert.match(
     layoutOverrides,
-    /sections\.weather = RECT\{client\.left, sections\.controls\.bottom \+ gap,[\s\S]*client\.right, client\.bottom\};/,
+    /sections\.weather = RECT\{client\.left, sections\.controls\.bottom \+ gap,[\s\S]*client\.right,[\s\S]*sections\.controls\.bottom \+ gap \+ rowHeight\};/,
   );
 });
 
-test('clock, air, electricity and weather keep matching card proportions', () => {
-  assert.match(layoutOverrides, /rowWidth \* 588 \/ 1000/);
+test('clock, air, electricity and weather use the same pixel dimensions', () => {
+  assert.match(rendererPanels, /SplitWeatherRadarMatchedMainSections/);
+  assert.match(rendererPanels, /dashboard\.side\.right - dashboard\.side\.left/);
+  assert.match(rendererPanels, /const LONG rowHeight = std::max<LONG>\(1, \(sideHeight - sideGap \* 2\) \/ 3\);/);
+  assert.match(rendererPanels, /const LONG weatherWidth = std::clamp<LONG>\(\s*sideWidth/);
+  assert.match(rendererPanels, /client\.top \+ rowHeight/);
   assert.match(
-    layoutOverrides,
-    /Weather receives 41\.2% of the usable right-row width/,
-  );
-  assert.match(
-    layoutOverrides,
-    /matches the Clock\/Air\/Electricity card[\s\S]*integer-pixel rounding/,
+    rendererPanels,
+    /Give Weather exactly the same pixel[\s\S]*width and row height as Clock\/Air\/Electricity/,
   );
 });
 
