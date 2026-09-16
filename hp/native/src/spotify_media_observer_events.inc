@@ -15,10 +15,12 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const observe = event => {
     if (!isMedia(event.target) || event.target.ended) return;
-    // timeupdate is useful while startup identity is still settling, but once
-    // the owned target is confirmed it would only create redundant DOM probes.
+    // timeupdate normally stops probing once playback is confirmed. Keep it
+    // active only until the actual Now Playing title has also been captured;
+    // this avoids a renderer-layout race immediately after trusted Play.
     if (event.type === 'timeupdate' && state.startPosted &&
-        state.targetMedia === event.target && !state.interrupted) {
+        state.targetMedia === event.target && !state.interrupted &&
+        state.actualTrackTitle) {
       return;
     }
     scheduleTargetChecks(event.target);
@@ -53,6 +55,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     // completion event and must not suspend the already-due native deadline.
     state.startPosted = false;
     state.targetMedia = null;
+    state.actualTrackTitle = '';
+    state.actualTrackPath = '';
     post('spotify:timed-ended');
   };
 
