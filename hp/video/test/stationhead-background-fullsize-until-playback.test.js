@@ -39,7 +39,7 @@ test('Stationhead normal background host fills the client area behind the dashbo
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
 });
 
-test('background, startup and reload all keep the full playback viewport', () => {
+test('background, startup and reload all keep the fixed 720x480 playback viewport', () => {
   const keepBehind = section(
     layout,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -63,11 +63,13 @@ test('background, startup and reload all keep the full playback viewport', () =>
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(apply, /const RECT playbackControllerBounds\{0, 0, playbackWidth, playbackHeight\};/);
-  assert.doesNotMatch(apply, /PlaybackControllerBounds|compactPlayback|useCompactPlayback/);
+  assert.match(layout, /kStationheadPlaybackViewportWidth = 720/);
+  assert.match(layout, /kStationheadPlaybackViewportHeight = 480/);
+  assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
+  assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
 });
 
-test('Monitor B changes Stationhead z-order without changing full-client controller geometry', () => {
+test('Monitor B changes Stationhead z-order without changing the fixed controller geometry', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -80,6 +82,7 @@ test('Monitor B changes Stationhead z-order without changing full-client control
   );
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(apply, /StationheadPlaybackControllerBounds\(\)/);
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
   assert.doesNotMatch(apply, /playbackHostBounds = playbackForeground \? workspaceBounds/);
 
@@ -96,7 +99,7 @@ test('Monitor B changes Stationhead z-order without changing full-client control
   assert.match(placement, /child, HWND_BOTTOM/);
 });
 
-test('authentication keeps playback alive onscreen behind the full-client foreground auth surface', () => {
+test('authentication keeps playback alive behind the full-client auth surface', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -114,5 +117,5 @@ test('authentication keeps playback alive onscreen behind the full-client foregr
   );
   assert.match(activeAuth, /StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(activeAuth, /SurfaceMatches\(hostWindow, controller, surface, HWND_BOTTOM\)/);
-  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, surface, HWND_TOP\)/);
+  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, surface, HWND_TOP, false\)/);
 });
