@@ -31,6 +31,7 @@ class SpotifyWebViews final {
   void SetNetworkBlocked(bool blocked) noexcept;
   void SetAudioOutputSlot(int slotIndex) noexcept;
   void SetMonitorForegroundSlot(int slotIndex) noexcept;
+  int SlotIndexForWebView(ICoreWebView2* webview) const noexcept;
   std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
   PlaybackStatuses() const noexcept;
 
