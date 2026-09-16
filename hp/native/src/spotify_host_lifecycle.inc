@@ -80,6 +80,7 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
     schedulerHost_.store(nullptr, std::memory_order_release);
     schedulerWakePosted_.store(false, std::memory_order_release);
   }
+  UnsubscribeMediaPipelineErrors(slot.mediaErrorReceiver, slot.mediaErrorToken);
   if (slot.webview) {
     if (slot.navigationStartingToken.value != 0) {
       slot.webview->remove_NavigationStarting(slot.navigationStartingToken);
@@ -94,6 +95,7 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.navigationStartingToken = {};
   slot.navigationCompletedToken = {};
   slot.timedEndMessageReceivedToken = {};
+  slot.mediaErrorToken = {};
   slot.timedEndHandlerWebview = nullptr;
   slot.webview.Reset();
   if (slot.controller) slot.controller->Close();
@@ -118,6 +120,7 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.trustedClickBlockedUntilTick = 0;
   slot.playRecoveryReloadGeneration = 0;
   slot.playRecoveryRecreateGeneration = 0;
+  slot.mediaPipelineRecoveryGeneration = 0;
   slot.memoryUsageTargetLevel = -1;
   slot.timedRotationCycle = 0;
   slot.timedRotationPosition = 0;
@@ -133,6 +136,7 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.processTitleObservedAt = {};
   slot.playbackConfirmed = false;
   slot.processTitleObserved = false;
+  slot.mediaPipelineRecoveryPending = false;
   slot.playbackConfirmedAt = {};
 
   if (wasSchedulerHost) {

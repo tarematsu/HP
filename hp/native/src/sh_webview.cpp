@@ -2,6 +2,7 @@
 #include "json_helpers.h"
 #include "sh_shared.h"
 #include "sh_track_boundary_script.h"
+#include "media_pipeline_health.h"
 #include "webview_feature_policy.h"
 #include <winrt/Windows.Data.Json.h>
 
@@ -69,6 +70,44 @@ void StationheadPlayer::ConfigureWebView() {
       nativeAudioTracking_ = false;
       log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" WebView2 native audio tracking unavailable " + HResultHex(audioHandlerResult));
     }
+  }
+
+  const HRESULT mediaErrorResult = SubscribeMediaPipelineErrors(
+      webview_.Get(),
+      Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
+          [this, alive](
+              ICoreWebView2*,
+              ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args)
+              -> HRESULT {
+            if (!CallbackAlive(alive) || shuttingDown_ || !webview_) {
+              return S_OK;
+            }
+            try {
+              if (mediaErrorRecoveryLifecycle_.lock() == createCallbackAlive_) {
+                return S_OK;
+              }
+              mediaErrorRecoveryLifecycle_ = createCallbackAlive_;
+              const std::wstring detail = MediaPipelineErrorParameters(args);
+              log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
+                        L" Chromium media pipeline failure: " + detail);
+              ApplyAudioPlaybackState(
+                  false, L"Chromium Media.playerErrorsRaised");
+              UpdateAudioLossState(
+                  L"decoder_error",
+                  L"Chromium reported a media decode/pipeline failure; rebuilding playback WebView");
+              ScheduleRecreate(
+                  L"Chromium media decode/pipeline failure", 1'000);
+            } catch (...) {
+              // Never unwind a diagnostic callback through the WebView2 COM
+              // boundary. The existing native-audio watchdog remains active.
+            }
+            return S_OK;
+          }).Get(),
+      mediaErrorReceiver_, mediaErrorToken_);
+  if (FAILED(mediaErrorResult)) {
+    log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
+              L" Chromium media pipeline diagnostics unavailable " +
+              HResultHex(mediaErrorResult));
   }
 
   ApplyMute();
@@ -748,6 +787,7 @@ void StationheadPlayer::CloseWebView() {
     if (!resumeUrl.empty()) pendingAuthorizationUrl_ = resumeUrl;
   }
   CloseAuthWebView();
+  UnsubscribeMediaPipelineErrors(mediaErrorReceiver_, mediaErrorToken_);
   if (webview_) {
     if (audioPlayingChangedToken_.value) {
       ComPtr<ICoreWebView2_8> audioView;
@@ -769,6 +809,7 @@ void StationheadPlayer::CloseWebView() {
   processFailedToken_ = {};
   resourceRequestedToken_ = {};
   audioPlayingChangedToken_ = {};
+  mediaErrorToken_ = {};
   activeNavigationId_.store(0, std::memory_order_relaxed);
   navigationInFlight_.store(false, std::memory_order_relaxed);
   nativeAudioTracking_ = false;

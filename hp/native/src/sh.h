@@ -452,6 +452,9 @@ class StationheadPlayer {
   EventRegistrationToken processFailedToken_{};
   EventRegistrationToken resourceRequestedToken_{};
   EventRegistrationToken audioPlayingChangedToken_{};
+  ComPtr<ICoreWebView2DevToolsProtocolEventReceiver> mediaErrorReceiver_;
+  EventRegistrationToken mediaErrorToken_{};
+  std::weak_ptr<std::atomic<bool>> mediaErrorRecoveryLifecycle_;
   std::atomic<bool> resourceBlockingArmed_{false};
   EventRegistrationToken authNavigationToken_{};
   EventRegistrationToken authMessageToken_{};

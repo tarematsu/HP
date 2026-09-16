@@ -108,6 +108,8 @@ class SpotifyWebViews final {
     EventRegistrationToken navigationStartingToken{};
     EventRegistrationToken navigationCompletedToken{};
     EventRegistrationToken timedEndMessageReceivedToken{};
+    ComPtr<ICoreWebView2DevToolsProtocolEventReceiver> mediaErrorReceiver;
+    EventRegistrationToken mediaErrorToken{};
     ICoreWebView2* timedEndHandlerWebview = nullptr;
     ICoreWebView2Controller* hostLayoutController = nullptr;
     RECT hostLayoutRect{};
@@ -126,6 +128,7 @@ class SpotifyWebViews final {
     ULONGLONG trustedClickBlockedUntilTick = 0;
     ULONGLONG playRecoveryReloadGeneration = 0;
     ULONGLONG playRecoveryRecreateGeneration = 0;
+    ULONGLONG mediaPipelineRecoveryGeneration = 0;
     std::wstring observedTrackTitle;
     std::wstring processTrackDisplay;
     SYSTEMTIME processTitleObservedAt{};
@@ -142,6 +145,7 @@ class SpotifyWebViews final {
     bool playbackConfirmed = false;
     bool processTitleObserved = false;
     bool hostLayoutApplied = false;
+    bool mediaPipelineRecoveryPending = false;
   };
 
   static LRESULT CALLBACK HostWndProc(
@@ -196,6 +200,7 @@ class SpotifyWebViews final {
   void PollProcessTitleStatus(ULONGLONG now) noexcept;
   void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;
+  void RebuildPlaybackSurface(Slot& slot) noexcept;
   void StartAutonomousSchedule(ULONGLONG now) noexcept;
   void RunStaggeredReconcile() noexcept;
 

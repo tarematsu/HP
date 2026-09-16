@@ -1,5 +1,57 @@
 namespace hp {
 
+void SpotifyWebViews::RebuildPlaybackSurface(Slot& slot) noexcept {
+  UnsubscribeMediaPipelineErrors(slot.mediaErrorReceiver, slot.mediaErrorToken);
+  if (slot.webview) {
+    if (slot.navigationStartingToken.value != 0) {
+      slot.webview->remove_NavigationStarting(slot.navigationStartingToken);
+    }
+    if (slot.navigationCompletedToken.value != 0) {
+      slot.webview->remove_NavigationCompleted(slot.navigationCompletedToken);
+    }
+    if (slot.timedEndMessageReceivedToken.value != 0) {
+      slot.webview->remove_WebMessageReceived(slot.timedEndMessageReceivedToken);
+    }
+  }
+  slot.navigationStartingToken = {};
+  slot.navigationCompletedToken = {};
+  slot.timedEndMessageReceivedToken = {};
+  slot.timedEndHandlerWebview = nullptr;
+  slot.webview.Reset();
+  if (slot.controller) slot.controller->Close();
+  slot.controller.Reset();
+  slot.environment.Reset();
+  slot.hostLayoutController = nullptr;
+  slot.hostLayoutRect = {};
+  slot.hostLayoutInsertAfter = nullptr;
+  slot.hostLayoutApplied = false;
+  slot.controllerCreating = false;
+  slot.controllerCreateTick = 0;
+  ++slot.asyncEpoch;
+  if (slot.asyncEpoch == 0) ++slot.asyncEpoch;
+  ++slot.pageEpoch;
+  if (slot.pageEpoch == 0) ++slot.pageEpoch;
+  slot.asyncWork = AsyncWork::None;
+  slot.asyncStartedTick = 0;
+  slot.nextProcessTitlePollTick = 0;
+  slot.trustedClickBlockedUntilTick = 0;
+  slot.memoryUsageTargetLevel = -1;
+  slot.timedCompletionDeadlineTick = 0;
+  slot.timedCompletionDeadlineGeneration = 0;
+  slot.loginPage = false;
+  slot.playbackConfirmed = false;
+  slot.processTitleObserved = false;
+  slot.observedTrackTitle.clear();
+  slot.processTrackDisplay.clear();
+  slot.processTitleObservedAt = {};
+  slot.playbackConfirmedAt = {};
+  slot.mediaPipelineRecoveryPending = false;
+  SetSlotState(slot, SlotState::NotCreated);
+  slot.nextRecoveryTick = GetTickCount64();
+  RecomputeForeground();
+  ArmRobustScheduler();
+}
+
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow) || slot.controller || slot.webview) return;
   SetSlotState(slot, SlotState::NotCreated);
@@ -82,6 +134,43 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
   if (!slot.controller || !slot.webview) return;
   try {
     SetSpotifyOutputMuted(slot.webview);
+    Slot* const target = &slot;
+    const auto alive = alive_;
+    const HRESULT mediaErrorResult = SubscribeMediaPipelineErrors(
+        slot.webview.Get(),
+        Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
+            [this, alive, target](
+                ICoreWebView2*,
+                ICoreWebView2DevToolsProtocolEventReceivedEventArgs*)
+                -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) ||
+                  !started_ || !target->webview || target->loginPage ||
+                  !CurrentMusicTrack(*target) ||
+                  target->targetGeneration == 0) {
+                return S_OK;
+              }
+              try {
+                if (target->mediaPipelineRecoveryGeneration ==
+                    target->targetGeneration) {
+                  return S_OK;
+                }
+                target->mediaPipelineRecoveryGeneration =
+                    target->targetGeneration;
+                target->mediaPipelineRecoveryPending = true;
+                SetSlotState(*target, SlotState::Recovering);
+                target->nextRecoveryTick = GetTickCount64();
+                ArmRobustScheduler();
+              } catch (...) {
+                // Keep failures contained inside the WebView2 callback. The
+                // periodic native-audio probe remains the fallback detector.
+              }
+              return S_OK;
+            }).Get(),
+        slot.mediaErrorReceiver, slot.mediaErrorToken);
+    if (FAILED(mediaErrorResult)) {
+      slot.mediaErrorReceiver.Reset();
+      slot.mediaErrorToken = {};
+    }
     // Keep the renderer active at all times. Background cost is controlled by
     // clipping the host to 1x1 while keeping a stable internal viewport.
     slot.controller->put_IsVisible(TRUE);
@@ -93,9 +182,6 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     }
     ApplyMediaWebViewFeaturePolicy(
         slot.controller.Get(), slot.webview.Get(), true);
-
-    Slot* const target = &slot;
-    const auto alive = alive_;
 
     // Each account is sampled once per minute, with C/D/E phased 20 seconds
     // apart from the common schedule start so their DOM probes never bunch up.

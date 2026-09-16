@@ -157,6 +157,7 @@ set(HOMEPANEL_CORE_SOURCES
   src/sensors.cpp)
 
 set(HOMEPANEL_STATIONHEAD_SOURCES
+  src/media_pipeline_health.h
   src/sh_layout.cpp
   src/sh_polling_policy.h
   src/sh_audio_loss_policy.h
