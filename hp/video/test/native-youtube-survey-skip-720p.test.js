@@ -42,8 +42,9 @@ test('ad skip and fullscreen recover hidden controls without a fixed wait', () =
   assert.match(runtime, /getBoundingClientRect\?\.\(\)/);
   assert.match(runtime, /document\.elementFromPoint\(point\.x, point\.y\)/);
   assert.match(runtime, /position:fixed!important/);
-  assert.match(runtime, /point\.x \/ window\.innerWidth/);
-  assert.match(runtime, /point\.y \/ window\.innerHeight/);
+  assert.match(runtime, /return \[point\.x, point\.y\]/);
+  assert.doesNotMatch(runtime, /point\.x \/ window\.innerWidth/);
+  assert.doesNotMatch(runtime, /point\.y \/ window\.innerHeight/);
   assert.doesNotMatch(runtime, /return \[5000, 5000\]/);
   assert.doesNotMatch(runtime, /requestFullscreen|webkitRequestFullscreen/);
 });
