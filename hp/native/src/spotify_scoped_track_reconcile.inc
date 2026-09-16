@@ -27,7 +27,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart1[] = LR"JS(
       (targetPath.startsWith('/track/') && location.pathname.endsWith(targetPath));
   if (!onTargetPage) return null;
 
-  const playbackProbeMs = 1000;
+  const playbackProbeMs = 2000;
   const stalledObservationLimit = 4;
   const transitionRetryDelays = [500, 1000, 2000];
   const transitionState = window.__homePanelSpotifyTransitionRetry ||
