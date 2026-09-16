@@ -1,30 +1,31 @@
 namespace {
 
 SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
-  const int width = std::max(1L, client.right - client.left);
   const int height = std::max(1L, client.bottom - client.top);
-  const int gapX = std::max(6, width * 18 / 1000);
-  const int gapY = std::max(6, height * 18 / 1000);
-  const int availableHeight = std::max(2, height - gapY);
-  const int clockHeight = std::max(1, availableHeight * 55 / 100);
-  const int utilityHeight = std::max(1, height - clockHeight - gapY);
-  const int utilityWidth = std::max(2, width - gapX);
-  const int airWidth = std::max(1, utilityWidth / 2);
+  const int gap = std::max(6, height * 18 / 1000);
+  // NativeDashboardLayout::media is the upper YouTube/TVer WebView host. The
+  // visible rain-radar card is in the lower main row, whose exact height is the
+  // full side height minus that 48% media host and the inter-row gap.
+  const int upperMediaHeight = height * 480 / 1000;
+  const int weatherHeight =
+      std::max(1, height - upperMediaHeight - gap);
+  const int compactAvailable =
+      std::max(2, height - weatherHeight - gap * 2);
+  const int clockHeight = std::max(1, compactAvailable * 55 / 100);
+  const int airHeight = std::max(1, compactAvailable - clockHeight);
 
   SidebarSections sections;
-  sections.clock = RECT{
-      client.left, client.top, client.right, client.top + clockHeight};
-  const LONG utilityTop = sections.clock.bottom + gapY;
-  sections.controls = RECT{
-      client.left, utilityTop, client.left + airWidth, utilityTop + utilityHeight};
-  // windows.inc paints the electricity card through the historical weather
-  // slot. Keep that plumbing but place it directly beside Air so both cards
-  // together occupy exactly the same width as the clock above.
-  sections.weather = RECT{
-      sections.controls.right + gapX, utilityTop, client.right,
-      utilityTop + utilityHeight};
-  sections.energy = RECT{
-      client.right, client.bottom, client.right + 1, client.bottom + 1};
+  int top = client.top;
+  sections.clock = RECT{client.left, top, client.right, top + clockHeight};
+  top = sections.clock.bottom + gap;
+  // Air and Weather intentionally trade their previous positions. Keep Air in
+  // the middle slot and make Weather exactly as tall as the visible radar card.
+  sections.controls = RECT{client.left, top, client.right, top + airHeight};
+  top = sections.controls.bottom + gap;
+  sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
+  // Electricity moved beside the radar in the main column. Keep the legacy
+  // sidebar slot outside the client so old section plumbing cannot paint twice.
+  sections.energy = RECT{client.right, client.bottom, client.right + 1, client.bottom + 1};
   return sections;
 }
 
@@ -34,20 +35,15 @@ struct RearrangedMainLayout {
 
 RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
   const int width = std::max(1L, client.right - client.left);
-  const int gapX = std::max(6, width * 11 / 972);
-  const int availableWidth = std::max(2, width - gapX);
-  const int weatherWidth = std::max(1, availableWidth / 2);
-  const int radarWidth = std::max(1, width - gapX - weatherWidth);
+  const int gapX = std::max(8, width * 16 / 1000);
+  const int rowWidth = std::max(2, width - gapX);
+  const int leftWidth = std::max(1, rowWidth * 65 / 100);
 
   RearrangedMainLayout layout;
-  // windows.inc paints Weather through the legacy radar slot and Rain Radar
-  // through the legacy energy slot. Split the lower row evenly around the same
-  // center gap used by the top-row 50/50 grid.
   layout.sections.radar =
-      RECT{client.left, client.top, client.left + weatherWidth, client.bottom};
+      RECT{client.left, client.top, client.left + leftWidth, client.bottom};
   layout.sections.energy =
-      RECT{layout.sections.radar.right + gapX, client.top,
-           layout.sections.radar.right + gapX + radarWidth, client.bottom};
+      RECT{layout.sections.radar.right + gapX, client.top, client.right, client.bottom};
   if (layout.sections.radar.right <= layout.sections.radar.left) {
     layout.sections.radar.right = layout.sections.radar.left + 1;
   }
