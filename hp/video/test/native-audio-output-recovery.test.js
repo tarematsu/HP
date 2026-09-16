@@ -7,6 +7,7 @@ const source = name => readFileSync(
   'utf8',
 );
 
+const coordinator = source('audio_health_scan_coordinator.h');
 const stationheadEvents = source('sh_webview_event_policy.h');
 const stationheadLoss = source('sh_audio_loss.cpp');
 const stationheadPolicy = source('sh_audio_loss_policy.h');
@@ -35,20 +36,32 @@ test('Stationhead actively repairs silence before the existing fallback boundary
   assert.match(stationheadLoss, /SetManagedPlaybackFallback/);
 });
 
-test('Stationhead also polls native WebView2 audio every two minutes', () => {
+test('shared audio-health coordinator serializes four one-minute scan slots', () => {
+  assert.match(coordinator, /kAudioHealthScanCycleMs = 60ULL \* 1000ULL/);
+  assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 15ULL \* 1000ULL/);
+  assert.match(coordinator, /kAudioHealthScanSlotCount = 4/);
+  assert.match(coordinator, /gAudioHealthScanInProgress/);
+  assert.match(coordinator, /TryClaimAudioHealthScan/);
+  assert.match(coordinator, /kAudioHealthScanMinimumGapMs = 5ULL \* 1000ULL/);
+  assert.match(coordinator, /ReleaseAudioHealthScan/);
+});
+
+test('Stationhead polls native WebView2 audio once per minute in shared slot zero', () => {
   assert.match(
     stationheadRefresh,
-    /StationheadAudioHealthCheckIntervalMs\(\)[\s\S]*return 2 \* 60'000/,
+    /StationheadAudioHealthCheckIntervalMs\(\)[\s\S]*return 1 \* 60'000/,
   );
   assert.match(stationheadRefresh, /PollPeriodicAudioHealth/);
+  assert.match(stationheadRefresh, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
+  assert.match(stationheadRefresh, /TryClaimAudioHealthScan\(scanTick\)/);
+  assert.match(stationheadRefresh, /ReleaseAudioHealthScan\(\)/);
   assert.match(stationheadRefresh, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
   assert.match(
     stationheadRefresh,
-    /ApplyAudioPlaybackState\(playing, L"2-minute native audio health check"\)/,
+    /ApplyAudioPlaybackState\(playing, L"1-minute native audio health check"\)/,
   );
   assert.match(stationheadRefresh, /__homepanelPrimaryStationhead\?\.scan\?\.\(0\)/);
   assert.match(stationheadRefresh, /AttemptNativeStartClick\(nowMs\)/);
-  assert.match(stationheadRefresh, /audioHealthCheckStartedAt_/);
 });
 
 test('Spotify sustained silence returns to trusted click and reload recovery', () => {
@@ -66,10 +79,13 @@ test('Spotify sustained silence returns to trusted click and reload recovery', (
   assert.match(spotifyClick, /return 'reload'/);
 });
 
-test('Spotify also polls native WebView2 audio every two minutes', () => {
-  assert.match(spotifyPhase, /kSpotifyAudioHealthCheckMs = 2ULL \* 60ULL \* 1000ULL/);
-  assert.match(spotifyPhase, /gSpotifyAudioHealthCheckDueTicks/);
-  assert.match(spotifyPhase, /considerTick\(gSpotifyAudioHealthCheckDueTicks\[slot\.index\]\)/);
+test('Spotify checks one live lane at a time on 15-second staggered phases', () => {
+  assert.match(spotifyPhase, /kSpotifyAudioHealthCheckMs = 1ULL \* 60ULL \* 1000ULL/);
+  assert.match(spotifyPhase, /NextAudioHealthScanTick\([\s\S]*static_cast<size_t>\(lane\) \+ 1/);
+  assert.match(spotifySchedule, /Slot\* audioHealthCandidate = nullptr/);
+  assert.match(spotifySchedule, /audioHealthPhase = phase/);
+  assert.match(spotifySchedule, /TryClaimAudioHealthScan\(now\)/);
+  assert.match(spotifySchedule, /ReleaseAudioHealthScan\(\)/);
   assert.match(spotifySchedule, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
   assert.match(spotifySchedule, /timedCompletionDeadlineTick = 0/);
   assert.match(spotifySchedule, /SetSlotState\(slot, SlotState::WaitingTarget\)/);
