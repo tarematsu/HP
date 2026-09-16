@@ -27,6 +27,19 @@ test('zero-second recovery starts playback only through trusted CDP Play click',
   assert.doesNotMatch(music, /direct-play|DirectPlay/);
 });
 
+test('Pause confirmation requires media-clock progress and restarts a zero-second stall', () => {
+  assert.match(scoped, /document\.querySelectorAll\('audio, video'\)/);
+  assert.match(scoped, /__homePanelSpotifyProgressProbe/);
+  assert.match(scoped, /current > previous\.currentTime \+ 0\.05/);
+  assert.match(scoped, /now - previous\.sampledAt < 1000/);
+  assert.match(scoped, /button\.click\(\)/);
+  assert.match(scoped, /return 'restarted'/);
+  assert.match(scoped, /return confirmPause\(visiblePageButton\) \? true : null/);
+  assert.match(scoped, /return pagePause && confirmPause\(pagePause\) \? true : null/);
+  assert.match(scoped, /return confirmPause\(playerPause\) \? true : null/);
+  assert.doesNotMatch(scoped, /media\.play\(/);
+});
+
 test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness', () => {
   const reconcileStart = music.indexOf('void SpotifyWebViews::ReconcileMusicTarget');
   const executeStart = music.indexOf('kSpotifyScopedTrackReconcileScript', reconcileStart);
