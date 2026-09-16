@@ -12,13 +12,16 @@ const controller = source('spotify_controller_lifecycle.inc');
 const layout = source('spotify_host_layout.inc');
 const host = source('spotify_host_lifecycle.inc');
 
-test('Spotify uses LOW memory immediately after confirmed playback', () => {
+test('Spotify leaves the WebView2 memory target unmanaged', () => {
   assert.match(wrapper, /#include "spotify_runtime_policy\.inc"/);
-  assert.match(
-    phase,
-    /slot\.state = state;[\s\S]*state == SlotState::Playing[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
+  assert.doesNotMatch(
+    policy,
+    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
-  assert.doesNotMatch(phase, /kSpotifyLowMemoryStablePlaybackMs/);
+  assert.doesNotMatch(
+    phase,
+    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)|SetSpotifyMemoryUsageTarget/,
+  );
   assert.match(
     phase,
     /state == SlotState::NotCreated \|\| state == SlotState::Authenticating \|\|\s*state == SlotState::Playing[\s\S]*slot\.nextRecoveryTick = 0/,
