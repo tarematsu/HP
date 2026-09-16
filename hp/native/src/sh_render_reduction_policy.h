@@ -20,6 +20,7 @@ inline std::wstring StationheadRenderReductionScript() {
     style.textContent = `
       *, *::before, *::after {
         animation: none !important;
+        animation-play-state: paused !important;
         transition: none !important;
         scroll-behavior: auto !important;
         box-shadow: none !important;
@@ -29,6 +30,7 @@ inline std::wstring StationheadRenderReductionScript() {
         will-change: auto !important;
         view-transition-name: none !important;
       }
+      picture, img,
       video, canvas, svg[aria-hidden='true'],
       marquee,
       [data-testid*='chat' i], [id*='chat' i], [class*='chat' i], [aria-label*='chat' i],
@@ -72,6 +74,7 @@ inline std::wstring StationheadRenderReductionScript() {
         visibility: hidden !important;
         pointer-events: none !important;
         content-visibility: hidden !important;
+        contain: strict !important;
       }
     `;
     root.appendChild(style);
