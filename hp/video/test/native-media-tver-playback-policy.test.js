@@ -61,14 +61,15 @@ test('TVer ad branch runs before survey and program recovery', () => {
   assert.ok(pausedIndex > surveyIndex);
 });
 
-test('TVer ads expose only Skip and fullscreen trusted actions', () => {
+test('TVer fullscreen is attempted before ad-specific Skip handling', () => {
+  const fullscreenIndex = policy.indexOf('const fullscreenPoint = videoFullscreenPoint(video)');
   const adIndex = policy.indexOf('if (adActive) {');
   const surveyIndex = policy.indexOf('const surveyRoots = Array.from');
   const adBranch = policy.slice(adIndex, surveyIndex);
+  assert.ok(fullscreenIndex >= 0 && adIndex > fullscreenIndex);
   assert.match(adBranch, /const skipButton = adControls\.find/);
   assert.match(adBranch, /if \(skipButton\) return point\(skipButton\)/);
-  assert.match(adBranch, /const fullscreenButton = adControls\.find/);
-  assert.match(adBranch, /return fullscreenButton \? point\(fullscreenButton\) : null/);
+  assert.doesNotMatch(adBranch, /fullscreenButton|isEnterFullscreenControl/);
   assert.doesNotMatch(adBranch, /video\.play\(/);
   assert.doesNotMatch(adBranch, /video\.volume/);
   assert.doesNotMatch(adBranch, /playbackRate/);
@@ -106,17 +107,21 @@ test('paused TVer program recovery is idempotent and never toggles the video sur
   assert.doesNotMatch(policy, /findPlayButton/);
 });
 
-test('TVer fullscreen retries after the trusted click has settled', () => {
+test('TVer fullscreen retries the loaded video corner after a failed trusted click', () => {
   assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
-  assert.match(policy, /if \(state && state\.fullscreenDirty === false\) return null/);
-  assert.match(policy, /if \(fullscreenButton && state\) state\.fullscreenDirty = false/);
-  assert.match(policy, /document\.elementFromPoint\(centerX, centerY\)/);
-  assert.match(policy, /hit !== element && !element\.contains\(hit\)/);
+  assert.match(policy, /const videoFullscreenPoint = media =>/);
+  assert.match(policy, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
+  assert.match(policy, /const x = rect\.right - insetX/);
+  assert.match(policy, /const y = rect\.bottom - insetY/);
+  assert.match(policy, /if \(state\) state\.fullscreenDirty = true/);
+  assert.match(policy, /if \(fullscreenPoint\) return fullscreenPoint/);
+  assert.match(policy, /if \(state\) state\.fullscreenDirty = false/);
   assert.match(policy, /__homePanelTverFullscreenPending/);
   assert.match(policy, /window\.setTimeout\(\(\) => \{/);
   assert.match(policy, /\}, 800\)/);
   assert.match(policy, /homepanel:tver-wake/);
   assert.match(policy, /state\.fullscreenDirty = true/);
+  assert.doesNotMatch(policy, /isEnterFullscreenControl|fullscreenButton/);
   assert.doesNotMatch(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
   assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
   assert.match(
