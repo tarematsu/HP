@@ -52,7 +52,7 @@ test('WebView implementation is composed by responsibility instead of numbered s
   assert.doesNotMatch(spotify, /spotify_webviews_core_part[1-4]/);
 });
 
-test('Spotify keeps full-client internal surfaces and exposes only the selected monitor slot full-size', () => {
+test('Spotify keeps full-client internal surfaces and exposes only the selected monitor runtime lane full-size', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySurfaceZoom = 0\.50/);
@@ -62,7 +62,7 @@ test('Spotify keeps full-client internal surfaces and exposes only the selected 
   assert.doesNotMatch(layout, /kSpotifyLowPowerPlaybackWidth|kSpotifyLowPowerPlaybackHeight/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/);
-  assert.match(layout, /const bool monitorForeground =\s*static_cast<int>\(i\) == monitorForegroundSlot_/);
+  assert.match(layout, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
   assert.match(layout, /const int hostX = client\.left;/);
   assert.match(layout, /const int hostY = client\.top;/);
   assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\);/);
@@ -209,12 +209,13 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow|get_ZoomFactor|GetDpiForWindow|cssWidth|cssHeight/);
 });
 
-test('Spotify defaults muted and audio modes C/D/E/F select exactly one slot', () => {
+test('Spotify defaults muted and audio modes B/C/D select exactly one runtime lane', () => {
   assert.match(header, /kSpotifyActiveAccountCount = 4/);
   assert.match(header, /void SetAudioOutputSlot\(int slotIndex\) noexcept/);
   assert.match(header, /int SlotIndexForWebView\(ICoreWebView2\* webview\) const noexcept/);
   assert.match(spotify, /int gSpotifyAudioOutputSlot = -1/);
-  assert.match(spotify, /slotIndex != gSpotifyAudioOutputSlot/);
+  assert.match(spotify, /runtimeLane != gSpotifyAudioOutputSlot/);
+  assert.match(spotify, /SpotifyRuntimeLaneForAccount/);
   assert.match(spotify, /void SetSpotifyAudioOutputSlot\(int slotIndex\) noexcept/);
   assert.match(spotify, /SetSpotifyOutputMuted\(slot\.webview\)/);
 });
