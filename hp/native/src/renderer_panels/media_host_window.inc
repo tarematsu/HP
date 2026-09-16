@@ -7,6 +7,11 @@ constexpr wchar_t kNativeSpotifyStatusClass[] = L"HomePanelNativeSpotifyStatus";
 constexpr LONG kNativeSpotifyStatusHeight = 56;
 constexpr UINT_PTR kNativeSpotifyStatusPollTimer = 0x5350;
 constexpr UINT kNativeSpotifyStatusPollMs = 60U * 1000U;
+constexpr UINT_PTR kNativeStationheadStatusPollTimer = 0x5351;
+constexpr UINT kNativeStationheadStatusPollMs = 60U * 1000U;
+// Spotify account status probes are phased 15 seconds apart. Start Stationhead
+// halfway between two Spotify phases, then keep the same one-minute cadence.
+constexpr UINT kNativeStationheadStatusInitialPhaseMs = 7U * 1000U + 500U;
 constexpr COLORREF kSpotifyStatusBackground = RGB(7, 10, 16);
 constexpr COLORREF kSpotifyStatusSurface = RGB(20, 26, 36);
 constexpr COLORREF kSpotifyStatusOutline = RGB(43, 54, 69);
@@ -22,6 +27,16 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
     case WM_TIMER:
       if (static_cast<UINT_PTR>(wparam) == kNativeSpotifyStatusPollTimer) {
         PollSpotifyPlaybackStatusesNow();
+        InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+      }
+      if (static_cast<UINT_PTR>(wparam) == kNativeStationheadStatusPollTimer) {
+        PollStationheadStatusStripCurrentTrackTitle(
+            gNativeMediaDataDir, UnixMillis());
+        // The first timer is the 7.5-second phase offset. Replace it with the
+        // normal one-minute cadence after the first Stationhead sample.
+        SetTimer(hwnd, kNativeStationheadStatusPollTimer,
+                 kNativeStationheadStatusPollMs, nullptr);
         InvalidateRect(hwnd, nullptr, FALSE);
         return 0;
       }
@@ -97,7 +112,7 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
       }
 
       const std::wstring stationheadTrack =
-          StationheadStatusStripCurrentTrackTitle(gNativeMediaDataDir, UnixMillis());
+          StationheadStatusStripCurrentTrackTitle();
       drawStatusCard(statuses.size(), L"Stationhead",
                      stationheadTrack.empty() ? L"--" : stationheadTrack);
 
@@ -121,6 +136,7 @@ LRESULT CALLBACK NativeSpotifyStatusWndProc(
     }
     case WM_NCDESTROY:
       KillTimer(hwnd, kNativeSpotifyStatusPollTimer);
+      KillTimer(hwnd, kNativeStationheadStatusPollTimer);
       break;
     default:
       break;
@@ -155,6 +171,8 @@ bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexc
     if (!status) return false;
     SetTimer(status, kNativeSpotifyStatusPollTimer,
              kNativeSpotifyStatusPollMs, nullptr);
+    SetTimer(status, kNativeStationheadStatusPollTimer,
+             kNativeStationheadStatusInitialPhaseMs, nullptr);
   } else {
     RECT current{};
     GetWindowRect(status, &current);
