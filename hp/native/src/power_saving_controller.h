@@ -26,6 +26,7 @@ class PowerSavingController {
     Stationhead,
     SpotifyPrimary,
     SpotifySecondary,
+    SpotifyTertiary,
     Muted,
   };
 
@@ -34,6 +35,7 @@ class PowerSavingController {
     Stationhead,
     SpotifyPrimary,
     SpotifySecondary,
+    SpotifyTertiary,
     Off,
   };
 
