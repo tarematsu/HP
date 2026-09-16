@@ -4,12 +4,21 @@
 namespace hp {
 namespace {
 
+constexpr int kStationheadPlaybackViewportWidth = 720;
+constexpr int kStationheadPlaybackViewportHeight = 480;
+
 int RectWidth(const RECT& bounds) noexcept {
   return std::max(1L, bounds.right - bounds.left);
 }
 
 int RectHeight(const RECT& bounds) noexcept {
   return std::max(1L, bounds.bottom - bounds.top);
+}
+
+RECT StationheadPlaybackControllerBounds() noexcept {
+  return RECT{0, 0,
+              kStationheadPlaybackViewportWidth,
+              kStationheadPlaybackViewportHeight};
 }
 
 void ApplyHostVisualClip(HWND window, bool fullSize) noexcept {
@@ -96,13 +105,16 @@ bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
 bool SurfaceMatches(HWND hostWindow,
                     ICoreWebView2Controller* controller,
                     const RECT& expectedHostBounds,
-                    HWND placement) noexcept {
+                    HWND placement,
+                    bool playbackViewport = true) noexcept {
   if (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) {
     return false;
   }
   const int width = RectWidth(expectedHostBounds);
   const int height = RectHeight(expectedHostBounds);
-  const RECT controllerBounds{0, 0, width, height};
+  const RECT controllerBounds = playbackViewport
+      ? StationheadPlaybackControllerBounds()
+      : RECT{0, 0, width, height};
   return WindowClientSizeMatches(hostWindow, width, height) &&
          ChildWindowPlacementMatches(hostWindow, expectedHostBounds, placement) &&
          ControllerBoundsMatch(controller, controllerBounds) &&
@@ -121,7 +133,7 @@ bool BackgroundAuthSurfaceMatches(HWND authHostWindow,
                                    RectHeight(background)) &&
            ChildWindowPlacementMatches(authHostWindow, background, nullptr);
   }
-  return SurfaceMatches(authHostWindow, authController, background, nullptr);
+  return SurfaceMatches(authHostWindow, authController, background, nullptr, false);
 }
 
 bool ActiveAuthSurfaceMatches(HWND hostWindow,
@@ -135,7 +147,7 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
   }
   const RECT surface = StationheadBackgroundBounds(workspaceBounds);
   return SurfaceMatches(hostWindow, controller, surface, HWND_BOTTOM) &&
-         SurfaceMatches(authHostWindow, authController, surface, HWND_TOP);
+         SurfaceMatches(authHostWindow, authController, surface, HWND_TOP, false);
 }
 
 RECT ResolveStationheadWorkspaceBounds(HWND parent,
@@ -198,12 +210,12 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int playbackHeight = RectHeight(playbackHostBounds);
   const int authWidth = RectWidth(authHostBounds);
   const int authHeight = RectHeight(authHostBounds);
-  const RECT playbackControllerBounds{0, 0, playbackWidth, playbackHeight};
+  const RECT playbackControllerBounds = StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep the host HWND and WebView viewport full-size. The host itself is
-  // visually clipped to 1x1 while backgrounded, so DOM/layout geometry stays
-  // stable for Stationhead automation without shrinking the internal viewport.
+  // Keep the playback WebView viewport fixed at 720x480 in every state.
+  // The host HWND remains full workspace size for stable z-order and is
+  // visually clipped to 1x1 while backgrounded.
   if (authHostWindow && IsWindow(authHostWindow)) {
     const bool geometryMatches =
         WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
