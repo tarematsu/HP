@@ -133,6 +133,10 @@ LR"JS(
     return [centerX, centerY];
   };
 
+  const nativeLoadedAt = Number(window.__homePanelSpotifyNativeLoadedAt);
+  const initialPlayDelayElapsed = Number.isFinite(nativeLoadedAt) &&
+      performance.now() - nativeLoadedAt >= 1000;
+
   const pageButtons = Array.from(document.querySelectorAll(
       'button[data-testid="play-button"]')).filter(enabled);
   const visiblePageButton = pageButtons.find(visible) || null;
@@ -141,6 +145,7 @@ LR"JS(
       return confirmPause(visiblePageButton) ? true : null;
     }
     clearProgressProbe();
+    if (!initialPlayDelayElapsed) return null;
     return point(visiblePageButton);
   }
 
