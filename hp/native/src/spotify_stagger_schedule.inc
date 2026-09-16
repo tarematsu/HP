@@ -1,6 +1,7 @@
 // SlotState is the queue. Each scheduler pass scans once from the previous slot
 // and starts at most one piece of WebView work. The adaptive timer wakes only
-// for startup, recovery, async timeout, completion deadline, or the healthy audit.
+// for startup, recovery, async timeout, completion deadline, audio health, or
+// the coarse healthy audit.
 
 namespace {
 constexpr ULONGLONG kSpotifyInitialStartDelayMs = 0;
@@ -15,6 +16,7 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   nextCloudPlaylistCheckTick_ = 0;
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
+  gSpotifyAudioHealthCheckDueTicks.fill(0);
 
   RunStaggeredReconcile();
   ArmRobustScheduler();
@@ -41,6 +43,45 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (now < scheduleStartTick_) return;
 
   ProbeDueTimedCompletions(now);
+
+  // Events remain the fast path, but do not trust them as the only health
+  // signal. Every healthy live Spotify WebView is independently checked through
+  // WebView2's native IsDocumentPlayingAudio property every two minutes. The
+  // property remains true for muted WebViews, so monitor/output routing does not
+  // create false failures. A confirmed silent slot is routed directly into the
+  // existing trusted-Play/reload recovery chain.
+  for (Slot& slot : slots_) {
+    if (slot.index >= gSpotifyAudioHealthCheckDueTicks.size()) continue;
+    ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
+    if (!slot.webview || slot.loginPage || !CurrentMusicTrack(slot) ||
+        !SlotStateIsHealthy(slot.state)) {
+      due = 0;
+      continue;
+    }
+    if (due == 0) {
+      due = now + kSpotifyAudioHealthCheckMs;
+      continue;
+    }
+    if (now < due) continue;
+
+    ComPtr<ICoreWebView2_8> audioView;
+    BOOL nativePlaying = FALSE;
+    if (FAILED(slot.webview.As(&audioView)) || !audioView ||
+        FAILED(audioView->get_IsDocumentPlayingAudio(&nativePlaying))) {
+      due = now + kSpotifyAudioHealthRetryMs;
+      continue;
+    }
+    due = now + kSpotifyAudioHealthCheckMs;
+    if (nativePlaying != FALSE) continue;
+
+    slot.timedCompletionDeadlineTick = 0;
+    slot.timedCompletionDeadlineGeneration = 0;
+    slot.trustedClickBlockedUntilTick = 0;
+    SetSlotState(slot, SlotState::WaitingTarget);
+    slot.nextRecoveryTick = now;
+    RecomputeForeground();
+  }
+
   for (Slot& slot : slots_) ExpireStaleAsyncWork(slot, now);
 
   const size_t count = slots_.size();
