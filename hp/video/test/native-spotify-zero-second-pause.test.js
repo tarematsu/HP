@@ -35,11 +35,12 @@ test('first Play click waits one second after page bootstrap', () => {
   assert.doesNotMatch(scripts + scoped, /performance\.now\(\)/);
 });
 
-test('Pause confirmation requires media-clock progress and restarts a zero-second stall', () => {
+test('Pause confirmation requires media-clock progress and delays zero-second restart', () => {
   assert.match(scoped, /document\.querySelectorAll\('audio, video'\)/);
   assert.match(scoped, /__homePanelSpotifyProgressProbe/);
   assert.match(scoped, /current > previous\.currentTime \+ 0\.05/);
-  assert.match(scoped, /now - previous\.sampledAt < 1000/);
+  assert.match(scoped, /const zeroSecondRecoveryGraceMs = 5000/);
+  assert.match(scoped, /now - previous\.sampledAt < zeroSecondRecoveryGraceMs/);
   assert.match(scoped, /__homePanelSpotifyZeroSecondRestartPath = targetPath/);
   assert.match(scoped, /button\.click\(\)/);
   assert.match(scoped, /return 'restarted'/);
