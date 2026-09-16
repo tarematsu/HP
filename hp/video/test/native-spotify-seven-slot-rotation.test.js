@@ -44,6 +44,14 @@ test('cloud owns the requested seven-group Spotify rotation', () => {
   assert.match(deviceSync, /spotify\.rotation = nextRotation/);
 });
 
+test('four Spotify accounts start from A, B, C and D respectively', () => {
+  assert.match(header, /kSpotifyActiveAccountCount = 4/);
+  assert.match(
+    rotation,
+    /slot\.timedRotationPosition = slot\.index % slot\.timedCycleTracks\.size\(\)/,
+  );
+});
+
 test('C, F and G share the same filtered short-song pool', () => {
   const rotationFunction = catalog.slice(
     catalog.indexOf('export function managedSpotifySevenSlotRotation()'),
