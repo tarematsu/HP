@@ -25,27 +25,36 @@ LR"JS(
 
   if (hasVisibleLoginPrompt()) {
     if (state) state.fullscreenDirty = true;
+    if (state) state.fullscreenKeyRequestedAt = 0;
     return;
   }
   if (isFullscreen()) {
-    if (state) state.fullscreenDirty = false;
+    if (state) {
+      state.fullscreenDirty = false;
+      state.fullscreenKeyRequestedAt = 0;
+    }
     return;
   }
   if (window.__homePanelTverFullscreenPending) return;
 
-  // A trusted CDP click completes asynchronously relative to this callback.
-  // Keep the action consumed for a short grace period so a second click cannot
-  // immediately toggle fullscreen back off before fullscreenchange is observed.
+  // Trusted keyboard/click fullscreen actions settle asynchronously. Keep the
+  // action consumed briefly so a second action cannot immediately toggle it off.
   window.__homePanelTverFullscreenPending = true;
   window.setTimeout(() => {
     window.__homePanelTverFullscreenPending = false;
     const latestState = window.__homePanelSakuraMeetsState;
     if (hasVisibleLoginPrompt()) {
-      if (latestState) latestState.fullscreenDirty = true;
+      if (latestState) {
+        latestState.fullscreenDirty = true;
+        latestState.fullscreenKeyRequestedAt = 0;
+      }
       return;
     }
     if (isFullscreen()) {
-      if (latestState) latestState.fullscreenDirty = false;
+      if (latestState) {
+        latestState.fullscreenDirty = false;
+        latestState.fullscreenKeyRequestedAt = 0;
+      }
       return;
     }
     if (latestState) latestState.fullscreenDirty = true;
