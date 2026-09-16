@@ -61,8 +61,8 @@ struct NativeMinuteFactsProjection {
   int64_t fetchedAt = 0;
 };
 
-inline constexpr int kRadarCanvasWidth = 1296;
-inline constexpr int kRadarCanvasHeight = 729;
+inline constexpr int kRadarCanvasWidth = 640;
+inline constexpr int kRadarCanvasHeight = 360;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
 struct NativeDashboardLayout {
