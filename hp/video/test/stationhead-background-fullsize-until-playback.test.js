@@ -23,7 +23,7 @@ function section(source, start, end) {
   return source.slice(from, to);
 }
 
-test('Stationhead normal background surface fills the client area behind the dashboard', () => {
+test('Stationhead normal background host fills the client area behind the dashboard', () => {
   assert.match(bridge, /StationheadBackgroundBounds\(const RECT& workspaceBounds\)[\s\S]*return workspaceBounds;/);
   assert.doesNotMatch(bridge, /kStationheadSurfaceWidth|kStationheadSurfaceHeight|ComputeMediaSurfaceAnchors|anchors\.clock|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(bridge, /StationheadOffscreenBounds|kStationheadOffscreenGap/);
@@ -39,17 +39,16 @@ test('Stationhead normal background surface fills the client area behind the das
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
 });
 
-test('normal startup and reload layout do not depend on audio confirmation', () => {
+test('stable background playback may compact while startup and reload force full viewport', () => {
   const keepBehind = section(
     layout,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()',
   );
   assert.match(keepBehind, /selectedTab_ = StationheadTabKind::None/);
-  assert.match(keepBehind, /ApplyStationheadChildLayout/);
-  assert.doesNotMatch(keepBehind, /AudioPlaying/);
-  assert.doesNotMatch(keepBehind, /audioLossPlaybackObserved_/);
-  assert.doesNotMatch(keepBehind, /trackBoundaryPlaybackRecoveryPending_/);
+  assert.match(keepBehind, /AudioPlayingSince\(\)/);
+  assert.match(keepBehind, /kStationheadCompactPlaybackStabilityMs/);
+  assert.match(keepBehind, /false, false, false, compactPlayback/);
 
   const startup = section(
     layout,
@@ -57,10 +56,11 @@ test('normal startup and reload layout do not depend on audio confirmation', () 
     'void StationheadPlayer::SetStartupPreviewBounds(',
   );
   assert.match(startup, /selectedTab_ = StationheadTabKind::None/);
-  assert.match(startup, /LayoutControllers\(\)/);
+  assert.match(startup, /ApplyStationheadChildLayout\([\s\S]*false, false, false, false\)/);
+  assert.doesNotMatch(startup, /AudioPlaying|compactPlayback/);
 });
 
-test('Monitor B changes Stationhead z-order only and preserves full-client geometry', () => {
+test('Monitor B changes Stationhead z-order and restores full-client controller geometry', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -71,6 +71,7 @@ test('Monitor B changes Stationhead z-order only and preserves full-client geome
     apply,
     /playbackForeground\s*=\s*[\s\S]*showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,
   );
+  assert.match(apply, /useCompactPlayback =\s*compactPlayback && !playbackForeground/);
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.doesNotMatch(apply, /playbackHostBounds = playbackForeground \? workspaceBounds/);
