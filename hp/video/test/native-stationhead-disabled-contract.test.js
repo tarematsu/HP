@@ -50,7 +50,7 @@ test('single Stationhead keeps one handoff message and one placement path', () =
   assert.doesNotMatch(appHeader, /renderState_|renderStateDirty_|PublishRenderState/);
 });
 
-test('Stationhead reuses the shared image/font-reduced profile', () => {
+test('Stationhead reuses the shared UDF with global image/font reduction', () => {
   assert.match(sharedEnvironment, /Acquire\(userDataFolder, true, true, std::move\(completion\)\)/);
   assert.match(app, /kStationheadAmazonProfile\[\] = L"spotify-v2-1"/);
   assert.match(stationheadHeader, /void ReuseWebViewProfile\(std::wstring profileName\)/);
