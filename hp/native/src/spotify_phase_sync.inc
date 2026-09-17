@@ -9,9 +9,9 @@ constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 1ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
-constexpr ULONGLONG kSpotifyAudioHealthSilenceConfirmMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthSilenceConfirmMs = 30ULL * 1000ULL;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
 std::array<ULONGLONG, kSpotifyActiveAccountCount>
     gSpotifyAudioHealthCheckDueTicks{};
@@ -140,7 +140,7 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   if (!initialCloudPlaylistReady_) return kSpotifySchedulerBootstrapMs;
 
   // Healthy playback wakes at its exact completion deadline and at its assigned
-  // one-minute staggered native audio-health slot. The one-hour ceiling remains
+  // 30-second staggered native audio-health slot. The one-hour ceiling remains
   // only a coarse safety audit for unrelated state loss.
   ULONGLONG nextDelayMs = kSpotifyHealthyAuditMs;
   const auto considerTick = [&nextDelayMs, now](ULONGLONG dueTick) noexcept {
