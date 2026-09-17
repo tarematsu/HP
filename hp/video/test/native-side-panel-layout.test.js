@@ -47,13 +47,15 @@ test('clock, air, electricity and weather use the same pixel dimensions', () => 
   );
 });
 
-test('YouTube host is fitted to 16:9 inside the two-row media cell', () => {
-  assert.match(mediaHost, /const LONG availableVideoHeight =/);
-  assert.match(mediaHost, /availableVideoHeight \* 16 \/ 9/);
+test('YouTube host is fitted to 16:9 inside the full two-row media cell', () => {
+  assert.match(mediaHost, /const LONG totalHeight =/);
+  assert.match(mediaHost, /totalHeight \* 16 \/ 9/);
   assert.match(mediaHost, /videoWidth \* 9 \/ 16/);
   assert.match(mediaHost, /const LONG contentLeft =/);
-  assert.match(mediaHost, /statusBounds\.left = contentLeft/);
-  assert.match(mediaHost, /statusBounds\.right = contentLeft \+ videoWidth/);
+  assert.match(mediaHost, /const LONG contentTop =/);
+  assert.doesNotMatch(mediaHost, /statusBounds/);
   assert.match(mediaHost, /videoBounds\.left = contentLeft/);
+  assert.match(mediaHost, /videoBounds\.top = contentTop/);
   assert.match(mediaHost, /videoBounds\.right = contentLeft \+ videoWidth/);
+  assert.match(mediaHost, /videoBounds\.bottom = contentTop \+ videoHeight/);
 });
