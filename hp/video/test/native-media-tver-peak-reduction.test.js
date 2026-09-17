@@ -77,23 +77,31 @@ test('TVer quality discovery is event driven and player-local', () => {
   assert.match(loop, /scheduleEnsure\(40\)/);
 });
 
-test('TVer fullscreen retries the video bottom-right until browser fullscreen succeeds', () => {
+test('TVer fullscreen uses bounded fallbacks until browser fullscreen succeeds', () => {
+  const key = watchdog.indexOf("homepanel:tver-fullscreen-key");
+  const control = watchdog.indexOf('const controlPoint = fullscreenControlPoint(video)');
+  const corner = watchdog.indexOf('const fullscreenPoint = videoFullscreenPoint(video)');
+  assert.ok(key >= 0 && control > key && corner > control);
   assert.match(watchdog, /const videoFullscreenPoint = media =>/);
   assert.match(watchdog, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
   assert.match(watchdog, /const x = rect\.right - insetX/);
   assert.match(watchdog, /const y = rect\.bottom - insetY/);
   assert.match(watchdog, /if \(state\) state\.fullscreenDirty = true/);
   assert.match(watchdog, /if \(fullscreenPoint\) return fullscreenPoint/);
-  assert.match(watchdog, /if \(state\) state\.fullscreenDirty = false/);
+  assert.match(watchdog, /state\.fullscreenDirty = false/);
   assert.match(watchdog, /homepanel:tver-wake/);
-  assert.doesNotMatch(watchdog, /isEnterFullscreenControl|fullscreenButton/);
+  assert.match(watchdog, /const isEnterFullscreenControl = element =>/);
+  assert.match(watchdog, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
   assert.doesNotMatch(watchdog, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
 });
 
-test('healthy TVer watchdog avoids fullscreen control enumeration', () => {
+test('healthy TVer watchdog only enumerates fullscreen controls while recovery is dirty', () => {
   assert.match(watchdog, /if \(!video \|\| video\.paused\)/);
   assert.doesNotMatch(watchdog, /const playerControls = \(\) =>/);
-  assert.doesNotMatch(watchdog, /isExitFullscreenControl|isEnterFullscreenControl/);
+  const fullscreenRecovery = watchdog.indexOf('const fullscreenControlPoint = media =>');
+  const healthyFastPath = watchdog.indexOf('const trackedVideo = state && state.video');
+  assert.ok(fullscreenRecovery >= 0 && healthyFastPath > fullscreenRecovery);
+  assert.doesNotMatch(watchdog, /isExitFullscreenControl/);
   assert.doesNotMatch(
     watchdog,
     /Array\.from\(document\.querySelectorAll\(\s*'button, \[role="button"\], a, \[aria-label\], \[title\]'/,
