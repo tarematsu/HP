@@ -4,4 +4,5 @@
 #include "spotify_lightweight_policy.inc"
 #include "spotify_host_lifecycle.inc"
 #include "webview_feature_policy.h"
+#include "webview_startup_cache_reset.h"
 #include "spotify_controller_lifecycle.inc"
