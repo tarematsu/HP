@@ -87,6 +87,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
               !options || FAILED(options->put_ProfileName(profileName.c_str())) ||
               FAILED(options->put_IsInPrivateModeEnabled(FALSE))) {
             target->controllerCreating = false;
+            SharedWebViewEnvironment::Instance().Invalidate(userDataFolder_);
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
             return;
@@ -99,24 +100,50 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                   return S_OK;
                 }
                 target->controllerCreating = false;
-                if (FAILED(controllerResult) || !controller || !target->hostWindow || !IsWindow(target->hostWindow)) {
+                if (FAILED(controllerResult) || !controller) {
                   if (controller) controller->Close();
+                  SharedWebViewEnvironment::Instance().Invalidate(userDataFolder_);
                   MarkSlotRecovering(*target, GetTickCount64());
                   ArmRobustScheduler();
                   return S_OK;
                 }
+                if (!target->hostWindow || !IsWindow(target->hostWindow)) {
+                  controller->Close();
+                  MarkSlotRecovering(*target, GetTickCount64());
+                  ArmRobustScheduler();
+                  return S_OK;
+                }
+
+                ComPtr<ICoreWebView2> startupView;
+                controller->get_CoreWebView2(&startupView);
+                if (!startupView) {
+                  controller->Close();
+                  SharedWebViewEnvironment::Instance().Invalidate(userDataFolder_);
+                  MarkSlotRecovering(*target, GetTickCount64());
+                  ArmRobustScheduler();
+                  return S_OK;
+                }
+
+                // Hold the slot in controllerCreating while the rare profile
+                // repair is asynchronous. The Spotify scheduler then cannot
+                // navigate an unconfigured WebView while CacheStorage/service
+                // worker repair is still running.
                 target->controller = controller;
-                target->controller->get_CoreWebView2(&target->webview);
-                if (!target->webview) {
-                  target->controller->Close();
-                  target->controller.Reset();
-                  MarkSlotRecovering(*target, GetTickCount64());
-                  ArmRobustScheduler();
-                  return S_OK;
-                }
-                target->controllerCreateTick = 0;
-                Configure(*target);
-                ArmRobustScheduler();
+                target->controllerCreating = true;
+                const ComPtr<ICoreWebView2Controller> startupController = controller;
+                ResetWebViewStartupCaches(
+                    startupView.Get(),
+                    [this, alive, target, startupController, startupView](HRESULT) {
+                      if (!alive->load(std::memory_order_acquire) || !started_ ||
+                          target->controller.Get() != startupController.Get()) {
+                        return;
+                      }
+                      target->controllerCreating = false;
+                      target->controllerCreateTick = 0;
+                      target->webview = startupView;
+                      Configure(*target);
+                      ArmRobustScheduler();
+                    });
                 return S_OK;
               });
 
@@ -124,6 +151,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
               target->hostWindow, options.Get(), ready.Get());
           if (FAILED(createResult)) {
             target->controllerCreating = false;
+            SharedWebViewEnvironment::Instance().Invalidate(userDataFolder_);
             MarkSlotRecovering(*target, GetTickCount64());
             ArmRobustScheduler();
           }
