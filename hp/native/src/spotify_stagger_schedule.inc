@@ -159,12 +159,13 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
         slot.timedCompletionDeadlineGeneration = 0;
         slot.trustedClickBlockedUntilTick = 0;
 
-        // The coordinator owns the whole incident. A confirmed silent sink
-        // first re-enters trusted Play, then reloads the document, and only a
-        // later recurrence rebuilds the controller. Other diagnostics cannot
-        // start a second ladder for the same target generation.
+        // The native probe has confirmed that the output is silent, but it has
+        // not attempted the lightweight trusted-Play repair yet. Report a
+        // timeline stall so the coordinator starts with ReassertPlayback;
+        // ConfirmedSilence is reserved for the click path after that repair has
+        // actually failed. Later probes can then advance to reload and rebuild.
         const MediaRecoveryAction action = NextMediaRecoveryAction(
-            slot.recoveryEpisode, MediaRecoveryEvidence::ConfirmedSilence,
+            slot.recoveryEpisode, MediaRecoveryEvidence::TimelineStall,
             now, slot.targetGeneration, !slot.loginPage, false);
         if (action == MediaRecoveryAction::ReassertPlayback) {
           SetSlotState(slot, SlotState::WaitingTarget);
