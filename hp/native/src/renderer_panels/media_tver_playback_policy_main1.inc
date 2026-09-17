@@ -17,13 +17,6 @@ LR"JS(
       (element.getAttribute('title') || '') + ' ' +
       (element.getAttribute('data-testid') || '') + ' ' +
       (element.textContent || ''));
-  const hasVisibleLoginPrompt = () => Array.from(document.querySelectorAll(
-      'button, a, [role="button"], [role="dialog"], [aria-modal="true"], '
-      + 'h1, h2, h3, [aria-label], [title]')).some(element => {
-    if (!visible(element)) return false;
-    const label = labelOf(element).toLowerCase();
-    return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
-  });
   const isEnterFullscreenControl = element => {
     if (!visible(element)) return false;
     const label = labelOf(element).toLowerCase();
@@ -100,7 +93,7 @@ LR"JS(
       state.fullscreenDirty = false;
       state.fullscreenKeyRequestedAt = 0;
     }
-  } else if (video && !hasVisibleLoginPrompt()) {
+  } else if (video) {
     if (state) state.fullscreenDirty = true;
     if (!Number(state?.fullscreenKeyRequestedAt || 0)) {
       if (state) state.fullscreenKeyRequestedAt = Date.now();
