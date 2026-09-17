@@ -42,7 +42,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   }
   if (now < scheduleStartTick_) return;
 
-  const reloadMediaSurface = [this, now](Slot& slot) noexcept {
+  const auto reloadMediaSurface = [this, now](Slot& slot) noexcept {
     slot.mediaKeyWaitUntilTick = 0;
     slot.mediaNetworkRecoveryTick = 0;
     slot.mediaKeyWaitFailurePending = false;
