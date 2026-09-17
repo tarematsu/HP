@@ -108,7 +108,6 @@ LR"JS(
     return null;
   }
 
-  if (hasVisibleLoginPrompt()) return null;
   return null;
 })()
 )JS"
