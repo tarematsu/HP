@@ -16,16 +16,6 @@ inline constexpr int64_t StationheadPeriodicRefreshIntervalMs() noexcept {
   return 50 * 60'000;
 }
 
-inline constexpr bool StationheadPeriodicRefreshNeedsNavigation(
-    bool audioPlaying,
-    bool playbackObserved,
-    bool audioLossActive,
-    int64_t stoppedForMs) noexcept {
-  return !audioPlaying && playbackObserved && audioLossActive &&
-      stoppedForMs >=
-          kStationheadAudioLossGraceMs + kStationheadAudioLossDomSettleMs;
-}
-
 inline constexpr int64_t StationheadAudioHealthCheckIntervalMs() noexcept {
   return 1 * 60'000;
 }
@@ -57,14 +47,6 @@ static_assert(StationheadPlaybackNavigationActive(false, true, false));
 static_assert(!StationheadPlaybackNavigationActive(false, true, true));
 static_assert(!StationheadPlaybackNavigationActive(false, false, false));
 static_assert(StationheadPeriodicRefreshIntervalMs() == 50 * 60'000);
-static_assert(!StationheadPeriodicRefreshNeedsNavigation(
-    true, true, true, 60'000));
-static_assert(!StationheadPeriodicRefreshNeedsNavigation(
-    false, true, true, 59'999));
-static_assert(!StationheadPeriodicRefreshNeedsNavigation(
-    false, false, true, 60'000));
-static_assert(StationheadPeriodicRefreshNeedsNavigation(
-    false, true, true, 60'000));
 static_assert(StationheadAudioHealthCheckIntervalMs() == 1 * 60'000);
 static_assert(StationheadAudioEscalationSettleMs() == 15'000);
 
@@ -72,9 +54,8 @@ static_assert(StationheadAudioEscalationSettleMs() == 15'000);
 
 // Extend StationheadPlayer while sh.h is parsed, then remove the temporary
 // source-rewriting macros before any implementation file is compiled. The
-// single Stationhead player audits playback every 50 minutes and reloads only
-// after confirmed persistent audio loss. Native audio is polled independently
-// once per minute in shared scan slot 0.
+// single Stationhead player refreshes every 50 minutes and independently polls
+// WebView2's native audio state once per minute in shared scan slot 0.
 #define NextWakeAt()                                                          \
   NextWakeAt() const noexcept {                                               \
     int64_t next = NextWakeAtBase();                                          \
@@ -377,18 +358,6 @@ static_assert(StationheadAudioEscalationSettleMs() == 15'000);
     const int64_t intervalMs =                                                \
         ::hp::StationheadPeriodicRefreshIntervalMs();                         \
     if (nowMs - periodicRefreshStartedAt_ < intervalMs) return;               \
-                                                                                \
-    const bool audioLossActive = audioLossStartedAt_.Active();                \
-    const int64_t stoppedForMs = audioLossActive                              \
-        ? audioLossStartedAt_.ElapsedMilliseconds()                           \
-        : 0;                                                                  \
-    if (!::hp::StationheadPeriodicRefreshNeedsNavigation(                     \
-            audioPlaying_.load(std::memory_order_relaxed),                    \
-            audioLossPlaybackObserved_, audioLossActive, stoppedForMs)) {     \
-      periodicRefreshStartedAt_ = nowMs;                                      \
-      periodicRefreshNavigationObserved_ = 0;                                 \
-      return;                                                                 \
-    }                                                                         \
                                                                                 \
     periodicRefreshStartedAt_ = nowMs;                                        \
     audioPlayingSinceAt_.store(0, std::memory_order_relaxed);                 \
