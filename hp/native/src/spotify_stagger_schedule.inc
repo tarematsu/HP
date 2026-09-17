@@ -4,9 +4,14 @@
 // the coarse healthy audit.
 
 namespace {
-constexpr ULONGLONG kSpotifyInitialStartDelayMs = 0;
+// Give Stationhead/shared Audio Service initialization a short head start before
+// the first Spotify controller is created. The remaining Spotify lanes retain
+// their existing thirty-second account spacing.
+constexpr ULONGLONG kSpotifyInitialStartDelayMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyHeavyRecoverySpacingMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyCloudReloadMinIntervalMs = 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyDeadSinkStrikeWindowMs = 2ULL * 60ULL * 1000ULL;
+ULONGLONG gSpotifyNextHeavyRecoveryTick = 0;
 std::array<ULONGLONG, kSpotifyActiveAccountCount>
     gSpotifyDeadSinkFirstStrikeTicks{};
 std::array<unsigned, kSpotifyActiveAccountCount>
@@ -23,6 +28,7 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   nextCloudPlaylistCheckTick_ = 0;
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
+  gSpotifyNextHeavyRecoveryTick = 0;
   gSpotifyAudioHealthCheckDueTicks.fill(0);
   gSpotifyAudioHealthSilenceConfirmTicks.fill(0);
   gSpotifyDeadSinkFirstStrikeTicks.fill(0);
@@ -91,9 +97,18 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   // Chromium reports decoder, decryptor and media-pipeline failures even when
   // the WebView is intentionally muted. Rebuild only the affected surface and
-  // preserve its account, track target and rotation position.
+  // preserve its account, track target and rotation position. Heavy controller
+  // teardown/recreation is globally spaced so simultaneous lane failures cannot
+  // stampede the shared Browser/Audio Service.
   for (Slot& slot : slots_) {
     if (!slot.mediaPipelineRecoveryPending) continue;
+    if (gSpotifyNextHeavyRecoveryTick != 0 &&
+        now < gSpotifyNextHeavyRecoveryTick) {
+      slot.nextRecoveryTick = std::max(
+          slot.nextRecoveryTick, gSpotifyNextHeavyRecoveryTick);
+      continue;
+    }
+    gSpotifyNextHeavyRecoveryTick = now + kSpotifyHeavyRecoverySpacingMs;
     RebuildPlaybackSurface(slot);
     return;
   }
@@ -264,6 +279,14 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   if (!slot.timedRotationActive) {
     if (!slot.webview) {
+      if (gSpotifyNextHeavyRecoveryTick != 0 &&
+          now < gSpotifyNextHeavyRecoveryTick) {
+        slot.nextRecoveryTick = std::max(
+            slot.nextRecoveryTick, gSpotifyNextHeavyRecoveryTick);
+        ArmRobustScheduler();
+        return;
+      }
+      gSpotifyNextHeavyRecoveryTick = now + kSpotifyHeavyRecoverySpacingMs;
       BeginControllerCreate(slot);
       return;
     }
