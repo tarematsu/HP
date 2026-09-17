@@ -27,13 +27,16 @@ test('Spotify has an event-independent media progression watchdog', () => {
   assert.match(spotifyEvents, /post\('spotify:timed-interrupted'\)/);
 });
 
-test('Stationhead re-kicks and reloads a media element whose clock freezes silently', () => {
+test('Stationhead re-kicks a frozen media clock then enters native DRM recovery', () => {
   assert.match(stationheadLifecycle, /progressProbeMs = 4000/);
   assert.match(stationheadLifecycle, /progressStallMs = 12000/);
   assert.match(stationheadLifecycle, /const probeMediaProgress = \(\) =>/);
   assert.match(stationheadLifecycle, /media\.pause\(\)/);
   assert.match(stationheadLifecycle, /media\.play\?\.\(\)/);
-  assert.match(stationheadLifecycle, /location\.reload\(\)/);
+  assert.match(stationheadLifecycle, /progressSyntheticKeyWait = true/);
+  assert.match(stationheadLifecycle, /postText\('drm-waiting'\)/);
+  assert.match(stationheadLifecycle, /postText\('drm-ready'\)/);
+  assert.doesNotMatch(stationheadLifecycle, /location\.reload\(\)/);
   assert.match(stationheadLifecycle, /keyWaitingMedia === media/);
 });
 
