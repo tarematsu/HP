@@ -37,7 +37,6 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
 
   const ULONGLONG now = GetTickCount64();
-  PollProcessTitleStatus(now);
   const bool cloudPlaylistWasReady = initialCloudPlaylistReady_;
   const bool cloudPlaylistReady = InitialCloudPlaylistReady(now);
   if (!cloudPlaylistWasReady && cloudPlaylistReady) {

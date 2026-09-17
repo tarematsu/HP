@@ -31,14 +31,13 @@ test('rain radar decoding yields CPU priority to playback work', () => {
   assert.match(radar, /ComposeRadarFrame\(\)/);
 });
 
-test('Spotify status polling is isolated to one low-frequency native timer', () => {
-  assert.match(mediaWindow, /kNativeSpotifyStatusPollTimer = 0x5350/);
-  assert.match(mediaWindow, /kNativeSpotifyStatusPollMs = 60U \* 1000U/);
-  assert.match(mediaWindow, /SetTimer\(status, kNativeSpotifyStatusPollTimer/);
-  assert.match(mediaWindow, /PollSpotifyPlaybackStatusesNow\(\)/);
-  assert.match(mediaWindow, /KillTimer\(hwnd, kNativeSpotifyStatusPollTimer\)/);
-  assert.match(phase, /InvalidateSpotifyStatusForHost/);
-  assert.match(phase, /InvalidateRect\(status, nullptr, FALSE\)/);
+test('media status polling is removed while playback watchdogs remain', () => {
+  assert.doesNotMatch(mediaWindow, /kNativeSpotifyStatusPollTimer/);
+  assert.doesNotMatch(mediaWindow, /kNativeStationheadStatusPollTimer/);
+  assert.doesNotMatch(mediaWindow, /PollSpotifyPlaybackStatusesNow\(\)/);
+  assert.doesNotMatch(mediaWindow, /PollStationheadStatusStripCurrentTrackTitle/);
+  assert.doesNotMatch(schedule, /PollProcessTitleStatus\(now\)/);
+  assert.doesNotMatch(phase, /considerTick\(slot\.nextProcessTitlePollTick/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaTverWatchdogMs = 30U \* 1000U/);
 });

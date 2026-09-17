@@ -49,8 +49,8 @@ test('media host recreation drops stale watchdog state with the old HWND', () =>
   assert.match(section, /state\.inFlight = false/);
 });
 
-test('Spotify status strip and video resize preserve sibling Z-order', () => {
-  assert.doesNotMatch(hostWindow, /SetWindowPos\(status, HWND_TOP/);
-  assert.match(hostWindow, /SetWindowPos\(status, nullptr[\s\S]*SWP_NOZORDER/);
+test('video resize preserves sibling Z-order after status-strip removal', () => {
+  assert.doesNotMatch(hostWindow, /SetWindowPos\(status/);
+  assert.doesNotMatch(hostWindow, /HomePanelNativeSpotifyStatus/);
   assert.match(hostWindow, /SetWindowPos\([\s\S]*host, nullptr[\s\S]*SWP_NOZORDER/);
 });

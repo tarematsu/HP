@@ -51,13 +51,12 @@ test('control gaps use the same native panel surface instead of black', () => {
   assert.doesNotMatch(overlay, /FillRect\([\s\S]{0,80}BLACK_BRUSH/);
 });
 
-test('top controls and Spotify status render through a back buffer', () => {
+test('top controls remain back buffered after media status-strip removal', () => {
   assert.match(overlay, /CreateCompatibleDC\(dc\)/);
   assert.match(overlay, /CreateCompatibleBitmap\(dc, width, height\)/);
   assert.match(overlay, /BitBlt\(dc, 0, 0, width, height, paintDc, 0, 0, SRCCOPY\)/);
 
   assert.match(mediaWindow, /case WM_ERASEBKGND:[\s\S]*return 1/);
-  assert.match(mediaWindow, /CreateCompatibleDC\(dc\)/);
-  assert.match(mediaWindow, /CreateCompatibleBitmap\(dc, width, height\)/);
-  assert.match(mediaWindow, /BitBlt\(dc, 0, 0, width, height, paintDc, 0, 0, SRCCOPY\)/);
+  assert.doesNotMatch(mediaWindow, /HomePanelNativeSpotifyStatus/);
+  assert.doesNotMatch(mediaWindow, /CreateCompatibleDC\(dc\)/);
 });
