@@ -73,5 +73,6 @@ test('Spotify full rebuild preserves current target and rotation instead of adva
   assert.doesNotMatch(rebuild, /slot\.targetGeneration = 0/);
   assert.doesNotMatch(rebuild, /slot\.timedRotationPosition = 0/);
   assert.doesNotMatch(rebuild, /slot\.timedRotationActive = false/);
-  assert.match(rebuild, /slot\.nextRecoveryTick = GetTickCount64\(\)/);
+  assert.match(rebuild, /const ULONGLONG now = GetTickCount64\(\)/);
+  assert.match(rebuild, /slot\.nextRecoveryTick = now/);
 });
