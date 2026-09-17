@@ -26,12 +26,15 @@ test('paused TVer playback recovery is idempotent and never toggles the video su
   assert.doesNotMatch(playbackPolicy, /__homePanelTverResumeBlocked/);
 });
 
-test('TVer fullscreen recovery only targets the loaded video bottom-right', () => {
+test('TVer fullscreen recovery remains bounded to the loaded player', () => {
+  assert.match(playbackPolicy, /homepanel:tver-fullscreen-key/);
+  assert.match(playbackPolicy, /const fullscreenControlPoint = media =>/);
+  assert.match(playbackPolicy, /const root = playerRootFor\(media\)/);
+  assert.match(playbackPolicy, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
   assert.match(playbackPolicy, /const videoFullscreenPoint = media =>/);
   assert.match(playbackPolicy, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
   assert.match(playbackPolicy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
   assert.match(playbackPolicy, /if \(fullscreenPoint\) return fullscreenPoint/);
-  assert.doesNotMatch(playbackPolicy, /isEnterFullscreenControl|fullscreenButton/);
 });
 
 test('TVer routing keys live directly in the shared media base', () => {
