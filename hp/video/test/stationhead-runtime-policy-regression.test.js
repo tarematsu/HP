@@ -70,9 +70,15 @@ test('native Stationhead click locator resolves split Connect music heading and 
   assert.ok(body.includes("const connectMusicActionPattern = /^(?:connect|reconnect)$/i;"));
   assert.match(body, /const connectMusicModalAction = \(\) =>/);
   assert.match(body, /h1,h2,h3,\[role='heading'\]/);
-  assert.match(body, /connectMusicHeadingPattern\.test\(labelOf\(heading\)\)/);
+  assert.match(
+    body,
+    /labelsOf\(heading\)\.some\(label => connectMusicHeadingPattern\.test\(label\)\)/,
+  );
   assert.match(body, /shell && shell !== document\.body && depth < 7/);
-  assert.match(body, /connectMusicActionPattern\.test\(labelOf\(action\)\)/);
+  assert.match(
+    body,
+    /labelsOf\(action\)\.some\(label => connectMusicActionPattern\.test\(label\)\)/,
+  );
   assert.match(body, /const modalConnectPoint = connectMusicModalAction\(\);/);
   const modalAt = body.indexOf('const modalConnectPoint = connectMusicModalAction();');
   const allowedAt = body.indexOf('allowedOnboardingPattern.test(label)');
