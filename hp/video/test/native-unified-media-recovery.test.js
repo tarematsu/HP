@@ -21,6 +21,7 @@ test('recovery policy has one ordered, cooldown-protected ladder', () => {
   assert.match(coordinator, /kMediaRecoveryHealthyResetMs/);
   assert.match(coordinator, /highestActionAttempts >= 2/);
   assert.match(coordinator, /MediaRecoveryWithoutFallbackContract/);
+  assert.match(coordinator, /MediaRecoveryTimelineStallContract/);
   assert.match(coordinator, /requested.*ReassertPlayback/s);
   assert.match(coordinator, /highestAction.*ReloadDocument/s);
   assert.match(coordinator, /highestAction.*RebuildSurface/s);
@@ -48,7 +49,7 @@ test('Stationhead escalates confirmed silence without bypassing authentication',
 
 test('Spotify routes silence and process failures through the same episode', () => {
   assert.match(spotify, /slot\.recoveryEpisode/);
-  assert.match(spotify, /MediaRecoveryEvidence::ConfirmedSilence/);
+  assert.match(spotify, /MediaRecoveryEvidence::TimelineStall/);
   assert.match(spotify, /ObserveMediaRecoveryHealthy/);
   assert.match(spotifyProcesses, /MediaRecoveryEvidence::NetworkFailure/);
   assert.match(spotifyProcesses, /MediaRecoveryEvidence::ProcessFailure/);
