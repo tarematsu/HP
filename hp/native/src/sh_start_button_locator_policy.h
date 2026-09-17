@@ -98,13 +98,14 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   const connectMusicModalAction = () => {
     const headingSelector = "h1,h2,h3,[role='heading']";
     for (const heading of document.querySelectorAll(headingSelector)) {
-      if (!rendered(heading) || !connectMusicHeadingPattern.test(labelOf(heading))) continue;
+      if (!rendered(heading) ||
+          !labelsOf(heading).some(label => connectMusicHeadingPattern.test(label))) continue;
       let shell = heading.parentElement;
       for (let depth = 0;
            shell && shell !== document.body && depth < 7;
            depth += 1, shell = shell.parentElement) {
         for (const action of shell.querySelectorAll(selector)) {
-          if (!connectMusicActionPattern.test(labelOf(action))) continue;
+          if (!labelsOf(action).some(label => connectMusicActionPattern.test(label))) continue;
           const point = pointOf(action);
           if (point) return point;
         }
