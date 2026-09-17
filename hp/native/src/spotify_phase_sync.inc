@@ -150,12 +150,6 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   };
 
   for (const Slot& slot : slots_) {
-    // The top Spotify status has one source of truth: a fixed 60-second poll.
-    if (slot.webview) {
-      considerTick(slot.nextProcessTitlePollTick == 0
-                       ? now
-                       : slot.nextProcessTitlePollTick);
-    }
     if (slot.index < gSpotifyAudioHealthCheckDueTicks.size() &&
         slot.webview && CurrentMusicTrack(slot) &&
         SlotStateIsHealthy(slot.state)) {

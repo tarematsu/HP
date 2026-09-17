@@ -1,193 +1,5 @@
-// Native MV host HWND registration, Spotify status strip, message dispatch and
-// bounds management.
+// Native MV host HWND registration, message dispatch and bounds management.
 extern fs::path gNativeMediaDataDir;
-
-namespace {
-constexpr wchar_t kNativeSpotifyStatusClass[] = L"HomePanelNativeSpotifyStatus";
-constexpr LONG kNativeSpotifyStatusHeight = 56;
-constexpr UINT_PTR kNativeSpotifyStatusPollTimer = 0x5350;
-constexpr UINT kNativeSpotifyStatusPollMs = 60U * 1000U;
-constexpr UINT_PTR kNativeStationheadStatusPollTimer = 0x5351;
-constexpr UINT kNativeStationheadStatusPollMs = 60U * 1000U;
-// Spotify account status probes are phased 15 seconds apart. Start Stationhead
-// halfway between two Spotify phases, then keep the same one-minute cadence.
-constexpr UINT kNativeStationheadStatusInitialPhaseMs = 7U * 1000U + 500U;
-constexpr COLORREF kSpotifyStatusBackground = RGB(7, 10, 16);
-constexpr COLORREF kSpotifyStatusSurface = RGB(20, 26, 36);
-constexpr COLORREF kSpotifyStatusOutline = RGB(43, 54, 69);
-
-HBRUSH SpotifyStatusBackgroundBrush() noexcept {
-  static HBRUSH brush = CreateSolidBrush(kSpotifyStatusBackground);
-  return brush;
-}
-
-LRESULT CALLBACK NativeSpotifyStatusWndProc(
-    HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-  switch (message) {
-    case WM_TIMER:
-      if (static_cast<UINT_PTR>(wparam) == kNativeSpotifyStatusPollTimer) {
-        PollSpotifyPlaybackStatusesNow();
-        InvalidateRect(hwnd, nullptr, FALSE);
-        return 0;
-      }
-      if (static_cast<UINT_PTR>(wparam) == kNativeStationheadStatusPollTimer) {
-        PollStationheadStatusStripCurrentTrackTitle(
-            gNativeMediaDataDir, UnixMillis());
-        // The first timer is the 7.5-second phase offset. Replace it with the
-        // normal one-minute cadence after the first Stationhead sample.
-        SetTimer(hwnd, kNativeStationheadStatusPollTimer,
-                 kNativeStationheadStatusPollMs, nullptr);
-        InvalidateRect(hwnd, nullptr, FALSE);
-        return 0;
-      }
-      break;
-    case WM_ERASEBKGND:
-      return 1;
-    case WM_PAINT: {
-      PAINTSTRUCT paint{};
-      HDC dc = BeginPaint(hwnd, &paint);
-      if (!dc) return 0;
-      RECT client{};
-      GetClientRect(hwnd, &client);
-      const int width = std::max(1L, client.right - client.left);
-      const int height = std::max(1L, client.bottom - client.top);
-      HDC memoryDc = CreateCompatibleDC(dc);
-      HBITMAP bitmap = memoryDc ? CreateCompatibleBitmap(dc, width, height) : nullptr;
-      HGDIOBJ previousBitmap =
-          memoryDc && bitmap ? SelectObject(memoryDc, bitmap) : nullptr;
-      HDC paintDc = memoryDc && bitmap ? memoryDc : dc;
-
-      FillRect(paintDc, &client, SpotifyStatusBackgroundBrush());
-      SetBkMode(paintDc, TRANSPARENT);
-      SetTextColor(paintDc, RGB(225, 229, 235));
-      HGDIOBJ previousFont =
-          SelectObject(paintDc, GetStockObject(DEFAULT_GUI_FONT));
-
-      const auto statuses = GetSpotifyPlaybackStatuses();
-      const size_t cellCount = statuses.size() + 1;
-      const LONG stripWidth = std::max(1L, client.right - client.left);
-      constexpr LONG outerInset = 3;
-      constexpr LONG cardGap = 4;
-      HBRUSH cardBrush = CreateSolidBrush(kSpotifyStatusSurface);
-      HPEN cardPen = CreatePen(PS_SOLID, 1, kSpotifyStatusOutline);
-      HGDIOBJ previousBrush = SelectObject(paintDc, cardBrush);
-      HGDIOBJ previousPen = SelectObject(paintDc, cardPen);
-
-      const auto drawStatusCard = [&](size_t index,
-                                      const std::wstring& heading,
-                                      const std::wstring& detail) {
-        const LONG cellLeft = client.left +
-            static_cast<LONG>((static_cast<long long>(stripWidth) * index) /
-                              cellCount);
-        const LONG cellRight = client.left +
-            static_cast<LONG>((static_cast<long long>(stripWidth) * (index + 1)) /
-                              cellCount);
-        const LONG leftInset = outerInset + (index == 0 ? 0 : cardGap / 2);
-        const LONG rightInset = outerInset +
-            (index + 1 == cellCount ? 0 : cardGap - cardGap / 2);
-        RECT card{
-            cellLeft + leftInset,
-            client.top + outerInset,
-            std::max<LONG>(cellLeft + leftInset + 1, cellRight - rightInset),
-            std::max<LONG>(client.top + outerInset + 1,
-                           client.bottom - outerInset)};
-        const int radius = std::max(8L, std::min(16L, card.bottom - card.top));
-        RoundRect(paintDc, card.left, card.top, card.right, card.bottom,
-                  radius, radius);
-
-        RECT first{card.left + 8, card.top + 3, card.right - 8, card.top + 22};
-        RECT second{card.left + 8, card.top + 24, card.right - 8, card.bottom - 3};
-        DrawTextW(paintDc, heading.c_str(), -1, &first,
-                  DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
-                      DT_NOPREFIX);
-        DrawTextW(paintDc, detail.c_str(), -1, &second,
-                  DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS |
-                      DT_NOPREFIX);
-      };
-
-      for (size_t i = 0; i < statuses.size(); ++i) {
-        const std::wstring& heading = statuses[i].windowName;
-        const std::wstring& track = statuses[i].trackTitle;
-        drawStatusCard(i, heading, track.empty() ? L"--" : track);
-      }
-
-      const std::wstring stationheadTrack =
-          StationheadStatusStripCurrentTrackTitle();
-      drawStatusCard(statuses.size(), L"Stationhead",
-                     stationheadTrack.empty() ? L"--" : stationheadTrack);
-
-      SelectObject(paintDc, previousPen);
-      SelectObject(paintDc, previousBrush);
-      DeleteObject(cardPen);
-      DeleteObject(cardBrush);
-      if (previousFont && previousFont != HGDI_ERROR) {
-        SelectObject(paintDc, previousFont);
-      }
-      if (paintDc != dc) {
-        BitBlt(dc, 0, 0, width, height, paintDc, 0, 0, SRCCOPY);
-      }
-      if (memoryDc && bitmap) {
-        SelectObject(memoryDc, previousBitmap);
-        DeleteObject(bitmap);
-      }
-      if (memoryDc) DeleteDC(memoryDc);
-      EndPaint(hwnd, &paint);
-      return 0;
-    }
-    case WM_NCDESTROY:
-      KillTimer(hwnd, kNativeSpotifyStatusPollTimer);
-      KillTimer(hwnd, kNativeStationheadStatusPollTimer);
-      break;
-    default:
-      break;
-  }
-  return DefWindowProcW(hwnd, message, wparam, lparam);
-}
-
-bool EnsureNativeSpotifyStatusPanel(HWND parentWindow, const RECT& bounds) noexcept {
-  static std::once_flag once;
-  static bool registered = false;
-  std::call_once(once, [] {
-    WNDCLASSW windowClass{};
-    windowClass.lpfnWndProc = NativeSpotifyStatusWndProc;
-    windowClass.hInstance = GetModuleHandleW(nullptr);
-    windowClass.lpszClassName = kNativeSpotifyStatusClass;
-    windowClass.hCursor = nullptr;
-    windowClass.hbrBackground = SpotifyStatusBackgroundBrush();
-    SetLastError(ERROR_SUCCESS);
-    registered = RegisterClassW(&windowClass) != 0 ||
-                 GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
-  });
-  if (!registered) return false;
-
-  HWND status = FindWindowExW(parentWindow, nullptr, kNativeSpotifyStatusClass, nullptr);
-  if (!status) {
-    status = CreateWindowExW(
-        0, kNativeSpotifyStatusClass, L"",
-        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
-        bounds.left, bounds.top, std::max(1L, bounds.right - bounds.left),
-        std::max(1L, bounds.bottom - bounds.top), parentWindow, nullptr,
-        GetModuleHandleW(nullptr), nullptr);
-    if (!status) return false;
-    SetTimer(status, kNativeSpotifyStatusPollTimer,
-             kNativeSpotifyStatusPollMs, nullptr);
-    SetTimer(status, kNativeStationheadStatusPollTimer,
-             kNativeStationheadStatusInitialPhaseMs, nullptr);
-  } else {
-    RECT current{};
-    GetWindowRect(status, &current);
-    MapWindowPoints(nullptr, parentWindow, reinterpret_cast<POINT*>(&current), 2);
-    if (!EqualRect(&current, &bounds)) {
-      SetWindowPos(status, nullptr, bounds.left, bounds.top,
-                   std::max(1L, bounds.right - bounds.left),
-                   std::max(1L, bounds.bottom - bounds.top),
-                   SWP_NOACTIVATE | SWP_NOSENDCHANGING | SWP_NOZORDER |
-                       SWP_SHOWWINDOW);
-    }
-  }
-  return true;
-}
-}  // namespace
 
 bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
                          const RECT& bounds) noexcept;
@@ -293,39 +105,27 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
 
   const LONG totalWidth = std::max(1L, bounds.right - bounds.left);
   const LONG totalHeight = std::max(1L, bounds.bottom - bounds.top);
-  const LONG statusHeight = std::min(
-      kNativeSpotifyStatusHeight, std::max(1L, totalHeight / 3));
-  const LONG availableVideoHeight = std::max<LONG>(1, totalHeight - statusHeight);
 
-  // Fit the actual YouTube/TVer host into the two-row media cell at 16:9.
-  // In the normal dashboard geometry height is the limiting dimension, so the
-  // host is narrowed and centered without changing the surrounding three-row grid.
+  // The retired Spotify/Stationhead status strip no longer consumes vertical
+  // space. Fit YouTube/TVer directly into the full media cell at 16:9.
   LONG videoWidth = std::min<LONG>(
-      totalWidth, std::max<LONG>(1, availableVideoHeight * 16 / 9));
+      totalWidth, std::max<LONG>(1, totalHeight * 16 / 9));
   LONG videoHeight = std::max<LONG>(1, videoWidth * 9 / 16);
-  if (videoHeight > availableVideoHeight) {
-    videoHeight = availableVideoHeight;
+  if (videoHeight > totalHeight) {
+    videoHeight = totalHeight;
     videoWidth = std::min<LONG>(
         totalWidth, std::max<LONG>(1, videoHeight * 16 / 9));
   }
   const LONG contentLeft =
       bounds.left + std::max<LONG>(0, (totalWidth - videoWidth) / 2);
-  const LONG groupHeight = statusHeight + videoHeight;
-  const LONG groupTop =
-      bounds.top + std::max<LONG>(0, (totalHeight - groupHeight) / 2);
+  const LONG contentTop =
+      bounds.top + std::max<LONG>(0, (totalHeight - videoHeight) / 2);
 
-  RECT statusBounds = bounds;
-  statusBounds.left = contentLeft;
-  statusBounds.top = groupTop;
-  statusBounds.right = contentLeft + videoWidth;
-  statusBounds.bottom = statusBounds.top + statusHeight;
   RECT videoBounds = bounds;
   videoBounds.left = contentLeft;
-  videoBounds.top = std::min(bounds.bottom - 1, statusBounds.bottom);
+  videoBounds.top = contentTop;
   videoBounds.right = contentLeft + videoWidth;
-  videoBounds.bottom = std::min<LONG>(bounds.bottom, videoBounds.top + videoHeight);
-
-  if (!EnsureNativeSpotifyStatusPanel(parentWindow, statusBounds)) return false;
+  videoBounds.bottom = contentTop + videoHeight;
 
   HWND host = FindWindowExW(
       parentWindow, nullptr, kNativeMvPanelHostClass, nullptr);
