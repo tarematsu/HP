@@ -37,6 +37,17 @@ test('profile repair clears playback state without deleting authentication state
   assert.doesNotMatch(schedule, /COREWEBVIEW2_BROWSING_DATA_KINDS_PASSWORD_AUTOSAVE/);
 });
 
+test('failed profile repair falls back instead of pretending the clear succeeded', () => {
+  assert.match(
+    schedule,
+    /ICoreWebView2ClearBrowsingDataCompletedHandler>[\s\S]*\(HRESULT result\)/,
+  );
+  assert.match(
+    schedule,
+    /if \(FAILED\(result\)\) \{[\s\S]*mediaPipelineRecoveryPending = true;[\s\S]*nextRecoveryTick = GetTickCount64\(\);/,
+  );
+});
+
 test('heavy surface recovery is serialized and shared browser recycle is bounded', () => {
   assert.match(schedule, /kSpotifyHeavyRecoverySpacingMs = 5ULL \* 1000ULL/);
   assert.match(schedule, /gSpotifyHeavyRecoveryNextTick/);
@@ -49,4 +60,15 @@ test('heavy surface recovery is serialized and shared browser recycle is bounded
   assert.match(shared, /HRESULT_FROM_WIN32\(ERROR_RETRY\)/);
   assert.match(shared, /kSharedBrowserRecycleCooldownMs = 10ULL \* 60ULL \* 1000ULL/);
   assert.match(shared, /TerminateProcess\(process, kSharedBrowserRecycleExitCode\)/);
+});
+
+test('rejected browser recycle rebuilds only the incident owner', () => {
+  const recycle = schedule.slice(schedule.indexOf('MediaRecoveryAction::RecycleEnvironment'));
+  assert.match(recycle, /if \(recycling\) \{[\s\S]*for \(Slot& affected : slots_\)/);
+  assert.match(
+    recycle,
+    /else \{[\s\S]*slot\.mediaPipelineRecoveryPending = true;[\s\S]*SetSlotState\(slot, SlotState::Recovering\);/,
+  );
+  const rejected = recycle.slice(recycle.indexOf('} else {'));
+  assert.doesNotMatch(rejected.split('RecomputeForeground')[0], /for \(Slot& affected : slots_\)/);
 });

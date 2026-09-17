@@ -144,16 +144,29 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     const HRESULT started = profile2->ClearBrowsingData(
         kinds,
         Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
-            [this, alive, target, expectedWebview](HRESULT) -> HRESULT {
+            [this, alive, target, expectedWebview](HRESULT result) -> HRESULT {
               if (!alive || !alive->load(std::memory_order_acquire)) return S_OK;
               target->profileRecoveryInFlight = false;
-              target->profileRecoveryPending = false;
-              target->profileRecoveryDeep = false;
               if (target->webview.Get() != expectedWebview.Get()) {
+                target->profileRecoveryPending = false;
+                target->profileRecoveryDeep = false;
+                ArmRobustScheduler();
+                return S_OK;
+              }
+              if (FAILED(result)) {
+                target->profileRecoveryPending = false;
+                target->profileRecoveryDeep = false;
+                target->mediaPipelineRecoveryGeneration =
+                    target->targetGeneration;
+                target->mediaPipelineRecoveryPending = true;
+                SetSlotState(*target, SlotState::Recovering);
+                target->nextRecoveryTick = GetTickCount64();
                 ArmRobustScheduler();
                 return S_OK;
               }
 
+              target->profileRecoveryPending = false;
+              target->profileRecoveryDeep = false;
               target->mediaPipelineRecoveryGeneration = target->targetGeneration;
               target->mediaPipelineRecoveryPending = true;
               SetSlotState(*target, SlotState::Recovering);
@@ -287,23 +300,34 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
           const bool recycling =
               SharedWebViewEnvironment::Instance().RecycleBrowserProcess(
                   userDataFolder_, slot.webview.Get());
-          for (Slot& affected : slots_) {
-            affected.profileRecoveryPending = false;
-            affected.profileRecoveryInFlight = false;
-            affected.profileRecoveryDeep = false;
-            affected.mediaPipelineRecoveryGeneration =
-                affected.targetGeneration;
-            affected.mediaPipelineRecoveryPending = true;
-            SetSlotState(affected, SlotState::Recovering);
-            affected.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
-            ResetMediaRecoveryEpisode(
-                affected.recoveryEpisode, affected.targetGeneration);
-          }
-          if (!recycling) {
-            // The shared environment may be cooling down or the runtime may not
-            // expose BrowserProcessExited. A serialized surface rebuild remains
-            // available and the reset episode can retry escalation later.
+          if (recycling) {
+            // The browser process is shared by every Spotify profile in this
+            // environment, so a successful recycle invalidates every surface.
+            for (Slot& affected : slots_) {
+              affected.profileRecoveryPending = false;
+              affected.profileRecoveryInFlight = false;
+              affected.profileRecoveryDeep = false;
+              affected.mediaPipelineRecoveryGeneration =
+                  affected.targetGeneration;
+              affected.mediaPipelineRecoveryPending = true;
+              SetSlotState(affected, SlotState::Recovering);
+              affected.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
+              ResetMediaRecoveryEpisode(
+                  affected.recoveryEpisode, affected.targetGeneration);
+            }
+          } else {
+            // A rejected/cooling-down recycle must not disturb healthy sibling
+            // windows. Rebuild only the incident owner and let a fresh bounded
+            // episode decide whether a later environment recycle is warranted.
+            slot.profileRecoveryPending = false;
+            slot.profileRecoveryInFlight = false;
+            slot.profileRecoveryDeep = false;
+            slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
+            slot.mediaPipelineRecoveryPending = true;
+            SetSlotState(slot, SlotState::Recovering);
             slot.nextRecoveryTick = now;
+            ResetMediaRecoveryEpisode(
+                slot.recoveryEpisode, slot.targetGeneration);
           }
         }
         RecomputeForeground();
