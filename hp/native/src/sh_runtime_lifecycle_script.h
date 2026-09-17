@@ -4,8 +4,8 @@ namespace hp {
 
 // Event wiring and document lifetime for the single Stationhead runtime. State
 // detection belongs to interaction_script; blank recovery belongs to
-// blank_recovery_script. This fragment only schedules those owners and tears
-// their timers down when the document leaves the page lifecycle.
+// blank_recovery_script. This fragment schedules those owners plus a bounded
+// media-progress probe, and tears their timers down with the document lifecycle.
 inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
   const zoomOut = () => document.documentElement?.style.setProperty('zoom', '0.5');
@@ -29,6 +29,7 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   let progressTime = 0;
   let progressStalledAt = 0;
   let progressRepairTried = false;
+  let progressSyntheticKeyWait = false;
   const progressProbeMs = 4000;
   const progressStallMs = 12000;
 
@@ -43,11 +44,17 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
     keyWaitingMedia = null;
     postText('drm-ready');
   };
+  const clearSyntheticKeyWait = () => {
+    if (!progressSyntheticKeyWait) return;
+    progressSyntheticKeyWait = false;
+    postText('drm-ready');
+  };
 
   // waitingforkey and Chromium media errors are not guaranteed for every CDM
   // failure. Independently verify that a media element claiming to play keeps
-  // advancing. First re-kick the element, then reload the document if another
-  // full stall window passes. Explicit key acquisition keeps its existing
+  // advancing. First re-kick the element; if a second full stall window passes,
+  // hand the incident to the existing native DRM wait/reload path instead of
+  // reloading from page JavaScript. Explicit waitingforkey retains its existing
   // native 20-second protection window and is not interrupted by this probe.
   const probeMediaProgress = () => {
     progressTimer = 0;
@@ -60,11 +67,13 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
       progressTime = 0;
       progressStalledAt = 0;
       progressRepairTried = false;
+      clearSyntheticKeyWait();
     } else if (keyWaitingMedia === media) {
       progressMedia = media;
       progressTime = Number(media.currentTime) || 0;
       progressStalledAt = 0;
       progressRepairTried = false;
+      clearSyntheticKeyWait();
     } else {
       const current = Number(media.currentTime);
       const now = Date.now();
@@ -73,11 +82,13 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
         progressTime = 0;
         progressStalledAt = 0;
         progressRepairTried = false;
+        clearSyntheticKeyWait();
       } else if (progressMedia !== media || current > progressTime + 0.10) {
         progressMedia = media;
         progressTime = current;
         progressStalledAt = 0;
         progressRepairTried = false;
+        clearSyntheticKeyWait();
       } else if (!progressStalledAt) {
         progressStalledAt = now;
       } else if (now - progressStalledAt >= progressStallMs) {
@@ -89,9 +100,10 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
             const result = media.play?.();
             if (result?.catch) result.catch(() => {});
           } catch (_) {}
-        } else {
-          try { location.reload(); } catch (_) {}
-          return;
+        } else if (!progressSyntheticKeyWait) {
+          progressSyntheticKeyWait = true;
+          progressStalledAt = now;
+          postText('drm-waiting');
         }
       }
     }
