@@ -46,6 +46,11 @@ void SpotifyWebViews::RebuildPlaybackSurface(Slot& slot) noexcept {
   slot.processTitleObservedAt = {};
   slot.playbackConfirmedAt = {};
   slot.mediaPipelineRecoveryPending = false;
+  slot.mediaKeyWaitUntilTick = 0;
+  slot.mediaNetworkRecoveryTick = 0;
+  slot.mediaNetworkRecoveryAttempt = 0;
+  slot.mediaKeyWaitFailurePending = false;
+  slot.mediaNetworkRecoveryPending = false;
   SetSlotState(slot, SlotState::NotCreated);
   slot.nextRecoveryTick = GetTickCount64();
   RecomputeForeground();
@@ -146,14 +151,55 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               if (!alive->load(std::memory_order_acquire) ||
                   !started_ || !target->webview || target->loginPage ||
                   !CurrentMusicTrack(*target) ||
-                  target->targetGeneration == 0 ||
-                  !SlotStateIsHealthy(target->state)) {
+                  target->targetGeneration == 0) {
                 return S_OK;
               }
               try {
                 const std::wstring parameters =
                     MediaPipelineErrorParameters(args);
+                const ULONGLONG now = GetTickCount64();
+                if (MediaPipelineErrorIsNetwork(parameters)) {
+                  if (target->state == SlotState::Navigating ||
+                      target->state == SlotState::NotCreated ||
+                      target->state == SlotState::Authenticating) {
+                    return S_OK;
+                  }
+                  if (!target->mediaNetworkRecoveryPending) {
+                    if (target->mediaNetworkRecoveryAttempt >=
+                        kMediaNetworkRetryDelaysMs.size()) {
+                      target->mediaNetworkRecoveryAttempt = 0;
+                      target->mediaPipelineRecoveryGeneration =
+                          target->targetGeneration;
+                      target->mediaPipelineRecoveryPending = true;
+                      SetSlotState(*target, SlotState::Recovering);
+                      target->nextRecoveryTick = now;
+                    } else {
+                      target->mediaNetworkRecoveryPending = true;
+                      target->mediaNetworkRecoveryTick = now +
+                          kMediaNetworkRetryDelaysMs[
+                              target->mediaNetworkRecoveryAttempt++];
+                      SetSlotState(*target, SlotState::Recovering);
+                      target->nextRecoveryTick =
+                          target->mediaNetworkRecoveryTick;
+                    }
+                    ArmRobustScheduler();
+                  }
+                  return S_OK;
+                }
                 if (!MediaPipelineErrorRequiresRebuild(parameters)) {
+                  return S_OK;
+                }
+                if (!SlotStateIsHealthy(target->state)) return S_OK;
+                if (MediaPipelineErrorIsKeyWaitRelated(parameters)) {
+                  if (target->mediaKeyWaitUntilTick <= now) {
+                    target->mediaKeyWaitUntilTick =
+                        now + kMediaKeyWaitProtectionMs;
+                  }
+                  target->mediaKeyWaitFailurePending = true;
+                  SetSlotState(*target, SlotState::Recovering);
+                  target->nextRecoveryTick =
+                      target->mediaKeyWaitUntilTick;
+                  ArmRobustScheduler();
                   return S_OK;
                 }
                 if (target->mediaPipelineRecoveryGeneration ==
@@ -206,6 +252,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               target->asyncWork = AsyncWork::None;
               target->asyncStartedTick = 0;
               target->trustedClickBlockedUntilTick = 0;
+              target->mediaKeyWaitUntilTick = 0;
+              target->mediaNetworkRecoveryTick = 0;
+              target->mediaKeyWaitFailurePending = false;
+              target->mediaNetworkRecoveryPending = false;
               target->loginPage = false;
               target->timedObserverReady = false;
               LPWSTR rawUri = nullptr;

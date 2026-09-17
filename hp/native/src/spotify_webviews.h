@@ -129,6 +129,9 @@ class SpotifyWebViews final {
     ULONGLONG playRecoveryReloadGeneration = 0;
     ULONGLONG playRecoveryRecreateGeneration = 0;
     ULONGLONG mediaPipelineRecoveryGeneration = 0;
+    ULONGLONG mediaKeyWaitUntilTick = 0;
+    ULONGLONG mediaNetworkRecoveryTick = 0;
+    size_t mediaNetworkRecoveryAttempt = 0;
     std::wstring observedTrackTitle;
     std::wstring processTrackDisplay;
     SYSTEMTIME processTitleObservedAt{};
@@ -146,6 +149,8 @@ class SpotifyWebViews final {
     bool processTitleObserved = false;
     bool hostLayoutApplied = false;
     bool mediaPipelineRecoveryPending = false;
+    bool mediaKeyWaitFailurePending = false;
+    bool mediaNetworkRecoveryPending = false;
   };
 
   static LRESULT CALLBACK HostWndProc(

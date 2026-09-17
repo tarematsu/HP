@@ -456,6 +456,11 @@ class StationheadPlayer {
   EventRegistrationToken mediaErrorToken_{};
   std::weak_ptr<std::atomic<bool>> mediaErrorRecoveryLifecycle_;
   ULONGLONG mediaErrorRecoveryTick_ = 0;
+  int64_t mediaKeyWaitUntil_ = 0;
+  int64_t mediaNetworkRecoveryAt_ = 0;
+  size_t mediaNetworkRecoveryAttempt_ = 0;
+  bool mediaKeyWaitFailurePending_ = false;
+  bool mediaNetworkRecoveryPending_ = false;
   std::atomic<bool> resourceBlockingArmed_{false};
   EventRegistrationToken authNavigationToken_{};
   EventRegistrationToken authMessageToken_{};

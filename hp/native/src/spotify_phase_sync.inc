@@ -99,6 +99,11 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   slot.playRecoveryReloadGeneration = 0;
   slot.playRecoveryRecreateGeneration = 0;
   slot.mediaPipelineRecoveryGeneration = 0;
+  slot.mediaKeyWaitUntilTick = 0;
+  slot.mediaNetworkRecoveryTick = 0;
+  slot.mediaNetworkRecoveryAttempt = 0;
+  slot.mediaKeyWaitFailurePending = false;
+  slot.mediaNetworkRecoveryPending = false;
 }
 
 void CALLBACK SpotifyWebViews::SchedulerTimerProc(
@@ -150,6 +155,8 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
         CurrentMusicTrack(slot)) {
       considerTick(slot.timedCompletionDeadlineTick);
     }
+    considerTick(slot.mediaKeyWaitUntilTick);
+    considerTick(slot.mediaNetworkRecoveryTick);
 
     if (slot.asyncWork != AsyncWork::None && slot.asyncStartedTick != 0) {
       considerTick(slot.asyncStartedTick + kSpotifyAsyncOperationTimeoutMs);

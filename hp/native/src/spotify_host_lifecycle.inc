@@ -121,6 +121,9 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.playRecoveryReloadGeneration = 0;
   slot.playRecoveryRecreateGeneration = 0;
   slot.mediaPipelineRecoveryGeneration = 0;
+  slot.mediaKeyWaitUntilTick = 0;
+  slot.mediaNetworkRecoveryTick = 0;
+  slot.mediaNetworkRecoveryAttempt = 0;
   slot.memoryUsageTargetLevel = -1;
   slot.timedRotationCycle = 0;
   slot.timedRotationPosition = 0;
@@ -137,6 +140,8 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.playbackConfirmed = false;
   slot.processTitleObserved = false;
   slot.mediaPipelineRecoveryPending = false;
+  slot.mediaKeyWaitFailurePending = false;
+  slot.mediaNetworkRecoveryPending = false;
   slot.playbackConfirmedAt = {};
 
   if (wasSchedulerHost) {

@@ -85,9 +85,40 @@ void StationheadPlayer::ConfigureWebView() {
             try {
               const std::wstring parameters =
                   MediaPipelineErrorParameters(args);
-              if (!MediaPipelineErrorRequiresRebuild(parameters) ||
-                  navigationInFlight_.load(std::memory_order_acquire) ||
+              if (navigationInFlight_.load(std::memory_order_acquire) ||
                   recreating_.load(std::memory_order_acquire)) {
+                RequestImmediateTick();
+                return S_OK;
+              }
+              const int64_t nowMs = UnixMillis();
+              if (MediaPipelineErrorIsNetwork(parameters)) {
+                if (!mediaNetworkRecoveryPending_) {
+                  if (mediaNetworkRecoveryAttempt_ >=
+                      kMediaNetworkRetryDelaysMs.size()) {
+                    mediaNetworkRecoveryAttempt_ = 0;
+                    ScheduleRecreate(
+                        L"network media recovery exhausted", 1'000);
+                  } else {
+                    const ULONGLONG delay = kMediaNetworkRetryDelaysMs[
+                        mediaNetworkRecoveryAttempt_++];
+                    mediaNetworkRecoveryPending_ = true;
+                    mediaNetworkRecoveryAt_ =
+                        nowMs + static_cast<int64_t>(delay);
+                    RequestImmediateTick();
+                  }
+                }
+                return S_OK;
+              }
+              if (!MediaPipelineErrorRequiresRebuild(parameters)) {
+                RequestImmediateTick();
+                return S_OK;
+              }
+              if (MediaPipelineErrorIsKeyWaitRelated(parameters)) {
+                if (mediaKeyWaitUntil_ <= nowMs) {
+                  mediaKeyWaitUntil_ = nowMs +
+                      static_cast<int64_t>(kMediaKeyWaitProtectionMs);
+                }
+                mediaKeyWaitFailurePending_ = true;
                 RequestImmediateTick();
                 return S_OK;
               }
@@ -190,6 +221,10 @@ void StationheadPlayer::ConfigureWebView() {
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
             trackBoundaryRefreshPending_ = false;
+            mediaKeyWaitUntil_ = 0;
+            mediaNetworkRecoveryAt_ = 0;
+            mediaKeyWaitFailurePending_ = false;
+            mediaNetworkRecoveryPending_ = false;
             statsDocumentGeneration_ = 0;
             statsAuthGeneration_ = 0;
             statsLastAcceptedRequestId_ = 0;
@@ -337,6 +372,19 @@ void StationheadPlayer::ConfigureWebView() {
               }
               if (message == prefix + L"-start-visible") {
                 AttemptNativeStartClick(UnixMillis());
+                return S_OK;
+              }
+              if (message == prefix + L"-drm-waiting") {
+                mediaKeyWaitUntil_ = UnixMillis() +
+                    static_cast<int64_t>(kMediaKeyWaitProtectionMs);
+                mediaKeyWaitFailurePending_ = true;
+                nextTickAt_ = 0;
+                return S_OK;
+              }
+              if (message == prefix + L"-drm-ready") {
+                mediaKeyWaitUntil_ = 0;
+                mediaKeyWaitFailurePending_ = false;
+                nextTickAt_ = 0;
                 return S_OK;
               }
               if (message == prefix + L"-login-required") {

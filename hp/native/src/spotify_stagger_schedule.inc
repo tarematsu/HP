@@ -42,6 +42,43 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   }
   if (now < scheduleStartTick_) return;
 
+  const auto reloadMediaSurface = [this, now](Slot& slot) noexcept {
+    slot.mediaKeyWaitUntilTick = 0;
+    slot.mediaNetworkRecoveryTick = 0;
+    slot.mediaKeyWaitFailurePending = false;
+    slot.mediaNetworkRecoveryPending = false;
+    SetSlotState(slot, SlotState::Navigating);
+    slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
+    if (!slot.webview || FAILED(slot.webview->Reload())) {
+      RebuildPlaybackSurface(slot);
+      return;
+    }
+    RecomputeForeground();
+    ArmRobustScheduler();
+  };
+
+  for (Slot& slot : slots_) {
+    if (slot.mediaKeyWaitUntilTick != 0 &&
+        now >= slot.mediaKeyWaitUntilTick) {
+      slot.mediaKeyWaitUntilTick = 0;
+      if (slot.mediaKeyWaitFailurePending) {
+        reloadMediaSurface(slot);
+        return;
+      }
+      slot.mediaKeyWaitFailurePending = false;
+    }
+    if (!slot.mediaNetworkRecoveryPending) continue;
+    if (slot.mediaKeyWaitUntilTick > now) {
+      slot.mediaNetworkRecoveryTick = slot.mediaKeyWaitUntilTick;
+      continue;
+    }
+    if (slot.mediaNetworkRecoveryTick != 0 &&
+        now >= slot.mediaNetworkRecoveryTick) {
+      reloadMediaSurface(slot);
+      return;
+    }
+  }
+
   // Chromium reports decoder, decryptor and media-pipeline failures even when
   // the WebView is intentionally muted. Rebuild only the affected surface and
   // preserve its account, track target and rotation position.
