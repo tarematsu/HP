@@ -24,7 +24,7 @@ test('primary room and fallback URLs remain configured', () => {
   assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl/);
 });
 
-test('single player keeps a 50-minute audit with a one-minute staggered audio wake', () => {
+test('single player periodic refresh is fixed at 50 minutes with a one-minute staggered audio wake', () => {
   assert.match(policy, /return 50 \* 60'000;/);
   assert.match(policy, /StationheadPeriodicRefreshIntervalMs\(\) == 50 \* 60'000/);
   assert.match(policy, /StationheadAudioHealthCheckIntervalMs\(\) == 1 \* 60'000/);
@@ -39,24 +39,6 @@ test('single player keeps a 50-minute audit with a one-minute staggered audio wa
   assert.match(policy, /PollPeriodicAudioHealth\(nowMs\)/);
   assert.match(policy, /RefreshPeriodicNavigation\(nowMs\)/);
   assert.match(policy, /NavigateCurrentUrl\(nowMs, L"50-minute periodic refresh"\)/);
-});
-
-test('healthy or transient Stationhead audio does not trigger the 50-minute reload', () => {
-  assert.match(policy, /StationheadPeriodicRefreshNeedsNavigation/);
-  assert.match(
-    policy,
-    /return !audioPlaying && playbackObserved && audioLossActive &&[\s\S]*kStationheadAudioLossGraceMs[\s\S]*kStationheadAudioLossDomSettleMs/,
-  );
-  const refresh = section(
-    policy,
-    'void RefreshPeriodicNavigation(int64_t nowMs)',
-    'int audioLossEscalationStage_',
-  );
-  assert.match(refresh, /StationheadPeriodicRefreshNeedsNavigation/);
-  assert.match(refresh, /audioPlaying_\.load\(std::memory_order_relaxed\)/);
-  assert.match(refresh, /audioLossPlaybackObserved_/);
-  assert.match(refresh, /periodicRefreshStartedAt_ = nowMs;[\s\S]*return;/);
-  assert.match(refresh, /NavigateCurrentUrl\(nowMs, L"50-minute periodic refresh"\)/);
 });
 
 test('page-side track-boundary polling stays removed', () => {
