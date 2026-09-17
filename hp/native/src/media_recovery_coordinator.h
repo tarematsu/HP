@@ -14,10 +14,10 @@ enum class MediaRecoveryAction : uint8_t {
   ReassertPlayback = 1,
   ReloadDocument = 2,
   RebuildSurface = 3,
-  RepairPlaybackState = 4,
-  DeepRepairPlaybackState = 5,
-  RecycleEnvironment = 6,
-  UseFallback = 7,
+  UseFallback = 4,
+  RepairPlaybackState = 5,
+  DeepRepairPlaybackState = 6,
+  RecycleEnvironment = 7,
 };
 
 enum class MediaRecoveryEvidence : uint8_t {
@@ -100,12 +100,14 @@ inline constexpr MediaRecoveryAction NextMediaRecoveryAction(
       } else if (episode.highestAction == MediaRecoveryAction::ReloadDocument) {
         requested = MediaRecoveryAction::RebuildSurface;
       } else if (episode.highestAction == MediaRecoveryAction::RebuildSurface) {
-        requested = episode.highestActionAttempts < 2
-            ? MediaRecoveryAction::RebuildSurface
-            : extendedRecoveryAvailable
-                ? MediaRecoveryAction::RepairPlaybackState
-                : fallbackAvailable ? MediaRecoveryAction::UseFallback
-                                    : MediaRecoveryAction::None;
+        if (extendedRecoveryAvailable) {
+          requested = episode.highestActionAttempts < 2
+              ? MediaRecoveryAction::RebuildSurface
+              : MediaRecoveryAction::RepairPlaybackState;
+        } else {
+          requested = fallbackAvailable ? MediaRecoveryAction::UseFallback
+                                        : MediaRecoveryAction::None;
+        }
       } else if (episode.highestAction ==
                  MediaRecoveryAction::RepairPlaybackState) {
         requested = extendedRecoveryAvailable
@@ -116,10 +118,6 @@ inline constexpr MediaRecoveryAction NextMediaRecoveryAction(
         requested = extendedRecoveryAvailable
             ? MediaRecoveryAction::RecycleEnvironment
             : MediaRecoveryAction::None;
-      } else if (episode.highestAction ==
-                 MediaRecoveryAction::RecycleEnvironment) {
-        requested = fallbackAvailable ? MediaRecoveryAction::UseFallback
-                                      : MediaRecoveryAction::None;
       }
       break;
     case MediaRecoveryEvidence::TimelineStall:
@@ -133,11 +131,11 @@ inline constexpr MediaRecoveryAction NextMediaRecoveryAction(
         requested = MediaRecoveryAction::RebuildSurface;
       } else if (episode.highestAction ==
                  MediaRecoveryAction::RebuildSurface) {
-        requested = episode.highestActionAttempts < 2
-            ? MediaRecoveryAction::RebuildSurface
-            : extendedRecoveryAvailable
-                ? MediaRecoveryAction::RepairPlaybackState
-                : MediaRecoveryAction::RebuildSurface;
+        if (extendedRecoveryAvailable && episode.highestActionAttempts >= 2) {
+          requested = MediaRecoveryAction::RepairPlaybackState;
+        } else {
+          requested = MediaRecoveryAction::RebuildSurface;
+        }
       } else if (episode.highestAction ==
                  MediaRecoveryAction::RepairPlaybackState) {
         requested = extendedRecoveryAvailable
@@ -148,10 +146,6 @@ inline constexpr MediaRecoveryAction NextMediaRecoveryAction(
         requested = extendedRecoveryAvailable
             ? MediaRecoveryAction::RecycleEnvironment
             : MediaRecoveryAction::None;
-      } else if (episode.highestAction ==
-                 MediaRecoveryAction::RecycleEnvironment) {
-        requested = fallbackAvailable ? MediaRecoveryAction::UseFallback
-                                      : MediaRecoveryAction::None;
       }
       break;
   }
@@ -215,17 +209,12 @@ inline constexpr bool MediaRecoveryCoordinatorContract() noexcept {
   }
   if (NextMediaRecoveryAction(
           episode, MediaRecoveryEvidence::ConfirmedSilence, 123'000, 7,
-          true, true) != MediaRecoveryAction::RebuildSurface) {
-    return false;
-  }
-  if (NextMediaRecoveryAction(
-          episode, MediaRecoveryEvidence::ConfirmedSilence, 134'000, 7,
           true, true) != MediaRecoveryAction::UseFallback) {
     return false;
   }
-  ObserveMediaRecoveryHealthy(episode, 140'000, 7);
+  ObserveMediaRecoveryHealthy(episode, 130'000, 7);
   ObserveMediaRecoveryHealthy(
-      episode, 140'000 + kMediaRecoveryHealthyResetMs, 7);
+      episode, 130'000 + kMediaRecoveryHealthyResetMs, 7);
   return episode.highestAction == MediaRecoveryAction::None;
 }
 
@@ -245,18 +234,13 @@ inline constexpr bool MediaRecoveryWithoutFallbackContract() noexcept {
   }
   if (NextMediaRecoveryAction(
           episode, MediaRecoveryEvidence::ConfirmedSilence, 122'000, 9,
-          true, false) != MediaRecoveryAction::RebuildSurface) {
-    return false;
-  }
-  if (NextMediaRecoveryAction(
-          episode, MediaRecoveryEvidence::ConfirmedSilence, 133'000, 9,
           true, false) != MediaRecoveryAction::None) {
     return false;
   }
-  // A later definitive crash cannot create an unbounded rebuild loop.
+  // A later definitive crash may still rebuild the replacement once.
   return NextMediaRecoveryAction(
-             episode, MediaRecoveryEvidence::ProcessFailure, 144'000, 9,
-             true, false) == MediaRecoveryAction::None;
+             episode, MediaRecoveryEvidence::ProcessFailure, 123'000, 9,
+             true, false) == MediaRecoveryAction::RebuildSurface;
 }
 
 static_assert(MediaRecoveryWithoutFallbackContract());
