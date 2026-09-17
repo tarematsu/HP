@@ -20,7 +20,31 @@ test('Chromium media errors are subscribed independently of WebView mute state',
   assert.doesNotMatch(health, /put_IsMuted/);
 });
 
-test('only local decode and render failures trigger destructive recovery', () => {
+test('media errors are classified structurally with fatal DRM network priority', () => {
+  assert.match(health, /JsonObject::Parse\(parameters\)/);
+  assert.match(health, /GetNamedValue\(L"errors"\)/);
+  assert.match(health, /GetNamedValue\(L"errorType"\)/);
+  assert.match(health, /GetNamedValue\(L"code"\)/);
+  assert.match(health, /GetNamedValue\(L"cause"\)/);
+  assert.match(
+    health,
+    /enum class MediaPipelineRecoveryKind[\s\S]*None = 0[\s\S]*Network = 1[\s\S]*KeyWait = 2[\s\S]*Rebuild = 3/);
+  assert.match(health, /PreferMediaPipelineClassification/);
+  assert.match(health, /ClassifyMediaPipelineErrorObject\(cause\.GetObject\(\)\)/);
+  assert.match(health, /result\.kind == MediaPipelineRecoveryKind::Rebuild/);
+});
+
+test('pipeline numeric codes are scoped to PipelineStatus families', () => {
+  assert.match(health, /pipelineStatusCode/);
+  assert.match(health, /MediaPipelineErrorContains\(errorType, L"pipeline"\)/);
+  assert.match(health, /ClassifyPipelineStatusCode/);
+  assert.match(health, /case 2:[\s\S]*PIPELINE_ERROR_NETWORK/);
+  assert.match(health, /case 3:[\s\S]*PIPELINE_ERROR_DECODE/);
+  assert.match(health, /case 4:[\s\S]*PIPELINE_ERROR_DECRYPT/);
+  assert.match(health, /case 19:[\s\S]*AUDIO_RENDERER_ERROR/);
+});
+
+test('only local decode render and DRM failures trigger destructive recovery', () => {
   assert.match(health, /MediaPipelineErrorRequiresRebuild/);
   assert.match(health, /pipeline_error_decode/);
   assert.match(health, /decoder_error/);
@@ -29,12 +53,12 @@ test('only local decode and render failures trigger destructive recovery', () =>
   assert.match(health, /key_system_error/);
   assert.match(health, /demuxer_error/);
   assert.match(health, /audio_renderer_error/);
-  assert.doesNotMatch(
+  assert.match(
     health,
-    /kFatalTokens[\s\S]*?network[\s\S]*?\};/);
-  assert.doesNotMatch(
+    /MediaPipelineErrorRequiresRebuild[\s\S]*MediaPipelineRecoveryKind::Rebuild[\s\S]*MediaPipelineRecoveryKind::KeyWait/);
+  assert.match(
     health,
-    /kFatalTokens[\s\S]*?abort[\s\S]*?\};/);
+    /MediaPipelineErrorIsNetwork[\s\S]*MediaPipelineRecoveryKind::Network/);
 });
 
 test('DRM key waits receive a bounded twenty-second protection window', () => {
