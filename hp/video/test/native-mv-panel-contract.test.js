@@ -149,13 +149,13 @@ test('TVer media initialization performs one pointer wake without burst polling'
 });
 
 test('TVer ads enter fullscreen before Skip automation', () => {
-  const fullscreen = tverWatchdog.indexOf('const fullscreenPoint = videoFullscreenPoint(video)');
+  const fullscreen = tverWatchdog.indexOf("homepanel:tver-fullscreen-key");
   const adStart = tverWatchdog.indexOf('if (adActive) {');
   const survey = tverWatchdog.indexOf('const surveyRoots = Array.from', adStart);
   const branch = tverWatchdog.slice(adStart, survey);
   assert.ok(fullscreen >= 0 && adStart > fullscreen);
   assert.match(tverWatchdog, /const videoFullscreenPoint = media =>/);
-  assert.match(tverWatchdog, /if \(state\) state\.fullscreenDirty = false/);
+  assert.match(tverWatchdog, /state\.fullscreenDirty = false/);
   assert.match(branch, /skipButton/);
   assert.doesNotMatch(branch, /fullscreenButton|isEnterFullscreenControl/);
   assert.doesNotMatch(branch, /video\.play\(|video\.volume|playbackRate|surveyRoots/);

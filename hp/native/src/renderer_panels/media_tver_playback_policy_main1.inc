@@ -24,6 +24,13 @@ LR"JS(
     const label = labelOf(element).toLowerCase();
     return label.includes('ログイン') || /\b(?:log\s*in|sign\s*in)\b/i.test(label);
   });
+  const isEnterFullscreenControl = element => {
+    if (!visible(element)) return false;
+    const label = labelOf(element).toLowerCase();
+    if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
+    return /全画面|フルスクリーン/.test(label) ||
+        /(?:^|[-_ ])full[-_ ]?screen(?:$|[-_ ])/i.test(label);
+  };
   const point = element => {
     if (window.innerWidth <= 0 || window.innerHeight <= 0) return null;
     const rect = visibleRect(element);
@@ -63,15 +70,46 @@ LR"JS(
     }
     return best;
   };
+  const revealPlayerControls = media => {
+    const rect = visibleRect(media);
+    if (!rect) return;
+    const clientX = rect.left + rect.width / 2;
+    const clientY = rect.bottom - Math.min(24, Math.max(8, rect.height / 8));
+    try {
+      media.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true, clientX, clientY,
+      }));
+    } catch (_) {}
+  };
+  const fullscreenControlPoint = media => {
+    const root = playerRootFor(media);
+    if (!root) return null;
+    revealPlayerControls(media);
+    const controls = Array.from(root.querySelectorAll(
+        'button, [role="button"], [aria-label], [title], [data-testid]'));
+    const fullscreenButton = controls.find(isEnterFullscreenControl) || null;
+    return fullscreenButton ? point(fullscreenButton) : null;
+  };
 
   const state = window.__homePanelSakuraMeetsState;
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
   const browserFullscreen = document.fullscreenElement ||
       document.webkitFullscreenElement || document.msFullscreenElement;
   if (browserFullscreen) {
-    if (state) state.fullscreenDirty = false;
+    if (state) {
+      state.fullscreenDirty = false;
+      state.fullscreenKeyRequestedAt = 0;
+    }
   } else if (video && !hasVisibleLoginPrompt()) {
     if (state) state.fullscreenDirty = true;
+    if (!Number(state?.fullscreenKeyRequestedAt || 0)) {
+      if (state) state.fullscreenKeyRequestedAt = Date.now();
+      try { window.chrome?.webview?.postMessage('homepanel:tver-fullscreen-key'); }
+      catch (_) {}
+      return null;
+    }
+    const controlPoint = fullscreenControlPoint(video);
+    if (controlPoint) return controlPoint;
     const fullscreenPoint = videoFullscreenPoint(video);
     if (fullscreenPoint) return fullscreenPoint;
   }
