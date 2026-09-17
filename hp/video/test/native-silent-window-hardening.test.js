@@ -50,7 +50,8 @@ test('Stationhead and Spotify share one bounded recovery episode', () => {
   assert.match(recoveryCoordinator, /kMediaRecoveryHealthyResetMs = 30ULL \* 1000ULL/);
   assert.match(recoveryCoordinator, /static_assert\(MediaRecoveryCoordinatorContract\(\)\)/);
   assert.match(spotifyScheduler, /NextMediaRecoveryAction\(/);
-  assert.match(spotifyScheduler, /MediaRecoveryEvidence::ConfirmedSilence/);
+  assert.match(spotifyScheduler, /MediaRecoveryEvidence::TimelineStall/);
+  assert.match(spotifyScheduler, /MediaRecoveryAction::ReassertPlayback/);
   assert.match(spotifyScheduler, /MediaRecoveryAction::ReloadDocument/);
   assert.match(spotifyScheduler, /MediaRecoveryAction::RebuildSurface/);
 });
