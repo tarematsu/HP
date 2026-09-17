@@ -203,4 +203,23 @@ inline constexpr bool MediaRecoveryWithoutFallbackContract() noexcept {
 
 static_assert(MediaRecoveryWithoutFallbackContract());
 
+inline constexpr bool MediaRecoveryTimelineStallContract() noexcept {
+  MediaRecoveryEpisode episode;
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 100'000, 11,
+          true, false) != MediaRecoveryAction::ReassertPlayback) {
+    return false;
+  }
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 111'000, 11,
+          true, false) != MediaRecoveryAction::ReloadDocument) {
+    return false;
+  }
+  return NextMediaRecoveryAction(
+             episode, MediaRecoveryEvidence::TimelineStall, 122'000, 11,
+             true, false) == MediaRecoveryAction::RebuildSurface;
+}
+
+static_assert(MediaRecoveryTimelineStallContract());
+
 }  // namespace hp
