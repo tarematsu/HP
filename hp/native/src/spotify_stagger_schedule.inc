@@ -7,6 +7,8 @@ namespace {
 constexpr ULONGLONG kSpotifyInitialStartDelayMs = 0;
 constexpr ULONGLONG kSpotifyCloudReloadMinIntervalMs = 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyHeavyRecoverySpacingMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyRejectedRecycleBackoffMs =
+    10ULL * 60ULL * 1000ULL;
 ULONGLONG gSpotifyHeavyRecoveryNextTick = 0;
 }
 
@@ -26,6 +28,7 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
     slot.profileRecoveryPending = false;
     slot.profileRecoveryInFlight = false;
     slot.profileRecoveryDeep = false;
+    slot.extendedRecoveryBlockedUntilTick = 0;
   }
 
   RunStaggeredReconcile();
@@ -266,12 +269,16 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
         slot.timedCompletionDeadlineGeneration = 0;
         slot.trustedClickBlockedUntilTick = 0;
 
-        // Spotify opts into the coordinator's extended last-resort actions.
-        // The normal ladder remains trusted Play -> reload -> WebView rebuild;
-        // only repeated failure advances into profile repair and browser recycle.
+        // Spotify opts into the coordinator's extended last-resort actions only
+        // when a recent browser-recycle rejection has not put this incident
+        // owner into backoff. Lightweight reload/rebuild recovery remains live.
+        const bool extendedRecoveryAvailable =
+            slot.extendedRecoveryBlockedUntilTick == 0 ||
+            now >= slot.extendedRecoveryBlockedUntilTick;
         const MediaRecoveryAction action = NextMediaRecoveryAction(
             slot.recoveryEpisode, MediaRecoveryEvidence::TimelineStall,
-            now, slot.targetGeneration, !slot.loginPage, false, true);
+            now, slot.targetGeneration, !slot.loginPage, false,
+            extendedRecoveryAvailable);
         if (action == MediaRecoveryAction::ReassertPlayback) {
           SetSlotState(slot, SlotState::WaitingTarget);
           slot.nextRecoveryTick = now;
@@ -307,6 +314,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
               affected.profileRecoveryPending = false;
               affected.profileRecoveryInFlight = false;
               affected.profileRecoveryDeep = false;
+              affected.extendedRecoveryBlockedUntilTick = 0;
               affected.mediaPipelineRecoveryGeneration =
                   affected.targetGeneration;
               affected.mediaPipelineRecoveryPending = true;
@@ -317,11 +325,14 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
             }
           } else {
             // A rejected/cooling-down recycle must not disturb healthy sibling
-            // windows. Rebuild only the incident owner and let a fresh bounded
-            // episode decide whether a later environment recycle is warranted.
+            // windows. Rebuild only the incident owner immediately, then keep
+            // profile/deep/environment recovery disabled for one recycle
+            // cooldown so the same broken lane cannot destructively re-loop.
             slot.profileRecoveryPending = false;
             slot.profileRecoveryInFlight = false;
             slot.profileRecoveryDeep = false;
+            slot.extendedRecoveryBlockedUntilTick =
+                now + kSpotifyRejectedRecycleBackoffMs;
             slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
             slot.mediaPipelineRecoveryPending = true;
             SetSlotState(slot, SlotState::Recovering);
