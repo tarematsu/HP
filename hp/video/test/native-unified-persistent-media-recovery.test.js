@@ -19,7 +19,11 @@ test('persistent Spotify recovery remains inside the unified coordinator', () =>
   assert.match(coordinator, /RecycleEnvironment = 7/);
   assert.match(coordinator, /extendedRecoveryAvailable = false/);
   assert.match(coordinator, /MediaRecoveryExtendedRecoveryContract/);
-  assert.match(schedule, /NextMediaRecoveryAction\([\s\S]*false, true\)/);
+  assert.match(schedule, /const bool extendedRecoveryAvailable =/);
+  assert.match(
+    schedule,
+    /NextMediaRecoveryAction\([\s\S]*false,\s*extendedRecoveryAvailable\)/,
+  );
   assert.doesNotMatch(schedule, /profileRecoveryStage/);
 });
 
@@ -71,4 +75,28 @@ test('rejected browser recycle rebuilds only the incident owner', () => {
   );
   const rejected = recycle.slice(recycle.indexOf('} else {'));
   assert.doesNotMatch(rejected.split('RecomputeForeground')[0], /for \(Slot& affected : slots_\)/);
+});
+
+test('rejected browser recycle blocks extended recovery for one recycle cooldown', () => {
+  assert.match(spotifyHeader, /extendedRecoveryBlockedUntilTick/);
+  assert.match(
+    schedule,
+    /kSpotifyRejectedRecycleBackoffMs\s*=\s*[\s\S]*10ULL \* 60ULL \* 1000ULL/,
+  );
+  assert.match(
+    schedule,
+    /extendedRecoveryAvailable\s*=\s*[\s\S]*extendedRecoveryBlockedUntilTick == 0[\s\S]*now >= slot\.extendedRecoveryBlockedUntilTick/,
+  );
+  assert.match(
+    schedule,
+    /slot\.extendedRecoveryBlockedUntilTick\s*=\s*[\s\S]*now \+ kSpotifyRejectedRecycleBackoffMs/,
+  );
+  assert.match(
+    schedule,
+    /if \(recycling\) \{[\s\S]*affected\.extendedRecoveryBlockedUntilTick = 0;/,
+  );
+  assert.match(
+    schedule,
+    /slot\.mediaPipelineRecoveryPending = true;[\s\S]*slot\.nextRecoveryTick = now;[\s\S]*ResetMediaRecoveryEpisode/,
+  );
 });
