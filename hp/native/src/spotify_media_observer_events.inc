@@ -19,10 +19,16 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   const nativeSetTimeout = setTimeout;
   const nativeClearTimeout = clearTimeout;
   const recoveryGraceMs = 6000;
+  const progressProbeMs = 4000;
+  const progressStallMs = 12000;
   let recoveryTimer = 0;
   let recoveryMedia = null;
   let recoveryTime = 0;
   let keyWaitingMedia = null;
+  let progressTimer = 0;
+  let progressMedia = null;
+  let progressTime = 0;
+  let progressStalledAt = 0;
 
   const beginKeyWait = event => {
     const media = event.target;
@@ -71,6 +77,48 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       clearRecoveryProbe();
     }, recoveryGraceMs);
   };
+
+  // Some Widevine/CDM failures never emit waiting/stalled/error or a structured
+  // Chromium media error. Probe the owned media timeline independently of those
+  // events so a page that still claims to be playing cannot remain Healthy with
+  // a frozen decode clock indefinitely. Explicit waitingforkey keeps its existing
+  // 20-second native protection window and is deliberately excluded here.
+  const probeProgress = () => {
+    progressTimer = 0;
+    const media = state.targetMedia;
+    if (!isMedia(media) || !state.startPosted || state.interrupted ||
+        media.ended || media.paused || media.readyState < 2) {
+      progressMedia = null;
+      progressTime = 0;
+      progressStalledAt = 0;
+    } else if (keyWaitingMedia === media) {
+      progressMedia = media;
+      progressTime = Number(media.currentTime) || 0;
+      progressStalledAt = 0;
+    } else {
+      const current = Number(media.currentTime);
+      const now = Date.now();
+      if (!Number.isFinite(current) || current < 0) {
+        progressMedia = null;
+        progressTime = 0;
+        progressStalledAt = 0;
+      } else if (progressMedia !== media || current > progressTime + 0.10) {
+        progressMedia = media;
+        progressTime = current;
+        progressStalledAt = 0;
+      } else if (!progressStalledAt) {
+        progressStalledAt = now;
+      } else if (now - progressStalledAt >= progressStallMs) {
+        state.interrupted = true;
+        post('spotify:timed-interrupted');
+        progressMedia = null;
+        progressTime = 0;
+        progressStalledAt = 0;
+      }
+    }
+    progressTimer = nativeSetTimeout(probeProgress, progressProbeMs);
+  };
+
   const observe = event => {
     if (!isMedia(event.target) || event.target.ended) return;
     if (event.type === 'playing' || event.type === 'timeupdate') {
@@ -129,6 +177,9 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
       return;
     }
     clearRecoveryProbe();
+    progressMedia = null;
+    progressTime = 0;
+    progressStalledAt = 0;
     // Once the owned target really ended, later ad playback belongs after the
     // completion event and must not suspend the already-due native deadline.
     state.startPosted = false;
@@ -156,6 +207,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   document.querySelectorAll('audio, video').forEach(media => {
     if (!media.paused && !media.ended) scheduleTargetChecks(media);
   });
+  progressTimer = nativeSetTimeout(probeProgress, progressProbeMs);
   return true;
 })()
 )JS";
