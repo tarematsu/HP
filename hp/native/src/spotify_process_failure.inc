@@ -81,6 +81,11 @@ void SpotifyWebViews::EnsureProcessFailureMonitoring(
               if (lane < 0 || slot.loginPage || !CurrentMusicTrack(slot)) {
                 return S_OK;
               }
+              const MediaRecoveryAction action = NextMediaRecoveryAction(
+                  slot.recoveryEpisode,
+                  MediaRecoveryEvidence::NetworkFailure, now,
+                  slot.targetGeneration, true, false);
+              if (action != MediaRecoveryAction::ReloadDocument) return S_OK;
               if (!slot.mediaNetworkRecoveryPending) {
                 slot.mediaNetworkRecoveryAttempt = 0;
                 slot.mediaNetworkRecoveryPending = true;
@@ -103,6 +108,11 @@ void SpotifyWebViews::EnsureProcessFailureMonitoring(
                 kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED) {
               // These failures invalidate the playback surface. Rebuilding only
               // this account preserves the other profiles and their rotations.
+              const MediaRecoveryAction action = NextMediaRecoveryAction(
+                  slot.recoveryEpisode,
+                  MediaRecoveryEvidence::ProcessFailure, now,
+                  slot.targetGeneration, true, false);
+              if (action != MediaRecoveryAction::RebuildSurface) return S_OK;
               slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
               slot.mediaPipelineRecoveryPending = true;
               SetSlotState(slot, SlotState::Recovering);
@@ -127,6 +137,11 @@ void SpotifyWebViews::EnsureProcessFailureMonitoring(
               if (count < 2) return S_OK;
               first = 0;
               count = 0;
+              const MediaRecoveryAction action = NextMediaRecoveryAction(
+                  slot.recoveryEpisode,
+                  MediaRecoveryEvidence::ProcessFailure, now,
+                  slot.targetGeneration, true, false);
+              if (action != MediaRecoveryAction::RebuildSurface) return S_OK;
               slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
               slot.mediaPipelineRecoveryPending = true;
               SetSlotState(slot, SlotState::Recovering);

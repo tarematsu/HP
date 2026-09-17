@@ -6,13 +6,6 @@
 namespace {
 constexpr ULONGLONG kSpotifyInitialStartDelayMs = 0;
 constexpr ULONGLONG kSpotifyCloudReloadMinIntervalMs = 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyDeadSinkStrikeWindowMs = 2ULL * 60ULL * 1000ULL;
-std::array<ULONGLONG, kSpotifyActiveAccountCount>
-    gSpotifyDeadSinkFirstStrikeTicks{};
-std::array<unsigned, kSpotifyActiveAccountCount>
-    gSpotifyDeadSinkStrikeCounts{};
-std::array<uint64_t, kSpotifyActiveAccountCount>
-    gSpotifyDeadSinkStrikeGenerations{};
 }
 
 void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
@@ -25,9 +18,9 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
   gSpotifyAudioHealthCheckDueTicks.fill(0);
   gSpotifyAudioHealthSilenceConfirmTicks.fill(0);
-  gSpotifyDeadSinkFirstStrikeTicks.fill(0);
-  gSpotifyDeadSinkStrikeCounts.fill(0);
-  gSpotifyDeadSinkStrikeGenerations.fill(0);
+  for (Slot& slot : slots_) {
+    ResetMediaRecoveryEpisode(slot.recoveryEpisode, slot.targetGeneration);
+  }
 
   RunStaggeredReconcile();
   ArmRobustScheduler();
@@ -151,6 +144,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
         due = now + kSpotifyAudioHealthRetryMs;
       } else if (nativePlaying != FALSE) {
         silenceConfirm = 0;
+        ObserveMediaRecoveryHealthy(
+            slot.recoveryEpisode, now, slot.targetGeneration);
         due = NextAudioHealthScanTick(now, audioHealthPhase);
       } else if (silenceConfirm == 0) {
         silenceConfirm = now + kSpotifyAudioHealthSilenceConfirmMs;
@@ -164,40 +159,33 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
         slot.timedCompletionDeadlineGeneration = 0;
         slot.trustedClickBlockedUntilTick = 0;
 
-        // A live shared Audio Service can leave an existing media element bound
-        // to a dead sink without emitting ProcessFailed. One sustained-silence
-        // incident still uses the cheap trusted-click/reload path. If the same
-        // target generation goes silent again within two minutes, bypass more
-        // page-level retries and rebuild that playback surface so its audio sink
-        // is rebound to the shared service from a fresh controller.
-        ULONGLONG& firstStrike =
-            gSpotifyDeadSinkFirstStrikeTicks[slot.index];
-        unsigned& strikes = gSpotifyDeadSinkStrikeCounts[slot.index];
-        uint64_t& strikeGeneration =
-            gSpotifyDeadSinkStrikeGenerations[slot.index];
-        if (strikeGeneration != slot.targetGeneration || firstStrike == 0 ||
-            now < firstStrike || now - firstStrike > kSpotifyDeadSinkStrikeWindowMs) {
-          firstStrike = now;
-          strikes = 1;
-          strikeGeneration = slot.targetGeneration;
-        } else {
-          ++strikes;
-        }
-
-        if (strikes >= 2) {
-          firstStrike = 0;
-          strikes = 0;
-          strikeGeneration = 0;
+        // The coordinator owns the whole incident. A confirmed silent sink
+        // first re-enters trusted Play, then reloads the document, and only a
+        // later recurrence rebuilds the controller. Other diagnostics cannot
+        // start a second ladder for the same target generation.
+        const MediaRecoveryAction action = NextMediaRecoveryAction(
+            slot.recoveryEpisode, MediaRecoveryEvidence::ConfirmedSilence,
+            now, slot.targetGeneration, !slot.loginPage, false);
+        if (action == MediaRecoveryAction::ReassertPlayback) {
+          SetSlotState(slot, SlotState::WaitingTarget);
+          slot.nextRecoveryTick = now;
+        } else if (action == MediaRecoveryAction::ReloadDocument) {
+          SetSlotState(slot, SlotState::Navigating);
+          slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
+          if (!slot.webview || FAILED(slot.webview->Reload())) {
+            slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
+            slot.mediaPipelineRecoveryPending = true;
+            SetSlotState(slot, SlotState::Recovering);
+            slot.nextRecoveryTick = now;
+          }
+        } else if (action == MediaRecoveryAction::RebuildSurface) {
           slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
           slot.mediaPipelineRecoveryPending = true;
           SetSlotState(slot, SlotState::Recovering);
           slot.nextRecoveryTick = now;
-          ArmRobustScheduler();
-        } else {
-          SetSlotState(slot, SlotState::WaitingTarget);
-          slot.nextRecoveryTick = now;
         }
         RecomputeForeground();
+        ArmRobustScheduler();
       }
     }
   }

@@ -402,13 +402,18 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     // transient signal. A normal primary navigation must establish continuous
     // audio again; the managed fallback return path retains its dedicated
     // two-second recovery confirmation.
-    if (!managedPrimaryReturnPending_) audioLossPlaybackObserved_ = false;
+    if (!managedPrimaryReturnPending_ &&
+        mediaRecoveryEpisode_.highestAction == MediaRecoveryAction::None) {
+      audioLossPlaybackObserved_ = false;
+    }
     audioLossStartedAt_ = 0;
     ResetAudioLossProbe();
     return;
   }
 
   if (audioPlaying) {
+    ObserveMediaRecoveryHealthy(
+        mediaRecoveryEpisode_, GetTickCount64(), 1);
     audioLossStartedAt_ = 0;
     ResetAudioLossProbe();
 
@@ -519,9 +524,10 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
   }
   if (StationheadAudioLossCanFallback(
           audioLossProbeComplete_, audioLossAuthUiDetected_, stoppedForMs)) {
-    SetManagedPlaybackFallback(
-        true,
-        L"fallback: no authentication surface remained at the twelve-second check");
+    // EscalateAudioLossRecovery owns the single shared incident and runs before
+    // this evaluator on every App tick. Never start an independent fallback
+    // from the legacy detector.
+    RequestImmediateTick();
   }
 }
 

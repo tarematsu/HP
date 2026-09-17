@@ -11,6 +11,7 @@ const environment = source('shared_webview_environment.cpp');
 const spotifyEvents = source('spotify_media_observer_events.inc');
 const spotifyScheduler = source('spotify_stagger_schedule.inc');
 const stationheadLifecycle = source('sh_runtime_lifecycle_script.h');
+const recoveryCoordinator = source('media_recovery_coordinator.h');
 
 test('media WebViews disable Chromium background throttling', () => {
   assert.match(environment, /--disable-backgrounding-occluded-windows/);
@@ -40,11 +41,16 @@ test('Stationhead re-kicks a frozen media clock then enters native DRM recovery'
   assert.match(stationheadLifecycle, /keyWaitingMedia === media/);
 });
 
-test('repeated Spotify native silence escalates to a fresh playback surface', () => {
-  assert.match(spotifyScheduler, /kSpotifyDeadSinkStrikeWindowMs = 2ULL \* 60ULL \* 1000ULL/);
-  assert.match(spotifyScheduler, /gSpotifyDeadSinkStrikeCounts/);
-  assert.match(spotifyScheduler, /strikeGeneration != slot\.targetGeneration/);
-  assert.match(spotifyScheduler, /if \(strikes >= 2\)/);
-  assert.match(spotifyScheduler, /slot\.mediaPipelineRecoveryPending = true/);
-  assert.match(spotifyScheduler, /SetSlotState\(slot, SlotState::Recovering\)/);
+test('Stationhead and Spotify share one bounded recovery episode', () => {
+  assert.match(recoveryCoordinator, /enum class MediaRecoveryAction/);
+  assert.match(recoveryCoordinator, /ReassertPlayback = 1/);
+  assert.match(recoveryCoordinator, /ReloadDocument = 2/);
+  assert.match(recoveryCoordinator, /RebuildSurface = 3/);
+  assert.match(recoveryCoordinator, /UseFallback = 4/);
+  assert.match(recoveryCoordinator, /kMediaRecoveryHealthyResetMs = 30ULL \* 1000ULL/);
+  assert.match(recoveryCoordinator, /static_assert\(MediaRecoveryCoordinatorContract\(\)\)/);
+  assert.match(spotifyScheduler, /NextMediaRecoveryAction\(/);
+  assert.match(spotifyScheduler, /MediaRecoveryEvidence::ConfirmedSilence/);
+  assert.match(spotifyScheduler, /MediaRecoveryAction::ReloadDocument/);
+  assert.match(spotifyScheduler, /MediaRecoveryAction::RebuildSurface/);
 });

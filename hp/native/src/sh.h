@@ -2,6 +2,7 @@
 #include "common.h"
 #include "config.h"
 #include "logger.h"
+#include "media_recovery_coordinator.h"
 #include "shared_immutable_vector.h"
 
 namespace hp {
@@ -528,6 +529,7 @@ class StationheadPlayer {
   bool managedPlaybackFallbackActive_ = false;
   bool managedPlaybackReturnRequested_ = false;
   bool managedPrimaryReturnPending_ = false;
+  MediaRecoveryEpisode mediaRecoveryEpisode_{};
   std::wstring audioLossState_;
 };
 }  // namespace hp

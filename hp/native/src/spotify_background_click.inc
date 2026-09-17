@@ -131,26 +131,36 @@ void SpotifyWebViews::ClickSlotCssPoint(
               ArmRobustScheduler();
               return S_OK;
             }
-            if (SUCCEEDED(result) && json &&
-                std::wstring_view(json) == L"\"reload\"" &&
-                target->playRecoveryReloadGeneration != targetGeneration) {
-              target->playRecoveryReloadGeneration = targetGeneration;
-              target->trustedClickBlockedUntilTick = 0;
-              SetSlotState(*target, SlotState::Navigating);
-              target->nextRecoveryTick =
-                  GetTickCount64() + kSpotifyRecoveryRetryMs;
-              if (FAILED(requestedView->Reload())) {
-                MarkSlotRecovering(*target, GetTickCount64());
+            const std::wstring_view recoveryResult =
+                SUCCEEDED(result) && json ? std::wstring_view(json)
+                                          : std::wstring_view{};
+            if (recoveryResult == L"\"reload\"" ||
+                recoveryResult == L"\"recreate\"") {
+              const ULONGLONG recoveryTick = GetTickCount64();
+              const MediaRecoveryAction action = NextMediaRecoveryAction(
+                  target->recoveryEpisode,
+                  MediaRecoveryEvidence::ConfirmedSilence, recoveryTick,
+                  targetGeneration, !target->loginPage, false);
+              if (action == MediaRecoveryAction::ReloadDocument &&
+                  target->playRecoveryReloadGeneration != targetGeneration) {
+                target->playRecoveryReloadGeneration = targetGeneration;
+                target->trustedClickBlockedUntilTick = 0;
+                SetSlotState(*target, SlotState::Navigating);
+                target->nextRecoveryTick =
+                    recoveryTick + kSpotifyRecoveryRetryMs;
+                if (FAILED(requestedView->Reload())) {
+                  MarkSlotRecovering(*target, recoveryTick);
+                }
+                RecomputeForeground();
+                ArmRobustScheduler();
+              } else if (action == MediaRecoveryAction::RebuildSurface &&
+                         target->playRecoveryRecreateGeneration !=
+                             targetGeneration) {
+                target->playRecoveryRecreateGeneration = targetGeneration;
+                RebuildPlaybackSurface(*target);
+              } else {
+                ArmRobustScheduler();
               }
-              RecomputeForeground();
-              ArmRobustScheduler();
-              return S_OK;
-            }
-            if (SUCCEEDED(result) && json &&
-                std::wstring_view(json) == L"\"recreate\"" &&
-                target->playRecoveryRecreateGeneration != targetGeneration) {
-              target->playRecoveryRecreateGeneration = targetGeneration;
-              RebuildPlaybackSurface(*target);
               return S_OK;
             }
             double verifiedX = 0.0;
