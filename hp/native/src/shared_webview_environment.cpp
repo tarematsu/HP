@@ -32,6 +32,10 @@ constexpr wchar_t kFullResourceWebView2Arguments[] =
 constexpr wchar_t kStationheadWebView2Arguments[] =
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
 
+constexpr ULONGLONG kSharedBrowserRecycleCooldownMs = 10ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSharedBrowserRecycleExitTimeoutMs = 15ULL * 1000ULL;
+constexpr UINT kSharedBrowserRecycleExitCode = 0xE0420001U;
+
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
   if (!blockImages && !blockFonts) return kFullResourceWebView2Arguments;
 
@@ -98,6 +102,7 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
   ComPtr<ICoreWebView2Environment> readyEnvironment;
   bool startCreation = false;
   bool policyMismatch = false;
+  bool recycleBlocked = false;
   bool blockImagesForCreation = false;
   bool blockFontsForCreation = false;
   uint64_t creationGeneration = 0;
@@ -108,36 +113,58 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
     {
       std::lock_guard lock(mutex_);
       Entry& entry = entries_[requestedKey];
-      if (entry.acquireCount == 0) {
-        entry.userDataFolder = userDataFolder;
-        entry.blockImages = blockImages;
-        entry.blockFonts = blockFonts;
-      } else if (entry.blockImages != blockImages ||
-                 entry.blockFonts != blockFonts) {
-        // One user-data folder maps to one browser environment. Mixing resource
-        // policies would silently make A and B behave differently depending on
-        // which asynchronous Acquire won the race.
-        policyMismatch = true;
-      }
-      if (!policyMismatch) {
-        ++entry.acquireCount;
-        if (entry.environment) {
-          readyEnvironment = entry.environment;
+      const ULONGLONG now = GetTickCount64();
+      if (entry.recyclePending) {
+        const bool recycleTimedOut =
+            entry.recycleStartedTick != 0 && now >= entry.recycleStartedTick &&
+            now - entry.recycleStartedTick >= kSharedBrowserRecycleExitTimeoutMs;
+        if (recycleTimedOut) {
+          // BrowserProcessExited should normally retire the environment. This
+          // timeout is a last-resort escape hatch for runtimes that fail to
+          // deliver that event after the process has already gone away.
+          ++entry.generation;
+          entry.environment.Reset();
+          entry.browserProcessExitedToken = {};
+          entry.creating = false;
+          entry.recyclePending = false;
+          entry.recycleStartedTick = 0;
         } else {
-          const bool beginCreation = !entry.creating;
-          // Copy every potentially allocating value before publishing the pending
-          // callback or the creating flag. An allocation failure cannot leave a
-          // queued callback behind an environment generation that never starts.
-          fs::path preparedFolder;
-          if (beginCreation) preparedFolder = entry.userDataFolder;
-          entry.pending.push_back(std::move(completion));
-          if (beginCreation) {
-            entry.creating = true;
-            creationGeneration = ++entry.generation;
-            startCreation = true;
-            folderForCreation = std::move(preparedFolder);
-            blockImagesForCreation = entry.blockImages;
-            blockFontsForCreation = entry.blockFonts;
+          recycleBlocked = true;
+        }
+      }
+
+      if (!recycleBlocked) {
+        if (entry.acquireCount == 0) {
+          entry.userDataFolder = userDataFolder;
+          entry.blockImages = blockImages;
+          entry.blockFonts = blockFonts;
+        } else if (entry.blockImages != blockImages ||
+                   entry.blockFonts != blockFonts) {
+          // One user-data folder maps to one browser environment. Mixing resource
+          // policies would silently make A and B behave differently depending on
+          // which asynchronous Acquire won the race.
+          policyMismatch = true;
+        }
+        if (!policyMismatch) {
+          ++entry.acquireCount;
+          if (entry.environment) {
+            readyEnvironment = entry.environment;
+          } else {
+            const bool beginCreation = !entry.creating;
+            // Copy every potentially allocating value before publishing the pending
+            // callback or the creating flag. An allocation failure cannot leave a
+            // queued callback behind an environment generation that never starts.
+            fs::path preparedFolder;
+            if (beginCreation) preparedFolder = entry.userDataFolder;
+            entry.pending.push_back(std::move(completion));
+            if (beginCreation) {
+              entry.creating = true;
+              creationGeneration = ++entry.generation;
+              startCreation = true;
+              folderForCreation = std::move(preparedFolder);
+              blockImagesForCreation = entry.blockImages;
+              blockFontsForCreation = entry.blockFonts;
+            }
           }
         }
       }
@@ -150,6 +177,11 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
     return;
   }
 
+  if (recycleBlocked) {
+    InvokeEnvironmentCompletionNoexcept(
+        completion, HRESULT_FROM_WIN32(ERROR_RETRY), nullptr);
+    return;
+  }
   if (policyMismatch) {
     InvokeEnvironmentCompletionNoexcept(completion, E_INVALIDARG, nullptr);
     return;
@@ -218,7 +250,7 @@ void SharedWebViewEnvironment::Invalidate(const fs::path& userDataFolder) {
     // that one controller; clearing the shared cache here can make the healthy
     // peer create a second environment against the same user-data folder.
     // Invalidate only an environment creation that is still genuinely pending.
-    if (entry.environment) return;
+    if (entry.environment || entry.recyclePending) return;
     ++entry.generation;
     entry.creating = false;
     callbacks.swap(entry.pending);
@@ -229,11 +261,105 @@ void SharedWebViewEnvironment::Invalidate(const fs::path& userDataFolder) {
   }
 }
 
+bool SharedWebViewEnvironment::RecycleBrowserProcess(
+    const fs::path& userDataFolder, ICoreWebView2* webview) noexcept {
+  if (!webview) return false;
+
+  UINT32 browserProcessId = 0;
+  if (FAILED(webview->get_BrowserProcessId(&browserProcessId)) ||
+      browserProcessId == 0 || browserProcessId == GetCurrentProcessId()) {
+    return false;
+  }
+
+  std::wstring key;
+  try {
+    key = NormalizePath(userDataFolder);
+  } catch (...) {
+    return false;
+  }
+
+  const ULONGLONG now = GetTickCount64();
+  ULONGLONG recycleStartedTick = 0;
+  {
+    std::lock_guard lock(mutex_);
+    auto iterator = entries_.find(key);
+    if (iterator == entries_.end()) return false;
+    Entry& entry = iterator->second;
+    if (entry.recyclePending) return true;
+    if (!entry.environment || entry.browserProcessExitedToken.value == 0) {
+      return false;
+    }
+    if (entry.lastRecycleTick != 0 && now >= entry.lastRecycleTick &&
+        now - entry.lastRecycleTick < kSharedBrowserRecycleCooldownMs) {
+      return false;
+    }
+    entry.recyclePending = true;
+    entry.recycleStartedTick = std::max<ULONGLONG>(1, now);
+    entry.lastRecycleTick = entry.recycleStartedTick;
+    recycleStartedTick = entry.recycleStartedTick;
+  }
+
+  HANDLE process = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE,
+                               browserProcessId);
+  if (!process) {
+    std::lock_guard lock(mutex_);
+    auto iterator = entries_.find(key);
+    if (iterator != entries_.end() &&
+        iterator->second.recycleStartedTick == recycleStartedTick) {
+      iterator->second.recyclePending = false;
+      iterator->second.recycleStartedTick = 0;
+    }
+    return false;
+  }
+
+  const BOOL terminated = TerminateProcess(process, kSharedBrowserRecycleExitCode);
+  CloseHandle(process);
+  if (terminated) return true;
+
+  std::lock_guard lock(mutex_);
+  auto iterator = entries_.find(key);
+  if (iterator != entries_.end() &&
+      iterator->second.recycleStartedTick == recycleStartedTick) {
+    iterator->second.recyclePending = false;
+    iterator->second.recycleStartedTick = 0;
+  }
+  return false;
+}
+
+void SharedWebViewEnvironment::HandleBrowserProcessExited(
+    const std::wstring& key, uint64_t environmentGeneration) noexcept {
+  std::vector<Completion> callbacks;
+  {
+    std::lock_guard lock(mutex_);
+    auto iterator = entries_.find(key);
+    if (iterator == entries_.end()) return;
+    Entry& entry = iterator->second;
+    if (entry.generation != environmentGeneration) return;
+
+    // BrowserProcessExited is raised only after the WebView2 process group has
+    // released its resources. This is the safe point to retire the cached
+    // environment; subsequent recovery attempts will create a fresh process
+    // group instead of reusing a half-dead browser/audio service.
+    ++entry.generation;
+    entry.environment.Reset();
+    entry.browserProcessExitedToken = {};
+    entry.creating = false;
+    entry.recyclePending = false;
+    entry.recycleStartedTick = 0;
+    callbacks.swap(entry.pending);
+  }
+
+  for (auto& callback : callbacks) {
+    InvokeEnvironmentCompletionNoexcept(callback, E_ABORT, nullptr);
+  }
+}
+
 void SharedWebViewEnvironment::Complete(const std::wstring& key,
                                         uint64_t generation, HRESULT result,
                                         ICoreWebView2Environment* environment) {
   std::vector<Completion> callbacks;
   ComPtr<ICoreWebView2Environment> readyEnvironment;
+  uint64_t environmentGeneration = 0;
   {
     std::lock_guard lock(mutex_);
     auto iterator = entries_.find(key);
@@ -248,8 +374,35 @@ void SharedWebViewEnvironment::Complete(const std::wstring& key,
     if (SUCCEEDED(result) && environment) {
       entry.environment = environment;
       readyEnvironment = entry.environment;
+      environmentGeneration = entry.generation;
     }
     callbacks.swap(entry.pending);
+  }
+
+  if (readyEnvironment) {
+    ComPtr<ICoreWebView2Environment5> environment5;
+    if (SUCCEEDED(readyEnvironment.As(&environment5)) && environment5) {
+      const auto keyCopy = std::make_shared<std::wstring>(key);
+      EventRegistrationToken token{};
+      const HRESULT registered = environment5->add_BrowserProcessExited(
+          Callback<ICoreWebView2BrowserProcessExitedEventHandler>(
+              [this, keyCopy, environmentGeneration](
+                  ICoreWebView2Environment*,
+                  ICoreWebView2BrowserProcessExitedEventArgs*) -> HRESULT {
+                HandleBrowserProcessExited(*keyCopy, environmentGeneration);
+                return S_OK;
+              }).Get(),
+          &token);
+      if (SUCCEEDED(registered)) {
+        std::lock_guard lock(mutex_);
+        auto iterator = entries_.find(key);
+        if (iterator != entries_.end() &&
+            iterator->second.generation == environmentGeneration &&
+            iterator->second.environment.Get() == readyEnvironment.Get()) {
+          iterator->second.browserProcessExitedToken = token;
+        }
+      }
+    }
   }
 
   for (auto& callback : callbacks) {
