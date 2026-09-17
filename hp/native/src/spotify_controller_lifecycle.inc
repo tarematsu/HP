@@ -1,6 +1,25 @@
 namespace hp {
+namespace {
+constexpr ULONGLONG kSpotifyHeavyRecoverySpacingMs = 5ULL * 1000ULL;
+ULONGLONG gSpotifyHeavyRecoveryNextTick = 0;
+}
 
 void SpotifyWebViews::RebuildPlaybackSurface(Slot& slot) noexcept {
+  const ULONGLONG now = GetTickCount64();
+  if (gSpotifyHeavyRecoveryNextTick != 0 &&
+      now < gSpotifyHeavyRecoveryNextTick) {
+    // Rebuilding several WebViews at once makes Chromium spin up renderers,
+    // Widevine and audio plumbing concurrently. Keep the request pending and
+    // serialize expensive recovery across lanes.
+    slot.mediaPipelineRecoveryPending = true;
+    SetSlotState(slot, SlotState::Recovering);
+    slot.nextRecoveryTick = std::max(
+        slot.nextRecoveryTick, gSpotifyHeavyRecoveryNextTick);
+    ArmRobustScheduler();
+    return;
+  }
+  gSpotifyHeavyRecoveryNextTick = now + kSpotifyHeavyRecoverySpacingMs;
+
   UnsubscribeMediaPipelineErrors(slot.mediaErrorReceiver, slot.mediaErrorToken);
   if (slot.webview) {
     if (slot.navigationStartingToken.value != 0) {
@@ -51,10 +70,84 @@ void SpotifyWebViews::RebuildPlaybackSurface(Slot& slot) noexcept {
   slot.mediaNetworkRecoveryAttempt = 0;
   slot.mediaKeyWaitFailurePending = false;
   slot.mediaNetworkRecoveryPending = false;
+  slot.profileRecoveryPending = false;
+  slot.profileRecoveryInFlight = false;
+  slot.profileRecoveryDeep = false;
   SetSlotState(slot, SlotState::NotCreated);
-  slot.nextRecoveryTick = GetTickCount64();
+  slot.nextRecoveryTick = now;
   RecomputeForeground();
   ArmRobustScheduler();
+}
+
+void SpotifyWebViews::BeginProfilePlaybackStateReset(Slot& slot) noexcept {
+  if (!slot.profileRecoveryPending || slot.profileRecoveryInFlight) return;
+
+  const ULONGLONG now = GetTickCount64();
+  const auto fallBackToSurfaceRebuild = [this, &slot, now]() noexcept {
+    slot.profileRecoveryPending = false;
+    slot.profileRecoveryInFlight = false;
+    slot.profileRecoveryDeep = false;
+    slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
+    slot.mediaPipelineRecoveryPending = true;
+    SetSlotState(slot, SlotState::Recovering);
+    slot.nextRecoveryTick = now;
+    ArmRobustScheduler();
+  };
+
+  if (!slot.webview) {
+    fallBackToSurfaceRebuild();
+    return;
+  }
+
+  ComPtr<ICoreWebView2_13> webview13;
+  ComPtr<ICoreWebView2Profile> profile;
+  ComPtr<ICoreWebView2Profile2> profile2;
+  if (FAILED(slot.webview.As(&webview13)) || !webview13 ||
+      FAILED(webview13->get_Profile(&profile)) || !profile ||
+      FAILED(profile.As(&profile2)) || !profile2) {
+    fallBackToSurfaceRebuild();
+    return;
+  }
+
+  int kindsValue =
+      COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS |
+      COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE |
+      COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE;
+  if (slot.profileRecoveryDeep) {
+    kindsValue |= COREWEBVIEW2_BROWSING_DATA_KINDS_INDEXED_DB;
+  }
+  const auto kinds =
+      static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(kindsValue);
+
+  slot.profileRecoveryInFlight = true;
+  const auto alive = alive_;
+  Slot* const target = &slot;
+  ComPtr<ICoreWebView2> expectedWebview = slot.webview;
+  const HRESULT started = profile2->ClearBrowsingData(
+      kinds,
+      Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+          [this, alive, target, expectedWebview](HRESULT) -> HRESULT {
+            if (!alive || !alive->load(std::memory_order_acquire)) return S_OK;
+            target->profileRecoveryInFlight = false;
+            target->profileRecoveryPending = false;
+            target->profileRecoveryDeep = false;
+            if (target->webview.Get() != expectedWebview.Get()) {
+              ArmRobustScheduler();
+              return S_OK;
+            }
+
+            // Keep cookies, localStorage and saved credentials intact. The
+            // repaired profile data only takes effect on a fresh media surface.
+            target->mediaPipelineRecoveryGeneration = target->targetGeneration;
+            target->mediaPipelineRecoveryPending = true;
+            SetSlotState(*target, SlotState::Recovering);
+            target->nextRecoveryTick = GetTickCount64() + 1'000ULL;
+            ArmRobustScheduler();
+            return S_OK;
+          }).Get());
+  if (FAILED(started)) {
+    fallBackToSurfaceRebuild();
+  }
 }
 
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
