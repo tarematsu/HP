@@ -96,6 +96,14 @@ test('Spotify requires a second 30-second silent native sample before recovery',
     spotifySchedule,
     /else \{[\s\S]*silenceConfirm = 0;[\s\S]*SetSlotState\(slot, SlotState::WaitingTarget\)/,
   );
+  assert.match(
+    spotifySchedule,
+    /MediaRecoveryEvidence::TimelineStall[\s\S]*MediaRecoveryAction::ReassertPlayback/,
+  );
+  assert.doesNotMatch(
+    spotifySchedule,
+    /slot\.recoveryEpisode, MediaRecoveryEvidence::ConfirmedSilence/,
+  );
 });
 
 test('Stationhead keeps the explicit 50-minute preventive reload', () => {
