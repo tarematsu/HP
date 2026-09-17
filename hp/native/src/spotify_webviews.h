@@ -62,6 +62,7 @@ class SpotifyWebViews final {
   void SetMonitorForegroundSlot(int slotIndex) noexcept;
   void PollPlaybackStatusesNow() noexcept;
   int SlotIndexForWebView(ICoreWebView2* webview) const noexcept;
+  void EnsureProcessFailureMonitoring(ICoreWebView2* webview) noexcept;
   std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
   PlaybackStatuses() const noexcept;
 
@@ -244,7 +245,7 @@ std::array<SpotifyPlaybackStatus, kSpotifyActiveAccountCount>
 GetSpotifyPlaybackStatuses() noexcept;
 
 // Spotify runs independently from the YouTube/TVer media phase. Accounts become
-// scheduler-eligible ten seconds apart and then run from cloud rotation blocks.
+// scheduler-eligible thirty seconds apart and then run from cloud rotation blocks.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 void SetSpotifyAudioOutputSlot(int slotIndex) noexcept;
