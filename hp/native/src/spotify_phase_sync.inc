@@ -11,9 +11,12 @@ constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 1ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
+constexpr ULONGLONG kSpotifyAudioHealthSilenceConfirmMs = 5ULL * 1000ULL;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
 std::array<ULONGLONG, kSpotifyActiveAccountCount>
     gSpotifyAudioHealthCheckDueTicks{};
+std::array<ULONGLONG, kSpotifyActiveAccountCount>
+    gSpotifyAudioHealthSilenceConfirmTicks{};
 
 void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
   if (!hostWindow || !IsWindow(hostWindow)) return;
@@ -52,16 +55,21 @@ void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
   if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
     ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
+    ULONGLONG& silenceConfirm =
+        gSpotifyAudioHealthSilenceConfirmTicks[slot.index];
     if (state == SlotState::Playing) {
       const int lane = SpotifyRuntimeLaneForAccount(slot.index);
       if (lane < 0) {
         due = 0;
+        silenceConfirm = 0;
       } else if (previousState != SlotState::Playing || due == 0) {
         due = NextAudioHealthScanTick(
             GetTickCount64(), static_cast<size_t>(lane) + 1);
+        silenceConfirm = 0;
       }
     } else {
       due = 0;
+      silenceConfirm = 0;
     }
   }
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
@@ -104,6 +112,9 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   slot.mediaNetworkRecoveryAttempt = 0;
   slot.mediaKeyWaitFailurePending = false;
   slot.mediaNetworkRecoveryPending = false;
+  if (slot.index < gSpotifyAudioHealthSilenceConfirmTicks.size()) {
+    gSpotifyAudioHealthSilenceConfirmTicks[slot.index] = 0;
+  }
 }
 
 void CALLBACK SpotifyWebViews::SchedulerTimerProc(

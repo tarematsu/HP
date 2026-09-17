@@ -17,6 +17,7 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   schedulerCursor_ = slots_.size() - 1;
   scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
   gSpotifyAudioHealthCheckDueTicks.fill(0);
+  gSpotifyAudioHealthSilenceConfirmTicks.fill(0);
 
   RunStaggeredReconcile();
   ArmRobustScheduler();
@@ -92,10 +93,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   // Events remain the fast path, but each live Spotify WebView also gets one
   // native audio probe per minute. Runtime lanes B/C/D occupy the 15/30/45s
-  // phases of the shared Stationhead+Spotify scan clock. Select at most one due
-  // slot per scheduler pass; if a delayed wake makes multiple probes overdue,
-  // the process-wide claim/gap guard serializes the remainder instead of
-  // creating a burst across multiple WebViews.
+  // phases of the shared Stationhead+Spotify scan clock. A single silent native
+  // sample can occur at a track boundary, so require one five-second confirm
+  // sample before entering the existing trusted-click recovery path.
   Slot* audioHealthCandidate = nullptr;
   ULONGLONG earliestAudioHealthDue = 0;
   size_t audioHealthPhase = 0;
@@ -106,6 +106,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     if (!slot.webview || lane < 0 || slot.loginPage ||
         !CurrentMusicTrack(slot) || !SlotStateIsHealthy(slot.state)) {
       due = 0;
+      gSpotifyAudioHealthSilenceConfirmTicks[slot.index] = 0;
       continue;
     }
 
@@ -122,6 +123,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (audioHealthCandidate) {
     Slot& slot = *audioHealthCandidate;
     ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
+    ULONGLONG& silenceConfirm =
+        gSpotifyAudioHealthSilenceConfirmTicks[slot.index];
     if (!TryClaimAudioHealthScan(now)) {
       due = now + kSpotifyAudioHealthRetryMs;
     } else {
@@ -137,16 +140,23 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       if (FAILED(audioInterfaceResult) || !audioView ||
           FAILED(audioStateResult)) {
         due = now + kSpotifyAudioHealthRetryMs;
-      } else {
+      } else if (nativePlaying != FALSE) {
+        silenceConfirm = 0;
         due = NextAudioHealthScanTick(now, audioHealthPhase);
-        if (nativePlaying == FALSE) {
-          slot.timedCompletionDeadlineTick = 0;
-          slot.timedCompletionDeadlineGeneration = 0;
-          slot.trustedClickBlockedUntilTick = 0;
-          SetSlotState(slot, SlotState::WaitingTarget);
-          slot.nextRecoveryTick = now;
-          RecomputeForeground();
-        }
+      } else if (silenceConfirm == 0) {
+        silenceConfirm = now + kSpotifyAudioHealthSilenceConfirmMs;
+        due = silenceConfirm;
+      } else if (now < silenceConfirm) {
+        due = silenceConfirm;
+      } else {
+        silenceConfirm = 0;
+        due = NextAudioHealthScanTick(now, audioHealthPhase);
+        slot.timedCompletionDeadlineTick = 0;
+        slot.timedCompletionDeadlineGeneration = 0;
+        slot.trustedClickBlockedUntilTick = 0;
+        SetSlotState(slot, SlotState::WaitingTarget);
+        slot.nextRecoveryTick = now;
+        RecomputeForeground();
       }
     }
   }

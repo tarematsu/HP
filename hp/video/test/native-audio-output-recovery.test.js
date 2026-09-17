@@ -91,3 +91,24 @@ test('Spotify checks one live lane at a time on 15-second staggered phases', () 
   assert.match(spotifySchedule, /SetSlotState\(slot, SlotState::WaitingTarget\)/);
   assert.match(spotifySchedule, /slot\.nextRecoveryTick = now/);
 });
+
+test('Spotify requires a second silent native sample before recovery', () => {
+  assert.match(spotifyPhase, /kSpotifyAudioHealthSilenceConfirmMs = 5ULL \* 1000ULL/);
+  assert.match(spotifyPhase, /gSpotifyAudioHealthSilenceConfirmTicks/);
+  assert.match(spotifySchedule, /gSpotifyAudioHealthSilenceConfirmTicks\.fill\(0\)/);
+  assert.match(spotifySchedule, /nativePlaying != FALSE[\s\S]*silenceConfirm = 0/);
+  assert.match(
+    spotifySchedule,
+    /silenceConfirm = now \+ kSpotifyAudioHealthSilenceConfirmMs/,
+  );
+  assert.match(spotifySchedule, /else if \(now < silenceConfirm\)/);
+  assert.match(
+    spotifySchedule,
+    /else \{[\s\S]*silenceConfirm = 0;[\s\S]*SetSlotState\(slot, SlotState::WaitingTarget\)/,
+  );
+});
+
+test('Stationhead keeps the explicit 50-minute preventive reload', () => {
+  assert.match(stationheadRefresh, /return 50 \* 60'000;/);
+  assert.match(stationheadRefresh, /L"50-minute periodic refresh"/);
+});
