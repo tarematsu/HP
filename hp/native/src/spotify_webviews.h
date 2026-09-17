@@ -133,6 +133,7 @@ class SpotifyWebViews final {
     ULONGLONG mediaPipelineRecoveryGeneration = 0;
     ULONGLONG mediaKeyWaitUntilTick = 0;
     ULONGLONG mediaNetworkRecoveryTick = 0;
+    ULONGLONG extendedRecoveryBlockedUntilTick = 0;
     size_t mediaNetworkRecoveryAttempt = 0;
     std::wstring observedTrackTitle;
     std::wstring processTrackDisplay;
