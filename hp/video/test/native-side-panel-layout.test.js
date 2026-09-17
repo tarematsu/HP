@@ -18,6 +18,10 @@ const mediaHost = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url),
   'utf8',
 );
+const powerRouting = readFileSync(
+  new URL('../../native/src/power_saving_window_routing.inc', import.meta.url),
+  'utf8',
+);
 
 test('left column uses three equal rows and media spans the top two', () => {
   assert.match(dashboardHeader, /const int sideWidth = innerWidth \* 285 \/ 1000;/);
@@ -58,4 +62,13 @@ test('YouTube host is fitted to 16:9 inside the full two-row media cell', () => 
   assert.match(mediaHost, /videoBounds\.top = contentTop/);
   assert.match(mediaHost, /videoBounds\.right = contentLeft \+ videoWidth/);
   assert.match(mediaHost, /videoBounds\.bottom = contentTop \+ videoHeight/);
+});
+
+test('monitor routing restores the same 16:9 media bounds without status-strip geometry', () => {
+  assert.match(powerRouting, /RECT NativeMvForegroundBounds\(HWND mvPanel\) noexcept/);
+  assert.match(powerRouting, /totalHeight \* 16 \/ 9/);
+  assert.match(powerRouting, /videoWidth \* 9 \/ 16/);
+  assert.match(powerRouting, /return RECT\{left, top, left \+ videoWidth, top \+ videoHeight\}/);
+  assert.doesNotMatch(powerRouting, /HomePanelNativeSpotifyStatus/);
+  assert.doesNotMatch(powerRouting, /FindWindowExW\([\s\S]*SpotifyStatus/);
 });
