@@ -100,7 +100,9 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     for (const heading of document.querySelectorAll(headingSelector)) {
       if (!rendered(heading) || !connectMusicHeadingPattern.test(labelOf(heading))) continue;
       let shell = heading.parentElement;
-      for (let depth = 0; shell && depth < 7; depth += 1, shell = shell.parentElement) {
+      for (let depth = 0;
+           shell && shell !== document.body && depth < 7;
+           depth += 1, shell = shell.parentElement) {
         for (const action of shell.querySelectorAll(selector)) {
           if (!connectMusicActionPattern.test(labelOf(action))) continue;
           const point = pointOf(action);
