@@ -15,6 +15,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
       window.top !== window) return null;
   const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|let(?:'|’)?s\s+go|続ける|続行|次へ)$/i;
   const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\s+with)?\s+(?:spotify|music)|continue)$/i;
+  const connectMusicHeadingPattern = /^(?:re)?connect\s+music$/i;
+  const connectMusicActionPattern = /^(?:connect|reconnect)$/i;
   const accountPattern = /\b(log\s*in|sign\s*in|login|spotify|connect|reconnect|authorize|consent|account|password|email)\b|ログイン|サインイン|認証|接続|再接続|同意|アカウント|パスワード/i;
   const credentialSelector = "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
@@ -93,7 +95,31 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     }
     return false;
   };
+  const connectMusicModalAction = () => {
+    const headingSelector = "h1,h2,h3,[role='heading']";
+    for (const heading of document.querySelectorAll(headingSelector)) {
+      if (!rendered(heading) ||
+          !labelsOf(heading).some(label => connectMusicHeadingPattern.test(label))) continue;
+      let shell = heading.parentElement;
+      for (let depth = 0;
+           shell && shell !== document.body && depth < 7;
+           depth += 1, shell = shell.parentElement) {
+        for (const action of shell.querySelectorAll(selector)) {
+          if (!labelsOf(action).some(label => connectMusicActionPattern.test(label))) continue;
+          const point = pointOf(action);
+          if (point) return point;
+        }
+      }
+    }
+    return null;
+  };
   if (!document.body) return null;
+
+  // Stationhead currently renders "Connect music" as a heading while the
+  // actual clickable control is a separate "Connect" button. Resolve that
+  // structure first so the generic auth guard does not hide the button.
+  const modalConnectPoint = connectMusicModalAction();
+  if (modalConnectPoint) return modalConnectPoint;
 
   // Explicitly allow the known music connection/reconnection controls through
   // the account guard. The /i flag makes matching case-insensitive. Native code
