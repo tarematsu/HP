@@ -14,7 +14,6 @@ const controller = readFileSync(
   new URL('../../native/src/spotify_controller_lifecycle.inc', import.meta.url),
   'utf8',
 );
-const spotify = `${foundation}\n${controller}`;
 
 test('Spotify one-time reauthentication keeps stable v2 profiles after amazon moves to Stationhead', () => {
   assert.match(foundation, /kSpotifyProfilePrefix\[\] = L"spotify-" L"v2-"/);
@@ -24,9 +23,16 @@ test('Spotify one-time reauthentication keeps stable v2 profiles after amazon mo
   assert.match(controller, /put_ProfileName\(profileName\.c_str\(\)\)/);
 });
 
-test('reauthentication does not clear shared WebView data in-place', () => {
+test('reauthentication itself does not clear shared WebView data in-place', () => {
+  // Persistent-silence recovery may selectively clear playback-only profile
+  // data, but ordinary profile creation/reauthentication must remain cache and
+  // cookie preserving.
+  const createStart = controller.indexOf('void SpotifyWebViews::CreateController');
+  const configureStart = controller.indexOf('void SpotifyWebViews::Configure', createStart);
+  assert.ok(createStart >= 0 && configureStart > createStart);
+  const reauthPath = `${foundation}\n${controller.slice(createStart, configureStart)}`;
   assert.doesNotMatch(
-    spotify,
+    reauthPath,
     /DeleteAllCookies|ClearBrowsingData|ClearBrowsingDataInTimeRange|RemoveAllCookies/,
   );
 });
