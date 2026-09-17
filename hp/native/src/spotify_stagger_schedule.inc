@@ -6,6 +6,8 @@
 namespace {
 constexpr ULONGLONG kSpotifyInitialStartDelayMs = 0;
 constexpr ULONGLONG kSpotifyCloudReloadMinIntervalMs = 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyHeavyRecoverySpacingMs = 5ULL * 1000ULL;
+ULONGLONG gSpotifyHeavyRecoveryNextTick = 0;
 }
 
 void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
@@ -18,8 +20,12 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   scheduleStartTick_ = now + kSpotifyInitialStartDelayMs;
   gSpotifyAudioHealthCheckDueTicks.fill(0);
   gSpotifyAudioHealthSilenceConfirmTicks.fill(0);
+  gSpotifyHeavyRecoveryNextTick = 0;
   for (Slot& slot : slots_) {
     ResetMediaRecoveryEpisode(slot.recoveryEpisode, slot.targetGeneration);
+    slot.profileRecoveryPending = false;
+    slot.profileRecoveryInFlight = false;
+    slot.profileRecoveryDeep = false;
   }
 
   RunStaggeredReconcile();
@@ -53,7 +59,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     SetSlotState(slot, SlotState::Navigating);
     slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
     if (!slot.webview || FAILED(slot.webview->Reload())) {
-      RebuildPlaybackSurface(slot);
+      slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
+      slot.mediaPipelineRecoveryPending = true;
+      SetSlotState(slot, SlotState::Recovering);
+      slot.nextRecoveryTick = now;
+      ArmRobustScheduler();
       return;
     }
     RecomputeForeground();
@@ -82,11 +92,95 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     }
   }
 
+  // Profile repair is an explicit action in the same MediaRecoveryEpisode, not
+  // a second recovery ladder. Preserve cookies/localStorage/credentials while
+  // progressively clearing only playback-related state.
+  for (const Slot& slot : slots_) {
+    if (slot.profileRecoveryInFlight) return;
+  }
+  for (Slot& slot : slots_) {
+    if (!slot.profileRecoveryPending) continue;
+
+    const auto fallBackToSurfaceRebuild = [this, &slot, now]() noexcept {
+      slot.profileRecoveryPending = false;
+      slot.profileRecoveryInFlight = false;
+      slot.profileRecoveryDeep = false;
+      slot.mediaPipelineRecoveryGeneration = slot.targetGeneration;
+      slot.mediaPipelineRecoveryPending = true;
+      SetSlotState(slot, SlotState::Recovering);
+      slot.nextRecoveryTick = now;
+      ArmRobustScheduler();
+    };
+
+    if (!slot.webview) {
+      fallBackToSurfaceRebuild();
+      return;
+    }
+
+    ComPtr<ICoreWebView2_13> webview13;
+    ComPtr<ICoreWebView2Profile> profile;
+    ComPtr<ICoreWebView2Profile2> profile2;
+    if (FAILED(slot.webview.As(&webview13)) || !webview13 ||
+        FAILED(webview13->get_Profile(&profile)) || !profile ||
+        FAILED(profile.As(&profile2)) || !profile2) {
+      fallBackToSurfaceRebuild();
+      return;
+    }
+
+    int kindsValue =
+        COREWEBVIEW2_BROWSING_DATA_KINDS_SERVICE_WORKERS |
+        COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE |
+        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE;
+    if (slot.profileRecoveryDeep) {
+      kindsValue |= COREWEBVIEW2_BROWSING_DATA_KINDS_INDEXED_DB;
+    }
+    const auto kinds =
+        static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(kindsValue);
+
+    slot.profileRecoveryInFlight = true;
+    const auto alive = alive_;
+    Slot* const target = &slot;
+    ComPtr<ICoreWebView2> expectedWebview = slot.webview;
+    const HRESULT started = profile2->ClearBrowsingData(
+        kinds,
+        Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+            [this, alive, target, expectedWebview](HRESULT) -> HRESULT {
+              if (!alive || !alive->load(std::memory_order_acquire)) return S_OK;
+              target->profileRecoveryInFlight = false;
+              target->profileRecoveryPending = false;
+              target->profileRecoveryDeep = false;
+              if (target->webview.Get() != expectedWebview.Get()) {
+                ArmRobustScheduler();
+                return S_OK;
+              }
+
+              target->mediaPipelineRecoveryGeneration = target->targetGeneration;
+              target->mediaPipelineRecoveryPending = true;
+              SetSlotState(*target, SlotState::Recovering);
+              target->nextRecoveryTick = GetTickCount64() + 1'000ULL;
+              ArmRobustScheduler();
+              return S_OK;
+            }).Get());
+    if (FAILED(started)) {
+      fallBackToSurfaceRebuild();
+    }
+    return;
+  }
+
   // Chromium reports decoder, decryptor and media-pipeline failures even when
   // the WebView is intentionally muted. Rebuild only the affected surface and
-  // preserve its account, track target and rotation position.
+  // preserve its account, track target and rotation position. Heavy rebuilds
+  // are globally spaced so renderer/Widevine/audio initialization cannot burst.
   for (Slot& slot : slots_) {
     if (!slot.mediaPipelineRecoveryPending) continue;
+    if (slot.nextRecoveryTick != 0 && now < slot.nextRecoveryTick) continue;
+    if (gSpotifyHeavyRecoveryNextTick != 0 &&
+        now < gSpotifyHeavyRecoveryNextTick) {
+      slot.nextRecoveryTick = std::max(
+          slot.nextRecoveryTick, gSpotifyHeavyRecoveryNextTick);
+      continue;
+    }
+    gSpotifyHeavyRecoveryNextTick = now + kSpotifyHeavyRecoverySpacingMs;
     RebuildPlaybackSurface(slot);
     return;
   }
@@ -96,8 +190,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   // Events remain the fast path, but each live Spotify WebView also gets one
   // native audio probe per minute. Runtime lanes B/C/D occupy the 15/30/45s
   // phases of the shared Stationhead+Spotify scan clock. A single silent native
-  // sample can occur at a track boundary, so require one five-second confirm
-  // sample before entering the existing trusted-click recovery path.
+  // sample can occur at a track boundary, so require one confirmation sample
+  // before entering the unified recovery path.
   Slot* audioHealthCandidate = nullptr;
   ULONGLONG earliestAudioHealthDue = 0;
   size_t audioHealthPhase = 0;
@@ -159,14 +253,12 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
         slot.timedCompletionDeadlineGeneration = 0;
         slot.trustedClickBlockedUntilTick = 0;
 
-        // The native probe has confirmed that the output is silent, but it has
-        // not attempted the lightweight trusted-Play repair yet. Report a
-        // timeline stall so the coordinator starts with ReassertPlayback;
-        // ConfirmedSilence is reserved for the click path after that repair has
-        // actually failed. Later probes can then advance to reload and rebuild.
+        // Spotify opts into the coordinator's extended last-resort actions.
+        // The normal ladder remains trusted Play -> reload -> WebView rebuild;
+        // only repeated failure advances into profile repair and browser recycle.
         const MediaRecoveryAction action = NextMediaRecoveryAction(
             slot.recoveryEpisode, MediaRecoveryEvidence::TimelineStall,
-            now, slot.targetGeneration, !slot.loginPage, false);
+            now, slot.targetGeneration, !slot.loginPage, false, true);
         if (action == MediaRecoveryAction::ReassertPlayback) {
           SetSlotState(slot, SlotState::WaitingTarget);
           slot.nextRecoveryTick = now;
@@ -184,6 +276,35 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
           slot.mediaPipelineRecoveryPending = true;
           SetSlotState(slot, SlotState::Recovering);
           slot.nextRecoveryTick = now;
+        } else if (action == MediaRecoveryAction::RepairPlaybackState ||
+                   action == MediaRecoveryAction::DeepRepairPlaybackState) {
+          slot.profileRecoveryPending = true;
+          slot.profileRecoveryDeep =
+              action == MediaRecoveryAction::DeepRepairPlaybackState;
+          SetSlotState(slot, SlotState::Recovering);
+          slot.nextRecoveryTick = now;
+        } else if (action == MediaRecoveryAction::RecycleEnvironment) {
+          const bool recycling =
+              SharedWebViewEnvironment::Instance().RecycleBrowserProcess(
+                  userDataFolder_, slot.webview.Get());
+          for (Slot& affected : slots_) {
+            affected.profileRecoveryPending = false;
+            affected.profileRecoveryInFlight = false;
+            affected.profileRecoveryDeep = false;
+            affected.mediaPipelineRecoveryGeneration =
+                affected.targetGeneration;
+            affected.mediaPipelineRecoveryPending = true;
+            SetSlotState(affected, SlotState::Recovering);
+            affected.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
+            ResetMediaRecoveryEpisode(
+                affected.recoveryEpisode, affected.targetGeneration);
+          }
+          if (!recycling) {
+            // The shared environment may be cooling down or the runtime may not
+            // expose BrowserProcessExited. A serialized surface rebuild remains
+            // available and the reset episode can retry escalation later.
+            slot.nextRecoveryTick = now;
+          }
         }
         RecomputeForeground();
         ArmRobustScheduler();
@@ -231,7 +352,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       break;
     }
     if (healthyPlaybackNeedsNoWork(candidate) ||
-        candidate.asyncWork != AsyncWork::None) {
+        candidate.asyncWork != AsyncWork::None ||
+        candidate.profileRecoveryInFlight) {
       continue;
     }
     if (SlotStateNeedsRecovery(candidate.state) && !recoveryReady(candidate)) {
