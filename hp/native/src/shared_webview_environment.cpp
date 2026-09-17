@@ -33,7 +33,6 @@ constexpr wchar_t kStationheadWebView2Arguments[] =
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
 
 constexpr ULONGLONG kSharedBrowserRecycleCooldownMs = 10ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSharedBrowserRecycleExitTimeoutMs = 15ULL * 1000ULL;
 constexpr UINT kSharedBrowserRecycleExitCode = 0xE0420001U;
 
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
@@ -113,25 +112,10 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
     {
       std::lock_guard lock(mutex_);
       Entry& entry = entries_[requestedKey];
-      const ULONGLONG now = GetTickCount64();
-      if (entry.recyclePending) {
-        const bool recycleTimedOut =
-            entry.recycleStartedTick != 0 && now >= entry.recycleStartedTick &&
-            now - entry.recycleStartedTick >= kSharedBrowserRecycleExitTimeoutMs;
-        if (recycleTimedOut) {
-          // BrowserProcessExited should normally retire the environment. This
-          // timeout is a last-resort escape hatch for runtimes that fail to
-          // deliver that event after the process has already gone away.
-          ++entry.generation;
-          entry.environment.Reset();
-          entry.browserProcessExitedToken = {};
-          entry.creating = false;
-          entry.recyclePending = false;
-          entry.recycleStartedTick = 0;
-        } else {
-          recycleBlocked = true;
-        }
-      }
+      // Never create a replacement environment while the old browser process
+      // may still own the same user-data folder. BrowserProcessExited is the
+      // synchronization point that makes reuse safe.
+      recycleBlocked = entry.recyclePending;
 
       if (!recycleBlocked) {
         if (entry.acquireCount == 0) {
