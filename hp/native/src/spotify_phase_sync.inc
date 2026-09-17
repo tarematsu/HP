@@ -8,11 +8,13 @@ constexpr UINT kSpotifyHealthyAuditMs = 60U * 60U * 1000U;
 constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyHeavyRecoverySpacingMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
 constexpr ULONGLONG kSpotifyAudioHealthSilenceConfirmMs = 30ULL * 1000ULL;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
+ULONGLONG gSpotifyNextHeavyRecoveryTick = 0;
 std::array<ULONGLONG, kSpotifyActiveAccountCount>
     gSpotifyAudioHealthCheckDueTicks{};
 std::array<ULONGLONG, kSpotifyActiveAccountCount>
@@ -263,7 +265,15 @@ void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
       now - slot.controllerCreateTick < kSpotifyControllerRetryMs) {
     return;
   }
+  if (gSpotifyNextHeavyRecoveryTick != 0 &&
+      now < gSpotifyNextHeavyRecoveryTick) {
+    slot.nextRecoveryTick = std::max(
+        slot.nextRecoveryTick, gSpotifyNextHeavyRecoveryTick);
+    ArmRobustScheduler();
+    return;
+  }
 
+  gSpotifyNextHeavyRecoveryTick = now + kSpotifyHeavyRecoverySpacingMs;
   CreateController(slot);
 }
 
