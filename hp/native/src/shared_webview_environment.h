@@ -15,6 +15,10 @@ class SharedWebViewEnvironment {
   }
   void Acquire(const fs::path& userDataFolder, bool blockImages,
                bool blockFonts, Completion completion);
+  // A single invalidation of a ready environment remains non-destructive. If
+  // controller creation repeatedly fails against the same cached environment,
+  // Invalidate escalates to a shared browser-process restart so every playback
+  // surface reconnects to a fresh Audio Service/browser environment.
   void Invalidate(const fs::path& userDataFolder);
 
  private:
@@ -23,7 +27,10 @@ class SharedWebViewEnvironment {
     ComPtr<ICoreWebView2Environment> environment;
     std::vector<Completion> pending;
     uint32_t acquireCount = 0;
+    uint32_t readyInvalidationStrikes = 0;
     uint64_t generation = 0;
+    uint64_t firstReadyInvalidationTick = 0;
+    uint64_t lastHardResetTick = 0;
     bool creating = false;
     bool blockImages = false;
     bool blockFonts = false;
