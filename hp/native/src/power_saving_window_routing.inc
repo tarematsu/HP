@@ -2,7 +2,6 @@
 namespace {
 constexpr wchar_t kMainWindowClass[] = L"HomePanelNativeWindow";
 constexpr wchar_t kMvPanelWindowClass[] = L"HomePanelNativeMvPanel";
-constexpr wchar_t kNativeSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
 constexpr wchar_t kStationheadHostWindowClass[] = L"HomePanelStationheadHost";
 constexpr UINT_PTR kObservedNativeMvAutoStartTimer = 0x4D56;
 
@@ -49,19 +48,21 @@ RECT NativeMvForegroundBounds(HWND mvPanel) noexcept {
   client.right = std::max<LONG>(client.left + 1, client.right);
   client.bottom = std::max<LONG>(client.top + 1, client.bottom);
 
-  LONG videoTop = client.top;
-  HWND status = FindWindowExW(
-      parent, nullptr, kNativeSpotifyStatusWindowClass, nullptr);
-  if (status && IsWindow(status)) {
-    RECT statusBounds{};
-    if (GetWindowRect(status, &statusBounds) &&
-        MapWindowPoints(nullptr, parent,
-                        reinterpret_cast<POINT*>(&statusBounds), 2)) {
-      videoTop = std::clamp<LONG>(statusBounds.bottom, client.top,
-                                  client.bottom - 1);
-    }
+  const LONG totalWidth = std::max<LONG>(1, client.right - client.left);
+  const LONG totalHeight = std::max<LONG>(1, client.bottom - client.top);
+  LONG videoWidth = std::min<LONG>(
+      totalWidth, std::max<LONG>(1, totalHeight * 16 / 9));
+  LONG videoHeight = std::max<LONG>(1, videoWidth * 9 / 16);
+  if (videoHeight > totalHeight) {
+    videoHeight = totalHeight;
+    videoWidth = std::min<LONG>(
+        totalWidth, std::max<LONG>(1, videoHeight * 16 / 9));
   }
-  return RECT{client.left, videoTop, client.right, client.bottom};
+  const LONG left =
+      client.left + std::max<LONG>(0, (totalWidth - videoWidth) / 2);
+  const LONG top =
+      client.top + std::max<LONG>(0, (totalHeight - videoHeight) / 2);
+  return RECT{left, top, left + videoWidth, top + videoHeight};
 }
 }  // namespace
 
