@@ -99,6 +99,12 @@ static_assert(StationheadAudioEscalationSettleMs() == 15'000);
 #define nextAutoClickAt_                                                      \
   nextAutoClickAt_ = 0;                                                       \
   void ResetAudioLossEscalation() noexcept {                                  \
+    ::hp::ObserveMediaRecoveryHealthy(                                       \
+        mediaRecoveryEpisode_, GetTickCount64(), 1);                         \
+    if (mediaRecoveryEpisode_.highestAction !=                               \
+        ::hp::MediaRecoveryAction::None) {                                   \
+      return;                                                                \
+    }                                                                         \
     audioLossEscalationStage_ = 0;                                            \
     audioLossEscalationAwaitingNavigation_ = false;                           \
     audioLossEscalationStartedAt_ = 0;                                        \
@@ -134,6 +140,10 @@ static_assert(StationheadAudioEscalationSettleMs() == 15'000);
           audioLossAuthUiDetected_) {                                         \
         return;                                                               \
       }                                                                       \
+      const auto action = ::hp::NextMediaRecoveryAction(                     \
+          mediaRecoveryEpisode_, ::hp::MediaRecoveryEvidence::ConfirmedSilence, \
+          GetTickCount64(), 1, true, !config_.fallbackUrl.empty());          \
+      if (action != ::hp::MediaRecoveryAction::ReloadDocument) return;       \
                                                                                 \
       audioLossEscalationStage_ = 1;                                          \
       audioLossEscalationAwaitingNavigation_ = true;                          \
@@ -167,6 +177,10 @@ static_assert(StationheadAudioEscalationSettleMs() == 15'000);
               ::hp::StationheadAudioEscalationSettleMs()) {                   \
         return;                                                               \
       }                                                                       \
+      const auto action = ::hp::NextMediaRecoveryAction(                     \
+          mediaRecoveryEpisode_, ::hp::MediaRecoveryEvidence::ConfirmedSilence, \
+          GetTickCount64(), 1, true, !config_.fallbackUrl.empty());          \
+      if (action != ::hp::MediaRecoveryAction::RebuildSurface) return;       \
                                                                                 \
       audioLossEscalationStage_ = 2;                                          \
       audioLossEscalationStartedAt_ = 0;                                      \
@@ -208,6 +222,10 @@ static_assert(StationheadAudioEscalationSettleMs() == 15'000);
         return;                                                               \
       }                                                                       \
       if (audioLossAuthUiDetected_ || loginRequired_) return;                 \
+      const auto action = ::hp::NextMediaRecoveryAction(                     \
+          mediaRecoveryEpisode_, ::hp::MediaRecoveryEvidence::ConfirmedSilence, \
+          GetTickCount64(), 1, true, !config_.fallbackUrl.empty());          \
+      if (action != ::hp::MediaRecoveryAction::UseFallback) return;          \
                                                                                 \
       audioLossEscalationStage_ = 3;                                          \
       UpdateAudioLossState(                                                   \

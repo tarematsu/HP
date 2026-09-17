@@ -37,6 +37,7 @@ void StationheadPlayer::Start() {
   trackBoundaryPlaybackRecoveryPending_ = false;
   trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
   trackBoundaryPlaybackRecoveryDeadline_ = 0;
+  ResetMediaRecoveryEpisode(mediaRecoveryEpisode_, 1);
   ResetNavigationRouteState();
   Create();
 }

@@ -53,7 +53,10 @@ test('Spotify escalates trusted Play recovery through one reload and one full re
   assert.match(spotifyHost, /slot\.playRecoveryRecreateGeneration = 0/);
   assert.match(spotifyClick, /const recreateUsed=/);
   assert.match(spotifyClick, /if\(!recreateUsed\)return 'recreate'/);
-  assert.match(spotifyClick, /playRecoveryRecreateGeneration != targetGeneration/);
+  assert.match(
+    spotifyClick,
+    /playRecoveryRecreateGeneration !=\s*targetGeneration/,
+  );
   assert.match(spotifyClick, /playRecoveryRecreateGeneration = targetGeneration/);
   assert.match(spotifyClick, /RebuildPlaybackSurface\(\*target\)/);
   assert.match(spotifyController, /slot\.webview\.Reset\(\)/);

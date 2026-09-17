@@ -165,6 +165,13 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                     return S_OK;
                   }
                   if (!target->mediaNetworkRecoveryPending) {
+                    const MediaRecoveryAction action = NextMediaRecoveryAction(
+                        target->recoveryEpisode,
+                        MediaRecoveryEvidence::NetworkFailure, now,
+                        target->targetGeneration, !target->loginPage, false);
+                    if (action != MediaRecoveryAction::ReloadDocument) {
+                      return S_OK;
+                    }
                     if (target->mediaNetworkRecoveryAttempt >=
                         kMediaNetworkRetryDelaysMs.size()) {
                       target->mediaNetworkRecoveryAttempt = 0;
@@ -206,6 +213,11 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                     target->targetGeneration) {
                   return S_OK;
                 }
+                const MediaRecoveryAction action = NextMediaRecoveryAction(
+                    target->recoveryEpisode,
+                    MediaRecoveryEvidence::FatalPipeline, now,
+                    target->targetGeneration, !target->loginPage, false);
+                if (action != MediaRecoveryAction::RebuildSurface) return S_OK;
                 target->mediaPipelineRecoveryGeneration =
                     target->targetGeneration;
                 target->mediaPipelineRecoveryPending = true;

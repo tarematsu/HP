@@ -112,6 +112,7 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   slot.mediaNetworkRecoveryAttempt = 0;
   slot.mediaKeyWaitFailurePending = false;
   slot.mediaNetworkRecoveryPending = false;
+  ResetMediaRecoveryEpisode(slot.recoveryEpisode, slot.targetGeneration);
   if (slot.index < gSpotifyAudioHealthSilenceConfirmTicks.size()) {
     gSpotifyAudioHealthSilenceConfirmTicks[slot.index] = 0;
   }

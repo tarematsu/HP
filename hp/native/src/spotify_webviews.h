@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "media_recovery_coordinator.h"
 
 namespace hp {
 
@@ -152,6 +153,7 @@ class SpotifyWebViews final {
     bool mediaPipelineRecoveryPending = false;
     bool mediaKeyWaitFailurePending = false;
     bool mediaNetworkRecoveryPending = false;
+    MediaRecoveryEpisode recoveryEpisode{};
   };
 
   static LRESULT CALLBACK HostWndProc(

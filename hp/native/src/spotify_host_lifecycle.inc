@@ -142,6 +142,7 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.mediaPipelineRecoveryPending = false;
   slot.mediaKeyWaitFailurePending = false;
   slot.mediaNetworkRecoveryPending = false;
+  ResetMediaRecoveryEpisode(slot.recoveryEpisode);
   slot.playbackConfirmedAt = {};
 
   if (wasSchedulerHost) {
