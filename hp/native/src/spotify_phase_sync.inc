@@ -198,6 +198,13 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
       }
       if (!slot.webview) {
         if (slot.controllerCreating) continue;
+        // Heavy controller creation/recovery may be deliberately delayed a few
+        // seconds to protect the shared Browser/Audio Service. Honor that exact
+        // wake time instead of spinning the 100ms scheduler floor.
+        if (slot.nextRecoveryTick != 0 && now < slot.nextRecoveryTick) {
+          considerTick(slot.nextRecoveryTick);
+          continue;
+        }
         if (slot.controllerCreateTick != 0 &&
             now - slot.controllerCreateTick < kSpotifyControllerRetryMs) {
           continue;
