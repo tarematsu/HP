@@ -12,8 +12,8 @@ describe("Spotify rotation duration resolver", () => {
     const rotation = managedSpotifySevenSlotRotation();
     const tracks = rotation.flatMap(group => group.tracks);
     const ids = tracks.map(track => track.trackId);
-    expect(rotation).toHaveLength(8);
-    expect(ids).toHaveLength(96);
+    expect(rotation).toHaveLength(7);
+    expect(ids).toHaveLength(77);
     expect(new Set(ids).size).toBe(31);
     expect(ids.every(id => /^[A-Za-z0-9]{22}$/.test(id))).toBe(true);
   });
@@ -27,7 +27,7 @@ describe("Spotify rotation duration resolver", () => {
       rotation?: unknown[];
     };
     expect(spotify.managedRotation).toBe(true);
-    expect(spotify.rotation).toHaveLength(8);
+    expect(spotify.rotation).toHaveLength(7);
     expect(Object.keys(spotify).sort()).toEqual(["managedRotation", "rotation"]);
   });
 
