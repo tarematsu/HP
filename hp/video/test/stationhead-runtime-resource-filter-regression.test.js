@@ -48,9 +48,11 @@ test('resource filter reduction is the final resource PCH layer', () => {
   );
 });
 
-test('shared media environments permit autonomous playback with normal occluded-window backgrounding', () => {
+test('shared media environments keep autonomous playback active while occluded', () => {
   assert.match(environmentSource, /kSharedWebView2LifecycleArguments/);
-  assert.doesNotMatch(environmentSource, /--disable-backgrounding-occluded-windows/);
+  assert.match(environmentSource, /--disable-backgrounding-occluded-windows/);
+  assert.match(environmentSource, /--disable-renderer-backgrounding/);
+  assert.match(environmentSource, /--disable-background-timer-throttling/);
   assert.match(environmentSource, /--autoplay-policy=no-user-gesture-required/);
   const sharedStart = environmentSource.indexOf(
     'constexpr wchar_t kSharedWebView2LifecycleArguments[]',
@@ -66,7 +68,9 @@ test('shared media environments permit autonomous playback with normal occluded-
   const sharedArguments = environmentSource.slice(sharedStart, fullResourceStart);
   const fullResourceArguments = environmentSource.slice(fullResourceStart, stationheadStart);
   assert.match(sharedArguments, /--autoplay-policy=no-user-gesture-required/);
-  assert.doesNotMatch(sharedArguments, /--disable-backgrounding-occluded-windows/);
+  assert.match(sharedArguments, /--disable-backgrounding-occluded-windows/);
+  assert.match(sharedArguments, /--disable-renderer-backgrounding/);
+  assert.match(sharedArguments, /--disable-background-timer-throttling/);
   assert.match(sharedArguments, /--disable-domain-reliability/);
   assert.match(sharedArguments, /--disable-breakpad/);
   assert.match(sharedArguments, /--disable-extensions/);

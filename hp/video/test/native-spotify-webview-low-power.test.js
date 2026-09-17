@@ -43,7 +43,9 @@ test('Spotify leaves WebView2 memory target unmanaged while controller visibilit
   assert.doesNotMatch(controller, /slot\.controller->put_IsVisible\(FALSE\)/);
 });
 
-test('shared WebView environment leaves Chromium occluded-window backgrounding enabled', () => {
+test('shared WebView environment keeps background playback timers and renderers active', () => {
   assert.match(environment, /--autoplay-policy=no-user-gesture-required/);
-  assert.doesNotMatch(environment, /--disable-backgrounding-occluded-windows/);
+  assert.match(environment, /--disable-backgrounding-occluded-windows/);
+  assert.match(environment, /--disable-renderer-backgrounding/);
+  assert.match(environment, /--disable-background-timer-throttling/);
 });

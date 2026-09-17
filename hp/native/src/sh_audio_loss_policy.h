@@ -4,12 +4,12 @@
 namespace hp {
 
 // A single WebView2 audio pulse during initial Stationhead startup must not arm
-// fallback. Require continuous audio first; after that, 0 through 10 seconds of
-// silence remain a track-transition wait. The operation surface is foregrounded
-// at 11 seconds, then gets one second to finish rendering authentication controls
-// before native code probes the DOM.
+// fallback. Require continuous audio first. Native audio health is sampled every
+// 30 seconds; destructive silence recovery begins only after one full minute of
+// continuous audio loss. The final second is reserved for rendering any
+// authentication controls before native code probes the DOM.
 inline constexpr int64_t kStationheadAudioLossArmStabilityMs = 5'000;
-inline constexpr int64_t kStationheadAudioLossGraceMs = 11'000;
+inline constexpr int64_t kStationheadAudioLossGraceMs = 59'000;
 inline constexpr int64_t kStationheadAudioLossDomSettleMs = 1'000;
 inline constexpr int64_t kStationheadFallbackMinimumDwellMs = 15'000;
 inline constexpr int64_t kStationheadPrimaryRecoveryStabilityMs = 2'000;
@@ -54,11 +54,11 @@ static_assert(!StationheadAudioLossCanArm(true, false, 4'999));
 static_assert(StationheadAudioLossCanArm(true, false, 5'000));
 static_assert(!StationheadAudioLossCanArm(true, true, 60'000));
 static_assert(!StationheadAudioLossCanProbe(
-    true, false, true, false, false, false, 11'999));
+    true, false, true, false, false, false, 59'999));
 static_assert(StationheadAudioLossCanProbe(
-    true, false, true, false, false, false, 12'000));
-static_assert(!StationheadAudioLossCanFallback(true, false, 11'999));
-static_assert(StationheadAudioLossCanFallback(true, false, 12'000));
+    true, false, true, false, false, false, 60'000));
+static_assert(!StationheadAudioLossCanFallback(true, false, 59'999));
+static_assert(StationheadAudioLossCanFallback(true, false, 60'000));
 static_assert(!StationheadFallbackDwellSatisfied(14'999));
 static_assert(StationheadFallbackDwellSatisfied(15'000));
 

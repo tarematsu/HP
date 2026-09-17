@@ -4,8 +4,8 @@ namespace hp {
 
 // Event wiring and document lifetime for the single Stationhead runtime. State
 // detection belongs to interaction_script; blank recovery belongs to
-// blank_recovery_script. This fragment only schedules those owners and tears
-// their timers down when the document leaves the page lifecycle.
+// blank_recovery_script. This fragment schedules those owners plus a bounded
+// media-progress probe, and tears their timers down with the document lifecycle.
 inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
   const zoomOut = () => document.documentElement?.style.setProperty('zoom', '0.5');
@@ -24,6 +24,15 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   const onStateEvent = () => schedule(0);
   const onInteractiveEvent = () => schedule(150);
   let keyWaitingMedia = null;
+  let progressTimer = 0;
+  let progressMedia = null;
+  let progressTime = 0;
+  let progressStalledAt = 0;
+  let progressRepairTried = false;
+  let progressSyntheticKeyWait = false;
+  const progressProbeMs = 4000;
+  const progressStallMs = 12000;
+
   const beginKeyWait = event => {
     const media = event.target;
     if (!(media instanceof HTMLMediaElement) || keyWaitingMedia === media) return;
@@ -34,6 +43,71 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
     if (!keyWaitingMedia || (event?.target && event.target !== keyWaitingMedia)) return;
     keyWaitingMedia = null;
     postText('drm-ready');
+  };
+  const clearSyntheticKeyWait = () => {
+    if (!progressSyntheticKeyWait) return;
+    progressSyntheticKeyWait = false;
+    postText('drm-ready');
+  };
+
+  // waitingforkey and Chromium media errors are not guaranteed for every CDM
+  // failure. Independently verify that a media element claiming to play keeps
+  // advancing. First re-kick the element; if a second full stall window passes,
+  // hand the incident to the existing native DRM wait/reload path instead of
+  // reloading from page JavaScript. Explicit waitingforkey retains its existing
+  // native 20-second protection window and is not interrupted by this probe.
+  const probeMediaProgress = () => {
+    progressTimer = 0;
+    if (!pageActive) return;
+    const media = Array.from(document.querySelectorAll('audio,video')).find(
+      element => element instanceof HTMLMediaElement && !element.paused &&
+        !element.ended && element.readyState >= 2);
+    if (!media) {
+      progressMedia = null;
+      progressTime = 0;
+      progressStalledAt = 0;
+      progressRepairTried = false;
+      clearSyntheticKeyWait();
+    } else if (keyWaitingMedia === media) {
+      progressMedia = media;
+      progressTime = Number(media.currentTime) || 0;
+      progressStalledAt = 0;
+      progressRepairTried = false;
+      clearSyntheticKeyWait();
+    } else {
+      const current = Number(media.currentTime);
+      const now = Date.now();
+      if (!Number.isFinite(current) || current < 0) {
+        progressMedia = null;
+        progressTime = 0;
+        progressStalledAt = 0;
+        progressRepairTried = false;
+        clearSyntheticKeyWait();
+      } else if (progressMedia !== media || current > progressTime + 0.10) {
+        progressMedia = media;
+        progressTime = current;
+        progressStalledAt = 0;
+        progressRepairTried = false;
+        clearSyntheticKeyWait();
+      } else if (!progressStalledAt) {
+        progressStalledAt = now;
+      } else if (now - progressStalledAt >= progressStallMs) {
+        if (!progressRepairTried) {
+          progressRepairTried = true;
+          progressStalledAt = now;
+          try {
+            media.pause();
+            const result = media.play?.();
+            if (result?.catch) result.catch(() => {});
+          } catch (_) {}
+        } else if (!progressSyntheticKeyWait) {
+          progressSyntheticKeyWait = true;
+          progressStalledAt = now;
+          postText('drm-waiting');
+        }
+      }
+    }
+    progressTimer = nativeTimeout(probeMediaProgress, progressProbeMs);
   };
 
   for (const eventName of [
@@ -65,21 +139,24 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   });
   window.addEventListener('pagehide', () => {
     pageActive = false;
-    for (const timer of [eventTimer, authReadyTimer, blankTimer, blankConfirmTimer]) {
+    for (const timer of [eventTimer, authReadyTimer, blankTimer, blankConfirmTimer,
+                         progressTimer]) {
       if (timer) nativeClearTimeout(timer);
     }
-    eventTimer = authReadyTimer = blankTimer = blankConfirmTimer = 0;
+    eventTimer = authReadyTimer = blankTimer = blankConfirmTimer = progressTimer = 0;
   }, true);
   window.addEventListener('pageshow', () => {
     pageActive = true;
     zoomOut();
     run();
     armBlankRecovery();
+    if (!progressTimer) progressTimer = nativeTimeout(probeMediaProgress, progressProbeMs);
   }, true);
 
   zoomOut();
   run();
   armBlankRecovery();
+  progressTimer = nativeTimeout(probeMediaProgress, progressProbeMs);
 })()
 )JS";
   return kFragment;
