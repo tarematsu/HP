@@ -153,6 +153,9 @@ class SpotifyWebViews final {
     bool mediaPipelineRecoveryPending = false;
     bool mediaKeyWaitFailurePending = false;
     bool mediaNetworkRecoveryPending = false;
+    bool profileRecoveryPending = false;
+    bool profileRecoveryInFlight = false;
+    bool profileRecoveryDeep = false;
     MediaRecoveryEpisode recoveryEpisode{};
   };
 

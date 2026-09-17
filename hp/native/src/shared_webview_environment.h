@@ -17,14 +17,25 @@ class SharedWebViewEnvironment {
                bool blockFonts, Completion completion);
   void Invalidate(const fs::path& userDataFolder);
 
+  // Final recovery for a shared browser process whose media services remain
+  // unhealthy after per-surface recovery. BrowserProcessExited is observed
+  // before the cached environment becomes reusable, preventing two environments
+  // from racing against the same user-data folder.
+  bool RecycleBrowserProcess(const fs::path& userDataFolder,
+                             ICoreWebView2* webview) noexcept;
+
  private:
   struct Entry {
     fs::path userDataFolder;
     ComPtr<ICoreWebView2Environment> environment;
     std::vector<Completion> pending;
+    EventRegistrationToken browserProcessExitedToken{};
     uint32_t acquireCount = 0;
     uint64_t generation = 0;
+    ULONGLONG recycleStartedTick = 0;
+    ULONGLONG lastRecycleTick = 0;
     bool creating = false;
+    bool recyclePending = false;
     bool blockImages = false;
     bool blockFonts = false;
   };
@@ -32,6 +43,8 @@ class SharedWebViewEnvironment {
   SharedWebViewEnvironment() = default;
   void Complete(const std::wstring& key, uint64_t generation, HRESULT result,
                 ICoreWebView2Environment* environment);
+  void HandleBrowserProcessExited(const std::wstring& key,
+                                  uint64_t environmentGeneration) noexcept;
   static std::wstring NormalizePath(const fs::path& path);
 
   std::mutex mutex_;

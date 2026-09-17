@@ -157,7 +157,11 @@ void SpotifyWebViews::ClickSlotCssPoint(
                          target->playRecoveryRecreateGeneration !=
                              targetGeneration) {
                 target->playRecoveryRecreateGeneration = targetGeneration;
-                RebuildPlaybackSurface(*target);
+                target->mediaPipelineRecoveryGeneration = targetGeneration;
+                target->mediaPipelineRecoveryPending = true;
+                SetSlotState(*target, SlotState::Recovering);
+                target->nextRecoveryTick = recoveryTick;
+                ArmRobustScheduler();
               } else {
                 ArmRobustScheduler();
               }

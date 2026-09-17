@@ -47,7 +47,7 @@ test('Stationhead escalation is bounded and resets on real audio', () => {
   assert.match(stationhead, /spotifyAuthorization_ \|\| loginRequired_/);
 });
 
-test('Spotify escalates trusted Play recovery through one reload and one full rebuild per target', () => {
+test('Spotify escalates trusted Play recovery through one reload and one queued full rebuild per target', () => {
   assert.match(spotifyHeader, /ULONGLONG playRecoveryRecreateGeneration = 0/);
   assert.match(spotifyPhase, /slot\.playRecoveryRecreateGeneration = 0/);
   assert.match(spotifyHost, /slot\.playRecoveryRecreateGeneration = 0/);
@@ -58,7 +58,9 @@ test('Spotify escalates trusted Play recovery through one reload and one full re
     /playRecoveryRecreateGeneration !=\s*targetGeneration/,
   );
   assert.match(spotifyClick, /playRecoveryRecreateGeneration = targetGeneration/);
-  assert.match(spotifyClick, /RebuildPlaybackSurface\(\*target\)/);
+  assert.match(spotifyClick, /mediaPipelineRecoveryGeneration = targetGeneration/);
+  assert.match(spotifyClick, /mediaPipelineRecoveryPending = true/);
+  assert.doesNotMatch(spotifyClick, /RebuildPlaybackSurface\(\*target\)/);
   assert.match(spotifyController, /slot\.webview\.Reset\(\)/);
   assert.match(spotifyController, /slot\.controller->Close\(\)/);
   assert.match(spotifyController, /slot\.environment\.Reset\(\)/);

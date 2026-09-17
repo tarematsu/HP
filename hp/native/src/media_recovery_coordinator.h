@@ -5,9 +5,9 @@
 
 namespace hp {
 
-// All playback surfaces use the same bounded escalation ladder.  Detection
+// All playback surfaces use the same bounded escalation ladder. Detection
 // remains surface-specific, but an incident has exactly one owner and one next
-// action.  This prevents DOM, native-audio, CDP and ProcessFailed signals from
+// action. This prevents DOM, native-audio, CDP and ProcessFailed signals from
 // independently starting overlapping reload/rebuild loops.
 enum class MediaRecoveryAction : uint8_t {
   None = 0,
@@ -15,6 +15,9 @@ enum class MediaRecoveryAction : uint8_t {
   ReloadDocument = 2,
   RebuildSurface = 3,
   UseFallback = 4,
+  RepairPlaybackState = 5,
+  DeepRepairPlaybackState = 6,
+  RecycleEnvironment = 7,
 };
 
 enum class MediaRecoveryEvidence : uint8_t {
@@ -67,7 +70,7 @@ inline constexpr void ObserveMediaRecoveryHealthy(
 inline constexpr MediaRecoveryAction NextMediaRecoveryAction(
     MediaRecoveryEpisode& episode, MediaRecoveryEvidence evidence,
     uint64_t now, uint64_t generation, bool destructiveAllowed,
-    bool fallbackAvailable) noexcept {
+    bool fallbackAvailable, bool extendedRecoveryAvailable = false) noexcept {
   if (episode.generation != generation || episode.incidentStartedTick == 0 ||
       now < episode.incidentStartedTick ||
       now - episode.incidentStartedTick > kMediaRecoveryIncidentWindowMs) {
@@ -89,22 +92,61 @@ inline constexpr MediaRecoveryAction NextMediaRecoveryAction(
       requested = MediaRecoveryAction::ReloadDocument;
       break;
     case MediaRecoveryEvidence::ConfirmedSilence:
-      // A confirmed-silence signal is emitted only after the surface-specific
-      // lightweight Play/media-clock repair has already failed.
-      requested = episode.highestAction == MediaRecoveryAction::None ||
-              episode.highestAction == MediaRecoveryAction::ReassertPlayback
-          ? MediaRecoveryAction::ReloadDocument
-          : episode.highestAction == MediaRecoveryAction::ReloadDocument
+      // ConfirmedSilence is emitted after the surface-specific lightweight
+      // Play/media-clock repair has failed, so it starts at document reload.
+      if (episode.highestAction == MediaRecoveryAction::None ||
+          episode.highestAction == MediaRecoveryAction::ReassertPlayback) {
+        requested = MediaRecoveryAction::ReloadDocument;
+      } else if (episode.highestAction == MediaRecoveryAction::ReloadDocument) {
+        requested = MediaRecoveryAction::RebuildSurface;
+      } else if (episode.highestAction == MediaRecoveryAction::RebuildSurface) {
+        if (extendedRecoveryAvailable) {
+          requested = episode.highestActionAttempts < 2
               ? MediaRecoveryAction::RebuildSurface
-              : fallbackAvailable ? MediaRecoveryAction::UseFallback
-                                  : MediaRecoveryAction::None;
+              : MediaRecoveryAction::RepairPlaybackState;
+        } else {
+          requested = fallbackAvailable ? MediaRecoveryAction::UseFallback
+                                        : MediaRecoveryAction::None;
+        }
+      } else if (episode.highestAction ==
+                 MediaRecoveryAction::RepairPlaybackState) {
+        requested = extendedRecoveryAvailable
+            ? MediaRecoveryAction::DeepRepairPlaybackState
+            : MediaRecoveryAction::None;
+      } else if (episode.highestAction ==
+                 MediaRecoveryAction::DeepRepairPlaybackState) {
+        requested = extendedRecoveryAvailable
+            ? MediaRecoveryAction::RecycleEnvironment
+            : MediaRecoveryAction::None;
+      }
       break;
     case MediaRecoveryEvidence::TimelineStall:
-      requested = episode.highestAction == MediaRecoveryAction::None
-          ? MediaRecoveryAction::ReassertPlayback
-          : episode.highestAction == MediaRecoveryAction::ReassertPlayback
-              ? MediaRecoveryAction::ReloadDocument
-              : MediaRecoveryAction::RebuildSurface;
+      if (episode.highestAction == MediaRecoveryAction::None) {
+        requested = MediaRecoveryAction::ReassertPlayback;
+      } else if (episode.highestAction ==
+                 MediaRecoveryAction::ReassertPlayback) {
+        requested = MediaRecoveryAction::ReloadDocument;
+      } else if (episode.highestAction ==
+                 MediaRecoveryAction::ReloadDocument) {
+        requested = MediaRecoveryAction::RebuildSurface;
+      } else if (episode.highestAction ==
+                 MediaRecoveryAction::RebuildSurface) {
+        if (extendedRecoveryAvailable && episode.highestActionAttempts >= 2) {
+          requested = MediaRecoveryAction::RepairPlaybackState;
+        } else {
+          requested = MediaRecoveryAction::RebuildSurface;
+        }
+      } else if (episode.highestAction ==
+                 MediaRecoveryAction::RepairPlaybackState) {
+        requested = extendedRecoveryAvailable
+            ? MediaRecoveryAction::DeepRepairPlaybackState
+            : MediaRecoveryAction::None;
+      } else if (episode.highestAction ==
+                 MediaRecoveryAction::DeepRepairPlaybackState) {
+        requested = extendedRecoveryAvailable
+            ? MediaRecoveryAction::RecycleEnvironment
+            : MediaRecoveryAction::None;
+      }
       break;
   }
 
@@ -221,5 +263,49 @@ inline constexpr bool MediaRecoveryTimelineStallContract() noexcept {
 }
 
 static_assert(MediaRecoveryTimelineStallContract());
+
+inline constexpr bool MediaRecoveryExtendedRecoveryContract() noexcept {
+  MediaRecoveryEpisode episode;
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 100'000, 13,
+          true, false, true) != MediaRecoveryAction::ReassertPlayback) {
+    return false;
+  }
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 111'000, 13,
+          true, false, true) != MediaRecoveryAction::ReloadDocument) {
+    return false;
+  }
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 122'000, 13,
+          true, false, true) != MediaRecoveryAction::RebuildSurface) {
+    return false;
+  }
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 133'000, 13,
+          true, false, true) != MediaRecoveryAction::RebuildSurface) {
+    return false;
+  }
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 144'000, 13,
+          true, false, true) != MediaRecoveryAction::RepairPlaybackState) {
+    return false;
+  }
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 155'000, 13,
+          true, false, true) != MediaRecoveryAction::DeepRepairPlaybackState) {
+    return false;
+  }
+  if (NextMediaRecoveryAction(
+          episode, MediaRecoveryEvidence::TimelineStall, 166'000, 13,
+          true, false, true) != MediaRecoveryAction::RecycleEnvironment) {
+    return false;
+  }
+  return NextMediaRecoveryAction(
+             episode, MediaRecoveryEvidence::TimelineStall, 177'000, 13,
+             true, false, true) == MediaRecoveryAction::None;
+}
+
+static_assert(MediaRecoveryExtendedRecoveryContract());
 
 }  // namespace hp
