@@ -132,7 +132,9 @@ class SpotifyWebViews final {
     ULONGLONG mediaPipelineRecoveryGeneration = 0;
     ULONGLONG mediaKeyWaitUntilTick = 0;
     ULONGLONG mediaNetworkRecoveryTick = 0;
+    ULONGLONG profileRecoveryLastEscalationTick = 0;
     size_t mediaNetworkRecoveryAttempt = 0;
+    unsigned profileRecoveryStage = 0;
     std::wstring observedTrackTitle;
     std::wstring processTrackDisplay;
     SYSTEMTIME processTitleObservedAt{};
@@ -152,6 +154,9 @@ class SpotifyWebViews final {
     bool mediaPipelineRecoveryPending = false;
     bool mediaKeyWaitFailurePending = false;
     bool mediaNetworkRecoveryPending = false;
+    bool profileRecoveryPending = false;
+    bool profileRecoveryInFlight = false;
+    bool profileRecoveryDeep = false;
   };
 
   static LRESULT CALLBACK HostWndProc(
@@ -207,6 +212,7 @@ class SpotifyWebViews final {
   void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;
   void RebuildPlaybackSurface(Slot& slot) noexcept;
+  void BeginProfilePlaybackStateReset(Slot& slot) noexcept;
   void StartAutonomousSchedule(ULONGLONG now) noexcept;
   void RunStaggeredReconcile() noexcept;
 
