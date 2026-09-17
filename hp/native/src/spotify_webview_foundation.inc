@@ -19,6 +19,9 @@ int gSpotifyMonitorForegroundSlot = -1;
 
 void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
+  if (gSpotifyControlInstance) {
+    gSpotifyControlInstance->EnsureProcessFailureMonitoring(webview.Get());
+  }
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
     const int accountIndex = gSpotifyControlInstance
