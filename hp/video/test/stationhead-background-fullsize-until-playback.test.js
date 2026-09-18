@@ -69,7 +69,7 @@ test('background, startup and reload all keep the fixed 720x960 playback viewpor
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
 });
 
-test('Monitor SH changes Stationhead z-order without changing the fixed controller geometry', () => {
+test('Monitor S pins Stationhead to tile zero while preserving auth fullscreen', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -80,23 +80,22 @@ test('Monitor SH changes Stationhead z-order without changing the fixed controll
     apply,
     /playbackForeground\s*=\s*[\s\S]*showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,
   );
-  assert.match(apply, /playbackHostBounds = surfaceBounds/);
-  assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(apply, /StationheadPlaybackControllerBounds\(\)/);
-  assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
-  assert.doesNotMatch(apply, /playbackHostBounds = playbackForeground \? workspaceBounds/);
 
   const placement = section(
     routing,
     'void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept',
     'void PowerSavingController::Detach() noexcept',
   );
-  assert.match(placement, /monitorMode_ == MonitorMode::Stationhead/);
-  assert.match(placement, /StationheadPlayer exclusively owns the/);
-  assert.match(placement, /if \(context->stationheadForeground\)/);
-  assert.match(placement, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
-  assert.doesNotMatch(placement, /foregroundBounds/);
-  assert.match(placement, /child, HWND_BOTTOM/);
+  assert.match(placement, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
+  assert.match(placement, /ServiceMonitorTileBounds\(parentClient, 0\)/);
+  assert.match(
+    placement,
+    /monitorMode_ == MonitorMode::Native && monitorAuthForeground_[\s\S]*\? parentClient[\s\S]*: serviceTile/,
+  );
+  assert.match(placement, /const HWND insertAfter = context->stationheadForeground/);
+  assert.match(placement, /: HWND_BOTTOM;/);
+  assert.match(placement, /SetWindowPos\([\s\S]*target\.left, target\.top/);
 });
 
 test('authentication keeps playback alive behind the full-client auth surface', () => {
