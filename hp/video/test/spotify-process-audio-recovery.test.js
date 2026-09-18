@@ -21,18 +21,22 @@ test('every Spotify WebView installs one process-failure monitor from mute setup
   assert.match(recovery, /gSpotifyProcessFailureRegisteredWebviews/);
 });
 
-test('shared WebView2 Audio Service exits trigger staggered Spotify reload recovery', () => {
+test('shared WebView2 Audio Service exits recover every live Spotify lane', () => {
   assert.match(recovery, /COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED/);
   assert.match(recovery, /ICoreWebView2ProcessFailedEventArgs2/);
   assert.match(recovery, /get_ProcessDescription/);
   assert.match(recovery, /audio service/);
   assert.match(recovery, /kSpotifyAudioServiceRecoveryBaseDelayMs = 2ULL \* 1000ULL/);
   assert.match(recovery, /kSpotifyAudioServiceRecoveryLaneSpacingMs = 5ULL \* 1000ULL/);
-  assert.match(recovery, /SpotifyRuntimeLaneForAccount\(accountIndex\)/);
-  assert.match(recovery, /mediaNetworkRecoveryPending = true/);
-  assert.match(recovery, /mediaNetworkRecoveryTick =/);
-  assert.match(recovery, /SetSlotState\(slot, SlotState::Recovering\)/);
-  assert.match(recovery, /slot\.nextRecoveryTick = slot\.mediaNetworkRecoveryTick/);
+  assert.match(recovery, /kSpotifyAudioServiceRecoveryDebounceMs = 10ULL \* 1000ULL/);
+  assert.match(recovery, /gSpotifyAudioServiceRecoveryLastTick/);
+  assert.match(recovery, /for \(Slot& target : slots_\)/);
+  assert.match(recovery, /SpotifyRuntimeLaneForAccount\(target\.index\)/);
+  assert.match(recovery, /CurrentMusicTrack\(target\)/);
+  assert.match(recovery, /target\.mediaNetworkRecoveryPending = true/);
+  assert.match(recovery, /target\.mediaNetworkRecoveryTick =/);
+  assert.match(recovery, /SetSlotState\(target, SlotState::Recovering\)/);
+  assert.match(recovery, /target\.nextRecoveryTick = target\.mediaNetworkRecoveryTick/);
 });
 
 test('fatal browser or renderer failures rebuild while transient process exits do not storm', () => {
