@@ -1,4 +1,4 @@
-// Static presentation-only policy for the dedicated YouTube player.
+// Document-start YouTube presentation and lightweight ad-skip wake policy.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
 (() => {
@@ -14,6 +14,9 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
       player?.classList.contains('ad-showing') ||
       player?.classList.contains('ad-interrupting'));
   const postSkipWake = () => {
+    const now = Date.now();
+    if (now - Number(window.__homePanelYoutubeSkipWakeAt || 0) < 80) return;
+    window.__homePanelYoutubeSkipWakeAt = now;
     try { window.chrome?.webview?.postMessage('homepanel:youtube-wake'); }
     catch (_) {}
   };
