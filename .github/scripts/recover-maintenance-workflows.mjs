@@ -47,6 +47,14 @@ function shouldRefreshObservability(states) {
     && runtime.startedAtMs > observability.startedAtMs;
 }
 
+function pagesOlderThanRuntime(states) {
+  return states.pages?.state === 'fresh'
+    && states.runtime?.state === 'fresh'
+    && Number.isFinite(states.pages.startedAtMs)
+    && Number.isFinite(states.runtime.startedAtMs)
+    && states.pages.startedAtMs < states.runtime.startedAtMs;
+}
+
 async function githubRequest(url, { token, method = 'GET', body } = {}) {
   const response = await fetch(url, {
     method,
@@ -102,34 +110,35 @@ export async function recoverMaintenanceWorkflows({
   const states = Object.fromEntries(entries);
   const dispatched = [];
 
-  // Keep the dependency chain in one place: Pages -> Runtime -> downstream.
-  // Missing/stale Pages is recovered first. Active/failed Pages stays visible
-  // and blocks Runtime recovery rather than allowing dependent work to pile up.
-  if (shouldRecover(states.pages.state)) {
-    await dispatchWorkflow(
-      repository,
-      WORKFLOWS.pages,
-      token,
-      request,
-      { force_all: 'false' },
-    );
-    dispatched.push('pages');
-    return { ok: true, dispatched, states, reason: 'pages-recovered' };
-  }
-  if (states.pages.state !== 'fresh') {
-    return { ok: true, dispatched, states, reason: `pages-${states.pages.state}` };
-  }
-
+  // Runtime rollups are the source for Pages history. Recover or finish Runtime
+  // first, then publish every Pages variant from the newer source state.
   if (shouldRecover(states.runtime.state)) {
     await dispatchWorkflow(repository, WORKFLOWS.runtime, token, request);
     dispatched.push('runtime');
     return { ok: true, dispatched, states, reason: 'runtime-recovered' };
   }
-
-  // Never pile work onto an active Runtime run or work around a real Runtime
-  // failure. Those states must remain visible to observability.
   if (states.runtime.state !== 'fresh') {
     return { ok: true, dispatched, states, reason: `runtime-${states.runtime.state}` };
+  }
+
+  if (shouldRecover(states.pages.state) || pagesOlderThanRuntime(states)) {
+    await dispatchWorkflow(
+      repository,
+      WORKFLOWS.pages,
+      token,
+      request,
+      { force_all: 'true' },
+    );
+    dispatched.push('pages');
+    return {
+      ok: true,
+      dispatched,
+      states,
+      reason: pagesOlderThanRuntime(states) ? 'pages-refreshed-after-runtime' : 'pages-recovered',
+    };
+  }
+  if (states.pages.state !== 'fresh') {
+    return { ok: true, dispatched, states, reason: `pages-${states.pages.state}` };
   }
 
   for (const key of ['metadata', 'localMinute']) {
@@ -138,9 +147,6 @@ export async function recoverMaintenanceWorkflows({
     dispatched.push(key);
   }
 
-  // A failed full diagnostic is safe to retry only when Runtime has recovered
-  // after that failure. Stale/missing diagnostics are also refreshed. Reuse the
-  // lightweight dispatcher instead of duplicating the full workflow API contract.
   if (shouldRefreshObservability(states)) {
     await dispatchWorkflow(repository, OBSERVABILITY_REFRESH_WORKFLOW, token, request);
     dispatched.push('observabilityRefresh');
