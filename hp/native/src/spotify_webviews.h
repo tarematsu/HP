@@ -1,6 +1,7 @@
 #pragma once
 #include "common.h"
 #include "media_recovery_coordinator.h"
+#include "spotify_track_start_recovery.h"
 
 namespace hp {
 
@@ -118,8 +119,6 @@ class SpotifyWebViews final {
     ULONGLONG pageEpoch = 0;
     ULONGLONG targetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
-    ULONGLONG playRecoveryReloadGeneration = 0;
-    ULONGLONG playRecoveryRecreateGeneration = 0;
     ULONGLONG mediaPipelineRecoveryGeneration = 0;
     ULONGLONG mediaKeyWaitUntilTick = 0;
     ULONGLONG mediaNetworkRecoveryTick = 0;
@@ -147,6 +146,7 @@ class SpotifyWebViews final {
     bool profileRecoveryPending = false;
     bool profileRecoveryInFlight = false;
     bool profileRecoveryDeep = false;
+    SpotifyTrackStartRecovery trackStartRecovery{};
     MediaRecoveryEpisode recoveryEpisode{};
   };
 
