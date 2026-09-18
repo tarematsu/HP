@@ -7,6 +7,8 @@ const source = name => readFileSync(
 
 const wrapper = source('spotify_webviews.inc');
 const helper = source('spotify_background_click.inc');
+const startup = source('spotify_startup_audio_recovery.inc');
+const trackRecovery = source('spotify_track_start_recovery.h');
 const music = source('spotify_music_target.inc');
 const layout = source('spotify_host_layout.inc');
 const header = source('spotify_webviews.h');
@@ -23,9 +25,10 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
 
 test('Spotify trusted click probes every two seconds with a five-second retry guard', () => {
   assert.match(header, /ULONGLONG trustedClickBlockedUntilTick = 0/);
-  assert.match(header, /ULONGLONG playRecoveryReloadGeneration = 0/);
+  assert.match(header, /SpotifyTrackStartRecovery trackStartRecovery\{\}/);
   assert.match(header, /ULONGLONG pageEpoch = 0/);
-  assert.doesNotMatch(header, /trustedClickGeneration|trustedClickTargetGeneration|trustedClickInFlight|trustedClickStartTick/);
+  assert.match(header, /bool nativeAudioStartVerified = false/);
+  assert.doesNotMatch(header, /playRecoveryReloadGeneration|playRecoveryRecreateGeneration/);
   assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
   assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
   assert.match(helper, /now < slot\.trustedClickBlockedUntilTick/);
@@ -36,15 +39,19 @@ test('Spotify trusted click probes every two seconds with a five-second retry gu
   assert.match(helper, /target->webview\.Get\(\) != view\.Get\(\)/);
 });
 
-test('two failed Play attempts escalate to one Reload per target generation', () => {
+test('two failed Play attempts escalate through one reload, one rebuild, then skip', () => {
   assert.match(helper, /__homePanelSpotifyNativePlayRetry/);
   assert.match(helper, /now-retry\.lastAttemptAt<5000/);
   assert.match(helper, /retry\.count>=2/);
-  assert.match(helper, /if\(!reloadUsed\)return 'reload'/);
-  assert.match(helper, /playRecoveryReloadGeneration != targetGeneration/);
-  assert.match(helper, /playRecoveryReloadGeneration = targetGeneration/);
-  assert.match(helper, /requestedView->Reload\(\)/);
-  assert.match(helper, /slot\.playRecoveryReloadGeneration == targetGeneration \? L"true;" : L"false;"/);
+  assert.match(helper, /if\(!reloadUsed\)return 'reload';return 'recreate'/);
+  assert.match(helper, /slot\.trackStartRecovery\.reloadIssued/);
+  assert.match(helper, /EscalateSpotifyStartupFailure/);
+  assert.match(trackRecovery, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(startup, /requestedView|slot\.webview->Reload|slot\.webview.*Reload/s);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(startup, /SkipFailedSpotifyTrack\(slot\)/);
 });
 
 test('target changes and WebView rebuilds invalidate old trusted click chains', () => {
@@ -73,9 +80,9 @@ test('trusted click uses CSS viewport points and repairs accidental 1x1 placemen
   assert.match(helper, /void SpotifyWebViews::ClickSlotCssPoint/);
   assert.match(
     helper,
-    /if \(slot\.playbackConfirmed && slot\.state == SlotState::Playing\) \{[\s\S]*return;/,
+    /if \(slot\.playbackConfirmed && slot\.nativeAudioStartVerified &&[\s\S]*slot\.state == SlotState::Playing\) \{[\s\S]*return;/,
   );
-  assert.match(helper, /const bool recoveryViewportReady = SlotStateNeedsRecovery\(slot\.state\)/);
+  assert.match(helper, /SlotStateNeedsRecovery\(slot\.state\)[\s\S]*!slot\.nativeAudioStartVerified/);
   assert.match(helper, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
   assert.match(helper, /slot\.hostLayoutApplied = false;/);
   assert.match(helper, /PlaceHosts\(\);/);
