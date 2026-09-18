@@ -3,15 +3,17 @@
 
 namespace hp {
 
-inline constexpr ULONGLONG kAudioHealthScanCycleMs = 30ULL * 1000ULL;
-inline constexpr ULONGLONG kAudioHealthScanSlotSpacingMs = 5'000ULL;
+inline constexpr ULONGLONG kAudioHealthScanCycleMs = 60ULL * 1000ULL;
+inline constexpr ULONGLONG kAudioHealthScanSlotSpacingMs = 10'000ULL;
 inline constexpr ULONGLONG kAudioHealthScanRetryMs = 5ULL * 1000ULL;
 inline constexpr ULONGLONG kAudioHealthScanMinimumGapMs = 4ULL * 1000ULL;
 inline constexpr size_t kAudioHealthScanSlotCount = 6;
 
-// One process-wide clock owns the Stationhead + Spotify audio probes. Slot 0 is
-// Stationhead; slots 1/2/3/4/5 are Spotify S1/S2/S3/S4/S5. Their scan phases are
-// therefore 0s, 5s, 10s, 15s, 20s and 25s inside each 30-second cycle.
+// One process-wide clock serializes native audio probes. Stationhead owns slot 0
+// and is the only periodic audio-health client today; the remaining phases are
+// retained for compatibility with the existing coordinator contract. A full
+// cycle is one minute so Stationhead's safety probe cannot accidentally run at
+// the old 30-second cadence.
 inline std::atomic<ULONGLONG> gAudioHealthScanEpochTick{0};
 inline std::atomic<ULONGLONG> gAudioHealthLastScanTick{0};
 inline std::atomic<bool> gAudioHealthScanInProgress{false};
@@ -82,7 +84,7 @@ inline void ReleaseAudioHealthScan() noexcept {
   gAudioHealthScanInProgress.store(false, std::memory_order_release);
 }
 
-static_assert(kAudioHealthScanCycleMs == 30ULL * 1000ULL);
+static_assert(kAudioHealthScanCycleMs == 60ULL * 1000ULL);
 static_assert(kAudioHealthScanSlotSpacingMs * kAudioHealthScanSlotCount ==
               kAudioHealthScanCycleMs);
 static_assert(kAudioHealthScanMinimumGapMs < kAudioHealthScanSlotSpacingMs);
