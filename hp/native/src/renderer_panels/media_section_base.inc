@@ -22,10 +22,12 @@ constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 
 UINT NativeMediaTverPhaseIntervalMs() noexcept {
-  SYSTEMTIME localTime{};
-  GetLocalTime(&localTime);
+  SYSTEMTIME networkJst{};
+  if (!hp::NetworkClockJstNow(&networkJst)) {
+    return kNativeMediaTverWeekdayPhaseMs;
+  }
   const bool fridayOrSaturday =
-      localTime.wDayOfWeek == 5 || localTime.wDayOfWeek == 6;
+      networkJst.wDayOfWeek == 5 || networkJst.wDayOfWeek == 6;
   return fridayOrSaturday
       ? kNativeMediaTverPhaseMs
       : kNativeMediaTverWeekdayPhaseMs;
