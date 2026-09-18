@@ -30,6 +30,18 @@ export const HOST_SUMMARY_SQL = `WITH active_session AS (
   WHERE handle='sakurazaka46jp'
   ORDER BY started_at DESC
   LIMIT 10
+), official_fallback AS (
+  SELECT NULL AS id,'sakurazaka46jp' AS handle,NULL AS station_id,
+    started_at,started_at AS confirmed_at,ended_at,'completed' AS status,
+    listener_max AS peak_listeners,listener_avg AS average_listeners,
+    NULL AS total_listens_start,NULL AS total_listens_end,
+    sample_count AS listener_sample_count,distinct_tracks AS track_count,
+    NULL AS comment_count,COALESCE(ended_at,started_at) AS last_observed_at
+  FROM sh_official_broadcast_summary
+  WHERE host_handle='sakurazaka46jp'
+    AND NOT EXISTS (SELECT 1 FROM recent_sessions)
+  ORDER BY started_at DESC
+  LIMIT 10
 )
 SELECT 1 AS result_kind,id,handle,station_id,started_at,confirmed_at,ended_at,status,
   peak_listeners,average_listeners,total_listens_start,total_listens_end,
@@ -40,6 +52,11 @@ SELECT 2,id,handle,station_id,started_at,confirmed_at,ended_at,status,
   peak_listeners,average_listeners,total_listens_start,total_listens_end,
   listener_sample_count,track_count,comment_count,last_observed_at
 FROM recent_sessions
+UNION ALL
+SELECT 2,id,handle,station_id,started_at,confirmed_at,ended_at,status,
+  peak_listeners,average_listeners,total_listens_start,total_listens_end,
+  listener_sample_count,track_count,comment_count,last_observed_at
+FROM official_fallback
 ORDER BY result_kind ASC,started_at DESC`;
 
 function activeSessionFromRow(row) {

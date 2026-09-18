@@ -11,16 +11,19 @@ function cron(workflow) {
   return workflow.match(/cron:\s*['"]([^'"]+)['"]/)?.[1] || '';
 }
 
-test('runtime follows Pages without a reciprocal workflow cycle', () => {
+test('runtime rollups precede Pages publication without a reciprocal workflow cycle', () => {
   const runtime = read('.github/workflows/run-runtime-offline-maintenance.yml');
   const pages = read('.github/workflows/run-pages-read-model-rebuild.yml');
 
   assert.equal(cron(runtime), '11,41 * * * *');
   assert.equal(cron(pages), '26,56 * * * *');
-  assert.match(runtime, /workflows: \["Deploy production", "Rebuild pages read models"\]/);
+  assert.match(runtime, /^\s*workflows: \["Deploy production"\]\s*$/m);
+  assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
   assert.doesNotMatch(pages, /workflow_run:/);
   assert.match(runtime, /cancel-in-progress: false/);
   assert.match(pages, /group: pages-read-model-rebuild/);
+  assert.match(pages, /github\.event_name == 'schedule'/);
+  assert.match(pages, /repair-pages-summary-gaps\.mjs/);
 });
 
 test('Pages read models rerun when their Cloudflare account dependency changes', () => {

@@ -10,6 +10,7 @@ on:
       - '.github/actions/cloudflare-context/action.yml'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - 'scripts/cloudflare-d1-write-guard.mjs'
+      - 'worker/scripts/repair-pages-summary-gaps.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
       - 'worker/scripts/refresh-pages-dashboard-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
@@ -49,7 +50,7 @@ jobs:
       OTHER_DATABASE_NAME: stationhead-other
       PAGES_RESPONSE_BUCKET: sh-pages-responses
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
-      PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
+      PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
       PAGES_READ_MODEL_RETRY_OVERDUE: 'true'
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
       D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
@@ -103,7 +104,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          node scripts/run-pages-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
+          node scripts/repair-pages-summary-gaps.mjs 2>&1 | tee pages-read-model-actions.log
+          node scripts/run-pages-read-model-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
       - name: Upload pages read-model failure log
         if: failure()
         uses: actions/upload-artifact@v4

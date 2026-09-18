@@ -82,42 +82,8 @@ test('recovery policy always leaves more than one watchdog interval before healt
   }
 });
 
-test('stale Pages is recovered first without forcing all read models', async () => {
+test('stale Runtime is recovered before stale Pages', async () => {
   const fixture = requestFor({ pages: 50, runtime: 80, metadata: 80, localMinute: 80 });
-  const result = await recoverMaintenanceWorkflows({
-    token: 'test-token',
-    repository: 'tarematsu/HP',
-    now,
-    request: fixture.request,
-  });
-  assert.deepEqual(result.dispatched, ['pages']);
-  assert.equal(result.reason, 'pages-recovered');
-  const posts = fixture.calls.filter((call) => call.options.method === 'POST');
-  assert.equal(posts.length, 1);
-  assert.match(posts[0].url, /run-pages-read-model-rebuild\.yml\/dispatches$/);
-  assert.deepEqual(posts[0].options.body, { ref: 'main', inputs: { force_all: 'false' } });
-});
-
-test('active or failed Pages blocks dependent Runtime recovery', async () => {
-  for (const pages of [
-    { minutesAgo: 80, status: 'in_progress', conclusion: '' },
-    { minutesAgo: 80, conclusion: 'failure' },
-  ]) {
-    const fixture = requestFor({ pages, runtime: 80, metadata: 80, localMinute: 80 });
-    const result = await recoverMaintenanceWorkflows({
-      token: 'test-token',
-      repository: 'tarematsu/HP',
-      now,
-      request: fixture.request,
-    });
-    assert.deepEqual(result.dispatched, []);
-    assert.match(result.reason, /^pages-(active|failed)$/);
-    assert.equal(fixture.calls.some((call) => call.options.method === 'POST'), false);
-  }
-});
-
-test('stale Runtime is recovered when Pages is fresh', async () => {
-  const fixture = requestFor({ pages: 10, runtime: 50, metadata: 80, localMinute: 80 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token',
     repository: 'tarematsu/HP',
@@ -132,8 +98,57 @@ test('stale Runtime is recovered when Pages is fresh', async () => {
   assert.deepEqual(posts[0].options.body, { ref: 'main' });
 });
 
-test('fresh Runtime independently recovers stale metadata and local minute workflows', async () => {
-  const fixture = requestFor({ pages: 10, runtime: 10, metadata: 50, localMinute: 35 });
+test('active or failed Runtime blocks Pages recovery', async () => {
+  for (const runtime of [
+    { minutesAgo: 80, status: 'in_progress', conclusion: '' },
+    { minutesAgo: 80, conclusion: 'failure' },
+  ]) {
+    const fixture = requestFor({ pages: 80, runtime, metadata: 80, localMinute: 80 });
+    const result = await recoverMaintenanceWorkflows({
+      token: 'test-token',
+      repository: 'tarematsu/HP',
+      now,
+      request: fixture.request,
+    });
+    assert.deepEqual(result.dispatched, []);
+    assert.match(result.reason, /^runtime-(active|failed)$/);
+    assert.equal(fixture.calls.some((call) => call.options.method === 'POST'), false);
+  }
+});
+
+test('stale Pages is fully regenerated when Runtime is fresh', async () => {
+  const fixture = requestFor({ pages: 50, runtime: 10, metadata: 80, localMinute: 80 });
+  const result = await recoverMaintenanceWorkflows({
+    token: 'test-token',
+    repository: 'tarematsu/HP',
+    now,
+    request: fixture.request,
+  });
+  assert.deepEqual(result.dispatched, ['pages']);
+  assert.equal(result.reason, 'pages-recovered');
+  const posts = fixture.calls.filter((call) => call.options.method === 'POST');
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].url, /run-pages-read-model-rebuild\.yml\/dispatches$/);
+  assert.deepEqual(posts[0].options.body, { ref: 'main', inputs: { force_all: 'true' } });
+});
+
+test('Pages older than a fresh Runtime run is fully refreshed', async () => {
+  const fixture = requestFor({ pages: 30, runtime: 5 });
+  const result = await recoverMaintenanceWorkflows({
+    token: 'test-token',
+    repository: 'tarematsu/HP',
+    now,
+    request: fixture.request,
+  });
+  assert.deepEqual(result.dispatched, ['pages']);
+  assert.equal(result.reason, 'pages-refreshed-after-runtime');
+  const posts = fixture.calls.filter((call) => call.options.method === 'POST');
+  assert.equal(posts.length, 1);
+  assert.deepEqual(posts[0].options.body, { ref: 'main', inputs: { force_all: 'true' } });
+});
+
+test('fresh Runtime and Pages independently recover stale metadata and local minute workflows', async () => {
+  const fixture = requestFor({ pages: 5, runtime: 10, metadata: 50, localMinute: 35 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token',
     repository: 'tarematsu/HP',
@@ -152,6 +167,7 @@ test('fresh Runtime independently recovers stale metadata and local minute workf
 
 test('Runtime recovery refreshes an older failed observability diagnostic', async () => {
   const fixture = requestFor({
+    pages: 5,
     runtime: 5,
     observability: { minutesAgo: 20, conclusion: 'failure' },
   });
@@ -170,6 +186,7 @@ test('Runtime recovery refreshes an older failed observability diagnostic', asyn
 
 test('newer observability failures remain visible instead of being auto-retried', async () => {
   const fixture = requestFor({
+    pages: 5,
     runtime: 20,
     observability: { minutesAgo: 5, conclusion: 'failure' },
   });
@@ -184,7 +201,7 @@ test('newer observability failures remain visible instead of being auto-retried'
 });
 
 test('stale observability is refreshed after Runtime is healthy', async () => {
-  const fixture = requestFor({ runtime: 5, observability: 70 });
+  const fixture = requestFor({ pages: 5, runtime: 5, observability: 70 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token',
     repository: 'tarematsu/HP',
@@ -194,13 +211,22 @@ test('stale observability is refreshed after Runtime is healthy', async () => {
   assert.deepEqual(result.dispatched, ['observabilityRefresh']);
 });
 
-test('single recovery watchdog resumes the dependency chain after Pages and Runtime complete', () => {
-  const workflow = read('.github/workflows/recover-maintenance-workflows.yml');
+test('maintenance workflows enforce Runtime then Pages publication order', () => {
+  const watchdog = read('.github/workflows/recover-maintenance-workflows.yml');
+  const runtimeWorkflow = read('.github/workflows/run-runtime-offline-maintenance.yml');
+  const pagesWorkflow = read('.github/workflows/run-pages-read-model-rebuild.yml');
 
-  assert.match(workflow, /- "Publish GitHub Actions runner health"/);
-  assert.match(workflow, /- "Rebuild pages read models"/);
-  assert.match(workflow, /- "Run runtime offline maintenance"/);
-  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(watchdog, /- "Publish GitHub Actions runner health"/);
+  assert.match(watchdog, /- "Rebuild pages read models"/);
+  assert.match(watchdog, /- "Run runtime offline maintenance"/);
+  assert.match(watchdog, /github\.event\.workflow_run\.conclusion == 'success'/);
+
+  assert.match(runtimeWorkflow, /^\s*workflows: \["Deploy production"\]\s*$/m);
+  assert.doesNotMatch(runtimeWorkflow, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
+  assert.doesNotMatch(pagesWorkflow, /workflow_run:/);
+  assert.match(pagesWorkflow, /cron: '26,56 \* \* \* \*'/);
+  assert.match(pagesWorkflow, /github\.event_name == 'schedule'/);
+  assert.match(pagesWorkflow, /repair-pages-summary-gaps\.mjs/);
 });
 
 test('recovery watchdog is offset, budget-safe, and wired to shared policy', () => {
@@ -216,8 +242,8 @@ test('recovery watchdog is offset, budget-safe, and wired to shared policy', () 
   assert.doesNotMatch(workflow, /CLOUDFLARE|wrangler|d1 execute/i);
 
   assert.match(script, /RECOVERY_WORKFLOWS/);
-  assert.match(script, /force_all: 'false'/);
-  assert.match(script, /pages-\$\{states\.pages\.state\}/);
+  assert.match(script, /force_all: 'true'/);
+  assert.match(script, /pagesOlderThanRuntime/);
   assert.match(script, /runtime\.startedAtMs > observability\.startedAtMs/);
   assert.doesNotMatch(script, /45 \* 60_000|30 \* 60_000|75 \* 60_000/);
 });
