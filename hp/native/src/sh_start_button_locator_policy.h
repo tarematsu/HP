@@ -95,29 +95,56 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     }
     return false;
   };
-  const connectMusicModalAction = () => {
+  const findConnectMusicHeading = () => {
     const headingSelector = "h1,h2,h3,[role='heading']";
     for (const heading of document.querySelectorAll(headingSelector)) {
-      if (!rendered(heading) ||
-          !labelsOf(heading).some(label => connectMusicHeadingPattern.test(label))) continue;
-      let shell = heading.parentElement;
-      for (let depth = 0;
-           shell && shell !== document.body && depth < 7;
-           depth += 1, shell = shell.parentElement) {
-        for (const action of shell.querySelectorAll(selector)) {
-          if (!labelsOf(action).some(label => connectMusicActionPattern.test(label))) continue;
-          const point = pointOf(action);
-          if (point) return point;
-        }
+      if (rendered(heading) &&
+          labelsOf(heading).some(label => connectMusicHeadingPattern.test(label))) {
+        return heading;
+      }
+    }
+    return null;
+  };
+  const findConnectMusicText = () => {
+    // Stationhead has changed the modal title between semantic headings and
+    // plain text containers. Accept the exact label regardless of the element
+    // role, but keep the search limited to rendered elements so unrelated
+    // hidden menu text cannot trigger the click path.
+    for (const element of document.querySelectorAll('*')) {
+      if (!rendered(element) ||
+          !labelsOf(element).some(label => connectMusicHeadingPattern.test(label))) continue;
+      return element;
+    }
+    return null;
+  };
+  const connectMusicModalAction = () => {
+    const anchor = findConnectMusicHeading() || findConnectMusicText();
+    if (!anchor) return null;
+
+    // Prefer a semantic dialog boundary when present. Otherwise walk upward
+    // from the exact Connect music label and search the local modal subtree.
+    const dialog = anchor.closest?.("[role='dialog'],[aria-modal='true']");
+    const shells = [];
+    if (dialog) shells.push(dialog);
+    for (let shell = anchor.parentElement, depth = 0;
+         shell && shell !== document.body && depth < 10;
+         depth += 1, shell = shell.parentElement) {
+      if (!shells.includes(shell)) shells.push(shell);
+    }
+    for (const shell of shells) {
+      for (const action of shell.querySelectorAll(selector)) {
+        if (!labelsOf(action).some(label => connectMusicActionPattern.test(label))) continue;
+        const point = pointOf(action);
+        if (point) return point;
       }
     }
     return null;
   };
   if (!document.body) return null;
 
-  // Stationhead currently renders "Connect music" as a heading while the
-  // actual clickable control is a separate "Connect" button. Resolve that
-  // structure first so the generic auth guard does not hide the button.
+  // Stationhead may render "Connect music" as a heading or as a plain text
+  // node while the actual clickable control is a separate "Connect" button.
+  // Resolve that structure before the generic auth guard hides account UI.
   const modalConnectPoint = connectMusicModalAction();
   if (modalConnectPoint) return modalConnectPoint;
 
