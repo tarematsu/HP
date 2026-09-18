@@ -38,13 +38,14 @@ test('monitor YT probes targeted Stationhead controls every five minutes', () =>
   assert.match(bridge, /kStationheadMonitorProbeResultMessage/);
 });
 
-test('monitor SH is unconditional Stationhead foreground and does not own DOM polling', () => {
+test('monitor S is unconditional Stationhead foreground and does not own DOM polling', () => {
   assert.match(
     routing,
-    /monitorMode_ == MonitorMode::Stationhead \|\|[\s\S]*monitorMode_ == MonitorMode::Native &&[\s\S]*monitorAuthForeground_/,
+    /serviceGrid \|\|[\s\S]*monitorMode_ == MonitorMode::Native && monitorAuthForeground_/,
   );
+  assert.match(routing, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
   assert.match(schedule, /if \(monitorMode_ == MonitorMode::Native\) \{[\s\S]*kMonitorAuthProbeIntervalMs/);
-  assert.doesNotMatch(schedule, /MonitorMode::Stationhead[\s\S]{0,120}RequestMonitorAuthProbe/);
+  assert.doesNotMatch(schedule, /MonitorMode::ServiceGrid[\s\S]{0,120}RequestMonitorAuthProbe/);
 });
 
 test('monitor YT returns Stationhead behind the dashboard after a clean probe', () => {
@@ -52,5 +53,5 @@ test('monitor YT returns Stationhead behind the dashboard after a clean probe', 
     routing,
     /case kStationheadMonitorProbeResultMessage:[\s\S]*const bool detected = wParam != 0;[\s\S]*monitorAuthForeground_ = detected;[\s\S]*ApplyStationheadMonitorPlacement\(\)/,
   );
-  assert.match(routing, /child, HWND_BOTTOM/);
+  assert.match(routing, /: HWND_BOTTOM;/);
 });
