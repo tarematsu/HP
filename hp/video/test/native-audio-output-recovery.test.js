@@ -73,13 +73,14 @@ test('Spotify startup recovery is driven by each target URL generation and has a
   assert.match(spotifyStartupAudio, /SkipFailedSpotifyTrack\(slot\)/);
 });
 
-test('Spotify checks native audio only inside the per-track startup window', () => {
+test('Spotify checks native audio only inside the per-track startup window with four delayed samples', () => {
   assert.doesNotMatch(spotifyPhase, /AudioHealth|audioHealth/);
   assert.doesNotMatch(spotifySchedule, /gSpotifyAudioHealth/);
   assert.doesNotMatch(spotifySchedule, /TryClaimAudioHealthScan/);
   assert.doesNotMatch(spotifySchedule, /get_IsDocumentPlayingAudio/);
   assert.match(spotifySchedule, /No periodic IsDocumentPlayingAudio scan here/);
-  assert.match(spotifyStartupAudio, /kSpotifyNativeAudioStartCheckLimit = 2/);
+  assert.match(spotifyPhase, /kSpotifyNativeAudioStartRetryMs = 2ULL \* 1000ULL/);
+  assert.match(spotifyStartupAudio, /kSpotifyNativeAudioStartCheckLimit = 4/);
   assert.match(spotifyStartupAudio, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
   assert.match(spotifyStartupAudio, /slot\.nativeAudioStartVerified = true/);
   assert.match(
