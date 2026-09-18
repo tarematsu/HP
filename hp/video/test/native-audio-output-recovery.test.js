@@ -34,13 +34,13 @@ test('Stationhead keeps lightweight repair ahead of one-minute destructive recov
   assert.match(stationheadLoss, /SetManagedPlaybackFallback/);
 });
 
-test('shared audio-health coordinator serializes five 30-second scan slots', () => {
+test('shared audio-health coordinator serializes six 30-second scan slots', () => {
   assert.match(coordinator, /kAudioHealthScanCycleMs = 30ULL \* 1000ULL/);
-  assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 6'000ULL/);
-  assert.match(coordinator, /kAudioHealthScanSlotCount = 5/);
+  assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 5'000ULL/);
+  assert.match(coordinator, /kAudioHealthScanSlotCount = 6/);
   assert.match(coordinator, /gAudioHealthScanInProgress/);
   assert.match(coordinator, /TryClaimAudioHealthScan/);
-  assert.match(coordinator, /kAudioHealthScanMinimumGapMs = 5ULL \* 1000ULL/);
+  assert.match(coordinator, /kAudioHealthScanMinimumGapMs = 4ULL \* 1000ULL/);
   assert.match(coordinator, /ReleaseAudioHealthScan/);
 });
 
@@ -69,7 +69,7 @@ test('Spotify sustained silence returns to trusted click and reload recovery', (
   assert.match(spotifyClick, /return 'reload'/);
 });
 
-test('Spotify checks one live lane at a time on 6-second staggered phases', () => {
+test('Spotify checks five live lanes one at a time on 5-second staggered phases', () => {
   assert.match(spotifyPhase, /kSpotifyAudioHealthCheckMs = 30ULL \* 1000ULL/);
   assert.match(spotifyPhase, /NextAudioHealthScanTick\([\s\S]*static_cast<size_t>\(lane\) \+ 1/);
   assert.match(spotifySchedule, /Slot\* audioHealthCandidate = nullptr/);
