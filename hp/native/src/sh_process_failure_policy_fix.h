@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include "media_pipeline_health.h"
 
 namespace hp {
 namespace stationhead_process_failure_policy {
@@ -17,6 +18,24 @@ inline void ResetRendererUnresponsiveConfirmation() noexcept {
   rendererUnresponsiveCount.store(0, std::memory_order_release);
 }
 
+inline bool StationheadFailedProcessIsAudioService(
+    ICoreWebView2ProcessFailedEventArgs* args) noexcept {
+  if (!args) return false;
+  ComPtr<ICoreWebView2ProcessFailedEventArgs2> details;
+  if (FAILED(args->QueryInterface(IID_PPV_ARGS(&details))) || !details) {
+    return false;
+  }
+  LPWSTR rawDescription = nullptr;
+  if (FAILED(details->get_ProcessDescription(&rawDescription)) ||
+      !rawDescription) {
+    return false;
+  }
+  const std::wstring description(rawDescription);
+  CoTaskMemFree(rawDescription);
+  return MediaPipelineErrorContains(description, L"audio service") ||
+         MediaPipelineErrorContains(description, L"audio");
+}
+
 inline bool ShouldForwardStationheadProcessFailure(
     ICoreWebView2* sender,
     ICoreWebView2ProcessFailedEventArgs* args) noexcept {
@@ -30,11 +49,21 @@ inline bool ShouldForwardStationheadProcessFailure(
     return true;
   }
 
+  if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED) {
+    // Chromium's Audio Service is a utility process. Unlike unrelated utility
+    // helpers, its exit can leave Stationhead's media element attached to a dead
+    // audio sink while the page and renderer still appear healthy. Forward only
+    // audio-related utility exits to the existing WebView recreation path.
+    if (!StationheadFailedProcessIsAudioService(args)) return false;
+    ResetRendererUnresponsiveConfirmation();
+    return true;
+  }
+
   if (kind != COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE) {
-    // GPU, frame-only, utility, sandbox-helper and other transient child
-    // failures are normally recovered by WebView2 itself. Stationhead's native
-    // audio health path will still detect a real playback loss, so these events
-    // must not independently trigger a WebView recreation.
+    // GPU, frame-only, non-audio utility, sandbox-helper and other transient
+    // child failures are normally recovered by WebView2 itself. Stationhead's
+    // native audio health path will still detect a real playback loss, so these
+    // events must not independently trigger a WebView recreation.
     return false;
   }
 
