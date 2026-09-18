@@ -26,6 +26,7 @@ test('media cadence keeps YouTube at 60 minutes and varies TVer by network-synch
   assert.match(mediaBase, /kNativeMediaTverPhaseMs = kNativeMediaPhaseMs/);
   assert.match(mediaBase, /kNativeMediaTverWeekdayPhaseMs = 30U \* 60U \* 1000U/);
   assert.match(mediaBase, /hp::NetworkClockJstNow\(&networkJst\)/);
+  assert.match(mediaBase, /if \(!hp::NetworkClockJstNow\(&networkJst\)\) \{\s*return kNativeMediaTverPhaseMs;/);
   assert.match(mediaBase, /networkJst\.wDayOfWeek == 5 \|\| networkJst\.wDayOfWeek == 6/);
   assert.doesNotMatch(mediaBase, /GetLocalTime/);
   assert.match(mediaBase, /phase_ == Phase::Tver \? NativeMediaTverPhaseIntervalMs\(\)/);
