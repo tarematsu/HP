@@ -15,12 +15,11 @@ const environment = readFileSync(
   'utf8',
 );
 
-test('Spotify confirmed playback keeps a visible full-client host behind native UI without memory-policy COM calls in layout', () => {
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /client\.right - client\.left/);
-  assert.match(layout, /client\.bottom - client\.top/);
-  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+test('Spotify confirmed playback keeps a visible Monitor S tile behind native UI without memory-policy COM calls', () => {
+  assert.match(layout, /const RECT serviceTile = ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(layout, /const RECT desired = loginPage \? fullClient : serviceTile/);
+  assert.match(layout, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(layout, /gridForeground \|\| monitorForeground \|\| authenticationForeground/);
   assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
@@ -28,9 +27,8 @@ test('Spotify confirmed playback keeps a visible full-client host behind native 
   assert.doesNotMatch(layout, /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
 });
 
-test('Spotify pre-playback recovery uses the same full-client background surface behind native UI', () => {
-  assert.match(layout, /client\.right - client\.left/);
-  assert.match(layout, /client\.bottom - client\.top/);
+test('Spotify pre-playback recovery uses the same fixed Monitor S tile behind native UI', () => {
+  assert.match(layout, /ServiceMonitorTileBounds\(client, i \+ 1\)/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
 });
