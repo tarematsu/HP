@@ -19,6 +19,7 @@ int gSpotifyAudioOutputAccountIndex = -1;
 int gSpotifyAudioOutputSlot = -1;
 int gSpotifyMonitorForegroundAccountIndex = -1;
 int gSpotifyMonitorForegroundSlot = -1;
+bool gSpotifyMonitorGridVisible = false;
 
 int SpotifyRuntimeLaneForControlAccount(int accountIndex) noexcept {
   if (accountIndex < 0 ||
@@ -120,6 +121,12 @@ void SetSpotifyMonitorForegroundSlot(int slotIndex) noexcept {
   if (gSpotifyControlInstance) {
     gSpotifyControlInstance->SetMonitorForegroundSlot(slotIndex);
   }
+}
+
+void SetSpotifyMonitorGridVisible(bool visible) noexcept {
+  if (gSpotifyMonitorGridVisible == visible) return;
+  gSpotifyMonitorGridVisible = visible;
+  if (gSpotifyControlInstance) gSpotifyControlInstance->Resize();
 }
 
 }  // namespace hp
