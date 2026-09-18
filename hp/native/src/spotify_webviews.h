@@ -5,16 +5,18 @@
 namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 30ULL * 1000ULL;
-// spotify-v2-1 through spotify-v2-4 are the four Spotify windows. The former
-// amazon window is now a Spotify slot; the restored ozeki window is reserved
-// for the separate Stationhead player.
-inline constexpr size_t kSpotifyProfileFirstAccountNumber = 1;
+// spotify-v2-1 (the former amazon window) is owned by the single Stationhead
+// player. Restore the next four Spotify profiles without shifting their
+// existing cookies/storage: yuukiar is profile 2, ten is profile 3, nagi is
+// profile 4, and hinata is profile 5.
+inline constexpr size_t kSpotifyProfileFirstAccountNumber = 2;
 inline constexpr size_t kSpotifyActiveAccountCount = 4;
 
 // Four logical Spotify accounts share exactly three live WebView runtime lanes.
-// The fourth account waits and enters the lane whose current account completes
-// a full rotation. This keeps four Spotify slots in a bounded three-lane runtime
-// while the separate ozeki Stationhead window makes five total media windows.
+// B/C/D always address lanes 0/1/2. The account that completes a full rotation
+// leaves its lane, the waiting account takes it, and the completed account
+// becomes the next waiter. Inline state keeps every Spotify implementation unit
+// on the same process-wide lane assignment.
 inline constexpr size_t kSpotifyRuntimeLaneCount = 3;
 inline std::array<size_t, kSpotifyRuntimeLaneCount> gSpotifyRuntimeLaneAccounts = {
     0, 1, 2};
