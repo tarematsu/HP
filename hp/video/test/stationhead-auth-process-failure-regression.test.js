@@ -62,7 +62,7 @@ test('browser and main-renderer exits remain immediately fatal', () => {
   );
 });
 
-test('renderer unresponsive requires two observations within fifteen seconds', () => {
+test('renderer unresponsive requires two observations from the same WebView within fifteen seconds', () => {
   assert.match(
     sharedProcessPolicy,
     /kRendererUnresponsiveConfirmWindowMs =\s*15ULL \* 1000ULL/,
@@ -71,11 +71,13 @@ test('renderer unresponsive requires two observations within fifteen seconds', (
     sharedProcessPolicy,
     /COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE/,
   );
+  assert.match(sharedProcessPolicy, /rendererUnresponsiveSender/);
+  assert.match(sharedProcessPolicy, /firstSender != sender/);
   assert.match(sharedProcessPolicy, /rendererUnresponsiveCount\.fetch_add/);
   assert.match(sharedProcessPolicy, /if \(count < 2\) return false/);
   assert.match(
     processPolicy,
-    /ShouldForwardStationheadProcessFailure\(args\)/,
+    /ShouldForwardStationheadProcessFailure\(sender, args\)/,
   );
 });
 
@@ -94,7 +96,7 @@ test('transient GPU utility frame and helper failures do not recreate playback o
   );
   assert.match(
     processPolicy,
-    /All other playback-process failures are absorbed here/,
+    /All other playback-process failures are[\s\S]*absorbed/,
   );
 });
 
