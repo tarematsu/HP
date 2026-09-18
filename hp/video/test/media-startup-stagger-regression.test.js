@@ -45,9 +45,10 @@ test('media startup keeps five Spotify windows live with thirty-second account s
   );
   assert.match(
     deferred,
-    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*5[\s\S]*stationhead_->Start\(\)/,
+    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*6[\s\S]*stationhead_->Start\(\)/,
   );
-  assert.match(deferred, /Stationhead launch issued at \+150 seconds/);
+  assert.match(deferred, /Spotify #1 launch issued at \+30 seconds; #2, #3, #4 and #5 follow at 30-second offsets/);
+  assert.match(deferred, /Stationhead launch issued at \+180 seconds/);
   assert.doesNotMatch(deferred, /spotifyStartedAt_/);
 });
 
