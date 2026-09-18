@@ -10,13 +10,17 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 // access on the existing UI thread and avoids adding another polling thread.
 void RequestStationheadMonitorDomProbe() noexcept;
 
-// Full workspace remains the fallback for authentication/interactive surfaces.
+// Stationhead keeps the dashboard-sized host HWND so placement and z-order stay
+// stable. During healthy background playback the WebView controller viewport may
+// be reduced independently; interactive, authentication and Monitor B paths
+// restore the controller to the full workspace before user/native interaction.
 inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
   return workspaceBounds;
 }
 
 // Keep the existing preview state as the reload/startup signal used by the
-// Stationhead lifecycle.
+// Stationhead lifecycle. Host geometry no longer depends on it because the HWND
+// surface always follows the full client area.
 inline std::atomic<bool> gStationheadBackgroundPreview{true};
 
 inline bool SetStationheadBackgroundPreview(bool active) noexcept {
@@ -31,7 +35,6 @@ inline bool StationheadBackgroundPreview() noexcept {
 // Monitor placement and Stationhead WebView layout live in separate modules.
 // Keep only the effective foreground bit here so both sides agree on z-order.
 inline std::atomic<bool> gStationheadMonitorForeground{false};
-inline std::atomic<bool> gStationheadMonitorGridVisible{false};
 
 inline bool SetStationheadMonitorForeground(bool foreground) noexcept {
   return gStationheadMonitorForeground.exchange(
@@ -40,15 +43,6 @@ inline bool SetStationheadMonitorForeground(bool foreground) noexcept {
 
 inline bool StationheadMonitorForeground() noexcept {
   return gStationheadMonitorForeground.load(std::memory_order_acquire);
-}
-
-inline bool SetStationheadMonitorGridVisible(bool visible) noexcept {
-  return gStationheadMonitorGridVisible.exchange(
-             visible, std::memory_order_acq_rel) != visible;
-}
-
-inline bool StationheadMonitorGridVisible() noexcept {
-  return gStationheadMonitorGridVisible.load(std::memory_order_acquire);
 }
 
 }  // namespace hp
