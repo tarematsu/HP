@@ -1,9 +1,6 @@
 name: Rebuild pages read models
 
 on:
-  workflow_run:
-    workflows: ["Run runtime offline maintenance"]
-    types: [completed]
   schedule:
     - cron: '26,56 * * * *'
   push:
@@ -41,7 +38,6 @@ concurrency:
 jobs:
   rebuild:
     name: Rebuild and publish due pages read models
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -54,7 +50,7 @@ jobs:
       OTHER_DATABASE_NAME: stationhead-other
       PAGES_RESPONSE_BUCKET: sh-pages-responses
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
-      PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'push' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
+      PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'push' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
       PAGES_READ_MODEL_RETRY_OVERDUE: 'true'
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
       D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
@@ -62,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:
@@ -103,7 +99,7 @@ jobs:
         run: |
           set -o pipefail
           node scripts/refresh-pages-dashboard-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
-      - name: Repair gaps and publish due pages read models
+      - name: Publish due pages read models
         if: steps.d1-write-budget.outputs.read_allowed == 'true'
         shell: bash
         run: |
