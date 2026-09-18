@@ -33,7 +33,7 @@ test('App owns exactly one Stationhead player and defers its start', () => {
   const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
   assert.match(start, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
-  assert.match(start, /ReuseWebViewProfile\(kStationheadAmazonProfile\)/);
+  assert.match(start, /ReuseWebViewProfile\(kStationheadOzekiProfile\)/);
   assert.doesNotMatch(start, /stationhead_->Start\(\)/);
   assert.match(deferred, /stationhead_->Start\(\)/);
   assert.doesNotMatch(stationheadHeader, /enum class StationheadRole/);
@@ -50,8 +50,8 @@ test('single Stationhead keeps one handoff message and one placement path', () =
   assert.doesNotMatch(appHeader, /renderState_|renderStateDirty_|PublishRenderState/);
 });
 
-test('Stationhead reuses the shared UDF with global image/font reduction', () => {
+test('Stationhead reuses the shared ozeki profile with global image/font reduction', () => {
   assert.match(sharedEnvironment, /Acquire\(userDataFolder, true, true, std::move\(completion\)\)/);
-  assert.match(app, /kStationheadAmazonProfile\[\] = L"spotify-v2-1"/);
+  assert.match(app, /kStationheadOzekiProfile\[\] = L"spotify-v2-6"/);
   assert.match(stationheadHeader, /void ReuseWebViewProfile\(std::wstring profileName\)/);
 });
