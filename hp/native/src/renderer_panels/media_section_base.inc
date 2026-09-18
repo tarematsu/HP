@@ -14,11 +14,22 @@ constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMediaYoutubePhaseMs = kNativeMediaPhaseMs;
 constexpr UINT kNativeMediaTverPhaseMs = kNativeMediaPhaseMs;
+constexpr UINT kNativeMediaTverWeekdayPhaseMs = 30U * 60U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
+
+UINT NativeMediaTverPhaseIntervalMs() noexcept {
+  SYSTEMTIME localTime{};
+  GetLocalTime(&localTime);
+  const bool fridayOrSaturday =
+      localTime.wDayOfWeek == 5 || localTime.wDayOfWeek == 6;
+  return fridayOrSaturday
+      ? kNativeMediaTverPhaseMs
+      : kNativeMediaTverWeekdayPhaseMs;
+}
 
 constexpr const wchar_t* kNativeMediaPlayAllScript = kNativeMediaYoutubeReliablePlayAllScript;
 constexpr const wchar_t* kNativeMediaYoutubeWatchdogScript = kNativeMediaYoutubeControlRecoveryScript;
@@ -33,7 +44,8 @@ void NativeMediaForgetWatchdogExecution(HWND hostWindow) noexcept;
 LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 
 #define kNativeMediaPhaseMs \
-  (phase_ == Phase::Tver ? kNativeMediaTverPhaseMs : kNativeMediaYoutubePhaseMs)
+  (phase_ == Phase::Tver ? NativeMediaTverPhaseIntervalMs() \
+                         : kNativeMediaYoutubePhaseMs)
 #define kNativeMediaTverForceFullscreenAdSafeScript \
   kNativeMediaTverForceFullscreenAnyMediaScript
 #include "media_host.inc"
