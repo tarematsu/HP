@@ -24,7 +24,7 @@ constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 UINT NativeMediaTverPhaseIntervalMs() noexcept {
   SYSTEMTIME networkJst{};
   if (!hp::NetworkClockJstNow(&networkJst)) {
-    return kNativeMediaTverWeekdayPhaseMs;
+    return kNativeMediaTverPhaseMs;
   }
   const bool fridayOrSaturday =
       networkJst.wDayOfWeek == 5 || networkJst.wDayOfWeek == 6;
