@@ -68,20 +68,24 @@ void SpotifyWebViews::ClickSlotCssPoint(
 
   // The reconcile script already returned CSS viewport coordinates. Verify the
   // same point still resolves to a Spotify Play control, then return the exact
-  // current button center. The returned coordinates are sent to CDP verbatim;
-  // never reconstruct them from HWND pixels, DPI, or WebView zoom. Recovery is
-  // deliberately staged: trusted Play retries first, then one page Reload, then
-  // one full WebView/controller rebuild for the same target generation. After a
-  // rebuild, retries continue without allowing a tight rebuild loop.
+  // current button center. Recovery is scoped to targetGeneration: trusted Play
+  // retries first, then one page Reload, then one WebView/controller rebuild for
+  // that track only. The next track starts a fresh recovery episode.
+  const bool reloadUsed =
+      slot.trackStartRecovery.generation == targetGeneration &&
+      slot.trackStartRecovery.reloadIssued;
+  const bool rebuildUsed =
+      slot.trackStartRecovery.generation == targetGeneration &&
+      slot.trackStartRecovery.rebuildIssued;
   std::wstring preflight = L"(() => {";
   preflight += L"const x=" + std::to_wstring(cssX) + L";";
   preflight += L"const y=" + std::to_wstring(cssY) + L";";
   preflight +=
       std::wstring(L"const reloadUsed=") +
-      (slot.playRecoveryReloadGeneration == targetGeneration ? L"true;" : L"false;");
+      (reloadUsed ? L"true;" : L"false;");
   preflight +=
       std::wstring(L"const recreateUsed=") +
-      (slot.playRecoveryRecreateGeneration == targetGeneration ? L"true;" : L"false;");
+      (rebuildUsed ? L"true;" : L"false;");
   preflight +=
       L"if(!Number.isFinite(x)||!Number.isFinite(y)||"
       L"window.innerWidth<=0||window.innerHeight<=0||"
@@ -137,13 +141,13 @@ void SpotifyWebViews::ClickSlotCssPoint(
             if (recoveryResult == L"\"reload\"" ||
                 recoveryResult == L"\"recreate\"") {
               const ULONGLONG recoveryTick = GetTickCount64();
-              const MediaRecoveryAction action = NextMediaRecoveryAction(
-                  target->recoveryEpisode,
-                  MediaRecoveryEvidence::ConfirmedSilence, recoveryTick,
-                  targetGeneration, !target->loginPage, false);
-              if (action == MediaRecoveryAction::ReloadDocument &&
-                  target->playRecoveryReloadGeneration != targetGeneration) {
-                target->playRecoveryReloadGeneration = targetGeneration;
+              const bool requestRebuild =
+                  recoveryResult == L"\"recreate\"";
+              const SpotifyTrackStartRecoveryAction action =
+                  NextSpotifyTrackStartRecoveryAction(
+                      target->trackStartRecovery, targetGeneration,
+                      requestRebuild, recoveryTick);
+              if (action == SpotifyTrackStartRecoveryAction::ReloadDocument) {
                 target->trustedClickBlockedUntilTick = 0;
                 SetSlotState(*target, SlotState::Navigating);
                 target->nextRecoveryTick =
@@ -153,10 +157,8 @@ void SpotifyWebViews::ClickSlotCssPoint(
                 }
                 RecomputeForeground();
                 ArmRobustScheduler();
-              } else if (action == MediaRecoveryAction::RebuildSurface &&
-                         target->playRecoveryRecreateGeneration !=
-                             targetGeneration) {
-                target->playRecoveryRecreateGeneration = targetGeneration;
+              } else if (
+                  action == SpotifyTrackStartRecoveryAction::RebuildSurface) {
                 target->mediaPipelineRecoveryGeneration = targetGeneration;
                 target->mediaPipelineRecoveryPending = true;
                 SetSlotState(*target, SlotState::Recovering);
