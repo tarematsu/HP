@@ -16,10 +16,11 @@ const controller = readFileSync(
 );
 const spotify = `${foundation}\n${controller}`;
 
-test('Spotify one-time reauthentication keeps stable v2 profiles after amazon moves to Stationhead', () => {
+test('Spotify keeps stable v2 profiles with amazon restored to Spotify and ozeki reserved for Stationhead', () => {
   assert.match(foundation, /kSpotifyProfilePrefix\[\] = L"spotify-" L"v2-"/);
   assert.match(foundation, /Keep this namespace stable after the reauthentication rollout/);
-  assert.match(header, /kSpotifyProfileFirstAccountNumber = 2/);
+  assert.match(header, /kSpotifyProfileFirstAccountNumber = 1/);
+  assert.match(header, /kSpotifyActiveAccountCount = 5/);
   assert.match(controller, /target->index \+ kSpotifyProfileFirstAccountNumber/);
   assert.match(controller, /put_ProfileName\(profileName\.c_str\(\)\)/);
 });
