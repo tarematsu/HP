@@ -7,6 +7,7 @@ constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyNativeAudioStartRetryMs = 2ULL * 1000ULL;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
 
 void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
@@ -43,9 +44,19 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
-  if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
-      state == SlotState::Playing) {
+  if (state == SlotState::NotCreated || state == SlotState::Authenticating) {
     slot.nextRecoveryTick = 0;
+    return;
+  }
+  if (state == SlotState::Playing) {
+    // A Spotify track is not fully healthy until its one-shot native audio
+    // startup verification succeeds. Keep one short scheduler wake while that
+    // verification is pending; there is no periodic healthy-playback poll.
+    if (slot.nativeAudioStartVerified) {
+      slot.nextRecoveryTick = 0;
+    } else if (slot.nextRecoveryTick == 0) {
+      slot.nextRecoveryTick = GetTickCount64() + kSpotifyNativeAudioStartRetryMs;
+    }
   }
 }
 
@@ -77,6 +88,8 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
   BeginSpotifyTrackStartRecovery(
       slot.trackStartRecovery, slot.targetGeneration, GetTickCount64());
+  slot.nativeAudioStartChecks = 0;
+  slot.nativeAudioStartVerified = false;
   slot.mediaPipelineRecoveryGeneration = 0;
   slot.mediaKeyWaitUntilTick = 0;
   slot.mediaNetworkRecoveryTick = 0;
@@ -134,7 +147,10 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
       considerTick(slot.controllerCreateTick + kSpotifyControllerRetryMs);
     }
 
-    if (CurrentMusicTrack(slot) && SlotStateNeedsRecovery(slot.state) &&
+    const bool startupAudioVerificationPending =
+        SlotStateIsHealthy(slot.state) && !slot.nativeAudioStartVerified;
+    if (CurrentMusicTrack(slot) &&
+        (SlotStateNeedsRecovery(slot.state) || startupAudioVerificationPending) &&
         !slot.loginPage && slot.asyncWork == AsyncWork::None) {
       if (slot.nextRecoveryTick == 0) {
         nextDelayMs = 0;
