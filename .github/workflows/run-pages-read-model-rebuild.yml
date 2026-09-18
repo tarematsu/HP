@@ -13,6 +13,7 @@ on:
       - '.github/actions/cloudflare-context/action.yml'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - 'scripts/cloudflare-d1-write-guard.mjs'
+      - 'worker/scripts/repair-pages-summary-gaps.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
       - 'worker/scripts/refresh-pages-dashboard-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
@@ -102,12 +103,13 @@ jobs:
         run: |
           set -o pipefail
           node scripts/refresh-pages-dashboard-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
-      - name: Publish due pages read models
+      - name: Repair gaps and publish due pages read models
         if: steps.d1-write-budget.outputs.read_allowed == 'true'
         shell: bash
         run: |
           set -o pipefail
-          node scripts/run-pages-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
+          node scripts/repair-pages-summary-gaps.mjs 2>&1 | tee pages-read-model-actions.log
+          node scripts/run-pages-read-model-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
       - name: Upload pages read-model failure log
         if: failure()
         uses: actions/upload-artifact@v4
