@@ -28,10 +28,15 @@ function database() {
     );
     CREATE TABLE sh_queue_items (
       id INTEGER PRIMARY KEY, observed_at INTEGER NOT NULL, station_id INTEGER,
-      start_time INTEGER, position INTEGER, spotify_id TEXT
+      start_time INTEGER, position INTEGER, spotify_id TEXT, isrc TEXT,
+      stationhead_track_id INTEGER
     );
     CREATE TABLE sh_track_metadata (
       spotify_id TEXT PRIMARY KEY, fetched_at INTEGER
+    );
+    CREATE TABLE sh_tracks (
+      id INTEGER PRIMARY KEY, spotify_id TEXT, isrc TEXT,
+      stationhead_track_id INTEGER, title TEXT, artist TEXT, last_seen_at INTEGER
     );
   `);
   return db;
@@ -43,10 +48,12 @@ test('dashboard queue revision changes only when queue state or metadata changes
     INSERT INTO sh_channel_snapshots VALUES (1,1000,20,42,'host');
     INSERT INTO sh_queue_current (station_id,queue_id,start_time,structural_hash,is_paused,observed_at,updated_at)
       VALUES (20,7,3000,'sh1',0,2000,2000);
-    INSERT INTO sh_queue_items VALUES (1,2100,20,3000,0,'a');
-    INSERT INTO sh_queue_items VALUES (2,2200,20,3000,1,'b');
+    INSERT INTO sh_queue_items VALUES (1,2100,20,3000,0,'a','JPTESTA',10);
+    INSERT INTO sh_queue_items VALUES (2,2200,20,3000,1,'b','JPTESTB',20);
     INSERT INTO sh_track_metadata VALUES ('a',5000);
     INSERT INTO sh_track_metadata VALUES ('b',6000);
+    INSERT INTO sh_tracks VALUES (1,'a','JPTESTA',10,'A','Artist A',4500);
+    INSERT INTO sh_tracks VALUES (2,'b','JPTESTB',20,'B','Artist B',5500);
   `);
 
   const firstRow = db.prepare(DASHBOARD_QUEUE_STATE_SQL).get();
@@ -61,6 +68,11 @@ test('dashboard queue revision changes only when queue state or metadata changes
   const secondRow = db.prepare(DASHBOARD_QUEUE_STATE_SQL).get();
   const secondRevision = queueRevision(parseQueueState(secondRow), hostIdentity(secondRow));
   assert.notEqual(secondRevision, firstRevision);
+
+  db.prepare('DELETE FROM sh_track_metadata WHERE spotify_id=?').run('b');
+  db.prepare('UPDATE sh_tracks SET last_seen_at=? WHERE spotify_id=?').run(8000, 'b');
+  const canonicalRow = db.prepare(DASHBOARD_QUEUE_STATE_SQL).get();
+  assert.equal(parseQueueState(canonicalRow).metadata_fetched_at, 8000);
 });
 
 test('changed dashboard response appends queue fields without rebuilding the payload', () => {
