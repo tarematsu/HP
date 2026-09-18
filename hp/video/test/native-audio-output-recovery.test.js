@@ -15,6 +15,7 @@ const stationheadRefresh = source('sh_track_boundary_message_policy.h');
 const spotifyEvents = source('spotify_media_observer_events.inc');
 const spotifyClick = source('spotify_background_click.inc');
 const spotifyPhase = source('spotify_phase_sync.inc');
+const spotifySchedule = source('spotify_stagger_schedule.inc');
 const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
 
 test('Stationhead keeps lightweight repair ahead of one-minute destructive recovery', () => {
@@ -66,19 +67,12 @@ test('Spotify startup recovery is driven by each target URL generation', () => {
   assert.match(spotifyClick, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
 });
 
-test('Spotify healthy playback is not enrolled in periodic native-audio scans', () => {
-  assert.match(
-    spotifyPhase,
-    /std::array<ULONGLONG, 0> gSpotifyAudioHealthCheckDueTicks/,
-  );
-  assert.match(
-    spotifyPhase,
-    /std::array<ULONGLONG, 0> gSpotifyAudioHealthSilenceConfirmTicks/,
-  );
-  assert.match(
-    spotifyPhase,
-    /Healthy Spotify playback is event\/deadline driven/,
-  );
+test('Spotify healthy playback has no periodic native-audio health scan', () => {
+  assert.doesNotMatch(spotifyPhase, /AudioHealth|audioHealth/);
+  assert.doesNotMatch(spotifySchedule, /gSpotifyAudioHealth/);
+  assert.doesNotMatch(spotifySchedule, /TryClaimAudioHealthScan/);
+  assert.doesNotMatch(spotifySchedule, /get_IsDocumentPlayingAudio/);
+  assert.match(spotifySchedule, /No periodic IsDocumentPlayingAudio scan here/);
   assert.match(
     spotifyClick,
     /slot\.playbackConfirmed && slot\.state == SlotState::Playing/,
