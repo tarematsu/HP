@@ -11,32 +11,23 @@ inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 30ULL * 1000ULL;
 inline constexpr size_t kSpotifyProfileFirstAccountNumber = 1;
 inline constexpr size_t kSpotifyActiveAccountCount = 5;
 
-// Five logical Spotify accounts share exactly four live WebView runtime lanes.
-// S1/S2/S3/S4 address lanes 0/1/2/3. The account that completes a full rotation
-// leaves its lane, the waiting account takes it, and the completed account
-// becomes the next waiter. Inline state keeps every Spotify implementation unit
-// on the same process-wide lane assignment.
-inline constexpr size_t kSpotifyRuntimeLaneCount = 4;
-inline std::array<size_t, kSpotifyRuntimeLaneCount> gSpotifyRuntimeLaneAccounts = {
-    0, 1, 2, 3};
-inline size_t gSpotifyInactiveAccountIndex = 4;
+// Every logical Spotify account owns a permanent live WebView runtime lane.
+// S1-S5 map one-to-one to amazon/yuukiar/ten/nagi/hinata. Track rotation stays
+// independent inside each account, but accounts are never swapped out or parked.
+inline constexpr size_t kSpotifyRuntimeLaneCount = kSpotifyActiveAccountCount;
 
 inline void ResetSpotifyRuntimeLanes() noexcept {
-  gSpotifyRuntimeLaneAccounts = {0, 1, 2, 3};
-  gSpotifyInactiveAccountIndex = 4;
+  // Runtime lanes are fixed one-to-one with logical accounts.
 }
 
 inline int SpotifyRuntimeLaneForAccount(size_t accountIndex) noexcept {
-  for (size_t lane = 0; lane < gSpotifyRuntimeLaneAccounts.size(); ++lane) {
-    if (gSpotifyRuntimeLaneAccounts[lane] == accountIndex) {
-      return static_cast<int>(lane);
-    }
-  }
-  return -1;
+  return accountIndex < kSpotifyRuntimeLaneCount
+      ? static_cast<int>(accountIndex)
+      : -1;
 }
 
 inline bool SpotifyAccountShouldOwnHost(size_t accountIndex) noexcept {
-  return SpotifyRuntimeLaneForAccount(accountIndex) >= 0;
+  return accountIndex < kSpotifyActiveAccountCount;
 }
 
 struct SpotifyPlaybackStatus {
