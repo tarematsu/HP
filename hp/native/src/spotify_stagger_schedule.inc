@@ -110,10 +110,10 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   ProbeDueTimedCompletions(now);
 
-  // No periodic IsDocumentPlayingAudio scan here. Spotify's normal recovery
-  // window begins when targetGeneration changes and ends once Playing/deadline
-  // state is established. Mid-track recovery is triggered only by explicit
-  // observer, process, DRM, network, or media-pipeline events.
+  // No periodic IsDocumentPlayingAudio scan here. Spotify's native audio check
+  // exists only inside the per-track startup window. Mid-track recovery is
+  // triggered only by explicit observer, process, DRM, network, or pipeline
+  // events.
   for (Slot& slot : slots_) ExpireStaleAsyncWork(slot, now);
 
   const size_t count = slots_.size();
@@ -136,6 +136,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   };
   const auto healthyPlaybackNeedsNoWork = [](const Slot& slot) noexcept {
     return SlotStateIsHealthy(slot.state) &&
+           slot.nativeAudioStartVerified &&
            slot.timedCompletionDeadlineTick != 0 &&
            slot.timedCompletionDeadlineGeneration == slot.targetGeneration;
   };
@@ -157,7 +158,12 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
         candidate.asyncWork != AsyncWork::None) {
       continue;
     }
-    if (SlotStateNeedsRecovery(candidate.state) && !recoveryReady(candidate)) {
+    const bool startupAudioVerificationPending =
+        SlotStateIsHealthy(candidate.state) &&
+        !candidate.nativeAudioStartVerified;
+    if ((SlotStateNeedsRecovery(candidate.state) ||
+         startupAudioVerificationPending) &&
+        !recoveryReady(candidate)) {
       continue;
     }
     selected = index;
