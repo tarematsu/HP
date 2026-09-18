@@ -5,11 +5,11 @@
 namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 30ULL * 1000ULL;
-// spotify-v2-1 (the former amazon window) is owned by the single Stationhead
-// player. Restore the next four Spotify profiles without shifting their
-// existing cookies/storage: yuukiar is profile 2, ten is profile 3, nagi is
-// profile 4, and hinata is profile 5.
-inline constexpr size_t kSpotifyProfileFirstAccountNumber = 2;
+// spotify-v2-1 is the first active Spotify window again. The Stationhead player
+// is moved to the preserved ozeki profile (spotify-v2-6). Keep the next three
+// existing Spotify profiles unchanged: yuukiar is profile 2, ten is profile 3,
+// and nagi is profile 4. hinata remains unused rather than shifting storage.
+inline constexpr size_t kSpotifyProfileFirstAccountNumber = 1;
 inline constexpr size_t kSpotifyActiveAccountCount = 4;
 
 // Four logical Spotify accounts share exactly three live WebView runtime lanes.
