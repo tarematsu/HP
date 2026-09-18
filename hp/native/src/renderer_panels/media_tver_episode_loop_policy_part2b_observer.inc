@@ -27,11 +27,6 @@ LR"JS(
     }
     skipControlObservers.clear();
   };
-  const notifyPlayerUi = (reason, delay = 40) => {
-    ++playerUiRevision;
-    wakeNative(reason + ':' + playerUiRevision);
-    scheduleEnsure(delay);
-  };
   const watchSkipControl = control => {
     if (!(control instanceof Element) || skipControlObservers.has(control)) return;
     const observer = new MutationObserver(() => {
@@ -41,7 +36,9 @@ LR"JS(
         skipControlObservers.delete(control);
         return;
       }
-      notifyPlayerUi('skip-ready', 0);
+      ++playerUiRevision;
+      wakeNative('skip-ready:' + playerUiRevision);
+      scheduleEnsure(0);
     });
     observer.observe(control, {
       attributes: true,
@@ -79,7 +76,9 @@ LR"JS(
             bindSkipControlsIn(element);
             if (element.matches?.(interestingPlayerSelector) ||
                 element.querySelector?.(interestingPlayerSelector)) {
-              notifyPlayerUi('ui');
+              ++playerUiRevision;
+              wakeNative('ui:' + playerUiRevision);
+              scheduleEnsure(40);
               return;
             }
           }
