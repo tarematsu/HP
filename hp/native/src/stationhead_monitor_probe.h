@@ -1,6 +1,5 @@
 #pragma once
 #include "common.h"
-#include "service_monitor_grid.h"
 
 namespace hp {
 
@@ -11,19 +10,13 @@ inline constexpr UINT kStationheadMonitorProbeResultMessage = WM_APP + 31;
 // access on the existing UI thread and avoids adding another polling thread.
 void RequestStationheadMonitorDomProbe() noexcept;
 
-// Keep the normal Stationhead playback host permanently parked in tile 0 of
-// the shared six-window service monitor grid. Background playback still clips
-// the host to 1x1; foreground routing only changes visibility/z-order.
+// Full workspace remains the fallback for authentication/interactive surfaces.
 inline RECT StationheadBackgroundBounds(const RECT& workspaceBounds) noexcept {
-  if (workspaceBounds.right <= workspaceBounds.left ||
-      workspaceBounds.bottom <= workspaceBounds.top) {
-    return workspaceBounds;
-  }
-  return ServiceMonitorTileBounds(workspaceBounds, 0);
+  return workspaceBounds;
 }
 
 // Keep the existing preview state as the reload/startup signal used by the
-// Stationhead lifecycle. Host geometry no longer depends on it.
+// Stationhead lifecycle.
 inline std::atomic<bool> gStationheadBackgroundPreview{true};
 
 inline bool SetStationheadBackgroundPreview(bool active) noexcept {
@@ -38,6 +31,7 @@ inline bool StationheadBackgroundPreview() noexcept {
 // Monitor placement and Stationhead WebView layout live in separate modules.
 // Keep only the effective foreground bit here so both sides agree on z-order.
 inline std::atomic<bool> gStationheadMonitorForeground{false};
+inline std::atomic<bool> gStationheadMonitorGridVisible{false};
 
 inline bool SetStationheadMonitorForeground(bool foreground) noexcept {
   return gStationheadMonitorForeground.exchange(
@@ -46,6 +40,15 @@ inline bool SetStationheadMonitorForeground(bool foreground) noexcept {
 
 inline bool StationheadMonitorForeground() noexcept {
   return gStationheadMonitorForeground.load(std::memory_order_acquire);
+}
+
+inline bool SetStationheadMonitorGridVisible(bool visible) noexcept {
+  return gStationheadMonitorGridVisible.exchange(
+             visible, std::memory_order_acq_rel) != visible;
+}
+
+inline bool StationheadMonitorGridVisible() noexcept {
+  return gStationheadMonitorGridVisible.load(std::memory_order_acquire);
 }
 
 }  // namespace hp
