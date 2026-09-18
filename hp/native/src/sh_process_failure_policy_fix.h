@@ -7,19 +7,26 @@ namespace stationhead_process_failure_policy {
 
 inline constexpr ULONGLONG kRendererUnresponsiveConfirmWindowMs =
     15ULL * 1000ULL;
+inline std::atomic<ICoreWebView2*> rendererUnresponsiveSender{nullptr};
 inline std::atomic<ULONGLONG> rendererUnresponsiveFirstTick{0};
 inline std::atomic<unsigned> rendererUnresponsiveCount{0};
 
+inline void ResetRendererUnresponsiveConfirmation() noexcept {
+  rendererUnresponsiveSender.store(nullptr, std::memory_order_release);
+  rendererUnresponsiveFirstTick.store(0, std::memory_order_release);
+  rendererUnresponsiveCount.store(0, std::memory_order_release);
+}
+
 inline bool ShouldForwardStationheadProcessFailure(
+    ICoreWebView2* sender,
     ICoreWebView2ProcessFailedEventArgs* args) noexcept {
-  if (!args) return false;
+  if (!sender || !args) return false;
   COREWEBVIEW2_PROCESS_FAILED_KIND kind{};
   if (FAILED(args->get_ProcessFailedKind(&kind))) return false;
 
   if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED ||
       kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED) {
-    rendererUnresponsiveFirstTick.store(0, std::memory_order_release);
-    rendererUnresponsiveCount.store(0, std::memory_order_release);
+    ResetRendererUnresponsiveConfirmation();
     return true;
   }
 
@@ -32,10 +39,13 @@ inline bool ShouldForwardStationheadProcessFailure(
   }
 
   const ULONGLONG now = GetTickCount64();
+  ICoreWebView2* const firstSender =
+      rendererUnresponsiveSender.load(std::memory_order_acquire);
   const ULONGLONG first =
       rendererUnresponsiveFirstTick.load(std::memory_order_acquire);
-  if (first == 0 || now < first ||
+  if (firstSender != sender || first == 0 || now < first ||
       now - first > kRendererUnresponsiveConfirmWindowMs) {
+    rendererUnresponsiveSender.store(sender, std::memory_order_release);
     rendererUnresponsiveFirstTick.store(now, std::memory_order_release);
     rendererUnresponsiveCount.store(1, std::memory_order_release);
     return false;
@@ -45,8 +55,7 @@ inline bool ShouldForwardStationheadProcessFailure(
       rendererUnresponsiveCount.fetch_add(1, std::memory_order_acq_rel) + 1;
   if (count < 2) return false;
 
-  rendererUnresponsiveFirstTick.store(0, std::memory_order_release);
-  rendererUnresponsiveCount.store(0, std::memory_order_release);
+  ResetRendererUnresponsiveConfirmation();
   return true;
 }
 
@@ -65,7 +74,7 @@ WrapStationheadClassifiedProcessFailedHandler(
           ICoreWebView2* sender,
           ICoreWebView2ProcessFailedEventArgs* args) noexcept -> HRESULT {
         if (!inner || !sender || !args) return S_OK;
-        if (!ShouldForwardStationheadProcessFailure(args)) return S_OK;
+        if (!ShouldForwardStationheadProcessFailure(sender, args)) return S_OK;
         return inner->Invoke(sender, args);
       });
 }
