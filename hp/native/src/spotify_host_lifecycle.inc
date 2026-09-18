@@ -119,6 +119,8 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.nextProcessTitlePollTick = 0;
   slot.trustedClickBlockedUntilTick = 0;
   slot.trackStartRecovery = {};
+  slot.nativeAudioStartChecks = 0;
+  slot.nativeAudioStartVerified = false;
   slot.mediaPipelineRecoveryGeneration = 0;
   slot.mediaKeyWaitUntilTick = 0;
   slot.mediaNetworkRecoveryTick = 0;
