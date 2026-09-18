@@ -9,7 +9,7 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
 constexpr uint32_t kMaxAppTimerMs = 24U * 60U * 60U * 1000U;
-constexpr wchar_t kStationheadAmazonProfile[] = L"spotify-v2-1";
+constexpr wchar_t kStationheadOzekiProfile[] = L"spotify-v2-6";
 
 uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackMs) {
   if (deadline <= 0) return fallbackMs;
@@ -114,9 +114,9 @@ void App::StartServices() {
   const fs::path stationheadUserData = dataDir_ / L"webview2-youtube-mv";
   auto stationheadPlayer = std::make_unique<StationheadPlayer>(
       window_, config_.stationhead, stationheadUserData, *logger_);
-  stationheadPlayer->ReuseWebViewProfile(kStationheadAmazonProfile);
+  stationheadPlayer->ReuseWebViewProfile(kStationheadOzekiProfile);
   stationhead_ = std::move(stationheadPlayer);
-  logger_->Info(L"Single Stationhead prepared with existing amazon WebView2 profile");
+  logger_->Info(L"Single Stationhead prepared with existing ozeki WebView2 profile");
 
   startupAt_ = UnixMillis();
 
