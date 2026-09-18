@@ -140,7 +140,7 @@ jobs:
           --retry-delay-ms=10000
           --out=.pages-production-audit
 
-      - name: Require current production materializations
+      - name: Require all production materializations
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         shell: bash
         run: |
