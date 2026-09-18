@@ -54,6 +54,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     slot.nativeAudioStartChecks = 0;
     slot.nativeAudioStartVerified = false;
     slot.playbackConfirmed = false;
+    slot.timedCompletionDeadlineTick = 0;
+    slot.timedCompletionDeadlineGeneration = 0;
     SetSlotState(slot, SlotState::Navigating);
     slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
     if (!slot.webview || FAILED(slot.webview->Reload())) {
@@ -112,6 +114,17 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     slot.playbackConfirmed = false;
     RebuildPlaybackSurface(slot);
     return;
+  }
+
+  // A completion deadline only belongs to verified healthy playback. Recovery,
+  // navigation, DRM waits, and network backoff may outlive the old deadline; if
+  // it survives into those states it can advance the queue before recovery has
+  // a chance to finish. Drop it before probing due completions and let the next
+  // successful start install a fresh deadline.
+  for (Slot& slot : slots_) {
+    if (SlotStateIsHealthy(slot.state)) continue;
+    slot.timedCompletionDeadlineTick = 0;
+    slot.timedCompletionDeadlineGeneration = 0;
   }
 
   ProbeDueTimedCompletions(now);
