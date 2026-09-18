@@ -1,5 +1,3 @@
-#include "audio_health_scan_coordinator.h"
-
 namespace hp {
 namespace {
 
@@ -9,14 +7,8 @@ constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 30ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
-constexpr ULONGLONG kSpotifyAudioHealthSilenceConfirmMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyNativeAudioStartRetryMs = 2ULL * 1000ULL;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
-std::array<ULONGLONG, kSpotifyActiveAccountCount>
-    gSpotifyAudioHealthCheckDueTicks{};
-std::array<ULONGLONG, kSpotifyActiveAccountCount>
-    gSpotifyAudioHealthSilenceConfirmTicks{};
 
 void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
   if (!hostWindow || !IsWindow(hostWindow)) return;
@@ -51,30 +43,20 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 }
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
-  const SlotState previousState = slot.state;
   slot.state = state;
-  if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
-    ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
-    ULONGLONG& silenceConfirm =
-        gSpotifyAudioHealthSilenceConfirmTicks[slot.index];
-    if (state == SlotState::Playing) {
-      const int lane = SpotifyRuntimeLaneForAccount(slot.index);
-      if (lane < 0) {
-        due = 0;
-        silenceConfirm = 0;
-      } else if (previousState != SlotState::Playing || due == 0) {
-        due = NextAudioHealthScanTick(
-            GetTickCount64(), static_cast<size_t>(lane) + 1);
-        silenceConfirm = 0;
-      }
-    } else {
-      due = 0;
-      silenceConfirm = 0;
-    }
-  }
-  if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
-      state == SlotState::Playing) {
+  if (state == SlotState::NotCreated || state == SlotState::Authenticating) {
     slot.nextRecoveryTick = 0;
+    return;
+  }
+  if (state == SlotState::Playing) {
+    // A Spotify track is not fully healthy until its one-shot native audio
+    // startup verification succeeds. Keep one short scheduler wake while that
+    // verification is pending; there is no periodic healthy-playback poll.
+    if (slot.nativeAudioStartVerified) {
+      slot.nextRecoveryTick = 0;
+    } else if (slot.nextRecoveryTick == 0) {
+      slot.nextRecoveryTick = GetTickCount64() + kSpotifyNativeAudioStartRetryMs;
+    }
   }
 }
 
@@ -104,8 +86,10 @@ bool SpotifyWebViews::ExpireStaleAsyncWork(
 void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   ++slot.targetGeneration;
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
-  slot.playRecoveryReloadGeneration = 0;
-  slot.playRecoveryRecreateGeneration = 0;
+  BeginSpotifyTrackStartRecovery(
+      slot.trackStartRecovery, slot.targetGeneration, GetTickCount64());
+  slot.nativeAudioStartChecks = 0;
+  slot.nativeAudioStartVerified = false;
   slot.mediaPipelineRecoveryGeneration = 0;
   slot.mediaKeyWaitUntilTick = 0;
   slot.mediaNetworkRecoveryTick = 0;
@@ -113,9 +97,6 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   slot.mediaKeyWaitFailurePending = false;
   slot.mediaNetworkRecoveryPending = false;
   ResetMediaRecoveryEpisode(slot.recoveryEpisode, slot.targetGeneration);
-  if (slot.index < gSpotifyAudioHealthSilenceConfirmTicks.size()) {
-    gSpotifyAudioHealthSilenceConfirmTicks[slot.index] = 0;
-  }
 }
 
 void CALLBACK SpotifyWebViews::SchedulerTimerProc(
@@ -140,9 +121,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
   if (!initialCloudPlaylistReady_) return kSpotifySchedulerBootstrapMs;
 
-  // Healthy playback wakes at its exact completion deadline and at its assigned
-  // 30-second staggered native audio-health slot. The one-hour ceiling remains
-  // only a coarse safety audit for unrelated state loss.
+  // Healthy Spotify playback is event/deadline driven. Per-track startup and
+  // recovery deadlines wake the scheduler while Playing itself has no periodic
+  // health poll. The one-hour ceiling remains a coarse unrelated-state audit.
   ULONGLONG nextDelayMs = kSpotifyHealthyAuditMs;
   const auto considerTick = [&nextDelayMs, now](ULONGLONG dueTick) noexcept {
     if (dueTick == 0) return;
@@ -151,11 +132,6 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   };
 
   for (const Slot& slot : slots_) {
-    if (slot.index < gSpotifyAudioHealthCheckDueTicks.size() &&
-        slot.webview && CurrentMusicTrack(slot) &&
-        SlotStateIsHealthy(slot.state)) {
-      considerTick(gSpotifyAudioHealthCheckDueTicks[slot.index]);
-    }
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         CurrentMusicTrack(slot)) {
@@ -171,7 +147,10 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
       considerTick(slot.controllerCreateTick + kSpotifyControllerRetryMs);
     }
 
-    if (CurrentMusicTrack(slot) && SlotStateNeedsRecovery(slot.state) &&
+    const bool startupAudioVerificationPending =
+        SlotStateIsHealthy(slot.state) && !slot.nativeAudioStartVerified;
+    if (CurrentMusicTrack(slot) &&
+        (SlotStateNeedsRecovery(slot.state) || startupAudioVerificationPending) &&
         !slot.loginPage && slot.asyncWork == AsyncWork::None) {
       if (slot.nextRecoveryTick == 0) {
         nextDelayMs = 0;

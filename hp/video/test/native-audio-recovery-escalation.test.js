@@ -13,6 +13,8 @@ const spotifyClick = source('spotify_background_click.inc');
 const spotifyController = source('spotify_controller_lifecycle.inc');
 const spotifyPhase = source('spotify_phase_sync.inc');
 const spotifyHost = source('spotify_host_lifecycle.inc');
+const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
+const spotifyStartup = source('spotify_startup_audio_recovery.inc');
 
 test('Stationhead escalates silence through reload, trusted click, WebView rebuild, then fallback', () => {
   assert.match(stationhead, /EscalateAudioLossRecovery\(nowMs\)/);
@@ -47,19 +49,21 @@ test('Stationhead escalation is bounded and resets on real audio', () => {
   assert.match(stationhead, /spotifyAuthorization_ \|\| loginRequired_/);
 });
 
-test('Spotify escalates trusted Play recovery through one reload and one queued full rebuild per target', () => {
-  assert.match(spotifyHeader, /ULONGLONG playRecoveryRecreateGeneration = 0/);
-  assert.match(spotifyPhase, /slot\.playRecoveryRecreateGeneration = 0/);
-  assert.match(spotifyHost, /slot\.playRecoveryRecreateGeneration = 0/);
-  assert.match(spotifyClick, /const recreateUsed=/);
-  assert.match(spotifyClick, /if\(!recreateUsed\)return 'recreate'/);
-  assert.match(
-    spotifyClick,
-    /playRecoveryRecreateGeneration !=\s*targetGeneration/,
-  );
-  assert.match(spotifyClick, /playRecoveryRecreateGeneration = targetGeneration/);
-  assert.match(spotifyClick, /mediaPipelineRecoveryGeneration = targetGeneration/);
-  assert.match(spotifyClick, /mediaPipelineRecoveryPending = true/);
+test('Spotify escalates each track through one reload, one rebuild, then skip', () => {
+  assert.match(spotifyHeader, /SpotifyTrackStartRecovery trackStartRecovery\{\}/);
+  assert.match(spotifyHeader, /bool nativeAudioStartVerified = false/);
+  assert.match(spotifyPhase, /BeginSpotifyTrackStartRecovery/);
+  assert.match(spotifyHost, /slot\.trackStartRecovery = \{\}/);
+  assert.match(spotifyTrackRecovery, /bool reloadIssued = false/);
+  assert.match(spotifyTrackRecovery, /bool rebuildIssued = false/);
+  assert.match(spotifyTrackRecovery, /bool skipIssued = false/);
+  assert.match(spotifyTrackRecovery, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyClick, /EscalateSpotifyStartupFailure/);
+  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyStartup, /mediaPipelineRecoveryPending = true/);
+  assert.match(spotifyStartup, /SkipFailedSpotifyTrack\(slot\)/);
   assert.doesNotMatch(spotifyClick, /RebuildPlaybackSurface\(\*target\)/);
   assert.match(spotifyController, /slot\.webview\.Reset\(\)/);
   assert.match(spotifyController, /slot\.controller->Close\(\)/);
@@ -67,7 +71,7 @@ test('Spotify escalates trusted Play recovery through one reload and one queued 
   assert.match(spotifyController, /SetSlotState\(slot, SlotState::NotCreated\)/);
 });
 
-test('Spotify full rebuild preserves current target and rotation instead of advancing', () => {
+test('Spotify full rebuild preserves current target and rotation before terminal skip', () => {
   const start = spotifyController.indexOf(
     'void SpotifyWebViews::RebuildPlaybackSurface');
   const end = spotifyController.indexOf(
@@ -79,4 +83,5 @@ test('Spotify full rebuild preserves current target and rotation instead of adva
   assert.doesNotMatch(rebuild, /slot\.timedRotationPosition = 0/);
   assert.doesNotMatch(rebuild, /slot\.timedRotationActive = false/);
   assert.match(rebuild, /slot\.nextRecoveryTick = GetTickCount64\(\)/);
+  assert.match(spotifyStartup, /AdvanceTimedRotationSlot\(slot\)/);
 });

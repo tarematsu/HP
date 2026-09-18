@@ -1,6 +1,7 @@
 #pragma once
 #include "common.h"
 #include "media_recovery_coordinator.h"
+#include "spotify_track_start_recovery.h"
 
 namespace hp {
 
@@ -118,13 +119,11 @@ class SpotifyWebViews final {
     ULONGLONG pageEpoch = 0;
     ULONGLONG targetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
-    ULONGLONG playRecoveryReloadGeneration = 0;
-    ULONGLONG playRecoveryRecreateGeneration = 0;
     ULONGLONG mediaPipelineRecoveryGeneration = 0;
     ULONGLONG mediaKeyWaitUntilTick = 0;
     ULONGLONG mediaNetworkRecoveryTick = 0;
-    ULONGLONG extendedRecoveryBlockedUntilTick = 0;
     size_t mediaNetworkRecoveryAttempt = 0;
+    unsigned nativeAudioStartChecks = 0;
     std::wstring observedTrackTitle;
     std::wstring processTrackDisplay;
     SYSTEMTIME processTitleObservedAt{};
@@ -139,14 +138,13 @@ class SpotifyWebViews final {
     bool timedObserverReady = false;
     bool timedRotationActive = false;
     bool playbackConfirmed = false;
+    bool nativeAudioStartVerified = false;
     bool processTitleObserved = false;
     bool hostLayoutApplied = false;
     bool mediaPipelineRecoveryPending = false;
     bool mediaKeyWaitFailurePending = false;
     bool mediaNetworkRecoveryPending = false;
-    bool profileRecoveryPending = false;
-    bool profileRecoveryInFlight = false;
-    bool profileRecoveryDeep = false;
+    SpotifyTrackStartRecovery trackStartRecovery{};
     MediaRecoveryEpisode recoveryEpisode{};
   };
 
@@ -172,6 +170,10 @@ class SpotifyWebViews final {
   void MarkSlotRecovering(Slot& slot, ULONGLONG now) noexcept;
   bool ExpireStaleAsyncWork(Slot& slot, ULONGLONG now) noexcept;
   void BumpSpotifyTargetGeneration(Slot& slot) noexcept;
+  bool ConfirmSpotifyNativeAudioStart(Slot& slot, ULONGLONG now) noexcept;
+  bool EscalateSpotifyStartupFailure(Slot& slot, ULONGLONG now,
+                                     bool requestRebuild) noexcept;
+  void SkipFailedSpotifyTrack(Slot& slot) noexcept;
   void ClickSlotCssPoint(Slot& slot, double cssX, double cssY) noexcept;
   UINT DispatchSpotifyDevToolsClick(Slot& slot, double cssX,
                                     double cssY) noexcept;

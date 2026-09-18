@@ -8,6 +8,7 @@ const source = name => readFileSync(
 const header = source('spotify_webviews.h');
 const music = source('spotify_music_target.inc');
 const click = source('spotify_background_click.inc');
+const startup = source('spotify_startup_audio_recovery.inc');
 const events = source('spotify_media_observer_events.inc');
 const controller = source('spotify_controller_lifecycle.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
@@ -67,7 +68,11 @@ test('startup retries use two-second state probes, five-second Play spacing, and
   assert.match(music, /callbackNow \+ retryDelayMs/);
   assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
   assert.match(click, /now-retry\.lastAttemptAt<5000/);
-  assert.match(click, /requestedView->Reload\(\)/);
+  assert.match(click, /EscalateSpotifyStartupFailure\(/);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(startup, /slot\.webview->Reload\(\)/);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
   assert.doesNotMatch(music, /kSpotifyCdpPlayConfirmWaitMs|kSpotifyDirectPlayConfirmWaitMs|direct-play|DirectPlay/);
   assert.doesNotMatch(music + click, /kSpotifyPlaybackStartRetryMs/);
 });

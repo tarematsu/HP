@@ -16,6 +16,8 @@ const spotifyEvents = source('spotify_media_observer_events.inc');
 const spotifyClick = source('spotify_background_click.inc');
 const spotifyPhase = source('spotify_phase_sync.inc');
 const spotifySchedule = source('spotify_stagger_schedule.inc');
+const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
+const spotifyStartupAudio = source('spotify_startup_audio_recovery.inc');
 
 test('Stationhead keeps lightweight repair ahead of one-minute destructive recovery', () => {
   assert.match(stationheadEvents, /get_IsDocumentPlayingAudio/);
@@ -34,17 +36,16 @@ test('Stationhead keeps lightweight repair ahead of one-minute destructive recov
   assert.match(stationheadLoss, /SetManagedPlaybackFallback/);
 });
 
-test('shared audio-health coordinator serializes six 30-second scan slots', () => {
+test('shared audio-health coordinator remains available to continuous-stream recovery', () => {
   assert.match(coordinator, /kAudioHealthScanCycleMs = 30ULL \* 1000ULL/);
   assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 5'000ULL/);
-  assert.match(coordinator, /kAudioHealthScanSlotCount = 6/);
   assert.match(coordinator, /gAudioHealthScanInProgress/);
   assert.match(coordinator, /TryClaimAudioHealthScan/);
   assert.match(coordinator, /kAudioHealthScanMinimumGapMs = 4ULL \* 1000ULL/);
   assert.match(coordinator, /ReleaseAudioHealthScan/);
 });
 
-test('Stationhead polls native WebView2 audio through shared 30-second slot zero', () => {
+test('Stationhead polls native WebView2 audio through the periodic health path', () => {
   assert.match(stationheadRefresh, /PollPeriodicAudioHealth/);
   assert.match(stationheadRefresh, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
   assert.match(stationheadRefresh, /TryClaimAudioHealthScan\(scanTick\)/);
@@ -54,56 +55,45 @@ test('Stationhead polls native WebView2 audio through shared 30-second slot zero
   assert.match(stationheadRefresh, /AttemptNativeStartClick\(nowMs\)/);
 });
 
-test('Spotify sustained silence returns to trusted click and reload recovery', () => {
+test('Spotify startup recovery is driven by each target URL generation and has a terminal skip', () => {
+  assert.match(spotifyPhase, /BeginSpotifyTrackStartRecovery\([\s\S]*slot\.targetGeneration/);
+  assert.match(spotifyTrackRecovery, /ULONGLONG generation = 0/);
+  assert.match(spotifyTrackRecovery, /bool reloadIssued = false/);
+  assert.match(spotifyTrackRecovery, /bool rebuildIssued = false/);
+  assert.match(spotifyTrackRecovery, /bool skipIssued = false/);
+  assert.match(spotifyTrackRecovery, /SkipTrack/);
+  assert.match(spotifyClick, /EscalateSpotifyStartupFailure/);
+  assert.match(spotifyClick, /retry\.count>=2/);
+  assert.match(spotifyClick, /return 'reload'/);
+  assert.match(spotifyClick, /return 'recreate'/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyStartupAudio, /SkipFailedSpotifyTrack\(slot\)/);
+});
+
+test('Spotify checks native audio only inside the per-track startup window', () => {
+  assert.doesNotMatch(spotifyPhase, /AudioHealth|audioHealth/);
+  assert.doesNotMatch(spotifySchedule, /gSpotifyAudioHealth/);
+  assert.doesNotMatch(spotifySchedule, /TryClaimAudioHealthScan/);
+  assert.doesNotMatch(spotifySchedule, /get_IsDocumentPlayingAudio/);
+  assert.match(spotifySchedule, /No periodic IsDocumentPlayingAudio scan here/);
+  assert.match(spotifyStartupAudio, /kSpotifyNativeAudioStartCheckLimit = 2/);
+  assert.match(spotifyStartupAudio, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
+  assert.match(spotifyStartupAudio, /slot\.nativeAudioStartVerified = true/);
+  assert.match(
+    spotifyClick,
+    /slot\.playbackConfirmed && slot\.nativeAudioStartVerified/,
+  );
+});
+
+test('Spotify observer still reacts immediately to explicit playback interruption events', () => {
   assert.match(spotifyEvents, /recoveryGraceMs = 6000/);
   for (const eventName of ['pause', 'stalled', 'waiting', 'error']) {
     assert.match(spotifyEvents, new RegExp(`['\"]${eventName}['\"]`));
   }
   assert.match(spotifyEvents, /post\('spotify:timed-interrupted'\)/);
   assert.match(spotifyEvents, /next > recoveryTime \+ 0\.10/);
-  assert.match(
-    spotifyClick,
-    /slot\.playbackConfirmed && slot\.state == SlotState::Playing/,
-  );
-  assert.match(spotifyClick, /retry\.count>=2/);
-  assert.match(spotifyClick, /return 'reload'/);
-});
-
-test('Spotify checks five live lanes one at a time on 5-second staggered phases', () => {
-  assert.match(spotifyPhase, /kSpotifyAudioHealthCheckMs = 30ULL \* 1000ULL/);
-  assert.match(spotifyPhase, /NextAudioHealthScanTick\([\s\S]*static_cast<size_t>\(lane\) \+ 1/);
-  assert.match(spotifySchedule, /Slot\* audioHealthCandidate = nullptr/);
-  assert.match(spotifySchedule, /audioHealthPhase = phase/);
-  assert.match(spotifySchedule, /TryClaimAudioHealthScan\(now\)/);
-  assert.match(spotifySchedule, /ReleaseAudioHealthScan\(\)/);
-  assert.match(spotifySchedule, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
-  assert.match(spotifySchedule, /timedCompletionDeadlineTick = 0/);
-  assert.match(spotifySchedule, /SetSlotState\(slot, SlotState::WaitingTarget\)/);
-  assert.match(spotifySchedule, /slot\.nextRecoveryTick = now/);
-});
-
-test('Spotify requires a second 30-second silent native sample before recovery', () => {
-  assert.match(spotifyPhase, /kSpotifyAudioHealthSilenceConfirmMs = 30ULL \* 1000ULL/);
-  assert.match(spotifyPhase, /gSpotifyAudioHealthSilenceConfirmTicks/);
-  assert.match(spotifySchedule, /gSpotifyAudioHealthSilenceConfirmTicks\.fill\(0\)/);
-  assert.match(spotifySchedule, /nativePlaying != FALSE[\s\S]*silenceConfirm = 0/);
-  assert.match(
-    spotifySchedule,
-    /silenceConfirm = now \+ kSpotifyAudioHealthSilenceConfirmMs/,
-  );
-  assert.match(spotifySchedule, /else if \(now < silenceConfirm\)/);
-  assert.match(
-    spotifySchedule,
-    /else \{[\s\S]*silenceConfirm = 0;[\s\S]*SetSlotState\(slot, SlotState::WaitingTarget\)/,
-  );
-  assert.match(
-    spotifySchedule,
-    /MediaRecoveryEvidence::TimelineStall[\s\S]*MediaRecoveryAction::ReassertPlayback/,
-  );
-  assert.doesNotMatch(
-    spotifySchedule,
-    /slot\.recoveryEpisode, MediaRecoveryEvidence::ConfirmedSilence/,
-  );
 });
 
 test('Stationhead keeps the explicit 50-minute preventive reload', () => {

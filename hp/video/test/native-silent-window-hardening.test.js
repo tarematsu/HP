@@ -10,6 +10,8 @@ const source = name => readFileSync(
 const environment = source('shared_webview_environment.cpp');
 const spotifyEvents = source('spotify_media_observer_events.inc');
 const spotifyScheduler = source('spotify_stagger_schedule.inc');
+const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
+const spotifyStartupAudio = source('spotify_startup_audio_recovery.inc');
 const stationheadLifecycle = source('sh_runtime_lifecycle_script.h');
 const recoveryCoordinator = source('media_recovery_coordinator.h');
 
@@ -41,7 +43,7 @@ test('Stationhead re-kicks a frozen media clock then enters native DRM recovery'
   assert.match(stationheadLifecycle, /keyWaitingMedia === media/);
 });
 
-test('Stationhead and Spotify share one bounded recovery episode', () => {
+test('Stationhead and Spotify keep bounded recovery in their distinct roles', () => {
   assert.match(recoveryCoordinator, /enum class MediaRecoveryAction/);
   assert.match(recoveryCoordinator, /ReassertPlayback = 1/);
   assert.match(recoveryCoordinator, /ReloadDocument = 2/);
@@ -49,9 +51,18 @@ test('Stationhead and Spotify share one bounded recovery episode', () => {
   assert.match(recoveryCoordinator, /UseFallback = 4/);
   assert.match(recoveryCoordinator, /kMediaRecoveryHealthyResetMs = 30ULL \* 1000ULL/);
   assert.match(recoveryCoordinator, /static_assert\(MediaRecoveryCoordinatorContract\(\)\)/);
-  assert.match(spotifyScheduler, /NextMediaRecoveryAction\(/);
-  assert.match(spotifyScheduler, /MediaRecoveryEvidence::TimelineStall/);
-  assert.match(spotifyScheduler, /MediaRecoveryAction::ReassertPlayback/);
-  assert.match(spotifyScheduler, /MediaRecoveryAction::ReloadDocument/);
-  assert.match(spotifyScheduler, /MediaRecoveryAction::RebuildSurface/);
+
+  assert.match(spotifyTrackRecovery, /enum class SpotifyTrackStartRecoveryAction/);
+  assert.match(spotifyTrackRecovery, /ReloadDocument/);
+  assert.match(spotifyTrackRecovery, /RebuildSurface/);
+  assert.match(spotifyTrackRecovery, /SkipTrack/);
+  assert.match(spotifyTrackRecovery, /reloadIssued/);
+  assert.match(spotifyTrackRecovery, /rebuildIssued/);
+  assert.match(spotifyTrackRecovery, /skipIssued/);
+  assert.match(spotifyStartupAudio, /NextSpotifyTrackStartRecoveryAction/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyStartupAudio, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(spotifyScheduler, /kSpotifyAudioHealthCheckMs|MediaRecoveryEvidence::TimelineStall/);
 });

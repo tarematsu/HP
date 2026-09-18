@@ -18,6 +18,7 @@
 #include "spotify_music_target.inc"
 #include "spotify_target_routing.inc"
 #include "spotify_timed_end_rotation.inc"
+#include "spotify_startup_audio_recovery.inc"
 
 namespace hp {
 #include "spotify_stagger_schedule.inc"

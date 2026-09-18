@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sh_process_failure_policy_fix.h"
+
 namespace hp {
 
 inline constexpr bool StationheadRuntimeScriptHostUrl(
