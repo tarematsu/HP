@@ -5,26 +5,22 @@
 namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 30ULL * 1000ULL;
-// spotify-v2-1 (the former amazon window) is owned by the single Stationhead
-// player. Restore the next four Spotify profiles without shifting their
-// existing cookies/storage: yuukiar is profile 2, ten is profile 3, nagi is
-// profile 4, and hinata is profile 5.
-inline constexpr size_t kSpotifyProfileFirstAccountNumber = 2;
+// spotify-v2-1 through spotify-v2-4 are the four Spotify windows. The former
+// amazon window is now the dedicated Stationhead surface; the four Spotify
+// profiles remain isolated and are started at thirty-second offsets.
+inline constexpr size_t kSpotifyProfileFirstAccountNumber = 1;
 inline constexpr size_t kSpotifyActiveAccountCount = 4;
 
-// Four logical Spotify accounts share exactly three live WebView runtime lanes.
-// B/C/D always address lanes 0/1/2. The account that completes a full rotation
-// leaves its lane, the waiting account takes it, and the completed account
-// becomes the next waiter. Inline state keeps every Spotify implementation unit
-// on the same process-wide lane assignment.
-inline constexpr size_t kSpotifyRuntimeLaneCount = 3;
+// Four logical Spotify accounts have one dedicated live WebView lane each.
+// Startup staggering provides the five-window alternating schedule together
+// with the separate Stationhead window, without recycling a Spotify account
+// out of a live lane during normal playback.
+inline constexpr size_t kSpotifyRuntimeLaneCount = kSpotifyActiveAccountCount;
 inline std::array<size_t, kSpotifyRuntimeLaneCount> gSpotifyRuntimeLaneAccounts = {
-    0, 1, 2};
-inline size_t gSpotifyInactiveAccountIndex = 3;
+    0, 1, 2, 3};
 
 inline void ResetSpotifyRuntimeLanes() noexcept {
-  gSpotifyRuntimeLaneAccounts = {0, 1, 2};
-  gSpotifyInactiveAccountIndex = 3;
+  gSpotifyRuntimeLaneAccounts = {0, 1, 2, 3};
 }
 
 inline int SpotifyRuntimeLaneForAccount(size_t accountIndex) noexcept {
