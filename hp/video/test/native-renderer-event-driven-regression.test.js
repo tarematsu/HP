@@ -104,6 +104,6 @@ test('App no longer owns dormant Stationhead compatibility publication', () => {
   assert.doesNotMatch(panelState, /stationheadPlayHistory|GlobalStationheadNativeStatsStore/);
   assert.match(appSource, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
   assert.match(appSource, /stationhead_->Start\(\)/);
-  assert.match(appSource, /Spotify #1 launch issued at \+30 seconds; #2, #3 and #4 follow at 30-second offsets/);
-  assert.match(appSource, /Stationhead launch issued at \+150 seconds/);
+  assert.match(appSource, /Spotify #1 launch issued at \+30 seconds; #2, #3, #4 and #5 follow at 30-second offsets/);
+  assert.match(appSource, /Stationhead launch issued at \+180 seconds/);
 });

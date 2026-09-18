@@ -14,8 +14,7 @@ constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
 // Control buttons are pinned to logical Spotify account ids (S1-S5 => 0-4).
-// These runtime-lane values are derived on demand so the selected account keeps
-// its identity while the four live lanes rotate underneath it.
+// Runtime lanes are now permanently one-to-one with those account ids.
 int gSpotifyAudioOutputAccountIndex = -1;
 int gSpotifyAudioOutputSlot = -1;
 int gSpotifyMonitorForegroundAccountIndex = -1;

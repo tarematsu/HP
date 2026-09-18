@@ -66,7 +66,7 @@ void PowerSavingController::ArmScheduleTimer() {
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
   // Monitor YT owns the only periodic DOM inspection. ST is Stationhead.
-  // S1-S5 are fixed logical Spotify accounts while four runtime lanes rotate.
+  // S1-S5 are fixed logical Spotify accounts with permanent runtime lanes.
   if (monitorMode_ == MonitorMode::Native) {
     remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
   }
@@ -150,8 +150,7 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
     RestoreBrightness();
   }
   Renderer::SetGlobalPowerSavingMode(powerSaving_);
-  // S1-S5 stay pinned to logical Spotify accounts. The selected account can
-  // move between the four live runtime lanes without changing button meaning.
+  // S1-S5 stay pinned one-to-one to the five permanent Spotify account lanes.
   const int spotifyMonitorAccount =
       mode == MonitorMode::SpotifyPrimary ? 0 :
       mode == MonitorMode::SpotifySecondary ? 1 :

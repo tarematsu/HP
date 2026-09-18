@@ -19,10 +19,15 @@ test('Spotify exposes exactly five logical windows with amazon first and hinata 
     /kSpotifyPanelNames\s*=\s*\{\s*L"amazon",\s*L"yuukiar",\s*L"ten",\s*L"nagi",\s*L"hinata"\s*\}/);
 });
 
-test('Spotify five-window rotation uses four live lanes and one waiting account', () => {
-  assert.match(spotifyHeader, /kSpotifyRuntimeLaneCount\s*=\s*4/);
-  assert.match(spotifyHeader, /gSpotifyRuntimeLaneAccounts\s*=\s*\{\s*0,\s*1,\s*2,\s*3\s*\}/);
-  assert.match(spotifyHeader, /gSpotifyInactiveAccountIndex\s*=\s*4/);
+test('Spotify keeps all five logical windows live with fixed one-to-one lanes', () => {
+  assert.match(spotifyHeader, /kSpotifyRuntimeLaneCount\s*=\s*kSpotifyActiveAccountCount/);
+  assert.match(
+    spotifyHeader,
+    /return accountIndex < kSpotifyRuntimeLaneCount[\s\S]*static_cast<int>\(accountIndex\)/,
+  );
+  assert.match(spotifyHeader, /return accountIndex < kSpotifyActiveAccountCount/);
+  assert.doesNotMatch(spotifyHeader, /gSpotifyRuntimeLaneAccounts/);
+  assert.doesNotMatch(spotifyHeader, /gSpotifyInactiveAccountIndex/);
   assert.match(spotifyRotation, /amazon=A, yuukiar=B, ten=C, nagi=D, hinata=E/);
 });
 
@@ -33,7 +38,7 @@ test('Stationhead uses the restored ozeki WebView2 profile', () => {
   assert.doesNotMatch(app, /kStationheadAmazonProfile/);
 });
 
-test('Spotify startup remains staggered at 30-second offsets for four live lanes', () => {
+test('Spotify controller startup remains staggered at 30-second account offsets', () => {
   assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs\s*=\s*30ULL \* 1000ULL/);
-  assert.match(app, /Spotify #1 at \+30s, Spotify #2 at \+60s, Spotify #3 at \+90s, Spotify #4 at \+120s/);
+  assert.match(app, /renderer_->StartSpotify\(\)/);
 });

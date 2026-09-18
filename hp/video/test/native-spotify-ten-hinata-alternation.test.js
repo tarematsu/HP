@@ -13,45 +13,43 @@ const schedule = source('spotify_stagger_schedule.inc');
 const phase = source('spotify_phase_sync.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
 
-test('five Spotify accounts share exactly four runtime lanes', () => {
-  assert.match(header, /kSpotifyRuntimeLaneCount = 4/);
-  assert.match(header, /gSpotifyRuntimeLaneAccounts = \{[\s\S]*0, 1, 2, 3/);
-  assert.match(header, /gSpotifyInactiveAccountIndex = 4/);
-  assert.match(header, /SpotifyRuntimeLaneForAccount/);
+test('five Spotify accounts own five permanent runtime lanes', () => {
+  assert.match(header, /kSpotifyActiveAccountCount = 5/);
+  assert.match(header, /kSpotifyRuntimeLaneCount = kSpotifyActiveAccountCount/);
+  assert.match(header, /return accountIndex < kSpotifyRuntimeLaneCount[\s\S]*static_cast<int>\(accountIndex\)/);
   assert.match(header, /SpotifyAccountShouldOwnHost/);
-  assert.doesNotMatch(foundation, /gSpotifyRuntimeLaneAccounts =/);
-  assert.match(host, /ResetSpotifyRuntimeLanes\(\)/);
-  assert.match(host, /SpotifyAccountShouldOwnHost\(slot\.index\)[\s\S]*CreateHost\(slot\)/);
+  assert.doesNotMatch(header, /gSpotifyRuntimeLaneAccounts/);
+  assert.doesNotMatch(header, /gSpotifyInactiveAccountIndex/);
+  assert.match(host, /for \(Slot& slot : slots_\)[\s\S]*SpotifyAccountShouldOwnHost\(slot\.index\)[\s\S]*CreateHost\(slot\)/);
 });
 
-test('scheduler never recreates the waiting fifth account', () => {
+test('scheduler keeps all five Spotify accounts eligible', () => {
   assert.match(schedule, /if \(!SpotifyAccountShouldOwnHost\(index\)\) continue/);
   assert.match(phase, /if \(!SpotifyAccountShouldOwnHost\(i\)\) continue/);
+  assert.match(header, /return accountIndex < kSpotifyActiveAccountCount/);
 });
 
-test('a completed account leaves its lane and the waiter enters that same lane', () => {
-  assert.match(rotation, /const int completedLane = SpotifyRuntimeLaneForAccount\(slot\.index\)/);
-  assert.match(rotation, /const size_t nextAccountIndex = gSpotifyInactiveAccountIndex/);
-  assert.match(rotation, /CloseSlot\(slot\)/);
-  assert.match(rotation, /gSpotifyRuntimeLaneAccounts\[static_cast<size_t>\(completedLane\)\] =[\s\S]*nextAccountIndex/);
-  assert.match(rotation, /gSpotifyInactiveAccountIndex = completedAccountIndex/);
-  assert.match(rotation, /CreateHost\(nextSlot\)/);
-  assert.match(rotation, /slot\.timedRotationCycle = completedCycles/);
+test('finishing a track cycle keeps the same WebView alive', () => {
+  assert.match(
+    rotation,
+    /\+\+slot\.timedRotationCycle;[\s\S]*slot\.timedRotationPosition = 0;[\s\S]*PrepareTimedRotationCycle\(slot\)/,
+  );
+  assert.doesNotMatch(rotation, /gSpotifyInactiveAccountIndex/);
+  assert.doesNotMatch(rotation, /gSpotifyRuntimeLaneAccounts/);
+  assert.doesNotMatch(rotation, /CloseSlot\(slot\)/);
+  assert.doesNotMatch(rotation, /CreateHost\(nextSlot\)/);
 });
 
-test('S1 S2 S3 S4 S5 controls stay pinned to logical accounts while runtime lanes rotate', () => {
-  assert.match(foundation, /gSpotifyAudioOutputAccountIndex = -1/);
-  assert.match(foundation, /gSpotifyMonitorForegroundAccountIndex = -1/);
+test('S1 through S5 stay pinned to logical Spotify account ids', () => {
+  assert.match(foundation, /S1-S5 => 0-4/);
+  assert.match(foundation, /gSpotifyAudioOutputAccountIndex/);
+  assert.match(foundation, /gSpotifyMonitorForegroundAccountIndex/);
   assert.match(foundation, /SpotifyRuntimeLaneForControlAccount/);
-  assert.match(layout, /gSpotifyMonitorForegroundAccountIndex = slotIndex/);
   assert.match(layout, /SpotifyRuntimeLaneForControlAccount\([\s\S]*gSpotifyMonitorForegroundAccountIndex/);
-  assert.match(layout, /SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
-  assert.match(foundation, /const int runtimeLane = accountIndex >= 0[\s\S]*SpotifyRuntimeLaneForAccount/);
-  assert.match(foundation, /SpotifyRuntimeLaneForControlAccount\(gSpotifyAudioOutputAccountIndex\)/);
-  assert.match(foundation, /runtimeLane != gSpotifyAudioOutputSlot/);
+  assert.match(header, /return accountIndex < kSpotifyRuntimeLaneCount[\s\S]*static_cast<int>\(accountIndex\)/);
 });
 
-test('scheduler host is reassigned when any logical account is swapped out', () => {
+test('scheduler host is reassigned when a host is closed for recovery or shutdown', () => {
   assert.match(host, /wasSchedulerHost/);
   assert.match(host, /for \(const Slot& candidate : slots_\)/);
   assert.match(host, /schedulerHost_\.store\(candidate\.hostWindow/);

@@ -131,7 +131,7 @@ void App::StartServices() {
   }
   LayoutWorkspace();
   renderer_->TickNativePanels(startupAt_);
-  logger_->Info(L"YouTube/native dashboard started; Spotify #1 at +30s, Spotify #2 at +60s, Spotify #3 at +90s, Spotify #4 at +120s, Stationhead at +150s");
+  logger_->Info(L"YouTube/native dashboard started; Spotify #1 at +30s, Spotify #2 at +60s, Spotify #3 at +90s, Spotify #4 at +120s, Spotify #5 at +150s, Stationhead at +180s");
 
   // The top-level HWND is still hidden. Prime both the parent background and
   // every visible child panel before allowing DWM to expose the window. This
@@ -170,25 +170,24 @@ void App::StartDeferredServices(int64_t now) {
   }
 
   // Stage 2: issue Spotify launch at app startup +30 seconds. Its internal
-  // scheduler starts slot 1 immediately, slot 2 at +60 seconds, slot 3 at
-  // +90 seconds, and slot 4 at +120 seconds.
+  // scheduler starts slot 1 immediately, then slots 2-5 at +60/+90/+120/+150.
   if (!spotifyStarted_ &&
       now - startupAt_ >= kMediaStartupStageDelayMs) {
     renderer_->StartSpotify();
     spotifyStarted_ = true;
-    logger_->Info(L"Spotify #1 launch issued at +30 seconds; #2, #3 and #4 follow at 30-second offsets");
+    logger_->Info(L"Spotify #1 launch issued at +30 seconds; #2, #3, #4 and #5 follow at 30-second offsets");
   }
 
-  // Stage 3: issue Stationhead launch at app startup +150 seconds, thirty seconds
-  // after Spotify slot 4, regardless of Spotify readiness.
+  // Stage 3: issue Stationhead launch at app startup +180 seconds, thirty seconds
+  // after Spotify slot 5, regardless of Spotify readiness.
   if (!stationheadStarted_ && stationhead_ &&
-      now - startupAt_ >= kMediaStartupStageDelayMs * 5) {
+      now - startupAt_ >= kMediaStartupStageDelayMs * 6) {
     stationhead_->Start();
     stationheadStarted_ = true;
     stationhead_->SetAudioMuted(stationheadAudioMuted_);
     MarkStationheadPlacementDirty();
     ApplyStationheadWindowPlacement(stationhead_->Status());
-    logger_->Info(L"Stationhead launch issued at +150 seconds");
+    logger_->Info(L"Stationhead launch issued at +180 seconds");
   }
 
   if (!cloudStarted_ && cloud_) {
@@ -252,7 +251,7 @@ void App::Tick() {
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(
-            now, startupAt_ + static_cast<int>(kMediaStartupStageDelayMs * 5),
+            now, startupAt_ + static_cast<int>(kMediaStartupStageDelayMs * 6),
             kMaxAppTimerMs));
   }
   if (!startupUpdateScheduled_ && cloudStarted_) {

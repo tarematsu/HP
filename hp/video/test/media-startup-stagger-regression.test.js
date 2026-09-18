@@ -21,11 +21,11 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('media startup is YouTube, four live Spotify lanes, then Stationhead at thirty-second offsets', () => {
+test('media startup keeps five Spotify windows live with thirty-second account staggering', () => {
   assert.match(appHeader, /kMediaStartupStageDelayMs\s*=\s*30'000/);
   assert.doesNotMatch(appHeader, /spotifyStartedAt_/);
   assert.match(spotifyHeader, /kSpotifyActiveAccountCount = 5/);
-  assert.match(spotifyHeader, /kSpotifyRuntimeLaneCount = 4/);
+  assert.match(spotifyHeader, /kSpotifyRuntimeLaneCount = kSpotifyActiveAccountCount/);
   assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 30ULL \* 1000ULL/);
   assert.match(spotifySchedule, /kSpotifyInitialStartDelayMs = 0/);
 
@@ -45,10 +45,10 @@ test('media startup is YouTube, four live Spotify lanes, then Stationhead at thi
   );
   assert.match(
     deferred,
-    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*5[\s\S]*stationhead_->Start\(\)/,
+    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*6[\s\S]*stationhead_->Start\(\)/,
   );
-  assert.match(deferred, /Spotify #1 launch issued at \+30 seconds; #2, #3 and #4 follow at 30-second offsets/);
-  assert.match(deferred, /Stationhead launch issued at \+150 seconds/);
+  assert.match(deferred, /Spotify #1 launch issued at \+30 seconds; #2, #3, #4 and #5 follow at 30-second offsets/);
+  assert.match(deferred, /Stationhead launch issued at \+180 seconds/);
   assert.doesNotMatch(deferred, /spotifyStartedAt_/);
 });
 
