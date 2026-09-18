@@ -23,13 +23,11 @@ const header = readFileSync(
   'utf8',
 );
 
-test('Spotify keeps the same full-client surface for background and Monitor B/C/D runtime-lane inspection', () => {
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /client\.right - client\.left/);
-  assert.match(layout, /client\.bottom - client\.top/);
-  assert.match(layout, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
-  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+test('Spotify keeps each playback lane on the same fixed Monitor S tile', () => {
+  assert.match(layout, /const RECT serviceTile = ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(layout, /const RECT desired = loginPage \? fullClient : serviceTile/);
+  assert.match(layout, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(layout, /gridForeground \|\| monitorForeground \|\| authenticationForeground/);
   assert.match(layout, /const bool authentication =/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
