@@ -221,10 +221,11 @@ test('maintenance workflows enforce Runtime then Pages publication order', () =>
   assert.match(watchdog, /- "Run runtime offline maintenance"/);
   assert.match(watchdog, /github\.event\.workflow_run\.conclusion == 'success'/);
 
-  assert.match(runtimeWorkflow, /workflows: \["Deploy production"\]/);
-  assert.doesNotMatch(runtimeWorkflow, /workflows: \[[^\]]*Rebuild pages read models/);
-  assert.match(pagesWorkflow, /workflows: \["Run runtime offline maintenance"\]/);
-  assert.match(pagesWorkflow, /github\.event_name == 'workflow_run'/);
+  assert.match(runtimeWorkflow, /^\s*workflows: \["Deploy production"\]\s*$/m);
+  assert.doesNotMatch(runtimeWorkflow, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
+  assert.doesNotMatch(pagesWorkflow, /workflow_run:/);
+  assert.match(pagesWorkflow, /cron: '26,56 \* \* \* \*'/);
+  assert.match(pagesWorkflow, /github\.event_name == 'schedule'/);
   assert.match(pagesWorkflow, /repair-pages-summary-gaps\.mjs/);
 });
 
