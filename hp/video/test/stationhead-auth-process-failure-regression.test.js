@@ -81,14 +81,29 @@ test('renderer unresponsive requires two observations from the same WebView with
   );
 });
 
-test('transient GPU utility frame and helper failures do not recreate playback or auth', () => {
+test('Stationhead playback recovers an exited WebView2 Audio Service utility process', () => {
   assert.match(
     sharedProcessPolicy,
-    /kind != COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE[\s\S]*return false;/,
+    /COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED/,
+  );
+  assert.match(sharedProcessPolicy, /ICoreWebView2ProcessFailedEventArgs2/);
+  assert.match(sharedProcessPolicy, /get_ProcessDescription/);
+  assert.match(sharedProcessPolicy, /StationheadFailedProcessIsAudioService/);
+  assert.match(sharedProcessPolicy, /MediaPipelineErrorContains\(description, L"audio service"\)/);
+  assert.match(
+    sharedProcessPolicy,
+    /StationheadFailedProcessIsAudioService\(args\)[\s\S]*return true;/,
+  );
+});
+
+test('transient GPU non-audio utility frame and helper failures do not recreate playback or auth', () => {
+  assert.match(
+    sharedProcessPolicy,
+    /if \(!StationheadFailedProcessIsAudioService\(args\)\) return false;/,
   );
   assert.match(
     sharedProcessPolicy,
-    /GPU, frame-only, utility, sandbox-helper and other transient child/,
+    /GPU, frame-only, non-audio utility, sandbox-helper and other transient/,
   );
   assert.match(
     processPolicy,
