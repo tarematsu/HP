@@ -41,10 +41,10 @@ test('Stationhead playback and auth leave the WebView2 memory target unmanaged i
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
 });
 
-test('Monitor SH and Monitor YT auth promotion drive the effective foreground bit', () => {
+test('Monitor S and Monitor YT auth promotion drive the effective foreground bit', () => {
   assert.match(
     routing,
-    /monitorMode_ == MonitorMode::Stationhead \|\|[\s\S]*monitorMode_ == MonitorMode::Native && monitorAuthForeground_/,
+    /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid;[\s\S]*serviceGrid \|\|[\s\S]*monitorMode_ == MonitorMode::Native && monitorAuthForeground_/,
   );
   assert.match(routing, /SetStationheadMonitorForeground\(stationheadForeground\)/);
   assert.match(routing, /PostMessageW\(parent_, WM_TIMER, 0, 0\)/);
