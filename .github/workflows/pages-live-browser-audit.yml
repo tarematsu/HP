@@ -5,8 +5,10 @@ on:
     paths:
       - 'site/**'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
+      - 'worker/scripts/repair-pages-summary-gaps.mjs'
       - 'scripts/audit-pages-live.mjs'
       - 'scripts/audit-pages-materialized.mjs'
+      - 'scripts/audit-pages-materialized-production.mjs'
       - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/run-pages-read-model-rebuild.yml'
@@ -138,7 +140,7 @@ jobs:
           --retry-delay-ms=10000
           --out=.pages-production-audit
 
-      - name: Require all production materializations
+      - name: Require current production materializations
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         shell: bash
         run: |
@@ -148,7 +150,7 @@ jobs:
             attempts=1
             retry_delay_ms=0
           fi
-          node scripts/audit-pages-materialized.mjs \
+          node scripts/audit-pages-materialized-production.mjs \
             --url=https://skrzk.pages.dev \
             --attempts="$attempts" \
             --retry-delay-ms="$retry_delay_ms" \
