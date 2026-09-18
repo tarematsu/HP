@@ -63,11 +63,11 @@ WrapStationheadAuthStableProcessFailedHandler(
         }
 
         // Browser/renderer exits forward immediately. Renderer-unresponsive is
-        // forwarded only after two events within the shared 15-second window.
-        // All other playback-process failures are absorbed here instead of
-        // starting an independent WebView recreation.
+        // forwarded only after two events from the same WebView within the
+        // shared 15-second window. All other playback-process failures are
+        // absorbed instead of starting an independent WebView recreation.
         if (!stationhead_process_failure_policy::
-                ShouldForwardStationheadProcessFailure(args)) {
+                ShouldForwardStationheadProcessFailure(sender, args)) {
           return S_OK;
         }
 
