@@ -13,6 +13,7 @@ const shared = source('shared_webview_environment.cpp');
 const spotifyHeader = source('spotify_webviews.h');
 const schedule = source('spotify_stagger_schedule.inc');
 const click = source('spotify_background_click.inc');
+const startup = source('spotify_startup_audio_recovery.inc');
 const processFailure = source('spotify_process_failure.inc');
 const controller = source('spotify_controller_lifecycle.inc');
 
@@ -28,11 +29,14 @@ test('Spotify steady state no longer uses the persistent silence-recovery ladder
   assert.match(schedule, /No periodic IsDocumentPlayingAudio scan here/);
 });
 
-test('Spotify normal destructive recovery is scoped to one target generation', () => {
+test('Spotify normal destructive recovery is scoped to one target generation and terminates with skip', () => {
   assert.match(spotifyHeader, /SpotifyTrackStartRecovery trackStartRecovery/);
-  assert.match(click, /target->trackStartRecovery, targetGeneration/);
-  assert.match(click, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(click, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(click, /EscalateSpotifyStartupFailure\(/);
+  assert.match(startup, /slot\.trackStartRecovery, slot\.targetGeneration/);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(startup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(startup, /SkipFailedSpotifyTrack\(slot\)/);
   assert.doesNotMatch(
     click,
     /NextMediaRecoveryAction\([\s\S]*MediaRecoveryEvidence::ConfirmedSilence/,
