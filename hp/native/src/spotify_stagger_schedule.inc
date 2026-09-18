@@ -51,6 +51,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     slot.mediaNetworkRecoveryTick = 0;
     slot.mediaKeyWaitFailurePending = false;
     slot.mediaNetworkRecoveryPending = false;
+    slot.nativeAudioStartChecks = 0;
+    slot.nativeAudioStartVerified = false;
+    slot.playbackConfirmed = false;
     SetSlotState(slot, SlotState::Navigating);
     slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
     if (!slot.webview || FAILED(slot.webview->Reload())) {
@@ -104,6 +107,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       continue;
     }
     gSpotifyHeavyRecoveryNextTick = now + kSpotifyHeavyRecoverySpacingMs;
+    slot.nativeAudioStartChecks = 0;
+    slot.nativeAudioStartVerified = false;
+    slot.playbackConfirmed = false;
     RebuildPlaybackSurface(slot);
     return;
   }
