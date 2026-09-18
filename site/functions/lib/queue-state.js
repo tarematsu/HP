@@ -11,7 +11,12 @@ SELECT
   lq.observed_at AS queue_observed_at,
   lq.structural_hash,lq.likes_hash,
   MAX(q.observed_at) AS item_observed_at,
-  MAX(m.fetched_at) AS metadata_fetched_at,
+  MAX(COALESCE(m.fetched_at,(
+    SELECT MAX(t.last_seen_at) FROM sh_tracks t
+    WHERE (q.spotify_id IS NOT NULL AND t.spotify_id=q.spotify_id)
+       OR (q.isrc IS NOT NULL AND TRIM(q.isrc)<>'' AND t.isrc=UPPER(TRIM(q.isrc)))
+       OR (q.stationhead_track_id IS NOT NULL AND t.stationhead_track_id=q.stationhead_track_id)
+  ))) AS metadata_fetched_at,
   COUNT(q.position) AS total_items
 FROM latest_queue lq
 LEFT JOIN sh_queue_items q
@@ -40,7 +45,12 @@ SELECT
   latest_queue.observed_at AS queue_observed_at,
   latest_queue.structural_hash,latest_queue.likes_hash,
   MAX(q.observed_at) AS item_observed_at,
-  MAX(m.fetched_at) AS metadata_fetched_at,
+  MAX(COALESCE(m.fetched_at,(
+    SELECT MAX(t.last_seen_at) FROM sh_tracks t
+    WHERE (q.spotify_id IS NOT NULL AND t.spotify_id=q.spotify_id)
+       OR (q.isrc IS NOT NULL AND TRIM(q.isrc)<>'' AND t.isrc=UPPER(TRIM(q.isrc)))
+       OR (q.stationhead_track_id IS NOT NULL AND t.stationhead_track_id=q.stationhead_track_id)
+  ))) AS metadata_fetched_at,
   COUNT(q.position) AS total_items
 FROM latest_channel
 LEFT JOIN latest_queue ON 1=1
@@ -57,8 +67,49 @@ export const QUEUE_ITEMS_FOR_STATE_SQL = `SELECT
   q.position,q.queue_track_id,q.stationhead_track_id,q.spotify_id,
   q.deezer_id,q.isrc,q.duration_ms,q.preview_url,
   COALESCE(likes.like_count,q.bite_count) AS bite_count,
-  m.title,m.artist,m.display_title,m.thumbnail_url,m.spotify_url,
-  m.fetched_at AS metadata_fetched_at,m.raw_json AS metadata_raw_json
+  COALESCE(NULLIF(TRIM(m.title),''),(
+    SELECT t.title FROM sh_tracks t
+    WHERE ((q.spotify_id IS NOT NULL AND t.spotify_id=q.spotify_id)
+       OR (q.isrc IS NOT NULL AND TRIM(q.isrc)<>'' AND t.isrc=UPPER(TRIM(q.isrc)))
+       OR (q.stationhead_track_id IS NOT NULL AND t.stationhead_track_id=q.stationhead_track_id))
+      AND NULLIF(TRIM(t.title),'') IS NOT NULL
+    ORDER BY CASE
+      WHEN q.spotify_id IS NOT NULL AND t.spotify_id=q.spotify_id THEN 0
+      WHEN q.isrc IS NOT NULL AND t.isrc=UPPER(TRIM(q.isrc)) THEN 1
+      ELSE 2 END,
+      t.last_seen_at DESC
+    LIMIT 1
+  )) AS title,
+  COALESCE(NULLIF(TRIM(m.artist),''),(
+    SELECT t.artist FROM sh_tracks t
+    WHERE ((q.spotify_id IS NOT NULL AND t.spotify_id=q.spotify_id)
+       OR (q.isrc IS NOT NULL AND TRIM(q.isrc)<>'' AND t.isrc=UPPER(TRIM(q.isrc)))
+       OR (q.stationhead_track_id IS NOT NULL AND t.stationhead_track_id=q.stationhead_track_id))
+      AND NULLIF(TRIM(t.artist),'') IS NOT NULL
+    ORDER BY CASE
+      WHEN q.spotify_id IS NOT NULL AND t.spotify_id=q.spotify_id THEN 0
+      WHEN q.isrc IS NOT NULL AND t.isrc=UPPER(TRIM(q.isrc)) THEN 1
+      ELSE 2 END,
+      t.last_seen_at DESC
+    LIMIT 1
+  )) AS artist,
+  COALESCE(NULLIF(TRIM(m.display_title),''),NULLIF(TRIM(m.title),''),(
+    SELECT t.title FROM sh_tracks t
+    WHERE ((q.spotify_id IS NOT NULL AND t.spotify_id=q.spotify_id)
+       OR (q.isrc IS NOT NULL AND TRIM(q.isrc)<>'' AND t.isrc=UPPER(TRIM(q.isrc)))
+       OR (q.stationhead_track_id IS NOT NULL AND t.stationhead_track_id=q.stationhead_track_id))
+      AND NULLIF(TRIM(t.title),'') IS NOT NULL
+    ORDER BY t.last_seen_at DESC
+    LIMIT 1
+  )) AS display_title,
+  m.thumbnail_url,m.spotify_url,
+  COALESCE(m.fetched_at,(
+    SELECT MAX(t.last_seen_at) FROM sh_tracks t
+    WHERE (q.spotify_id IS NOT NULL AND t.spotify_id=q.spotify_id)
+       OR (q.isrc IS NOT NULL AND TRIM(q.isrc)<>'' AND t.isrc=UPPER(TRIM(q.isrc)))
+       OR (q.stationhead_track_id IS NOT NULL AND t.stationhead_track_id=q.stationhead_track_id)
+  )) AS metadata_fetched_at,
+  m.raw_json AS metadata_raw_json
 FROM sh_queue_items q
 LEFT JOIN sh_track_metadata m ON m.spotify_id=q.spotify_id
 LEFT JOIN sh_track_like_current likes
