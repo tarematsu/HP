@@ -31,11 +31,13 @@ test('Stationhead releases the empty auth host after completed authorization', (
   assert.match(stationheadLayout, /EnsureAuthHostWindow\(\)/);
 });
 
-test('Spotify keeps a full internal viewport and Monitor B/C/D remove the selected runtime-lane clip', () => {
+test('Spotify keeps background hosts clipped and Monitor S removes all five playback clips', () => {
   assert.match(spotifyLayout, /CreateRectRgn\(0, 0, 1, 1\)/);
   assert.match(spotifyLayout, /SetWindowRgn\(window, nullptr, TRUE\)/);
-  assert.match(spotifyLayout, /const int width = std::max\(1L, client\.right - client\.left\)/);
-  assert.match(spotifyLayout, /const int height = std::max\(1L, client\.bottom - client\.top\)/);
-  assert.match(spotifyLayout, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
-  assert.match(spotifyLayout, /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground\)/);
+  assert.match(spotifyLayout, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(spotifyLayout, /ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(
+    spotifyLayout,
+    /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground \|\| gridForeground/,
+  );
 });
