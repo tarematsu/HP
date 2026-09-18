@@ -188,8 +188,6 @@ RECT PowerSavingController::ParentControlStackRect() const {
   const int sideHeight = std::max(1L, side.bottom - side.top);
   const int gap = std::max(6, sideHeight * 18 / 1000);
 
-  // Keep the historical compact estimate as a lower bound, but align the
-  // control row with the actual clock card used by the three-row sidebar.
   const int upperMediaHeight = sideHeight * 480 / 1000;
   const int weatherHeight = std::max(1, sideHeight - upperMediaHeight - gap);
   const int compactAvailable =
@@ -315,18 +313,8 @@ void PowerSavingController::PaintOverlay(HWND window) {
       updateButton, false, RGB(40, 73, 112), RGB(84, 145, 211), L"更新");
 
   const wchar_t* monitorLabel = L"モニターYT";
-  if (monitorMode_ == MonitorMode::Stationhead) {
-    monitorLabel = L"モニターST";
-  } else if (monitorMode_ == MonitorMode::SpotifyPrimary) {
-    monitorLabel = L"モニターS1";
-  } else if (monitorMode_ == MonitorMode::SpotifySecondary) {
-    monitorLabel = L"モニターS2";
-  } else if (monitorMode_ == MonitorMode::SpotifyTertiary) {
-    monitorLabel = L"モニターS3";
-  } else if (monitorMode_ == MonitorMode::SpotifyQuaternary) {
-    monitorLabel = L"モニターS4";
-  } else if (monitorMode_ == MonitorMode::SpotifyQuinary) {
-    monitorLabel = L"モニターS5";
+  if (monitorMode_ == MonitorMode::ServiceGrid) {
+    monitorLabel = L"モニターS";
   } else if (monitorMode_ == MonitorMode::Off) {
     monitorLabel = L"モニターOFF";
   }

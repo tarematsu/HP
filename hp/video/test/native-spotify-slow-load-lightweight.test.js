@@ -63,13 +63,11 @@ test('healthy cursor changes do not relayout all playback hosts', () => {
   assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('pre-playback recovery and confirmed playback share the same full-client viewport', () => {
-  assert.match(layout, /const int hostX = client\.left/);
-  assert.match(layout, /const int hostY = client\.top/);
-  assert.match(layout, /client\.right - client\.left/);
-  assert.match(layout, /client\.bottom - client\.top/);
-  assert.match(layout, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
-  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+test('pre-playback recovery and confirmed playback share the same fixed Monitor S tile', () => {
+  assert.match(layout, /const RECT serviceTile = ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(layout, /const RECT desired = loginPage \? fullClient : serviceTile/);
+  assert.match(layout, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(layout, /gridForeground \|\| monitorForeground \|\| authenticationForeground/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);

@@ -120,6 +120,14 @@ LRESULT CALLBACK PowerSavingController::ChildSubclassProc(
     controller->OpenMvStartupInputPass();
   }
 
+  if ((message == WM_SHOWWINDOW || message == WM_WINDOWPOSCHANGED) &&
+      IsStationheadPlaybackHost(window)) {
+    // Stationhead owns its WebView controller bounds, while the monitor router
+    // owns the host HWND placement. Reassert the tile after Stationhead layout
+    // passes so the six-window grid stays stable from startup onward.
+    controller->ApplyStationheadMonitorPlacement();
+  }
+
   if (controller->overlay_ && window != controller->overlay_ &&
       (message == WM_SHOWWINDOW || message == WM_WINDOWPOSCHANGED)) {
     PostMessageW(controller->overlay_, kRaiseOverlayMessage, 0, 0);
@@ -152,6 +160,7 @@ void PowerSavingController::ObserveParentMessage(
     case WM_SIZE:
     case WM_WINDOWPOSCHANGED:
     case WM_SHOWWINDOW:
+      ApplyStationheadMonitorPlacement();
       if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
       break;
     case WM_TIMECHANGE:
@@ -162,6 +171,7 @@ void PowerSavingController::ObserveParentMessage(
           wParam == PBT_APMRESUMESUSPEND) {
         CheckSchedule();
         if (powerSaving_) RefreshMinimumBrightness();
+        ApplyStationheadMonitorPlacement();
         LayoutOverlay();
       }
       break;
@@ -197,6 +207,8 @@ void PowerSavingController::Attach(HWND parent) {
   powerSaving_ = false;
   audioMode_ = AudioMode::Media;
   ApplyAudioMode(audioMode_);
+  SetSpotifyMonitorForegroundSlot(-1);
+  SetSpotifyMonitorGridVisible(false);
 
   EnumChildWindows(
       parent_,
@@ -210,6 +222,7 @@ void PowerSavingController::Attach(HWND parent) {
   try {
     EnsureOverlay();
     CheckSchedule(true);
+    ApplyStationheadMonitorPlacement();
     LayoutOverlay();
   } catch (...) {
     Detach();
@@ -220,8 +233,6 @@ void PowerSavingController::Attach(HWND parent) {
 void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   if (!parent_ || !window || window == overlay_ || !IsWindow(window)) return;
 
-  // SH is the only Stationhead audio mode. Reassert mute for every other mode
-  // when its playback host is created after controller attachment.
   if (audioMode_ != AudioMode::Stationhead &&
       IsStationheadPlaybackHost(window)) {
     SendMessageW(
@@ -240,23 +251,30 @@ void PowerSavingController::AttachChildWindow(HWND window) noexcept {
 void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   if (!parent_ || !IsWindow(parent_)) return;
 
+  const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid;
   const bool stationheadForeground =
-      monitorMode_ == MonitorMode::Stationhead ||
+      serviceGrid ||
       (monitorMode_ == MonitorMode::Native && monitorAuthForeground_);
   const bool nativeMediaForeground =
       monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
   if (SetStationheadMonitorForeground(stationheadForeground)) {
-    // App::Tick reapplies Stationhead's own WebView layout. Wake it only when
-    // the effective foreground state changes so player-owned geometry follows
-    // the selected monitor mode without adding steady-state layout work.
     PostMessageW(parent_, WM_TIMER, 0, 0);
   }
+
+  RECT parentClient{0, 0, 1, 1};
+  GetClientRect(parent_, &parentClient);
+  const RECT serviceTile = ServiceMonitorTileBounds(parentClient, 0);
+  const RECT stationheadBounds =
+      monitorMode_ == MonitorMode::Native && monitorAuthForeground_
+          ? parentClient
+          : serviceTile;
 
   struct Context {
     PowerSavingController* controller;
     bool stationheadForeground;
     bool nativeMediaForeground;
-  } context{this, stationheadForeground, nativeMediaForeground};
+    RECT stationheadBounds;
+  } context{this, stationheadForeground, nativeMediaForeground, stationheadBounds};
 
   EnumChildWindows(
       parent_,
@@ -282,30 +300,23 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
 
         if (!IsStationheadPlaybackHost(child)) return TRUE;
 
-        // StationheadPlayer exclusively owns the fixed 320x160 geometry.
-        // Monitor routing changes only z-order, never position or size.
-        if (context->stationheadForeground) {
-          const HWND insertAfter =
-              controller->overlay_ ? controller->overlay_ : HWND_TOP;
-          const bool zOrderMatch = controller->overlay_
-              ? GetWindow(child, GW_HWNDPREV) == controller->overlay_
-              : GetWindow(child, GW_HWNDPREV) == nullptr;
-          if (!zOrderMatch || !IsWindowVisible(child)) {
-            SetWindowPos(
-                child, insertAfter,
-                0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW |
-                    SWP_NOSENDCHANGING);
-          }
-        } else {
-          const bool zOrderMatch = GetWindow(child, GW_HWNDNEXT) == nullptr;
-          if (!zOrderMatch || !IsWindowVisible(child)) {
-            SetWindowPos(
-                child, HWND_BOTTOM,
-                0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW |
-                    SWP_NOSENDCHANGING);
-          }
+        const RECT target = context->stationheadBounds;
+        const HWND insertAfter = context->stationheadForeground
+            ? (controller->overlay_ ? controller->overlay_ : HWND_TOP)
+            : HWND_BOTTOM;
+        const bool zOrderMatch = context->stationheadForeground
+            ? (controller->overlay_
+                ? GetWindow(child, GW_HWNDPREV) == controller->overlay_
+                : GetWindow(child, GW_HWNDPREV) == nullptr)
+            : GetWindow(child, GW_HWNDNEXT) == nullptr;
+        if (!ChildBoundsMatch(child, target) || !zOrderMatch ||
+            !IsWindowVisible(child)) {
+          SetWindowPos(
+              child, insertAfter,
+              target.left, target.top,
+              std::max<LONG>(1, target.right - target.left),
+              std::max<LONG>(1, target.bottom - target.top),
+              SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
         }
         return TRUE;
       },
@@ -317,6 +328,8 @@ void PowerSavingController::Detach() noexcept {
   mvStartupInputPass_ = false;
   monitorAuthForeground_ = false;
   SetStationheadMonitorForeground(false);
+  SetSpotifyMonitorForegroundSlot(-1);
+  SetSpotifyMonitorGridVisible(false);
   if (parent_ && IsWindow(parent_)) {
     EnumChildWindows(
         parent_,

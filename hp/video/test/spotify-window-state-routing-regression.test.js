@@ -15,7 +15,7 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('Spotify stable playback and non-playing transitions stay full-client behind native UI', () => {
+test('Spotify stable playback and non-playing transitions stay on fixed Monitor S tiles', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
@@ -23,15 +23,14 @@ test('Spotify stable playback and non-playing transitions stay full-client behin
   );
 
   assert.doesNotMatch(placeHosts, /const bool backgroundWork = !SlotStateIsHealthy\(slot\.state\);/);
-  assert.match(placeHosts, /const int hostX = client\.left;/);
-  assert.match(placeHosts, /const int hostY = client\.top;/);
-  assert.match(placeHosts, /client\.right - client\.left/);
-  assert.match(placeHosts, /client\.bottom - client\.top/);
+  assert.match(placeHosts, /const RECT serviceTile = ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(placeHosts, /const RECT desired = loginPage \? fullClient : serviceTile/);
+  assert.match(placeHosts, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
   assert.doesNotMatch(placeHosts, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
-  assert.match(placeHosts, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(placeHosts, /gridForeground \|\| monitorForeground \|\| authenticationForeground/);
 });
 
-test('Spotify authentication and Monitor B/C/D use foreground z-order without changing full-client geometry', () => {
+test('Spotify authentication stays full-client while Monitor S foregrounds all five playback tiles', () => {
   const placeHosts = section(
     layout,
     'void SpotifyWebViews::PlaceHosts() noexcept {',
@@ -39,11 +38,11 @@ test('Spotify authentication and Monitor B/C/D use foreground z-order without ch
   );
 
   assert.match(placeHosts, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/);
-  assert.match(placeHosts, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_;/);
-  assert.match(placeHosts, /const int hostX = client\.left;/);
-  assert.match(placeHosts, /const int hostY = client\.top;/);
-  assert.match(placeHosts, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(placeHosts, /authentication \|\| monitorForeground/);
+  assert.match(placeHosts, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(placeHosts, /const RECT fullClient\{hostX, hostY, hostX \+ width, hostY \+ height\}/);
+  assert.match(placeHosts, /const RECT desired = loginPage \? fullClient : serviceTile/);
+  assert.match(placeHosts, /gridForeground \|\| monitorForeground \|\| authenticationForeground/);
+  assert.match(placeHosts, /authentication \|\| monitorForeground \|\| gridForeground/);
 });
 
 test('layout refresh reacts to Playing-to-transition and transition-to-Playing changes', () => {

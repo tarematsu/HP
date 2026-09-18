@@ -30,6 +30,10 @@ const spotifyFoundation = readFileSync(
   new URL('../../native/src/spotify_webview_foundation.inc', import.meta.url),
   'utf8',
 );
+const grid = readFileSync(
+  new URL('../../native/src/service_monitor_grid.h', import.meta.url),
+  'utf8',
+);
 const source = [controller, brightness, routing, schedule, overlay].join('\n');
 const header = readFileSync(
   new URL('../../native/src/power_saving_controller.h', import.meta.url),
@@ -78,13 +82,9 @@ test('update, monitor and audio output controls share one horizontal clock foote
   assert.match(overlay, /button\.bottom - button\.top\) \* 42 \/ 100/);
   assert.match(overlay, /L"更新"/);
   assert.match(overlay, /L"モニターYT"/);
-  assert.match(overlay, /L"モニターST"/);
-  assert.match(overlay, /L"モニターS1"/);
-  assert.match(overlay, /L"モニターS2"/);
-  assert.match(overlay, /L"モニターS3"/);
-  assert.match(overlay, /L"モニターS4"/);
-  assert.match(overlay, /L"モニターS5"/);
+  assert.match(overlay, /L"モニターS"/);
   assert.match(overlay, /L"モニターOFF"/);
+  assert.doesNotMatch(overlay, /L"モニターST"|L"モニターS[1-5]"/);
   assert.match(overlay, /L"音声出力YT"/);
   assert.match(overlay, /L"音声出力ST"/);
   assert.match(overlay, /L"音声出力S1"/);
@@ -94,8 +94,7 @@ test('update, monitor and audio output controls share one horizontal clock foote
   assert.match(overlay, /L"音声出力S5"/);
   assert.match(overlay, /L"音声出力OFF"/);
   assert.doesNotMatch(overlay, /L"ミュート(?:A|B|C|D|E|F|AB)"/);
-  assert.match(header, /enum class MonitorMode/);
-  assert.match(header, /SpotifyQuinary/);
+  assert.match(header, /enum class MonitorMode[\s\S]*Native,[\s\S]*ServiceGrid,[\s\S]*Off/);
   assert.match(header, /MonitorMode monitorMode_ = MonitorMode::Native/);
   assert.match(header, /enum class AudioMode/);
   assert.match(header, /AudioMode audioMode_ = AudioMode::Media/);
@@ -106,35 +105,28 @@ test('update, monitor and audio output controls share one horizontal clock foote
   assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 3 \+ hpControlButtonGap \* 2/);
 });
 
-test('monitor button cycles YT, ST, fixed Spotify S1/S2/S3/S4/S5, then black OFF', () => {
+test('monitor button cycles YT, unified S grid, black OFF, then YT', () => {
   assert.match(overlay, /controller->CycleMonitorMode\(\)/);
   assert.match(
     schedule,
-    /case MonitorMode::Native:[\s\S]*ApplyMonitorMode\(MonitorMode::Stationhead\)[\s\S]*case MonitorMode::Stationhead:[\s\S]*ApplyMonitorMode\(MonitorMode::SpotifyPrimary\)[\s\S]*case MonitorMode::SpotifyPrimary:[\s\S]*ApplyMonitorMode\(MonitorMode::SpotifySecondary\)[\s\S]*case MonitorMode::SpotifySecondary:[\s\S]*ApplyMonitorMode\(MonitorMode::SpotifyTertiary\)[\s\S]*case MonitorMode::SpotifyTertiary:[\s\S]*ApplyMonitorMode\(MonitorMode::SpotifyQuaternary\)[\s\S]*case MonitorMode::SpotifyQuaternary:[\s\S]*ApplyMonitorMode\(MonitorMode::SpotifyQuinary\)[\s\S]*case MonitorMode::SpotifyQuinary:[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)[\s\S]*case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/,
+    /case MonitorMode::Native:[\s\S]*ApplyMonitorMode\(MonitorMode::ServiceGrid\)[\s\S]*case MonitorMode::ServiceGrid:[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)[\s\S]*case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/,
   );
-  assert.match(schedule, /mode == MonitorMode::SpotifyPrimary \? 0/);
-  assert.match(schedule, /mode == MonitorMode::SpotifySecondary \? 1/);
-  assert.match(schedule, /mode == MonitorMode::SpotifyTertiary \? 2/);
-  assert.match(schedule, /mode == MonitorMode::SpotifyQuaternary \? 3/);
-  assert.match(schedule, /mode == MonitorMode::SpotifyQuinary \? 4 : -1/);
-  assert.match(schedule, /SetSpotifyMonitorForegroundSlot\(spotifyMonitorAccount\)/);
-  assert.match(spotifyFoundation, /gSpotifyMonitorForegroundAccountIndex/);
-  assert.match(spotifyLayout, /SpotifyRuntimeLaneForControlAccount\([\s\S]*gSpotifyMonitorForegroundAccountIndex/);
-  assert.match(spotifyLayout, /SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
-  assert.match(spotifyLayout, /const int hostX = client\.left;/);
-  assert.match(spotifyLayout, /const int hostY = client\.top;/);
-  assert.match(spotifyLayout, /client\.right - client\.left/);
-  assert.match(spotifyLayout, /client\.bottom - client\.top/);
-  assert.match(spotifyLayout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(spotifyLayout, /authentication \|\| monitorForeground/);
-  assert.doesNotMatch(spotifyLayout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|anchors\.air/);
+  assert.match(schedule, /SetSpotifyMonitorForegroundSlot\(-1\)/);
+  assert.match(schedule, /SetSpotifyMonitorGridVisible\(mode == MonitorMode::ServiceGrid\)/);
+  assert.match(spotifyFoundation, /bool gSpotifyMonitorGridVisible = false/);
+  assert.match(spotifyFoundation, /SetSpotifyMonitorGridVisible\(bool visible\)/);
+  assert.match(grid, /kServiceMonitorTileCount = 6/);
+  assert.match(grid, /kServiceMonitorColumns = 3/);
+  assert.match(grid, /kServiceMonitorRows = 2/);
+  assert.match(spotifyLayout, /ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(spotifyLayout, /gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(routing, /ServiceMonitorTileBounds\(parentClient, 0\)/);
+  assert.match(routing, /monitorMode_ == MonitorMode::ServiceGrid/);
   assert.match(schedule, /powerSaving_ = nextPowerSaving/);
   assert.match(schedule, /Renderer::SetGlobalPowerSavingMode\(powerSaving_\)/);
   assert.match(schedule, /ApplyStationheadMonitorPlacement\(\)/);
   assert.match(routing, /monitorMode_ = MonitorMode::Native/);
-  assert.match(routing, /monitorMode_ == MonitorMode::Stationhead/);
-  assert.match(routing, /controller->overlay_ \? controller->overlay_ : HWND_TOP/);
-  assert.match(routing, /child, HWND_BOTTOM/);
+  assert.match(routing, /SetSpotifyMonitorGridVisible\(false\)/);
 });
 
 test('update button routes through the existing verified app-update action', () => {

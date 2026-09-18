@@ -1,3 +1,5 @@
+#include "service_monitor_grid.h"
+
 namespace hp {
 namespace {
 
@@ -62,21 +64,26 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
     const bool monitorForeground =
         SpotifyRuntimeLaneForAccount(i) == monitorForegroundSlot_;
+    const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage;
     const bool authenticationForeground =
         authentication && monitorForegroundSlot_ < 0;
 
-    // The host remains full-client so foreground/auth presentation is stable.
-    // The WebView controller itself uses a fixed 720x480 viewport for normal
-    // playback/recovery and expands to the host client only on login pages.
-    // Background playback is visually clipped to 1x1.
+    // Normal playback hosts are permanently parked in S1-S5 grid tiles from
+    // startup. Login pages retain the historical full-client authentication
+    // surface. Background playback stays visually clipped to 1x1 until the
+    // unified Monitor S mode raises the complete six-window service grid.
     const int hostX = client.left;
     const int hostY = client.top;
     const int width = std::max(1L, client.right - client.left);
     const int height = std::max(1L, client.bottom - client.top);
+    const RECT fullClient{hostX, hostY, hostX + width, hostY + height};
+    const RECT serviceTile = ServiceMonitorTileBounds(client, i + 1);
+    const RECT desired = loginPage ? fullClient : serviceTile;
     const HWND insertAfter =
-        monitorForeground || authenticationForeground ? HWND_TOP : HWND_BOTTOM;
+        gridForeground || monitorForeground || authenticationForeground
+            ? HWND_TOP
+            : HWND_BOTTOM;
 
-    const RECT desired{hostX, hostY, hostX + width, hostY + height};
     const bool positionChanged =
         !slot.hostLayoutApplied ||
         !SpotifyHostPositionEqual(slot.hostLayoutRect, desired);
@@ -90,10 +97,11 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         slot.hostLayoutController != slot.controller.Get();
 
     // Apply the visual region before exposing the child HWND. Spotify host
-    // windows use a black class brush, so showing a full-client background host
-    // even briefly can produce a DWM black flash before the 1x1 clip lands.
+    // windows use a black class brush, so showing a background host even
+    // briefly can produce a DWM black flash before the 1x1 clip lands.
     ApplySpotifyHostVisualClip(
-        slot.hostWindow, authentication || monitorForeground);
+        slot.hostWindow,
+        authentication || monitorForeground || gridForeground);
 
     if (placementChanged) {
       UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;
@@ -101,7 +109,9 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       if (!sizeChanged) flags |= SWP_NOSIZE;
       if (!zOrderChanged) flags |= SWP_NOZORDER;
       if (SetWindowPos(slot.hostWindow, insertAfter,
-                       hostX, hostY, width, height, flags)) {
+                       desired.left, desired.top,
+                       std::max<LONG>(1, desired.right - desired.left),
+                       std::max<LONG>(1, desired.bottom - desired.top), flags)) {
         slot.hostLayoutRect = desired;
         slot.hostLayoutInsertAfter = insertAfter;
         slot.hostLayoutApplied = true;

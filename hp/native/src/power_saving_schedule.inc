@@ -65,8 +65,6 @@ void PowerSavingController::ArmScheduleTimer() {
   KillTimer(overlay_, kScheduleTimer);
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
-  // Monitor YT owns the only periodic DOM inspection. ST is Stationhead.
-  // S1-S5 are fixed logical Spotify accounts with permanent runtime lanes.
   if (monitorMode_ == MonitorMode::Native) {
     remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
   }
@@ -106,24 +104,9 @@ void PowerSavingController::ApplyMode(bool enabled) {
 void PowerSavingController::CycleMonitorMode() noexcept {
   switch (monitorMode_) {
     case MonitorMode::Native:
-      ApplyMonitorMode(MonitorMode::Stationhead);
+      ApplyMonitorMode(MonitorMode::ServiceGrid);
       break;
-    case MonitorMode::Stationhead:
-      ApplyMonitorMode(MonitorMode::SpotifyPrimary);
-      break;
-    case MonitorMode::SpotifyPrimary:
-      ApplyMonitorMode(MonitorMode::SpotifySecondary);
-      break;
-    case MonitorMode::SpotifySecondary:
-      ApplyMonitorMode(MonitorMode::SpotifyTertiary);
-      break;
-    case MonitorMode::SpotifyTertiary:
-      ApplyMonitorMode(MonitorMode::SpotifyQuaternary);
-      break;
-    case MonitorMode::SpotifyQuaternary:
-      ApplyMonitorMode(MonitorMode::SpotifyQuinary);
-      break;
-    case MonitorMode::SpotifyQuinary:
+    case MonitorMode::ServiceGrid:
       ApplyMonitorMode(MonitorMode::Off);
       break;
     case MonitorMode::Off:
@@ -150,15 +133,13 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
     RestoreBrightness();
   }
   Renderer::SetGlobalPowerSavingMode(powerSaving_);
-  // S1-S5 stay pinned one-to-one to the five permanent Spotify account lanes.
-  const int spotifyMonitorAccount =
-      mode == MonitorMode::SpotifyPrimary ? 0 :
-      mode == MonitorMode::SpotifySecondary ? 1 :
-      mode == MonitorMode::SpotifyTertiary ? 2 :
-      mode == MonitorMode::SpotifyQuaternary ? 3 :
-      mode == MonitorMode::SpotifyQuinary ? 4 : -1;
-  SetSpotifyMonitorForegroundSlot(spotifyMonitorAccount);
+
+  // Monitor S is a single six-window surface: Stationhead + all five Spotify
+  // lanes. Individual Spotify foreground selection is disabled in this mode.
+  SetSpotifyMonitorForegroundSlot(-1);
+  SetSpotifyMonitorGridVisible(mode == MonitorMode::ServiceGrid);
   ApplyStationheadMonitorPlacement();
+
   if (layoutChanged) LayoutOverlay();
   if (monitorMode_ == MonitorMode::Native) RequestMonitorAuthProbe();
   ArmScheduleTimer();
@@ -198,7 +179,6 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
   audioMode_ = mode;
   mediaMuted_ = mode != AudioMode::Media;
   SetNativeMediaPanelMuted(mediaMuted_);
-  // Audio routing uses the same fixed logical-account mapping as monitor mode.
   const int spotifyAudioAccount =
       mode == AudioMode::SpotifyPrimary ? 0 :
       mode == AudioMode::SpotifySecondary ? 1 :
@@ -211,9 +191,6 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
     const UiAction stationheadAction = mode == AudioMode::Stationhead
         ? UiAction::StationheadAudioToggle
         : UiAction::StationheadAudioMute;
-    // StationheadAudioToggle is a legacy action. Normalize to muted first so
-    // selecting ST always ends unmuted even if App state was stale or this
-    // same audio mode is re-applied. SendMessageW keeps the sequence ordered.
     SendMessageW(
         parent_, kRendererActionMessage,
         static_cast<WPARAM>(UiAction::StationheadAudioMute), 0);

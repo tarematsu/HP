@@ -62,14 +62,12 @@ test('target changes and WebView rebuilds invalidate old trusted click chains', 
   assert.match(hostLifecycle, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('Spotify keeps full-client internal surfaces and selected Monitor B/C/D foregrounds one runtime lane', () => {
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\);/);
-  assert.match(layout, /const int height = std::max\(1L, client\.bottom - client\.top\);/);
-  assert.match(layout, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
-  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(layout, /authentication \|\| monitorForeground/);
+test('Spotify playback hosts stay on fixed Monitor S tiles and all five foreground together', () => {
+  assert.match(layout, /const RECT serviceTile = ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(layout, /const RECT desired = loginPage \? fullClient : serviceTile/);
+  assert.match(layout, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(layout, /gridForeground \|\| monitorForeground \|\| authenticationForeground/);
+  assert.match(layout, /authentication \|\| monitorForeground \|\| gridForeground/);
   assert.doesNotMatch(layout, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|ComputeMediaSurfaceAnchors|anchors\.air|CenterMediaSurfaceOnAnchor/);
   assert.doesNotMatch(layout, /compactPlayback|SpotifyMediaPanelRect/);
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);

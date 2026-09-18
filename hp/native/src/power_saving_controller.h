@@ -34,12 +34,7 @@ class PowerSavingController {
 
   enum class MonitorMode {
     Native,
-    Stationhead,
-    SpotifyPrimary,
-    SpotifySecondary,
-    SpotifyTertiary,
-    SpotifyQuaternary,
-    SpotifyQuinary,
+    ServiceGrid,
     Off,
   };
 

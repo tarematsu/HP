@@ -33,14 +33,12 @@ test('Spotify WebViews serialize startup without UI-thread blocking or polling t
   assert.doesNotMatch(phase + schedule + spotify, /::SetTimer\(|KillTimer\(|StaggeredReconcileTimerProc/);
 });
 
-test('Spotify layout keeps a full-client internal surface and exposes the selected Monitor B/C/D runtime lane', () => {
-  assert.match(layout, /const int hostX = client\.left;/);
-  assert.match(layout, /const int hostY = client\.top;/);
-  assert.match(layout, /const int width = std::max\(1L, client\.right - client\.left\);/);
-  assert.match(layout, /const int height = std::max\(1L, client\.bottom - client\.top\);/);
-  assert.match(layout, /const bool monitorForeground =\s*SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
-  assert.match(layout, /monitorForeground \|\| authenticationForeground \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(layout, /authentication \|\| monitorForeground/);
+test('Spotify layout parks playback lanes in fixed Monitor S tiles', () => {
+  assert.match(layout, /const RECT serviceTile = ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(layout, /const RECT desired = loginPage \? fullClient : serviceTile/);
+  assert.match(layout, /const bool gridForeground = gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(layout, /gridForeground \|\| monitorForeground \|\| authenticationForeground/);
+  assert.match(layout, /authentication \|\| monitorForeground \|\| gridForeground/);
   assert.match(layout, /const bool positionChanged =/);
   assert.match(layout, /const bool sizeChanged =/);
   assert.match(layout, /const bool zOrderChanged =/);
@@ -51,11 +49,10 @@ test('Spotify layout keeps a full-client internal surface and exposes the select
   assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
 });
 
-test('Spotify recovery keeps the same full-client viewport used during steady playback', () => {
+test('Spotify recovery keeps the same fixed service tile used during steady playback', () => {
   assert.doesNotMatch(layout, /kSpotifyRecoveryInteractionWidth|kSpotifyRecoveryInteractionHeight/);
   assert.doesNotMatch(layout, /else if \(recovery\)/);
-  assert.match(layout, /client\.right - client\.left/);
-  assert.match(layout, /client\.bottom - client\.top/);
+  assert.match(layout, /ServiceMonitorTileBounds\(client, i \+ 1\)/);
   assert.doesNotMatch(layout, /playbackConfirmed[\s\S]*\? 1/);
 });
 
@@ -80,6 +77,7 @@ test('authentication keeps foreground repair without account badge work', () => 
   assert.doesNotMatch(spotifyHeader, /authenticationBadgeTick/);
   assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeBootstrapScript|ExecuteScript/);
   assert.match(layout, /maintainAuthenticationForeground/);
+  assert.match(layout, /const RECT desired = loginPage \? fullClient : serviceTile/);
   assert.doesNotMatch(scripts, /spotify:account|__homePanelSpotifyAccount|mountBadge/);
 });
 

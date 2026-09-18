@@ -248,5 +248,6 @@ void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 void SetSpotifyAudioOutputSlot(int slotIndex) noexcept;
 void SetSpotifyMonitorForegroundSlot(int slotIndex) noexcept;
+void SetSpotifyMonitorGridVisible(bool visible) noexcept;
 
 }  // namespace hp

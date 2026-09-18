@@ -6,18 +6,23 @@ const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
 const stationhead = source('stationhead_monitor_probe.h');
+const routing = source('power_saving_window_routing.inc');
+const grid = source('service_monitor_grid.h');
 const spotify = source('spotify_host_layout.inc');
 const windows = source('renderer_panels/windows.inc');
 const renderer = source('renderer_panels.cpp');
 
-test('Stationhead and Spotify fill the dashboard client area without fixed window sizes', () => {
+test('Monitor S parks Stationhead and five Spotify hosts in the YouTube panel grid', () => {
   assert.match(stationhead, /StationheadBackgroundBounds\(const RECT& workspaceBounds\)[\s\S]*return workspaceBounds;/);
-  assert.doesNotMatch(stationhead, /kStationheadSurfaceWidth|kStationheadSurfaceHeight|CenterMediaSurfaceOnAnchor/);
-  assert.match(spotify, /const int hostX = client\.left;/);
-  assert.match(spotify, /const int hostY = client\.top;/);
-  assert.match(spotify, /const int width = std::max\(1L, client\.right - client\.left\);/);
-  assert.match(spotify, /const int height = std::max\(1L, client\.bottom - client\.top\);/);
-  assert.doesNotMatch(spotify, /kSpotifyBackgroundWidth|kSpotifyBackgroundHeight|CenterMediaSurfaceOnAnchor|anchors\.air/);
+  assert.match(grid, /kServiceMonitorTileCount = 6/);
+  assert.match(grid, /kServiceMonitorColumns = 3/);
+  assert.match(grid, /kServiceMonitorRows = 2/);
+  assert.match(grid, /ComputeNativeDashboardLayout\(workspaceBounds\)\.media/);
+  assert.match(routing, /ServiceMonitorTileBounds\(parentClient, 0\)/);
+  assert.match(routing, /monitorMode_ == MonitorMode::Native && monitorAuthForeground_/);
+  assert.match(spotify, /ServiceMonitorTileBounds\(client, i \+ 1\)/);
+  assert.match(spotify, /const RECT desired = loginPage \? fullClient : serviceTile/);
+  assert.match(spotify, /gSpotifyMonitorGridVisible && !loginPage/);
 });
 
 test('lower dashboard cards shift energy to old weather, weather to old radar, and radar to old energy slots', () => {
