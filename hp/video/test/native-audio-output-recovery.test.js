@@ -17,6 +17,7 @@ const spotifyClick = source('spotify_background_click.inc');
 const spotifyPhase = source('spotify_phase_sync.inc');
 const spotifySchedule = source('spotify_stagger_schedule.inc');
 const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
+const spotifyStartupAudio = source('spotify_startup_audio_recovery.inc');
 
 test('Stationhead keeps lightweight repair ahead of one-minute destructive recovery', () => {
   assert.match(stationheadEvents, /get_IsDocumentPlayingAudio/);
@@ -54,28 +55,35 @@ test('Stationhead polls native WebView2 audio through the periodic health path',
   assert.match(stationheadRefresh, /AttemptNativeStartClick\(nowMs\)/);
 });
 
-test('Spotify startup recovery is driven by each target URL generation', () => {
+test('Spotify startup recovery is driven by each target URL generation and has a terminal skip', () => {
   assert.match(spotifyPhase, /BeginSpotifyTrackStartRecovery\([\s\S]*slot\.targetGeneration/);
   assert.match(spotifyTrackRecovery, /ULONGLONG generation = 0/);
   assert.match(spotifyTrackRecovery, /bool reloadIssued = false/);
   assert.match(spotifyTrackRecovery, /bool rebuildIssued = false/);
-  assert.match(spotifyClick, /NextSpotifyTrackStartRecoveryAction/);
+  assert.match(spotifyTrackRecovery, /bool skipIssued = false/);
+  assert.match(spotifyTrackRecovery, /SkipTrack/);
+  assert.match(spotifyClick, /EscalateSpotifyStartupFailure/);
   assert.match(spotifyClick, /retry\.count>=2/);
   assert.match(spotifyClick, /return 'reload'/);
   assert.match(spotifyClick, /return 'recreate'/);
-  assert.match(spotifyClick, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(spotifyClick, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyStartupAudio, /SkipFailedSpotifyTrack\(slot\)/);
 });
 
-test('Spotify healthy playback has no periodic native-audio health scan', () => {
+test('Spotify checks native audio only inside the per-track startup window', () => {
   assert.doesNotMatch(spotifyPhase, /AudioHealth|audioHealth/);
   assert.doesNotMatch(spotifySchedule, /gSpotifyAudioHealth/);
   assert.doesNotMatch(spotifySchedule, /TryClaimAudioHealthScan/);
   assert.doesNotMatch(spotifySchedule, /get_IsDocumentPlayingAudio/);
   assert.match(spotifySchedule, /No periodic IsDocumentPlayingAudio scan here/);
+  assert.match(spotifyStartupAudio, /kSpotifyNativeAudioStartCheckLimit = 2/);
+  assert.match(spotifyStartupAudio, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
+  assert.match(spotifyStartupAudio, /slot\.nativeAudioStartVerified = true/);
   assert.match(
     spotifyClick,
-    /slot\.playbackConfirmed && slot\.state == SlotState::Playing/,
+    /slot\.playbackConfirmed && slot\.nativeAudioStartVerified/,
   );
 });
 
