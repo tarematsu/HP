@@ -21,17 +21,18 @@ test('Spotify recovery reuses connected Play controls and media elements', () =>
   assert.match(scoped, /domCache\.nowPlayingLink/);
 });
 
-test('healthy Spotify playback exits before source or Play-Pause DOM reconciliation', () => {
+test('fully verified Spotify playback exits before source or Play-Pause DOM reconciliation', () => {
   const start = music.indexOf('void SpotifyWebViews::ReconcileMusicTarget');
   const end = music.indexOf('\n}  // namespace hp', start);
   assert.ok(start >= 0 && end > start);
   const reconcile = music.slice(start, end);
-  const fastPath = reconcile.indexOf('slot.playbackConfirmed && SlotStateIsHealthy(slot.state)');
+  const fastPath = reconcile.indexOf('slot.playbackConfirmed && slot.nativeAudioStartVerified');
   const sourceCheck = reconcile.indexOf('SlotMatchesMusicTarget(slot)');
   const scriptProbe = reconcile.indexOf('kSpotifyScopedTrackReconcileScript');
   assert.ok(fastPath >= 0);
   assert.ok(sourceCheck > fastPath);
   assert.ok(scriptProbe > sourceCheck);
+  assert.match(reconcile, /SlotStateIsHealthy\(slot\.state\)/);
   assert.match(reconcile, /timedCompletionDeadlineGeneration == slot\.targetGeneration/);
 });
 
