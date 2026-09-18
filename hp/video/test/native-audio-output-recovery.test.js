@@ -36,9 +36,9 @@ test('Stationhead keeps lightweight repair ahead of one-minute destructive recov
   assert.match(stationheadLoss, /SetManagedPlaybackFallback/);
 });
 
-test('shared audio-health coordinator remains available to continuous-stream recovery', () => {
-  assert.match(coordinator, /kAudioHealthScanCycleMs = 30ULL \* 1000ULL/);
-  assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 5'000ULL/);
+test('shared audio-health coordinator keeps Stationhead on a true one-minute cycle', () => {
+  assert.match(coordinator, /kAudioHealthScanCycleMs = 60ULL \* 1000ULL/);
+  assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 10'000ULL/);
   assert.match(coordinator, /gAudioHealthScanInProgress/);
   assert.match(coordinator, /TryClaimAudioHealthScan/);
   assert.match(coordinator, /kAudioHealthScanMinimumGapMs = 4ULL \* 1000ULL/);
@@ -46,6 +46,7 @@ test('shared audio-health coordinator remains available to continuous-stream rec
 });
 
 test('Stationhead polls native WebView2 audio through the periodic health path', () => {
+  assert.match(stationheadRefresh, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
   assert.match(stationheadRefresh, /PollPeriodicAudioHealth/);
   assert.match(stationheadRefresh, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
   assert.match(stationheadRefresh, /TryClaimAudioHealthScan\(scanTick\)/);
