@@ -1,8 +1,107 @@
-// Static presentation-only policy for the dedicated YouTube player.
+// Document-start YouTube presentation and lightweight ad-skip wake policy.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
 (() => {
   if (!/^(www\.)?youtube\.com$/.test(location.hostname)) return false;
+
+  const skipSelector = [
+    '.ytp-ad-skip-button', '.ytp-ad-skip-button-modern',
+    '.ytp-skip-ad-button', '.videoAdUiSkipButton',
+    '[class*="ytp-ad-skip"]', '[aria-label*="Skip ad" i]',
+    '[aria-label*="広告をスキップ"]', '[aria-label*="広告を飛ばす"]'
+  ].join(',');
+  const adActive = player => Boolean(
+      player?.classList.contains('ad-showing') ||
+      player?.classList.contains('ad-interrupting'));
+  const postSkipWake = () => {
+    const now = Date.now();
+    if (now - Number(window.__homePanelYoutubeSkipWakeAt || 0) < 80) return;
+    window.__homePanelYoutubeSkipWakeAt = now;
+    try { window.chrome?.webview?.postMessage('homepanel:youtube-wake'); }
+    catch (_) {}
+  };
+  const bindSkipObserver = player => {
+    if (!player || typeof MutationObserver !== 'function') return;
+    const previous = window.__homePanelYoutubeSkipObserver;
+    if (previous?.player === player) return;
+    try { previous?.classObserver?.disconnect(); } catch (_) {}
+    try { previous?.stopAdObservers?.(); } catch (_) {}
+
+    const controlObservers = new Map();
+    let rootObserverActive = false;
+    const clearControlObservers = () => {
+      for (const observer of controlObservers.values()) {
+        try { observer.disconnect(); } catch (_) {}
+      }
+      controlObservers.clear();
+    };
+    const watchControl = (control, wakeNow = false) => {
+      if (!(control instanceof Element) || controlObservers.has(control)) return;
+      const observer = new MutationObserver(() => {
+        if (!control.isConnected || !player.contains(control)) {
+          try { observer.disconnect(); } catch (_) {}
+          controlObservers.delete(control);
+          return;
+        }
+        if (adActive(player)) postSkipWake();
+      });
+      observer.observe(control, {
+        attributes: true,
+        attributeFilter: ['disabled', 'aria-disabled', 'aria-hidden', 'class', 'style']
+      });
+      controlObservers.set(control, observer);
+      if (wakeNow && adActive(player)) postSkipWake();
+    };
+    const inspectAddedNode = node => {
+      if (!(node instanceof Element)) return;
+      if (node.matches(skipSelector)) watchControl(node, true);
+      for (const control of node.querySelectorAll?.(skipSelector) || []) {
+        watchControl(control, true);
+      }
+    };
+    const rootObserver = new MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) inspectAddedNode(node);
+      }
+    });
+    const startAdObservers = () => {
+      if (rootObserverActive) return;
+      rootObserver.observe(player, { childList: true, subtree: true });
+      rootObserverActive = true;
+      const controls = player.querySelectorAll(skipSelector);
+      for (const control of controls) watchControl(control);
+      if (controls.length) postSkipWake();
+    };
+    const stopAdObservers = () => {
+      if (rootObserverActive) {
+        try { rootObserver.disconnect(); } catch (_) {}
+        rootObserverActive = false;
+      }
+      clearControlObservers();
+    };
+    const syncAdObservers = () => {
+      if (adActive(player)) startAdObservers();
+      else stopAdObservers();
+    };
+
+    const classObserver = new MutationObserver(syncAdObservers);
+    classObserver.observe(player, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    window.__homePanelYoutubeSkipObserver = {
+      player, rootObserver, classObserver, stopAdObservers
+    };
+    syncAdObservers();
+  };
+  const installSkipObserver = () => {
+    const player = document.querySelector('#movie_player');
+    if (!player) return false;
+    bindSkipObserver(player);
+    return true;
+  };
+
   const mount = () => {
     const root = document.head || document.documentElement;
     if (!root || document.getElementById('homepanel-youtube-clean-player')) return;
@@ -52,9 +151,30 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
     `;
     root.appendChild(style);
   };
-  mount();
+  const install = () => {
+    mount();
+    if (installSkipObserver()) {
+      try { window.__homePanelYoutubeSkipBootstrapObserver?.disconnect(); } catch (_) {}
+      window.__homePanelYoutubeSkipBootstrapObserver = null;
+      return;
+    }
+    const root = document.documentElement;
+    if (!root || window.__homePanelYoutubeSkipBootstrapObserver ||
+        typeof MutationObserver !== 'function') return;
+    const bootstrap = new MutationObserver(() => {
+      if (!installSkipObserver()) return;
+      bootstrap.disconnect();
+      if (window.__homePanelYoutubeSkipBootstrapObserver === bootstrap) {
+        window.__homePanelYoutubeSkipBootstrapObserver = null;
+      }
+    });
+    bootstrap.observe(root, { childList: true, subtree: true });
+    window.__homePanelYoutubeSkipBootstrapObserver = bootstrap;
+  };
+
+  install();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mount, { once: true });
+    document.addEventListener('DOMContentLoaded', install, { once: true });
   }
   return true;
 })()
