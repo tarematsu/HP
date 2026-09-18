@@ -17,8 +17,8 @@ test('runtime rollups precede Pages publication without a reciprocal workflow cy
 
   assert.equal(cron(runtime), '11,41 * * * *');
   assert.equal(cron(pages), '26,56 * * * *');
-  assert.match(runtime, /workflows: \["Deploy production"\]/);
-  assert.doesNotMatch(runtime, /workflows: \[[^\]]*Rebuild pages read models/);
+  assert.match(runtime, /^\s*workflows: \["Deploy production"\]\s*$/m);
+  assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
   assert.doesNotMatch(pages, /workflow_run:/);
   assert.match(runtime, /cancel-in-progress: false/);
   assert.match(pages, /group: pages-read-model-rebuild/);
