@@ -2,6 +2,7 @@ name: Run runtime offline maintenance
 
 on:
   workflow_run:
+    # Legacy cycle intentionally removed: workflows: ["Deploy production", "Rebuild pages read models"]
     workflows: ["Deploy production"]
     types: [completed]
   schedule:
