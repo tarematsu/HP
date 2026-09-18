@@ -9,6 +9,7 @@ const scoped = source('spotify_scoped_track_reconcile.inc');
 const music = source('spotify_music_target.inc');
 const phase = source('spotify_phase_sync.inc');
 const lifecycle = source('spotify_host_lifecycle.inc');
+const schedule = source('spotify_stagger_schedule.inc');
 
 test('Spotify recovery reuses connected Play controls and media elements', () => {
   assert.match(scoped, /__homePanelSpotifyDomCache/);
@@ -34,6 +35,17 @@ test('fully verified Spotify playback exits before source or Play-Pause DOM reco
   assert.ok(scriptProbe > sourceCheck);
   assert.match(reconcile, /SlotStateIsHealthy\(slot\.state\)/);
   assert.match(reconcile, /timedCompletionDeadlineGeneration == slot\.targetGeneration/);
+});
+
+test('Spotify recovery drops stale completion deadlines outside healthy playback', () => {
+  assert.match(
+    schedule,
+    /if \(SlotStateIsHealthy\(slot\.state\)\) continue;[\s\S]*slot\.timedCompletionDeadlineTick = 0;[\s\S]*slot\.timedCompletionDeadlineGeneration = 0;[\s\S]*ProbeDueTimedCompletions\(now\)/,
+  );
+  assert.match(
+    schedule,
+    /reloadMediaSurface[\s\S]*slot\.nativeAudioStartVerified = false;[\s\S]*slot\.timedCompletionDeadlineTick = 0;[\s\S]*slot\.timedCompletionDeadlineGeneration = 0;/,
+  );
 });
 
 test('Spotify recovery does not change the WebView2 memory target', () => {
