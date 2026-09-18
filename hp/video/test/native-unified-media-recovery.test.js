@@ -13,7 +13,8 @@ const stationheadWebView = source('sh_webview.cpp');
 const stationheadEscalation = source('sh_track_boundary_message_policy.h');
 const spotify = source('spotify_stagger_schedule.inc');
 const spotifyProcesses = source('spotify_process_failure.inc');
-const spotifyClick = source('spotify_background_click.inc');
+const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
+const spotifyStartup = source('spotify_startup_audio_recovery.inc');
 
 test('recovery policy has one ordered, cooldown-protected ladder', () => {
   assert.match(coordinator, /kMediaRecoveryIncidentWindowMs/);
@@ -47,17 +48,23 @@ test('Stationhead escalates confirmed silence without bypassing authentication',
   assert.match(stationheadWebView, /ScheduleRecreate\(L"ProcessFailed"/);
 });
 
-test('Spotify routes silence and process failures through the same episode', () => {
-  assert.match(spotify, /slot\.recoveryEpisode/);
-  assert.match(spotify, /MediaRecoveryEvidence::TimelineStall/);
-  assert.match(spotify, /ObserveMediaRecoveryHealthy/);
+test('Spotify separates per-track startup recovery from explicit process failures', () => {
+  assert.match(spotify, /No periodic IsDocumentPlayingAudio scan here/);
+  assert.doesNotMatch(spotify, /MediaRecoveryEvidence::TimelineStall/);
   assert.match(spotifyProcesses, /MediaRecoveryEvidence::NetworkFailure/);
   assert.match(spotifyProcesses, /MediaRecoveryEvidence::ProcessFailure/);
   assert.match(
     spotifyProcesses,
     /MediaRecoveryEvidence::ProcessFailure, now,[\s\S]*slot\.targetGeneration, true, false/,
   );
-  assert.match(spotifyClick, /MediaRecoveryEvidence::ConfirmedSilence/);
-  assert.match(spotifyClick, /MediaRecoveryAction::ReloadDocument/);
-  assert.match(spotifyClick, /MediaRecoveryAction::RebuildSurface/);
+
+  assert.match(spotifyStartup, /get_IsDocumentPlayingAudio/);
+  assert.match(spotifyStartup, /NextSpotifyTrackStartRecoveryAction/);
+  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyStartup, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.match(spotifyTrackRecovery, /reloadIssued/);
+  assert.match(spotifyTrackRecovery, /rebuildIssued/);
+  assert.match(spotifyTrackRecovery, /skipIssued/);
 });

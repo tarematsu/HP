@@ -24,7 +24,7 @@ test('Spotify leaves the WebView2 memory target unmanaged', () => {
   );
   assert.match(
     phase,
-    /state == SlotState::NotCreated \|\| state == SlotState::Authenticating \|\|\s*state == SlotState::Playing[\s\S]*slot\.nextRecoveryTick = 0/,
+    /if \(state == SlotState::Playing\)[\s\S]*slot\.nativeAudioStartVerified[\s\S]*slot\.nextRecoveryTick = 0[\s\S]*kSpotifyNativeAudioStartRetryMs/,
   );
   assert.match(phase, /MarkSlotRecovering[\s\S]*SetSlotState\(slot, SlotState::Recovering\)/);
 });
