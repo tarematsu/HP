@@ -5,26 +5,25 @@
 namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 30ULL * 1000ULL;
-// spotify-v2-1 is the first active Spotify window again. The Stationhead player
-// is moved to the preserved ozeki profile (spotify-v2-6). Keep the next three
-// existing Spotify profiles unchanged: yuukiar is profile 2, ten is profile 3,
-// and nagi is profile 4. hinata remains unused rather than shifting storage.
+// spotify-v2-1 is the amazon Spotify window. Keep the existing Spotify profile
+// order stable: yuukiar=2, ten=3, nagi=4, hinata=5. Stationhead remains isolated
+// on the preserved ozeki profile (spotify-v2-6).
 inline constexpr size_t kSpotifyProfileFirstAccountNumber = 1;
-inline constexpr size_t kSpotifyActiveAccountCount = 4;
+inline constexpr size_t kSpotifyActiveAccountCount = 5;
 
-// Four logical Spotify accounts share exactly three live WebView runtime lanes.
-// B/C/D always address lanes 0/1/2. The account that completes a full rotation
+// Five logical Spotify accounts share exactly four live WebView runtime lanes.
+// S1/S2/S3/S4 address lanes 0/1/2/3. The account that completes a full rotation
 // leaves its lane, the waiting account takes it, and the completed account
 // becomes the next waiter. Inline state keeps every Spotify implementation unit
 // on the same process-wide lane assignment.
-inline constexpr size_t kSpotifyRuntimeLaneCount = 3;
+inline constexpr size_t kSpotifyRuntimeLaneCount = 4;
 inline std::array<size_t, kSpotifyRuntimeLaneCount> gSpotifyRuntimeLaneAccounts = {
-    0, 1, 2};
-inline size_t gSpotifyInactiveAccountIndex = 3;
+    0, 1, 2, 3};
+inline size_t gSpotifyInactiveAccountIndex = 4;
 
 inline void ResetSpotifyRuntimeLanes() noexcept {
-  gSpotifyRuntimeLaneAccounts = {0, 1, 2};
-  gSpotifyInactiveAccountIndex = 3;
+  gSpotifyRuntimeLaneAccounts = {0, 1, 2, 3};
+  gSpotifyInactiveAccountIndex = 4;
 }
 
 inline int SpotifyRuntimeLaneForAccount(size_t accountIndex) noexcept {
