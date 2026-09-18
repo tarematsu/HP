@@ -102,9 +102,8 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
 void SpotifyWebViews::InitializeTimedRotationSlot(Slot& slot) noexcept {
   slot.timedRotationActive = true;
   slot.timedRotationPosition = 0;
-  // timedRotationCycle is preserved when an account leaves a runtime lane so
-  // the account receives a fresh deterministic random permutation when it
-  // returns later.
+  // Each account keeps its WebView for the whole process lifetime. The cycle
+  // counter only changes the deterministic shuffle seed for the next track set.
   PrepareTimedRotationCycle(slot);
   slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
@@ -154,41 +153,6 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(Slot& slot) noexcept {
     if (slot.timedRotationPosition >= slot.timedCycleTracks.size()) {
       ++slot.timedRotationCycle;
       slot.timedRotationPosition = 0;
-
-      const int completedLane = SpotifyRuntimeLaneForAccount(slot.index);
-      if (completedLane >= 0) {
-        const ULONGLONG completedCycles = slot.timedRotationCycle;
-        const size_t completedAccountIndex = slot.index;
-        const size_t nextAccountIndex = gSpotifyInactiveAccountIndex;
-        HWND completedHost = slot.hostWindow;
-        if (completedHost && IsWindow(completedHost)) {
-          InvalidateSpotifyStatusForHost(completedHost);
-        }
-
-        CloseSlot(slot);
-        // CloseSlot clears runtime state. Keep only this account's completed
-        // cycle counter so its next activation advances the random seed.
-        slot.timedRotationCycle = completedCycles;
-
-        gSpotifyRuntimeLaneAccounts[static_cast<size_t>(completedLane)] =
-            nextAccountIndex;
-        gSpotifyInactiveAccountIndex = completedAccountIndex;
-
-        Slot& nextSlot = slots_[nextAccountIndex];
-        if (!nextSlot.hostWindow || !IsWindow(nextSlot.hostWindow)) {
-          CreateHost(nextSlot);
-        }
-
-        // B/C/D represent runtime lanes. Force layout refresh so a selected
-        // lane immediately follows the newly activated account.
-        hostLayoutMask_ = ~0u;
-        hostLayoutActiveSlot_ = kAccountCount;
-        hostLayoutAuthenticationSlot_ = kAccountCount;
-        RecomputeForeground();
-        ArmRobustScheduler();
-        return;
-      }
-
       PrepareTimedRotationCycle(slot);
       if (slot.timedCycleTracks.empty()) {
         slot.timedRotationActive = false;
