@@ -13,11 +13,27 @@ function normalizedText(value) {
   return usableText(value).normalize('NFKC').toLowerCase().replace(/\s+/g, ' ');
 }
 
+function isIdentifier(value) {
+  const text = usableText(value);
+  return /^[A-Z]{2}[A-Z0-9]{3}[0-9]{7}$/i.test(text)
+    || /^[A-Za-z0-9]{22}$/.test(text)
+    || /^spotify[_:-]?[a-z0-9]{8,}$/i.test(text);
+}
+
 function isPlaceholderTitle(value) {
   const text = usableText(value);
   if (!text) return true;
-  if (text === '曲名不明') return true;
-  return /^spotify[_:-]?[a-z0-9]{8,}$/i.test(text);
+  const normalized = normalizedText(text);
+  if (['曲名不明', '曲名…', '曲名...', 'unknown', 'unknown title', '_', '-', '—'].includes(normalized)) return true;
+  return isIdentifier(text);
+}
+
+function isPlaceholderArtist(value) {
+  const text = usableText(value);
+  if (!text) return true;
+  const normalized = normalizedText(text);
+  return ['_', '-', '—', 'unknown', 'unknown artist', 'アーティスト不明'].includes(normalized)
+    || isIdentifier(text);
 }
 
 export function displayTrackTitle(row) {
@@ -25,17 +41,13 @@ export function displayTrackTitle(row) {
     const text = usableText(candidate);
     if (text && !isPlaceholderTitle(text)) return text;
   }
-  for (const candidate of [row?.isrc, row?.spotify_id]) {
-    const text = usableText(candidate);
-    if (text) return text;
-  }
   return '曲名不明';
 }
 
 export function displayTrackArtist(row) {
   for (const candidate of [row?.artist, row?.raw_artist]) {
     const text = usableText(candidate);
-    if (text) return text;
+    if (text && !isPlaceholderArtist(text)) return text;
   }
   return '—';
 }
@@ -109,6 +121,7 @@ export function aggregateCompleteTrackRows(rows) {
 
   for (const row of validRows) {
     const keys = trackIdentityKeys(row);
+    if (!keys.length) continue;
     keys.forEach(ensure);
     for (let index = 1; index < keys.length; index += 1) union(keys[0], keys[index]);
   }
@@ -116,6 +129,7 @@ export function aggregateCompleteTrackRows(rows) {
   const aggregate = new Map();
   for (const row of validRows) {
     const keys = trackIdentityKeys(row);
+    if (!keys.length) continue;
     const identity = find(keys[0]);
     const count = Math.max(0, finite(row?.play_count) || 0);
     const likes = Math.max(0, finite(row?.like_count) || 0);
