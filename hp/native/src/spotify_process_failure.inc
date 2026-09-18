@@ -3,6 +3,7 @@ namespace {
 
 constexpr ULONGLONG kSpotifyAudioServiceRecoveryBaseDelayMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAudioServiceRecoveryLaneSpacingMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioServiceRecoveryDebounceMs = 10ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRendererUnresponsiveWindowMs = 15ULL * 1000ULL;
 
 std::array<ICoreWebView2*, kSpotifyActiveAccountCount>
@@ -11,6 +12,7 @@ std::array<ULONGLONG, kSpotifyActiveAccountCount>
     gSpotifyRendererUnresponsiveFirstTicks{};
 std::array<unsigned, kSpotifyActiveAccountCount>
     gSpotifyRendererUnresponsiveCounts{};
+std::atomic<ULONGLONG> gSpotifyAudioServiceRecoveryLastTick{0};
 
 bool SpotifyFailedProcessIsAudioService(
     ICoreWebView2ProcessFailedEventArgs* args) noexcept {
@@ -70,34 +72,49 @@ void SpotifyWebViews::EnsureProcessFailureMonitoring(
             const ULONGLONG now = GetTickCount64();
 
             if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED) {
-              // WebView2 explicitly documents that a utility-process failure can
-              // be the shared Audio Service. The service itself is recreated by
-              // WebView2, but an existing media element can remain attached to
-              // the dead sink. Reload the live Spotify lanes after the service
-              // has restarted, spacing them so Widevine/audio initialization
-              // does not stampede the replacement process.
+              // WebView2's Audio Service is shared by the Spotify WebViews.
+              // A service restart can therefore leave every live media element
+              // attached to the dead sink even when only one WebView reports the
+              // utility-process failure. Recover every active Spotify lane, with
+              // staggered reloads, instead of repairing only the reporting lane.
               if (!SpotifyFailedProcessIsAudioService(args)) return S_OK;
-              const int lane = SpotifyRuntimeLaneForAccount(accountIndex);
-              if (lane < 0 || slot.loginPage || !CurrentMusicTrack(slot)) {
+              const ULONGLONG previous =
+                  gSpotifyAudioServiceRecoveryLastTick.load(std::memory_order_acquire);
+              if (previous != 0 && now >= previous &&
+                  now - previous < kSpotifyAudioServiceRecoveryDebounceMs) {
                 return S_OK;
               }
-              const MediaRecoveryAction action = NextMediaRecoveryAction(
-                  slot.recoveryEpisode,
-                  MediaRecoveryEvidence::NetworkFailure, now,
-                  slot.targetGeneration, true, false);
-              if (action != MediaRecoveryAction::ReloadDocument) return S_OK;
-              if (!slot.mediaNetworkRecoveryPending) {
-                slot.mediaNetworkRecoveryAttempt = 0;
-                slot.mediaNetworkRecoveryPending = true;
-                slot.mediaNetworkRecoveryTick =
+              gSpotifyAudioServiceRecoveryLastTick.store(
+                  now, std::memory_order_release);
+
+              bool scheduledAny = false;
+              for (Slot& target : slots_) {
+                const int lane = SpotifyRuntimeLaneForAccount(target.index);
+                if (lane < 0 || target.loginPage || !target.webview ||
+                    !CurrentMusicTrack(target)) {
+                  continue;
+                }
+                const MediaRecoveryAction action = NextMediaRecoveryAction(
+                    target.recoveryEpisode,
+                    MediaRecoveryEvidence::NetworkFailure, now,
+                    target.targetGeneration, true, false);
+                if (action != MediaRecoveryAction::ReloadDocument) continue;
+                if (target.mediaNetworkRecoveryPending) continue;
+
+                target.mediaNetworkRecoveryAttempt = 0;
+                target.mediaNetworkRecoveryPending = true;
+                target.mediaNetworkRecoveryTick =
                     now + kSpotifyAudioServiceRecoveryBaseDelayMs +
                     static_cast<ULONGLONG>(lane) *
                         kSpotifyAudioServiceRecoveryLaneSpacingMs;
-                slot.timedCompletionDeadlineTick = 0;
-                slot.timedCompletionDeadlineGeneration = 0;
-                slot.trustedClickBlockedUntilTick = 0;
-                SetSlotState(slot, SlotState::Recovering);
-                slot.nextRecoveryTick = slot.mediaNetworkRecoveryTick;
+                target.timedCompletionDeadlineTick = 0;
+                target.timedCompletionDeadlineGeneration = 0;
+                target.trustedClickBlockedUntilTick = 0;
+                SetSlotState(target, SlotState::Recovering);
+                target.nextRecoveryTick = target.mediaNetworkRecoveryTick;
+                scheduledAny = true;
+              }
+              if (scheduledAny) {
                 RecomputeForeground();
                 ArmRobustScheduler();
               }
