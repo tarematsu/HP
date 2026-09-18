@@ -1,3 +1,4 @@
+import './history/history-global-fixes.js';
 import './dashboard-header.js?v=20260731.1';
 import './dashboard-tabs.js?v=20260731.1';
 import './dashboard-fetch-cache.js?v=20260731.1';
