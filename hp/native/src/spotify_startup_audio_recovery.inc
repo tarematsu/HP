@@ -1,6 +1,6 @@
 namespace hp {
 namespace {
-constexpr unsigned kSpotifyNativeAudioStartCheckLimit = 2;
+constexpr unsigned kSpotifyNativeAudioStartCheckLimit = 4;
 constexpr ULONGLONG kSpotifyFailedOnlyTrackRetryMs = 60ULL * 1000ULL;
 }  // namespace
 
@@ -88,8 +88,10 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
   if (slot.nativeAudioStartVerified) return true;
   if (!slot.webview || !CurrentMusicTrack(slot)) return false;
 
-  // When a first negative sample scheduled a second sample, do not let an
-  // observer callback collapse the two checks into the same instant.
+  // Keep successive negative samples on the configured two-second cadence.
+  // Four samples allow a memory-pressured decoder/audio service up to roughly
+  // six seconds after the first probe to establish native audio before the
+  // bounded Reload -> Rebuild -> Skip ladder begins.
   if (slot.nativeAudioStartChecks != 0 && slot.nextRecoveryTick != 0 &&
       now < slot.nextRecoveryTick) {
     return false;
