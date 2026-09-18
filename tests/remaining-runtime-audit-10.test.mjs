@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { HOST_SUMMARY_SQL, loadHostSummary } from '../site/functions/api/host-history.js';
 
-test('host summary returns active and recent Sakurazaka sessions from one SQL statement', async () => {
+function hostDatabase() {
   const db = new DatabaseSync(':memory:');
   db.exec(`
     CREATE TABLE sh_host_broadcast_sessions (
@@ -14,13 +14,18 @@ test('host summary returns active and recent Sakurazaka sessions from one SQL st
       total_listens_start INTEGER,total_listens_end INTEGER,listener_sample_count INTEGER,
       track_count INTEGER,comment_count INTEGER,last_observed_at INTEGER
     );
+    CREATE TABLE sh_official_broadcast_summary (
+      host_handle TEXT,started_at INTEGER,ended_at INTEGER,
+      listener_max INTEGER,listener_avg REAL,sample_count INTEGER,distinct_tracks INTEGER
+    );
   `);
-  db.prepare(`INSERT INTO sh_host_broadcast_sessions VALUES
-    (1,'sakurazaka46jp',10,100,110,200,'ended',30,20,1000,1100,2,3,4,200),
-    (2,'sakurazaka46jp',11,300,310,NULL,'active',40,NULL,1200,NULL,3,4,5,320)`).run();
+  return db;
+}
 
+function wrappedDatabase(db) {
   let statements = 0;
-  const wrapped = {
+  return {
+    get statements() { return statements; },
     prepare(sql) {
       statements += 1;
       assert.equal(sql, HOST_SUMMARY_SQL);
@@ -28,11 +33,34 @@ test('host summary returns active and recent Sakurazaka sessions from one SQL st
       return { all: async () => ({ results: statement.all() }) };
     },
   };
+}
+
+test('host summary returns active and recent Sakurazaka sessions from one SQL statement', async () => {
+  const db = hostDatabase();
+  db.prepare(`INSERT INTO sh_host_broadcast_sessions VALUES
+    (1,'sakurazaka46jp',10,100,110,200,'ended',30,20,1000,1100,2,3,4,200),
+    (2,'sakurazaka46jp',11,300,310,NULL,'active',40,NULL,1200,NULL,3,4,5,320)`).run();
+
+  const wrapped = wrappedDatabase(db);
   const summary = await loadHostSummary(wrapped);
-  assert.equal(statements, 1);
+  assert.equal(wrapped.statements, 1);
   assert.equal('latestProfile' in summary, false);
   assert.equal(summary.activeSession.id, 2);
   assert.deepEqual(summary.recentSessions.map((row) => row.id), [2, 1]);
+});
+
+test('host summary falls back to official broadcast history when session tracking is empty', async () => {
+  const db = hostDatabase();
+  db.prepare(`INSERT INTO sh_official_broadcast_summary VALUES
+    ('sakurazaka46jp',1000,1200,55,42.5,12,7),
+    ('sakurazaka46jp',2000,2300,80,63.5,18,9)`).run();
+  const wrapped = wrappedDatabase(db);
+  const summary = await loadHostSummary(wrapped);
+  assert.equal(wrapped.statements, 1);
+  assert.equal(summary.activeSession, null);
+  assert.deepEqual(summary.recentSessions.map((row) => row.started_at), [2000, 1000]);
+  assert.equal(summary.recentSessions[0].peak_listeners, 80);
+  assert.equal(summary.recentSessions[0].track_count, 9);
 });
 
 test('history runtime is embedded in the main dashboard and reuses prepared chart state', () => {
