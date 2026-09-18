@@ -123,6 +123,7 @@ class SpotifyWebViews final {
     ULONGLONG mediaKeyWaitUntilTick = 0;
     ULONGLONG mediaNetworkRecoveryTick = 0;
     size_t mediaNetworkRecoveryAttempt = 0;
+    unsigned nativeAudioStartChecks = 0;
     std::wstring observedTrackTitle;
     std::wstring processTrackDisplay;
     SYSTEMTIME processTitleObservedAt{};
@@ -137,6 +138,7 @@ class SpotifyWebViews final {
     bool timedObserverReady = false;
     bool timedRotationActive = false;
     bool playbackConfirmed = false;
+    bool nativeAudioStartVerified = false;
     bool processTitleObserved = false;
     bool hostLayoutApplied = false;
     bool mediaPipelineRecoveryPending = false;
@@ -168,6 +170,10 @@ class SpotifyWebViews final {
   void MarkSlotRecovering(Slot& slot, ULONGLONG now) noexcept;
   bool ExpireStaleAsyncWork(Slot& slot, ULONGLONG now) noexcept;
   void BumpSpotifyTargetGeneration(Slot& slot) noexcept;
+  bool ConfirmSpotifyNativeAudioStart(Slot& slot, ULONGLONG now) noexcept;
+  bool EscalateSpotifyStartupFailure(Slot& slot, ULONGLONG now,
+                                     bool requestRebuild) noexcept;
+  void SkipFailedSpotifyTrack(Slot& slot) noexcept;
   void ClickSlotCssPoint(Slot& slot, double cssX, double cssY) noexcept;
   UINT DispatchSpotifyDevToolsClick(Slot& slot, double cssX,
                                     double cssY) noexcept;
