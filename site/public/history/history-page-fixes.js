@@ -1,5 +1,51 @@
 import { inclusivePresetStart, utcDate } from './history-date-utils.js';
 
+const originalFetch = window.fetch.bind(window);
+const isUnknownTitle = (value) => {
+  const text = String(value ?? '').trim();
+  return !text || text === '曲名不明' || /^spotify[_:-]?[a-z0-9]{8,}$/i.test(text);
+};
+
+function enrichHistoryPayload(payload) {
+  if (!payload || payload.mode !== 'tracks' || !Array.isArray(payload.rows)) return payload;
+  return {
+    ...payload,
+    rows: payload.rows.map((row) => {
+      if (!row || !isUnknownTitle(row.title)) return row;
+      const title = [row.raw_title, row.display_title, row.raw_name]
+        .map((value) => String(value ?? '').trim())
+        .find((value) => value && !isUnknownTitle(value));
+      if (!title) return row;
+      const artist = String(row.artist ?? '').trim() || String(row.raw_artist ?? '').trim();
+      return {
+        ...row,
+        title,
+        ...(artist ? { artist } : {}),
+      };
+    }),
+  };
+}
+
+window.fetch = async function historyMetadataFetch(input, init) {
+  const response = await originalFetch(input, init);
+  try {
+    const requestUrl = typeof input === 'string' ? input : input?.url;
+    if (!requestUrl || !new URL(requestUrl, location.href).pathname.endsWith('/api/track-history')) {
+      return response;
+    }
+    const payload = await response.clone().json();
+    const enriched = enrichHistoryPayload(payload);
+    if (enriched === payload) return response;
+    return new Response(JSON.stringify(enriched), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  } catch {
+    return response;
+  }
+};
+
 const originalBeginPath = CanvasRenderingContext2D.prototype.beginPath;
 const originalMoveTo = CanvasRenderingContext2D.prototype.moveTo;
 const originalLineTo = CanvasRenderingContext2D.prototype.lineTo;
