@@ -77,3 +77,98 @@ if (rankingBody) new MutationObserver(scheduleRankingRepair).observe(rankingBody
 window.addEventListener('hashchange', scheduleRankingRepair);
 window.addEventListener('history:runtime-ready', scheduleRankingRepair);
 scheduleRankingRepair();
+
+function placeholderTitle(value) {
+  const normalized = String(value ?? '').trim().normalize('NFKC').toLowerCase();
+  return !normalized
+    || ['曲名不明', '曲名…', '曲名...', 'unknown', 'unknown title', '-', '—'].includes(normalized);
+}
+
+function spotifyTrackId(value) {
+  try {
+    const url = new URL(String(value || ''), location.href);
+    if (!/(^|\.)spotify\.com$/i.test(url.hostname)) return '';
+    const match = url.pathname.match(/^\/track\/([^/?#]+)/i);
+    return match ? decodeURIComponent(match[1]) : '';
+  } catch {
+    return '';
+  }
+}
+
+let metadataPromise = null;
+async function loadTrackMetadata() {
+  if (metadataPromise) return metadataPromise;
+  metadataPromise = (async () => {
+    const response = await fetch('/api/track-history?ranking_only=1&ranking_limit=500', {
+      headers: { accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error(`track metadata HTTP ${response.status}`);
+    const payload = await response.json();
+    const rows = Array.isArray(payload?.ranking) ? payload.ranking : [];
+    const map = new Map();
+    for (const row of rows) {
+      const spotifyId = String(row?.spotify_id || '').trim();
+      const title = String(row?.title || '').trim();
+      if (!spotifyId || placeholderTitle(title)) continue;
+      map.set(spotifyId, {
+        title,
+        artist: String(row?.artist || '').trim(),
+      });
+    }
+    return map;
+  })().catch((error) => {
+    console.warn('track metadata recovery unavailable', error);
+    setTimeout(() => { metadataPromise = null; }, 60_000);
+    return new Map();
+  });
+  return metadataPromise;
+}
+
+async function repairPlaybackMetadata() {
+  const currentView = document.getElementById('currentView');
+  if (!currentView || currentView.hidden) return;
+  const candidates = [];
+  const nowLink = document.getElementById('nowPlayingLink');
+  const nowTitle = document.getElementById('trackTitle');
+  const nowArtist = document.getElementById('trackArtist');
+  const nowId = spotifyTrackId(nowLink?.getAttribute('href'));
+  if (nowId && (placeholderTitle(nowTitle?.textContent) || !String(nowArtist?.textContent || '').trim())) {
+    candidates.push({ id: nowId, title: nowTitle, artist: nowArtist });
+  }
+  for (const link of currentView.querySelectorAll('.queue-item[href]')) {
+    const id = spotifyTrackId(link.getAttribute('href'));
+    const title = link.querySelector('.queue-copy strong');
+    const artist = link.querySelector('.queue-copy small');
+    if (id && (placeholderTitle(title?.textContent) || !String(artist?.textContent || '').trim())) {
+      candidates.push({ id, title, artist });
+    }
+  }
+  if (!candidates.length) return;
+  const metadata = await loadTrackMetadata();
+  for (const candidate of candidates) {
+    const recovered = metadata.get(candidate.id);
+    if (!recovered) continue;
+    if (candidate.title && placeholderTitle(candidate.title.textContent)) candidate.title.textContent = recovered.title;
+    if (candidate.artist && !String(candidate.artist.textContent || '').trim() && recovered.artist) {
+      candidate.artist.textContent = recovered.artist;
+    }
+  }
+}
+
+let metadataRepairFrame = 0;
+function scheduleMetadataRepair() {
+  cancelAnimationFrame(metadataRepairFrame);
+  metadataRepairFrame = requestAnimationFrame(() => { void repairPlaybackMetadata(); });
+}
+
+const currentView = document.getElementById('currentView');
+if (currentView) {
+  new MutationObserver(scheduleMetadataRepair).observe(currentView, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['href'],
+  });
+}
+window.addEventListener('hashchange', scheduleMetadataRepair);
+scheduleMetadataRepair();
