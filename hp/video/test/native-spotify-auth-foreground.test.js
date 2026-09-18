@@ -39,13 +39,14 @@ test('authentication foreground repair is conditional instead of running every s
   assert.doesNotMatch(layout, /maintainAuthenticationForeground[\s\S]{0,800}SetWindowPos\(slot\.hostWindow, HWND_TOP[\s\S]{0,200}else/);
 });
 
-test('four-window authentication does not install an account-label DOM bridge', () => {
+test('five-account authentication does not install an account-label DOM bridge', () => {
   assert.doesNotMatch(bundle, /spotify_auth_badge\.inc/);
   assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeBootstrapScript|authenticationBadgeTick|ExecuteScript/);
   assert.doesNotMatch(staticScripts, /spotify:account|__homePanelSpotifyAccount|mountBadge/);
+  assert.match(staticScripts, /L"amazon"/);
   assert.match(staticScripts, /L"yuukiar"/);
   assert.match(staticScripts, /L"ten"/);
   assert.match(staticScripts, /L"nagi"/);
   assert.match(staticScripts, /L"hinata"/);
-  assert.doesNotMatch(staticScripts, /L"amazon"|L"ozeki"/);
+  assert.doesNotMatch(staticScripts, /L"ozeki"/);
 });
