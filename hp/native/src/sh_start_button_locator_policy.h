@@ -3,10 +3,10 @@
 namespace hp {
 
 // Locate genuine playback controls plus explicitly allowed onboarding/recovery
-// actions. Connect/Reconnect Music or Spotify and Continue are intentionally
-// handled before the generic account/auth guard so they can be clicked even
-// while Stationhead is in the background. Other login/account controls remain
-// excluded.
+// actions. Connect/Reconnect Music or Spotify, Continue, and Continue with
+// Spotify are intentionally handled before the generic account/auth guard so
+// they can be clicked even while Stationhead is in the background. Other
+// login/account controls remain excluded.
 inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -14,7 +14,7 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
       window.top !== window) return null;
   const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|let(?:'|’)?s\s+go|続ける|続行|次へ)$/i;
-  const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\s+with)?\s+(?:spotify|music)|continue)$/i;
+  const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\s+with)?\s+(?:spotify|music)|continue(?:\s+with\s+spotify)?)$/i;
   const connectMusicHeadingPattern = /^(?:re)?connect\s+music$/i;
   const connectMusicActionPattern = /^(?:connect|reconnect)$/i;
   const accountPattern = /\b(log\s*in|sign\s*in|login|spotify|connect|reconnect|authorize|consent|account|password|email)\b|ログイン|サインイン|認証|接続|再接続|同意|アカウント|パスワード/i;
