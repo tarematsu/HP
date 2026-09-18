@@ -24,11 +24,11 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
     if (!player || typeof MutationObserver !== 'function') return;
     const previous = window.__homePanelYoutubeSkipObserver;
     if (previous?.player === player) return;
-    try { previous?.rootObserver?.disconnect(); } catch (_) {}
     try { previous?.classObserver?.disconnect(); } catch (_) {}
-    try { previous?.clearControlObservers?.(); } catch (_) {}
+    try { previous?.stopAdObservers?.(); } catch (_) {}
 
     const controlObservers = new Map();
+    let rootObserverActive = false;
     const clearControlObservers = () => {
       for (const observer of controlObservers.values()) {
         try { observer.disconnect(); } catch (_) {}
@@ -59,35 +59,41 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
         watchControl(control, true);
       }
     };
-    const primeControls = () => {
-      if (!adActive(player)) {
-        clearControlObservers();
-        return;
-      }
-      for (const control of player.querySelectorAll(skipSelector)) {
-        watchControl(control);
-      }
-      if (player.querySelector(skipSelector)) postSkipWake();
-    };
-
     const rootObserver = new MutationObserver(mutations => {
-      if (!adActive(player)) return;
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) inspectAddedNode(node);
       }
     });
-    rootObserver.observe(player, { childList: true, subtree: true });
+    const startAdObservers = () => {
+      if (rootObserverActive) return;
+      rootObserver.observe(player, { childList: true, subtree: true });
+      rootObserverActive = true;
+      const controls = player.querySelectorAll(skipSelector);
+      for (const control of controls) watchControl(control);
+      if (controls.length) postSkipWake();
+    };
+    const stopAdObservers = () => {
+      if (rootObserverActive) {
+        try { rootObserver.disconnect(); } catch (_) {}
+        rootObserverActive = false;
+      }
+      clearControlObservers();
+    };
+    const syncAdObservers = () => {
+      if (adActive(player)) startAdObservers();
+      else stopAdObservers();
+    };
 
-    const classObserver = new MutationObserver(primeControls);
+    const classObserver = new MutationObserver(syncAdObservers);
     classObserver.observe(player, {
       attributes: true,
       attributeFilter: ['class']
     });
 
     window.__homePanelYoutubeSkipObserver = {
-      player, rootObserver, classObserver, clearControlObservers
+      player, rootObserver, classObserver, stopAdObservers
     };
-    primeControls();
+    syncAdObservers();
   };
   const installSkipObserver = () => {
     const player = document.querySelector('#movie_player');
