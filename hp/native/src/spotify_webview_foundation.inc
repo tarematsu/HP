@@ -13,7 +13,7 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
 SpotifyWebViews* gSpotifyControlInstance = nullptr;
-// These are runtime-lane selections (B/C/D => 0/1/2), not logical account ids.
+// These are runtime-lane selections (S1/S2/S3/S4 => 0/1/2/3), not logical ids.
 int gSpotifyAudioOutputSlot = -1;
 int gSpotifyMonitorForegroundSlot = -1;
 

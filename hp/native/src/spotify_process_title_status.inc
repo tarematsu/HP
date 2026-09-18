@@ -4,8 +4,8 @@ namespace {
 constexpr ULONGLONG kSpotifyProcessTitlePollMs = 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyProcessTitlePollPhaseMs =
     kSpotifyProcessTitlePollMs / kSpotifyActiveAccountCount;
-static_assert(kSpotifyActiveAccountCount == 4);
-static_assert(kSpotifyProcessTitlePollPhaseMs == 15ULL * 1000ULL);
+static_assert(kSpotifyActiveAccountCount == 5);
+static_assert(kSpotifyProcessTitlePollPhaseMs == 12ULL * 1000ULL);
 
 // Status is intentionally independent from the managed/queued target. The
 // playback observer stores a title only after a real media element is confirmed

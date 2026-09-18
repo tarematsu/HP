@@ -66,7 +66,7 @@ void PowerSavingController::ArmScheduleTimer() {
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
   // Monitor YT owns the only periodic DOM inspection. SH is Stationhead,
-  // S1/S2/S3 are the three live Spotify runtime lanes, and OFF is black.
+  // S1/S2/S3/S4 are the four live Spotify runtime lanes, and OFF is black.
   if (monitorMode_ == MonitorMode::Native) {
     remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
   }
@@ -118,6 +118,8 @@ void PowerSavingController::CycleMonitorMode() noexcept {
       ApplyMonitorMode(MonitorMode::SpotifyTertiary);
       break;
     case MonitorMode::SpotifyTertiary:
+      ApplyMonitorMode(MonitorMode::SpotifyQuaternary);
+      break;
     case MonitorMode::SpotifyQuaternary:
       ApplyMonitorMode(MonitorMode::Off);
       break;
@@ -145,12 +147,13 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
     RestoreBrightness();
   }
   Renderer::SetGlobalPowerSavingMode(powerSaving_);
-  // S1/S2/S3 address live runtime lanes rather than logical accounts, so the
-  // waiting Spotify account is never selected and lane ownership can rotate.
+  // S1/S2/S3/S4 address live runtime lanes rather than logical accounts, so
+  // the waiting Spotify account is never selected and lane ownership can rotate.
   const int spotifyMonitorSlot =
       mode == MonitorMode::SpotifyPrimary ? 0 :
       mode == MonitorMode::SpotifySecondary ? 1 :
-      mode == MonitorMode::SpotifyTertiary ? 2 : -1;
+      mode == MonitorMode::SpotifyTertiary ? 2 :
+      mode == MonitorMode::SpotifyQuaternary ? 3 : -1;
   SetSpotifyMonitorForegroundSlot(spotifyMonitorSlot);
   ApplyStationheadMonitorPlacement();
   if (layoutChanged) LayoutOverlay();
@@ -174,6 +177,8 @@ void PowerSavingController::CycleAudioMode() noexcept {
       ApplyAudioMode(AudioMode::SpotifyTertiary);
       break;
     case AudioMode::SpotifyTertiary:
+      ApplyAudioMode(AudioMode::SpotifyQuaternary);
+      break;
     case AudioMode::SpotifyQuaternary:
       ApplyAudioMode(AudioMode::Muted);
       break;
@@ -187,11 +192,12 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
   audioMode_ = mode;
   mediaMuted_ = mode != AudioMode::Media;
   SetNativeMediaPanelMuted(mediaMuted_);
-  // S1/S2/S3 follow the same live runtime-lane assignment as monitor routing.
+  // S1/S2/S3/S4 follow the same live runtime-lane assignment as monitor routing.
   const int spotifyAudioSlot =
       mode == AudioMode::SpotifyPrimary ? 0 :
       mode == AudioMode::SpotifySecondary ? 1 :
-      mode == AudioMode::SpotifyTertiary ? 2 : -1;
+      mode == AudioMode::SpotifyTertiary ? 2 :
+      mode == AudioMode::SpotifyQuaternary ? 3 : -1;
   SetSpotifyAudioOutputSlot(spotifyAudioSlot);
 
   if (parent_ && IsWindow(parent_)) {

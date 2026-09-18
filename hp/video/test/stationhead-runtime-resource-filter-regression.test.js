@@ -25,7 +25,10 @@ test('Stationhead worker filters are scoped to the restored ozeki profile', () =
   assert.match(policySource, /get_Profile\(&profile\)/);
   assert.match(policySource, /get_ProfileName\(&profileNameRaw\)/);
   assert.match(policySource, /_wcsicmp\(profileNameRaw, L"spotify-v2-6"\) == 0/);
-  assert.match(policySource, /restored\s+single Stationhead instance owns the ozeki profile/);
+  assert.match(
+    policySource,
+    /The restored\s*\n\s*\/\/ single Stationhead instance owns the ozeki profile/,
+  );
 });
 
 test('shared media environments keep autonomous playback active while occluded', () => {

@@ -13,10 +13,10 @@ const schedule = source('spotify_stagger_schedule.inc');
 const phase = source('spotify_phase_sync.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
 
-test('four Spotify accounts share exactly three runtime lanes', () => {
-  assert.match(header, /kSpotifyRuntimeLaneCount = 3/);
-  assert.match(header, /gSpotifyRuntimeLaneAccounts = \{[\s\S]*0, 1, 2/);
-  assert.match(header, /gSpotifyInactiveAccountIndex = 3/);
+test('five Spotify accounts share exactly four runtime lanes', () => {
+  assert.match(header, /kSpotifyRuntimeLaneCount = 4/);
+  assert.match(header, /gSpotifyRuntimeLaneAccounts = \{[\s\S]*0, 1, 2, 3/);
+  assert.match(header, /gSpotifyInactiveAccountIndex = 4/);
   assert.match(header, /SpotifyRuntimeLaneForAccount/);
   assert.match(header, /SpotifyAccountShouldOwnHost/);
   assert.doesNotMatch(foundation, /gSpotifyRuntimeLaneAccounts =/);
@@ -24,7 +24,7 @@ test('four Spotify accounts share exactly three runtime lanes', () => {
   assert.match(host, /SpotifyAccountShouldOwnHost\(slot\.index\)[\s\S]*CreateHost\(slot\)/);
 });
 
-test('scheduler never recreates the waiting fourth account', () => {
+test('scheduler never recreates the waiting fifth account', () => {
   assert.match(schedule, /if \(!SpotifyAccountShouldOwnHost\(index\)\) continue/);
   assert.match(phase, /if \(!SpotifyAccountShouldOwnHost\(i\)\) continue/);
 });
@@ -39,7 +39,7 @@ test('a completed account leaves its lane and the waiter enters that same lane',
   assert.match(rotation, /slot\.timedRotationCycle = completedCycles/);
 });
 
-test('B C D foreground and audio choices follow runtime lanes rather than account ids', () => {
+test('S1 S2 S3 S4 foreground and audio choices follow runtime lanes rather than account ids', () => {
   assert.match(layout, /SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
   assert.match(foundation, /const int runtimeLane = accountIndex >= 0[\s\S]*SpotifyRuntimeLaneForAccount/);
   assert.match(foundation, /runtimeLane != gSpotifyAudioOutputSlot/);

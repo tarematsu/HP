@@ -51,7 +51,7 @@ test('one-minute phased poll reads confirmed cache and gated media session befor
   assert.match(status, /if \(confirmedPlayback\) \{[\s\S]*navigator\.mediaSession[\s\S]*metadata\.title/);
 
   assert.match(status, /kSpotifyProcessTitlePollMs = 60ULL \* 1000ULL/);
-  assert.match(status, /kSpotifyProcessTitlePollPhaseMs == 15ULL \* 1000ULL/);
+  assert.match(status, /kSpotifyProcessTitlePollPhaseMs == 12ULL \* 1000ULL/);
   assert.match(status, /size_t selected = slots_\.size\(\)/);
   assert.doesNotMatch(status, /__homePanelSpotifyNativeTarget/);
   assert.doesNotMatch(status, /document\.title/);

@@ -323,8 +323,9 @@ void PowerSavingController::PaintOverlay(HWND window) {
     monitorLabel = L"モニターS2";
   } else if (monitorMode_ == MonitorMode::SpotifyTertiary) {
     monitorLabel = L"モニターS3";
-  } else if (monitorMode_ == MonitorMode::SpotifyQuaternary ||
-             monitorMode_ == MonitorMode::Off) {
+  } else if (monitorMode_ == MonitorMode::SpotifyQuaternary) {
+    monitorLabel = L"モニターS4";
+  } else if (monitorMode_ == MonitorMode::Off) {
     monitorLabel = L"モニターOFF";
   }
   drawButton(
@@ -340,8 +341,9 @@ void PowerSavingController::PaintOverlay(HWND window) {
     audioModeLabel = L"音声出力S2";
   } else if (audioMode_ == AudioMode::SpotifyTertiary) {
     audioModeLabel = L"音声出力S3";
-  } else if (audioMode_ == AudioMode::SpotifyQuaternary ||
-             audioMode_ == AudioMode::Muted) {
+  } else if (audioMode_ == AudioMode::SpotifyQuaternary) {
+    audioModeLabel = L"音声出力S4";
+  } else if (audioMode_ == AudioMode::Muted) {
     audioModeLabel = L"音声出力OFF";
   }
   drawButton(

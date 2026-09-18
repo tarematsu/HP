@@ -21,10 +21,11 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('media startup is YouTube, Spotify 1/2/3/4, then Stationhead at thirty-second offsets', () => {
+test('media startup is YouTube, four live Spotify lanes, then Stationhead at thirty-second offsets', () => {
   assert.match(appHeader, /kMediaStartupStageDelayMs\s*=\s*30'000/);
   assert.doesNotMatch(appHeader, /spotifyStartedAt_/);
-  assert.match(spotifyHeader, /kSpotifyActiveAccountCount = 4/);
+  assert.match(spotifyHeader, /kSpotifyActiveAccountCount = 5/);
+  assert.match(spotifyHeader, /kSpotifyRuntimeLaneCount = 4/);
   assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 30ULL \* 1000ULL/);
   assert.match(spotifySchedule, /kSpotifyInitialStartDelayMs = 0/);
 

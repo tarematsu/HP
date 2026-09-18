@@ -76,7 +76,7 @@ test('native Stationhead click locator resolves split Connect music modal action
   assert.match(body, /shell && shell !== document\.body && depth < 10/);
   assert.match(
     body,
-    /labelsOf\(action\)\.some\(label => connectMusicActionPattern\.test\(label\))/,
+    /labelsOf\(action\)\.some\(label => connectMusicActionPattern\.test\(label\)\)/,
   );
   assert.match(body, /const modalConnectPoint = connectMusicModalAction\(\);/);
   const modalAt = body.indexOf('const modalConnectPoint = connectMusicModalAction();');

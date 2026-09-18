@@ -119,8 +119,8 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
   };
 
   // Account slots deliberately enter the cloud rotation at successive groups:
-  // amazon=A, yuukiar=B, ten=C, nagi=D. Continue cyclically from that starting
-  // point while preserving each group's original index for deterministic
+  // amazon=A, yuukiar=B, ten=C, nagi=D, hinata=E. Continue cyclically from that
+  // starting point while preserving each group's original index for deterministic
   // shuffle seeds and per-account lane selection.
   if (!cloudRotationGroups_.empty()) {
     const size_t startGroupIndex = slot.index % cloudRotationGroups_.size();
