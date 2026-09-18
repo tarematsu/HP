@@ -19,6 +19,7 @@ on:
       - 'site/functions/api/history.js'
       - 'site/functions/lib/api-contract.js'
       - 'site/functions/lib/materialized-history.js'
+      - 'site/functions/lib/period-completeness.js'
       - 'site/functions/api/host-history.js'
   workflow_dispatch:
     inputs:
