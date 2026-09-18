@@ -171,9 +171,10 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
   if (SlotIsLoginPage(slot) || !CurrentMusicTrack(slot)) return;
 
   // Healthy playback is event/deadline driven. Do not touch the page source or
-  // execute the Play/Pause DOM probe again until state actually leaves Playing
-  // or the completion deadline is no longer valid for this target generation.
-  if (slot.playbackConfirmed && SlotStateIsHealthy(slot.state) &&
+  // execute the Play/Pause DOM probe again after the one-shot native audio start
+  // verification has succeeded for this target generation.
+  if (slot.playbackConfirmed && slot.nativeAudioStartVerified &&
+      SlotStateIsHealthy(slot.state) &&
       slot.timedCompletionDeadlineTick != 0 &&
       slot.timedCompletionDeadlineGeneration == slot.targetGeneration) {
     return;
@@ -227,6 +228,16 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             if (json && std::wstring_view(json) == L"true") {
               const ManagedTrack* const currentTrack = CurrentMusicTrack(*target);
               if (!currentTrack) return S_OK;
+
+              // DOM/media-clock confirmation is necessary but not sufficient.
+              // During this target's startup window, require WebView2 itself to
+              // report native document audio. This works even when the account
+              // is intentionally muted and is never repeated after startup.
+              if (!ConfirmSpotifyNativeAudioStart(*target, callbackNow)) {
+                RecomputeForeground();
+                ArmRobustScheduler();
+                return S_OK;
+              }
 
               target->observedTrackTitle = currentTrack->title;
               GetLocalTime(&target->playbackConfirmedAt);
