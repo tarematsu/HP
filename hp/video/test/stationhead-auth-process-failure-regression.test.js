@@ -82,11 +82,11 @@ test('renderer unresponsive requires two observations within fifteen seconds', (
 test('transient GPU utility frame and helper failures do not recreate playback or auth', () => {
   assert.match(
     sharedProcessPolicy,
-    /GPU, frame-only, utility, sandbox-helper and other transient child/,
+    /kind != COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE[\s\S]*return false;/,
   );
   assert.match(
     sharedProcessPolicy,
-    /return false;[\s\S]*RENDER_PROCESS_UNRESPONSIVE/,
+    /GPU, frame-only, utility, sandbox-helper and other transient child/,
   );
   assert.match(
     processPolicy,
