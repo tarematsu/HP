@@ -39,9 +39,15 @@ test('a completed account leaves its lane and the waiter enters that same lane',
   assert.match(rotation, /slot\.timedRotationCycle = completedCycles/);
 });
 
-test('S1 S2 S3 S4 foreground and audio choices follow runtime lanes rather than account ids', () => {
+test('S1 S2 S3 S4 S5 controls stay pinned to logical accounts while runtime lanes rotate', () => {
+  assert.match(foundation, /gSpotifyAudioOutputAccountIndex = -1/);
+  assert.match(foundation, /gSpotifyMonitorForegroundAccountIndex = -1/);
+  assert.match(foundation, /SpotifyRuntimeLaneForControlAccount/);
+  assert.match(layout, /gSpotifyMonitorForegroundAccountIndex = slotIndex/);
+  assert.match(layout, /SpotifyRuntimeLaneForControlAccount\([\s\S]*gSpotifyMonitorForegroundAccountIndex/);
   assert.match(layout, /SpotifyRuntimeLaneForAccount\(i\) == monitorForegroundSlot_/);
   assert.match(foundation, /const int runtimeLane = accountIndex >= 0[\s\S]*SpotifyRuntimeLaneForAccount/);
+  assert.match(foundation, /SpotifyRuntimeLaneForControlAccount\(gSpotifyAudioOutputAccountIndex\)/);
   assert.match(foundation, /runtimeLane != gSpotifyAudioOutputSlot/);
 });
 

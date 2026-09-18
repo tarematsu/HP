@@ -27,17 +27,28 @@ void ApplySpotifyHostVisualClip(HWND window, bool fullSize) noexcept {
 
 void SpotifyWebViews::SetMonitorForegroundSlot(int slotIndex) noexcept {
   if (slotIndex < 0 ||
-      slotIndex >= static_cast<int>(kSpotifyRuntimeLaneCount)) {
+      slotIndex >= static_cast<int>(kSpotifyActiveAccountCount)) {
     slotIndex = -1;
   }
-  if (monitorForegroundSlot_ == slotIndex) return;
-  monitorForegroundSlot_ = slotIndex;
+  gSpotifyMonitorForegroundAccountIndex = slotIndex;
+  const int runtimeLane = SpotifyRuntimeLaneForControlAccount(slotIndex);
+  gSpotifyMonitorForegroundSlot = runtimeLane;
+  if (monitorForegroundSlot_ == runtimeLane) return;
+  monitorForegroundSlot_ = runtimeLane;
   for (Slot& slot : slots_) slot.hostLayoutApplied = false;
   PlaceHosts();
 }
 
 void SpotifyWebViews::PlaceHosts() noexcept {
   if (!parentWindow_ || !IsWindow(parentWindow_) || slots_.empty()) return;
+
+  const int selectedRuntimeLane = SpotifyRuntimeLaneForControlAccount(
+      gSpotifyMonitorForegroundAccountIndex);
+  if (monitorForegroundSlot_ != selectedRuntimeLane) {
+    monitorForegroundSlot_ = selectedRuntimeLane;
+    gSpotifyMonitorForegroundSlot = selectedRuntimeLane;
+    for (Slot& slot : slots_) slot.hostLayoutApplied = false;
+  }
 
   RECT client{};
   if (!GetClientRect(parentWindow_, &client)) return;
