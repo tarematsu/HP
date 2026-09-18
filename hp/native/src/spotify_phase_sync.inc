@@ -1,5 +1,3 @@
-#include "audio_health_scan_coordinator.h"
-
 namespace hp {
 namespace {
 
@@ -9,18 +7,7 @@ constexpr UINT kSpotifySchedulerFloorMs = 100U;
 constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 30ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
-constexpr ULONGLONG kSpotifyAudioHealthSilenceConfirmMs = 30ULL * 1000ULL;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
-
-// Stationhead is a continuous same-URL stream, so periodic native-audio health
-// polling belongs there. Spotify changes target URL for every track and verifies
-// startup on that transition instead. Keep zero-sized compatibility containers
-// while the old scheduler block is compiled; no healthy Spotify lane is enrolled
-// into the periodic audio-health clock.
-std::array<ULONGLONG, 0> gSpotifyAudioHealthCheckDueTicks{};
-std::array<ULONGLONG, 0> gSpotifyAudioHealthSilenceConfirmTicks{};
 
 void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
   if (!hostWindow || !IsWindow(hostWindow)) return;
@@ -55,27 +42,7 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 }
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
-  const SlotState previousState = slot.state;
   slot.state = state;
-  if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
-    ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
-    ULONGLONG& silenceConfirm =
-        gSpotifyAudioHealthSilenceConfirmTicks[slot.index];
-    if (state == SlotState::Playing) {
-      const int lane = SpotifyRuntimeLaneForAccount(slot.index);
-      if (lane < 0) {
-        due = 0;
-        silenceConfirm = 0;
-      } else if (previousState != SlotState::Playing || due == 0) {
-        due = NextAudioHealthScanTick(
-            GetTickCount64(), static_cast<size_t>(lane) + 1);
-        silenceConfirm = 0;
-      }
-    } else {
-      due = 0;
-      silenceConfirm = 0;
-    }
-  }
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
       state == SlotState::Playing) {
     slot.nextRecoveryTick = 0;
@@ -117,9 +84,6 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   slot.mediaKeyWaitFailurePending = false;
   slot.mediaNetworkRecoveryPending = false;
   ResetMediaRecoveryEpisode(slot.recoveryEpisode, slot.targetGeneration);
-  if (slot.index < gSpotifyAudioHealthSilenceConfirmTicks.size()) {
-    gSpotifyAudioHealthSilenceConfirmTicks[slot.index] = 0;
-  }
 }
 
 void CALLBACK SpotifyWebViews::SchedulerTimerProc(
@@ -155,11 +119,6 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   };
 
   for (const Slot& slot : slots_) {
-    if (slot.index < gSpotifyAudioHealthCheckDueTicks.size() &&
-        slot.webview && CurrentMusicTrack(slot) &&
-        SlotStateIsHealthy(slot.state)) {
-      considerTick(gSpotifyAudioHealthCheckDueTicks[slot.index]);
-    }
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         CurrentMusicTrack(slot)) {
