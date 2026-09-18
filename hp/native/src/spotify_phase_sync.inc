@@ -13,10 +13,14 @@ constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
 constexpr ULONGLONG kSpotifyAudioHealthSilenceConfirmMs = 30ULL * 1000ULL;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
-std::array<ULONGLONG, kSpotifyActiveAccountCount>
-    gSpotifyAudioHealthCheckDueTicks{};
-std::array<ULONGLONG, kSpotifyActiveAccountCount>
-    gSpotifyAudioHealthSilenceConfirmTicks{};
+
+// Stationhead is a continuous same-URL stream, so periodic native-audio health
+// polling belongs there. Spotify changes target URL for every track and verifies
+// startup on that transition instead. Keep zero-sized compatibility containers
+// while the old scheduler block is compiled; no healthy Spotify lane is enrolled
+// into the periodic audio-health clock.
+std::array<ULONGLONG, 0> gSpotifyAudioHealthCheckDueTicks{};
+std::array<ULONGLONG, 0> gSpotifyAudioHealthSilenceConfirmTicks{};
 
 void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
   if (!hostWindow || !IsWindow(hostWindow)) return;
@@ -104,8 +108,8 @@ bool SpotifyWebViews::ExpireStaleAsyncWork(
 void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   ++slot.targetGeneration;
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
-  slot.playRecoveryReloadGeneration = 0;
-  slot.playRecoveryRecreateGeneration = 0;
+  BeginSpotifyTrackStartRecovery(
+      slot.trackStartRecovery, slot.targetGeneration, GetTickCount64());
   slot.mediaPipelineRecoveryGeneration = 0;
   slot.mediaKeyWaitUntilTick = 0;
   slot.mediaNetworkRecoveryTick = 0;
@@ -140,9 +144,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
   if (!initialCloudPlaylistReady_) return kSpotifySchedulerBootstrapMs;
 
-  // Healthy playback wakes at its exact completion deadline and at its assigned
-  // 30-second staggered native audio-health slot. The one-hour ceiling remains
-  // only a coarse safety audit for unrelated state loss.
+  // Healthy Spotify playback is event/deadline driven. Per-track startup and
+  // recovery deadlines wake the scheduler while Playing itself has no periodic
+  // health poll. The one-hour ceiling remains a coarse unrelated-state audit.
   ULONGLONG nextDelayMs = kSpotifyHealthyAuditMs;
   const auto considerTick = [&nextDelayMs, now](ULONGLONG dueTick) noexcept {
     if (dueTick == 0) return;
