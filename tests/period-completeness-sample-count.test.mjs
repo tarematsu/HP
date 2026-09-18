@@ -24,20 +24,20 @@ function dailyRow(sampleCount) {
   };
 }
 
-test('daily completeness expects 1440 samples and accepts bounded minor gaps', () => {
+test('daily completeness uses period boundaries across collector cadences', () => {
   assert.equal(DAILY_EXPECTED_SAMPLE_COUNT, 1440);
-  assert.equal(DAILY_MINIMUM_SAMPLE_COUNT, 1400);
+  assert.equal(DAILY_MINIMUM_SAMPLE_COUNT, 1);
 
-  for (const sampleCount of [1400, 1420, 1440]) {
+  for (const sampleCount of [1, 288, 1108, 1400, 1440]) {
     const result = applySummaryCompleteness([dailyRow(sampleCount)], 'daily', NOW);
-    assert.equal(result.excludedCount, 0, `${sampleCount} samples should satisfy daily coverage`);
+    assert.equal(result.excludedCount, 0, `${sampleCount} samples should be valid when both boundaries are covered`);
     assert.equal(result.rows[0].period_complete, true);
     assert.equal(result.rows[0].stream_growth, 1234);
   }
 });
 
-test('daily completeness rejects materially missing minute facts', () => {
-  const result = applySummaryCompleteness([dailyRow(1399)], 'daily', NOW);
+test('daily completeness still rejects an empty rollup', () => {
+  const result = applySummaryCompleteness([dailyRow(0)], 'daily', NOW);
   assert.equal(result.excludedCount, 1);
   assert.equal(result.rows[0].period_complete, false);
   assert.equal(result.rows[0].stream_growth, null);
