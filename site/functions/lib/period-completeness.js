@@ -7,7 +7,11 @@ export const WEEKLY_BOUNDARY_TOLERANCE_MS = 12 * 60 * 60 * 1000;
 export const MONTHLY_BOUNDARY_TOLERANCE_MS = 2 * DAY_MS;
 export const PERIOD_BOUNDARY_TOLERANCE_MS = DAILY_BOUNDARY_TOLERANCE_MS;
 export const DAILY_EXPECTED_SAMPLE_COUNT = 1440;
-export const DAILY_MINIMUM_SAMPLE_COUNT = 1400;
+// A daily rollup is complete when both period boundaries are represented.
+// Sample density varies across historical collectors (including 5-minute data),
+// so missing internal minutes are a quality signal, not a reason to discard
+// otherwise valid stream/member start-to-end growth.
+export const DAILY_MINIMUM_SAMPLE_COUNT = 1;
 export const KNOWN_DAILY_STREAM_GAPS = new Set(['2026-04-30']);
 
 const EMAIL_WEEKLY_FROM = '2026-01-01';

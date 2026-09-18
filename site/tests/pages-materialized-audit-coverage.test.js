@@ -41,18 +41,34 @@ test('daily completeness detects unexpected gaps but tolerates the declared coll
   assert.ok(result.warnings.some((warning) => warning.includes('2026-04-30')));
 });
 
-test('daily completeness fails when a recent day is unexpectedly missing or undersampled', () => {
+test('daily completeness permits sparse historical cadence but still fails a missing recent day', () => {
   const now = Date.parse('2026-05-04T06:00:00Z');
   const payload = {
     ok: true,
     rows: [
-      { period_key: '2026-05-01', sample_count: 1399, reliable_sample_count: 1399, period_complete: true },
+      { period_key: '2026-05-01', sample_count: 288, reliable_sample_count: 288, period_complete: true },
       { period_key: '2026-05-03', sample_count: 1440, reliable_sample_count: 1440, period_complete: true },
     ],
   };
   const result = auditPayloadCompleteness('history:daily', payload, { now, materializedAt: now });
-  assert.ok(result.failures.some((failure) => failure.includes('1399/1440')));
+  assert.equal(result.failures.some((failure) => failure.includes('288/1440')), false);
   assert.ok(result.failures.some((failure) => failure.includes('missing daily period: 2026-05-02')));
+});
+
+test('daily completeness fails rows explicitly marked incomplete by boundary validation', () => {
+  const now = Date.parse('2026-05-04T06:00:00Z');
+  const payload = {
+    ok: true,
+    rows: [{
+      period_key: '2026-05-03',
+      sample_count: 1108,
+      reliable_sample_count: 1108,
+      period_complete: false,
+      exclusion_reasons: ['missing_period_end'],
+    }],
+  };
+  const result = auditPayloadCompleteness('history:daily', payload, { now, materializedAt: now });
+  assert.ok(result.failures.some((failure) => failure.includes('missing_period_end')));
 });
 
 test('host summary completeness fails on an empty recent-session model', () => {
