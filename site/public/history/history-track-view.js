@@ -13,8 +13,19 @@ function normalizedText(value) {
   return usableText(value).normalize('NFKC').toLowerCase().replace(/\s+/g, ' ');
 }
 
+function isPlaceholderTitle(value) {
+  const text = usableText(value);
+  if (!text) return true;
+  if (text === '曲名不明') return true;
+  return /^spotify[_:-]?[a-z0-9]{8,}$/i.test(text);
+}
+
 export function displayTrackTitle(row) {
-  for (const candidate of [row?.title, row?.display_title, row?.raw_title, row?.isrc, row?.spotify_id]) {
+  for (const candidate of [row?.title, row?.display_title, row?.raw_title, row?.raw_name]) {
+    const text = usableText(candidate);
+    if (text && !isPlaceholderTitle(text)) return text;
+  }
+  for (const candidate of [row?.isrc, row?.spotify_id]) {
     const text = usableText(candidate);
     if (text) return text;
   }
@@ -42,7 +53,7 @@ function trackIdentityKeys(row) {
   if (usableText(row?.queue_track_id)) add(`queue:${usableText(row.queue_track_id)}`);
   const identityTitle = [row?.title, row?.display_title, row?.raw_title]
     .map(usableText)
-    .find((value) => value && value !== '曲名不明');
+    .find((value) => value && !isPlaceholderTitle(value));
   if (identityTitle) {
     add(`name:${normalizedText(identityTitle)}|artist:${normalizedText(displayTrackArtist(row))}`);
   }
