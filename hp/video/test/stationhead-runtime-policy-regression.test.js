@@ -31,7 +31,7 @@ test('mixed Stationhead runtime policy is removed from source and PCH lists', ()
   assert.match(cmake, /src\/sh_runtime_lifecycle_script\.h/);
 });
 
-test('native Stationhead click locator allows explicit music connect/reconnect actions through auth guard', () => {
+test('native Stationhead click locator allows explicit music connect/reconnect and Continue with Spotify actions through auth guard', () => {
   const body = section(
     locator,
     'inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed()',
@@ -41,9 +41,9 @@ test('native Stationhead click locator allows explicit music connect/reconnect a
   assert.match(body, /allowedOnboardingPattern/);
   assert.match(
     body,
-    /\(\?:re\)\?connect\(\?:\\s\+with\)\?\\s\+\(\?:spotify\|music\)\|continue/,
+    /\(\?:re\)\?connect\(\?:\\s\+with\)\?\\s\+\(\?:spotify\|music\)\|continue\(\?:\\s\+with\\s\+spotify\)\?/,
   );
-  assert.ok(body.includes("const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\\s+with)?\\s+(?:spotify|music)|continue)$/i;"));
+  assert.ok(body.includes("const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\\s+with)?\\s+(?:spotify|music)|continue(?:\\s+with\\s+spotify)?)$/i;"));
   assert.match(body, /labelsOf\(element\)\.some\(label => allowedOnboardingPattern\.test\(label\)\)/);
   assert.match(body, /const accountInteractionVisible = \(\) =>/);
   assert.match(body, /credentialSelector/);
