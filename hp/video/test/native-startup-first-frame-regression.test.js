@@ -50,7 +50,7 @@ test('deferred Spotify hosts are clipped before SWP_SHOWWINDOW can expose them',
   assert.ok(showAt > clipAt);
   assert.match(
     placeHosts,
-    /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground\)/,
+    /ApplySpotifyHostVisualClip\([\s\S]*authentication \|\| monitorForeground \|\| gridForeground/,
   );
 });
 
