@@ -10,6 +10,7 @@ enum class SpotifyTrackStartRecoveryAction : unsigned char {
   None,
   ReloadDocument,
   RebuildSurface,
+  SkipTrack,
 };
 
 struct SpotifyTrackStartRecovery {
@@ -17,6 +18,7 @@ struct SpotifyTrackStartRecovery {
   ULONGLONG startedTick = 0;
   bool reloadIssued = false;
   bool rebuildIssued = false;
+  bool skipIssued = false;
 };
 
 inline void BeginSpotifyTrackStartRecovery(
@@ -26,6 +28,7 @@ inline void BeginSpotifyTrackStartRecovery(
   recovery.startedTick = now;
   recovery.reloadIssued = false;
   recovery.rebuildIssued = false;
+  recovery.skipIssued = false;
 }
 
 inline SpotifyTrackStartRecoveryAction NextSpotifyTrackStartRecoveryAction(
@@ -39,18 +42,29 @@ inline SpotifyTrackStartRecoveryAction NextSpotifyTrackStartRecoveryAction(
   if (requestRebuild) {
     // Never jump directly to a destructive WebView rebuild. One document reload
     // must have been attempted first for this exact track generation.
-    if (!recovery.reloadIssued || recovery.rebuildIssued) {
+    if (!recovery.reloadIssued) {
       return SpotifyTrackStartRecoveryAction::None;
     }
-    recovery.rebuildIssued = true;
-    return SpotifyTrackStartRecoveryAction::RebuildSurface;
-  }
-
-  if (recovery.reloadIssued) {
+    if (!recovery.rebuildIssued) {
+      recovery.rebuildIssued = true;
+      return SpotifyTrackStartRecoveryAction::RebuildSurface;
+    }
+    if (!recovery.skipIssued) {
+      recovery.skipIssued = true;
+      return SpotifyTrackStartRecoveryAction::SkipTrack;
+    }
     return SpotifyTrackStartRecoveryAction::None;
   }
-  recovery.reloadIssued = true;
-  return SpotifyTrackStartRecoveryAction::ReloadDocument;
+
+  if (!recovery.reloadIssued) {
+    recovery.reloadIssued = true;
+    return SpotifyTrackStartRecoveryAction::ReloadDocument;
+  }
+  if (recovery.rebuildIssued && !recovery.skipIssued) {
+    recovery.skipIssued = true;
+    return SpotifyTrackStartRecoveryAction::SkipTrack;
+  }
+  return SpotifyTrackStartRecoveryAction::None;
 }
 
 }  // namespace hp
