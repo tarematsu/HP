@@ -4,14 +4,14 @@
 namespace hp {
 
 inline constexpr ULONGLONG kAudioHealthScanCycleMs = 30ULL * 1000ULL;
-inline constexpr ULONGLONG kAudioHealthScanSlotSpacingMs = 7'500ULL;
+inline constexpr ULONGLONG kAudioHealthScanSlotSpacingMs = 6'000ULL;
 inline constexpr ULONGLONG kAudioHealthScanRetryMs = 5ULL * 1000ULL;
 inline constexpr ULONGLONG kAudioHealthScanMinimumGapMs = 5ULL * 1000ULL;
-inline constexpr size_t kAudioHealthScanSlotCount = 4;
+inline constexpr size_t kAudioHealthScanSlotCount = 5;
 
 // One process-wide clock owns the Stationhead + Spotify audio probes. Slot 0 is
-// Stationhead; slots 1/2/3 are Spotify runtime lanes B/C/D. Their nominal scan
-// phases are therefore 0s, 7.5s, 15s and 22.5s inside each 30-second cycle.
+// Stationhead; slots 1/2/3/4 are Spotify runtime lanes S1/S2/S3/S4. Their scan
+// phases are therefore 0s, 6s, 12s, 18s and 24s inside each 30-second cycle.
 inline std::atomic<ULONGLONG> gAudioHealthScanEpochTick{0};
 inline std::atomic<ULONGLONG> gAudioHealthLastScanTick{0};
 inline std::atomic<bool> gAudioHealthScanInProgress{false};
