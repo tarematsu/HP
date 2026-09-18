@@ -6,21 +6,23 @@ namespace hp {
 
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 30ULL * 1000ULL;
 // spotify-v2-1 through spotify-v2-4 are the four Spotify windows. The former
-// amazon window is now the dedicated Stationhead surface; the four Spotify
-// profiles remain isolated and are started at thirty-second offsets.
+// amazon window is now a Spotify slot; the restored ozeki window is reserved
+// for the separate Stationhead player.
 inline constexpr size_t kSpotifyProfileFirstAccountNumber = 1;
 inline constexpr size_t kSpotifyActiveAccountCount = 4;
 
-// Four logical Spotify accounts have one dedicated live WebView lane each.
-// Startup staggering provides the five-window alternating schedule together
-// with the separate Stationhead window, without recycling a Spotify account
-// out of a live lane during normal playback.
-inline constexpr size_t kSpotifyRuntimeLaneCount = kSpotifyActiveAccountCount;
+// Four logical Spotify accounts share exactly three live WebView runtime lanes.
+// The fourth account waits and enters the lane whose current account completes
+// a full rotation. This keeps four Spotify slots in a bounded three-lane runtime
+// while the separate ozeki Stationhead window makes five total media windows.
+inline constexpr size_t kSpotifyRuntimeLaneCount = 3;
 inline std::array<size_t, kSpotifyRuntimeLaneCount> gSpotifyRuntimeLaneAccounts = {
-    0, 1, 2, 3};
+    0, 1, 2};
+inline size_t gSpotifyInactiveAccountIndex = 3;
 
 inline void ResetSpotifyRuntimeLanes() noexcept {
-  gSpotifyRuntimeLaneAccounts = {0, 1, 2, 3};
+  gSpotifyRuntimeLaneAccounts = {0, 1, 2};
+  gSpotifyInactiveAccountIndex = 3;
 }
 
 inline int SpotifyRuntimeLaneForAccount(size_t accountIndex) noexcept {
