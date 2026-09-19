@@ -38,7 +38,7 @@ test('TVer ads do not receive program speed, volume or recovery mutation', () =>
   assert.doesNotMatch(adBranch, /video\.volume/);
   assert.doesNotMatch(adBranch, /video\.play\(/);
 
-  const fullscreenIndex = watchdog.indexOf('const fullscreenPoint = videoFullscreenPoint(video)');
+  const fullscreenIndex = watchdog.indexOf('const controlPoint = fullscreenControlPoint(video)');
   const watchdogAdStart = watchdog.indexOf('if (adActive) {');
   const watchdogAdEnd = watchdog.indexOf('const surveyRoots = Array.from', watchdogAdStart);
   const watchdogAdBranch = watchdog.slice(watchdogAdStart, watchdogAdEnd);
@@ -48,6 +48,7 @@ test('TVer ads do not receive program speed, volume or recovery mutation', () =>
   assert.doesNotMatch(watchdogAdBranch, /video\.play\(/);
   assert.doesNotMatch(watchdogAdBranch, /video\.volume/);
   assert.doesNotMatch(watchdogAdBranch, /video\.playbackRate/);
+  assert.doesNotMatch(watchdog, /const videoFullscreenPoint = media =>/);
 });
 
 test('TVer ad identity is tracked across a complete ad pod', () => {
