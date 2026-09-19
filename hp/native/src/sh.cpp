@@ -78,6 +78,23 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
   const bool awaitingTrackBoundaryNavigation =
       trackBoundaryPlaybackRecoveryPending_ &&
       trackBoundaryPlaybackRecoveryAwaitingNavigation_;
+
+  // IsDocumentPlayingAudio is a document-level signal and can briefly remain
+  // true across navigation, DRM recovery, or audio-service repair. When native
+  // tracking is available, treat every positive report as a candidate until
+  // the page has independently observed the same HTMLMediaElement advance and
+  // native audio is rechecked in that exact media-progress callback. Negative
+  // reports remain immediate so recovery can never be suppressed by this gate.
+  if (playing && nativeAudioTracking_ &&
+      source != L"WebView2 + media clock") {
+    if (webview_ && !audioPlaying_.load(std::memory_order_relaxed)) {
+      webview_->ExecuteScript(
+          L"window.__homepanelAudioPlaying = false;", nullptr);
+    }
+    nextTickAt_ = 0;
+    return;
+  }
+
   const bool changed =
       audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
   const bool preserveLoginRequired = loginRequired_;
