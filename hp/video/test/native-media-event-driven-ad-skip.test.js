@@ -2,8 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const youtube = readFileSync(
+const youtubeClean = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url),
+  'utf8',
+);
+const youtubeRuntime = readFileSync(
+  new URL(
+    '../../native/src/renderer_panels/media_youtube_control_recovery.inc',
+    import.meta.url,
+  ),
   'utf8',
 );
 const tver = readFileSync(
@@ -14,22 +21,26 @@ const tver = readFileSync(
   'utf8',
 );
 
-test('YouTube ad skip readiness is event-driven and active only during ads', () => {
-  assert.match(youtube, /const skipSelector = \[/);
-  assert.match(youtube, /const adActive = player => Boolean/);
-  assert.match(youtube, /homepanel:youtube-wake/);
-  assert.match(youtube, /const startAdObservers = \(\) =>/);
-  assert.match(youtube, /const stopAdObservers = \(\) =>/);
-  assert.match(youtube, /rootObserver\.observe\(player, \{ childList: true, subtree: true \}\)/);
-  assert.match(youtube, /rootObserver\.disconnect\(\)/);
-  assert.match(youtube, /classObserver\.observe\(player/);
+test('YouTube ad skip readiness has one event-driven runtime owner', () => {
+  assert.match(youtubeClean, /ytp-ad-skip-button/);
+  assert.doesNotMatch(youtubeClean, /MutationObserver/);
+  assert.doesNotMatch(youtubeClean, /homepanel:youtube-wake/);
+  assert.doesNotMatch(youtubeClean, /YoutubeSkipObserver|bindSkipObserver|startAdObservers/);
+
+  assert.match(youtubeRuntime, /const skipSelector =/);
+  assert.match(youtubeRuntime, /const syncAdObserver = active =>/);
+  assert.match(youtubeRuntime, /state\.adObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
   assert.match(
-    youtube,
-    /attributeFilter: \['disabled', 'aria-disabled', 'aria-hidden', 'class', 'style'\]/,
+    youtubeRuntime,
+    /state\.adObserver\.observe\(player, \{[\s\S]*childList: true,[\s\S]*subtree: true/,
   );
-  assert.match(youtube, /if \(adActive\(player\)\) startAdObservers\(\)/);
-  assert.match(youtube, /< 80/);
-  assert.doesNotMatch(youtube, /setInterval\s*\(/);
+  assert.match(
+    youtubeRuntime,
+    /attributeFilter: \['disabled', 'aria-disabled', 'aria-hidden', 'class'\]/,
+  );
+  assert.match(youtubeRuntime, /syncAdObserver\(adActive\)/);
+  assert.match(youtubeRuntime, /state\.adObserver\?\.disconnect\(\)/);
+  assert.doesNotMatch(youtubeRuntime, /setInterval\s*\(/);
 });
 
 test('TVer skip controls wake recovery on actionable attribute changes', () => {
