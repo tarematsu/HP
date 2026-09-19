@@ -10,6 +10,10 @@ const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
 );
+const lifecycle = readFileSync(
+  new URL('../../native/src/spotify_controller_lifecycle.inc', import.meta.url),
+  'utf8',
+);
 const staticScripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
   'utf8',
@@ -28,6 +32,18 @@ test('unfinished Spotify authentication keeps full-client foreground ownership o
   assert.match(layout, /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex;\s*PlaceHosts\(\);\s*maintainAuthenticationForeground\(true\);/);
   assert.match(layout, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE/);
   assert.match(layout, /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/);
+});
+
+test('Spotify email verification challenge remains inside the authentication foreground flow', () => {
+  assert.match(
+    lifecycle,
+    /StartsWithInsensitive\(value, L"https:\/\/challenge\.spotify\.com\/"\)/,
+  );
+  assert.match(lifecycle, /target->loginPage = IsSpotifyLoginUri\(rawUri\)/);
+  assert.match(
+    lifecycle,
+    /target->loginPage \? SlotState::Authenticating : SlotState::Navigating/,
+  );
 });
 
 test('authentication foreground repair is conditional instead of running every scheduler pass', () => {
