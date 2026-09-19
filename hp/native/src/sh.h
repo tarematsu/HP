@@ -4,7 +4,6 @@
 #include "logger.h"
 #include "media_recovery_coordinator.h"
 #include "shared_immutable_vector.h"
-#include "stationhead_playback_resource_flag.h"
 
 namespace hp {
 enum class StationheadTabKind {
@@ -463,8 +462,7 @@ class StationheadPlayer {
   size_t mediaNetworkRecoveryAttempt_ = 0;
   bool mediaKeyWaitFailurePending_ = false;
   bool mediaNetworkRecoveryPending_ = false;
-  StationheadPlaybackResourceFlag resourceBlockingArmed_{
-      &environment_, &webview_};
+  std::atomic<bool> resourceBlockingArmed_{false};
   EventRegistrationToken authNavigationToken_{};
   EventRegistrationToken authMessageToken_{};
   EventRegistrationToken authProcessFailedToken_{};

@@ -24,23 +24,6 @@ inline constexpr int64_t StationheadAudioEscalationSettleMs() noexcept {
   return 15'000;
 }
 
-inline void RestoreStationheadPlaybackMemoryTargetForReload(
-    ICoreWebView2* webview) noexcept {
-  if (!webview) return;
-  ComPtr<ICoreWebView2> baseWebView = webview;
-  ComPtr<ICoreWebView2_19> webview19;
-  if (FAILED(baseWebView.As(&webview19)) || !webview19) return;
-
-  COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL current =
-      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL;
-  if (SUCCEEDED(webview19->get_MemoryUsageTargetLevel(&current)) &&
-      current == COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL) {
-    return;
-  }
-  webview19->put_MemoryUsageTargetLevel(
-      COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
-}
-
 static_assert(StationheadPlaybackNavigationActive(true, false, false));
 static_assert(StationheadPlaybackNavigationActive(true, true, true));
 static_assert(StationheadPlaybackNavigationActive(false, true, false));
@@ -362,7 +345,6 @@ static_assert(StationheadAudioEscalationSettleMs() == 15'000);
     periodicRefreshStartedAt_ = nowMs;                                        \
     audioPlayingSinceAt_.store(0, std::memory_order_relaxed);                 \
     audioLossPlaybackObserved_ = false;                                       \
-    ::hp::RestoreStationheadPlaybackMemoryTargetForReload(webview_.Get());    \
     SetStartupBounds();                                                       \
     NavigateCurrentUrl(nowMs, L"50-minute periodic refresh");                \
   }                                                                           \
