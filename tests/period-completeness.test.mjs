@@ -89,26 +89,38 @@ test('weekly and monthly reject evidence beyond their tolerance', () => {
   }
 });
 
-test('completed daily period keeps stream growth', () => {
+test('completed daily period keeps stream and listener metrics', () => {
   const bounds = expectedPeriodBounds('daily', '2026-06-30');
   const result = applySummaryCompleteness([summaryRow('daily', '2026-06-30', {
     period_start: bounds.start + 5 * 60000,
     period_end: bounds.end - 5 * 60000,
+    listener_avg: 123,
+    listener_min: 100,
+    listener_max: 150,
     stream_growth: 1234,
   })], 'daily', AFTER_JULY);
   assert.equal(result.excludedCount, 0);
+  assert.equal(result.rows[0].listener_avg, 123);
+  assert.equal(result.rows[0].listener_metrics_excluded, false);
   assert.equal(result.rows[0].stream_growth, 1234);
   assert.equal(result.rows[0].period_complete, true);
 });
 
-test('missing entrance or exit excludes stream growth', () => {
+test('missing entrance or exit excludes partial listener and growth metrics', () => {
   const bounds = expectedPeriodBounds('daily', '2026-06-30');
   const result = applySummaryCompleteness([summaryRow('daily', '2026-06-30', {
     period_start: bounds.start + 60 * 60000,
     period_end: bounds.end - 60 * 60000,
+    listener_avg: 9999,
+    listener_min: 9000,
+    listener_max: 10000,
     stream_growth: 999,
   })], 'daily', AFTER_JULY);
   assert.equal(result.excludedCount, 1);
+  assert.equal(result.rows[0].listener_avg, null);
+  assert.equal(result.rows[0].listener_min, null);
+  assert.equal(result.rows[0].listener_max, null);
+  assert.equal(result.rows[0].listener_metrics_excluded, true);
   assert.equal(result.rows[0].stream_growth, null);
   assert.deepEqual(result.rows[0].exclusion_reasons, ['missing_period_start', 'missing_period_end']);
   assert.match(result.rows[0].quality_flags, /incomplete_period_start/);
