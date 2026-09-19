@@ -4,7 +4,7 @@ namespace hp {
 
 // Audio/login state detection for the single Stationhead document runtime.
 // This is a source fragment, not an independent script: compact_runtime appends
-// recovery and lifecycle fragments before closing the same IIFE.
+// onboarding, recovery and lifecycle fragments before closing the same IIFE.
 inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
 (() => {
@@ -108,8 +108,7 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     }
     // Connect/Reconnect Music and Connect Spotify are recoverable onboarding
     // actions handled by the native trusted-click locator. Do not classify
-    // those controls or their modal headings as a blocking login state, or the
-    // native Tick loop stops before it can reach the auto-click path.
+    // those controls or their modal headings as a blocking login state.
     for (const element of document.querySelectorAll(controlSelector)) {
       if (!visible(element)) continue;
       const label = labelOf(element);
@@ -128,6 +127,7 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
   };
   const publishAuth = () => {
     if (!pageActive || !document.body) return;
+    if (publishRecoverableOnboarding()) return;
     const authenticated = accountVisible() || playing();
     const blocking = blockingLogin(authenticated);
     if (blocking) {
