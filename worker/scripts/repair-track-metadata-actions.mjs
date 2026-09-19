@@ -172,16 +172,16 @@ async function spotifyMetadata(candidate) {
       apple = await appleMetadata(title, candidate.duration_ms);
       artist = text(apple?.artistName);
     }
-    if (!title) return null;
+    if (!title || !artist) return null;
     return {
       spotify_id: spotifyId,
       isrc: normalizeIsrc(candidate.isrc),
       title,
       artist,
-      display_title: artist ? `${title} — ${artist}` : title,
+      display_title: `${title} — ${artist}`,
       thumbnail_url: text(payload.thumbnail_url) || text(apple?.artworkUrl100),
       spotify_url: spotifyUrl,
-      source: artist ? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions',
+      source: apple ? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions',
       fetched_at: now,
       raw_json: JSON.stringify({
         spotify: payload,
