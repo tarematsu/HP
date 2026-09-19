@@ -192,8 +192,10 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
   // "Could not query" and missing CDP decoder/track/playback evidence are all
   // deliberately fail-closed. After two failed samples, pause the verified
   // target once; the normal reconcile pass then issues a fresh trusted Play
-  // click before the bounded Reload -> Rebuild -> Skip ladder begins.
+  // click before the bounded Reload -> Rebuild -> Skip ladder begins. Reset the
+  // CDP playback baseline first so the retry cannot reuse a pre-recovery Play.
   if (!startupAudioVerified && slot.nativeAudioStartChecks == 2) {
+    RestartSpotifyMediaStartEvidenceWindow(slot.index, slot.targetGeneration);
     RequestSpotifyAudioPipelineRestart(slot.webview.Get());
     slot.trustedClickBlockedUntilTick = 0;
   }
