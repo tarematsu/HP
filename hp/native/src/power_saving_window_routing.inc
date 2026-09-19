@@ -150,6 +150,7 @@ void PowerSavingController::ObserveParentMessage(
       if (monitorAuthForeground_ != detected) {
         monitorAuthForeground_ = detected;
         ApplyStationheadMonitorPlacement();
+        ArmScheduleTimer();
         if (monitorMode_ == MonitorMode::ServiceGrid && !detected) {
           // Authentication may temporarily cover the complete dashboard, but
           // it must never tear down Spotify's five Monitor S hosts. Force one
