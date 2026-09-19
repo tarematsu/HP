@@ -59,10 +59,9 @@ test('dashboard image and panel caches are discarded while hidden', () => {
   );
 
   assert.match(reset, /ReleaseNativePanelSurfaces\(\)/);
-  assert.match(reset, /deleteBitmaps\(nativeImageBitmaps_\)/);
-  assert.match(reset, /deleteBitmaps\(nativeRadarBitmaps_\)/);
-  assert.match(reset, /nativeImageUseCounter_ = 0/);
-  assert.match(reset, /nativeRadarBitmapUseCounter_ = 0/);
+  assert.match(reset, /nativeWeatherIconBitmaps_\.clear\(\)/);
+  assert.match(reset, /nativeWeatherIconUseCounter_ = 0/);
+  assert.doesNotMatch(reset, /nativeImageBitmaps_|nativeRadarBitmaps_/);
 });
 
 test('one-second dashboard timer permits operating-system wake coalescing', () => {
