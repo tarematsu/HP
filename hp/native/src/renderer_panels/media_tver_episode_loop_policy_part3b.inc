@@ -33,14 +33,13 @@ LR"JS(
 
       const browserFullscreen = document.fullscreenElement ||
           document.webkitFullscreenElement || document.msFullscreenElement;
-      const recoveryFlags = [];
+      const setupFlags = [];
       if (!state.lowQualitySet && !state.qualityAttemptExhausted) {
-        recoveryFlags.push('quality');
+        setupFlags.push('quality');
       }
-      if (video.paused && !video.ended) recoveryFlags.push('paused');
-      if (!browserFullscreen && state.fullscreenDirty) recoveryFlags.push('fullscreen');
-      if (recoveryFlags.length) {
-        wakeNative('recovery:' + recoveryFlags.join('+') + ':' + mediaIdentity(video));
+      if (!browserFullscreen && state.fullscreenDirty) setupFlags.push('fullscreen');
+      if (setupFlags.length) {
+        wakeNative('setup:' + setupFlags.join('+') + ':' + mediaIdentity(video));
       } else if (!state.adActive && !video.ended) {
         suspendPlayerObserver();
       }
