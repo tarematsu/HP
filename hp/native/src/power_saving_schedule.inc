@@ -46,6 +46,10 @@ int64_t NextScheduleBoundary(int64_t nowMs) {
       ? nowMs + 60'000
       : static_cast<int64_t>(next) * 1000;
 }
+
+bool MonitorAuthProbeEnabled(MonitorMode mode) noexcept {
+  return mode != MonitorMode::Off;
+}
 }  // namespace
 
 void PowerSavingController::CheckSchedule(bool force) {
@@ -56,7 +60,7 @@ void PowerSavingController::CheckSchedule(bool force) {
     ApplyMode(ScheduledPowerSavingNow(now));
     nextScheduleBoundaryAt_ = NextScheduleBoundary(now);
   }
-  if (monitorMode_ == MonitorMode::Native) RequestMonitorAuthProbe();
+  if (MonitorAuthProbeEnabled(monitorMode_)) RequestMonitorAuthProbe();
   ArmScheduleTimer();
 }
 
@@ -65,7 +69,7 @@ void PowerSavingController::ArmScheduleTimer() {
   KillTimer(overlay_, kScheduleTimer);
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
-  if (monitorMode_ == MonitorMode::Native) {
+  if (MonitorAuthProbeEnabled(monitorMode_)) {
     remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
   }
   const UINT delay = static_cast<UINT>(std::clamp<int64_t>(
@@ -74,7 +78,7 @@ void PowerSavingController::ArmScheduleTimer() {
 }
 
 void PowerSavingController::RequestMonitorAuthProbe() noexcept {
-  if (monitorMode_ != MonitorMode::Native || powerSaving_) return;
+  if (!MonitorAuthProbeEnabled(monitorMode_) || powerSaving_) return;
   RequestStationheadMonitorDomProbe();
   if (parent_ && IsWindow(parent_)) PostMessageW(parent_, WM_TIMER, 0, 0);
 }
@@ -125,7 +129,7 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   const bool layoutChanged = powerSaving_ != nextPowerSaving;
   monitorMode_ = mode;
   powerSaving_ = nextPowerSaving;
-  if (mode != MonitorMode::Native) monitorAuthForeground_ = false;
+  if (mode == MonitorMode::Off) monitorAuthForeground_ = false;
 
   if (powerSaving_) {
     ApplyMinimumBrightness();
@@ -134,14 +138,15 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   }
   Renderer::SetGlobalPowerSavingMode(powerSaving_);
 
-  // Monitor S is a single six-window surface: Stationhead + all five Spotify
-  // lanes. Individual Spotify foreground selection is disabled in this mode.
+  // Monitor S remains a six-window surface even while Stationhead temporarily
+  // raises an authentication surface. Spotify playback/health state is never
+  // coupled to Stationhead's interactive foreground state.
   SetSpotifyMonitorForegroundSlot(-1);
   SetSpotifyMonitorGridVisible(mode == MonitorMode::ServiceGrid);
   ApplyStationheadMonitorPlacement();
 
   if (layoutChanged) LayoutOverlay();
-  if (monitorMode_ == MonitorMode::Native) RequestMonitorAuthProbe();
+  if (MonitorAuthProbeEnabled(monitorMode_)) RequestMonitorAuthProbe();
   ArmScheduleTimer();
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
 }
