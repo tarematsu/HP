@@ -10,6 +10,7 @@ const music = source('spotify_music_target.inc');
 const phase = source('spotify_phase_sync.inc');
 const lifecycle = source('spotify_host_lifecycle.inc');
 const schedule = source('spotify_stagger_schedule.inc');
+const resourceMode = source('spotify_permanent_resource_mode.h');
 
 test('Spotify recovery reuses connected Play controls and media elements', () => {
   assert.match(scoped, /__homePanelSpotifyDomCache/);
@@ -48,11 +49,10 @@ test('Spotify recovery drops stale completion deadlines outside healthy playback
   );
 });
 
-test('Spotify recovery does not change the WebView2 memory target', () => {
-  assert.doesNotMatch(
-    phase,
-    /SetSpotifyMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
-  );
+test('Spotify recovery never restores the WebView2 memory target to NORMAL', () => {
+  assert.match(phase, /ApplySpotifyPermanentResourceMode\(slot\)/);
+  assert.match(resourceMode, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+  assert.doesNotMatch(resourceMode, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
   assert.doesNotMatch(
     lifecycle,
     /SetSpotifyMemoryUsageTarget|put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
