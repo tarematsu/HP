@@ -126,7 +126,8 @@ test('TVer fullscreen retries the loaded video corner after a failed trusted cli
   assert.match(policy, /state\.fullscreenDirty = true/);
   assert.match(policy, /const isEnterFullscreenControl = element =>/);
   assert.match(policy, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
-  assert.doesNotMatch(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(policy, /request\.call\(target\)/);
   assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
   assert.match(
     mediaSection,
@@ -150,7 +151,7 @@ test('TVer completion requires forward playback on the current program video', (
 test('TVer holds completion for post-roll then reports completion to native', () => {
   assert.match(episodeLoop, /postrollGraceMs = 12000/);
   assert.match(episodeLoop, /postrollAfterProgram: false/);
-  assert.match(episodeLoop, /const completedProgram = state\.programPlaybackConfirmed &&/);
+  assert.match(episodeLoop, /const completedProgram = episodeLimitReached &&/);
   assert.ok(episodeLoop.includes('if (!duration || shortAdLength) return true;'));
   assert.match(episodeLoop, /const completedPostroll = state\.postrollAfterProgram/);
   assert.match(episodeLoop, /Date\.now\(\) - state\.endCandidateAt >= postrollGraceMs/);
