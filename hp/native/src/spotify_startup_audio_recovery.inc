@@ -1,142 +1,7 @@
-#include <audiopolicy.h>
-#include <mmdeviceapi.h>
-
 namespace hp {
 namespace {
 constexpr unsigned kSpotifyNativeAudioStartCheckLimit = 4;
 constexpr ULONGLONG kSpotifyFailedOnlyTrackRetryMs = 60ULL * 1000ULL;
-
-struct SpotifyProcessEntry {
-  DWORD processId = 0;
-  DWORD parentProcessId = 0;
-  bool isWebView2 = false;
-};
-
-struct SpotifyWindowsAudioEvidence {
-  bool querySucceeded = false;
-  bool activeWebViewSession = false;
-};
-
-bool SpotifyPidListContains(
-    const std::vector<DWORD>& processIds, DWORD processId) noexcept {
-  return std::find(processIds.begin(), processIds.end(), processId) !=
-      processIds.end();
-}
-
-std::vector<DWORD> SpotifyWebView2DescendantProcessIds() noexcept {
-  std::vector<DWORD> result;
-  std::vector<SpotifyProcessEntry> entries;
-  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-  if (snapshot == INVALID_HANDLE_VALUE) return result;
-
-  PROCESSENTRY32W entry{};
-  entry.dwSize = sizeof(entry);
-  if (Process32FirstW(snapshot, &entry)) {
-    do {
-      SpotifyProcessEntry captured{};
-      captured.processId = entry.th32ProcessID;
-      captured.parentProcessId = entry.th32ParentProcessID;
-      captured.isWebView2 =
-          _wcsicmp(entry.szExeFile, L"msedgewebview2.exe") == 0;
-      entries.push_back(captured);
-      entry.dwSize = sizeof(entry);
-    } while (Process32NextW(snapshot, &entry));
-  }
-  CloseHandle(snapshot);
-
-  std::vector<DWORD> ancestry{GetCurrentProcessId()};
-  bool changed = true;
-  while (changed) {
-    changed = false;
-    for (const SpotifyProcessEntry& candidate : entries) {
-      if (!candidate.isWebView2 || candidate.processId == 0 ||
-          SpotifyPidListContains(ancestry, candidate.processId) ||
-          !SpotifyPidListContains(ancestry, candidate.parentProcessId)) {
-        continue;
-      }
-      ancestry.push_back(candidate.processId);
-      result.push_back(candidate.processId);
-      changed = true;
-    }
-  }
-  return result;
-}
-
-void MergeSpotifyWindowsAudioEvidenceForRole(
-    IMMDeviceEnumerator* deviceEnumerator, ERole role,
-    const std::vector<DWORD>& webViewProcessIds,
-    SpotifyWindowsAudioEvidence* evidence) noexcept {
-  if (!deviceEnumerator || !evidence || webViewProcessIds.empty()) return;
-
-  ComPtr<IMMDevice> endpoint;
-  if (FAILED(deviceEnumerator->GetDefaultAudioEndpoint(
-          eRender, role, endpoint.GetAddressOf())) ||
-      !endpoint) {
-    return;
-  }
-
-  ComPtr<IAudioSessionManager2> sessionManager;
-  if (FAILED(endpoint->Activate(
-          __uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr,
-          reinterpret_cast<void**>(sessionManager.GetAddressOf()))) ||
-      !sessionManager) {
-    return;
-  }
-
-  ComPtr<IAudioSessionEnumerator> sessions;
-  if (FAILED(sessionManager->GetSessionEnumerator(sessions.GetAddressOf())) ||
-      !sessions) {
-    return;
-  }
-  evidence->querySucceeded = true;
-
-  int sessionCount = 0;
-  if (FAILED(sessions->GetCount(&sessionCount))) return;
-  for (int index = 0; index < sessionCount; ++index) {
-    ComPtr<IAudioSessionControl> control;
-    if (FAILED(sessions->GetSession(index, control.GetAddressOf())) ||
-        !control) {
-      continue;
-    }
-
-    ComPtr<IAudioSessionControl2> control2;
-    if (FAILED(control.As(&control2)) || !control2) continue;
-    DWORD processId = 0;
-    if (FAILED(control2->GetProcessId(&processId)) ||
-        !SpotifyPidListContains(webViewProcessIds, processId)) {
-      continue;
-    }
-
-    AudioSessionState state = AudioSessionStateInactive;
-    if (FAILED(control->GetState(&state)) || state != AudioSessionStateActive) {
-      continue;
-    }
-    evidence->activeWebViewSession = true;
-  }
-}
-
-SpotifyWindowsAudioEvidence ProbeSpotifyWindowsAudioEvidence() noexcept {
-  SpotifyWindowsAudioEvidence evidence{};
-  const std::vector<DWORD> webViewProcessIds =
-      SpotifyWebView2DescendantProcessIds();
-  if (webViewProcessIds.empty()) return evidence;
-
-  ComPtr<IMMDeviceEnumerator> deviceEnumerator;
-  if (FAILED(CoCreateInstance(
-          __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-          IID_PPV_ARGS(&deviceEnumerator))) ||
-      !deviceEnumerator) {
-    return evidence;
-  }
-
-  // Chromium media normally follows the multimedia endpoint. Also inspect the
-  // console endpoint because Windows can assign different defaults per role.
-  MergeSpotifyWindowsAudioEvidenceForRole(
-      deviceEnumerator.Get(), eMultimedia, webViewProcessIds, &evidence);
-  MergeSpotifyWindowsAudioEvidenceForRole(
-      deviceEnumerator.Get(), eConsole, webViewProcessIds, &evidence);
-  return evidence;
-}
 
 void RequestSpotifyAudioPipelineRestart(ICoreWebView2* webview) noexcept {
   if (!webview) return;
@@ -261,10 +126,11 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
   if (slot.nativeAudioStartVerified) return true;
   if (!slot.webview || !CurrentMusicTrack(slot)) return false;
 
-  // Keep successive negative samples on the configured two-second cadence.
-  // The second failed sample first forces the current Pause control back to
-  // Play, so the existing trusted CDP click path gets one clean restart before
-  // the bounded Reload -> Rebuild -> Skip ladder begins.
+  // The caller reaches this method only after target identity and actual
+  // HTMLMediaElement clock progress have been confirmed. Add two independent,
+  // slot-local native signals here: WebView2 must report document audio and the
+  // same WebView's CDP Media domain must have observed a fresh playback event
+  // for this target generation with both an audio decoder and audio tracks.
   if (slot.nativeAudioStartChecks != 0 && slot.nextRecoveryTick != 0 &&
       now < slot.nextRecoveryTick) {
     return false;
@@ -280,18 +146,10 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
 
   ++slot.nativeAudioStartChecks;
 
-  bool startupAudioVerified = false;
-  if (SUCCEEDED(interfaceResult) && audioView && SUCCEEDED(stateResult) &&
-      nativePlaying != FALSE) {
-    const SpotifyWindowsAudioEvidence windowsAudio =
-        ProbeSpotifyWindowsAudioEvidence();
-
-    // Require the WebView2 process family to own an active Core Audio session.
-    // Do not inspect PCM peak level: muted/background Spotify lanes may be
-    // healthy while intentionally producing no physical output.
-    startupAudioVerified =
-        windowsAudio.querySucceeded && windowsAudio.activeWebViewSession;
-  }
+  const bool startupAudioVerified =
+      SUCCEEDED(interfaceResult) && audioView && SUCCEEDED(stateResult) &&
+      nativePlaying != FALSE &&
+      SpotifyMediaStartEvidenceReady(slot.index, slot.targetGeneration);
 
   if (startupAudioVerified) {
     slot.nativeAudioStartVerified = true;
@@ -300,10 +158,10 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
     return true;
   }
 
-  // "Could not query" is deliberately not success. After two failed samples,
-  // pause the verified target once; the normal reconcile pass will then issue
-  // a fresh trusted Play click. This catches the common state where Spotify's
-  // DOM/media clock says Playing while the native audio path never came up.
+  // "Could not query" and missing CDP decoder/track/playback evidence are all
+  // deliberately fail-closed. After two failed samples, pause the verified
+  // target once; the normal reconcile pass then issues a fresh trusted Play
+  // click before the bounded Reload -> Rebuild -> Skip ladder begins.
   if (slot.nativeAudioStartChecks == 2) {
     RequestSpotifyAudioPipelineRestart(slot.webview.Get());
     slot.trustedClickBlockedUntilTick = 0;
