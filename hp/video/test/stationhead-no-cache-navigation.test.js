@@ -10,7 +10,7 @@ const player = readFileSync(
   new URL('../../native/src/sh.cpp', import.meta.url),
   'utf8',
 );
-const refreshPolicy = readFileSync(
+const recoveryPolicy = readFileSync(
   new URL('../../native/src/sh_track_boundary_message_policy.h', import.meta.url),
   'utf8',
 );
@@ -43,14 +43,15 @@ test('Stationhead keeps the HTTP cache and uses shared UDF image/font suppressio
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
 
-test('long-lived roles use one 50-minute native navigation clock', () => {
-  assert.match(refreshPolicy, /StationheadPeriodicRefreshIntervalMs/);
-  assert.match(refreshPolicy, /return 50 \* 60'000/);
-  assert.match(refreshPolicy, /RefreshPeriodicNavigation/);
-  assert.match(refreshPolicy, /periodicRefreshStartedAt_/);
-  assert.match(refreshPolicy, /L"50-minute periodic refresh"/);
-  assert.doesNotMatch(refreshPolicy, /53-minute|54-minute|56-minute/);
-  assert.doesNotMatch(refreshPolicy, /StationheadClockSwitch|even-minute|odd-minute/);
+test('long-lived Stationhead room has no preventive navigation clock', () => {
+  assert.doesNotMatch(recoveryPolicy, /StationheadPeriodicRefreshIntervalMs/);
+  assert.doesNotMatch(recoveryPolicy, /RefreshPeriodicNavigation/);
+  assert.doesNotMatch(recoveryPolicy, /50-minute periodic refresh/);
+  assert.match(recoveryPolicy, /StationheadAudioHealthCheckIntervalMs/);
+  assert.match(recoveryPolicy, /return 1 \* 60'000/);
+  assert.match(recoveryPolicy, /StationheadAudioRecoveryStage/);
+  assert.doesNotMatch(recoveryPolicy, /53-minute|54-minute|56-minute/);
+  assert.doesNotMatch(recoveryPolicy, /StationheadClockSwitch|even-minute|odd-minute/);
 
   const boundaryStart = trackBoundaryScript.indexOf(
     'inline std::wstring StationheadTrackBoundaryScript(',

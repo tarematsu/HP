@@ -6,8 +6,6 @@ namespace hp {
 namespace {
 
 constexpr int64_t kStationheadBoundaryRetryWindowMs = 3 * 60'000;
-constexpr wchar_t kStationheadPeriodicRefreshDetail[] =
-    L"50-minute periodic refresh";
 
 struct TrackBoundaryRetryState {
   bool armed = false;
@@ -30,18 +28,9 @@ bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
   return status.loginRequired || status.spotifyAuthorization || status.processFailed;
 }
 
-bool IsStationheadPeriodicRefresh(const StationheadStatus& status) noexcept {
-  return status.navigating && status.detail == kStationheadPeriodicRefreshDetail;
-}
-
 void SyncStationheadBackgroundPreview(
     StationheadPlayer& player, const RECT& workspaceBounds) {
   const StationheadStatus status = player.Status();
-  if (IsStationheadPeriodicRefresh(status)) {
-    if (SetStationheadBackgroundPreview(true)) player.SetBounds(workspaceBounds);
-    return;
-  }
-
   const bool settledPlayback =
       player.AudioPlaying() && !status.navigating &&
       !status.loginRequired && !status.spotifyAuthorization;

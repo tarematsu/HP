@@ -103,99 +103,7 @@ inline HRESULT InvokeEventNoexcept(
   try {
     return handler->Invoke(sender, args);
   } catch (...) {
-    // Event callbacks allocate strings, parse JSON, update status and log. A
-    // single allocation or parser exception must never unwind through WebView2.
     return E_FAIL;
-  }
-}
-
-// Native WebView2 audio is the authoritative signal used by the existing
-// Stationhead audio-loss state machine. During its 0-10 second transition
-// grace, add a bounded page-side repair loop: after four seconds of silence,
-// re-scan Start Listening and re-kick a paused/stalled media element every two
-// seconds. Stop before the existing 11/12-second authentication/fallback path
-// so this helper cannot replace or delay the audited fallback decision.
-inline void UpdateStationheadSilentPlaybackRecovery(ICoreWebView2* sender) noexcept {
-  if (!sender) return;
-  try {
-    ComPtr<ICoreWebView2> view = sender;
-    ComPtr<ICoreWebView2_8> audioView;
-    if (FAILED(view.As(&audioView)) || !audioView) return;
-    BOOL playing = FALSE;
-    if (FAILED(audioView->get_IsDocumentPlayingAudio(&playing))) return;
-
-    if (playing != FALSE) {
-      // A document-audio pulse is only a candidate. ApplyAudioPlaybackState
-      // independently requires fresh same-element media-clock progress before
-      // Healthy, so never cancel an already-running lightweight repair loop here.
-      static constexpr wchar_t kNativeCandidateScript[] = LR"JS(
-(() => {
-  window.__homepanelStationheadNativeAudioSeen = true;
-  return true;
-})()
-)JS";
-      view->ExecuteScript(kNativeCandidateScript, nullptr);
-      return;
-    }
-
-    static constexpr wchar_t kStoppedScript[] = LR"JS(
-(() => {
-  if (!window.__homepanelStationheadNativeAudioSeen ||
-      window.__homepanelStationheadSilentRecoveryTimer) {
-    return false;
-  }
-  if (window.__homepanelStationheadBlockingLoginVisible === true) return false;
-
-  const nativeSetTimeout = window.setTimeout.bind(window);
-  const nativeSetInterval = window.setInterval.bind(window);
-  const nativeClearInterval = window.clearInterval.bind(window);
-  const lastTimes = new WeakMap();
-  let attempts = 0;
-
-  const recover = () => {
-    if (window.__homepanelAudioPlaying === true ||
-        window.__homepanelStationheadBlockingLoginVisible === true) {
-      return true;
-    }
-    try { window.__homepanelPrimaryStationhead?.scan?.(0); } catch (_) {}
-    for (const media of document.querySelectorAll('audio,video')) {
-      if (!media || media.ended || media.readyState < 2) continue;
-      const now = Number(media.currentTime);
-      const before = lastTimes.get(media);
-      lastTimes.set(media, now);
-      const stalled = !media.paused && Number.isFinite(now) &&
-          Number.isFinite(before) && now <= before + 0.05;
-      try {
-        if (stalled) media.pause();
-        if (media.paused || stalled) {
-          const result = media.play?.();
-          if (result?.catch) result.catch(() => {});
-        }
-      } catch (_) {}
-    }
-    return false;
-  };
-
-  const begin = () => {
-    window.__homepanelStationheadSilentRecoveryTimer = 0;
-    if (recover()) return;
-    attempts = 1;
-    const interval = nativeSetInterval(() => {
-      if (recover() || ++attempts >= 4) {
-        nativeClearInterval(interval);
-        window.__homepanelStationheadSilentRecoveryTimer = 0;
-      }
-    }, 2000);
-    window.__homepanelStationheadSilentRecoveryTimer = interval;
-  };
-
-  window.__homepanelStationheadSilentRecoveryTimer =
-      nativeSetTimeout(begin, 4000);
-  return true;
-})()
-)JS";
-    view->ExecuteScript(kStoppedScript, nullptr);
-  } catch (...) {
   }
 }
 
@@ -246,8 +154,6 @@ WrapStationheadNewWindowHandler(
         if (currentSource) CoTaskMemFree(currentSource);
         if (targetUri) CoTaskMemFree(targetUri);
         if (!trusted) {
-          // The kiosk must not create an authentication controller for an
-          // unrelated popup or let the system browser escape the surface.
           args->put_Handled(TRUE);
           return S_OK;
         }
@@ -256,11 +162,6 @@ WrapStationheadNewWindowHandler(
         BOOL handled = FALSE;
         const HRESULT handledResult = args->get_Handled(&handled);
         if (FAILED(result) || FAILED(handledResult) || handled == FALSE) {
-          // Trusted Spotify requests must also remain inside the native surface.
-          // The inner handler deliberately leaves Handled false when the auth
-          // host is unavailable or another controller creation is already in
-          // flight. Suppress that fallback instead of allowing WebView2 to open
-          // an unmanaged popup or the system browser outside the kiosk window.
           args->put_Handled(TRUE);
         }
         return result;
@@ -277,8 +178,6 @@ WrapStationheadNavigationStartingHandler(
           ICoreWebView2* sender,
           ICoreWebView2NavigationStartingEventArgs* args) noexcept -> HRESULT {
         const HRESULT result = InvokeEventNoexcept(inner, sender, args);
-        // Continuing a navigation after its state-tracking callback failed can
-        // leave navigationInFlight_ permanently inconsistent.
         if (FAILED(result) && args) args->put_Cancel(TRUE);
         return result;
       });
@@ -330,9 +229,7 @@ WrapStationheadAudioChangedHandler(
   return Callback<ICoreWebView2IsDocumentPlayingAudioChangedEventHandler>(
       [inner = std::move(inner)](
           ICoreWebView2* sender, IUnknown* args) noexcept -> HRESULT {
-        const HRESULT result = InvokeEventNoexcept(inner, sender, args);
-        if (SUCCEEDED(result)) UpdateStationheadSilentPlaybackRecovery(sender);
-        return result;
+        return InvokeEventNoexcept(inner, sender, args);
       });
 }
 
@@ -352,9 +249,6 @@ WrapStationheadWebResourceRequestedHandler(
 }  // namespace stationhead_webview_policy
 }  // namespace hp
 
-// WebView2 event registration is centralized in Stationhead code. Wrapping the
-// registration token preserves the existing handlers while enforcing origin,
-// popup and exception-containment policy before player state can be mutated.
 #define add_WebMessageReceived(handler, token)                                \
   add_WebMessageReceived(                                                     \
       ::hp::stationhead_webview_policy::                                      \

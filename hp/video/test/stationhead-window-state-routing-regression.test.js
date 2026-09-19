@@ -35,24 +35,17 @@ test('initial startup keeps the in-client background preview armed through WebVi
   );
 });
 
-test('50-minute refresh re-arms preview and stable audio keeps the same onscreen background surface', () => {
-  const periodic = section(
-    handles,
-    'bool IsStationheadPeriodicRefresh(',
-    'void SyncStationheadBackgroundPreview(',
-  );
-  assert.match(periodic, /status\.navigating && status\.detail == kStationheadPeriodicRefreshDetail/);
-
+test('stable audio retires the startup preview without a periodic-refresh rearm path', () => {
   const sync = section(
     handles,
     'void SyncStationheadBackgroundPreview(',
     'static_assert(',
   );
-  assert.match(sync, /IsStationheadPeriodicRefresh\(status\)/);
-  assert.match(sync, /SetStationheadBackgroundPreview\(true\)/);
   assert.match(sync, /player\.AudioPlaying\(\) && !status\.navigating/);
   assert.match(sync, /!status\.loginRequired && !status\.spotifyAuthorization/);
   assert.match(sync, /SetStationheadBackgroundPreview\(false\)/);
+  assert.doesNotMatch(sync, /SetStationheadBackgroundPreview\(true\)/);
+  assert.doesNotMatch(handles, /IsStationheadPeriodicRefresh|kStationheadPeriodicRefreshDetail|50-minute periodic refresh/);
   assert.match(bridge, /StationheadBackgroundBounds/);
   assert.doesNotMatch(bridge, /StationheadOffscreenBounds/);
 
