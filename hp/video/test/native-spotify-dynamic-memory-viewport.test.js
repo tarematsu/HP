@@ -31,12 +31,13 @@ test('Spotify keeps the WebView2 memory target permanently LOW', () => {
   assert.match(phase, /MarkSlotRecovering[\s\S]*SetSlotState\(slot, SlotState::Recovering\)/);
 });
 
-test('Spotify keeps a 320x160 controller viewport except on login pages', () => {
+test('Spotify stays 320x160 normally and expands only for login or Monitor S', () => {
   assert.match(policy, /kSpotifyInternalViewportWidth = 320/);
   assert.match(policy, /kSpotifyInternalViewportHeight = 160/);
+  assert.match(policy, /extern bool gSpotifyMonitorGridVisible/);
   assert.match(
     policy,
-    /if \(authentication && hostWindow && IsWindow\(hostWindow\)\)[\s\S]*GetClientRect\(hostWindow, &client\)[\s\S]*return client;[\s\S]*return SpotifyFixedViewportBounds\(\)/,
+    /if \(\(authentication \|\| gSpotifyMonitorGridVisible\) &&[\s\S]*hostWindow && IsWindow\(hostWindow\)\)[\s\S]*GetClientRect\(hostWindow, &client\)[\s\S]*return client;[\s\S]*return SpotifyFixedViewportBounds\(\)/,
   );
   assert.match(controller, /SpotifyControllerBounds\(target->hostWindow, target->loginPage\)/);
   assert.match(controller, /SpotifyControllerBounds\(target->hostWindow, loginPage\)/);
