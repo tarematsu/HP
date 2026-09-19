@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const nativeRoot = fileURLToPath(new URL('../../native/src/', import.meta.url));
+const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
 function nativeSources(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
@@ -16,8 +17,11 @@ function nativeSources(dir) {
 }
 
 const nativeSource = nativeSources(nativeRoot).join('\n');
+const spotifyResourceMode = source('spotify_permanent_resource_mode.h');
 
-test('native media never overrides the WebView2 memory usage target', () => {
-  assert.doesNotMatch(nativeSource, /MemoryUsageTargetLevel/);
-  assert.doesNotMatch(nativeSource, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_/);
+test('Spotify is the permanent LOW-memory WebView2 exception', () => {
+  assert.match(spotifyResourceMode, /put_MemoryUsageTargetLevel/);
+  assert.match(spotifyResourceMode, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+  assert.doesNotMatch(spotifyResourceMode, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
+  assert.doesNotMatch(nativeSource, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
 });
