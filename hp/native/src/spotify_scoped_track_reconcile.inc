@@ -15,9 +15,9 @@ namespace {
 //    verified zero-second stall, the matching global Play may be used as a
 //    recovery-only trusted click target when Spotify omits the page control.
 //
-// Keep this JavaScript in two literals: MSVC has a relatively small limit for
-// one wide string literal, and this reconcile probe intentionally carries more
-// state validation than the other Spotify scripts.
+// Keep this JavaScript in several literals: MSVC has a relatively small limit
+// for one wide string literal, and this reconcile probe intentionally carries
+// more state validation than the other Spotify scripts.
 constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart1[] = LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
@@ -233,7 +233,9 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
         centerY < 0 || centerY > window.innerHeight) return null;
     return [centerX, centerY];
   };
+)JS";
 
+constexpr wchar_t kSpotifyScopedTrackReconcileErrorRecoveryScript[] = LR"JS(
   // Spotify's Web Player may replace the player with an error surface such as
   // "Something went wrong / RELOAD PAGE". Prefer structural error semantics so
   // this works regardless of the UI language. Text matching is only a fallback
@@ -304,7 +306,9 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
     }
     return playbackProbeMs;
   }
+)JS";
 
+constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart3[] = LR"JS(
   const nativeLoadedAt = Number(window.__homePanelSpotifyNativeLoadedAt);
   const initialPlayDelayElapsed = Number.isFinite(nativeLoadedAt) &&
       Date.now() - nativeLoadedAt >= 2000;
@@ -361,7 +365,9 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
 
 const std::wstring kSpotifyScopedTrackReconcileScriptStorage =
     std::wstring(kSpotifyScopedTrackReconcileScriptPart1) + L"\n" +
-    kSpotifyScopedTrackReconcileScriptPart2;
+    kSpotifyScopedTrackReconcileScriptPart2 + L"\n" +
+    kSpotifyScopedTrackReconcileErrorRecoveryScript + L"\n" +
+    kSpotifyScopedTrackReconcileScriptPart3;
 const wchar_t* const kSpotifyScopedTrackReconcileScript =
     kSpotifyScopedTrackReconcileScriptStorage.c_str();
 
