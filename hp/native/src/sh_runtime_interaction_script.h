@@ -33,7 +33,6 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
   const accountPattern =
     /\b(account|profile|avatar|user\s+menu|my\s+profile)\b|アカウント|プロフィール/i;
-  const serviceConnectPattern = /^connect\s+music$/i;
 
   let pageActive = true;
   let eventTimer = 0;
@@ -107,9 +106,10 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     for (const input of document.querySelectorAll(credentialSelector)) {
       if (visible(input)) return true;
     }
-    for (const heading of document.querySelectorAll("h1,h2,h3,[role='heading']")) {
-      if (visible(heading) && serviceConnectPattern.test(labelOf(heading))) return true;
-    }
+    // Connect/Reconnect Music and Connect Spotify are recoverable onboarding
+    // actions handled by the native trusted-click locator. Do not classify
+    // those controls or their modal headings as a blocking login state, or the
+    // native Tick loop stops before it can reach the auto-click path.
     for (const element of document.querySelectorAll(controlSelector)) {
       if (!visible(element)) continue;
       const label = labelOf(element);
