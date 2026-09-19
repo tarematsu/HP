@@ -137,7 +137,10 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   } else {
     RestoreBrightness();
   }
-  Renderer::SetGlobalPowerSavingMode(powerSaving_);
+  // Monitor S is a dedicated service surface: hide the normal dashboard and
+  // YouTube/TVer panel without stopping their playback lifecycle.
+  Renderer::SetGlobalPowerSavingMode(
+      powerSaving_ || mode == MonitorMode::ServiceGrid);
 
   // Monitor S remains a six-window surface even while Stationhead temporarily
   // raises an authentication surface. Spotify playback/health state is never
