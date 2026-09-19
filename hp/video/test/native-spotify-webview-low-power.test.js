@@ -9,7 +9,6 @@ const source = name => readFileSync(
 const layout = source('spotify_host_layout.inc');
 const controller = source('spotify_controller_lifecycle.inc');
 const phase = source('spotify_phase_sync.inc');
-const resourceMode = source('spotify_permanent_resource_mode.h');
 const environment = source('shared_webview_environment.cpp');
 
 test('Spotify confirmed playback keeps a visible Monitor S tile behind native UI', () => {
@@ -29,15 +28,9 @@ test('Spotify pre-playback recovery uses the same fixed Monitor S tile behind na
   assert.doesNotMatch(layout, /else if \(recovery\)/);
 });
 
-test('Spotify is permanently LOW memory and reapplies Efficiency mode across state changes', () => {
-  assert.match(phase, /#include "spotify_permanent_resource_mode\.h"/);
-  assert.match(phase, /slot\.state = state;[\s\S]*ApplySpotifyPermanentResourceMode\(slot\)/);
-  assert.match(resourceMode, /ICoreWebView2_19/);
-  assert.match(resourceMode, /put_MemoryUsageTargetLevel\([\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
-  assert.doesNotMatch(resourceMode, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
-  assert.match(resourceMode, /ProcessPowerThrottling/);
-  assert.match(resourceMode, /PROCESS_POWER_THROTTLING_EXECUTION_SPEED/);
-  assert.match(resourceMode, /BELOW_NORMAL_PRIORITY_CLASS/);
+test('Spotify state changes do not apply explicit low-memory or efficiency throttling', () => {
+  assert.doesNotMatch(phase, /spotify_permanent_resource_mode/);
+  assert.doesNotMatch(phase, /ApplySpotifyPermanentResourceMode/);
   assert.match(controller, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(controller, /slot\.controller->put_IsVisible\(FALSE\)/);
 });
