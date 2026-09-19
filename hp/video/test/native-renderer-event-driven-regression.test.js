@@ -50,10 +50,9 @@ function functionBody(source, signature) {
   assert.fail(`${signature} has no closing brace`);
 }
 
-test('active native panel state is not duplicated in RenderState', () => {
-  const state = renderState.match(/struct RenderState \{([\s\S]*?)\n\};/)?.[1] ?? '';
-  assert.match(state, /StationheadStatus stationhead/);
-  assert.doesNotMatch(state, /stationheadPlayHistory|SensorSnapshot|airHistory|appVersion|toast|newsIndex/);
+test('active native panel state no longer has aggregate RenderState', () => {
+  assert.doesNotMatch(renderState, /struct RenderState/);
+  assert.doesNotMatch(renderState, /StationheadStatus/);
   assert.match(appHeader, /std::vector<AirHistorySample> airHistory_/);
   assert.match(appHeader, /std::wstring toastText_/);
 });
@@ -95,12 +94,12 @@ test('News rotation compatibility state is completely removed', () => {
   assert.doesNotMatch(rendererHeader, /NewsCount\(/);
 });
 
-test('App no longer owns dormant Stationhead compatibility publication', () => {
+test('dormant Stationhead renderer compatibility path is completely removed', () => {
   assert.doesNotMatch(appHeader, /RenderState renderState_|PublishRenderState|renderStateDirty_/);
-  assert.doesNotMatch(appSource, /PublishRenderState|renderer_->UpdateState\(renderState_\)/);
-  assert.match(rendererHeader, /void UpdateState\(const RenderState& state\)/);
-  assert.match(rendererLifecycle, /void Renderer::UpdateState\(const RenderState& state\)/);
-  assert.match(panelState, /void Renderer::UpdateNativeStaticPanels\(const RenderState& state\)/);
+  assert.doesNotMatch(appSource, /PublishRenderState|renderer_->UpdateState\(/);
+  assert.doesNotMatch(rendererHeader, /void UpdateState\(const RenderState& state\)/);
+  assert.doesNotMatch(rendererLifecycle, /void Renderer::UpdateState\(const RenderState& state\)/);
+  assert.doesNotMatch(panelState, /UpdateNativeStaticPanels|nativeStationhead_/);
   assert.doesNotMatch(panelState, /stationheadPlayHistory|GlobalStationheadNativeStatsStore/);
   assert.match(appSource, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
   assert.match(appSource, /stationhead_->Start\(\)/);
