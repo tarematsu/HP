@@ -15,48 +15,42 @@ const controller = source('spotify_controller_lifecycle.inc');
 
 const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
 
-test('zero-second recovery starts playback only through trusted CDP Play click', () => {
+test('Spotify startup uses only a trusted Play click and never toggles Pause', () => {
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /pageButtons\.some\(isPauseControl\)/);
-  assert.match(scoped, /playerPause && currentTrackMatchesTarget\(\)/);
-  assert.match(scoped, /return point\(visiblePageButton\)/);
-  assert.doesNotMatch(scoped, /point\(playerPause\)|querySelector\('audio'\)/);
+  assert.match(scoped, /state\.playIssued = true/);
+  assert.doesNotMatch(scoped, /button\.click\(\)|\.pause\s*\(/);
+  assert.doesNotMatch(scoped, /ZeroSecondRestartPath|restartPending|return 'restart'/);
   assert.doesNotMatch(scoped, /audio\.play\(/);
   assert.doesNotMatch(scoped, /direct-play|DirectPlay/);
-  assert.doesNotMatch(music, /direct-play|DirectPlay/);
+  assert.doesNotMatch(music, /direct-play|DirectPlay|"\\"restart\\""/);
 });
 
-test('first Play click and status probes both use a two-second cadence', () => {
+test('first Play click and status probes use a two-second cadence', () => {
   assert.match(scripts, /__homePanelSpotifyNativeLoadedAt = Date\.now\(\)/);
   assert.match(scoped, /const playbackProbeMs = 2000/);
   assert.match(scoped, /const nativeLoadedAt = Number\(window\.__homePanelSpotifyNativeLoadedAt\)/);
-  assert.match(scoped, /Date\.now\(\) - nativeLoadedAt >= 2000/);
-  assert.match(scoped, /if \(!initialPlayDelayElapsed && !restartPending\(\)\) return playbackProbeMs;/);
+  assert.match(scoped, /Date\.now\(\) - nativeLoadedAt < 2000/);
   assert.doesNotMatch(scripts + scoped, /performance\.now\(\)/);
 });
 
-test('Pause confirmation requires media-clock progress and repeated zero-second observations', () => {
+test('target confirmation requires media-clock progress without zero-second restart state', () => {
   assert.match(scoped, /document\.querySelectorAll\('audio, video'\)/);
-  assert.match(scoped, /__homePanelSpotifyProgressProbe/);
-  assert.match(scoped, /current > previous\.currentTime \+ 0\.05/);
-  assert.match(scoped, /const stalledObservationLimit = 4/);
-  assert.match(scoped, /previous\.stagnantSamples = Number\(previous\.stagnantSamples \|\| 0\) \+ 1/);
-  assert.match(scoped, /previous\.stagnantSamples < stalledObservationLimit/);
-  assert.doesNotMatch(scoped, /zeroSecondRecoveryGraceMs|sampledAt/);
-  assert.match(scoped, /__homePanelSpotifyZeroSecondRestartPath = targetPath/);
-  assert.match(scoped, /button\.click\(\)/);
-  assert.match(scoped, /return 'restarted'/);
-  assert.match(scoped, /const pauseDecision = button =>/);
-  assert.match(scoped, /if \(result === 'confirmed'\) return true/);
-  assert.match(scoped, /if \(result === 'restarted'\) return 'restart'/);
-  assert.match(scoped, /return playbackProbeMs/);
-  assert.match(scoped, /restartPending\(\) && playerPlay && currentTrackMatchesTarget\(\)/);
-  assert.match(scoped, /return point\(playerPlay\)/);
-  assert.doesNotMatch(scoped, /media\.play\(/);
+  assert.match(scoped, /__homePanelSpotifySimpleMediaProbe/);
+  assert.match(scoped, /current > Number\(previous\.currentTime\) \+ 0\.05/);
+  assert.match(scoped, /const failedSampleLimit = 4/);
+  assert.match(scoped, /return 'startup-failure'/);
+  assert.doesNotMatch(scoped, /stagnantSamples|ZeroSecondRestartPath|return 'restarted'/);
+  assert.doesNotMatch(scoped, /pauseDecision|pagePause|playerPause/);
 });
 
-test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness', () => {
+test('ads and progressing non-target media are observed without restart', () => {
+  assert.match(scoped, /advertisementVisible \|\| \(activeMedia && !targetMatches\)/);
+  assert.match(scoped, /resetFailures\(\)/);
+  assert.doesNotMatch(scoped, /WrongTrackRecovery|pagePause\.click/);
+});
+
+test('startup is not gated on Shuffle, Repeat, or observer readiness', () => {
   const reconcileStart = music.indexOf('void SpotifyWebViews::ReconcileMusicTarget');
   const executeStart = music.indexOf('kSpotifyScopedTrackReconcileScript', reconcileStart);
   assert.ok(reconcileStart >= 0 && executeStart > reconcileStart);
@@ -67,35 +61,30 @@ test('zero-second startup is not gated on Shuffle, Repeat, or observer readiness
   assert.doesNotMatch(startup, /timedObserverReady|ArmTimedEndObserver/);
 });
 
-test('CDP Play is checked by two-second state probes with a five-second duplicate-click failsafe', () => {
+test('CDP Play is followed by two-second startup state probes', () => {
   assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
   assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
   assert.match(music, /std::wstring_view\(json\) == L"true"/);
-  assert.match(music, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
   assert.match(music, /ParseCssPoint\(json, &cssX, &cssY\)/);
   assert.match(music, /ClickSlotCssPoint\(\*target, cssX, cssY\)/);
   assert.match(music, /target->playbackConfirmed = true/);
   assert.match(music, /SetMusicCompletionDeadline\(\*target, callbackNow\)/);
   assert.doesNotMatch(music, /kSpotifyCdpPlayConfirmWaitMs|kSpotifyDirectPlayConfirmWaitMs/);
-  assert.doesNotMatch(music, /"\\"direct-play\\""/);
+  assert.doesNotMatch(music, /"\\"direct-play\\""|"\\"restart\\""/);
 });
 
-test('not-yet-created Play control uses bounded adaptive retry without a recovery sub-state machine', () => {
-  assert.match(scoped, /const transitionRetryDelays = \[500, 1000, 2000\]/);
-  assert.match(scoped, /return nextTransitionRetryDelay\(\)/);
+test('unready Spotify UI simply waits instead of entering another recovery sub-state', () => {
+  assert.match(scoped, /return wait\(\)/);
   assert.match(music, /ParseSpotifyRetryDelay\(json\)/);
-  assert.match(music, /callbackNow \+ retryDelayMs/);
-  const retryStart = music.indexOf('const ULONGLONG retryDelayMs = ParseSpotifyRetryDelay(json);');
-  const pointStart = music.indexOf('double cssX = 0.0;', retryStart);
-  assert.ok(retryStart >= 0 && pointStart > retryStart);
-  const retry = music.slice(retryStart, pointStart);
-  assert.doesNotMatch(retry, /MarkSlotRecovering|NavigateMusicTarget|settling/);
+  assert.doesNotMatch(scoped, /transitionRetryDelays|nextTransitionRetryDelay/);
+  assert.doesNotMatch(scoped, /MarkSlotRecovering|NavigateMusicTarget/);
 });
 
 test('startup and target-transition paths contain no executable generic media stop actuator', () => {
   assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
   assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript/);
   assert.doesNotMatch(timed, /kSpotifyStaticStopPlaybackScript/);
+  assert.doesNotMatch(scoped, executablePause);
   assert.doesNotMatch(music, executablePause);
   assert.doesNotMatch(timed, executablePause);
   assert.doesNotMatch(runtime, executablePause);
