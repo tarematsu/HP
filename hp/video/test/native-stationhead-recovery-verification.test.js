@@ -10,7 +10,7 @@ const source = name => readFileSync(
 const player = source('sh.cpp');
 const webview = source('sh_webview.cpp');
 const lifecycle = source('sh_runtime_lifecycle_script.h');
-const periodic = source('sh_track_boundary_message_policy.h');
+const recovery = source('sh_track_boundary_message_policy.h');
 const eventPolicy = source('sh_webview_event_policy.h');
 
 test('Stationhead does not promote a native-audio pulse to healthy playback', () => {
@@ -23,11 +23,12 @@ test('Stationhead does not promote a native-audio pulse to healthy playback', ()
   assert.ok(gate < exchange);
   assert.match(player, /window\.__homepanelAudioPlaying = false/);
 
-  // Existing native-positive sources still flow through the single gate rather
-  // than gaining special recovery bypasses.
   assert.match(webview, /ApplyAudioPlaybackState\(playing != FALSE, L"WebView2"\)/);
   assert.match(webview, /ApplyAudioPlaybackState\(playing != FALSE, L"WebView2 initial"\)/);
-  assert.match(periodic, /ApplyAudioPlaybackState\(playing, L"1-minute native audio health check"\)/);
+  assert.match(
+    recovery,
+    /ApplyAudioPlaybackState\([\s\S]*nativePlaying != FALSE, L"1-minute native audio health check"\)/,
+  );
   assert.match(player, /L"post-navigation native confirmation"/);
 });
 
@@ -72,21 +73,15 @@ test('Stationhead track-boundary recovery stays armed after an unverified native
   assert.ok(postNavigation < verifiedCheck && verifiedCheck < deadline);
 });
 
-test('Stationhead native pulse cannot cancel an active lightweight repair loop', () => {
-  const positiveStart = eventPolicy.indexOf('if (playing != FALSE) {');
-  const stoppedStart = eventPolicy.indexOf('static constexpr wchar_t kStoppedScript[]');
-  assert.notEqual(positiveStart, -1);
-  assert.notEqual(stoppedStart, -1);
-  const positiveBranch = eventPolicy.slice(positiveStart, stoppedStart);
-  assert.match(positiveBranch, /__homepanelStationheadNativeAudioSeen = true/);
-  assert.doesNotMatch(positiveBranch, /clearTimeout\(/);
-  assert.doesNotMatch(positiveBranch, /clearInterval\(/);
-  assert.doesNotMatch(
-    positiveBranch,
-    /__homepanelStationheadSilentRecoveryTimer = 0/,
-  );
-  assert.match(eventPolicy, /nativeSetTimeout\(begin, 4000\)/);
-  assert.match(eventPolicy, /nativeSetInterval\([\s\S]*2000\)/);
+test('Stationhead audio-change events do not run an independent recovery loop', () => {
+  assert.match(eventPolicy, /WrapStationheadAudioChangedHandler/);
+  assert.match(eventPolicy, /return InvokeEventNoexcept\(inner, sender, args\)/);
+  assert.doesNotMatch(eventPolicy, /UpdateStationheadSilentPlaybackRecovery/);
+  assert.doesNotMatch(eventPolicy, /__homepanelStationheadSilentRecoveryTimer/);
+  assert.doesNotMatch(eventPolicy, /nativeSetTimeout|nativeSetInterval|nativeClearInterval/);
+  assert.doesNotMatch(eventPolicy, /media\.pause\(\)|media\.play\?\.\(\)/);
+  assert.match(recovery, /RecoveryStage::LightRepair/);
+  assert.match(recovery, /AttemptNativeStartClick\(nowMs\)/);
 });
 
 test('Stationhead recovery verification does not reintroduce PCM or Core Audio peak checks', () => {
