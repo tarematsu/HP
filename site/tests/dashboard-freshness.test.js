@@ -48,7 +48,7 @@ test('hidden-tab dashboard cache has a bounded lifetime', () => {
 test('dashboard refreshes resume from persisted delta state instead of rereading 24h history', () => {
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
   const source = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
-  assert.match(entry, /import '\.\/dashboard-fetch-cache\.js\?v=20260731\.1'/);
+  assert.match(entry, /import '\.\/dashboard-fetch-cache\.js\?v=20260919\.1'/);
   assert.match(source, /DASHBOARD_CACHE_KEY = 'sh\.dashboard\.v3'/);
   assert.match(source, /PERSISTED_CACHE_MAX_AGE_MS = 6 \* 60 \* 60_000/);
   assert.match(source, /function restorePersistedState\(\)/);
