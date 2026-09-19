@@ -62,21 +62,26 @@ test('TVer healthy playback avoids style-heavy ad marker scanning', () => {
   assert.match(tverEpisode, /currentTime \+ 5 < state\.maxTime/);
 });
 
-test('TVer event bridge suppresses duplicate native wakeups for unchanged recovery state', () => {
+test('TVer event bridge deduplicates setup wakes and playback loss is one-shot', () => {
   assert.match(tverEpisode, /lastWakeSignature/);
   assert.match(tverEpisode, /pendingWakeSignature/);
   assert.match(tverEpisode, /signature === lastWakeSignature/);
-  assert.match(tverEpisode, /recoveryFlags\.join\('\+'\)/);
+  assert.match(tverEpisode, /setupFlags\.join\('\+'\)/);
+  assert.match(tverEpisode, /wakeNative\('recovery:' \+ reason/);
   assert.match(tverEpisode, /wakeNative\('ui:' \+ playerUiRevision\)/);
+  assert.doesNotMatch(tverEpisode, /recoveryWakeTimer|recovery:tick:|armRecoveryWake/);
 });
 
-test('YouTube runtime owns event wakeups with a 30-second watchdog backstop', () => {
+test('YouTube runtime owns event wakeups and the only ad readiness observer', () => {
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogHealthyMs = 30U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(youtubeRuntime, /homepanel:youtube-wake/);
   assert.match(youtubeRuntime, /new AbortController\(\)/);
   assert.match(youtubeRuntime, /attributeFilter: \['class'\]/);
   assert.match(youtubeRuntime, /state\.classObserver\.observe\(player/);
+  assert.match(youtubeRuntime, /const syncAdObserver = active =>/);
+  assert.match(youtubeRuntime, /state\.adObserver = new MutationObserver/);
+  assert.match(youtubeRuntime, /syncAdObserver\(adActive\)/);
   assert.match(youtubeRuntime, /video\?\.error/);
   assert.match(mediaWrapper, /add_WebMessageReceived/);
   assert.doesNotMatch(mediaPanel, /kNativeMediaPlaybackHealthTimer|ProbeYoutubeHealth/);
