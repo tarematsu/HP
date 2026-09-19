@@ -145,11 +145,18 @@ void PowerSavingController::ObserveParentMessage(
 
   switch (message) {
     case kStationheadMonitorProbeResultMessage: {
-      if (monitorMode_ != MonitorMode::Native) break;
+      if (monitorMode_ == MonitorMode::Off) break;
       const bool detected = wParam != 0;
       if (monitorAuthForeground_ != detected) {
         monitorAuthForeground_ = detected;
         ApplyStationheadMonitorPlacement();
+        if (monitorMode_ == MonitorMode::ServiceGrid && !detected) {
+          // Authentication may temporarily cover the complete dashboard, but
+          // it must never tear down Spotify's five Monitor S hosts. Force one
+          // final layout pass when Stationhead releases the interactive layer.
+          SetSpotifyMonitorGridVisible(false);
+          SetSpotifyMonitorGridVisible(true);
+        }
       }
       break;
     }
@@ -257,6 +264,12 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
       (monitorMode_ == MonitorMode::Native && monitorAuthForeground_);
   const bool nativeMediaForeground =
       monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
+
+  // Stationhead authentication is a temporary visual overlay only. Keep the
+  // Spotify grid enabled so its WebViews, timers and recovery state continue
+  // untouched behind the interactive surface.
+  if (serviceGrid) SetSpotifyMonitorGridVisible(true);
+
   if (SetStationheadMonitorForeground(stationheadForeground)) {
     PostMessageW(parent_, WM_TIMER, 0, 0);
   }
@@ -265,9 +278,7 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   GetClientRect(parent_, &parentClient);
   const RECT serviceTile = ServiceMonitorTileBounds(parentClient, 0);
   const RECT stationheadBounds =
-      monitorMode_ == MonitorMode::Native && monitorAuthForeground_
-          ? parentClient
-          : serviceTile;
+      monitorAuthForeground_ ? parentClient : serviceTile;
 
   struct Context {
     PowerSavingController* controller;
