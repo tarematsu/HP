@@ -262,6 +262,15 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
+            if (json &&
+                std::wstring_view(json) == L"\"startup-failure\"") {
+              const bool requestRebuild =
+                  target->trackStartRecovery.reloadIssued;
+              EscalateSpotifyStartupFailure(
+                  *target, callbackNow, requestRebuild);
+              return S_OK;
+            }
+
             const ULONGLONG retryDelayMs = ParseSpotifyRetryDelay(json);
             if (retryDelayMs != 0) {
               SetSlotState(*target, SlotState::WaitingTarget);

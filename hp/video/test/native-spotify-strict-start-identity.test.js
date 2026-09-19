@@ -9,6 +9,7 @@ const source = name => readFileSync(
 
 const wrapper = source('spotify_webviews.inc');
 const strict = source('spotify_strict_track_start_reconcile.inc');
+const musicTarget = source('spotify_music_target.inc');
 const startup = source('spotify_startup_audio_recovery.inc');
 
 test('Spotify startup requires target identity and target-local clock progress', () => {
@@ -29,11 +30,32 @@ test('Spotify startup requires target identity and target-local clock progress',
   );
 });
 
-test('wrong-track startup is repaired instead of accepted', () => {
-  assert.match(strict, /if \(!currentTrackMatchesTarget\(\)\)/);
+test('advertisements and non-track interstitials are never restarted', () => {
+  assert.match(strict, /const advertisementVisible = \(\) =>/);
+  assert.match(
+    strict,
+    /advertisementVisible\(\) \|\| \(!observedTrackPath && !metadataTargetMatch\)/,
+  );
+  assert.match(
+    strict,
+    /clearWrongTrackRecovery\(\);\s*return playbackProbeMs;/,
+  );
+});
+
+test('wrong-track startup restart is bounded and escalates', () => {
+  assert.match(strict, /if \(!currentTrackMatchesTarget\(observedTrackPath\)\)/);
+  assert.match(strict, /recovery\.samples < 2/);
+  assert.match(strict, /Number\(recovery\.restarts \|\| 0\) < 1/);
   assert.match(strict, /pagePause\.click\(\)/);
   assert.match(strict, /__homePanelSpotifyZeroSecondRestartPath = targetPath/);
   assert.match(strict, /return 'restart'/);
+  assert.match(strict, /return 'startup-failure'/);
+  assert.match(
+    musicTarget,
+    /std::wstring_view\(json\) == L"\\"startup-failure\\""/,
+  );
+  assert.match(musicTarget, /target->trackStartRecovery\.reloadIssued/);
+  assert.match(musicTarget, /EscalateSpotifyStartupFailure/);
 });
 
 test('strict DOM proof still feeds the existing native audio and fresh CDP gate', () => {
