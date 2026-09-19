@@ -113,12 +113,15 @@ class SpotifyWebViews final {
     ULONGLONG asyncEpoch = 0;
     ULONGLONG asyncStartedTick = 0;
     ULONGLONG pageEpoch = 0;
+    ULONGLONG authAssistPageEpoch = 0;
+    ULONGLONG nextAuthAssistTick = 0;
     ULONGLONG targetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
     ULONGLONG mediaPipelineRecoveryGeneration = 0;
     ULONGLONG mediaKeyWaitUntilTick = 0;
     ULONGLONG mediaNetworkRecoveryTick = 0;
     size_t mediaNetworkRecoveryAttempt = 0;
+    unsigned authAssistAttempts = 0;
     unsigned nativeAudioStartChecks = 0;
     std::wstring observedTrackTitle;
     std::wstring processTrackDisplay;

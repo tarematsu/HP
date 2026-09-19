@@ -46,6 +46,33 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   }
   if (now < scheduleStartTick_) return;
 
+  // Spotify renders the login form asynchronously on slower systems. Give each
+  // authentication document a short, bounded assist window instead of relying
+  // on a single NavigationCompleted probe. The helper itself only acts on the
+  // email-login page and uses the browser profile's remembered autofill entry.
+  for (Slot& authSlot : slots_) {
+    if (!SlotIsLoginPage(authSlot) || !authSlot.webview) continue;
+    if (authSlot.authAssistPageEpoch != authSlot.pageEpoch) {
+      authSlot.authAssistPageEpoch = authSlot.pageEpoch;
+      authSlot.authAssistAttempts = 0;
+      authSlot.nextAuthAssistTick = now;
+    }
+    if (authSlot.authAssistAttempts >= kSpotifyAuthAssistMaxAttempts) {
+      authSlot.nextAuthAssistTick = 0;
+      continue;
+    }
+    if (authSlot.nextAuthAssistTick != 0 &&
+        now < authSlot.nextAuthAssistTick) {
+      continue;
+    }
+    TrySpotifySavedEmailLogin(authSlot.webview.Get());
+    ++authSlot.authAssistAttempts;
+    authSlot.nextAuthAssistTick =
+        authSlot.authAssistAttempts < kSpotifyAuthAssistMaxAttempts
+            ? now + kSpotifyAuthAssistRetryMs
+            : 0;
+  }
+
   const auto reloadMediaSurface = [this, now](Slot& slot) noexcept {
     slot.mediaKeyWaitUntilTick = 0;
     slot.mediaNetworkRecoveryTick = 0;
