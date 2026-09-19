@@ -3,14 +3,8 @@
 
 namespace hp {
 namespace {
-constexpr size_t kNativeImageBitmapCacheLimit = 48;
-constexpr size_t kRadarBitmapCacheLimit = 12;
+constexpr size_t kWeatherIconBitmapCacheLimit = 12;
 constexpr int64_t kNativeImageDecodeRetryMs = 60'000;
-
-bool IsPersistentRadarBitmap(const std::wstring& key) {
-  return key.rfind(L"radar-satellite#", 0) == 0 ||
-         key.rfind(L"radar-map#", 0) == 0;
-}
 
 template <typename Cache, typename Loader>
 HBITMAP CachedBitmap(Cache& cache, uint64_t& useCounter, size_t limit,
@@ -43,44 +37,37 @@ HBITMAP CachedBitmap(Cache& cache, uint64_t& useCounter, size_t limit,
 }
 }  // namespace
 
-HBITMAP Renderer::NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height) {
-  if (!hwnd || !dc || width <= 0 || height <= 0) return nullptr;
-  PanelBackBuffer& buffer = nativeBackBuffers_[hwnd];
-  if (buffer.bitmap && buffer.width == width && buffer.height == height) return buffer.bitmap;
+HBITMAP Renderer::NativePanelBackBuffer(HWND, HDC dc, int width, int height) {
+  if (!dc || width <= 0 || height <= 0) return nullptr;
+
+  // Native panels paint serially on the UI thread. Keep one grow-only backing
+  // bitmap shared by all child HWNDs instead of retaining a bitmap per panel.
+  PanelBackBuffer& buffer = nativeBackBuffers_[nullptr];
+  if (buffer.bitmap && buffer.width >= width && buffer.height >= height) {
+    return buffer.bitmap;
+  }
+
+  const int targetWidth = std::max(width, buffer.width);
+  const int targetHeight = std::max(height, buffer.height);
+  HBITMAP replacement = CreateCompatibleBitmap(dc, targetWidth, targetHeight);
+  if (!replacement) return buffer.bitmap;
   if (buffer.bitmap) DeleteObject(buffer.bitmap);
-  buffer.bitmap = CreateCompatibleBitmap(dc, width, height);
-  buffer.width = buffer.bitmap ? width : 0;
-  buffer.height = buffer.bitmap ? height : 0;
+  buffer.bitmap = replacement;
+  buffer.width = targetWidth;
+  buffer.height = targetHeight;
   return buffer.bitmap;
 }
 
-void Renderer::ReleaseNativePanelBackBuffer(HWND hwnd) {
-  const auto found = nativeBackBuffers_.find(hwnd);
-  if (found == nativeBackBuffers_.end()) return;
-  if (found->second.bitmap) DeleteObject(found->second.bitmap);
-  nativeBackBuffers_.erase(found);
-}
-
-HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int height) {
-  if (url.empty() || width <= 0 || height <= 0) return nullptr;
-  static constexpr wchar_t kDataHostPrefix[] = L"https://data.homepanel/";
-  if (url.rfind(kDataHostPrefix, 0) != 0) return nullptr;
-  const std::wstring key = url + L"#" + std::to_wstring(width) + L"x" + std::to_wstring(height);
-  return CachedBitmap(nativeImageBitmaps_, nativeImageUseCounter_,
-                      kNativeImageBitmapCacheLimit, key, [&] {
-    std::wstring relative = url.substr(std::size(kDataHostPrefix) - 1);
-    if (relative.empty() || relative.find(L"..") != std::wstring::npos) return HBITMAP{};
-    for (auto& character : relative) if (character == L'/') character = L'\\';
-    return DecodeImageFileToBitmap(dataDir_ / relative, width, height);
-  });
+void Renderer::ReleaseNativePanelBackBuffer(HWND) {
+  // Shared by all panel HWNDs; ReleaseNativePanelSurfaces owns its lifetime.
 }
 
 HBITMAP Renderer::NativeWeatherIconBitmap(
     const std::wstring& icon, bool night, int width, int height) {
   const std::wstring fileName = icon + (night ? L"_night.png" : L"_day.png");
   const std::wstring key = fileName + L"#" + std::to_wstring(width) + L"x" + std::to_wstring(height);
-  return CachedBitmap(nativeImageBitmaps_, nativeImageUseCounter_,
-                      kNativeImageBitmapCacheLimit, key, [&] {
+  return CachedBitmap(nativeWeatherIconBitmaps_, nativeWeatherIconUseCounter_,
+                      kWeatherIconBitmapCacheLimit, key, [&] {
     const auto decodeIcon = [&](const std::wstring& name) {
       return DecodeImageFileToBitmap(rootDir_ / L"ui" / L"weather-icons" / name, width, height);
     };
@@ -99,40 +86,6 @@ HBITMAP Renderer::NativeWeatherIconBitmap(
   });
 }
 
-HBITMAP Renderer::CachedRadarBitmap(
-    const std::wstring& key, const fs::path& path, const std::string& fileStamp,
-    int width, int height) {
-  if (width <= 0 || height <= 0) return nullptr;
-  const std::wstring keyPrefix = key + L"#";
-  const std::wstring cacheKey = keyPrefix + Utf8ToWide(fileStamp) + L"#" +
-      std::to_wstring(width) + L"x" + std::to_wstring(height);
-  auto found = nativeRadarBitmaps_.find(cacheKey);
-  if (found != nativeRadarBitmaps_.end()) {
-    found->second.lastUsed = ++nativeRadarBitmapUseCounter_;
-    return found->second.bitmap;
-  }
-  HBITMAP bitmap = DecodeImageFileToBitmap(path, width, height);
-  if (!bitmap) return nullptr;
-  for (auto item = nativeRadarBitmaps_.begin(); item != nativeRadarBitmaps_.end();) {
-    if (item->first.rfind(keyPrefix, 0) != 0) { ++item; continue; }
-    if (item->second.bitmap) DeleteObject(item->second.bitmap);
-    item = nativeRadarBitmaps_.erase(item);
-  }
-  if (nativeRadarBitmaps_.size() >= kRadarBitmapCacheLimit) {
-    auto oldest = nativeRadarBitmaps_.end();
-    for (auto item = nativeRadarBitmaps_.begin(); item != nativeRadarBitmaps_.end(); ++item) {
-      if (IsPersistentRadarBitmap(item->first)) continue;
-      if (oldest == nativeRadarBitmaps_.end() || item->second.lastUsed < oldest->second.lastUsed) oldest = item;
-    }
-    if (oldest != nativeRadarBitmaps_.end()) {
-      if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
-      nativeRadarBitmaps_.erase(oldest);
-    }
-  }
-  nativeRadarBitmaps_[cacheKey] = BitmapCacheEntry{bitmap, ++nativeRadarBitmapUseCounter_};
-  return bitmap;
-}
-
 void Renderer::ReleaseNativePanelSurfaces() noexcept {
   for (auto& item : nativeBackBuffers_) if (item.second.bitmap) DeleteObject(item.second.bitmap);
   nativeBackBuffers_.clear();
@@ -142,14 +95,11 @@ void Renderer::ResetNativeBitmapCaches() noexcept {
   ReleaseNativePanelSurfaces();
   if (energyBitmapCache_.bitmap) DeleteObject(energyBitmapCache_.bitmap);
   energyBitmapCache_ = {};
-  const auto deleteBitmaps = [](auto& entries) {
-    for (auto& item : entries) if (item.second.bitmap) DeleteObject(item.second.bitmap);
-    entries.clear();
-  };
-  deleteBitmaps(nativeImageBitmaps_);
-  nativeImageUseCounter_ = 0;
-  deleteBitmaps(nativeRadarBitmaps_);
-  nativeRadarBitmapUseCounter_ = 0;
+  for (auto& item : nativeWeatherIconBitmaps_) {
+    if (item.second.bitmap) DeleteObject(item.second.bitmap);
+  }
+  nativeWeatherIconBitmaps_.clear();
+  nativeWeatherIconUseCounter_ = 0;
 }
 
 }  // namespace hp
