@@ -14,7 +14,7 @@ const periodic = source('sh_track_boundary_message_policy.h');
 
 test('Stationhead does not promote a native-audio pulse to healthy playback', () => {
   const gate = player.indexOf(
-    'if (playing && nativeAudioTracking_ &&\n      source != L"WebView2 + media clock")',
+    'if (playing &&\n      source != L"WebView2 + media clock" &&\n      source != L"media clock")',
   );
   const exchange = player.indexOf('audioPlaying_.exchange(playing');
   assert.notEqual(gate, -1);
@@ -52,6 +52,23 @@ test('Stationhead media-progress confirmation rechecks WebView2 audio fail-close
   );
   assert.match(webview, /L"media clock without native audio"/);
   assert.match(player, /source != L"WebView2 \+ media clock"/);
+  assert.match(player, /source != L"media clock"/);
+});
+
+test('Stationhead track-boundary recovery stays armed after an unverified native pulse', () => {
+  const postNavigation = player.indexOf('L"post-navigation native confirmation"');
+  const verifiedCheck = player.indexOf(
+    'if (!audioPlaying_.load(std::memory_order_relaxed))',
+    postNavigation,
+  );
+  const deadline = player.indexOf(
+    'nowMs + kStationheadTrackBoundaryPlaybackRecoveryTimeoutMs',
+    verifiedCheck,
+  );
+  assert.notEqual(postNavigation, -1);
+  assert.notEqual(verifiedCheck, -1);
+  assert.notEqual(deadline, -1);
+  assert.ok(postNavigation < verifiedCheck && verifiedCheck < deadline);
 });
 
 test('Stationhead recovery verification does not reintroduce PCM or Core Audio peak checks', () => {
