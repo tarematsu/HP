@@ -7,16 +7,22 @@ const startup = readFileSync(
   'utf8',
 );
 
-test('Spotify startup requires WebView2 and Windows Core Audio evidence', () => {
+test('Spotify startup requires WebView2 and Windows Core Audio session evidence', () => {
   assert.match(startup, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
   assert.match(startup, /IAudioSessionManager2/);
   assert.match(startup, /GetSessionEnumerator/);
   assert.match(startup, /AudioSessionStateActive/);
-  assert.match(startup, /GetPeakValue\(&peak\)/);
   assert.match(startup, /windowsAudio\.querySucceeded/);
   assert.match(startup, /windowsAudio\.activeWebViewSession/);
-  assert.match(startup, /requiresPhysicalPeak/);
-  assert.match(startup, /windowsAudio\.audibleWebViewSession/);
+  assert.match(startup, /msedgewebview2\.exe/);
+});
+
+test('Spotify startup does not use PCM peak as health evidence', () => {
+  assert.doesNotMatch(startup, /IAudioMeterInformation/);
+  assert.doesNotMatch(startup, /GetPeakValue/);
+  assert.doesNotMatch(startup, /audibleWebViewSession/);
+  assert.doesNotMatch(startup, /requiresPhysicalPeak/);
+  assert.doesNotMatch(startup, /kSpotifyAudiblePeakFloor/);
 });
 
 test('Spotify no longer treats an unavailable native audio query as success', () => {
@@ -34,13 +40,4 @@ test('Spotify forces one pause-to-trusted-play restart before reload escalation'
   assert.match(startup, /slot\.trustedClickBlockedUntilTick = 0/);
   assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
   assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-});
-
-test('muted lanes require an active session while the routed lane requires PCM peak', () => {
-  assert.match(startup, /runtimeLane == gSpotifyAudioOutputSlot/);
-  assert.match(
-    startup,
-    /!requiresPhysicalPeak \|\| windowsAudio\.audibleWebViewSession/,
-  );
-  assert.match(startup, /msedgewebview2\.exe/);
 });
