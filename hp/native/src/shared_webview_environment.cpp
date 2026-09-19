@@ -4,16 +4,11 @@
 namespace hp {
 namespace {
 
-// Playback surfaces must keep renderer timers and media plumbing fully active
-// even while their host windows are parked behind the native UI. Disabling
-// Chromium's occluded-window/background throttles avoids long-lived Spotify or
-// Stationhead lanes drifting into a suspended renderer state while still
-// looking healthy to the page UI.
+// Keep autoplay enabled, but leave Chromium's normal occluded-window,
+// renderer-backgrounding, and background-timer policies intact. Spotify now
+// opts into LOW memory and Windows Efficiency mode explicitly per renderer.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--autoplay-policy=no-user-gesture-required "
-    L"--disable-backgrounding-occluded-windows "
-    L"--disable-renderer-backgrounding "
-    L"--disable-background-timer-throttling "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "
