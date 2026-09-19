@@ -1,6 +1,6 @@
 #pragma once
 #include "sh_auth_navigation_policy_fix.h"
-#include "spotify_permanent_resource_mode.h"
+#include "stationhead_permanent_resource_mode.h"
 
 namespace hp {
 
@@ -53,11 +53,11 @@ inline void ApplyStationheadResourceBlockingFilterFixed(
   (void)armed;
   if (!environment || !webview) return;
 
-  // The long-lived Stationhead playback surface uses the same permanent
-  // resource mode as Spotify: LOW memory target plus Windows Efficiency mode.
+  // The long-lived Stationhead playback surface retains its permanent LOW
+  // memory target and Windows Efficiency mode independently from Spotify.
   // ConfigureWebView invokes this path for every recreated playback WebView, so
   // the policy is restored automatically after renderer/WebView replacement.
-  ApplyPermanentWebViewResourceMode(environment, webview);
+  ApplyStationheadPermanentWebViewResourceMode(environment, webview);
 
   ComPtr<ICoreWebView2> base = webview;
   ComPtr<ICoreWebView2_22> sourceAwareWebView;
