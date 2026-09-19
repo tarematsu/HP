@@ -19,6 +19,7 @@ test('Actions repair prioritizes the active queue before the bounded backlog win
   assert.match(script, /function activeQueueRows\(\)/);
   assert.match(script, /FROM sh_queue_current/);
   assert.match(script, /JOIN sh_queue_items AS items/);
+  assert.match(script, /items\.duration_ms/);
   assert.match(script, /ORDER BY items\.position ASC/);
   assert.match(script, /for \(const row of \[\.\.\.active, \.\.\.latest\]\)/);
 });
@@ -29,6 +30,14 @@ test('Actions repair reads a bounded latest-state candidate window instead of gr
   assert.match(script, /ORDER BY observed_at DESC LIMIT \$\{candidateScanLimit\}/);
   assert.match(script, /bySpotify\.has\(spotifyId\)/);
   assert.doesNotMatch(script, /FROM sh_queue_items[\s\S]*GROUP BY spotify_id/);
+});
+
+test('Actions repair recovers Spotify oEmbed entries that omit the artist', () => {
+  assert.match(script, /function appleMetadata\(title, durationMs\)/);
+  assert.match(script, /itunes\.apple\.com\/search/);
+  assert.match(script, /trackTimeMillis/);
+  assert.match(script, /candidate\.duration_ms/);
+  assert.match(script, /spotify_oembed_itunes_actions/);
 });
 
 test('Actions repair prefers existing buddies metadata before bounded Spotify fetches', () => {
