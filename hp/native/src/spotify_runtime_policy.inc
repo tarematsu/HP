@@ -26,6 +26,8 @@ RECT SpotifyControllerBounds(HWND hostWindow, bool authentication) noexcept {
 
 void SpotifyWebViews::ApplyPlaybackResourceMode(
     Slot& slot, bool constrained) noexcept {
+  const uint64_t generation =
+      BeginPlaybackResourceModeChange(slot.resourceModeGeneration);
   if (!slot.webview) {
     slot.memoryUsageTargetLevel = -1;
     return;
@@ -41,9 +43,11 @@ void SpotifyWebViews::ApplyPlaybackResourceMode(
 
   // Efficiency mode is process-scoped, so resolve the renderer from this
   // WebView's main FrameId instead of touching every process in the shared
-  // environment. Pre-playback/recovery states explicitly restore normal mode.
+  // environment. The generation token prevents an older asynchronous LOW
+  // request from racing past a newer NORMAL recovery transition.
   SetWebViewRendererEfficiencyMode(
-      slot.environment.Get(), slot.webview.Get(), constrained);
+      slot.environment.Get(), slot.webview.Get(), constrained,
+      slot.resourceModeGeneration, generation);
 }
 
 }  // namespace hp
