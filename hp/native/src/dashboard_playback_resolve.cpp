@@ -19,15 +19,6 @@ bool TrackHasIdentity(const NativePlaybackTrack& track) {
   return !track.title.empty() || !track.artist.empty() || !track.artwork.empty();
 }
 
-bool IsPlaybackFallbackUrl(const std::wstring& url, const std::wstring& fallbackUrl) {
-  return !url.empty() && !fallbackUrl.empty() &&
-         _wcsicmp(url.c_str(), fallbackUrl.c_str()) == 0;
-}
-
-bool SelectedStationheadIsOnFallback(const StationheadStatus& state) {
-  return IsPlaybackFallbackUrl(state.url, state.fallbackUrl);
-}
-
 struct ProjectedTrackPosition {
   size_t index = 0;
   int64_t elapsedMs = 0;
@@ -208,7 +199,6 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
 }
 
 int64_t Renderer::NativePlaybackNextWakeAt(int64_t nowMs) const {
-  if (SelectedStationheadIsOnFallback(nativeStationhead_)) return 0;
   std::lock_guard lock(nativePlaybackMutex_);
   const NativePlaybackProjection& projection = nativePlaybackUpdate_.projection;
   if (!projection.available || projection.setupRequired) return 0;
