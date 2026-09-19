@@ -58,6 +58,7 @@ for (const path of ['/', '/#daily', '/#weekly']) {
 const trackUrl = 'https://open.spotify.com/track/0excsYy4LOVEcQTN4OPeJE';
 let spotifyOembed = null;
 let spotifyEmbed = null;
+let itunesSearch = null;
 try {
   const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(trackUrl)}`, {
     headers: { accept: 'application/json', 'user-agent': 'HomePanel-visual-diagnostic/1.0' },
@@ -86,14 +87,40 @@ try {
       containsSakurazaka: html.includes('櫻坂46'),
     };
   }
+  const title = spotifyOembed?.payload?.title;
+  if (title) {
+    const searchUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(title)}&entity=song&country=JP&limit=25`;
+    const itunesResponse = await fetch(searchUrl, {
+      headers: { accept: 'application/json', 'user-agent': 'HomePanel-visual-diagnostic/1.0' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const payload = await itunesResponse.json().catch(() => null);
+    itunesSearch = {
+      status: itunesResponse.status,
+      ok: itunesResponse.ok,
+      matches: Array.isArray(payload?.results)
+        ? payload.results.filter((item) => String(item?.trackName || '').trim() === title).slice(0, 10)
+          .map((item) => ({
+            trackName: item.trackName,
+            artistName: item.artistName,
+            collectionName: item.collectionName,
+            trackTimeMillis: item.trackTimeMillis,
+            artworkUrl100: item.artworkUrl100,
+            trackViewUrl: item.trackViewUrl,
+          }))
+        : [],
+    };
+  }
 } catch (error) {
   spotifyOembed = spotifyOembed || { error: String(error) };
   spotifyEmbed = spotifyEmbed || { error: String(error) };
+  itunesSearch = itunesSearch || { error: String(error) };
 }
 
 await writeFile(`${outDir}/report.json`, `${JSON.stringify(records, null, 2)}\n`);
 await writeFile(`${outDir}/spotify-oembed.json`, `${JSON.stringify(spotifyOembed, null, 2)}\n`);
 await writeFile(`${outDir}/spotify-embed.json`, `${JSON.stringify(spotifyEmbed, null, 2)}\n`);
-console.log(JSON.stringify({ records, spotifyOembed, spotifyEmbed }, null, 2));
+await writeFile(`${outDir}/itunes-search.json`, `${JSON.stringify(itunesSearch, null, 2)}\n`);
+console.log(JSON.stringify({ records, spotifyOembed, spotifyEmbed, itunesSearch }, null, 2));
 await context.close();
 await browser.close();
