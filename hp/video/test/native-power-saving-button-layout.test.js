@@ -118,12 +118,18 @@ test('monitor button cycles YT, unified S grid, black OFF, then YT', () => {
   assert.match(grid, /kServiceMonitorTileCount = 6/);
   assert.match(grid, /kServiceMonitorColumns = 3/);
   assert.match(grid, /kServiceMonitorRows = 2/);
+  assert.doesNotMatch(grid, /ComputeNativeDashboardLayout/);
+  assert.match(grid, /workspaceBounds\.right - workspaceBounds\.left/);
+  assert.match(grid, /workspaceBounds\.bottom - workspaceBounds\.top/);
   assert.match(spotifyLayout, /ServiceMonitorTileBounds\(client, i \+ 1\)/);
   assert.match(spotifyLayout, /gSpotifyMonitorGridVisible && !loginPage/);
   assert.match(routing, /ServiceMonitorTileBounds\(parentClient, 0\)/);
   assert.match(routing, /monitorMode_ == MonitorMode::ServiceGrid/);
   assert.match(schedule, /powerSaving_ = nextPowerSaving/);
-  assert.match(schedule, /Renderer::SetGlobalPowerSavingMode\(powerSaving_\)/);
+  assert.match(
+    schedule,
+    /Renderer::SetGlobalPowerSavingMode\(\s*powerSaving_ \|\| mode == MonitorMode::ServiceGrid\s*\)/,
+  );
   assert.match(schedule, /ApplyStationheadMonitorPlacement\(\)/);
   assert.match(routing, /monitorMode_ = MonitorMode::Native/);
   assert.match(routing, /SetSpotifyMonitorGridVisible\(false\)/);
