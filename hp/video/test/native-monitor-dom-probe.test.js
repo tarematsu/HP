@@ -26,7 +26,7 @@ test('visible monitor modes probe targeted Stationhead controls every five minut
   assert.match(audioLoss, /kMonitorDomProbeScript/);
   assert.match(audioLoss, /document\.querySelectorAll\(selector\)/);
   assert.match(audioLoss, /\\blog\\s\+in\\b/);
-  assert.match(audioLoss, /\\bconnect\\s+spotify\\b/);
+  assert.match(audioLoss, /\\bconnect\\s\+spotify\\b/);
   assert.match(audioLoss, /surface !== document\.body && depth < 4/);
   const monitorProbe = audioLoss.slice(
     audioLoss.indexOf('constexpr wchar_t kMonitorDomProbeScript[]'),
