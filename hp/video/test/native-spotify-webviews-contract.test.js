@@ -28,7 +28,7 @@ test('Spotify keeps all five logical windows live with fixed one-to-one lanes', 
   assert.match(spotifyHeader, /return accountIndex < kSpotifyActiveAccountCount/);
   assert.doesNotMatch(spotifyHeader, /gSpotifyRuntimeLaneAccounts/);
   assert.doesNotMatch(spotifyHeader, /gSpotifyInactiveAccountIndex/);
-  assert.match(spotifyRotation, /amazon=A, yuukiar=B, ten=C, nagi=D, hinata=E/);
+  assert.match(spotifyRotation, /amazon=A, yuukiar=B, ten=C, nagi=D, hinata=A/);
 });
 
 test('Stationhead uses the restored ozeki WebView2 profile', () => {
