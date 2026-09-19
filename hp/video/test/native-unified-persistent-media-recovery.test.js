@@ -29,14 +29,13 @@ test('Spotify steady state no longer uses the persistent silence-recovery ladder
   assert.match(schedule, /No periodic IsDocumentPlayingAudio scan here/);
 });
 
-test('Spotify normal destructive recovery is scoped to one target generation and terminates with skip', () => {
+test('Spotify normal startup recovery is scoped to one generation and terminates with skip', () => {
   assert.match(spotifyHeader, /SpotifyTrackStartRecovery trackStartRecovery/);
-  assert.match(click, /EscalateSpotifyStartupFailure\(/);
-  assert.match(startup, /slot\.trackStartRecovery, slot\.targetGeneration/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.doesNotMatch(click, /EscalateSpotifyStartupFailure\(/);
+  assert.match(startup, /ConsumeSpotifyStartupReload\([\s\S]*slot\.trackStartRecovery[\s\S]*slot\.targetGeneration/);
+  assert.match(startup, /slot\.webview->Reload\(\)/);
   assert.match(startup, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(startup, /RebuildSurface|mediaPipelineRecoveryPending = true/);
   assert.doesNotMatch(
     click,
     /NextMediaRecoveryAction\([\s\S]*MediaRecoveryEvidence::ConfirmedSilence/,
@@ -52,7 +51,7 @@ test('explicit Spotify process and media-pipeline failures remain event driven',
   assert.match(controller, /MediaRecoveryEvidence::NetworkFailure/);
 });
 
-test('heavy Spotify surface recovery remains serialized', () => {
+test('heavy Spotify surface recovery remains serialized for explicit failures', () => {
   assert.match(schedule, /kSpotifyHeavyRecoverySpacingMs = 5ULL \* 1000ULL/);
   assert.match(schedule, /gSpotifyHeavyRecoveryNextTick/);
   assert.match(schedule, /slot\.nextRecoveryTick = std::max/);

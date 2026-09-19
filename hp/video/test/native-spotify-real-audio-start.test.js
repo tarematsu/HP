@@ -35,19 +35,13 @@ test('Spotify startup requires WebView2 plus slot-local CDP audio-pipeline evide
   assert.match(wrapper, /#include "spotify_media_start_evidence\.inc"/);
 });
 
-test('Spotify Pause UI alone cannot confirm playback without media-clock evidence', () => {
-  assert.match(scoped, /const recordUnverifiedPause = \(button, media\) =>/);
-  assert.match(scoped, /if \(!media\) return recordUnverifiedPause\(button, null\)/);
-  assert.match(
-    scoped,
-    /if \(!Number\.isFinite\(current\) \|\| current < 0\)[\s\S]*recordUnverifiedPause\(button, media\)/,
-  );
-  assert.match(scoped, /stagnantSamples < stalledObservationLimit/);
-  assert.match(scoped, /return restartUnverifiedPause\(button\)/);
-  assert.doesNotMatch(
-    scoped,
-    /if \(!media\)[\s\S]{0,160}return 'confirmed'/,
-  );
+test('Spotify identity alone cannot confirm playback without media-clock progress', () => {
+  assert.match(scoped, /const activeMedia = Array\.from\(document\.querySelectorAll\('audio, video'\)\)/);
+  assert.match(scoped, /if \(targetMatches && activeMedia\) \{/);
+  assert.match(scoped, /if \(targetMatches\) return failSample\(\)/);
+  assert.match(scoped, /__homePanelSpotifySimpleMediaProbe/);
+  assert.match(scoped, /current > Number\(previous\.currentTime\) \+ 0\.05/);
+  assert.doesNotMatch(scoped, /pagePause|restartUnverifiedPause|button\.click\(\)/);
 });
 
 test('Spotify requires two spaced complete native-audio passes before startup success', () => {
@@ -57,12 +51,9 @@ test('Spotify requires two spaced complete native-audio passes before startup su
     startup,
     /now - firstPassTick >= kSpotifyNativeAudioStartRetryMs/,
   );
-  const firstPassAt = startup.indexOf('if (firstPassTick == 0) firstPassTick');
-  const verifiedAt = startup.indexOf('slot.nativeAudioStartVerified = true');
-  assert.notEqual(firstPassAt, -1);
-  assert.notEqual(verifiedAt, -1);
-  assert.ok(verifiedAt < firstPassAt || startup.includes('firstPassTick != 0'));
-  assert.match(startup, /Any failed sample breaks the consecutive-success requirement/);
+  assert.match(startup, /if \(startupAudioVerified\)/);
+  assert.match(startup, /else \{\s*firstPassTick = 0;\s*\}/);
+  assert.match(startup, /slot\.nativeAudioStartVerified = true/);
 });
 
 test('Spotify recovery cannot reuse native or CDP proof from before an interruption', () => {
@@ -85,16 +76,15 @@ test('Spotify recovery cannot reuse native or CDP proof from before an interrupt
   assert.match(phase, /evidence\.playbackPlayerId\.clear\(\)/);
 });
 
-test('Spotify pause-to-trusted-play recovery also demands a fresh CDP playback event', () => {
+test('Spotify reload retry starts a fresh CDP evidence window without Pause-Play repair', () => {
   const resetAt = startup.indexOf(
     'RestartSpotifyMediaStartEvidenceWindow(slot.index, slot.targetGeneration);',
   );
-  const restartAt = startup.indexOf(
-    'RequestSpotifyAudioPipelineRestart(slot.webview.Get());',
-  );
+  const reloadAt = startup.indexOf('slot.webview->Reload()');
   assert.notEqual(resetAt, -1);
-  assert.notEqual(restartAt, -1);
-  assert.ok(resetAt < restartAt);
+  assert.notEqual(reloadAt, -1);
+  assert.ok(resetAt < reloadAt);
+  assert.doesNotMatch(startup, /RequestSpotifyAudioPipelineRestart|button\.click\(\)/);
 });
 
 test('Spotify per-slot startup no longer depends on shared Windows Core Audio or PCM', () => {
@@ -114,19 +104,21 @@ test('Spotify retains one shared UDF/environment instead of per-slot process iso
   assert.doesNotMatch(foundation, /webview2-spotify-slot-/);
 });
 
-test('Spotify no longer treats unavailable startup evidence as success', () => {
+test('Spotify never treats unavailable native startup evidence as success', () => {
   assert.doesNotMatch(
     startup,
     /FAILED\(interfaceResult\)[\s\S]{0,400}nativeAudioStartVerified\s*=\s*true/,
   );
-  assert.match(startup, /deliberately fail-closed/);
+  assert.match(
+    startup,
+    /SUCCEEDED\(interfaceResult\)[\s\S]*SUCCEEDED\(stateResult\)[\s\S]*nativePlaying != FALSE[\s\S]*SpotifyMediaStartEvidenceReady/,
+  );
 });
 
-test('Spotify forces one pause-to-trusted-play restart before reload escalation', () => {
-  assert.match(startup, /RequestSpotifyAudioPipelineRestart/);
-  assert.match(startup, /button\.click\(\)/);
-  assert.match(startup, /slot\.nativeAudioStartChecks == 2/);
-  assert.match(startup, /slot\.trustedClickBlockedUntilTick = 0/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
+test('Spotify startup failure reloads once and then skips without a restart or rebuild ladder', () => {
+  assert.match(startup, /ConsumeSpotifyStartupReload/);
+  assert.match(startup, /slot\.webview->Reload\(\)/);
+  assert.match(startup, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(startup, /RequestSpotifyAudioPipelineRestart|RebuildSurface/);
+  assert.doesNotMatch(startup, /mediaPipelineRecoveryPending = true/);
 });

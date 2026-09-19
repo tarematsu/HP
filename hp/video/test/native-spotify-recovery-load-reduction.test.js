@@ -12,15 +12,11 @@ const lifecycle = source('spotify_host_lifecycle.inc');
 const schedule = source('spotify_stagger_schedule.inc');
 const resourceMode = source('spotify_permanent_resource_mode.h');
 
-test('Spotify recovery reuses connected Play controls and media elements', () => {
-  assert.match(scoped, /__homePanelSpotifyDomCache/);
-  assert.match(scoped, /domCache\.path !== targetPath/);
-  assert.match(scoped, /const cachedButtons = \(key, selector\) =>/);
-  assert.match(scoped, /Array\.isArray\(domCache\[key\]\)/);
-  assert.match(scoped, /document\.querySelectorAll\(selector\)/);
-  assert.match(scoped, /cached && cached\.isConnected !== false && !cached\.ended/);
-  assert.match(scoped, /domCache\.media = selected/);
-  assert.match(scoped, /domCache\.nowPlayingLink/);
+test('Spotify startup uses one small per-target state instead of a DOM recovery cache', () => {
+  assert.match(scoped, /__homePanelSpotifySimpleStartState/);
+  assert.match(scoped, /__homePanelSpotifySimpleMediaProbe/);
+  assert.match(scoped, /state = \{ path: targetPath, playIssued: false, failedSamples: 0 \}/);
+  assert.doesNotMatch(scoped, /__homePanelSpotifyDomCache|cachedButtons|domCache\.media|domCache\.nowPlayingLink/);
 });
 
 test('fully verified Spotify playback exits before source or Play-Pause DOM reconciliation', () => {

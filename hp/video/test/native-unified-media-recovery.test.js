@@ -48,7 +48,7 @@ test('Stationhead escalates confirmed silence without bypassing authentication',
   assert.match(stationheadWebView, /ScheduleRecreate\(L"ProcessFailed"/);
 });
 
-test('Spotify separates per-track startup recovery from explicit process failures', () => {
+test('Spotify separates simple per-track startup from explicit process failures', () => {
   assert.match(spotify, /No periodic IsDocumentPlayingAudio scan here/);
   assert.doesNotMatch(spotify, /MediaRecoveryEvidence::TimelineStall/);
   assert.match(spotifyProcesses, /MediaRecoveryEvidence::NetworkFailure/);
@@ -59,12 +59,10 @@ test('Spotify separates per-track startup recovery from explicit process failure
   );
 
   assert.match(spotifyStartup, /get_IsDocumentPlayingAudio/);
-  assert.match(spotifyStartup, /NextSpotifyTrackStartRecoveryAction/);
-  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyStartup, /ConsumeSpotifyStartupReload/);
+  assert.match(spotifyStartup, /slot\.webview->Reload\(\)/);
   assert.match(spotifyStartup, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(spotifyStartup, /RebuildSurface|mediaPipelineRecoveryPending = true/);
   assert.match(spotifyTrackRecovery, /reloadIssued/);
-  assert.match(spotifyTrackRecovery, /rebuildIssued/);
-  assert.match(spotifyTrackRecovery, /skipIssued/);
+  assert.doesNotMatch(spotifyTrackRecovery, /rebuildIssued|skipIssued/);
 });

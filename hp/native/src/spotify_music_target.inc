@@ -97,6 +97,7 @@ void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   const ULONGLONG now = GetTickCount64();
   SetSlotState(slot, SlotState::Navigating);
   slot.nextRecoveryTick = now + kSpotifyRecoveryRetryMs;
+  slot.trustedClickBlockedUntilTick = 0;
   SetSpotifyOutputMuted(slot.webview);
   PostSpotifyTargetDescriptorForSlot(slot);
   RecomputeForeground();
@@ -170,9 +171,6 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
 
   if (SlotIsLoginPage(slot) || !CurrentMusicTrack(slot)) return;
 
-  // Healthy playback is event/deadline driven. Do not touch the page source or
-  // execute the Play/Pause DOM probe again after the one-shot native audio start
-  // verification has succeeded for this target generation.
   if (slot.playbackConfirmed && slot.nativeAudioStartVerified &&
       SlotStateIsHealthy(slot.state) &&
       slot.timedCompletionDeadlineTick != 0 &&
@@ -229,10 +227,6 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               const ManagedTrack* const currentTrack = CurrentMusicTrack(*target);
               if (!currentTrack) return S_OK;
 
-              // DOM/media-clock confirmation is necessary but not sufficient.
-              // During this target's startup window, require WebView2 itself to
-              // report native document audio. This works even when the account
-              // is intentionally muted and is never repeated after startup.
               if (!ConfirmSpotifyNativeAudioStart(*target, callbackNow)) {
                 RecomputeForeground();
                 ArmRobustScheduler();
@@ -252,22 +246,9 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
-            if (json && std::wstring_view(json) == L"\"restart\"") {
-              target->trustedClickBlockedUntilTick = 0;
-              SetSlotState(*target, SlotState::WaitingTarget);
-              target->nextRecoveryTick =
-                  callbackNow + kSpotifyTrackTransitionRetryMs;
-              RecomputeForeground();
-              ArmRobustScheduler();
-              return S_OK;
-            }
-
             if (json &&
                 std::wstring_view(json) == L"\"startup-failure\"") {
-              const bool requestRebuild =
-                  target->trackStartRecovery.reloadIssued;
-              EscalateSpotifyStartupFailure(
-                  *target, callbackNow, requestRebuild);
+              EscalateSpotifyStartupFailure(*target, callbackNow, false);
               return S_OK;
             }
 
@@ -287,8 +268,6 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
-            // Unknown intermediate state: keep probing without treating delayed
-            // EcoQoS renderer work as a hard playback failure.
             SetSlotState(*target, SlotState::WaitingTarget);
             target->nextRecoveryTick =
                 callbackNow + kSpotifyPlaybackStateProbeMs;

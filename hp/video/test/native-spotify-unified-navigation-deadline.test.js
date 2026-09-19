@@ -41,15 +41,15 @@ test('target routing does not start the completion clock before playback confirm
 
 test('trusted Play input is observer-independent and does not start the clock by itself', () => {
   assert.doesNotMatch(click, /ArmTimedEndObserver|timedObserverReady|armTrustedStart/);
-  assert.match(click, /trustedClickBlockedUntilTick =\s*now \+ kSpotifyCdpPlayRetryFailsafeMs/);
-  assert.match(click, /nextRecoveryTick = stateProbeAt \+ kSpotifyPlaybackStateProbeMs/);
+  assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayRetryFailsafeMs/);
+  assert.match(click, /nextRecoveryTick = now \+ kSpotifyPlaybackStateProbeMs/);
   assert.doesNotMatch(click, /SetMusicCompletionDeadline/);
   assert.doesNotMatch(click, /playbackStartTick/);
   assert.doesNotMatch(header + music, /timedPlaybackStartTick/);
 });
 
-test('verified Pause state starts the native completion clock', () => {
-  const start = music.indexOf('if (json &&');
+test('verified target playback starts the native completion clock', () => {
+  const start = music.indexOf('if (json && std::wstring_view(json) == L"true")');
   const end = music.indexOf('double cssX = 0.0;', start);
   assert.ok(start >= 0 && end > start);
   const confirm = music.slice(start, end);
@@ -59,7 +59,7 @@ test('verified Pause state starts the native completion clock', () => {
   assert.doesNotMatch(confirm, /ArmTimedEndObserver|observer-synced/);
 });
 
-test('startup retries use two-second state probes, five-second Play spacing, and bounded adaptive backoff', () => {
+test('startup uses two-second observation and one reload before skip', () => {
   assert.match(music, /kSpotifyTrackTransitionRetryMs = 500ULL/);
   assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
   assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
@@ -67,12 +67,11 @@ test('startup retries use two-second state probes, five-second Play spacing, and
   assert.match(music, /ParseSpotifyRetryDelay\(json\)/);
   assert.match(music, /callbackNow \+ retryDelayMs/);
   assert.match(music, /callbackNow \+ kSpotifyTrackTransitionRetryMs/);
-  assert.match(click, /now-retry\.lastAttemptAt<5000/);
-  assert.match(click, /EscalateSpotifyStartupFailure\(/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.doesNotMatch(click, /lastAttemptAt|retry\.count|EscalateSpotifyStartupFailure\(/);
+  assert.match(startup, /ConsumeSpotifyStartupReload/);
   assert.match(startup, /slot\.webview->Reload\(\)/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(startup, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(startup, /RebuildSurface/);
   assert.doesNotMatch(music, /kSpotifyCdpPlayConfirmWaitMs|kSpotifyDirectPlayConfirmWaitMs|direct-play|DirectPlay/);
   assert.doesNotMatch(music + click, /kSpotifyPlaybackStartRetryMs/);
 });

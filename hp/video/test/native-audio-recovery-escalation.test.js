@@ -49,29 +49,23 @@ test('Stationhead escalation is bounded and resets on real audio', () => {
   assert.match(stationhead, /spotifyAuthorization_ \|\| loginRequired_/);
 });
 
-test('Spotify escalates each track through one reload, one rebuild, then skip', () => {
+test('Spotify normal startup reloads once and then skips', () => {
   assert.match(spotifyHeader, /SpotifyTrackStartRecovery trackStartRecovery\{\}/);
   assert.match(spotifyHeader, /bool nativeAudioStartVerified = false/);
   assert.match(spotifyPhase, /BeginSpotifyTrackStartRecovery/);
   assert.match(spotifyHost, /slot\.trackStartRecovery = \{\}/);
   assert.match(spotifyTrackRecovery, /bool reloadIssued = false/);
-  assert.match(spotifyTrackRecovery, /bool rebuildIssued = false/);
-  assert.match(spotifyTrackRecovery, /bool skipIssued = false/);
-  assert.match(spotifyTrackRecovery, /SpotifyTrackStartRecoveryAction::SkipTrack/);
-  assert.match(spotifyClick, /EscalateSpotifyStartupFailure/);
-  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-  assert.match(spotifyStartup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
-  assert.match(spotifyStartup, /mediaPipelineRecoveryPending = true/);
+  assert.match(spotifyTrackRecovery, /ConsumeSpotifyStartupReload/);
+  assert.doesNotMatch(spotifyTrackRecovery, /rebuildIssued|skipIssued|RebuildSurface/);
+  assert.match(spotifyStartup, /ConsumeSpotifyStartupReload/);
+  assert.match(spotifyStartup, /slot\.webview->Reload\(\)/);
   assert.match(spotifyStartup, /SkipFailedSpotifyTrack\(slot\)/);
-  assert.doesNotMatch(spotifyClick, /RebuildPlaybackSurface\(\*target\)/);
-  assert.match(spotifyController, /slot\.webview\.Reset\(\)/);
-  assert.match(spotifyController, /slot\.controller->Close\(\)/);
-  assert.match(spotifyController, /slot\.environment\.Reset\(\)/);
-  assert.match(spotifyController, /SetSlotState\(slot, SlotState::NotCreated\)/);
+  assert.doesNotMatch(spotifyStartup, /mediaPipelineRecoveryPending = true/);
+  assert.doesNotMatch(spotifyStartup, /RebuildSurface/);
+  assert.doesNotMatch(spotifyClick, /EscalateSpotifyStartupFailure/);
 });
 
-test('Spotify full rebuild preserves current target and rotation before terminal skip', () => {
+test('Spotify explicit full rebuild preserves current target and rotation', () => {
   const start = spotifyController.indexOf(
     'void SpotifyWebViews::RebuildPlaybackSurface');
   const end = spotifyController.indexOf(

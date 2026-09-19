@@ -14,7 +14,7 @@ const layout = source('spotify_host_layout.inc');
 const header = source('spotify_webviews.h');
 const hostLifecycle = source('spotify_host_lifecycle.inc');
 
-test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
+test('Spotify Play clicks use only WebView2 CDP trusted input', () => {
   assert.match(wrapper, /#include "spotify_background_click\.inc"/);
   assert.doesNotMatch(wrapper, /#define SendInput|#define ExecuteScript/);
   assert.match(helper, /CallDevToolsProtocolMethod\(/);
@@ -23,35 +23,30 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
   assert.doesNotMatch(helper, /SetForegroundWindow|SendInput|MOUSEEVENTF_/);
 });
 
-test('Spotify trusted click probes every two seconds with a five-second retry guard', () => {
+test('Spotify trusted click uses a two-second state probe with a duplicate-click guard', () => {
   assert.match(header, /ULONGLONG trustedClickBlockedUntilTick = 0/);
   assert.match(header, /SpotifyTrackStartRecovery trackStartRecovery\{\}/);
   assert.match(header, /ULONGLONG pageEpoch = 0/);
   assert.match(header, /bool nativeAudioStartVerified = false/);
-  assert.doesNotMatch(header, /playRecoveryReloadGeneration|playRecoveryRecreateGeneration/);
   assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
   assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
   assert.match(helper, /now < slot\.trustedClickBlockedUntilTick/);
-  assert.match(helper, /trustedClickBlockedUntilTick =\s*now \+ kSpotifyCdpPlayRetryFailsafeMs/);
-  assert.match(helper, /nextRecoveryTick = stateProbeAt \+ kSpotifyPlaybackStateProbeMs/);
+  assert.match(helper, /trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayRetryFailsafeMs/);
+  assert.match(helper, /nextRecoveryTick = now \+ kSpotifyPlaybackStateProbeMs/);
   assert.match(helper, /target->targetGeneration != targetGeneration/);
   assert.match(helper, /target->pageEpoch != pageEpoch/);
   assert.match(helper, /target->webview\.Get\(\) != view\.Get\(\)/);
 });
 
-test('two failed Play attempts escalate through one reload, one rebuild, then skip', () => {
-  assert.match(helper, /__homePanelSpotifyNativePlayRetry/);
-  assert.match(helper, /now-retry\.lastAttemptAt<5000/);
-  assert.match(helper, /retry\.count>=2/);
-  assert.match(helper, /if\(!reloadUsed\)return 'reload';return 'recreate'/);
-  assert.match(helper, /slot\.trackStartRecovery\.reloadIssued/);
-  assert.match(helper, /EscalateSpotifyStartupFailure/);
-  assert.match(trackRecovery, /SpotifyTrackStartRecoveryAction::SkipTrack/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(startup, /requestedView|slot\.webview->Reload|slot\.webview.*Reload/s);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+test('normal startup recovery is not embedded in the click path', () => {
+  assert.doesNotMatch(helper, /__homePanelSpotifyNativePlayRetry/);
+  assert.doesNotMatch(helper, /retry\.count|return 'reload'|return 'recreate'/);
+  assert.doesNotMatch(helper, /EscalateSpotifyStartupFailure/);
+  assert.match(trackRecovery, /ConsumeSpotifyStartupReload/);
+  assert.match(startup, /ConsumeSpotifyStartupReload/);
+  assert.match(startup, /slot\.webview->Reload\(\)/);
   assert.match(startup, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(startup, /RebuildSurface|mediaPipelineRecoveryPending = true/);
 });
 
 test('target changes and WebView rebuilds invalidate old trusted click chains', () => {
@@ -80,7 +75,6 @@ test('trusted click uses CSS viewport points and repairs accidental 1x1 placemen
     helper,
     /if \(slot\.playbackConfirmed && slot\.nativeAudioStartVerified &&[\s\S]*slot\.state == SlotState::Playing\) \{[\s\S]*return;/,
   );
-  assert.match(helper, /SlotStateNeedsRecovery\(slot\.state\)[\s\S]*!slot\.nativeAudioStartVerified/);
   assert.match(helper, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
   assert.match(helper, /slot\.hostLayoutApplied = false;/);
   assert.match(helper, /PlaceHosts\(\);/);
@@ -94,7 +88,7 @@ test('trusted click preflight is observer-independent and rejects Pause', () => 
   assert.doesNotMatch(preflight, /timedObserverReady|ArmTimedEndObserver|__homePanelSpotifyMediaObserverRuntime|armTrustedStart/);
   assert.doesNotMatch(preflight, /document\.querySelectorAll\('audio, video'\)/);
   assert.match(preflight, /document\.elementFromPoint\(x,y\)/);
-  assert.match(preflight, /testid==='play-button'\|\|testid==='control-button-playpause'/);
+  assert.match(preflight, /testid!==\'play-button\'&&testid!==\'control-button-playpause\'/);
   assert.match(preflight, /label\.includes\('pause'\)\|\|label\.includes\('一時停止'\)/);
   assert.match(preflight, /const centerX=rect\.left\+rect\.width\/2/);
   assert.match(preflight, /const centerY=rect\.top\+rect\.height\/2/);

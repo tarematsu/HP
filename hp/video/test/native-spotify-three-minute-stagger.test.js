@@ -93,16 +93,18 @@ test('invalid cloud rotation retains the fallback catalog and runtime remains mu
   );
 });
 
-test('direct tracks use the CDP-only scoped reconcile script without runtime rewriting', () => {
+test('direct tracks use one CDP-only scoped reconcile script without runtime rewriting', () => {
   assert.match(music, /PostSpotifyTargetDescriptorForSlot\(slot\)/);
   assert.match(music, /kSpotifyScopedTrackReconcileScript/);
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /const pageButtons =/);
-  assert.match(scoped, /currentTrackMatchesTarget/);
+  assert.match(scoped, /const pageButtons = Array\.from/);
+  assert.match(scoped, /const targetMatches = observedTrackPath/);
   assert.match(scoped, /navigator\.mediaSession/);
-  assert.match(scoped, /return point\(visiblePageButton\)/);
-  assert.doesNotMatch(scoped, /point\(playerPause\)|document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
+  assert.match(scoped, /state\.playIssued = true/);
+  assert.match(scoped, /return \[centerX, centerY\]/);
+  assert.match(scoped, /document\.querySelectorAll\('audio, video'\)/);
+  assert.doesNotMatch(scoped, /button\.click\(\)|audio\.play\(|direct-play|DirectPlay|pagePause|playerPause/);
   assert.doesNotMatch(scoped, /targetLink|settling/);
-  assert.doesNotMatch(wrapper, /RewriteSpotify|#define ExecuteScript|kSpotifyStaticTrackReconcileScript/);
+  assert.doesNotMatch(wrapper, /RewriteSpotify|#define ExecuteScript|kSpotifyStaticTrackReconcileScript|spotify_strict_track_start_reconcile/);
 });

@@ -14,8 +14,8 @@ const observerRuntime = source('spotify_media_observer_runtime.inc');
 function rawScopedScript() {
   const chunks = [...scoped.matchAll(/LR"JS\(\n([\s\S]*?)\n\)JS"/g)]
     .map(match => match[1]);
-  assert.ok(chunks.length >= 2, 'scoped reconcile raw string chunks not found');
-  return chunks.join('\n');
+  assert.equal(chunks.length, 1, 'simple scoped reconcile raw string not found');
+  return chunks[0];
 }
 
 function fakeButton(label, visible = false) {
@@ -23,7 +23,6 @@ function fakeButton(label, visible = false) {
     disabled: false,
     isConnected: true,
     __visible: visible,
-    __clicked: false,
     getAttribute(name) {
       if (name === 'aria-disabled') return 'false';
       if (name === 'aria-label') return label;
@@ -35,7 +34,6 @@ function fakeButton(label, visible = false) {
         : { left: 0, top: 0, width: 0, height: 0 };
     },
     scrollIntoView() {},
-    click() { this.__clicked = true; },
   };
 }
 
@@ -48,18 +46,17 @@ function fakeMedia(currentTime = 0.5, paused = false) {
   };
 }
 
-function runScoped({
+function makeScopedContext({
   pageButtons = [],
   playerButtons = [],
   mediaElements = [],
   currentTrack = null,
   metadataTitle = '',
-  restartPending = false,
+  advertisementVisible = false,
 } = {}) {
   const window = {
     __homePanelSpotifyNativeTarget: { path: '/track/A', title: 'Target A' },
     __homePanelSpotifyNativeLoadedAt: Date.now() - 2000,
-    __homePanelSpotifyZeroSecondRestartPath: restartPending ? '/track/A' : null,
     innerWidth: 320,
     innerHeight: 180,
     getComputedStyle(element) {
@@ -70,6 +67,7 @@ function runScoped({
       };
     },
   };
+  const adElement = { isConnected: true };
   const document = {
     querySelectorAll(selector) {
       if (selector === 'button[data-testid="play-button"]') return pageButtons;
@@ -77,10 +75,16 @@ function runScoped({
         return playerButtons;
       }
       if (selector === 'audio, video') return mediaElements;
+      if (selector.includes('[role="alertdialog"]')) return [];
       return [];
     },
     querySelector(selector) {
       if (selector.includes('/track/')) return currentTrack;
+      if (advertisementVisible &&
+          (selector.includes('ad-banner') || selector.includes('advertisement') ||
+           selector.includes('sponsored') || selector.includes('/ad/'))) {
+        return adElement;
+      }
       return null;
     },
   };
@@ -99,126 +103,104 @@ function runScoped({
     Array,
     Date,
   });
+  return { context, window };
+}
+
+function runScoped(options = {}) {
+  const { context } = makeScopedContext(options);
   return vm.runInContext(rawScopedScript(), context);
 }
 
-test('active music reconcile directly uses the scoped playback script', () => {
+function runScopedTwice(options = {}, advanceBy = 0.2) {
+  const { context } = makeScopedContext(options);
+  const first = vm.runInContext(rawScopedScript(), context);
+  for (const media of options.mediaElements || []) media.currentTime += advanceBy;
+  const second = vm.runInContext(rawScopedScript(), context);
+  return [first, second];
+}
+
+test('active music reconcile directly uses one scoped playback script', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
+  assert.doesNotMatch(wrapper, /spotify_strict_track_start_reconcile/);
   assert.match(music, /ExecuteScript\(\s*kSpotifyScopedTrackReconcileScript/);
-  assert.doesNotMatch(wrapper, /#define kSpotifyStaticTrackReconcileScript|#undef kSpotifyStaticTrackReconcileScript/);
-  assert.doesNotMatch(music, /kSpotifyStaticTrackReconcileScript/);
+  assert.doesNotMatch(wrapper, /#define kSpotifyScopedTrackReconcileScript/);
 });
 
-test('target URL stays authoritative while global-player confirmation requires target identity', () => {
+test('target URL stays authoritative while playback identity uses track path or media session', () => {
   assert.match(scoped, /location\.hostname !== 'open\.spotify\.com'/);
   assert.match(scoped, /location\.pathname === targetPath/);
   assert.match(scoped, /targetPath\.startsWith\('\/track\/'\)/);
-  assert.match(scoped, /currentTrackMatchesTarget/);
+  assert.match(scoped, /observedTrackPath/);
   assert.match(scoped, /now-playing-widget/);
   assert.match(scoped, /navigator\.mediaSession/);
+  assert.match(scoped, /const targetMatches = observedTrackPath/);
 });
 
-test('normal Spotify Play clicks use the visible target-page button', () => {
-  assert.match(scoped, /button\[data-testid="play-button"\]/);
-  assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /const visiblePageButton = pageButtons\.find\(visible\)/);
-  assert.match(scoped, /return point\(visiblePageButton\)/);
-  assert.match(scoped, /playerPause && currentTrackMatchesTarget\(\)/);
-  assert.doesNotMatch(scoped, /point\(playerPause\)|point\(playerButton\)/);
-  assert.doesNotMatch(scoped, /querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay|buttonIntent|settling/);
-});
-
-test('hidden target-page Pause does not confirm playback without media-clock evidence', () => {
-  assert.equal(runScoped({ pageButtons: [fakeButton('Pause', false)] }), 2000);
-});
-
-test('hidden target-page Pause confirms only when the media clock has advanced', () => {
-  assert.equal(runScoped({
-    pageButtons: [fakeButton('Pause', false)],
-    mediaElements: [fakeMedia(0.5, false)],
-  }), true);
-});
-
-test('global Pause with matching identity still requires media-clock evidence', () => {
-  assert.equal(runScoped({
-    playerButtons: [fakeButton('Pause', false)],
-    currentTrack: {
-      href: 'https://open.spotify.com/track/A',
-      textContent: 'Target A',
-    },
-  }), 2000);
-});
-
-test('global Pause confirms background playback when identity and media progress both match', () => {
-  assert.equal(runScoped({
-    playerButtons: [fakeButton('Pause', false)],
-    mediaElements: [fakeMedia(0.5, false)],
-    currentTrack: {
-      href: 'https://open.spotify.com/track/A',
-      textContent: 'Target A',
-    },
-  }), true);
-});
-
-test('global Pause is rejected when now-playing track is a different song', () => {
-  assert.equal(runScoped({
-    playerButtons: [fakeButton('Pause', false)],
-    currentTrack: {
-      href: 'https://open.spotify.com/track/B',
-      textContent: 'Other Track',
-    },
-    metadataTitle: 'Target A',
-  }), null);
-});
-
-test('Media Session identity alone does not bypass media-clock evidence', () => {
-  assert.equal(runScoped({
-    playerButtons: [fakeButton('Pause', false)],
-    metadataTitle: 'Target A',
-  }), 2000);
-});
-
-test('Media Session title plus media progress can confirm compact-layout playback', () => {
-  assert.equal(runScoped({
-    playerButtons: [fakeButton('Pause', false)],
-    mediaElements: [fakeMedia(0.5, false)],
-    metadataTitle: 'Target A',
-  }), true);
-});
-
-test('global Play is never returned during normal reconciliation', () => {
-  assert.equal(runScoped({
-    playerButtons: [fakeButton('Play', true)],
-    currentTrack: {
-      href: 'https://open.spotify.com/track/A',
-      textContent: 'Target A',
-    },
-  }), null);
-});
-
-test('global Play is a recovery-only CDP target after a verified zero-second stall', () => {
-  const result = runScoped({
-    playerButtons: [fakeButton('Play', true)],
-    currentTrack: {
-      href: 'https://open.spotify.com/track/A',
-      textContent: 'Target A',
-    },
-    restartPending: true,
-  });
+test('normal Spotify Play uses the target-page button once', () => {
+  const result = runScoped({ pageButtons: [fakeButton('Play', true)] });
   assert.equal(Array.isArray(result), true);
   assert.equal(result[0], 14);
   assert.equal(result[1], 14);
+  assert.match(scoped, /state\.playIssued = true/);
+  assert.doesNotMatch(scoped, /button\.click\(\)|ZeroSecondRestartPath/);
 });
 
-test('global recovery Play is rejected when now-playing identity changed', () => {
+test('target identity alone does not confirm playback without media progress', () => {
+  assert.equal(runScoped({
+    currentTrack: { href: 'https://open.spotify.com/track/A' },
+  }), 2000);
+});
+
+test('matching target confirms only after the same media clock advances', () => {
+  const media = fakeMedia(0.5, false);
+  const [first, second] = runScopedTwice({
+    mediaElements: [media],
+    currentTrack: { href: 'https://open.spotify.com/track/A' },
+  });
+  assert.equal(first, 2000);
+  assert.equal(second, true);
+});
+
+test('progressing wrong track is left alone instead of restarted', () => {
+  const media = fakeMedia(1.0, false);
+  assert.equal(runScoped({
+    mediaElements: [media],
+    currentTrack: { href: 'https://open.spotify.com/track/B' },
+    metadataTitle: 'Target A',
+  }), 2000);
+  assert.doesNotMatch(scoped, /WrongTrackRecovery|pagePause|return 'restart'/);
+});
+
+test('advertisement playback is left alone', () => {
+  assert.equal(runScoped({
+    mediaElements: [fakeMedia(2.0, false)],
+    advertisementVisible: true,
+  }), 2000);
+  assert.match(scoped, /advertisementVisible \|\| \(activeMedia && !targetMatches\)/);
+});
+
+test('Media Session title plus advancing media can confirm compact-layout playback', () => {
+  const media = fakeMedia(0.5, false);
+  const [first, second] = runScopedTwice({
+    mediaElements: [media],
+    metadataTitle: 'Target A',
+  });
+  assert.equal(first, 2000);
+  assert.equal(second, true);
+});
+
+test('global Play is allowed only when Media Session already identifies the target', () => {
   assert.equal(runScoped({
     playerButtons: [fakeButton('Play', true)],
-    currentTrack: {
-      href: 'https://open.spotify.com/track/B',
-      textContent: 'Other Track',
-    },
-    restartPending: true,
-  }), null);
+    currentTrack: { href: 'https://open.spotify.com/track/A' },
+  }), 2000);
+
+  const result = runScoped({
+    playerButtons: [fakeButton('Play', true)],
+    metadataTitle: 'Target A',
+  });
+  assert.equal(Array.isArray(result), true);
+  assert.deepEqual([...result], [14, 14]);
 });
 
 test('observer runtime still tolerates localized Spotify track paths for confirmation', () => {

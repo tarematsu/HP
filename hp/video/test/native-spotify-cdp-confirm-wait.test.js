@@ -9,22 +9,20 @@ const music = source('spotify_music_target.inc');
 const click = source('spotify_background_click.inc');
 const startup = source('spotify_startup_audio_recovery.inc');
 
-test('trusted Spotify CDP play click uses two-second probes and five-second retry spacing', () => {
+test('trusted Spotify CDP Play click uses two-second observation with no retry ladder', () => {
   assert.match(music, /kSpotifyPlaybackStateProbeMs = 2ULL \* 1000ULL/);
   assert.match(music, /kSpotifyCdpPlayRetryFailsafeMs = 5ULL \* 1000ULL/);
   assert.doesNotMatch(music, /kSpotifyCdpPlayConfirmWaitMs/);
 
-  assert.match(click, /nextRecoveryTick = stateProbeAt \+ kSpotifyPlaybackStateProbeMs/);
-  assert.match(click, /trustedClickBlockedUntilTick =\s*now \+ kSpotifyCdpPlayRetryFailsafeMs/);
-  assert.match(click, /now-retry\.lastAttemptAt<5000/);
-  assert.match(click, /retry\.count>=2/);
-  assert.match(click, /EscalateSpotifyStartupFailure\(/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
+  assert.match(click, /nextRecoveryTick = now \+ kSpotifyPlaybackStateProbeMs/);
+  assert.match(click, /trustedClickBlockedUntilTick = now \+ kSpotifyCdpPlayRetryFailsafeMs/);
+  assert.doesNotMatch(click, /lastAttemptAt|retry\.count|NativePlayRetry/);
+  assert.doesNotMatch(click, /EscalateSpotifyStartupFailure\(/);
+  assert.match(startup, /ConsumeSpotifyStartupReload/);
   assert.match(startup, /slot\.webview->Reload\(\)/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-  assert.match(startup, /SpotifyTrackStartRecoveryAction::SkipTrack/);
-  assert.match(music, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
-  assert.match(music, /target->trustedClickBlockedUntilTick = 0/);
+  assert.match(startup, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(startup, /RebuildSurface/);
+  assert.doesNotMatch(music, /"\\"restart\\""/);
 });
 
 test('playback startup uses state observation and no direct-play path', () => {

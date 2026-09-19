@@ -52,17 +52,13 @@ test('Stationhead and Spotify keep bounded recovery in their distinct roles', ()
   assert.match(recoveryCoordinator, /kMediaRecoveryHealthyResetMs = 30ULL \* 1000ULL/);
   assert.match(recoveryCoordinator, /static_assert\(MediaRecoveryCoordinatorContract\(\)\)/);
 
-  assert.match(spotifyTrackRecovery, /enum class SpotifyTrackStartRecoveryAction/);
-  assert.match(spotifyTrackRecovery, /ReloadDocument/);
-  assert.match(spotifyTrackRecovery, /RebuildSurface/);
-  assert.match(spotifyTrackRecovery, /SkipTrack/);
+  assert.match(spotifyTrackRecovery, /struct SpotifyTrackStartRecovery/);
   assert.match(spotifyTrackRecovery, /reloadIssued/);
-  assert.match(spotifyTrackRecovery, /rebuildIssued/);
-  assert.match(spotifyTrackRecovery, /skipIssued/);
-  assert.match(spotifyStartupAudio, /NextSpotifyTrackStartRecoveryAction/);
-  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyTrackRecovery, /ConsumeSpotifyStartupReload/);
+  assert.doesNotMatch(spotifyTrackRecovery, /RebuildSurface|rebuildIssued|skipIssued/);
+  assert.match(spotifyStartupAudio, /ConsumeSpotifyStartupReload/);
+  assert.match(spotifyStartupAudio, /slot\.webview->Reload\(\)/);
   assert.match(spotifyStartupAudio, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(spotifyStartupAudio, /RebuildSurface|mediaPipelineRecoveryPending = true/);
   assert.doesNotMatch(spotifyScheduler, /kSpotifyAudioHealthCheckMs|MediaRecoveryEvidence::TimelineStall/);
 });

@@ -33,10 +33,11 @@ test('healthy scheduler uses an hourly safety ceiling and exact thirty-second st
   assert.doesNotMatch(phaseSync, /::SetTimer\(|KillTimer\(/);
 });
 
-test('usable Spotify controls are recovered through the dedicated trusted-input module', () => {
+test('usable Spotify controls use the dedicated trusted-input module', () => {
   assert.match(click, /ParseCssPoint/);
   assert.match(click, /ClickSlotCssPoint/);
-  assert.match(click, /RefreshSpotifyHostLayout\(\)/);
+  assert.match(click, /PlaceHosts\(\)/);
+  assert.doesNotMatch(click, /RefreshSpotifyHostLayout\(\)/);
   assert.doesNotMatch(phaseSync, /ParseCssPoint|ClickSlotCssPoint/);
 });
 
