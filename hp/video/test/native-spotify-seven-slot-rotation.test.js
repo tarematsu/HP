@@ -42,16 +42,16 @@ test('cloud owns the requested four-group Spotify rotation', () => {
 
   const a = rotationFunction.indexOf('愛MUST BE');
   const b = rotationFunction.indexOf('tracks: instrumentalSongs.map');
-  const d = rotationFunction.indexOf('何歳の頃に戻りたいのか？');
-  const e = rotationFunction.indexOf('tracks: shortSongs.map');
-  assert.ok(a >= 0 && a < b && b < d && d < e);
+  const c = rotationFunction.indexOf('何歳の頃に戻りたいのか？');
+  const d = rotationFunction.indexOf('tracks: shortSongs.map');
+  assert.ok(a >= 0 && a < b && b < c && c < d);
 
   assert.match(admin, /rotation:structuredClone\(managedSpotifyRotation\)/);
   assert.match(deviceSync, /const nextRotation = managedSpotifySevenSlotRotation\(\)/);
   assert.match(deviceSync, /spotify\.rotation = nextRotation/);
 });
 
-test('E uses the filtered short-song pool once per cycle', () => {
+test('D uses the filtered short-song pool once per cycle', () => {
   const rotationFunction = catalog.slice(
     catalog.indexOf('export function managedSpotifySevenSlotRotation()'),
   );
@@ -111,10 +111,10 @@ test('catalog retains additional verified vocal tracks for migration', () => {
   assert.match(catalog, /ピッカーン！/);
 });
 
-test('E excludes the eight removed longest tracks', () => {
+test('D excludes the eight removed longest tracks', () => {
   const exclusions = catalog.slice(
     catalog.indexOf('const SHORT_SPOTIFY_ROTATION_EXCLUDED_IDS'),
-    catalog.indexOf('// E uses the filtered short music pool'),
+    catalog.indexOf('// D uses the filtered short music pool'),
   );
   for (const id of [
     '7vvZ1QHTdkoEXBiOBdxdIo',
@@ -140,7 +140,7 @@ test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(cycle, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
-test('E uses the short-song music pool and no podcast path remains', () => {
+test('D uses the short-song music pool and no podcast path remains', () => {
   assert.equal((catalog.match(/tracks: shortSongs\.map/g) ?? []).length, 1);
   const spotifySources = catalog + admin + deviceSync + header + cloud + cycle + rotation + schedule;
   assert.doesNotMatch(
