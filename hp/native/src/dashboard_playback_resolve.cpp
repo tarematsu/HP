@@ -130,9 +130,6 @@ ProjectedTrackPosition ResolveProjectedTrackPosition(const NativePlaybackProject
 
 bool ProjectionFreshForFallback(const NativePlaybackProjection& projection,
                                 int64_t nowMs) noexcept {
-  // A snapshot was fetched by an earlier process even when it is only a few
-  // seconds old. Require this process to have observed the payload timestamp
-  // before allowing it to navigate the live Stationhead WebViews.
   if (projection.stale || projection.fetchedAt <= 0 ||
       projection.fetchedAt < gPlaybackFallbackProcessStartedAtMs ||
       nowMs < projection.fetchedAt) {
@@ -142,19 +139,11 @@ bool ProjectionFreshForFallback(const NativePlaybackProjection& projection,
 }
 
 bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
-  // A persisted snapshot is loaded synchronously during dashboard startup. It
-  // may describe a queue that ended hours earlier and must not navigate the
-  // live Stationhead WebView away in the same tick that the dashboard appears.
-  // Only a recent, non-stale observation made by this process may drive the
-  // fallback route.
   if (!projection.available || projection.setupRequired ||
       !ProjectionFreshForFallback(projection, nowMs)) {
     return false;
   }
   if (projection.ended) return true;
-  // The dashboard endpoint represents a completed queue with current_index=-1,
-  // playing=false and a past queue_end_at; it does not always emit `ended`.
-  // Check the absolute end before rejecting non-playing/no-current-track states.
   if (!projection.queue.empty() && projection.queueEndAt > 0 &&
       nowMs >= projection.queueEndAt) {
     return true;
@@ -172,41 +161,6 @@ bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, i
   return !TrackHasIdentity(projection.queue[position.index]);
 }
 }  // namespace
-
-NativePlaybackRender Renderer::ResolveNativePlaybackLocked(size_t source, int64_t nowMs) const {
-  NativePlaybackRender render;
-  if (source != 0) return render;
-  const NativePlaybackProjection& projection = nativePlaybackUpdate_.projection;
-  render.available = projection.available;
-  render.playing = projection.playing;
-  render.stale = projection.stale;
-  render.ended = projection.ended;
-  render.setupRequired = projection.setupRequired;
-  if (!projection.available || projection.queue.empty() || projection.currentIndex < 0 ||
-      projection.currentIndex >= static_cast<int>(projection.queue.size())) {
-    return render;
-  }
-  if (projection.playing && projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) {
-    return render;
-  }
-
-  const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
-  if (position.index >= projection.queue.size()) return render;
-
-  render.track = projection.queue[position.index];
-  render.hasTrack = TrackHasIdentity(render.track);
-  render.progressMs = std::max<int64_t>(0, position.elapsedMs);
-  if (render.track.durationMs > 0) {
-    render.progressMs = std::min(render.progressMs, render.track.durationMs);
-  }
-  return render;
-}
-
-NativePlaybackRender Renderer::ResolveNativePlayback(size_t source, int64_t nowMs) const {
-  if (SelectedStationheadIsOnFallback(nativeStationhead_) || source != 0) return {};
-  std::lock_guard lock(nativePlaybackMutex_);
-  return ResolveNativePlaybackLocked(0, nowMs);
-}
 
 NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
                                                                int64_t nowMs) const {
@@ -229,11 +183,6 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
   status.healthyRevision = healthyObservation
       ? static_cast<uint64_t>(projection.fetchedAt)
       : 0;
-  // App's legacy route still reads contentRevision. Give it a tagged value:
-  // healthy observations use their fetch timestamp, a confirmed queue end uses
-  // a stable nonzero sentinel, and every other invalid/stale state is zero.
-  // Therefore only a newer healthy observation can compare above the baseline
-  // and release fallback.
   status.contentRevision = status.healthyRevision != 0
       ? status.healthyRevision
       : (status.endedWithoutNextTrack
@@ -268,27 +217,4 @@ int64_t Renderer::NativePlaybackNextWakeAt(int64_t nowMs) const {
   return remaining <= 0 ? nowMs : nowMs + remaining;
 }
 
-Renderer::NativePlaybackTickState Renderer::NativePlaybackTickStateFor(int64_t nowMs) const {
-  NativePlaybackTickState state;
-  if (SelectedStationheadIsOnFallback(nativeStationhead_)) return state;
-
-  std::lock_guard lock(nativePlaybackMutex_);
-  const NativePlaybackUpdate& update = nativePlaybackUpdate_;
-  const NativePlaybackProjection& projection = update.projection;
-  state.contentRevision = update.contentRevision;
-  if (!projection.available || projection.queue.empty() || projection.currentIndex < 0 ||
-      projection.currentIndex >= static_cast<int>(projection.queue.size())) {
-    return state;
-  }
-  if (projection.playing && projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) {
-    return state;
-  }
-
-  const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
-  state.trackIndex = position.index;
-  if (position.index >= projection.queue.size()) return state;
-  const NativePlaybackTrack& track = projection.queue[position.index];
-  state.active = projection.playing && !track.title.empty() && track.durationMs > 0;
-  return state;
-}
 }  // namespace hp
