@@ -19,7 +19,7 @@ const rotation = readFileSync(
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 
-test('cloud owns the requested five-group Spotify rotation', () => {
+test('cloud owns the requested four-group Spotify rotation', () => {
   assert.match(catalog, /function managedSpotifySevenSlotRotation/);
   assert.doesNotMatch(catalog, /Lonesome Rabbit/);
   assert.doesNotMatch(catalog, /放課後BitterBlue/);
@@ -32,34 +32,40 @@ test('cloud owns the requested five-group Spotify rotation', () => {
   const rotationFunction = catalog.slice(
     catalog.indexOf('export function managedSpotifySevenSlotRotation()'),
   );
-  assert.equal((rotationFunction.match(/mode: /g) ?? []).length, 5);
-  assert.equal((rotationFunction.match(/tracks: instrumentalSongs\.map/g) ?? []).length, 2);
+  assert.equal((rotationFunction.match(/mode: /g) ?? []).length, 4);
+  assert.equal((rotationFunction.match(/tracks: instrumentalSongs\.map/g) ?? []).length, 1);
   assert.equal((rotationFunction.match(/tracks: shortSongs\.map/g) ?? []).length, 1);
   assert.match(
     rotationFunction,
     /mode: "fixed",\s*tracks: \[spotifyRotationTrack\("何歳の頃に戻りたいのか？", "7GcId8LLK4e33Pf3LQTb6L"\)\]/,
   );
 
+  const a = rotationFunction.indexOf('愛MUST BE');
+  const b = rotationFunction.indexOf('tracks: instrumentalSongs.map');
+  const d = rotationFunction.indexOf('何歳の頃に戻りたいのか？');
+  const e = rotationFunction.indexOf('tracks: shortSongs.map');
+  assert.ok(a >= 0 && a < b && b < d && d < e);
+
   assert.match(admin, /rotation:structuredClone\(managedSpotifyRotation\)/);
   assert.match(deviceSync, /const nextRotation = managedSpotifySevenSlotRotation\(\)/);
   assert.match(deviceSync, /spotify\.rotation = nextRotation/);
 });
 
-test('C uses the filtered short-song pool once per cycle', () => {
+test('E uses the filtered short-song pool once per cycle', () => {
   const rotationFunction = catalog.slice(
     catalog.indexOf('export function managedSpotifySevenSlotRotation()'),
   );
   assert.equal((rotationFunction.match(/tracks: shortSongs\.map/g) ?? []).length, 1);
 });
 
-test('B and E share Overture plus all seven Interludes', () => {
+test('B uses Overture plus all seven Interludes', () => {
   assert.match(catalog, /Overture/);
   for (let index = 1; index <= 7; ++index) {
     assert.match(catalog, new RegExp(`Interlude #${index}`));
   }
   assert.equal(
     (catalog.match(/tracks: instrumentalSongs\.map/g) ?? []).length,
-    2,
+    1,
   );
 });
 
@@ -105,10 +111,10 @@ test('catalog retains additional verified vocal tracks for migration', () => {
   assert.match(catalog, /ピッカーン！/);
 });
 
-test('C excludes the eight removed longest tracks', () => {
+test('E excludes the eight removed longest tracks', () => {
   const exclusions = catalog.slice(
     catalog.indexOf('const SHORT_SPOTIFY_ROTATION_EXCLUDED_IDS'),
-    catalog.indexOf('// C uses the filtered short music pool'),
+    catalog.indexOf('// E uses the filtered short music pool'),
   );
   for (const id of [
     '7vvZ1QHTdkoEXBiOBdxdIo',
@@ -134,7 +140,7 @@ test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(cycle, /if \(!appendUnique\(std::move\(candidate\)\)\) continue/);
 });
 
-test('C uses the short-song music pool and no podcast path remains', () => {
+test('E uses the short-song music pool and no podcast path remains', () => {
   assert.equal((catalog.match(/tracks: shortSongs\.map/g) ?? []).length, 1);
   const spotifySources = catalog + admin + deviceSync + header + cloud + cycle + rotation + schedule;
   assert.doesNotMatch(
