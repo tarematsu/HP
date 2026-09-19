@@ -125,7 +125,6 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.mediaKeyWaitUntilTick = 0;
   slot.mediaNetworkRecoveryTick = 0;
   slot.mediaNetworkRecoveryAttempt = 0;
-  slot.memoryUsageTargetLevel = -1;
   slot.timedRotationCycle = 0;
   slot.timedRotationPosition = 0;
   slot.timedCompletionDeadlineTick = 0;

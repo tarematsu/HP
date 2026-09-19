@@ -35,7 +35,6 @@ void SpotifyWebViews::RebuildPlaybackSurface(Slot& slot) noexcept {
   slot.asyncStartedTick = 0;
   slot.nextProcessTitlePollTick = 0;
   slot.trustedClickBlockedUntilTick = 0;
-  slot.memoryUsageTargetLevel = -1;
   slot.timedCompletionDeadlineTick = 0;
   slot.timedCompletionDeadlineGeneration = 0;
   slot.loginPage = false;
