@@ -17,12 +17,11 @@ function nativeSources(dir) {
 
 const nativeSource = nativeSources(nativeRoot).join('\n');
 
-test('native source contains no Windows efficiency-mode throttling', () => {
-  assert.doesNotMatch(nativeSource, /ProcessPowerThrottling/);
-  assert.doesNotMatch(nativeSource, /PROCESS_POWER_THROTTLING_EXECUTION_SPEED/);
-  assert.doesNotMatch(nativeSource, /SetWebViewRendererEfficiencyMode/);
-  assert.doesNotMatch(nativeSource, /SetWindowsProcessEfficiencyMode/);
-  assert.doesNotMatch(nativeSource, /ApplyEfficiencyModeTo/);
-  assert.doesNotMatch(nativeSource, /BELOW_NORMAL_PRIORITY_CLASS/);
+test('Spotify renderer uses Windows efficiency-mode throttling without idle priority', () => {
+  assert.match(nativeSource, /ApplySpotifyPermanentResourceMode/);
+  assert.match(nativeSource, /ProcessPowerThrottling/);
+  assert.match(nativeSource, /PROCESS_POWER_THROTTLING_EXECUTION_SPEED/);
+  assert.match(nativeSource, /BELOW_NORMAL_PRIORITY_CLASS/);
+  assert.match(nativeSource, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
   assert.doesNotMatch(nativeSource, /IDLE_PRIORITY_CLASS/);
 });
