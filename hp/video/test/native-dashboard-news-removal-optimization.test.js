@@ -170,16 +170,15 @@ test('playback update storage is reduced to one native source', () => {
   assert.doesNotMatch(playbackResolve, /nativePlaybackUpdates_/);
 });
 
-test('artwork URL resolution avoids repeated probes, backs off failures, and evicts one entry', () => {
-  assert.match(artworkCache, /static thread_local MemoryIndex memoryIndex;/);
-  assert.match(artworkCache, /const auto indexed = memoryIndex\.urls\.find\(artworkUrl\);/);
-  assert.match(artworkCache, /kArtworkFailureRetryMs = 30 \* 60'000/);
-  assert.match(artworkCache, /now < indexed->second\.retryAfter/);
-  assert.match(artworkCache, /remember\(artworkUrl, now \+ kArtworkFailureRetryMs\)/);
-  assert.match(artworkCache, /static thread_local fs::path preparedCacheDir;/);
-  assert.match(artworkCache, /memoryIndex\.urls\.size\(\) >= 128/);
-  assert.match(artworkCache, /memoryIndex\.urls\.erase\(memoryIndex\.urls\.begin\(\)\)/);
-  assert.doesNotMatch(artworkCache, /size\(\) >= 128\) memoryIndex\.urls\.clear\(\)/);
+test('unused artwork pipeline performs no native caching or download', () => {
+  assert.match(artworkCache, /inline std::wstring CacheArtworkUrl/);
+  assert.match(artworkCache, /return \{\};/);
+  assert.doesNotMatch(
+    artworkCache,
+    /MemoryIndex|WinHttpDownload|spotify-artwork-cache|NetworkRequestCoordinator/,
+  );
+  assert.doesNotMatch(rendererHeader, /NativeArtworkBitmap/);
+  assert.doesNotMatch(bitmapCache, /NativeArtworkBitmap/);
 });
 
 test('air history display remains five minute data while persistence is batched', () => {
@@ -242,11 +241,23 @@ test('radar updates invalidate only the relocated radar section', () => {
   assert.doesNotMatch(radarUi, /CachedRadarSourceDc|BlendBitmap|CreateCompatibleDC/);
 });
 
-test('native image caches keep bounded aggregate LRU entry limits', () => {
-  assert.match(bitmapCache, /kNativeImageBitmapCacheLimit = 48;/);
-  assert.match(bitmapCache, /kRadarBitmapCacheLimit = 12;/);
-  assert.doesNotMatch(bitmapCache, /kWeatherIconBitmapCacheLimit/);
-  assert.doesNotMatch(bitmapCache, /kRadarBitmapCacheLimit = 16;/);
+test('native bitmap caching keeps only weather icons plus the single radar frame', () => {
+  assert.match(bitmapCache, /kWeatherIconBitmapCacheLimit = 12;/);
+  assert.doesNotMatch(
+    bitmapCache,
+    /kNativeImageBitmapCacheLimit|kRadarBitmapCacheLimit|CachedRadarBitmap/,
+  );
+  assert.doesNotMatch(
+    rendererHeader,
+    /nativeRadarBitmaps_|nativeRadarBitmapUseCounter_|CachedRadarBitmap/,
+  );
+  assert.match(rendererHeader, /HBITMAP radarFrameBitmap_ = nullptr;/);
+});
+
+test('native panels share one retained backing bitmap', () => {
+  assert.match(bitmapCache, /nativeBackBuffers_\[nullptr\]/);
+  assert.match(bitmapCache, /buffer\.width >= width && buffer\.height >= height/);
+  assert.doesNotMatch(bitmapCache, /nativeBackBuffers_\[hwnd\]/);
 });
 
 test('clock second ticks redraw only the time while footer refreshes by minute', () => {
@@ -270,7 +281,9 @@ test('News drawing function and paint branches are removed', () => {
   assert.doesNotMatch(layout, /sections\.news/);
 });
 
-test('playback projection does not repaint the unrelated radar panel', () => {
+test('playback projection does not repaint or retain a native media display model', () => {
   assert.doesNotMatch(panelState, /NativePlaybackTickStateFor\(nowMs\)/);
   assert.doesNotMatch(panelState, /PanelSection::PlaybackProgress/);
+  assert.doesNotMatch(rendererHeader, /NativePlaybackRender|ResolveNativePlayback/);
+  assert.doesNotMatch(playbackResolve, /Renderer::ResolveNativePlayback/);
 });
