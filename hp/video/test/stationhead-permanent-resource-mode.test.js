@@ -6,14 +6,14 @@ const readNative = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
 const stationheadPolicy = readNative('sh_runtime_resource_filter_policy_fix.h');
-const permanentMode = readNative('spotify_permanent_resource_mode.h');
+const permanentMode = readNative('stationhead_permanent_resource_mode.h');
 const environment = readNative('shared_webview_environment.cpp');
 
 test('Stationhead playback always applies LOW memory and Windows Efficiency mode', () => {
-  assert.match(stationheadPolicy, /#include "spotify_permanent_resource_mode\.h"/);
+  assert.match(stationheadPolicy, /#include "stationhead_permanent_resource_mode\.h"/);
   assert.match(
     stationheadPolicy,
-    /ApplyPermanentWebViewResourceMode\(environment, webview\)/,
+    /ApplyStationheadPermanentWebViewResourceMode\(environment, webview\)/,
   );
   assert.match(
     permanentMode,
