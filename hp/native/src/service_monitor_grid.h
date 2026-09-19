@@ -14,19 +14,18 @@ inline RECT ServiceMonitorTileBounds(
     return workspaceBounds;
   }
 
-  const RECT media = ComputeNativeDashboardLayout(workspaceBounds).media;
   tileIndex = std::min(tileIndex, kServiceMonitorTileCount - 1);
   const size_t column = tileIndex % kServiceMonitorColumns;
   const size_t row = tileIndex / kServiceMonitorColumns;
-  const LONG width = std::max<LONG>(1, media.right - media.left);
-  const LONG height = std::max<LONG>(1, media.bottom - media.top);
-  const LONG left = media.left +
+  const LONG width = std::max<LONG>(1, workspaceBounds.right - workspaceBounds.left);
+  const LONG height = std::max<LONG>(1, workspaceBounds.bottom - workspaceBounds.top);
+  const LONG left = workspaceBounds.left +
       static_cast<LONG>(width * column / kServiceMonitorColumns);
-  const LONG right = media.left +
+  const LONG right = workspaceBounds.left +
       static_cast<LONG>(width * (column + 1) / kServiceMonitorColumns);
-  const LONG top = media.top +
+  const LONG top = workspaceBounds.top +
       static_cast<LONG>(height * row / kServiceMonitorRows);
-  const LONG bottom = media.top +
+  const LONG bottom = workspaceBounds.top +
       static_cast<LONG>(height * (row + 1) / kServiceMonitorRows);
   return RECT{
       left,
