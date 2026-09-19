@@ -8,6 +8,8 @@ constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyNativeAudioStartRetryMs = 2ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAuthAssistRetryMs = 500ULL;
+constexpr unsigned kSpotifyAuthAssistMaxAttempts = 60U;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
 
 void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
@@ -159,6 +161,17 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   };
 
   for (const Slot& slot : slots_) {
+    if (slot.loginPage && slot.webview &&
+        (slot.authAssistPageEpoch != slot.pageEpoch ||
+         slot.authAssistAttempts < kSpotifyAuthAssistMaxAttempts)) {
+      if (slot.authAssistPageEpoch != slot.pageEpoch ||
+          slot.nextAuthAssistTick == 0) {
+        nextDelayMs = 0;
+      } else {
+        considerTick(slot.nextAuthAssistTick);
+      }
+    }
+
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         CurrentMusicTrack(slot)) {
