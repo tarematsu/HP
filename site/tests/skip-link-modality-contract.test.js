@@ -18,7 +18,7 @@ test('keyboard modality does not stay sticky after focus moves elsewhere', () =>
   assert.match(runtime, /document\.addEventListener\('pointerdown', clearKeyboardNavigation, \{ capture: true \}\)/);
 });
 
-test('programmatic skip-link focus stays invisible while genuine keyboard focus can be shown', () => {
-  assert.match(css, /\.skip-link:focus\s*\{[\s\S]*opacity:\s*0[\s\S]*pointer-events:\s*none/);
+test('programmatic skip-link focus stays invisible even when a later stylesheet defines focus visibility', () => {
+  assert.match(css, /html:not\(\.keyboard-navigation\) \.skip-link:focus\s*\{[\s\S]*opacity:\s*0[\s\S]*pointer-events:\s*none[\s\S]*translateY\(-150%\)/);
   assert.match(css, /html\.keyboard-navigation \.skip-link:focus\s*\{[\s\S]*opacity:\s*1[\s\S]*pointer-events:\s*auto/);
 });
