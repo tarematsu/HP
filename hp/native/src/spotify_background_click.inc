@@ -28,20 +28,8 @@ void SpotifyWebViews::ClickSlotCssPoint(
       !CurrentMusicTrack(slot)) {
     return;
   }
-
-  // Only a fully verified startup is a no-op. An observer may report Playing
-  // before the one-shot native-audio verification has completed.
   if (slot.playbackConfirmed && slot.nativeAudioStartVerified &&
       slot.state == SlotState::Playing) {
-    ArmRobustScheduler();
-    return;
-  }
-
-  const bool recoveryViewportReady = SlotStateNeedsRecovery(slot.state) ||
-      (slot.state == SlotState::Playing && !slot.nativeAudioStartVerified);
-  if (!recoveryViewportReady) {
-    MarkSlotRecovering(slot, GetTickCount64());
-    RefreshSpotifyHostLayout();
     ArmRobustScheduler();
     return;
   }
@@ -58,58 +46,42 @@ void SpotifyWebViews::ClickSlotCssPoint(
 
   const ULONGLONG targetGeneration = slot.targetGeneration;
   const ULONGLONG pageEpoch = slot.pageEpoch;
-  const ULONGLONG stateProbeAt = GetTickCount64();
+  const ULONGLONG now = GetTickCount64();
   SetSlotState(slot, SlotState::WaitingTarget);
-  slot.nextRecoveryTick = stateProbeAt + kSpotifyPlaybackStateProbeMs;
+  slot.nextRecoveryTick = now + kSpotifyPlaybackStateProbeMs;
   if (slot.trustedClickBlockedUntilTick != 0 &&
-      stateProbeAt < slot.trustedClickBlockedUntilTick) {
+      now < slot.trustedClickBlockedUntilTick) {
     ArmRobustScheduler();
     return;
   }
 
-  // The reconcile script already returned CSS viewport coordinates. Verify the
-  // same point still resolves to a Spotify Play control. Recovery is scoped to
-  // targetGeneration: trusted Play retries first, then one Reload, then one
-  // WebView rebuild. If that rebuilt surface still cannot start this target,
-  // the same escalation signal becomes SkipTrack instead of restarting a loop.
-  const bool reloadUsed =
-      slot.trackStartRecovery.generation == targetGeneration &&
-      slot.trackStartRecovery.reloadIssued;
+  // The startup probe issues only one Play request per page. Revalidate that the
+  // returned point still resolves to a Spotify Play control, then dispatch one
+  // trusted CDP click. Failure is handled later by the ordinary startup checks;
+  // there is no click retry/reload/rebuild ladder here.
   std::wstring preflight = L"(() => {";
   preflight += L"const x=" + std::to_wstring(cssX) + L";";
   preflight += L"const y=" + std::to_wstring(cssY) + L";";
   preflight +=
-      std::wstring(L"const reloadUsed=") +
-      (reloadUsed ? L"true;" : L"false;");
-  preflight +=
       L"if(!Number.isFinite(x)||!Number.isFinite(y)||"
       L"window.innerWidth<=0||window.innerHeight<=0||"
       L"x<0||x>window.innerWidth||y<0||y>window.innerHeight)return null;"
+      L"const target=window.__homePanelSpotifyNativeTarget;"
+      L"const targetPath=target&&(target.path||target.trackPath||target.pagePath||'');"
+      L"if(!targetPath||location.hostname!=='open.spotify.com')return null;"
       L"const hit=document.elementFromPoint(x,y);"
       L"const button=hit&&hit.closest?hit.closest('button,[role=\"button\"]'):null;"
       L"if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return null;"
       L"const testid=((button.getAttribute('data-testid')||'').trim().toLowerCase());"
-      L"const trustedPlay=testid==='play-button'||testid==='control-button-playpause';"
-      L"if(!trustedPlay)return null;"
+      L"if(testid!=='play-button'&&testid!=='control-button-playpause')return null;"
       L"const label=((button.getAttribute('aria-label')||button.getAttribute('title')||'').trim().toLowerCase());"
       L"if(label.includes('pause')||label.includes('一時停止'))return null;"
-      L"const target=window.__homePanelSpotifyNativeTarget;"
-      L"const targetPath=target&&(target.path||target.trackPath||target.pagePath||'');"
-      L"if(!targetPath)return null;"
-      L"let retry=window.__homePanelSpotifyNativePlayRetry;"
-      L"if(!retry||retry.path!==targetPath){retry={path:targetPath,count:0,lastAttemptAt:0};window.__homePanelSpotifyNativePlayRetry=retry;}"
-      L"const now=Date.now();"
-      L"if(retry.lastAttemptAt&&now-retry.lastAttemptAt>30000){retry.count=0;retry.lastAttemptAt=0;}"
-      L"if(window.__homePanelSpotifyZeroSecondRestartPath===targetPath){retry.count=0;retry.lastAttemptAt=0;}"
-      L"if(retry.count>0&&now-retry.lastAttemptAt<5000)return null;"
-      L"if(retry.count>=2){if(!reloadUsed)return 'reload';return 'recreate';}"
       L"const rect=button.getBoundingClientRect();"
       L"const centerX=rect.left+rect.width/2;"
       L"const centerY=rect.top+rect.height/2;"
       L"if(!Number.isFinite(centerX)||!Number.isFinite(centerY)||"
       L"centerX<0||centerX>window.innerWidth||"
       L"centerY<0||centerY>window.innerHeight)return null;"
-      L"retry.count+=1;retry.lastAttemptAt=now;"
       L"return [centerX,centerY];})()";
 
   Slot* const target = &slot;
@@ -124,23 +96,6 @@ void SpotifyWebViews::ClickSlotCssPoint(
                 target->targetGeneration != targetGeneration ||
                 target->pageEpoch != pageEpoch ||
                 target->webview.Get() != requestedView.Get()) {
-              return S_OK;
-            }
-            if (target->state == SlotState::Playing &&
-                target->nativeAudioStartVerified) {
-              ArmRobustScheduler();
-              return S_OK;
-            }
-            const std::wstring_view recoveryResult =
-                SUCCEEDED(result) && json ? std::wstring_view(json)
-                                          : std::wstring_view{};
-            if (recoveryResult == L"\"reload\"" ||
-                recoveryResult == L"\"recreate\"") {
-              const ULONGLONG recoveryTick = GetTickCount64();
-              const bool requestRebuild =
-                  recoveryResult == L"\"recreate\"";
-              EscalateSpotifyStartupFailure(
-                  *target, recoveryTick, requestRebuild);
               return S_OK;
             }
             double verifiedX = 0.0;
@@ -170,9 +125,6 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
       return 0;
     }
 
-    // CDP Input.dispatchMouseEvent consumes CSS viewport coordinates. Use the
-    // exact point verified in JavaScript; applying HWND DPI/raster/zoom scaling
-    // here would move the click away from the Play control.
     const double x = cssX;
     const double y = cssY;
     const std::wstring moved =
@@ -181,11 +133,7 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
 
     const ULONGLONG targetGeneration = slot.targetGeneration;
     const ULONGLONG pageEpoch = slot.pageEpoch;
-    // Playback state is probed independently every two seconds. This five-second
-    // window prevents duplicate trusted clicks while still allowing fast
-    // recovery when a heavily loaded renderer drops the first Play gesture.
-    slot.trustedClickBlockedUntilTick =
-        now + kSpotifyCdpPlayRetryFailsafeMs;
+    slot.trustedClickBlockedUntilTick = now + kSpotifyCdpPlayRetryFailsafeMs;
 
     Slot* const target = &slot;
     const auto alive = alive_;
