@@ -36,22 +36,18 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.doesNotMatch(youtube, /const videoFullscreenPoint = media =>/);
 });
 
-test('TVer fullscreen tries the trusted F key, the real control, then the video corner', () => {
+test('TVer fullscreen uses trusted F key and the real fullscreen control only', () => {
   const key = tver.indexOf('homepanel:tver-fullscreen-key');
   const control = tver.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  const corner = tver.indexOf('const fullscreenPoint = videoFullscreenPoint(video)');
-  assert.ok(key >= 0 && control > key && corner > control);
+  assert.ok(key >= 0 && control > key);
   assert.match(tver, /const isEnterFullscreenControl = element =>/);
   assert.match(tver, /const fullscreenControlPoint = media =>/);
   assert.match(tver, /state\.fullscreenKeyRequestedAt = Date\.now\(\)/);
-  assert.match(tver, /const videoFullscreenPoint = media =>/);
-  assert.match(tver, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
-  assert.match(tver, /const rect = media\.getBoundingClientRect\(\)/);
-  assert.match(tver, /const x = rect\.right - insetX/);
-  assert.match(tver, /const y = rect\.bottom - insetY/);
-  assert.match(tver, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
-  assert.match(tver, /if \(fullscreenPoint\) return fullscreenPoint/);
+  assert.match(tver, /fullscreenAttemptCount/);
+  assert.match(tver, /attempts < 4/);
   assert.match(tver, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
+  assert.doesNotMatch(tver, /const videoFullscreenPoint = media =>/);
+  assert.doesNotMatch(tver, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
 });
 
 test('TVer requests fullscreen before ad-specific controls', () => {
@@ -60,9 +56,10 @@ test('TVer requests fullscreen before ad-specific controls', () => {
   assert.ok(fullscreen >= 0 && ad > fullscreen);
 });
 
-test('YouTube key messages remain source checked and TVer click verification rearms fallback', () => {
+test('YouTube key messages remain source checked and TVer verification rearms fallback', () => {
   assert.match(wrapper, /homepanel:youtube-fullscreen-key/);
   assert.match(wrapper, /sourceContains\(L"youtube\.com\/watch"\)/);
   assert.match(tverVerify, /homepanel:tver-wake/);
   assert.match(tverVerify, /fullscreenDirty = true/);
+  assert.match(tverVerify, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
 });
