@@ -29,17 +29,6 @@ struct NativePlaybackProjection {
   std::vector<NativePlaybackTrack> queue;
 };
 
-struct NativePlaybackRender {
-  bool available = false;
-  bool hasTrack = false;
-  bool playing = false;
-  bool stale = false;
-  bool ended = false;
-  bool setupRequired = false;
-  int64_t progressMs = 0;
-  NativePlaybackTrack track;
-};
-
 struct NativePlaybackFeedStatus {
   bool available = false;
   bool playing = false;
@@ -152,14 +141,6 @@ class Renderer {
     bool hasPayload = false;
   };
 
-  struct NativePlaybackTickState {
-    bool active = false;
-    size_t trackIndex = 0;
-    uint64_t contentRevision = 0;
-
-    bool operator==(const NativePlaybackTickState&) const = default;
-  };
-
   struct BitmapCacheEntry {
     HBITMAP bitmap = nullptr;
     uint64_t lastUsed = 0;
@@ -257,16 +238,8 @@ class Renderer {
   void StartNativePlaybackBridge();
   void StopNativePlaybackBridge() noexcept;
   void NativePlaybackLoop();
-  NativePlaybackRender ResolveNativePlaybackLocked(
-      size_t source, int64_t nowMs) const;
-  NativePlaybackRender ResolveNativePlayback(size_t source, int64_t nowMs) const;
-  NativePlaybackTickState NativePlaybackTickStateFor(int64_t nowMs) const;
-  HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
   HBITMAP NativeWeatherIconBitmap(
       const std::wstring& icon, bool night, int width, int height);
-  HBITMAP CachedRadarBitmap(
-      const std::wstring& key, const fs::path& path,
-      const std::string& fileStamp, int width, int height);
   void StartRadarCompose();
   void StopRadarCompose() noexcept;
   void RadarComposeLoop();
@@ -320,9 +293,8 @@ class Renderer {
   mutable std::mutex nativePlaybackMutex_;
   NativePlaybackUpdate nativePlaybackUpdate_{};
   uint64_t nativePlaybackContentRevision_ = 0;
-  NativePlaybackTickState nativePlaybackTickState_{};
-  std::map<std::wstring, BitmapCacheEntry> nativeImageBitmaps_;
-  uint64_t nativeImageUseCounter_ = 0;
+  std::map<std::wstring, BitmapCacheEntry> nativeWeatherIconBitmaps_;
+  uint64_t nativeWeatherIconUseCounter_ = 0;
   std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
   EnergyBitmapCache energyBitmapCache_{};
   std::atomic<bool> nativePlaybackStarted_{false};
@@ -337,8 +309,6 @@ class Renderer {
   std::wstring radarSignature_;
   std::string radarJsonStamp_;
   std::map<std::wstring, int64_t> radarFailedTiles_;
-  std::map<std::wstring, BitmapCacheEntry> nativeRadarBitmaps_;
-  uint64_t nativeRadarBitmapUseCounter_ = 0;
   bool radarComposePending_ = false;
   std::atomic<bool> radarComposeStarted_{false};
   std::atomic<bool> radarComposeStopping_{false};
