@@ -263,7 +263,10 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
     for (const root of errorRoots) {
       const actions = Array.from(
           root.querySelectorAll('button,[role="button"]')).filter(visible);
-      if (actions.length === 1) return actions[0];
+      const strongErrorSurface =
+          root.matches('[role="alertdialog"], [data-testid*="error" i], [id*="error" i], [class*="error" i]') &&
+          !!root.querySelector('h1,h2,h3,[role="heading"]');
+      if (actions.length === 1 && strongErrorSurface) return actions[0];
       const labeled = actions.find(button => {
         const label = normalize([
           button.getAttribute('aria-label'),
