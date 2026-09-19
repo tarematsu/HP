@@ -37,8 +37,8 @@ test('Spotify startup requires WebView2 plus slot-local CDP audio-pipeline evide
 
 test('Spotify identity alone cannot confirm playback without media-clock progress', () => {
   assert.match(scoped, /const activeMedia = Array\.from\(document\.querySelectorAll\('audio, video'\)\)/);
-  assert.match(scoped, /if \(targetMatches\) \{/);
-  assert.match(scoped, /if \(!activeMedia\)[\s\S]*return failSample\(\)/);
+  assert.match(scoped, /if \(targetMatches && activeMedia\) \{/);
+  assert.match(scoped, /if \(targetMatches\) return failSample\(\)/);
   assert.match(scoped, /__homePanelSpotifySimpleMediaProbe/);
   assert.match(scoped, /current > Number\(previous\.currentTime\) \+ 0\.05/);
   assert.doesNotMatch(scoped, /pagePause|restartUnverifiedPause|button\.click\(\)/);
