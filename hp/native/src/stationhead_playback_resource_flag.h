@@ -38,15 +38,22 @@ class StationheadPlaybackResourceFlag final {
 
  private:
   void Apply(bool constrained) noexcept {
+    const uint64_t generation =
+        BeginPlaybackResourceModeChange(generation_);
+    // Increment even without a live WebView so a close/recreate can invalidate
+    // an older asynchronous LOW request that has not completed yet.
     if (!webview_ || !*webview_) return;
+
     SetWebViewPlaybackMemoryTarget(webview_->Get(), constrained);
     SetWebViewRendererEfficiencyMode(
         environment_ ? environment_->Get() : nullptr,
-        webview_->Get(), constrained);
+        webview_->Get(), constrained, generation_, generation);
   }
 
   ComPtr<ICoreWebView2Environment>* environment_ = nullptr;
   ComPtr<ICoreWebView2>* webview_ = nullptr;
+  PlaybackResourceModeGeneration generation_{
+      std::make_shared<std::atomic<uint64_t>>(0)};
   std::atomic<bool> armed_{false};
 };
 
