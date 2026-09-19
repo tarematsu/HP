@@ -234,6 +234,74 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
     return [centerX, centerY];
   };
 
+  // Spotify's Web Player may replace the player with an error surface such as
+  // "Something went wrong / RELOAD PAGE". Prefer structural error semantics so
+  // this works regardless of the UI language. Text matching is only a fallback
+  // when the error container exposes several actions.
+  const findErrorRecoveryButton = () => {
+    const buttons = Array.from(
+        document.querySelectorAll('button,[role="button"]')).filter(visible);
+    const semanticToken = element => normalize([
+      element.getAttribute('data-testid'),
+      element.getAttribute('id'),
+      element.getAttribute('name'),
+      typeof element.className === 'string' ? element.className : ''
+    ].filter(Boolean).join(' '));
+    const recoveryToken = /(^|[\s_-])(retry|reload|refresh|reconnect|try[-_]?again)([\s_-]|$)/;
+    const explicit = buttons.find(button => recoveryToken.test(semanticToken(button)));
+    if (explicit) return explicit;
+
+    const errorRoots = Array.from(document.querySelectorAll([
+      '[role="alert"]',
+      '[role="alertdialog"]',
+      '[data-testid*="error" i]',
+      '[id*="error" i]',
+      '[class*="error" i]'
+    ].join(','))).filter(visible);
+    const labelToken = /(retry|reload|refresh|reconnect|try again|再試行|再読み込み|もう一度|再接続|réessayer|reessayer|recharger|actualiser|erneut|nochmal|neu laden|wiederholen|reintentar|recargar|actualizar|riprova|ricarica|tentar novamente|recarregar|다시 시도|새로고침|重试|重試|重新加载|重新載入)/;
+
+    for (const root of errorRoots) {
+      const actions = Array.from(
+          root.querySelectorAll('button,[role="button"]')).filter(visible);
+      if (actions.length === 1) return actions[0];
+      const labeled = actions.find(button => {
+        const label = normalize([
+          button.getAttribute('aria-label'),
+          button.getAttribute('title'),
+          button.textContent
+        ].filter(Boolean).join(' '));
+        return labelToken.test(label);
+      });
+      if (labeled) return labeled;
+    }
+    return null;
+  };
+
+  const errorRecoveryButton = findErrorRecoveryButton();
+  if (errorRecoveryButton) {
+    clearProgressProbe();
+    clearRestartPending();
+    resetTransitionRetry();
+
+    const now = Date.now();
+    const recovery = window.__homePanelSpotifyErrorRecovery ||
+        (window.__homePanelSpotifyErrorRecovery = {
+          path: '', button: null, lastClickAt: 0
+        });
+    if (recovery.path !== targetPath) {
+      recovery.path = targetPath;
+      recovery.button = null;
+      recovery.lastClickAt = 0;
+    }
+    if (recovery.button !== errorRecoveryButton ||
+        now - Number(recovery.lastClickAt || 0) >= 3000) {
+      recovery.button = errorRecoveryButton;
+      recovery.lastClickAt = now;
+      try { errorRecoveryButton.click(); } catch (_) {}
+    }
+    return playbackProbeMs;
+  }
+
   const nativeLoadedAt = Number(window.__homePanelSpotifyNativeLoadedAt);
   const initialPlayDelayElapsed = Number.isFinite(nativeLoadedAt) &&
       Date.now() - nativeLoadedAt >= 2000;
