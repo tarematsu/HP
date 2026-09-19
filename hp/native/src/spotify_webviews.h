@@ -131,6 +131,8 @@ class SpotifyWebViews final {
     size_t timedRotationPosition = 0;
     ULONGLONG timedCloudRotationRevision = 0;
     int memoryUsageTargetLevel = -1;
+    std::shared_ptr<std::atomic<uint64_t>> resourceModeGeneration{
+        std::make_shared<std::atomic<uint64_t>>(0)};
     SlotState state = SlotState::NotCreated;
     AsyncWork asyncWork = AsyncWork::None;
     bool controllerCreating = false;
