@@ -38,6 +38,13 @@ html:not(.keyboard-navigation) .skip-link {
   transform: translateY(-150%);
 }
 
+/* Preserve the focused-state override against later history stylesheet rules. */
+html:not(.keyboard-navigation) .skip-link:focus {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-150%);
+}
+
 html.keyboard-navigation .skip-link:focus {
   opacity: 1;
   pointer-events: auto;
