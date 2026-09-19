@@ -92,7 +92,8 @@ test('TVer fullscreen uses bounded fallbacks until browser fullscreen succeeds',
   assert.match(watchdog, /homepanel:tver-wake/);
   assert.match(watchdog, /const isEnterFullscreenControl = element =>/);
   assert.match(watchdog, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
-  assert.doesNotMatch(watchdog, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(watchdog, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(watchdog, /request\.call\(target\)/);
 });
 
 test('healthy TVer watchdog only enumerates fullscreen controls while recovery is dirty', () => {
