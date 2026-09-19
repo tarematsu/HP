@@ -16,21 +16,24 @@ const spotifyHost = source('spotify_host_lifecycle.inc');
 const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
 const spotifyStartup = source('spotify_startup_audio_recovery.inc');
 
-test('Stationhead escalates silence through reload, trusted click, WebView rebuild, then fallback', () => {
+test('Stationhead silence recovery is one bounded native ladder', () => {
+  assert.match(stationhead, /enum class StationheadAudioRecoveryStage/);
+  for (const stage of ['Idle', 'LightRepair', 'Reload', 'Rebuild', 'Fallback']) {
+    assert.match(stationhead, new RegExp(`\\b${stage}\\b`));
+  }
   assert.match(stationhead, /EscalateAudioLossRecovery\(nowMs\)/);
-  assert.match(stationhead, /audioLossEscalationStage_ = 1/);
-  assert.match(stationhead, /NavigateCurrentUrl\(nowMs, L"audio-loss recovery reload"\)/);
+  assert.match(stationhead, /kLightRepairScript/);
   assert.match(stationhead, /AttemptNativeStartClick\(nowMs\)/);
-  assert.match(stationhead, /audioLossEscalationStage_ = 2/);
+  assert.match(stationhead, /NavigateCurrentUrl\(nowMs, L"audio-loss recovery reload"\)/);
   assert.match(
     stationhead,
-    /ScheduleRecreate\([\s\S]*audio still silent after page reload; rebuilding playback WebView/,
+    /ScheduleRecreate\(L"Stationhead silence recovery WebView rebuild", 1'000\)/,
   );
   assert.match(stationhead, /previousLifecycle != createCallbackAlive_/);
   assert.match(stationhead, /BeginAudioLossAuthProbe\(nowMs\)/);
   assert.match(
     stationhead,
-    /SetManagedPlaybackFallback\([\s\S]*true,[\s\S]*page reload and WebView rebuild/,
+    /SetManagedPlaybackFallback\([\s\S]*true,[\s\S]*remained silent after bounded recovery/,
   );
 
   const escalationAt = stationhead.indexOf('EscalateAudioLossRecovery(nowMs);');
@@ -38,15 +41,18 @@ test('Stationhead escalates silence through reload, trusted click, WebView rebui
   assert.ok(escalationAt >= 0 && healthPollAt > escalationAt);
 });
 
-test('Stationhead escalation is bounded and resets on real audio', () => {
-  assert.match(stationhead, /StationheadAudioEscalationSettleMs\(\)[\s\S]*return 15'000/);
+test('Stationhead ladder resets on real audio and cannot restart after fallback', () => {
+  assert.match(stationhead, /StationheadAudioRecoverySettleMs\(\) noexcept[\s\S]*return 15'000/);
   assert.match(
     stationhead,
     /if \(audioPlaying_\.load\(std::memory_order_relaxed\)\) \{[\s\S]*ResetAudioLossEscalation\(\);/,
   );
-  assert.match(stationhead, /audioLossEscalationStage_ = 3/);
+  assert.match(stationhead, /audioLossRecoveryStage_ = RecoveryStage::Fallback/);
   assert.match(stationhead, /managedPlaybackFallbackActive_/);
   assert.match(stationhead, /spotifyAuthorization_ \|\| loginRequired_/);
+  assert.match(stationhead, /ResetMediaRecoveryEpisode\(mediaRecoveryEpisode_, 1\)/);
+  assert.doesNotMatch(stationhead, /audioLossEscalationStage_/);
+  assert.doesNotMatch(stationhead, /NextMediaRecoveryAction/);
 });
 
 test('Spotify normal startup reloads once and then skips', () => {
