@@ -9,6 +9,8 @@ const youtube = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 const tver = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
+const tverEpisode = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const tverVerify = read(
   '../../native/src/renderer_panels/media_tver_playback_policy_force_fullscreen.inc');
 
@@ -25,7 +27,7 @@ test('YouTube fullscreen uses trusted F key input through WebView2', () => {
 test('YouTube requests F before falling back to fullscreen button click', () => {
   const request = youtube.slice(
     youtube.indexOf('const requestFullscreen = () =>'),
-    youtube.indexOf('state.fullscreenApplied = fullscreen();'),
+    youtube.indexOf('const adActive = ad();'),
   );
   const key = request.indexOf('homepanel:youtube-fullscreen-key');
   const fallback = request.indexOf('armFullscreen()');
@@ -36,16 +38,18 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.doesNotMatch(youtube, /const videoFullscreenPoint = media =>/);
 });
 
-test('TVer fullscreen uses trusted F key and the real fullscreen control only', () => {
+test('TVer watchdog owns trusted F retries and the real fullscreen control', () => {
   const key = tver.indexOf('homepanel:tver-fullscreen-key');
   const control = tver.indexOf('const controlPoint = fullscreenControlPoint(video)');
   assert.ok(key >= 0 && control > key);
   assert.match(tver, /const isEnterFullscreenControl = element =>/);
   assert.match(tver, /const fullscreenControlPoint = media =>/);
-  assert.match(tver, /state\.fullscreenKeyRequestedAt = Date\.now\(\)/);
-  assert.match(tver, /fullscreenAttemptCount/);
+  assert.match(tver, /__homePanelTverFullscreenRecovery/);
+  assert.match(tver, /fullscreenRecovery\.requestedAt = Date\.now\(\)/);
+  assert.match(tver, /fullscreenRecovery\.attempts = attempts \+ 1/);
   assert.match(tver, /attempts < 4/);
   assert.match(tver, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
+  assert.doesNotMatch(tverEpisode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
   assert.doesNotMatch(tver, /const videoFullscreenPoint = media =>/);
   assert.doesNotMatch(tver, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
 });
@@ -61,5 +65,6 @@ test('YouTube key messages remain source checked and TVer verification rearms fa
   assert.match(wrapper, /sourceContains\(L"youtube\.com\/watch"\)/);
   assert.match(tverVerify, /homepanel:tver-wake/);
   assert.match(tverVerify, /fullscreenDirty = true/);
+  assert.match(tverVerify, /__homePanelTverFullscreenRecovery/);
   assert.match(tverVerify, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
 });

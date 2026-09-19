@@ -10,11 +10,13 @@ const playbackPolicy = readExpandedNativeSource(
 const mediaBase = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 
-test('TVer event policy never owns program playback recovery', () => {
+test('TVer event policy reports playback loss but never owns playback recovery', () => {
   assert.doesNotMatch(episode, /video\.play\s*\(/);
   assert.doesNotMatch(episode, /playButton\.click\s*\(/);
-  assert.match(episode, /if \(video\.paused && !video\.ended\) recoveryFlags\.push\('paused'\)/);
-  assert.match(episode, /wakeNative\('recovery:' \+ recoveryFlags\.join\('\+'\)/);
+  assert.match(episode, /startRecovery\(eventName\)/);
+  assert.match(episode, /if \(!video\.ended\) startRecovery\('pause'\)/);
+  assert.match(episode, /wakeNative\('recovery:' \+ reason/);
+  assert.doesNotMatch(episode, /recovery:tick:|recoveryWakeTimer|armRecoveryWake/);
 });
 
 test('paused TVer playback recovery is idempotent and never toggles the video surface', () => {
@@ -31,8 +33,10 @@ test('TVer fullscreen recovery remains bounded to the loaded player', () => {
   assert.match(playbackPolicy, /const fullscreenControlPoint = media =>/);
   assert.match(playbackPolicy, /const root = playerRootFor\(media\)/);
   assert.match(playbackPolicy, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
-  assert.match(playbackPolicy, /fullscreenAttemptCount/);
+  assert.match(playbackPolicy, /__homePanelTverFullscreenRecovery/);
+  assert.match(playbackPolicy, /fullscreenRecovery\.video !== video/);
   assert.match(playbackPolicy, /attempts < 4/);
+  assert.doesNotMatch(episode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
   assert.doesNotMatch(playbackPolicy, /const videoFullscreenPoint = media =>/);
   assert.doesNotMatch(playbackPolicy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
 });

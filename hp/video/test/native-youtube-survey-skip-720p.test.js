@@ -26,7 +26,7 @@ test('paused playback recovers through direct play then trusted Play', () => {
 });
 
 test('YouTube surveys stay inside active ad handling', () => {
-  const adStart = runtime.indexOf('if (ad()) {');
+  const adStart = runtime.indexOf('if (adActive) {');
   const survey = runtime.indexOf('for (const root of player.querySelectorAll', adStart);
   const content = runtime.indexOf('const currentTime = Number(video?.currentTime);');
   assert.ok(adStart >= 0 && survey > adStart && content > survey);
@@ -50,7 +50,7 @@ test('ad skip and fullscreen fallback recover hidden controls without a fixed wa
 });
 
 test('skippable ad click is not blocked by fullscreen recovery', () => {
-  const adStart = runtime.indexOf('if (ad()) {');
+  const adStart = runtime.indexOf('if (adActive) {');
   const skip = runtime.indexOf("arm(target, 'skip-ad', 600)", adStart);
   const fullscreen = runtime.indexOf('return requestFullscreen();', skip);
   assert.ok(adStart >= 0 && skip > adStart && fullscreen > skip);
@@ -69,6 +69,7 @@ test('unified runtime owns event notification and recovery', () => {
   assert.match(runtime, /homepanel:youtube-wake/);
   assert.match(runtime, /homepanel:youtube-fullscreen-key/);
   assert.match(runtime, /attributeFilter: \['class'\]/);
+  assert.match(runtime, /const syncAdObserver = active =>/);
   assert.match(runtime, /setPlaybackQuality/);
   assert.match(runtime, /nextVideo/);
   assert.match(composition, /#include "media_youtube_control_recovery\.inc"/);
@@ -78,4 +79,5 @@ test('clean player keeps useful skip UI while hiding chrome', () => {
   assert.match(clean, /#movie_player \.ytp-ad-skip-button-modern/);
   assert.match(clean, /#movie_player \.ytp-share-button/);
   assert.match(clean, /ytd-unified-share-panel-renderer/);
+  assert.doesNotMatch(clean, /MutationObserver|homepanel:youtube-wake/);
 });

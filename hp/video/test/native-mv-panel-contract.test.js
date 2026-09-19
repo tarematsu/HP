@@ -99,6 +99,7 @@ test('YouTube preserves playlist playback, one-shot 360p, captions off, skip and
   assert.match(youtubeRuntime, /fullscreenApplied: false/);
   assert.doesNotMatch(youtubeRuntime, /const videoFullscreenPoint = media =>/);
   assert.match(youtubeRuntime, /homepanel:youtube-wake/);
+  assert.match(youtubeRuntime, /const syncAdObserver = active =>/);
   assert.match(youtubeRuntime, /attributeFilter: \['class'\]/);
   assert.doesNotMatch(youtubeRuntime, /document\.documentElement.*observe/);
 });
@@ -113,6 +114,7 @@ test('YouTube clean player renders content video while preserving Skip Ad', () =
   assert.match(youtubeClean, /#movie_player \.ytp-ad-skip-button-modern/);
   assert.match(youtubeClean, /#movie_player \.ytp-share-button/);
   assert.match(youtubeClean, /opacity:\s*1 !important/);
+  assert.doesNotMatch(youtubeClean, /MutationObserver|homepanel:youtube-wake/);
 });
 
 test('TVer episode playback is one-shot 1.75x, native-queue based and player-local', () => {
@@ -154,7 +156,9 @@ test('TVer ads enter fullscreen before Skip automation', () => {
   const survey = tverWatchdog.indexOf('const surveyRoots = Array.from', adStart);
   const branch = tverWatchdog.slice(adStart, survey);
   assert.ok(fullscreen >= 0 && adStart > fullscreen);
-  assert.match(tverWatchdog, /fullscreenAttemptCount/);
+  assert.match(tverWatchdog, /__homePanelTverFullscreenRecovery/);
+  assert.match(tverWatchdog, /fullscreenRecovery\.attempts/);
+  assert.doesNotMatch(tverEpisode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
   assert.doesNotMatch(tverWatchdog, /const videoFullscreenPoint = media =>/);
   assert.match(tverWatchdog, /state\.fullscreenDirty = false/);
   assert.match(branch, /skipButton/);

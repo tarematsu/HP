@@ -71,25 +71,34 @@ LR"JS(
   };
 
   const state = window.__homePanelSakuraMeetsState;
+  const fullscreenRecovery = window.__homePanelTverFullscreenRecovery ||
+      (window.__homePanelTverFullscreenRecovery = {
+        video: null, requestedAt: 0, attempts: 0
+      });
+  if (fullscreenRecovery.video !== video) {
+    fullscreenRecovery.video = video;
+    fullscreenRecovery.requestedAt = 0;
+    fullscreenRecovery.attempts = 0;
+  }
+  const resetFullscreenRecovery = () => {
+    fullscreenRecovery.requestedAt = 0;
+    fullscreenRecovery.attempts = 0;
+  };
+
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
   const browserFullscreen = document.fullscreenElement ||
       document.webkitFullscreenElement || document.msFullscreenElement;
   if (browserFullscreen) {
-    if (state) {
-      state.fullscreenDirty = false;
-      state.fullscreenKeyRequestedAt = 0;
-      state.fullscreenAttemptCount = 0;
-    }
+    if (state) state.fullscreenDirty = false;
+    resetFullscreenRecovery();
   } else if (video) {
     if (state) state.fullscreenDirty = true;
-    const requestedAt = Number(state?.fullscreenKeyRequestedAt || 0);
-    const attempts = Number(state?.fullscreenAttemptCount || 0);
+    const requestedAt = Number(fullscreenRecovery.requestedAt || 0);
+    const attempts = Number(fullscreenRecovery.attempts || 0);
     const keyRetryDue = requestedAt === 0 || Date.now() - requestedAt >= 1000;
     if (keyRetryDue && attempts < 4) {
-      if (state) {
-        state.fullscreenKeyRequestedAt = Date.now();
-        state.fullscreenAttemptCount = attempts + 1;
-      }
+      fullscreenRecovery.requestedAt = Date.now();
+      fullscreenRecovery.attempts = attempts + 1;
       try { window.chrome?.webview?.postMessage('homepanel:tver-fullscreen-key'); }
       catch (_) {}
       return null;
