@@ -15,6 +15,14 @@ test('track metadata backlog repair runs on a bounded Actions runner', () => {
   assert.match(workflow, /TRACK_METADATA_ACTIONS_LIMIT: '150'/);
 });
 
+test('Actions repair prioritizes the active queue before the bounded backlog window', () => {
+  assert.match(script, /function activeQueueRows\(\)/);
+  assert.match(script, /FROM sh_queue_current/);
+  assert.match(script, /JOIN sh_queue_items AS items/);
+  assert.match(script, /ORDER BY items\.position ASC/);
+  assert.match(script, /for \(const row of \[\.\.\.active, \.\.\.latest\]\)/);
+});
+
 test('Actions repair reads a bounded latest-state candidate window instead of grouping occurrence history', () => {
   assert.match(script, /candidateScanLimit = Math\.min\(2_000, Math\.max\(candidateLimit, candidateLimit \* 4\)\)/);
   assert.match(script, /FROM sh_track_like_current INDEXED BY idx_sh_track_like_current_observed/);
