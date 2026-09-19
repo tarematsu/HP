@@ -11,7 +11,7 @@ const coordinator = source('audio_health_scan_coordinator.h');
 const stationheadEvents = source('sh_webview_event_policy.h');
 const stationheadLoss = source('sh_audio_loss.cpp');
 const stationheadPolicy = source('sh_audio_loss_policy.h');
-const stationheadRefresh = source('sh_track_boundary_message_policy.h');
+const stationheadRecovery = source('sh_track_boundary_message_policy.h');
 const spotifyEvents = source('spotify_media_observer_events.inc');
 const spotifyClick = source('spotify_background_click.inc');
 const spotifyPhase = source('spotify_phase_sync.inc');
@@ -19,20 +19,20 @@ const spotifySchedule = source('spotify_stagger_schedule.inc');
 const spotifyTrackRecovery = source('spotify_track_start_recovery.h');
 const spotifyStartupAudio = source('spotify_startup_audio_recovery.inc');
 
-test('Stationhead keeps lightweight repair ahead of one-minute destructive recovery', () => {
-  assert.match(stationheadEvents, /get_IsDocumentPlayingAudio/);
-  assert.match(stationheadEvents, /__homepanelStationheadNativeAudioSeen/);
-  assert.match(stationheadEvents, /nativeSetTimeout\(begin, 4000\)/);
-  assert.match(stationheadEvents, /nativeSetInterval\([^]*2000\)/);
-  assert.match(stationheadEvents, /attempts >= 4/);
-  assert.match(stationheadEvents, /__homepanelPrimaryStationhead\?\.scan\?\.\(0\)/);
-  assert.match(stationheadEvents, /media\.pause\(\)/);
-  assert.match(stationheadEvents, /media\.play\?\.\(\)/);
-  assert.match(stationheadEvents, /__homepanelStationheadBlockingLoginVisible/);
-  assert.doesNotMatch(stationheadEvents, /location\.reload\(\)/);
+test('Stationhead has no independent event-driven pause-play repair loop', () => {
+  assert.doesNotMatch(stationheadEvents, /UpdateStationheadSilentPlaybackRecovery/);
+  assert.doesNotMatch(stationheadEvents, /__homepanelStationheadSilentRecoveryTimer/);
+  assert.doesNotMatch(stationheadEvents, /nativeSetTimeout\(begin, 4000\)/);
+  assert.doesNotMatch(stationheadEvents, /nativeSetInterval/);
+  assert.doesNotMatch(stationheadEvents, /media\.pause\(\)|media\.play\?\.\(\)/);
 
   assert.match(stationheadPolicy, /kStationheadAudioLossGraceMs = 59'000/);
   assert.match(stationheadPolicy, /kStationheadAudioLossDomSettleMs = 1'000/);
+  assert.match(stationheadRecovery, /StationheadAudioRecoveryStage/);
+  assert.match(stationheadRecovery, /RecoveryStage::LightRepair/);
+  assert.match(stationheadRecovery, /RecoveryStage::Reload/);
+  assert.match(stationheadRecovery, /RecoveryStage::Rebuild/);
+  assert.match(stationheadRecovery, /RecoveryStage::Fallback/);
   assert.match(stationheadLoss, /SetManagedPlaybackFallback/);
 });
 
@@ -45,15 +45,35 @@ test('shared audio-health coordinator keeps Stationhead on a true one-minute cyc
   assert.match(coordinator, /ReleaseAudioHealthScan/);
 });
 
-test('Stationhead polls native WebView2 audio through the periodic health path', () => {
-  assert.match(stationheadRefresh, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
-  assert.match(stationheadRefresh, /PollPeriodicAudioHealth/);
-  assert.match(stationheadRefresh, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
-  assert.match(stationheadRefresh, /TryClaimAudioHealthScan\(scanTick\)/);
-  assert.match(stationheadRefresh, /ReleaseAudioHealthScan\(\)/);
-  assert.match(stationheadRefresh, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
-  assert.match(stationheadRefresh, /__homepanelPrimaryStationhead\?\.scan\?\.\(0\)/);
-  assert.match(stationheadRefresh, /AttemptNativeStartClick\(nowMs\)/);
+test('Stationhead one-minute health path observes audio without performing playback repair', () => {
+  assert.match(stationheadRecovery, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
+  assert.match(stationheadRecovery, /PollPeriodicAudioHealth/);
+  assert.match(stationheadRecovery, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
+  assert.match(stationheadRecovery, /TryClaimAudioHealthScan\(scanTick\)/);
+  assert.match(stationheadRecovery, /ReleaseAudioHealthScan\(\)/);
+  assert.match(stationheadRecovery, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
+
+  const start = stationheadRecovery.indexOf('void PollPeriodicAudioHealth(int64_t nowMs)');
+  const end = stationheadRecovery.indexOf(
+    '::hp::StationheadAudioRecoveryStage audioLossRecoveryStage_', start);
+  assert.ok(start >= 0 && end > start);
+  const health = stationheadRecovery.slice(start, end);
+  assert.match(health, /ApplyAudioPlaybackState/);
+  assert.doesNotMatch(health, /__homepanelPrimaryStationhead|AttemptNativeStartClick|media\.play|media\.pause/);
+});
+
+test('Stationhead lightweight repair is issued once by the bounded recovery ladder', () => {
+  const start = stationheadRecovery.indexOf('void EscalateAudioLossRecovery(int64_t nowMs)');
+  const end = stationheadRecovery.indexOf('void PollPeriodicAudioHealth', start);
+  assert.ok(start >= 0 && end > start);
+  const recovery = stationheadRecovery.slice(start, end);
+  assert.match(recovery, /kLightRepairScript/);
+  assert.match(recovery, /__homepanelPrimaryStationhead\?\.scan\?\.\(0\)/);
+  assert.match(recovery, /AttemptNativeStartClick\(nowMs\)/);
+  assert.match(recovery, /NavigateCurrentUrl\(nowMs, L"audio-loss recovery reload"\)/);
+  assert.match(recovery, /ScheduleRecreate\(L"Stationhead silence recovery WebView rebuild"/);
+  assert.match(recovery, /SetManagedPlaybackFallback/);
+  assert.doesNotMatch(recovery, /media\.pause\(\)|media\.play\?\.\(\)/);
 });
 
 test('Spotify startup recovery is per target generation and is reload-once then skip', () => {
@@ -101,7 +121,8 @@ test('Spotify observer still reacts immediately to explicit playback interruptio
   assert.match(spotifyEvents, /next > recoveryTime \+ 0\.10/);
 });
 
-test('Stationhead keeps the explicit 50-minute preventive reload', () => {
-  assert.match(stationheadRefresh, /return 50 \* 60'000;/);
-  assert.match(stationheadRefresh, /L"50-minute periodic refresh"/);
+test('Stationhead does not use a preventive periodic page reload', () => {
+  assert.doesNotMatch(stationheadRecovery, /StationheadPeriodicRefreshIntervalMs/);
+  assert.doesNotMatch(stationheadRecovery, /RefreshPeriodicNavigation/);
+  assert.doesNotMatch(stationheadRecovery, /50-minute periodic refresh/);
 });
