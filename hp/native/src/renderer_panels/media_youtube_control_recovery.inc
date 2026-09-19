@@ -36,6 +36,10 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       document.fullscreenElement || player.classList.contains('ytp-fullscreen'));
   const surveySelector =
       '.ytp-ad-survey,.ytp-ad-feedback-dialog,yt-survey-renderer,ytd-survey-renderer';
+  const skipSelector =
+      '.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,'
+      + '.videoAdUiSkipButton,[class*="ytp-ad-skip"],[aria-label*="Skip ad" i],'
+      + '[aria-label*="広告をスキップ"],[aria-label*="広告を飛ばす"]';
 )JS" LR"JS(
 
   const actionLane = action => {
@@ -224,6 +228,22 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     }
     wake(0);
   };
+
+  const syncAdObserver = active => {
+    if (!active) {
+      state.adObserver?.disconnect();
+      state.adObserver = null;
+      return;
+    }
+    if (state.adObserver || typeof MutationObserver !== 'function') return;
+    state.adObserver = new MutationObserver(() => wake(0));
+    state.adObserver.observe(player, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'aria-disabled', 'aria-hidden', 'class']
+    });
+  };
 )JS" LR"JS(
 
   if (state.player !== player) {
@@ -231,6 +251,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     state.videoAbort?.abort();
     state.classObserver?.disconnect();
     state.popupObserver?.disconnect();
+    state.adObserver?.disconnect();
+    state.adObserver = null;
     state.actionCleanup?.();
     for (const lane of Object.values(state.actionLanes || {})) lane.cleanup?.();
     state.actionLanes = {};
@@ -305,11 +327,13 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     return 'recovery';
   };
 
+  const adActive = ad();
+  syncAdObserver(adActive);
   state.fullscreenApplied = fullscreen();
   if (state.fullscreenApplied) state.fullscreenKeyRequestedAt = 0;
-  if (!ad() && !state.fullscreenApplied) return requestFullscreen();
+  if (!adActive && !state.fullscreenApplied) return requestFullscreen();
 
-  if (ad()) {
+  if (adActive) {
     state.adActive = true;
     const submitPattern = /^(送信|回答を送信|submit|send)$/i;
     for (const root of player.querySelectorAll(`${surveySelector},[role="dialog"]`)) {
@@ -330,10 +354,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       }
     }
 
-    const skipSelector =
-        '.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,'
-        + '.videoAdUiSkipButton,[class*="ytp-ad-skip"],[aria-label*="Skip ad" i],'
-        + '[aria-label*="広告をスキップ"],[aria-label*="広告を飛ばす"]';
     const target = Array.from(player.querySelectorAll(skipSelector)).find(valid) || null;
     if (target) return arm(target, 'skip-ad', 600);
 
