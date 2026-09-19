@@ -8,20 +8,22 @@ const source = name => readFileSync(
 const wrapper = source('spotify_webviews.inc');
 const policy = source('spotify_runtime_policy.inc');
 const phase = source('spotify_phase_sync.inc');
+const resourceMode = source('spotify_permanent_resource_mode.h');
 const controller = source('spotify_controller_lifecycle.inc');
 const layout = source('spotify_host_layout.inc');
 const host = source('spotify_host_lifecycle.inc');
 
-test('Spotify leaves the WebView2 memory target unmanaged', () => {
+test('Spotify keeps the WebView2 memory target permanently LOW', () => {
   assert.match(wrapper, /#include "spotify_runtime_policy\.inc"/);
   assert.doesNotMatch(
     policy,
     /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
   );
-  assert.doesNotMatch(
-    phase,
-    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)|SetSpotifyMemoryUsageTarget/,
-  );
+  assert.match(phase, /#include "spotify_permanent_resource_mode\.h"/);
+  assert.match(phase, /ApplySpotifyPermanentResourceMode\(slot\)/);
+  assert.match(resourceMode, /put_MemoryUsageTargetLevel/);
+  assert.match(resourceMode, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+  assert.doesNotMatch(resourceMode, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
   assert.match(
     phase,
     /if \(state == SlotState::Playing\)[\s\S]*slot\.nativeAudioStartVerified[\s\S]*slot\.nextRecoveryTick = 0[\s\S]*kSpotifyNativeAudioStartRetryMs/,
