@@ -47,7 +47,7 @@ test('interaction runtime owns login-required and stable auth-ready edges', () =
   assert.doesNotMatch(interaction, /setInterval\s*\(|new\s+MutationObserver/);
 });
 
-test('real blocking auth surfaces beat stale account presentation', () => {
+test('real blocking auth surfaces beat stale account presentation without blocking music-connect recovery', () => {
   const blocking = section(
     interaction,
     'const blockingLogin = authenticated => {',
@@ -55,7 +55,8 @@ test('real blocking auth surfaces beat stale account presentation', () => {
   );
   assert.match(blocking, /if \(loginRoute\(\)\) return true;/);
   assert.match(blocking, /if \(visible\(input\)\) return true;/);
-  assert.match(blocking, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
+  assert.doesNotMatch(blocking, /serviceConnectPattern/);
+  assert.doesNotMatch(blocking, /querySelectorAll\("h1,h2,h3,\[role='heading'\]"\)/);
   assert.match(blocking, /element\.closest\?\.\(blockingShellSelector\)/);
   assert.match(blocking, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true;/);
 });
