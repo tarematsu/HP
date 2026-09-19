@@ -23,7 +23,10 @@ class StationheadPlaybackResourceFlag final {
       bool value,
       std::memory_order order = std::memory_order_seq_cst) noexcept {
     const bool changed = armed_.exchange(value, order) != value;
-    if (!changed) return;
+    // Reassert NORMAL on every recovery/navigation false edge even when another
+    // callback already cleared the logical flag. Repeated confirmed-playing
+    // notifications do not need to reapply LOW/Efficiency.
+    if (!changed && value) return;
     Apply(value);
   }
 
