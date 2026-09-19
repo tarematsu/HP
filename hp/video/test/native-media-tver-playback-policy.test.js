@@ -91,7 +91,7 @@ test('TVer low quality uses bounded event-driven trusted clicks instead of polli
   assert.match(policy, /return point\(lowOption\)/);
   assert.match(policy, /return point\(target\)/);
   assert.match(episodeLoop, /MutationObserver/);
-  assert.match(episodeLoop, /recoveryFlags\.push\('quality'\)/);
+  assert.match(episodeLoop, /setupFlags\.push\('quality'\)/);
   assert.match(episodeLoop, /lowClickPending/);
   assert.doesNotMatch(episodeLoop, /lowOption\.click\(\)/);
   assert.doesNotMatch(episodeLoop, /setInterval\s*\(\s*ensure/);
@@ -107,13 +107,15 @@ test('paused TVer program recovery is idempotent and never toggles the video sur
   assert.doesNotMatch(policy, /findPlayButton/);
 });
 
-test('TVer fullscreen retries only trusted key and the real control', () => {
+test('TVer fullscreen retries are watchdog-owned and bounded', () => {
   assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
   assert.match(policy, /if \(state\) state\.fullscreenDirty = true/);
   assert.match(policy, /homepanel:tver-fullscreen-key/);
   assert.match(policy, /const controlPoint = fullscreenControlPoint\(video\)/);
   assert.match(policy, /if \(controlPoint\) return controlPoint/);
-  assert.match(policy, /fullscreenAttemptCount/);
+  assert.match(policy, /__homePanelTverFullscreenRecovery/);
+  assert.match(policy, /fullscreenRecovery\.requestedAt = Date\.now\(\)/);
+  assert.match(policy, /fullscreenRecovery\.attempts = attempts \+ 1/);
   assert.match(policy, /attempts < 4/);
   assert.match(policy, /Date\.now\(\) - requestedAt >= 1000/);
   assert.match(policy, /state\.fullscreenDirty = false/);
@@ -126,6 +128,7 @@ test('TVer fullscreen retries only trusted key and the real control', () => {
   assert.match(policy, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
   assert.match(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
   assert.match(policy, /request\.call\(target\)/);
+  assert.doesNotMatch(episodeLoop, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
   assert.doesNotMatch(policy, /const videoFullscreenPoint = media =>/);
   assert.doesNotMatch(policy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
   assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
@@ -171,12 +174,14 @@ test('TVer program volume stays at 100 percent while ads remain untouched', () =
   assert.match(policy, /video\.volume !== 1\.0/);
 });
 
-test('event policy wakes native recovery only while recovery is needed', () => {
+test('event policy sends one playback-loss wake and setup-only state wakes', () => {
   assert.match(episodeLoop, /homepanel:tver-wake/);
-  assert.match(episodeLoop, /recoveryFlags\.push\('quality'\)/);
-  assert.match(episodeLoop, /if \(video\.paused && !video\.ended\) recoveryFlags\.push\('paused'\)/);
+  assert.match(episodeLoop, /wakeNative\('recovery:' \+ reason/);
+  assert.match(episodeLoop, /setupFlags\.push\('quality'\)/);
   assert.match(episodeLoop, /!browserFullscreen && state\.fullscreenDirty/);
+  assert.match(episodeLoop, /wakeNative\('setup:' \+ setupFlags\.join\('\+'\)/);
   assert.match(episodeLoop, /window\.__homePanelTverAdActive = true;[\s\S]*wakeNative\('ad:'/);
   assert.match(episodeLoop, /fullscreenchange[\s\S]*wakeNative\('fullscreen-change:'/);
+  assert.doesNotMatch(episodeLoop, /recovery:tick:|recoveryWakeTimer|armRecoveryWake/);
   assert.doesNotMatch(episodeLoop, /restartRequested|wakeNative\('restart:'/);
 });
