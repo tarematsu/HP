@@ -11,6 +11,7 @@ const startup = source('spotify_startup_audio_recovery.inc');
 const evidence = source('spotify_media_start_evidence.inc');
 const foundation = source('spotify_webview_foundation.inc');
 const phase = source('spotify_phase_sync.inc');
+const scoped = source('spotify_scoped_track_reconcile.inc');
 const wrapper = source('spotify_webviews.inc');
 
 test('Spotify startup requires WebView2 plus slot-local CDP audio-pipeline evidence', () => {
@@ -32,6 +33,36 @@ test('Spotify startup requires WebView2 plus slot-local CDP audio-pipeline evide
   );
   assert.match(phase, /BeginSpotifyMediaStartEvidenceGeneration/);
   assert.match(wrapper, /#include "spotify_media_start_evidence\.inc"/);
+});
+
+test('Spotify Pause UI alone cannot confirm playback without media-clock evidence', () => {
+  assert.match(scoped, /const recordUnverifiedPause = \(button, media\) =>/);
+  assert.match(scoped, /if \(!media\) return recordUnverifiedPause\(button, null\)/);
+  assert.match(
+    scoped,
+    /if \(!Number\.isFinite\(current\) \|\| current < 0\)[\s\S]*recordUnverifiedPause\(button, media\)/,
+  );
+  assert.match(scoped, /stagnantSamples < stalledObservationLimit/);
+  assert.match(scoped, /return restartUnverifiedPause\(button\)/);
+  assert.doesNotMatch(
+    scoped,
+    /if \(!media\)[\s\S]{0,160}return 'confirmed'/,
+  );
+});
+
+test('Spotify requires two spaced complete native-audio passes before startup success', () => {
+  assert.match(startup, /gSpotifyNativeAudioFirstPassTicks/);
+  assert.match(startup, /if \(firstPassTick == 0\) firstPassTick = now == 0 \? 1 : now/);
+  assert.match(
+    startup,
+    /now - firstPassTick >= kSpotifyNativeAudioStartRetryMs/,
+  );
+  const firstPassAt = startup.indexOf('if (firstPassTick == 0) firstPassTick');
+  const verifiedAt = startup.indexOf('slot.nativeAudioStartVerified = true');
+  assert.notEqual(firstPassAt, -1);
+  assert.notEqual(verifiedAt, -1);
+  assert.ok(verifiedAt < firstPassAt || startup.includes('firstPassTick != 0'));
+  assert.match(startup, /Any failed sample breaks the consecutive-success requirement/);
 });
 
 test('Spotify per-slot startup no longer depends on shared Windows Core Audio or PCM', () => {
