@@ -4,8 +4,8 @@
 namespace hp {
 
 // A single WebView2 audio pulse during initial Stationhead startup must not arm
-// fallback. Require continuous audio first. Native audio health is sampled every
-// 30 seconds; destructive silence recovery begins only after one full minute of
+// fallback. Require continuous audio first. Native audio health is sampled once
+// per minute; destructive silence recovery begins only after one full minute of
 // continuous audio loss. The final second is reserved for rendering any
 // authentication controls before native code probes the DOM.
 inline constexpr int64_t kStationheadAudioLossArmStabilityMs = 5'000;
