@@ -46,7 +46,7 @@ export const ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS = [
 ] as const;
 
 // Keep the original catalog intact for device migration, but remove the eight
-// longest ranked entries from the active C/F music pool.
+// longest ranked entries from the active C music pool.
 const SHORT_SPOTIFY_ROTATION_EXCLUDED_IDS = new Set([
   "7vvZ1QHTdkoEXBiOBdxdIo", // Make or Break
   "3HdmFZGqZLNiCAfiNj4N84", // 行かないで
@@ -58,7 +58,7 @@ const SHORT_SPOTIFY_ROTATION_EXCLUDED_IDS = new Set([
   "4hVECXakmpdqigQq1mJwNg", // Nightmare症候群 -OFF VOCAL ver.-
 ]);
 
-// C/F use the filtered short music pool. Instrumentals stay exclusive to B/E.
+// C uses the filtered short music pool. Instrumentals stay exclusive to B/E.
 export const SHORT_SPOTIFY_ROTATION_TRACKS = [
   ...SHORT_SPOTIFY_RANDOM_TRACKS,
   ...OFF_VOCAL_SPOTIFY_RANDOM_TRACKS,
@@ -107,7 +107,7 @@ const rotationTracks = (tracks: readonly (readonly [string, string])[]) =>
   tracks.map(([title, id]) => spotifyRotationTrack(title, id));
 
 // Keep the historical export name to avoid changing the device-sync/admin API
-// surface; the managed rotation now contains six positions (A-F).
+// surface; the managed rotation now contains five positions (A-E).
 export function managedSpotifySevenSlotRotation() {
   const instrumentalSongs = rotationTracks(ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS);
   const shortSongs = rotationTracks(SHORT_SPOTIFY_ROTATION_TRACKS);
@@ -134,11 +134,6 @@ export function managedSpotifySevenSlotRotation() {
       mode: "random",
       count: 1,
       tracks: instrumentalSongs.map(track => ({ ...track })),
-    },
-    {
-      mode: "random",
-      count: 1,
-      tracks: shortSongs.map(track => ({ ...track })),
     },
   ];
 }
