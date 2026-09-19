@@ -4,6 +4,22 @@
 
 namespace hp {
 
+using PlaybackResourceModeGeneration =
+    std::shared_ptr<std::atomic<uint64_t>>;
+
+inline uint64_t BeginPlaybackResourceModeChange(
+    const PlaybackResourceModeGeneration& generation) noexcept {
+  if (!generation) return 0;
+  return generation->fetch_add(1, std::memory_order_acq_rel) + 1;
+}
+
+inline bool PlaybackResourceModeChangeIsCurrent(
+    const PlaybackResourceModeGeneration& generation,
+    uint64_t expectedGeneration) noexcept {
+  return !generation ||
+      generation->load(std::memory_order_acquire) == expectedGeneration;
+}
+
 inline bool SetWebViewPlaybackMemoryTarget(
     ICoreWebView2* webview, bool constrained) noexcept {
   if (!webview) return false;
@@ -76,10 +92,14 @@ inline bool FrameInfoCollectionContainsFrame(
 // WebView2 environments are shared by YouTube, TVer, Spotify and Stationhead.
 // Never throttle the whole environment. Match the WebView main-frame ID to the
 // renderer process snapshot and change only that renderer's Windows policy.
+// GetProcessExtendedInfos is asynchronous, so a generation token prevents an
+// older LOW request from racing past a newer NORMAL recovery request.
 inline bool SetWebViewRendererEfficiencyMode(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
-    bool enabled) noexcept {
+    bool enabled,
+    PlaybackResourceModeGeneration generation = nullptr,
+    uint64_t expectedGeneration = 0) noexcept {
   if (!environment || !webview) return false;
 
   ComPtr<ICoreWebView2_20> webview20;
@@ -97,11 +117,16 @@ inline bool SetWebViewRendererEfficiencyMode(
 
   const HRESULT started = environment13->GetProcessExtendedInfos(
       Callback<ICoreWebView2GetProcessExtendedInfosCompletedHandler>(
-          [frameId, enabled](
+          [frameId, enabled, generation = std::move(generation),
+           expectedGeneration](
               HRESULT result,
               ICoreWebView2ProcessExtendedInfoCollection* collection)
               -> HRESULT {
-            if (FAILED(result) || !collection) return S_OK;
+            if (FAILED(result) || !collection ||
+                !PlaybackResourceModeChangeIsCurrent(
+                    generation, expectedGeneration)) {
+              return S_OK;
+            }
 
             UINT32 count = 0;
             if (FAILED(collection->get_Count(&count))) return S_OK;
@@ -130,6 +155,10 @@ inline bool SetWebViewRendererEfficiencyMode(
                 continue;
               }
 
+              if (!PlaybackResourceModeChangeIsCurrent(
+                      generation, expectedGeneration)) {
+                return S_OK;
+              }
               INT32 processId = 0;
               if (SUCCEEDED(processInfo->get_ProcessId(&processId))) {
                 SetWindowsProcessEfficiencyMode(processId, enabled);
