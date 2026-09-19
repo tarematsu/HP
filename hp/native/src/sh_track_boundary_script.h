@@ -13,10 +13,9 @@ inline std::wstring StationheadLoginSettlementScript() {
   return L"void 0;";
 }
 
-// Periodic Stationhead refresh is native-owned by RefreshPeriodicNavigation().
-// The former page-side timeupdate observer only drove a rendering-suppression
-// hook that is intentionally inactive, so registering it did useful work no
-// longer. Return a no-op until the historical call site is removed separately.
+// Page-side track-boundary polling is retired. Stationhead now keeps the room
+// document stable and lets the one-minute native audio health path own ordinary
+// silence detection and bounded recovery.
 inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix) {
   (void)messagePrefix;
   return L"void 0;";
