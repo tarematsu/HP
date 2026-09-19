@@ -1,6 +1,14 @@
 LR"JS(
 (() => {
   const state = window.__homePanelSakuraMeetsState;
+  const fullscreenRecovery = window.__homePanelTverFullscreenRecovery ||
+      (window.__homePanelTverFullscreenRecovery = {
+        video: null, requestedAt: 0, attempts: 0
+      });
+  const resetFullscreenRecovery = () => {
+    fullscreenRecovery.requestedAt = 0;
+    fullscreenRecovery.attempts = 0;
+  };
   const isFullscreen = () => !!(
       document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement);
@@ -37,10 +45,8 @@ LR"JS(
   };
 
   if (isFullscreen()) {
-    if (state) {
-      state.fullscreenDirty = false;
-      state.fullscreenKeyRequestedAt = 0;
-    }
+    if (state) state.fullscreenDirty = false;
+    resetFullscreenRecovery();
     wake();
     return;
   }
@@ -58,10 +64,8 @@ LR"JS(
     window.__homePanelTverFullscreenPending = false;
     const latestState = window.__homePanelSakuraMeetsState;
     if (isFullscreen()) {
-      if (latestState) {
-        latestState.fullscreenDirty = false;
-        latestState.fullscreenKeyRequestedAt = 0;
-      }
+      if (latestState) latestState.fullscreenDirty = false;
+      resetFullscreenRecovery();
       wake();
       return;
     }
