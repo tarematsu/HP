@@ -31,8 +31,8 @@
   min-width: 0;
 }
 
-/* Programmatic/hash focus stays hidden; a preceding Tab key makes it visible. */
-.skip-link:focus {
+/* Keep hash/programmatic focus hidden even after the history stylesheet loads later. */
+html:not(.keyboard-navigation) .skip-link:focus {
   opacity: 0;
   pointer-events: none;
   transform: translateY(-150%);
