@@ -105,7 +105,11 @@ test('UD-CO2S stream is stopped on every serial exit path', () => {
   assert.doesNotMatch(sensorSerial, /if \(measurementActive\) WriteCommand\(serial, "STP"\)/);
 });
 
-test('artwork index capacity evicts one entry instead of clearing all entries', () => {
-  assert.match(artworkCache, /memoryIndex\.urls\.erase\(memoryIndex\.urls\.begin\(\)\)/);
-  assert.doesNotMatch(artworkCache, /size\(\) >= 128\) memoryIndex\.urls\.clear\(\)/);
+test('unused artwork pipeline performs no steady-state memory, disk, or network work', () => {
+  assert.match(artworkCache, /inline std::wstring CacheArtworkUrl/);
+  assert.match(artworkCache, /return \{\};/);
+  assert.doesNotMatch(
+    artworkCache,
+    /MemoryIndex|WinHttpDownload|NetworkRequestCoordinator|spotify-artwork-cache/,
+  );
 });

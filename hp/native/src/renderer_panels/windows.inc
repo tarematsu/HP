@@ -216,7 +216,6 @@ void Renderer::DestroyNativeStaticWindows() {
   nativeClockTimeText_ = L"--:--:--";
   nativeClockDayKey_ = 0;
   nativeClockSecondKey_ = -1;
-  nativePlaybackTickState_ = {};
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (hwnd && IsWindow(hwnd)) DestroyWindow(hwnd);

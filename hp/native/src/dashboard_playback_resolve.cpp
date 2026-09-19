@@ -173,41 +173,6 @@ bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, i
 }
 }  // namespace
 
-NativePlaybackRender Renderer::ResolveNativePlaybackLocked(size_t source, int64_t nowMs) const {
-  NativePlaybackRender render;
-  if (source != 0) return render;
-  const NativePlaybackProjection& projection = nativePlaybackUpdate_.projection;
-  render.available = projection.available;
-  render.playing = projection.playing;
-  render.stale = projection.stale;
-  render.ended = projection.ended;
-  render.setupRequired = projection.setupRequired;
-  if (!projection.available || projection.queue.empty() || projection.currentIndex < 0 ||
-      projection.currentIndex >= static_cast<int>(projection.queue.size())) {
-    return render;
-  }
-  if (projection.playing && projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) {
-    return render;
-  }
-
-  const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
-  if (position.index >= projection.queue.size()) return render;
-
-  render.track = projection.queue[position.index];
-  render.hasTrack = TrackHasIdentity(render.track);
-  render.progressMs = std::max<int64_t>(0, position.elapsedMs);
-  if (render.track.durationMs > 0) {
-    render.progressMs = std::min(render.progressMs, render.track.durationMs);
-  }
-  return render;
-}
-
-NativePlaybackRender Renderer::ResolveNativePlayback(size_t source, int64_t nowMs) const {
-  if (SelectedStationheadIsOnFallback(nativeStationhead_) || source != 0) return {};
-  std::lock_guard lock(nativePlaybackMutex_);
-  return ResolveNativePlaybackLocked(0, nowMs);
-}
-
 NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
                                                                int64_t nowMs) const {
   NativePlaybackFeedStatus status;
@@ -268,27 +233,4 @@ int64_t Renderer::NativePlaybackNextWakeAt(int64_t nowMs) const {
   return remaining <= 0 ? nowMs : nowMs + remaining;
 }
 
-Renderer::NativePlaybackTickState Renderer::NativePlaybackTickStateFor(int64_t nowMs) const {
-  NativePlaybackTickState state;
-  if (SelectedStationheadIsOnFallback(nativeStationhead_)) return state;
-
-  std::lock_guard lock(nativePlaybackMutex_);
-  const NativePlaybackUpdate& update = nativePlaybackUpdate_;
-  const NativePlaybackProjection& projection = update.projection;
-  state.contentRevision = update.contentRevision;
-  if (!projection.available || projection.queue.empty() || projection.currentIndex < 0 ||
-      projection.currentIndex >= static_cast<int>(projection.queue.size())) {
-    return state;
-  }
-  if (projection.playing && projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) {
-    return state;
-  }
-
-  const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
-  state.trackIndex = position.index;
-  if (position.index >= projection.queue.size()) return state;
-  const NativePlaybackTrack& track = projection.queue[position.index];
-  state.active = projection.playing && !track.title.empty() && track.durationMs > 0;
-  return state;
-}
 }  // namespace hp
