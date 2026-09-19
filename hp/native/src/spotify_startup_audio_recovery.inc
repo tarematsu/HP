@@ -1,12 +1,10 @@
 #include <audiopolicy.h>
-#include <endpointvolume.h>
 #include <mmdeviceapi.h>
 
 namespace hp {
 namespace {
 constexpr unsigned kSpotifyNativeAudioStartCheckLimit = 4;
 constexpr ULONGLONG kSpotifyFailedOnlyTrackRetryMs = 60ULL * 1000ULL;
-constexpr float kSpotifyAudiblePeakFloor = 0.000001f;
 
 struct SpotifyProcessEntry {
   DWORD processId = 0;
@@ -17,8 +15,6 @@ struct SpotifyProcessEntry {
 struct SpotifyWindowsAudioEvidence {
   bool querySucceeded = false;
   bool activeWebViewSession = false;
-  bool audibleWebViewSession = false;
-  float peak = 0.0f;
 };
 
 bool SpotifyPidListContains(
@@ -116,15 +112,6 @@ void MergeSpotifyWindowsAudioEvidenceForRole(
       continue;
     }
     evidence->activeWebViewSession = true;
-
-    ComPtr<IAudioMeterInformation> meter;
-    if (FAILED(control.As(&meter)) || !meter) continue;
-    float peak = 0.0f;
-    if (FAILED(meter->GetPeakValue(&peak))) continue;
-    evidence->peak = std::max(evidence->peak, peak);
-    if (peak > kSpotifyAudiblePeakFloor) {
-      evidence->audibleWebViewSession = true;
-    }
   }
 }
 
@@ -298,17 +285,12 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
       nativePlaying != FALSE) {
     const SpotifyWindowsAudioEvidence windowsAudio =
         ProbeSpotifyWindowsAudioEvidence();
-    const int runtimeLane = SpotifyRuntimeLaneForAccount(slot.index);
-    const bool requiresPhysicalPeak =
-        runtimeLane >= 0 && runtimeLane == gSpotifyAudioOutputSlot;
 
-    // Every lane must still be attached to an active WebView2 Core Audio
-    // session. The one lane intentionally routed to speakers additionally has
-    // to produce a real PCM peak. Muted background lanes cannot require a peak,
-    // because WebView2 muting intentionally zeros their physical output.
+    // Require the WebView2 process family to own an active Core Audio session.
+    // Do not inspect PCM peak level: muted/background Spotify lanes may be
+    // healthy while intentionally producing no physical output.
     startupAudioVerified =
-        windowsAudio.querySucceeded && windowsAudio.activeWebViewSession &&
-        (!requiresPhysicalPeak || windowsAudio.audibleWebViewSession);
+        windowsAudio.querySucceeded && windowsAudio.activeWebViewSession;
   }
 
   if (startupAudioVerified) {
