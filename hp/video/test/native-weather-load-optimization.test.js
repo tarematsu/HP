@@ -44,12 +44,13 @@ test('native dashboard invalidates weather only when its source revision changes
   );
 });
 
-test('weather icons share the bounded native image bitmap cache', () => {
-  assert.doesNotMatch(rendererHeader, /nativeWeatherIconBitmaps_|nativeWeatherIconUseCounter_/);
-  assert.match(bitmapCache, /kNativeImageBitmapCacheLimit = 48;/);
+test('weather icons use a small dedicated native bitmap cache', () => {
+  assert.match(rendererHeader, /nativeWeatherIconBitmaps_/);
+  assert.match(rendererHeader, /nativeWeatherIconUseCounter_/);
+  assert.match(bitmapCache, /kWeatherIconBitmapCacheLimit = 12;/);
   assert.match(
     bitmapCache,
-    /HBITMAP Renderer::NativeWeatherIconBitmap[\s\S]*CachedBitmap\(nativeImageBitmaps_, nativeImageUseCounter_,[\s\S]*kNativeImageBitmapCacheLimit/,
+    /HBITMAP Renderer::NativeWeatherIconBitmap[\s\S]*CachedBitmap\(nativeWeatherIconBitmaps_, nativeWeatherIconUseCounter_,[\s\S]*kWeatherIconBitmapCacheLimit/,
   );
-  assert.doesNotMatch(bitmapCache, /kWeatherIconBitmapCacheLimit|nativeWeatherIconBitmaps_|nativeWeatherIconUseCounter_/);
+  assert.doesNotMatch(bitmapCache, /kNativeImageBitmapCacheLimit|NativeArtworkBitmap|CachedRadarBitmap/);
 });
