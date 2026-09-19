@@ -52,7 +52,6 @@ void SpotifyWebViews::Start() noexcept {
   started_ = true;
 
   for (Slot& slot : slots_) CloseSlot(slot);
-  ResetSpotifyRuntimeLanes();
   for (Slot& slot : slots_) {
     if (SpotifyAccountShouldOwnHost(slot.index)) CreateHost(slot);
   }
