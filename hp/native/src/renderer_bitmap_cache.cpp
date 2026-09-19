@@ -50,7 +50,7 @@ HBITMAP Renderer::NativePanelBackBuffer(HWND, HDC dc, int width, int height) {
   const int targetWidth = std::max(width, buffer.width);
   const int targetHeight = std::max(height, buffer.height);
   HBITMAP replacement = CreateCompatibleBitmap(dc, targetWidth, targetHeight);
-  if (!replacement) return buffer.bitmap;
+  if (!replacement) return nullptr;
   if (buffer.bitmap) DeleteObject(buffer.bitmap);
   buffer.bitmap = replacement;
   buffer.width = targetWidth;
