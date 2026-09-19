@@ -49,14 +49,6 @@ void Renderer::UpdateAirHistory(const std::vector<AirHistorySample>& history) {
   InvalidatePanelSection(nativeSideWindow_, PanelSection::AirGraph);
 }
 
-void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
-  // Stationhead status still participates in native playback resolution, but no
-  // active card renders its retired play-history presentation.
-  if (nativeStationhead_ != state.stationhead) {
-    nativeStationhead_ = state.stationhead;
-  }
-}
-
 void Renderer::TickNativePanels(int64_t, bool timerDriven) {
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
 

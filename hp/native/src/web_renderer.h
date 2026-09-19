@@ -123,8 +123,6 @@ class Renderer {
   void Render();
   void UpdateSensors(const SensorSnapshot& sensors);
   void UpdateAirHistory(const std::vector<AirHistorySample>& history);
-  // Dormant Stationhead compatibility path. Active dashboard data bypasses it.
-  void UpdateState(const RenderState& state);
   void TickNativePanels(int64_t nowMs, bool timerDriven = false);
   NativePlaybackFeedStatus NativePlaybackFeedStatusFor(
       size_t source, int64_t nowMs) const;
@@ -186,7 +184,6 @@ class Renderer {
   bool EnsureNativeStaticWindows();
   void ApplyNativeStaticBounds();
   void DestroyNativeStaticWindows();
-  void UpdateNativeStaticPanels(const RenderState& state);
   void SetPowerSavingMode(bool enabled);
   void ApplyDashboardVisibility();
 
@@ -261,7 +258,6 @@ class Renderer {
   HWND nativeMediaWindow_{};
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;
-  StationheadStatus nativeStationhead_{};
   DashboardSnapshot nativeDashboard_{};
   int width_ = 0;
   int height_ = 0;

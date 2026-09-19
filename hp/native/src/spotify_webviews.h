@@ -17,10 +17,6 @@ inline constexpr size_t kSpotifyActiveAccountCount = 5;
 // independent inside each account, but accounts are never swapped out or parked.
 inline constexpr size_t kSpotifyRuntimeLaneCount = kSpotifyActiveAccountCount;
 
-inline void ResetSpotifyRuntimeLanes() noexcept {
-  // Runtime lanes are fixed one-to-one with logical accounts.
-}
-
 inline int SpotifyRuntimeLaneForAccount(size_t accountIndex) noexcept {
   return accountIndex < kSpotifyRuntimeLaneCount
       ? static_cast<int>(accountIndex)

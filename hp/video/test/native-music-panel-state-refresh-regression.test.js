@@ -7,14 +7,10 @@ const panelStateSource = readFileSync(
   'utf8',
 );
 
-test('Stationhead status remains cached without retired panel work', () => {
-  const updateFunction = panelStateSource.match(
-    /void Renderer::UpdateNativeStaticPanels\([\s\S]*?\n\}/,
-  )?.[0] ?? '';
-  assert.match(
-    updateFunction,
-    /if \(nativeStationhead_ != state\.stationhead\) \{[\s\S]*nativeStationhead_ = state\.stationhead;/,
+test('retired Stationhead panel compatibility cache is removed', () => {
+  assert.doesNotMatch(panelStateSource, /UpdateNativeStaticPanels|nativeStationhead_|RenderState/);
+  assert.doesNotMatch(
+    panelStateSource,
+    /stationheadPlayHistory|GlobalStationheadNativeStatsStore|StationheadRevisionCache/,
   );
-  assert.doesNotMatch(updateFunction, /stationheadPlayHistory|PanelSection::Radar|PanelSection::Music/);
-  assert.doesNotMatch(panelStateSource, /GlobalStationheadNativeStatsStore|StationheadRevisionCache/);
 });
