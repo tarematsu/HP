@@ -62,12 +62,12 @@ test('normal track advance retains the fixed service-tile geometry until the nex
   assert.ok(probeStart >= 0 && layoutRefresh > probeStart);
 });
 
-test('trusted Play no longer depends on the scheduler active slot or a small recovery viewport', () => {
+test('trusted Play no longer depends on scheduler active slot or recovery sub-state', () => {
   const clickStart = click.indexOf('void SpotifyWebViews::ClickSlotCssPoint');
   const clickEnd = click.indexOf('\nUINT SpotifyWebViews::DispatchSpotifyDevToolsClick', clickStart);
   assert.ok(clickStart >= 0 && clickEnd > clickStart);
   const handler = click.slice(clickStart, clickEnd);
-  assert.match(handler, /SlotStateNeedsRecovery\(slot\.state\)/);
+  assert.doesNotMatch(handler, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(handler, /GetClientRect\(slot\.hostWindow, &hostClient\)/);
   assert.match(handler, /PlaceHosts\(\)/);
   assert.match(handler, /return \[centerX,centerY\]/);
