@@ -19,16 +19,19 @@ test('TVer fullscreen never falls back to a blind video-corner click', () => {
   assert.doesNotMatch(watchdog, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
 });
 
-test('TVer fullscreen retries trusted input only a bounded number of times', () => {
-  assert.match(watchdog, /fullscreenAttemptCount/);
+test('TVer watchdog owns bounded fullscreen retries', () => {
+  assert.match(watchdog, /__homePanelTverFullscreenRecovery/);
+  assert.match(watchdog, /fullscreenRecovery\.attempts/);
   assert.match(watchdog, /attempts < 4/);
   assert.match(watchdog, /Date\.now\(\) - requestedAt >= 1000/);
+  assert.doesNotMatch(episode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
 });
 
 test('TVer fullscreen verification can directly request browser fullscreen', () => {
   assert.match(fullscreen, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
   assert.match(fullscreen, /request\.call\(target\)/);
   assert.match(fullscreen, /homepanel:tver-wake/);
+  assert.match(fullscreen, /__homePanelTverFullscreenRecovery/);
 });
 
 test('natural TVer completion remains allowed before the 15-minute safety cap', () => {
