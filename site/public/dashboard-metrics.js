@@ -1,5 +1,5 @@
 import './history/history-global-fixes.js';
-import './dashboard-header.js?v=20260919.2';
+import './dashboard-header.js?v=20260919.3';
 import './dashboard-tabs.js?v=20260919.2';
 import './dashboard-fetch-cache.js?v=20260919.2';
 import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260919.2';
