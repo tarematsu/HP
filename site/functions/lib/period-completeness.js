@@ -188,6 +188,7 @@ export function applySummaryCompleteness(rows, mode, now = Date.now()) {
       return {
         ...row,
         period_complete: true,
+        listener_metrics_excluded: false,
         stream_growth_excluded: false,
         member_growth_excluded: false,
         exclusion_reasons: [],
@@ -196,9 +197,13 @@ export function applySummaryCompleteness(rows, mode, now = Date.now()) {
     excludedCount += 1;
     return {
       ...row,
+      listener_avg: null,
+      listener_min: null,
+      listener_max: null,
       stream_growth: null,
       member_growth: null,
       period_complete: false,
+      listener_metrics_excluded: true,
       stream_growth_excluded: true,
       member_growth_excluded: true,
       exclusion_reasons: evaluation.reasons,

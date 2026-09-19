@@ -31,7 +31,14 @@
   min-width: 0;
 }
 
-/* Keep hash/programmatic focus hidden even after the history stylesheet loads later. */
+/* Keep the skip link off-screen unless the user actually tabs to it. */
+html:not(.keyboard-navigation) .skip-link {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-150%);
+}
+
+/* Preserve the focused-state override against later history stylesheet rules. */
 html:not(.keyboard-navigation) .skip-link:focus {
   opacity: 0;
   pointer-events: none;
