@@ -43,7 +43,7 @@ void SpotifyWebViews::SkipFailedSpotifyTrack(Slot& slot) noexcept {
 }
 
 bool SpotifyWebViews::EscalateSpotifyStartupFailure(
-    Slot& slot, ULONGLONG now) noexcept {
+    Slot& slot, ULONGLONG now, bool) noexcept {
   if (slot.index < gSpotifyNativeAudioFirstPassTicks.size()) {
     gSpotifyNativeAudioFirstPassTicks[slot.index] = 0;
   }
@@ -130,7 +130,7 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
 
   firstPassTick = 0;
   slot.nativeAudioStartChecks = 0;
-  EscalateSpotifyStartupFailure(slot, now);
+  EscalateSpotifyStartupFailure(slot, now, false);
   return false;
 }
 
