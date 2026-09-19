@@ -4,9 +4,9 @@
 
 namespace hp {
 
-// Stationhead already flips resourceBlockingArmed_ only after native audio is
-// confirmed and clears it on stop/navigation/recreate. Preserve that single
-// lifecycle boundary and attach the WebView2 resource mode to the same flag.
+// Stationhead enters the constrained state only after native audio is confirmed.
+// Any navigation (including direct Reload recovery) immediately drops back to
+// NORMAL before the new document has to initialize DRM/audio again.
 class StationheadPlaybackResourceFlag final {
  public:
   StationheadPlaybackResourceFlag(
@@ -22,7 +22,8 @@ class StationheadPlaybackResourceFlag final {
   void store(
       bool value,
       std::memory_order order = std::memory_order_seq_cst) noexcept {
-    armed_.store(value, order);
+    const bool changed = armed_.exchange(value, order) != value;
+    if (!changed) return;
     Apply(value);
   }
 
@@ -37,6 +38,26 @@ class StationheadPlaybackResourceFlag final {
   operator const std::atomic<bool>&() const noexcept { return armed_; }
 
  private:
+  void EnsureNavigationResetHook() noexcept {
+    if (!webview_ || !*webview_) return;
+    ICoreWebView2* current = webview_->Get();
+    if (current == navigationHookWebview_) return;
+
+    EventRegistrationToken token{};
+    const HRESULT result = current->add_NavigationStarting(
+        Callback<ICoreWebView2NavigationStartingEventHandler>(
+            [this](ICoreWebView2*,
+                   ICoreWebView2NavigationStartingEventArgs*) -> HRESULT {
+              store(false, std::memory_order_release);
+              return S_OK;
+            }).Get(),
+        &token);
+    if (SUCCEEDED(result)) {
+      navigationHookWebview_ = current;
+      navigationStartingToken_ = token;
+    }
+  }
+
   void Apply(bool constrained) noexcept {
     const uint64_t generation =
         BeginPlaybackResourceModeChange(generation_);
@@ -44,6 +65,7 @@ class StationheadPlaybackResourceFlag final {
     // an older asynchronous LOW request that has not completed yet.
     if (!webview_ || !*webview_) return;
 
+    if (constrained) EnsureNavigationResetHook();
     SetWebViewPlaybackMemoryTarget(webview_->Get(), constrained);
     SetWebViewRendererEfficiencyMode(
         environment_ ? environment_->Get() : nullptr,
@@ -55,6 +77,8 @@ class StationheadPlaybackResourceFlag final {
   PlaybackResourceModeGeneration generation_{
       std::make_shared<std::atomic<uint64_t>>(0)};
   std::atomic<bool> armed_{false};
+  ICoreWebView2* navigationHookWebview_ = nullptr;
+  EventRegistrationToken navigationStartingToken_{};
 };
 
 }  // namespace hp
