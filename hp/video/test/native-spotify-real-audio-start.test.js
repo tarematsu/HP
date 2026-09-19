@@ -65,6 +65,38 @@ test('Spotify requires two spaced complete native-audio passes before startup su
   assert.match(startup, /Any failed sample breaks the consecutive-success requirement/);
 });
 
+test('Spotify recovery cannot reuse native or CDP proof from before an interruption', () => {
+  assert.match(
+    phase,
+    /if \(state != SlotState::Playing && slot\.nativeAudioStartVerified\)/,
+  );
+  assert.match(phase, /slot\.nativeAudioStartChecks = 0/);
+  assert.match(phase, /slot\.nativeAudioStartVerified = false/);
+  assert.match(phase, /slot\.playbackConfirmed = false/);
+  assert.match(
+    phase,
+    /RestartSpotifyMediaStartEvidenceWindow\(slot\.index, slot\.targetGeneration\)/,
+  );
+  assert.match(
+    phase,
+    /evidence\.targetBaselineSequence = evidence\.eventSequence/,
+  );
+  assert.match(phase, /evidence\.playbackEventSequence = 0/);
+  assert.match(phase, /evidence\.playbackPlayerId\.clear\(\)/);
+});
+
+test('Spotify pause-to-trusted-play recovery also demands a fresh CDP playback event', () => {
+  const resetAt = startup.indexOf(
+    'RestartSpotifyMediaStartEvidenceWindow(slot.index, slot.targetGeneration);',
+  );
+  const restartAt = startup.indexOf(
+    'RequestSpotifyAudioPipelineRestart(slot.webview.Get());',
+  );
+  assert.notEqual(resetAt, -1);
+  assert.notEqual(restartAt, -1);
+  assert.ok(resetAt < restartAt);
+});
+
 test('Spotify per-slot startup no longer depends on shared Windows Core Audio or PCM', () => {
   for (const text of [startup, evidence]) {
     assert.doesNotMatch(text, /IAudioSessionManager2/);
