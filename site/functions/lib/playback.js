@@ -10,6 +10,15 @@ function usableArtist(value) {
   return artist && !/^JP[A-Z0-9]{8,}$/i.test(artist) ? artist : null;
 }
 
+function usableTitle(value) {
+  const title = String(value || '').trim();
+  if (!title) return null;
+  const normalized = title.normalize('NFKC').toLowerCase();
+  if (['曲名不明', '曲名…', '曲名...', 'unknown', 'unknown title', '_', '-', '—'].includes(normalized)) return null;
+  if (/^JP[A-Z0-9]{8,}$/i.test(title)) return null;
+  return title;
+}
+
 export function inferArtistFromDisplayTitle(displayTitle, title) {
   const display = String(displayTitle || '').trim();
   const knownTitle = String(title || '').trim();
@@ -24,6 +33,22 @@ export function inferArtistFromDisplayTitle(displayTitle, title) {
     if (right === knownTitle) return usableArtist(left);
   }
   return null;
+}
+
+export function inferTitleFromDisplayTitle(displayTitle, artist) {
+  const display = usableTitle(displayTitle);
+  if (!display) return null;
+  const knownArtist = usableArtist(artist);
+  for (const separator of [' — ', ' – ', ' - ', ' ・ ', ' • ']) {
+    const index = display.lastIndexOf(separator);
+    if (index <= 0) continue;
+    const left = display.slice(0, index).trim();
+    const right = display.slice(index + separator.length).trim();
+    if (knownArtist && right === knownArtist) return usableTitle(left);
+    if (knownArtist && left === knownArtist) return usableTitle(right);
+    return usableTitle(left) || display;
+  }
+  return display;
 }
 
 export function metadataFallback(rawValue) {
@@ -70,10 +95,14 @@ export function computePlayback(queue, now = Date.now()) {
 
 export function normalizePlaybackTrack(track, index, playback) {
   const fallback = metadataFallback(track.metadata_raw_json || track.raw_json);
-  const title = String(track.title || fallback.title || '').trim() || null;
+  const directTitle = usableTitle(track.title) || usableTitle(fallback.title);
   const rawArtist = String(track.artist || fallback.artist || '').trim();
   const artist = (usableArtist(rawArtist)
-    || inferArtistFromDisplayTitle(track.display_title || fallback.title, title || fallback.title)) || null;
+    || inferArtistFromDisplayTitle(track.display_title || fallback.title, directTitle || fallback.title)) || null;
+  const title = directTitle
+    || inferTitleFromDisplayTitle(track.display_title, artist || rawArtist)
+    || usableTitle(track.display_title)
+    || null;
   const album = track.album && typeof track.album === 'object' ? track.album : {};
   const thumbnailUrl = String(
     track.thumbnail_url || track.image_url || track.artwork_url || track.album_art_url
