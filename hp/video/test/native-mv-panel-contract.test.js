@@ -154,7 +154,8 @@ test('TVer ads enter fullscreen before Skip automation', () => {
   const survey = tverWatchdog.indexOf('const surveyRoots = Array.from', adStart);
   const branch = tverWatchdog.slice(adStart, survey);
   assert.ok(fullscreen >= 0 && adStart > fullscreen);
-  assert.match(tverWatchdog, /const videoFullscreenPoint = media =>/);
+  assert.match(tverWatchdog, /fullscreenAttemptCount/);
+  assert.doesNotMatch(tverWatchdog, /const videoFullscreenPoint = media =>/);
   assert.match(tverWatchdog, /state\.fullscreenDirty = false/);
   assert.match(branch, /skipButton/);
   assert.doesNotMatch(branch, /fullscreenButton|isEnterFullscreenControl/);
