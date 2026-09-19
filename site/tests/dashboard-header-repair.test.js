@@ -8,8 +8,8 @@ const headerCss = readFileSync(new URL('../public/dashboard-fixes.css', import.m
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 
 test('dashboard header repair runs before tabs and dashboard client startup', () => {
-  assert.ok(dashboardEntry.indexOf("import './dashboard-header.js?v=20260919.2'") < dashboardEntry.indexOf("import './dashboard-tabs.js?v=20260919.2'"));
-  assert.match(headerRepair, /dashboard-fixes\.css\?v=20260919\.2/);
+  assert.ok(dashboardEntry.indexOf("import './dashboard-header.js?v=20260919.3'") < dashboardEntry.indexOf("import './dashboard-tabs.js?v=20260919.2'"));
+  assert.match(headerRepair, /dashboard-fixes\.css\?v=20260919\.3/);
   assert.match(headerRepair, /description\.replaceWith\(updated\)/);
   assert.match(headerRepair, /querySelector\('\.live-line'\)\?\.remove\(\)/);
   assert.match(headerRepair, /querySelector\('\.app-launch'\)\?\.remove\(\)/);
@@ -38,7 +38,7 @@ test('dashboard navigation and likes summary remain balanced across breakpoints'
 });
 
 test('hash navigation hides skip-link focus until a real Tab focuses the skip link', () => {
-  assert.match(headerCss, /\.skip-link:focus\s*\{[\s\S]*opacity:\s*0[\s\S]*translateY\(-150%\)/);
+  assert.match(headerCss, /html:not\(\.keyboard-navigation\) \.skip-link\s*\{[\s\S]*opacity:\s*0[\s\S]*translateY\(-150%\)/);
   assert.match(headerCss, /html\.keyboard-navigation \.skip-link:focus\s*\{[\s\S]*opacity:\s*1[\s\S]*transform:\s*none/);
   assert.match(headerRepair, /event\.key !== 'Tab' \|\| !event\.isTrusted/);
   assert.match(headerRepair, /document\.activeElement !== skipLink/);
