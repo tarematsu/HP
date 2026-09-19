@@ -1,0 +1,28 @@
+name: Pages visual diagnostic temp
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/inspect-pages-visual-state.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-visual-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .pages-visual-diagnostic/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 2
