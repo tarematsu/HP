@@ -85,6 +85,14 @@ test('native Stationhead click locator resolves split Connect music modal action
   assert.ok(modalAt >= 0 && allowedAt > modalAt && authGuardAt > allowedAt);
 });
 
+test('Connect/Reconnect Music remains auto-clickable instead of becoming login-required', () => {
+  assert.doesNotMatch(interaction, /serviceConnectPattern/);
+  assert.doesNotMatch(interaction, /for \(const heading of document\.querySelectorAll\("h1,h2,h3,\[role='heading'\]"\)\)/);
+  assert.match(interaction, /Connect\/Reconnect Music and Connect Spotify are recoverable onboarding/);
+  assert.match(locator, /\(\?:re\)\?connect/);
+  assert.match(locator, /spotify\|music/);
+});
+
 test('auth reuse policy owns only candidate reuse wrappers', () => {
   assert.match(reuse, /inline std::wstring StationheadAuthCaptureScriptRuntimeFixed\(\)/);
   assert.match(reuse, /rememberAcceptedAuthorization/);
