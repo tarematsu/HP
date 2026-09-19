@@ -12,7 +12,12 @@ test('Spotify error recovery prefers language-independent structural detection',
   assert.match(reconcile, /\[role=\"alert\"\]/);
   assert.match(reconcile, /\[role=\"alertdialog\"\]/);
   assert.match(reconcile, /\[data-testid\*=\"error\" i\]/);
-  assert.match(reconcile, /if \(actions\.length === 1\) return actions\[0\];/);
+  assert.match(reconcile, /const strongErrorSurface =/);
+  assert.match(reconcile, /root\.querySelector\('h1,h2,h3,\[role=\"heading\"\]'\)/);
+  assert.match(
+    reconcile,
+    /if \(actions\.length === 1 && strongErrorSurface\) return actions\[0\];/,
+  );
 });
 
 test('Spotify error recovery has semantic fallbacks without requiring Japanese', () => {
