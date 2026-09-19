@@ -36,20 +36,6 @@ LR"JS(
     if (!hit || (hit !== element && !element.contains(hit))) return null;
     return [centerX, centerY];
   };
-  const videoFullscreenPoint = media => {
-    if (!(media instanceof HTMLMediaElement) ||
-        media.readyState < HTMLMediaElement.HAVE_METADATA ||
-        window.innerWidth <= 0 || window.innerHeight <= 0) return null;
-    const rect = media.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    const insetX = Math.min(24, Math.max(8, rect.width / 8));
-    const insetY = Math.min(24, Math.max(8, rect.height / 8));
-    const x = rect.right - insetX;
-    const y = rect.bottom - insetY;
-    if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight)
-      return null;
-    return [x, y];
-  };
 
   const videos = Array.from(document.querySelectorAll('video'));
   const video = videos.find(visible) || videos[0] || null;
@@ -92,19 +78,24 @@ LR"JS(
     if (state) {
       state.fullscreenDirty = false;
       state.fullscreenKeyRequestedAt = 0;
+      state.fullscreenAttemptCount = 0;
     }
   } else if (video) {
     if (state) state.fullscreenDirty = true;
-    if (!Number(state?.fullscreenKeyRequestedAt || 0)) {
-      if (state) state.fullscreenKeyRequestedAt = Date.now();
+    const requestedAt = Number(state?.fullscreenKeyRequestedAt || 0);
+    const attempts = Number(state?.fullscreenAttemptCount || 0);
+    const keyRetryDue = requestedAt === 0 || Date.now() - requestedAt >= 1000;
+    if (keyRetryDue && attempts < 4) {
+      if (state) {
+        state.fullscreenKeyRequestedAt = Date.now();
+        state.fullscreenAttemptCount = attempts + 1;
+      }
       try { window.chrome?.webview?.postMessage('homepanel:tver-fullscreen-key'); }
       catch (_) {}
       return null;
     }
     const controlPoint = fullscreenControlPoint(video);
     if (controlPoint) return controlPoint;
-    const fullscreenPoint = videoFullscreenPoint(video);
-    if (fullscreenPoint) return fullscreenPoint;
   }
 
   const trackedVideo = state && state.video;
