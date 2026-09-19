@@ -44,9 +44,8 @@ ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
 void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
   slot.timedCycleTracks.clear();
 
-  // Keep one common used-path set across all groups. C/E and F/G intentionally
-  // reuse the same candidate pools; if an earlier group selected the same track,
-  // the later group continues through its shuffled candidates instead.
+  // Keep the cycle-level duplicate guard generic so future managed groups can
+  // share candidates without reusing the same track path in one account cycle.
   std::vector<std::wstring> usedPaths;
   usedPaths.reserve(kSpotifyMaxTracksPerCycle);
   const auto appendUnique = [&slot, &usedPaths](ManagedTrack track) {
@@ -118,10 +117,10 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
     }
   };
 
-  // Account slots deliberately enter the cloud rotation at successive groups:
-  // amazon=A, yuukiar=B, ten=C, nagi=D, hinata=E. Continue cyclically from that
-  // starting point while preserving each group's original index for deterministic
-  // shuffle seeds and per-account lane selection.
+  // Account slots deliberately enter the four-group cloud rotation at successive
+  // groups: amazon=A, yuukiar=B, ten=C, nagi=D, hinata=A. Continue cyclically
+  // from that starting point while preserving each group's original index for
+  // deterministic shuffle seeds and per-account lane selection.
   if (!cloudRotationGroups_.empty()) {
     const size_t startGroupIndex = slot.index % cloudRotationGroups_.size();
     for (size_t offset = 0; offset < cloudRotationGroups_.size(); ++offset) {
