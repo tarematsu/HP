@@ -19,8 +19,13 @@ test('Monitor S keeps Stationhead auth probing without disabling Spotify grid', 
   assert.doesNotMatch(schedule, /if \(mode != MonitorMode::Native\) monitorAuthForeground_ = false/);
 });
 
-test('Stationhead auth is only a temporary Monitor S overlay', () => {
-  assert.match(routing, /if \(monitorMode_ == MonitorMode::Off\) break/);
+test('active Stationhead auth is rechecked quickly and Monitor S recovers immediately', () => {
+  assert.match(schedule, /kMonitorAuthActiveProbeIntervalMs = 1'000/);
+  assert.match(
+    schedule,
+    /monitorAuthForeground_[\s\S]*\? kMonitorAuthActiveProbeIntervalMs[\s\S]*: kMonitorAuthProbeIntervalMs/,
+  );
+  assert.match(routing, /monitorAuthForeground_ = detected;[\s\S]*ApplyStationheadMonitorPlacement\(\);[\s\S]*ArmScheduleTimer\(\)/);
   assert.match(routing, /if \(serviceGrid\) SetSpotifyMonitorGridVisible\(true\)/);
   assert.match(routing, /monitorAuthForeground_ \? parentClient : serviceTile/);
   assert.match(
