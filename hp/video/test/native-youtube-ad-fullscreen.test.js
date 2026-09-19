@@ -6,13 +6,13 @@ const runtime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
 test('YouTube ads prefer an available skip control before fullscreen recovery', () => {
-  const adBranch = runtime.indexOf('if (ad()) {');
-  const skip = runtime.indexOf('const skipSelector =', adBranch);
-  const skipAction = runtime.indexOf("arm(target, 'skip-ad', 600)", skip);
+  const adBranch = runtime.indexOf('if (adActive) {');
+  const skipAction = runtime.indexOf("arm(target, 'skip-ad', 600)", adBranch);
   const fullscreen = runtime.indexOf('return requestFullscreen();', skipAction);
   const guard = runtime.indexOf("return 'recovery';", fullscreen);
+  assert.match(runtime, /const skipSelector =/);
   assert.ok(
-    adBranch >= 0 && skip > adBranch && skipAction > skip &&
+    adBranch >= 0 && skipAction > adBranch &&
     fullscreen > skipAction && guard > fullscreen);
   assert.doesNotMatch(runtime, /adFullscreenReadyAt|fullscreenSettleMs/);
 });
@@ -20,7 +20,7 @@ test('YouTube ads prefer an available skip control before fullscreen recovery', 
 test('normal YouTube fullscreen uses keyboard first without a fixed readiness deadline', () => {
   assert.doesNotMatch(runtime, /fullscreenReadyAt/);
   const requestStart = runtime.indexOf('const requestFullscreen = () =>');
-  const requestEnd = runtime.indexOf('state.fullscreenApplied = fullscreen();', requestStart);
+  const requestEnd = runtime.indexOf('const adActive = ad();', requestStart);
   const request = runtime.slice(requestStart, requestEnd);
   const key = request.indexOf('homepanel:youtube-fullscreen-key');
   const fallback = request.indexOf('armFullscreen()');
