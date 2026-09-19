@@ -109,13 +109,11 @@ const std::wstring kSpotifyScopedTrackReconcileScriptStorage = LR"JS(
     return wait();
   }
 
-  // Once identity matches, require the same media element's clock to advance
-  // across scheduler samples before native audio verification is allowed.
-  if (targetMatches) {
-    if (!activeMedia) {
-      window.__homePanelSpotifySimpleMediaProbe = null;
-      return failSample();
-    }
+  // Once the requested track is actively playing, require the same media
+  // element's clock to advance across scheduler samples before native audio
+  // verification is allowed. A matching but paused target falls through to the
+  // Play-control path below instead of being counted as a failure first.
+  if (targetMatches && activeMedia) {
     const current = Number(activeMedia.currentTime);
     const previous = window.__homePanelSpotifySimpleMediaProbe;
     window.__homePanelSpotifySimpleMediaProbe = {
@@ -133,6 +131,7 @@ const std::wstring kSpotifyScopedTrackReconcileScriptStorage = LR"JS(
     }
     return failSample();
   }
+  if (!activeMedia) window.__homePanelSpotifySimpleMediaProbe = null;
 
   const hasErrorSurface = Array.from(document.querySelectorAll([
     '[role="alertdialog"]',
@@ -176,9 +175,9 @@ const std::wstring kSpotifyScopedTrackReconcileScriptStorage = LR"JS(
     return [centerX, centerY];
   }
 
-  // No target identity, no progressing interstitial, and no Play control means
-  // Spotify is still transitioning. Waiting is safer than manufacturing another
-  // playback action; explicit process/network/DRM errors have separate recovery.
+  // A target that is identified but still has no progressing media and no Play
+  // control is a bounded startup failure. Unknown transition states simply wait.
+  if (targetMatches) return failSample();
   return wait();
 })()
 )JS";
