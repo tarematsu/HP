@@ -17,23 +17,24 @@ test('YouTube recovery uses one wake timer for events and rechecks', () => {
   assert.doesNotMatch(youtubeRecovery, /recheckTimer|setInterval\s*\(/);
 });
 
-test('TVer stalled or paused playback wakes native every two seconds only until progress resumes', () => {
+test('TVer stalled or paused playback sends one native recovery wake', () => {
   assert.match(tverEpisode, /\['waiting', 'stalled'\]/);
   assert.match(tverEpisode, /recoveryPending/);
   assert.match(tverEpisode, /recoverySince/);
-  assert.match(tverEpisode, /recoveryWakeTimer/);
-  assert.match(tverEpisode, /recovery:tick:/);
-  assert.match(tverEpisode, /}, 2000\);/);
-  assert.match(tverEpisode, /clearRecoveryWake/);
+  assert.match(tverEpisode, /state\.recoveryPending\) return/);
+  assert.match(tverEpisode, /wakeNative\('recovery:' \+ reason \+ ':' \+ mediaIdentity\(video\), true\)/);
+  assert.match(tverEpisode, /clearRecoveryState/);
   assert.match(tverEpisode, /requestRecoveryWake/);
   assert.match(tverEpisode, /requestRecoveryWake\?\.\('initial-pause'\)/);
+  assert.doesNotMatch(tverEpisode, /recoveryWakeTimer|recovery:tick:|armRecoveryWake/);
 });
 
-test('TVer recovery bypasses the healthy fast path and escalates after 30 seconds', () => {
+test('TVer native watchdog owns recovery cadence and escalates after 30 seconds', () => {
   assert.match(tverPlayback, /!state\.recoveryPending/);
   assert.match(tverPlayback, /state && state\.recoveryPending/);
   assert.match(tverPlayback, /recoveryAge >= 30 \* 1000/);
   assert.match(tverPlayback, /return 'restart'/);
   assert.match(tverPlayback, /requestRecoveryWake\?\.\('pending-watchdog'\)/);
   assert.match(tverPlayback, /requestRecoveryWake\?\.\('paused-watchdog'\)/);
+  assert.doesNotMatch(tverPlayback, /setInterval\s*\(/);
 });
