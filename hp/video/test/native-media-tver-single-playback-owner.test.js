@@ -31,10 +31,10 @@ test('TVer fullscreen recovery remains bounded to the loaded player', () => {
   assert.match(playbackPolicy, /const fullscreenControlPoint = media =>/);
   assert.match(playbackPolicy, /const root = playerRootFor\(media\)/);
   assert.match(playbackPolicy, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
-  assert.match(playbackPolicy, /const videoFullscreenPoint = media =>/);
-  assert.match(playbackPolicy, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
-  assert.match(playbackPolicy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
-  assert.match(playbackPolicy, /if \(fullscreenPoint\) return fullscreenPoint/);
+  assert.match(playbackPolicy, /fullscreenAttemptCount/);
+  assert.match(playbackPolicy, /attempts < 4/);
+  assert.doesNotMatch(playbackPolicy, /const videoFullscreenPoint = media =>/);
+  assert.doesNotMatch(playbackPolicy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
 });
 
 test('TVer routing keys live directly in the shared media base', () => {
