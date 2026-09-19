@@ -56,6 +56,8 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   // hand the incident to the existing native DRM wait/reload path instead of
   // reloading from page JavaScript. Explicit waitingforkey retains its existing
   // native 20-second protection window and is not interrupted by this probe.
+  // A positive native playback transition is deliberately not accepted until
+  // this probe has observed the same media element advance between samples.
   const probeMediaProgress = () => {
     progressTimer = 0;
     if (!pageActive) return;
@@ -88,12 +90,26 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
         progressStalledAt = 0;
         progressRepairTried = false;
         clearSyntheticKeyWait();
-      } else if (progressMedia !== media || current > progressTime + 0.10) {
+      } else if (progressMedia !== media) {
+        // First sight of a media element is only a baseline. A stale/replaced
+        // element can already have a non-zero currentTime, so never use its
+        // absolute position as positive playback evidence.
         progressMedia = media;
         progressTime = current;
         progressStalledAt = 0;
         progressRepairTried = false;
         clearSyntheticKeyWait();
+      } else if (current > progressTime + 0.10) {
+        progressTime = current;
+        progressStalledAt = 0;
+        progressRepairTried = false;
+        clearSyntheticKeyWait();
+        // Native confirmation writes this flag true. Until then, publish every
+        // real same-element advance so a lost first message cannot leave a
+        // recovered lane permanently unconfirmed.
+        if (window.__homepanelAudioPlaying !== true) {
+          postText('media-progress');
+        }
       } else if (!progressStalledAt) {
         progressStalledAt = now;
       } else if (now - progressStalledAt >= progressStallMs) {

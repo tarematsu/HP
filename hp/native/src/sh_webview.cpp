@@ -358,6 +358,26 @@ void StationheadPlayer::ConfigureWebView() {
                 if (!nativeAudioTracking_) ApplyAudioPlaybackState(true, L"page heuristic");
                 return S_OK;
               }
+              if (message == prefix + L"-media-progress") {
+                if (!nativeAudioTracking_) {
+                  ApplyAudioPlaybackState(true, L"media clock");
+                  return S_OK;
+                }
+                ComPtr<ICoreWebView2_8> currentAudioView;
+                BOOL nativePlaying = FALSE;
+                if (FAILED(webview_.As(&currentAudioView)) || !currentAudioView ||
+                    FAILED(currentAudioView->get_IsDocumentPlayingAudio(
+                        &nativePlaying))) {
+                  RequestImmediateTick();
+                  return S_OK;
+                }
+                ApplyAudioPlaybackState(
+                    nativePlaying != FALSE,
+                    nativePlaying != FALSE
+                        ? L"WebView2 + media clock"
+                        : L"media clock without native audio");
+                return S_OK;
+              }
               if (message == prefix + L"-stopped") {
                 if (!nativeAudioTracking_) ApplyAudioPlaybackState(false, L"page heuristic");
                 return S_OK;

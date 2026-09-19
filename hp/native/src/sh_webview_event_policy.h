@@ -125,19 +125,16 @@ inline void UpdateStationheadSilentPlaybackRecovery(ICoreWebView2* sender) noexc
     if (FAILED(audioView->get_IsDocumentPlayingAudio(&playing))) return;
 
     if (playing != FALSE) {
-      static constexpr wchar_t kRecoveredScript[] = LR"JS(
+      // A document-audio pulse is only a candidate. ApplyAudioPlaybackState
+      // independently requires fresh same-element media-clock progress before
+      // Healthy, so never cancel an already-running lightweight repair loop here.
+      static constexpr wchar_t kNativeCandidateScript[] = LR"JS(
 (() => {
   window.__homepanelStationheadNativeAudioSeen = true;
-  const timer = window.__homepanelStationheadSilentRecoveryTimer;
-  if (timer) {
-    try { clearTimeout(timer); } catch (_) {}
-    try { clearInterval(timer); } catch (_) {}
-    window.__homepanelStationheadSilentRecoveryTimer = 0;
-  }
   return true;
 })()
 )JS";
-      view->ExecuteScript(kRecoveredScript, nullptr);
+      view->ExecuteScript(kNativeCandidateScript, nullptr);
       return;
     }
 
