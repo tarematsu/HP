@@ -1,4 +1,5 @@
 name: Pages live browser audit
+# Post-deploy verification trigger; remove before merge.
 
 on:
   pull_request:
