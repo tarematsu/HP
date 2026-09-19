@@ -73,23 +73,22 @@ test('Spotify startup recovery is driven by each target URL generation and has a
   assert.match(spotifyStartupAudio, /SkipFailedSpotifyTrack\(slot\)/);
 });
 
-test('Spotify keeps startup verification and also detects a lane that becomes silent later', () => {
+test('Spotify checks native audio only during startup and requires consecutive positive samples', () => {
+  assert.doesNotMatch(spotifyPhase, /AudioHealth|audioHealth/);
+  assert.doesNotMatch(spotifySchedule, /gSpotifyAudioHealth/);
+  assert.doesNotMatch(spotifySchedule, /TryClaimAudioHealthScan/);
+  assert.doesNotMatch(spotifySchedule, /get_IsDocumentPlayingAudio/);
+  assert.match(spotifySchedule, /No periodic IsDocumentPlayingAudio scan here/);
   assert.match(spotifyPhase, /kSpotifyNativeAudioStartRetryMs = 2ULL \* 1000ULL/);
   assert.match(spotifyStartupAudio, /kSpotifyNativeAudioStartCheckLimit = 4/);
+  assert.match(spotifyStartupAudio, /gSpotifyNativeAudioFirstPassTicks/);
   assert.match(spotifyStartupAudio, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
+  assert.match(spotifyStartupAudio, /SpotifyMediaStartEvidenceReady/);
+  assert.match(
+    spotifyStartupAudio,
+    /now - firstPassTick >= kSpotifyNativeAudioStartRetryMs/,
+  );
   assert.match(spotifyStartupAudio, /slot\.nativeAudioStartVerified = true/);
-
-  assert.match(spotifyPhase, /kSpotifyAudioHealthCheckMs = 30ULL \* 1000ULL/);
-  assert.match(spotifyPhase, /kSpotifyAudioHealthLaneSpacingMs = 5ULL \* 1000ULL/);
-  assert.match(spotifyPhase, /kSpotifyAudioHealthSilenceConfirmMs = 5ULL \* 1000ULL/);
-  assert.match(spotifyPhase, /TryClaimAudioHealthScan\(now\)/);
-  assert.match(spotifyPhase, /get_IsDocumentPlayingAudio\(&nativePlaying\)/);
-  assert.match(spotifyPhase, /ReleaseAudioHealthScan\(\)/);
-  assert.match(spotifyPhase, /slot\.nativeAudioStartVerified = false/);
-  assert.match(spotifyPhase, /slot\.playbackConfirmed = false/);
-  assert.match(spotifyPhase, /SetSlotState\(slot, SlotState::WaitingTarget\)/);
-  assert.match(spotifyPhase, /slot\.nextRecoveryTick = now/);
-  assert.doesNotMatch(spotifySchedule, /get_IsDocumentPlayingAudio/);
   assert.match(
     spotifyClick,
     /slot\.playbackConfirmed && slot\.nativeAudioStartVerified/,
