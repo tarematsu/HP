@@ -39,9 +39,19 @@ function fakeButton(label, visible = false) {
   };
 }
 
+function fakeMedia(currentTime = 0.5, paused = false) {
+  return {
+    isConnected: true,
+    ended: false,
+    paused,
+    currentTime,
+  };
+}
+
 function runScoped({
   pageButtons = [],
   playerButtons = [],
+  mediaElements = [],
   currentTrack = null,
   metadataTitle = '',
   restartPending = false,
@@ -66,6 +76,7 @@ function runScoped({
       if (selector === 'button[data-testid="control-button-playpause"]') {
         return playerButtons;
       }
+      if (selector === 'audio, video') return mediaElements;
       return [];
     },
     querySelector(selector) {
@@ -117,13 +128,31 @@ test('normal Spotify Play clicks use the visible target-page button', () => {
   assert.doesNotMatch(scoped, /querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay|buttonIntent|settling/);
 });
 
-test('hidden target-page Pause confirms playback without Monitor C', () => {
-  assert.equal(runScoped({ pageButtons: [fakeButton('Pause', false)] }), true);
+test('hidden target-page Pause does not confirm playback without media-clock evidence', () => {
+  assert.equal(runScoped({ pageButtons: [fakeButton('Pause', false)] }), 2000);
 });
 
-test('global Pause confirms background playback when now-playing track matches', () => {
+test('hidden target-page Pause confirms only when the media clock has advanced', () => {
+  assert.equal(runScoped({
+    pageButtons: [fakeButton('Pause', false)],
+    mediaElements: [fakeMedia(0.5, false)],
+  }), true);
+});
+
+test('global Pause with matching identity still requires media-clock evidence', () => {
   assert.equal(runScoped({
     playerButtons: [fakeButton('Pause', false)],
+    currentTrack: {
+      href: 'https://open.spotify.com/track/A',
+      textContent: 'Target A',
+    },
+  }), 2000);
+});
+
+test('global Pause confirms background playback when identity and media progress both match', () => {
+  assert.equal(runScoped({
+    playerButtons: [fakeButton('Pause', false)],
+    mediaElements: [fakeMedia(0.5, false)],
     currentTrack: {
       href: 'https://open.spotify.com/track/A',
       textContent: 'Target A',
@@ -142,9 +171,17 @@ test('global Pause is rejected when now-playing track is a different song', () =
   }), null);
 });
 
-test('Media Session title is a fallback identity when compact layout has no track link', () => {
+test('Media Session identity alone does not bypass media-clock evidence', () => {
   assert.equal(runScoped({
     playerButtons: [fakeButton('Pause', false)],
+    metadataTitle: 'Target A',
+  }), 2000);
+});
+
+test('Media Session title plus media progress can confirm compact-layout playback', () => {
+  assert.equal(runScoped({
+    playerButtons: [fakeButton('Pause', false)],
+    mediaElements: [fakeMedia(0.5, false)],
     metadataTitle: 'Target A',
   }), true);
 });
