@@ -89,6 +89,7 @@ bool SpotifyWebViews::ExpireStaleAsyncWork(
 void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   ++slot.targetGeneration;
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
+  BeginSpotifyMediaStartEvidenceGeneration(slot.index, slot.targetGeneration);
   BeginSpotifyTrackStartRecovery(
       slot.trackStartRecovery, slot.targetGeneration, GetTickCount64());
   slot.nativeAudioStartChecks = 0;
