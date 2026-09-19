@@ -19,22 +19,20 @@ const routing = readFileSync(
 const click = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 
-test('all configured tracks use the current ManagedTrack and CDP-only scoped reconcile implementation', () => {
+test('all configured tracks use the current ManagedTrack and one scoped reconcile implementation', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
-  assert.doesNotMatch(wrapper, /spotify_lonesome_guard\.inc|RewriteSpotify|#define ExecuteScript/);
+  assert.doesNotMatch(wrapper, /spotify_strict_track_start_reconcile|spotify_lonesome_guard\.inc|RewriteSpotify|#define ExecuteScript/);
   assert.match(music, /const SpotifyWebViews::ManagedTrack\* SpotifyWebViews::CurrentMusicTrack/);
   assert.match(music, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(routing, /CurrentMusicTrack\(slot\)/);
   assert.doesNotMatch(routing, /kind = L"music"|trackPath|pagePath/);
   assert.match(scoped, /button\[data-testid="play-button"\]/);
   assert.match(scoped, /button\[data-testid="control-button-playpause"\]/);
-  assert.match(scoped, /const pageButtons =/);
-  assert.match(scoped, /const visiblePageButton = pageButtons\.find\(visible\)/);
-  assert.match(scoped, /pageButtons\.some\(isPauseControl\)/);
-  assert.match(scoped, /const playerPause = playerButtons\.find\(isPauseControl\)/);
-  assert.match(scoped, /playerPause && currentTrackMatchesTarget\(\)/);
-  assert.match(scoped, /return point\(visiblePageButton\)/);
-  assert.doesNotMatch(scoped, /point\(playerPause\)|document\.querySelector\('audio'\)|audio\.play\(|direct-play|DirectPlay/);
+  assert.match(scoped, /const pageButtons = Array\.from/);
+  assert.match(scoped, /const pagePlay = pageButtons\.find\(isPlayControl\)/);
+  assert.match(scoped, /const clickTarget = pagePlay \|\| \(metadataMatchesTarget \? globalPlay : null\)/);
+  assert.match(scoped, /state\.playIssued = true/);
+  assert.doesNotMatch(scoped, /pagePause|playerPause|button\.click\(\)|audio\.play\(|direct-play|DirectPlay/);
   assert.match(scoped, /now-playing-widget|now-playing-bar/);
   assert.match(scoped, /navigator\.mediaSession/);
 });
@@ -72,7 +70,7 @@ test('wrong target URL is corrected only by scheduler-owned target navigation', 
   assert.match(music, /if \(!SlotMatchesMusicTarget\(slot\)\) \{\s*NavigateMusicTarget\(slot\);\s*return;/);
   assert.match(scoped, /location\.pathname === targetPath/);
   assert.match(scoped, /location\.pathname\.endsWith\(targetPath\)/);
-  assert.match(scoped, /currentTrackMatchesTarget/);
+  assert.match(scoped, /const targetMatches = observedTrackPath/);
   assert.doesNotMatch(scoped, /tracklist-row|spotify:playing|spotify:not-playing/);
   assert.doesNotMatch(scoped, /NavigateMusicTarget|location\.assign|location\.replace/);
 });
