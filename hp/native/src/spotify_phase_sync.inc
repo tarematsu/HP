@@ -1,5 +1,3 @@
-#include "spotify_permanent_resource_mode.h"
-
 namespace hp {
 namespace {
 
@@ -72,7 +70,6 @@ void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   }
 
   slot.state = state;
-  ApplySpotifyPermanentResourceMode(slot);
   if (state == SlotState::NotCreated || state == SlotState::Authenticating) {
     slot.nextRecoveryTick = 0;
     return;
