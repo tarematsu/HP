@@ -3,7 +3,7 @@
 #include "common.h"
 
 namespace hp {
-namespace spotify_resource_mode_detail {
+namespace stationhead_resource_mode_detail {
 
 inline void SetProcessEfficiencyMode(INT32 processId) noexcept {
   if (processId <= 0 || static_cast<DWORD>(processId) == GetCurrentProcessId()) {
@@ -14,9 +14,6 @@ inline void SetProcessEfficiencyMode(INT32 processId) noexcept {
                                static_cast<DWORD>(processId));
   if (!process) return;
 
-  // Match Windows Efficiency mode without using IDLE priority, which can starve
-  // WebView2 media/DRM work. Playback renderers intentionally remain in this
-  // state for their entire lifetime.
   SetPriorityClass(process, BELOW_NORMAL_PRIORITY_CLASS);
 
   PROCESS_POWER_THROTTLING_STATE throttling{};
@@ -119,9 +116,9 @@ inline void SetRendererEfficiencyMode(
           }).Get());
 }
 
-}  // namespace spotify_resource_mode_detail
+}  // namespace stationhead_resource_mode_detail
 
-inline void ApplyPermanentWebViewResourceMode(
+inline void ApplyStationheadPermanentWebViewResourceMode(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview) noexcept {
   if (!webview) return;
@@ -133,13 +130,7 @@ inline void ApplyPermanentWebViewResourceMode(
         COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
 
-  spotify_resource_mode_detail::SetRendererEfficiencyMode(environment, webview);
-}
-
-template <typename SlotT>
-inline void ApplySpotifyPermanentResourceMode(SlotT& slot) noexcept {
-  ApplyPermanentWebViewResourceMode(
-      slot.environment.Get(), slot.webview.Get());
+  stationhead_resource_mode_detail::SetRendererEfficiencyMode(environment, webview);
 }
 
 }  // namespace hp
