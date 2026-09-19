@@ -160,29 +160,54 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
     domCache.media = selected;
     return selected;
   };
+  const restartUnverifiedPause = button => {
+    clearProgressProbe();
+    window.__homePanelSpotifyZeroSecondRestartPath = targetPath;
+    try {
+      // Pausing does not require a trusted user gesture. The subsequent Play
+      // still flows through the native CDP trusted-click path.
+      button.click();
+    } catch (_) {}
+    return 'restarted';
+  };
+  const recordUnverifiedPause = (button, media) => {
+    const previous = window.__homePanelSpotifyProgressProbe;
+    const sameUnavailableSample = previous &&
+        previous.path === targetPath && previous.media === media &&
+        previous.unavailable === true;
+    const stagnantSamples = sameUnavailableSample
+        ? Number(previous.stagnantSamples || 0) + 1
+        : 1;
+    window.__homePanelSpotifyProgressProbe = {
+      path: targetPath,
+      media,
+      currentTime: null,
+      stagnantSamples,
+      unavailable: true
+    };
+    if (stagnantSamples < stalledObservationLimit) return 'pending';
+    return restartUnverifiedPause(button);
+  };
   const verifyPauseProgress = button => {
     const media = targetMedia();
-    if (!media) {
-      clearProgressProbe();
-      clearRestartPending();
-      return 'confirmed';
-    }
+    if (!media) return recordUnverifiedPause(button, null);
 
     const current = Number(media.currentTime);
     if (!Number.isFinite(current) || current < 0) {
-      clearProgressProbe();
-      clearRestartPending();
-      return 'confirmed';
+      return recordUnverifiedPause(button, media);
     }
 
     const previous = window.__homePanelSpotifyProgressProbe;
     if (!previous || previous.path !== targetPath || previous.media !== media ||
+        previous.unavailable === true ||
+        !Number.isFinite(Number(previous.currentTime)) ||
         current + 0.05 < previous.currentTime) {
       window.__homePanelSpotifyProgressProbe = {
         path: targetPath,
         media,
         currentTime: current,
-        stagnantSamples: 0
+        stagnantSamples: 0,
+        unavailable: false
       };
       if (current > 0.25) {
         clearProgressProbe();
@@ -201,15 +226,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
     previous.currentTime = current;
     previous.stagnantSamples = Number(previous.stagnantSamples || 0) + 1;
     if (previous.stagnantSamples < stalledObservationLimit) return 'pending';
-
-    clearProgressProbe();
-    window.__homePanelSpotifyZeroSecondRestartPath = targetPath;
-    try {
-      // Pausing does not require a trusted user gesture. The subsequent Play
-      // still flows through the native CDP trusted-click path.
-      button.click();
-    } catch (_) {}
-    return 'restarted';
+    return restartUnverifiedPause(button);
   };
   const pauseDecision = button => {
     const result = verifyPauseProgress(button);
