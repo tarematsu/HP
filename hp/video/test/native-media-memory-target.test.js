@@ -83,18 +83,18 @@ test('Spotify and Stationhead layout/auth setup do not apply an unconditional me
   );
 });
 
-test('Spotify leaves the WebView2 memory target unmanaged', () => {
-  assert.doesNotMatch(
+test('Spotify applies LOW only after confirmed native playback and restores NORMAL otherwise', () => {
+  assert.match(
     spotifyPolicy,
-    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
+    /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW[\s\S]*COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/,
   );
-  assert.doesNotMatch(
-    spotifyPhase,
-    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)|SetSpotifyMemoryUsageTarget/,
+  assert.match(
+    spotifyPolicy,
+    /SetWebViewPlaybackMemoryTarget\(slot\.webview\.Get\(\), constrained\)/,
   );
   assert.match(
     spotifyPhase,
-    /if \(state == SlotState::Playing\)[\s\S]*slot\.nativeAudioStartVerified[\s\S]*slot\.nextRecoveryTick = 0[\s\S]*kSpotifyNativeAudioStartRetryMs/,
+    /state == SlotState::Playing && slot\.playbackConfirmed &&[\s\S]*slot\.nativeAudioStartVerified;[\s\S]*ApplyPlaybackResourceMode\(slot, confirmedPlayback\)/,
   );
   assert.match(
     spotifyPhase,

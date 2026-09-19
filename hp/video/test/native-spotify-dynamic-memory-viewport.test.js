@@ -12,15 +12,15 @@ const controller = source('spotify_controller_lifecycle.inc');
 const layout = source('spotify_host_layout.inc');
 const host = source('spotify_host_lifecycle.inc');
 
-test('Spotify leaves the WebView2 memory target unmanaged', () => {
+test('Spotify enters low-memory resource mode only after native playback confirmation', () => {
   assert.match(wrapper, /#include "spotify_runtime_policy\.inc"/);
-  assert.doesNotMatch(
-    policy,
-    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)/,
-  );
-  assert.doesNotMatch(
+  assert.match(policy, /SetWebViewPlaybackMemoryTarget\(slot\.webview\.Get\(\), constrained\)/);
+  assert.match(policy, /SetWebViewRendererEfficiencyMode\([\s\S]*slot\.environment\.Get\(\)[\s\S]*slot\.webview\.Get\(\)[\s\S]*constrained/);
+  assert.match(policy, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW/);
+  assert.match(policy, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL/);
+  assert.match(
     phase,
-    /put_MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_(?:LOW|NORMAL)|SetSpotifyMemoryUsageTarget/,
+    /const bool confirmedPlayback =[\s\S]*state == SlotState::Playing && slot\.playbackConfirmed &&[\s\S]*slot\.nativeAudioStartVerified;[\s\S]*ApplyPlaybackResourceMode\(slot, confirmedPlayback\)/,
   );
   assert.match(
     phase,
