@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sh_runtime_interaction_script.h"
+#include "sh_runtime_onboarding_script.h"
 #include "sh_runtime_blank_recovery_script.h"
 #include "sh_runtime_lifecycle_script.h"
 
@@ -23,12 +24,16 @@ inline std::wstring StationheadCompactRuntimeScript(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
   const std::wstring_view interaction = StationheadRuntimeInteractionFragment();
+  const std::wstring_view onboarding = StationheadRuntimeOnboardingFragment();
   const std::wstring_view recovery = StationheadRuntimeBlankRecoveryFragment();
   const std::wstring_view lifecycle = StationheadRuntimeLifecycleFragment();
 
   std::wstring script;
-  script.reserve(interaction.size() + recovery.size() + lifecycle.size() + 2);
+  script.reserve(
+      interaction.size() + onboarding.size() + recovery.size() + lifecycle.size() + 3);
   script.append(interaction);
+  script.push_back(L'\n');
+  script.append(onboarding);
   script.push_back(L'\n');
   script.append(recovery);
   script.push_back(L'\n');

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sh_compact_runtime_script.h"
+#include "sh_onboarding_click_policy.h"
 #include "sh_render_reduction_policy.h"
 #include "sh_room_ui_reduction_policy.h"
 
