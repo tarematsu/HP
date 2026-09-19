@@ -62,6 +62,10 @@ function normalizeIsrc(value) {
   return normalized.length === 12 ? normalized : null;
 }
 
+function normalizedTitle(value) {
+  return String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase('ja-JP');
+}
+
 function complete(row) {
   const spotifyId = text(row?.spotify_id);
   const title = text(row?.title);
@@ -76,7 +80,7 @@ function activeQueueRows() {
     ORDER BY observed_at DESC
     LIMIT 1
   )
-  SELECT items.spotify_id,items.isrc,items.observed_at
+  SELECT items.spotify_id,items.isrc,items.duration_ms,items.observed_at
   FROM active_queue
   JOIN sh_queue_items AS items
     ON items.station_id=active_queue.station_id
@@ -113,6 +117,39 @@ function existingRows(ids, database = factsDatabase) {
     WHERE spotify_id IN (${ids.map(quote).join(',')})`);
 }
 
+async function appleMetadata(title, durationMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(title)}&entity=song&country=JP&limit=25`;
+    const response = await fetch(url, {
+      headers: { accept: 'application/json', 'user-agent': 'HomePanel-metadata-actions/1.0' },
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const expectedTitle = normalizedTitle(title);
+    const exact = (Array.isArray(payload?.results) ? payload.results : [])
+      .filter((item) => normalizedTitle(item?.trackName) === expectedTitle);
+    if (!exact.length) return null;
+
+    const expectedDuration = Number(durationMs);
+    if (Number.isFinite(expectedDuration) && expectedDuration > 0) {
+      exact.sort((left, right) => (
+        Math.abs(Number(left?.trackTimeMillis || 0) - expectedDuration)
+        - Math.abs(Number(right?.trackTimeMillis || 0) - expectedDuration)
+      ));
+      const best = exact[0];
+      if (Math.abs(Number(best?.trackTimeMillis || 0) - expectedDuration) <= 5_000) return best;
+    }
+    return exact.length === 1 ? exact[0] : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function spotifyMetadata(candidate) {
   const spotifyId = text(candidate.spotify_id);
   const spotifyUrl = `https://open.spotify.com/track/${encodeURIComponent(spotifyId)}`;
@@ -129,19 +166,36 @@ async function spotifyMetadata(candidate) {
     if (!rawTitle) return null;
     const separator = rawTitle.lastIndexOf(' by ');
     const title = separator > 0 ? text(rawTitle.slice(0, separator)) : rawTitle;
-    const artist = text(payload.author_name) || (separator > 0 ? text(rawTitle.slice(separator + 4)) : null);
-    if (!title || !artist) return null;
+    let artist = text(payload.author_name) || (separator > 0 ? text(rawTitle.slice(separator + 4)) : null);
+    let apple = null;
+    if (!artist) {
+      apple = await appleMetadata(title, candidate.duration_ms);
+      artist = text(apple?.artistName);
+    }
+    if (!title) return null;
     return {
       spotify_id: spotifyId,
       isrc: normalizeIsrc(candidate.isrc),
       title,
       artist,
-      display_title: `${title} — ${artist}`,
-      thumbnail_url: text(payload.thumbnail_url),
+      display_title: artist ? `${title} — ${artist}` : title,
+      thumbnail_url: text(payload.thumbnail_url) || text(apple?.artworkUrl100),
       spotify_url: spotifyUrl,
-      source: 'spotify_oembed_actions',
+      source: artist ? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions',
       fetched_at: now,
-      raw_json: JSON.stringify({ spotify: payload }),
+      raw_json: JSON.stringify({
+        spotify: payload,
+        ...(apple ? {
+          apple: {
+            trackName: apple.trackName,
+            artistName: apple.artistName,
+            collectionName: apple.collectionName,
+            trackTimeMillis: apple.trackTimeMillis,
+            artworkUrl100: apple.artworkUrl100,
+            trackViewUrl: apple.trackViewUrl,
+          },
+        } : {}),
+      }),
     };
   } catch {
     return null;
