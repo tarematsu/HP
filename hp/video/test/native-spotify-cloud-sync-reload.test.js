@@ -106,7 +106,7 @@ test('Spotify sync handling contains no podcast feature path', () => {
   );
 });
 
-test('admin exposes the shared six-group managed rotation', () => {
+test('admin exposes the shared five-group managed rotation', () => {
   assert.match(admin, /端末への反映は次回クラウド同期時です/);
   assert.match(admin, /次回クラウド同期でSpotify設定を反映します/);
   assert.match(admin, /managedSpotifySevenSlotRotation/);
@@ -116,5 +116,5 @@ test('admin exposes the shared six-group managed rotation', () => {
   assert.match(randomCatalog, /SPOTIFY_B_ROTATION_TRACKS/);
   assert.match(randomCatalog, /ALL_INSTRUMENTAL_SPOTIFY_ROTATION_TRACKS/);
   assert.equal((randomCatalog.match(/tracks: instrumentalSongs\.map/g) ?? []).length, 2);
-  assert.equal((randomCatalog.match(/tracks: shortSongs\.map/g) ?? []).length, 2);
+  assert.equal((randomCatalog.match(/tracks: shortSongs\.map/g) ?? []).length, 1);
 });
