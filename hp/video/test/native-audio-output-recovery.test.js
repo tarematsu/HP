@@ -56,21 +56,18 @@ test('Stationhead polls native WebView2 audio through the periodic health path',
   assert.match(stationheadRefresh, /AttemptNativeStartClick\(nowMs\)/);
 });
 
-test('Spotify startup recovery is driven by each target URL generation and has a terminal skip', () => {
+test('Spotify startup recovery is per target generation and is reload-once then skip', () => {
   assert.match(spotifyPhase, /BeginSpotifyTrackStartRecovery\([\s\S]*slot\.targetGeneration/);
   assert.match(spotifyTrackRecovery, /ULONGLONG generation = 0/);
   assert.match(spotifyTrackRecovery, /bool reloadIssued = false/);
-  assert.match(spotifyTrackRecovery, /bool rebuildIssued = false/);
-  assert.match(spotifyTrackRecovery, /bool skipIssued = false/);
-  assert.match(spotifyTrackRecovery, /SkipTrack/);
-  assert.match(spotifyClick, /EscalateSpotifyStartupFailure/);
-  assert.match(spotifyClick, /retry\.count>=2/);
-  assert.match(spotifyClick, /return 'reload'/);
-  assert.match(spotifyClick, /return 'recreate'/);
-  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::ReloadDocument/);
-  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::RebuildSurface/);
-  assert.match(spotifyStartupAudio, /SpotifyTrackStartRecoveryAction::SkipTrack/);
+  assert.match(spotifyTrackRecovery, /ConsumeSpotifyStartupReload/);
+  assert.doesNotMatch(spotifyTrackRecovery, /rebuildIssued|skipIssued|RebuildSurface/);
+  assert.doesNotMatch(spotifyClick, /NativePlayRetry|return 'reload'|return 'recreate'/);
+  assert.doesNotMatch(spotifyClick, /EscalateSpotifyStartupFailure/);
+  assert.match(spotifyStartupAudio, /ConsumeSpotifyStartupReload/);
+  assert.match(spotifyStartupAudio, /slot\.webview->Reload\(\)/);
   assert.match(spotifyStartupAudio, /SkipFailedSpotifyTrack\(slot\)/);
+  assert.doesNotMatch(spotifyStartupAudio, /RequestSpotifyAudioPipelineRestart|RebuildSurface/);
 });
 
 test('Spotify checks native audio only during startup and requires consecutive positive samples', () => {
