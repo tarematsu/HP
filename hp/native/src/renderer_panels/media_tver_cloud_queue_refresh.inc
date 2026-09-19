@@ -3,6 +3,7 @@ namespace {
 constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
     30ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
+constexpr UINT kNativeMediaTverStartupTimeoutLimit = 3U;
 
 struct NativeMediaTverCloudQueueRefreshResult {
   std::wstring generatedAt;
@@ -23,6 +24,7 @@ struct NativeMediaTverNativeQueueState {
   std::wstring currentEpisodeId;
   std::wstring appliedGeneratedAt;
   ULONGLONG navigationStartedAt = 0;
+  UINT startupTimeoutCount = 0;
   bool mediaReady = false;
 };
 
@@ -113,6 +115,7 @@ void NativeMediaTverResetQueuePhaseLocked(
   state.currentEpisodeId.clear();
   state.appliedGeneratedAt.clear();
   state.navigationStartedAt = 0;
+  state.startupTimeoutCount = 0;
   state.mediaReady = false;
 }
 
@@ -210,6 +213,7 @@ std::wstring NativeMediaTverCurrentEpisodeUrl(
     if (state.queueEpisodeIds.empty()) return {};
     state.currentEpisodeId = state.queueEpisodeIds.front();
     state.navigationStartedAt = 0;
+    state.startupTimeoutCount = 0;
     state.mediaReady = false;
   }
   return NativeMediaTverEpisodeUrl(state.currentEpisodeId);
@@ -236,6 +240,7 @@ void NativeMediaTverMarkMediaReady(std::wstring_view source) noexcept {
   }
   state.mediaReady = true;
   state.navigationStartedAt = 0;
+  state.startupTimeoutCount = 0;
 }
 
 bool NativeMediaTverStartupExpired(
@@ -254,8 +259,22 @@ bool NativeMediaTverStartupExpired(
     return true;
   }
   if (state.mediaReady || state.navigationStartedAt == 0) return false;
-  return now >= state.navigationStartedAt &&
-      now - state.navigationStartedAt >= kNativeMediaTverStartupTimeoutMs;
+  if (now < state.navigationStartedAt ||
+      now - state.navigationStartedAt < kNativeMediaTverStartupTimeoutMs) {
+    return false;
+  }
+
+  // A single missed media-ready signal must not advance a healthy episode.
+  // Extend the startup window twice; only the third consecutive matching-URL
+  // timeout is allowed to fail forward to the next queue item.
+  if (state.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit) {
+    ++state.startupTimeoutCount;
+  }
+  if (state.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit) {
+    state.navigationStartedAt = now;
+    return false;
+  }
+  return true;
 }
 
 bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
@@ -287,6 +306,7 @@ bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
   if (current != state.queueEpisodeIds.end()) state.queueEpisodeIds.erase(current);
   state.currentEpisodeId.clear();
   state.navigationStartedAt = 0;
+  state.startupTimeoutCount = 0;
   state.mediaReady = false;
   NativeMediaTverRebuildQueueLocked(state);
   return !state.queueEpisodeIds.empty();
