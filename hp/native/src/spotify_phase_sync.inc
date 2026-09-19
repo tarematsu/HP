@@ -1,3 +1,4 @@
+#include "audio_health_scan_coordinator.h"
 #include "spotify_permanent_resource_mode.h"
 
 namespace hp {
@@ -10,7 +11,15 @@ constexpr ULONGLONG kSpotifyRecoveryRetryMs = 5ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyNativeAudioStartRetryMs = 2ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthCheckMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthLaneSpacingMs = 5ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAudioHealthRetryMs = kAudioHealthScanRetryMs;
+constexpr ULONGLONG kSpotifyAudioHealthSilenceConfirmMs = 5ULL * 1000ULL;
 constexpr wchar_t kSpotifyStatusWindowClass[] = L"HomePanelNativeSpotifyStatus";
+std::array<ULONGLONG, kSpotifyActiveAccountCount>
+    gSpotifyAudioHealthCheckDueTicks{};
+std::array<ULONGLONG, kSpotifyActiveAccountCount>
+    gSpotifyAudioHealthSilenceConfirmTicks{};
 
 void InvalidateSpotifyStatusForHost(HWND hostWindow) noexcept {
   if (!hostWindow || !IsWindow(hostWindow)) return;
@@ -33,6 +42,15 @@ bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
   return SpotifyUrlStartsWith(source, L"https://open.spotify.com/");
 }
 
+ULONGLONG FirstSpotifyAudioHealthTick(
+    ULONGLONG now, size_t accountIndex) noexcept {
+  const int lane = SpotifyRuntimeLaneForAccount(accountIndex);
+  if (lane < 0) return 0;
+  return now +
+      (static_cast<ULONGLONG>(lane) + 1ULL) *
+          kSpotifyAudioHealthLaneSpacingMs;
+}
+
 }  // namespace
 
 bool SpotifyWebViews::SlotStateIsHealthy(SlotState state) noexcept {
@@ -45,16 +63,32 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 }
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
+  const SlotState previousState = slot.state;
   slot.state = state;
   ApplySpotifyPermanentResourceMode(slot);
+
+  if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
+    ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
+    ULONGLONG& silenceConfirm =
+        gSpotifyAudioHealthSilenceConfirmTicks[slot.index];
+    if (state == SlotState::Playing) {
+      if (previousState != SlotState::Playing || due == 0) {
+        due = FirstSpotifyAudioHealthTick(GetTickCount64(), slot.index);
+        silenceConfirm = 0;
+      }
+    } else {
+      due = 0;
+      silenceConfirm = 0;
+    }
+  }
+
   if (state == SlotState::NotCreated || state == SlotState::Authenticating) {
     slot.nextRecoveryTick = 0;
     return;
   }
   if (state == SlotState::Playing) {
-    // A Spotify track is not fully healthy until its one-shot native audio
-    // startup verification succeeds. Keep one short scheduler wake while that
-    // verification is pending; there is no periodic healthy-playback poll.
+    // Startup verification remains the fast per-track gate. Once verified, the
+    // native watchdog keeps checking the same WebView while it stays Playing.
     if (slot.nativeAudioStartVerified) {
       slot.nextRecoveryTick = 0;
     } else if (slot.nextRecoveryTick == 0) {
@@ -71,6 +105,68 @@ void SpotifyWebViews::MarkSlotRecovering(
 
 bool SpotifyWebViews::ExpireStaleAsyncWork(
     Slot& slot, ULONGLONG now) noexcept {
+  // A slot can pass startup verification and later lose its renderer/audio sink
+  // without a DOM pause, process-failure, DRM, or network event. Probe each live
+  // Spotify WebView directly so a silent S1-S5 lane cannot remain healthy just
+  // because its media clock and Pause button still look normal.
+  if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
+    ULONGLONG& due = gSpotifyAudioHealthCheckDueTicks[slot.index];
+    ULONGLONG& silenceConfirm =
+        gSpotifyAudioHealthSilenceConfirmTicks[slot.index];
+    const bool audioHealthEligible =
+        slot.webview && !slot.loginPage && CurrentMusicTrack(slot) &&
+        SlotStateIsHealthy(slot.state) && slot.playbackConfirmed &&
+        slot.nativeAudioStartVerified && slot.asyncWork == AsyncWork::None;
+
+    if (audioHealthEligible) {
+      if (due == 0) due = FirstSpotifyAudioHealthTick(now, slot.index);
+      if (due != 0 && now >= due) {
+        if (!TryClaimAudioHealthScan(now)) {
+          due = now + kSpotifyAudioHealthRetryMs;
+        } else {
+          ComPtr<ICoreWebView2_8> audioView;
+          BOOL nativePlaying = FALSE;
+          const HRESULT interfaceResult = slot.webview.As(&audioView);
+          const HRESULT stateResult =
+              SUCCEEDED(interfaceResult) && audioView
+                  ? audioView->get_IsDocumentPlayingAudio(&nativePlaying)
+                  : E_NOINTERFACE;
+          ReleaseAudioHealthScan();
+
+          if (FAILED(interfaceResult) || !audioView || FAILED(stateResult)) {
+            due = now + kSpotifyAudioHealthRetryMs;
+          } else if (nativePlaying != FALSE) {
+            silenceConfirm = 0;
+            ObserveMediaRecoveryHealthy(
+                slot.recoveryEpisode, now, slot.targetGeneration);
+            due = now + kSpotifyAudioHealthCheckMs;
+          } else if (silenceConfirm == 0) {
+            // Track boundaries and short decoder handoffs can briefly report no
+            // document audio. Require a second native miss before recovery.
+            silenceConfirm = now + kSpotifyAudioHealthSilenceConfirmMs;
+            due = silenceConfirm;
+          } else if (now < silenceConfirm) {
+            due = silenceConfirm;
+          } else {
+            // Re-enter the existing per-track startup path for this slot only.
+            // That path first reasserts playback, then escalates through Reload,
+            // WebView rebuild and finally Skip if native audio still never starts.
+            slot.nativeAudioStartChecks = 0;
+            slot.nativeAudioStartVerified = false;
+            slot.playbackConfirmed = false;
+            slot.timedCompletionDeadlineTick = 0;
+            slot.timedCompletionDeadlineGeneration = 0;
+            slot.trustedClickBlockedUntilTick = 0;
+            SetSlotState(slot, SlotState::WaitingTarget);
+            slot.nextRecoveryTick = now;
+            ArmRobustScheduler();
+            return true;
+          }
+        }
+      }
+    }
+  }
+
   if (slot.asyncWork == AsyncWork::None || slot.asyncStartedTick == 0 ||
       now - slot.asyncStartedTick < kSpotifyAsyncOperationTimeoutMs) {
     return false;
@@ -101,6 +197,10 @@ void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   slot.mediaKeyWaitFailurePending = false;
   slot.mediaNetworkRecoveryPending = false;
   ResetMediaRecoveryEpisode(slot.recoveryEpisode, slot.targetGeneration);
+  if (slot.index < gSpotifyAudioHealthCheckDueTicks.size()) {
+    gSpotifyAudioHealthCheckDueTicks[slot.index] = 0;
+    gSpotifyAudioHealthSilenceConfirmTicks[slot.index] = 0;
+  }
 }
 
 void CALLBACK SpotifyWebViews::SchedulerTimerProc(
@@ -125,9 +225,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     ULONGLONG now) const noexcept {
   if (!initialCloudPlaylistReady_) return kSpotifySchedulerBootstrapMs;
 
-  // Healthy Spotify playback is event/deadline driven. Per-track startup and
-  // recovery deadlines wake the scheduler while Playing itself has no periodic
-  // health poll. The one-hour ceiling remains a coarse unrelated-state audit.
+  // Healthy Spotify playback keeps event/deadline recovery, plus one cheap
+  // native-audio getter per lane every 30 seconds. The five lanes start five
+  // seconds apart so low-end systems never probe every WebView at once.
   ULONGLONG nextDelayMs = kSpotifyHealthyAuditMs;
   const auto considerTick = [&nextDelayMs, now](ULONGLONG dueTick) noexcept {
     if (dueTick == 0) return;
@@ -136,6 +236,11 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
   };
 
   for (const Slot& slot : slots_) {
+    if (slot.index < gSpotifyAudioHealthCheckDueTicks.size() &&
+        slot.webview && CurrentMusicTrack(slot) &&
+        SlotStateIsHealthy(slot.state) && slot.nativeAudioStartVerified) {
+      considerTick(gSpotifyAudioHealthCheckDueTicks[slot.index]);
+    }
     if (slot.timedCompletionDeadlineTick != 0 &&
         slot.timedCompletionDeadlineGeneration == slot.targetGeneration &&
         CurrentMusicTrack(slot)) {
