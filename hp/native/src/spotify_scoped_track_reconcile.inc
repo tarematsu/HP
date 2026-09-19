@@ -15,9 +15,9 @@ namespace {
 //    verified zero-second stall, the matching global Play may be used as a
 //    recovery-only trusted click target when Spotify omits the page control.
 //
-// Keep this JavaScript in two literals: MSVC has a relatively small limit for
-// one wide string literal, and this reconcile probe intentionally carries more
-// state validation than the other Spotify scripts.
+// Keep this JavaScript in several literals: MSVC has a relatively small limit
+// for one wide string literal, and this reconcile probe intentionally carries
+// more state validation than the other Spotify scripts.
 constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart1[] = LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
@@ -233,7 +233,82 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
         centerY < 0 || centerY > window.innerHeight) return null;
     return [centerX, centerY];
   };
+)JS";
 
+constexpr wchar_t kSpotifyScopedTrackReconcileErrorRecoveryScript[] = LR"JS(
+  // Spotify's Web Player may replace the player with an error surface such as
+  // "Something went wrong / RELOAD PAGE". Prefer structural error semantics so
+  // this works regardless of the UI language. Text matching is only a fallback
+  // when the error container exposes several actions.
+  const findErrorRecoveryButton = () => {
+    const buttons = Array.from(
+        document.querySelectorAll('button,[role="button"]')).filter(visible);
+    const semanticToken = element => normalize([
+      element.getAttribute('data-testid'),
+      element.getAttribute('id'),
+      element.getAttribute('name'),
+      typeof element.className === 'string' ? element.className : ''
+    ].filter(Boolean).join(' '));
+    const recoveryToken = /(^|[\s_-])(retry|reload|refresh|reconnect|try[-_]?again)([\s_-]|$)/;
+    const explicit = buttons.find(button => recoveryToken.test(semanticToken(button)));
+    if (explicit) return explicit;
+
+    const errorRoots = Array.from(document.querySelectorAll([
+      '[role="alert"]',
+      '[role="alertdialog"]',
+      '[data-testid*="error" i]',
+      '[id*="error" i]',
+      '[class*="error" i]'
+    ].join(','))).filter(visible);
+    const labelToken = /(retry|reload|refresh|reconnect|try again|再試行|再読み込み|もう一度|再接続|réessayer|reessayer|recharger|actualiser|erneut|nochmal|neu laden|wiederholen|reintentar|recargar|actualizar|riprova|ricarica|tentar novamente|recarregar|다시 시도|새로고침|重试|重試|重新加载|重新載入)/;
+
+    for (const root of errorRoots) {
+      const actions = Array.from(
+          root.querySelectorAll('button,[role="button"]')).filter(visible);
+      const strongErrorSurface =
+          root.matches('[role="alertdialog"], [data-testid*="error" i], [id*="error" i], [class*="error" i]') &&
+          !!root.querySelector('h1,h2,h3,[role="heading"]');
+      if (actions.length === 1 && strongErrorSurface) return actions[0];
+      const labeled = actions.find(button => {
+        const label = normalize([
+          button.getAttribute('aria-label'),
+          button.getAttribute('title'),
+          button.textContent
+        ].filter(Boolean).join(' '));
+        return labelToken.test(label);
+      });
+      if (labeled) return labeled;
+    }
+    return null;
+  };
+
+  const errorRecoveryButton = findErrorRecoveryButton();
+  if (errorRecoveryButton) {
+    clearProgressProbe();
+    clearRestartPending();
+    resetTransitionRetry();
+
+    const now = Date.now();
+    const recovery = window.__homePanelSpotifyErrorRecovery ||
+        (window.__homePanelSpotifyErrorRecovery = {
+          path: '', button: null, lastClickAt: 0
+        });
+    if (recovery.path !== targetPath) {
+      recovery.path = targetPath;
+      recovery.button = null;
+      recovery.lastClickAt = 0;
+    }
+    if (recovery.button !== errorRecoveryButton ||
+        now - Number(recovery.lastClickAt || 0) >= 3000) {
+      recovery.button = errorRecoveryButton;
+      recovery.lastClickAt = now;
+      try { errorRecoveryButton.click(); } catch (_) {}
+    }
+    return playbackProbeMs;
+  }
+)JS";
+
+constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart3[] = LR"JS(
   const nativeLoadedAt = Number(window.__homePanelSpotifyNativeLoadedAt);
   const initialPlayDelayElapsed = Number.isFinite(nativeLoadedAt) &&
       Date.now() - nativeLoadedAt >= 2000;
@@ -290,7 +365,9 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScriptPart2[] = LR"JS(
 
 const std::wstring kSpotifyScopedTrackReconcileScriptStorage =
     std::wstring(kSpotifyScopedTrackReconcileScriptPart1) + L"\n" +
-    kSpotifyScopedTrackReconcileScriptPart2;
+    kSpotifyScopedTrackReconcileScriptPart2 + L"\n" +
+    kSpotifyScopedTrackReconcileErrorRecoveryScript + L"\n" +
+    kSpotifyScopedTrackReconcileScriptPart3;
 const wchar_t* const kSpotifyScopedTrackReconcileScript =
     kSpotifyScopedTrackReconcileScriptStorage.c_str();
 
