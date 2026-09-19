@@ -11,6 +11,7 @@ const player = source('sh.cpp');
 const webview = source('sh_webview.cpp');
 const lifecycle = source('sh_runtime_lifecycle_script.h');
 const periodic = source('sh_track_boundary_message_policy.h');
+const eventPolicy = source('sh_webview_event_policy.h');
 
 test('Stationhead does not promote a native-audio pulse to healthy playback', () => {
   const gate = player.indexOf(
@@ -71,8 +72,25 @@ test('Stationhead track-boundary recovery stays armed after an unverified native
   assert.ok(postNavigation < verifiedCheck && verifiedCheck < deadline);
 });
 
+test('Stationhead native pulse cannot cancel an active lightweight repair loop', () => {
+  const positiveStart = eventPolicy.indexOf('if (playing != FALSE) {');
+  const stoppedStart = eventPolicy.indexOf('static constexpr wchar_t kStoppedScript[]');
+  assert.notEqual(positiveStart, -1);
+  assert.notEqual(stoppedStart, -1);
+  const positiveBranch = eventPolicy.slice(positiveStart, stoppedStart);
+  assert.match(positiveBranch, /__homepanelStationheadNativeAudioSeen = true/);
+  assert.doesNotMatch(positiveBranch, /clearTimeout\(/);
+  assert.doesNotMatch(positiveBranch, /clearInterval\(/);
+  assert.doesNotMatch(
+    positiveBranch,
+    /__homepanelStationheadSilentRecoveryTimer = 0/,
+  );
+  assert.match(eventPolicy, /nativeSetTimeout\(begin, 4000\)/);
+  assert.match(eventPolicy, /nativeSetInterval\([\s\S]*2000\)/);
+});
+
 test('Stationhead recovery verification does not reintroduce PCM or Core Audio peak checks', () => {
-  for (const text of [player, webview, lifecycle]) {
+  for (const text of [player, webview, lifecycle, eventPolicy]) {
     assert.doesNotMatch(text, /IAudioMeterInformation/);
     assert.doesNotMatch(text, /GetPeakValue/);
     assert.doesNotMatch(text, /PCM peak/i);
