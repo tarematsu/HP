@@ -12,6 +12,7 @@ LR"JS(
     playbackSettingsApplied: false,
     fullscreenDirty: true,
     fullscreenKeyRequestedAt: 0,
+    fullscreenAttemptCount: 0,
     recoveryPending: false,
     recoverySince: 0,
     recoveryWakeTimer: 0,
@@ -80,11 +81,7 @@ LR"JS(
         const identity = mediaIdentity(video);
         const adMediaChanged = state.adVideo !== video || state.adIdentity !== identity;
         if (!state.adActive || adMediaChanged) {
-          try { if (video?.loop) video.loop = false; } catch (_) {}
-          const episodeLimitReached = state.episodeStartedAt > 0 &&
-              Date.now() - state.episodeStartedAt >= episodeMaxPlaybackMs;
-          const completedProgram = episodeLimitReached &&
-              state.programPlaybackConfirmed &&
+          const completedProgram = state.programPlaybackConfirmed &&
               state.endCandidateAt > 0 &&
               state.maxDuration >= 5 &&
               state.maxTime >= Math.max(3, state.maxDuration - 10);
@@ -146,11 +143,6 @@ LR"JS(
         state.playbackSettingsApplied = true;
       }
       sampleProgress(video, state, true);
-      const holdUntilDeadline = state.episodeStartedAt > 0 && !state.endReported &&
-          Date.now() - state.episodeStartedAt < episodeMaxPlaybackMs;
-      try {
-        if (video.loop !== holdUntilDeadline) video.loop = holdUntilDeadline;
-      } catch (_) {}
       try { state.armProgressSampler?.(); } catch (_) {}
 
       if (state.programPlaybackConfirmed && video.ended && !state.endCandidateAt) {
@@ -162,9 +154,7 @@ LR"JS(
           state.maxTime >= Math.max(3, state.maxDuration - 10);
       const stableEnd = state.endCandidateAt > 0 &&
           Date.now() - state.endCandidateAt >= postrollGraceMs;
-      const episodeLimitReached = state.episodeStartedAt > 0 &&
-          Date.now() - state.episodeStartedAt >= episodeMaxPlaybackMs;
-      if (episodeLimitReached && stableEnd && completedItem) {
+      if (stableEnd && completedItem) {
         if (postEpisodeEnded(state)) return;
         wakeNative('ended-post-failed:' + location.pathname, true);
         return;
