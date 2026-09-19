@@ -11,14 +11,11 @@ LR"JS(
     qualityAttemptExhausted: false,
     playbackSettingsApplied: false,
     fullscreenDirty: true,
-    fullscreenKeyRequestedAt: 0,
-    fullscreenAttemptCount: 0,
     recoveryPending: false,
     recoverySince: 0,
-    recoveryWakeTimer: 0,
   });
   const clearRuntimeTimers = state => {
-    try { state.clearRecoveryWake?.(); } catch (_) {}
+    try { state.clearRecoveryState?.(); } catch (_) {}
     try { state.clearProgressSampler?.(); } catch (_) {}
   };
   const clearEpisodeLimitTimer = state => {
