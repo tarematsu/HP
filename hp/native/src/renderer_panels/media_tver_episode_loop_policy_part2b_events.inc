@@ -33,30 +33,13 @@ LR"JS(
     const clearRecovery = () => {
       state.recoveryPending = false;
       state.recoverySince = 0;
-      if (state.recoveryWakeTimer) {
-        clearTimeout(state.recoveryWakeTimer);
-        state.recoveryWakeTimer = 0;
-      }
-    };
-    const armRecoveryWake = () => {
-      if (!state.recoveryPending || state.recoveryWakeTimer) return;
-      state.recoveryWakeTimer = setTimeout(() => {
-        state.recoveryWakeTimer = 0;
-        if (window.__homePanelSakuraMeetsState !== state ||
-            !state.recoveryPending) return;
-        wakeNative('recovery:tick:' + mediaIdentity(video), true);
-        armRecoveryWake();
-      }, 2000);
     };
     const startRecovery = reason => {
-      if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
-      const enteringRecovery = !state.recoveryPending;
-      if (enteringRecovery) {
-        state.recoverySince = Date.now();
-        state.recoveryPending = true;
-        wakeNative('recovery:' + reason + ':' + mediaIdentity(video), true);
-      }
-      armRecoveryWake();
+      if (window.__homePanelSakuraMeetsState !== state || state.adActive ||
+          state.recoveryPending) return;
+      state.recoverySince = Date.now();
+      state.recoveryPending = true;
+      wakeNative('recovery:' + reason + ':' + mediaIdentity(video), true);
     };
     state.clearRecoveryWake = clearRecovery;
     state.requestRecoveryWake = startRecovery;
