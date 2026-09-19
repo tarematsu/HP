@@ -21,17 +21,6 @@ inline void ApplyMediaWebViewFeaturePolicy(
   if (!webview) return;
 
   ComPtr<ICoreWebView2> baseWebView = webview;
-  // Experimental low-memory mode for the native YouTube/TVer host. It is the
-  // only media-policy caller that starts with web messages disabled; the event
-  // wake bridge may enable web messages later without changing this target.
-  if (!webMessagesEnabled) {
-    ComPtr<ICoreWebView2_19> webview19;
-    if (SUCCEEDED(baseWebView.As(&webview19)) && webview19) {
-      webview19->put_MemoryUsageTargetLevel(
-          COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-    }
-  }
-
   ComPtr<ICoreWebView2Settings> settings;
   if (FAILED(webview->get_Settings(&settings)) || !settings) return;
 
