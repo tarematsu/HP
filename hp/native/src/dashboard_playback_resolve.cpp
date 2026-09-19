@@ -130,6 +130,9 @@ ProjectedTrackPosition ResolveProjectedTrackPosition(const NativePlaybackProject
 
 bool ProjectionFreshForFallback(const NativePlaybackProjection& projection,
                                 int64_t nowMs) noexcept {
+  // A snapshot was fetched by an earlier process even when it is only a few
+  // seconds old. Require this process to have observed the payload timestamp
+  // before allowing it to navigate the live Stationhead WebViews.
   if (projection.stale || projection.fetchedAt <= 0 ||
       projection.fetchedAt < gPlaybackFallbackProcessStartedAtMs ||
       nowMs < projection.fetchedAt) {
@@ -139,11 +142,19 @@ bool ProjectionFreshForFallback(const NativePlaybackProjection& projection,
 }
 
 bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
+  // A persisted snapshot is loaded synchronously during dashboard startup. It
+  // may describe a queue that ended hours earlier and must not navigate the
+  // live Stationhead WebView away in the same tick that the dashboard appears.
+  // Only a recent, non-stale observation made by this process may drive the
+  // fallback route.
   if (!projection.available || projection.setupRequired ||
       !ProjectionFreshForFallback(projection, nowMs)) {
     return false;
   }
   if (projection.ended) return true;
+  // The dashboard endpoint represents a completed queue with current_index=-1,
+  // playing=false and a past queue_end_at; it does not always emit `ended`.
+  // Check the absolute end before rejecting non-playing/no-current-track states.
   if (!projection.queue.empty() && projection.queueEndAt > 0 &&
       nowMs >= projection.queueEndAt) {
     return true;
@@ -183,6 +194,11 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
   status.healthyRevision = healthyObservation
       ? static_cast<uint64_t>(projection.fetchedAt)
       : 0;
+  // App's legacy route still reads contentRevision. Give it a tagged value:
+  // healthy observations use their fetch timestamp, a confirmed queue end uses
+  // a stable nonzero sentinel, and every other invalid/stale state is zero.
+  // Therefore only a newer healthy observation can compare above the baseline
+  // and release fallback.
   status.contentRevision = status.healthyRevision != 0
       ? status.healthyRevision
       : (status.endedWithoutNextTrack
