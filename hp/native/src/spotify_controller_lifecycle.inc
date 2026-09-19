@@ -64,17 +64,8 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
   const auto alive = alive_;
   Slot* const target = &slot;
   try {
-    // Each Spotify account owns a dedicated WebView2 user-data folder. WebView2
-    // groups browser/render/GPU/audio-service processes by environment/UDF, so
-    // this gives every Spotify slot its own process tree and lets Core Audio
-    // health evidence be attributed to one account instead of the shared media
-    // process family.
-    const fs::path slotUserDataFolder =
-        userDataFolder_.parent_path() /
-        (std::wstring(L"webview2-spotify-slot-") +
-         std::to_wstring(slot.index + kSpotifyProfileFirstAccountNumber));
     SharedWebViewEnvironment::Instance().Acquire(
-        slotUserDataFolder, false, false,
+        userDataFolder_, false, false,
         [this, alive, target](HRESULT result, ICoreWebView2Environment* environment) {
           if (!alive->load(std::memory_order_acquire)) return;
           if (FAILED(result) || !environment || !target->hostWindow || !IsWindow(target->hostWindow)) {

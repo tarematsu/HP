@@ -62,9 +62,8 @@ bool StartsWithInsensitive(std::wstring_view value,
 
 SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
     : parentWindow_(parentWindow),
-      // Keep the common data root here for cloud/config paths. CreateController
-      // derives a stable dedicated WebView2 UDF for each Spotify account so its
-      // browser/audio-service process tree can be monitored independently.
+      // One UDF keeps the browser process family shared. Named profiles below
+      // isolate cookies/local storage for every Spotify account.
       userDataFolder_(std::move(dataDir) / L"webview2-youtube-mv") {
   gSpotifyControlInstance = this;
   ResetSpotifyRuntimeLanes();
