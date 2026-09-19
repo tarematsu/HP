@@ -44,6 +44,11 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
+  const bool confirmedPlayback =
+      state == SlotState::Playing && slot.playbackConfirmed &&
+      slot.nativeAudioStartVerified;
+  ApplyPlaybackResourceMode(slot, confirmedPlayback);
+
   if (state == SlotState::NotCreated || state == SlotState::Authenticating) {
     slot.nextRecoveryTick = 0;
     return;
