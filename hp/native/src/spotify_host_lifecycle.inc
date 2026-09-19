@@ -82,7 +82,6 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   }
   UnsubscribeMediaPipelineErrors(slot.mediaErrorReceiver, slot.mediaErrorToken);
   if (slot.webview) {
-    ApplyPlaybackResourceMode(slot, false);
     if (slot.navigationStartingToken.value != 0) {
       slot.webview->remove_NavigationStarting(slot.navigationStartingToken);
     }
