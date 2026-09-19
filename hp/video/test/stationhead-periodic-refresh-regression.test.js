@@ -24,21 +24,20 @@ test('primary room and fallback URLs remain configured', () => {
   assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl/);
 });
 
-test('single player periodic refresh is fixed at 50 minutes with a one-minute staggered audio wake', () => {
-  assert.match(policy, /return 50 \* 60'000;/);
-  assert.match(policy, /StationheadPeriodicRefreshIntervalMs\(\) == 50 \* 60'000/);
-  assert.match(policy, /StationheadAudioHealthCheckIntervalMs\(\) == 1 \* 60'000/);
+test('single long-lived room uses one-minute native audio health without preventive navigation', () => {
+  assert.match(policy, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
   const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
-  assert.match(wake, /periodicRefreshStartedAt_/);
-  assert.match(wake, /StationheadPeriodicRefreshIntervalMs\(\)/);
   assert.match(wake, /audioHealthCheckStartedAt_/);
   assert.match(wake, /StationheadAudioHealthCheckIntervalMs\(\)/);
+  assert.match(wake, /audioLossRecoveryStartedAt_/);
+  assert.match(wake, /StationheadAudioRecoverySettleMs\(\)/);
   assert.match(policy, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
   assert.match(policy, /TryClaimAudioHealthScan\(scanTick\)/);
   assert.match(policy, /const int64_t nowMs = UnixMillis\(\)/);
   assert.match(policy, /PollPeriodicAudioHealth\(nowMs\)/);
-  assert.match(policy, /RefreshPeriodicNavigation\(nowMs\)/);
-  assert.match(policy, /NavigateCurrentUrl\(nowMs, L"50-minute periodic refresh"\)/);
+  assert.doesNotMatch(policy, /StationheadPeriodicRefreshIntervalMs/);
+  assert.doesNotMatch(policy, /RefreshPeriodicNavigation/);
+  assert.doesNotMatch(policy, /50-minute periodic refresh/);
 });
 
 test('page-side track-boundary polling stays removed', () => {
