@@ -16,6 +16,9 @@ test('programmatic focus stays hidden and keyboard modality is limited to the sk
   assert.match(fixesCss, /html\.keyboard-navigation \.skip-link:focus\s*\{[\s\S]*opacity:\s*1[\s\S]*transform:\s*none/);
   assert.match(headerRuntime, /event\.key !== 'Tab' \|\| !event\.isTrusted/);
   assert.match(headerRuntime, /classList\.add\(KEYBOARD_NAVIGATION_CLASS\)/);
+  assert.match(headerRuntime, /function|releaseProgrammaticSkipLinkFocus/);
+  assert.match(headerRuntime, /skipLink\?\.addEventListener\('focus', releaseProgrammaticSkipLinkFocus\)/);
+  assert.match(headerRuntime, /queueMicrotask\(releaseProgrammaticSkipLinkFocus\)/);
   assert.match(headerRuntime, /document\.activeElement !== skipLink/);
   assert.match(headerRuntime, /focusout/);
   assert.match(headerRuntime, /pointerdown/);
