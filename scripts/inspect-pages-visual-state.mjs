@@ -57,6 +57,7 @@ for (const path of ['/', '/#daily', '/#weekly']) {
 
 const trackUrl = 'https://open.spotify.com/track/0excsYy4LOVEcQTN4OPeJE';
 let spotifyOembed = null;
+let spotifyEmbed = null;
 try {
   const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(trackUrl)}`, {
     headers: { accept: 'application/json', 'user-agent': 'HomePanel-visual-diagnostic/1.0' },
@@ -67,12 +68,32 @@ try {
     ok: response.ok,
     payload: await response.json().catch(() => null),
   };
+  const iframeUrl = spotifyOembed?.payload?.iframe_url;
+  if (iframeUrl) {
+    const embedResponse = await fetch(iframeUrl, {
+      headers: { accept: 'text/html', 'user-agent': 'HomePanel-visual-diagnostic/1.0' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const html = await embedResponse.text();
+    const metas = [...html.matchAll(/<meta\s+[^>]*(?:property|name)=["']([^"']+)["'][^>]*content=["']([^"']*)["'][^>]*>/gi)]
+      .slice(0, 30)
+      .map((match) => ({ key: match[1], value: match[2] }));
+    spotifyEmbed = {
+      status: embedResponse.status,
+      ok: embedResponse.ok,
+      title: html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] || null,
+      metas,
+      containsSakurazaka: html.includes('櫻坂46'),
+    };
+  }
 } catch (error) {
-  spotifyOembed = { error: String(error) };
+  spotifyOembed = spotifyOembed || { error: String(error) };
+  spotifyEmbed = spotifyEmbed || { error: String(error) };
 }
 
 await writeFile(`${outDir}/report.json`, `${JSON.stringify(records, null, 2)}\n`);
 await writeFile(`${outDir}/spotify-oembed.json`, `${JSON.stringify(spotifyOembed, null, 2)}\n`);
-console.log(JSON.stringify({ records, spotifyOembed }, null, 2));
+await writeFile(`${outDir}/spotify-embed.json`, `${JSON.stringify(spotifyEmbed, null, 2)}\n`);
+console.log(JSON.stringify({ records, spotifyOembed, spotifyEmbed }, null, 2));
 await context.close();
 await browser.close();
