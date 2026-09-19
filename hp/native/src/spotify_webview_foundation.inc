@@ -31,14 +31,18 @@ int SpotifyRuntimeLaneForControlAccount(int accountIndex) noexcept {
 
 void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
+  const int accountIndex = gSpotifyControlInstance
+      ? gSpotifyControlInstance->SlotIndexForWebView(webview.Get())
+      : -1;
   if (gSpotifyControlInstance) {
     gSpotifyControlInstance->EnsureProcessFailureMonitoring(webview.Get());
   }
+  if (accountIndex >= 0) {
+    EnsureSpotifyMediaStartEvidence(
+        webview.Get(), static_cast<size_t>(accountIndex));
+  }
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
-    const int accountIndex = gSpotifyControlInstance
-        ? gSpotifyControlInstance->SlotIndexForWebView(webview.Get())
-        : -1;
     const int runtimeLane = accountIndex >= 0
         ? SpotifyRuntimeLaneForAccount(static_cast<size_t>(accountIndex))
         : -1;
@@ -78,6 +82,7 @@ SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
 
 SpotifyWebViews::~SpotifyWebViews() {
   Shutdown();
+  ReleaseAllSpotifyMediaStartEvidence();
   if (gSpotifyControlInstance == this) gSpotifyControlInstance = nullptr;
 }
 
