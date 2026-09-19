@@ -77,7 +77,3 @@ inline std::wstring StationheadStatusStripCurrentTrackTitle() noexcept {
   std::lock_guard lock(stationheadStatusStripTrackMutex);
   return stationheadStatusStripTrackTitle;
 }
-
-// Compatibility no-op while old Stationhead status objects age out. The native
-// header no longer consumes or requests play-count data.
-inline void PublishStationheadStatusStripPlayCount(int64_t) noexcept {}
