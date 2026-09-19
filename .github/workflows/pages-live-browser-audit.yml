@@ -1,5 +1,5 @@
 name: Pages live browser audit
-# Post-deploy verification trigger; remove before merge.
+# Post-deploy visual diagnostic; remove before merge.
 
 on:
   pull_request:
@@ -10,6 +10,7 @@ on:
       - 'scripts/audit-pages-live.mjs'
       - 'scripts/audit-pages-materialized.mjs'
       - 'scripts/audit-pages-materialized-production.mjs'
+      - 'scripts/inspect-pages-visual-state.mjs'
       - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/run-pages-read-model-rebuild.yml'
@@ -141,6 +142,10 @@ jobs:
           --retry-delay-ms=10000
           --out=.pages-production-audit
 
+      - name: Capture production visual state diagnostics
+        if: github.event_name == 'pull_request'
+        run: node scripts/inspect-pages-visual-state.mjs
+
       - name: Require all production materializations
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         shell: bash
@@ -165,6 +170,7 @@ jobs:
           path: |
             .pages-preview-audit/
             .pages-production-audit/
+            .pages-visual-diagnostic/
             site/pages-preview-deploy.log
           include-hidden-files: true
           if-no-files-found: warn
