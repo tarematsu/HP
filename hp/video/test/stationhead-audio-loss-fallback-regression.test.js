@@ -71,8 +71,8 @@ test('fallback recovery requires dwell and stable audio', () => {
   assert.match(appHeader, /startedAt_\.ElapsedMilliseconds\(\) >=\s*kStationheadFallbackMinimumDwellMs/);
 });
 
-test('fallback resolver and healthy observation remain active', () => {
-  assert.match(resolver, /SelectedStationheadIsOnFallback/);
+test('healthy playback observation remains active without retired renderer cache coupling', () => {
+  assert.doesNotMatch(resolver, /SelectedStationheadIsOnFallback|nativeStationhead_/);
   assert.match(rendererHeader, /uint64_t healthyRevision = 0/);
   assert.match(resolver, /healthyObservation/);
   assert.match(audioLoss, /feed\.healthyRevision/);

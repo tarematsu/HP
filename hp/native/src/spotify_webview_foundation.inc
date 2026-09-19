@@ -70,7 +70,6 @@ SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
       // isolate cookies/local storage for every Spotify account.
       userDataFolder_(std::move(dataDir) / L"webview2-youtube-mv") {
   gSpotifyControlInstance = this;
-  ResetSpotifyRuntimeLanes();
   gSpotifyMonitorForegroundSlot = SpotifyRuntimeLaneForControlAccount(
       gSpotifyMonitorForegroundAccountIndex);
   monitorForegroundSlot_ = gSpotifyMonitorForegroundSlot;

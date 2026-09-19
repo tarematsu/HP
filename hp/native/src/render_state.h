@@ -1,6 +1,5 @@
 #pragma once
 #include "common.h"
-#include "sh.h"
 
 namespace hp {
 
@@ -24,12 +23,6 @@ struct AirHistorySample {
   double humidity = 0;
 
   bool operator==(const AirHistorySample&) const = default;
-};
-
-// Retained only for the Renderer compatibility entry point. Active App state is
-// delivered directly to the native panels.
-struct RenderState {
-  StationheadStatus stationhead;
 };
 
 }  // namespace hp

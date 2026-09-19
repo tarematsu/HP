@@ -77,9 +77,6 @@ Renderer::~Renderer() {
     gSpotifyWebViews->Shutdown();
     gSpotifyWebViews.reset();
   }
-#if 0  // Stationhead playback bridge disabled for the MV panel build.
-  StopNativePlaybackBridge();
-#endif
   StopRadarCompose();
   DestroyNativeStaticWindows();
   if (current_ == this) current_ = nullptr;
@@ -113,15 +110,9 @@ void Renderer::Initialize() {
         throw std::runtime_error("native MV initialization failed");
       }
     }
-#if 0  // Stationhead dashboard queue/status polling is no longer started.
-    StartNativePlaybackBridge();
-#endif
     if (nativeDashboardVisible_) StartRadarCompose();
   } catch (...) {
     StopRadarCompose();
-#if 0  // Stationhead playback bridge disabled.
-    StopNativePlaybackBridge();
-#endif
     DestroyNativeStaticWindows();
     throw;
   }
@@ -226,10 +217,6 @@ UiAction Renderer::TakePendingAction() {
   const UiAction action = pendingAction_;
   pendingAction_ = UiAction::None;
   return action;
-}
-
-void Renderer::UpdateState(const RenderState& state) {
-  UpdateNativeStaticPanels(state);
 }
 
 void Renderer::Render() {
