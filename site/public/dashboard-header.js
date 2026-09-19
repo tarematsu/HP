@@ -11,6 +11,12 @@ const skipLink = document.querySelector('.skip-link');
 const clearKeyboardNavigation = () => {
   document.documentElement.classList.remove(KEYBOARD_NAVIGATION_CLASS);
 };
+const releaseProgrammaticSkipLinkFocus = () => {
+  if (
+    document.activeElement === skipLink
+    && !document.documentElement.classList.contains(KEYBOARD_NAVIGATION_CLASS)
+  ) skipLink?.blur();
+};
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Tab' || !event.isTrusted) return;
   document.documentElement.classList.add(KEYBOARD_NAVIGATION_CLASS);
@@ -18,6 +24,8 @@ document.addEventListener('keydown', (event) => {
     if (document.activeElement !== skipLink) clearKeyboardNavigation();
   }, 0);
 }, { capture: true });
+skipLink?.addEventListener('focus', releaseProgrammaticSkipLinkFocus);
+queueMicrotask(releaseProgrammaticSkipLinkFocus);
 document.addEventListener('focusout', (event) => {
   if (event.target === skipLink) clearKeyboardNavigation();
 }, { capture: true });
