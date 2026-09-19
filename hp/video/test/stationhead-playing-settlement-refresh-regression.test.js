@@ -36,14 +36,16 @@ test('live DOM interaction state remains independent from audio settlement', () 
   assert.match(bridge, /source: 'current-interaction-state'/);
 });
 
-test('50-minute refresh has one direct interactive-state gate', () => {
+test('bounded silence recovery has one direct interactive-state gate', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
 
   assert.match(
     injected,
-    /spotifyAuthorization_ \|\| loginRequired_ \|\|[\s\S]*recreating_/,
+    /usingFallback_ \|\| managedPlaybackFallbackActive_ \|\|[\s\S]*spotifyAuthorization_ \|\| loginRequired_/,
   );
+  assert.match(injected, /audioLossAuthUiDetected_ \|\| loginRequired_/);
   assert.doesNotMatch(injected, /unresolvedInteractiveLogin/);
-  assert.match(policy, /return 50 \* 60'000;/);
-  assert.match(injected, /L"50-minute periodic refresh"/);
+  assert.match(injected, /BeginAudioLossAuthProbe\(nowMs\)/);
+  assert.doesNotMatch(policy, /StationheadPeriodicRefreshIntervalMs/);
+  assert.doesNotMatch(injected, /50-minute periodic refresh/);
 });
