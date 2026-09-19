@@ -2,6 +2,7 @@
 namespace {
 constexpr UINT kMvStartupPassHoldMs = 1'500;
 constexpr int64_t kMonitorAuthProbeIntervalMs = 5 * 60'000;
+constexpr int64_t kMonitorAuthActiveProbeIntervalMs = 1'000;
 constexpr int kPowerSavingStartMinute = 12 * 60;
 constexpr int kPowerSavingEndMinute = 20 * 60;
 
@@ -16,6 +17,7 @@ static_assert(ScheduledPowerSavingAt(12, 0));
 static_assert(ScheduledPowerSavingAt(19, 59));
 static_assert(!ScheduledPowerSavingAt(20, 0));
 static_assert(kMonitorAuthProbeIntervalMs == 300'000);
+static_assert(kMonitorAuthActiveProbeIntervalMs == 1'000);
 
 bool ScheduledPowerSavingNow(int64_t nowMs) {
   const std::time_t seconds = static_cast<std::time_t>(nowMs / 1000);
@@ -66,7 +68,10 @@ void PowerSavingController::ArmScheduleTimer() {
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
   if (monitorMode_ != MonitorMode::Off) {
-    remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
+    const int64_t probeInterval = monitorAuthForeground_
+        ? kMonitorAuthActiveProbeIntervalMs
+        : kMonitorAuthProbeIntervalMs;
+    remaining = std::min<int64_t>(remaining, probeInterval);
   }
   const UINT delay = static_cast<UINT>(std::clamp<int64_t>(
       remaining, 1, std::numeric_limits<UINT>::max()));
