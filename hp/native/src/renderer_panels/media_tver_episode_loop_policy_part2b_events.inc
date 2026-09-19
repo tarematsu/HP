@@ -41,7 +41,7 @@ LR"JS(
       state.recoveryPending = true;
       wakeNative('recovery:' + reason + ':' + mediaIdentity(video), true);
     };
-    state.clearRecoveryWake = clearRecovery;
+    state.clearRecoveryState = clearRecovery;
     state.requestRecoveryWake = startRecovery;
 
     // Progress sampling uses one adaptive one-shot timer rather than receiving
