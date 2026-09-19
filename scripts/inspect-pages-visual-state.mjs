@@ -55,7 +55,24 @@ for (const path of ['/', '/#daily', '/#weekly']) {
   records.push(state);
 }
 
+const trackUrl = 'https://open.spotify.com/track/0excsYy4LOVEcQTN4OPeJE';
+let spotifyOembed = null;
+try {
+  const response = await fetch(`https://open.spotify.com/oembed?url=${encodeURIComponent(trackUrl)}`, {
+    headers: { accept: 'application/json', 'user-agent': 'HomePanel-visual-diagnostic/1.0' },
+    signal: AbortSignal.timeout(10_000),
+  });
+  spotifyOembed = {
+    status: response.status,
+    ok: response.ok,
+    payload: await response.json().catch(() => null),
+  };
+} catch (error) {
+  spotifyOembed = { error: String(error) };
+}
+
 await writeFile(`${outDir}/report.json`, `${JSON.stringify(records, null, 2)}\n`);
-console.log(JSON.stringify(records, null, 2));
+await writeFile(`${outDir}/spotify-oembed.json`, `${JSON.stringify(spotifyOembed, null, 2)}\n`);
+console.log(JSON.stringify({ records, spotifyOembed }, null, 2));
 await context.close();
 await browser.close();
