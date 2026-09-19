@@ -46,10 +46,6 @@ int64_t NextScheduleBoundary(int64_t nowMs) {
       ? nowMs + 60'000
       : static_cast<int64_t>(next) * 1000;
 }
-
-bool MonitorAuthProbeEnabled(MonitorMode mode) noexcept {
-  return mode != MonitorMode::Off;
-}
 }  // namespace
 
 void PowerSavingController::CheckSchedule(bool force) {
@@ -60,7 +56,7 @@ void PowerSavingController::CheckSchedule(bool force) {
     ApplyMode(ScheduledPowerSavingNow(now));
     nextScheduleBoundaryAt_ = NextScheduleBoundary(now);
   }
-  if (MonitorAuthProbeEnabled(monitorMode_)) RequestMonitorAuthProbe();
+  if (monitorMode_ != MonitorMode::Off) RequestMonitorAuthProbe();
   ArmScheduleTimer();
 }
 
@@ -69,7 +65,7 @@ void PowerSavingController::ArmScheduleTimer() {
   KillTimer(overlay_, kScheduleTimer);
   int64_t remaining = std::max<int64_t>(
       1, nextScheduleBoundaryAt_ - UnixMillis());
-  if (MonitorAuthProbeEnabled(monitorMode_)) {
+  if (monitorMode_ != MonitorMode::Off) {
     remaining = std::min<int64_t>(remaining, kMonitorAuthProbeIntervalMs);
   }
   const UINT delay = static_cast<UINT>(std::clamp<int64_t>(
@@ -78,7 +74,7 @@ void PowerSavingController::ArmScheduleTimer() {
 }
 
 void PowerSavingController::RequestMonitorAuthProbe() noexcept {
-  if (!MonitorAuthProbeEnabled(monitorMode_) || powerSaving_) return;
+  if (monitorMode_ == MonitorMode::Off || powerSaving_) return;
   RequestStationheadMonitorDomProbe();
   if (parent_ && IsWindow(parent_)) PostMessageW(parent_, WM_TIMER, 0, 0);
 }
@@ -146,7 +142,7 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   ApplyStationheadMonitorPlacement();
 
   if (layoutChanged) LayoutOverlay();
-  if (MonitorAuthProbeEnabled(monitorMode_)) RequestMonitorAuthProbe();
+  if (monitorMode_ != MonitorMode::Off) RequestMonitorAuthProbe();
   ArmScheduleTimer();
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
 }
