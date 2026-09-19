@@ -19,14 +19,14 @@ const bridge = readFileSync(
   'utf8',
 );
 
-test('monitor YT probes targeted Stationhead controls every five minutes', () => {
+test('visible monitor modes probe targeted Stationhead controls every five minutes', () => {
   assert.match(schedule, /kMonitorAuthProbeIntervalMs = 5 \* 60'000/);
-  assert.match(schedule, /monitorMode_ == MonitorMode::Native[\s\S]*RequestMonitorAuthProbe\(\)/);
-  assert.match(schedule, /monitorMode_ == MonitorMode::Native[\s\S]*kMonitorAuthProbeIntervalMs/);
+  assert.match(schedule, /monitorMode_ != MonitorMode::Off[\s\S]*RequestMonitorAuthProbe\(\)/);
+  assert.match(schedule, /monitorMode_ != MonitorMode::Off[\s\S]*kMonitorAuthProbeIntervalMs/);
   assert.match(audioLoss, /kMonitorDomProbeScript/);
   assert.match(audioLoss, /document\.querySelectorAll\(selector\)/);
   assert.match(audioLoss, /\\blog\\s\+in\\b/);
-  assert.match(audioLoss, /\\bconnect\\s\+spotify\\b/);
+  assert.match(audioLoss, /\\bconnect\\s+spotify\\b/);
   assert.match(audioLoss, /surface !== document\.body && depth < 4/);
   const monitorProbe = audioLoss.slice(
     audioLoss.indexOf('constexpr wchar_t kMonitorDomProbeScript[]'),
@@ -38,14 +38,14 @@ test('monitor YT probes targeted Stationhead controls every five minutes', () =>
   assert.match(bridge, /kStationheadMonitorProbeResultMessage/);
 });
 
-test('monitor S is unconditional Stationhead foreground and does not own DOM polling', () => {
+test('monitor S stays foreground while participating in auth polling', () => {
   assert.match(
     routing,
     /serviceGrid \|\|[\s\S]*monitorMode_ == MonitorMode::Native && monitorAuthForeground_/,
   );
   assert.match(routing, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
-  assert.match(schedule, /if \(monitorMode_ == MonitorMode::Native\) \{[\s\S]*kMonitorAuthProbeIntervalMs/);
-  assert.doesNotMatch(schedule, /MonitorMode::ServiceGrid[\s\S]{0,120}RequestMonitorAuthProbe/);
+  assert.match(schedule, /if \(monitorMode_ != MonitorMode::Off\) \{[\s\S]*kMonitorAuthProbeIntervalMs/);
+  assert.match(schedule, /if \(monitorMode_ == MonitorMode::Off \|\| powerSaving_\) return/);
 });
 
 test('monitor YT returns Stationhead behind the dashboard after a clean probe', () => {
