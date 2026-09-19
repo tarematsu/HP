@@ -7,32 +7,21 @@ const reconcile = readFileSync(
   'utf8',
 );
 
-test('Spotify error recovery prefers language-independent structural detection', () => {
-  assert.match(reconcile, /const findErrorRecoveryButton = \(\) =>/);
-  assert.match(reconcile, /\[role=\"alert\"\]/);
-  assert.match(reconcile, /\[role=\"alertdialog\"\]/);
-  assert.match(reconcile, /\[data-testid\*=\"error\" i\]/);
-  assert.match(reconcile, /const strongErrorSurface =/);
-  assert.match(reconcile, /root\.querySelector\('h1,h2,h3,\[role=\"heading\"\]'\)/);
-  assert.match(
-    reconcile,
-    /if \(actions\.length === 1 && strongErrorSurface\) return actions\[0\];/,
-  );
+test('Spotify startup detects structural error surfaces without clicking recovery UI', () => {
+  assert.match(reconcile, /const hasErrorSurface = Array\.from\(document\.querySelectorAll\(/);
+  assert.match(reconcile, /\[role="alertdialog"\]/);
+  assert.match(reconcile, /\[data-testid\*="error" i\]/);
+  assert.match(reconcile, /\[id\*="error" i\]/);
+  assert.match(reconcile, /if \(hasErrorSurface && !activeMedia\) return 'startup-failure';/);
 });
 
-test('Spotify error recovery has semantic fallbacks without requiring Japanese', () => {
-  assert.match(reconcile, /retry\|reload\|refresh\|reconnect/);
-  assert.match(reconcile, /try again/);
-  assert.match(reconcile, /再試行/);
-  assert.match(reconcile, /réessayer/);
-  assert.match(reconcile, /reintentar/);
-  assert.match(reconcile, /다시 시도/);
-  assert.match(reconcile, /重试/);
+test('Spotify startup has no localized error-button retry vocabulary', () => {
+  assert.doesNotMatch(reconcile, /retry\|reload\|refresh\|reconnect/);
+  assert.doesNotMatch(reconcile, /再試行|réessayer|reintentar|다시 시도|重试/);
 });
 
-test('Spotify error recovery clicks with cooldown then resumes normal probing', () => {
-  assert.match(reconcile, /__homePanelSpotifyErrorRecovery/);
-  assert.match(reconcile, /now - Number\(recovery\.lastClickAt \|\| 0\) >= 3000/);
-  assert.match(reconcile, /errorRecoveryButton\.click\(\)/);
-  assert.match(reconcile, /return playbackProbeMs;/);
+test('Spotify startup never clicks an error recovery button', () => {
+  assert.doesNotMatch(reconcile, /__homePanelSpotifyErrorRecovery/);
+  assert.doesNotMatch(reconcile, /lastClickAt|errorRecoveryButton\.click\(\)/);
+  assert.match(reconcile, /return 'startup-failure'/);
 });
