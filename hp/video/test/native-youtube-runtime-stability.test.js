@@ -45,9 +45,9 @@ test('fullscreen fallback and ad clicks keep independent action state', () => {
   assert.doesNotMatch(runtime, /state\.actionCleanup = cleanup/);
 
   const firstFullscreen = runtime.indexOf(
-    'if (!ad() && !state.fullscreenApplied) return requestFullscreen();',
+    'if (!adActive && !state.fullscreenApplied) return requestFullscreen();',
   );
-  const adStart = runtime.indexOf('if (ad()) {');
+  const adStart = runtime.indexOf('if (adActive) {');
   assert.ok(firstFullscreen >= 0 && adStart > firstFullscreen);
   assert.match(runtime, /homepanel:youtube-fullscreen-key/);
 });
@@ -64,7 +64,7 @@ test('fullscreen recovery refreshes state instead of trusting old success', () =
 });
 
 test('skippable ads are handled before fullscreen recovery', () => {
-  const adStart = runtime.indexOf('if (ad()) {');
+  const adStart = runtime.indexOf('if (adActive) {');
   const skip = runtime.indexOf("arm(target, 'skip-ad', 600)", adStart);
   const fullscreen = runtime.indexOf('return requestFullscreen();', skip);
   assert.ok(adStart >= 0 && skip > adStart && fullscreen > skip);
@@ -75,12 +75,15 @@ test('unified runtime stays player-local and event driven', () => {
   assert.match(runtime, /homepanel:youtube-wake/);
   assert.match(runtime, /attributeFilter: \['class'\]/);
   assert.match(runtime, /state\.classObserver\.observe\(player/);
+  assert.match(runtime, /const syncAdObserver = active =>/);
+  assert.match(runtime, /state\.adObserver\.observe\(player/);
   assert.doesNotMatch(runtime, /observe\(document\.(?:documentElement|body)/);
 });
 
 test('recovery remains a single policy without split include fragments', () => {
   assert.match(runtime, /kNativeMediaYoutubeControlRecoveryScript/);
-  assert.match(runtime, /if \(ad\(\)\)/);
+  assert.match(runtime, /const adActive = ad\(\)/);
+  assert.match(runtime, /if \(adActive\)/);
   assert.match(runtime, /state\.pausedSince >= 10 \* 1000/);
   assert.match(runtime, /state\.lastProgressAt >= 30 \* 1000/);
   assert.doesNotMatch(runtime, /#include "media_youtube_control_recovery_/);
