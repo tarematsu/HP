@@ -62,6 +62,10 @@ function normalizeIsrc(value) {
   return normalized.length === 12 ? normalized : null;
 }
 
+function normalizedTitle(value) {
+  return String(value ?? '').normalize('NFKC').trim().toLocaleLowerCase('ja-JP');
+}
+
 function complete(row) {
   const spotifyId = text(row?.spotify_id);
   const title = text(row?.title);
@@ -69,18 +73,35 @@ function complete(row) {
   return Boolean(spotifyId && title && artist && title !== spotifyId && artist !== spotifyId && !/^JP[A-Z0-9]{8,}$/i.test(artist));
 }
 
+function activeQueueRows() {
+  return query(buddiesDatabase, `WITH active_queue AS (
+    SELECT station_id,start_time
+    FROM sh_queue_current
+    ORDER BY observed_at DESC
+    LIMIT 1
+  )
+  SELECT items.spotify_id,items.isrc,items.duration_ms,items.observed_at
+  FROM active_queue
+  JOIN sh_queue_items AS items
+    ON items.station_id=active_queue.station_id
+    AND items.start_time=active_queue.start_time
+  WHERE items.spotify_id IS NOT NULL AND TRIM(items.spotify_id)<>''
+  ORDER BY items.position ASC
+  LIMIT ${candidateLimit}`);
+}
+
 function candidateRows() {
   const cutoff = now - lookbackMs;
-  // sh_queue_items is an occurrence history table. Grouping a seven-day slice
-  // scanned thousands of rows every run. sh_track_like_current already keeps the
-  // latest row per station/track key and has an observed_at index, so read a
-  // bounded newest-first window and deduplicate Spotify IDs in memory.
+  // Always prioritize tracks in the live queue. The current-state like table is
+  // efficient for backlog discovery, but tracks with no recent like event can be
+  // absent from it and otherwise remain title-less on the Pages dashboard.
+  const active = activeQueueRows();
   const latest = query(buddiesDatabase, `SELECT spotify_id,isrc,observed_at
     FROM sh_track_like_current INDEXED BY idx_sh_track_like_current_observed
     WHERE spotify_id IS NOT NULL AND TRIM(spotify_id)<>'' AND observed_at>=${cutoff}
     ORDER BY observed_at DESC LIMIT ${candidateScanLimit}`);
   const bySpotify = new Map();
-  for (const row of latest) {
+  for (const row of [...active, ...latest]) {
     const spotifyId = text(row?.spotify_id);
     if (!spotifyId || bySpotify.has(spotifyId)) continue;
     bySpotify.set(spotifyId, row);
@@ -94,6 +115,39 @@ function existingRows(ids, database = factsDatabase) {
   return query(database, `SELECT spotify_id,isrc,title,artist,display_title,thumbnail_url,
     spotify_url,source,fetched_at,raw_json FROM sh_track_metadata
     WHERE spotify_id IN (${ids.map(quote).join(',')})`);
+}
+
+async function appleMetadata(title, durationMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(title)}&entity=song&country=JP&limit=25`;
+    const response = await fetch(url, {
+      headers: { accept: 'application/json', 'user-agent': 'HomePanel-metadata-actions/1.0' },
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const expectedTitle = normalizedTitle(title);
+    const exact = (Array.isArray(payload?.results) ? payload.results : [])
+      .filter((item) => normalizedTitle(item?.trackName) === expectedTitle);
+    if (!exact.length) return null;
+
+    const expectedDuration = Number(durationMs);
+    if (Number.isFinite(expectedDuration) && expectedDuration > 0) {
+      exact.sort((left, right) => (
+        Math.abs(Number(left?.trackTimeMillis || 0) - expectedDuration)
+        - Math.abs(Number(right?.trackTimeMillis || 0) - expectedDuration)
+      ));
+      const best = exact[0];
+      if (Math.abs(Number(best?.trackTimeMillis || 0) - expectedDuration) <= 5_000) return best;
+    }
+    return exact.length === 1 ? exact[0] : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function spotifyMetadata(candidate) {
@@ -112,7 +166,12 @@ async function spotifyMetadata(candidate) {
     if (!rawTitle) return null;
     const separator = rawTitle.lastIndexOf(' by ');
     const title = separator > 0 ? text(rawTitle.slice(0, separator)) : rawTitle;
-    const artist = text(payload.author_name) || (separator > 0 ? text(rawTitle.slice(separator + 4)) : null);
+    let artist = text(payload.author_name) || (separator > 0 ? text(rawTitle.slice(separator + 4)) : null);
+    let apple = null;
+    if (!artist) {
+      apple = await appleMetadata(title, candidate.duration_ms);
+      artist = text(apple?.artistName);
+    }
     if (!title || !artist) return null;
     return {
       spotify_id: spotifyId,
@@ -120,11 +179,23 @@ async function spotifyMetadata(candidate) {
       title,
       artist,
       display_title: `${title} — ${artist}`,
-      thumbnail_url: text(payload.thumbnail_url),
+      thumbnail_url: text(payload.thumbnail_url) || text(apple?.artworkUrl100),
       spotify_url: spotifyUrl,
-      source: 'spotify_oembed_actions',
+      source: apple ? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions',
       fetched_at: now,
-      raw_json: JSON.stringify({ spotify: payload }),
+      raw_json: JSON.stringify({
+        spotify: payload,
+        ...(apple ? {
+          apple: {
+            trackName: apple.trackName,
+            artistName: apple.artistName,
+            collectionName: apple.collectionName,
+            trackTimeMillis: apple.trackTimeMillis,
+            artworkUrl100: apple.artworkUrl100,
+            trackViewUrl: apple.trackViewUrl,
+          },
+        } : {}),
+      }),
     };
   } catch {
     return null;
