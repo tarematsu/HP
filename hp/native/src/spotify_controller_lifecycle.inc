@@ -366,7 +366,9 @@ bool SpotifyWebViews::IsSpotifyPlayerUri(const wchar_t* uri) noexcept {
 bool SpotifyWebViews::IsSpotifyLoginUri(const wchar_t* uri) noexcept {
   if (!uri) return false;
   const std::wstring_view value(uri);
-  return StartsWithInsensitive(value, L"https://accounts.spotify.com/") || StartsWithInsensitive(value, L"https://open.spotify.com/login");
+  return StartsWithInsensitive(value, L"https://accounts.spotify.com/") ||
+         StartsWithInsensitive(value, L"https://challenge.spotify.com/") ||
+         StartsWithInsensitive(value, L"https://open.spotify.com/login");
 }
 
 }  // namespace hp
