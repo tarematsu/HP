@@ -107,17 +107,15 @@ test('paused TVer program recovery is idempotent and never toggles the video sur
   assert.doesNotMatch(policy, /findPlayButton/);
 });
 
-test('TVer fullscreen retries the loaded video corner after a failed trusted click', () => {
+test('TVer fullscreen retries only trusted key and the real control', () => {
   assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
-  assert.match(policy, /const videoFullscreenPoint = media =>/);
-  assert.match(policy, /media\.readyState < HTMLMediaElement\.HAVE_METADATA/);
-  assert.match(policy, /const x = rect\.right - insetX/);
-  assert.match(policy, /const y = rect\.bottom - insetY/);
   assert.match(policy, /if \(state\) state\.fullscreenDirty = true/);
   assert.match(policy, /homepanel:tver-fullscreen-key/);
   assert.match(policy, /const controlPoint = fullscreenControlPoint\(video\)/);
   assert.match(policy, /if \(controlPoint\) return controlPoint/);
-  assert.match(policy, /if \(fullscreenPoint\) return fullscreenPoint/);
+  assert.match(policy, /fullscreenAttemptCount/);
+  assert.match(policy, /attempts < 4/);
+  assert.match(policy, /Date\.now\(\) - requestedAt >= 1000/);
   assert.match(policy, /state\.fullscreenDirty = false/);
   assert.match(policy, /__homePanelTverFullscreenPending/);
   assert.match(policy, /window\.setTimeout\(\(\) => \{/);
@@ -126,7 +124,10 @@ test('TVer fullscreen retries the loaded video corner after a failed trusted cli
   assert.match(policy, /state\.fullscreenDirty = true/);
   assert.match(policy, /const isEnterFullscreenControl = element =>/);
   assert.match(policy, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
-  assert.doesNotMatch(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(policy, /request\.call\(target\)/);
+  assert.doesNotMatch(policy, /const videoFullscreenPoint = media =>/);
+  assert.doesNotMatch(policy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
   assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
   assert.match(
     mediaSection,

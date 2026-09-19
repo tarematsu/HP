@@ -3,6 +3,7 @@ namespace {
 constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
     30ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
+constexpr UINT kNativeMediaTverStartupTimeoutLimit = 30U;
 
 struct NativeMediaTverCloudQueueRefreshResult {
   std::wstring generatedAt;
@@ -23,6 +24,8 @@ struct NativeMediaTverNativeQueueState {
   std::wstring currentEpisodeId;
   std::wstring appliedGeneratedAt;
   ULONGLONG navigationStartedAt = 0;
+  UINT startupTimeoutCount = 0;
+  bool startupReloadPending = false;
   bool mediaReady = false;
 };
 
@@ -113,6 +116,8 @@ void NativeMediaTverResetQueuePhaseLocked(
   state.currentEpisodeId.clear();
   state.appliedGeneratedAt.clear();
   state.navigationStartedAt = 0;
+  state.startupTimeoutCount = 0;
+  state.startupReloadPending = false;
   state.mediaReady = false;
 }
 
@@ -210,6 +215,8 @@ std::wstring NativeMediaTverCurrentEpisodeUrl(
     if (state.queueEpisodeIds.empty()) return {};
     state.currentEpisodeId = state.queueEpisodeIds.front();
     state.navigationStartedAt = 0;
+    state.startupTimeoutCount = 0;
+    state.startupReloadPending = false;
     state.mediaReady = false;
   }
   return NativeMediaTverEpisodeUrl(state.currentEpisodeId);
@@ -224,6 +231,7 @@ void NativeMediaTverMarkNavigationStarted(std::wstring_view url) noexcept {
   }
   ULONGLONG now = GetTickCount64();
   state.navigationStartedAt = now == 0 ? 1 : now;
+  state.startupReloadPending = false;
   state.mediaReady = false;
 }
 
@@ -236,6 +244,8 @@ void NativeMediaTverMarkMediaReady(std::wstring_view source) noexcept {
   }
   state.mediaReady = true;
   state.navigationStartedAt = 0;
+  state.startupTimeoutCount = 0;
+  state.startupReloadPending = false;
 }
 
 bool NativeMediaTverStartupExpired(
@@ -246,16 +256,27 @@ bool NativeMediaTverStartupExpired(
     return false;
   }
   if (!NativeMediaTverSourceMatchesEpisode(source, state.currentEpisodeId)) {
+    state.startupReloadPending = false;
     return true;
   }
   if (!state.mediaReady && !state.latestEpisodeIds.empty() &&
       !NativeMediaTverContainsId(
           state.latestEpisodeIds, state.currentEpisodeId)) {
+    state.startupReloadPending = false;
     return true;
   }
   if (state.mediaReady || state.navigationStartedAt == 0) return false;
-  return now >= state.navigationStartedAt &&
-      now - state.navigationStartedAt >= kNativeMediaTverStartupTimeoutMs;
+  if (now < state.navigationStartedAt ||
+      now - state.navigationStartedAt < kNativeMediaTverStartupTimeoutMs) {
+    return false;
+  }
+
+  if (state.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit) {
+    ++state.startupTimeoutCount;
+  }
+  state.startupReloadPending =
+      state.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit;
+  return true;
 }
 
 bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
@@ -269,6 +290,18 @@ bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
       !state.latestEpisodeIds.empty() &&
       !NativeMediaTverContainsId(
           state.latestEpisodeIds, state.currentEpisodeId);
+
+  // A matching episode that merely missed media-ready is reloaded in place.
+  // The caller sees true and navigates CurrentEpisodeUrl(), which still points
+  // at this episode because the queue item is deliberately left untouched.
+  if (state.startupReloadPending && sourceMatches && !missingFromLatest) {
+    state.startupReloadPending = false;
+    state.navigationStartedAt = 0;
+    state.mediaReady = false;
+    return true;
+  }
+  state.startupReloadPending = false;
+
   if (!sourceMatches || missingFromLatest) {
     if (!NativeMediaTverContainsId(
             state.rejectedEpisodeIds, state.currentEpisodeId)) {
@@ -287,6 +320,7 @@ bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
   if (current != state.queueEpisodeIds.end()) state.queueEpisodeIds.erase(current);
   state.currentEpisodeId.clear();
   state.navigationStartedAt = 0;
+  state.startupTimeoutCount = 0;
   state.mediaReady = false;
   NativeMediaTverRebuildQueueLocked(state);
   return !state.queueEpisodeIds.empty();

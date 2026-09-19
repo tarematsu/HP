@@ -12,6 +12,7 @@ LR"JS(
     playbackSettingsApplied: false,
     fullscreenDirty: true,
     fullscreenKeyRequestedAt: 0,
+    fullscreenAttemptCount: 0,
     recoveryPending: false,
     recoverySince: 0,
     recoveryWakeTimer: 0,
