@@ -1,4 +1,5 @@
 #include "spotify_webviews.h"
+#include "spotify_saved_email_login.h"
 #include "shared_webview_environment.h"
 #include "media_surface_anchor.h"
 
@@ -41,6 +42,7 @@ void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
     EnsureSpotifyMediaStartEvidence(
         webview.Get(), static_cast<size_t>(accountIndex));
   }
+  TrySpotifySavedEmailLogin(webview.Get());
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
     const int runtimeLane = accountIndex >= 0
