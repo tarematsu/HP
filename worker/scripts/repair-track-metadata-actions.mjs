@@ -69,18 +69,35 @@ function complete(row) {
   return Boolean(spotifyId && title && artist && title !== spotifyId && artist !== spotifyId && !/^JP[A-Z0-9]{8,}$/i.test(artist));
 }
 
+function activeQueueRows() {
+  return query(buddiesDatabase, `WITH active_queue AS (
+    SELECT station_id,start_time
+    FROM sh_queue_current
+    ORDER BY observed_at DESC
+    LIMIT 1
+  )
+  SELECT items.spotify_id,items.isrc,items.observed_at
+  FROM active_queue
+  JOIN sh_queue_items AS items
+    ON items.station_id=active_queue.station_id
+    AND items.start_time=active_queue.start_time
+  WHERE items.spotify_id IS NOT NULL AND TRIM(items.spotify_id)<>''
+  ORDER BY items.position ASC
+  LIMIT ${candidateLimit}`);
+}
+
 function candidateRows() {
   const cutoff = now - lookbackMs;
-  // sh_queue_items is an occurrence history table. Grouping a seven-day slice
-  // scanned thousands of rows every run. sh_track_like_current already keeps the
-  // latest row per station/track key and has an observed_at index, so read a
-  // bounded newest-first window and deduplicate Spotify IDs in memory.
+  // Always prioritize tracks in the live queue. The current-state like table is
+  // efficient for backlog discovery, but tracks with no recent like event can be
+  // absent from it and otherwise remain title-less on the Pages dashboard.
+  const active = activeQueueRows();
   const latest = query(buddiesDatabase, `SELECT spotify_id,isrc,observed_at
     FROM sh_track_like_current INDEXED BY idx_sh_track_like_current_observed
     WHERE spotify_id IS NOT NULL AND TRIM(spotify_id)<>'' AND observed_at>=${cutoff}
     ORDER BY observed_at DESC LIMIT ${candidateScanLimit}`);
   const bySpotify = new Map();
-  for (const row of latest) {
+  for (const row of [...active, ...latest]) {
     const spotifyId = text(row?.spotify_id);
     if (!spotifyId || bySpotify.has(spotifyId)) continue;
     bySpotify.set(spotifyId, row);
