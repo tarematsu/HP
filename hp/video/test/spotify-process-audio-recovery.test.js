@@ -48,7 +48,9 @@ test('fatal browser or renderer failures rebuild while transient process exits d
   assert.match(recovery, /GPU, sandbox-helper, frame-only and non-audio utility processes/);
 });
 
-test('Stationhead fifty-minute preventive reload remains unchanged', () => {
-  assert.match(stationhead, /return 50 \* 60'000/);
-  assert.match(stationhead, /L"50-minute periodic refresh"/);
+test('Stationhead uses audio health instead of a fifty-minute preventive reload', () => {
+  assert.match(stationhead, /StationheadAudioHealthCheckIntervalMs/);
+  assert.match(stationhead, /return 1 \* 60'000/);
+  assert.doesNotMatch(stationhead, /StationheadPeriodicRefreshIntervalMs/);
+  assert.doesNotMatch(stationhead, /50-minute periodic refresh/);
 });
