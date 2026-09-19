@@ -15,8 +15,8 @@ inline void SetProcessEfficiencyMode(INT32 processId) noexcept {
   if (!process) return;
 
   // Match Windows Efficiency mode without using IDLE priority, which can starve
-  // WebView2 media/DRM work. Spotify is intentionally kept in this state for
-  // the renderer's entire lifetime.
+  // WebView2 media/DRM work. Playback renderers intentionally remain in this
+  // state for their entire lifetime.
   SetPriorityClass(process, BELOW_NORMAL_PRIORITY_CLASS);
 
   PROCESS_POWER_THROTTLING_STATE throttling{};
@@ -121,18 +121,24 @@ inline void SetRendererEfficiencyMode(
 
 }  // namespace spotify_resource_mode_detail
 
-template <typename SlotT>
-inline void ApplySpotifyPermanentResourceMode(SlotT& slot) noexcept {
-  if (!slot.webview) return;
+inline void ApplyPermanentWebViewResourceMode(
+    ICoreWebView2Environment* environment,
+    ICoreWebView2* webview) noexcept {
+  if (!webview) return;
 
   ComPtr<ICoreWebView2_19> webview19;
-  if (SUCCEEDED(slot.webview->QueryInterface(IID_PPV_ARGS(&webview19))) &&
+  if (SUCCEEDED(webview->QueryInterface(IID_PPV_ARGS(&webview19))) &&
       webview19) {
     webview19->put_MemoryUsageTargetLevel(
         COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
 
-  spotify_resource_mode_detail::SetRendererEfficiencyMode(
+  spotify_resource_mode_detail::SetRendererEfficiencyMode(environment, webview);
+}
+
+template <typename SlotT>
+inline void ApplySpotifyPermanentResourceMode(SlotT& slot) noexcept {
+  ApplyPermanentWebViewResourceMode(
       slot.environment.Get(), slot.webview.Get());
 }
 
