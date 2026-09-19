@@ -2,6 +2,8 @@ namespace hp {
 namespace {
 constexpr unsigned kSpotifyNativeAudioStartCheckLimit = 4;
 constexpr ULONGLONG kSpotifyFailedOnlyTrackRetryMs = 60ULL * 1000ULL;
+std::array<ULONGLONG, kSpotifyActiveAccountCount>
+    gSpotifyNativeAudioFirstPassTicks{};
 
 void RequestSpotifyAudioPipelineRestart(ICoreWebView2* webview) noexcept {
   if (!webview) return;
@@ -55,6 +57,9 @@ void SpotifyWebViews::SkipFailedSpotifyTrack(Slot& slot) noexcept {
   slot.nativeAudioStartChecks = 0;
   slot.nativeAudioStartVerified = false;
   slot.trustedClickBlockedUntilTick = 0;
+  if (slot.index < gSpotifyNativeAudioFirstPassTicks.size()) {
+    gSpotifyNativeAudioFirstPassTicks[slot.index] = 0;
+  }
   AdvanceTimedRotationSlot(slot);
 
   const ManagedTrack* nextTrack = CurrentMusicTrack(slot);
@@ -77,6 +82,9 @@ void SpotifyWebViews::SkipFailedSpotifyTrack(Slot& slot) noexcept {
 
 bool SpotifyWebViews::EscalateSpotifyStartupFailure(
     Slot& slot, ULONGLONG now, bool requestRebuild) noexcept {
+  if (slot.index < gSpotifyNativeAudioFirstPassTicks.size()) {
+    gSpotifyNativeAudioFirstPassTicks[slot.index] = 0;
+  }
   const SpotifyTrackStartRecoveryAction action =
       NextSpotifyTrackStartRecoveryAction(
           slot.trackStartRecovery, slot.targetGeneration,
@@ -124,13 +132,21 @@ bool SpotifyWebViews::EscalateSpotifyStartupFailure(
 bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
     Slot& slot, ULONGLONG now) noexcept {
   if (slot.nativeAudioStartVerified) return true;
-  if (!slot.webview || !CurrentMusicTrack(slot)) return false;
+  if (!slot.webview || !CurrentMusicTrack(slot) ||
+      slot.index >= gSpotifyNativeAudioFirstPassTicks.size()) {
+    return false;
+  }
+
+  ULONGLONG& firstPassTick = gSpotifyNativeAudioFirstPassTicks[slot.index];
+  if (slot.nativeAudioStartChecks == 0) firstPassTick = 0;
 
   // The caller reaches this method only after target identity and actual
   // HTMLMediaElement clock progress have been confirmed. Add two independent,
   // slot-local native signals here: WebView2 must report document audio and the
   // same WebView's CDP Media domain must have observed a fresh playback event
   // for this target generation with both an audio decoder and audio tracks.
+  // Require the complete native evidence twice, two seconds apart, so a stale
+  // SPA transition or one transient audio-service state cannot mark startup OK.
   if (slot.nativeAudioStartChecks != 0 && slot.nextRecoveryTick != 0 &&
       now < slot.nextRecoveryTick) {
     return false;
@@ -152,17 +168,32 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
       SpotifyMediaStartEvidenceReady(slot.index, slot.targetGeneration);
 
   if (startupAudioVerified) {
-    slot.nativeAudioStartVerified = true;
-    slot.nativeAudioStartChecks = 0;
-    slot.nextRecoveryTick = 0;
-    return true;
+    if (firstPassTick != 0 && now >= firstPassTick &&
+        now - firstPassTick >= kSpotifyNativeAudioStartRetryMs) {
+      firstPassTick = 0;
+      slot.nativeAudioStartVerified = true;
+      slot.nativeAudioStartChecks = 0;
+      slot.nextRecoveryTick = 0;
+      return true;
+    }
+
+    if (slot.nativeAudioStartChecks < kSpotifyNativeAudioStartCheckLimit) {
+      if (firstPassTick == 0) firstPassTick = now == 0 ? 1 : now;
+      SetSlotState(slot, SlotState::WaitingTarget);
+      slot.nextRecoveryTick = now + kSpotifyNativeAudioStartRetryMs;
+      ArmRobustScheduler();
+      return false;
+    }
+  } else {
+    // Any failed sample breaks the consecutive-success requirement.
+    firstPassTick = 0;
   }
 
   // "Could not query" and missing CDP decoder/track/playback evidence are all
   // deliberately fail-closed. After two failed samples, pause the verified
   // target once; the normal reconcile pass then issues a fresh trusted Play
   // click before the bounded Reload -> Rebuild -> Skip ladder begins.
-  if (slot.nativeAudioStartChecks == 2) {
+  if (!startupAudioVerified && slot.nativeAudioStartChecks == 2) {
     RequestSpotifyAudioPipelineRestart(slot.webview.Get());
     slot.trustedClickBlockedUntilTick = 0;
   }
@@ -174,6 +205,7 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
     return false;
   }
 
+  firstPassTick = 0;
   slot.nativeAudioStartChecks = 0;
   const bool requestRebuild = slot.trackStartRecovery.reloadIssued;
   EscalateSpotifyStartupFailure(slot, now, requestRebuild);
