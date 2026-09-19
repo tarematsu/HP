@@ -33,6 +33,18 @@ bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
   return SpotifyUrlStartsWith(source, L"https://open.spotify.com/");
 }
 
+void RestartSpotifyMediaStartEvidenceWindow(
+    size_t accountIndex, ULONGLONG generation) noexcept {
+  if (accountIndex >= gSpotifyMediaStartEvidence.size() || generation == 0) {
+    return;
+  }
+  auto& evidence = gSpotifyMediaStartEvidence[accountIndex];
+  evidence.targetGeneration = generation;
+  evidence.targetBaselineSequence = evidence.eventSequence;
+  evidence.playbackEventSequence = 0;
+  evidence.playbackPlayerId.clear();
+}
+
 }  // namespace
 
 bool SpotifyWebViews::SlotStateIsHealthy(SlotState state) noexcept {
@@ -45,6 +57,20 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 }
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
+  // Once a fully verified lane leaves Playing, its old startup proof is no
+  // longer evidence that recovery succeeded. Invalidate both the native result
+  // and the CDP playback baseline so the same target generation must produce a
+  // fresh Play/pipeline event plus two new native-audio samples before it can be
+  // healthy again. Startup probing itself is unaffected because it has not yet
+  // set nativeAudioStartVerified.
+  if (state != SlotState::Playing && slot.nativeAudioStartVerified) {
+    slot.nativeAudioStartChecks = 0;
+    slot.nativeAudioStartVerified = false;
+    slot.playbackConfirmed = false;
+    slot.trustedClickBlockedUntilTick = 0;
+    RestartSpotifyMediaStartEvidenceWindow(slot.index, slot.targetGeneration);
+  }
+
   slot.state = state;
   ApplySpotifyPermanentResourceMode(slot);
   if (state == SlotState::NotCreated || state == SlotState::Authenticating) {
