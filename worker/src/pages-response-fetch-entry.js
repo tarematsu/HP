@@ -7,6 +7,7 @@ const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 60 * 1000;
 const R2_ONLY_MODEL_KEYS = new Set(
   MATERIALIZED_API_VARIANTS
     .map(({ key }) => key)
@@ -41,6 +42,14 @@ function materializedStaleMaximumAge(env, freshMaximumAge) {
     ? configured
     : DEFAULT_STALE_FALLBACK_MAX_AGE_MS;
   return Math.max(Number(freshMaximumAge) || 0, staleMaximumAge);
+}
+
+function materializedEdgeCacheMaximumAge(env, materializedMaximumAge) {
+  const configured = Number(env?.PAGES_RESPONSE_EDGE_CACHE_MAX_AGE_MS);
+  const edgeMaximumAge = Number.isFinite(configured) && configured >= 0
+    ? configured
+    : DEFAULT_EDGE_CACHE_MAX_AGE_MS;
+  return Math.min(Math.max(0, Number(materializedMaximumAge) || 0), edgeMaximumAge);
 }
 
 function responseIsStale(response, now, maximumAge) {
@@ -125,7 +134,8 @@ export async function runPagesResponseFetch(
   const cache = edgeCache(dependencies);
   const cacheKey = edgeCacheKey(request, dependencies);
   try {
-    const edgeResponse = await loadEdgeCachedResponse(cache, cacheKey, now, maximumAge);
+    const edgeMaximumAge = materializedEdgeCacheMaximumAge(env, maximumAge);
+    const edgeResponse = await loadEdgeCachedResponse(cache, cacheKey, now, edgeMaximumAge);
     if (edgeResponse) return edgeResponse;
 
     let response;

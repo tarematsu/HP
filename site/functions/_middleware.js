@@ -8,7 +8,8 @@ import {
 } from './lib/api-contract.js';
 
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
-const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 30 * 60;
+const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 60;
+const MATERIALIZED_CACHE_NAMESPACE = '20260919-1';
 const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
 // Only the realtime dashboard may fall back to live Pages bindings. Completed
 // history is an R2 read model; falling back would reintroduce D1 reads on the
@@ -36,6 +37,17 @@ function withResponseHeader(response, name, value) {
     status: response.status,
     statusText: response.statusText,
     headers,
+  });
+}
+
+function materializedCacheRequest(request, modelKey) {
+  const canonical = canonicalApiCacheRequest(request);
+  if (!modelKey) return canonical;
+  const url = new URL(canonical.url);
+  url.searchParams.set('__materialized_cache_rev', MATERIALIZED_CACHE_NAMESPACE);
+  return new Request(url.toString(), {
+    method: 'GET',
+    headers: { accept: 'application/json' },
   });
 }
 
@@ -69,7 +81,7 @@ function responseCacheTtl(origin, requestedTtl, modelKey, usedMaterialized, now)
   const remainingSeconds = Math.floor((updatedAt + cadenceSeconds * 1000 - now) / 1000);
   if (remainingSeconds <= 0) return MATERIALIZED_RETRY_TTL_SECONDS;
   const materializedTtl = Math.min(MATERIALIZED_EDGE_TTL_MAX_SECONDS, cadenceSeconds);
-  return Math.max(1, Math.min(Math.max(requestedTtl, materializedTtl), remainingSeconds));
+  return Math.max(1, Math.min(requestedTtl, materializedTtl, remainingSeconds));
 }
 
 function varyTokens(headers) {
@@ -193,15 +205,15 @@ export async function onRequest(context) {
   const { request } = context;
   if (!edgeCacheableApiRequest(request)) return context.next();
 
-  const cache = caches.default;
-  const cacheKey = canonicalApiCacheRequest(request);
-  const hit = await cache.match(cacheKey);
-  if (hit) return tagged(hit, 'HIT');
-
   const now = Date.now();
   const modelKey = materializedApiKey(new URL(request.url));
   const range = historyRange(request, modelKey);
   if (range.error) return historyRangeError(range.error);
+
+  const cache = caches.default;
+  const cacheKey = materializedCacheRequest(request, modelKey);
+  const hit = await cache.match(cacheKey);
+  if (hit) return tagged(hit, 'HIT');
 
   let origin;
   let usedMaterialized = false;
