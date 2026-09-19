@@ -25,7 +25,8 @@ test('interaction owner distinguishes account state from blocking login surfaces
   assert.match(interaction, /const accountVisible = \(\) =>/);
   assert.match(interaction, /const blockingLogin = authenticated =>/);
   assert.match(interaction, /credentialSelector/);
-  assert.match(interaction, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
+  assert.doesNotMatch(interaction, /serviceConnectPattern/);
+  assert.doesNotMatch(interaction, /querySelectorAll\("h1,h2,h3,\[role='heading'\]"\)/);
   assert.match(interaction, /const shell = element\.closest\?\.\(blockingShellSelector\)/);
   assert.match(interaction, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true/);
 });
