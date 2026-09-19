@@ -37,7 +37,8 @@ test('Actions repair recovers Spotify oEmbed entries that omit the artist', () =
   assert.match(script, /itunes\.apple\.com\/search/);
   assert.match(script, /trackTimeMillis/);
   assert.match(script, /candidate\.duration_ms/);
-  assert.match(script, /spotify_oembed_itunes_actions/);
+  assert.match(script, /if \(!title \|\| !artist\) return null/);
+  assert.match(script, /source: apple \? 'spotify_oembed_itunes_actions' : 'spotify_oembed_actions'/);
 });
 
 test('Actions repair prefers existing buddies metadata before bounded Spotify fetches', () => {
