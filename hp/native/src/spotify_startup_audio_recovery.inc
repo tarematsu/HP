@@ -23,17 +23,8 @@ bool SpotifyPidListContains(
       processIds.end();
 }
 
-std::vector<DWORD> SpotifyWebView2ProcessTreeIds(
-    ICoreWebView2* webview) noexcept {
+std::vector<DWORD> SpotifyWebView2DescendantProcessIds() noexcept {
   std::vector<DWORD> result;
-  if (!webview) return result;
-
-  UINT32 browserProcessId = 0;
-  if (FAILED(webview->get_BrowserProcessId(&browserProcessId)) ||
-      browserProcessId == 0 || browserProcessId == GetCurrentProcessId()) {
-    return result;
-  }
-
   std::vector<SpotifyProcessEntry> entries;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snapshot == INVALID_HANDLE_VALUE) return result;
@@ -53,11 +44,7 @@ std::vector<DWORD> SpotifyWebView2ProcessTreeIds(
   }
   CloseHandle(snapshot);
 
-  // The browser PID returned by this slot is the root of exactly one isolated
-  // WebView2 process group. Only that browser and its descendants are eligible
-  // Core Audio owners for this slot.
-  std::vector<DWORD> ancestry{static_cast<DWORD>(browserProcessId)};
-  result.push_back(static_cast<DWORD>(browserProcessId));
+  std::vector<DWORD> ancestry{GetCurrentProcessId()};
   bool changed = true;
   while (changed) {
     changed = false;
@@ -128,11 +115,10 @@ void MergeSpotifyWindowsAudioEvidenceForRole(
   }
 }
 
-SpotifyWindowsAudioEvidence ProbeSpotifyWindowsAudioEvidence(
-    ICoreWebView2* webview) noexcept {
+SpotifyWindowsAudioEvidence ProbeSpotifyWindowsAudioEvidence() noexcept {
   SpotifyWindowsAudioEvidence evidence{};
   const std::vector<DWORD> webViewProcessIds =
-      SpotifyWebView2ProcessTreeIds(webview);
+      SpotifyWebView2DescendantProcessIds();
   if (webViewProcessIds.empty()) return evidence;
 
   ComPtr<IMMDeviceEnumerator> deviceEnumerator;
@@ -297,33 +283,14 @@ bool SpotifyWebViews::ConfirmSpotifyNativeAudioStart(
   bool startupAudioVerified = false;
   if (SUCCEEDED(interfaceResult) && audioView && SUCCEEDED(stateResult) &&
       nativePlaying != FALSE) {
-    UINT32 browserProcessId = 0;
-    bool browserProcessUnique =
-        SUCCEEDED(slot.webview->get_BrowserProcessId(&browserProcessId)) &&
-        browserProcessId != 0;
-    if (browserProcessUnique) {
-      for (const Slot& other : slots_) {
-        if (&other == &slot || !other.webview) continue;
-        UINT32 otherBrowserProcessId = 0;
-        if (SUCCEEDED(other.webview->get_BrowserProcessId(
-                &otherBrowserProcessId)) &&
-            otherBrowserProcessId == browserProcessId) {
-          browserProcessUnique = false;
-          break;
-        }
-      }
-    }
+    const SpotifyWindowsAudioEvidence windowsAudio =
+        ProbeSpotifyWindowsAudioEvidence();
 
-    if (browserProcessUnique) {
-      const SpotifyWindowsAudioEvidence windowsAudio =
-          ProbeSpotifyWindowsAudioEvidence(slot.webview.Get());
-
-      // IsDocumentPlayingAudio is slot-local. Core Audio evidence is accepted
-      // only from this slot's dedicated browser/audio-service process tree, so
-      // another Spotify account can no longer satisfy this startup check.
-      startupAudioVerified =
-          windowsAudio.querySucceeded && windowsAudio.activeWebViewSession;
-    }
+    // Require the WebView2 process family to own an active Core Audio session.
+    // Do not inspect PCM peak level: muted/background Spotify lanes may be
+    // healthy while intentionally producing no physical output.
+    startupAudioVerified =
+        windowsAudio.querySucceeded && windowsAudio.activeWebViewSession;
   }
 
   if (startupAudioVerified) {
