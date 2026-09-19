@@ -36,18 +36,22 @@ test('TVer completed program waits for post-roll before native advancement', () 
   assert.match(episode, /endReported/);
 });
 
-test('TVer startup timeout requires repeated matching-URL failures before advancing', () => {
+test('TVer matching-URL startup timeouts reload in place until the 15-minute limit', () => {
   assert.match(queue, /kNativeMediaTverStartupTimeoutMs = 30ULL \* 1000ULL/);
-  assert.match(queue, /kNativeMediaTverStartupTimeoutLimit = 3U/);
+  assert.match(queue, /kNativeMediaTverStartupTimeoutLimit = 30U/);
   assert.match(queue, /startupTimeoutCount = 0/);
+  assert.match(queue, /startupReloadPending = false/);
   assert.match(queue, /NativeMediaTverMarkNavigationStarted/);
   assert.match(queue, /NativeMediaTverMarkMediaReady/);
   assert.match(queue, /NativeMediaTverStartupExpired/);
-  assert.match(queue, /!NativeMediaTverSourceMatchesEpisode\(source, state\.currentEpisodeId\)/);
   assert.match(queue, /state\.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit/);
   assert.match(queue, /\+\+state\.startupTimeoutCount/);
-  assert.match(queue, /state\.navigationStartedAt = now/);
-  assert.match(queue, /state\.startupTimeoutCount = 0/);
+  assert.match(
+    queue,
+    /state\.startupReloadPending =\s*state\.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit/,
+  );
+  assert.match(queue, /if \(state\.startupReloadPending && sourceMatches && !missingFromLatest\)/);
+  assert.match(queue, /return true;[\s\S]*state\.startupReloadPending = false/);
   assert.match(host, /NativeMediaTverStartupExpired\(source, now\)/);
   assert.match(host, /NativeMediaTverAdvanceEpisode\(source\)/);
   assert.doesNotMatch(queue, /document\.querySelectorAll|setTimeout|setInterval/);
@@ -55,7 +59,7 @@ test('TVer startup timeout requires repeated matching-URL failures before advanc
 
 test('TVer stale or redirected pages still fail forward immediately', () => {
   assert.match(queue, /!NativeMediaTverSourceMatchesEpisode\(source, state\.currentEpisodeId\)/);
-  assert.match(queue, /return true;/);
+  assert.match(queue, /state\.startupReloadPending = false;\s*return true;/);
   assert.match(queue, /!state\.mediaReady && !state\.latestEpisodeIds\.empty\(\)/);
   assert.match(queue, /state\.rejectedEpisodeIds\.push_back\(state\.currentEpisodeId\)/);
   assert.match(queue, /state\.lastAttemptAt = 0;/);
