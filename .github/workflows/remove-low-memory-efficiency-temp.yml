@@ -1,0 +1,145 @@
+name: Remove low-memory and efficiency mode
+
+on:
+  push:
+    branches:
+      - fix/remove-low-memory-efficiency-mode
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/remove-low-memory-efficiency-mode
+          fetch-depth: 0
+
+      - name: Remove residual resource-mode code
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('hp/native/src')
+
+          boundary = root / 'sh_track_boundary_message_policy.h'
+          text = boundary.read_text(encoding='utf-8')
+          text, count = re.subn(
+              r'\ninline void RestoreStationheadPlaybackMemoryTargetForReload\([\s\S]*?\n}\n\n(?=static_assert)',
+              '\n',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit('Stationhead memory-target restore helper was not found exactly once')
+          call = '    ::hp::RestoreStationheadPlaybackMemoryTargetForReload(webview_.Get());    \\\n'
+          if text.count(call) != 1:
+              raise SystemExit('Stationhead memory-target restore call was not found exactly once')
+          boundary.write_text(text.replace(call, ''), encoding='utf-8')
+
+          for relative in (
+              'spotify_webviews.h',
+              'spotify_host_lifecycle.inc',
+              'spotify_controller_lifecycle.inc',
+          ):
+              path = root / relative
+              source = path.read_text(encoding='utf-8')
+              residue = '    int memoryUsageTargetLevel = -1;\n' if relative == 'spotify_webviews.h' else '  slot.memoryUsageTargetLevel = -1;\n'
+              if source.count(residue) != 1:
+                  raise SystemExit(f'{relative}: memory target residue was not found exactly once')
+              path.write_text(source.replace(residue, ''), encoding='utf-8')
+
+          forbidden = re.compile(
+              r'MemoryUsageTargetLevel|COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_'
+              r'|ProcessPowerThrottling|PROCESS_POWER_THROTTLING_EXECUTION_SPEED'
+              r'|SetWebViewRendererEfficiencyMode|SetWindowsProcessEfficiencyMode'
+              r'|BELOW_NORMAL_PRIORITY_CLASS'
+          )
+          hits = []
+          for path in root.rglob('*'):
+              if not path.is_file() or path.suffix.lower() not in {'.h', '.hpp', '.cpp', '.cc', '.cxx', '.inc'}:
+                  continue
+              source = path.read_text(encoding='utf-8', errors='ignore')
+              if forbidden.search(source):
+                  hits.append(str(path))
+          if hits:
+              raise SystemExit('Forbidden low-memory/efficiency implementation remains: ' + ', '.join(hits))
+          PY
+
+      - name: Replace regression contracts
+        shell: bash
+        run: |
+          cat > hp/video/test/native-media-memory-target.test.js <<'EOF'
+          import assert from 'node:assert/strict';
+          import { readdirSync, readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { fileURLToPath } from 'node:url';
+          import test from 'node:test';
+
+          const nativeRoot = fileURLToPath(new URL('../../native/src/', import.meta.url));
+
+          function nativeSources(dir) {
+            return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+              const path = join(dir, entry.name);
+              if (entry.isDirectory()) return nativeSources(path);
+              if (!/\.(?:h|hpp|cpp|cc|cxx|inc)$/i.test(entry.name)) return [];
+              return [readFileSync(path, 'utf8')];
+            });
+          }
+
+          const nativeSource = nativeSources(nativeRoot).join('\n');
+
+          test('native media never overrides the WebView2 memory usage target', () => {
+            assert.doesNotMatch(nativeSource, /MemoryUsageTargetLevel/);
+            assert.doesNotMatch(nativeSource, /COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_/);
+          });
+          EOF
+
+          cat > hp/video/test/native-webview2-efficiency-mode.test.js <<'EOF'
+          import assert from 'node:assert/strict';
+          import { readdirSync, readFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { fileURLToPath } from 'node:url';
+          import test from 'node:test';
+
+          const nativeRoot = fileURLToPath(new URL('../../native/src/', import.meta.url));
+
+          function nativeSources(dir) {
+            return readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+              const path = join(dir, entry.name);
+              if (entry.isDirectory()) return nativeSources(path);
+              if (!/\.(?:h|hpp|cpp|cc|cxx|inc)$/i.test(entry.name)) return [];
+              return [readFileSync(path, 'utf8')];
+            });
+          }
+
+          const nativeSource = nativeSources(nativeRoot).join('\n');
+
+          test('native source contains no Windows efficiency-mode throttling', () => {
+            assert.doesNotMatch(nativeSource, /ProcessPowerThrottling/);
+            assert.doesNotMatch(nativeSource, /PROCESS_POWER_THROTTLING_EXECUTION_SPEED/);
+            assert.doesNotMatch(nativeSource, /SetWebViewRendererEfficiencyMode/);
+            assert.doesNotMatch(nativeSource, /SetWindowsProcessEfficiencyMode/);
+            assert.doesNotMatch(nativeSource, /ApplyEfficiencyModeTo/);
+            assert.doesNotMatch(nativeSource, /BELOW_NORMAL_PRIORITY_CLASS/);
+            assert.doesNotMatch(nativeSource, /IDLE_PRIORITY_CLASS/);
+          });
+          EOF
+
+      - name: Run focused regression tests
+        run: node --test hp/video/test/native-media-memory-target.test.js hp/video/test/native-webview2-efficiency-mode.test.js
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          rm .github/workflows/remove-low-memory-efficiency-temp.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m "Remove low-memory and efficiency mode completely"
+          git push origin HEAD:fix/remove-low-memory-efficiency-mode
