@@ -1,6 +1,8 @@
 namespace hp {
 namespace {
 
+extern bool gSpotifyMonitorGridVisible;
+
 constexpr LONG kSpotifyInternalViewportWidth = 320;
 constexpr LONG kSpotifyInternalViewportHeight = 160;
 
@@ -10,7 +12,8 @@ RECT SpotifyFixedViewportBounds() noexcept {
 }
 
 RECT SpotifyControllerBounds(HWND hostWindow, bool authentication) noexcept {
-  if (authentication && hostWindow && IsWindow(hostWindow)) {
+  if ((authentication || gSpotifyMonitorGridVisible) &&
+      hostWindow && IsWindow(hostWindow)) {
     RECT client{};
     if (GetClientRect(hostWindow, &client) &&
         client.right > client.left && client.bottom > client.top) {
