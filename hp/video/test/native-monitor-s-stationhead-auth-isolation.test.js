@@ -12,12 +12,11 @@ const routing = readFileSync(
 );
 
 test('Monitor S keeps Stationhead auth probing without disabling Spotify grid', () => {
-  assert.match(schedule, /bool MonitorAuthProbeEnabled\(MonitorMode mode\)/);
-  assert.match(schedule, /return mode != MonitorMode::Off/);
-  assert.match(schedule, /if \(MonitorAuthProbeEnabled\(monitorMode_\)\) RequestMonitorAuthProbe\(\)/);
+  assert.match(schedule, /if \(monitorMode_ != MonitorMode::Off\) RequestMonitorAuthProbe\(\)/);
+  assert.match(schedule, /if \(monitorMode_ == MonitorMode::Off \|\| powerSaving_\) return/);
   assert.match(schedule, /if \(mode == MonitorMode::Off\) monitorAuthForeground_ = false/);
   assert.match(schedule, /SetSpotifyMonitorGridVisible\(mode == MonitorMode::ServiceGrid\)/);
-  assert.match(schedule, /if \(MonitorAuthProbeEnabled\(monitorMode_\)\) RequestMonitorAuthProbe\(\)/);
+  assert.doesNotMatch(schedule, /if \(mode != MonitorMode::Native\) monitorAuthForeground_ = false/);
 });
 
 test('Stationhead auth is only a temporary Monitor S overlay', () => {
