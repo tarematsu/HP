@@ -238,7 +238,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
         ChildWindowPlacementMatches(
             hostWindow, playbackHostBounds,
             playbackForeground ? HWND_TOP : HWND_BOTTOM);
-    // Match Spotify's ordering: clip a background host before SWP_SHOWWINDOW.
+    // Clip a background host before SWP_SHOWWINDOW.
     ApplyHostVisualClip(hostWindow, playbackForeground);
     if (!geometryMatches || !IsWindowVisible(hostWindow)) {
       SetWindowPos(hostWindow, hostPlacement,
@@ -271,8 +271,9 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
 bool StationheadPlayer::EnsureHostWindow() {
   if (hostWindow_ && IsWindow(hostWindow_)) return true;
+  const std::wstring title = L"StationheadHost:" + profileName_;
   hostWindow_ = CreateStationheadChildHost(
-      window_, L"HomePanelStationheadHost", L"StationheadHost", bounds_);
+      window_, L"HomePanelStationheadHost", title.c_str(), bounds_);
   return hostWindow_ && IsWindow(hostWindow_);
 }
 
@@ -497,10 +498,3 @@ HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
   }
   return nullptr;
 }
-
-bool StationheadPlayer::NeedsInteractiveWindow() const {
-  return (selectedTab_ == StationheadTabKind::Stationhead && loginRequired_) ||
-         selectedTab_ == StationheadTabKind::Auth || spotifyAuthorization_;
-}
-
-}  // namespace hp
