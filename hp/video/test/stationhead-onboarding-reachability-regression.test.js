@@ -74,7 +74,7 @@ test('playback start actions also resolve non-semantic targets through clickable
   const playback = section(
     locator,
     '// Playback-start actions remain blocked',
-    'return kScript;',
+    'return script;',
   );
   assert.match(playback, /document\.querySelectorAll\(candidateSelector\)/);
   assert.match(playback, /matchesLabel\(element, startPattern\)/);
