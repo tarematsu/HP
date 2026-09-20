@@ -24,7 +24,7 @@ export function stripHtml(html) {
 export function articleLinks(html, limit) {
   const links = [];
   const seen = new Set();
-  const pattern = /<a\b[^>]*href=["']([^"']*\/news\/detail\/[^"'?#]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const pattern = /<a\b[^>]*href=["']([^"']*\/news\/detail\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let match;
   while ((match = pattern.exec(html)) && links.length < limit) {
     const href = new URL(match[1], NEWS_ORIGIN).toString();
