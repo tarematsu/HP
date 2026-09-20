@@ -78,10 +78,10 @@ function collectionTestExtra(test, due) {
   };
 }
 
-async function dispatchCollectionTest(env, scheduledAt, due, test) {
+async function dispatchCollectionTest(env, observedAt, due, test) {
   await send(env?.SAKURAZAKA_QUEUE, stageBody(
     'station-auth',
-    scheduledAt,
+    observedAt,
     collectionTestExtra(test, due),
   ));
   return ['station-auth'];
@@ -91,18 +91,20 @@ export async function runSakurazakaScheduled(controller, env, dependencies = {})
   const cron = String(controller?.cron || '');
   if (cron !== SAKURAZAKA_CRON) return { skipped: true, reason: 'unsupported-cron', cron };
   const scheduledAt = scheduledTimestamp(controller);
+  const currentAt = Date.now();
   const activeEnv = queueAttributedEnv(env, 'sh-sakurazaka46jp');
   const [due, collectionTest] = await Promise.all([
     dueWork(activeEnv, scheduledAt, dependencies),
-    sakurazakaCollectionTestWindow(activeEnv, scheduledAt),
+    sakurazakaCollectionTestWindow(activeEnv, currentAt),
   ]);
 
   if (collectionTest.active) {
-    const stages = await dispatchCollectionTest(activeEnv, scheduledAt, due, collectionTest);
+    const stages = await dispatchCollectionTest(activeEnv, currentAt, due, collectionTest);
     return {
       dispatched: true,
       dispatched_stages: stages,
       scheduled_at: scheduledAt,
+      collection_test_observed_at: currentAt,
       collection_test: true,
       collection_test_id: collectionTest.testId,
       collection_test_handle: collectionTest.targetHandle,
@@ -153,6 +155,16 @@ function collectionTestMetadata(body) {
   return { testId, targetHandle };
 }
 
+function collectionTestEnv(env, targetHandle) {
+  const active = Object.create(env || null);
+  Object.assign(active, {
+    OFFICIAL_NEWS_STATIONHEAD_HANDLE: targetHandle,
+    OFFICIAL_NEWS_SH_HANDLE: targetHandle,
+    SOLO_BROADCAST_HANDLE: targetHandle,
+  });
+  return active;
+}
+
 async function processCollectionTestStage(env, body, task) {
   const test = collectionTestMetadata(body);
   if (task.stage === 'station-finalize' || task.stage === 'raw-materialize') {
@@ -170,12 +182,7 @@ async function processCollectionTestStage(env, body, task) {
     };
   }
 
-  const testEnv = {
-    ...env,
-    OFFICIAL_NEWS_STATIONHEAD_HANDLE: test.targetHandle,
-    OFFICIAL_NEWS_SH_HANDLE: test.targetHandle,
-    SOLO_BROADCAST_HANDLE: test.targetHandle,
-  };
+  const testEnv = collectionTestEnv(env, test.targetHandle);
   const forward = async (nextBody) => send(env?.HOST_MONITOR_QUEUE, {
     ...nextBody,
     collection_test: true,
