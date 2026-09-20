@@ -498,3 +498,5 @@ HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
   }
   return nullptr;
 }
+
+}  // namespace hp
