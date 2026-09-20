@@ -8,9 +8,11 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 7;
+const SERIES_CACHE_VERSION = 8;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
+const SUMMARY_MISMATCH_RATIO = 0.45;
+const SUMMARY_OVERSHOOT_RATIO = 1.8;
 const sakurazakaSeriesCache = new Map();
 const STATIC_OFFICIAL_EVENTS = Object.freeze([
   Object.freeze({
@@ -61,7 +63,7 @@ export function resetSakurazakaSeriesCache() {
   sakurazakaSeriesCache.clear();
 }
 
-export const SAKURAZAKA_EVENT_SQL = `SELECT event_name,started_at,ended_at
+export const SAKURAZAKA_EVENT_SQL = `SELECT event_name,started_at,ended_at,sample_count,listener_avg,listener_max
 FROM sh_official_broadcast_summary
 WHERE host_handle='sakurazaka46jp' AND started_at>=? AND started_at<?
 ORDER BY started_at ASC`;
@@ -164,6 +166,12 @@ export function decodeSakurazakaSeriesRows(rows, source) {
       samples,
       source,
       sourceTruncated: Number(row.total_points || 0) > MAX_POINTS,
+      expectedListenerAverage: Number.isFinite(Number(row.expected_listener_avg))
+        ? Number(row.expected_listener_avg)
+        : null,
+      expectedListenerMaximum: Number.isFinite(Number(row.expected_listener_max))
+        ? Number(row.expected_listener_max)
+        : null,
     });
   }
   return result;
@@ -208,6 +216,46 @@ function duplicateSeries(primary, fallback) {
   if (startDifference <= DUPLICATE_START_TOLERANCE_MS && (namesMatch || genericName)) return true;
   if (!namesMatch) return false;
   return !startsAvailable || startDifference <= DUPLICATE_NAME_TOLERANCE_MS;
+}
+
+function weightedAverage(samples) {
+  let sum = 0;
+  let weight = 0;
+  for (const sample of Array.isArray(samples) ? samples : []) {
+    const value = Number(sample?.listener);
+    const sourceSamples = Math.max(1, Number(sample?.sourceSamples) || 1);
+    if (!Number.isFinite(value)) continue;
+    sum += value * sourceSamples;
+    weight += sourceSamples;
+  }
+  return weight ? sum / weight : null;
+}
+
+export function validateSakurazakaHistoricalSeries(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    if (!hasSeriesSamples(row)) return row;
+    const expectedAverage = Number(row?.expectedListenerAverage);
+    const expectedMaximum = Number(row?.expectedListenerMaximum);
+    if (!Number.isFinite(expectedAverage) || expectedAverage <= 0) return row;
+    const actualAverage = weightedAverage(row.samples);
+    const actualMaximum = Math.max(...row.samples.map((sample) => Number(sample?.listener) || 0));
+    const averageMismatch = actualAverage == null
+      || actualAverage < expectedAverage * SUMMARY_MISMATCH_RATIO
+      || actualAverage > expectedAverage * SUMMARY_OVERSHOOT_RATIO;
+    const maximumMismatch = Number.isFinite(expectedMaximum) && expectedMaximum > 0
+      ? actualMaximum < expectedMaximum * SUMMARY_MISMATCH_RATIO
+        || actualMaximum > expectedMaximum * SUMMARY_OVERSHOOT_RATIO
+      : false;
+    if (!averageMismatch && !maximumMismatch) return row;
+    return {
+      ...row,
+      samples: [],
+      source: 'historical_summary_only',
+      sourceMismatch: true,
+      actualListenerAverage: actualAverage,
+      actualListenerMaximum: actualMaximum,
+    };
+  });
 }
 
 export function mergeSakurazakaSeriesRows(primaryRows, fallbackRows) {
@@ -258,6 +306,7 @@ export function trimSakurazakaSeries(seriesRows, limit = MAX_POINTS) {
         started_at: row.started_at,
         points: [],
         source: row.source,
+        source_mismatch: Boolean(row.sourceMismatch),
       });
       continue;
     }
@@ -308,6 +357,8 @@ export async function loadSakurazakaSeriesRows(minuteDb, otherDb, fromTs, toTs) 
       points_json: points.points_json || '[]',
       point_count: points.point_count || 0,
       total_points: points.total_points || 0,
+      expected_listener_avg: summary.listener_avg,
+      expected_listener_max: summary.listener_max,
     });
   }
   let failSafeRows = [];
@@ -317,8 +368,9 @@ export async function loadSakurazakaSeriesRows(minuteDb, otherDb, fromTs, toTs) 
   } catch (error) {
     if (!/no such table/i.test(String(error?.message || ''))) throw error;
   }
+  const decodedHistorical = decodeSakurazakaSeriesRows(historicalRows, 'historical_import');
   return {
-    historical: decodeSakurazakaSeriesRows(historicalRows, 'historical_import'),
+    historical: validateSakurazakaHistoricalSeries(decodedHistorical),
     failSafe: decodeSakurazakaSeriesRows(failSafeRows, 'official_news_fail_safe'),
     summaryCount: summaries.length,
   };
