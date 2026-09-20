@@ -9,7 +9,7 @@ on:
       - 'scripts/audit-pages-live.mjs'
       - 'scripts/audit-pages-materialized.mjs'
       - 'scripts/audit-pages-materialized-production.mjs'
-      - 'scripts/audit-stationhead-collection-test.mjs'
+      - 'scripts/audit-sakurazaka46jp-status.mjs'
       - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/run-pages-read-model-rebuild.yml'
@@ -151,15 +151,15 @@ jobs:
           --retry-delay-ms=10000
           --out=.pages-production-audit
 
-      - name: Verify Stationhead collection test page
+      - name: Verify Sakurazaka minute collection page
         if: github.event_name != 'pull_request'
         run: >-
-          node scripts/audit-stationhead-collection-test.mjs
+          node scripts/audit-sakurazaka46jp-status.mjs
           --url=https://skrzk.pages.dev
-          --attempts=25
+          --attempts=8
           --retry-delay-ms=15000
-          --expected-handle=sakuramankai
-          --out=.pages-production-audit/stationhead-collection-test.json
+          --expected-handle=sakurazaka46jp
+          --out=.pages-production-audit/sakurazaka46jp-status.json
 
       - name: Require all production materializations
         continue-on-error: ${{ github.event_name == 'pull_request' }}
