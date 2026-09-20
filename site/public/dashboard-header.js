@@ -53,3 +53,8 @@ document.querySelector('.app-launch')?.remove();
 const actions = document.querySelector('.dashboard-actions');
 const tabs = document.getElementById('modeTabs');
 if (actions && tabs) actions.replaceWith(tabs);
+
+for (const id of ['currentChartDetail', 'chartDetail', 'notice']) {
+  const element = document.getElementById(id);
+  if (element) element.textContent = '';
+}
