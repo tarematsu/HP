@@ -46,6 +46,14 @@ if (!document.querySelector(`link[href="${layoutUnificationHref}"]`)) {
   document.head.append(layoutUnification);
 }
 
+const layoutFinalFixesHref = '/pages-layout-final-fixes.css?v=20260921.1';
+if (!document.querySelector(`link[href="${layoutFinalFixesHref}"]`)) {
+  const layoutFinalFixes = document.createElement('link');
+  layoutFinalFixes.rel = 'stylesheet';
+  layoutFinalFixes.href = layoutFinalFixesHref;
+  document.head.append(layoutFinalFixes);
+}
+
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
 const skipLink = document.querySelector('.skip-link');
 const clearKeyboardNavigation = () => {
