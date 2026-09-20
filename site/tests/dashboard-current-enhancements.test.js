@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const enhancement = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
@@ -9,6 +10,8 @@ const tableCleanup = readFileSync(new URL('../public/history/history-table-clean
 
 test('current metrics are ordered online, total streams, total members and expose 24h online range', () => {
   assert.match(metrics, /dashboard-current-enhancements\.js\?v=20260921\.4/);
+  assert.match(metrics, /dashboard-client\.js\?v=20260921\.4/);
+  assert.match(header, /dashboard-current-enhancements\.css\?v=20260921\.4/);
   assert.match(metrics, /dashboard:payload/);
   assert.match(enhancement, /\[onlinePanel, streamsPanel, membersPanel\]/);
   assert.match(enhancement, /24h最小/);
