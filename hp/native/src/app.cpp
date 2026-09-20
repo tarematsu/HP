@@ -125,6 +125,7 @@ void App::StartServices() {
     player->ReuseWebViewProfile(kStationheadPeerProfiles[i]);
     stationheadPeers_[i] = std::move(player);
     stationheadPeers_[i]->SetAudioMuted(true);
+    stationheadPeers_[i]->SetForegroundAllowed(false);
   }
 
   auto stationheadPlayer = std::make_unique<StationheadPlayer>(
@@ -132,6 +133,7 @@ void App::StartServices() {
   stationheadPlayer->ReuseWebViewProfile(kStationheadOzekiProfile);
   stationhead_ = std::move(stationheadPlayer);
   stationhead_->SetAudioMuted(stationheadAudioMuted_);
+  stationhead_->SetForegroundAllowed(false);
   logger_->Info(
       L"Six Stationhead windows prepared with existing spotify-v2-1 through spotify-v2-6 WebView2 profiles");
 
@@ -263,6 +265,40 @@ void App::Tick() {
     stationhead_->Tick(now);
     stationheadStatus = stationhead_->Status();
   }
+
+  // Exactly one Stationhead may own an operational foreground surface at once.
+  // Lower window numbers win so simultaneous auth/audio-recovery requests do not
+  // repeatedly steal z-order and keyboard focus from one another.
+  int foregroundOwner = -1;
+  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+    if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
+    if (StationheadNeedsForeground(peerStatuses[i])) {
+      foregroundOwner = static_cast<int>(i);
+      break;
+    }
+  }
+  if (foregroundOwner < 0 && stationheadStarted_ && stationhead_ &&
+      StationheadNeedsForeground(stationheadStatus)) {
+    foregroundOwner = static_cast<int>(kStationheadPeerCount);
+  }
+
+  // Revoke every loser before granting the winner. This avoids a transition
+  // frame where two sibling WebView hosts are both allowed to claim HWND_TOP.
+  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+    if (stationheadPeers_[i] && static_cast<int>(i) != foregroundOwner) {
+      stationheadPeers_[i]->SetForegroundAllowed(false);
+    }
+  }
+  if (stationhead_ && foregroundOwner != static_cast<int>(kStationheadPeerCount)) {
+    stationhead_->SetForegroundAllowed(false);
+  }
+  if (foregroundOwner >= 0 &&
+      foregroundOwner < static_cast<int>(kStationheadPeerCount)) {
+    stationheadPeers_[static_cast<size_t>(foregroundOwner)]->SetForegroundAllowed(true);
+  } else if (foregroundOwner == static_cast<int>(kStationheadPeerCount) && stationhead_) {
+    stationhead_->SetForegroundAllowed(true);
+  }
+
   ApplyStationheadWindowPlacement();
 
   const int64_t telemetryIntervalMs =
