@@ -29,10 +29,13 @@ test('auth promotion keeps playback host alive onscreen behind the auth surface'
   assert.doesNotMatch(applyLayout, /StationheadOffscreenBounds|offscreen|SW_HIDE/);
 });
 
-test('background host stays full-client while playback controller stays fixed at 360x960', () => {
+test('background stays 360x960 while the selected named monitor expands to full host', () => {
   assert.match(applyLayout, /SetWindowPos\(hostWindow, hostPlacement/);
   assert.match(applyLayout, /SetWindowPos\(authHostWindow, authPlacement/);
-  assert.match(applyLayout, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
+  assert.match(
+    applyLayout,
+    /const RECT playbackControllerBounds = monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
+  );
   assert.match(applyLayout, /const RECT authControllerBounds\{0, 0, authWidth, authHeight\};/);
   assert.match(layout, /kStationheadPlaybackViewportWidth = 360/);
   assert.match(layout, /kStationheadPlaybackViewportHeight = 960/);
