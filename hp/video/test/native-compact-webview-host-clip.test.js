@@ -11,13 +11,16 @@ const spotifyLayout = readFileSync(
   'utf8',
 );
 
-test('Stationhead keeps a fixed 360x960 internal viewport while the background host is visually clipped', () => {
+test('Stationhead keeps 360x960 in background and expands only the selected monitor viewport', () => {
   assert.match(stationheadLayout, /CreateRectRgn\(0, 0, 1, 1\)/);
   assert.match(stationheadLayout, /SetWindowRgn\(window, nullptr, TRUE\)/);
   assert.match(stationheadLayout, /kStationheadPlaybackViewportWidth = 360/);
   assert.match(stationheadLayout, /kStationheadPlaybackViewportHeight = 960/);
   assert.match(stationheadLayout, /StationheadPlaybackControllerBounds\(\)/);
-  assert.match(stationheadLayout, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\)/);
+  assert.match(
+    stationheadLayout,
+    /const RECT playbackControllerBounds = monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
+  );
   assert.doesNotMatch(stationheadLayout, /kStationheadCompactPlayback|compactPlayback|useCompactPlayback/);
   assert.match(stationheadLayout, /ApplyHostVisualClip\(hostWindow, playbackForeground\)/);
   assert.match(stationheadLayout, /ApplyHostVisualClip\(authHostWindow, showAuth\)/);
