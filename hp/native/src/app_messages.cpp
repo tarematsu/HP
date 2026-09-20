@@ -79,13 +79,25 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_HP_PRIMARY_RELOAD_READY:
       return stationhead_ ? 1 : 0;
     case WM_HP_STATIONHEAD_CHANGED: {
-      if (!stationhead_) return 0;
-      const uint32_t changes = stationhead_->ConsumeChangeFlags();
-      if ((changes & StationheadChangeShowPlayer) != 0) {
-        stationhead_->ShowAfterAudioStop();
+      bool handled = false;
+      for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+        if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
+        const uint32_t changes = stationheadPeers_[i]->ConsumeChangeFlags();
+        if ((changes & StationheadChangeShowPlayer) != 0) {
+          stationheadPeers_[i]->ShowAfterAudioStop();
+        }
+        handled = true;
       }
+      if (stationheadStarted_ && stationhead_) {
+        const uint32_t changes = stationhead_->ConsumeChangeFlags();
+        if ((changes & StationheadChangeShowPlayer) != 0) {
+          stationhead_->ShowAfterAudioStop();
+        }
+        handled = true;
+      }
+      if (!handled) return 0;
       MarkStationheadPlacementDirty();
-      ApplyStationheadWindowPlacement(stationhead_->Status());
+      ApplyStationheadWindowPlacement();
       ScheduleNextTick(1);
       return 0;
     }
