@@ -469,13 +469,6 @@ void StationheadPlayer::SetForegroundAllowed(bool allowed) {
   if (foregroundAllowed_ == allowed) return;
   foregroundAllowed_ = allowed;
 
-  const bool monitorForeground = StationheadMonitorForeground();
-  if (!allowed && !monitorForeground &&
-      (WindowContainsFocus(hostWindow_) || WindowContainsFocus(authHostWindow_)) &&
-      window_ && IsWindow(window_)) {
-    SetFocus(window_);
-  }
-
   if (!hostWindow_ && !controller_ && !authHostWindow_ && !authController_) return;
   if (allowed && selectedTab_ != StationheadTabKind::None) {
     SetVisible(true);
