@@ -121,7 +121,10 @@ int64_t StationheadHandleBase::NextWakeAt() const noexcept {
 }
 
 void StationheadHandleBase::RefreshVisibility() {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_ ||
+      temporaryGenerationPauses.contains(this)) {
+    return;
+  }
   const StationheadStatus status = RawStatus();
   if (SuppressTrackTransitionGap(
           status.audioPlaying, RequiresInteractiveStationhead(status))) {
@@ -242,6 +245,10 @@ void StationheadHandleBase::AssignPlayer(
   transitionSuppressed_ = false;
   ++contentRevision_;
   ApplyAudioState();
+  if (player_ && IsYuukiarGenerationPaused(*player_, UnixMillis())) {
+    temporaryGenerationPauses[this] = true;
+    return;
+  }
   ApplyBounds();
 }
 
@@ -307,7 +314,7 @@ void StationheadHandleBase::RaiseActiveHost() const {
 }
 
 void StationheadHandleBase::ApplyBounds() {
-  if (!player_ || stopIssued_) return;
+  if (!player_ || stopIssued_ || temporaryGenerationPauses.contains(this)) return;
   player_->SetBounds(workspaceBounds_);
   RaiseActiveHost();
 }
