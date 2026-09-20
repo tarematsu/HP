@@ -6,6 +6,7 @@ const source = name => readFileSync(new URL(`../../native/src/${name}`, import.m
 const app = source('app.cpp');
 const layout = source('sh_layout.cpp');
 const handles = source('app_stationhead_handles.h');
+const playerHeader = source('sh.h');
 
 function section(text, start, end) {
   const from = text.indexOf(start);
@@ -22,13 +23,34 @@ test('all Stationhead instances start without independent foreground permission'
   assert.match(handles, /void SetForegroundAllowed\(bool allowed\)[\s\S]*player_->SetForegroundAllowed\(allowed\)/);
 });
 
+test('only an explicit Stationhead interactive surface enters foreground arbitration', () => {
+  assert.match(
+    playerHeader,
+    /bool ForegroundRequested\(\) const noexcept \{[\s\S]*selectedTab_ == StationheadTabKind::Auth[\s\S]*selectedTab_ == StationheadTabKind::Stationhead/,
+  );
+  assert.match(
+    handles,
+    /bool ForegroundRequested\(\) const noexcept \{[\s\S]*player_->ForegroundRequested\(\)/,
+  );
+
+  const tick = section(app, 'void App::Tick()', 'void App::Draw()');
+  const arbitration = section(
+    tick,
+    'int foregroundOwner = -1;',
+    'ApplyStationheadWindowPlacement();',
+  );
+  assert.match(arbitration, /stationheadPeers_\[i\]->ForegroundRequested\(\)/);
+  assert.match(arbitration, /stationhead_->ForegroundRequested\(\)/);
+  assert.doesNotMatch(arbitration, /StationheadNeedsForeground|audioPlaying/);
+});
+
 test('lowest numbered Stationhead request is the only foreground owner', () => {
   const tick = section(app, 'void App::Tick()', 'void App::Draw()');
-  const peerScan = tick.indexOf('for (size_t i = 0; i < stationheadPeers_.size(); ++i)');
+  const peerScan = tick.indexOf('if (stationheadPeers_[i]->ForegroundRequested())');
   const peerWinner = tick.indexOf('foregroundOwner = static_cast<int>(i);', peerScan);
   const sixthFallback = tick.indexOf('foregroundOwner = static_cast<int>(kStationheadPeerCount);', peerWinner);
   assert.ok(peerScan >= 0 && peerWinner > peerScan && sixthFallback > peerWinner);
-  assert.match(tick, /if \(StationheadNeedsForeground\(peerStatuses\[i\]\)\) \{[\s\S]*break;/);
+  assert.match(tick, /if \(stationheadPeers_\[i\]->ForegroundRequested\(\)\) \{[\s\S]*break;/);
 
   const revoke = tick.indexOf('SetForegroundAllowed(false);', sixthFallback);
   const grant = tick.indexOf('SetForegroundAllowed(true);', revoke);
