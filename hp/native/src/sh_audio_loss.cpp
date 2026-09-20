@@ -12,8 +12,33 @@ bool AudioLossCallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
 }
 
-std::atomic<bool> monitorDomProbeRequested{false};
-std::atomic<bool> monitorDomProbeInFlight{false};
+std::atomic<uint64_t> monitorDomProbeGeneration{0};
+
+struct MonitorDomProbeState {
+  uint64_t seenGeneration = 0;
+  bool inFlight = false;
+};
+
+std::mutex monitorDomProbeStateMutex;
+std::map<const StationheadPlayer*, MonitorDomProbeState> monitorDomProbeStates;
+
+void FinishMonitorDomProbe(const StationheadPlayer* player) noexcept {
+  std::lock_guard lock(monitorDomProbeStateMutex);
+  auto found = monitorDomProbeStates.find(player);
+  if (found != monitorDomProbeStates.end()) found->second.inFlight = false;
+}
+
+unsigned StationheadMonitorSlot(std::wstring_view profileName) noexcept {
+  constexpr std::wstring_view prefix = L"spotify-v2-";
+  const size_t position = profileName.find(prefix);
+  if (position == std::wstring_view::npos) return 0;
+  const size_t digit = position + prefix.size();
+  if (digit >= profileName.size()) return 0;
+  const wchar_t value = profileName[digit];
+  if (value < L'1' || value > L'6') return 0;
+  const unsigned number = static_cast<unsigned>(value - L'0');
+  return number == 6 ? 0 : number;
+}
 
 // Monitor A runs only every five minutes. Keep the probe cheap and avoid the
 // old document.body.innerText read, which could force layout for the full room.
@@ -197,7 +222,11 @@ constexpr wchar_t kAuthenticationUiProbeScript[] = LR"JS(
 }  // namespace
 
 void RequestStationheadMonitorDomProbe() noexcept {
-  monitorDomProbeRequested.store(true, std::memory_order_release);
+  uint64_t next = monitorDomProbeGeneration.fetch_add(
+      1, std::memory_order_acq_rel) + 1;
+  if (next == 0) {
+    monitorDomProbeGeneration.store(1, std::memory_order_release);
+  }
 }
 
 void App::NotifyStationheadPlaybackFallbackStarted() {
@@ -347,30 +376,41 @@ void StationheadPlayer::SetManagedPlaybackFallback(
 }
 
 void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
-  if (monitorDomProbeRequested.exchange(false, std::memory_order_acq_rel) &&
-      webview_ &&
-      !monitorDomProbeInFlight.exchange(true, std::memory_order_acq_rel)) {
+  const uint64_t requestedGeneration =
+      monitorDomProbeGeneration.load(std::memory_order_acquire);
+  bool startMonitorProbe = false;
+  if (requestedGeneration != 0 && webview_) {
+    std::lock_guard lock(monitorDomProbeStateMutex);
+    auto& state = monitorDomProbeStates[this];
+    if (!state.inFlight && state.seenGeneration != requestedGeneration) {
+      state.seenGeneration = requestedGeneration;
+      state.inFlight = true;
+      startMonitorProbe = true;
+    }
+  }
+
+  if (startMonitorProbe) {
     const auto alive = createCallbackAlive_;
     ComPtr<ICoreWebView2> view = webview_;
     const HRESULT started = view->ExecuteScript(
         kMonitorDomProbeScript,
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive, view](HRESULT result, LPCWSTR resultJson) -> HRESULT {
+              FinishMonitorDomProbe(this);
               if (!AudioLossCallbackAlive(alive) || view.Get() != webview_.Get()) {
-                monitorDomProbeInFlight.store(false, std::memory_order_release);
                 return S_OK;
               }
-              monitorDomProbeInFlight.store(false, std::memory_order_release);
               if (FAILED(result) || !resultJson) return S_OK;
               const std::wstring_view value(resultJson);
               if (value != L"true" && value != L"false") return S_OK;
               PostMessageW(
                   window_, kStationheadMonitorProbeResultMessage,
-                  value == L"true" ? 1 : 0, 0);
+                  value == L"true" ? 1 : 0,
+                  static_cast<LPARAM>(StationheadMonitorSlot(profileName_)));
               return S_OK;
             }).Get());
     if (FAILED(started)) {
-      monitorDomProbeInFlight.store(false, std::memory_order_release);
+      FinishMonitorDomProbe(this);
     }
   }
 
