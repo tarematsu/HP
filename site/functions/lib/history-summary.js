@@ -40,10 +40,40 @@ export function previousSummaryPeriodKey(mode, value) {
   return date.toISOString().slice(0, 10);
 }
 
-// Member periods are measured from the final value immediately before the
-// period to the final value acquired inside the period. For daily rows this is
-// exactly "yesterday's final value -> today's acquired value". Weekly and
-// monthly rows use the same boundary rule at their UTC period edges.
+export function summaryContextStartKey(mode, value) {
+  const key = String(value || '');
+  if (mode === 'monthly') {
+    if (!/^\d{4}-\d{2}$/.test(key)) return null;
+    const date = new Date(`${key}-01T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setUTCMonth(date.getUTCMonth() - 4);
+    return date.toISOString().slice(0, 7);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  const date = new Date(`${key}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() - (mode === 'weekly' ? 56 : 45));
+  return date.toISOString().slice(0, 10);
+}
+
+function previousMemberEnd(source, currentKey, expectedKey) {
+  const exact = finiteNumber(source.get(expectedKey)?.member_end);
+  if (exact != null) return exact;
+  let bestKey = '';
+  let bestValue = null;
+  for (const [key, row] of source) {
+    const value = finiteNumber(row?.member_end);
+    if (value == null || key >= currentKey || key <= bestKey) continue;
+    bestKey = key;
+    bestValue = value;
+  }
+  return bestValue;
+}
+
+// Member periods are measured from the final known value immediately before the
+// period to the final value acquired inside the period. If the exact previous UTC
+// period is absent, use the nearest earlier valid boundary instead of retaining a
+// same-period start value that incorrectly produces zero growth.
 export function applyPreviousPeriodMemberStart(rows, mode, contextRows = rows) {
   const source = new Map();
   for (const row of Array.isArray(contextRows) ? contextRows : []) {
@@ -56,8 +86,9 @@ export function applyPreviousPeriodMemberStart(rows, mode, contextRows = rows) {
   }
 
   return (Array.isArray(rows) ? rows : []).map((row) => {
-    const previousKey = previousSummaryPeriodKey(mode, row?.period_key);
-    const previousEnd = finiteNumber(source.get(previousKey)?.member_end);
+    const key = String(row?.period_key || '');
+    const previousKey = previousSummaryPeriodKey(mode, key);
+    const previousEnd = previousMemberEnd(source, key, previousKey);
     if (previousEnd == null) return row;
     const memberEnd = finiteNumber(row?.member_end);
     return {
@@ -244,10 +275,12 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
   const table = SUMMARY_TABLES[mode] || SUMMARY_TABLES.weekly;
   const limit = mode === 'daily' ? 800 : mode === 'weekly' ? 160 : 60;
   const previousKey = previousSummaryPeriodKey(mode, from);
-  const queryFrom = previousKey || from;
+  const contextKey = summaryContextStartKey(mode, from);
+  const queryFrom = contextKey || previousKey || from;
+  const contextAllowance = mode === 'daily' ? 48 : mode === 'weekly' ? 10 : 5;
   const baseResult = await env.OTHER_DB.prepare(
     `SELECT ${SUMMARY_COLUMNS} FROM ${table} WHERE period_key>=? AND period_key<=? ORDER BY period_key ASC LIMIT ?`,
-  ).bind(queryFrom, to, limit + 1).all();
+  ).bind(queryFrom, to, limit + contextAllowance).all();
   const fetchedRows = baseResult.results || [];
   const baseRows = fetchedRows.filter((row) => String(row?.period_key || '') >= from);
 
