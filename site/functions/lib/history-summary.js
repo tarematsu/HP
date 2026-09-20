@@ -24,6 +24,50 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+export function previousSummaryPeriodKey(mode, value) {
+  const key = String(value || '');
+  if (mode === 'monthly') {
+    if (!/^\d{4}-\d{2}$/.test(key)) return null;
+    const date = new Date(`${key}-01T00:00:00Z`);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setUTCMonth(date.getUTCMonth() - 1);
+    return date.toISOString().slice(0, 7);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  const date = new Date(`${key}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() - (mode === 'weekly' ? 7 : 1));
+  return date.toISOString().slice(0, 10);
+}
+
+// Member periods are measured from the final value immediately before the
+// period to the final value acquired inside the period. For daily rows this is
+// exactly "yesterday's final value -> today's acquired value". Weekly and
+// monthly rows use the same boundary rule at their UTC period edges.
+export function applyPreviousPeriodMemberStart(rows, mode, contextRows = rows) {
+  const source = new Map();
+  for (const row of Array.isArray(contextRows) ? contextRows : []) {
+    const key = String(row?.period_key || '');
+    if (key) source.set(key, row);
+  }
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = String(row?.period_key || '');
+    if (key) source.set(key, row);
+  }
+
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const previousKey = previousSummaryPeriodKey(mode, row?.period_key);
+    const previousEnd = finiteNumber(source.get(previousKey)?.member_end);
+    if (previousEnd == null) return row;
+    const memberEnd = finiteNumber(row?.member_end);
+    return {
+      ...row,
+      member_start: previousEnd,
+      member_growth: memberEnd == null ? null : memberEnd - previousEnd,
+    };
+  });
+}
+
 export function currentSummaryPeriodStart(mode, now = Date.now()) {
   const date = new Date(now);
   date.setUTCHours(0, 0, 0, 0);
@@ -199,10 +243,13 @@ export function combineSummaryRows(base, live) {
 export async function loadSummaryWithLive(env, mode, from, to, now = Date.now()) {
   const table = SUMMARY_TABLES[mode] || SUMMARY_TABLES.weekly;
   const limit = mode === 'daily' ? 800 : mode === 'weekly' ? 160 : 60;
+  const previousKey = previousSummaryPeriodKey(mode, from);
+  const queryFrom = previousKey || from;
   const baseResult = await env.OTHER_DB.prepare(
     `SELECT ${SUMMARY_COLUMNS} FROM ${table} WHERE period_key>=? AND period_key<=? ORDER BY period_key ASC LIMIT ?`,
-  ).bind(from, to, limit).all();
-  const baseRows = baseResult.results || [];
+  ).bind(queryFrom, to, limit + 1).all();
+  const fetchedRows = baseResult.results || [];
+  const baseRows = fetchedRows.filter((row) => String(row?.period_key || '') >= from);
 
   // Public /api/history reads persisted summary rows only. The current UTC daily
   // row is overlaid separately by /api/history-current. Running the generic
@@ -212,8 +259,13 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
   const evidence = await loadPeriodBoundaryEvidence(env.DB || env.MINUTE_DB, evidenceTargets, mode);
   const boundedRows = applyPeriodBoundaryEvidence(baseRows, evidence);
   const completed = applySummaryCompleteness(boundedRows, mode, now);
+  const memberContext = [
+    ...fetchedRows,
+    ...completed.rows,
+  ];
+  const rows = applyPreviousPeriodMemberStart(completed.rows, mode, memberContext);
   return {
-    rows: completed.rows,
+    rows,
     excluded_stream_growth_count: completed.excludedCount,
     boundary_evidence_count: evidence.size,
     live_overlay_count: 0,
