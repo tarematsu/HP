@@ -1,0 +1,80 @@
+name: Apply named Stationhead monitor fullsize
+
+on:
+  push:
+    branches:
+      - feat/window-named-audio-monitor-modes
+    paths:
+      - .github/workflows/apply-named-monitor-fullsize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Expand selected Stationhead monitor WebView
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          layout = Path('hp/native/src/sh_layout.cpp')
+          source = layout.read_text(encoding='utf-8')
+          old = '''  const RECT playbackControllerBounds = StationheadPlaybackControllerBounds();
+  const RECT authControllerBounds{0, 0, authWidth, authHeight};
+
+  // Keep the playback WebView viewport fixed at 360x960 in every state.
+  // The host HWND remains full workspace size for stable z-order and is
+  // visually clipped to 1x1 while backgrounded.'''
+          new = '''  const RECT playbackControllerBounds = monitorForeground
+      ? RECT{0, 0, playbackWidth, playbackHeight}
+      : StationheadPlaybackControllerBounds();
+  const RECT authControllerBounds{0, 0, authWidth, authHeight};
+
+  // Keep normal/background playback at the fixed 360x960 viewport, but expand
+  // the single Stationhead selected by the monitor button to the full host.
+  // The host HWND remains full workspace size for stable z-order and is
+  // visually clipped to 1x1 while backgrounded.'''
+          if source.count(old) != 1:
+              raise SystemExit(f'expected one playback bounds block, found {source.count(old)}')
+          layout.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          test = Path('hp/video/test/stationhead-background-fullsize-until-playback.test.js')
+          source = test.read_text(encoding='utf-8')
+          old = """test('background, startup and reload all keep the fixed 360x960 playback viewport', () => {"""
+          new = """test('background, startup and reload keep 360x960 unless the named monitor is selected', () => {"""
+          if source.count(old) != 1:
+              raise SystemExit('missing viewport test name')
+          source = source.replace(old, new, 1)
+          old = """  assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\\(\\);/);"""
+          new = """  assert.match(
+    apply,
+    /const RECT playbackControllerBounds = monitorForeground[\\s\\S]*RECT\\{0, 0, playbackWidth, playbackHeight\\}[\\s\\S]*StationheadPlaybackControllerBounds\\(\\);/,
+  );"""
+          if source.count(old) != 1:
+              raise SystemExit('missing fixed viewport assertion')
+          source = source.replace(old, new, 1)
+          old = """  assert.match(apply, /StationheadPlaybackControllerBounds\\(\\)/);"""
+          new = """  assert.match(
+    apply,
+    /monitorForeground[\\s\\S]*RECT\\{0, 0, playbackWidth, playbackHeight\\}[\\s\\S]*StationheadPlaybackControllerBounds\\(\\)/,
+  );"""
+          if source.count(old) != 1:
+              raise SystemExit('missing named monitor viewport assertion')
+          test.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Commit focused fullsize change
+        shell: bash
+        run: |
+          git rm .github/workflows/apply-named-monitor-fullsize.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hp/native/src/sh_layout.cpp hp/video/test/stationhead-background-fullsize-until-playback.test.js
+          git commit -m "Expand selected Stationhead monitor to full size"
+          git push origin HEAD:feat/window-named-audio-monitor-modes
