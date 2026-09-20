@@ -32,9 +32,11 @@ test('auth results are aggregated per Stationhead slot and active auth is rechec
   assert.match(routing, /monitorAuthForeground_ = detected;[\s\S]*ApplyStationheadMonitorPlacement\(\);[\s\S]*ArmScheduleTimer\(\)/);
 });
 
-test('named Stationhead monitor keeps only its selected playback host in monitor foreground', () => {
+test('named Stationhead monitor keeps only its selected playback host over the media panel', () => {
   assert.match(routing, /SetStationheadMonitorProfile\(selectedProfile\)/);
   assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
-  assert.match(routing, /const RECT target = context->parentClient/);
+  assert.match(routing, /const RECT monitorBounds = ComputeNativeDashboardLayout\(parentClient\)\.media;/);
+  assert.match(routing, /const RECT target = context->monitorBounds;/);
+  assert.match(routing, /const bool nativeMediaForeground = monitorMode_ != MonitorMode::Off;/);
   assert.doesNotMatch(routing, /SetSpotifyMonitorGridVisible/);
 });
