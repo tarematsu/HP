@@ -38,6 +38,14 @@ if (!document.querySelector(`link[href="${currentEnhancementsHref}"]`)) {
   document.head.append(currentEnhancements);
 }
 
+const layoutUnificationHref = '/pages-layout-unification.css?v=20260921.1';
+if (!document.querySelector(`link[href="${layoutUnificationHref}"]`)) {
+  const layoutUnification = document.createElement('link');
+  layoutUnification.rel = 'stylesheet';
+  layoutUnification.href = layoutUnificationHref;
+  document.head.append(layoutUnification);
+}
+
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
 const skipLink = document.querySelector('.skip-link');
 const clearKeyboardNavigation = () => {
