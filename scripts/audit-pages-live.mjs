@@ -60,8 +60,10 @@ const MODES = [
     path: '/#broadcasts',
     panel: '#historyView',
     tab: '#modeTabs button[data-mode="broadcasts"]',
-    requiredText: '公式ストリーム一覧',
+    requiredText: '公式リスパ一覧',
     notice: '#notice',
+    legendSelector: '#chartLegend span',
+    minLegendItems: 6,
   },
 ];
 
@@ -145,6 +147,11 @@ async function waitForMode(page, route) {
       return element && !/^(?:読み込み中|表示するタブを選択)/.test(text);
     }, route.notice, { timeout: 10_000 }).catch(() => {});
   }
+  if (route.legendSelector && route.minLegendItems) {
+    await page.waitForFunction(({ selector, minimum }) =>
+      document.querySelectorAll(selector).length >= minimum,
+    { selector: route.legendSelector, minimum: route.minLegendItems }, { timeout: 15_000 }).catch(() => {});
+  }
   await page.evaluate(() => document.fonts?.ready).catch(() => {});
   await page.waitForTimeout(500);
 }
@@ -220,6 +227,9 @@ async function auditRoute(browser, target, route, viewport, outDir) {
     active: button.classList.contains('active'),
     current: button.getAttribute('aria-current'),
   })).catch(() => ({ active: false, current: null }));
+  const legendItems = route.legendSelector
+    ? await page.locator(route.legendSelector).count().catch(() => 0)
+    : null;
   const layout = await page.evaluate((expectedPanel) => {
     const visible = (element) => {
       if (!element || element.hidden) return false;
@@ -280,6 +290,9 @@ async function auditRoute(browser, target, route, viewport, outDir) {
   if (route.requiredText && !bodyText.includes(route.requiredText)) {
     failures.push(`required text was not rendered: ${route.requiredText}`);
   }
+  if (route.minLegendItems && Number(legendItems) < route.minLegendItems) {
+    failures.push(`official listening party graph rendered ${legendItems} series; expected at least ${route.minLegendItems}`);
+  }
   failures.push(...[...consoleErrors].map((value) => `console error: ${value}`));
   failures.push(...[...pageErrors].map((value) => `page error: ${value}`));
   failures.push(...[...requestFailures].map((value) => `request failure: ${value}`));
@@ -298,6 +311,7 @@ async function auditRoute(browser, target, route, viewport, outDir) {
     mainVisible,
     panelVisible,
     selectedTab,
+    legendItems,
     layout,
     bodyLength: bodyText.length,
     bodyDigest: digest(bodyText),
