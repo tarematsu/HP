@@ -23,7 +23,7 @@ test('single Stationhead resolves placement against the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background host stays full-client while playback controller stays fixed at 720x960', () => {
+test('background host stays full-client while playback controller stays fixed at 360x960', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
@@ -36,7 +36,7 @@ test('background host stays full-client while playback controller stays fixed at
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /authHostBounds = surfaceBounds/);
   assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
-  assert.match(layout, /kStationheadPlaybackViewportWidth = 720/);
+  assert.match(layout, /kStationheadPlaybackViewportWidth = 360/);
   assert.match(layout, /kStationheadPlaybackViewportHeight = 960/);
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
