@@ -10,12 +10,13 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
   const recoverableOnboardingPattern =
     /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go)$/i;
-  const connectMusicHeadingPattern =
+  const connectSurfaceLabelPattern =
     /^(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:music|spotify(?:\s+account)?)$/i;
-  const connectMusicActionPattern =
+  const connectSurfaceActionPattern =
     /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+spotify(?:\s+account)?|(?:re)?connect|spotify)$/i;
-  const joinPartyHeadingPattern = /^join\s+the\s+party[!！]?$/i;
-  const connectSpotifyTextPattern = /^(?:re)?connect\s+spotify$/i;
+  const onboardingCandidateSelector =
+    "button,[role='button'],a,input[type='button'],input[type='submit']," +
+    "div,span,p,[tabindex],[aria-label],[data-testid]";
   const onboardingLabelsOf = element => [
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('data-testid'),
@@ -34,25 +35,23 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     return style.display !== 'none' && style.visibility !== 'hidden' &&
       Number(style.opacity || 1) > 0;
   };
+  const onboardingMatches = (element, pattern) =>
+    onboardingRendered(element) &&
+    onboardingLabelsOf(element).some(label => pattern.test(label));
 
-  const joinPartyConnectSpotifyVisible = () => {
-    const candidates = document.querySelectorAll(
-      "button,[role='button'],a,div,span,p,[tabindex],[aria-label],[data-testid]");
-    for (const candidate of candidates) {
-      if (!onboardingRendered(candidate) ||
-          !onboardingLabelsOf(candidate).some(
-            label => connectSpotifyTextPattern.test(label))) continue;
-      for (let shell = candidate.parentElement, depth = 0;
-           shell && shell !== document.body && depth < 10;
-           shell = shell.parentElement, depth += 1) {
-        if (!onboardingRendered(shell)) continue;
-        const headings = shell.querySelectorAll(
-          'h1,h2,h3,[role="heading"],div,span,p');
-        if ([...headings].some(element =>
-            onboardingRendered(element) &&
-            onboardingLabelsOf(element).some(
-              label => joinPartyHeadingPattern.test(label)))) {
-          return true;
+  const splitConnectSurfaceVisible = () => {
+    // Stationhead has rendered music-service prompts in several different DOM
+    // shapes: semantic buttons, styled div/span controls, and a label with a
+    // separate Connect/Reconnect action. Treat the visible text as the stable
+    // contract and keep all matching local to the same ancestor surface.
+    for (const anchor of document.querySelectorAll(onboardingCandidateSelector)) {
+      if (!onboardingMatches(anchor, connectSurfaceLabelPattern)) continue;
+      for (let surface = anchor.parentElement, depth = 0;
+           surface && surface !== document.body && depth < 10;
+           surface = surface.parentElement, depth += 1) {
+        if (!onboardingRendered(surface)) continue;
+        for (const action of surface.querySelectorAll(onboardingCandidateSelector)) {
+          if (onboardingMatches(action, connectSurfaceActionPattern)) return true;
         }
       }
     }
@@ -60,42 +59,13 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   };
 
   const recoverableOnboardingVisible = () => {
-    // Current Stationhead UI can render a non-semantic CONNECT SPOTIFY control
-    // under a "Join the party!" dialog. Detect the exact visible text even when
-    // the control is a div/span rather than a native button. The native locator
-    // performs the actual trusted CDP click and can scroll it into view.
-    if (joinPartyConnectSpotifyVisible()) return true;
-
-    for (const element of document.querySelectorAll(controlSelector)) {
-      if (!visible(element)) continue;
-      if (onboardingLabelsOf(element).some(
-          label => recoverableOnboardingPattern.test(label))) {
-        return true;
-      }
+    // Do not depend on element semantics. A visually button-like Stationhead
+    // control may be a div/span. Exact allowlisted labels keep this broad DOM
+    // search from turning account/login controls into automatic clicks.
+    for (const element of document.querySelectorAll(onboardingCandidateSelector)) {
+      if (onboardingMatches(element, recoverableOnboardingPattern)) return true;
     }
-
-    // Stationhead has used both Connect Music and Connect Spotify as modal
-    // headings, with the clickable action rendered separately as Connect,
-    // Reconnect, or Spotify. Treat those exact split surfaces as the same
-    // recoverable onboarding flow without broadening the global account guard.
-    for (const heading of document.querySelectorAll('h1,h2,h3,[role="heading"]')) {
-      if (!visible(heading) ||
-          !onboardingLabelsOf(heading).some(
-            label => connectMusicHeadingPattern.test(label))) {
-        continue;
-      }
-      for (let surface = heading.parentElement, depth = 0;
-           surface && depth < 9;
-           surface = surface.parentElement, depth += 1) {
-        if (!visible(surface)) continue;
-        const action = [...surface.querySelectorAll(controlSelector)]
-          .find(element => visible(element) &&
-            onboardingLabelsOf(element).some(
-              label => connectMusicActionPattern.test(label)));
-        if (action) return true;
-      }
-    }
-    return false;
+    return splitConnectSurfaceVisible();
   };
 
   const publishRecoverableOnboarding = () => {
