@@ -271,10 +271,10 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
 
   const unsigned selectedProfile =
       monitorMode_ == MonitorMode::ServiceGrid ? monitorStationheadProfile_ : 0;
-  // Authentication promotion is handled by each Stationhead auth host. Keep
-  // the native YouTube/TVer panel at its normal foreground bounds whenever the
-  // monitor is in Native mode instead of shrinking it to 1x1 during auth.
-  const bool nativeMediaForeground = monitorMode_ == MonitorMode::Native;
+  // A named Stationhead monitor is an overlay on top of the existing media
+  // panel. Keep YouTube/TVer at its normal bounds underneath it so switching
+  // back to YT is only a z-order/profile change, not a WebView resize/reload.
+  const bool nativeMediaForeground = monitorMode_ != MonitorMode::Off;
 
   if (SetStationheadMonitorProfile(selectedProfile)) {
     PostMessageW(parent_, WM_TIMER, 0, 0);
@@ -282,13 +282,14 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
 
   RECT parentClient{0, 0, 1, 1};
   GetClientRect(parent_, &parentClient);
+  const RECT monitorBounds = ComputeNativeDashboardLayout(parentClient).media;
 
   struct Context {
     PowerSavingController* controller;
     unsigned selectedProfile;
     bool nativeMediaForeground;
-    RECT parentClient;
-  } context{this, selectedProfile, nativeMediaForeground, parentClient};
+    RECT monitorBounds;
+  } context{this, selectedProfile, nativeMediaForeground, monitorBounds};
 
   EnumChildWindows(
       parent_,
@@ -317,7 +318,7 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
           return TRUE;
         }
 
-        const RECT target = context->parentClient;
+        const RECT target = context->monitorBounds;
         const HWND insertAfter = controller->overlay_ ? controller->overlay_ : HWND_TOP;
         const bool zOrderMatches = controller->overlay_
             ? GetWindow(child, GW_HWNDPREV) == controller->overlay_
