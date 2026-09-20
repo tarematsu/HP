@@ -61,7 +61,7 @@ test('background rendering keeps a real full-client Stationhead host behind the 
   assert.doesNotMatch(applyLayout, /put_IsVisible\(FALSE\)/);
 });
 
-test('normal background state keeps a full host with a fixed 720x960 playback viewport', () => {
+test('normal background state keeps a full host with a fixed 960x360 playback viewport', () => {
   const keepBehind = section(
     layoutSource,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -82,8 +82,9 @@ test('normal background state keeps a full host with a fixed 720x960 playback vi
   assert.match(applyLayout, /StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(applyLayout, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
-  assert.match(layoutSource, /kStationheadPlaybackViewportWidth = 720/);
-  assert.match(layoutSource, /kStationheadPlaybackViewportHeight = 960/);
+  assert.match(layoutSource, /kStationheadPlaybackViewportWidth = 960/);
+  assert.match(layoutSource, /kStationheadPlaybackViewportHeight = 360/);
+  assert.match(layoutSource, /kStationheadWindowNameHeight = 24/);
   assert.doesNotMatch(applyLayout, /compactPlayback|useCompactPlayback/);
   assert.match(
     applyLayout,
