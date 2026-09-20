@@ -1,0 +1,18 @@
+/* Compact period-view fixes layered after the main monochrome stylesheet. */
+@media (max-width: 760px) {
+  .mode-tabs.dashboard-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-auto-flow: row;
+  }
+}
+
+@media (max-width: 430px) {
+  .mode-tabs.dashboard-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .mode-tabs.dashboard-tabs button {
+    min-width: 0;
+    white-space: nowrap;
+  }
+}
