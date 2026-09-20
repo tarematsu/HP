@@ -14,14 +14,14 @@
   <div id="notice" class="muted">読み込み中…</div>
   <div id="meta" class="meta" hidden></div>
   <h2>main 毎分収集</h2>
-  <div class="table-wrap"><table><thead><tr><th>JST</th><th>間隔</th><th>station</th><th>live</th><th>listeners</th><th>guests</th><th>total</th><th>channel</th><th>raw</th></tr></thead><tbody id="samples"></tbody></table></div>
+  <div class="table-wrap"><table><thead><tr><th>JST</th><th>間隔</th><th>station</th><th>live</th><th>listeners</th><th>guests</th><th>total</th><th>status</th><th>chat</th><th>channel</th><th>raw</th></tr></thead><tbody id="samples"></tbody></table></div>
   <h2>chat 毎分収集</h2>
   <div class="table-wrap"><table><thead><tr><th>JST</th><th>間隔</th><th>station</th><th>raw</th></tr></thead><tbody id="chats"></tbody></table></div>
   <button id="reload" type="button">再読み込み</button>
 <script>
 const api='/api/sakurazaka46jp-status';
 const ftime=(ms)=>Number.isFinite(Number(ms))?new Date(Number(ms)).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',hour12:false}):'-';
-const esc=(v)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc=(v)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
 const age=(ms)=>{const n=Number(ms);if(!Number.isFinite(n))return '-';if(n<60000)return `${Math.max(0,Math.round(n/1000))}秒`;if(n<3600000)return `${Math.round(n/60000)}分`;return `${(n/3600000).toFixed(1)}時間`};
 const gap=(rows,i)=>{if(i>=rows.length-1)return '-';const diff=Number(rows[i]?.observed_at)-Number(rows[i+1]?.observed_at);return Number.isFinite(diff)?`${Math.round(diff/60000)}分`:'-'};
 function card(label,value){return `<div class="card"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div></div>`}
@@ -35,9 +35,9 @@ async function load(){
     if(!d.latest_main){notice.textContent='収集データはまだありません。';document.querySelector('#meta').hidden=true}
     else{
       notice.textContent=`15秒ごとに自動更新 / 最新${d.sample_count}件の毎分収集結果を表示`;
-      const m=document.querySelector('#meta');m.hidden=false;m.innerHTML=card('target',d.handle)+card('main 最新',ftime(d.latest_main.observed_at))+card('main 経過',age(d.latest_main_age_ms))+card('chat 最新',ftime(d.latest_chat?.observed_at))+card('chat 経過',age(d.latest_chat_age_ms))+card('live',d.latest_main.is_broadcasting??'-')+card('listeners',d.latest_main.listener_count??'-')+card('station',d.latest_main.station_id??'-')+card('broadcast',d.latest_main.broadcast_id??'-');
+      const m=document.querySelector('#meta');m.hidden=false;m.innerHTML=card('target',d.handle)+card('main 最新',ftime(d.latest_main.observed_at))+card('main 経過',age(d.latest_main_age_ms))+card('chat 最新',ftime(d.latest_chat?.observed_at))+card('chat 経過',age(d.latest_chat_age_ms))+card('live',d.latest_main.is_broadcasting??'-')+card('listeners',d.latest_main.listener_count??'-')+card('status',d.latest_main.status??'-')+card('chat status',d.latest_main.chat_status??'-')+card('station',d.latest_main.station_id??'-')+card('broadcast',d.latest_main.broadcast_id??'-');
     }
-    document.querySelector('#samples').innerHTML=samples.map((x,i)=>`<tr><td>${esc(ftime(x.observed_at))}</td><td>${esc(gap(samples,i))}</td><td>${esc(x.station_id??'-')}</td><td>${esc(x.is_broadcasting??'-')}</td><td>${esc(x.listener_count??'-')}</td><td>${esc(x.guest_count??'-')}</td><td>${esc(x.total_listens??'-')}</td><td>${esc(x.channel_alias??'-')}</td>${rawCell(x)}</tr>`).join('')||'<tr><td colspan="9" class="muted">なし</td></tr>';
+    document.querySelector('#samples').innerHTML=samples.map((x,i)=>`<tr><td>${esc(ftime(x.observed_at))}</td><td>${esc(gap(samples,i))}</td><td>${esc(x.station_id??'-')}</td><td>${esc(x.is_broadcasting??'-')}</td><td>${esc(x.listener_count??'-')}</td><td>${esc(x.guest_count??'-')}</td><td>${esc(x.total_listens??'-')}</td><td>${esc(x.status??'-')}</td><td>${esc(x.chat_status??'-')}</td><td>${esc(x.channel_alias??'-')}</td>${rawCell(x)}</tr>`).join('')||'<tr><td colspan="11" class="muted">なし</td></tr>';
     document.querySelector('#chats').innerHTML=chats.map((x,i)=>`<tr><td>${esc(ftime(x.observed_at))}</td><td>${esc(gap(chats,i))}</td><td>${esc(x.station_id??'-')}</td>${rawCell(x)}</tr>`).join('')||'<tr><td colspan="4" class="muted">なし</td></tr>';
   }catch(e){notice.textContent=`取得失敗: ${e.message}`}
 }
