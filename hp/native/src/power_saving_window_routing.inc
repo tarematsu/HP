@@ -24,6 +24,20 @@ bool IsStationheadPlaybackHost(HWND window) {
   return WindowHasClass(window, kStationheadHostWindowClass);
 }
 
+size_t StationheadServiceTileIndex(HWND window) noexcept {
+  wchar_t title[128]{};
+  if (!window || GetWindowTextW(window, title, _countof(title)) <= 0) return 0;
+  const wchar_t* profile = wcsstr(title, L"spotify-v2-");
+  if (!profile) return 0;
+  profile += wcslen(L"spotify-v2-");
+  wchar_t* end = nullptr;
+  const long number = wcstol(profile, &end, 10);
+  if (end == profile || number < 1 || number > 6) return 0;
+  // Preserve the old Monitor S geometry: profile 6 occupies the original
+  // Stationhead tile, while former Spotify profiles 1..5 retain S1..S5.
+  return number == 6 ? 0 : static_cast<size_t>(number);
+}
+
 bool ChildBoundsMatch(HWND window, const RECT& expected) noexcept {
   if (!window || !IsWindow(window)) return false;
   HWND parent = GetParent(window);
@@ -122,9 +136,8 @@ LRESULT CALLBACK PowerSavingController::ChildSubclassProc(
 
   if ((message == WM_SHOWWINDOW || message == WM_WINDOWPOSCHANGED) &&
       IsStationheadPlaybackHost(window)) {
-    // Stationhead owns its WebView controller bounds, while the monitor router
-    // owns the host HWND placement. Reassert the tile after Stationhead layout
-    // passes so the six-window grid stays stable from startup onward.
+    // Each Stationhead owns its WebView controller bounds. The monitor router
+    // only reasserts the six fixed host tiles after internal layout passes.
     controller->ApplyStationheadMonitorPlacement();
   }
 
@@ -146,18 +159,19 @@ void PowerSavingController::ObserveParentMessage(
   switch (message) {
     case kStationheadMonitorProbeResultMessage: {
       if (monitorMode_ == MonitorMode::Off) break;
-      const bool detected = wParam != 0;
+      const unsigned slot = static_cast<unsigned>(lParam);
+      if (slot >= 6) break;
+      const uint32_t bit = 1u << slot;
+      if (wParam != 0) {
+        monitorAuthSlots_ |= bit;
+      } else {
+        monitorAuthSlots_ &= ~bit;
+      }
+      const bool detected = monitorAuthSlots_ != 0;
       if (monitorAuthForeground_ != detected) {
         monitorAuthForeground_ = detected;
         ApplyStationheadMonitorPlacement();
         ArmScheduleTimer();
-        if (monitorMode_ == MonitorMode::ServiceGrid && !detected) {
-          // Authentication may temporarily cover the complete dashboard, but
-          // it must never tear down Spotify's five Monitor S hosts. Force one
-          // final layout pass when Stationhead releases the interactive layer.
-          SetSpotifyMonitorGridVisible(false);
-          SetSpotifyMonitorGridVisible(true);
-        }
       }
       break;
     }
@@ -212,11 +226,10 @@ void PowerSavingController::Attach(HWND parent) {
   // Every fresh dashboard starts on YT for monitor and audio output.
   monitorMode_ = MonitorMode::Native;
   monitorAuthForeground_ = false;
+  monitorAuthSlots_ = 0;
   powerSaving_ = false;
   audioMode_ = AudioMode::Media;
   ApplyAudioMode(audioMode_);
-  SetSpotifyMonitorForegroundSlot(-1);
-  SetSpotifyMonitorGridVisible(false);
 
   EnumChildWindows(
       parent_,
@@ -241,17 +254,15 @@ void PowerSavingController::Attach(HWND parent) {
 void PowerSavingController::AttachChildWindow(HWND window) noexcept {
   if (!parent_ || !window || window == overlay_ || !IsWindow(window)) return;
 
-  if (audioMode_ != AudioMode::Stationhead &&
-      IsStationheadPlaybackHost(window)) {
-    SendMessageW(
-        parent_, kRendererActionMessage,
-        static_cast<WPARAM>(UiAction::StationheadAudioMute), 0);
-  }
-
   ::SetWindowSubclass(
       window, ChildSubclassProc, kChildSubclassId,
       reinterpret_cast<DWORD_PTR>(this));
-  if (IsStationheadPlaybackHost(window) || IsMvPanelWindow(window)) {
+  if (IsStationheadPlaybackHost(window)) {
+    // A recreated Stationhead host must inherit the currently selected output
+    // route rather than globally muting all six windows.
+    ApplyAudioMode(audioMode_);
+    ApplyStationheadMonitorPlacement();
+  } else if (IsMvPanelWindow(window)) {
     ApplyStationheadMonitorPlacement();
   }
 }
@@ -260,33 +271,22 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   if (!parent_ || !IsWindow(parent_)) return;
 
   const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid;
-  const bool stationheadForeground =
-      serviceGrid ||
-      (monitorMode_ == MonitorMode::Native && monitorAuthForeground_);
   const bool nativeMediaForeground =
       monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
 
-  // Stationhead authentication is a temporary visual overlay only. Keep the
-  // Spotify grid enabled so its WebViews, timers and recovery state continue
-  // untouched behind the interactive surface.
-  if (serviceGrid) SetSpotifyMonitorGridVisible(true);
-
-  if (SetStationheadMonitorForeground(stationheadForeground)) {
+  if (SetStationheadMonitorForeground(serviceGrid)) {
     PostMessageW(parent_, WM_TIMER, 0, 0);
   }
 
   RECT parentClient{0, 0, 1, 1};
   GetClientRect(parent_, &parentClient);
-  const RECT serviceTile = ServiceMonitorTileBounds(parentClient, 0);
-  const RECT stationheadBounds =
-      monitorAuthForeground_ ? parentClient : serviceTile;
 
   struct Context {
     PowerSavingController* controller;
-    bool stationheadForeground;
+    bool serviceGrid;
     bool nativeMediaForeground;
-    RECT stationheadBounds;
-  } context{this, stationheadForeground, nativeMediaForeground, stationheadBounds};
+    RECT parentClient;
+  } context{this, serviceGrid, nativeMediaForeground, parentClient};
 
   EnumChildWindows(
       parent_,
@@ -310,19 +310,16 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
           return TRUE;
         }
 
-        if (!IsStationheadPlaybackHost(child)) return TRUE;
+        if (!IsStationheadPlaybackHost(child) || !context->serviceGrid) {
+          return TRUE;
+        }
 
-        const RECT target = context->stationheadBounds;
-        const HWND insertAfter = context->stationheadForeground
-            ? (controller->overlay_ ? controller->overlay_ : HWND_TOP)
-            : HWND_BOTTOM;
-        const bool zOrderMatch = context->stationheadForeground
-            ? (controller->overlay_
-                ? GetWindow(child, GW_HWNDPREV) == controller->overlay_
-                : GetWindow(child, GW_HWNDPREV) == nullptr)
-            : GetWindow(child, GW_HWNDNEXT) == nullptr;
-        if (!ChildBoundsMatch(child, target) || !zOrderMatch ||
-            !IsWindowVisible(child)) {
+        const size_t tileIndex = StationheadServiceTileIndex(child);
+        const RECT target = ServiceMonitorTileBounds(context->parentClient, tileIndex);
+        const HWND insertAfter = controller->overlay_
+            ? controller->overlay_
+            : HWND_TOP;
+        if (!ChildBoundsMatch(child, target) || !IsWindowVisible(child)) {
           SetWindowPos(
               child, insertAfter,
               target.left, target.top,
@@ -339,9 +336,8 @@ void PowerSavingController::Detach() noexcept {
   RestoreBrightness();
   mvStartupInputPass_ = false;
   monitorAuthForeground_ = false;
+  monitorAuthSlots_ = 0;
   SetStationheadMonitorForeground(false);
-  SetSpotifyMonitorForegroundSlot(-1);
-  SetSpotifyMonitorGridVisible(false);
   if (parent_ && IsWindow(parent_)) {
     EnumChildWindows(
         parent_,
