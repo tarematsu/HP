@@ -37,20 +37,6 @@ unsigned StationheadProfileNumberFromWindow(HWND window) noexcept {
       : 0;
 }
 
-size_t StationheadServiceTileIndex(HWND window) noexcept {
-  wchar_t title[128]{};
-  if (!window || GetWindowTextW(window, title, _countof(title)) <= 0) return 0;
-  const wchar_t* profile = wcsstr(title, L"spotify-v2-");
-  if (!profile) return 0;
-  profile += wcslen(L"spotify-v2-");
-  wchar_t* end = nullptr;
-  const long number = wcstol(profile, &end, 10);
-  if (end == profile || number < 1 || number > 6) return 0;
-  // Preserve the old Monitor S geometry: profile 6 occupies the original
-  // Stationhead tile, while former Spotify profiles 1..5 retain S1..S5.
-  return number == 6 ? 0 : static_cast<size_t>(number);
-}
-
 bool ChildBoundsMatch(HWND window, const RECT& expected) noexcept {
   if (!window || !IsWindow(window)) return false;
   HWND parent = GetParent(window);
@@ -150,7 +136,7 @@ LRESULT CALLBACK PowerSavingController::ChildSubclassProc(
   if ((message == WM_SHOWWINDOW || message == WM_WINDOWPOSCHANGED) &&
       IsStationheadPlaybackHost(window)) {
     // Each Stationhead owns its WebView controller bounds. The monitor router
-    // only reasserts the six fixed host tiles after internal layout passes.
+    // only reasserts the selected host after internal layout passes.
     controller->ApplyStationheadMonitorPlacement();
   }
 
