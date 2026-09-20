@@ -25,7 +25,7 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function normalizeMinuteRow(row, distinctTracks = null) {
+function normalizeMinuteRow(row, trackCount = null) {
   const streamStart = finiteNumber(row?.stream_start);
   const streamEnd = finiteNumber(row?.stream_end);
   const memberStart = finiteNumber(row?.member_start);
@@ -39,22 +39,26 @@ function normalizeMinuteRow(row, distinctTracks = null) {
       ? memberEnd - memberStart
       : null,
     likes_max: null,
-    distinct_tracks: distinctTracks,
+    distinct_tracks: trackCount,
     quality_score: 1,
     quality_flags: '["minute_facts","current_period"]',
     live_collector: true,
   };
 }
 
-async function loadCurrentDistinctTracks(db, periodKey) {
+async function loadCurrentTrackCount(db, periodKey) {
   try {
     const row = await db.prepare(`SELECT
-        COUNT(DISTINCT COALESCE(NULLIF(json_extract(row_json,'$.track_key'),''),row_key)) AS distinct_tracks
+        SUM(CASE
+          WHEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)>0
+            THEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)
+          ELSE 1
+        END) AS track_count
       FROM sh_pages_track_history_read_model
       WHERE play_date=?`)
       .bind(periodKey)
       .first();
-    const value = Number(row?.distinct_tracks);
+    const value = Number(row?.track_count);
     return Number.isFinite(value) ? value : null;
   } catch (error) {
     if (/no such table|no such function|malformed json/i.test(String(error?.message || error))) return null;
@@ -82,14 +86,14 @@ export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.n
 
   const periodStart = currentSummaryPeriodStart('daily', now);
   const periodKey = currentPeriodKey('daily', now);
-  const [result, distinctTracks] = await Promise.all([
+  const [result, trackCount] = await Promise.all([
     env.MINUTE_DB.prepare(CURRENT_DAILY_MINUTE_SUMMARY_SQL)
       .bind(periodStart, now + 1, 2)
       .all(),
-    loadCurrentDistinctTracks(env.MINUTE_DB, periodKey),
+    loadCurrentTrackCount(env.MINUTE_DB, periodKey),
   ]);
   const liveRows = (result.results || [])
-    .map((row) => normalizeMinuteRow(row, distinctTracks))
+    .map((row) => normalizeMinuteRow(row, trackCount))
     .filter((row) => String(row?.period_key || '') === periodKey)
     .map(validateDailyMinuteRow);
   const completed = applySummaryCompleteness(liveRows, 'daily', now);
