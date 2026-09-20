@@ -68,7 +68,7 @@ test('non-owner auth and recovery surfaces remain backgrounded and cannot steal 
   const activeHost = section(layout,
     'HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept',
     '}  // namespace hp');
-  assert.match(activeHost, /!foregroundAllowed_ && !StationheadMonitorForeground\(\)/);
+  assert.match(activeHost, /!foregroundAllowed_ && !StationheadMonitorForegroundForProfile\(profileName_\)/);
   assert.match(activeHost, /return nullptr/);
 
   const visible = section(layout,
