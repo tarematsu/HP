@@ -14,6 +14,7 @@ enum class UiAction {
   Restart,
   StationheadAudioToggle,
   StationheadAudioMute,
+  StationheadPrimaryAudio,
   StationheadPeer1Audio,
   StationheadPeer2Audio,
   StationheadPeer3Audio,
