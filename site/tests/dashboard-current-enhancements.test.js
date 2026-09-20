@@ -50,7 +50,9 @@ test('dashboard deltas are green and refresh label is not ellipsized', () => {
   assert.match(css, /#updated[\s\S]*white-space:\s*normal !important/);
 });
 
-test('history summary sample labels explain total samples versus listener-bearing samples', () => {
+test('history summary keeps total sample count and hides listener-valid sample count', () => {
   assert.match(tableCleanup, /\['記録数', \['取得記録数', 'その期間に保存された全サンプル数'\]\]/);
-  assert.match(tableCleanup, /\['有効記録数', \['同接有効数', 'オンライン人数が取得できたサンプル数'\]\]/);
+  assert.match(tableCleanup, /'有効記録数'/);
+  assert.match(tableCleanup, /'同接有効数'/);
+  assert.doesNotMatch(tableCleanup, /\['有効記録数', \['同接有効数'/);
 });
