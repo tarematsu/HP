@@ -1,4 +1,4 @@
-name: Validate named window modes
+name: Finalize named window modes
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  validate-and-commit:
+  finalize-and-validate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -30,26 +30,27 @@ jobs:
         run: |
           python .github/scripts/apply_window_named_modes.py
           python .github/scripts/finalize_window_named_modes.py
+      - name: Commit implementation and remove temporary automation
+        shell: bash
+        run: |
+          git rm -f --ignore-unmatch \
+            .github/workflows/apply-window-named-modes.yml \
+            .github/workflows/apply-window-named-modes-v2.yml \
+            .github/workflows/apply-window-named-modes-v3.yml \
+            .github/workflows/apply-window-named-modes-final.yml \
+            .github/workflows/capture-window-mode-tests.yml \
+            .github/scripts/apply_window_named_modes.py \
+            .github/scripts/finalize_window_named_modes.py \
+            .github/window-mode-test-output.txt \
+            .github/window-mode-test-status.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Use window names for Stationhead audio and monitor modes"
+          git push origin HEAD:feat/window-named-audio-monitor-modes
       - name: Check video workspace
         working-directory: hp
         run: npm run check --workspace video
       - name: Test video workspace
         working-directory: hp
         run: npm test --workspace video
-      - name: Commit implementation
-        shell: bash
-        run: |
-          git rm .github/workflows/apply-window-named-modes.yml
-          git rm .github/workflows/apply-window-named-modes-v2.yml
-          git rm .github/workflows/apply-window-named-modes-v3.yml
-          git rm .github/workflows/apply-window-named-modes-final.yml
-          git rm .github/workflows/capture-window-mode-tests.yml
-          git rm .github/scripts/apply_window_named_modes.py
-          git rm .github/scripts/finalize_window_named_modes.py
-          git rm .github/window-mode-test-output.txt
-          git rm .github/window-mode-test-status.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add hp/native/src hp/video/test
-          git commit -m "Use window names for Stationhead audio and monitor modes"
-          git push origin HEAD:feat/window-named-audio-monitor-modes
