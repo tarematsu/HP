@@ -311,7 +311,7 @@ void PowerSavingController::PaintOverlay(HWND window) {
       SelectObject(paintDc, previousFont);
       DeleteObject(font);
       fontHeight = std::max(
-          9, fontHeight * availableTextWidth / std::max(1L, textSize.cx));
+          9, static_cast<int>(fontHeight * availableTextWidth / std::max(1L, textSize.cx)));
       font = createButtonFont(fontHeight);
       previousFont = SelectObject(paintDc, font);
     }
