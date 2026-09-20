@@ -1,11 +1,10 @@
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
-const SUMMARY_REMOVED_LABELS = new Set(['最大いいね', '主なホスト']);
+const SUMMARY_REMOVED_LABELS = new Set(['最大いいね', '主なホスト', '有効記録数', '同接有効数']);
 const RANKING_REMOVED_LABELS = new Set(['前週順位', '順位データ出典', '品質']);
 const RENAMED_LABELS = new Map([
   ['記録数', ['取得記録数', 'その期間に保存された全サンプル数']],
-  ['有効記録数', ['同接有効数', 'オンライン人数が取得できたサンプル数']],
 ]);
-const CACHE_MIGRATION_KEY = 'sh.history.display-cleanup.v2';
+const CACHE_MIGRATION_KEY = 'sh.history.display-cleanup.v3';
 const HISTORY_CACHE_PREFIX = 'sh.history.v3:';
 let cleaning = false;
 
