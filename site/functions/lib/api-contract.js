@@ -1,8 +1,9 @@
-export const API_CONTRACT_VERSION = 4;
+export const API_CONTRACT_VERSION = 5;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
     { path: '/api/health', methods: ['GET'], description: 'Unified collector, minute pipeline, runtime, and Sakurazaka health' },
+    { path: '/api/stationhead-collection-test', methods: ['GET'], description: 'Latest temporary Stationhead collection test window and raw sample status' },
   ]),
   dashboard: Object.freeze([
     { path: '/api/dashboard', methods: ['GET'], description: 'Current state, queue, recent history, and completed daily changes' },
@@ -64,7 +65,7 @@ export function edgeCacheableApiRequest(request) {
   if (request.method !== 'GET' || request.headers.has('authorization')) return false;
   const pathname = normalizedPathname(new URL(request.url).pathname);
   if (!pathname.startsWith('/api/')) return false;
-  return !pathname.startsWith('/api/health');
+  return pathname !== '/api/health' && pathname !== '/api/stationhead-collection-test';
 }
 
 export function apiCacheTtlSeconds(request) {

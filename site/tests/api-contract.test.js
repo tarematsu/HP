@@ -7,6 +7,7 @@ import {
   API_GROUPS,
   apiCacheTtlSeconds,
   canonicalApiPaths,
+  edgeCacheableApiRequest,
   materializedApiKey,
   materializedResponseCadenceSeconds,
   materializedResponseMaximumAge,
@@ -20,15 +21,16 @@ function unique(values, label) {
 test('API contract contains unique canonical paths only', () => {
   const canonical = canonicalApiPaths();
   unique(canonical, 'canonical API paths');
-  assert.equal(canonical.length, 7);
+  assert.equal(canonical.length, 8);
   assert.ok(canonical.includes('/api/history-current'));
+  assert.ok(canonical.includes('/api/stationhead-collection-test'));
   assert.equal(existsSync(new URL('../functions/api/_middleware.js', import.meta.url)), false);
 });
 
 test('GET /api catalog is generated from the canonical contract only', () => {
   const catalog = apiCatalog(0);
   assert.equal(catalog.contract_version, API_CONTRACT_VERSION);
-  assert.equal(catalog.contract_version, 4);
+  assert.equal(catalog.contract_version, 5);
   assert.deepEqual(catalog.groups, API_GROUPS);
   assert.equal('compatibility' in catalog, false);
   assert.equal('retired' in catalog, false);
@@ -55,6 +57,10 @@ test('materialized response freshness follows canonical generation cadences', ()
 test('current minute history uses a 30-second shared cache', () => {
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history-current?mode=daily')), 30);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history?mode=daily')), 300);
+});
+
+test('collection test endpoint bypasses shared edge cache', () => {
+  assert.equal(edgeCacheableApiRequest(new Request('https://skrzk.test/api/stationhead-collection-test')), false);
 });
 
 test('cache middleware contains the canonical Sakurazaka policy', () => {

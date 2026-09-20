@@ -16,6 +16,7 @@ test('OTHER_DB schema contract retains rankings and Sakurazaka raw/derived colle
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_main'));
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_chat'));
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_track_metadata'));
+  assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_collection_tests'));
   assert.ok(OTHER_RETIRED_OBJECTS.includes('sh_track_metadata'));
   assert.ok(OTHER_RETIRED_OBJECTS.includes('sh_playback_channel_current'));
   assert.deepEqual(OTHER_RETIRED_MIGRATIONS, [
@@ -38,15 +39,17 @@ test('featured ranking reads keep the channel/date/rank expression index', () =>
 
 test('OTHER_DB metadata advances through raw collection to repeatable raw-derived metadata', () => {
   const rawMigration = readFileSync('database/other-migrations/016_sakurazaka46jp_raw_collection.sql', 'utf8');
-  const migrationPath = 'database/other-migrations/017_sakurazaka_raw_derived_metadata.sql';
+  const derivedMigration = readFileSync('database/other-migrations/017_sakurazaka_raw_derived_metadata.sql', 'utf8');
+  const migrationPath = 'database/other-migrations/018_sakurazaka_collection_test.sql';
   const migration = readFileSync(migrationPath, 'utf8');
   const metadata = JSON.parse(readFileSync('database/other-db.json', 'utf8'));
   assert.equal(metadata.schema, migrationPath);
   assert.match(rawMigration, /sh_sakurazaka46jp_main/);
   assert.match(rawMigration, /sh_sakurazaka46jp_chat/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_track_metadata/);
-  assert.match(migration, /PRIMARY KEY\(session_id, observed_at, position\)/);
-  assert.doesNotMatch(migration, /ALTER TABLE/);
+  assert.match(derivedMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_track_metadata/);
+  assert.match(derivedMigration, /PRIMARY KEY\(session_id, observed_at, position\)/);
+  assert.doesNotMatch(derivedMigration, /ALTER TABLE/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_collection_tests/);
 });
 
 test('remote provisioning and local smoke tests share the schema contract', () => {

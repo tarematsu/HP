@@ -5,6 +5,7 @@ import {
   processOfficialNewsStage,
 } from './other-official-news-stages.js';
 import { queueAttributedEnv } from './queue-attribution.js';
+import { sakurazakaCollectionTestWindow } from './sakurazaka-collection-test.js';
 import {
   officialNewsCheckDue,
   officialNewsProbeDue,
@@ -68,12 +69,50 @@ async function dispatchDueStages(env, scheduledAt, due) {
   return [];
 }
 
+function collectionTestExtra(test, due) {
+  return {
+    collection_test: true,
+    collection_test_id: test.testId,
+    collection_test_handle: test.targetHandle,
+    after_news_check: due.newsCheckDue,
+  };
+}
+
+async function dispatchCollectionTest(env, scheduledAt, due, test) {
+  await send(env?.SAKURAZAKA_QUEUE, stageBody(
+    'station-auth',
+    scheduledAt,
+    collectionTestExtra(test, due),
+  ));
+  return ['station-auth'];
+}
+
 export async function runSakurazakaScheduled(controller, env, dependencies = {}) {
   const cron = String(controller?.cron || '');
   if (cron !== SAKURAZAKA_CRON) return { skipped: true, reason: 'unsupported-cron', cron };
   const scheduledAt = scheduledTimestamp(controller);
   const activeEnv = queueAttributedEnv(env, 'sh-sakurazaka46jp');
-  const due = await dueWork(activeEnv, scheduledAt, dependencies);
+  const [due, collectionTest] = await Promise.all([
+    dueWork(activeEnv, scheduledAt, dependencies),
+    sakurazakaCollectionTestWindow(activeEnv, scheduledAt),
+  ]);
+
+  if (collectionTest.active) {
+    const stages = await dispatchCollectionTest(activeEnv, scheduledAt, due, collectionTest);
+    return {
+      dispatched: true,
+      dispatched_stages: stages,
+      scheduled_at: scheduledAt,
+      collection_test: true,
+      collection_test_id: collectionTest.testId,
+      collection_test_handle: collectionTest.targetHandle,
+      collection_test_ends_at: collectionTest.endsAt,
+      news_check_due: due.newsCheckDue,
+      station_probe_due: due.stationProbeDue,
+      news_check_after_collection: due.newsCheckDue,
+    };
+  }
+
   if (!due.newsCheckDue && !due.stationProbeDue) {
     return { skipped: true, reason: 'no-due-work', scheduled_at: scheduledAt };
   }
@@ -106,6 +145,52 @@ async function runCycle(env, body) {
   };
 }
 
+function collectionTestMetadata(body) {
+  if (body?.collection_test !== true) return null;
+  const testId = String(body.collection_test_id || '').trim();
+  const targetHandle = String(body.collection_test_handle || '').trim().toLowerCase();
+  if (!testId || !targetHandle) throw new Error('collection test metadata is incomplete');
+  return { testId, targetHandle };
+}
+
+async function processCollectionTestStage(env, body, task) {
+  const test = collectionTestMetadata(body);
+  if (task.stage === 'station-finalize' || task.stage === 'raw-materialize') {
+    if (task.afterNewsCheck) {
+      await send(env?.HOST_MONITOR_QUEUE, stageBody('probe', task.scheduledAt));
+    }
+    return {
+      stage: task.stage,
+      pending: false,
+      skipped: true,
+      reason: 'collection-test-boundary',
+      collection_test: true,
+      collection_test_id: test.testId,
+      collection_test_handle: test.targetHandle,
+    };
+  }
+
+  const testEnv = {
+    ...env,
+    OFFICIAL_NEWS_STATIONHEAD_HANDLE: test.targetHandle,
+    OFFICIAL_NEWS_SH_HANDLE: test.targetHandle,
+    SOLO_BROADCAST_HANDLE: test.targetHandle,
+  };
+  const forward = async (nextBody) => send(env?.HOST_MONITOR_QUEUE, {
+    ...nextBody,
+    collection_test: true,
+    collection_test_id: test.testId,
+    collection_test_handle: test.targetHandle,
+  });
+  const result = await processOfficialNewsStage(testEnv, task, { send: forward });
+  return {
+    ...result,
+    collection_test: true,
+    collection_test_id: test.testId,
+    collection_test_handle: test.targetHandle,
+  };
+}
+
 async function processMessage(message, env) {
   const body = message?.body || {};
   if (Number(body.message_version) !== 1) throw new Error('unsupported Sakurazaka task version');
@@ -116,6 +201,9 @@ async function processMessage(message, env) {
   }
   if (body.message_type === OFFICIAL_NEWS_STAGE_MESSAGE) {
     const task = officialNewsStageTask(body);
+    if (body.collection_test === true) {
+      return { task: 'official-news', ...(await processCollectionTestStage(env, body, task)) };
+    }
     return { task: 'official-news', ...(await processOfficialNewsStage(env, task)) };
   }
   throw new Error(`unsupported Sakurazaka task: ${String(body.message_type || 'unknown')}`);
