@@ -4,7 +4,7 @@
 namespace hp {
 namespace {
 
-constexpr int kStationheadPlaybackViewportWidth = 720;
+constexpr int kStationheadPlaybackViewportWidth = 360;
 constexpr int kStationheadPlaybackViewportHeight = 960;
 
 int RectWidth(const RECT& bounds) noexcept {
@@ -213,7 +213,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const RECT playbackControllerBounds = StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep the playback WebView viewport fixed at 720x960 in every state.
+  // Keep the playback WebView viewport fixed at 360x960 in every state.
   // The host HWND remains full workspace size for stable z-order and is
   // visually clipped to 1x1 while backgrounded.
   if (authHostWindow && IsWindow(authHostWindow)) {
@@ -399,14 +399,16 @@ void StationheadPlayer::SetVisible(bool visible) {
     return;
   }
 
-  if (selectedTab_ == StationheadTabKind::Auth) {
+  const bool foregroundGranted =
+      foregroundAllowed_ || StationheadMonitorForeground();
+  if (foregroundGranted && selectedTab_ == StationheadTabKind::Auth) {
     if (viewVisible_ && authController_ && authWebview_ &&
         ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
                                  authController_.Get(), bounds_) &&
         WindowContainsFocus(authHostWindow_)) {
       return;
     }
-  } else if (loginRequired_ && viewVisible_ &&
+  } else if (foregroundGranted && loginRequired_ && viewVisible_ &&
              SurfaceMatches(hostWindow_, controller_.Get(),
                             StationheadBackgroundBounds(bounds_), HWND_TOP) &&
              BackgroundAuthSurfaceMatches(
@@ -419,6 +421,7 @@ void StationheadPlayer::SetVisible(bool visible) {
   LayoutControllers();
   ApplyMute();
 
+  if (!foregroundGranted) return;
   if (selectedTab_ == StationheadTabKind::Auth) {
     if (authController_ && authHostWindow_ &&
         !WindowContainsFocus(authHostWindow_)) {
@@ -442,19 +445,42 @@ void StationheadPlayer::LayoutControllers() {
       ResolveStationheadSurfacePolicy(
           selectedTab_, authSurfaceReady, loginRequired_);
   const bool monitorForeground = StationheadMonitorForeground();
+  const bool foregroundGranted = foregroundAllowed_ || monitorForeground;
+  const bool showAuth = foregroundGranted && policy.showAuth;
+  const bool showPlayback = foregroundGranted && policy.showPlayback;
+  const bool hidePlayback = foregroundGranted && policy.hidePlayback;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
-                              policy.showAuth,
-                              policy.showPlayback,
-                              policy.hidePlayback);
+                              showAuth,
+                              showPlayback,
+                              hidePlayback);
 
   std::lock_guard lock(mutex_);
-  status_.visible = policy.showAuth || policy.showPlayback || monitorForeground;
+  status_.visible = showAuth || showPlayback || monitorForeground;
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {
   const RECT resolved = ResolveStationheadWorkspaceBounds(window_, bounds);
   if (!EqualRect(&bounds_, &resolved)) bounds_ = resolved;
+  LayoutControllers();
+}
+
+void StationheadPlayer::SetForegroundAllowed(bool allowed) {
+  if (foregroundAllowed_ == allowed) return;
+  foregroundAllowed_ = allowed;
+
+  const bool monitorForeground = StationheadMonitorForeground();
+  if (!allowed && !monitorForeground &&
+      (WindowContainsFocus(hostWindow_) || WindowContainsFocus(authHostWindow_)) &&
+      window_ && IsWindow(window_)) {
+    SetFocus(window_);
+  }
+
+  if (!hostWindow_ && !controller_ && !authHostWindow_ && !authController_) return;
+  if (allowed && selectedTab_ != StationheadTabKind::None) {
+    SetVisible(true);
+    return;
+  }
   LayoutControllers();
 }
 
@@ -485,6 +511,7 @@ bool StationheadPlayer::HasAuthTab() const {
 }
 
 HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
+  if (!foregroundAllowed_ && !StationheadMonitorForeground()) return nullptr;
   if (selectedTab_ == StationheadTabKind::Auth) {
     if (authController_ && authWebview_ && authHostWindow_ &&
         IsWindow(authHostWindow_)) {
