@@ -8,7 +8,7 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 5;
+const SERIES_CACHE_VERSION = 6;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const sakurazakaSeriesCache = new Map();
@@ -69,19 +69,18 @@ export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH target_host AS (
   CROSS JOIN sh_broadcast_sessions s
   WHERE s.host_id=h.id
 ), candidate_points AS (
-  SELECT f.minute_at,f.listener_count
+  SELECT f.id AS fact_id,f.minute_at,f.listener_count
   FROM target_sessions target
   CROSS JOIN sh_minute_facts f
   WHERE f.broadcast_session_id=target.id
     AND f.minute_at>=?2 AND f.minute_at<?3
     AND f.listener_count IS NOT NULL
-  UNION ALL
-  SELECT f.minute_at,f.listener_count
+  UNION
+  SELECT f.id AS fact_id,f.minute_at,f.listener_count
   FROM target_host h
   CROSS JOIN sh_minute_fact_context_v2 c
   JOIN sh_minute_facts f ON f.id=c.fact_id
   WHERE c.host_id_override=h.id
-    AND f.broadcast_session_id IS NULL
     AND f.minute_at>=?2 AND f.minute_at<?3
     AND f.listener_count IS NOT NULL
 ), minute_points AS (
