@@ -74,16 +74,16 @@ test('update, monitor and audio output controls share one horizontal clock foote
   assert.match(overlay, /button\.bottom - button\.top\) \* 42 \/ 100/);
   assert.match(overlay, /L"更新"/);
   assert.match(overlay, /L"モニターYT"/);
-  assert.match(overlay, /L"モニターS"/);
+  for (const name of ['ozeki', 'tgut', 'yuukiar', 'ten', 'nagi', 'hinata']) {
+    assert.match(overlay, new RegExp(`L"モニター${name}"`));
+  }
   assert.match(overlay, /L"モニターOFF"/);
-  assert.doesNotMatch(overlay, /L"モニターST"|L"モニターS[1-5]"/);
+  assert.doesNotMatch(overlay, /L"モニターS(?:T|[1-5])"/);
   assert.match(overlay, /L"音声出力YT"/);
-  assert.match(overlay, /L"音声出力ST"/);
-  assert.match(overlay, /L"音声出力S1"/);
-  assert.match(overlay, /L"音声出力S2"/);
-  assert.match(overlay, /L"音声出力S3"/);
-  assert.match(overlay, /L"音声出力S4"/);
-  assert.match(overlay, /L"音声出力S5"/);
+  for (const name of ['ozeki', 'tgut', 'yuukiar', 'ten', 'nagi', 'hinata']) {
+    assert.match(overlay, new RegExp(`L"音声出力${name}"`));
+  }
+  assert.doesNotMatch(overlay, /L"音声出力S(?:T|[1-5])"/);
   assert.match(overlay, /L"音声出力OFF"/);
   assert.doesNotMatch(overlay, /L"ミュート(?:A|B|C|D|E|F|AB)"/);
   assert.match(header, /enum class MonitorMode[\s\S]*Native,[\s\S]*ServiceGrid,[\s\S]*Off/);
@@ -97,31 +97,19 @@ test('update, monitor and audio output controls share one horizontal clock foote
   assert.match(layout, /hpControlRowWidth = hpControlButtonWidth \* 3 \+ hpControlButtonGap \* 2/);
 });
 
-test('monitor button cycles YT, six-Stationhead S grid, black OFF, then YT', () => {
+test('monitor button cycles YT, six named Stationhead windows, OFF, then YT', () => {
   assert.match(overlay, /controller->CycleMonitorMode\(\)/);
-  assert.match(
-    schedule,
-    /case MonitorMode::Native:[\s\S]*ApplyMonitorMode\(MonitorMode::ServiceGrid\)[\s\S]*case MonitorMode::ServiceGrid:[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)[\s\S]*case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/,
-  );
-  assert.doesNotMatch(schedule, /SetSpotifyMonitorForegroundSlot|SetSpotifyMonitorGridVisible/);
-  assert.match(grid, /kServiceMonitorTileCount = 6/);
-  assert.match(grid, /kServiceMonitorColumns = 3/);
-  assert.match(grid, /kServiceMonitorRows = 2/);
-  assert.doesNotMatch(grid, /ComputeNativeDashboardLayout/);
-  assert.match(grid, /workspaceBounds\.right - workspaceBounds\.left/);
-  assert.match(grid, /workspaceBounds\.bottom - workspaceBounds\.top/);
-  assert.match(routing, /StationheadServiceTileIndex\(HWND window\)/);
-  assert.match(routing, /number == 6 \? 0 : static_cast<size_t>\(number\)/);
-  assert.match(routing, /ServiceMonitorTileBounds\(context->parentClient, tileIndex\)/);
-  assert.match(routing, /monitorMode_ == MonitorMode::ServiceGrid/);
+  assert.match(schedule, /monitorStationheadProfile_ = 6/);
+  assert.match(schedule, /monitorStationheadProfile_ == 6[\s\S]*\? 1/);
+  assert.match(schedule, /std::clamp\(monitorStationheadProfile_ \+ 1, 1u, 5u\)/);
+  assert.match(schedule, /monitorStationheadProfile_ == 5[\s\S]*ApplyMonitorMode\(MonitorMode::Off\)/);
+  assert.match(schedule, /case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/);
+  assert.match(routing, /StationheadProfileNumberFromWindow\(HWND window\)/);
+  assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
+  assert.match(routing, /const RECT target = context->parentClient/);
+  assert.match(routing, /SetStationheadMonitorProfile\(selectedProfile\)/);
   assert.match(schedule, /powerSaving_ = nextPowerSaving/);
-  assert.match(
-    schedule,
-    /Renderer::SetGlobalPowerSavingMode\(\s*powerSaving_ \|\| mode == MonitorMode::ServiceGrid\s*\)/,
-  );
   assert.match(schedule, /ApplyStationheadMonitorPlacement\(\)/);
-  assert.match(routing, /SetStationheadMonitorForeground\(serviceGrid\)/);
-  assert.match(routing, /monitorMode_ = MonitorMode::Native/);
 });
 
 test('update button routes through the existing verified app-update action', () => {
@@ -140,7 +128,13 @@ test('compact overlay clips the complete three-button control row', () => {
   assert.match(overlay, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
 });
 
-test('audio output cycles YT, Stationhead ST/S1/S2/S3/S4/S5, then OFF', () => {
+test('named monitor and audio labels shrink to fit narrow control buttons', () => {
+  assert.match(overlay, /GetTextExtentPoint32W/);
+  assert.match(overlay, /availableTextWidth/);
+  assert.match(overlay, /fontHeight = std::max\([\s\S]*9,/);
+});
+
+test('audio output cycles YT and six named Stationhead windows, then OFF', () => {
   assert.match(overlay, /controller->CycleAudioMode\(\)/);
   assert.match(
     schedule,

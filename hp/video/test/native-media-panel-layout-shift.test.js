@@ -11,19 +11,12 @@ const grid = source('service_monitor_grid.h');
 const windows = source('renderer_panels/windows.inc');
 const renderer = source('renderer_panels.cpp');
 
-test('Monitor S parks six Stationhead hosts across the full screen', () => {
-  assert.match(stationhead, /StationheadBackgroundBounds\(const RECT& workspaceBounds\)[\s\S]*return workspaceBounds;/);
-  assert.match(grid, /kServiceMonitorTileCount = 6/);
-  assert.match(grid, /kServiceMonitorColumns = 3/);
-  assert.match(grid, /kServiceMonitorRows = 2/);
-  assert.doesNotMatch(grid, /ComputeNativeDashboardLayout/);
-  assert.match(grid, /workspaceBounds\.right - workspaceBounds\.left/);
-  assert.match(grid, /workspaceBounds\.bottom - workspaceBounds\.top/);
-  assert.match(routing, /StationheadServiceTileIndex\(HWND window\)/);
-  assert.match(routing, /number == 6 \? 0 : static_cast<size_t>\(number\)/);
-  assert.match(routing, /const size_t tileIndex = StationheadServiceTileIndex\(child\)/);
-  assert.match(routing, /ServiceMonitorTileBounds\(context->parentClient, tileIndex\)/);
-  assert.match(routing, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
+test('named Stationhead monitor promotes only its selected host to the full screen', () => {
+  assert.match(stationhead, /gStationheadMonitorProfile\{0\}/);
+  assert.match(stationhead, /StationheadMonitorForegroundForProfile/);
+  assert.match(routing, /StationheadProfileNumberFromWindow\(HWND window\)/);
+  assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
+  assert.match(routing, /const RECT target = context->parentClient/);
   assert.doesNotMatch(routing, /SetSpotifyMonitorGridVisible|SetSpotifyMonitorForegroundSlot/);
 });
 

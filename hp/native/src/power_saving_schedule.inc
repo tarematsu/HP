@@ -109,10 +109,18 @@ void PowerSavingController::ApplyMode(bool enabled) {
 void PowerSavingController::CycleMonitorMode() noexcept {
   switch (monitorMode_) {
     case MonitorMode::Native:
+      monitorStationheadProfile_ = 6;
       ApplyMonitorMode(MonitorMode::ServiceGrid);
       break;
     case MonitorMode::ServiceGrid:
-      ApplyMonitorMode(MonitorMode::Off);
+      if (monitorStationheadProfile_ == 5) {
+        ApplyMonitorMode(MonitorMode::Off);
+      } else {
+        monitorStationheadProfile_ = monitorStationheadProfile_ == 6
+            ? 1
+            : std::clamp(monitorStationheadProfile_ + 1, 1u, 5u);
+        ApplyMonitorMode(MonitorMode::ServiceGrid);
+      }
       break;
     case MonitorMode::Off:
       ApplyMonitorMode(MonitorMode::Native);
@@ -140,10 +148,12 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   } else {
     RestoreBrightness();
   }
-  // Monitor S is a dedicated six-Stationhead surface. Hide the normal dashboard
-  // and YouTube/TVer panel without stopping their playback lifecycle.
+  // A named Stationhead monitor is a dedicated single-window surface. Hide the
+  // normal dashboard without stopping any Stationhead playback lifecycle.
   Renderer::SetGlobalPowerSavingMode(
       powerSaving_ || mode == MonitorMode::ServiceGrid);
+  // ApplyStationheadMonitorPlacement owns the shared monitor-profile update so
+  // every profile change, including ServiceGrid -> Off, emits the relayout tick.
   ApplyStationheadMonitorPlacement();
 
   if (layoutChanged) LayoutOverlay();

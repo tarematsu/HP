@@ -85,6 +85,7 @@ class PowerSavingController {
   HWND overlay_ = nullptr;
   bool powerSaving_ = false;
   MonitorMode monitorMode_ = MonitorMode::Native;
+  unsigned monitorStationheadProfile_ = 6;
   bool monitorAuthForeground_ = false;
   uint32_t monitorAuthSlots_ = 0;
   AudioMode audioMode_ = AudioMode::Media;

@@ -24,7 +24,7 @@ bool IsStationheadPlaybackHost(HWND window) {
   return WindowHasClass(window, kStationheadHostWindowClass);
 }
 
-size_t StationheadServiceTileIndex(HWND window) noexcept {
+unsigned StationheadProfileNumberFromWindow(HWND window) noexcept {
   wchar_t title[128]{};
   if (!window || GetWindowTextW(window, title, _countof(title)) <= 0) return 0;
   const wchar_t* profile = wcsstr(title, L"spotify-v2-");
@@ -32,10 +32,9 @@ size_t StationheadServiceTileIndex(HWND window) noexcept {
   profile += wcslen(L"spotify-v2-");
   wchar_t* end = nullptr;
   const long number = wcstol(profile, &end, 10);
-  if (end == profile || number < 1 || number > 6) return 0;
-  // Preserve the old Monitor S geometry: profile 6 occupies the original
-  // Stationhead tile, while former Spotify profiles 1..5 retain S1..S5.
-  return number == 6 ? 0 : static_cast<size_t>(number);
+  return end != profile && number >= 1 && number <= 6
+      ? static_cast<unsigned>(number)
+      : 0;
 }
 
 bool ChildBoundsMatch(HWND window, const RECT& expected) noexcept {
@@ -137,7 +136,7 @@ LRESULT CALLBACK PowerSavingController::ChildSubclassProc(
   if ((message == WM_SHOWWINDOW || message == WM_WINDOWPOSCHANGED) &&
       IsStationheadPlaybackHost(window)) {
     // Each Stationhead owns its WebView controller bounds. The monitor router
-    // only reasserts the six fixed host tiles after internal layout passes.
+    // only reasserts the selected host after internal layout passes.
     controller->ApplyStationheadMonitorPlacement();
   }
 
@@ -270,11 +269,12 @@ void PowerSavingController::AttachChildWindow(HWND window) noexcept {
 void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
   if (!parent_ || !IsWindow(parent_)) return;
 
-  const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid;
+  const unsigned selectedProfile =
+      monitorMode_ == MonitorMode::ServiceGrid ? monitorStationheadProfile_ : 0;
   const bool nativeMediaForeground =
       monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
 
-  if (SetStationheadMonitorForeground(serviceGrid)) {
+  if (SetStationheadMonitorProfile(selectedProfile)) {
     PostMessageW(parent_, WM_TIMER, 0, 0);
   }
 
@@ -283,10 +283,10 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
 
   struct Context {
     PowerSavingController* controller;
-    bool serviceGrid;
+    unsigned selectedProfile;
     bool nativeMediaForeground;
     RECT parentClient;
-  } context{this, serviceGrid, nativeMediaForeground, parentClient};
+  } context{this, selectedProfile, nativeMediaForeground, parentClient};
 
   EnumChildWindows(
       parent_,
@@ -310,16 +310,17 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
           return TRUE;
         }
 
-        if (!IsStationheadPlaybackHost(child) || !context->serviceGrid) {
+        if (!IsStationheadPlaybackHost(child) || context->selectedProfile == 0 ||
+            StationheadProfileNumberFromWindow(child) != context->selectedProfile) {
           return TRUE;
         }
 
-        const size_t tileIndex = StationheadServiceTileIndex(child);
-        const RECT target = ServiceMonitorTileBounds(context->parentClient, tileIndex);
-        const HWND insertAfter = controller->overlay_
-            ? controller->overlay_
-            : HWND_TOP;
-        if (!ChildBoundsMatch(child, target) || !IsWindowVisible(child)) {
+        const RECT target = context->parentClient;
+        const HWND insertAfter = controller->overlay_ ? controller->overlay_ : HWND_TOP;
+        const bool zOrderMatches = controller->overlay_
+            ? GetWindow(child, GW_HWNDPREV) == controller->overlay_
+            : GetWindow(child, GW_HWNDPREV) == nullptr;
+        if (!ChildBoundsMatch(child, target) || !IsWindowVisible(child) || !zOrderMatches) {
           SetWindowPos(
               child, insertAfter,
               target.left, target.top,
@@ -337,7 +338,7 @@ void PowerSavingController::Detach() noexcept {
   mvStartupInputPass_ = false;
   monitorAuthForeground_ = false;
   monitorAuthSlots_ = 0;
-  SetStationheadMonitorForeground(false);
+  SetStationheadMonitorProfile(0);
   if (parent_ && IsWindow(parent_)) {
     EnumChildWindows(
         parent_,
