@@ -55,6 +55,14 @@ function materializedUnavailable(error) {
   });
 }
 
+function announceMaterializedAt(response) {
+  const updatedAt = Number(response?.headers?.get('x-materialized-at'));
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0 || !browser) return;
+  browser.dispatchEvent(new CustomEvent('history:materialized-at', {
+    detail: { updatedAt },
+  }));
+}
+
 function rowDate(row, mode) {
   if (mode !== 'broadcasts') return String(row?.period_key || '');
   const value = Number(row?.started_at ?? row?.period_start);
@@ -96,6 +104,7 @@ async function fetchMaterializedHistory(input, init, requestedUrl) {
     if (!response.ok) {
       return responseWithHeaders(response, { 'x-history-read-path': 'r2-materialized-unavailable' });
     }
+    announceMaterializedAt(response);
     const data = await response.clone().json();
     if (!data?.ok) {
       return jsonResponse(response, data, { 'x-history-read-path': 'r2-materialized-unavailable' });
