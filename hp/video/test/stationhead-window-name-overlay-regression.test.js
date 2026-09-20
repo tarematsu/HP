@@ -32,11 +32,20 @@ test('Stationhead playback and auth hosts both receive a top-left native name ov
 });
 
 test('name overlay is raised after WebView2 controller layout', () => {
-  const controllerLayout = layout.indexOf('if (authController) {');
-  const playbackRaise = layout.indexOf(
+  const start = layout.indexOf('void ApplyStationheadChildLayout(');
+  const end = layout.indexOf(
+    '}  // namespace\n\nbool StationheadPlayer::EnsureHostWindow()',
+    start,
+  );
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+
+  const childLayout = layout.slice(start, end);
+  const controllerLayout = childLayout.indexOf('if (authController) {');
+  const playbackRaise = childLayout.indexOf(
     'RaiseStationheadWindowNameOverlay(hostWindow_);',
   );
-  const authRaise = layout.indexOf(
+  const authRaise = childLayout.indexOf(
     'RaiseStationheadWindowNameOverlay(authHostWindow_);',
   );
   assert.ok(controllerLayout >= 0);
