@@ -69,8 +69,14 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   };
 
   const publishRecoverableOnboarding = () => {
-    if (!pageActive || !document.body) return false;
-    const authenticated = accountVisible() || playing();
+    // Connect/Reconnect-style recovery is not a normal foreground action.
+    // Arm it only after this document has positively played once and native
+    // playback state has subsequently gone false. Start Listening keeps its
+    // separate startup path and is not gated by this recovery condition.
+    if (!pageActive || !document.body || !playbackEstablished || playing()) {
+      return false;
+    }
+    const authenticated = accountVisible();
     // A genuine login form/route always wins. Only the explicit allowlisted
     // music-service recovery surface is permitted to clear a stale login latch.
     if (blockingLogin(authenticated) || !recoverableOnboardingVisible()) {

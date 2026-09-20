@@ -39,6 +39,7 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
   let authReadyTimer = 0;
   let lastAudio = null;
   let lastBlocking = null;
+  let playbackEstablished = false;
 
   const postText = suffix => {
     try { webview?.postMessage?.('{{PREFIX}}-' + suffix); } catch (_) {}
@@ -78,6 +79,7 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
   };
   const publishAudio = () => {
     const current = playing();
+    if (current) playbackEstablished = true;
     if (current === lastAudio) return current;
     lastAudio = current;
     postText(current ? 'playing' : 'stopped');
