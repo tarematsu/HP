@@ -8,11 +8,10 @@ const source = name => readFileSync(
 const stationhead = source('stationhead_monitor_probe.h');
 const routing = source('power_saving_window_routing.inc');
 const grid = source('service_monitor_grid.h');
-const spotify = source('spotify_host_layout.inc');
 const windows = source('renderer_panels/windows.inc');
 const renderer = source('renderer_panels.cpp');
 
-test('Monitor S parks Stationhead and five Spotify hosts across the full screen', () => {
+test('Monitor S parks six Stationhead hosts across the full screen', () => {
   assert.match(stationhead, /StationheadBackgroundBounds\(const RECT& workspaceBounds\)[\s\S]*return workspaceBounds;/);
   assert.match(grid, /kServiceMonitorTileCount = 6/);
   assert.match(grid, /kServiceMonitorColumns = 3/);
@@ -20,11 +19,12 @@ test('Monitor S parks Stationhead and five Spotify hosts across the full screen'
   assert.doesNotMatch(grid, /ComputeNativeDashboardLayout/);
   assert.match(grid, /workspaceBounds\.right - workspaceBounds\.left/);
   assert.match(grid, /workspaceBounds\.bottom - workspaceBounds\.top/);
-  assert.match(routing, /ServiceMonitorTileBounds\(parentClient, 0\)/);
-  assert.match(routing, /monitorMode_ == MonitorMode::Native && monitorAuthForeground_/);
-  assert.match(spotify, /ServiceMonitorTileBounds\(client, i \+ 1\)/);
-  assert.match(spotify, /const RECT desired = loginPage \? fullClient : serviceTile/);
-  assert.match(spotify, /gSpotifyMonitorGridVisible && !loginPage/);
+  assert.match(routing, /StationheadServiceTileIndex\(HWND window\)/);
+  assert.match(routing, /number == 6 \? 0 : static_cast<size_t>\(number\)/);
+  assert.match(routing, /const size_t tileIndex = StationheadServiceTileIndex\(child\)/);
+  assert.match(routing, /ServiceMonitorTileBounds\(context->parentClient, tileIndex\)/);
+  assert.match(routing, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
+  assert.doesNotMatch(routing, /SetSpotifyMonitorGridVisible|SetSpotifyMonitorForegroundSlot/);
 });
 
 test('lower dashboard cards shift energy to old weather, weather to old radar, and radar to old energy slots', () => {
