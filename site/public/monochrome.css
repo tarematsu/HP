@@ -1,0 +1,167 @@
+/* Monochrome Pages UI.
+   Keep :root chart palette untouched: canvas renderers read colors from documentElement. */
+body {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #f4f4f4;
+  --line: #d3d3d3;
+  --text: #111111;
+  --muted: #666666;
+  --accent: #111111;
+  --accent-soft: #f1f1f1;
+  --accent-2: #111111;
+  --comment: #111111;
+  --comment-accent: #111111;
+  --green: #111111;
+  --orange: #111111;
+  --blue: #111111;
+  --danger: #111111;
+  background: #ffffff;
+  color: #111111;
+}
+
+html {
+  background: #ffffff;
+}
+
+.top-card,
+.card,
+.metric,
+.guide,
+.summary-cards article {
+  border-color: #d3d3d3;
+  background: rgba(255, 255, 255, .98);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .06);
+}
+
+.channel-visual,
+.track-visual {
+  border-color: #d3d3d3;
+  background: linear-gradient(145deg, #ffffff, #f4f4f4);
+}
+
+.channel-fallback,
+.track-fallback {
+  color: #111111;
+  background: linear-gradient(145deg, #ededed, #fafafa);
+}
+
+.kicker,
+.delta.positive,
+.delta.negative,
+.goal-foot strong,
+.notice.error,
+.like-rank-number,
+.rank-up,
+.rank-down {
+  color: #111111;
+}
+
+.live-dot {
+  background: #999999;
+}
+
+.live-dot.on {
+  background: #111111;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, .11);
+}
+
+.button:hover,
+.button:focus-visible,
+.controls input:focus,
+.controls select:focus {
+  border-color: #111111;
+  outline-color: rgba(0, 0, 0, .12);
+}
+
+.button.primary,
+.button.primary:hover,
+.button.primary:focus-visible,
+.mode-tabs button.active,
+.mode-tabs a.active {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.metric.featured,
+.daily-total-row {
+  background: #f1f1f1;
+}
+
+.progress {
+  background: #e5e5e5;
+}
+
+.progress i {
+  background: #111111;
+}
+
+.queue-item + .queue-item,
+th,
+td {
+  border-color: #e1e1e1;
+}
+
+.queue-thumb.image-missing {
+  background: linear-gradient(145deg, #ededed, #f7f7f7);
+}
+
+.prediction {
+  background: linear-gradient(145deg, #f6f6f6, #eeeeee);
+}
+
+.milestone,
+.like-rank-item,
+.table-wrap,
+.controls input,
+.controls select {
+  background: #ffffff;
+}
+
+.mode-tabs,
+.range-presets,
+.pill,
+.chart-detail,
+.like-rank-number,
+.like-rank-metrics span,
+th {
+  background: #f4f4f4;
+}
+
+.range-presets button.active {
+  background: #ffffff;
+  color: #111111;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+}
+
+tbody tr:hover {
+  background: #fafafa;
+}
+
+.status-message {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .1);
+}
+
+/* Preserve the existing graph/legend palette. Images are intentionally untouched. */
+.legend .online-key,
+.legend .legend-online {
+  color: #d93f79;
+}
+
+.legend .comment-key {
+  color: #168b73;
+}
+
+.legend .legend-plays {
+  color: #6657d8;
+}
+
+.legend .legend-comments {
+  color: #55d6be;
+}
+
+.main-chart-detail time {
+  color: #d93f79;
+}
