@@ -35,16 +35,31 @@ function summaryRow(overrides = {}) {
   };
 }
 
-function environment(calls, rows = [summaryRow()]) {
+function environment(calls, rows = [summaryRow()], trackRows = [{
+  period_key: '2026-07-26', distinct_tracks: 12,
+}]) {
   const forbidden = new Proxy({}, {
-    get() { assert.fail('summary-only materialization must not inspect raw history databases'); },
+    get() { assert.fail('history materialization must not inspect raw history databases'); },
   });
   return {
     DB: forbidden,
-    MINUTE_DB: forbidden,
+    MINUTE_DB: {
+      prepare(sql) {
+        calls.push({ source: 'minute', sql, bindings: null });
+        assert.match(sql, /FROM sh_pages_track_history_read_model/);
+        assert.match(sql, /COUNT\(DISTINCT/);
+        assert.doesNotMatch(sql, /sh_channel_snapshots|sh_minute_facts/);
+        return {
+          bind(...bindings) {
+            calls.at(-1).bindings = bindings;
+            return { all: async () => ({ results: trackRows }) };
+          },
+        };
+      },
+    },
     OTHER_DB: {
       prepare(sql) {
-        calls.push({ sql, bindings: null });
+        calls.push({ source: 'other', sql, bindings: null });
         assert.match(sql, /FROM sh_daily_summary/);
         assert.doesNotMatch(sql, /sh_channel_snapshots|sh_minute_facts/);
         return {
@@ -58,7 +73,7 @@ function environment(calls, rows = [summaryRow()]) {
   };
 }
 
-test('Actions history renderer reads only completed daily summary rows', async () => {
+test('Actions history renderer reads summaries and enriches unique track counts from the track read model', async () => {
   const calls = [];
   const result = await loadMaterializedSummary(
     environment(calls),
@@ -68,13 +83,19 @@ test('Actions history renderer reads only completed daily summary rows', async (
     Date.parse('2026-07-28T01:00:00Z'),
   );
 
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].bindings, ['2026-07-01', '2026-07-28', '2026-07-28', 800]);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls.find((call) => call.source === 'other').bindings, [
+    '2026-07-01', '2026-07-28', '2026-07-28', 800,
+  ]);
+  assert.deepEqual(calls.find((call) => call.source === 'minute').bindings, [
+    '2026-07-01', '2026-07-28',
+  ]);
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].period_complete, true);
+  assert.equal(result.rows[0].distinct_tracks, 12);
   assert.equal(result.live_overlay_count, 0);
   assert.equal(result.live_source, 'summary-only');
-  assert.equal(result.storage_source, 'other.sh_daily_summary');
+  assert.equal(result.storage_source, 'other.sh_daily_summary+minute.sh_pages_track_history_read_model');
 });
 
 test('daily materialization rejects sample counts above one row per minute', async () => {
@@ -104,5 +125,6 @@ test('materialized history response keeps the public payload shape without raw D
   assert.equal(payload.timezone, 'UTC');
   assert.equal(payload.live_source, 'summary-only');
   assert.equal(payload.live_overlay_count, 0);
-  assert.equal(calls.length, 1);
+  assert.equal(payload.rows[0].distinct_tracks, 12);
+  assert.equal(calls.length, 2);
 });
