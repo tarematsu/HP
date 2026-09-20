@@ -10,19 +10,27 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
 });
 
 function recentMainSql() {
-  return `SELECT observed_at,observed_minute,station_id,broadcast_id,broadcast_start_time,
-      is_broadcasting,listener_count,guest_count,total_listens,status,chat_status,channel_id,channel_alias,
-      json_valid(raw_json) AS raw_valid,length(raw_json) AS raw_bytes
-    FROM sh_sakurazaka46jp_main
-    ORDER BY observed_at DESC,id DESC
+  return `SELECT m.observed_at,m.observed_minute,m.station_id,m.broadcast_id,m.broadcast_start_time,
+      m.is_broadcasting,m.listener_count,m.guest_count,m.total_listens,m.status,m.chat_status,m.channel_id,m.channel_alias,
+      json_valid(m.raw_json) AS raw_valid,length(m.raw_json) AS raw_bytes
+    FROM sh_sakurazaka46jp_main AS m
+    WHERE NOT EXISTS (
+      SELECT 1 FROM sh_sakurazaka46jp_collection_tests AS t
+      WHERE m.observed_at>=t.started_at AND m.observed_at<t.ends_at
+    )
+    ORDER BY m.observed_at DESC,m.id DESC
     LIMIT ${RECENT_LIMIT}`;
 }
 
 function recentChatSql() {
-  return `SELECT observed_at,observed_minute,station_id,
-      json_valid(raw_json) AS raw_valid,length(raw_json) AS raw_bytes
-    FROM sh_sakurazaka46jp_chat
-    ORDER BY observed_at DESC,id DESC
+  return `SELECT c.observed_at,c.observed_minute,c.station_id,
+      json_valid(c.raw_json) AS raw_valid,length(c.raw_json) AS raw_bytes
+    FROM sh_sakurazaka46jp_chat AS c
+    WHERE NOT EXISTS (
+      SELECT 1 FROM sh_sakurazaka46jp_collection_tests AS t
+      WHERE c.observed_at>=t.started_at AND c.observed_at<t.ends_at
+    )
+    ORDER BY c.observed_at DESC,c.id DESC
     LIMIT ${RECENT_LIMIT}`;
 }
 
