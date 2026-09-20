@@ -37,10 +37,11 @@ test('featured ranking reads keep the channel/date/rank expression index', () =>
   assert.match(migration, /ON sh_channel_rankings\(lower\(channel_name\), ranking_date, rank\)/);
 });
 
-test('OTHER_DB metadata advances through raw collection to repeatable raw-derived metadata', () => {
+test('OTHER_DB metadata advances through collection test to the pending official listening party', () => {
   const rawMigration = readFileSync('database/other-migrations/016_sakurazaka46jp_raw_collection.sql', 'utf8');
   const derivedMigration = readFileSync('database/other-migrations/017_sakurazaka_raw_derived_metadata.sql', 'utf8');
-  const migrationPath = 'database/other-migrations/018_sakurazaka_collection_test.sql';
+  const collectionTestMigration = readFileSync('database/other-migrations/018_sakurazaka_collection_test.sql', 'utf8');
+  const migrationPath = 'database/other-migrations/019_rock_in_japan_2026_listening_party.sql';
   const migration = readFileSync(migrationPath, 'utf8');
   const metadata = JSON.parse(readFileSync('database/other-db.json', 'utf8'));
   assert.equal(metadata.schema, migrationPath);
@@ -49,7 +50,10 @@ test('OTHER_DB metadata advances through raw collection to repeatable raw-derive
   assert.match(derivedMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_track_metadata/);
   assert.match(derivedMigration, /PRIMARY KEY\(session_id, observed_at, position\)/);
   assert.doesNotMatch(derivedMigration, /ALTER TABLE/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_collection_tests/);
+  assert.match(collectionTestMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_collection_tests/);
+  assert.match(migration, /2026\.09\.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』/);
+  assert.match(migration, /1789958700000/);
+  assert.match(migration, /sample_count,listener_avg,listener_max,likes_max,distinct_tracks,refreshed_at/);
 });
 
 test('remote provisioning and local smoke tests share the schema contract', () => {
