@@ -92,7 +92,7 @@ test('Start Listening and equivalent playback actions use the same generic resol
   const body = section(
     locator,
     '// Playback-start actions remain blocked',
-    'return kScript;',
+    'return script;',
   );
   assert.match(body, /document\.querySelectorAll\(candidateSelector\)/);
   assert.match(body, /matchesLabel\(element, startPattern\)/);
