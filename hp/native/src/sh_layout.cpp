@@ -4,8 +4,107 @@
 namespace hp {
 namespace {
 
-constexpr int kStationheadPlaybackViewportWidth = 720;
+constexpr int kStationheadPlaybackViewportWidth = 360;
 constexpr int kStationheadPlaybackViewportHeight = 960;
+constexpr wchar_t kStationheadWindowNameOverlayClass[] =
+    L"HomePanelStationheadWindowNameOverlay";
+constexpr int kStationheadWindowNameOverlayLeft = 8;
+constexpr int kStationheadWindowNameOverlayTop = 8;
+constexpr int kStationheadWindowNameOverlayWidth = 116;
+constexpr int kStationheadWindowNameOverlayHeight = 28;
+
+LRESULT CALLBACK StationheadWindowNameOverlayProc(
+    HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+  switch (message) {
+    case WM_NCHITTEST:
+      return HTTRANSPARENT;
+    case WM_ERASEBKGND:
+      return 1;
+    case WM_PAINT: {
+      PAINTSTRUCT paint{};
+      HDC dc = BeginPaint(window, &paint);
+      if (!dc) return 0;
+      RECT client{};
+      GetClientRect(window, &client);
+      FillRect(dc, &client,
+               static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+      SetBkMode(dc, TRANSPARENT);
+      SetTextColor(dc, RGB(255, 255, 255));
+      HGDIOBJ previousFont = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
+      wchar_t text[64]{};
+      GetWindowTextW(window, text, static_cast<int>(_countof(text)));
+      RECT textBounds = client;
+      textBounds.left += 8;
+      textBounds.right -= 6;
+      DrawTextW(dc, text, -1, &textBounds,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+      if (previousFont) SelectObject(dc, previousFont);
+      EndPaint(window, &paint);
+      return 0;
+    }
+    default:
+      return DefWindowProcW(window, message, wParam, lParam);
+  }
+}
+
+const wchar_t* StationheadWindowNameForProfile(
+    const std::wstring& profileName) noexcept {
+  if (profileName == L"spotify-v2-1") return L"tgut";
+  if (profileName == L"spotify-v2-2") return L"yuukiar";
+  if (profileName == L"spotify-v2-3") return L"ten";
+  if (profileName == L"spotify-v2-4") return L"nagi";
+  if (profileName == L"spotify-v2-5") return L"hinata";
+  if (profileName == L"spotify-v2-6") return L"ozeki";
+  return profileName.empty() ? L"stationhead" : profileName.c_str();
+}
+
+void RaiseStationheadWindowNameOverlay(HWND hostWindow) noexcept {
+  if (!hostWindow || !IsWindow(hostWindow)) return;
+  HWND overlay = FindWindowExW(
+      hostWindow, nullptr, kStationheadWindowNameOverlayClass, nullptr);
+  if (!overlay || !IsWindow(overlay)) return;
+  SetWindowPos(overlay, HWND_TOP,
+               kStationheadWindowNameOverlayLeft,
+               kStationheadWindowNameOverlayTop,
+               kStationheadWindowNameOverlayWidth,
+               kStationheadWindowNameOverlayHeight,
+               SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+}
+
+void EnsureStationheadWindowNameOverlay(
+    HWND hostWindow, const std::wstring& profileName) noexcept {
+  if (!hostWindow || !IsWindow(hostWindow)) return;
+  const HINSTANCE instance = GetModuleHandleW(nullptr);
+  WNDCLASSW registered{};
+  if (!GetClassInfoW(instance, kStationheadWindowNameOverlayClass, &registered)) {
+    WNDCLASSW windowClass{};
+    windowClass.lpfnWndProc = StationheadWindowNameOverlayProc;
+    windowClass.hInstance = instance;
+    windowClass.lpszClassName = kStationheadWindowNameOverlayClass;
+    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    if (!RegisterClassW(&windowClass) &&
+        GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+      return;
+    }
+  }
+
+  const wchar_t* windowName = StationheadWindowNameForProfile(profileName);
+  HWND overlay = FindWindowExW(
+      hostWindow, nullptr, kStationheadWindowNameOverlayClass, nullptr);
+  if (!overlay) {
+    overlay = CreateWindowExW(
+        0, kStationheadWindowNameOverlayClass, windowName,
+        WS_CHILD | WS_VISIBLE,
+        kStationheadWindowNameOverlayLeft,
+        kStationheadWindowNameOverlayTop,
+        kStationheadWindowNameOverlayWidth,
+        kStationheadWindowNameOverlayHeight,
+        hostWindow, nullptr, instance, nullptr);
+  } else {
+    SetWindowTextW(overlay, windowName);
+  }
+  if (overlay) RaiseStationheadWindowNameOverlay(hostWindow);
+}
 
 int RectWidth(const RECT& bounds) noexcept {
   return std::max(1L, bounds.right - bounds.left);
@@ -213,7 +312,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const RECT playbackControllerBounds = StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep the playback WebView viewport fixed at 720x960 in every state.
+  // Keep the playback WebView viewport fixed at 360x960 in every state.
   // The host HWND remains full workspace size for stable z-order and is
   // visually clipped to 1x1 while backgrounded.
   if (authHostWindow && IsWindow(authHostWindow)) {
@@ -265,23 +364,41 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       authController->put_IsVisible(TRUE);
     }
   }
+
+  // WebView2 owns child HWNDs inside each host. Re-raise the native name badge
+  // after controller layout so it remains visible above both playback and auth
+  // content without changing focus or intercepting input.
+  RaiseStationheadWindowNameOverlay(hostWindow);
+  RaiseStationheadWindowNameOverlay(authHostWindow);
 }
 
 }  // namespace
 
 bool StationheadPlayer::EnsureHostWindow() {
-  if (hostWindow_ && IsWindow(hostWindow_)) return true;
+  if (hostWindow_ && IsWindow(hostWindow_)) {
+    EnsureStationheadWindowNameOverlay(hostWindow_, profileName_);
+    return true;
+  }
   const std::wstring title = L"StationheadHost:" + profileName_;
   hostWindow_ = CreateStationheadChildHost(
       window_, L"HomePanelStationheadHost", title.c_str(), bounds_);
+  if (hostWindow_ && IsWindow(hostWindow_)) {
+    EnsureStationheadWindowNameOverlay(hostWindow_, profileName_);
+  }
   return hostWindow_ && IsWindow(hostWindow_);
 }
 
 bool StationheadPlayer::EnsureAuthHostWindow() {
   if (authControllerStartedAt_.Active() && !authController_) return false;
-  if (authHostWindow_ && IsWindow(authHostWindow_)) return true;
+  if (authHostWindow_ && IsWindow(authHostWindow_)) {
+    EnsureStationheadWindowNameOverlay(authHostWindow_, profileName_);
+    return true;
+  }
   authHostWindow_ = CreateStationheadChildHost(
       window_, L"HomePanelSpotifyAuthHost", L"SpotifyAuthHost", bounds_);
+  if (authHostWindow_ && IsWindow(authHostWindow_)) {
+    EnsureStationheadWindowNameOverlay(authHostWindow_, profileName_);
+  }
   return authHostWindow_ && IsWindow(authHostWindow_);
 }
 
@@ -399,14 +516,16 @@ void StationheadPlayer::SetVisible(bool visible) {
     return;
   }
 
-  if (selectedTab_ == StationheadTabKind::Auth) {
+  const bool foregroundGranted =
+      foregroundAllowed_ || StationheadMonitorForeground();
+  if (foregroundGranted && selectedTab_ == StationheadTabKind::Auth) {
     if (viewVisible_ && authController_ && authWebview_ &&
         ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
                                  authController_.Get(), bounds_) &&
         WindowContainsFocus(authHostWindow_)) {
       return;
     }
-  } else if (loginRequired_ && viewVisible_ &&
+  } else if (foregroundGranted && loginRequired_ && viewVisible_ &&
              SurfaceMatches(hostWindow_, controller_.Get(),
                             StationheadBackgroundBounds(bounds_), HWND_TOP) &&
              BackgroundAuthSurfaceMatches(
@@ -419,6 +538,7 @@ void StationheadPlayer::SetVisible(bool visible) {
   LayoutControllers();
   ApplyMute();
 
+  if (!foregroundGranted) return;
   if (selectedTab_ == StationheadTabKind::Auth) {
     if (authController_ && authHostWindow_ &&
         !WindowContainsFocus(authHostWindow_)) {
@@ -442,19 +562,35 @@ void StationheadPlayer::LayoutControllers() {
       ResolveStationheadSurfacePolicy(
           selectedTab_, authSurfaceReady, loginRequired_);
   const bool monitorForeground = StationheadMonitorForeground();
+  const bool foregroundGranted = foregroundAllowed_ || monitorForeground;
+  const bool showAuth = foregroundGranted && policy.showAuth;
+  const bool showPlayback = foregroundGranted && policy.showPlayback;
+  const bool hidePlayback = foregroundGranted && policy.hidePlayback;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
-                              policy.showAuth,
-                              policy.showPlayback,
-                              policy.hidePlayback);
+                              showAuth,
+                              showPlayback,
+                              hidePlayback);
 
   std::lock_guard lock(mutex_);
-  status_.visible = policy.showAuth || policy.showPlayback || monitorForeground;
+  status_.visible = showAuth || showPlayback || monitorForeground;
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {
   const RECT resolved = ResolveStationheadWorkspaceBounds(window_, bounds);
   if (!EqualRect(&bounds_, &resolved)) bounds_ = resolved;
+  LayoutControllers();
+}
+
+void StationheadPlayer::SetForegroundAllowed(bool allowed) {
+  if (foregroundAllowed_ == allowed) return;
+  foregroundAllowed_ = allowed;
+
+  if (!hostWindow_ && !controller_ && !authHostWindow_ && !authController_) return;
+  if (allowed && selectedTab_ != StationheadTabKind::None) {
+    SetVisible(true);
+    return;
+  }
   LayoutControllers();
 }
 
@@ -485,6 +621,7 @@ bool StationheadPlayer::HasAuthTab() const {
 }
 
 HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
+  if (!foregroundAllowed_ && !StationheadMonitorForeground()) return nullptr;
   if (selectedTab_ == StationheadTabKind::Auth) {
     if (authController_ && authWebview_ && authHostWindow_ &&
         IsWindow(authHostWindow_)) {

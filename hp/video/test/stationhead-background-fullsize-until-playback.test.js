@@ -39,7 +39,7 @@ test('Stationhead normal background host fills the client area behind the dashbo
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
 });
 
-test('background, startup and reload all keep the fixed 720x960 playback viewport', () => {
+test('background, startup and reload all keep the fixed 360x960 playback viewport', () => {
   const keepBehind = section(
     layout,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -63,7 +63,7 @@ test('background, startup and reload all keep the fixed 720x960 playback viewpor
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(layout, /kStationheadPlaybackViewportWidth = 720/);
+  assert.match(layout, /kStationheadPlaybackViewportWidth = 360/);
   assert.match(layout, /kStationheadPlaybackViewportHeight = 960/);
   assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
