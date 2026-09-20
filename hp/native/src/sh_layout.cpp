@@ -305,10 +305,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
 
   const RECT surfaceBounds = StationheadBackgroundBounds(workspaceBounds);
-  const RECT playbackHostBounds =
-      monitorForeground && playbackForeground
-          ? StationheadMonitorPanelBounds(workspaceBounds)
-          : surfaceBounds;
+  RECT playbackHostBounds = surfaceBounds;
+  if (monitorForeground && playbackForeground) {
+    playbackHostBounds = StationheadMonitorPanelBounds(workspaceBounds);
+  }
   const RECT authHostBounds = surfaceBounds;
   const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
   const HWND authPlacement = showAuth ? HWND_TOP : HWND_BOTTOM;
