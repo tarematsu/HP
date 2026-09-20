@@ -9,9 +9,11 @@ namespace hp {
 inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
   const recoverableOnboardingPattern =
-    /^(?:(?:re)?connect(?:\s+with)?\s+(?:spotify|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go)$/i;
-  const connectMusicHeadingPattern = /^(?:re)?connect\s+music$/i;
-  const connectMusicActionPattern = /^(?:connect|reconnect)$/i;
+    /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go)$/i;
+  const connectMusicHeadingPattern =
+    /^(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:music|spotify(?:\s+account)?)$/i;
+  const connectMusicActionPattern =
+    /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+spotify(?:\s+account)?|(?:re)?connect|spotify)$/i;
   const onboardingLabelsOf = element => [
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('data-testid'),
@@ -31,10 +33,10 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
       }
     }
 
-    // Stationhead sometimes renders `Connect Music` as a heading and keeps the
-    // actual Connect/Reconnect action as a separate button. Mirror the native
-    // locator's split-modal recognition so the trusted-click path is signalled
-    // even though no single element contains the complete label.
+    // Stationhead has used both Connect Music and Connect Spotify as modal
+    // headings, with the clickable action rendered separately as Connect,
+    // Reconnect, or Spotify. Treat those exact split surfaces as the same
+    // recoverable onboarding flow without broadening the global account guard.
     for (const heading of document.querySelectorAll('h1,h2,h3,[role="heading"]')) {
       if (!visible(heading) ||
           !onboardingLabelsOf(heading).some(
