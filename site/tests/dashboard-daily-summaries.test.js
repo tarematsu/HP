@@ -19,14 +19,16 @@ test('dashboard daily summary boundaries use completed UTC days', () => {
     currentStart: Date.UTC(2026, 6, 16),
     yesterdayStart: Date.UTC(2026, 6, 15),
     dayBeforeYesterdayStart: Date.UTC(2026, 6, 14),
+    threeDaysAgoStart: Date.UTC(2026, 6, 13),
   });
 });
 
-test('dashboard daily summaries preserve precomputed growth values', () => {
+test('dashboard daily summaries preserve growth and listener averages', () => {
   const starts = utcDayStarts(Date.UTC(2026, 6, 16, 2));
   const summaries = dashboardDailySummaries([
-    { period_key: '2026-07-14', member_growth: -152, stream_growth: 54_184 },
-    { period_key: '2026-07-15', member_growth: -158, stream_growth: 53_036 },
+    { period_key: '2026-07-13', member_growth: -140, stream_growth: 50_100, listener_avg: 122.5 },
+    { period_key: '2026-07-14', member_growth: -152, stream_growth: 54_184, listener_avg: 130.5 },
+    { period_key: '2026-07-15', member_growth: -158, stream_growth: 53_036, listener_avg: 141.25 },
   ], starts);
 
   assert.equal(summaries.source, 'sh_daily_summary');
@@ -36,6 +38,7 @@ test('dashboard daily summaries preserve precomputed growth values', () => {
     end_at: starts.currentStart,
     member_growth: -158,
     stream_growth: 53_036,
+    listener_avg: 141.25,
   });
   assert.deepEqual(summaries.day_before_yesterday, {
     period_key: '2026-07-14',
@@ -43,6 +46,15 @@ test('dashboard daily summaries preserve precomputed growth values', () => {
     end_at: starts.yesterdayStart,
     member_growth: -152,
     stream_growth: 54_184,
+    listener_avg: 130.5,
+  });
+  assert.deepEqual(summaries.three_days_ago, {
+    period_key: '2026-07-13',
+    start_at: starts.threeDaysAgoStart,
+    end_at: starts.dayBeforeYesterdayStart,
+    member_growth: -140,
+    stream_growth: 50_100,
+    listener_avg: 122.5,
   });
 });
 
@@ -52,19 +64,23 @@ test('dashboard daily summary loader uses one cached OTHER_DB read', async () =>
   const starts = utcDayStarts(now);
   const db = new FakeD1Database().route('all', 'FROM sh_daily_summary', () => ({
     results: [
-      { period_key: dayText(starts.dayBeforeYesterdayStart), member_growth: 7, stream_growth: 40 },
-      { period_key: dayText(starts.yesterdayStart), member_growth: 11, stream_growth: 55 },
+      { period_key: dayText(starts.threeDaysAgoStart), member_growth: 5, stream_growth: 35, listener_avg: 100 },
+      { period_key: dayText(starts.dayBeforeYesterdayStart), member_growth: 7, stream_growth: 40, listener_avg: 110 },
+      { period_key: dayText(starts.yesterdayStart), member_growth: 11, stream_growth: 55, listener_avg: 120 },
     ],
   }));
 
   const first = await loadDashboardDailySummaries(db, now);
   const second = await loadDashboardDailySummaries(db, now + 1_000);
   assert.equal(first.yesterday.member_growth, 11);
+  assert.equal(first.yesterday.listener_avg, 120);
+  assert.equal(first.three_days_ago.member_growth, 5);
   assert.deepEqual(second, first);
   assert.equal(db.calls.length, 1);
   assert.match(db.calls[0].sql, /FROM sh_daily_summary/);
   assert.match(DAILY_SUMMARY_SQL, /stream_growth/);
   assert.match(DAILY_SUMMARY_SQL, /member_growth/);
+  assert.match(DAILY_SUMMARY_SQL, /listener_avg/);
 });
 
 test('dashboard route composes daily summaries without owning their SQL', () => {
