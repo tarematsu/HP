@@ -8,10 +8,17 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 6;
+const SERIES_CACHE_VERSION = 7;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const sakurazakaSeriesCache = new Map();
+const STATIC_OFFICIAL_EVENTS = Object.freeze([
+  Object.freeze({
+    event_name: '2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』',
+    started_at: 1789958700000,
+    ended_at: null,
+  }),
+]);
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -206,6 +213,16 @@ export function mergeSakurazakaSeriesRows(primaryRows, fallbackRows) {
   return merged;
 }
 
+export function appendSakurazakaSummaryPlaceholders(sampleRows, historicalRows) {
+  const result = [...(Array.isArray(sampleRows) ? sampleRows : [])];
+  for (const summary of Array.isArray(historicalRows) ? historicalRows : []) {
+    if (hasSeriesSamples(summary)) continue;
+    if (result.some((item) => duplicateSeries(item, summary))) continue;
+    result.push(summary);
+  }
+  return result;
+}
+
 export function countSakurazakaMissingSummaries(historicalRows, summaryCount) {
   const available = (Array.isArray(historicalRows) ? historicalRows : []).filter(hasSeriesSamples).length;
   return Math.max(0, Math.max(0, Number(summaryCount) || 0) - available);
@@ -221,7 +238,16 @@ export function trimSakurazakaSeries(seriesRows, limit = MAX_POINTS) {
     const samples = Array.isArray(row.samples) ? row.samples : [];
     originalPoints += samples.length;
     sourceTruncated ||= Boolean(row.sourceTruncated);
-    if (remaining <= 0 || !samples.length) continue;
+    if (!samples.length) {
+      result.push({
+        event_name: row.event_name,
+        started_at: row.started_at,
+        points: [],
+        source: row.source,
+      });
+      continue;
+    }
+    if (remaining <= 0) continue;
     const take = Math.min(samples.length, remaining);
     const points = new Array(take);
     let sourceSamples = 0;
@@ -242,10 +268,19 @@ export function trimSakurazakaSeries(seriesRows, limit = MAX_POINTS) {
   return { series: result, pointCount: limit - remaining, truncated: sourceTruncated || originalPoints > limit };
 }
 
+function staticOfficialEvents(fromTs, toTs) {
+  return STATIC_OFFICIAL_EVENTS.filter((event) =>
+    Number(event.started_at) >= fromTs && Number(event.started_at) < toTs);
+}
+
 export async function loadSakurazakaSeriesRows(minuteDb, otherDb, fromTs, toTs) {
   const historicalRows = [];
   const summaryResult = await otherDb.prepare(SAKURAZAKA_EVENT_SQL).bind(fromTs, toTs).all();
-  const summaries = summaryResult.results || [];
+  const summaries = [...(summaryResult.results || [])];
+  for (const event of staticOfficialEvents(fromTs, toTs)) {
+    if (!summaries.some((summary) => duplicateSeries(summary, event))) summaries.push(event);
+  }
+  summaries.sort((a, b) => (Number(a.started_at) || 0) - (Number(b.started_at) || 0));
   for (const summary of summaries) {
     const start = Number(summary.started_at || 0);
     const end = Number(summary.ended_at || start) + 60_000;
@@ -284,7 +319,8 @@ async function loadSakurazakaSeries(env, from, to) {
     fromTs,
     toTs,
   );
-  const merged = mergeSakurazakaSeriesRows(historical, failSafe);
+  const sampled = mergeSakurazakaSeriesRows(historical, failSafe);
+  const merged = appendSakurazakaSummaryPlaceholders(sampled, historical);
   const trimmed = trimSakurazakaSeries(merged);
   const historicalSeriesCount = historical.filter(hasSeriesSamples).length;
   let failSafeEventCount = 0;
