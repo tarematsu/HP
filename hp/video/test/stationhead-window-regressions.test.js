@@ -47,7 +47,10 @@ test('background host stays full-client while playback controller stays fixed at
 test('startup and reload keep the same fixed Stationhead controller viewport', () => {
   const startup = section(layout, 'void StationheadPlayer::SetStartupBounds()',
     'void StationheadPlayer::SetStartupPreviewBounds(');
-  assert.match(startup, /ApplyStationheadChildLayout\([\s\S]*false, false, false\)/);
+  assert.match(
+    startup,
+    /ApplyStationheadChildLayout\([\s\S]*false, false, false,[\s\S]*StationheadMonitorForegroundForProfile\(profileName_\)\)/,
+  );
   assert.doesNotMatch(startup, /AudioPlaying|compactPlayback|kStationheadCompactPlayback/);
 });
 

@@ -11,12 +11,11 @@ const routing = readFileSync(
   'utf8',
 );
 
-test('Monitor S keeps auth probing active across the six Stationhead windows', () => {
+test('named Stationhead monitors keep auth probing active across all six windows', () => {
   assert.match(schedule, /if \(monitorMode_ != MonitorMode::Off\) RequestMonitorAuthProbe\(\)/);
   assert.match(schedule, /if \(monitorMode_ == MonitorMode::Off \|\| powerSaving_\) return/);
   assert.match(schedule, /monitorAuthSlots_ = 0;[\s\S]*monitorAuthForeground_ = false/);
   assert.doesNotMatch(schedule, /SetSpotifyMonitorGridVisible|SetSpotifyMonitorForegroundSlot/);
-  assert.doesNotMatch(schedule, /if \(mode != MonitorMode::Native\) monitorAuthForeground_ = false/);
 });
 
 test('auth results are aggregated per Stationhead slot and active auth is rechecked quickly', () => {
@@ -33,10 +32,9 @@ test('auth results are aggregated per Stationhead slot and active auth is rechec
   assert.match(routing, /monitorAuthForeground_ = detected;[\s\S]*ApplyStationheadMonitorPlacement\(\);[\s\S]*ArmScheduleTimer\(\)/);
 });
 
-test('Monitor S keeps all Stationhead playback tiles while auth surface owns its own foreground', () => {
-  assert.match(routing, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
-  assert.match(routing, /SetStationheadMonitorForeground\(serviceGrid\)/);
-  assert.match(routing, /StationheadServiceTileIndex\(child\)/);
-  assert.match(routing, /ServiceMonitorTileBounds\(context->parentClient, tileIndex\)/);
+test('named Stationhead monitor keeps only its selected playback host in monitor foreground', () => {
+  assert.match(routing, /SetStationheadMonitorProfile\(selectedProfile\)/);
+  assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
+  assert.match(routing, /const RECT target = context->parentClient/);
   assert.doesNotMatch(routing, /SetSpotifyMonitorGridVisible/);
 });

@@ -55,7 +55,10 @@ test('background, startup and reload all keep the fixed 360x960 playback viewpor
     'void StationheadPlayer::SetStartupPreviewBounds(',
   );
   assert.match(startup, /selectedTab_ = StationheadTabKind::None/);
-  assert.match(startup, /ApplyStationheadChildLayout\([\s\S]*false, false, false\)/);
+  assert.match(
+    startup,
+    /ApplyStationheadChildLayout\([\s\S]*false, false, false,[\s\S]*StationheadMonitorForegroundForProfile\(profileName_\)\)/,
+  );
   assert.doesNotMatch(startup, /AudioPlaying|compactPlayback/);
 
   const apply = section(
@@ -69,13 +72,13 @@ test('background, startup and reload all keep the fixed 360x960 playback viewpor
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
 });
 
-test('Monitor S maps all six Stationhead playback hosts to fixed service tiles', () => {
+test('named Stationhead monitor promotes only the selected playback host', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(apply, /const bool monitorForeground = StationheadMonitorForeground\(\)/);
+  assert.match(apply, /bool monitorForeground/);
   assert.match(
     apply,
     /playbackForeground\s*=\s*[\s\S]*showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,
@@ -87,10 +90,9 @@ test('Monitor S maps all six Stationhead playback hosts to fixed service tiles',
     'void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept',
     'void PowerSavingController::Detach() noexcept',
   );
-  assert.match(placement, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
-  assert.match(placement, /StationheadServiceTileIndex\(child\)/);
-  assert.match(placement, /ServiceMonitorTileBounds\(context->parentClient, tileIndex\)/);
-  assert.match(placement, /SetStationheadMonitorForeground\(serviceGrid\)/);
+  assert.match(placement, /monitorMode_ == MonitorMode::ServiceGrid \? monitorStationheadProfile_ : 0/);
+  assert.match(placement, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
+  assert.match(placement, /SetStationheadMonitorProfile\(selectedProfile\)/);
   assert.match(placement, /const HWND insertAfter = controller->overlay_/);
   assert.match(placement, /SetWindowPos\([\s\S]*target\.left, target\.top/);
 });

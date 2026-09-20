@@ -294,8 +294,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                                  const RECT& workspaceBounds,
                                  bool showAuth,
                                  bool showPlayback,
-                                 bool hidePlayback) {
-  const bool monitorForeground = StationheadMonitorForeground();
+                                 bool hidePlayback,
+                                 bool monitorForeground) {
   const bool playbackForeground =
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
 
@@ -425,10 +425,11 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
 
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
-                              false, false, false);
+                              false, false, false,
+                              StationheadMonitorForegroundForProfile(profileName_));
 
   std::lock_guard lock(mutex_);
-  status_.visible = StationheadMonitorForeground();
+  status_.visible = StationheadMonitorForegroundForProfile(profileName_);
 }
 
 void StationheadPlayer::SetStartupBounds() {
@@ -441,9 +442,10 @@ void StationheadPlayer::SetStartupBounds() {
   }
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
-                              false, false, false);
+                              false, false, false,
+                              StationheadMonitorForegroundForProfile(profileName_));
   std::lock_guard lock(mutex_);
-  status_.visible = StationheadMonitorForeground();
+  status_.visible = StationheadMonitorForegroundForProfile(profileName_);
 }
 
 void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
@@ -471,7 +473,7 @@ void StationheadPlayer::ClearStartupPreviewBounds() {
 
 void StationheadPlayer::SetVisible(bool visible) {
   if (!visible) {
-    const bool monitorForeground = StationheadMonitorForeground();
+    const bool monitorForeground = StationheadMonitorForegroundForProfile(profileName_);
     const RECT expectedPlayback = StationheadBackgroundBounds(bounds_);
     const HWND expectedPlacement = monitorForeground ? HWND_TOP : HWND_BOTTOM;
 
@@ -517,7 +519,7 @@ void StationheadPlayer::SetVisible(bool visible) {
   }
 
   const bool foregroundGranted =
-      foregroundAllowed_ || StationheadMonitorForeground();
+      foregroundAllowed_ || StationheadMonitorForegroundForProfile(profileName_);
   if (foregroundGranted && selectedTab_ == StationheadTabKind::Auth) {
     if (viewVisible_ && authController_ && authWebview_ &&
         ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
@@ -561,7 +563,7 @@ void StationheadPlayer::LayoutControllers() {
   const StationheadSurfacePolicy policy =
       ResolveStationheadSurfacePolicy(
           selectedTab_, authSurfaceReady, loginRequired_);
-  const bool monitorForeground = StationheadMonitorForeground();
+  const bool monitorForeground = StationheadMonitorForegroundForProfile(profileName_);
   const bool foregroundGranted = foregroundAllowed_ || monitorForeground;
   const bool showAuth = foregroundGranted && policy.showAuth;
   const bool showPlayback = foregroundGranted && policy.showPlayback;
@@ -570,7 +572,8 @@ void StationheadPlayer::LayoutControllers() {
                               authController_.Get(), bounds_,
                               showAuth,
                               showPlayback,
-                              hidePlayback);
+                              hidePlayback,
+                              monitorForeground);
 
   std::lock_guard lock(mutex_);
   status_.visible = showAuth || showPlayback || monitorForeground;
@@ -621,7 +624,7 @@ bool StationheadPlayer::HasAuthTab() const {
 }
 
 HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
-  if (!foregroundAllowed_ && !StationheadMonitorForeground()) return nullptr;
+  if (!foregroundAllowed_ && !StationheadMonitorForegroundForProfile(profileName_)) return nullptr;
   if (selectedTab_ == StationheadTabKind::Auth) {
     if (authController_ && authWebview_ && authHostWindow_ &&
         IsWindow(authHostWindow_)) {

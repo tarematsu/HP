@@ -70,7 +70,7 @@ test('normal background state keeps a full host with a fixed 360x960 playback vi
   assert.match(keepBehind, /selectedTab_ = StationheadTabKind::None/);
   assert.match(
     keepBehind,
-    /ApplyStationheadChildLayout\([\s\S]*false, false, false\)/,
+    /ApplyStationheadChildLayout\([\s\S]*false, false, false,[\s\S]*StationheadMonitorForegroundForProfile\(profileName_\)\)/,
   );
   assert.doesNotMatch(keepBehind, /AudioPlayingSince|compactPlayback|kStationheadCompactPlayback/);
 
@@ -97,7 +97,8 @@ test('Monitor B and explicit Stationhead presentation preserve the fixed playbac
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(applyLayout, /const bool monitorForeground = StationheadMonitorForeground\(\)/);
+  assert.match(applyLayout, /bool monitorForeground/);
+  assert.match(layoutSource, /StationheadMonitorForegroundForProfile\(profileName_\)/);
   assert.match(
     applyLayout,
     /showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,

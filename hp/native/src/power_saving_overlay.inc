@@ -292,13 +292,29 @@ void PowerSavingController::PaintOverlay(HWND window) {
     DeleteObject(pen);
     DeleteObject(brush);
 
-    const int fontHeight = std::clamp(
+    int fontHeight = std::clamp(
         static_cast<int>((button.bottom - button.top) * 42 / 100), 11, 17);
-    HFONT font = CreateFontW(
-        -fontHeight, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+    auto createButtonFont = [](int height) {
+      return CreateFontW(
+          -height, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
+          DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+          CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+    };
+    HFONT font = createButtonFont(fontHeight);
     HGDIOBJ previousFont = SelectObject(paintDc, font);
+    SIZE textSize{};
+    const int availableTextWidth =
+        std::max(1L, button.right - button.left - 8);
+    if (GetTextExtentPoint32W(
+            paintDc, text, static_cast<int>(wcslen(text)), &textSize) &&
+        textSize.cx > availableTextWidth && fontHeight > 9) {
+      SelectObject(paintDc, previousFont);
+      DeleteObject(font);
+      fontHeight = std::max(
+          9, fontHeight * availableTextWidth / std::max(1L, textSize.cx));
+      font = createButtonFont(fontHeight);
+      previousFont = SelectObject(paintDc, font);
+    }
     SetBkMode(paintDc, TRANSPARENT);
     SetTextColor(paintDc, RGB(232, 237, 244));
     RECT textRect = button;
@@ -314,7 +330,15 @@ void PowerSavingController::PaintOverlay(HWND window) {
 
   const wchar_t* monitorLabel = L"モニターYT";
   if (monitorMode_ == MonitorMode::ServiceGrid) {
-    monitorLabel = L"モニターS";
+    switch (monitorStationheadProfile_) {
+      case 1: monitorLabel = L"モニターtgut"; break;
+      case 2: monitorLabel = L"モニターyuukiar"; break;
+      case 3: monitorLabel = L"モニターten"; break;
+      case 4: monitorLabel = L"モニターnagi"; break;
+      case 5: monitorLabel = L"モニターhinata"; break;
+      case 6: monitorLabel = L"モニターozeki"; break;
+      default: monitorLabel = L"モニターOFF"; break;
+    }
   } else if (monitorMode_ == MonitorMode::Off) {
     monitorLabel = L"モニターOFF";
   }
@@ -324,17 +348,17 @@ void PowerSavingController::PaintOverlay(HWND window) {
 
   const wchar_t* audioModeLabel = L"音声出力YT";
   if (audioMode_ == AudioMode::Stationhead) {
-    audioModeLabel = L"音声出力ST";
+    audioModeLabel = L"音声出力ozeki";
   } else if (audioMode_ == AudioMode::StationheadPeer1) {
-    audioModeLabel = L"音声出力S1";
+    audioModeLabel = L"音声出力tgut";
   } else if (audioMode_ == AudioMode::StationheadPeer2) {
-    audioModeLabel = L"音声出力S2";
+    audioModeLabel = L"音声出力yuukiar";
   } else if (audioMode_ == AudioMode::StationheadPeer3) {
-    audioModeLabel = L"音声出力S3";
+    audioModeLabel = L"音声出力ten";
   } else if (audioMode_ == AudioMode::StationheadPeer4) {
-    audioModeLabel = L"音声出力S4";
+    audioModeLabel = L"音声出力nagi";
   } else if (audioMode_ == AudioMode::StationheadPeer5) {
-    audioModeLabel = L"音声出力S5";
+    audioModeLabel = L"音声出力hinata";
   } else if (audioMode_ == AudioMode::Muted) {
     audioModeLabel = L"音声出力OFF";
   }

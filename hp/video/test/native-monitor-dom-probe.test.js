@@ -38,9 +38,10 @@ test('visible monitor modes probe targeted Stationhead controls every five minut
   assert.match(bridge, /kStationheadMonitorProbeResultMessage/);
 });
 
-test('monitor S stays foreground while all six Stationhead windows participate in auth polling', () => {
-  assert.match(routing, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
-  assert.match(routing, /SetStationheadMonitorForeground\(serviceGrid\)/);
+test('named Stationhead monitor selects one foreground profile while all six windows participate in auth polling', () => {
+  assert.match(routing, /monitorMode_ == MonitorMode::ServiceGrid \? monitorStationheadProfile_ : 0/);
+  assert.match(routing, /SetStationheadMonitorProfile\(selectedProfile\)/);
+  assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
   assert.match(routing, /monitorAuthSlots_/);
   assert.match(schedule, /if \(monitorMode_ != MonitorMode::Off\) \{[\s\S]*kMonitorAuthProbeIntervalMs/);
   assert.match(schedule, /if \(monitorMode_ == MonitorMode::Off \|\| powerSaving_\) return/);
