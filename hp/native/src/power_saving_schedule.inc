@@ -130,23 +130,20 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   const bool layoutChanged = powerSaving_ != nextPowerSaving;
   monitorMode_ = mode;
   powerSaving_ = nextPowerSaving;
-  if (mode == MonitorMode::Off) monitorAuthForeground_ = false;
+  if (mode == MonitorMode::Off) {
+    monitorAuthSlots_ = 0;
+    monitorAuthForeground_ = false;
+  }
 
   if (powerSaving_) {
     ApplyMinimumBrightness();
   } else {
     RestoreBrightness();
   }
-  // Monitor S is a dedicated service surface: hide the normal dashboard and
-  // YouTube/TVer panel without stopping their playback lifecycle.
+  // Monitor S is a dedicated six-Stationhead surface. Hide the normal dashboard
+  // and YouTube/TVer panel without stopping their playback lifecycle.
   Renderer::SetGlobalPowerSavingMode(
       powerSaving_ || mode == MonitorMode::ServiceGrid);
-
-  // Monitor S remains a six-window surface even while Stationhead temporarily
-  // raises an authentication surface. Spotify playback/health state is never
-  // coupled to Stationhead's interactive foreground state.
-  SetSpotifyMonitorForegroundSlot(-1);
-  SetSpotifyMonitorGridVisible(mode == MonitorMode::ServiceGrid);
   ApplyStationheadMonitorPlacement();
 
   if (layoutChanged) LayoutOverlay();
@@ -161,21 +158,21 @@ void PowerSavingController::CycleAudioMode() noexcept {
       ApplyAudioMode(AudioMode::Stationhead);
       break;
     case AudioMode::Stationhead:
-      ApplyAudioMode(AudioMode::SpotifyPrimary);
+      ApplyAudioMode(AudioMode::StationheadPeer1);
       break;
-    case AudioMode::SpotifyPrimary:
-      ApplyAudioMode(AudioMode::SpotifySecondary);
+    case AudioMode::StationheadPeer1:
+      ApplyAudioMode(AudioMode::StationheadPeer2);
       break;
-    case AudioMode::SpotifySecondary:
-      ApplyAudioMode(AudioMode::SpotifyTertiary);
+    case AudioMode::StationheadPeer2:
+      ApplyAudioMode(AudioMode::StationheadPeer3);
       break;
-    case AudioMode::SpotifyTertiary:
-      ApplyAudioMode(AudioMode::SpotifyQuaternary);
+    case AudioMode::StationheadPeer3:
+      ApplyAudioMode(AudioMode::StationheadPeer4);
       break;
-    case AudioMode::SpotifyQuaternary:
-      ApplyAudioMode(AudioMode::SpotifyQuinary);
+    case AudioMode::StationheadPeer4:
+      ApplyAudioMode(AudioMode::StationheadPeer5);
       break;
-    case AudioMode::SpotifyQuinary:
+    case AudioMode::StationheadPeer5:
       ApplyAudioMode(AudioMode::Muted);
       break;
     case AudioMode::Muted:
@@ -188,26 +185,40 @@ void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept {
   audioMode_ = mode;
   mediaMuted_ = mode != AudioMode::Media;
   SetNativeMediaPanelMuted(mediaMuted_);
-  const int spotifyAudioAccount =
-      mode == AudioMode::SpotifyPrimary ? 0 :
-      mode == AudioMode::SpotifySecondary ? 1 :
-      mode == AudioMode::SpotifyTertiary ? 2 :
-      mode == AudioMode::SpotifyQuaternary ? 3 :
-      mode == AudioMode::SpotifyQuinary ? 4 : -1;
-  SetSpotifyAudioOutputSlot(spotifyAudioAccount);
 
   if (parent_ && IsWindow(parent_)) {
-    const UiAction stationheadAction = mode == AudioMode::Stationhead
-        ? UiAction::StationheadAudioToggle
-        : UiAction::StationheadAudioMute;
+    UiAction action = UiAction::StationheadAudioMute;
+    switch (mode) {
+      case AudioMode::Stationhead:
+        // Force a known muted state before toggling the preserved profile #6 on.
+        SendMessageW(
+            parent_, kRendererActionMessage,
+            static_cast<WPARAM>(UiAction::StationheadAudioMute), 0);
+        action = UiAction::StationheadAudioToggle;
+        break;
+      case AudioMode::StationheadPeer1:
+        action = UiAction::StationheadPeer1Audio;
+        break;
+      case AudioMode::StationheadPeer2:
+        action = UiAction::StationheadPeer2Audio;
+        break;
+      case AudioMode::StationheadPeer3:
+        action = UiAction::StationheadPeer3Audio;
+        break;
+      case AudioMode::StationheadPeer4:
+        action = UiAction::StationheadPeer4Audio;
+        break;
+      case AudioMode::StationheadPeer5:
+        action = UiAction::StationheadPeer5Audio;
+        break;
+      case AudioMode::Media:
+      case AudioMode::Muted:
+        action = UiAction::StationheadAudioMute;
+        break;
+    }
     SendMessageW(
         parent_, kRendererActionMessage,
-        static_cast<WPARAM>(UiAction::StationheadAudioMute), 0);
-    if (stationheadAction == UiAction::StationheadAudioToggle) {
-      SendMessageW(
-          parent_, kRendererActionMessage,
-          static_cast<WPARAM>(stationheadAction), 0);
-    }
+        static_cast<WPARAM>(action), 0);
   }
 
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
