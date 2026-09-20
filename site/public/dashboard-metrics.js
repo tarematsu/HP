@@ -1,7 +1,8 @@
 import './history/history-global-fixes.js';
-import './dashboard-header.js?v=20260919.3';
+import './dashboard-header.js?v=20260921.4';
 import './dashboard-tabs.js?v=20260919.3';
 import './dashboard-fetch-cache.js?v=20260919.3';
+import './dashboard-current-enhancements.js?v=20260921.4';
 import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260919.3';
 
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
@@ -79,6 +80,7 @@ function requestUrl(input) {
 function renderPayload(payload) {
   if (!payload?.ok) return;
   renderDashboardDailySummaries(payload.daily_summaries);
+  window.dispatchEvent(new CustomEvent('dashboard:payload', { detail: { payload } }));
   const status = document.getElementById('statusMessage');
   if (status) {
     status.textContent = '';
@@ -114,7 +116,7 @@ window.fetch = async (input, init) => {
 };
 
 restoreDashboardCache();
-void import('/dashboard-client.js?v=20260919.3').catch((error) => {
+void import('/dashboard-client.js?v=20260921.4').catch((error) => {
   console.error('dashboard client failed to start', error);
   const status = document.getElementById('statusMessage');
   if (status) {
