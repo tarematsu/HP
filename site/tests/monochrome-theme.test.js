@@ -28,3 +28,17 @@ test('canvas graph palette remains sourced from root colors', () => {
   assert.match(theme, /\.legend \.legend-plays\s*\{[\s\S]*color:\s*#6657d8/);
   assert.match(theme, /\.legend \.legend-comments\s*\{[\s\S]*color:\s*#55d6be/);
 });
+
+test('Pages layout removes decorative chrome while keeping data sections', () => {
+  assert.match(theme, /\.kicker,\s*\n\.channel-visual\s*\{[\s\S]*display:\s*none !important/);
+  assert.match(theme, /\.top-card,\s*\n\.card,\s*\n\.metric,[\s\S]*border-radius:\s*0[\s\S]*box-shadow:\s*none/);
+  assert.match(theme, /\.metrics\s*\{[\s\S]*border-bottom:\s*1px solid #e3e3e3/);
+  assert.match(theme, /\.primary-grid\s*\{[\s\S]*gap:\s*0[\s\S]*border-bottom:\s*1px solid #e3e3e3/);
+  assert.match(theme, /\.chart-detail:empty,\s*\n\.notice:empty\s*\{[\s\S]*display:\s*none/);
+  assert.match(theme, /\.table-wrap\s*\{[\s\S]*border-radius:\s*0/);
+});
+
+test('redundant default helper copy is cleared at startup', () => {
+  assert.match(header, /\['currentChartDetail', 'chartDetail', 'notice'\]/);
+  assert.match(header, /element\.textContent = ''/);
+});
