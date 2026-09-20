@@ -7,8 +7,9 @@ const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.m
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
 
-test('dashboard title is the hashtag and links to an X search for the same text', () => {
+test('dashboard title is the hashtag, browser title, and links to an X search for the same text', () => {
   assert.match(header, /const DASHBOARD_TITLE = '#櫻坂46_ステへ統計'/);
+  assert.match(header, /document\.title = DASHBOARD_TITLE/);
   assert.match(header, /https:\/\/x\.com\/search\?q=\$\{encodeURIComponent\(DASHBOARD_TITLE\)\}&src=typed_query/);
   assert.match(header, /dataset\.dashboardTitleLink = 'true'/);
 });
