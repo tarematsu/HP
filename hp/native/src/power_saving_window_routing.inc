@@ -271,8 +271,10 @@ void PowerSavingController::ApplyStationheadMonitorPlacement() noexcept {
 
   const unsigned selectedProfile =
       monitorMode_ == MonitorMode::ServiceGrid ? monitorStationheadProfile_ : 0;
-  const bool nativeMediaForeground =
-      monitorMode_ == MonitorMode::Native && !monitorAuthForeground_;
+  // Authentication promotion is handled by each Stationhead auth host. Keep
+  // the native YouTube/TVer panel at its normal foreground bounds whenever the
+  // monitor is in Native mode instead of shrinking it to 1x1 during auth.
+  const bool nativeMediaForeground = monitorMode_ == MonitorMode::Native;
 
   if (SetStationheadMonitorProfile(selectedProfile)) {
     PostMessageW(parent_, WM_TIMER, 0, 0);
