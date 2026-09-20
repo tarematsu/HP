@@ -75,6 +75,7 @@ class App {
   static constexpr int kRestartExitCode = 42;
   static constexpr uint32_t kStationheadStateWakeMs = 2'000;
   static constexpr int64_t kMediaStartupStageDelayMs = 30'000;
+  static constexpr size_t kStationheadPeerCount = 5;
   static LRESULT CALLBACK WindowProc(
       HWND window, UINT message, WPARAM wParam, LPARAM lParam);
   LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
@@ -94,7 +95,7 @@ class App {
   void UpdateAirHistory(const SensorSnapshot& sensors);
   void HandleAction(UiAction action);
   void LayoutWorkspace();
-  void ApplyStationheadWindowPlacement(const StationheadStatus& status);
+  void ApplyStationheadWindowPlacement();
   void MarkStationheadPlacementDirty() noexcept {
     stationheadPlacementDirty_ = true;
     ScheduleNextTick(kStationheadStateWakeMs);
@@ -118,6 +119,7 @@ class App {
   std::unique_ptr<CloudClient> cloud_;
   std::unique_ptr<SensorHub> sensors_;
   AppStationheadHandle stationhead_;
+  std::array<AppStationheadHandle, kStationheadPeerCount> stationheadPeers_;
   std::vector<AirHistorySample> airHistory_;
   std::wstring toastText_;
   std::atomic<bool> telemetryBusy_{false};
@@ -129,7 +131,7 @@ class App {
   MonotonicElapsedTimestamp startupAt_;
   bool rendererStarted_ = false;
   bool stationheadStarted_ = false;
-  bool spotifyStarted_ = false;
+  std::array<bool, kStationheadPeerCount> stationheadPeerStarted_{};
   bool cloudStarted_ = false;
   bool startupUpdateScheduled_ = false;
   bool stationheadPlaybackFallbackActive_ = false;
@@ -141,7 +143,6 @@ class App {
   int64_t nextAppTickAt_ = 0;
   bool airHistoryDirty_ = false;
   bool stationheadPlacementDirty_ = true;
-  bool placedPrimaryPending_ = false;
   RECT placedBounds_{};
   // Fail closed until the audio-routing controller explicitly selects SH.
   bool stationheadAudioMuted_ = true;
