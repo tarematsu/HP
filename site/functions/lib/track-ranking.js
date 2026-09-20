@@ -67,13 +67,11 @@ async function metadataRows(db, rows) {
   const metadata = [];
   for (const part of chunks(spotifyIds)) {
     const marks = part.map(() => '?').join(',');
-    metadata.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
+    metadata.push(...await safeRows(db, `SELECT spotify_id,title,artist,display_title,thumbnail_url,fetched_at
       FROM sh_track_metadata WHERE spotify_id IN (${marks}) ORDER BY fetched_at DESC`, part));
   }
   for (const part of chunks(isrcs)) {
     const marks = part.map(() => '?').join(',');
-    metadata.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
-      FROM sh_track_metadata WHERE isrc IN (${marks}) ORDER BY fetched_at DESC`, part));
     metadata.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,NULL AS display_title,thumbnail_url,metadata_fetched_at AS fetched_at
       FROM sh_track_dictionary WHERE isrc IN (${marks}) ORDER BY metadata_fetched_at DESC`, part));
   }
