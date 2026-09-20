@@ -10,8 +10,6 @@ const readNative = relative => readFileSync(
 const app = readNative('app.cpp');
 const appHeader = readNative('app.h');
 const lifecycle = readNative('renderer_lifecycle.cpp');
-const spotifyHeader = readNative('spotify_webviews.h');
-const spotifySchedule = readNative('spotify_stagger_schedule.inc');
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -21,41 +19,40 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('media startup keeps five Spotify windows live with thirty-second account staggering', () => {
+test('media startup launches six Stationhead windows at thirty-second offsets', () => {
   assert.match(appHeader, /kMediaStartupStageDelayMs\s*=\s*30'000/);
-  assert.doesNotMatch(appHeader, /spotifyStartedAt_/);
-  assert.match(spotifyHeader, /kSpotifyActiveAccountCount = 5/);
-  assert.match(spotifyHeader, /kSpotifyRuntimeLaneCount = kSpotifyActiveAccountCount/);
-  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 30ULL \* 1000ULL/);
-  assert.match(spotifySchedule, /kSpotifyInitialStartDelayMs = 0/);
+  assert.match(appHeader, /kStationheadPeerCount\s*=\s*5/);
+  assert.doesNotMatch(appHeader, /spotifyStarted_/);
 
   const startup = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   assert.match(startup, /renderer_->Initialize\(\)/);
   assert.doesNotMatch(startup, /stationhead_->Start\(\)/);
-  assert.doesNotMatch(startup, /StartSpotify\(\)/);
+  assert.doesNotMatch(startup, /renderer_->StartSpotify\(\)/);
+  assert.match(startup, /spotify-v2-1/);
+  assert.match(startup, /spotify-v2-5/);
+  assert.match(startup, /spotify-v2-6/);
 
   const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
-  const spotifyAt = deferred.indexOf('renderer_->StartSpotify()');
-  const stationheadAt = deferred.indexOf('stationhead_->Start()');
-  assert.ok(spotifyAt >= 0, 'Spotify staged start is missing');
-  assert.ok(stationheadAt > spotifyAt, 'Stationhead launch must be issued after Spotify launch');
+  assert.doesNotMatch(deferred, /renderer_->StartSpotify\(\)/);
+  assert.match(deferred, /stationheadPeers_\[i\]->Start\(\)/);
   assert.match(
     deferred,
-    /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs[\s\S]*renderer_->StartSpotify\(\)/,
+    /kMediaStartupStageDelayMs\s*\*\s*static_cast<int64_t>\(i \+ 1\)/,
   );
   assert.match(
     deferred,
     /now\s*-\s*startupAt_\s*>=\s*kMediaStartupStageDelayMs\s*\*\s*6[\s\S]*stationhead_->Start\(\)/,
   );
-  assert.match(deferred, /Spotify #1 launch issued at \+30 seconds; #2, #3, #4 and #5 follow at 30-second offsets/);
-  assert.match(deferred, /Stationhead launch issued at \+180 seconds/);
-  assert.doesNotMatch(deferred, /spotifyStartedAt_/);
+  assert.match(deferred, /Stationhead peer #[\s\S]*launch issued at \+/);
+  assert.match(deferred, /Stationhead #6 launch issued at \+180 seconds/);
 });
 
-test('renderer initialization no longer starts Spotify alongside YouTube', () => {
+test('legacy Spotify renderer entry point is not part of app startup anymore', () => {
   const initialize = section(lifecycle, 'void Renderer::Initialize()', 'void Renderer::StartSpotify()');
   assert.doesNotMatch(initialize, /gSpotifyWebViews->Start\(\)/);
 
-  const spotify = section(lifecycle, 'void Renderer::StartSpotify()', 'void Renderer::Resize(');
-  assert.match(spotify, /gSpotifyWebViews->Start\(\)/);
+  const startup = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
+  const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
+  assert.doesNotMatch(startup, /StartSpotify\(\)/);
+  assert.doesNotMatch(deferred, /StartSpotify\(\)/);
 });
