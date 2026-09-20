@@ -8,6 +8,15 @@ const NOW = Date.UTC(2026, 6, 30, 1, 23, 45);
 function dailyDatabase(assertions) {
   return {
     prepare(sql) {
+      if (/FROM sh_pages_track_history_read_model/.test(sql)) {
+        assert.match(sql, /COUNT\(DISTINCT/);
+        return {
+          bind(periodKey) {
+            assert.equal(periodKey, '2026-07-30');
+            return { first: async () => ({ distinct_tracks: 9 }) };
+          },
+        };
+      }
       assert.match(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
       assert.match(sql, /FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute/);
       assert.match(sql, /FROM sh_total_member_daily INDEXED BY idx_sh_total_member_daily_latest/);
@@ -61,12 +70,13 @@ test('current daily summary scans only canonical minutes in the UTC day', async 
   assert.equal(summary.rows.length, 1);
   assert.equal(summary.rows[0].period_key, '2026-07-30');
   assert.equal(summary.rows[0].sample_count, 1238);
+  assert.equal(summary.rows[0].distinct_tracks, 9);
   assert.equal(summary.rows[0].stream_growth, null);
   assert.equal(summary.rows[0].member_growth, null);
   assert.match(summary.rows[0].quality_flags, /minute_facts/);
   assert.match(summary.rows[0].quality_flags, /incomplete_current_period/);
   assert.equal(summary.live_source, 'minute_facts');
-  assert.equal(summary.storage_source, 'minute.sh_minute_facts');
+  assert.equal(summary.storage_source, 'minute.sh_minute_facts+minute.sh_pages_track_history_read_model');
   assert.equal(summary.read_path, 'minute-current-daily');
   assert.equal(summary.live_overlay_count, 1);
 });
