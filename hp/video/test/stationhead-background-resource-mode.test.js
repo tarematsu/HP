@@ -41,15 +41,17 @@ test('Stationhead playback and auth leave the WebView2 memory target unmanaged i
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
 });
 
-test('Monitor S and Monitor YT auth promotion drive the effective foreground bit', () => {
+test('Monitor S drives the shared playback foreground while auth promotion remains per window', () => {
   assert.match(
     routing,
-    /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid;[\s\S]*serviceGrid \|\|[\s\S]*monitorMode_ == MonitorMode::Native && monitorAuthForeground_/,
+    /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid;[\s\S]*SetStationheadMonitorForeground\(serviceGrid\)/,
   );
-  assert.match(routing, /SetStationheadMonitorForeground\(stationheadForeground\)/);
+  assert.match(routing, /const bool nativeMediaForeground =\s*monitorMode_ == MonitorMode::Native && !monitorAuthForeground_/);
+  assert.match(routing, /monitorAuthSlots_/);
   assert.match(routing, /PostMessageW\(parent_, WM_TIMER, 0, 0\)/);
   assert.match(bridge, /inline std::atomic<bool> gStationheadMonitorForeground\{false\}/);
   assert.match(layout, /ApplyHostVisualClip\(hostWindow, playbackForeground\)/);
+  assert.match(layout, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
 });
 
 test('Stationhead monitor wake invalidates cached placement before Tick relayout', () => {
