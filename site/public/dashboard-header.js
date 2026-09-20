@@ -80,6 +80,7 @@ document.addEventListener('focusout', (event) => {
 document.addEventListener('pointerdown', clearKeyboardNavigation, { capture: true });
 
 const DASHBOARD_TITLE = '#櫻坂46_ステへ統計';
+document.title = DASHBOARD_TITLE;
 const DASHBOARD_TITLE_SEARCH_URL = `https://x.com/search?q=${encodeURIComponent(DASHBOARD_TITLE)}&src=typed_query`;
 const channelName = document.getElementById('channelName');
 function renderDashboardTitle() {
