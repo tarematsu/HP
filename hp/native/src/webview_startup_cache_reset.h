@@ -38,8 +38,9 @@ inline void ResetWebViewStartupCaches(
   }
 
   try {
+    ComPtr<ICoreWebView2> base = webview;
     ComPtr<ICoreWebView2_13> profileView;
-    HRESULT result = webview->QueryInterface(IID_PPV_ARGS(&profileView));
+    HRESULT result = base.As(&profileView);
     if (FAILED(result) || !profileView) {
       detail::CompleteWebViewStartupReset(
           completion, FAILED(result) ? result : E_NOINTERFACE);
