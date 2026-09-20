@@ -93,12 +93,27 @@ test('snapshot health count keeps D1 work request-scoped', async () => {
 
 test('Sakurazaka raw save stages do not parse or stringify upstream payloads', () => {
   const source = readFileSync(new URL('../worker/src/official-news-probe.js', import.meta.url), 'utf8');
-  const main = source.slice(source.indexOf('export async function saveOfficialNewsProbe'));
-  assert.doesNotMatch(main, /JSON\.parse|JSON\.stringify/);
+  const main = source.slice(
+    source.indexOf('export async function collectStationMain'),
+    source.indexOf('export async function decodeStationMain'),
+  );
+  const chat = source.slice(
+    source.indexOf('export async function collectStationChat'),
+    source.indexOf('function probeStatement'),
+  );
+  assert.match(main, /response\.text|stationTextRequest/);
+  assert.match(chat, /stationTextRequest/);
+  assert.doesNotMatch(main, /JSON\.(?:parse|stringify)|response\.json|json_(?:valid|extract)/);
+  assert.doesNotMatch(chat, /JSON\.(?:parse|stringify)|response\.json|json_(?:valid|extract)/);
+  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(/);
 });
 
-test('Stationhead main payload decode is indexed once per capture', () => {
-  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(\?1,'\$\.station\.id'\)/);
-  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(\?1,'\$\.station\.stationId'\)/);
-  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(\?1,'\$\.station\.channelId'\)/);
+test('Sakurazaka chat table stores only raw response text and minute identity', () => {
+  const migration = readFileSync(new URL(
+    '../database/other-migrations/016_sakurazaka46jp_raw_collection.sql',
+    import.meta.url,
+  ), 'utf8');
+  const chat = migration.slice(migration.indexOf('CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_chat'));
+  assert.match(chat, /raw_json TEXT NOT NULL/);
+  assert.doesNotMatch(chat, /comment_count|latest_comment_id|oldest_comment_id|text\s+TEXT/);
 });
