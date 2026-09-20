@@ -9,6 +9,7 @@ on:
       - 'scripts/audit-pages-live.mjs'
       - 'scripts/audit-pages-materialized.mjs'
       - 'scripts/audit-pages-materialized-production.mjs'
+      - 'scripts/audit-stationhead-collection-test.mjs'
       - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/run-pages-read-model-rebuild.yml'
@@ -139,6 +140,15 @@ jobs:
           --attempts=3
           --retry-delay-ms=10000
           --out=.pages-production-audit
+
+      - name: Verify Stationhead collection test page
+        run: >-
+          node scripts/audit-stationhead-collection-test.mjs
+          --url=https://skrzk.pages.dev
+          --attempts=25
+          --retry-delay-ms=15000
+          --expected-handle=sakuramankai
+          --out=.pages-production-audit/stationhead-collection-test.json
 
       - name: Require all production materializations
         continue-on-error: ${{ github.event_name == 'pull_request' }}
