@@ -1,0 +1,45 @@
+name: Fix named window label sizing
+
+on:
+  push:
+    branches:
+      - feat/window-named-audio-monitor-modes
+    paths:
+      - .github/workflows/fix-window-mode-cpp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fix C++ type-safe font scaling
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('hp/native/src/power_saving_overlay.inc')
+          s = p.read_text(encoding='utf-8')
+          old = '''      fontHeight = std::max(
+          9, fontHeight * availableTextWidth / std::max(1L, textSize.cx));'''
+          new = '''      fontHeight = std::max(
+          9, static_cast<int>(
+                 fontHeight * availableTextWidth / std::max(1L, textSize.cx)));'''
+          if s.count(old) != 1:
+              raise SystemExit(f'expected one font scaling expression, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Commit fix and remove temporary workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/fix-window-mode-cpp.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hp/native/src/power_saving_overlay.inc
+          git commit -m "Fix named window label font scaling types"
+          git push origin HEAD:feat/window-named-audio-monitor-modes
