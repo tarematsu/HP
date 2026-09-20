@@ -23,14 +23,14 @@ test('API contract contains unique canonical paths only', () => {
   unique(canonical, 'canonical API paths');
   assert.equal(canonical.length, 8);
   assert.ok(canonical.includes('/api/history-current'));
-  assert.ok(canonical.includes('/api/stationhead-collection-test'));
+  assert.ok(canonical.includes('/api/sakurazaka46jp-status'));
   assert.equal(existsSync(new URL('../functions/api/_middleware.js', import.meta.url)), false);
 });
 
 test('GET /api catalog is generated from the canonical contract only', () => {
   const catalog = apiCatalog(0);
   assert.equal(catalog.contract_version, API_CONTRACT_VERSION);
-  assert.equal(catalog.contract_version, 5);
+  assert.equal(catalog.contract_version, 6);
   assert.deepEqual(catalog.groups, API_GROUPS);
   assert.equal('compatibility' in catalog, false);
   assert.equal('retired' in catalog, false);
@@ -59,8 +59,8 @@ test('current minute history uses a 30-second shared cache', () => {
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history?mode=daily')), 300);
 });
 
-test('collection test endpoint bypasses shared edge cache', () => {
-  assert.equal(edgeCacheableApiRequest(new Request('https://skrzk.test/api/stationhead-collection-test')), false);
+test('Sakurazaka status endpoint bypasses shared edge cache', () => {
+  assert.equal(edgeCacheableApiRequest(new Request('https://skrzk.test/api/sakurazaka46jp-status')), false);
 });
 
 test('cache middleware contains the canonical Sakurazaka policy', () => {
