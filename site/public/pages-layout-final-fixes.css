@@ -1,0 +1,7 @@
+/* Final overrides confirmed by the production screenshot audit. */
+@media (max-width: 760px) {
+  #modeTabs.mode-tabs.dashboard-tabs > button,
+  #modeTabs.mode-tabs.dashboard-tabs > button:last-child {
+    grid-column: auto !important;
+  }
+}
