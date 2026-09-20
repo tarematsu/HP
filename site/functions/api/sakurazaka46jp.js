@@ -8,7 +8,7 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 8;
+const SERIES_CACHE_VERSION = 9;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const SUMMARY_MISMATCH_RATIO = 0.45;
@@ -67,6 +67,19 @@ export const SAKURAZAKA_EVENT_SQL = `SELECT event_name,started_at,ended_at,sampl
 FROM sh_official_broadcast_summary
 WHERE host_handle='sakurazaka46jp' AND started_at>=? AND started_at<?
 ORDER BY started_at ASC`;
+
+export const SAKURAZAKA_CANONICAL_SERIES_SQL = `SELECT
+  series.event_name,series.started_at,series.points_json,
+  json_array_length(series.points_json) AS point_count,
+  json_array_length(series.points_json) AS total_points,
+  summary.listener_avg AS expected_listener_avg,
+  summary.listener_max AS expected_listener_max,
+  'google_sheets_canonical' AS source
+FROM sh_official_broadcast_series series
+LEFT JOIN sh_official_broadcast_summary summary
+  ON summary.host_handle=series.host_handle AND summary.event_name=series.event_name
+WHERE series.host_handle='sakurazaka46jp' AND series.started_at>=? AND series.started_at<?
+ORDER BY series.started_at ASC`;
 
 export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH target_host AS (
   SELECT id FROM sh_hosts
@@ -164,7 +177,7 @@ export function decodeSakurazakaSeriesRows(rows, source) {
       event_name: String(row.event_name || '公式ステヘ'),
       started_at: Number(row.started_at) || null,
       samples,
-      source,
+      source: String(row.source || source),
       sourceTruncated: Number(row.total_points || 0) > MAX_POINTS,
       expectedListenerAverage: Number.isFinite(Number(row.expected_listener_avg))
         ? Number(row.expected_listener_avg)
@@ -344,7 +357,27 @@ export async function loadSakurazakaSeriesRows(minuteDb, otherDb, fromTs, toTs) 
     if (!summaries.some((summary) => duplicateSeries(summary, event))) summaries.push(event);
   }
   summaries.sort((a, b) => (Number(a.started_at) || 0) - (Number(b.started_at) || 0));
+
+  let canonicalRows = [];
+  try {
+    const canonicalResult = await otherDb.prepare(SAKURAZAKA_CANONICAL_SERIES_SQL).bind(fromTs, toTs).all();
+    canonicalRows = canonicalResult.results || [];
+  } catch (error) {
+    if (!/no such table/i.test(String(error?.message || ''))) throw error;
+  }
+  const canonicalByEvent = new Map(canonicalRows.map((row) => [String(row.event_name || ''), row]));
+
   for (const summary of summaries) {
+    const canonical = canonicalByEvent.get(String(summary.event_name || ''));
+    if (canonical) {
+      historicalRows.push({
+        ...canonical,
+        series_key: `canonical:${summary.event_name}`,
+        expected_listener_avg: canonical.expected_listener_avg ?? summary.listener_avg,
+        expected_listener_max: canonical.expected_listener_max ?? summary.listener_max,
+      });
+      continue;
+    }
     const start = Number(summary.started_at || 0);
     const end = Number(summary.ended_at || start) + 60_000;
     const pointsResult = await minuteDb.prepare(SAKURAZAKA_MINUTE_SERIES_SQL)
