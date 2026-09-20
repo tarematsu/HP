@@ -47,7 +47,7 @@ test('Stationhead playback host uses the media panel for a named monitor while c
   assert.match(layout, /StationheadMonitorPanelBounds\(const RECT& workspaceBounds\)[\s\S]*ComputeNativeDashboardLayout\(workspaceBounds\)\.media/);
   assert.match(childLayout, /const bool playbackForeground\s*=\s*[\s\S]*showPlayback \|\|/);
   assert.match(childLayout, /!showAuth && !hidePlayback && monitorForeground/);
-  assert.match(childLayout, /const RECT playbackHostBounds =[\s\S]*monitorForeground && playbackForeground[\s\S]*StationheadMonitorPanelBounds\(workspaceBounds\)[\s\S]*: surfaceBounds;/);
+  assert.match(childLayout, /RECT playbackHostBounds = surfaceBounds;[\s\S]*if \(monitorForeground && playbackForeground\) \{[\s\S]*playbackHostBounds = StationheadMonitorPanelBounds\(workspaceBounds\);/);
   assert.match(childLayout, /const RECT authHostBounds = surfaceBounds;/);
   assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
   assert.doesNotMatch(childLayout, /StationheadOffscreenBounds/);
