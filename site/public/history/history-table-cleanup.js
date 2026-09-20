@@ -5,7 +5,20 @@ const RENAMED_LABELS = new Map([
   ['記録数', ['取得記録数', 'その期間に保存された全サンプル数']],
   ['有効記録数', ['同接有効数', 'オンライン人数が取得できたサンプル数']],
 ]);
+const CACHE_MIGRATION_KEY = 'sh.history.display-cleanup.v2';
+const HISTORY_CACHE_PREFIX = 'sh.history.v3:';
 let cleaning = false;
+
+function clearStaleHistoryCache() {
+  try {
+    if (sessionStorage.getItem(CACHE_MIGRATION_KEY) === '1') return;
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(HISTORY_CACHE_PREFIX)) sessionStorage.removeItem(key);
+    }
+    sessionStorage.setItem(CACHE_MIGRATION_KEY, '1');
+  } catch {}
+}
 
 function activeMode() {
   return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || '');
@@ -56,6 +69,7 @@ function cleanTable() {
   }
 }
 
+clearStaleHistoryCache();
 const observer = new MutationObserver(cleanTable);
 const head = document.getElementById('thead');
 const body = document.getElementById('tbody');
