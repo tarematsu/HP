@@ -144,6 +144,590 @@ tbody tr:hover {
   box-shadow: 0 8px 24px rgba(0, 0, 0, .1);
 }
 
+/* Data-dense layout: remove decorative chrome and let the data provide hierarchy. */
+.shell {
+  width: min(1240px, 100%);
+  padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+}
+
+.kicker,
+.channel-visual {
+  display: none !important;
+}
+
+.top-card,
+.card,
+.metric,
+.guide,
+.summary-cards article {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.top-card.dashboard-header {
+  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
+  gap: 12px;
+  padding: 6px 0 9px;
+  border-bottom: 1px solid #dddddd;
+}
+
+.dashboard-header .channel {
+  gap: 0;
+}
+
+.dashboard-header h1 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.15;
+  letter-spacing: -.015em;
+}
+
+.dashboard-header .channel-copy > .subtle {
+  max-width: 18ch;
+  margin-top: 3px;
+  font-size: .64rem;
+}
+
+.mode-tabs,
+.mode-tabs.dashboard-tabs {
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mode-tabs button,
+.mode-tabs a,
+.mode-tabs.dashboard-tabs button {
+  min-height: 34px;
+  padding: 5px 7px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-size: .7rem;
+}
+
+.mode-tabs button:hover,
+.mode-tabs button:focus-visible,
+.mode-tabs a:hover,
+.mode-tabs a:focus-visible {
+  background: #f5f5f5;
+}
+
+.mode-tabs button.active,
+.mode-tabs a.active,
+.mode-tabs.dashboard-tabs button.active {
+  border-color: #111111;
+  background: transparent;
+  color: #111111;
+}
+
+.metrics {
+  gap: 0;
+  margin-top: 0;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.metric,
+.metric.featured {
+  padding: 10px 14px 11px;
+  border-right: 1px solid #e6e6e6;
+  background: transparent;
+}
+
+.metric:last-child {
+  border-right: 0;
+}
+
+.metric > span {
+  font-size: .66rem;
+  font-weight: 650;
+}
+
+.metric-value {
+  margin-top: 3px;
+}
+
+.metric strong,
+.metric.featured strong {
+  font-size: clamp(1.25rem, 3.5vw, 1.75rem);
+}
+
+.metric small {
+  font-size: .68rem;
+}
+
+.delta {
+  margin-top: 3px;
+  font-size: .58rem;
+  font-weight: 650;
+}
+
+.primary-grid {
+  gap: 0;
+  margin-top: 0;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.primary-grid > .card {
+  padding: 13px 0;
+}
+
+.primary-grid > .card:first-child {
+  padding-right: 16px;
+  border-right: 1px solid #e6e6e6;
+}
+
+.primary-grid > .card:last-child {
+  padding-left: 16px;
+}
+
+.section-head {
+  margin-bottom: 8px;
+}
+
+.section-head h2 {
+  font-size: .94rem;
+  font-weight: 760;
+}
+
+.host {
+  font-size: .68rem;
+}
+
+.now-playing {
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 76px;
+}
+
+.track-visual {
+  width: 76px;
+  height: 76px;
+  border: 0;
+  border-radius: 8px;
+}
+
+.track-copy > strong {
+  font-size: 1rem;
+}
+
+.track-copy > .subtle,
+.time-row,
+.goal-foot {
+  font-size: .68rem;
+}
+
+.progress {
+  height: 4px;
+  margin-top: 6px;
+}
+
+.queue {
+  gap: 0;
+  max-height: 210px;
+}
+
+.queue-item {
+  min-height: 44px;
+  padding: 3px 0;
+}
+
+.queue-thumb {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 5px;
+}
+
+.queue-item {
+  grid-template-columns: 20px 34px minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.queue-copy strong {
+  font-size: .78rem;
+}
+
+.queue-copy small,
+.queue-index,
+.queue-duration {
+  font-size: .64rem;
+}
+
+.pill {
+  padding: 2px 6px;
+  border: 0;
+  background: #f0f0f0;
+  font-size: .62rem;
+}
+
+.goal-card,
+.chart-card,
+.chart-panel,
+.data-panel,
+.ranking-weekly-panel {
+  margin-top: 0;
+  padding: 13px 0;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.goal-layout {
+  grid-template-columns: minmax(0, 1.55fr) minmax(220px, .45fr);
+  gap: 0;
+}
+
+.goal-progress {
+  padding-right: 18px;
+}
+
+.goal-number strong {
+  font-size: clamp(1.65rem, 4.8vw, 2.35rem);
+}
+
+.progress.large {
+  height: 6px;
+  margin-top: 9px;
+}
+
+.prediction {
+  padding: 2px 0 2px 18px;
+  border: 0;
+  border-left: 1px solid #e3e3e3;
+  border-radius: 0;
+  background: transparent;
+}
+
+.prediction > span,
+.prediction > small {
+  font-size: .65rem;
+}
+
+.prediction > strong {
+  margin: 3px 0;
+  font-size: .92rem;
+}
+
+.milestones {
+  gap: 3px;
+  margin-top: 6px;
+}
+
+.milestone {
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 4px;
+  background: #f5f5f5;
+  font-size: .6rem;
+}
+
+.chart-card canvas,
+.chart-panel canvas {
+  border-radius: 0 !important;
+}
+
+.chart-detail {
+  min-height: 0;
+  margin-top: 4px;
+  padding: 3px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: .68rem;
+}
+
+.chart-detail:empty,
+.notice:empty {
+  display: none;
+}
+
+.chart-axis,
+.chart-foot {
+  font-size: .62rem;
+}
+
+.history-view,
+.likes-view {
+  margin-top: 0;
+}
+
+.controls.card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 0;
+  padding: 9px 0;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.range-presets {
+  gap: 1px;
+  padding: 0;
+  background: transparent;
+}
+
+.range-presets button {
+  min-height: 32px;
+  padding: 4px 7px;
+  border-radius: 0;
+  font-size: .66rem;
+}
+
+.range-presets button.active {
+  border-bottom: 2px solid #111111;
+  background: transparent;
+  box-shadow: none;
+}
+
+.controls label {
+  gap: 2px;
+  font-size: .64rem;
+}
+
+.controls input,
+.controls select {
+  min-height: 34px;
+  padding: 5px 7px;
+  border-radius: 4px;
+}
+
+.button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: .7rem;
+}
+
+.notice {
+  min-height: 0;
+  margin: 5px 0;
+  font-size: .66rem;
+}
+
+.summary-cards,
+.summary-cards.likes-summary {
+  gap: 0;
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.summary-cards article {
+  padding: 9px 12px 10px;
+  border-right: 1px solid #e6e6e6;
+}
+
+.summary-cards article:last-child,
+.summary-cards.likes-summary article:last-child {
+  border-right: 0;
+}
+
+.summary-cards span {
+  font-size: .64rem;
+  font-weight: 650;
+}
+
+.summary-cards strong,
+.summary-cards.likes-summary .summary-date {
+  margin-top: 3px;
+  font-size: clamp(1.05rem, 3vw, 1.45rem);
+}
+
+.chart-panel,
+.data-panel {
+  content-visibility: auto;
+}
+
+.table-wrap {
+  border: 0;
+  border-top: 1px solid #e2e2e2;
+  border-bottom: 1px solid #e2e2e2;
+  border-radius: 0;
+}
+
+th,
+td {
+  padding: 6px 8px;
+}
+
+th {
+  font-size: .62rem;
+}
+
+table {
+  font-size: .7rem;
+}
+
+.like-actions {
+  gap: 5px;
+  margin: 7px 0;
+}
+
+.like-ranking {
+  gap: 0;
+}
+
+.like-rank-item {
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid #e6e6e6;
+  border-radius: 0;
+}
+
+.like-rank-number {
+  width: 26px;
+  height: 26px;
+  border-radius: 0;
+  background: transparent;
+  font-size: .72rem;
+}
+
+.like-rank-metrics {
+  gap: 4px;
+}
+
+.like-rank-metrics span {
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: .6rem;
+}
+
+.status-message {
+  padding: 5px 8px;
+  border-radius: 4px;
+  box-shadow: none;
+  font-size: .66rem;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    padding-inline: 8px;
+  }
+
+  .top-card.dashboard-header {
+    gap: 6px;
+    padding-top: 3px;
+  }
+
+  .mode-tabs.dashboard-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .metrics {
+    gap: 0;
+  }
+
+  .metric,
+  .metric.featured {
+    padding: 8px 7px 9px;
+    border-radius: 0;
+  }
+
+  .primary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .primary-grid > .card:first-child,
+  .primary-grid > .card:last-child {
+    padding: 11px 0;
+    border-right: 0;
+  }
+
+  .primary-grid > .card:first-child {
+    border-bottom: 1px solid #e6e6e6;
+  }
+
+  .goal-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .goal-progress {
+    padding-right: 0;
+  }
+
+  .prediction {
+    margin-top: 9px;
+    padding: 8px 0 0;
+    border-left: 0;
+    border-top: 1px solid #e6e6e6;
+  }
+
+  .controls.card {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px 0;
+  }
+
+  .summary-cards,
+  .summary-cards.likes-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-cards article,
+  .summary-cards.likes-summary article {
+    border-bottom: 1px solid #ececec;
+  }
+
+  .summary-cards article:nth-child(2n),
+  .summary-cards.likes-summary article:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .summary-cards.likes-summary article:last-child {
+    grid-column: 1 / -1;
+    border-bottom: 0;
+  }
+
+  .chart-panel,
+  .data-panel,
+  .goal-card,
+  .chart-card {
+    padding: 11px 0;
+    border-radius: 0;
+  }
+}
+
+@media (max-width: 430px) {
+  .top-card.dashboard-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-header .channel-copy {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .dashboard-header .channel-copy > .subtle {
+    margin-top: 0;
+  }
+
+  .mode-tabs.dashboard-tabs {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .mode-tabs.dashboard-tabs button {
+    min-height: 34px;
+    padding: 4px 2px;
+    font-size: .63rem;
+  }
+
+  .now-playing {
+    grid-template-columns: 64px minmax(0, 1fr);
+    min-height: 64px;
+  }
+
+  .track-visual {
+    width: 64px;
+    height: 64px;
+  }
+
+  .queue {
+    max-height: 180px;
+  }
+}
+
 /* Preserve the existing graph/legend palette. Images are intentionally untouched. */
 .legend .online-key,
 .legend .legend-online {
