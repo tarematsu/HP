@@ -48,7 +48,7 @@ function normalizeMinuteRow(row, trackCount = null) {
 
 async function loadCurrentTrackCount(db, periodKey) {
   try {
-    const row = await db.prepare(`SELECT
+    const bound = db.prepare(`SELECT
         SUM(CASE
           WHEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)>0
             THEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)
@@ -56,8 +56,10 @@ async function loadCurrentTrackCount(db, periodKey) {
         END) AS track_count
       FROM sh_pages_track_history_read_model
       WHERE play_date=?`)
-      .bind(periodKey)
-      .first();
+      .bind(periodKey);
+    const row = typeof bound.first === 'function'
+      ? await bound.first()
+      : (await bound.all())?.results?.[0] || null;
     const value = Number(row?.track_count);
     return Number.isFinite(value) ? value : null;
   } catch (error) {
