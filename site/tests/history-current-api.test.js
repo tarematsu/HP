@@ -9,11 +9,12 @@ function dailyDatabase(assertions) {
   return {
     prepare(sql) {
       if (/FROM sh_pages_track_history_read_model/.test(sql)) {
-        assert.match(sql, /COUNT\(DISTINCT/);
+        assert.match(sql, /SUM\(CASE/);
+        assert.match(sql, /json_extract\(row_json,'\$\.play_count'\)/);
         return {
           bind(periodKey) {
             assert.equal(periodKey, '2026-07-30');
-            return { first: async () => ({ distinct_tracks: 9 }) };
+            return { first: async () => ({ track_count: 14 }) };
           },
         };
       }
@@ -70,7 +71,7 @@ test('current daily summary scans only canonical minutes in the UTC day', async 
   assert.equal(summary.rows.length, 1);
   assert.equal(summary.rows[0].period_key, '2026-07-30');
   assert.equal(summary.rows[0].sample_count, 1238);
-  assert.equal(summary.rows[0].distinct_tracks, 9);
+  assert.equal(summary.rows[0].distinct_tracks, 14);
   assert.equal(summary.rows[0].stream_growth, null);
   assert.equal(summary.rows[0].member_growth, null);
   assert.match(summary.rows[0].quality_flags, /minute_facts/);
