@@ -22,6 +22,14 @@ if (!document.querySelector(`link[href="${screenshotCleanupHref}"]`)) {
   document.head.append(screenshotCleanup);
 }
 
+const periodDisplayFixesHref = '/period-display-fixes.css?v=20260921.1';
+if (!document.querySelector(`link[href="${periodDisplayFixesHref}"]`)) {
+  const periodDisplayFixes = document.createElement('link');
+  periodDisplayFixes.rel = 'stylesheet';
+  periodDisplayFixes.href = periodDisplayFixesHref;
+  document.head.append(periodDisplayFixes);
+}
+
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
 const skipLink = document.querySelector('.skip-link');
 const clearKeyboardNavigation = () => {
@@ -79,7 +87,6 @@ const JST_DATE_TIME = new Intl.DateTimeFormat('ja-JP', {
   day: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
-  second: '2-digit',
   hour12: false,
 });
 const UTC_UPDATED_PATTERN = /^最終取得\s+(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+UTC(.*)$/;
