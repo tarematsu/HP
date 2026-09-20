@@ -10,16 +10,23 @@ const spotifyLifecycle = read('../../native/src/spotify_controller_lifecycle.inc
 const rendererPanels = read('../../native/src/renderer_panels.cpp');
 const mediaHost = read('../../native/src/renderer_panels/media_host.inc');
 
-test('startup cache deletion is fully disabled for every WebView profile', () => {
-  assert.match(helper, /Startup cache\/data deletion is disabled/);
-  assert.match(helper, /inline void ResetWebViewStartupCaches/);
-  assert.match(helper, /completion\(S_OK\)/);
-  assert.doesNotMatch(helper, /ClearBrowsingData|DeleteAllCookies|RemoveAllCookies/);
-  assert.doesNotMatch(helper, /ICoreWebView2Profile2|ICoreWebView2_13/);
-  assert.doesNotMatch(
-    helper,
-    /BROWSING_DATA_KINDS_(?:DISK_CACHE|ALL_DOM_STORAGE|COOKIES|INDEXED_DB|LOCAL_STORAGE|SERVICE_WORKERS|CACHE_STORAGE)/,
-  );
+test('only the former amazon profile gets a one-time tgut login reset', () => {
+  assert.match(helper, /kTgutStationheadProfileName\[\]\s*=\s*L"spotify-v2-1"/);
+  assert.match(helper, /kTgutLoginResetMarker\[\]\s*=\s*L"\.homepanel-tgut-login-reset-v1\.done"/);
+  assert.match(helper, /ICoreWebView2_13/);
+  assert.match(helper, /get_Profile\(&profile\)/);
+  assert.match(helper, /get_ProfileName\(&profileNameRaw\)/);
+  assert.match(helper, /_wcsicmp\(profileName\.c_str\(\), detail::kTgutStationheadProfileName\) != 0/);
+  assert.match(helper, /get_ProfilePath\(&profilePathRaw\)/);
+  assert.match(helper, /fs::exists\(markerPath, markerError\)/);
+  assert.match(helper, /ICoreWebView2Profile2/);
+  assert.match(helper, /ClearBrowsingData\(/);
+  assert.match(helper, /BROWSING_DATA_KINDS_COOKIES/);
+  assert.match(helper, /BROWSING_DATA_KINDS_ALL_DOM_STORAGE/);
+  assert.match(helper, /BROWSING_DATA_KINDS_PASSWORD_AUTOSAVE/);
+  assert.match(helper, /BROWSING_DATA_KINDS_GENERAL_AUTOFILL/);
+  assert.doesNotMatch(helper, /BROWSING_DATA_KINDS_DISK_CACHE/);
+  assert.match(helper, /marker << "tgut-login-reset-v1\\n"/);
 });
 
 test('Spotify no longer routes startup through the cache-reset compatibility shim', () => {
@@ -31,11 +38,14 @@ test('Spotify no longer routes startup through the cache-reset compatibility shi
   );
 });
 
-test('remaining legacy reset call sites are harmless synchronous compatibility calls', () => {
+test('the shared startup hook keeps every non-tgut profile intact', () => {
   assert.match(stationhead, /#include "webview_startup_cache_reset\.h"/);
   assert.match(rendererPanels, /#include "webview_startup_cache_reset\.h"/);
   assert.match(stationhead, /ResetWebViewStartupCaches\(/);
   assert.match(mediaHost, /ResetWebViewStartupCaches\(/);
+  assert.match(
+    helper,
+    /if \(_wcsicmp\(profileName\.c_str\(\), detail::kTgutStationheadProfileName\) != 0\) \{[\s\S]*CompleteWebViewStartupReset\(completion, S_OK\);[\s\S]*return;/,
+  );
   assert.doesNotMatch(helper, /ClaimWebViewStartupCacheReset|WebViewStartupCacheResetProfiles/);
-  assert.doesNotMatch(helper, /IsStationheadStartupCacheProfile/);
 });
