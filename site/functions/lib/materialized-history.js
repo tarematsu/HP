@@ -97,6 +97,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
   const bindings = mode === 'daily'
     ? [from, to, currentDailyKey, summaryLimit(mode)]
     : [from, to, summaryLimit(mode)];
+  const hasTrackReadModel = Boolean(env?.MINUTE_DB?.prepare);
   const [result, trackCounts] = await Promise.all([
     statement.bind(...bindings).all(),
     loadPeriodTrackCounts(env, mode, from, to),
@@ -117,7 +118,9 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     latest_live_observed_at: null,
     live_truncated: false,
     live_source: 'summary-only',
-    storage_source: `other.${table}+minute.sh_pages_track_history_read_model`,
+    storage_source: hasTrackReadModel
+      ? `other.${table}+minute.sh_pages_track_history_read_model`
+      : `other.${table}`,
   };
 }
 
