@@ -1,0 +1,32 @@
+/* Follow-up cleanup from the Pages screenshot audit.
+   Keep all primary data available while removing duplicated or overly verbose surfaces. */
+
+/* The ranking tab already has the leaderboard. The same weekly metrics remain available on the Weekly tab. */
+#rankingWeeklyPanel {
+  display: none !important;
+}
+
+/* The detailed likes table below contains every track, so the summary ranking only needs the top 10. */
+#likesRankingList .like-rank-item:nth-child(n + 11) {
+  display: none;
+}
+
+/* Axis labels and legends already explain the graphs; persistent prose below them is redundant. */
+.chart-foot {
+  display: none !important;
+}
+
+/* Official listening-party names are complete in the table below. Keep the graph legend compact. */
+#chartLegend span {
+  min-width: 0;
+  max-width: min(46%, 36rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  #chartLegend span {
+    max-width: 100%;
+  }
+}

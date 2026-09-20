@@ -14,6 +14,14 @@ if (!document.querySelector(`link[href="${monochromeStylesheetHref}"]`)) {
   document.head.append(monochromeStylesheet);
 }
 
+const screenshotCleanupHref = '/screenshot-audit-cleanup.css?v=20260919.3';
+if (!document.querySelector(`link[href="${screenshotCleanupHref}"]`)) {
+  const screenshotCleanup = document.createElement('link');
+  screenshotCleanup.rel = 'stylesheet';
+  screenshotCleanup.href = screenshotCleanupHref;
+  document.head.append(screenshotCleanup);
+}
+
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
 const skipLink = document.querySelector('.skip-link');
 const clearKeyboardNavigation = () => {
@@ -53,6 +61,9 @@ document.querySelector('.app-launch')?.remove();
 const actions = document.querySelector('.dashboard-actions');
 const tabs = document.getElementById('modeTabs');
 if (actions && tabs) actions.replaceWith(tabs);
+
+const broadcastsTab = document.querySelector('#modeTabs [data-mode="broadcasts"]');
+if (broadcastsTab) broadcastsTab.textContent = '公式リスパ';
 
 for (const id of ['currentChartDetail', 'chartDetail', 'notice']) {
   const element = document.getElementById(id);
