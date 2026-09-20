@@ -13,16 +13,19 @@ test('dashboard title is the hashtag and links to an X search for the same text'
   assert.match(header, /dataset\.dashboardTitleLink = 'true'/);
 });
 
-test('header shows acquisition and materialized-history datetimes only in JST without seconds', () => {
+test('header shows acquisition and materialized-history times only in JST without seconds', () => {
+  assert.match(header, /const JST_TIME = new Intl\.DateTimeFormat/);
   assert.match(header, /timeZone: 'Asia\/Tokyo'/);
-  assert.match(header, /year: 'numeric'/);
-  assert.match(header, /month: '2-digit'/);
-  assert.match(header, /day: '2-digit'/);
+  assert.match(header, /hour: '2-digit'/);
+  assert.match(header, /minute: '2-digit'/);
+  assert.doesNotMatch(header, /year: 'numeric'/);
+  assert.doesNotMatch(header, /month: '2-digit'/);
+  assert.doesNotMatch(header, /day: '2-digit'/);
   assert.match(header, /const next = `\$\{acquisitionText\}　\$\{historyText\}`/);
   assert.match(header, /updated\.title = `最終取得 \$\{acquisitionText\} JST \/ 履歴更新 \$\{historyText\} JST`/);
   assert.match(header, /history:materialized-at/);
   assert.match(header, /UTC_UPDATED_PATTERN/);
-  assert.doesNotMatch(header, /JST_DATE_TIME[\s\S]*second:\s*'2-digit'/);
+  assert.doesNotMatch(header, /JST_TIME[\s\S]*second:\s*'2-digit'/);
   assert.match(guard, /x-materialized-at/);
   assert.match(guard, /history:materialized-at/);
 
