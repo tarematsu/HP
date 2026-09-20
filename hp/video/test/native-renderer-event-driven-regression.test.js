@@ -102,7 +102,9 @@ test('dormant Stationhead renderer compatibility path is completely removed', ()
   assert.doesNotMatch(panelState, /UpdateNativeStaticPanels|nativeStationhead_/);
   assert.doesNotMatch(panelState, /stationheadPlayHistory|GlobalStationheadNativeStatsStore/);
   assert.match(appSource, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
+  assert.match(appSource, /stationheadPeers_\[i\]->Start\(\)/);
   assert.match(appSource, /stationhead_->Start\(\)/);
-  assert.match(appSource, /Spotify #1 launch issued at \+30 seconds; #2, #3, #4 and #5 follow at 30-second offsets/);
-  assert.match(appSource, /Stationhead launch issued at \+180 seconds/);
+  assert.match(appSource, /Stationhead peer #[\s\S]*launch issued at \+/);
+  assert.match(appSource, /Stationhead #6 launch issued at \+180 seconds/);
+  assert.doesNotMatch(appSource, /renderer_->StartSpotify\(\)/);
 });
