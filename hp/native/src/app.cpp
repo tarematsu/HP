@@ -272,13 +272,13 @@ void App::Tick() {
   int foregroundOwner = -1;
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
-    if (StationheadNeedsForeground(peerStatuses[i])) {
+    if (stationheadPeers_[i]->ForegroundRequested()) {
       foregroundOwner = static_cast<int>(i);
       break;
     }
   }
   if (foregroundOwner < 0 && stationheadStarted_ && stationhead_ &&
-      StationheadNeedsForeground(stationheadStatus)) {
+      stationhead_->ForegroundRequested()) {
     foregroundOwner = static_cast<int>(kStationheadPeerCount);
   }
 
