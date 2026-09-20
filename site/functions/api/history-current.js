@@ -25,7 +25,7 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function normalizeMinuteRow(row) {
+function normalizeMinuteRow(row, trackCount = null) {
   const streamStart = finiteNumber(row?.stream_start);
   const streamEnd = finiteNumber(row?.stream_end);
   const memberStart = finiteNumber(row?.member_start);
@@ -39,11 +39,33 @@ function normalizeMinuteRow(row) {
       ? memberEnd - memberStart
       : null,
     likes_max: null,
-    distinct_tracks: null,
+    distinct_tracks: trackCount,
     quality_score: 1,
     quality_flags: '["minute_facts","current_period"]',
     live_collector: true,
   };
+}
+
+async function loadCurrentTrackCount(db, periodKey) {
+  try {
+    const bound = db.prepare(`SELECT
+        SUM(CASE
+          WHEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)>0
+            THEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)
+          ELSE 1
+        END) AS track_count
+      FROM sh_pages_track_history_read_model
+      WHERE play_date=?`)
+      .bind(periodKey);
+    const row = typeof bound.first === 'function'
+      ? await bound.first()
+      : (await bound.all())?.results?.[0] || null;
+    const value = Number(row?.track_count);
+    return Number.isFinite(value) ? value : null;
+  } catch (error) {
+    if (/no such table|no such function|malformed json/i.test(String(error?.message || error))) return null;
+    throw error;
+  }
 }
 
 function validateDailyMinuteRow(row) {
@@ -66,11 +88,14 @@ export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.n
 
   const periodStart = currentSummaryPeriodStart('daily', now);
   const periodKey = currentPeriodKey('daily', now);
-  const result = await env.MINUTE_DB.prepare(CURRENT_DAILY_MINUTE_SUMMARY_SQL)
-    .bind(periodStart, now + 1, 2)
-    .all();
+  const [result, trackCount] = await Promise.all([
+    env.MINUTE_DB.prepare(CURRENT_DAILY_MINUTE_SUMMARY_SQL)
+      .bind(periodStart, now + 1, 2)
+      .all(),
+    loadCurrentTrackCount(env.MINUTE_DB, periodKey),
+  ]);
   const liveRows = (result.results || [])
-    .map(normalizeMinuteRow)
+    .map((row) => normalizeMinuteRow(row, trackCount))
     .filter((row) => String(row?.period_key || '') === periodKey)
     .map(validateDailyMinuteRow);
   const completed = applySummaryCompleteness(liveRows, 'daily', now);
@@ -83,7 +108,7 @@ export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.n
     latest_live_observed_at: completed.rows.at(-1)?.period_end || null,
     live_truncated: false,
     live_source: 'minute_facts',
-    storage_source: 'minute.sh_minute_facts',
+    storage_source: 'minute.sh_minute_facts+minute.sh_pages_track_history_read_model',
     read_path: 'minute-current-daily',
   };
 }

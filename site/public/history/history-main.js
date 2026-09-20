@@ -26,9 +26,11 @@ if (!VALID_MODES.has(requestedMode)) {
 // The compact runtime still dereferences removed controls while booting.
 // Keep inert compatibility nodes until that legacy code is retired.
 installRemovedControlCompatibility();
-await import('/history/history-request-guard.js');
+await import('/history/history-request-guard.js?v=20260921.2');
 await import('/history/history-current-overlay.js');
 await import('/history/history-page-fixes.js');
 await import('/history/history-period-chart.js?v=20260921.1');
+await import('/history/history-ranking-chart.js?v=20260921.2');
+await import('/history/history-table-cleanup.js?v=20260921.2');
 await import('/history/history-lite.js');
 window.dispatchEvent(new Event('history:runtime-ready'));

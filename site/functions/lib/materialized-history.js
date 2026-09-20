@@ -47,6 +47,38 @@ function validateDailySummaryRows(rows) {
   return rows;
 }
 
+function trackPeriodExpression(mode) {
+  if (mode === 'daily') return 'play_date';
+  if (mode === 'monthly') return "substr(play_date,1,7)";
+  return "date(play_date,'-' || ((CAST(strftime('%w',play_date) AS INTEGER)+6)%7) || ' days')";
+}
+
+export async function loadPeriodTrackCounts(env, mode, from, to) {
+  if (!env?.MINUTE_DB?.prepare) return new Map();
+  const periodExpression = trackPeriodExpression(mode);
+  try {
+    const result = await env.MINUTE_DB.prepare(`SELECT ${periodExpression} AS period_key,
+        SUM(CASE
+          WHEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)>0
+            THEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)
+          ELSE 1
+        END) AS track_count
+      FROM sh_pages_track_history_read_model
+      WHERE play_date>=? AND play_date<=?
+      GROUP BY ${periodExpression}
+      ORDER BY period_key ASC`)
+      .bind(from, to)
+      .all();
+    return new Map((result.results || []).map((row) => [
+      String(row.period_key || ''),
+      Number.isFinite(Number(row.track_count)) ? Number(row.track_count) : null,
+    ]));
+  } catch (error) {
+    if (/no such table|no such function|malformed json/i.test(String(error?.message || error))) return new Map();
+    throw error;
+  }
+}
+
 export async function loadMaterializedSummary(env, mode, from, to, now = Date.now()) {
   if (!env?.OTHER_DB) throw new Error('OTHER_DB binding missing');
   const table = SUMMARY_TABLES[mode];
@@ -65,19 +97,30 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
   const bindings = mode === 'daily'
     ? [from, to, currentDailyKey, summaryLimit(mode)]
     : [from, to, summaryLimit(mode)];
-  const result = await statement.bind(...bindings).all();
+  const hasTrackReadModel = Boolean(env?.MINUTE_DB?.prepare);
+  const [result, trackCounts] = await Promise.all([
+    statement.bind(...bindings).all(),
+    loadPeriodTrackCounts(env, mode, from, to),
+  ]);
   const rows = result.results || [];
   if (mode === 'daily') validateDailySummaryRows(rows);
   const completed = applySummaryCompleteness(rows, mode, now);
+  const enrichedRows = completed.rows.map((row) => {
+    const key = String(row?.period_key || '');
+    const calculated = trackCounts.get(key);
+    return calculated == null ? row : { ...row, distinct_tracks: calculated };
+  });
   return {
-    rows: completed.rows,
+    rows: enrichedRows,
     excluded_stream_growth_count: completed.excludedCount,
     boundary_evidence_count: 0,
     live_overlay_count: 0,
     latest_live_observed_at: null,
     live_truncated: false,
     live_source: 'summary-only',
-    storage_source: `other.${table}`,
+    storage_source: hasTrackReadModel
+      ? `other.${table}+minute.sh_pages_track_history_read_model`
+      : `other.${table}`,
   };
 }
 

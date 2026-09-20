@@ -81,21 +81,21 @@ if (channelName) {
   });
 }
 
-const JST_DATE_TIME = new Intl.DateTimeFormat('ja-JP', {
+const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
-  month: 'numeric',
-  day: 'numeric',
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
 });
-const UTC_UPDATED_PATTERN = /^最終取得\s+(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+UTC(.*)$/;
-function updatedLabelInJst(value) {
-  const text = String(value || '');
-  if (text === '最終取得 — UTC') return '最終取得 — JST';
-  const match = text.match(UTC_UPDATED_PATTERN);
-  if (!match) return text;
-  const [, month, day, hour, minute, second, suffix] = match;
+const UTC_UPDATED_PATTERN = /^最終取得\s+(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+UTC(?:.*)$/;
+let acquisitionUpdatedAt = null;
+let historyMaterializedAt = null;
+let renderingUpdatedLabel = false;
+
+function acquisitionTimestamp(value) {
+  const match = String(value || '').match(UTC_UPDATED_PATTERN);
+  if (!match) return null;
+  const [, month, day, hour, minute, second] = match;
   const now = Date.now();
   const currentYear = new Date(now).getUTCFullYear();
   let year = currentYear;
@@ -103,25 +103,37 @@ function updatedLabelInJst(value) {
   const HALF_YEAR_MS = 183 * 86_400_000;
   if (timestamp - now > HALF_YEAR_MS) year -= 1;
   else if (now - timestamp > HALF_YEAR_MS) year += 1;
-  timestamp = Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
-  return `最終取得 ${JST_DATE_TIME.format(new Date(timestamp))} JST${suffix}`;
+  return Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
 }
 
 const description = document.getElementById('description');
 const updated = document.getElementById('updated');
-function normalizeUpdatedLabel() {
-  if (!updated) return;
-  const next = updatedLabelInJst(updated.textContent);
-  if (next !== updated.textContent) updated.textContent = next;
+function renderUpdatedLabel() {
+  if (!updated || renderingUpdatedLabel) return;
+  const parsed = acquisitionTimestamp(updated.textContent);
+  if (parsed != null) acquisitionUpdatedAt = parsed;
+  const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_TIME.format(new Date(acquisitionUpdatedAt));
+  const historyText = historyMaterializedAt == null ? '—' : JST_TIME.format(new Date(historyMaterializedAt));
+  const next = `最終取得 ${acquisitionText} 履歴更新 ${historyText}`;
+  if (next === updated.textContent) return;
+  renderingUpdatedLabel = true;
+  updated.textContent = next;
+  renderingUpdatedLabel = false;
 }
 if (updated) {
   updated.className = 'subtle';
   if (description) description.replaceWith(updated);
-  normalizeUpdatedLabel();
-  new MutationObserver(normalizeUpdatedLabel).observe(updated, {
+  renderUpdatedLabel();
+  new MutationObserver(renderUpdatedLabel).observe(updated, {
     childList: true,
     subtree: true,
     characterData: true,
+  });
+  window.addEventListener('history:materialized-at', (event) => {
+    const value = Number(event?.detail?.updatedAt);
+    if (!Number.isFinite(value) || value <= 0) return;
+    historyMaterializedAt = value;
+    renderUpdatedLabel();
   });
 }
 description?.remove();
