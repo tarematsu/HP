@@ -27,10 +27,12 @@ test('history read models count total broadcasts including repeated tracks', () 
   assert.match(materialized, /sh_pages_track_history_read_model/);
   assert.match(materialized, /SUM\(CASE/);
   assert.match(materialized, /json_extract\(row_json,'\$\.play_count'\)/);
+  assert.match(materialized, /ELSE 1/);
   assert.doesNotMatch(materialized, /COUNT\(DISTINCT/);
   assert.match(materialized, /strftime\('%w',play_date\)/);
   assert.match(materialized, /substr\(play_date,1,7\)/);
   assert.match(current, /sh_pages_track_history_read_model/);
   assert.match(current, /SUM\(CASE/);
+  assert.match(current, /json_extract\(row_json,'\$\.play_count'\)/);
   assert.match(current, /distinct_tracks: trackCount/);
 });
