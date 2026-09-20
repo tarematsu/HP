@@ -40,7 +40,7 @@ test('track history and compact realtime likes share one D1 batch', async () => 
   assert.equal(loaded.likeRows[0].source, 'collector');
 });
 
-test('Sakurazaka series reads historical points from MINUTE_DB and events from OTHER_DB', async () => {
+test('Sakurazaka series prefers canonical OTHER_DB history and falls back to MINUTE_DB', async () => {
   let minuteCalls = 0;
   let otherCalls = 0;
   const minuteDb = {
@@ -61,7 +61,17 @@ test('Sakurazaka series reads historical points from MINUTE_DB and events from O
         async all() {
           otherCalls += 1;
           if (sql.includes('sh_official_broadcast_summary')) {
-            return { results: [{ event_name: 'A', started_at: 100, ended_at: 200 }] };
+            return { results: [
+              { event_name: 'A', started_at: 100, ended_at: 200 },
+              { event_name: 'C', started_at: 300, ended_at: 400 },
+            ] };
+          }
+          if (sql.includes('sh_official_broadcast_series')) {
+            return { results: [{
+              event_name: 'A', started_at: 100,
+              points_json: '[[0,30,1]]', point_count: 1, total_points: 1,
+              source: 'google_sheets_canonical',
+            }] };
           }
           return { results: [{ series_key: 'news:b', event_name: 'B', started_at: 200, points_json: '[[0,20,2]]', total_points: 1 }] };
         },
@@ -71,9 +81,12 @@ test('Sakurazaka series reads historical points from MINUTE_DB and events from O
 
   const loaded = await loadSakurazakaSeriesRows(minuteDb, otherDb, 0, 1000);
   assert.equal(minuteCalls, 1);
-  assert.equal(otherCalls, 2);
-  assert.equal(loaded.historical[0].source, 'historical_import');
-  assert.equal(loaded.historical[0].samples[0].listener, 10);
+  assert.equal(otherCalls, 3);
+  assert.equal(loaded.historical.length, 2);
+  assert.equal(loaded.historical[0].source, 'google_sheets_canonical');
+  assert.equal(loaded.historical[0].samples[0].listener, 30);
+  assert.equal(loaded.historical[1].source, 'historical_import');
+  assert.equal(loaded.historical[1].samples[0].listener, 10);
   assert.equal(loaded.failSafe[0].source, 'official_news_fail_safe');
   assert.equal(loaded.failSafe[0].samples[0].sourceSamples, 2);
 });
