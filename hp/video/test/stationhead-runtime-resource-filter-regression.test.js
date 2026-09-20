@@ -31,11 +31,11 @@ test('Stationhead worker filters are scoped to the restored ozeki profile', () =
   );
 });
 
-test('shared media environment keeps background playback schedulers active', () => {
+test('shared media environment uses Chromium default background throttling', () => {
   assert.match(environmentSource, /kSharedWebView2LifecycleArguments/);
-  assert.match(environmentSource, /--disable-backgrounding-occluded-windows/);
-  assert.match(environmentSource, /--disable-renderer-backgrounding/);
-  assert.match(environmentSource, /--disable-background-timer-throttling/);
+  assert.doesNotMatch(environmentSource, /--disable-backgrounding-occluded-windows/);
+  assert.doesNotMatch(environmentSource, /--disable-renderer-backgrounding/);
+  assert.doesNotMatch(environmentSource, /--disable-background-timer-throttling/);
   assert.match(environmentSource, /--autoplay-policy=no-user-gesture-required/);
   assert.match(environmentSource, /std::wstring webView2Arguments = kSharedWebView2LifecycleArguments/);
 });
