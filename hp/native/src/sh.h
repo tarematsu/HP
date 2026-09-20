@@ -89,6 +89,7 @@ class StationheadPlayer {
   void SetVolume(double volume) noexcept;
   double Volume() const noexcept;
   void SetBounds(const RECT& bounds);
+  void SetForegroundAllowed(bool allowed);
   void SetStartupPreviewBounds(const RECT& bounds);
   void ClearStartupPreviewBounds();
   void SelectTab(StationheadTabKind tab);
@@ -230,6 +231,7 @@ class StationheadPlayer {
   bool nativeAudioTracking_ = false;
   bool viewVisible_ = false;
   bool startupPreviewActive_ = false;
+  bool foregroundAllowed_ = true;
   bool usingFallback_ = false;
   MonotonicElapsedTimestamp audioLossStartedAt_;
   MonotonicElapsedTimestamp managedPlaybackFallbackStartedAt_;
