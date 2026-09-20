@@ -127,6 +127,24 @@
     letter-spacing: -.035em !important;
   }
 
+  .metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .metric.featured {
+    grid-column: auto !important;
+    display: block !important;
+  }
+
+  .metric.featured .metric-value {
+    margin-top: 3px !important;
+  }
+
+  .metric strong,
+  .metric.featured strong {
+    font-size: clamp(1.15rem, 6vw, 1.65rem) !important;
+  }
+
   .online-24h,
   .metrics .delta,
   .metric-goal-compact {
