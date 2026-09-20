@@ -12,6 +12,7 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_sakurazaka46jp_main',
   'sh_sakurazaka46jp_chat',
   'sh_sakurazaka46jp_track_metadata',
+  'sh_sakurazaka46jp_collection_tests',
   'sh_host_broadcast_sessions',
   'sh_host_station_snapshots',
   'sh_host_queue_snapshots',
