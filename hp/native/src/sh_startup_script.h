@@ -7,6 +7,11 @@
 
 namespace hp {
 
+// Temporary diagnostic switch: leave the Stationhead lightweight CSS policies
+// compiled and easy to restore, but do not inject them into the document-start
+// script while this is false.
+inline constexpr bool kStationheadLightweightCssEnabled = false;
+
 // Final Stationhead document-start composition. Runtime state, recovery,
 // lifecycle and presentation policies each live in their own responsibility
 // file; this function only defines their execution order. Keep explicit
@@ -17,10 +22,12 @@ inline std::wstring BuildStationheadStartupScript(
     const wchar_t* messagePrefix) {
   std::wstring script =
       StationheadCompactRuntimeScript(globalName, messagePrefix);
-  script.append(L";\n");
-  script.append(StationheadRenderReductionScript());
-  script.append(L";\n");
-  script.append(StationheadRoomUiReductionScript());
+  if constexpr (kStationheadLightweightCssEnabled) {
+    script.append(L";\n");
+    script.append(StationheadRenderReductionScript());
+    script.append(L";\n");
+    script.append(StationheadRoomUiReductionScript());
+  }
   script.push_back(L';');
   return script;
 }
