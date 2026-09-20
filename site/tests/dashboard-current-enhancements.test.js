@@ -18,19 +18,30 @@ test('current metrics are ordered online, total streams, total members and expos
   assert.match(enhancement, /24h最大/);
 });
 
-test('mobile dashboard tabs are forced into four columns and two rows', () => {
+test('mobile dashboard tabs and metrics stay compact', () => {
   assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs/);
   assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\) !important/);
   assert.match(css, /grid-template-rows:\s*repeat\(2, minmax\(32px, auto\)\) !important/);
+  assert.match(css, /\.metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\) !important/);
   assert.match(css, /white-space:\s*nowrap !important/);
 });
 
-test('current chart draws numeric axes and labels online minimum and maximum', () => {
+test('current chart draws numeric axes in black and green with JST labels', () => {
   assert.match(enhancement, /オンライン\(人\)/);
   assert.match(enhancement, /コメント\/2分/);
-  assert.match(enhancement, /時刻 \(UTC\)/);
+  assert.match(enhancement, /時刻 \(JST\)/);
+  assert.match(enhancement, /timeZone: 'Asia\/Tokyo'/);
+  assert.match(enhancement, /strokeStyle = '#111'/);
+  assert.match(enhancement, /rgba\(22,139,115,\.32\)/);
   assert.match(enhancement, /`最小 \$\{numberText\(onlineRawMin\)\}`/);
   assert.match(enhancement, /`最大 \$\{numberText\(onlineRawMax\)\}`/);
+});
+
+test('stream goal is moved into the metric and ETA is display-only JST', () => {
+  assert.match(enhancement, /metricGoalCompact/);
+  assert.match(enhancement, /jstDateTime\.format/);
+  assert.match(enhancement, /JST`/);
+  assert.match(css, /\.goal-card\s*\{[\s\S]*display:\s*none !important/);
 });
 
 test('dashboard deltas are green and refresh label is not ellipsized', () => {
