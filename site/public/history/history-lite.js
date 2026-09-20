@@ -15,9 +15,9 @@
   });
 
   const MODES = Object.freeze({
-    daily: { title: '日次集計', table: '日次集計一覧', chart: '主要指標の推移' },
-    weekly: { title: '週次集計', table: '週次集計一覧', chart: '主要指標の推移' },
-    monthly: { title: '月次集計', table: '月次集計一覧', chart: '主要指標の推移' },
+    daily: { title: '日次集計', table: '日次集計一覧', chart: '同接・再生数の推移' },
+    weekly: { title: '週次集計', table: '週次集計一覧', chart: '同接・再生数の推移' },
+    monthly: { title: '月次集計', table: '月次集計一覧', chart: '同接・再生数の推移' },
     ranking: { title: '週間リーダーボード', table: '週間リーダーボード', chart: '' },
     tracks: { title: '再生曲', table: '再生曲一覧', chart: '' },
     broadcasts: { title: '公式ストリーム比較', table: '公式ストリーム一覧', chart: '公式ステヘ 同接推移（開始0分比較）' },
@@ -294,45 +294,108 @@
     state.chartModel = null;
   }
 
+  function chartBounds(values, paddingRatio = 0.08) {
+    if (!values.length) return { minimum: 0, maximum: 1, range: 1 };
+    const rawMinimum = Math.min(...values);
+    const rawMaximum = Math.max(...values);
+    const rawRange = rawMaximum - rawMinimum;
+    const padding = Math.max(1, rawRange * paddingRatio);
+    const minimum = Math.max(0, rawMinimum - padding);
+    const maximum = Math.max(minimum + 1, rawMaximum + padding);
+    return { minimum, maximum, range: maximum - minimum };
+  }
+
   function drawSummaryChart() {
-    const rows = state.rows.filter((row) => finite(row.listener_avg) != null);
+    const keys = ['listener_avg', 'listener_max', 'listener_min', 'stream_end'];
+    const rows = state.rows.filter((row) => keys.some((key) => finite(row?.[key]) != null));
     if (!rows.length) return drawEmpty('表示できる集計データがありません。');
+
     const { canvas, context, width, height } = prepareCanvas();
-    const area = { left: 50, right: 20, top: 18, bottom: 42 };
-    area.width = width - area.left - area.right;
-    area.height = height - area.top - area.bottom;
-    const values = rows.map((row) => finite(row.listener_avg) || 0);
-    const maximum = Math.max(1, ...values);
-    const minimum = Math.min(...values);
-    const range = Math.max(1, maximum - minimum);
+    const area = { left: 58, right: 70, top: 18, bottom: 42 };
+    area.width = Math.max(1, width - area.left - area.right);
+    area.height = Math.max(1, height - area.top - area.bottom);
     const positions = rows.map((_, index) => area.left + area.width * index / Math.max(1, rows.length - 1));
+    const listenerSeries = [
+      { key: 'listener_avg', label: '平均同接', color: cssColor('--accent', '#d93f79'), width: 2.6 },
+      { key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 1.9 },
+      { key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 1.9 },
+    ];
+    const streamSeries = {
+      key: 'stream_end', label: '再生数', color: cssColor('--green', '#168b73'), width: 2.1,
+    };
+    const listenerValues = listenerSeries.flatMap(({ key }) =>
+      rows.map((row) => finite(row?.[key])).filter((value) => value != null));
+    const streamValues = rows.map((row) => finite(row?.stream_end)).filter((value) => value != null);
+    const listenerBounds = chartBounds(listenerValues);
+    const streamBounds = chartBounds(streamValues, 0.05);
+    const yFor = (value, bounds) => area.top + area.height
+      - (Number(value) - bounds.minimum) / bounds.range * area.height;
+
     context.strokeStyle = 'rgba(31,45,68,.12)';
+    context.fillStyle = cssColor('--muted', '#667287');
     context.lineWidth = 1;
+    context.font = '10.5px system-ui';
     for (let index = 0; index <= 4; index += 1) {
-      const y = area.top + area.height * index / 4;
+      const ratio = index / 4;
+      const y = area.top + area.height * ratio;
       context.beginPath();
       context.moveTo(area.left, y);
       context.lineTo(width - area.right, y);
       context.stroke();
+      if (listenerValues.length) {
+        const value = listenerBounds.maximum - listenerBounds.range * ratio;
+        context.textAlign = 'right';
+        context.fillText(integer.format(Math.round(value)), area.left - 7, y + 3);
+      }
+      if (streamValues.length) {
+        const value = streamBounds.maximum - streamBounds.range * ratio;
+        context.textAlign = 'left';
+        context.fillText(integer.format(Math.round(value)), width - area.right + 7, y + 3);
+      }
     }
-    const color = cssColor('--accent', '#d93f79');
-    context.strokeStyle = color;
-    context.lineWidth = 2.5;
-    context.beginPath();
-    values.forEach((value, index) => {
-      const y = area.top + area.height - (value - minimum) / range * area.height;
-      if (index === 0) context.moveTo(positions[index], y);
-      else context.lineTo(positions[index], y);
-    });
-    context.stroke();
+
+    const drawSeries = (seriesItem, bounds, dash = []) => {
+      if (!rows.some((row) => finite(row?.[seriesItem.key]) != null)) return;
+      context.save();
+      context.strokeStyle = seriesItem.color;
+      context.lineWidth = seriesItem.width;
+      context.setLineDash(dash);
+      context.beginPath();
+      let open = false;
+      rows.forEach((row, index) => {
+        const value = finite(row?.[seriesItem.key]);
+        if (value == null) {
+          open = false;
+          return;
+        }
+        const y = yFor(value, bounds);
+        if (!open) context.moveTo(positions[index], y);
+        else context.lineTo(positions[index], y);
+        open = true;
+      });
+      context.stroke();
+      context.restore();
+    };
+
+    listenerSeries.forEach((item) => drawSeries(item, listenerBounds));
+    if (streamValues.length) drawSeries(streamSeries, streamBounds, [6, 4]);
+
     if (Number.isInteger(state.selectedChartIndex) && rows[state.selectedChartIndex]) {
       const row = rows[state.selectedChartIndex];
-      setText('chartDetail', `${row.period_key || ''}　平均同接 ${numberText(row.listener_avg)}　再生増加 ${numberText(row.stream_growth)}　メンバー増加 ${numberText(row.member_growth)}`);
+      setText('chartDetail', `${row.period_key || ''}　平均同接 ${numberText(row.listener_avg)}　最大同接 ${numberText(row.listener_max)}　最小同接 ${numberText(row.listener_min)}　再生数 ${numberText(row.stream_end)}`);
     } else {
-      setText('chartDetail', 'グラフをタッチすると、その期間の詳細を表示します。');
+      setText('chartDetail', 'グラフをタッチすると、その期間の平均・最大・最小同接と再生数を表示します。');
     }
-    const legend = document.createElement('span');
-    legend.innerHTML = `<i style="background:${color}"></i>平均同接`;
+
+    const legend = document.createDocumentFragment();
+    for (const item of [...listenerSeries, streamSeries]) {
+      if (!rows.some((row) => finite(row?.[item.key]) != null)) continue;
+      const span = document.createElement('span');
+      const marker = document.createElement('i');
+      marker.style.background = item.color;
+      span.append(marker, document.createTextNode(item.label));
+      legend.appendChild(span);
+    }
     el('chartLegend').replaceChildren(legend);
     setText('chartStartDate', rows[0].period_key || '—');
     setText('chartEndDate', rows.at(-1).period_key || '—');
@@ -379,7 +442,7 @@
     el('rankingWeeklyPanel').hidden = state.mode !== 'ranking';
     setText('chartFoot', state.mode === 'broadcasts'
       ? '横軸は各放送の開始からの経過時間です。'
-      : '平均同接の推移を表示します。');
+      : '左軸は同接（平均・最大・最小）、右軸は各期間終了時点の再生数です。');
     state.selectedChartIndex = null;
     state.chartModel = null;
   }
