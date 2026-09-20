@@ -10,6 +10,7 @@
   const CACHE_MS = 15 * 60_000;
   const MAX_CACHE_POINTS = 30_000;
   const MAX_DRAW_POINTS = 2_400;
+  const SERIES_VERSION = '6';
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const eventDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
@@ -22,6 +23,8 @@
   let controller = null;
   let loadTimer = null;
   let resizeTimer = null;
+
+  button.textContent = '公式リスパ';
 
   const active = () => button.classList.contains('active');
   const escape = (value) => String(value ?? '')
@@ -42,8 +45,8 @@
   function eventLabel(item) {
     const startedAt = Number(item.started_at);
     return Number.isFinite(startedAt)
-      ? `${eventDate.format(new Date(startedAt))} ${item.event_name || '公式ステヘ'}`
-      : item.event_name || '公式ステヘ';
+      ? `${eventDate.format(new Date(startedAt))} ${item.event_name || '公式リスパ'}`
+      : item.event_name || '公式リスパ';
   }
 
   function colorFor(index, alpha = 1) {
@@ -96,7 +99,7 @@
     const detail = document.getElementById('chartDetail');
     if (!detail) return;
     if (minute == null) {
-      detail.innerHTML = '<span>グラフをタッチまたはクリックすると、開始後の同じ時点で全放送を比較できます。</span>';
+      detail.innerHTML = '<span>グラフをタッチまたはクリックすると、開始後の同じ時点で全リスパを比較できます。</span>';
       return;
     }
     const values = series.map((item, index) => ({
@@ -120,13 +123,15 @@
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.clearRect(0, 0, width, height);
 
+    const tableTitle = document.getElementById('tableTitle');
+    if (tableTitle) tableTitle.textContent = '公式リスパ一覧';
     const available = series.filter((item) => item.points.length);
-    document.getElementById('chartTitle').textContent = '公式ステヘ 同接推移（開始0分比較）';
-    document.getElementById('chartFoot').textContent = '各線は1回の公式ステヘです。横軸は各放送の開始からの経過時間です。';
+    document.getElementById('chartTitle').textContent = '公式リスパ 同接推移（開始0分比較）';
+    document.getElementById('chartFoot').textContent = '各線は1回の公式リスパです。横軸は各開催の開始からの経過時間です。';
     if (!available.length) {
       context.font = '14px system-ui';
       context.textAlign = 'center';
-      context.fillText('表示できる公式ステヘデータがありません', width / 2, height / 2);
+      context.fillText('表示できる公式リスパデータがありません', width / 2, height / 2);
       legend.replaceChildren();
       renderDetail(null);
       return;
@@ -193,7 +198,7 @@
   }
 
   function cacheKey() {
-    return `sakurazaka46jp:v1:${fromInput.value}:${toInput.value}`;
+    return `sakurazaka46jp:v${SERIES_VERSION}:${fromInput.value}:${toInput.value}`;
   }
 
   function readCache() {
@@ -212,8 +217,8 @@
 
   function updateNotice(data) {
     if (!data || !active()) return;
-    const base = notice.textContent.replace(/・全\d+(?:\.\d+)?放送を開始0分で重ね表示.*$/, '').trim();
-    notice.textContent = `${base}・全${number.format(data.event_count || series.length)}放送を開始0分で重ね表示${data.truncated ? '（上限到達）' : ''}`;
+    const base = notice.textContent.replace(/・全\d+(?:\.\d+)?(?:放送|リスパ)を開始0分で重ね表示.*$/, '').trim();
+    notice.textContent = `${base}・全${number.format(data.event_count || series.length)}リスパを開始0分で重ね表示${data.truncated ? '（上限到達）' : ''}`;
   }
 
   async function loadSeries() {
@@ -232,7 +237,7 @@
       if (!data) {
         controller?.abort();
         controller = new AbortController();
-        const params = new URLSearchParams({ from: fromInput.value, to: toInput.value });
+        const params = new URLSearchParams({ from: fromInput.value, to: toInput.value, v: SERIES_VERSION });
         const response = await fetch(`/api/sakurazaka46jp?${params}`, {
           signal: controller.signal,
           headers: { accept: 'application/json' },
