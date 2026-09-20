@@ -1,0 +1,40 @@
+name: Capture window mode test failure
+
+on:
+  push:
+    branches:
+      - feat/window-named-audio-monitor-modes
+    paths:
+      - .github/workflows/capture-window-mode-tests.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply patch and capture tests
+        shell: bash
+        run: |
+          python .github/scripts/apply_window_named_modes.py
+          set +e
+          npm test --prefix hp/video > .github/window-mode-test-output.txt 2>&1
+          status=$?
+          echo "$status" > .github/window-mode-test-status.txt
+          set -e
+      - name: Commit diagnostic output
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/window-mode-test-output.txt .github/window-mode-test-status.txt
+          git commit -m "chore: capture window mode test output"
+          git push origin HEAD:feat/window-named-audio-monitor-modes
