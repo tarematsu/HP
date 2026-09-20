@@ -6,6 +6,14 @@ if (!document.querySelector(`link[href="${stylesheetHref}"]`)) {
   document.head.append(stylesheet);
 }
 
+const monochromeStylesheetHref = '/monochrome.css?v=20260919.3';
+if (!document.querySelector(`link[href="${monochromeStylesheetHref}"]`)) {
+  const monochromeStylesheet = document.createElement('link');
+  monochromeStylesheet.rel = 'stylesheet';
+  monochromeStylesheet.href = monochromeStylesheetHref;
+  document.head.append(monochromeStylesheet);
+}
+
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
 const skipLink = document.querySelector('.skip-link');
 const clearKeyboardNavigation = () => {
