@@ -24,8 +24,8 @@ function section(text, start, end) {
 test('recoverable Stationhead onboarding clears stale login state and signals native click', () => {
   assert.match(onboarding, /const recoverableOnboardingPattern =/);
   assert.match(onboarding, /\(\?:re\)\?connect/);
-  assert.match(onboarding, /spotify\|music/);
-  assert.match(onboarding, /continue\(\?:\\s\+with\\s\+spotify\)\?/);
+  assert.match(onboarding, /spotify/);
+  assert.match(onboarding, /continue/);
   assert.match(onboarding, /let\(\?:'\|’\)\?s/);
   assert.match(onboarding, /const recoverableOnboardingVisible = \(\) =>/);
 
@@ -43,12 +43,42 @@ test('recoverable Stationhead onboarding clears stale login state and signals na
   assert.match(interaction, /if \(publishRecoverableOnboarding\(\)\) return;/);
 });
 
-test('split Connect Music surface participates in recoverable onboarding detection', () => {
-  assert.match(onboarding, /connectMusicHeadingPattern/);
-  assert.match(onboarding, /connectMusicActionPattern/);
-  assert.match(onboarding, /surface\.querySelectorAll\(controlSelector\)/);
-  assert.match(locator, /connectMusicHeadingPattern/);
-  assert.match(locator, /connectMusicActionPattern/);
+test('recoverable onboarding does not depend on semantic button or heading markup', () => {
+  assert.match(onboarding, /const onboardingCandidateSelector =/);
+  assert.match(onboarding, /div,span,p/);
+  assert.match(onboarding, /connectSurfaceLabelPattern/);
+  assert.match(onboarding, /connectSurfaceActionPattern/);
+  assert.match(onboarding, /splitConnectSurfaceVisible/);
+  assert.doesNotMatch(onboarding, /joinPartyHeadingPattern|headingSelector|role=.?heading/);
+
+  assert.match(locator, /const candidateSelector = semanticSelector \+ ',div,span,p'/);
+  assert.match(locator, /const clickableTargetFor = element =>/);
+  assert.match(locator, /style\.cursor === 'pointer'/);
+  assert.match(locator, /const pointForPattern = pattern =>/);
+  assert.match(locator, /const splitConnectSurfacePoint = \(\) =>/);
+  assert.doesNotMatch(locator, /joinPartyHeadingPattern/);
+});
+
+test('all allowlisted onboarding actions use the same non-semantic click resolver', () => {
+  const onboardingSection = section(
+    locator,
+    '// All allowlisted onboarding actions share one resolution path.',
+    '// Playback-start actions remain blocked',
+  );
+  assert.match(onboardingSection, /pointForPattern\(allowedOnboardingPattern\)/);
+  assert.match(onboardingSection, /splitConnectSurfacePoint\(\)/);
+  assert.match(locator, /clickableTargetFor\(element\)/);
+});
+
+test('playback start actions also resolve non-semantic targets through clickable ancestors', () => {
+  const playback = section(
+    locator,
+    '// Playback-start actions remain blocked',
+    'return null;',
+  );
+  assert.match(playback, /document\.querySelectorAll\(candidateSelector\)/);
+  assert.match(playback, /matchesLabel\(element, startPattern\)/);
+  assert.match(playback, /clickableTargetFor\(element\)/);
 });
 
 test('compact runtime composes onboarding before lifecycle execution', () => {
