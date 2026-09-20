@@ -14,6 +14,8 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     /^(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:music|spotify(?:\s+account)?)$/i;
   const connectMusicActionPattern =
     /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+spotify(?:\s+account)?|(?:re)?connect|spotify)$/i;
+  const joinPartyHeadingPattern = /^join\s+the\s+party[!！]?$/i;
+  const connectSpotifyTextPattern = /^(?:re)?connect\s+spotify$/i;
   const onboardingLabelsOf = element => [
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('data-testid'),
@@ -23,8 +25,47 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     element?.innerText,
     element?.textContent,
   ].map(normalize).filter(Boolean);
+  const onboardingRendered = element => {
+    if (!(element instanceof Element) || !element.isConnected ||
+        element.getAttribute('aria-hidden') === 'true') return false;
+    const rect = element.getBoundingClientRect?.();
+    if (!rect || rect.width <= 2 || rect.height <= 2) return false;
+    const style = getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+      Number(style.opacity || 1) > 0;
+  };
+
+  const joinPartyConnectSpotifyVisible = () => {
+    const candidates = document.querySelectorAll(
+      "button,[role='button'],a,div,span,p,[tabindex],[aria-label],[data-testid]");
+    for (const candidate of candidates) {
+      if (!onboardingRendered(candidate) ||
+          !onboardingLabelsOf(candidate).some(
+            label => connectSpotifyTextPattern.test(label))) continue;
+      for (let shell = candidate.parentElement, depth = 0;
+           shell && shell !== document.body && depth < 10;
+           shell = shell.parentElement, depth += 1) {
+        if (!onboardingRendered(shell)) continue;
+        const headings = shell.querySelectorAll(
+          'h1,h2,h3,[role="heading"],div,span,p');
+        if ([...headings].some(element =>
+            onboardingRendered(element) &&
+            onboardingLabelsOf(element).some(
+              label => joinPartyHeadingPattern.test(label)))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
 
   const recoverableOnboardingVisible = () => {
+    // Current Stationhead UI can render a non-semantic CONNECT SPOTIFY control
+    // under a "Join the party!" dialog. Detect the exact visible text even when
+    // the control is a div/span rather than a native button. The native locator
+    // performs the actual trusted CDP click and can scroll it into view.
+    if (joinPartyConnectSpotifyVisible()) return true;
+
     for (const element of document.querySelectorAll(controlSelector)) {
       if (!visible(element)) continue;
       if (onboardingLabelsOf(element).some(
