@@ -325,15 +325,15 @@ void PowerSavingController::PaintOverlay(HWND window) {
   const wchar_t* audioModeLabel = L"音声出力YT";
   if (audioMode_ == AudioMode::Stationhead) {
     audioModeLabel = L"音声出力ST";
-  } else if (audioMode_ == AudioMode::SpotifyPrimary) {
+  } else if (audioMode_ == AudioMode::StationheadPeer1) {
     audioModeLabel = L"音声出力S1";
-  } else if (audioMode_ == AudioMode::SpotifySecondary) {
+  } else if (audioMode_ == AudioMode::StationheadPeer2) {
     audioModeLabel = L"音声出力S2";
-  } else if (audioMode_ == AudioMode::SpotifyTertiary) {
+  } else if (audioMode_ == AudioMode::StationheadPeer3) {
     audioModeLabel = L"音声出力S3";
-  } else if (audioMode_ == AudioMode::SpotifyQuaternary) {
+  } else if (audioMode_ == AudioMode::StationheadPeer4) {
     audioModeLabel = L"音声出力S4";
-  } else if (audioMode_ == AudioMode::SpotifyQuinary) {
+  } else if (audioMode_ == AudioMode::StationheadPeer5) {
     audioModeLabel = L"音声出力S5";
   } else if (audioMode_ == AudioMode::Muted) {
     audioModeLabel = L"音声出力OFF";
