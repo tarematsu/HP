@@ -4,10 +4,11 @@
 namespace hp {
 namespace {
 
-// Keep autoplay enabled. Background/occluded scheduling now follows Chromium's
-// default policy instead of overriding its throttling and backgrounding rules.
+// Keep autoplay enabled and keep background timers running. Renderer/window
+// backgrounding still follows Chromium's default policy.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--autoplay-policy=no-user-gesture-required "
+    L"--disable-background-timer-throttling "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "
