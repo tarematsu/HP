@@ -60,18 +60,18 @@ test('Sakurazaka series prefers canonical OTHER_DB history and falls back to MIN
         bind() { return this; },
         async all() {
           otherCalls += 1;
-          if (sql.includes('sh_official_broadcast_summary')) {
-            return { results: [
-              { event_name: 'A', started_at: 100, ended_at: 200 },
-              { event_name: 'C', started_at: 300, ended_at: 400 },
-            ] };
-          }
           if (sql.includes('sh_official_broadcast_series')) {
             return { results: [{
               event_name: 'A', started_at: 100,
               points_json: '[[0,30,1]]', point_count: 1, total_points: 1,
               source: 'google_sheets_canonical',
             }] };
+          }
+          if (sql.includes('FROM sh_official_broadcast_summary')) {
+            return { results: [
+              { event_name: 'A', started_at: 100, ended_at: 200 },
+              { event_name: 'C', started_at: 300, ended_at: 400 },
+            ] };
           }
           return { results: [{ series_key: 'news:b', event_name: 'B', started_at: 200, points_json: '[[0,20,2]]', total_points: 1 }] };
         },
