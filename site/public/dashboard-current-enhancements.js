@@ -1,6 +1,17 @@
 const DAY_MS = 86_400_000;
+const STATIONHEAD_BUDDIES_URL = 'https://stationhead.com/c/buddies';
 const integer = new Intl.NumberFormat('ja-JP');
+const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+});
+const jstChartDateTime = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo',
+  month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+});
 let lastRows = [];
+let lastChartModel = null;
+let lastGoalPayload = null;
 let redrawTimer = 0;
 
 const byId = (id) => document.getElementById(id);
@@ -51,6 +62,41 @@ function ensureMetricLayout() {
     stats.innerHTML = '<span id="online24hMin">24h最小 —</span><span id="online24hMax">24h最大 —</span>';
     onlinePanel.append(stats);
   }
+  if (onlinePanel && !byId('onlineYesterdayAvg')) {
+    const average = document.createElement('div');
+    average.id = 'onlineYesterdayAvg';
+    average.className = 'delta';
+    average.hidden = true;
+    onlinePanel.append(average);
+  }
+  if (membersPanel && !byId('membersThreeDaysAgoDelta')) {
+    const delta = document.createElement('div');
+    delta.id = 'membersThreeDaysAgoDelta';
+    delta.className = 'delta';
+    delta.hidden = true;
+    membersPanel.append(delta);
+  }
+
+  if (streamsPanel && !byId('metricGoalCompact')) {
+    const goal = document.createElement('div');
+    goal.id = 'metricGoalCompact';
+    goal.className = 'metric-goal-compact';
+    const targetRow = document.createElement('span');
+    targetRow.className = 'metric-goal-row';
+    targetRow.append(document.createTextNode('目標 '));
+    const target = byId('streamGoal') || document.createElement('b');
+    target.id = 'streamGoal';
+    targetRow.append(target);
+    const etaRow = document.createElement('span');
+    etaRow.className = 'metric-goal-row';
+    etaRow.append(document.createTextNode('予想 '));
+    const eta = byId('goalEta') || document.createElement('strong');
+    eta.id = 'goalEta';
+    etaRow.append(eta);
+    goal.append(targetRow, etaRow);
+    streamsPanel.append(goal);
+  }
+  document.querySelector('.goal-card')?.remove();
 }
 
 function renderOnlineRange(rows) {
@@ -62,6 +108,63 @@ function renderOnlineRange(rows) {
   const maxNode = byId('online24hMax');
   if (minNode) minNode.textContent = `24h最小 ${numberText(minimum)}人`;
   if (maxNode) maxNode.textContent = `24h最大 ${numberText(maximum)}人`;
+}
+
+function goalEtaText(payload) {
+  const latest = payload?.latest || {};
+  const current = finite(latest.current_stream_count ?? latest.total_stream_count);
+  const goal = finite(latest.stream_goal);
+  const prediction = payload?.goal_prediction;
+  const eta = finite(prediction?.eta);
+  if (eta != null && eta > 0 && finite(prediction?.rate_per_hour) > 0) {
+    return `${jstDateTime.format(new Date(eta))} JST`;
+  }
+  if (current != null && goal != null && goal > 0 && current >= goal) return '目標達成済み';
+  return '予測データ不足';
+}
+
+function renderCompactGoal(payload = lastGoalPayload) {
+  if (!payload?.ok) return;
+  lastGoalPayload = payload;
+  ensureMetricLayout();
+  const goal = finite(payload?.latest?.stream_goal);
+  const goalNode = byId('streamGoal');
+  if (goalNode) goalNode.textContent = goal == null || goal <= 0 ? '—' : numberText(goal);
+  const etaNode = byId('goalEta');
+  const etaText = goalEtaText(payload);
+  if (etaNode && etaNode.textContent !== etaText) etaNode.textContent = etaText;
+}
+
+function enforceStationheadLink() {
+  const link = byId('nowPlayingLink');
+  const hint = byId('spotifyHint');
+  if (link) {
+    if (link.href !== STATIONHEAD_BUDDIES_URL) link.href = STATIONHEAD_BUDDIES_URL;
+    if (link.getAttribute('aria-disabled') !== 'false') link.setAttribute('aria-disabled', 'false');
+    if (link.target !== '_blank') link.target = '_blank';
+    if (link.rel !== 'noopener noreferrer') link.rel = 'noopener noreferrer';
+  }
+  if (hint) {
+    if (hint.textContent !== 'Stationheadを開く') hint.textContent = 'Stationheadを開く';
+    if (hint.hidden) hint.hidden = false;
+  }
+}
+
+function installPersistentDisplayFixes() {
+  ensureMetricLayout();
+  enforceStationheadLink();
+  const link = byId('nowPlayingLink');
+  const hint = byId('spotifyHint');
+  if (link) new MutationObserver(enforceStationheadLink).observe(link, {
+    attributes: true, attributeFilter: ['href', 'aria-disabled', 'target', 'rel'],
+  });
+  if (hint) new MutationObserver(enforceStationheadLink).observe(hint, {
+    attributes: true, childList: true, subtree: true, characterData: true,
+  });
+  const eta = byId('goalEta');
+  if (eta) new MutationObserver(() => renderCompactGoal()).observe(eta, {
+    childList: true, subtree: true, characterData: true,
+  });
 }
 
 function labelBox(context, text, x, y, align, width, height) {
@@ -152,9 +255,8 @@ function drawEnhancedChart(rows) {
     context.fillRect(x[index] - barWidth / 2, barTop, barWidth, padding.top + plotHeight - barTop);
   });
 
-  const rootStyle = getComputedStyle(document.documentElement);
   context.beginPath();
-  context.strokeStyle = rootStyle.getPropertyValue('--accent').trim() || '#d93f79';
+  context.strokeStyle = '#111';
   context.lineWidth = 2.5;
   let started = false;
   rows.forEach((row, index) => {
@@ -176,7 +278,7 @@ function drawEnhancedChart(rows) {
     const position = Math.round((rows.length - 1) * index / 4);
     context.fillText(
       new Date(rows[position].observed_at).toLocaleTimeString('ja-JP', {
-        timeZone: 'UTC', hour: '2-digit', minute: '2-digit',
+        timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit',
       }),
       x[position],
       height - 14,
@@ -190,24 +292,25 @@ function drawEnhancedChart(rows) {
   context.textAlign = 'right';
   context.fillText('コメント/2分', width - 4, 12);
   context.textAlign = 'center';
-  context.fillText('時刻 (UTC)', width / 2, height - 2);
+  context.fillText('時刻 (JST)', width / 2, height - 2);
 
   const minIndex = rows.findIndex((row) => row.online_member_count === onlineRawMin);
   const maxIndex = rows.findIndex((row) => row.online_member_count === onlineRawMax);
   if (minIndex >= 0) {
-    context.fillStyle = rootStyle.getPropertyValue('--accent').trim() || '#d93f79';
+    context.fillStyle = '#111';
     context.beginPath();
     context.arc(x[minIndex], yOnline(onlineRawMin), 3.5, 0, Math.PI * 2);
     context.fill();
     labelBox(context, `最小 ${numberText(onlineRawMin)}`, x[minIndex] + 5, yOnline(onlineRawMin) + 14, 'left', width, height);
   }
   if (maxIndex >= 0) {
-    context.fillStyle = rootStyle.getPropertyValue('--accent').trim() || '#d93f79';
+    context.fillStyle = '#111';
     context.beginPath();
     context.arc(x[maxIndex], yOnline(onlineRawMax), 3.5, 0, Math.PI * 2);
     context.fill();
     labelBox(context, `最大 ${numberText(onlineRawMax)}`, x[maxIndex] - 5, yOnline(onlineRawMax) - 14, 'right', width, height);
   }
+  lastChartModel = { rows, x };
 }
 
 function scheduleDraw() {
@@ -219,9 +322,34 @@ function applyPayload(payload) {
   if (!payload?.ok) return;
   lastRows = normalizeHistory(payload.history);
   renderOnlineRange(lastRows);
+  renderCompactGoal(payload);
+  enforceStationheadLink();
   scheduleDraw();
 }
 
-ensureMetricLayout();
+function selectEnhancedPoint(event) {
+  if (!lastChartModel?.x?.length) return;
+  event.stopImmediatePropagation();
+  const bounds = byId('audienceChart')?.getBoundingClientRect();
+  if (!bounds) return;
+  const pointer = event.clientX - bounds.left;
+  let selected = 0;
+  let distance = Infinity;
+  lastChartModel.x.forEach((point, index) => {
+    const next = Math.abs(point - pointer);
+    if (next < distance) {
+      distance = next;
+      selected = index;
+    }
+  });
+  const row = lastChartModel.rows[selected];
+  const detail = byId('currentChartDetail');
+  if (detail) {
+    detail.textContent = `${jstChartDateTime.format(new Date(row.observed_at))} JST　オンライン ${numberText(row.online_member_count)}人　コメント勢い ${numberText(commentVelocity(row))}件 / 2分`;
+  }
+}
+
+installPersistentDisplayFixes();
+byId('audienceChart')?.addEventListener('pointerup', selectEnhancedPoint, true);
 window.addEventListener('dashboard:payload', (event) => applyPayload(event?.detail?.payload));
 window.addEventListener('resize', scheduleDraw, { passive: true });
