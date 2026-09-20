@@ -35,9 +35,9 @@ test('Spotify state changes do not apply explicit low-memory or efficiency throt
   assert.doesNotMatch(controller, /slot\.controller->put_IsVisible\(FALSE\)/);
 });
 
-test('shared WebView environment uses Chromium default background throttling', () => {
+test('shared WebView environment keeps background timers active only', () => {
   assert.match(environment, /--autoplay-policy=no-user-gesture-required/);
   assert.doesNotMatch(environment, /--disable-backgrounding-occluded-windows/);
   assert.doesNotMatch(environment, /--disable-renderer-backgrounding/);
-  assert.doesNotMatch(environment, /--disable-background-timer-throttling/);
+  assert.match(environment, /--disable-background-timer-throttling/);
 });

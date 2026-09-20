@@ -26,8 +26,8 @@ test('Stationhead playback always applies LOW memory and Windows Efficiency mode
   );
 });
 
-test('Chromium background scheduling uses its default throttling policy', () => {
+test('Chromium keeps background timers active without disabling renderer backgrounding', () => {
   assert.doesNotMatch(environment, /--disable-backgrounding-occluded-windows/);
   assert.doesNotMatch(environment, /--disable-renderer-backgrounding/);
-  assert.doesNotMatch(environment, /--disable-background-timer-throttling/);
+  assert.match(environment, /--disable-background-timer-throttling/);
 });
