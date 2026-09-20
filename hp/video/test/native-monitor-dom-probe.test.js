@@ -38,20 +38,18 @@ test('visible monitor modes probe targeted Stationhead controls every five minut
   assert.match(bridge, /kStationheadMonitorProbeResultMessage/);
 });
 
-test('monitor S stays foreground while participating in auth polling', () => {
-  assert.match(
-    routing,
-    /serviceGrid \|\|[\s\S]*monitorMode_ == MonitorMode::Native && monitorAuthForeground_/,
-  );
+test('monitor S stays foreground while all six Stationhead windows participate in auth polling', () => {
   assert.match(routing, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
+  assert.match(routing, /SetStationheadMonitorForeground\(serviceGrid\)/);
+  assert.match(routing, /monitorAuthSlots_/);
   assert.match(schedule, /if \(monitorMode_ != MonitorMode::Off\) \{[\s\S]*kMonitorAuthProbeIntervalMs/);
   assert.match(schedule, /if \(monitorMode_ == MonitorMode::Off \|\| powerSaving_\) return/);
 });
 
-test('monitor YT returns Stationhead behind the dashboard after a clean probe', () => {
+test('monitor YT aggregates clean auth probes and returns Stationhead behind the dashboard', () => {
   assert.match(
     routing,
-    /case kStationheadMonitorProbeResultMessage:[\s\S]*const bool detected = wParam != 0;[\s\S]*monitorAuthForeground_ = detected;[\s\S]*ApplyStationheadMonitorPlacement\(\)/,
+    /case kStationheadMonitorProbeResultMessage:[\s\S]*const unsigned slot = static_cast<unsigned>\(lParam\);[\s\S]*const uint32_t bit = 1u << slot;[\s\S]*const bool detected = monitorAuthSlots_ != 0;[\s\S]*monitorAuthForeground_ = detected;[\s\S]*ApplyStationheadMonitorPlacement\(\)/,
   );
-  assert.match(routing, /: HWND_BOTTOM;/);
+  assert.match(routing, /const bool nativeMediaForeground =\s*monitorMode_ == MonitorMode::Native && !monitorAuthForeground_/);
 });
