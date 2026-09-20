@@ -23,11 +23,14 @@ test('summary tables remove maximum likes and primary host while retaining track
   assert.doesNotMatch(tableCleanup, /曲数/);
 });
 
-test('history read models compute unique tracks from canonical track keys', () => {
+test('history read models count total broadcasts including repeated tracks', () => {
   assert.match(materialized, /sh_pages_track_history_read_model/);
-  assert.match(materialized, /COUNT\(DISTINCT COALESCE\(NULLIF\(json_extract\(row_json,'\$\.track_key'\)/);
+  assert.match(materialized, /SUM\(CASE/);
+  assert.match(materialized, /json_extract\(row_json,'\$\.play_count'\)/);
+  assert.doesNotMatch(materialized, /COUNT\(DISTINCT/);
   assert.match(materialized, /strftime\('%w',play_date\)/);
   assert.match(materialized, /substr\(play_date,1,7\)/);
   assert.match(current, /sh_pages_track_history_read_model/);
-  assert.match(current, /distinct_tracks: distinctTracks/);
+  assert.match(current, /SUM\(CASE/);
+  assert.match(current, /distinct_tracks: trackCount/);
 });
