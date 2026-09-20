@@ -43,10 +43,10 @@ test('name overlay is raised after WebView2 controller layout', () => {
   const childLayout = layout.slice(start, end);
   const controllerLayout = childLayout.indexOf('if (authController) {');
   const playbackRaise = childLayout.indexOf(
-    'RaiseStationheadWindowNameOverlay(hostWindow_);',
+    'RaiseStationheadWindowNameOverlay(hostWindow);',
   );
   const authRaise = childLayout.indexOf(
-    'RaiseStationheadWindowNameOverlay(authHostWindow_);',
+    'RaiseStationheadWindowNameOverlay(authHostWindow);',
   );
   assert.ok(controllerLayout >= 0);
   assert.ok(playbackRaise > controllerLayout);
