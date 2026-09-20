@@ -96,6 +96,10 @@ class StationheadPlayer {
   bool HasAuthTab() const;
   StationheadStatus Status() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept;
+  [[nodiscard]] bool ForegroundRequested() const noexcept {
+    return selectedTab_ == StationheadTabKind::Auth ||
+           selectedTab_ == StationheadTabKind::Stationhead;
+  }
   [[nodiscard]] bool SurfaceVisible() const noexcept {
     return startupPreviewActive_ || viewVisible_;
   }
