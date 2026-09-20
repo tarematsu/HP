@@ -8,7 +8,9 @@ namespace hp {
 // Native code resolves the nearest clickable ancestor and performs a trusted
 // CDP click without requiring a foreground HWND.
 inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
-  static constexpr wchar_t kScript[] = LR"JS(
+  std::wstring script;
+  script.reserve(12'000);
+  script.append(LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
   if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
@@ -61,9 +63,6 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     rect.left < innerWidth && rect.top < innerHeight;
 
   const clickableTargetFor = element => {
-    // Prefer an explicitly interactive ancestor, but do not require one. Many
-    // SPA controls use delegated click handlers on otherwise plain div/span
-    // trees, and a trusted click on the visible child still bubbles correctly.
     for (let current = element, depth = 0;
          current && current !== document.body && depth < 8;
          current = current.parentElement, depth += 1) {
@@ -80,7 +79,9 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     }
     return rendered(element) ? element : null;
   };
+)JS");
 
+  script.append(LR"JS(
   const pointOf = element => {
     if (!element || !rendered(element)) return null;
     let rect = element.getBoundingClientRect();
@@ -142,6 +143,9 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     return Array.from(document.querySelectorAll('audio,video')).some(element =>
       !element.paused && !element.ended && element.readyState >= 2);
   };
+)JS");
+
+  script.append(LR"JS(
   const accountInteractionVisible = () => {
     if (window.__homepanelStationheadBlockingLoginVisible === true ||
         /(^|\/)(login|signin|sign-in|auth)(\/|$)/i.test(
@@ -149,7 +153,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
       return true;
     }
     for (const element of document.querySelectorAll(credentialSelector)) {
-      if (visuallyRendered(element) && intersectsViewport(element.getBoundingClientRect())) {
+      if (visuallyRendered(element) &&
+          intersectsViewport(element.getBoundingClientRect())) {
         return true;
       }
     }
@@ -195,8 +200,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   }
   return null;
 })()
-)JS";
-  return kScript;
+)JS");
+  return script;
 }
 
 }  // namespace hp
