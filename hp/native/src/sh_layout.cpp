@@ -4,8 +4,9 @@
 namespace hp {
 namespace {
 
-constexpr int kStationheadPlaybackViewportWidth = 720;
-constexpr int kStationheadPlaybackViewportHeight = 960;
+constexpr int kStationheadPlaybackViewportWidth = 960;
+constexpr int kStationheadPlaybackViewportHeight = 360;
+constexpr int kStationheadWindowNameHeight = 24;
 
 int RectWidth(const RECT& bounds) noexcept {
   return std::max(1L, bounds.right - bounds.left);
@@ -15,10 +16,54 @@ int RectHeight(const RECT& bounds) noexcept {
   return std::max(1L, bounds.bottom - bounds.top);
 }
 
+const wchar_t* StationheadWindowName(const std::wstring& profileName) noexcept {
+  if (profileName == L"spotify-v2-1") return L"tgut";
+  if (profileName == L"spotify-v2-2") return L"yuukiar";
+  if (profileName == L"spotify-v2-3") return L"ten";
+  if (profileName == L"spotify-v2-4") return L"nagi";
+  if (profileName == L"spotify-v2-5") return L"hinata";
+  if (profileName == L"spotify-v2-6") return L"ozeki";
+  return L"stationhead";
+}
+
 RECT StationheadPlaybackControllerBounds() noexcept {
-  return RECT{0, 0,
+  return RECT{0, kStationheadWindowNameHeight,
               kStationheadPlaybackViewportWidth,
-              kStationheadPlaybackViewportHeight};
+              kStationheadWindowNameHeight + kStationheadPlaybackViewportHeight};
+}
+
+LRESULT CALLBACK StationheadHostWindowProc(HWND window, UINT message,
+                                           WPARAM wParam, LPARAM lParam) {
+  if (message == WM_ERASEBKGND) return 1;
+  if (message == WM_PAINT) {
+    PAINTSTRUCT paint{};
+    HDC dc = BeginPaint(window, &paint);
+    if (dc) {
+      RECT nameBounds{0, 0,
+                      kStationheadPlaybackViewportWidth,
+                      kStationheadWindowNameHeight};
+      FillRect(dc, &nameBounds,
+               static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+
+      wchar_t title[64]{};
+      GetWindowTextW(window, title, _countof(title));
+      RECT textBounds{8, 0,
+                      kStationheadPlaybackViewportWidth - 8,
+                      kStationheadWindowNameHeight};
+      const int previousBackgroundMode = SetBkMode(dc, TRANSPARENT);
+      const COLORREF previousTextColor = SetTextColor(dc, RGB(255, 255, 255));
+      HGDIOBJ previousFont = SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
+      DrawTextW(dc, title, -1, &textBounds,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX |
+                    DT_END_ELLIPSIS);
+      if (previousFont) SelectObject(dc, previousFont);
+      SetTextColor(dc, previousTextColor);
+      SetBkMode(dc, previousBackgroundMode);
+    }
+    EndPaint(window, &paint);
+    return 0;
+  }
+  return DefWindowProcW(window, message, wParam, lParam);
 }
 
 void ApplyHostVisualClip(HWND window, bool fullSize) noexcept {
@@ -33,13 +78,14 @@ void ApplyHostVisualClip(HWND window, bool fullSize) noexcept {
 }
 
 HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wchar_t* title,
-                                const RECT& bounds) {
+                                const RECT& bounds, bool showWindowName) {
   if (!parent || !IsWindow(parent)) return nullptr;
   const HINSTANCE instance = GetModuleHandleW(nullptr);
   WNDCLASSW registered{};
   if (!GetClassInfoW(instance, className, &registered)) {
     WNDCLASSW windowClass{};
-    windowClass.lpfnWndProc = DefWindowProcW;
+    windowClass.lpfnWndProc =
+        showWindowName ? StationheadHostWindowProc : DefWindowProcW;
     windowClass.hInstance = instance;
     windowClass.lpszClassName = className;
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
@@ -213,9 +259,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const RECT playbackControllerBounds = StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep the playback WebView viewport fixed at 720x960 in every state.
-  // The host HWND remains full workspace size for stable z-order and is
-  // visually clipped to 1x1 while backgrounded.
+  // Keep the Stationhead WebView itself fixed at 960x360 in every state.
+  // A 24px native name strip is reserved above it. The host HWND remains full
+  // workspace size for stable z-order and is visually clipped to 1x1 while
+  // backgrounded.
   if (authHostWindow && IsWindow(authHostWindow)) {
     const bool geometryMatches =
         WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
@@ -271,9 +318,9 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
 bool StationheadPlayer::EnsureHostWindow() {
   if (hostWindow_ && IsWindow(hostWindow_)) return true;
-  const std::wstring title = L"StationheadHost:" + profileName_;
+  const std::wstring title = StationheadWindowName(profileName_);
   hostWindow_ = CreateStationheadChildHost(
-      window_, L"HomePanelStationheadHost", title.c_str(), bounds_);
+      window_, L"HomePanelStationheadHost", title.c_str(), bounds_, true);
   return hostWindow_ && IsWindow(hostWindow_);
 }
 
@@ -281,7 +328,7 @@ bool StationheadPlayer::EnsureAuthHostWindow() {
   if (authControllerStartedAt_.Active() && !authController_) return false;
   if (authHostWindow_ && IsWindow(authHostWindow_)) return true;
   authHostWindow_ = CreateStationheadChildHost(
-      window_, L"HomePanelSpotifyAuthHost", L"SpotifyAuthHost", bounds_);
+      window_, L"HomePanelSpotifyAuthHost", L"SpotifyAuthHost", bounds_, false);
   return authHostWindow_ && IsWindow(authHostWindow_);
 }
 
