@@ -53,12 +53,16 @@ function trackPeriodExpression(mode) {
   return "date(play_date,'-' || ((CAST(strftime('%w',play_date) AS INTEGER)+6)%7) || ' days')";
 }
 
-export async function loadDistinctTrackCounts(env, mode, from, to) {
+export async function loadPeriodTrackCounts(env, mode, from, to) {
   if (!env?.MINUTE_DB?.prepare) return new Map();
   const periodExpression = trackPeriodExpression(mode);
   try {
     const result = await env.MINUTE_DB.prepare(`SELECT ${periodExpression} AS period_key,
-        COUNT(DISTINCT COALESCE(NULLIF(json_extract(row_json,'$.track_key'),''),row_key)) AS distinct_tracks
+        SUM(CASE
+          WHEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)>0
+            THEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)
+          ELSE 1
+        END) AS track_count
       FROM sh_pages_track_history_read_model
       WHERE play_date>=? AND play_date<=?
       GROUP BY ${periodExpression}
@@ -67,7 +71,7 @@ export async function loadDistinctTrackCounts(env, mode, from, to) {
       .all();
     return new Map((result.results || []).map((row) => [
       String(row.period_key || ''),
-      Number.isFinite(Number(row.distinct_tracks)) ? Number(row.distinct_tracks) : null,
+      Number.isFinite(Number(row.track_count)) ? Number(row.track_count) : null,
     ]));
   } catch (error) {
     if (/no such table|no such function|malformed json/i.test(String(error?.message || error))) return new Map();
@@ -95,7 +99,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     : [from, to, summaryLimit(mode)];
   const [result, trackCounts] = await Promise.all([
     statement.bind(...bindings).all(),
-    loadDistinctTrackCounts(env, mode, from, to),
+    loadPeriodTrackCounts(env, mode, from, to),
   ]);
   const rows = result.results || [];
   if (mode === 'daily') validateDailySummaryRows(rows);
