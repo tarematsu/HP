@@ -26,6 +26,13 @@ test('daily reconciliation waits for complete source coverage', () => {
   assert.match(source, /rollupMinuteDaily\(minuteDb, otherDb, period, now, qualityFlags\)/);
 });
 
+test('daily reconciliation repairs listener-count drift and bumps rebuild generation', () => {
+  assert.match(reconcile, /const RECONCILE_BUILD_VERSION = 3/);
+  assert.match(reconcile, /source_priority,listener_count/);
+  assert.match(reconcile, /const listenerMismatch = integer\(fact\.listener_count\) !== integer\(row\.listener_count\)/);
+  assert.match(reconcile, /\|\| listenerMismatch/);
+});
+
 test('daily rebuild refreshes dependent weekly and monthly summaries', () => {
   assert.match(source, /completeDailyRange/);
   assert.match(source, /daily-summaries-incomplete/);
