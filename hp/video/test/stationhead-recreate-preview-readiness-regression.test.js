@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
-const playerHeader = source('sh.h');
+const timingHeader = source('monotonic_time.h');
 const playerSource = source('sh.cpp');
 const layoutSource = source('sh_layout.cpp');
 
@@ -16,14 +16,22 @@ function section(source, start, end) {
 }
 
 test('delayed WebView recreation keeps the App scheduler on a fast wake', () => {
-  const wake = section(playerHeader, 'class StartupAwareWakeDeadline', 'struct StationheadDailyPlayPoint');
+  const wake = section(
+    timingHeader,
+    'class StartupAwareWakeDeadline',
+    '}  // namespace hp',
+  );
   assert.match(wake, /recreating_->load\(std::memory_order_relaxed\)/);
   assert.match(wake, /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/);
   assert.match(wake, /MonotonicProjectedDeadline value_;/);
 });
 
 test('earliest recreate request is compared in monotonic uptime space', () => {
-  const deadline = section(playerHeader, 'class MonotonicDeadline', 'class MonotonicProjectedDeadline');
+  const deadline = section(
+    timingHeader,
+    'class MonotonicDeadline',
+    'class MonotonicProjectedDeadline',
+  );
   assert.match(deadline, /TickForWallDeadline\(candidateWallDeadline\)/);
   assert.match(deadline, /current\.deadlineTick_/);
   const schedule = section(playerSource, 'void StationheadPlayer::ScheduleRecreate(', '}  // namespace hp');

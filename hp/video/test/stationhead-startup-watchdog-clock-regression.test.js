@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 const appHeader = source('app.h');
+const timingHeader = source('monotonic_time.h');
 const playerHeader = source('sh.h');
 const playerSource = source('sh.cpp');
 const webviewSource = source('sh_webview.cpp');
@@ -19,7 +20,7 @@ function section(text, start, end) {
 test('App startup keeps only the active monotonic timestamp', () => {
   assert.match(appHeader, /MonotonicElapsedTimestamp startupAt_;/);
   assert.doesNotMatch(appHeader, /dashboardAudioReadySince_|playbackReadyAt_|secondaryStarted_/);
-  const elapsed = section(playerHeader, 'class MonotonicElapsedTimestamp',
+  const elapsed = section(timingHeader, 'class MonotonicElapsedTimestamp',
     'class AtomicMonotonicElapsedTimestamp');
   assert.match(elapsed, /GetTickCount64\(\)/);
   assert.doesNotMatch(elapsed, /system_clock/);
@@ -35,7 +36,7 @@ test('WebView creation and auth watchdogs use monotonic elapsed timestamps', () 
 test('startup script and recreate deadlines use uptime deadlines', () => {
   assert.match(playerHeader, /MonotonicDeadline recreateAt_;/);
   assert.match(playerHeader, /MonotonicDeadline startupScriptDeadline_;/);
-  const deadline = section(playerHeader, 'class MonotonicDeadline',
+  const deadline = section(timingHeader, 'class MonotonicDeadline',
     'class MonotonicProjectedDeadline');
   assert.match(deadline, /deadlineTick_/);
   assert.match(deadline, /GetTickCount64\(\) >= deadlineTick_/);
@@ -44,8 +45,8 @@ test('startup script and recreate deadlines use uptime deadlines', () => {
 });
 
 test('startup watchdogs force an immediate player wake', () => {
-  const wake = section(playerHeader, 'class StartupAwareWakeDeadline',
-    'struct StationheadDailyPlayPoint');
+  const wake = section(timingHeader, 'class StartupAwareWakeDeadline',
+    '}  // namespace hp');
   assert.match(wake, /creating_->load/);
   assert.match(wake, /startupScriptDeadline_->Active\(\)/);
   assert.match(wake, /authControllerStartedAt_->Active\(\)/);

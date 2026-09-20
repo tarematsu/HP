@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+const timingHeader = source('monotonic_time.h');
 const playerHeader = source('sh.h');
 const playerSource = source('sh.cpp');
 const handleHeader = source('app_stationhead_handles.h');
@@ -17,7 +18,7 @@ function section(text, start, end) {
 }
 
 test('elapsed timestamps retain monotonic duration', () => {
-  const elapsed = section(playerHeader, 'class MonotonicElapsedTimestamp',
+  const elapsed = section(timingHeader, 'class MonotonicElapsedTimestamp',
     'class AtomicMonotonicElapsedTimestamp');
   assert.match(elapsed, /initialElapsedMs_ = wallTime < wallNow/);
   assert.match(elapsed, /initialElapsedMs_ \+ elapsedSinceAssignment/);
@@ -25,7 +26,7 @@ test('elapsed timestamps retain monotonic duration', () => {
 });
 
 test('audio start timestamps are re-projected from uptime', () => {
-  const atomic = section(playerHeader, 'class AtomicMonotonicElapsedTimestamp',
+  const atomic = section(timingHeader, 'class AtomicMonotonicElapsedTimestamp',
     'class MonotonicDeadline');
   assert.match(atomic, /startedTick_\.store/);
   assert.match(atomic, /GetTickCount64\(\)/);
