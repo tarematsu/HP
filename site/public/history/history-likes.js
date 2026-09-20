@@ -6,7 +6,7 @@ import {
 (() => {
   'use strict';
 
-  const CACHE_PREFIX = 'sh.track-like-ranking.v1:';
+  const CACHE_PREFIX = 'sh.track-like-ranking.v2:';
   const CACHE_MS = 5 * 60_000;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateTime = new Intl.DateTimeFormat('ja-JP', {
@@ -16,6 +16,7 @@ import {
   const shortDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
   });
+  const MEDALS = ['🥇', '🥈', '🥉'];
 
   const state = { rows: [], summary: {}, controller: null };
   const el = (id) => document.getElementById(id);
@@ -78,10 +79,33 @@ import {
     return box;
   }
 
+  function rankingThumbnail(row) {
+    const visual = document.createElement('span');
+    visual.className = 'like-rank-thumb';
+    const source = String(row?.thumbnail_url || '').trim();
+    if (!source) {
+      visual.textContent = '♪';
+      visual.classList.add('is-fallback');
+      return visual;
+    }
+    const image = document.createElement('img');
+    image.src = source;
+    image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.addEventListener('error', () => {
+      image.remove();
+      visual.textContent = '♪';
+      visual.classList.add('is-fallback');
+    }, { once: true });
+    visual.append(image);
+    return visual;
+  }
+
   function renderRanking() {
     const list = el('likesRankingList');
     list.replaceChildren();
-    const rows = state.rows.slice(0, 50);
+    const rows = state.rows.slice(0, 10);
     if (!rows.length) {
       const empty = document.createElement('li');
       empty.className = 'empty-ranking';
@@ -95,7 +119,7 @@ import {
       item.className = 'like-rank-item';
       const rank = document.createElement('strong');
       rank.className = 'like-rank-number';
-      rank.textContent = String(row.rank);
+      rank.textContent = MEDALS[Number(row.rank) - 1] || String(row.rank);
       const content = document.createElement('div');
       content.className = 'like-rank-content';
       const heading = document.createElement('div');
@@ -109,7 +133,7 @@ import {
       const metrics = document.createElement('div');
       metrics.className = 'like-rank-metrics';
       metrics.append(metric('最新いいね', fmt(row.latest_like_count)));
-      item.append(rank, content, metrics);
+      item.append(rank, rankingThumbnail(row), content, metrics);
       fragment.appendChild(item);
     }
     list.appendChild(fragment);
@@ -165,7 +189,7 @@ import {
       state.rows = Array.isArray(result.data.ranking) ? result.data.ranking : [];
       state.summary = result.data.ranking_summary || {};
       render();
-      setNotice(`${fmt(state.rows.length)}曲${result.cached ? ' · キャッシュ' : ''}`);
+      setNotice(`上位10曲 · 全${fmt(state.rows.length)}曲${result.cached ? ' · キャッシュ' : ''}`);
     } catch (error) {
       if (error?.name === 'AbortError') return;
       state.rows = [];
