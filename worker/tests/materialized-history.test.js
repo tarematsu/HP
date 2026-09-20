@@ -36,7 +36,7 @@ function summaryRow(overrides = {}) {
 }
 
 function environment(calls, rows = [summaryRow()], trackRows = [{
-  period_key: '2026-07-26', distinct_tracks: 12,
+  period_key: '2026-07-26', track_count: 17,
 }]) {
   const forbidden = new Proxy({}, {
     get() { assert.fail('history materialization must not inspect raw history databases'); },
@@ -47,7 +47,8 @@ function environment(calls, rows = [summaryRow()], trackRows = [{
       prepare(sql) {
         calls.push({ source: 'minute', sql, bindings: null });
         assert.match(sql, /FROM sh_pages_track_history_read_model/);
-        assert.match(sql, /COUNT\(DISTINCT/);
+        assert.match(sql, /SUM\(CASE/);
+        assert.match(sql, /json_extract\(row_json,'\$\.play_count'\)/);
         assert.doesNotMatch(sql, /sh_channel_snapshots|sh_minute_facts/);
         return {
           bind(...bindings) {
@@ -73,7 +74,7 @@ function environment(calls, rows = [summaryRow()], trackRows = [{
   };
 }
 
-test('Actions history renderer reads summaries and enriches unique track counts from the track read model', async () => {
+test('Actions history renderer reads summaries and enriches total track plays from the track read model', async () => {
   const calls = [];
   const result = await loadMaterializedSummary(
     environment(calls),
@@ -92,7 +93,7 @@ test('Actions history renderer reads summaries and enriches unique track counts 
   ]);
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].period_complete, true);
-  assert.equal(result.rows[0].distinct_tracks, 12);
+  assert.equal(result.rows[0].distinct_tracks, 17);
   assert.equal(result.live_overlay_count, 0);
   assert.equal(result.live_source, 'summary-only');
   assert.equal(result.storage_source, 'other.sh_daily_summary+minute.sh_pages_track_history_read_model');
@@ -125,6 +126,6 @@ test('materialized history response keeps the public payload shape without raw D
   assert.equal(payload.timezone, 'UTC');
   assert.equal(payload.live_source, 'summary-only');
   assert.equal(payload.live_overlay_count, 0);
-  assert.equal(payload.rows[0].distinct_tracks, 12);
+  assert.equal(payload.rows[0].distinct_tracks, 17);
   assert.equal(calls.length, 2);
 });
