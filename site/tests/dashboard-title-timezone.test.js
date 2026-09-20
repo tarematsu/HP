@@ -9,7 +9,7 @@ const history = readFileSync(new URL('../public/history/history-lite.js', import
 test('dashboard title is the hashtag and links to an X search for the same text', () => {
   assert.match(header, /const DASHBOARD_TITLE = '#櫻坂46_ステへ統計'/);
   assert.match(header, /https:\/\/x\.com\/search\?q=\$\{encodeURIComponent\(DASHBOARD_TITLE\)\}&src=typed_query/);
-  assert.match(header, /data-dashboard-title-link/);
+  assert.match(header, /dataset\.dashboardTitleLink = 'true'/);
 });
 
 test('only the header last-updated display is converted to JST', () => {
