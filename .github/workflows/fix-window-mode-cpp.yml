@@ -25,11 +25,8 @@ jobs:
           from pathlib import Path
           p = Path('hp/native/src/power_saving_overlay.inc')
           s = p.read_text(encoding='utf-8')
-          old = '''      fontHeight = std::max(
-          9, fontHeight * availableTextWidth / std::max(1L, textSize.cx));'''
-          new = '''      fontHeight = std::max(
-          9, static_cast<int>(
-                 fontHeight * availableTextWidth / std::max(1L, textSize.cx)));'''
+          old = '9, fontHeight * availableTextWidth / std::max(1L, textSize.cx)'
+          new = '9, static_cast<int>(fontHeight * availableTextWidth / std::max(1L, textSize.cx))'
           if s.count(old) != 1:
               raise SystemExit(f'expected one font scaling expression, found {s.count(old)}')
           p.write_text(s.replace(old, new, 1), encoding='utf-8')
