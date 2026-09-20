@@ -137,9 +137,6 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   const bool nextPowerSaving = mode == MonitorMode::Off;
   const bool layoutChanged = powerSaving_ != nextPowerSaving;
   monitorMode_ = mode;
-  const unsigned selectedMonitorProfile =
-      mode == MonitorMode::ServiceGrid ? monitorStationheadProfile_ : 0;
-  SetStationheadMonitorProfile(selectedMonitorProfile);
   powerSaving_ = nextPowerSaving;
   if (mode == MonitorMode::Off) {
     monitorAuthSlots_ = 0;
@@ -155,6 +152,8 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   // normal dashboard without stopping any Stationhead playback lifecycle.
   Renderer::SetGlobalPowerSavingMode(
       powerSaving_ || mode == MonitorMode::ServiceGrid);
+  // ApplyStationheadMonitorPlacement owns the shared monitor-profile update so
+  // every profile change, including ServiceGrid -> Off, emits the relayout tick.
   ApplyStationheadMonitorPlacement();
 
   if (layoutChanged) LayoutOverlay();
