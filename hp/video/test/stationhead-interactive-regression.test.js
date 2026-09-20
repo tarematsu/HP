@@ -17,13 +17,15 @@ function section(text, start, end) {
   return text.slice(from, to);
 }
 
-test('single Stationhead exposes interactive states as pending playback', () => {
+test('Stationhead handles expose interactive states as pending playback', () => {
   const handle = section(handles, 'class AppStationheadHandle final', '}  // namespace hp');
   assert.match(handle, /status\.loginRequired \|\| status\.spotifyAuthorization \|\| status\.processFailed/);
   assert.match(handle, /status\.audioPlaying = false;/);
 
   const tick = section(app, 'void App::Tick()', 'void App::Draw()');
-  assert.match(tick, /ApplyStationheadWindowPlacement\(stationheadStatus\);/);
+  assert.match(tick, /stationheadPeers_\[i\]->Status\(\)/);
+  assert.match(tick, /stationheadStatus = stationhead_->Status\(\)/);
+  assert.match(tick, /ApplyStationheadWindowPlacement\(\);/);
 });
 
 test('login-required state survives audio callbacks', () => {

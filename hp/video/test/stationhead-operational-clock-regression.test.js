@@ -32,15 +32,17 @@ test('audio start timestamps are re-projected from uptime', () => {
   assert.match(playerHeader, /AtomicMonotonicElapsedTimestamp audioPlayingSinceAt_;/);
 });
 
-test('player wake deadlines use monotonic wrappers', () => {
+test('player wake deadlines and per-window retry states use monotonic wrappers', () => {
   assert.match(playerHeader, /MonotonicProjectedDeadline trackBoundaryPlaybackRecoveryDeadline_;/);
   assert.match(playerHeader, /MonotonicElapsedTimestamp lastDailyPlayStatsAt_;/);
   assert.doesNotMatch(playerHeader, /lastAuthProbeAt_|authProbeInFlight_|authProbeStartedAt_/);
   assert.match(handleHeader, /MonotonicElapsedTimestamp playbackMissingSinceAt_;/);
 
   const retry = section(handleSource, 'struct TrackBoundaryRetryState',
-    'TrackBoundaryRetryState boundaryRetry');
+    'void ClearBoundaryRetryState(');
   assert.match(retry, /MonotonicProjectedDeadline deadline;/);
+  assert.match(retry, /std::map<const StationheadHandleBase\*, TrackBoundaryRetryState> boundaryRetries/);
+  assert.match(retry, /BoundaryRetryStateFor/);
   assert.doesNotMatch(retry, /retryAt|secondary/);
 });
 
@@ -57,6 +59,7 @@ test('polling and recovery expressions bind to monotonic arithmetic', () => {
 
   const handleTick = section(handleSource, 'void StationheadHandleBase::Tick(int64_t nowMs)',
     'void StationheadHandleBase::ShowAfterAudioStop()');
-  assert.match(handleTick, /nowMs >= boundaryRetry\.deadline/);
+  assert.match(handleTick, /nowMs >= found->second\.deadline/);
+  assert.match(handleTick, /BoundaryRetryStateFor\(this\)/);
   assert.doesNotMatch(handleTick, /retryAt|handoff/);
 });

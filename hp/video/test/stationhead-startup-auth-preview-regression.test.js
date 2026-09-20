@@ -57,11 +57,13 @@ test('auth callback publishes readiness before exposing the auth surface', () =>
     'SelectTab(StationheadTabKind::Auth);', 'PostChange();']);
 });
 
-test('single Stationhead re-evaluates placement on state change', () => {
+test('all Stationhead windows re-evaluate placement on state change', () => {
   const changed = section(messages, 'case WM_HP_STATIONHEAD_CHANGED:',
     'case kStationheadHealthUpdatedMessage:');
+  assert.match(changed, /stationheadPeers_\[i\]->ConsumeChangeFlags\(\)/);
   assert.match(changed, /stationhead_->ConsumeChangeFlags\(\)/);
-  assert.match(changed, /ApplyStationheadWindowPlacement\(stationhead_->Status\(\)\)/);
+  assert.match(changed, /MarkStationheadPlacementDirty\(\)/);
+  assert.match(changed, /ApplyStationheadWindowPlacement\(\)/);
   assert.match(changed, /ScheduleNextTick\(1\)/);
 });
 

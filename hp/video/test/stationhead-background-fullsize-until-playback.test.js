@@ -69,7 +69,7 @@ test('background, startup and reload all keep the fixed 720x960 playback viewpor
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
 });
 
-test('Monitor S pins Stationhead to tile zero while preserving auth fullscreen', () => {
+test('Monitor S maps all six Stationhead playback hosts to fixed service tiles', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
@@ -88,13 +88,10 @@ test('Monitor S pins Stationhead to tile zero while preserving auth fullscreen',
     'void PowerSavingController::Detach() noexcept',
   );
   assert.match(placement, /const bool serviceGrid = monitorMode_ == MonitorMode::ServiceGrid/);
-  assert.match(placement, /ServiceMonitorTileBounds\(parentClient, 0\)/);
-  assert.match(
-    placement,
-    /monitorMode_ == MonitorMode::Native && monitorAuthForeground_[\s\S]*\? parentClient[\s\S]*: serviceTile/,
-  );
-  assert.match(placement, /const HWND insertAfter = context->stationheadForeground/);
-  assert.match(placement, /: HWND_BOTTOM;/);
+  assert.match(placement, /StationheadServiceTileIndex\(child\)/);
+  assert.match(placement, /ServiceMonitorTileBounds\(context->parentClient, tileIndex\)/);
+  assert.match(placement, /SetStationheadMonitorForeground\(serviceGrid\)/);
+  assert.match(placement, /const HWND insertAfter = controller->overlay_/);
   assert.match(placement, /SetWindowPos\([\s\S]*target\.left, target\.top/);
 });
 

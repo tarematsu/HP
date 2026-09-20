@@ -39,16 +39,14 @@ test('native Stationhead click locator allows explicit onboarding actions throug
   );
   assert.match(body, /window\.top !== window/);
   assert.match(body, /allowedOnboardingPattern/);
-  assert.match(
-    body,
-    /\(\?:re\)\?connect\(\?:\\s\+with\)\?\\s\+\(\?:spotify\|music\)\|continue\(\?:\\s\+with\\s\+spotify\)\?\|let\(\?:'\|’\)\?s\\s\+go/,
-  );
-  assert.ok(body.includes("const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\\s+with)?\\s+(?:spotify|music)|continue(?:\\s+with\\s+spotify)?|let(?:'|’)?s\\s+go)$/i;"));
-  assert.match(body, /labelsOf\(element\)\.some\(label => allowedOnboardingPattern\.test\(label\)\)/);
+  assert.match(body, /spotify/);
+  assert.match(body, /continue/);
+  assert.match(body, /let\(\?:'\|’\)\?s/);
+  assert.match(body, /pointForPattern\(allowedOnboardingPattern\)/);
   assert.match(body, /const accountInteractionVisible = \(\) =>/);
   assert.match(body, /credentialSelector/);
   assert.match(body, /homepanelStationheadBlockingLoginVisible === true/);
-  const allowedAt = body.indexOf('allowedOnboardingPattern.test(label)');
+  const allowedAt = body.indexOf('pointForPattern(allowedOnboardingPattern)');
   const authGuardAt = body.indexOf('if (playing() || accountInteractionVisible()) return null;');
   assert.ok(allowedAt >= 0 && authGuardAt > allowedAt);
   assert.match(body, /login\|signin\|sign-in\|auth\|account\|settings/);
@@ -60,29 +58,45 @@ test('native Stationhead click locator allows explicit onboarding actions throug
   );
 });
 
-test('native Stationhead click locator resolves split Connect music modal actions', () => {
+test('native Stationhead click locator resolves text targets independent of DOM semantics', () => {
   const body = section(
     locator,
     'inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed()',
     '}  // namespace hp',
   );
-  assert.ok(body.includes("const connectMusicHeadingPattern = /^(?:re)?connect\\s+music$/i;"));
-  assert.ok(body.includes("const connectMusicActionPattern = /^(?:connect|reconnect)$/i;"));
-  assert.match(body, /const findConnectMusicHeading = \(\) =>/);
-  assert.match(body, /const findConnectMusicText = \(\) =>/);
-  assert.match(body, /document\.querySelectorAll\('\*'\)/);
-  assert.match(body, /\[role='dialog'\],\[aria-modal='true'\]/);
-  assert.match(body, /const connectMusicModalAction = \(\) =>/);
-  assert.match(body, /shell && shell !== document\.body && depth < 10/);
-  assert.match(
-    body,
-    /labelsOf\(action\)\.some\(label => connectMusicActionPattern\.test\(label\)\)/,
+  assert.match(body, /const candidateSelector = semanticSelector \+ ',div,span,p'/);
+  assert.match(body, /const clickableTargetFor = element =>/);
+  assert.match(body, /role === 'button'/);
+  assert.match(body, /typeof current\.onclick === 'function'/);
+  assert.match(body, /style\.cursor === 'pointer'/);
+  assert.match(body, /return rendered\(element\) \? element : null/);
+  assert.match(body, /const pointForPattern = pattern =>/);
+});
+
+test('split Connect surfaces use generic visible labels instead of a fixed heading', () => {
+  const body = section(
+    locator,
+    'inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed()',
+    '}  // namespace hp',
   );
-  assert.match(body, /const modalConnectPoint = connectMusicModalAction\(\);/);
-  const modalAt = body.indexOf('const modalConnectPoint = connectMusicModalAction();');
-  const allowedAt = body.indexOf('allowedOnboardingPattern.test(label)');
-  const authGuardAt = body.indexOf('if (playing() || accountInteractionVisible()) return null;');
-  assert.ok(modalAt >= 0 && allowedAt > modalAt && authGuardAt > allowedAt);
+  assert.match(body, /connectSurfaceLabelPattern/);
+  assert.match(body, /connectSurfaceActionPattern/);
+  assert.match(body, /const splitConnectSurfacePoint = \(\) =>/);
+  assert.match(body, /surface\.querySelectorAll\(candidateSelector\)/);
+  assert.match(body, /clickableTargetFor\(action\)/);
+  assert.doesNotMatch(body, /join\s+the\s+party/i);
+  assert.doesNotMatch(body, /headingSelector|findConnectMusicHeading/);
+});
+
+test('Start Listening and equivalent playback actions use the same generic resolver', () => {
+  const body = section(
+    locator,
+    '// Playback-start actions remain blocked',
+    'return script;',
+  );
+  assert.match(body, /document\.querySelectorAll\(candidateSelector\)/);
+  assert.match(body, /matchesLabel\(element, startPattern\)/);
+  assert.match(body, /clickableTargetFor\(element\)/);
 });
 
 test('Connect/Reconnect Music remains auto-clickable instead of becoming login-required', () => {
@@ -90,7 +104,7 @@ test('Connect/Reconnect Music remains auto-clickable instead of becoming login-r
   assert.doesNotMatch(interaction, /for \(const heading of document\.querySelectorAll\("h1,h2,h3,\[role='heading'\]"\)\)/);
   assert.match(interaction, /Connect\/Reconnect Music and Connect Spotify are recoverable onboarding/);
   assert.match(locator, /\(\?:re\)\?connect/);
-  assert.match(locator, /spotify\|music/);
+  assert.match(locator, /spotify/);
 });
 
 test('auth reuse policy owns only candidate reuse wrappers', () => {

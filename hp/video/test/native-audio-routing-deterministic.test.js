@@ -6,9 +6,9 @@ const readNative = relative => readFileSync(
   new URL(`../../native/src/${relative}`, import.meta.url), 'utf8');
 
 const appHeader = readNative('app.h');
+const app = readNative('app.cpp');
 const schedule = readNative('power_saving_schedule.inc');
 const stationheadAudio = readNative('sh_audio.cpp');
-const spotifyFoundation = readNative('spotify_webview_foundation.inc');
 
 function section(source, start) {
   const startAt = source.indexOf(start);
@@ -16,30 +16,33 @@ function section(source, start) {
   return source.slice(startAt);
 }
 
-test('Stationhead routing is fail-closed and SH selection is deterministic', () => {
+test('Stationhead routing is fail-closed and every service selection is deterministic', () => {
   assert.match(appHeader, /bool stationheadAudioMuted_ = true/);
 
   const route = section(
     schedule,
     'void PowerSavingController::ApplyAudioMode(AudioMode mode) noexcept',
   );
-  assert.match(
-    route,
-    /const UiAction stationheadAction = mode == AudioMode::Stationhead[\s\S]*UiAction::StationheadAudioToggle[\s\S]*UiAction::StationheadAudioMute/,
-  );
+  assert.match(route, /UiAction action = UiAction::StationheadAudioMute/);
+  assert.match(route, /case AudioMode::Stationhead:[\s\S]*UiAction::StationheadAudioToggle/);
+  assert.match(route, /case AudioMode::StationheadPeer1:[\s\S]*UiAction::StationheadPeer1Audio/);
+  assert.match(route, /case AudioMode::StationheadPeer5:[\s\S]*UiAction::StationheadPeer5Audio/);
+  assert.match(route, /case AudioMode::Muted:[\s\S]*UiAction::StationheadAudioMute/);
 
-  const normalizeMuteAt = route.indexOf(
+  const primaryCase = route.slice(
+    route.indexOf('case AudioMode::Stationhead:'),
+    route.indexOf('case AudioMode::StationheadPeer1:'),
+  );
+  const normalizeMuteAt = primaryCase.indexOf(
     'static_cast<WPARAM>(UiAction::StationheadAudioMute)',
   );
-  const selectedActionAt = route.indexOf(
-    'static_cast<WPARAM>(stationheadAction)',
-  );
+  const toggleAt = primaryCase.indexOf('action = UiAction::StationheadAudioToggle');
   assert.notEqual(normalizeMuteAt, -1);
-  assert.notEqual(selectedActionAt, -1);
-  assert.ok(
-    normalizeMuteAt < selectedActionAt,
-    'Stationhead must normalize to muted before the legacy toggle un-mutes SH',
-  );
+  assert.notEqual(toggleAt, -1);
+  assert.ok(normalizeMuteAt < toggleAt, 'primary Stationhead is normalized muted before toggle');
+
+  assert.match(app, /const auto mutePeers = \[this\]\(int selectedPeer\)/);
+  assert.match(app, /case UiAction::StationheadPeer1Audio:[\s\S]*case UiAction::StationheadPeer5Audio:[\s\S]*mutePeers\(selectedPeer\)/);
 });
 
 test('Stationhead repairs WebView2 mute drift instead of trusting cached state', () => {
@@ -51,16 +54,4 @@ test('Stationhead repairs WebView2 mute drift instead of trusting cached state',
     stationheadAudio,
     /appliedMuted_\.load\([^\n]*\) == [^\n]*return/,
   );
-});
-
-test('Spotify output selection remains a deterministic runtime-lane mute map', () => {
-  assert.match(
-    spotifyFoundation,
-    /const int runtimeLane = accountIndex >= 0[\s\S]*SpotifyRuntimeLaneForAccount/,
-  );
-  assert.match(
-    spotifyFoundation,
-    /const bool muted =\s*runtimeLane < 0 \|\| runtimeLane != gSpotifyAudioOutputSlot/,
-  );
-  assert.match(spotifyFoundation, /audio->put_IsMuted\(muted \? TRUE : FALSE\)/);
 });

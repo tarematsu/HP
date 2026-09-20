@@ -14,6 +14,11 @@ enum class UiAction {
   Restart,
   StationheadAudioToggle,
   StationheadAudioMute,
+  StationheadPeer1Audio,
+  StationheadPeer2Audio,
+  StationheadPeer3Audio,
+  StationheadPeer4Audio,
+  StationheadPeer5Audio,
 };
 
 struct AirHistorySample {

@@ -10,6 +10,13 @@ constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr uint32_t kFastTickMs = 2000;
 constexpr uint32_t kMaxAppTimerMs = 24U * 60U * 60U * 1000U;
 constexpr wchar_t kStationheadOzekiProfile[] = L"spotify-v2-6";
+constexpr std::array<const wchar_t*, 5> kStationheadPeerProfiles{
+    L"spotify-v2-1",
+    L"spotify-v2-2",
+    L"spotify-v2-3",
+    L"spotify-v2-4",
+    L"spotify-v2-5",
+};
 
 uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackMs) {
   if (deadline <= 0) return fallbackMs;
@@ -112,17 +119,27 @@ void App::StartServices() {
   }
 
   const fs::path stationheadUserData = dataDir_ / L"webview2-youtube-mv";
+  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+    auto player = std::make_unique<StationheadPlayer>(
+        window_, config_.stationhead, stationheadUserData, *logger_);
+    player->ReuseWebViewProfile(kStationheadPeerProfiles[i]);
+    stationheadPeers_[i] = std::move(player);
+    stationheadPeers_[i]->SetAudioMuted(true);
+  }
+
   auto stationheadPlayer = std::make_unique<StationheadPlayer>(
       window_, config_.stationhead, stationheadUserData, *logger_);
   stationheadPlayer->ReuseWebViewProfile(kStationheadOzekiProfile);
   stationhead_ = std::move(stationheadPlayer);
-  logger_->Info(L"Single Stationhead prepared with existing ozeki WebView2 profile");
+  stationhead_->SetAudioMuted(stationheadAudioMuted_);
+  logger_->Info(
+      L"Six Stationhead windows prepared with existing spotify-v2-1 through spotify-v2-6 WebView2 profiles");
 
   startupAt_ = UnixMillis();
 
   // Stage 1: initialize the native dashboard and YouTube/MV WebView immediately.
-  // Spotify and Stationhead use fixed offsets from app startup. No readiness
-  // confirmation is required before the next launch is issued.
+  // Every Stationhead window uses the former six media profiles and starts at a
+  // fixed 30-second offset. No readiness confirmation gates the next launch.
   renderer_->Initialize();
   rendererStarted_ = true;
   RECT client{};
@@ -131,7 +148,7 @@ void App::StartServices() {
   }
   LayoutWorkspace();
   renderer_->TickNativePanels(startupAt_);
-  logger_->Info(L"YouTube/native dashboard started; Spotify #1 at +30s, Spotify #2 at +60s, Spotify #3 at +90s, Spotify #4 at +120s, Spotify #5 at +150s, Stationhead at +180s");
+  logger_->Info(L"YouTube/native dashboard started; Stationhead #1..#6 launch at +30s intervals through +180s");
 
   // The top-level HWND is still hidden. Prime both the parent background and
   // every visible child panel before allowing DWM to expose the window. This
@@ -169,26 +186,32 @@ void App::StartDeferredServices(int64_t now) {
     logger_->Warn(L"Native dashboard/YouTube started by deferred recovery");
   }
 
-  // Stage 2: issue Spotify launch at app startup +30 seconds. Its internal
-  // scheduler starts slot 1 immediately, then slots 2-5 at +60/+90/+120/+150.
-  if (!spotifyStarted_ &&
-      now - startupAt_ >= kMediaStartupStageDelayMs) {
-    renderer_->StartSpotify();
-    spotifyStarted_ = true;
-    logger_->Info(L"Spotify #1 launch issued at +30 seconds; #2, #3, #4 and #5 follow at 30-second offsets");
+  // Former Spotify slots now run the exact Stationhead lifecycle while retaining
+  // their original WebView2 profiles, cookies and Spotify authentication state.
+  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+    if (stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
+    const int64_t launchAt =
+        kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1);
+    if (now - startupAt_ < launchAt) continue;
+    stationheadPeers_[i]->Start();
+    stationheadPeerStarted_[i] = true;
+    stationheadPeers_[i]->SetAudioMuted(true);
+    MarkStationheadPlacementDirty();
+    logger_->Info(
+        L"Stationhead peer #" + std::to_wstring(i + 1) +
+        L" launch issued at +" + std::to_wstring((i + 1) * 30) + L" seconds");
   }
 
-  // Stage 3: issue Stationhead launch at app startup +180 seconds, thirty seconds
-  // after Spotify slot 5, regardless of Spotify readiness.
+  // The preserved ozeki profile remains the sixth Stationhead window.
   if (!stationheadStarted_ && stationhead_ &&
       now - startupAt_ >= kMediaStartupStageDelayMs * 6) {
     stationhead_->Start();
     stationheadStarted_ = true;
     stationhead_->SetAudioMuted(stationheadAudioMuted_);
     MarkStationheadPlacementDirty();
-    ApplyStationheadWindowPlacement(stationhead_->Status());
-    logger_->Info(L"Stationhead launch issued at +180 seconds");
+    logger_->Info(L"Stationhead #6 launch issued at +180 seconds");
   }
+  ApplyStationheadWindowPlacement();
 
   if (!cloudStarted_ && cloud_) {
     cloud_->Start();
@@ -205,11 +228,17 @@ void App::StartDeferredServices(int64_t now) {
 void App::StopServices() {
   if (window_) KillTimer(window_, kCentralTimer);
   nextAppTickAt_ = 0;
+  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+    if (stationheadPeerStarted_[i] && stationheadPeers_[i]) {
+      stationheadPeers_[i]->Stop();
+    }
+  }
   if (stationheadStarted_ && stationhead_) stationhead_->Stop();
   if (cloud_) cloud_->Stop();
   if (sensors_) sensors_->Stop();
   if (telemetryThread_.joinable()) telemetryThread_.join();
   if (updateThread_.joinable()) updateThread_.join();
+  for (auto& peer : stationheadPeers_) peer.reset();
   stationhead_.reset();
   cloud_.reset();
   sensors_.reset();
@@ -222,12 +251,19 @@ void App::Tick() {
 
   StartDeferredServices(now);
 
+  std::array<StationheadStatus, kStationheadPeerCount> peerStatuses{};
+  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+    if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
+    stationheadPeers_[i]->Tick(now);
+    peerStatuses[i] = stationheadPeers_[i]->Status();
+  }
+
   StationheadStatus stationheadStatus;
   if (stationheadStarted_ && stationhead_) {
     stationhead_->Tick(now);
     stationheadStatus = stationhead_->Status();
-    ApplyStationheadWindowPlacement(stationheadStatus);
   }
+  ApplyStationheadWindowPlacement();
 
   const int64_t telemetryIntervalMs =
       static_cast<int64_t>(std::max(1, config_.telemetryMinutes)) * 60'000;
@@ -241,17 +277,32 @@ void App::Tick() {
   }
 
   uint32_t nextTickMs = kMaxAppTimerMs;
-  if (!spotifyStarted_) {
-    nextTickMs = std::min(
-        nextTickMs,
-        NextDelayFromDeadline(
-            now, startupAt_ + kMediaStartupStageDelayMs, kMaxAppTimerMs));
+  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+    if (!stationheadPeerStarted_[i]) {
+      nextTickMs = std::min(
+          nextTickMs,
+          NextDelayFromDeadline(
+              now,
+              startupAt_ + kMediaStartupStageDelayMs * static_cast<int64_t>(i + 1),
+              kMaxAppTimerMs));
+      continue;
+    }
+    if (!stationheadPeers_[i]) continue;
+    if (StationheadNeedsForeground(peerStatuses[i]) ||
+        !peerStatuses[i].audioPlaying) {
+      nextTickMs = std::min(nextTickMs, kFastTickMs);
+    } else {
+      nextTickMs = std::min(
+          nextTickMs,
+          NextDelayFromDeadline(
+              now, stationheadPeers_[i]->NextWakeAt(), kMaxAppTimerMs));
+    }
   }
   if (!stationheadStarted_) {
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(
-            now, startupAt_ + static_cast<int>(kMediaStartupStageDelayMs * 6),
+            now, startupAt_ + static_cast<int64_t>(kMediaStartupStageDelayMs * 6),
             kMaxAppTimerMs));
   }
   if (!startupUpdateScheduled_ && cloudStarted_) {
@@ -274,7 +325,7 @@ void App::Tick() {
   if (stationheadStarted_ && stationhead_) {
     // Until Stationhead has established audio, keep the App scheduler alive at
     // the fast cadence even while the WebView stays behind the dashboard. This
-    // makes Start Listening retries independent of monitor-B/foreground wakes.
+    // makes Start Listening retries independent of monitor foreground wakes.
     if (StationheadNeedsForeground(stationheadStatus) ||
         !stationheadStatus.audioPlaying) {
       nextTickMs = std::min(nextTickMs, kFastTickMs);
@@ -318,27 +369,30 @@ void App::LayoutWorkspace() {
   renderer_->SetBounds(workspaceBounds_);
   renderer_->SetVisible(rendererStarted_);
   MarkStationheadPlacementDirty();
-  if (stationheadStarted_ && stationhead_) {
-    ApplyStationheadWindowPlacement(stationhead_->Status());
-  }
+  ApplyStationheadWindowPlacement();
   InvalidateAll();
 }
 
-void App::ApplyStationheadWindowPlacement(const StationheadStatus& status) {
-  if (!stationheadStarted_ || !stationhead_ || selectedTab_ != WorkspaceTab::Main) return;
+void App::ApplyStationheadWindowPlacement() {
+  if (selectedTab_ != WorkspaceTab::Main || !stationheadPlacementDirty_) return;
   RECT bounds = workspaceBounds_;
   if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
-
-  const bool pending = !status.audioPlaying;
-  if (!stationheadPlacementDirty_ && pending == placedPrimaryPending_ &&
-      EqualRect(&bounds, &placedBounds_)) {
-    return;
+  if (EqualRect(&bounds, &placedBounds_)) {
+    stationheadPlacementDirty_ = false;
+  } else {
+    placedBounds_ = bounds;
+    stationheadPlacementDirty_ = false;
   }
-  stationheadPlacementDirty_ = false;
-  placedPrimaryPending_ = pending;
-  placedBounds_ = bounds;
-  stationhead_->SetBounds(bounds);
-  stationhead_->RefreshVisibility();
+
+  for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+    if (!stationheadPeerStarted_[i] || !stationheadPeers_[i]) continue;
+    stationheadPeers_[i]->SetBounds(bounds);
+    stationheadPeers_[i]->RefreshVisibility();
+  }
+  if (stationheadStarted_ && stationhead_) {
+    stationhead_->SetBounds(bounds);
+    stationhead_->RefreshVisibility();
+  }
 }
 
 void App::ScheduleNextTick(uint32_t milliseconds) {
@@ -365,6 +419,15 @@ void App::InvalidateAll() {
 }
 
 void App::HandleAction(UiAction action) {
+  const auto mutePeers = [this](int selectedPeer) {
+    for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
+      if (stationheadPeers_[i]) {
+        stationheadPeers_[i]->SetAudioMuted(
+            selectedPeer < 0 || static_cast<int>(i) != selectedPeer);
+      }
+    }
+  };
+
   switch (action) {
     case UiAction::AppUpdate:
       CheckForUpdateAsync(true);
@@ -376,13 +439,27 @@ void App::HandleAction(UiAction action) {
     case UiAction::StationheadAudioToggle:
       if (stationhead_) {
         stationheadAudioMuted_ = !stationheadAudioMuted_;
+        if (!stationheadAudioMuted_) mutePeers(-1);
         stationhead_->SetAudioMuted(stationheadAudioMuted_);
       }
       break;
     case UiAction::StationheadAudioMute:
       stationheadAudioMuted_ = true;
       if (stationhead_) stationhead_->SetAudioMuted(true);
+      mutePeers(-1);
       break;
+    case UiAction::StationheadPeer1Audio:
+    case UiAction::StationheadPeer2Audio:
+    case UiAction::StationheadPeer3Audio:
+    case UiAction::StationheadPeer4Audio:
+    case UiAction::StationheadPeer5Audio: {
+      const int selectedPeer =
+          static_cast<int>(action) - static_cast<int>(UiAction::StationheadPeer1Audio);
+      stationheadAudioMuted_ = true;
+      if (stationhead_) stationhead_->SetAudioMuted(true);
+      mutePeers(selectedPeer);
+      break;
+    }
     case UiAction::None:
     default:
       break;

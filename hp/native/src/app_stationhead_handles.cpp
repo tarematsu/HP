@@ -12,16 +12,23 @@ struct TrackBoundaryRetryState {
   MonotonicProjectedDeadline deadline;
 };
 
-TrackBoundaryRetryState boundaryRetry;
+std::map<const StationheadHandleBase*, TrackBoundaryRetryState> boundaryRetries;
 
-void ClearBoundaryRetryState() noexcept {
-  boundaryRetry = {};
+TrackBoundaryRetryState& BoundaryRetryStateFor(
+    const StationheadHandleBase* owner) {
+  return boundaryRetries[owner];
 }
 
-void ArmBoundaryRetryState(int64_t nowMs) noexcept {
-  if (boundaryRetry.armed) return;
-  boundaryRetry.armed = true;
-  boundaryRetry.deadline = nowMs + kStationheadBoundaryRetryWindowMs;
+void ClearBoundaryRetryState(const StationheadHandleBase* owner) noexcept {
+  boundaryRetries.erase(owner);
+}
+
+void ArmBoundaryRetryState(
+    const StationheadHandleBase* owner, int64_t nowMs) noexcept {
+  auto& state = BoundaryRetryStateFor(owner);
+  if (state.armed) return;
+  state.armed = true;
+  state.deadline = nowMs + kStationheadBoundaryRetryWindowMs;
 }
 
 bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
@@ -50,7 +57,7 @@ StationheadHandleBase::operator bool() const noexcept {
 void StationheadHandleBase::Stop() {
   if (!player_ || stopIssued_) return;
   stopIssued_ = true;
-  ClearBoundaryRetryState();
+  ClearBoundaryRetryState(this);
   if (startIssued_) player_->Stop();
 }
 
@@ -114,7 +121,7 @@ void StationheadHandleBase::RefreshVisibility() {
 void StationheadHandleBase::Start() {
   if (!player_ || startIssued_ || stopIssued_) return;
   startIssued_ = true;
-  ClearBoundaryRetryState();
+  ClearBoundaryRetryState(this);
   SetStationheadBackgroundPreview(true);
   ApplyBounds();
   player_->Start();
@@ -132,20 +139,22 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
   SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   RaiseActiveHost();
 
-  if (!boundaryRetry.armed && !player_->AudioPlaying()) {
+  auto& retry = BoundaryRetryStateFor(this);
+  if (!retry.armed && !player_->AudioPlaying()) {
     const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
     if (active) {
-      ArmBoundaryRetryState(nowMs);
-      if (player_->Status().navigating) ClearBoundaryRetryState();
+      ArmBoundaryRetryState(this, nowMs);
+      if (player_->Status().navigating) ClearBoundaryRetryState(this);
     }
   }
-  if (!boundaryRetry.armed) return;
 
+  auto found = boundaryRetries.find(this);
+  if (found == boundaryRetries.end() || !found->second.armed) return;
   const StationheadStatus status = player_->Status();
   if (player_->AudioPlaying() || status.navigating ||
-      RequiresInteractiveStationhead(status) || nowMs >= boundaryRetry.deadline) {
+      RequiresInteractiveStationhead(status) || nowMs >= found->second.deadline) {
     player_->CancelPendingTrackBoundaryRefresh();
-    ClearBoundaryRetryState();
+    ClearBoundaryRetryState(this);
   }
 }
 
@@ -176,26 +185,26 @@ uint32_t StationheadHandleBase::ConsumeChangeFlags() {
 
 void StationheadHandleBase::AssignPlayer(
     std::unique_ptr<StationheadPlayer> player) noexcept {
+  ClearBoundaryRetryState(this);
   player_ = std::move(player);
   startIssued_ = false;
   stopIssued_ = false;
   playbackObserved_ = false;
   playbackMissingSinceAt_ = 0;
   transitionSuppressed_ = false;
-  ClearBoundaryRetryState();
   ++contentRevision_;
   ApplyAudioState();
   ApplyBounds();
 }
 
 void StationheadHandleBase::ResetPlayer() noexcept {
+  ClearBoundaryRetryState(this);
   player_.reset();
   startIssued_ = false;
   stopIssued_ = false;
   playbackObserved_ = false;
   playbackMissingSinceAt_ = 0;
   transitionSuppressed_ = false;
-  ClearBoundaryRetryState();
   ++contentRevision_;
 }
 

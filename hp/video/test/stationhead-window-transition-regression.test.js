@@ -5,6 +5,7 @@ import test from 'node:test';
 const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 const layout = source('sh_layout.cpp');
 const handles = source('app_stationhead_handles.cpp');
+const audio = source('sh_audio.cpp');
 
 function section(text, start, end) {
   const from = text.indexOf(start);
@@ -50,9 +51,19 @@ test('only interactive surfaces receive WebView2 focus', () => {
 test('account setup returns the active host', () => {
   const host = section(layout,
     'HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept',
-    'bool StationheadPlayer::NeedsInteractiveWindow() const');
+    '}  // namespace hp');
   assert.match(host, /StationheadTabKind::Auth[\s\S]*return authHostWindow_/);
   assert.match(host, /StationheadTabKind::Stationhead[\s\S]*return hostWindow_/);
+});
+
+test('interactive-window predicate remains unchanged after layout refactor', () => {
+  const predicate = section(audio,
+    'bool StationheadPlayer::NeedsInteractiveWindow() const',
+    '}  // namespace hp');
+  assert.match(predicate,
+    /StationheadTabKind::Stationhead && loginRequired_/);
+  assert.match(predicate, /StationheadTabKind::Auth/);
+  assert.match(predicate, /spotifyAuthorization_/);
 });
 
 test('unchanged bounds still repair z-order and size', () => {

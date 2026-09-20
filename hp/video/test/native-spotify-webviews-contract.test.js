@@ -11,7 +11,7 @@ const spotifyRotation = readNative('spotify_rotation_cycle.inc');
 const app = readNative('app.cpp');
 const resourceFilter = readNative('sh_runtime_resource_filter_policy_fix.h');
 
-test('Spotify exposes exactly five logical windows with amazon first and hinata fifth', () => {
+test('legacy Spotify implementation still describes the five reusable profiles', () => {
   assert.match(spotifyHeader, /kSpotifyProfileFirstAccountNumber\s*=\s*1/);
   assert.match(spotifyHeader, /kSpotifyActiveAccountCount\s*=\s*5/);
   assert.match(
@@ -19,7 +19,7 @@ test('Spotify exposes exactly five logical windows with amazon first and hinata 
     /kSpotifyPanelNames\s*=\s*\{\s*L"amazon",\s*L"yuukiar",\s*L"ten",\s*L"nagi",\s*L"hinata"\s*\}/);
 });
 
-test('Spotify keeps all five logical windows live with fixed one-to-one lanes', () => {
+test('legacy Spotify source keeps its fixed one-to-one lane metadata without being started by App', () => {
   assert.match(spotifyHeader, /kSpotifyRuntimeLaneCount\s*=\s*kSpotifyActiveAccountCount/);
   assert.match(
     spotifyHeader,
@@ -29,16 +29,20 @@ test('Spotify keeps all five logical windows live with fixed one-to-one lanes', 
   assert.doesNotMatch(spotifyHeader, /gSpotifyRuntimeLaneAccounts/);
   assert.doesNotMatch(spotifyHeader, /gSpotifyInactiveAccountIndex/);
   assert.match(spotifyRotation, /amazon=A, yuukiar=B, ten=C, nagi=D, hinata=A/);
+  assert.doesNotMatch(app, /renderer_->StartSpotify\(\)/);
 });
 
-test('Stationhead uses the restored ozeki WebView2 profile', () => {
+test('Stationhead fleet reuses all six existing WebView2 profiles', () => {
+  assert.match(app, /kStationheadPeerProfiles\{[\s\S]*spotify-v2-1[\s\S]*spotify-v2-5/);
   assert.match(app, /kStationheadOzekiProfile\[\]\s*=\s*L"spotify-v2-6"/);
+  assert.match(app, /ReuseWebViewProfile\(kStationheadPeerProfiles\[i\]\)/);
   assert.match(app, /ReuseWebViewProfile\(kStationheadOzekiProfile\)/);
   assert.match(resourceFilter, /_wcsicmp\(profileNameRaw, L"spotify-v2-6"\)/);
   assert.doesNotMatch(app, /kStationheadAmazonProfile/);
 });
 
-test('Spotify controller startup remains staggered at 30-second account offsets', () => {
-  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs\s*=\s*30ULL \* 1000ULL/);
-  assert.match(app, /renderer_->StartSpotify\(\)/);
+test('Stationhead controller startup is staggered at thirty-second offsets', () => {
+  assert.match(app, /kMediaStartupStageDelayMs \* static_cast<int64_t>\(i \+ 1\)/);
+  assert.match(app, /kMediaStartupStageDelayMs \* 6/);
+  assert.match(app, /Stationhead #6 launch issued at \+180 seconds/);
 });

@@ -24,7 +24,7 @@ test('primary room and fallback URLs remain configured', () => {
   assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl/);
 });
 
-test('single long-lived room uses one-minute native audio health without preventive navigation', () => {
+test('long-lived Stationhead room runtime uses one-minute native audio health without preventive navigation', () => {
   assert.match(policy, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
   const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
   assert.match(wake, /audioHealthCheckStartedAt_/);
@@ -47,7 +47,10 @@ test('page-side track-boundary polling stays removed', () => {
   assert.doesNotMatch(script, /timeupdate|setInterval|MutationObserver|track-ended/);
 });
 
-test('App keeps exactly one Stationhead scheduler', () => {
+test('App schedules every Stationhead handle independently', () => {
+  assert.match(app, /stationheadPeers_\[i\]->NextWakeAt\(\)/);
   assert.match(app, /stationhead_->NextWakeAt\(\)/);
+  assert.match(app, /stationheadPeers_\[i\]->Tick\(now\)/);
+  assert.match(app, /stationhead_->Tick\(now\)/);
   assert.doesNotMatch(app, /UpdateStationheadPlaybackFallback|ApplyScheduledStationheadAudioProfile/);
 });

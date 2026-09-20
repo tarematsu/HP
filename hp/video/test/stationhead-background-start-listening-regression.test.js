@@ -8,15 +8,14 @@ const locator = readFileSync(
 );
 
 test('Stationhead can bring an offscreen Start Listening control into the compact viewport before CDP click', () => {
-  const renderedStart = locator.indexOf('const rendered = element =>');
-  const visibleStart = locator.indexOf('const visible = element =>', renderedStart);
-  const pointStart = locator.indexOf('const pointOf = element =>', visibleStart);
+  const renderedStart = locator.indexOf('const visuallyRendered = element =>');
+  const pointStart = locator.indexOf('const pointOf = element =>', renderedStart);
   const playingStart = locator.indexOf('const playing = () =>', pointStart);
 
-  assert.ok(renderedStart >= 0 && visibleStart > renderedStart);
-  assert.ok(pointStart > visibleStart && playingStart > pointStart);
+  assert.ok(renderedStart >= 0 && pointStart > renderedStart);
+  assert.ok(playingStart > pointStart);
 
-  const rendered = locator.slice(renderedStart, visibleStart);
+  const rendered = locator.slice(renderedStart, pointStart);
   const pointOf = locator.slice(pointStart, playingStart);
 
   assert.doesNotMatch(
@@ -35,10 +34,10 @@ test('Stationhead can bring an offscreen Start Listening control into the compac
 test('Stationhead keeps auth blocking viewport-scoped while Start Listening discovery is render-scoped', () => {
   assert.match(
     locator,
-    /for \(const element of document\.querySelectorAll\(credentialSelector\)\) \{\s*if \(visible\(element\)\) return true;/,
+    /for \(const element of document\.querySelectorAll\(credentialSelector\)\) \{[\s\S]*?visuallyRendered\(element\)[\s\S]*?intersectsViewport\(element\.getBoundingClientRect\(\)\)/,
   );
   assert.match(
     locator,
-    /if \(!rendered\(element\) \|\| !startPattern\.test\(labelOf\(element\)\)\) continue;/,
+    /for \(const element of document\.querySelectorAll\(candidateSelector\)\) \{\s*if \(!visuallyRendered\(element\) \|\| !matchesLabel\(element, startPattern\)\) continue;/,
   );
 });

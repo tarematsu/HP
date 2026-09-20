@@ -24,11 +24,11 @@ class PowerSavingController {
   enum class AudioMode {
     Media,
     Stationhead,
-    SpotifyPrimary,
-    SpotifySecondary,
-    SpotifyTertiary,
-    SpotifyQuaternary,
-    SpotifyQuinary,
+    StationheadPeer1,
+    StationheadPeer2,
+    StationheadPeer3,
+    StationheadPeer4,
+    StationheadPeer5,
     Muted,
   };
 
@@ -86,6 +86,7 @@ class PowerSavingController {
   bool powerSaving_ = false;
   MonitorMode monitorMode_ = MonitorMode::Native;
   bool monitorAuthForeground_ = false;
+  uint32_t monitorAuthSlots_ = 0;
   AudioMode audioMode_ = AudioMode::Media;
   bool mediaMuted_ = false;
   bool mvStartupInputPass_ = false;

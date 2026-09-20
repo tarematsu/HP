@@ -29,29 +29,35 @@ test('Stationhead build contains only active sources', () => {
     /app_stationhead_(?:state|history)|stationhead_(?:disabled_stubs|native_stats)|sh_profile_reuse_policy_(?:begin|end)/);
 });
 
-test('App owns exactly one Stationhead player and defers its start', () => {
+test('App owns six Stationhead players and defers their staggered start', () => {
   const start = section(app, 'void App::StartServices()', 'void App::StartDeferredServices(');
   const deferred = section(app, 'void App::StartDeferredServices(', 'void App::StopServices()');
+  assert.match(appHeader, /kStationheadPeerCount = 5/);
+  assert.match(appHeader, /std::array<AppStationheadHandle, kStationheadPeerCount> stationheadPeers_/);
   assert.match(start, /std::make_unique<StationheadPlayer>\(\s*window_, config_\.stationhead,/);
+  assert.match(start, /ReuseWebViewProfile\(kStationheadPeerProfiles\[i\]\)/);
   assert.match(start, /ReuseWebViewProfile\(kStationheadOzekiProfile\)/);
   assert.doesNotMatch(start, /stationhead_->Start\(\)/);
+  assert.match(deferred, /stationheadPeers_\[i\]->Start\(\)/);
   assert.match(deferred, /stationhead_->Start\(\)/);
   assert.doesNotMatch(stationheadHeader, /enum class StationheadRole/);
   assert.doesNotMatch(appHeader, /AppSecondaryStationheadHandle/);
   assert.doesNotMatch(handles, /PeerAudioHandle|StartupPrimaryHandle/);
 });
 
-test('single Stationhead keeps one handoff message and one placement path', () => {
+test('Stationhead fleet shares the handoff message and placement path', () => {
   assert.match(messages, /case WM_HP_PRIMARY_RELOAD_READY:[\s\S]*return stationhead_ \? 1 : 0/);
   const placement = section(app, 'void App::ApplyStationheadWindowPlacement(', 'void App::ScheduleNextTick(');
+  assert.match(placement, /stationheadPeers_\[i\]->SetBounds\(bounds\)/);
   assert.match(placement, /stationhead_->SetBounds\(bounds\)/);
   assert.doesNotMatch(placement, /RECT left|RECT right/);
   assert.doesNotMatch(app, /PublishRenderState/);
   assert.doesNotMatch(appHeader, /renderState_|renderStateDirty_|PublishRenderState/);
 });
 
-test('Stationhead reuses the shared ozeki profile with global image/font reduction', () => {
+test('all Stationhead windows reuse the shared WebView2 environment and existing profiles', () => {
   assert.match(sharedEnvironment, /Acquire\(userDataFolder, true, true, std::move\(completion\)\)/);
+  assert.match(app, /kStationheadPeerProfiles\{[\s\S]*spotify-v2-1[\s\S]*spotify-v2-5/);
   assert.match(app, /kStationheadOzekiProfile\[\] = L"spotify-v2-6"/);
   assert.match(stationheadHeader, /void ReuseWebViewProfile\(std::wstring profileName\)/);
 });

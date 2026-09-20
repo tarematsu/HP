@@ -33,4 +33,9 @@ void StationheadPlayer::ApplyMute() const noexcept {
   appliedMuted_.store(applied ? desiredValue : -1, std::memory_order_relaxed);
 }
 
+bool StationheadPlayer::NeedsInteractiveWindow() const {
+  return (selectedTab_ == StationheadTabKind::Stationhead && loginRequired_) ||
+         selectedTab_ == StationheadTabKind::Auth || spotifyAuthorization_;
+}
+
 }  // namespace hp
