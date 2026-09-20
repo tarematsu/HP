@@ -61,10 +61,10 @@ inline std::wstring_view StationheadRuntimeLifecycleFragment() noexcept {
   const probeMediaProgress = () => {
     progressTimer = 0;
     if (!pageActive) return;
-    // The same four-second probe also keeps recoverable Connect/Reconnect
-    // onboarding live while audio continues. This avoids a separate high-rate
-    // DOM poll and prevents an audio/session latch from making an allowlisted
-    // trusted-click target unreachable.
+    // Reuse the same four-second probe to retry recoverable Connect/Reconnect
+    // discovery after playback has been established and then lost. The
+    // onboarding owner enforces that state gate, so this adds no recovery
+    // clicks during healthy playback and requires no separate high-rate poller.
     publishRecoverableOnboarding();
     const media = Array.from(document.querySelectorAll('audio,video')).find(
       element => element instanceof HTMLMediaElement && !element.paused &&
