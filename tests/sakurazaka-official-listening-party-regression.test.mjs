@@ -4,8 +4,10 @@ import { readFileSync } from 'node:fs';
 
 import {
   appendSakurazakaSummaryPlaceholders,
+  SAKURAZAKA_EVENT_SQL,
   SAKURAZAKA_MINUTE_SERIES_SQL,
   trimSakurazakaSeries,
+  validateSakurazakaHistoricalSeries,
 } from '../site/functions/api/sakurazaka46jp.js';
 
 const ROCK_IN_EVENT = '2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』';
@@ -17,6 +19,44 @@ test('official listening party series includes sparse host overrides without dup
   assert.doesNotMatch(SAKURAZAKA_MINUTE_SERIES_SQL, /\bf\.host_id\b/);
   assert.match(SAKURAZAKA_MINUTE_SERIES_SQL, /SELECT f\.id AS fact_id[\s\S]*?UNION[\s\S]*?SELECT f\.id AS fact_id/);
   assert.doesNotMatch(SAKURAZAKA_MINUTE_SERIES_SQL, /UNION ALL/);
+});
+
+test('official event query includes aggregate listener evidence for series validation', () => {
+  assert.match(SAKURAZAKA_EVENT_SQL, /listener_avg/);
+  assert.match(SAKURAZAKA_EVENT_SQL, /listener_max/);
+});
+
+test('grossly inconsistent historical minute series are removed instead of graphed', () => {
+  const [invalid] = validateSakurazakaHistoricalSeries([{
+    event_name: '2024.11.22 event',
+    started_at: 1732273200000,
+    expectedListenerAverage: 542,
+    expectedListenerMaximum: 652,
+    samples: [
+      { elapsed: 0, listener: 110, sourceSamples: 1 },
+      { elapsed: 1, listener: 85, sourceSamples: 1 },
+      { elapsed: 2, listener: 70, sourceSamples: 1 },
+    ],
+    source: 'historical_import',
+  }]);
+  assert.deepEqual(invalid.samples, []);
+  assert.equal(invalid.source, 'historical_summary_only');
+  assert.equal(invalid.sourceMismatch, true);
+
+  const [valid] = validateSakurazakaHistoricalSeries([{
+    event_name: 'valid event',
+    started_at: 1,
+    expectedListenerAverage: 800,
+    expectedListenerMaximum: 900,
+    samples: [
+      { elapsed: 0, listener: 760, sourceSamples: 1 },
+      { elapsed: 1, listener: 820, sourceSamples: 1 },
+      { elapsed: 2, listener: 895, sourceSamples: 1 },
+    ],
+    source: 'historical_import',
+  }]);
+  assert.equal(valid.samples.length, 3);
+  assert.equal(valid.source, 'historical_import');
 });
 
 test('pending ROCK IN listening party stays visible without samples and keeps its label when samples arrive', () => {
@@ -34,6 +74,7 @@ test('pending ROCK IN listening party stays visible without samples and keeps it
     started_at: ROCK_IN_START,
     points: [],
     source: 'historical_import',
+    source_mismatch: false,
   }]);
 
   const live = {
@@ -56,8 +97,10 @@ test('Pages labels official Stationhead events as official listening parties', (
   assert.match(source, /button\.textContent = '公式リスパ'/);
   assert.match(source, /tableTitle\.textContent = '公式リスパ一覧'/);
   assert.match(source, /公式リスパ 同接推移/);
-  assert.match(source, /CACHE_REVISION = '7'/);
+  assert.match(source, /CACHE_REVISION = '8'/);
   assert.match(source, /sakurazaka46jp:v1:r\$\{CACHE_REVISION\}:/);
+  assert.match(source, /DATE_PREFIX/);
+  assert.match(source, /集計値のみ/);
   assert.match(source, /データ未取得/);
 });
 
