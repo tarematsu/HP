@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const timingHeader = readFileSync(
+  new URL('../../native/src/monotonic_time.h', import.meta.url),
+  'utf8',
+);
 const playerHeader = readFileSync(
   new URL('../../native/src/sh.h', import.meta.url),
   'utf8',
@@ -53,9 +57,10 @@ test('normal Tick gate binds to the StartupAware wake overload', () => {
   );
   assert.match(tick, /if \(nowMs < nextTickAt_/);
   assert.match(
-    playerHeader,
+    timingHeader,
     /class StartupAwareWakeDeadline[\s\S]*MonotonicProjectedDeadline value_;/,
   );
+  assert.match(playerHeader, /StartupAwareWakeDeadline nextTickAt_/);
   assert.match(
     clockPolicy,
     /operator<\(\s*int64_t, const StartupAwareWakeDeadline& deadline\)/,
@@ -64,9 +69,9 @@ test('normal Tick gate binds to the StartupAware wake overload', () => {
 
 test('startup watchdogs still bypass the ordinary wake gate', () => {
   const wake = section(
-    playerHeader,
+    timingHeader,
     'class StartupAwareWakeDeadline',
-    'struct StationheadDailyPlayPoint',
+    '}  // namespace hp',
   );
   assert.match(wake, /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/);
   assert.match(
