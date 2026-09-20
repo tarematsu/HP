@@ -52,7 +52,6 @@ test('dashboard deltas are green and refresh label is not ellipsized', () => {
 
 test('history summary keeps total sample count and hides listener-valid sample count', () => {
   assert.match(tableCleanup, /\['記録数', \['取得記録数', 'その期間に保存された全サンプル数'\]\]/);
-  assert.match(tableCleanup, /'有効記録数'/);
-  assert.match(tableCleanup, /'同接有効数'/);
+  assert.match(tableCleanup, /SUMMARY_REMOVED_LABELS[\s\S]*'有効記録数'[\s\S]*'同接有効数'/);
   assert.doesNotMatch(tableCleanup, /\['有効記録数', \['同接有効数'/);
 });
