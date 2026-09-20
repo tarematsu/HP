@@ -10,7 +10,7 @@
   const CACHE_MS = 15 * 60_000;
   const MAX_CACHE_POINTS = 30_000;
   const MAX_DRAW_POINTS = 2_400;
-  const SERIES_VERSION = '6';
+  const CACHE_REVISION = '6';
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const eventDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
@@ -198,7 +198,7 @@
   }
 
   function cacheKey() {
-    return `sakurazaka46jp:v${SERIES_VERSION}:${fromInput.value}:${toInput.value}`;
+    return `sakurazaka46jp:v1:r${CACHE_REVISION}:${fromInput.value}:${toInput.value}`;
   }
 
   function readCache() {
@@ -237,7 +237,7 @@
       if (!data) {
         controller?.abort();
         controller = new AbortController();
-        const params = new URLSearchParams({ from: fromInput.value, to: toInput.value, v: SERIES_VERSION });
+        const params = new URLSearchParams({ from: fromInput.value, to: toInput.value, v: CACHE_REVISION });
         const response = await fetch(`/api/sakurazaka46jp?${params}`, {
           signal: controller.signal,
           headers: { accept: 'application/json' },
