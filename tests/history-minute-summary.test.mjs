@@ -62,6 +62,9 @@ test('current daily history seeks canonical minute_at and stays on the latest li
   const insertContext = db.prepare('INSERT INTO sh_minute_fact_context_v2 VALUES(?,?)');
   const start = Date.parse('2026-07-20T00:00:00Z');
   db.prepare('INSERT INTO sh_hosts VALUES(?,?)').run(1, 'buddies');
+  // Member start must be the previous UTC day's final recorded value.
+  db.prepare('INSERT INTO sh_total_member_daily VALUES(?,?,?,?,?)')
+    .run(1, start - 86_400_000, 0, start - 60_000, 790);
   insertFact.run(1, 1, start, start, 1, 10, 800, 100, null);
   insertFact.run(2, 1, start + 60_000, start + 60_000, 1, null, 801, 110, null);
   insertFact.run(3, 1, start + 120_000, start + 120_000, 1, 30, 802, 130, null);
@@ -81,13 +84,14 @@ test('current daily history seeks canonical minute_at and stays on the latest li
   assert.equal(row.listener_avg, 20);
   assert.equal(row.stream_start, 100);
   assert.equal(row.stream_end, 130);
-  assert.equal(row.member_start, 800);
+  assert.equal(row.member_start, 790);
   assert.equal(row.member_end, 802);
   assert.equal(row.primary_host, 'buddies');
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.minute_at AS observed_at/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /INDEXED BY idx_sh_minute_facts_live_minute/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /FROM sh_total_member_daily INDEXED BY idx_sh_total_member_daily_latest/);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /day_at=\?1-86400000/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /WHERE f\.source_code=1/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.minute_at>=\?1 AND f\.minute_at<\?2/);
