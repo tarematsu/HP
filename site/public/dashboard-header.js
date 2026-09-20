@@ -122,7 +122,7 @@ function renderUpdatedLabel() {
   if (parsed != null) acquisitionUpdatedAt = parsed;
   const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_TIME.format(new Date(acquisitionUpdatedAt));
   const historyText = historyMaterializedAt == null ? '—' : JST_TIME.format(new Date(historyMaterializedAt));
-  const next = `${acquisitionText}　${historyText}`;
+  const next = `最終取得 ${acquisitionText}　履歴更新 ${historyText}`;
   if (next === updated.textContent) return;
   renderingUpdatedLabel = true;
   updated.textContent = next;
