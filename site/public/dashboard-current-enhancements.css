@@ -1,0 +1,79 @@
+/* Dashboard current-view refinements. Loaded last so mobile layout is deterministic. */
+#updated {
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  line-height: 1.35;
+}
+
+.metrics .delta,
+.metrics .online-24h {
+  color: #168b73 !important;
+}
+
+.online-24h {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  margin-top: 3px;
+  font-size: .58rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.online-24h span {
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .top-card.dashboard-header {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .dashboard-header .channel,
+  .dashboard-header .channel-copy,
+  #modeTabs.mode-tabs.dashboard-tabs {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  #modeTabs.mode-tabs.dashboard-tabs {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    grid-template-rows: repeat(2, minmax(32px, auto)) !important;
+    grid-auto-flow: row !important;
+    gap: 0 !important;
+  }
+
+  #modeTabs.mode-tabs.dashboard-tabs > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 32px !important;
+    padding: 4px 2px !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: clip !important;
+    font-size: 10px !important;
+    letter-spacing: -.035em !important;
+  }
+
+  .online-24h,
+  .metrics .delta {
+    font-size: 9px !important;
+  }
+}
+
+@media (max-width: 360px) {
+  #modeTabs.mode-tabs.dashboard-tabs > button {
+    font-size: 9px !important;
+    padding-inline: 1px !important;
+  }
+
+  .metric,
+  .metric.featured {
+    padding-inline: 5px !important;
+  }
+}

@@ -1,4 +1,4 @@
-const stylesheetHref = '/dashboard-fixes.css?v=20260919.3';
+const stylesheetHref = '/dashboard-fixes.css?v=20260921.4';
 if (!document.querySelector(`link[href="${stylesheetHref}"]`)) {
   const stylesheet = document.createElement('link');
   stylesheet.rel = 'stylesheet';
@@ -22,12 +22,20 @@ if (!document.querySelector(`link[href="${screenshotCleanupHref}"]`)) {
   document.head.append(screenshotCleanup);
 }
 
-const periodDisplayFixesHref = '/period-display-fixes.css?v=20260921.1';
+const periodDisplayFixesHref = '/period-display-fixes.css?v=20260921.4';
 if (!document.querySelector(`link[href="${periodDisplayFixesHref}"]`)) {
   const periodDisplayFixes = document.createElement('link');
   periodDisplayFixes.rel = 'stylesheet';
   periodDisplayFixes.href = periodDisplayFixesHref;
   document.head.append(periodDisplayFixes);
+}
+
+const currentEnhancementsHref = '/dashboard-current-enhancements.css?v=20260921.4';
+if (!document.querySelector(`link[href="${currentEnhancementsHref}"]`)) {
+  const currentEnhancements = document.createElement('link');
+  currentEnhancements.rel = 'stylesheet';
+  currentEnhancements.href = currentEnhancementsHref;
+  document.head.append(currentEnhancements);
 }
 
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
@@ -81,8 +89,11 @@ if (channelName) {
   });
 }
 
-const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
+const JST_DATE_TIME = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
@@ -112,9 +123,9 @@ function renderUpdatedLabel() {
   if (!updated || renderingUpdatedLabel) return;
   const parsed = acquisitionTimestamp(updated.textContent);
   if (parsed != null) acquisitionUpdatedAt = parsed;
-  const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_TIME.format(new Date(acquisitionUpdatedAt));
-  const historyText = historyMaterializedAt == null ? '—' : JST_TIME.format(new Date(historyMaterializedAt));
-  const next = `最終取得 ${acquisitionText} 履歴更新 ${historyText}`;
+  const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_DATE_TIME.format(new Date(acquisitionUpdatedAt));
+  const historyText = historyMaterializedAt == null ? '—' : JST_DATE_TIME.format(new Date(historyMaterializedAt));
+  const next = `最終取得 ${acquisitionText}　履歴更新 ${historyText} JST`;
   if (next === updated.textContent) return;
   renderingUpdatedLabel = true;
   updated.textContent = next;
