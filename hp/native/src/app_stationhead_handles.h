@@ -26,6 +26,9 @@ class StationheadHandleBase {
   void Stop();
   void SetAudioMuted(bool muted) noexcept;
   void SetBounds(const RECT& bounds);
+  void SetForegroundAllowed(bool allowed) {
+    if (player_) player_->SetForegroundAllowed(allowed);
+  }
   StationheadStatus Status() const;
   int64_t NextWakeAt() const noexcept;
   void RefreshVisibility();
