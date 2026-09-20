@@ -8,21 +8,20 @@ const source = name => readFileSync(
 const onboarding = source('sh_runtime_onboarding_script.h');
 const locator = source('sh_start_button_locator_policy.h');
 
-test('Join the party dialog exposes CONNECT SPOTIFY even when it is not a semantic button', () => {
-  assert.match(onboarding, /joinPartyHeadingPattern/);
-  assert.match(onboarding, /connectSpotifyTextPattern/);
-  assert.match(onboarding, /button,\[role='button'\],a,div,span,p/);
-  assert.match(onboarding, /joinPartyConnectSpotifyVisible\(\)/);
-  assert.match(onboarding, /if \(joinPartyConnectSpotifyVisible\(\)\) return true/);
+test('CONNECT SPOTIFY is detected without relying on a dialog heading or button tag', () => {
+  assert.match(onboarding, /recoverableOnboardingPattern/);
+  assert.match(onboarding, /onboardingCandidateSelector/);
+  assert.match(onboarding, /div,span,p/);
+  assert.match(onboarding, /onboardingMatches\(element, recoverableOnboardingPattern\)/);
+  assert.doesNotMatch(onboarding, /join\s+the\s+party/i);
 });
 
-test('native trusted locator clicks the nearest clickable ancestor of CONNECT SPOTIFY', () => {
-  assert.match(locator, /joinPartyHeadingPattern/);
-  assert.match(locator, /connectSpotifyTextPattern/);
+test('native trusted locator resolves visible text to the nearest clickable ancestor', () => {
+  assert.match(locator, /allowedOnboardingPattern/);
+  assert.match(locator, /const candidateSelector = semanticSelector \+ ',div,span,p'/);
   assert.match(locator, /const clickableTargetFor = element =>/);
+  assert.match(locator, /typeof current\.onclick === 'function'/);
   assert.match(locator, /style\.cursor === 'pointer'/);
-  assert.match(locator, /const joinPartyConnectSpotifyPoint = \(\) =>/);
-  assert.match(locator, /clickableTargetFor\(candidate\)/);
-  assert.match(locator, /const joinPartyPoint = joinPartyConnectSpotifyPoint\(\)/);
-  assert.match(locator, /if \(joinPartyPoint\) return joinPartyPoint/);
+  assert.match(locator, /pointForPattern\(allowedOnboardingPattern\)/);
+  assert.doesNotMatch(locator, /join\s+the\s+party/i);
 });
