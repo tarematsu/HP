@@ -23,7 +23,7 @@ test('single Stationhead resolves placement against the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background host stays full-client while playback controller stays fixed at 360x960', () => {
+test('background host stays full-client with 360x960 unless its named monitor is selected', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
@@ -35,7 +35,10 @@ test('background host stays full-client while playback controller stays fixed at
   assert.match(apply, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /authHostBounds = surfaceBounds/);
-  assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
+  assert.match(
+    apply,
+    /const RECT playbackControllerBounds = monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
+  );
   assert.match(layout, /kStationheadPlaybackViewportWidth = 360/);
   assert.match(layout, /kStationheadPlaybackViewportHeight = 960/);
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
@@ -44,7 +47,7 @@ test('background host stays full-client while playback controller stays fixed at
   assert.ok(apply.indexOf('SetWindowPos(authHostWindow') < apply.indexOf('if (authController)'));
 });
 
-test('startup and reload keep the same fixed Stationhead controller viewport', () => {
+test('startup and reload keep the same monitor-aware Stationhead controller viewport policy', () => {
   const startup = section(layout, 'void StationheadPlayer::SetStartupBounds()',
     'void StationheadPlayer::SetStartupPreviewBounds(');
   assert.match(
