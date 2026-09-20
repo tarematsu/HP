@@ -89,11 +89,8 @@ if (channelName) {
   });
 }
 
-const JST_DATE_TIME = new Intl.DateTimeFormat('ja-JP', {
+const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
   hour: '2-digit',
   minute: '2-digit',
   hour12: false,
@@ -123,8 +120,8 @@ function renderUpdatedLabel() {
   if (!updated || renderingUpdatedLabel) return;
   const parsed = acquisitionTimestamp(updated.textContent);
   if (parsed != null) acquisitionUpdatedAt = parsed;
-  const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_DATE_TIME.format(new Date(acquisitionUpdatedAt));
-  const historyText = historyMaterializedAt == null ? '—' : JST_DATE_TIME.format(new Date(historyMaterializedAt));
+  const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_TIME.format(new Date(acquisitionUpdatedAt));
+  const historyText = historyMaterializedAt == null ? '—' : JST_TIME.format(new Date(historyMaterializedAt));
   const next = `${acquisitionText}　${historyText}`;
   if (next === updated.textContent) return;
   renderingUpdatedLabel = true;
