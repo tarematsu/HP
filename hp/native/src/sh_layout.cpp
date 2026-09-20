@@ -309,10 +309,13 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int playbackHeight = RectHeight(playbackHostBounds);
   const int authWidth = RectWidth(authHostBounds);
   const int authHeight = RectHeight(authHostBounds);
-  const RECT playbackControllerBounds = StationheadPlaybackControllerBounds();
+  const RECT playbackControllerBounds = monitorForeground
+      ? RECT{0, 0, playbackWidth, playbackHeight}
+      : StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep the playback WebView viewport fixed at 360x960 in every state.
+  // Keep normal/background playback at the fixed 360x960 viewport, but expand
+  // the single Stationhead selected by the monitor button to the full host.
   // The host HWND remains full workspace size for stable z-order and is
   // visually clipped to 1x1 while backgrounded.
   if (authHostWindow && IsWindow(authHostWindow)) {
