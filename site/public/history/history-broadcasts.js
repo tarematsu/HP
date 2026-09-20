@@ -10,7 +10,7 @@
   const CACHE_MS = 15 * 60_000;
   const MAX_CACHE_POINTS = 30_000;
   const MAX_DRAW_POINTS = 2_400;
-  const CACHE_REVISION = '6';
+  const CACHE_REVISION = '7';
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const eventDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
@@ -132,7 +132,8 @@
       context.font = '14px system-ui';
       context.textAlign = 'center';
       context.fillText('表示できる公式リスパデータがありません', width / 2, height / 2);
-      legend.replaceChildren();
+      legend.innerHTML = series.map((item, index) =>
+        `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}（データ未取得）</span>`).join('');
       renderDetail(null);
       return;
     }
@@ -187,8 +188,8 @@
       context.restore();
     }
 
-    legend.innerHTML = available.map((item, index) =>
-      `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}</span>`).join('');
+    legend.innerHTML = series.map((item, index) =>
+      `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}${item.points.length ? '' : '（データ未取得）'}</span>`).join('');
     document.getElementById('chartStartDate').textContent = '開始 0分';
     document.getElementById('chartEndDate').textContent = `最長 ${elapsedLabel(maxMinute)}`;
     renderDetail(selectedMinute);
