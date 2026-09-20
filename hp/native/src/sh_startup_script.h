@@ -7,10 +7,10 @@
 
 namespace hp {
 
-// Temporary diagnostic switch: leave the Stationhead lightweight CSS policies
-// compiled and easy to restore, but do not inject them into the document-start
-// script while this is false.
-inline constexpr bool kStationheadLightweightCssEnabled = false;
+// Stationhead lightweight presentation policies are enabled again. They only
+// reduce rendering/UI work and do not modify authentication, autoplay, audio,
+// recovery or foreground arbitration behavior.
+inline constexpr bool kStationheadLightweightCssEnabled = true;
 
 // Final Stationhead document-start composition. Runtime state, recovery,
 // lifecycle and presentation policies each live in their own responsibility

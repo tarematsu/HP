@@ -4,15 +4,10 @@
 namespace hp {
 namespace {
 
-// Keep autoplay enabled and keep background/occluded media WebViews fully
-// scheduled. Stationhead recovery can temporarily foreground one sibling, but
-// that must not throttle playback timers or native auto-click work in the
-// other five windows.
+// Keep autoplay enabled. Background/occluded scheduling now follows Chromium's
+// default policy instead of overriding its throttling and backgrounding rules.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--autoplay-policy=no-user-gesture-required "
-    L"--disable-background-timer-throttling "
-    L"--disable-renderer-backgrounding "
-    L"--disable-backgrounding-occluded-windows "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "

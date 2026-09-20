@@ -29,11 +29,11 @@ test('Spotify page bootstrap leaves Spotify rendering and controls completely un
   assert.doesNotMatch(spotify, /display\s*:|visibility\s*:|pointer-events\s*:|content-visibility\s*:/);
 });
 
-test('Stationhead startup keeps lightweight CSS policies compiled but temporarily disabled', () => {
+test('Stationhead startup enables lightweight CSS policies', () => {
   assert.match(startupScript, /#include "sh_compact_runtime_script\.h"/);
   assert.match(startupScript, /#include "sh_render_reduction_policy\.h"/);
   assert.match(startupScript, /#include "sh_room_ui_reduction_policy\.h"/);
-  assert.match(startupScript, /kStationheadLightweightCssEnabled\s*=\s*false/);
+  assert.match(startupScript, /kStationheadLightweightCssEnabled\s*=\s*true/);
   assert.match(startupScript, /inline std::wstring BuildStationheadStartupScript\(/);
   assert.match(
     startupScript,
