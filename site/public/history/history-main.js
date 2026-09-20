@@ -29,5 +29,6 @@ installRemovedControlCompatibility();
 await import('/history/history-request-guard.js');
 await import('/history/history-current-overlay.js');
 await import('/history/history-page-fixes.js');
+await import('/history/history-period-chart.js?v=20260921.1');
 await import('/history/history-lite.js');
 window.dispatchEvent(new Event('history:runtime-ready'));

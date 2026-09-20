@@ -7,11 +7,21 @@
 // contribute at most 1,440 samples. Materialize that scan once and derive the
 // aggregate, edge values, and primary host from the temporary result instead of
 // re-ranking the D1 rows several times.
+//
+// Member growth is boundary-to-boundary: the start is the previous UTC day's
+// final member value, while the end is the latest value acquired in this UTC day.
 export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
   SELECT channel_id
   FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
   WHERE source_code=1
   ORDER BY minute_at DESC,id DESC
+  LIMIT 1
+), previous_daily_member AS (
+  SELECT last_total_member_count
+  FROM sh_total_member_daily INDEXED BY idx_sh_total_member_daily_latest
+  WHERE channel_id=(SELECT channel_id FROM latest_channel)
+    AND day_at=?1-86400000
+  ORDER BY last_observed_at DESC,host_key ASC
   LIMIT 1
 ), latest_daily_member AS (
   SELECT last_total_member_count
@@ -41,7 +51,6 @@ export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
     MIN(listener_count) AS listener_min,MAX(listener_count) AS listener_max,
     MIN(CASE WHEN stream_value IS NOT NULL THEN observed_at END) AS stream_start_at,
     MAX(CASE WHEN stream_value IS NOT NULL THEN observed_at END) AS stream_end_at,
-    MIN(CASE WHEN total_member_count IS NOT NULL THEN observed_at END) AS member_start_at,
     MAX(CASE WHEN total_member_count IS NOT NULL THEN observed_at END) AS member_end_at
   FROM prepared
 ), primary_host AS (
@@ -59,9 +68,7 @@ SELECT strftime('%Y-%m-%d',?1/1000,'unixepoch') AS period_key,
     WHERE observed_at=stats.stream_start_at LIMIT 1) AS stream_start,
   (SELECT stream_value FROM prepared
     WHERE observed_at=stats.stream_end_at LIMIT 1) AS stream_end,
-  COALESCE((SELECT last_total_member_count FROM latest_daily_member),
-    (SELECT total_member_count FROM prepared
-      WHERE observed_at=stats.member_start_at LIMIT 1)) AS member_start,
+  (SELECT last_total_member_count FROM previous_daily_member) AS member_start,
   COALESCE((SELECT last_total_member_count FROM latest_daily_member),
     (SELECT total_member_count FROM prepared
       WHERE observed_at=stats.member_end_at LIMIT 1)) AS member_end,
