@@ -1,5 +1,9 @@
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
 const REMOVED_LABELS = new Set(['最大いいね', '主なホスト']);
+const RENAMED_LABELS = new Map([
+  ['記録数', ['取得記録数', 'その期間に保存された全サンプル数']],
+  ['有効記録数', ['同接有効数', 'オンライン人数が取得できたサンプル数']],
+]);
 let cleaning = false;
 
 function activeMode() {
@@ -12,6 +16,12 @@ function cleanSummaryTable() {
   const body = document.getElementById('tbody');
   if (!head || !body) return;
   const headers = [...head.querySelectorAll('th')];
+  for (const cell of headers) {
+    const replacement = RENAMED_LABELS.get(cell.textContent.trim());
+    if (!replacement) continue;
+    cell.textContent = replacement[0];
+    cell.title = replacement[1];
+  }
   const removed = headers
     .map((cell, index) => REMOVED_LABELS.has(cell.textContent.trim()) ? index : -1)
     .filter((index) => index >= 0)
