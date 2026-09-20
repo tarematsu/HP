@@ -25,6 +25,9 @@ class StationheadPlayer {
   void ReuseWebViewProfile(std::wstring profileName) {
     if (!profileName.empty()) profileName_ = std::move(profileName);
   }
+  [[nodiscard]] bool UsesWebViewProfile(std::wstring_view profileName) const noexcept {
+    return profileName_ == profileName;
+  }
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void RequestImmediateTick() noexcept { nextTickAt_ = 0; }
   [[nodiscard]] bool AudioPlaying() const noexcept {
