@@ -23,7 +23,7 @@ test('single Stationhead resolves placement against the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background host stays full-client while playback controller stays fixed at 720x960', () => {
+test('background host stays full-client while playback controller stays fixed at 960x360', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
@@ -36,12 +36,26 @@ test('background host stays full-client while playback controller stays fixed at
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
   assert.match(apply, /authHostBounds = surfaceBounds/);
   assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
-  assert.match(layout, /kStationheadPlaybackViewportWidth = 720/);
-  assert.match(layout, /kStationheadPlaybackViewportHeight = 960/);
+  assert.match(layout, /kStationheadPlaybackViewportWidth = 960/);
+  assert.match(layout, /kStationheadPlaybackViewportHeight = 360/);
+  assert.match(layout, /kStationheadWindowNameHeight = 24/);
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
   assert.ok(apply.indexOf('SetWindowPos(hostWindow') < apply.indexOf('if (controller)'));
   assert.ok(apply.indexOf('SetWindowPos(authHostWindow') < apply.indexOf('if (authController)'));
+});
+
+test('Stationhead playback windows show stable account names in a native top-left strip', () => {
+  assert.match(layout, /spotify-v2-1"\) return L"tgut"/);
+  assert.match(layout, /spotify-v2-2"\) return L"yuukiar"/);
+  assert.match(layout, /spotify-v2-3"\) return L"ten"/);
+  assert.match(layout, /spotify-v2-4"\) return L"nagi"/);
+  assert.match(layout, /spotify-v2-5"\) return L"hinata"/);
+  assert.match(layout, /spotify-v2-6"\) return L"ozeki"/);
+  assert.match(layout, /StationheadHostWindowProc/);
+  assert.match(layout, /DrawTextW\(dc, title/);
+  assert.match(layout, /RECT\{0, kStationheadWindowNameHeight,[\s\S]*kStationheadWindowNameHeight \+ kStationheadPlaybackViewportHeight\}/);
+  assert.match(layout, /CreateStationheadChildHost\([\s\S]*title\.c_str\(\), bounds_, true\)/);
 });
 
 test('startup and reload keep the same fixed Stationhead controller viewport', () => {
