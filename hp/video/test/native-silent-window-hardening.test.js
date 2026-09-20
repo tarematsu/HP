@@ -15,10 +15,10 @@ const spotifyStartupAudio = source('spotify_startup_audio_recovery.inc');
 const stationheadLifecycle = source('sh_runtime_lifecycle_script.h');
 const recoveryCoordinator = source('media_recovery_coordinator.h');
 
-test('media WebViews keep Chromium background throttling defaults', () => {
-  assert.doesNotMatch(environment, /--disable-backgrounding-occluded-windows/);
-  assert.doesNotMatch(environment, /--disable-renderer-backgrounding/);
-  assert.doesNotMatch(environment, /--disable-background-timer-throttling/);
+test('media WebViews keep background playback scheduling independent', () => {
+  assert.match(environment, /--disable-backgrounding-occluded-windows/);
+  assert.match(environment, /--disable-renderer-backgrounding/);
+  assert.match(environment, /--disable-background-timer-throttling/);
 });
 
 test('Spotify has an event-independent media progression watchdog', () => {

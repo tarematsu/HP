@@ -4,11 +4,15 @@
 namespace hp {
 namespace {
 
-// Keep autoplay enabled, but leave Chromium's normal occluded-window,
-// renderer-backgrounding, and background-timer policies intact. Spotify now
-// opts into LOW memory and Windows Efficiency mode explicitly per renderer.
+// Keep autoplay enabled and keep background/occluded media WebViews fully
+// scheduled. Stationhead recovery can temporarily foreground one sibling, but
+// that must not throttle playback timers or native auto-click work in the
+// other five windows.
 constexpr wchar_t kSharedWebView2LifecycleArguments[] =
     L"--autoplay-policy=no-user-gesture-required "
+    L"--disable-background-timer-throttling "
+    L"--disable-renderer-backgrounding "
+    L"--disable-backgrounding-occluded-windows "
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "
