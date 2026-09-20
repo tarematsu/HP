@@ -9,6 +9,8 @@
 namespace hp {
 namespace {
 constexpr int kHttpTimeoutMs = 30'000;
+constexpr int kUpdateDownloadAttempts = 2;
+constexpr DWORD kUpdateRetryDelayMs = 3'000;
 constexpr uint64_t kMaximumUpdateFileBytes = 64ull * 1024ull * 1024ull;
 
 struct InternetHandle {
@@ -106,81 +108,89 @@ UpdateManifest ParseUpdateManifest(const std::string& json) {
 }
 
 std::vector<uint8_t> DownloadHttpsFile(const std::wstring& url, size_t maximumBytes, const std::wstring& bearerToken) {
-  URL_COMPONENTS parts{sizeof(parts)};
-  wchar_t host[512]{};
-  wchar_t path[4096]{};
-  wchar_t extra[2048]{};
-  parts.lpszHostName = host;
-  parts.dwHostNameLength = _countof(host);
-  parts.lpszUrlPath = path;
-  parts.dwUrlPathLength = _countof(path);
-  parts.lpszExtraInfo = extra;
-  parts.dwExtraInfoLength = _countof(extra);
-  if (!WinHttpCrackUrl(url.c_str(), 0, 0, &parts)) throw std::runtime_error("invalid update URL");
-  if (parts.nScheme != INTERNET_SCHEME_HTTPS) throw std::runtime_error("update URL must use HTTPS");
+  for (int attempt = 0; attempt < kUpdateDownloadAttempts; ++attempt) {
+    try {
+      URL_COMPONENTS parts{sizeof(parts)};
+      wchar_t host[512]{};
+      wchar_t path[4096]{};
+      wchar_t extra[2048]{};
+      parts.lpszHostName = host;
+      parts.dwHostNameLength = _countof(host);
+      parts.lpszUrlPath = path;
+      parts.dwUrlPathLength = _countof(path);
+      parts.lpszExtraInfo = extra;
+      parts.dwExtraInfoLength = _countof(extra);
+      if (!WinHttpCrackUrl(url.c_str(), 0, 0, &parts)) throw std::runtime_error("invalid update URL");
+      if (parts.nScheme != INTERNET_SCHEME_HTTPS) throw std::runtime_error("update URL must use HTTPS");
 
-  const std::wstring hostName(host, parts.dwHostNameLength);
-  std::wstring resource(path, parts.dwUrlPathLength);
-  if (parts.dwExtraInfoLength && parts.lpszExtraInfo) resource.append(extra, parts.dwExtraInfoLength);
+      const std::wstring hostName(host, parts.dwHostNameLength);
+      std::wstring resource(path, parts.dwUrlPathLength);
+      if (parts.dwExtraInfoLength && parts.lpszExtraInfo) resource.append(extra, parts.dwExtraInfoLength);
 
-  // Tablets can sit on networks where WPAD/PAC autodetection never resolves,
-  // so try automatic proxy detection first and fall back to a direct
-  // connection instead of failing the update check outright.
-  for (DWORD accessType : {WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_NO_PROXY}) {
-    InternetHandle session(WinHttpOpen(L"HomePanel-VerifiedUpdate/3.0", accessType,
-                                       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
-    if (!session.value) {
-      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error("WinHttpOpen failed");
-      continue;
-    }
-    WinHttpSetTimeouts(session.value, kHttpTimeoutMs, kHttpTimeoutMs, kHttpTimeoutMs, kHttpTimeoutMs);
+      // Tablets can sit on networks where WPAD/PAC autodetection never resolves,
+      // so try automatic proxy detection first and fall back to a direct
+      // connection instead of failing the update check outright.
+      for (DWORD accessType : {WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_NO_PROXY}) {
+        InternetHandle session(WinHttpOpen(L"HomePanel-VerifiedUpdate/3.0", accessType,
+                                           WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+        if (!session.value) {
+          if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error("WinHttpOpen failed");
+          continue;
+        }
+        WinHttpSetTimeouts(session.value, kHttpTimeoutMs, kHttpTimeoutMs, kHttpTimeoutMs, kHttpTimeoutMs);
 
-    InternetHandle connection(WinHttpConnect(session.value, hostName.c_str(), parts.nPort, 0));
-    if (!connection.value) {
-      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error("WinHttpConnect failed");
-      continue;
-    }
-    InternetHandle request(WinHttpOpenRequest(connection.value, L"GET", resource.c_str(), nullptr,
-                                              WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                              WINHTTP_FLAG_SECURE));
-    if (!request.value) {
-      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error("WinHttpOpenRequest failed");
-      continue;
-    }
-    std::wstring headers;
-    if (!bearerToken.empty()) headers = L"Authorization: Bearer " + bearerToken + L"\r\n";
-    if (!WinHttpSendRequest(request.value,
-                            headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
-                            headers.empty() ? 0 : static_cast<DWORD>(headers.size()),
-                            nullptr, 0, 0, 0) ||
-        !WinHttpReceiveResponse(request.value, nullptr)) {
-      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error("WinHTTP update download failed");
-      continue;
-    }
+        InternetHandle connection(WinHttpConnect(session.value, hostName.c_str(), parts.nPort, 0));
+        if (!connection.value) {
+          if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error("WinHttpConnect failed");
+          continue;
+        }
+        InternetHandle request(WinHttpOpenRequest(connection.value, L"GET", resource.c_str(), nullptr,
+                                                  WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+                                                  WINHTTP_FLAG_SECURE));
+        if (!request.value) {
+          if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error("WinHttpOpenRequest failed");
+          continue;
+        }
+        std::wstring headers;
+        if (!bearerToken.empty()) headers = L"Authorization: Bearer " + bearerToken + L"\r\n";
+        if (!WinHttpSendRequest(request.value,
+                                headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
+                                headers.empty() ? 0 : static_cast<DWORD>(headers.size()),
+                                nullptr, 0, 0, 0) ||
+            !WinHttpReceiveResponse(request.value, nullptr)) {
+          if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error("WinHTTP update download failed");
+          continue;
+        }
 
-    DWORD status = 0;
-    DWORD statusSize = sizeof(status);
-    if (!WinHttpQueryHeaders(request.value, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                             WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX)) {
-      throw std::runtime_error("update response status unavailable");
-    }
+        DWORD status = 0;
+        DWORD statusSize = sizeof(status);
+        if (!WinHttpQueryHeaders(request.value, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                                 WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX)) {
+          throw std::runtime_error("update response status unavailable");
+        }
 
-    std::vector<uint8_t> bytes;
-    while (true) {
-      DWORD available = 0;
-      if (!WinHttpQueryDataAvailable(request.value, &available)) throw std::runtime_error("update read failed");
-      if (!available) break;
-      if (bytes.size() + available > maximumBytes) throw std::runtime_error("update file exceeds size limit");
-      const size_t offset = bytes.size();
-      bytes.resize(offset + available);
-      DWORD read = 0;
-      if (!WinHttpReadData(request.value, bytes.data() + offset, available, &read)) {
-        throw std::runtime_error("update read failed");
+        std::vector<uint8_t> bytes;
+        while (true) {
+          DWORD available = 0;
+          if (!WinHttpQueryDataAvailable(request.value, &available)) throw std::runtime_error("update read failed");
+          if (!available) break;
+          if (bytes.size() + available > maximumBytes) throw std::runtime_error("update file exceeds size limit");
+          const size_t offset = bytes.size();
+          bytes.resize(offset + available);
+          DWORD read = 0;
+          if (!WinHttpReadData(request.value, bytes.data() + offset, available, &read)) {
+            throw std::runtime_error("update read failed");
+          }
+          bytes.resize(offset + read);
+        }
+        if (status != 200 || bytes.empty()) throw std::runtime_error("update file HTTP " + std::to_string(status));
+        return bytes;
       }
-      bytes.resize(offset + read);
+      throw std::runtime_error("WinHTTP update download failed");
+    } catch (...) {
+      if (attempt + 1 >= kUpdateDownloadAttempts) throw;
+      Sleep(kUpdateRetryDelayMs);
     }
-    if (status != 200 || bytes.empty()) throw std::runtime_error("update file HTTP " + std::to_string(status));
-    return bytes;
   }
   throw std::runtime_error("WinHTTP update download failed");
 }
