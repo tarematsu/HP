@@ -5,6 +5,7 @@ const BROADCAST_MODE = 'broadcasts';
 const integer = new Intl.NumberFormat('ja-JP');
 
 let rows = [];
+let rowsUrl = '';
 let renderTimer = 0;
 
 function finite(value) {
@@ -53,16 +54,25 @@ function cacheUrl() {
   return `/api/history?${new URLSearchParams({ mode: BROADCAST_MODE, from, to })}`;
 }
 
-function restoreCachedRows() {
+function restoreCachedRows(url = cacheUrl()) {
   try {
-    const cached = JSON.parse(browser?.sessionStorage?.getItem(`${CACHE_PREFIX}${cacheUrl()}`) || 'null');
-    if (Array.isArray(cached?.data?.rows)) rows = cached.data.rows;
-  } catch {}
+    const cached = JSON.parse(browser?.sessionStorage?.getItem(`${CACHE_PREFIX}${url}`) || 'null');
+    if (!Array.isArray(cached?.data?.rows)) return false;
+    rows = cached.data.rows;
+    rowsUrl = url;
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function render() {
   if (!active()) return;
-  if (!rows.length) restoreCachedRows();
+  const currentUrl = cacheUrl();
+  if (rowsUrl !== currentUrl && !restoreCachedRows(currentUrl)) {
+    rows = [];
+    rowsUrl = currentUrl;
+  }
 
   const maximums = rows
     .map((row) => finite(row?.listener_max))
@@ -94,6 +104,7 @@ async function captureHistoryResponse(input, response) {
     const data = await response.clone().json();
     if (!data?.ok || !Array.isArray(data.rows)) return;
     rows = data.rows;
+    rowsUrl = `${url.pathname}${url.search}`;
     scheduleRender();
   } catch {}
 }
