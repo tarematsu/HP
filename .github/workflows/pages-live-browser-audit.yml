@@ -9,6 +9,7 @@ on:
       - 'scripts/audit-pages-live.mjs'
       - 'scripts/audit-pages-materialized.mjs'
       - 'scripts/audit-pages-materialized-production.mjs'
+      - 'scripts/audit-stationhead-collection-test.mjs'
       - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/run-pages-read-model-rebuild.yml'
@@ -51,6 +52,16 @@ jobs:
         uses: ./.github/actions/cloudflare-context
         with:
           api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Query Sakurazaka worker telemetry
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          CLOUDFLARE_WORKERS: sh-sakurazaka46jp
+          LOOKBACK_MINUTES: '30'
+        run: >-
+          python3 .github/scripts/query-cloudflare-observability.py
+          2>&1 | tee .pages-sakurazaka-observability.log
 
       - name: Install Pages deployment dependencies
         if: github.event_name == 'pull_request'
@@ -140,6 +151,16 @@ jobs:
           --retry-delay-ms=10000
           --out=.pages-production-audit
 
+      - name: Verify Stationhead collection test page
+        if: github.event_name != 'pull_request'
+        run: >-
+          node scripts/audit-stationhead-collection-test.mjs
+          --url=https://skrzk.pages.dev
+          --attempts=25
+          --retry-delay-ms=15000
+          --expected-handle=sakuramankai
+          --out=.pages-production-audit/stationhead-collection-test.json
+
       - name: Require all production materializations
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         shell: bash
@@ -164,6 +185,7 @@ jobs:
           path: |
             .pages-preview-audit/
             .pages-production-audit/
+            .pages-sakurazaka-observability.log
             site/pages-preview-deploy.log
           include-hidden-files: true
           if-no-files-found: warn
