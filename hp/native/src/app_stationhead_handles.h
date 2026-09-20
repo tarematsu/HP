@@ -29,6 +29,9 @@ class StationheadHandleBase {
   void SetForegroundAllowed(bool allowed) {
     if (player_) player_->SetForegroundAllowed(allowed);
   }
+  [[nodiscard]] bool ForegroundRequested() const noexcept {
+    return player_ && player_->ForegroundRequested();
+  }
   StationheadStatus Status() const;
   int64_t NextWakeAt() const noexcept;
   void RefreshVisibility();
