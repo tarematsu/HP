@@ -2,9 +2,9 @@ const DAY_MS = 86_400_000;
 const CACHE_MS = 5 * 60_000;
 const cache = { dayStart: null, value: null, expiresAt: 0, pending: null };
 
-export const DAILY_SUMMARY_SQL = `SELECT period_key,stream_growth,member_growth
+export const DAILY_SUMMARY_SQL = `SELECT period_key,stream_growth,member_growth,listener_avg
   FROM sh_daily_summary
-  WHERE period_key IN (?,?)
+  WHERE period_key IN (?,?,?)
   ORDER BY period_key ASC`;
 
 function finite(value) {
@@ -23,6 +23,20 @@ export function utcDayStarts(now = Date.now()) {
     currentStart,
     yesterdayStart: currentStart - DAY_MS,
     dayBeforeYesterdayStart: currentStart - 2 * DAY_MS,
+    threeDaysAgoStart: currentStart - 3 * DAY_MS,
+  };
+}
+
+function summaryFor(byPeriod, start, end) {
+  const periodKey = dayText(start);
+  const row = byPeriod.get(periodKey);
+  return {
+    period_key: periodKey,
+    start_at: start,
+    end_at: end,
+    member_growth: finite(row?.member_growth),
+    stream_growth: finite(row?.stream_growth),
+    listener_avg: finite(row?.listener_avg),
   };
 }
 
@@ -30,28 +44,13 @@ export function dashboardDailySummaries(rows, starts) {
   const byPeriod = new Map((Array.isArray(rows) ? rows : [])
     .map((row) => [String(row?.period_key || ''), row])
     .filter(([periodKey]) => periodKey));
-  const yesterdayKey = dayText(starts.yesterdayStart);
-  const dayBeforeKey = dayText(starts.dayBeforeYesterdayStart);
-  const yesterday = byPeriod.get(yesterdayKey);
-  const dayBeforeYesterday = byPeriod.get(dayBeforeKey);
   return {
     timezone: 'UTC',
     source: 'sh_daily_summary',
     current_day_start: starts.currentStart,
-    yesterday: {
-      period_key: yesterdayKey,
-      start_at: starts.yesterdayStart,
-      end_at: starts.currentStart,
-      member_growth: finite(yesterday?.member_growth),
-      stream_growth: finite(yesterday?.stream_growth),
-    },
-    day_before_yesterday: {
-      period_key: dayBeforeKey,
-      start_at: starts.dayBeforeYesterdayStart,
-      end_at: starts.yesterdayStart,
-      member_growth: finite(dayBeforeYesterday?.member_growth),
-      stream_growth: finite(dayBeforeYesterday?.stream_growth),
-    },
+    yesterday: summaryFor(byPeriod, starts.yesterdayStart, starts.currentStart),
+    day_before_yesterday: summaryFor(byPeriod, starts.dayBeforeYesterdayStart, starts.yesterdayStart),
+    three_days_ago: summaryFor(byPeriod, starts.threeDaysAgoStart, starts.dayBeforeYesterdayStart),
   };
 }
 
@@ -66,7 +65,11 @@ async function readDashboardDailySummaries(db, starts) {
   if (!db) return { ...dashboardDailySummaries([], starts), setup_required: true };
   try {
     const result = await db.prepare(DAILY_SUMMARY_SQL)
-      .bind(dayText(starts.dayBeforeYesterdayStart), dayText(starts.yesterdayStart))
+      .bind(
+        dayText(starts.threeDaysAgoStart),
+        dayText(starts.dayBeforeYesterdayStart),
+        dayText(starts.yesterdayStart),
+      )
       .all();
     return dashboardDailySummaries(result.results || [], starts);
   } catch (error) {

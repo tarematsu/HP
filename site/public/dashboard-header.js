@@ -125,10 +125,12 @@ function renderUpdatedLabel() {
   if (parsed != null) acquisitionUpdatedAt = parsed;
   const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_DATE_TIME.format(new Date(acquisitionUpdatedAt));
   const historyText = historyMaterializedAt == null ? '—' : JST_DATE_TIME.format(new Date(historyMaterializedAt));
-  const next = `最終取得 ${acquisitionText}　履歴更新 ${historyText} JST`;
+  const next = `${acquisitionText}　${historyText}`;
   if (next === updated.textContent) return;
   renderingUpdatedLabel = true;
   updated.textContent = next;
+  updated.title = `最終取得 ${acquisitionText} JST / 履歴更新 ${historyText} JST`;
+  updated.setAttribute('aria-label', updated.title);
   renderingUpdatedLabel = false;
 }
 if (updated) {

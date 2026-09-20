@@ -5,7 +5,7 @@ const HOUR_MS = 3_600_000;
 const DEFAULT_LOOKBACK_DAYS = 90;
 const DEFAULT_CANDIDATE_LIMIT = 4;
 const DEFAULT_ENQUEUE_LIMIT = 50;
-const RECONCILE_BUILD_VERSION = 2;
+const RECONCILE_BUILD_VERSION = 3;
 
 const SOURCE_COLUMNS = `id,observed_at,channel_id,channel_alias,channel_name,station_id,
   is_launched,is_broadcasting,chat_status,listener_count,online_member_count,
@@ -103,7 +103,7 @@ async function loadExpectedMinutes(sourceDb, period) {
 }
 
 async function loadMaterializedFacts(minuteDb, period) {
-  const result = await minuteDb.prepare(`SELECT channel_id,minute_at,source_record_id,source_priority
+  const result = await minuteDb.prepare(`SELECT channel_id,minute_at,source_record_id,source_priority,listener_count
     FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time
     WHERE minute_at>=? AND minute_at<?`)
     .bind(period.start, period.end)
@@ -163,7 +163,10 @@ function classifyExpected(expected, materialized) {
       missing.push(row);
       continue;
     }
-    if (fact.source_record_id !== expectedSourceRecordId(row) || Number(fact.source_priority || 0) < 90) {
+    const listenerMismatch = integer(fact.listener_count) !== integer(row.listener_count);
+    if (fact.source_record_id !== expectedSourceRecordId(row)
+        || Number(fact.source_priority || 0) < 90
+        || listenerMismatch) {
       stale.push(row);
     }
   }

@@ -44,16 +44,22 @@ test('Sakurazaka series selects event starts in one filtered scan', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_official_broadcast_summary(
     host_handle TEXT NOT NULL,event_name TEXT NOT NULL,started_at INTEGER,
-    ended_at INTEGER,PRIMARY KEY(host_handle,event_name)
+    ended_at INTEGER,sample_count INTEGER NOT NULL DEFAULT 0,
+    listener_avg REAL,listener_max INTEGER,
+    PRIMARY KEY(host_handle,event_name)
   )`);
-  const insert = db.prepare('INSERT INTO sh_official_broadcast_summary VALUES(?,?,?,?)');
-  insert.run('sakurazaka46jp', 'event-a', 1000, 61000);
-  insert.run('sakurazaka46jp', 'event-b', 121000, 181000);
+  const insert = db.prepare(`INSERT INTO sh_official_broadcast_summary(
+    host_handle,event_name,started_at,ended_at,sample_count,listener_avg,listener_max
+  ) VALUES(?,?,?,?,?,?,?)`);
+  insert.run('sakurazaka46jp', 'event-a', 1000, 61000, 60, 520.5, 610);
+  insert.run('sakurazaka46jp', 'event-b', 121000, 181000, 60, 620.5, 710);
   const rows = db.prepare(SAKURAZAKA_EVENT_SQL).all(0, 200000);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].event_name, 'event-a');
   assert.equal(rows[0].started_at, 1000);
   assert.equal(rows[0].ended_at, 61000);
+  assert.equal(rows[0].listener_avg, 520.5);
+  assert.equal(rows[0].listener_max, 610);
 });
 
 test('Sakurazaka series cache coalesces concurrent heavy queries', async () => {

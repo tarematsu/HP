@@ -10,11 +10,12 @@
   const CACHE_MS = 15 * 60_000;
   const MAX_CACHE_POINTS = 30_000;
   const MAX_DRAW_POINTS = 2_400;
-  const CACHE_REVISION = '7';
+  const CACHE_REVISION = '8';
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const eventDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
   });
+  const DATE_PREFIX = /^\s*\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/;
   let series = [];
   let selectedMinute = null;
   let loadingKey = '';
@@ -43,10 +44,17 @@
   }
 
   function eventLabel(item) {
-    const startedAt = Number(item.started_at);
+    const name = String(item?.event_name || '公式リスパ').trim();
+    if (DATE_PREFIX.test(name)) return name;
+    const startedAt = Number(item?.started_at);
     return Number.isFinite(startedAt)
-      ? `${eventDate.format(new Date(startedAt))} ${item.event_name || '公式リスパ'}`
-      : item.event_name || '公式リスパ';
+      ? `${eventDate.format(new Date(startedAt))} ${name}`
+      : name;
+  }
+
+  function missingSuffix(item) {
+    if (item?.points?.length) return '';
+    return item?.source_mismatch ? '（集計値のみ）' : '（データ未取得）';
   }
 
   function colorFor(index, alpha = 1) {
@@ -133,7 +141,7 @@
       context.textAlign = 'center';
       context.fillText('表示できる公式リスパデータがありません', width / 2, height / 2);
       legend.innerHTML = series.map((item, index) =>
-        `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}（データ未取得）</span>`).join('');
+        `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}${missingSuffix(item)}</span>`).join('');
       renderDetail(null);
       return;
     }
@@ -189,7 +197,7 @@
     }
 
     legend.innerHTML = series.map((item, index) =>
-      `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}${item.points.length ? '' : '（データ未取得）'}</span>`).join('');
+      `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}${missingSuffix(item)}</span>`).join('');
     document.getElementById('chartStartDate').textContent = '開始 0分';
     document.getElementById('chartEndDate').textContent = `最長 ${elapsedLabel(maxMinute)}`;
     renderDetail(selectedMinute);
