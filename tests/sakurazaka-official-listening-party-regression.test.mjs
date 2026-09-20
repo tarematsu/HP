@@ -104,6 +104,17 @@ test('Pages labels official Stationhead events as official listening parties', (
   assert.match(source, /データ未取得/);
 });
 
+test('official listening party chart hides the redundant status and renders elapsed-minute ticks', () => {
+  const source = readFileSync(
+    new URL('../site/public/history/history-broadcasts.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /notice\.textContent = ''/);
+  assert.match(source, /notice\.hidden = true/);
+  assert.match(source, /const xTickCount = width < 560 \? 4 : 6/);
+  assert.match(source, /経過時間（分）/);
+});
+
 test('live screenshot audit retains the historical six-series floor', () => {
   const source = readFileSync(
     new URL('../scripts/audit-pages-live.mjs', import.meta.url),

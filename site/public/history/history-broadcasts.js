@@ -168,6 +168,20 @@
       context.fillText(number.format(Math.round(maxListener * (1 - index / 4))), area.left - 8, y + 3);
     }
 
+    const xTickCount = width < 560 ? 4 : 6;
+    for (let index = 0; index <= xTickCount; index += 1) {
+      const minute = Math.round(maxMinute * index / xTickCount);
+      const x = xFor(minute);
+      context.beginPath();
+      context.moveTo(x, area.top);
+      context.lineTo(x, area.top + area.height);
+      context.stroke();
+      context.textAlign = index === 0 ? 'left' : index === xTickCount ? 'right' : 'center';
+      context.fillText(number.format(minute), x, area.top + area.height + 16);
+    }
+    context.textAlign = 'center';
+    context.fillText('経過時間（分）', area.left + area.width / 2, height - 5);
+
     available.forEach((item, index) => {
       context.strokeStyle = colorFor(index, available.length > 12 ? 0.68 : 0.9);
       context.lineWidth = available.length > 16 ? 1.15 : 1.7;
@@ -226,8 +240,8 @@
 
   function updateNotice(data) {
     if (!data || !active()) return;
-    const base = notice.textContent.replace(/・全\d+(?:\.\d+)?(?:放送|リスパ)を開始0分で重ね表示.*$/, '').trim();
-    notice.textContent = `${base}・全${number.format(data.event_count || series.length)}リスパを開始0分で重ね表示${data.truncated ? '（上限到達）' : ''}`;
+    notice.textContent = '';
+    notice.hidden = true;
   }
 
   async function loadSeries() {
@@ -267,6 +281,7 @@
         loadedKey = '';
         loadedMeta = null;
         draw();
+        notice.hidden = false;
         const base = notice.textContent
           .replace(/・比較グラフ取得失敗:.*$/, '')
           .trim();
@@ -299,6 +314,11 @@
 
   canvas.addEventListener('click', handlePointer, true);
   canvas.addEventListener('touchstart', handlePointer, { capture: true, passive: true });
+  document.querySelectorAll('#modeTabs button').forEach((modeButton) =>
+    modeButton.addEventListener('click', () => {
+      notice.hidden = active();
+      if (active()) notice.textContent = '';
+    }));
   button.addEventListener('click', () => scheduleLoad(120));
   document.getElementById('load')?.addEventListener('click', () => {
     loadedKey = '';
@@ -313,5 +333,9 @@
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (active() && series.length) draw(); }, 260);
   }, { passive: true });
-  if (active()) scheduleLoad(0);
+  if (active()) {
+    notice.textContent = '';
+    notice.hidden = true;
+    scheduleLoad(0);
+  }
 })();
