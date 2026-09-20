@@ -10,6 +10,10 @@ const updaterEntrySource = readFileSync(
   new URL('../../native/src/updater_entry.cpp', import.meta.url),
   'utf8',
 );
+const updateClientSource = readFileSync(
+  new URL('../../native/src/update_client.cpp', import.meta.url),
+  'utf8',
+);
 const appUpdateSource = readFileSync(
   new URL('../../native/src/app_update.cpp', import.meta.url),
   'utf8',
@@ -96,6 +100,20 @@ test('only a verified runner can request HomePanel shutdown', () => {
       ensureStopped.indexOf('WaitForSingleObject('),
     'standalone updates must request graceful app shutdown immediately before installation',
   );
+});
+
+test('update download retries once before final failure recovery', () => {
+  assert.match(updateClientSource, /constexpr int kUpdateDownloadAttempts = 2;/);
+  assert.match(updateClientSource, /constexpr DWORD kUpdateRetryDelayMs = 3'000;/);
+
+  const download = section(
+    updateClientSource,
+    'std::vector<uint8_t> DownloadHttpsFile(',
+    'bool IsVersionNewer(',
+  );
+  assert.match(download, /for \(int attempt = 0; attempt < kUpdateDownloadAttempts; \+\+attempt\)/);
+  assert.match(download, /catch \(\.\.\.\)[\s\S]*attempt \+ 1 >= kUpdateDownloadAttempts[\s\S]*throw;/);
+  assert.match(download, /Sleep\(kUpdateRetryDelayMs\)/);
 });
 
 test('failure recovery does not wait on a HomePanel instance that is still healthy', () => {
