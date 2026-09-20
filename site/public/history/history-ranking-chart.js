@@ -101,6 +101,20 @@ function buildModel() {
   return { weeks, series };
 }
 
+function shortWeek(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  return match ? `${Number(match[2])}/${Number(match[3])}` : String(value || '');
+}
+
+function tickIndices(length, count) {
+  if (length <= 1) return [0];
+  const indexes = new Set();
+  for (let index = 0; index < count; index += 1) {
+    indexes.add(Math.round((length - 1) * index / Math.max(1, count - 1)));
+  }
+  return [...indexes].sort((a, b) => a - b);
+}
+
 function draw() {
   if (activeMode() !== RANKING_MODE) return;
   const model = buildModel();
@@ -112,7 +126,7 @@ function draw() {
   const prepared = prepareCanvas();
   if (!prepared) return;
   const { canvas, context, width, height } = prepared;
-  const area = { left: 46, right: 18, top: 18, bottom: 40 };
+  const area = { left: 46, right: 18, top: 18, bottom: 55 };
   area.width = Math.max(1, width - area.left - area.right);
   area.height = Math.max(1, height - area.top - area.bottom);
   const positions = model.weeks.map((_, index) => area.left
@@ -165,6 +179,22 @@ function draw() {
     });
     context.restore();
   });
+
+  context.fillStyle = cssColor('--muted', '#667287');
+  context.font = '10px system-ui';
+  context.textAlign = 'center';
+  context.textBaseline = 'top';
+  const xTickCount = Math.min(model.weeks.length, width < 520 ? 4 : 6);
+  for (const index of tickIndices(model.weeks.length, xTickCount)) {
+    const x = positions[index];
+    context.beginPath();
+    context.strokeStyle = 'rgba(31,45,68,.16)';
+    context.moveTo(x, area.top + area.height);
+    context.lineTo(x, area.top + area.height + 5);
+    context.stroke();
+    context.fillStyle = cssColor('--muted', '#667287');
+    context.fillText(shortWeek(model.weeks[index]), x, area.top + area.height + 9);
+  }
 
   const title = document.getElementById('chartTitle');
   if (title) title.textContent = '週間リーダーボード順位';
