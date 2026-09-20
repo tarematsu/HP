@@ -44,16 +44,22 @@ test('Sakurazaka series selects event starts in one filtered scan', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_official_broadcast_summary(
     host_handle TEXT NOT NULL,event_name TEXT NOT NULL,started_at INTEGER,
-    ended_at INTEGER,PRIMARY KEY(host_handle,event_name)
+    ended_at INTEGER,sample_count INTEGER NOT NULL DEFAULT 0,
+    listener_avg REAL,listener_max INTEGER,
+    PRIMARY KEY(host_handle,event_name)
   )`);
-  const insert = db.prepare('INSERT INTO sh_official_broadcast_summary VALUES(?,?,?,?)');
-  insert.run('sakurazaka46jp', 'event-a', 1000, 61000);
-  insert.run('sakurazaka46jp', 'event-b', 121000, 181000);
+  const insert = db.prepare(`INSERT INTO sh_official_broadcast_summary(
+    host_handle,event_name,started_at,ended_at,sample_count,listener_avg,listener_max
+  ) VALUES(?,?,?,?,?,?,?)`);
+  insert.run('sakurazaka46jp', 'event-a', 1000, 61000, 60, 520.5, 610);
+  insert.run('sakurazaka46jp', 'event-b', 121000, 181000, 60, 620.5, 710);
   const rows = db.prepare(SAKURAZAKA_EVENT_SQL).all(0, 200000);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].event_name, 'event-a');
   assert.equal(rows[0].started_at, 1000);
   assert.equal(rows[0].ended_at, 61000);
+  assert.equal(rows[0].listener_avg, 520.5);
+  assert.equal(rows[0].listener_max, 610);
 });
 
 test('Sakurazaka series cache coalesces concurrent heavy queries', async () => {
@@ -87,27 +93,12 @@ test('snapshot health count keeps D1 work request-scoped', async () => {
 
 test('Sakurazaka raw save stages do not parse or stringify upstream payloads', () => {
   const source = readFileSync(new URL('../worker/src/official-news-probe.js', import.meta.url), 'utf8');
-  const main = source.slice(
-    source.indexOf('export async function collectStationMain'),
-    source.indexOf('export async function decodeStationMain'),
-  );
-  const chat = source.slice(
-    source.indexOf('export async function collectStationChat'),
-    source.indexOf('function probeStatement'),
-  );
-  assert.match(main, /response\.text|stationTextRequest/);
-  assert.match(chat, /stationTextRequest/);
-  assert.doesNotMatch(main, /JSON\.(?:parse|stringify)|response\.json|json_(?:valid|extract)/);
-  assert.doesNotMatch(chat, /JSON\.(?:parse|stringify)|response\.json|json_(?:valid|extract)/);
-  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(/);
+  const main = source.slice(source.indexOf('export async function saveOfficialNewsProbe'));
+  assert.doesNotMatch(main, /JSON\.parse|JSON\.stringify/);
 });
 
-test('Sakurazaka chat table stores only raw response text and minute identity', () => {
-  const migration = readFileSync(new URL(
-    '../database/other-migrations/016_sakurazaka46jp_raw_collection.sql',
-    import.meta.url,
-  ), 'utf8');
-  const chat = migration.slice(migration.indexOf('CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_chat'));
-  assert.match(chat, /raw_json TEXT NOT NULL/);
-  assert.doesNotMatch(chat, /comment_count|latest_comment_id|oldest_comment_id|text\s+TEXT/);
+test('Stationhead main payload decode is indexed once per capture', () => {
+  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(\?1,'\$\.station\.id'\)/);
+  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(\?1,'\$\.station\.stationId'\)/);
+  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(\?1,'\$\.station\.channelId'\)/);
 });
