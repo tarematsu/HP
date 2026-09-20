@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const source = name => readFileSync(new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 const policy = source('sh_audio_loss_policy.h');
+const fallbackGate = source('stationhead_fallback_revision_gate.h');
 const handleHeader = source('app_stationhead_handles.h');
 const handles = source('app_stationhead_handles.cpp');
 const playerHeader = source('sh.h');
@@ -67,8 +68,10 @@ test('fallback recovery requires dwell and stable audio', () => {
   assert.match(audioLoss, /StationheadFallbackDwellSatisfied/);
   assert.match(audioLoss, /managedPrimaryReturnPending_/);
   assert.match(audioLoss, /kStationheadPrimaryRecoveryStabilityMs/);
-  assert.match(appHeader, /StationheadFallbackRevisionGate/);
-  assert.match(appHeader, /startedAt_\.ElapsedMilliseconds\(\) >=\s*kStationheadFallbackMinimumDwellMs/);
+  assert.match(appHeader, /#include "stationhead_fallback_revision_gate\.h"/);
+  assert.match(fallbackGate, /class StationheadFallbackRevisionGate/);
+  assert.match(fallbackGate,
+    /startedAt_\.ElapsedMilliseconds\(\) >=\s*kStationheadFallbackMinimumDwellMs/);
 });
 
 test('healthy playback observation remains active without retired renderer cache coupling', () => {
