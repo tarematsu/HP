@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { applyPreviousPeriodMemberStart } from '../functions/lib/history-summary.js';
+import {
+  applyPreviousPeriodMemberStart,
+  summaryContextStartKey,
+} from '../functions/lib/history-summary.js';
 import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../functions/lib/current-minute-summary.js';
 
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
@@ -50,6 +53,24 @@ test('member start uses the previous period end, correcting zero-growth historic
     [nov25.member_start, nov25.member_end, nov25.member_growth],
     [1024, 1037, 13],
   );
+});
+
+test('member boundary repair falls back across missing UTC days', () => {
+  const rows = [
+    { period_key: '2024-11-20', member_end: 1000, member_growth: 3 },
+    { period_key: '2024-11-22', member_start: 1012, member_end: 1012, member_growth: 0 },
+    { period_key: '2024-11-25', member_start: 1037, member_end: 1037, member_growth: 0 },
+  ];
+  const corrected = applyPreviousPeriodMemberStart(rows.slice(1), 'daily', rows);
+  assert.deepEqual(
+    [corrected[0].member_start, corrected[0].member_end, corrected[0].member_growth],
+    [1000, 1012, 12],
+  );
+  assert.deepEqual(
+    [corrected[1].member_start, corrected[1].member_end, corrected[1].member_growth],
+    [1012, 1037, 25],
+  );
+  assert.equal(summaryContextStartKey('daily', '2024-11-22'), '2024-10-08');
 });
 
 test('current UTC day member boundaries read yesterday final and today latest separately', () => {
