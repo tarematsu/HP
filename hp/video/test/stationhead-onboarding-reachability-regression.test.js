@@ -43,6 +43,22 @@ test('recoverable Stationhead onboarding clears stale login state and signals na
   assert.match(interaction, /if \(publishRecoverableOnboarding\(\)\) return;/);
 });
 
+test('recoverable onboarding is armed only after established playback is lost', () => {
+  assert.match(interaction, /let playbackEstablished = false;/);
+  assert.match(interaction, /if \(current\) playbackEstablished = true;/);
+
+  const publish = section(
+    onboarding,
+    'const publishRecoverableOnboarding = () => {',
+    ')JS";',
+  );
+  assert.match(
+    publish,
+    /!pageActive \|\| !document\.body \|\| !playbackEstablished \|\| playing\(\)/,
+  );
+  assert.match(publish, /const authenticated = accountVisible\(\);/);
+});
+
 test('recoverable onboarding does not depend on semantic button or heading markup', () => {
   assert.match(onboarding, /const onboardingCandidateSelector =/);
   assert.match(onboarding, /div,span,p/);
