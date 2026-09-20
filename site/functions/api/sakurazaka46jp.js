@@ -190,6 +190,13 @@ function similarEventNames(leftValue, rightValue) {
   return Math.min(left.length, right.length) >= 4 && (left.includes(right) || right.includes(left));
 }
 
+function startsNear(left, right) {
+  const leftStart = Number(left?.started_at);
+  const rightStart = Number(right?.started_at);
+  return Number.isFinite(leftStart) && Number.isFinite(rightStart)
+    && Math.abs(leftStart - rightStart) <= DUPLICATE_START_TOLERANCE_MS;
+}
+
 function duplicateSeries(primary, fallback) {
   const primaryStart = Number(primary?.started_at);
   const fallbackStart = Number(fallback?.started_at);
@@ -217,7 +224,14 @@ export function appendSakurazakaSummaryPlaceholders(sampleRows, historicalRows) 
   const result = [...(Array.isArray(sampleRows) ? sampleRows : [])];
   for (const summary of Array.isArray(historicalRows) ? historicalRows : []) {
     if (hasSeriesSamples(summary)) continue;
-    if (result.some((item) => duplicateSeries(item, summary))) continue;
+    const sampledIndex = result.findIndex((item) => duplicateSeries(item, summary) || startsNear(item, summary));
+    if (sampledIndex >= 0) {
+      result[sampledIndex] = {
+        ...result[sampledIndex],
+        event_name: summary.event_name || result[sampledIndex].event_name,
+      };
+      continue;
+    }
     result.push(summary);
   }
   return result;
