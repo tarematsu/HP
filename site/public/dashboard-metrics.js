@@ -1,9 +1,9 @@
 import './history/history-global-fixes.js';
 import './dashboard-header.js?v=20260921.4';
-import './dashboard-tabs.js?v=20260919.3';
-import './dashboard-fetch-cache.js?v=20260919.3';
+import './dashboard-tabs.js?v=20260921.4';
+import './dashboard-fetch-cache.js?v=20260921.4';
 import './dashboard-current-enhancements.js?v=20260921.4';
-import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260919.3';
+import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260921.4';
 
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
