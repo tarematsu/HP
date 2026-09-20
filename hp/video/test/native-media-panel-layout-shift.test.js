@@ -11,12 +11,14 @@ const grid = source('service_monitor_grid.h');
 const windows = source('renderer_panels/windows.inc');
 const renderer = source('renderer_panels.cpp');
 
-test('named Stationhead monitor promotes only its selected host to the full screen', () => {
+test('named Stationhead monitor promotes only its selected host over the YouTube media panel', () => {
   assert.match(stationhead, /gStationheadMonitorProfile\{0\}/);
   assert.match(stationhead, /StationheadMonitorForegroundForProfile/);
   assert.match(routing, /StationheadProfileNumberFromWindow\(HWND window\)/);
   assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
-  assert.match(routing, /const RECT target = context->parentClient/);
+  assert.match(routing, /const RECT monitorBounds = ComputeNativeDashboardLayout\(parentClient\)\.media;/);
+  assert.match(routing, /const RECT target = context->monitorBounds;/);
+  assert.match(routing, /const bool nativeMediaForeground = monitorMode_ != MonitorMode::Off;/);
   assert.doesNotMatch(routing, /SetSpotifyMonitorGridVisible|SetSpotifyMonitorForegroundSlot/);
 });
 

@@ -41,10 +41,12 @@ test('Stationhead playback and auth leave the WebView2 memory target unmanaged i
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
 });
 
-test('named Stationhead monitor drives only the selected profile foreground while auth promotion does not hide native media', () => {
+test('named Stationhead monitor overlays the media panel while auth promotion keeps native media alive underneath', () => {
   assert.match(routing, /SetStationheadMonitorProfile\(selectedProfile\)/);
   assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
-  assert.match(routing, /const bool nativeMediaForeground = monitorMode_ == MonitorMode::Native;/);
+  assert.match(routing, /const bool nativeMediaForeground = monitorMode_ != MonitorMode::Off;/);
+  assert.match(routing, /const RECT monitorBounds = ComputeNativeDashboardLayout\(parentClient\)\.media;/);
+  assert.match(routing, /const RECT target = context->monitorBounds;/);
   assert.doesNotMatch(routing, /nativeMediaForeground =\s*monitorMode_ == MonitorMode::Native && !monitorAuthForeground_/);
   assert.match(routing, /monitorAuthSlots_/);
   assert.match(routing, /PostMessageW\(parent_, WM_TIMER, 0, 0\)/);

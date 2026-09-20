@@ -1,5 +1,6 @@
 #include "sh.h"
 #include "stationhead_monitor_probe.h"
+#include "web_renderer.h"
 
 namespace hp {
 namespace {
@@ -118,6 +119,10 @@ RECT StationheadPlaybackControllerBounds() noexcept {
   return RECT{0, 0,
               kStationheadPlaybackViewportWidth,
               kStationheadPlaybackViewportHeight};
+}
+
+RECT StationheadMonitorPanelBounds(const RECT& workspaceBounds) noexcept {
+  return ComputeNativeDashboardLayout(workspaceBounds).media;
 }
 
 void ApplyHostVisualClip(HWND window, bool fullSize) noexcept {
@@ -300,7 +305,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
 
   const RECT surfaceBounds = StationheadBackgroundBounds(workspaceBounds);
-  const RECT playbackHostBounds = surfaceBounds;
+  RECT playbackHostBounds = surfaceBounds;
+  if (monitorForeground && playbackForeground) {
+    playbackHostBounds = StationheadMonitorPanelBounds(workspaceBounds);
+  }
   const RECT authHostBounds = surfaceBounds;
   const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
   const HWND authPlacement = showAuth ? HWND_TOP : HWND_BOTTOM;
@@ -309,15 +317,14 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int playbackHeight = RectHeight(playbackHostBounds);
   const int authWidth = RectWidth(authHostBounds);
   const int authHeight = RectHeight(authHostBounds);
-  const RECT playbackControllerBounds = monitorForeground
+  const RECT playbackControllerBounds = monitorForeground && playbackForeground
       ? RECT{0, 0, playbackWidth, playbackHeight}
       : StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep normal/background playback at the fixed 360x960 viewport, but expand
-  // the single Stationhead selected by the monitor button to the full host.
-  // The host HWND remains full workspace size for stable z-order and is
-  // visually clipped to 1x1 while backgrounded.
+  // Keep normal/background playback at the fixed 360x960 viewport. A named
+  // monitor uses the same media-panel rectangle as YouTube/TVer, while auth
+  // promotion can still use the full workspace independently.
   if (authHostWindow && IsWindow(authHostWindow)) {
     const bool geometryMatches =
         WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
@@ -477,12 +484,14 @@ void StationheadPlayer::ClearStartupPreviewBounds() {
 void StationheadPlayer::SetVisible(bool visible) {
   if (!visible) {
     const bool monitorForeground = StationheadMonitorForegroundForProfile(profileName_);
-    const RECT expectedPlayback = StationheadBackgroundBounds(bounds_);
+    const RECT expectedPlayback = monitorForeground
+        ? StationheadMonitorPanelBounds(bounds_)
+        : StationheadBackgroundBounds(bounds_);
     const HWND expectedPlacement = monitorForeground ? HWND_TOP : HWND_BOTTOM;
 
     if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
         SurfaceMatches(hostWindow_, controller_.Get(),
-                       expectedPlayback, expectedPlacement) &&
+                       expectedPlayback, expectedPlacement, !monitorForeground) &&
         BackgroundAuthSurfaceMatches(
             authHostWindow_, authController_.Get(), bounds_)) {
       return;
@@ -521,8 +530,8 @@ void StationheadPlayer::SetVisible(bool visible) {
     return;
   }
 
-  const bool foregroundGranted =
-      foregroundAllowed_ || StationheadMonitorForegroundForProfile(profileName_);
+  const bool monitorForeground = StationheadMonitorForegroundForProfile(profileName_);
+  const bool foregroundGranted = foregroundAllowed_ || monitorForeground;
   if (foregroundGranted && selectedTab_ == StationheadTabKind::Auth) {
     if (viewVisible_ && authController_ && authWebview_ &&
         ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
@@ -530,13 +539,17 @@ void StationheadPlayer::SetVisible(bool visible) {
         WindowContainsFocus(authHostWindow_)) {
       return;
     }
-  } else if (foregroundGranted && loginRequired_ && viewVisible_ &&
-             SurfaceMatches(hostWindow_, controller_.Get(),
-                            StationheadBackgroundBounds(bounds_), HWND_TOP) &&
-             BackgroundAuthSurfaceMatches(
-                 authHostWindow_, authController_.Get(), bounds_) &&
-             WindowContainsFocus(hostWindow_)) {
-    return;
+  } else if (foregroundGranted && loginRequired_ && viewVisible_) {
+    const RECT expectedPlayback = monitorForeground
+        ? StationheadMonitorPanelBounds(bounds_)
+        : StationheadBackgroundBounds(bounds_);
+    if (SurfaceMatches(hostWindow_, controller_.Get(), expectedPlayback,
+                       HWND_TOP, !monitorForeground) &&
+        BackgroundAuthSurfaceMatches(
+            authHostWindow_, authController_.Get(), bounds_) &&
+        WindowContainsFocus(hostWindow_)) {
+      return;
+    }
   }
 
   viewVisible_ = true;

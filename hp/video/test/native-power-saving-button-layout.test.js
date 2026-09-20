@@ -106,7 +106,9 @@ test('monitor button cycles YT, six named Stationhead windows, OFF, then YT', ()
   assert.match(schedule, /case MonitorMode::Off:[\s\S]*ApplyMonitorMode\(MonitorMode::Native\)/);
   assert.match(routing, /StationheadProfileNumberFromWindow\(HWND window\)/);
   assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
-  assert.match(routing, /const RECT target = context->parentClient/);
+  assert.match(routing, /const RECT monitorBounds = ComputeNativeDashboardLayout\(parentClient\)\.media;/);
+  assert.match(routing, /const RECT target = context->monitorBounds;/);
+  assert.match(routing, /const bool nativeMediaForeground = monitorMode_ != MonitorMode::Off;/);
   assert.match(routing, /SetStationheadMonitorProfile\(selectedProfile\)/);
   assert.match(schedule, /powerSaving_ = nextPowerSaving/);
   assert.match(schedule, /ApplyStationheadMonitorPlacement\(\)/);

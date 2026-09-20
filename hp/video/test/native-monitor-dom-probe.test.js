@@ -47,11 +47,13 @@ test('named Stationhead monitor selects one foreground profile while all six win
   assert.match(schedule, /if \(monitorMode_ == MonitorMode::Off \|\| powerSaving_\) return/);
 });
 
-test('monitor YT keeps the native media panel visible while Stationhead auth is promoted independently', () => {
+test('YT stays alive behind a named Stationhead media-panel overlay while auth is promoted independently', () => {
   assert.match(
     routing,
     /case kStationheadMonitorProbeResultMessage:[\s\S]*const unsigned slot = static_cast<unsigned>\(lParam\);[\s\S]*const uint32_t bit = 1u << slot;[\s\S]*const bool detected = monitorAuthSlots_ != 0;[\s\S]*monitorAuthForeground_ = detected;[\s\S]*ApplyStationheadMonitorPlacement\(\)/,
   );
-  assert.match(routing, /const bool nativeMediaForeground = monitorMode_ == MonitorMode::Native;/);
+  assert.match(routing, /const bool nativeMediaForeground = monitorMode_ != MonitorMode::Off;/);
+  assert.match(routing, /const RECT monitorBounds = ComputeNativeDashboardLayout\(parentClient\)\.media;/);
+  assert.match(routing, /const RECT target = context->monitorBounds;/);
   assert.doesNotMatch(routing, /nativeMediaForeground =\s*monitorMode_ == MonitorMode::Native && !monitorAuthForeground_/);
 });
