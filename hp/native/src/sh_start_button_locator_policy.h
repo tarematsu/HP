@@ -14,9 +14,11 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
       window.top !== window) return null;
   const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|let(?:'|’)?s\s+go|続ける|続行|次へ)$/i;
-  const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\s+with)?\s+(?:spotify|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go)$/i;
-  const connectMusicHeadingPattern = /^(?:re)?connect\s+music$/i;
-  const connectMusicActionPattern = /^(?:connect|reconnect)$/i;
+  const allowedOnboardingPattern = /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go)$/i;
+  const connectMusicHeadingPattern = /^(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:music|spotify(?:\s+account)?)$/i;
+  const connectMusicActionPattern = /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+spotify(?:\s+account)?|(?:re)?connect|spotify)$/i;
+  const joinPartyHeadingPattern = /^join\s+the\s+party[!！]?$/i;
+  const connectSpotifyTextPattern = /^(?:re)?connect\s+spotify$/i;
   const accountPattern = /\b(log\s*in|sign\s*in|login|spotify|connect|reconnect|authorize|consent|account|password|email)\b|ログイン|サインイン|認証|接続|再接続|同意|アカウント|パスワード/i;
   const credentialSelector = "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
@@ -30,15 +32,19 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     element?.getAttribute?.('data-testid'),
   ].map(normalize).filter(Boolean);
   const labelOf = element => normalize(labelsOf(element).join(' '));
-  const rendered = element => {
-    if (!(element instanceof HTMLElement) || !element.isConnected || element.disabled ||
-        element.getAttribute('aria-disabled') === 'true' ||
+  const visuallyRendered = element => {
+    if (!(element instanceof HTMLElement) || !element.isConnected ||
         element.getAttribute('aria-hidden') === 'true') return false;
     const rect = element.getBoundingClientRect();
     if (!rect || rect.width <= 2 || rect.height <= 2) return false;
     const style = getComputedStyle(element);
     return style.display !== 'none' && style.visibility !== 'hidden' &&
-      Number(style.opacity || 1) > 0 && style.pointerEvents !== 'none';
+      Number(style.opacity || 1) > 0;
+  };
+  const rendered = element => {
+    if (!visuallyRendered(element) || element.disabled ||
+        element.getAttribute('aria-disabled') === 'true') return false;
+    return getComputedStyle(element).pointerEvents !== 'none';
   };
   const intersectsViewport = rect =>
     rect && rect.right > 0 && rect.bottom > 0 &&
@@ -51,10 +57,6 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     let x = rect.left + rect.width / 2;
     let y = rect.top + rect.height / 2;
     if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) {
-      // The 480x270 background surface can leave a genuine Stationhead action
-      // below the physical viewport even though Stationhead rendered it.
-      // Scroll only the Stationhead document; the native host stays background
-      // and CDP still performs the trusted click at the fresh coordinates.
       try {
         element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
       } catch (_) {
@@ -69,6 +71,23 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     const hit = document.elementFromPoint(x, y);
     if (!hit || (hit !== element && !element.contains(hit))) return null;
     return { x, y };
+  };
+  const clickableTargetFor = element => {
+    for (let current = element, depth = 0;
+         current && current !== document.body && depth < 7;
+         current = current.parentElement, depth += 1) {
+      if (!rendered(current)) continue;
+      const tag = String(current.tagName || '').toLowerCase();
+      const role = String(current.getAttribute?.('role') || '').toLowerCase();
+      const tabindex = current.getAttribute?.('tabindex');
+      const style = getComputedStyle(current);
+      if (tag === 'button' || tag === 'a' || tag === 'input' ||
+          role === 'button' || tabindex !== null ||
+          typeof current.onclick === 'function' || style.cursor === 'pointer') {
+        return current;
+      }
+    }
+    return rendered(element) ? element : null;
   };
   const playing = () => {
     if (typeof window.__homepanelAudioPlaying === 'boolean') {
@@ -98,7 +117,7 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   const findConnectMusicHeading = () => {
     const headingSelector = "h1,h2,h3,[role='heading']";
     for (const heading of document.querySelectorAll(headingSelector)) {
-      if (rendered(heading) &&
+      if (visuallyRendered(heading) &&
           labelsOf(heading).some(label => connectMusicHeadingPattern.test(label))) {
         return heading;
       }
@@ -106,12 +125,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     return null;
   };
   const findConnectMusicText = () => {
-    // Stationhead has changed the modal title between semantic headings and
-    // plain text containers. Accept the exact label regardless of the element
-    // role, but keep the search limited to rendered elements so unrelated
-    // hidden menu text cannot trigger the click path.
     for (const element of document.querySelectorAll('*')) {
-      if (!rendered(element) ||
+      if (!visuallyRendered(element) ||
           !labelsOf(element).some(label => connectMusicHeadingPattern.test(label))) continue;
       return element;
     }
@@ -120,9 +135,6 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   const connectMusicModalAction = () => {
     const anchor = findConnectMusicHeading() || findConnectMusicText();
     if (!anchor) return null;
-
-    // Prefer a semantic dialog boundary when present. Otherwise walk upward
-    // from the exact Connect music label and search the local modal subtree.
     const dialog = anchor.closest?.("[role='dialog'],[aria-modal='true']");
     const shells = [];
     if (dialog) shells.push(dialog);
@@ -140,18 +152,46 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     }
     return null;
   };
+  const joinPartyConnectSpotifyPoint = () => {
+    const candidates = document.querySelectorAll(
+      "button,[role='button'],a,div,span,p,[tabindex],[aria-label],[data-testid]");
+    for (const candidate of candidates) {
+      if (!visuallyRendered(candidate) ||
+          !labelsOf(candidate).some(label => connectSpotifyTextPattern.test(label))) {
+        continue;
+      }
+      let matchingShell = null;
+      for (let shell = candidate.parentElement, depth = 0;
+           shell && shell !== document.body && depth < 10;
+           shell = shell.parentElement, depth += 1) {
+        if (!visuallyRendered(shell)) continue;
+        const headings = shell.querySelectorAll(
+          'h1,h2,h3,[role="heading"],div,span,p');
+        if ([...headings].some(element =>
+            visuallyRendered(element) &&
+            labelsOf(element).some(label => joinPartyHeadingPattern.test(label)))) {
+          matchingShell = shell;
+          break;
+        }
+      }
+      if (!matchingShell) continue;
+      const target = clickableTargetFor(candidate);
+      const point = pointOf(target);
+      if (point) return point;
+    }
+    return null;
+  };
   if (!document.body) return null;
 
-  // Stationhead may render "Connect music" as a heading or as a plain text
-  // node while the actual clickable control is a separate "Connect" button.
-  // Resolve that structure before the generic auth guard hides account UI.
+  // Current Stationhead UI may render CONNECT SPOTIFY as a styled div/span in
+  // a "Join the party!" dialog. Handle that exact dialog before semantic-button
+  // matching so the click does not depend on the DOM role used by Stationhead.
+  const joinPartyPoint = joinPartyConnectSpotifyPoint();
+  if (joinPartyPoint) return joinPartyPoint;
+
   const modalConnectPoint = connectMusicModalAction();
   if (modalConnectPoint) return modalConnectPoint;
 
-  // Explicitly allow the known music connection/reconnection controls through
-  // the account guard. The /i flag makes matching case-insensitive. Native code
-  // dispatches the click through CDP, so no foreground HWND or real mouse cursor
-  // is required.
   for (const element of document.querySelectorAll(selector)) {
     if (!labelsOf(element).some(label => allowedOnboardingPattern.test(label))) continue;
     const point = pointOf(element);
