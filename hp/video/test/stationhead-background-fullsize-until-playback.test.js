@@ -39,7 +39,7 @@ test('Stationhead normal background host fills the client area behind the dashbo
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);
 });
 
-test('background, startup and reload all keep the fixed 360x960 playback viewport', () => {
+test('background, startup and reload keep 360x960 unless the named monitor is selected', () => {
   const keepBehind = section(
     layout,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -68,7 +68,10 @@ test('background, startup and reload all keep the fixed 360x960 playback viewpor
   );
   assert.match(layout, /kStationheadPlaybackViewportWidth = 360/);
   assert.match(layout, /kStationheadPlaybackViewportHeight = 960/);
-  assert.match(apply, /const RECT playbackControllerBounds = StationheadPlaybackControllerBounds\(\);/);
+  assert.match(
+    apply,
+    /const RECT playbackControllerBounds = monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\);/,
+  );
   assert.doesNotMatch(apply, /compactPlayback|useCompactPlayback/);
 });
 
@@ -83,7 +86,10 @@ test('named Stationhead monitor promotes only the selected playback host', () =>
     apply,
     /playbackForeground\s*=\s*[\s\S]*showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,
   );
-  assert.match(apply, /StationheadPlaybackControllerBounds\(\)/);
+  assert.match(
+    apply,
+    /monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
+  );
 
   const placement = section(
     routing,
