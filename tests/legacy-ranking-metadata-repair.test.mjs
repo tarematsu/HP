@@ -1,9 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const repair = readFileSync(new URL('../worker/scripts/repair-legacy-ranking-metadata-actions.mjs', import.meta.url), 'utf8');
+const repairUrl = new URL('../worker/scripts/repair-legacy-ranking-metadata-actions.mjs', import.meta.url);
+const repair = readFileSync(repairUrl, 'utf8');
 const workflow = readFileSync(new URL('../.github/workflows/run-track-metadata-repair.yml', import.meta.url), 'utf8');
+
+test('legacy ranking repair script has valid Node syntax', () => {
+  const result = spawnSync(process.execPath, ['--check', fileURLToPath(repairUrl)], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+});
 
 test('legacy ranking repair scans persisted ranking rows instead of only recent likes', () => {
   assert.match(repair, /FROM sh_track_ranking_current current/);
