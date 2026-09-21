@@ -141,7 +141,8 @@ test('cloud radar always composes fetched tiles without rain-presence classifica
   assert.doesNotMatch(browserFrame, /RAIN_ANALYSIS_WIDTH|RAIN_ANALYSIS_HEIGHT/);
   assert.doesNotMatch(browserFrame, /rainCanvas|rainContext|getImageData|hasRain|rainPixels/);
   assert.doesNotMatch(browserFrame, /SUNNY_ICON_ASSET_PATH|drawNoRainPanel|sunnyIcon/);
-  assert.match(browserFrame, /for \(const tile of panel\.tiles/);
+  assert.match(browserFrame, /Promise\.all\(\(panel\.tiles as TilePayload\[\]\)\.map\(async tile =>/);
+  assert.match(browserFrame, /for \(const \{ tile, bitmap \} of loadedTiles\)/);
   assert.match(browserFrame, /if \(!bitmap\) continue;/);
   assert.match(
     browserFrame,
