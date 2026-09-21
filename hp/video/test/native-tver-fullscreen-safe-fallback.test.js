@@ -14,16 +14,23 @@ const episode = readExpandedNativeSource(
 
 test('TVer fullscreen never falls back to a blind video-corner click', () => {
   assert.match(watchdog, /const fullscreenControlPoint = media =>/);
-  assert.match(watchdog, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
+  assert.match(watchdog, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
+  assert.match(watchdog, /const documentButton = Array\.from\(document\.querySelectorAll\(selector\)\)/);
+  assert.match(watchdog, /document\.elementFromPoint\(centerX, centerY\)/);
   assert.doesNotMatch(watchdog, /const videoFullscreenPoint = media =>/);
   assert.doesNotMatch(watchdog, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
 });
 
-test('TVer watchdog owns bounded fullscreen retries', () => {
+test('TVer watchdog owns bounded control-first fullscreen retries', () => {
   assert.match(watchdog, /__homePanelTverFullscreenRecovery/);
   assert.match(watchdog, /fullscreenRecovery\.attempts/);
-  assert.match(watchdog, /attempts < 4/);
+  const control = watchdog.indexOf('const controlPoint = fullscreenControlPoint(video)');
+  const key = watchdog.indexOf('homepanel:tver-fullscreen-key');
+  assert.ok(control >= 0 && key > control);
+  assert.match(watchdog, /controlPoint && attempts < 3/);
+  assert.match(watchdog, /attempts < 7/);
   assert.match(watchdog, /Date\.now\(\) - requestedAt >= 1000/);
+  assert.match(watchdog, /__homePanelTverFullscreenPending/);
   assert.doesNotMatch(episode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
 });
 
@@ -34,7 +41,8 @@ test('TVer fullscreen verification can directly request browser fullscreen', () 
   assert.match(fullscreen, /__homePanelTverFullscreenRecovery/);
 });
 
-test('natural TVer completion remains allowed before the 15-minute safety cap', () => {
+test('natural TVer completion remains allowed before the 60-minute safety cap', () => {
+  assert.match(episode, /episodeMaxPlaybackMs = 60 \* 60 \* 1000/);
   assert.match(episode, /if \(state\.programPlaybackConfirmed && video\.ended/);
   assert.match(episode, /const completedItem = state\.programPlaybackConfirmed &&/);
   assert.match(episode, /if \(stableEnd && completedItem\)/);
