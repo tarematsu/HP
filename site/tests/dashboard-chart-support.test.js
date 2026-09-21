@@ -14,16 +14,18 @@ test('previous-day chart query reads the 5-minute dashboard rollup', () => {
   assert.match(PREVIOUS_DAY_HISTORY_SQL, /LIMIT 300/);
 });
 
-test('comment velocity fallback uses the persisted solo velocity samples', () => {
+test('comment velocity fallback aggregates persisted solo samples into five-minute buckets', () => {
   assert.match(COMMENT_VELOCITY_FALLBACK_SQL, /FROM sh_comment_velocity_samples/);
   assert.match(COMMENT_VELOCITY_FALLBACK_SQL, /source_scope='solo'/);
+  assert.match(COMMENT_VELOCITY_FALLBACK_SQL, /MAX\(comment_velocity\)/);
+  assert.match(COMMENT_VELOCITY_FALLBACK_SQL, /GROUP BY bucket_at/);
+  assert.match(COMMENT_VELOCITY_FALLBACK_SQL, /LIMIT 600/);
 });
 
-test('comment velocity fallback keeps the maximum sample in each five-minute bucket', () => {
+test('comment velocity fallback accepts pre-aggregated and raw five-minute samples', () => {
   const base = Date.parse('2026-09-21T02:45:00Z');
   const buckets = velocityFallbackByBucket([
-    { observed_at: base + 10_000, comment_velocity: 12 },
-    { observed_at: base + 70_000, comment_velocity: 37 },
+    { bucket_at: base, comment_velocity: 37 },
     { observed_at: base + 310_000, comment_velocity: 8 },
   ]);
   assert.equal(buckets.get(base), 37);
