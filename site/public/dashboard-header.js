@@ -105,8 +105,28 @@ const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
   hour12: false,
 });
 const UTC_UPDATED_PATTERN = /^最終取得\s+(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+UTC(?:.*)$/;
+const HISTORY_MATERIALIZED_AT_CACHE_KEY = 'sh.history.materialized-at.v1';
+
+function cachedHistoryMaterializedAt() {
+  try {
+    const value = Number(localStorage.getItem(HISTORY_MATERIALIZED_AT_CACHE_KEY));
+    if (!Number.isFinite(value) || value <= 0 || value > Date.now() + 5 * 60_000) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function cacheHistoryMaterializedAt(value) {
+  try {
+    localStorage.setItem(HISTORY_MATERIALIZED_AT_CACHE_KEY, String(value));
+  } catch {
+    // Storage can be unavailable in restricted browser modes.
+  }
+}
+
 let acquisitionUpdatedAt = null;
-let historyMaterializedAt = null;
+let historyMaterializedAt = cachedHistoryMaterializedAt();
 let renderingUpdatedLabel = false;
 
 function acquisitionTimestamp(value) {
@@ -139,6 +159,29 @@ function renderUpdatedLabel() {
   updated.setAttribute('aria-label', updated.title);
   renderingUpdatedLabel = false;
 }
+
+function setHistoryMaterializedAt(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp > Date.now() + 5 * 60_000) return;
+  historyMaterializedAt = timestamp;
+  cacheHistoryMaterializedAt(timestamp);
+  renderUpdatedLabel();
+}
+
+async function refreshHistoryMaterializedAt() {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  try {
+    const response = await fetch(`/api/history?mode=daily&from=${todayUtc}&to=${todayUtc}`, {
+      headers: { accept: 'application/json' },
+    });
+    if (!response.ok) return;
+    setHistoryMaterializedAt(response.headers.get('x-materialized-at'));
+    void response.body?.cancel?.();
+  } catch {
+    // Keep the last materialized timestamp visible when the metadata refresh is unavailable.
+  }
+}
+
 if (updated) {
   updated.className = 'subtle';
   if (description) description.replaceWith(updated);
@@ -149,11 +192,9 @@ if (updated) {
     characterData: true,
   });
   window.addEventListener('history:materialized-at', (event) => {
-    const value = Number(event?.detail?.updatedAt);
-    if (!Number.isFinite(value) || value <= 0) return;
-    historyMaterializedAt = value;
-    renderUpdatedLabel();
+    setHistoryMaterializedAt(event?.detail?.updatedAt);
   });
+  void refreshHistoryMaterializedAt();
 }
 description?.remove();
 
