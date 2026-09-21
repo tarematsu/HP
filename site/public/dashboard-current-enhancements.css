@@ -52,7 +52,7 @@
   display: block;
   min-width: 0;
   overflow: visible;
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .metric-goal-row b,
@@ -62,7 +62,7 @@
   color: inherit !important;
   font: inherit !important;
   letter-spacing: 0 !important;
-  white-space: normal !important;
+  white-space: nowrap !important;
 }
 
 .like-rank-item {
