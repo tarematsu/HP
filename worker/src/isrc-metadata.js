@@ -33,9 +33,25 @@ export function musicBrainzRecordingMetadata(payload, isrc, fetchedAt = Date.now
   };
 }
 
-export async function fetchIsrcMetadata(isrc, config = {}) {
-  const normalized = normalizeIsrc(isrc);
-  if (!normalized) return null;
+export function deezerTrackMetadata(payload, isrc, fetchedAt = Date.now()) {
+  if (!payload || payload.error) return null;
+  const requestedIsrc = normalizeIsrc(isrc);
+  const responseIsrc = normalizeIsrc(payload?.isrc);
+  if (!requestedIsrc || (responseIsrc && responseIsrc !== requestedIsrc)) return null;
+  const title = text(payload?.title || payload?.title_short);
+  const artist = text(payload?.artist?.name);
+  if (!title || !artist) return null;
+  return {
+    isrc: requestedIsrc,
+    title,
+    artist,
+    source: 'deezer',
+    fetched_at: fetchedAt,
+    raw_json: JSON.stringify({ track_id: payload?.id || null }),
+  };
+}
+
+async function fetchMusicBrainzMetadata(normalized, config) {
   const url = `https://musicbrainz.org/ws/2/isrc/${encodeURIComponent(normalized)}?inc=artist-credits&fmt=json`;
   const response = await fetch(url, {
     headers: {
@@ -47,6 +63,28 @@ export async function fetchIsrcMetadata(isrc, config = {}) {
   if (!response?.ok) return null;
   const payload = await response.json().catch(() => null);
   return musicBrainzRecordingMetadata(payload, normalized);
+}
+
+async function fetchDeezerMetadata(normalized, config) {
+  const url = `https://api.deezer.com/track/isrc:${encodeURIComponent(normalized)}`;
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json',
+      'user-agent': USER_AGENT,
+    },
+    signal: combinedAbortSignal(config.collectionSignal, config.requestTimeoutMs),
+  }).catch(() => null);
+  if (!response?.ok) return null;
+  const payload = await response.json().catch(() => null);
+  return deezerTrackMetadata(payload, normalized);
+}
+
+export async function fetchIsrcMetadata(isrc, config = {}) {
+  const normalized = normalizeIsrc(isrc);
+  if (!normalized) return null;
+  const musicBrainz = await fetchMusicBrainzMetadata(normalized, config);
+  if (musicBrainz) return musicBrainz;
+  return fetchDeezerMetadata(normalized, config);
 }
 
 async function applyIsrcMetadataToTracks(db, row) {
@@ -106,7 +144,7 @@ export async function enrichIsrcTracks(env, queue, config = {}, dependencies = {
       isrc,
       title: null,
       artist: null,
-      source: 'musicbrainz_not_found',
+      source: 'isrc_not_found',
       fetched_at: now,
       raw_json: null,
     };

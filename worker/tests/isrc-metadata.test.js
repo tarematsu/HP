@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  deezerTrackMetadata,
   enrichIsrcTracks,
   musicBrainzRecordingMetadata,
   normalizeIsrc,
@@ -77,6 +78,33 @@ test('MusicBrainz response becomes title and artist metadata', () => {
     fetched_at: 1234,
     raw_json: JSON.stringify({ recording_id: 'recording-1' }),
   });
+});
+
+test('Deezer response becomes title and artist metadata for the requested ISRC', () => {
+  const metadata = deezerTrackMetadata({
+    id: 987654,
+    isrc: 'JP-SR0-26-00001',
+    title: 'Fallback Song',
+    artist: { name: 'Fallback Artist' },
+  }, 'JPSR02600001', 2345);
+
+  assert.deepEqual(metadata, {
+    isrc: 'JPSR02600001',
+    title: 'Fallback Song',
+    artist: 'Fallback Artist',
+    source: 'deezer',
+    fetched_at: 2345,
+    raw_json: JSON.stringify({ track_id: 987654 }),
+  });
+});
+
+test('Deezer metadata rejects a mismatched response ISRC', () => {
+  assert.equal(deezerTrackMetadata({
+    id: 1,
+    isrc: 'USWB11200587',
+    title: 'Wrong Song',
+    artist: { name: 'Wrong Artist' },
+  }, 'JPSR02600001', 2345), null);
 });
 
 test('ISRC enrichment is disabled unless the minute worker enables it', async () => {
