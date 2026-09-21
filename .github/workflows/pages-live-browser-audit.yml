@@ -142,6 +142,17 @@ jobs:
           console.log(JSON.stringify(report));
           NODE
 
+      - name: Audit all pull request preview views
+        if: github.event_name == 'pull_request'
+        env:
+          PAGES_AUDIT_URL: ${{ steps.preview.outputs.url }}
+        run: >-
+          node scripts/audit-pages-live.mjs
+          --url="$PAGES_AUDIT_URL"
+          --attempts=2
+          --retry-delay-ms=5000
+          --out=.pages-preview-audit/full
+
       - name: Access production Pages in Chromium
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: >-
