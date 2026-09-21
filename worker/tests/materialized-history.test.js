@@ -98,7 +98,7 @@ test('Actions history renderer persists missing historical track totals in OTHER
   );
 
   assert.deepEqual(calls.find((call) => call.source === 'other-select').bindings, [
-    '2026-07-01', '2026-07-28', '2026-07-28', 800,
+    '2026-06-30', '2026-07-28', '2026-07-28', 801,
   ]);
   assert.deepEqual(calls.find((call) => call.source === 'minute').bindings, [
     '2026-07-01', '2026-07-28',
@@ -153,7 +153,7 @@ test('daily materialization preserves member boundaries already persisted in OTH
   assert.equal(result.rows[0].member_end, 205);
   assert.equal(result.rows[0].member_growth, 7);
   assert.deepEqual(calls.find((call) => call.source === 'other-select').bindings, [
-    '2026-07-26', '2026-07-26', '2026-07-28', 800,
+    '2026-07-25', '2026-07-26', '2026-07-28', 801,
   ]);
 });
 
