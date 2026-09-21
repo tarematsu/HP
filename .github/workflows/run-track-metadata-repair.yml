@@ -29,6 +29,7 @@ jobs:
       BUDDIES_DATABASE_NAME: stationhead-buddies
       FACTS_DATABASE_NAME: stationhead-minute
       TRACK_METADATA_ACTIONS_LIMIT: '150'
+      TRACK_METADATA_LEGACY_LIMIT: '500'
       TRACK_METADATA_LOOKBACK_MS: '604800000'
       TRACK_METADATA_REFRESH_MS: '86400000'
       TRACK_METADATA_FETCH_CONCURRENCY: '4'
@@ -49,3 +50,5 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Repair metadata backlog and playback read models
         run: node scripts/repair-track-metadata-actions.mjs
+      - name: Repair legacy like-ranking metadata
+        run: node scripts/repair-legacy-ranking-metadata-actions.mjs
