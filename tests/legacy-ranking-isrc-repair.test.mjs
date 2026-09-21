@@ -37,3 +37,9 @@ test('scheduled metadata repair runs ISRC fallback before Spotify-only legacy re
   assert.ok(spotifyIndex >= 0, 'Spotify legacy repair step must exist');
   assert.ok(isrcIndex < spotifyIndex, 'ISRC fallback must run before Spotify legacy repair');
 });
+
+test('metadata repair runs immediately when repair code changes on main', () => {
+  assert.match(workflow, /push:\s*\n\s*branches: \[main\]/);
+  assert.match(workflow, /worker\/scripts\/repair-legacy-ranking-isrc-actions\.mjs/);
+  assert.match(workflow, /worker\/scripts\/repair-legacy-ranking-metadata-actions\.mjs/);
+});
