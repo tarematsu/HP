@@ -177,7 +177,7 @@ async function homePanelCloudHealthResponse(request, env, ctx) {
     } catch {
     }
     const videoOk = videoResponse.ok && videoHealth?.ok !== false;
-    const ok = videoOk && radar.ok;
+    const ok = videoOk;
     return Response.json({
       ...videoHealth,
       ok,
