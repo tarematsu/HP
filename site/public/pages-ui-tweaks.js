@@ -8,10 +8,17 @@ if (chartCard && primaryGrid) {
   primaryGrid.before(chartCard);
 }
 
-const likeActions = document.querySelector('#likesView .like-actions');
-if (likeActions) {
-  likeActions.hidden = true;
-  likeActions.setAttribute('aria-hidden', 'true');
+const likesView = document.getElementById('likesView');
+const likeActions = likesView?.querySelector('.like-actions');
+if (likesView && likeActions) {
+  likeActions.remove();
+  for (const id of ['likesLoad', 'likesCsv']) {
+    const hook = document.createElement('span');
+    hook.id = id;
+    hook.hidden = true;
+    hook.setAttribute('aria-hidden', 'true');
+    likesView.append(hook);
+  }
 }
 
 const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
