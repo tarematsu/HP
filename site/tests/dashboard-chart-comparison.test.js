@@ -9,7 +9,7 @@ const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8
 
 test('dashboard entry installs the previous-day comparison overlay', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260922\.1/);
+  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260922\.2/);
 });
 
 test('online chart overlays the previous 24-hour series in gray on the current time axis', async () => {
@@ -41,4 +41,13 @@ test('online extrema labels omit borders and include JST time', async () => {
     assert.match(source, /`最大 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
     assert.doesNotMatch(source, /strokeRect\(/);
   }
+});
+
+test('online comparison chart waits for a real canvas width and redraws after layout changes', async () => {
+  const source = await text('public/dashboard-chart-comparison.js');
+  assert.match(source, /function canvasWidth\(canvas\)/);
+  assert.match(source, /if \(!width\) return false/);
+  assert.doesNotMatch(source, /bounds\.width \|\| 900/);
+  assert.match(source, /new ResizeObserver/);
+  assert.match(source, /observer\.observe\(canvas\)/);
 });
