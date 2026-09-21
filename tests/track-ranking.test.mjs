@@ -131,14 +131,14 @@ test('track ranking replaces placeholder names from Spotify metadata', async () 
   assert.equal(row.thumbnail_url, 'https://example.test/cover.jpg');
 });
 
-test('track ranking recovers missing identifiers from track identity and metadata ISRC', async () => {
+test('track ranking recovers legacy key identifiers from metadata ISRC', async () => {
   const db = rankingDatabase();
   db.exec(`
     INSERT INTO sh_track_ranking_current(
       track_identity,track_id,title,artist,isrc,spotify_id,
       latest_like_count,latest_observed_at,latest_occurrence_key
     ) VALUES(
-      'isrc:JPOLD000001',NULL,'曲名不明','-',NULL,NULL,12,3500,'legacy-occ'
+      'key:isrc:JPOLD000001',NULL,'曲名不明','-',NULL,NULL,12,3500,'legacy-occ'
     );
     INSERT INTO sh_track_metadata(
       spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
@@ -149,7 +149,7 @@ test('track ranking recovers missing identifiers from track identity and metadat
   `);
 
   const result = await loadTrackRanking(d1Adapter(db), { limit: 500 });
-  const row = result.rows.find((item) => item.track_identity === 'isrc:JPOLD000001');
+  const row = result.rows.find((item) => item.track_identity === 'key:isrc:JPOLD000001');
 
   assert.equal(row.title, 'Recovered by ISRC');
   assert.equal(row.artist, '櫻坂46');
