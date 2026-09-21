@@ -10,6 +10,7 @@ let rows = [];
 let rowsUrl = '';
 let renderTimer = 0;
 let liveRefreshTimer = 0;
+let liveCollectionActive = null;
 
 function finite(value) {
   if (value === null || value === undefined || value === '') return null;
@@ -119,7 +120,9 @@ async function captureHistoryResponse(input, response) {
 }
 
 function mergeLiveSeries(basePayload, statusPayload) {
-  if (!basePayload?.ok || !statusPayload?.ok) return basePayload;
+  if (!basePayload?.ok || !statusPayload?.ok || statusPayload.collection_active !== true) {
+    return basePayload;
+  }
   const samples = Array.isArray(statusPayload.samples) ? statusPayload.samples : [];
   const anchor = samples.find((sample) =>
     epochMs(sample?.broadcast_start_time) != null
@@ -174,6 +177,32 @@ function mergeLiveSeries(basePayload, statusPayload) {
   return { ...basePayload, series };
 }
 
+function scheduleLiveRefresh(delay = LIVE_REFRESH_MS) {
+  clearTimeout(liveRefreshTimer);
+  liveRefreshTimer = 0;
+  if (!active() || document.visibilityState === 'hidden' || liveCollectionActive === false) return;
+  liveRefreshTimer = setTimeout(() => {
+    liveRefreshTimer = 0;
+    if (!active() || document.visibilityState === 'hidden' || liveCollectionActive === false) return;
+    clearSeriesCache();
+    document.getElementById('load')?.click();
+    scheduleLiveRefresh();
+  }, delay);
+}
+
+function updateLiveCollectionState(statusPayload) {
+  const next = statusPayload?.collection_active === true;
+  liveCollectionActive = next;
+  if (!next) {
+    clearTimeout(liveRefreshTimer);
+    liveRefreshTimer = 0;
+    return;
+  }
+  if (active() && document.visibilityState !== 'hidden' && !liveRefreshTimer) {
+    scheduleLiveRefresh();
+  }
+}
+
 async function mergeLiveStatusResponse(input, init, baseResponse) {
   const url = requestUrl(input);
   if (!baseResponse?.ok || !url || url.origin !== location.origin || url.pathname !== '/api/sakurazaka46jp') {
@@ -189,6 +218,8 @@ async function mergeLiveStatusResponse(input, init, baseResponse) {
       baseResponse.clone().json(),
       statusResponse.json(),
     ]);
+    updateLiveCollectionState(statusPayload);
+    if (statusPayload.collection_active !== true) return baseResponse;
     const mergedPayload = mergeLiveSeries(basePayload, statusPayload);
     return new Response(JSON.stringify(mergedPayload), {
       status: baseResponse.status,
@@ -207,18 +238,6 @@ function clearSeriesCache() {
       if (key?.startsWith(SERIES_CACHE_PREFIX)) sessionStorage.removeItem(key);
     }
   } catch {}
-}
-
-function scheduleLiveRefresh(delay = LIVE_REFRESH_MS) {
-  clearTimeout(liveRefreshTimer);
-  liveRefreshTimer = 0;
-  if (!active() || document.visibilityState === 'hidden') return;
-  liveRefreshTimer = setTimeout(() => {
-    if (!active() || document.visibilityState === 'hidden') return;
-    clearSeriesCache();
-    document.getElementById('load')?.click();
-    scheduleLiveRefresh();
-  }, delay);
 }
 
 if (browser && previousFetch) {

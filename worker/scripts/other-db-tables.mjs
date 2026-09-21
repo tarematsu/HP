@@ -28,6 +28,7 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_worker_auth_control',
   'sh_collector_status',
   'sh_official_broadcast_summary',
+  'sh_official_broadcast_series',
   'sh_channel_rankings',
 ]);
 
