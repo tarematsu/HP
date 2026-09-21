@@ -17,15 +17,19 @@ WHERE r.channel_id=(SELECT channel_id FROM latest_channel)
 ORDER BY r.observed_at ASC
 LIMIT 300`;
 
-export const COMMENT_VELOCITY_FALLBACK_SQL = `SELECT observed_at,comment_velocity
+export const COMMENT_VELOCITY_FALLBACK_SQL = `SELECT
+  (observed_at/${BUCKET_MS})*${BUCKET_MS} AS bucket_at,
+  MAX(comment_velocity) AS comment_velocity
 FROM sh_comment_velocity_samples
 WHERE source_scope='solo'
   AND observed_at>=? AND observed_at<?
   AND (? IS NULL OR station_id=?)
-ORDER BY observed_at ASC
-LIMIT 2000`;
+GROUP BY bucket_at
+ORDER BY bucket_at ASC
+LIMIT 600`;
 
 function finite(value) {
+  if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -38,7 +42,7 @@ function bucketAt(value) {
 export function velocityFallbackByBucket(rows) {
   const byBucket = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
-    const bucket = bucketAt(row?.observed_at);
+    const bucket = bucketAt(row?.bucket_at ?? row?.observed_at);
     const velocity = finite(row?.comment_velocity);
     if (bucket == null || velocity == null || velocity < 0) continue;
     byBucket.set(bucket, Math.max(byBucket.get(bucket) || 0, velocity));
