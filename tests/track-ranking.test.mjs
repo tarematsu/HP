@@ -82,6 +82,7 @@ function d1Adapter(db) {
           return {
             async all() { return { results: statement.all(...args) }; },
             async first() { return statement.get(...args) || null; },
+            async run() { return statement.run(...args); },
           };
         },
         async first() { return statement.get() || null; },
@@ -109,11 +110,13 @@ test('track ranking is seeded and maintained at counter update time', async () =
   assert.equal(updated.summary.max_like_count, 30);
 });
 
-test('track ranking replaces placeholder names from Spotify metadata', async () => {
+test('track ranking replaces placeholder names from Spotify metadata and persists the repair', async () => {
   const db = rankingDatabase();
   db.exec(`
     UPDATE sh_tracks SET title='曲名不明',artist='-' WHERE id=1;
     UPDATE sh_track_ranking_current
+      SET title='曲名不明',artist='-' WHERE track_identity='track:1';
+    UPDATE sh_track_ranking_occurrence
       SET title='曲名不明',artist='-' WHERE track_identity='track:1';
     INSERT INTO sh_track_metadata(
       spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
@@ -129,9 +132,19 @@ test('track ranking replaces placeholder names from Spotify metadata', async () 
   assert.equal(row.title, 'Recovered title');
   assert.equal(row.artist, '櫻坂46');
   assert.equal(row.thumbnail_url, 'https://example.test/cover.jpg');
+  const track = db.prepare('SELECT title,artist FROM sh_tracks WHERE id=1').get();
+  assert.equal(track.title, 'Recovered title');
+  assert.equal(track.artist, '櫻坂46');
+  const current = db.prepare(`SELECT title,artist FROM sh_track_ranking_current WHERE track_identity='track:1'`).get();
+  assert.equal(current.title, 'Recovered title');
+  assert.equal(current.artist, '櫻坂46');
+  const occurrences = db.prepare(`SELECT DISTINCT title,artist FROM sh_track_ranking_occurrence WHERE track_identity='track:1'`).all();
+  assert.equal(occurrences.length, 1);
+  assert.equal(occurrences[0].title, 'Recovered title');
+  assert.equal(occurrences[0].artist, '櫻坂46');
 });
 
-test('track ranking recovers legacy key identifiers from metadata ISRC', async () => {
+test('track ranking recovers legacy key identifiers from metadata ISRC and persists ranking identifiers', async () => {
   const db = rankingDatabase();
   db.exec(`
     INSERT INTO sh_track_ranking_current(
@@ -155,6 +168,12 @@ test('track ranking recovers legacy key identifiers from metadata ISRC', async (
   assert.equal(row.artist, '櫻坂46');
   assert.equal(row.spotify_id, 'sp-old');
   assert.equal(row.isrc, 'JPOLD000001');
+  const persisted = db.prepare(`SELECT title,artist,isrc,spotify_id FROM sh_track_ranking_current
+    WHERE track_identity='key:isrc:JPOLD000001'`).get();
+  assert.equal(persisted.title, 'Recovered by ISRC');
+  assert.equal(persisted.artist, '櫻坂46');
+  assert.equal(persisted.isrc, 'JPOLD000001');
+  assert.equal(persisted.spotify_id, 'sp-old');
 });
 
 test('FACTS schema publishes materialized cleanup and ranking state', () => {
