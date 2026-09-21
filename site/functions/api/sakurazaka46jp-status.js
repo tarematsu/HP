@@ -34,12 +34,21 @@ function recentChatSql() {
     LIMIT ${RECENT_LIMIT}`;
 }
 
+function activeAnnouncementSql() {
+  return `SELECT id,event_name,scheduled_at,first_broadcast_at,last_broadcast_at,status
+    FROM sh_official_news_announcements
+    WHERE status='active'
+    ORDER BY COALESCE(first_broadcast_at,scheduled_at) DESC,id DESC
+    LIMIT 1`;
+}
+
 export async function onRequestGet({ env }) {
   if (!env?.OTHER_DB?.prepare) return json({ ok: false, error: 'OTHER_DB unavailable' }, 503);
   try {
-    const [mainResult, chatResult] = await Promise.all([
+    const [mainResult, chatResult, activeAnnouncement] = await Promise.all([
       env.OTHER_DB.prepare(recentMainSql()).all(),
       env.OTHER_DB.prepare(recentChatSql()).all(),
+      env.OTHER_DB.prepare(activeAnnouncementSql()).first(),
     ]);
     const samples = mainResult.results || [];
     const chats = chatResult.results || [];
@@ -50,6 +59,8 @@ export async function onRequestGet({ env }) {
       ok: true,
       handle: 'sakurazaka46jp',
       generated_at: generatedAt,
+      collection_active: Boolean(activeAnnouncement),
+      active_event: activeAnnouncement || null,
       latest_main: latestMain,
       latest_chat: latestChat,
       latest_main_age_ms: latestMain ? Math.max(0, generatedAt - Number(latestMain.observed_at)) : null,
@@ -67,6 +78,8 @@ export async function onRequestGet({ env }) {
         ok: true,
         handle: 'sakurazaka46jp',
         generated_at: Date.now(),
+        collection_active: false,
+        active_event: null,
         latest_main: null,
         latest_chat: null,
         latest_main_age_ms: null,
