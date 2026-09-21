@@ -3,34 +3,28 @@
 -- OTHER_DB provisioning replays every active migration, so every statement below
 -- is intentionally idempotent and scoped to this event/session only.
 
--- 2026-09-21 12:16:59.999 JST
--- End-exclusive deletion boundary: 2026-09-21 12:17:00 JST
+-- Scheduled start: 2026-09-21 11:45:00 JST = 1789958700000.
+-- End-exclusive deletion boundary: 2026-09-21 12:17:00 JST = 1789960620000.
 
 UPDATE sh_official_news_announcements
 SET status='ended',
     last_broadcast_at=1789960619999,
     inactive_streak=MAX(inactive_streak,2),
     updated_at=MAX(updated_at,1789960620000)
-WHERE event_name LIKE '%ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY%'
-  AND scheduled_at>=1789957800000
-  AND scheduled_at<1789960620000;
+WHERE scheduled_at=1789958700000;
 
 DELETE FROM sh_official_news_comments
 WHERE observed_at>=1789960620000
   AND announcement_id IN (
     SELECT id FROM sh_official_news_announcements
-    WHERE event_name LIKE '%ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY%'
-      AND scheduled_at>=1789957800000
-      AND scheduled_at<1789960620000
+    WHERE scheduled_at=1789958700000
   );
 
 DELETE FROM sh_official_news_station_probes
 WHERE observed_at>=1789960620000
   AND announcement_id IN (
     SELECT id FROM sh_official_news_announcements
-    WHERE event_name LIKE '%ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY%'
-      AND scheduled_at>=1789957800000
-      AND scheduled_at<1789960620000
+    WHERE scheduled_at=1789958700000
   );
 
 -- Remove chat rows only when the same minute belongs to the target broadcast.
