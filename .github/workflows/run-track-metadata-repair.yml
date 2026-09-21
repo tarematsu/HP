@@ -9,6 +9,7 @@ on:
       - 'worker/scripts/repair-legacy-ranking-isrc-actions.mjs'
       - 'worker/scripts/repair-legacy-ranking-all-actions.mjs'
       - 'worker/scripts/repair-legacy-ranking-metadata-actions.mjs'
+      - 'worker/scripts/report-unresolved-ranking-metadata-actions.mjs'
       - 'worker/src/isrc-metadata.js'
   workflow_run:
     workflows: ["Run runtime offline maintenance"]
@@ -63,3 +64,5 @@ jobs:
         run: node scripts/repair-legacy-ranking-all-actions.mjs
       - name: Repair legacy like-ranking metadata
         run: node scripts/repair-legacy-ranking-metadata-actions.mjs
+      - name: Report remaining unresolved ranking metadata
+        run: node scripts/report-unresolved-ranking-metadata-actions.mjs
