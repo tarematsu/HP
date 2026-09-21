@@ -36,3 +36,13 @@ test('header keeps labels and shows acquisition and materialized-history times o
   assert.match(history, /timeZone: 'UTC'/);
   assert.match(history, /const todayUtc = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
 });
+
+test('history materialized time is restored immediately and refreshed from a tiny materialized history request', () => {
+  assert.match(header, /HISTORY_MATERIALIZED_AT_CACHE_KEY = 'sh\.history\.materialized-at\.v1'/);
+  assert.match(header, /localStorage\.getItem\(HISTORY_MATERIALIZED_AT_CACHE_KEY\)/);
+  assert.match(header, /localStorage\.setItem\(HISTORY_MATERIALIZED_AT_CACHE_KEY, String\(value\)\)/);
+  assert.match(header, /let historyMaterializedAt = cachedHistoryMaterializedAt\(\)/);
+  assert.match(header, /fetch\(`\/api\/history\?mode=daily&from=\$\{todayUtc\}&to=\$\{todayUtc\}`/);
+  assert.match(header, /response\.headers\.get\('x-materialized-at'\)/);
+  assert.match(header, /void refreshHistoryMaterializedAt\(\)/);
+});
