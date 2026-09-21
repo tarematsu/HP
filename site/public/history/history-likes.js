@@ -104,8 +104,8 @@ import {
 
   function includedInLikeRanking(row) {
     const artist = artistName(row).trim();
-    if (!artist || artist === '—') return false;
-    return !artist.normalize('NFKC').includes('櫻坂46');
+    if (!artist || artist === '—') return true;
+    return artist.normalize('NFKC').includes('櫻坂46');
   }
 
   function eligibleRankingRows() {
