@@ -7,6 +7,7 @@ on:
       - '.github/workflows/run-track-metadata-repair.yml'
       - 'worker/scripts/repair-track-metadata-actions.mjs'
       - 'worker/scripts/repair-legacy-ranking-isrc-actions.mjs'
+      - 'worker/scripts/repair-legacy-ranking-all-actions.mjs'
       - 'worker/scripts/repair-legacy-ranking-metadata-actions.mjs'
       - 'worker/src/isrc-metadata.js'
   workflow_run:
@@ -58,7 +59,7 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Repair metadata backlog and playback read models
         run: node scripts/repair-track-metadata-actions.mjs
-      - name: Repair legacy like-ranking metadata without Spotify IDs
-        run: node scripts/repair-legacy-ranking-isrc-actions.mjs
+      - name: Repair all unresolved legacy like-ranking metadata by ISRC
+        run: node scripts/repair-legacy-ranking-all-actions.mjs
       - name: Repair legacy like-ranking metadata
         run: node scripts/repair-legacy-ranking-metadata-actions.mjs
