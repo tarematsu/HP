@@ -15,6 +15,9 @@
   const eventDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
   });
+  const jstDay = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+  });
   const DATE_PREFIX = /^\s*\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/;
   let series = [];
   let selectedMinute = null;
@@ -52,14 +55,20 @@
       : name;
   }
 
+  function isTodayEvent(item) {
+    const startedAt = Number(item?.started_at);
+    return Number.isFinite(startedAt)
+      && jstDay.format(new Date(startedAt)) === jstDay.format(new Date());
+  }
+
   function missingSuffix(item) {
     if (item?.points?.length) return '';
     return item?.source_mismatch ? '（集計値のみ）' : '（データ未取得）';
   }
 
-  function colorFor(index, alpha = 1) {
+  function colorFor(index, alpha = 1, lightness = 72) {
     const hue = (330 + index * 137.508) % 360;
-    return `hsla(${hue},72%,72%,${alpha})`;
+    return `hsla(${hue},72%,${lightness}%,${alpha})`;
   }
 
   function samplePoints(points, maximum = MAX_DRAW_POINTS) {
@@ -183,8 +192,9 @@
     context.fillText('経過時間（分）', area.left + area.width / 2, height - 5);
 
     available.forEach((item, index) => {
-      context.strokeStyle = colorFor(index, available.length > 12 ? 0.68 : 0.9);
-      context.lineWidth = available.length > 16 ? 1.15 : 1.7;
+      const today = isTodayEvent(item);
+      context.strokeStyle = colorFor(index, today ? 1 : (available.length > 12 ? 0.68 : 0.9), today ? 52 : 72);
+      context.lineWidth = today ? 3.4 : (available.length > 16 ? 1.15 : 1.7);
       context.beginPath();
       let open = false;
       for (const point of item.drawPoints) {
