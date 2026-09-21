@@ -15,9 +15,11 @@ test('current chart moves before now playing and drops its heading block', () =>
   assert.match(tweaks, /headingBlock\.remove\(\)/);
 });
 
-test('likes update and CSV actions are hidden without breaking their existing handlers', () => {
-  assert.match(tweaks, /#likesView \.like-actions/);
-  assert.match(tweaks, /likeActions\.hidden = true/);
+test('likes update and CSV buttons are removed without breaking existing runtime hooks', () => {
+  assert.match(tweaks, /likeActions\.remove\(\)/);
+  assert.match(tweaks, /for \(const id of \['likesLoad', 'likesCsv'\]\)/);
+  assert.match(tweaks, /document\.createElement\('span'\)/);
+  assert.match(tweaks, /hook\.hidden = true/);
 });
 
 test('official listening-party labels remove the gap after a leading date', () => {
