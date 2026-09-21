@@ -21,12 +21,10 @@ export const API_EDGE_TTL_SECONDS = 300;
 export const API_BROWSER_TTL_SECONDS = 30;
 export const MATERIALIZED_RESPONSE_MAX_AGE_MS = 15 * 60_000;
 
-// Realtime Pages surfaces are materialized every five minutes. Public requests,
-// including legacy dashboard delta query strings, are normalized to these R2
-// models so browser polling cannot multiply D1 reads.
+// Dashboard is the only realtime response large enough to justify R2
+// materialization. Current daily history reads a one-row D1 projection instead.
 export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 5 }),
-  Object.freeze({ key: 'history:current', url: '/api/history-current?mode=daily', cadence_minutes: 5 }),
   Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 360 }),
   Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 360 }),
   Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 360 }),
@@ -54,10 +52,6 @@ export function materializedApiKey(input) {
   const pathname = normalizedPathname(url.pathname);
   if (pathname === '/api/dashboard'
       && onlyParameters(url, ['since', 'queue_revision', 'history'])) return 'dashboard';
-  if (pathname === '/api/history-current' && onlyParameters(url, ['mode'])) {
-    const mode = String(url.searchParams.get('mode') || 'daily').trim().toLowerCase();
-    return mode === 'daily' ? 'history:current' : null;
-  }
   if (pathname === '/api/history' && onlyParameters(url, ['mode', 'from', 'to'])) {
     const mode = String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase();
     return ['daily', 'weekly', 'monthly', 'broadcasts'].includes(mode) ? `history:${mode}` : null;
@@ -85,7 +79,7 @@ export function apiCacheTtlSeconds(request) {
 export function materializedResponseCadenceSeconds(modelKey) {
   const cadenceMinutes = Number(materializedVariantsByKey.get(String(modelKey || ''))?.cadence_minutes);
   if (!Number.isFinite(cadenceMinutes) || cadenceMinutes <= 0) return API_EDGE_TTL_SECONDS;
-  return Math.max(API_BROWSER_TTL_SECONDS, Math.trunc(cadenceMinutes * 60));
+  return Math.max(API_EDGE_TTL_SECONDS, Math.trunc(cadenceMinutes * 60));
 }
 
 export function materializedResponseMaximumAge(modelKey, env = {}) {
@@ -105,10 +99,6 @@ export function canonicalApiCacheRequest(request) {
     url.searchParams.delete('since');
     url.searchParams.delete('queue_revision');
     url.searchParams.delete('history');
-  }
-  if (pathname === '/api/history-current'
-      && String(url.searchParams.get('mode') || 'daily').trim().toLowerCase() === 'daily') {
-    url.searchParams.delete('mode');
   }
   if (pathname === '/api/history'
       && String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase() === 'weekly') {
