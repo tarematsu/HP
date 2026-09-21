@@ -67,7 +67,7 @@ const repairCandidateMigration = readFileSync(
   'utf8',
 );
 const retireRepairIndexMigration = readFileSync(
-  new URL('../database/facts-migrations/043_retire_minute_fact_repair_work.sql'.replace('repair_work','repair_candidate_index'), import.meta.url),
+  new URL('../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
   'utf8',
 );
 const retireRepairWorkMigration = readFileSync(
