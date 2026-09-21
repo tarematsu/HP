@@ -25,7 +25,9 @@ test('HomePanel health exposes TVer collector diagnostics without coupling deplo
   assert.match(unifiedWorker, /tverFeedObservability\(env\)/);
   assert.match(unifiedWorker, /tverFeed,/);
   assert.match(unifiedWorker, /status: health\.ok \? 200 : 503/);
-  assert.match(unifiedWorker, /status: videoResponse\.status/);
+  assert.match(unifiedWorker, /const ok = videoOk && radar\.ok;/);
+  assert.match(unifiedWorker, /status: ok \? videoResponse\.status : 503/);
+  assert.doesNotMatch(unifiedWorker, /const ok = videoOk && tverFeed\.ok/);
 });
 
 test('TVer collector observability reports freshness, count, source, and last success', () => {
