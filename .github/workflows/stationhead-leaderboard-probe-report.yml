@@ -19,6 +19,7 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           from pathlib import Path
 
           event_path = os.environ["EVENT_PATH"]
@@ -28,14 +29,24 @@ jobs:
           if not isinstance(payload, dict):
               raise SystemExit("client_payload must be an object")
 
-          forbidden = {
-              "authorization", "token", "secret", "password", "cookie",
-              "sth-device-uid", "device_uid", "deviceUid",
-          }
-          for key in list(payload):
-              if key in forbidden:
-                  payload[key] = "[redacted]"
+          forbidden = re.compile(
+              r"authorization|token|secret|password|cookie|device.?uid|session",
+              re.IGNORECASE,
+          )
 
+          def redact(value):
+              if isinstance(value, dict):
+                  return {
+                      str(key): "[redacted]" if forbidden.search(str(key)) else redact(item)
+                      for key, item in value.items()
+                  }
+              if isinstance(value, list):
+                  return [redact(item) for item in value]
+              if isinstance(value, str):
+                  return re.sub(r"Bearer\s+[A-Za-z0-9._~+\/-]+=*", "Bearer [redacted]", value)
+              return value
+
+          payload = redact(payload)
           artifact = Path("probe-artifact")
           artifact.mkdir(parents=True, exist_ok=True)
           output = artifact / "stationhead-leaderboard-probe.json"
@@ -44,17 +55,27 @@ jobs:
               encoding="utf-8",
           )
 
-          summary_keys = (
-              "received_at", "device_id", "records", "history_key",
-              "source", "url", "method", "status", "content_type", "body_chars",
-          )
+          best = payload.get("best") if isinstance(payload.get("best"), dict) else {}
+          top_summary = {
+              "received_at": payload.get("received_at", ""),
+              "device_id": payload.get("device_id", ""),
+              "records": payload.get("records", ""),
+              "history_key": payload.get("history_key", ""),
+          }
+          best_summary = {
+              "source": best.get("source", ""),
+              "url": best.get("url", ""),
+              "method": best.get("method", ""),
+              "status": best.get("status", ""),
+              "content_type": best.get("content_type", ""),
+              "body_chars": best.get("body_chars", ""),
+          }
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
               summary.write("## Stationhead leaderboard probe received\n\n")
-              for key in summary_keys:
-                  value = payload.get(key, "")
+              for key, value in {**top_summary, **best_summary}.items():
                   text = str(value).replace("\n", " ").replace("\r", " ")[:2000]
                   summary.write(f"- **{key}**: `{text}`\n")
-              summary.write("\nResponse body is intentionally omitted from logs and stored only in the Actions artifact.\n")
+              summary.write("\nResponse bodies and candidate previews are intentionally omitted from logs and stored only in the Actions artifact.\n")
           PY
 
       - name: Upload probe artifact
