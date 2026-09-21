@@ -159,6 +159,8 @@ test('unified dashboard includes facts, history and completed daily summaries', 
   assert.equal(payload.daily_summaries.yesterday.member_growth, 11);
   assert.equal(payload.daily_summaries.yesterday.stream_growth, 55);
   assert.equal(payload.daily_summaries.day_before_yesterday.member_growth, 7);
-  assert.equal(other.calls.length, 1);
+  assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
+  assert.equal(other.callsMatching(/FROM sh_comment_velocity_samples/).length, 1);
+  assert.equal(facts.callsMatching(/r\.bucket_at>=\? AND r\.bucket_at<\?/).length, 1);
   assert.equal(db.callsMatching(/snapshots\.observed_at >=/).length, 0);
 });
