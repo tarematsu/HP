@@ -92,8 +92,8 @@ test('pages read models run independently before runtime maintenance', () => {
   assert.match(r2Store, /x-api-source', 'actions-r2'/);
 });
 
-test('completed history uses R2 only while realtime dashboard may fall back live', () => {
-  assert.match(pagesMiddleware, /const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set\(\['dashboard'\]\)/);
+test('all materialized Pages models fail closed instead of reading live D1', () => {
+  assert.match(pagesMiddleware, /const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set\(\)/);
   assert.match(pagesMiddleware, /applyHistoryRange/);
   assert.match(responseFetch, /const R2_ONLY_MODEL_KEYS = new Set/);
   const r2OnlyStart = responseFetch.indexOf('if (R2_ONLY_MODEL_KEYS.has(modelKey))');
@@ -103,9 +103,9 @@ test('completed history uses R2 only while realtime dashboard may fall back live
   assert.doesNotMatch(r2OnlyBranch, /loadKv/);
 });
 
-test('dashboard materialized lifetime covers the 30-minute Actions publication interval', () => {
-  assert.equal(materializedResponseCadenceSeconds('dashboard'), 30 * 60);
-  assert.equal(materializedResponseMaximumAge('dashboard'), 35 * MINUTE);
+test('dashboard materialized lifetime covers the five-minute publication interval', () => {
+  assert.equal(materializedResponseCadenceSeconds('dashboard'), 5 * 60);
+  assert.equal(materializedResponseMaximumAge('dashboard'), 15 * MINUTE);
 });
 
 test('contract cadence follows the actual :26/:56 workflow slots', () => {
