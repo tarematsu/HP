@@ -34,42 +34,50 @@ async function withGuard(fetchImpl, callback, suffix, entries = []) {
   }
 }
 
-test('history summary requests use the mode-only R2 materialization and filter the requested range locally', async () => {
+test('history summary requests preserve from/to for edge-side materialized filtering', async () => {
   const calls = [];
   await withGuard(async (input) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
     calls.push(url);
     assert.equal(url.pathname, '/api/history');
-    assert.equal(url.search, '?mode=weekly');
+    assert.equal(url.search, '?mode=weekly&from=2026-06-01&to=2026-06-30');
     return Response.json({
       ok: true,
       mode: 'weekly',
+      from: '2026-06-01',
+      to: '2026-06-30',
       timezone: 'UTC',
+      read_path: 'r2-materialized-range',
       rows: [
-        { period_key: '2026-05-25', sample_count: 500 },
         { period_key: '2026-06-01', sample_count: 510 },
         { period_key: '2026-06-29', sample_count: 520 },
-        { period_key: '2026-07-06', sample_count: 530 },
       ],
-    }, { headers: { 'x-api-source': 'actions-r2' } });
+    }, {
+      headers: {
+        'x-api-source': 'actions-r2',
+        'x-history-read-path': 'r2-materialized-range',
+        'x-history-range-filter': 'edge',
+      },
+    });
   }, async (browser, storage) => {
     const response = await browser.fetch('/api/history?mode=weekly&from=2026-06-01&to=2026-06-30');
     const data = await response.json();
     assert.equal(calls.length, 1);
     assert.equal(response.headers.get('x-api-source'), 'actions-r2');
-    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized');
-    assert.equal(data.read_path, 'r2-materialized');
+    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized-range');
+    assert.equal(response.headers.get('x-history-range-filter'), 'edge');
+    assert.equal(data.read_path, 'r2-materialized-range');
     assert.equal(data.from, '2026-06-01');
     assert.equal(data.to, '2026-06-30');
     assert.deepEqual(data.rows.map((row) => row.period_key), ['2026-06-01', '2026-06-29']);
-    assert.equal(storage.getItem('sh.history.r2-primary.v1'), '1');
+    assert.equal(storage.getItem('sh.history.server-range.v1'), '1');
     assert.equal(storage.getItem('sh.history.v3:/api/history?mode=weekly&from=old&to=old'), null);
-  }, 'materialized', [
+  }, 'server-range', [
     ['sh.history.v3:/api/history?mode=weekly&from=old&to=old', '{"stale":true}'],
   ]);
 });
 
-test('history summaries never fall back to the dynamic OTHER_DB or MINUTE_DB API', async () => {
+test('history error responses preserve the requested range and do not retry dynamically', async () => {
   const calls = [];
   await withGuard(async (input) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
@@ -78,31 +86,25 @@ test('history summaries never fall back to the dynamic OTHER_DB or MINUTE_DB API
   }, async (browser) => {
     const response = await browser.fetch('/api/history?mode=weekly&from=2026-06-01&to=2026-06-30');
     assert.equal(response.status, 503);
-    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized-unavailable');
     assert.deepEqual(await response.json(), {
       ok: false,
       error: 'materialized unavailable',
     });
     assert.equal(calls.length, 1);
-    assert.match(calls[0], /\/api\/history\?mode=weekly$/);
-    assert.doesNotMatch(calls[0], /from=/);
-    assert.doesNotMatch(calls[0], /to=/);
+    assert.match(calls[0], /\/api\/history\?mode=weekly&from=2026-06-01&to=2026-06-30$/);
   }, 'strict-r2');
 });
 
-test('network failure returns an R2-unavailable response instead of dynamic history', async () => {
+test('network failures propagate without a second history request', async () => {
   let calls = 0;
   await withGuard(async () => {
     calls += 1;
     throw new Error('network unavailable');
   }, async (browser) => {
-    const response = await browser.fetch('/api/history?mode=monthly&from=2026-01-01&to=2026-07-30');
-    const data = await response.json();
-    assert.equal(response.status, 503);
-    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized-unavailable');
-    assert.equal(data.ok, false);
-    assert.equal(data.error, 'materialized history unavailable');
-    assert.match(data.detail, /network unavailable/);
+    await assert.rejects(
+      browser.fetch('/api/history?mode=monthly&from=2026-01-01&to=2026-07-30'),
+      /network unavailable/,
+    );
     assert.equal(calls, 1);
   }, 'network-r2-only');
 });
