@@ -40,7 +40,7 @@ function recordingDb() {
 test('facts descriptor advances past the retired repair work', () => {
   assert.equal(
     descriptor.schema,
-    'database/facts-migrations/051_canonical_rollup_minute_range.sql',
+    'database/facts-migrations/052_current_daily_summary_projection.sql',
   );
 });
 
