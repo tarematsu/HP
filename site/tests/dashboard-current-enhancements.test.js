@@ -39,7 +39,7 @@ test('current chart draws numeric axes in black and green with JST labels', () =
 
 test('stream goal is moved into the metric and ETA is display-only JST', () => {
   assert.match(enhancement, /metricGoalCompact/);
-  assert.match(enhancement, /jstDateTime\.format/);
+  assert.match(enhancement, /jstGoalDateTime\.format/);
   assert.match(enhancement, /JST`/);
   assert.match(css, /\.goal-card\s*\{[\s\S]*display:\s*none !important/);
 });
