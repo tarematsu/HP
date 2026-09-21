@@ -157,20 +157,6 @@ tabs?.addEventListener('click', (event) => {
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
 
-// The legacy current-dashboard client still writes to #chartDetail. Keep that ID
-// owned by the history view, copy the current-chart result, then restore history.
-const audienceChart = document.getElementById('audienceChart');
-const currentChartDetail = document.getElementById('currentChartDetail');
-const historyChartDetail = document.getElementById('chartDetail');
-audienceChart?.addEventListener('pointerup', () => {
-  if (currentView?.hidden || !currentChartDetail || !historyChartDetail) return;
-  const savedHistoryDetail = historyChartDetail.innerHTML;
-  queueMicrotask(() => {
-    if (!currentView.hidden) currentChartDetail.textContent = historyChartDetail.textContent;
-    historyChartDetail.innerHTML = savedHistoryDetail;
-  });
-});
-
 const initialMode = modeFromLocation();
 showMode(initialMode, {
   updateUrl: initialMode === 'current' && Boolean(location.hash),
