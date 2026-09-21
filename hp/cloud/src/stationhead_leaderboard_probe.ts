@@ -148,13 +148,15 @@ async function dispatchProbeReport(
       body_chars: item.body.length,
       body_preview: item.body.slice(0, MAX_REPORT_PREVIEW_CHARS),
     })),
-    source: record.source,
-    url: record.url,
-    method: record.method,
-    status: record.status,
-    content_type: record.content_type,
-    body: record.body.slice(0, MAX_REPORT_BODY_CHARS),
-    body_chars: record.body.length,
+    best: {
+      source: record.source,
+      url: record.url,
+      method: record.method,
+      status: record.status,
+      content_type: record.content_type,
+      body: record.body.slice(0, MAX_REPORT_BODY_CHARS),
+      body_chars: record.body.length,
+    },
   };
   try {
     const response = await fetch("https://api.github.com/repos/tarematsu/HP/dispatches", {
