@@ -1,9 +1,9 @@
 const DAY_MS = 86_400_000;
 const STATIONHEAD_BUDDIES_URL = 'https://stationhead.com/c/buddies';
 const integer = new Intl.NumberFormat('ja-JP');
-const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
+const jstGoalDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
-  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
 const jstChartDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
@@ -81,19 +81,15 @@ function ensureMetricLayout() {
     const goal = document.createElement('div');
     goal.id = 'metricGoalCompact';
     goal.className = 'metric-goal-compact';
-    const targetRow = document.createElement('span');
-    targetRow.className = 'metric-goal-row';
-    targetRow.append(document.createTextNode('目標 '));
+    const row = document.createElement('span');
+    row.className = 'metric-goal-row';
     const target = byId('streamGoal') || document.createElement('b');
     target.id = 'streamGoal';
-    targetRow.append(target);
-    const etaRow = document.createElement('span');
-    etaRow.className = 'metric-goal-row';
-    etaRow.append(document.createTextNode('予想 '));
+    row.append(target, document.createTextNode(' → '));
     const eta = byId('goalEta') || document.createElement('strong');
     eta.id = 'goalEta';
-    etaRow.append(eta);
-    goal.append(targetRow, etaRow);
+    row.append(eta);
+    goal.append(row);
     streamsPanel.append(goal);
   }
   document.querySelector('.goal-card')?.remove();
@@ -117,7 +113,7 @@ function goalEtaText(payload) {
   const prediction = payload?.goal_prediction;
   const eta = finite(prediction?.eta);
   if (eta != null && eta > 0 && finite(prediction?.rate_per_hour) > 0) {
-    return `${jstDateTime.format(new Date(eta))} JST`;
+    return jstGoalDateTime.format(new Date(eta));
   }
   if (current != null && goal != null && goal > 0 && current >= goal) return '目標達成済み';
   return '予測データ不足';
