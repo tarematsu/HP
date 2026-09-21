@@ -1,5 +1,6 @@
 import homePanelWorker from './worker_core.ts';
 import { queueSchedulerWatchdog } from './scheduler_coordinator.ts';
+import { stationheadLeaderboardProbeStatusResponse } from './stationhead_leaderboard_probe_status.ts';
 import { requestFamily } from './unified_routes.js';
 import { shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
 import { dispatchTverFeedRefresh } from './tver_feed_refresh_coordinator.js';
@@ -20,6 +21,7 @@ const ADMIN_TOKEN_COOKIE = 'video_scraper_admin_token';
 const TVER_FEED_PATH = '/v1/native/tver-feed';
 const YOUTUBE_START_PATH = '/v1/native/youtube-start';
 const TVER_FEED_HEALTH_PATH = '/api/health/tver-feed';
+const STATIONHEAD_LEADERBOARD_PROBE_HEALTH_PATH = '/api/health/stationhead-leaderboard-probe';
 const RADAR_FRAME_KEY = 'radar/frames/representative/latest.png';
 const RADAR_STALE_AFTER_MS = 90 * 60 * 1000;
 
@@ -244,6 +246,16 @@ export default {
         });
       }
       return tverFeedHealthResponse(env);
+    }
+
+    if (pathname === STATIONHEAD_LEADERBOARD_PROBE_HEALTH_PATH) {
+      if (request.method !== 'GET') {
+        return new Response(null, {
+          status: 405,
+          headers: { Allow: 'GET', 'Cache-Control': 'no-store' }
+        });
+      }
+      return stationheadLeaderboardProbeStatusResponse(env);
     }
 
     if (pathname === '/api/health') {
