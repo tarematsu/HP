@@ -19,7 +19,8 @@ inline std::mutex& SpoolMutex() {
 }
 
 inline fs::path SpoolPath() {
-  std::array<wchar_t, 32768> executable{};
+  constexpr DWORD kExecutablePathChars = 32768;
+  std::vector<wchar_t> executable(kExecutablePathChars, L'\0');
   const DWORD length = GetModuleFileNameW(
       nullptr, executable.data(), static_cast<DWORD>(executable.size()));
   if (length == 0 || length >= executable.size()) return {};
