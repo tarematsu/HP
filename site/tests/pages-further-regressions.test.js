@@ -3,29 +3,70 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
-  currentUtcWeekRange,
-  inclusivePresetStart,
-} from '../public/history/history-page-fixes.js';
-import {
   countSakurazakaMissingSummaries,
   mergeSakurazakaSeriesRows,
 } from '../functions/api/sakurazaka46jp.js';
+import { inferArtistFromDisplayTitle } from '../functions/lib/playback.js';
+import {
+  currentUtcWeekRange,
+  inclusivePresetStart,
+  utcDate,
+} from '../public/history/history-date-utils.js';
+import {
+  aggregateCompleteTrackRows,
+  normalizeTrackRows,
+  summarizeCompleteTrackRows,
+} from '../public/history/history-track-view.js';
 
-const source = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
-
-test('history runtime restores only archive modes and keeps no track-history controls', () => {
-  const entry = source('../public/history/history-main.js');
-  const history = source('../public/history/history-lite.js');
-  const fixes = source('../public/history/history-page-fixes.js');
-
-  assert.match(entry, /history:runtime-ready/);
-  assert.doesNotMatch(entry, /legacyHistoryRoute|trackDate|trackWeekMode|'tracks'/);
-  assert.doesNotMatch(history, /trackDate|trackWeekMode|track-controls|weekMode/);
-  assert.doesNotMatch(fixes, /trackDate|trackWeekMode|track-controls|weekMode/);
+test('playback artist inference accepts artist-first and title-first display labels', () => {
+  assert.equal(inferArtistFromDisplayTitle('Song — Artist', 'Song'), 'Artist');
+  assert.equal(inferArtistFromDisplayTitle('Artist — Song', 'Song'), 'Artist');
+  assert.equal(inferArtistFromDisplayTitle('JPABCDEF123 — Song', 'Song'), null);
 });
 
-test('history archive presets use UTC calendar ranges', () => {
-  const mondayUtc = new Date('2026-07-27T12:00:00Z');
+test('track summaries aggregate the same song across complete dates', () => {
+  const rows = [
+    { play_date: '2026-07-20', track_key: 'a', play_count: 3, period_complete: true },
+    { play_date: '2026-07-21', track_key: 'a', play_count: 4, play_count_excluded: false },
+    { play_date: '2026-07-20', track_key: 'b', play_count: 2, play_count_excluded: false },
+    { play_date: '2026-07-22', track_key: 'c', play_count: 99, play_count_excluded: true },
+  ];
+  assert.deepEqual(summarizeCompleteTrackRows(rows), { days: 2, tracks: 2, total: 9, maximum: 7 });
+  assert.deepEqual(aggregateCompleteTrackRows(rows).map((row) => [row.identity, row.play_count]), [
+    ['a', 7],
+    ['b', 2],
+  ]);
+});
+
+test('track aggregation joins rows that expose different identifiers for the same song', () => {
+  const rows = [
+    { play_date: '2026-07-20', track_key: 'legacy-a', spotify_id: 'spotify-a', title: 'Song', play_count: 2 },
+    { play_date: '2026-07-21', spotify_id: 'spotify-a', display_title: 'Song', play_count: 3 },
+  ];
+  const aggregate = aggregateCompleteTrackRows(rows);
+  assert.equal(aggregate.length, 1);
+  assert.equal(aggregate[0].play_count, 5);
+});
+
+test('track rows recover whitespace-only titles and artists before rendering or caching', () => {
+  const rows = normalizeTrackRows([{
+    title: '   ',
+    display_title: 'Recovered title',
+    artist: ' ',
+    raw_artist: 'Recovered artist',
+  }]);
+  assert.equal(rows[0].title, 'Recovered title');
+  assert.equal(rows[0].artist, 'Recovered artist');
+});
+
+test('UTC week boundaries and inclusive presets use only the UTC calendar day', () => {
+  const sundayUtc = Date.parse('2026-07-26T15:30:00Z');
+  assert.equal(utcDate(0, sundayUtc), '2026-07-26');
+  assert.deepEqual(currentUtcWeekRange(sundayUtc), {
+    from: '2026-07-20',
+    to: '2026-07-26',
+  });
+  const mondayUtc = Date.parse('2026-07-27T00:30:00Z');
   assert.deepEqual(currentUtcWeekRange(mondayUtc), {
     from: '2026-07-27',
     to: '2026-07-27',
