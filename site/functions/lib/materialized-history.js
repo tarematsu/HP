@@ -1,5 +1,9 @@
 import { isRealIsoDate } from './api-utils.js';
-import { SUMMARY_TABLES } from './history-summary.js';
+import {
+  applyPreviousPeriodMemberStart,
+  previousSummaryPeriodKey,
+  SUMMARY_TABLES,
+} from './history-summary.js';
 import {
   applySummaryCompleteness,
   currentPeriodKey,
@@ -89,23 +93,32 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
   // including their current periods when available, are served from R2.
   const currentDailyKey = currentPeriodKey('daily', now);
   const currentFilter = mode === 'daily' ? ' AND period_key<?' : '';
+  const previousDailyKey = mode === 'daily' ? previousSummaryPeriodKey('daily', from) : null;
+  const queryFrom = previousDailyKey || from;
+  const queryLimit = summaryLimit(mode) + (mode === 'daily' && queryFrom < from ? 1 : 0);
   const statement = env.OTHER_DB.prepare(
     `SELECT ${SUMMARY_COLUMNS} FROM ${table}
      WHERE period_key>=? AND period_key<=?${currentFilter}
      ORDER BY period_key ASC LIMIT ?`,
   );
   const bindings = mode === 'daily'
-    ? [from, to, currentDailyKey, summaryLimit(mode)]
-    : [from, to, summaryLimit(mode)];
+    ? [queryFrom, to, currentDailyKey, queryLimit]
+    : [from, to, queryLimit];
   const hasTrackReadModel = Boolean(env?.MINUTE_DB?.prepare);
   const [result, trackCounts] = await Promise.all([
     statement.bind(...bindings).all(),
     loadPeriodTrackCounts(env, mode, from, to),
   ]);
-  const rows = result.results || [];
-  if (mode === 'daily') validateDailySummaryRows(rows);
+  const fetchedRows = result.results || [];
+  if (mode === 'daily') validateDailySummaryRows(fetchedRows);
+  const rows = mode === 'daily'
+    ? fetchedRows.filter((row) => String(row?.period_key || '') >= from)
+    : fetchedRows;
   const completed = applySummaryCompleteness(rows, mode, now);
-  const enrichedRows = completed.rows.map((row) => {
+  const memberRows = mode === 'daily'
+    ? applyPreviousPeriodMemberStart(completed.rows, 'daily', fetchedRows)
+    : completed.rows;
+  const enrichedRows = memberRows.map((row) => {
     const key = String(row?.period_key || '');
     const calculated = trackCounts.get(key);
     return calculated == null ? row : { ...row, distinct_tracks: calculated };
