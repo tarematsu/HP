@@ -34,8 +34,9 @@ test('current chart draws numeric axes in black and green with JST labels', () =
   assert.match(enhancement, /timeZone: 'Asia\/Tokyo'/);
   assert.match(enhancement, /strokeStyle = '#111'/);
   assert.match(enhancement, /rgba\(22,139,115,\.32\)/);
-  assert.match(enhancement, /`最小 \$\{numberText\(onlineRawMin\)\}`/);
-  assert.match(enhancement, /`最大 \$\{numberText\(onlineRawMax\)\}`/);
+  assert.match(enhancement, /`最小 \$\{numberText\(onlineRawMin\)\}（\$\{jstExtremaTime\.format/);
+  assert.match(enhancement, /`最大 \$\{numberText\(onlineRawMax\)\}（\$\{jstExtremaTime\.format/);
+  assert.doesNotMatch(enhancement, /strokeRect\(/);
 });
 
 test('stream goal is moved into the metric and ETA is display-only JST', () => {

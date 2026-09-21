@@ -28,3 +28,17 @@ test('online comparison chart still renders comment velocity from the dashboard 
   assert.match(source, /context\.fillRect/);
   assert.match(source, /コメント\/2分/);
 });
+
+test('online extrema labels omit borders and include JST time', async () => {
+  for (const file of [
+    'public/dashboard-chart-comparison.js',
+    'public/dashboard-current-enhancements.js',
+  ]) {
+    const source = await text(file);
+    assert.match(source, /const jstExtremaTime = new Intl\.DateTimeFormat/);
+    assert.match(source, /timeZone: 'Asia\/Tokyo'/);
+    assert.match(source, /`最小 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
+    assert.match(source, /`最大 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
+    assert.doesNotMatch(source, /strokeRect\(/);
+  }
+});

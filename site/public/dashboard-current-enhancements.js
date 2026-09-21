@@ -9,6 +9,9 @@ const jstChartDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
   month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
 });
+const jstExtremaTime = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
 let lastRows = [];
 let lastChartModel = null;
 let lastGoalPayload = null;
@@ -164,8 +167,6 @@ function labelBox(context, text, x, y, align, width, height) {
   const top = Math.max(2, Math.min(height - boxHeight - 2, y - boxHeight / 2));
   context.fillStyle = 'rgba(255,255,255,.92)';
   context.fillRect(left, top, boxWidth, boxHeight);
-  context.strokeStyle = 'rgba(17,17,17,.18)';
-  context.strokeRect(left, top, boxWidth, boxHeight);
   context.fillStyle = '#111';
   context.textAlign = 'left';
   context.textBaseline = 'middle';
@@ -287,14 +288,30 @@ function drawEnhancedChart(rows) {
     context.beginPath();
     context.arc(x[minIndex], yOnline(onlineRawMin), 3.5, 0, Math.PI * 2);
     context.fill();
-    labelBox(context, `最小 ${numberText(onlineRawMin)}`, x[minIndex] + 5, yOnline(onlineRawMin) + 14, 'left', width, height);
+    labelBox(
+      context,
+      `最小 ${numberText(onlineRawMin)}（${jstExtremaTime.format(new Date(rows[minIndex].observed_at))}）`,
+      x[minIndex] + 5,
+      yOnline(onlineRawMin) + 14,
+      'left',
+      width,
+      height,
+    );
   }
   if (maxIndex >= 0) {
     context.fillStyle = '#111';
     context.beginPath();
     context.arc(x[maxIndex], yOnline(onlineRawMax), 3.5, 0, Math.PI * 2);
     context.fill();
-    labelBox(context, `最大 ${numberText(onlineRawMax)}`, x[maxIndex] - 5, yOnline(onlineRawMax) - 14, 'right', width, height);
+    labelBox(
+      context,
+      `最大 ${numberText(onlineRawMax)}（${jstExtremaTime.format(new Date(rows[maxIndex].observed_at))}）`,
+      x[maxIndex] - 5,
+      yOnline(onlineRawMax) - 14,
+      'right',
+      width,
+      height,
+    );
   }
   lastChartModel = { rows, x };
 }

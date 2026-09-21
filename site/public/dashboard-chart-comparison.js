@@ -1,5 +1,8 @@
 const DAY_MS = 86_400_000;
 const integer = new Intl.NumberFormat('ja-JP');
+const jstExtremaTime = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
 let lastPayload = null;
 let redrawTimer = 0;
 
@@ -76,8 +79,6 @@ function labelBox(context, text, x, y, align, width, height) {
   const top = Math.max(2, Math.min(height - boxHeight - 2, y - boxHeight / 2));
   context.fillStyle = 'rgba(255,255,255,.92)';
   context.fillRect(left, top, boxWidth, boxHeight);
-  context.strokeStyle = 'rgba(17,17,17,.18)';
-  context.strokeRect(left, top, boxWidth, boxHeight);
   context.fillStyle = '#111';
   context.textAlign = 'left';
   context.textBaseline = 'middle';
@@ -213,14 +214,30 @@ function drawComparison(payload) {
       context.beginPath();
       context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3.5, 0, Math.PI * 2);
       context.fill();
-      labelBox(context, `最小 ${integer.format(currentMin)}`, xFor(minRow.observed_at) + 5, yOnline(currentMin) + 14, 'left', width, height);
+      labelBox(
+        context,
+        `最小 ${integer.format(currentMin)}（${jstExtremaTime.format(new Date(minRow.observed_at))}）`,
+        xFor(minRow.observed_at) + 5,
+        yOnline(currentMin) + 14,
+        'left',
+        width,
+        height,
+      );
     }
     if (maxRow) {
       context.fillStyle = '#111';
       context.beginPath();
       context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3.5, 0, Math.PI * 2);
       context.fill();
-      labelBox(context, `最大 ${integer.format(currentMax)}`, xFor(maxRow.observed_at) - 5, yOnline(currentMax) - 14, 'right', width, height);
+      labelBox(
+        context,
+        `最大 ${integer.format(currentMax)}（${jstExtremaTime.format(new Date(maxRow.observed_at))}）`,
+        xFor(maxRow.observed_at) - 5,
+        yOnline(currentMax) - 14,
+        'right',
+        width,
+        height,
+      );
     }
   }
 }
