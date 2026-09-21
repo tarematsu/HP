@@ -7,5 +7,5 @@ test('today official listening party line is emphasized', () => {
   assert.match(source, /Asia\/Tokyo/);
   assert.match(source, /isTodayEvent/);
   assert.match(source, /today \? 3\.4/);
-  assert.match(source, /today \? 52 : 72/);
+  assert.match(source, /today \? 1 : \(available\.length > 12 \? 0\.68 : 0\.9\)/);
 });

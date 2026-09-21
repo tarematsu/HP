@@ -59,13 +59,6 @@ function ensureMetricLayout() {
     if (panel) metrics.append(panel);
   }
 
-  if (onlinePanel && !byId('online24h')) {
-    const stats = document.createElement('div');
-    stats.id = 'online24h';
-    stats.className = 'online-24h';
-    stats.innerHTML = '<span id="online24hMin">24h最小 —</span><span id="online24hMax">24h最大 —</span>';
-    onlinePanel.append(stats);
-  }
   if (onlinePanel && !byId('onlineYesterdayAvg')) {
     const average = document.createElement('div');
     average.id = 'onlineYesterdayAvg';
@@ -101,17 +94,6 @@ function ensureMetricLayout() {
     streamsPanel.append(goal);
   }
   document.querySelector('.goal-card')?.remove();
-}
-
-function renderOnlineRange(rows) {
-  ensureMetricLayout();
-  const values = rows.map((row) => row.online_member_count).filter((value) => value != null);
-  const minimum = values.length ? Math.min(...values) : null;
-  const maximum = values.length ? Math.max(...values) : null;
-  const minNode = byId('online24hMin');
-  const maxNode = byId('online24hMax');
-  if (minNode) minNode.textContent = `24h最小 ${numberText(minimum)}人`;
-  if (maxNode) maxNode.textContent = `24h最大 ${numberText(maximum)}人`;
 }
 
 function goalEtaText(payload) {
@@ -292,7 +274,7 @@ function drawEnhancedChart(rows) {
   context.font = '10px system-ui';
   context.fillStyle = '#667287';
   context.textAlign = 'left';
-  context.fillText('オンライン(人)', 4, 12);
+  context.fillText('オンライン数(人)', 4, 12);
   context.textAlign = 'right';
   context.fillText('コメント/2分', width - 4, 12);
   context.textAlign = 'center';
@@ -325,7 +307,6 @@ function scheduleDraw() {
 function applyPayload(payload) {
   if (!payload?.ok) return;
   lastRows = normalizeHistory(payload.history);
-  renderOnlineRange(lastRows);
   renderCompactGoal(payload);
   enforceStationheadLink();
   scheduleDraw();
@@ -349,7 +330,7 @@ function selectEnhancedPoint(event) {
   const row = lastChartModel.rows[selected];
   const detail = byId('currentChartDetail');
   if (detail) {
-    detail.textContent = `${jstChartDateTime.format(new Date(row.observed_at))} JST　オンライン ${numberText(row.online_member_count)}人　コメント勢い ${numberText(commentVelocity(row))}件 / 2分`;
+    detail.textContent = `${jstChartDateTime.format(new Date(row.observed_at))} JST　オンライン数 ${numberText(row.online_member_count)}人　コメント勢い ${numberText(commentVelocity(row))}件 / 2分`;
   }
 }
 

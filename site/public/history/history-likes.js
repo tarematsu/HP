@@ -102,10 +102,20 @@ import {
     return visual;
   }
 
+  function includedInLikeRanking(row) {
+    const artist = artistName(row).trim();
+    if (!artist || artist === '—') return true;
+    return artist.normalize('NFKC').includes('櫻坂46');
+  }
+
+  function eligibleRankingRows() {
+    return state.rows.filter(includedInLikeRanking);
+  }
+
   function renderRanking() {
     const list = el('likesRankingList');
     list.replaceChildren();
-    const rows = state.rows.slice(0, 10);
+    const rows = eligibleRankingRows().slice(0, 10);
     if (!rows.length) {
       const empty = document.createElement('li');
       empty.className = 'empty-ranking';
@@ -114,12 +124,13 @@ import {
       return;
     }
     const fragment = document.createDocumentFragment();
-    for (const row of rows) {
+    rows.forEach((row, index) => {
+      const displayRank = index + 1;
       const item = document.createElement('li');
       item.className = 'like-rank-item';
       const rank = document.createElement('strong');
       rank.className = 'like-rank-number';
-      rank.textContent = MEDALS[Number(row.rank) - 1] || String(row.rank);
+      rank.textContent = MEDALS[displayRank - 1] || String(displayRank);
       const content = document.createElement('div');
       content.className = 'like-rank-content';
       const heading = document.createElement('div');
@@ -135,7 +146,7 @@ import {
       metrics.append(metric('最新いいね', fmt(row.latest_like_count)));
       item.append(rank, rankingThumbnail(row), content, metrics);
       fragment.appendChild(item);
-    }
+    });
     list.appendChild(fragment);
   }
 
@@ -189,7 +200,7 @@ import {
       state.rows = Array.isArray(result.data.ranking) ? result.data.ranking : [];
       state.summary = result.data.ranking_summary || {};
       render();
-      setNotice(`上位10曲 · 全${fmt(state.rows.length)}曲${result.cached ? ' · キャッシュ' : ''}`);
+      setNotice(`上位10曲 · 対象${fmt(eligibleRankingRows().length)}曲${result.cached ? ' · キャッシュ' : ''}`);
     } catch (error) {
       if (error?.name === 'AbortError') return;
       state.rows = [];

@@ -19,6 +19,14 @@
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   });
   const DATE_PREFIX = /^\s*\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/;
+  const SERIES_COLORS = [
+    ['--accent', '#d93f79'],
+    ['--accent-2', '#6657d8'],
+    ['--green', '#168b73'],
+    ['--orange', '#c56a18'],
+    ['--blue', '#2776b9'],
+    ['--danger', '#c53d4d'],
+  ];
   let series = [];
   let selectedMinute = null;
   let loadingKey = '';
@@ -66,9 +74,13 @@
     return item?.source_mismatch ? '（集計値のみ）' : '（データ未取得）';
   }
 
-  function colorFor(index, alpha = 1, lightness = 72) {
-    const hue = (330 + index * 137.508) % 360;
-    return `hsla(${hue},72%,${lightness}%,${alpha})`;
+  function cssColor(name, fallback) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  }
+
+  function colorFor(index) {
+    const [name, fallback] = SERIES_COLORS[index % SERIES_COLORS.length];
+    return cssColor(name, fallback);
   }
 
   function samplePoints(points, maximum = MAX_DRAW_POINTS) {
@@ -147,6 +159,7 @@
     document.getElementById('chartFoot').textContent = '各線は1回の公式リスパです。横軸は各開催の開始からの経過時間です。';
     if (!available.length) {
       context.font = '14px system-ui';
+      context.fillStyle = cssColor('--muted', '#667287');
       context.textAlign = 'center';
       context.fillText('表示できる公式リスパデータがありません', width / 2, height / 2);
       legend.innerHTML = series.map((item, index) =>
@@ -164,8 +177,8 @@
     const yFor = (value) => area.top + area.height - area.height * Math.max(0, Number(value) || 0) / maxListener;
 
     context.lineWidth = 1;
-    context.strokeStyle = '#ffffff18';
-    context.fillStyle = '#aaa3b5';
+    context.strokeStyle = 'rgba(31,45,68,.12)';
+    context.fillStyle = cssColor('--muted', '#667287');
     context.font = '10.5px system-ui';
     for (let index = 0; index <= 4; index += 1) {
       const y = area.top + area.height * index / 4;
@@ -181,10 +194,6 @@
     for (let index = 0; index <= xTickCount; index += 1) {
       const minute = Math.round(maxMinute * index / xTickCount);
       const x = xFor(minute);
-      context.beginPath();
-      context.moveTo(x, area.top);
-      context.lineTo(x, area.top + area.height);
-      context.stroke();
       context.textAlign = index === 0 ? 'left' : index === xTickCount ? 'right' : 'center';
       context.fillText(number.format(minute), x, area.top + area.height + 16);
     }
@@ -193,7 +202,9 @@
 
     available.forEach((item, index) => {
       const today = isTodayEvent(item);
-      context.strokeStyle = colorFor(index, today ? 1 : (available.length > 12 ? 0.68 : 0.9), today ? 52 : 72);
+      context.save();
+      context.strokeStyle = colorFor(index);
+      context.globalAlpha = today ? 1 : (available.length > 12 ? 0.68 : 0.9);
       context.lineWidth = today ? 3.4 : (available.length > 16 ? 1.15 : 1.7);
       context.beginPath();
       let open = false;
@@ -206,12 +217,14 @@
         open = true;
       }
       context.stroke();
+      context.restore();
     });
 
     if (selectedMinute != null) {
       const x = xFor(selectedMinute);
       context.save();
-      context.strokeStyle = '#ffffffb0';
+      context.strokeStyle = cssColor('--muted', '#667287');
+      context.globalAlpha = 0.55;
       context.setLineDash([4, 4]);
       context.beginPath();
       context.moveTo(x, area.top);
