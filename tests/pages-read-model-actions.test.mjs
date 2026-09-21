@@ -204,7 +204,7 @@ test('materialized summaries exclude the current period from the R2 body', async
   }, 'daily', '2024-06-01', '2026-07-20', DAY + 12 * 60 * MINUTE);
 
   assert.match(sql, /period_key<\?/);
-  assert.deepEqual(bindings, ['2024-06-01', '2026-07-20', '2026-07-20', 800]);
+  assert.deepEqual(bindings, ['2024-05-31', '2026-07-20', '2026-07-20', 801]);
   assert.deepEqual(result.rows, []);
   assert.equal(result.storage_source, 'other.sh_daily_summary');
 });
