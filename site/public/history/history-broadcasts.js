@@ -11,7 +11,9 @@
   const MAX_CACHE_POINTS = 30_000;
   const MAX_DRAW_POINTS = 2_400;
   const CACHE_REVISION = '8';
+  const SESSION_MATCH_TOLERANCE_MS = 15 * 60_000;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
+  const integer = new Intl.NumberFormat('ja-JP');
   const eventDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
   });
@@ -26,8 +28,17 @@
     ['--orange', '#c56a18'],
     ['--blue', '#2776b9'],
     ['--danger', '#c53d4d'],
+    [null, '#00838f'],
+    [null, '#8c6d1f'],
+    [null, '#6b55a3'],
+    [null, '#b23a98'],
+    [null, '#4f772d'],
+    [null, '#006d9c'],
   ];
+  const TABLE_METRICS = ['平均同接', '最小同接', '最大同接', '曲数', '推定再生数', 'コメント数'];
   let series = [];
+  let hostSessions = [];
+  let hostSessionsPromise = null;
   let selectedMinute = null;
   let loadingKey = '';
   let loadedKey = '';
@@ -35,10 +46,17 @@
   let controller = null;
   let loadTimer = null;
   let resizeTimer = null;
+  let tableTimer = null;
+  let tableEnhancing = false;
 
   button.textContent = '公式リスパ';
 
   const active = () => button.classList.contains('active');
+  const finite = (value) => {
+    if (value === null || value === undefined || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
   const escape = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')
@@ -75,12 +93,15 @@
   }
 
   function cssColor(name, fallback) {
+    if (!name) return fallback;
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
   }
 
   function colorFor(index) {
-    const [name, fallback] = SERIES_COLORS[index % SERIES_COLORS.length];
-    return cssColor(name, fallback);
+    const preset = SERIES_COLORS[index];
+    if (preset) return cssColor(preset[0], preset[1]);
+    const hue = (18 + index * 137.508) % 360;
+    return `hsl(${hue.toFixed(1)} 62% 44%)`;
   }
 
   function samplePoints(points, maximum = MAX_DRAW_POINTS) {
@@ -97,13 +118,29 @@
       const points = Array.isArray(item.points) ? item.points : [];
       let maxMinute = 0;
       let maxListener = 0;
+      let minListener = Infinity;
+      let listenerSum = 0;
+      let listenerCount = 0;
       for (const point of points) {
         const minute = Number(point?.[0]);
         const listener = Number(point?.[1]);
         if (Number.isFinite(minute)) maxMinute = Math.max(maxMinute, minute);
-        if (Number.isFinite(listener)) maxListener = Math.max(maxListener, listener);
+        if (Number.isFinite(listener)) {
+          maxListener = Math.max(maxListener, listener);
+          minListener = Math.min(minListener, listener);
+          listenerSum += listener;
+          listenerCount += 1;
+        }
       }
-      return { ...item, points, drawPoints: samplePoints(points), maxMinute, maxListener };
+      return {
+        ...item,
+        points,
+        drawPoints: samplePoints(points),
+        maxMinute,
+        maxListener,
+        minListener: Number.isFinite(minListener) ? minListener : null,
+        averageListener: listenerCount ? listenerSum / listenerCount : null,
+      };
     });
   }
 
@@ -165,6 +202,7 @@
       legend.innerHTML = series.map((item, index) =>
         `<span><i style="background:${colorFor(index)}"></i>${escape(eventLabel(item))}${missingSuffix(item)}</span>`).join('');
       renderDetail(null);
+      scheduleTableEnhance();
       return;
     }
 
@@ -200,7 +238,8 @@
     context.textAlign = 'center';
     context.fillText('経過時間（分）', area.left + area.width / 2, height - 5);
 
-    available.forEach((item, index) => {
+    available.forEach((item) => {
+      const index = series.indexOf(item);
       const today = isTodayEvent(item);
       context.save();
       context.strokeStyle = colorFor(index);
@@ -241,6 +280,7 @@
     canvas.dataset.sakurazakaMaxMinute = String(maxMinute);
     canvas.dataset.sakurazakaLeft = String(area.left);
     canvas.dataset.sakurazakaWidth = String(area.width);
+    scheduleTableEnhance();
   }
 
   function cacheKey() {
@@ -267,6 +307,163 @@
     notice.hidden = true;
   }
 
+  function normalizedEventName(value) {
+    return String(value || '')
+      .normalize('NFKC')
+      .replace(/（(?:集計値のみ|データ未取得)）/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+  }
+
+  function parseTableNumber(value) {
+    const text = String(value ?? '').replaceAll(',', '').trim();
+    if (!text || text === '—') return null;
+    const match = text.match(/[+-]?(?:\d+(?:\.\d*)?|\.\d+)/);
+    return match ? finite(match[0]) : null;
+  }
+
+  function parseUtcTableDate(value) {
+    const match = String(value || '').match(/(\d{4})[./-](\d{1,2})[./-](\d{1,2}).*?(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+    return Date.UTC(
+      Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]),
+    );
+  }
+
+  function findSeriesForRow(eventName, startedAt) {
+    const key = normalizedEventName(eventName);
+    const exact = key ? series.find((item) => normalizedEventName(item.event_name) === key) : null;
+    if (exact) return exact;
+    if (Number.isFinite(startedAt)) {
+      const close = series
+        .map((item) => ({ item, diff: Math.abs((finite(item.started_at) ?? Infinity) - startedAt) }))
+        .filter(({ diff }) => diff <= SESSION_MATCH_TOLERANCE_MS)
+        .sort((left, right) => left.diff - right.diff)[0];
+      if (close) return close.item;
+    }
+    if (!key) return null;
+    return series.find((item) => {
+      const candidate = normalizedEventName(item.event_name);
+      return candidate.length >= 8 && (candidate.includes(key) || key.includes(candidate));
+    }) || null;
+  }
+
+  function findSession(startedAt) {
+    if (!Number.isFinite(startedAt)) return null;
+    const nearest = hostSessions
+      .map((item) => ({ item, diff: Math.abs((finite(item?.started_at) ?? Infinity) - startedAt) }))
+      .filter(({ diff }) => diff <= SESSION_MATCH_TOLERANCE_MS)
+      .sort((left, right) => left.diff - right.diff)[0];
+    return nearest?.item || null;
+  }
+
+  function writeCell(cell, value, formatter = number) {
+    if (!cell) return;
+    const text = value == null ? '—' : formatter.format(value);
+    if (cell.textContent !== text) cell.textContent = text;
+  }
+
+  function ensureTableMetricColumns(head, body) {
+    const row = head.querySelector('tr');
+    if (!row) return null;
+    const labels = [...row.querySelectorAll('th')].map((cell) => cell.textContent.trim());
+    for (const label of TABLE_METRICS) {
+      if (labels.includes(label)) continue;
+      const cell = document.createElement('th');
+      cell.scope = 'col';
+      cell.textContent = label;
+      if (label === '推定再生数') cell.title = '曲数 × 平均同接';
+      row.appendChild(cell);
+      labels.push(label);
+    }
+    for (const bodyRow of body.querySelectorAll('tr')) {
+      const cells = bodyRow.querySelectorAll('td');
+      if (cells.length === 1 && Number(cells[0].colSpan) > 1) {
+        cells[0].colSpan = labels.length;
+      }
+    }
+    return new Map(labels.map((label, index) => [label, index]));
+  }
+
+  function enhanceBroadcastTable() {
+    if (!active() || tableEnhancing) return;
+    const head = document.getElementById('thead');
+    const body = document.getElementById('tbody');
+    if (!head || !body) return;
+    tableEnhancing = true;
+    try {
+      const indexes = ensureTableMetricColumns(head, body);
+      if (!indexes) return;
+      const headers = [...head.querySelectorAll('th')];
+      const eventIndex = headers.findIndex((cell) => cell.textContent.trim() === '放送名');
+      const startIndex = headers.findIndex((cell) => cell.textContent.trim().startsWith('開始日時'));
+      if (eventIndex < 0) return;
+
+      for (const row of body.querySelectorAll('tr')) {
+        let cells = [...row.querySelectorAll('td')];
+        if (cells.length === 1 && Number(cells[0].colSpan) > 1) continue;
+        while (cells.length < headers.length) {
+          const cell = document.createElement('td');
+          row.appendChild(cell);
+          cells.push(cell);
+        }
+        const startedFromTable = startIndex >= 0 ? parseUtcTableDate(cells[startIndex]?.textContent) : null;
+        const item = findSeriesForRow(cells[eventIndex]?.textContent, startedFromTable);
+        const startedAt = finite(item?.started_at) ?? startedFromTable;
+        const session = findSession(startedAt);
+        const readMetric = (label) => parseTableNumber(cells[indexes.get(label)]?.textContent);
+
+        const average = readMetric('平均同接')
+          ?? finite(session?.average_listeners)
+          ?? finite(item?.averageListener);
+        const minimum = readMetric('最小同接') ?? finite(item?.minListener);
+        const maximum = readMetric('最大同接')
+          ?? finite(session?.peak_listeners)
+          ?? finite(item?.maxListener);
+        const tracks = readMetric('曲数') ?? finite(session?.track_count);
+        const estimated = average != null && tracks != null ? Math.round(average * tracks) : null;
+        const comments = finite(session?.comment_count);
+
+        writeCell(cells[indexes.get('平均同接')], average);
+        writeCell(cells[indexes.get('最小同接')], minimum);
+        writeCell(cells[indexes.get('最大同接')], maximum);
+        writeCell(cells[indexes.get('曲数')], tracks);
+        writeCell(cells[indexes.get('推定再生数')], estimated, integer);
+        writeCell(cells[indexes.get('コメント数')], comments, integer);
+      }
+    } finally {
+      tableEnhancing = false;
+    }
+  }
+
+  function scheduleTableEnhance(delay = 0) {
+    clearTimeout(tableTimer);
+    tableTimer = setTimeout(() => {
+      tableTimer = null;
+      enhanceBroadcastTable();
+    }, delay);
+  }
+
+  async function loadHostSessions(force = false) {
+    if (hostSessionsPromise && !force) return hostSessionsPromise;
+    const request = fetch('/api/host-history?mode=sessions&limit=500', {
+      cache: force ? 'no-store' : 'default',
+      headers: { accept: 'application/json' },
+    }).then(async (response) => {
+      const data = await response.json();
+      if (!response.ok || !data?.ok) throw new Error(data?.error || `API ${response.status}`);
+      hostSessions = Array.isArray(data.rows) ? data.rows : [];
+      return hostSessions;
+    }).catch(() => hostSessions);
+    hostSessionsPromise = request;
+    try {
+      return await request;
+    } finally {
+      if (hostSessionsPromise === request) hostSessionsPromise = null;
+    }
+  }
+
   async function loadSeries() {
     if (!active()) return;
     const key = cacheKey();
@@ -274,6 +471,7 @@
     if (loadedKey === key) {
       draw();
       updateNotice(loadedMeta);
+      void loadHostSessions().then(() => scheduleTableEnhance());
       return;
     }
     loadingKey = key;
@@ -298,6 +496,7 @@
       loadedMeta = data;
       draw();
       updateNotice(data);
+      void loadHostSessions().then(() => scheduleTableEnhance());
     } catch (error) {
       if (error?.name !== 'AbortError' && active()) {
         series = [];
@@ -335,16 +534,26 @@
     draw();
   }
 
+  const tableObserver = new MutationObserver(() => scheduleTableEnhance());
+  const tableHead = document.getElementById('thead');
+  const tableBody = document.getElementById('tbody');
+  if (tableHead) tableObserver.observe(tableHead, { childList: true, subtree: true });
+  if (tableBody) tableObserver.observe(tableBody, { childList: true, subtree: true });
+
   canvas.addEventListener('click', handlePointer, true);
   canvas.addEventListener('touchstart', handlePointer, { capture: true, passive: true });
   document.querySelectorAll('#modeTabs button').forEach((modeButton) =>
     modeButton.addEventListener('click', () => {
       notice.hidden = active();
-      if (active()) notice.textContent = '';
+      if (active()) {
+        notice.textContent = '';
+        scheduleTableEnhance();
+      }
     }));
   button.addEventListener('click', () => scheduleLoad(120));
   document.getElementById('load')?.addEventListener('click', () => {
     loadedKey = '';
+    void loadHostSessions(true).then(() => scheduleTableEnhance());
     scheduleLoad(160);
   });
   document.querySelectorAll('.range-presets button').forEach((preset) =>
@@ -359,6 +568,7 @@
   if (active()) {
     notice.textContent = '';
     notice.hidden = true;
+    scheduleTableEnhance();
     scheduleLoad(0);
   }
 })();
