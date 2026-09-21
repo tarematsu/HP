@@ -1,6 +1,5 @@
 import { isRealIsoDate } from './api-utils.js';
 import {
-  applyPreviousPeriodMemberStart,
   previousSummaryPeriodKey,
   SUMMARY_TABLES,
 } from './history-summary.js';
@@ -27,6 +26,12 @@ function json(data, status = 200) {
 
 function todayUtcString(now = Date.now()) {
   return new Date(now).toISOString().slice(0, 10);
+}
+
+function finiteNumber(value) {
+  if (value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function summaryLimit(mode) {
@@ -83,15 +88,38 @@ export async function loadPeriodTrackCounts(env, mode, from, to) {
   }
 }
 
+async function persistClosedPeriodTrackCounts(db, table, rows, trackCounts, mode, now) {
+  if (!db?.prepare || !trackCounts?.size) return 0;
+  const currentKey = currentPeriodKey(mode, now);
+  const statements = [];
+  for (const row of rows) {
+    const key = String(row?.period_key || '');
+    if (!key || key >= currentKey || finiteNumber(row?.distinct_tracks) != null) continue;
+    const count = finiteNumber(trackCounts.get(key));
+    if (count == null) continue;
+    statements.push(db.prepare(`UPDATE ${table}
+      SET distinct_tracks=?,updated_at=?
+      WHERE period_key=? AND distinct_tracks IS NULL`)
+      .bind(count, now, key));
+  }
+  if (!statements.length) return 0;
+  if (typeof db.batch === 'function') {
+    await db.batch(statements);
+  } else {
+    for (const statement of statements) await statement.run();
+  }
+  return statements.length;
+}
+
 export async function loadMaterializedSummary(env, mode, from, to, now = Date.now()) {
   if (!env?.OTHER_DB) throw new Error('OTHER_DB binding missing');
   const table = SUMMARY_TABLES[mode];
   if (!table) throw new Error(`unsupported summary mode: ${mode}`);
 
-  // Only the current UTC daily row stays outside R2. It is loaded from
-  // /api/history-current and merged in the browser. Weekly and monthly rows,
-  // including their current periods when available, are served from R2.
-  const currentDailyKey = currentPeriodKey('daily', now);
+  // Keep one prior daily row in the bounded read for compatibility with the
+  // existing materialization contract. Persisted member metrics are not
+  // recalculated from it; the requested range is filtered before rendering.
+  const currentKey = currentPeriodKey(mode, now);
   const currentFilter = mode === 'daily' ? ' AND period_key<?' : '';
   const previousDailyKey = mode === 'daily' ? previousSummaryPeriodKey('daily', from) : null;
   const queryFrom = previousDailyKey || from;
@@ -102,26 +130,37 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
      ORDER BY period_key ASC LIMIT ?`,
   );
   const bindings = mode === 'daily'
-    ? [queryFrom, to, currentDailyKey, queryLimit]
+    ? [queryFrom, to, currentKey, queryLimit]
     : [from, to, queryLimit];
-  const hasTrackReadModel = Boolean(env?.MINUTE_DB?.prepare);
-  const [result, trackCounts] = await Promise.all([
-    statement.bind(...bindings).all(),
-    loadPeriodTrackCounts(env, mode, from, to),
-  ]);
+  const result = await statement.bind(...bindings).all();
   const fetchedRows = result.results || [];
   if (mode === 'daily') validateDailySummaryRows(fetchedRows);
   const rows = mode === 'daily'
     ? fetchedRows.filter((row) => String(row?.period_key || '') >= from)
     : fetchedRows;
-  const completed = applySummaryCompleteness(rows, mode, now);
-  const memberRows = mode === 'daily'
-    ? applyPreviousPeriodMemberStart(completed.rows, 'daily', fetchedRows)
-    : completed.rows;
-  const enrichedRows = memberRows.map((row) => {
+
+  // Historical track totals are canonical summary data. Calculate them only
+  // when a closed period has not been populated yet, persist the result to
+  // OTHER_DB, and read the stored value on subsequent materializations. The
+  // current weekly/monthly period remains live because it is still changing.
+  const shouldLoadTrackCounts = Boolean(env?.MINUTE_DB?.prepare) && rows.some((row) => {
     const key = String(row?.period_key || '');
-    const calculated = trackCounts.get(key);
-    return calculated == null ? row : { ...row, distinct_tracks: calculated };
+    return key === currentKey || (key < currentKey && finiteNumber(row?.distinct_tracks) == null);
+  });
+  const trackCounts = shouldLoadTrackCounts
+    ? await loadPeriodTrackCounts(env, mode, from, to)
+    : new Map();
+  await persistClosedPeriodTrackCounts(env.OTHER_DB, table, rows, trackCounts, mode, now);
+
+  const completed = applySummaryCompleteness(rows, mode, now);
+  const enrichedRows = completed.rows.map((row) => {
+    const key = String(row?.period_key || '');
+    const calculated = finiteNumber(trackCounts.get(key));
+    if (key === currentKey && calculated != null) return { ...row, distinct_tracks: calculated };
+    if (finiteNumber(row?.distinct_tracks) == null && calculated != null) {
+      return { ...row, distinct_tracks: calculated };
+    }
+    return row;
   });
   return {
     rows: enrichedRows,
@@ -131,7 +170,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     latest_live_observed_at: null,
     live_truncated: false,
     live_source: 'summary-only',
-    storage_source: hasTrackReadModel
+    storage_source: shouldLoadTrackCounts
       ? `other.${table}+minute.sh_pages_track_history_read_model`
       : `other.${table}`,
   };

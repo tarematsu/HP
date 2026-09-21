@@ -41,55 +41,70 @@ function environment(calls, rows = [summaryRow()], trackRows = [{
   const forbidden = new Proxy({}, {
     get() { assert.fail('history materialization must not inspect raw history databases'); },
   });
+  const otherDb = {
+    prepare(sql) {
+      const call = { source: /^\s*UPDATE\b/i.test(sql) ? 'other-update' : 'other-select', sql, bindings: null };
+      calls.push(call);
+      if (call.source === 'other-select') {
+        assert.match(sql, /FROM sh_daily_summary/);
+        assert.doesNotMatch(sql, /sh_channel_snapshots|sh_minute_facts/);
+      } else {
+        assert.match(sql, /UPDATE sh_daily_summary/);
+        assert.match(sql, /SET distinct_tracks=\?,updated_at=\?/);
+      }
+      return {
+        bind(...bindings) {
+          call.bindings = bindings;
+          if (call.source === 'other-select') return { all: async () => ({ results: rows }) };
+          return { run: async () => ({ success: true }) };
+        },
+      };
+    },
+    async batch(statements) {
+      return statements.map(() => ({ success: true }));
+    },
+  };
   return {
     DB: forbidden,
     MINUTE_DB: {
       prepare(sql) {
-        calls.push({ source: 'minute', sql, bindings: null });
+        const call = { source: 'minute', sql, bindings: null };
+        calls.push(call);
         assert.match(sql, /FROM sh_pages_track_history_read_model/);
         assert.match(sql, /SUM\(CASE/);
         assert.match(sql, /json_extract\(row_json,'\$\.play_count'\)/);
         assert.doesNotMatch(sql, /sh_channel_snapshots|sh_minute_facts/);
         return {
           bind(...bindings) {
-            calls.at(-1).bindings = bindings;
+            call.bindings = bindings;
             return { all: async () => ({ results: trackRows }) };
           },
         };
       },
     },
-    OTHER_DB: {
-      prepare(sql) {
-        calls.push({ source: 'other', sql, bindings: null });
-        assert.match(sql, /FROM sh_daily_summary/);
-        assert.doesNotMatch(sql, /sh_channel_snapshots|sh_minute_facts/);
-        return {
-          bind(...bindings) {
-            calls.at(-1).bindings = bindings;
-            return { all: async () => ({ results: rows }) };
-          },
-        };
-      },
-    },
+    OTHER_DB: otherDb,
   };
 }
 
-test('Actions history renderer reads summaries and enriches total track plays from the track read model', async () => {
+test('Actions history renderer persists missing historical track totals in OTHER_DB', async () => {
   const calls = [];
+  const now = Date.parse('2026-07-28T01:00:00Z');
   const result = await loadMaterializedSummary(
     environment(calls),
     'daily',
     '2026-07-01',
     '2026-07-28',
-    Date.parse('2026-07-28T01:00:00Z'),
+    now,
   );
 
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls.find((call) => call.source === 'other').bindings, [
+  assert.deepEqual(calls.find((call) => call.source === 'other-select').bindings, [
     '2026-06-30', '2026-07-28', '2026-07-28', 801,
   ]);
   assert.deepEqual(calls.find((call) => call.source === 'minute').bindings, [
     '2026-07-01', '2026-07-28',
+  ]);
+  assert.deepEqual(calls.find((call) => call.source === 'other-update').bindings, [
+    17, now, '2026-07-26',
   ]);
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].period_complete, true);
@@ -99,24 +114,33 @@ test('Actions history renderer reads summaries and enriches total track plays fr
   assert.equal(result.storage_source, 'other.sh_daily_summary+minute.sh_pages_track_history_read_model');
 });
 
+test('persisted historical track totals skip request-time MINUTE_DB aggregation', async () => {
+  const calls = [];
+  const result = await loadMaterializedSummary(
+    environment(calls, [summaryRow({ distinct_tracks: 17 })]),
+    'daily',
+    '2026-07-26',
+    '2026-07-26',
+    Date.parse('2026-07-28T01:00:00Z'),
+  );
+
+  assert.equal(calls.filter((call) => call.source === 'minute').length, 0);
+  assert.equal(calls.filter((call) => call.source === 'other-update').length, 0);
+  assert.equal(result.rows[0].distinct_tracks, 17);
+  assert.equal(result.storage_source, 'other.sh_daily_summary');
+});
+
 test('daily materialization preserves member boundaries already persisted in OTHER_DB', async () => {
   const calls = [];
-  const previous = summaryRow({
-    period_key: '2026-07-25',
-    period_start: PERIOD_START - DAY,
-    period_end: PERIOD_END - DAY,
-    member_start: 190,
-    member_end: 198,
-    member_growth: 8,
-  });
   const current = summaryRow({
     member_start: 198,
     member_end: 205,
     member_growth: 7,
+    distinct_tracks: 17,
   });
 
   const result = await loadMaterializedSummary(
-    environment(calls, [previous, current]),
+    environment(calls, [current]),
     'daily',
     '2026-07-26',
     '2026-07-26',
@@ -128,7 +152,7 @@ test('daily materialization preserves member boundaries already persisted in OTH
   assert.equal(result.rows[0].member_start, 198);
   assert.equal(result.rows[0].member_end, 205);
   assert.equal(result.rows[0].member_growth, 7);
-  assert.deepEqual(calls.find((call) => call.source === 'other').bindings, [
+  assert.deepEqual(calls.find((call) => call.source === 'other-select').bindings, [
     '2026-07-25', '2026-07-26', '2026-07-28', 801,
   ]);
 });
@@ -161,5 +185,6 @@ test('materialized history response keeps the public payload shape without raw D
   assert.equal(payload.live_source, 'summary-only');
   assert.equal(payload.live_overlay_count, 0);
   assert.equal(payload.rows[0].distinct_tracks, 17);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.filter((call) => call.source === 'minute').length, 1);
+  assert.equal(calls.filter((call) => call.source === 'other-update').length, 1);
 });

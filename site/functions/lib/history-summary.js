@@ -235,18 +235,88 @@ export function combineSummaryRows(base, live) {
   };
 }
 
+function repairedBoundaryRow(base, bounded, mode) {
+  const periodStart = finiteNumber(bounded?.boundary_start_at)
+    ?? finiteNumber(bounded?.period_start)
+    ?? finiteNumber(base?.period_start);
+  const periodEnd = finiteNumber(bounded?.boundary_end_at)
+    ?? finiteNumber(bounded?.period_end)
+    ?? finiteNumber(base?.period_end);
+  const streamStart = finiteNumber(bounded?.stream_start) ?? finiteNumber(base?.stream_start);
+  const streamEnd = finiteNumber(bounded?.stream_end) ?? finiteNumber(base?.stream_end);
+  const memberStart = mode === 'daily'
+    ? finiteNumber(base?.member_start)
+    : finiteNumber(bounded?.member_start) ?? finiteNumber(base?.member_start);
+  const memberEnd = mode === 'daily'
+    ? finiteNumber(base?.member_end)
+    : finiteNumber(bounded?.member_end) ?? finiteNumber(base?.member_end);
+  return {
+    ...bounded,
+    period_start: periodStart,
+    period_end: periodEnd,
+    boundary_start_at: finiteNumber(bounded?.boundary_start_at),
+    boundary_end_at: finiteNumber(bounded?.boundary_end_at),
+    stream_start: streamStart,
+    stream_end: streamEnd,
+    stream_growth: streamStart != null && streamEnd != null && streamEnd >= streamStart
+      ? streamEnd - streamStart
+      : finiteNumber(base?.stream_growth),
+    member_start: memberStart,
+    member_end: memberEnd,
+    member_growth: memberStart != null && memberEnd != null
+      ? memberEnd - memberStart
+      : finiteNumber(base?.member_growth),
+  };
+}
+
+function sameFinite(a, b) {
+  return finiteNumber(a) === finiteNumber(b);
+}
+
+async function persistCompletedBoundaryRepairs(db, table, baseRows, repairedRows, now) {
+  if (!db?.prepare) return 0;
+  const baseByKey = new Map(baseRows.map((row) => [String(row?.period_key || ''), row]));
+  const statements = [];
+  for (const row of repairedRows) {
+    const key = String(row?.period_key || '');
+    const base = baseByKey.get(key);
+    if (!base) continue;
+    if (finiteNumber(row?.boundary_start_at) == null || finiteNumber(row?.boundary_end_at) == null) continue;
+    const changed = !sameFinite(base.period_start, row.period_start)
+      || !sameFinite(base.period_end, row.period_end)
+      || !sameFinite(base.stream_start, row.stream_start)
+      || !sameFinite(base.stream_end, row.stream_end)
+      || !sameFinite(base.stream_growth, row.stream_growth)
+      || !sameFinite(base.member_start, row.member_start)
+      || !sameFinite(base.member_end, row.member_end)
+      || !sameFinite(base.member_growth, row.member_growth);
+    if (!changed) continue;
+    statements.push(db.prepare(`UPDATE ${table} SET
+        period_start=?,period_end=?,stream_start=?,stream_end=?,stream_growth=?,
+        member_start=?,member_end=?,member_growth=?,updated_at=?
+      WHERE period_key=?`).bind(
+      finiteNumber(row.period_start), finiteNumber(row.period_end),
+      finiteNumber(row.stream_start), finiteNumber(row.stream_end), finiteNumber(row.stream_growth),
+      finiteNumber(row.member_start), finiteNumber(row.member_end), finiteNumber(row.member_growth),
+      now, key,
+    ));
+  }
+  if (!statements.length) return 0;
+  if (typeof db.batch === 'function') {
+    await db.batch(statements);
+  } else {
+    for (const statement of statements) await statement.run();
+  }
+  return statements.length;
+}
+
 export async function loadSummaryWithLive(env, mode, from, to, now = Date.now()) {
   const table = SUMMARY_TABLES[mode] || SUMMARY_TABLES.weekly;
   const limit = mode === 'daily' ? 800 : mode === 'weekly' ? 160 : 60;
-  const previousKey = previousSummaryPeriodKey(mode, from);
-  const contextKey = summaryContextStartKey(mode, from);
-  const queryFrom = contextKey || previousKey || from;
-  const contextAllowance = mode === 'daily' ? 48 : mode === 'weekly' ? 10 : 5;
   const baseResult = await env.OTHER_DB.prepare(
     `SELECT ${SUMMARY_COLUMNS} FROM ${table} WHERE period_key>=? AND period_key<=? ORDER BY period_key ASC LIMIT ?`,
-  ).bind(queryFrom, to, limit + contextAllowance).all();
-  const fetchedRows = baseResult.results || [];
-  const baseRows = fetchedRows.filter((row) => String(row?.period_key || '') >= from);
+  ).bind(from, to, limit).all();
+  const baseRows = baseResult.results || [];
 
   // Public /api/history reads persisted summary rows only. The current UTC daily
   // row is overlaid separately by /api/history-current. Running the generic
@@ -255,7 +325,19 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
   const evidenceTargets = rowsRequiringBoundaryEvidence(baseRows, mode, now);
   const evidence = await loadPeriodBoundaryEvidence(env.DB || env.MINUTE_DB, evidenceTargets, mode);
   const boundedRows = applyPeriodBoundaryEvidence(baseRows, evidence);
-  const completed = applySummaryCompleteness(boundedRows, mode, now);
+  const repairedRows = boundedRows.map((row) => repairedBoundaryRow(
+    baseRows.find((base) => String(base?.period_key || '') === String(row?.period_key || '')) || row,
+    row,
+    mode,
+  ));
+  await persistCompletedBoundaryRepairs(env.OTHER_DB, table, baseRows, repairedRows, now).catch((error) => {
+    console.warn(JSON.stringify({
+      event: 'summary_boundary_repair_persist_failed',
+      mode,
+      error: String(error?.message || error).slice(0, 300),
+    }));
+  });
+  const completed = applySummaryCompleteness(repairedRows, mode, now);
   return {
     rows: completed.rows,
     excluded_stream_growth_count: completed.excludedCount,
