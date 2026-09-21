@@ -74,7 +74,7 @@ function scheduleRuntimePrefetch() {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import(HISTORY_RUNTIME_URL).catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -85,7 +85,7 @@ async function loadHistoryRuntime() {
 
 async function loadLikesRuntime() {
   if (!likesRuntimePromise) {
-    likesRuntimePromise = import(LIKES_RUNTIME_URL).catch((error) => {
+    likesRuntimePromise = import('/history/history-likes.js').catch((error) => {
       likesRuntimePromise = null;
       throw error;
     });
