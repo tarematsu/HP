@@ -1,7 +1,13 @@
 const OFFICIAL_NEWS_DUE_SQL = `SELECT 1 AS due FROM sh_official_news_announcements
   WHERE scheduled_at IS NOT NULL AND (
     (status='scheduled' AND scheduled_at>=? AND scheduled_at<=?) OR status='active'
-  ) LIMIT 1`;
+  )
+  AND NOT (
+    event_name LIKE '%ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY%'
+    AND scheduled_at>=1789957800000
+    AND scheduled_at<1789960620000
+  )
+  LIMIT 1`;
 
 const OFFICIAL_NEWS_CHECK_STATE_SQL = `SELECT last_check_at
   FROM sh_official_news_monitor_state WHERE id='official-news' LIMIT 1`;
