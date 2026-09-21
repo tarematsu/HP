@@ -9,12 +9,12 @@ import {
 
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
 const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 60;
-const MATERIALIZED_CACHE_NAMESPACE = '20260919-1';
+const MATERIALIZED_CACHE_NAMESPACE = '20260921-2';
 const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
-// Only the realtime dashboard may fall back to live Pages bindings. Completed
-// history is an R2 read model; falling back would reintroduce D1 reads on the
-// public request path and make storage behavior depend on an outage.
-const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set(['dashboard']);
+// Materialized Pages surfaces are storage-only on the public path. Falling back
+// to live D1 during an R2/service outage turns browser polling into unbounded
+// database work exactly when the system is degraded, so fail closed instead.
+const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set();
 const SERVICE_MATERIALIZED_MODEL_KEYS = new Set(
   MATERIALIZED_API_VARIANTS.map(({ key }) => key),
 );
