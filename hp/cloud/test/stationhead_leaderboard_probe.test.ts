@@ -55,7 +55,7 @@ describe("Stationhead leaderboard probe", () => {
     )).toBeNull();
   });
 
-  it("writes redacted R2 history and dispatches only the bounded safe report", async () => {
+  it("writes redacted R2 history and dispatches a bounded nested safe report", async () => {
     const puts: Array<{ key: string; body: string }> = [];
     const put = vi.fn(async (key: string, body: string) => {
       puts.push({ key, body });
@@ -64,10 +64,12 @@ describe("Stationhead leaderboard probe", () => {
     const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
       const dispatch = JSON.parse(String(init?.body ?? "{}"));
       expect(dispatch.event_type).toBe("stationhead-leaderboard-probe");
-      expect(dispatch.client_payload.body).toContain('"rank":1');
-      expect(dispatch.client_payload.body).not.toContain("secret-token");
-      expect(dispatch.client_payload.body).not.toContain("private-device");
+      expect(Object.keys(dispatch.client_payload).length).toBeLessThanOrEqual(10);
+      expect(dispatch.client_payload.best.body).toContain('"rank":1');
+      expect(dispatch.client_payload.best.body).not.toContain("secret-token");
+      expect(dispatch.client_payload.best.body).not.toContain("private-device");
       expect(dispatch.client_payload.candidates[0].url).toContain("token=%5Bredacted%5D");
+      expect(dispatch.client_payload.candidates[0].body_preview).toContain('"rank":1');
       return new Response(null, { status: 204 });
     });
     vi.stubGlobal("fetch", fetchMock);
