@@ -21,7 +21,7 @@ const rollupSource = readFileSync(
   'utf8',
 );
 
-test('current daily history seeks canonical minute_at and stays on the latest live channel', () => {
+test('current daily history reads the incremental projection for the latest live channel', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_minute_facts(
     id INTEGER PRIMARY KEY,
@@ -41,6 +41,25 @@ test('current daily history seeks canonical minute_at and stays on the latest li
     ON sh_minute_facts(source_code,channel_id,minute_at DESC,id DESC);
   CREATE INDEX idx_sh_minute_facts_live_minute
     ON sh_minute_facts(source_code,minute_at DESC,id DESC);
+  CREATE TABLE sh_current_daily_summary(
+    channel_id INTEGER NOT NULL,
+    day_at INTEGER NOT NULL,
+    period_start INTEGER NOT NULL,
+    period_end INTEGER NOT NULL,
+    sample_count INTEGER NOT NULL,
+    reliable_sample_count INTEGER NOT NULL,
+    listener_sum REAL NOT NULL,
+    listener_min INTEGER,
+    listener_max INTEGER,
+    stream_start_at INTEGER,
+    stream_start INTEGER,
+    stream_end_at INTEGER,
+    stream_end INTEGER,
+    member_end_at INTEGER,
+    member_end INTEGER,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(channel_id,day_at)
+  ) WITHOUT ROWID;
   CREATE TABLE sh_minute_fact_context_v2(
     fact_id INTEGER PRIMARY KEY,
     host_id_override INTEGER
@@ -68,13 +87,24 @@ test('current daily history seeks canonical minute_at and stays on the latest li
   insertFact.run(1, 1, start, start, 1, 10, 800, 100, null);
   insertFact.run(2, 1, start + 60_000, start + 60_000, 1, null, 801, 110, null);
   insertFact.run(3, 1, start + 120_000, start + 120_000, 1, 30, 802, 130, null);
-  // A historical repair received today must not enter today's graph.
+  // A historical repair received today must not enter today's projection.
   insertFact.run(4, 2, start - 86_400_000, start + 180_000, 2, 999, 999, 999, null);
-  // Another live channel in the same UTC day must not inflate the daily count.
+  // Another live channel in the same UTC day must not inflate channel 1's projection.
   insertFact.run(5, 2, start + 60_000, start + 60_000, 1, 777, 900, 777, null);
   insertContext.run(1, 1);
   insertContext.run(2, 1);
   insertContext.run(3, 1);
+  db.prepare(`INSERT INTO sh_current_daily_summary(
+    channel_id,day_at,period_start,period_end,sample_count,reliable_sample_count,
+    listener_sum,listener_min,listener_max,
+    stream_start_at,stream_start,stream_end_at,stream_end,
+    member_end_at,member_end,updated_at
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    1, start, start, start + 120_000, 3, 2,
+    40, 10, 30,
+    start, 100, start + 120_000, 130,
+    start + 120_000, 802, start + 120_000,
+  );
 
   const row = db.prepare(CURRENT_DAILY_MINUTE_SUMMARY_SQL)
     .get(start, start + 86_400_000, 10);
@@ -86,23 +116,21 @@ test('current daily history seeks canonical minute_at and stays on the latest li
   assert.equal(row.stream_end, 130);
   assert.equal(row.member_start, 790);
   assert.equal(row.member_end, 802);
-  assert.equal(row.primary_host, 'buddies');
-  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.minute_at AS observed_at/);
-  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
+  assert.equal(row.primary_host, null);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /FROM sh_current_daily_summary AS p/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /INDEXED BY idx_sh_minute_facts_live_minute/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /FROM sh_total_member_daily INDEXED BY idx_sh_total_member_daily_latest/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /day_at=\?1-86400000/);
-  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /WHERE f\.source_code=1/);
-  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
-  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.minute_at>=\?1 AND f\.minute_at<\?2/);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /WHERE source_code=1/);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /p\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /p\.day_at=\?1/);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /p\.period_start<\?2/);
+  assert.doesNotMatch(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
   assert.doesNotMatch(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /idx_sh_minute_facts_observed_id|sh_channel_snapshots|sh_total_member_daily_latest d/);
   const plan = db.prepare(`EXPLAIN QUERY PLAN ${CURRENT_DAILY_MINUTE_SUMMARY_SQL}`)
     .all(start, start + 86_400_000, 10)
     .map((item) => item.detail).join('\n');
-  assert.match(
-    plan,
-    /idx_sh_minute_facts_source_channel_minute_desc \(source_code=\? AND channel_id=\? AND minute_at>\? AND minute_at<\?\)/,
-  );
+  assert.match(plan, /sh_current_daily_summary/);
   assert.match(plan, /idx_sh_minute_facts_live_minute/);
   assert.match(plan, /idx_sh_total_member_daily_latest \(channel_id=\? AND day_at=\?\)/);
 });
