@@ -45,5 +45,7 @@ test('history materialized time is restored immediately and refreshed from a tin
   assert.match(header, /let historyMaterializedAt = cachedHistoryMaterializedAt\(\)/);
   assert.match(header, /fetch\(`\/api\/history\?mode=daily&from=\$\{todayUtc\}&to=\$\{todayUtc\}`/);
   assert.match(header, /response\.headers\.get\('x-materialized-at'\)/);
+  assert.match(header, /await response\.arrayBuffer\(\)/);
+  assert.doesNotMatch(header, /response\.body\?\.cancel|response\.body\.cancel/);
   assert.match(header, /void refreshHistoryMaterializedAt\(\)/);
 });
