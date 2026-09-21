@@ -11,7 +11,7 @@ const observability = readFileSync(
   'utf8',
 );
 
-test('HomePanel health exposes TVer collector diagnostics without coupling deployment health', () => {
+test('HomePanel health exposes TVer and radar diagnostics without coupling deployment health', () => {
   assert.match(unifiedWorker, /import \{ tverFeedObservability \}/);
   assert.match(unifiedWorker, /TVER_FEED_HEALTH_PATH = '\/api\/health\/tver-feed'/);
   assert.match(
@@ -23,10 +23,13 @@ test('HomePanel health exposes TVer collector diagnostics without coupling deplo
     /pathname === '\/api\/health'[\s\S]*homePanelCloudHealthResponse\(request, env, ctx\)/,
   );
   assert.match(unifiedWorker, /tverFeedObservability\(env\)/);
+  assert.match(unifiedWorker, /radarFrameObservability\(env\)/);
   assert.match(unifiedWorker, /tverFeed,/);
+  assert.match(unifiedWorker, /radar,/);
   assert.match(unifiedWorker, /status: health\.ok \? 200 : 503/);
-  assert.match(unifiedWorker, /const ok = videoOk && radar\.ok;/);
+  assert.match(unifiedWorker, /const ok = videoOk;/);
   assert.match(unifiedWorker, /status: ok \? videoResponse\.status : 503/);
+  assert.doesNotMatch(unifiedWorker, /const ok = videoOk && radar\.ok/);
   assert.doesNotMatch(unifiedWorker, /const ok = videoOk && tverFeed\.ok/);
 });
 
