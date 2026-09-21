@@ -39,7 +39,6 @@ function stationheadUrl(value: unknown, maximum: number): string | null {
     }
     for (const key of [...url.searchParams.keys()]) {
       if (SECRET_QUERY.test(key)) url.searchParams.set(key, "[redacted]");
-      SECRET_QUERY.lastIndex = 0;
     }
     return url.toString().slice(0, maximum);
   } catch {
@@ -55,7 +54,6 @@ function redactJson(value: unknown, depth = 0): unknown {
   }
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 500)) {
-    SECRET_KEY.lastIndex = 0;
     output[key] = SECRET_KEY.test(key) ? "[redacted]" : redactJson(item, depth + 1);
   }
   return output;
@@ -187,15 +185,17 @@ export async function applyStationheadLeaderboardProbeInput(
   const records = normalizeStationheadLeaderboardProbe(value, receivedAt);
   if (!records) return { status: 400, body: { error: "invalid leaderboard probe" } };
 
+  const identity = JSON.stringify({ version: 1, device_id: deviceId, records });
+  const digest = await sha256Hex(identity);
+  const historyKey = `${HISTORY_PREFIX}${digest.slice(0, 32)}.json`;
   const storedPayload = {
     version: 1,
     device_id: deviceId,
     received_at: receivedAt,
+    digest,
     records,
   };
   const serialized = JSON.stringify(storedPayload);
-  const digest = await sha256Hex(serialized);
-  const historyKey = `${HISTORY_PREFIX}${receivedAt}-${digest.slice(0, 24)}.json`;
   await Promise.all([
     env.DATA_BUCKET.put(historyKey, serialized, {
       httpMetadata: { contentType: "application/json; charset=utf-8" },
