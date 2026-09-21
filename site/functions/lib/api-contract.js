@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 6;
+export const API_CONTRACT_VERSION = 7;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -10,7 +10,7 @@ export const API_GROUPS = Object.freeze({
   ]),
   history: Object.freeze([
     { path: '/api/history', methods: ['GET'], description: 'Daily, weekly, monthly, ranking, and broadcast history modes' },
-    { path: '/api/history-current', methods: ['GET'], description: 'Current UTC daily summary from minute facts' },
+    { path: '/api/history-current', methods: ['GET'], description: 'Current UTC daily summary from the incremental minute projection' },
     { path: '/api/track-history', methods: ['GET'], description: 'Stored track history and current like ranking' },
     { path: '/api/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka official broadcast listener series' },
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
@@ -21,9 +21,12 @@ export const API_EDGE_TTL_SECONDS = 300;
 export const API_BROWSER_TTL_SECONDS = 30;
 export const MATERIALIZED_RESPONSE_MAX_AGE_MS = 15 * 60_000;
 
-// D1 budget fallback selection belongs to the Actions runner; serving keeps the full canonical set.
+// Realtime Pages surfaces are materialized every five minutes. Public requests,
+// including legacy dashboard delta query strings, are normalized to these R2
+// models so browser polling cannot multiply D1 reads.
 export const MATERIALIZED_API_VARIANTS = Object.freeze([
-  Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 30 }),
+  Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 5 }),
+  Object.freeze({ key: 'history:current', url: '/api/history-current?mode=daily', cadence_minutes: 5 }),
   Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 360 }),
   Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 360 }),
   Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 360 }),
@@ -49,7 +52,12 @@ function onlyParameters(url, allowed = []) {
 export function materializedApiKey(input) {
   const url = input instanceof URL ? input : new URL(input);
   const pathname = normalizedPathname(url.pathname);
-  if (pathname === '/api/dashboard' && onlyParameters(url)) return 'dashboard';
+  if (pathname === '/api/dashboard'
+      && onlyParameters(url, ['since', 'queue_revision', 'history'])) return 'dashboard';
+  if (pathname === '/api/history-current' && onlyParameters(url, ['mode'])) {
+    const mode = String(url.searchParams.get('mode') || 'daily').trim().toLowerCase();
+    return mode === 'daily' ? 'history:current' : null;
+  }
   if (pathname === '/api/history' && onlyParameters(url, ['mode', 'from', 'to'])) {
     const mode = String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase();
     return ['daily', 'weekly', 'monthly', 'broadcasts'].includes(mode) ? `history:${mode}` : null;
@@ -77,7 +85,7 @@ export function apiCacheTtlSeconds(request) {
 export function materializedResponseCadenceSeconds(modelKey) {
   const cadenceMinutes = Number(materializedVariantsByKey.get(String(modelKey || ''))?.cadence_minutes);
   if (!Number.isFinite(cadenceMinutes) || cadenceMinutes <= 0) return API_EDGE_TTL_SECONDS;
-  return Math.max(API_EDGE_TTL_SECONDS, Math.trunc(cadenceMinutes * 60));
+  return Math.max(API_BROWSER_TTL_SECONDS, Math.trunc(cadenceMinutes * 60));
 }
 
 export function materializedResponseMaximumAge(modelKey, env = {}) {
@@ -93,6 +101,15 @@ export function canonicalApiCacheRequest(request) {
   const url = new URL(request.url);
   const pathname = normalizedPathname(url.pathname);
   url.searchParams.delete('v');
+  if (pathname === '/api/dashboard') {
+    url.searchParams.delete('since');
+    url.searchParams.delete('queue_revision');
+    url.searchParams.delete('history');
+  }
+  if (pathname === '/api/history-current'
+      && String(url.searchParams.get('mode') || 'daily').trim().toLowerCase() === 'daily') {
+    url.searchParams.delete('mode');
+  }
   if (pathname === '/api/history'
       && String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase() === 'weekly') {
     url.searchParams.delete('mode');
