@@ -1,13 +1,223 @@
-/* Final overrides confirmed by the production screenshot audit. */
+/* Final overrides confirmed by the production screenshot audit.
+   Keep these rules small, structural, and shared across every dashboard view. */
+
+/* Shared width, spacing and typography rhythm. */
+.dashboard-view > .metrics,
+.dashboard-view > .summary-cards,
+.dashboard-view > .primary-grid,
+.dashboard-view > .chart-card,
+.dashboard-view > .chart-panel,
+.dashboard-view > .data-panel,
+.dashboard-view > .controls {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+#historyView > .summary-cards,
+#likesView > .summary-cards {
+  margin-top: 10px !important;
+}
+
+#historyView > .chart-panel,
+#historyView > .data-panel,
+#likesView > .data-panel,
+#currentView > .primary-grid,
+#currentView > .chart-card {
+  margin-top: 12px !important;
+}
+
+.metric > span,
+.summary-cards span,
+.host,
+.pill {
+  font-size: .72rem !important;
+  line-height: 1.3 !important;
+}
+
+.metric strong,
+.summary-cards strong,
+.like-rank-metrics b {
+  font-variant-numeric: tabular-nums !important;
+}
+
+.summary-cards article {
+  display: flex !important;
+  min-height: 68px !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+}
+
+.section-head {
+  min-height: 34px !important;
+  align-items: center !important;
+}
+
+.chart-head {
+  align-items: flex-start !important;
+}
+
+.section-head h2 {
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  letter-spacing: -.015em !important;
+}
+
+.like-actions .button,
+.data-panel .button,
+.controls > .button {
+  min-height: 34px !important;
+  border-radius: 8px !important;
+  font-size: .72rem !important;
+  line-height: 1 !important;
+}
+
+.controls > .button {
+  width: auto !important;
+  min-width: 84px !important;
+  justify-self: end !important;
+}
+
+.table-wrap th,
+.table-wrap td {
+  line-height: 1.35 !important;
+  vertical-align: middle !important;
+}
+
+.table-wrap th {
+  height: 32px !important;
+}
+
+/* Ranking has two control groups. Keep its update button compact like the
+   daily/weekly/monthly views instead of stretching across a whole row. */
+@media (min-width: 1001px) {
+  #controls:has(#rankingControls:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 280px) auto !important;
+  }
+
+  #controls:has(#rankingControls:not([hidden])) .standard-controls {
+    flex-wrap: nowrap !important;
+  }
+
+  #controls:has(#rankingControls:not([hidden])) .range-presets {
+    flex: 1 1 300px !important;
+  }
+
+  #controls:has(#rankingControls:not([hidden])) .date-range {
+    flex: 1 1 300px !important;
+  }
+
+  #controls:has(#rankingControls:not([hidden])) #rankingControls {
+    display: grid !important;
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr) !important;
+    gap: 8px !important;
+  }
+
+  #controls:has(#rankingControls:not([hidden])) > .button {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    align-self: end !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1000px) {
+  #controls:has(#rankingControls:not([hidden])) {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  #controls:has(#rankingControls:not([hidden])) #rankingControls {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  #controls:has(#rankingControls:not([hidden])) > .button {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    align-self: end !important;
+  }
+}
+
+/* Long official-listening-party labels should align like the other legends
+   instead of producing uneven multi-line fragments. */
+#chartLegend span {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+/* Ranking cards use the same row density as the queue/table sections. */
+#likesView .like-rank-item {
+  min-height: 56px !important;
+  padding-block: 8px !important;
+}
+
 @media (max-width: 760px) {
   #modeTabs.mode-tabs.dashboard-tabs > button,
   #modeTabs.mode-tabs.dashboard-tabs > button:last-child {
     grid-column: auto !important;
   }
 
+  #historyView > .summary-cards,
+  #likesView > .summary-cards {
+    margin-top: 8px !important;
+  }
+
+  #historyView > .chart-panel,
+  #historyView > .data-panel,
+  #likesView > .data-panel,
+  #currentView > .primary-grid,
+  #currentView > .chart-card {
+    margin-top: 8px !important;
+  }
+
+  .metric > span,
+  .summary-cards span,
+  .host,
+  .pill {
+    font-size: 9px !important;
+    line-height: 1.25 !important;
+  }
+
+  .summary-cards article {
+    min-height: 56px !important;
+  }
+
+  .section-head {
+    min-height: 30px !important;
+    margin-bottom: 8px !important;
+  }
+
+  .section-head h2 {
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+  }
+
+  .like-actions .button,
+  .data-panel .button,
+  .controls > .button {
+    min-height: 32px !important;
+    font-size: 10px !important;
+  }
+
+  .controls > .button {
+    width: 100% !important;
+    justify-self: stretch !important;
+  }
+
+  .table-wrap th {
+    height: 29px !important;
+  }
+
   #likesView .like-rank-item {
     grid-template-columns: 28px 38px minmax(0, 1fr) minmax(60px, auto) !important;
+    min-height: 50px !important;
     align-items: center !important;
+    padding-block: 6px !important;
   }
 
   #likesView .like-rank-metrics {
@@ -19,5 +229,14 @@
 
   #likesView .like-rank-metrics span {
     text-align: right !important;
+  }
+
+  #chartLegend {
+    row-gap: 3px !important;
+  }
+
+  #chartLegend span {
+    font-size: 9px !important;
+    line-height: 1.3 !important;
   }
 }
