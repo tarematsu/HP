@@ -4,4 +4,20 @@
   #modeTabs.mode-tabs.dashboard-tabs > button:last-child {
     grid-column: auto !important;
   }
+
+  #likesView .like-rank-item {
+    grid-template-columns: 28px 38px minmax(0, 1fr) minmax(60px, auto) !important;
+    align-items: center !important;
+  }
+
+  #likesView .like-rank-metrics {
+    grid-column: 4 !important;
+    grid-template-columns: minmax(60px, auto) !important;
+    width: auto !important;
+    align-self: center !important;
+  }
+
+  #likesView .like-rank-metrics span {
+    text-align: right !important;
+  }
 }
