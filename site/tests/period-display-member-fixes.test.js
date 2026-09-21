@@ -17,10 +17,12 @@ const persistenceMigration = readFileSync(
   'utf8',
 );
 
-test('header last-updated formatter omits seconds while retaining JST conversion', () => {
+test('header update formatter omits seconds and renders the materialized time in JST', () => {
   assert.match(header, /timeZone: 'Asia\/Tokyo'/);
   assert.doesNotMatch(header, /second:\s*'2-digit'/);
-  assert.match(header, /UTC_UPDATED_PATTERN/);
+  assert.match(header, /HISTORY_MATERIALIZED_AT_CACHE_KEY/);
+  assert.match(header, /const next = `更新 \$\{historyText\}`/);
+  assert.match(header, /updated\.title = `更新 \$\{historyText\} JST`/);
 });
 
 test('mobile dashboard navigation stays on a four-column two-row grid', () => {

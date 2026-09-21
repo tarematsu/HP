@@ -142,6 +142,23 @@ jobs:
           console.log(JSON.stringify(report));
           NODE
 
+      - name: Audit all pull request preview views
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          PAGES_AUDIT_URL: ${{ steps.preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          if node -e "const r=require('./.pages-preview-audit/report.json'); process.exit(r.accessProtected ? 0 : 1)"; then
+            echo 'Preview is protected by Cloudflare Access; full preview audit is not actionable, so it is skipped.'
+            exit 0
+          fi
+          node scripts/audit-pages-live.mjs \
+            --url="$PAGES_AUDIT_URL" \
+            --attempts=2 \
+            --retry-delay-ms=5000 \
+            --out=.pages-preview-audit/full
+
       - name: Access production Pages in Chromium
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: >-
