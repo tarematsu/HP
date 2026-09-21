@@ -2,13 +2,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const theme = readFileSync(new URL('../public/monochrome.css', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const dashboardChart = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
 const historyChart = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
-test('dashboard loads the monochrome UI theme', () => {
-  assert.match(header, /monochrome\.css\?v=20260919\.3/);
+test('dashboard loads the monochrome UI theme before first paint', () => {
+  assert.match(page, /<link rel="stylesheet" href="\/monochrome\.css\?v=20260921\.4">/);
+  assert.ok(page.indexOf('/app-lite.css?v=20260921.4') < page.indexOf('/monochrome.css?v=20260921.4'));
+  assert.ok(page.indexOf('/monochrome.css?v=20260921.4') < page.indexOf('</head>'));
+  assert.doesNotMatch(header, /monochromeStylesheet|monochrome\.css/);
   assert.match(theme, /body\s*\{[\s\S]*--bg:\s*#ffffff[\s\S]*--accent:\s*#111111/);
   assert.match(theme, /\.button\.primary,[\s\S]*background:\s*#111111/);
   assert.match(theme, /\.mode-tabs button\.active,[\s\S]*background:\s*#111111/);

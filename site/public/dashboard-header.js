@@ -6,14 +6,6 @@ if (!document.querySelector(`link[href="${stylesheetHref}"]`)) {
   document.head.append(stylesheet);
 }
 
-const monochromeStylesheetHref = '/monochrome.css?v=20260919.3';
-if (!document.querySelector(`link[href="${monochromeStylesheetHref}"]`)) {
-  const monochromeStylesheet = document.createElement('link');
-  monochromeStylesheet.rel = 'stylesheet';
-  monochromeStylesheet.href = monochromeStylesheetHref;
-  document.head.append(monochromeStylesheet);
-}
-
 const screenshotCleanupHref = '/screenshot-audit-cleanup.css?v=20260919.3';
 if (!document.querySelector(`link[href="${screenshotCleanupHref}"]`)) {
   const screenshotCleanup = document.createElement('link');
