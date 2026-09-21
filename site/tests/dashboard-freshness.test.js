@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { onRequest } from '../functions/_middleware.js';
 
-test('live dashboard bypasses the Pages edge cache', async () => {
+test('dashboard fails closed without the materialized service and never reads live D1', async () => {
   const previousCaches = globalThis.caches;
   let nextCalls = 0;
   let putCalls = 0;
@@ -28,10 +28,11 @@ test('live dashboard bypasses the Pages edge cache', async () => {
       waitUntil() {},
     });
 
-    assert.equal(nextCalls, 1);
+    assert.equal(nextCalls, 0);
     assert.equal(putCalls, 0);
-    assert.equal(response.headers.get('x-edge-cache'), 'BYPASS');
+    assert.equal(response.status, 503);
     assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('x-materialized-required'), '1');
   } finally {
     if (previousCaches === undefined) delete globalThis.caches;
     else globalThis.caches = previousCaches;
