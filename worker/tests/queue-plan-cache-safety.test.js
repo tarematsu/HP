@@ -125,6 +125,49 @@ test('structure-triggered likes planning repairs new null bite counts even when 
   assert.deepEqual(plan.queue_item_positions, [0]);
 });
 
+test('routine like changes update canonical like tables without queue-item mirror writes', async () => {
+  const body = {
+    ...queueBody('likes'),
+    metadata_requested: false,
+    analysis: {
+      ...queueBody('likes').analysis,
+      likes_hash: 'likes-new',
+    },
+  };
+  const state = {
+    current: {
+      structural_hash: 'structure-new',
+      likes_hash: 'likes-old',
+      observed_at: 60_000,
+      latest_reachability_at: 60_000,
+    },
+  };
+  const previousLike = {
+    track_key: 'isrc:JPTEST000001',
+    observed_at: 60_000,
+    like_count: 6,
+    isrc: 'JPTEST000001',
+  };
+  const DB = {
+    prepare(sql) { return statement(sql, state); },
+    async batch(statements) {
+      assert.ok(statements.length >= 1);
+      for (const item of statements) assert.doesNotMatch(item.sql, /bite_count IS NULL/);
+      return statements.map(() => ({ success: true, results: [previousLike] }));
+    },
+  };
+
+  const plan = await prepareQueueLikesPersistenceWithinBudget({
+    DB,
+    QUEUE_LIKES_REPAIR_ENABLED: false,
+  }, body, body.observed_at);
+
+  assert.equal(plan.likes_changed, true);
+  assert.equal(plan.needs_write, true);
+  assert.deepEqual(plan.observation_keys, ['isrc:JPTEST000001']);
+  assert.deepEqual(plan.queue_item_positions, []);
+});
+
 test('a no-write likes plan enqueues finalization before publishing the stable cache', async () => {
   const body = queueBody('likes');
   const plan = {
