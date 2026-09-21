@@ -95,7 +95,7 @@ test('track-history bypasses the read-model service after scheduled materializat
   }
 });
 
-test('dashboard uses the facts-only Pages route when materialized service is unavailable', async () => {
+test('dashboard fails closed when the materialized service is unavailable', async () => {
   const originalCaches = globalThis.caches;
   let writes = 0;
   let serviceCalls = 0;
@@ -125,12 +125,12 @@ test('dashboard uses the facts-only Pages route when materialized service is una
       },
       waitUntil() {},
     });
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get('x-materialized-fallback'), 'live-pages');
-    assert.equal(response.headers.get('x-edge-cache'), 'BYPASS');
-    assert.deepEqual(await response.json(), { ok: true, storage_source: 'facts-db' });
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('x-materialized-required'), '1');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('x-materialized-fallback'), null);
     assert.equal(serviceCalls, 1);
-    assert.equal(liveCalls, 1);
+    assert.equal(liveCalls, 0);
     assert.equal(writes, 0);
   } finally {
     globalThis.caches = originalCaches;
