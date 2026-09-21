@@ -85,6 +85,15 @@ async function safeRows(db, sql, bindings) {
   }
 }
 
+async function safeRun(db, sql, bindings) {
+  try {
+    return await db.prepare(sql).bind(...bindings).run();
+  } catch (error) {
+    if (/no such table|no such column|no such index/i.test(String(error?.message || error))) return null;
+    throw error;
+  }
+}
+
 async function metadataRows(db, rows) {
   const spotifyIds = [...new Set(rows.map(rowSpotifyId).filter(Boolean))];
   const isrcs = [...new Set(rows.map(rowIsrc).filter(Boolean))];
@@ -186,6 +195,68 @@ function enrichRanking(rows, metadata) {
   });
 }
 
+const TITLE_PLACEHOLDER_SQL = `title IS NULL OR TRIM(title)='' OR LOWER(TRIM(title)) IN
+  ('曲名不明','曲名…','曲名...','unknown','unknown title','_','-','—')`;
+const ARTIST_PLACEHOLDER_SQL = `artist IS NULL OR TRIM(artist)='' OR LOWER(TRIM(artist)) IN
+  ('アーティスト不明','unknown','unknown artist','_','-','—')`;
+
+async function persistRecoveredRanking(db, baseRows, enrichedRows) {
+  for (let index = 0; index < baseRows.length; index += 1) {
+    const base = baseRows[index];
+    const enriched = enrichedRows[index];
+    const title = usable(enriched?.title, 'title');
+    const artist = usable(enriched?.artist, 'artist');
+    const isrc = rowIsrc(enriched);
+    const spotifyId = rowSpotifyId(enriched);
+    if (!title && !artist && !isrc && !spotifyId) continue;
+
+    const rankingNeedsRepair = Boolean(
+      (title && !usable(base.current_title, 'title'))
+      || (artist && !usable(base.current_artist, 'artist'))
+      || (isrc && !normalizedIsrc(base.isrc))
+      || (spotifyId && !text(base.spotify_id)),
+    );
+    const trackNeedsRepair = Boolean(
+      (title && !usable(base.direct_title, 'title'))
+      || (artist && !usable(base.direct_artist, 'artist'))
+      || (isrc && !normalizedIsrc(base.isrc))
+      || (spotifyId && !text(base.spotify_id)),
+    );
+
+    if (rankingNeedsRepair) {
+      const bindings = [title, artist, isrc, spotifyId, base.track_identity];
+      await safeRun(db, `UPDATE sh_track_ranking_current SET
+        title=CASE WHEN ${TITLE_PLACEHOLDER_SQL} THEN COALESCE(?,title) ELSE title END,
+        artist=CASE WHEN ${ARTIST_PLACEHOLDER_SQL} THEN COALESCE(?,artist) ELSE artist END,
+        isrc=CASE WHEN isrc IS NULL OR TRIM(isrc)='' THEN COALESCE(?,isrc) ELSE isrc END,
+        spotify_id=CASE WHEN spotify_id IS NULL OR TRIM(spotify_id)='' THEN COALESCE(?,spotify_id) ELSE spotify_id END
+        WHERE track_identity=?`, bindings);
+      await safeRun(db, `UPDATE sh_track_ranking_occurrence SET
+        title=CASE WHEN ${TITLE_PLACEHOLDER_SQL} THEN COALESCE(?,title) ELSE title END,
+        artist=CASE WHEN ${ARTIST_PLACEHOLDER_SQL} THEN COALESCE(?,artist) ELSE artist END,
+        isrc=CASE WHEN isrc IS NULL OR TRIM(isrc)='' THEN COALESCE(?,isrc) ELSE isrc END,
+        spotify_id=CASE WHEN spotify_id IS NULL OR TRIM(spotify_id)='' THEN COALESCE(?,spotify_id) ELSE spotify_id END
+        WHERE track_identity=?`, bindings);
+    }
+
+    if (trackNeedsRepair && (base.track_id != null || isrc || spotifyId)) {
+      await safeRun(db, `UPDATE sh_tracks SET
+        title=CASE WHEN ${TITLE_PLACEHOLDER_SQL} OR title=spotify_id THEN COALESCE(?,title) ELSE title END,
+        artist=CASE WHEN ${ARTIST_PLACEHOLDER_SQL} OR artist=spotify_id THEN COALESCE(?,artist) ELSE artist END,
+        isrc=CASE WHEN isrc IS NULL OR TRIM(isrc)='' THEN COALESCE(?,isrc) ELSE isrc END,
+        spotify_id=CASE WHEN spotify_id IS NULL OR TRIM(spotify_id)='' THEN COALESCE(?,spotify_id) ELSE spotify_id END
+        WHERE (id=? AND ? IS NOT NULL)
+          OR (? IS NOT NULL AND UPPER(REPLACE(REPLACE(COALESCE(isrc,''),'-',''),' ',''))=?)
+          OR (? IS NOT NULL AND spotify_id=?)`, [
+        title, artist, isrc, spotifyId,
+        base.track_id, base.track_id,
+        isrc, isrc,
+        spotifyId, spotifyId,
+      ]);
+    }
+  }
+}
+
 export async function loadTrackRanking(db, { limit = 500 } = {}) {
   const boundedLimit = Math.min(Math.max(Math.trunc(Number(limit) || 500), 20), 500);
   const [result, summary] = await Promise.all([
@@ -195,6 +266,7 @@ export async function loadTrackRanking(db, { limit = 500 } = {}) {
   const baseRows = result.results || [];
   const metadata = await metadataRows(db, baseRows);
   const rows = enrichRanking(baseRows, metadata);
+  await persistRecoveredRanking(db, baseRows, rows);
   return {
     rows: rows.map((row, index) => ({ rank: index + 1, ...row })),
     summary: {
