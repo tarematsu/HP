@@ -62,7 +62,7 @@ function renderOnlineAverage(id, summary, fallback) {
 
 export function renderDashboardDailySummaries(data) {
   const yesterdayLabel = formatPeriodLabel(data?.yesterday?.period_key, '昨日');
-  const dayBeforeLabel = formatPeriodLabel(data?.day_before_yesterday?.period_key, '2日前');
+  const dayBeforeLabel = formatPeriodLabel(data?.day_before_yesterday?.period_key, '一昨日');
   const threeDaysAgoLabel = formatPeriodLabel(data?.three_days_ago?.period_key, '3日前');
   setOnlineLabels();
   removeOnlineRange();
