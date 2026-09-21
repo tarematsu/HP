@@ -62,7 +62,7 @@ test('TVer ad branch runs before survey and program recovery', () => {
 });
 
 test('TVer fullscreen is attempted before ad-specific Skip handling', () => {
-  const fullscreenIndex = policy.indexOf("homepanel:tver-fullscreen-key");
+  const fullscreenIndex = policy.indexOf('const controlPoint = fullscreenControlPoint(video)');
   const adIndex = policy.indexOf('if (adActive) {');
   const surveyIndex = policy.indexOf('const surveyRoots = Array.from');
   const adBranch = policy.slice(adIndex, surveyIndex);
@@ -110,22 +110,23 @@ test('paused TVer program recovery is idempotent and never toggles the video sur
 test('TVer fullscreen retries are watchdog-owned and bounded', () => {
   assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
   assert.match(policy, /if \(state\) state\.fullscreenDirty = true/);
-  assert.match(policy, /homepanel:tver-fullscreen-key/);
-  assert.match(policy, /const controlPoint = fullscreenControlPoint\(video\)/);
-  assert.match(policy, /if \(controlPoint\) return controlPoint/);
+  const control = policy.indexOf('const controlPoint = fullscreenControlPoint(video)');
+  const key = policy.indexOf('homepanel:tver-fullscreen-key');
+  assert.ok(control >= 0 && key > control);
+  assert.match(policy, /controlPoint && attempts < 3/);
+  assert.match(policy, /attempts < 7/);
   assert.match(policy, /__homePanelTverFullscreenRecovery/);
   assert.match(policy, /fullscreenRecovery\.requestedAt = Date\.now\(\)/);
   assert.match(policy, /fullscreenRecovery\.attempts = attempts \+ 1/);
-  assert.match(policy, /attempts < 4/);
   assert.match(policy, /Date\.now\(\) - requestedAt >= 1000/);
   assert.match(policy, /state\.fullscreenDirty = false/);
   assert.match(policy, /__homePanelTverFullscreenPending/);
   assert.match(policy, /window\.setTimeout\(\(\) => \{/);
   assert.match(policy, /\}, 800\)/);
   assert.match(policy, /homepanel:tver-wake/);
-  assert.match(policy, /state\.fullscreenDirty = true/);
   assert.match(policy, /const isEnterFullscreenControl = element =>/);
-  assert.match(policy, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
+  assert.match(policy, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
+  assert.match(policy, /Array\.from\(document\.querySelectorAll\(selector\)\)/);
   assert.match(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
   assert.match(policy, /request\.call\(target\)/);
   assert.doesNotMatch(episodeLoop, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);

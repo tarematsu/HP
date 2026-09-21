@@ -29,7 +29,7 @@ LR"JS(
   const playbackRate = 1.75;
   const targetVolume = 1.0;
   const postrollGraceMs = 12000;
-  const episodeMaxPlaybackMs = 15 * 60 * 1000;
+  const episodeMaxPlaybackMs = 60 * 60 * 1000;
   const progressSteadyIntervalMs = 2000;
   const progressNearEndIntervalMs = 500;
   const progressFinalIntervalMs = 200;

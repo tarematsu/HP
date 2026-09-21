@@ -64,10 +64,18 @@ LR"JS(
     const root = playerRootFor(media);
     if (!root) return null;
     revealPlayerControls(media);
-    const controls = Array.from(root.querySelectorAll(
-        'button, [role="button"], [aria-label], [title], [data-testid]'));
-    const fullscreenButton = controls.find(isEnterFullscreenControl) || null;
-    return fullscreenButton ? point(fullscreenButton) : null;
+    const selector =
+        'button, [role="button"], [aria-label], [title], [data-testid]';
+    const scopedControls = Array.from(root.querySelectorAll(selector));
+    const scopedButton = scopedControls.find(isEnterFullscreenControl) || null;
+    if (scopedButton) return point(scopedButton);
+
+    // TVer can render player controls outside the video's nearest container.
+    // Fall back to the document only for a specifically labelled fullscreen
+    // control; point() still verifies that the element is the actual hit target.
+    const documentButton = Array.from(document.querySelectorAll(selector))
+        .find(isEnterFullscreenControl) || null;
+    return documentButton ? point(documentButton) : null;
   };
 
   const state = window.__homePanelSakuraMeetsState;
@@ -93,18 +101,27 @@ LR"JS(
     resetFullscreenRecovery();
   } else if (video) {
     if (state) state.fullscreenDirty = true;
+    if (window.__homePanelTverFullscreenPending) return null;
+
     const requestedAt = Number(fullscreenRecovery.requestedAt || 0);
     const attempts = Number(fullscreenRecovery.attempts || 0);
+    const controlPoint = fullscreenControlPoint(video);
+    if (controlPoint && attempts < 3) {
+      fullscreenRecovery.requestedAt = Date.now();
+      fullscreenRecovery.attempts = attempts + 1;
+      return controlPoint;
+    }
+
+    // TVer's real fullscreen button is the preferred trusted action. F is only
+    // a fallback when the control cannot be located or repeated clicks failed.
     const keyRetryDue = requestedAt === 0 || Date.now() - requestedAt >= 1000;
-    if (keyRetryDue && attempts < 4) {
+    if (keyRetryDue && attempts < 7) {
       fullscreenRecovery.requestedAt = Date.now();
       fullscreenRecovery.attempts = attempts + 1;
       try { window.chrome?.webview?.postMessage('homepanel:tver-fullscreen-key'); }
       catch (_) {}
       return null;
     }
-    const controlPoint = fullscreenControlPoint(video);
-    if (controlPoint) return controlPoint;
   }
 
   const trackedVideo = state && state.video;

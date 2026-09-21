@@ -28,14 +28,18 @@ test('paused TVer playback recovery is idempotent and never toggles the video su
   assert.doesNotMatch(playbackPolicy, /__homePanelTverResumeBlocked/);
 });
 
-test('TVer fullscreen recovery remains bounded to the loaded player', () => {
-  assert.match(playbackPolicy, /homepanel:tver-fullscreen-key/);
+test('TVer fullscreen recovery stays bounded and targets labelled controls', () => {
+  const control = playbackPolicy.indexOf('const controlPoint = fullscreenControlPoint(video)');
+  const key = playbackPolicy.indexOf('homepanel:tver-fullscreen-key');
+  assert.ok(control >= 0 && key > control);
   assert.match(playbackPolicy, /const fullscreenControlPoint = media =>/);
   assert.match(playbackPolicy, /const root = playerRootFor\(media\)/);
-  assert.match(playbackPolicy, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
+  assert.match(playbackPolicy, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
+  assert.match(playbackPolicy, /Array\.from\(document\.querySelectorAll\(selector\)\)/);
   assert.match(playbackPolicy, /__homePanelTverFullscreenRecovery/);
   assert.match(playbackPolicy, /fullscreenRecovery\.video !== video/);
-  assert.match(playbackPolicy, /attempts < 4/);
+  assert.match(playbackPolicy, /controlPoint && attempts < 3/);
+  assert.match(playbackPolicy, /attempts < 7/);
   assert.doesNotMatch(episode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
   assert.doesNotMatch(playbackPolicy, /const videoFullscreenPoint = media =>/);
   assert.doesNotMatch(playbackPolicy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);

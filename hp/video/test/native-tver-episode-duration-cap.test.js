@@ -12,8 +12,8 @@ const part3a = readFileSync(
 );
 const episode = `${part1}\n${part3a}`;
 
-test('TVer advances each episode after at most 15 minutes of confirmed program playback', () => {
-  assert.match(part1, /episodeMaxPlaybackMs = 15 \* 60 \* 1000/);
+test('TVer advances each episode after at most 60 minutes of confirmed program playback', () => {
+  assert.match(part1, /episodeMaxPlaybackMs = 60 \* 60 \* 1000/);
   assert.match(part1, /if \(state\.programPlaybackConfirmed && !state\.episodeStartedAt\)/);
   assert.match(part1, /state\.episodeStartedAt = now/);
   assert.match(part1, /armEpisodeLimit\(state\)/);
