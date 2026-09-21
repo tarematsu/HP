@@ -22,6 +22,16 @@ if (likesView && likeActions) {
 }
 
 const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
+const OFFICIAL_PARTY_CACHE_PREFIX = 'sakurazaka46jp:v1:r8:';
+
+function clearOfficialPartyCache() {
+  try {
+    for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+      const key = sessionStorage.key(index);
+      if (key?.startsWith(OFFICIAL_PARTY_CACHE_PREFIX)) sessionStorage.removeItem(key);
+    }
+  } catch {}
+}
 
 function normalizeOfficialEventText(root) {
   if (!root) return;
@@ -38,6 +48,8 @@ function normalizeOfficialEventText(root) {
     node = walker.nextNode();
   }
 }
+
+clearOfficialPartyCache();
 
 const historyView = document.getElementById('historyView');
 if (historyView) {
