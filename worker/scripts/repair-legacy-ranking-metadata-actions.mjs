@@ -130,7 +130,10 @@ async function appleMetadata(title, durationMs) {
       const best = exact[0];
       if (Math.abs(Number(best?.trackTimeMillis || 0) - expectedDuration) <= 5_000) return best;
     }
-    return exact.length === 1 ? exact[0] : null;
+    if (exact.length === 1) return exact[0];
+    const artists = [...new Set(exact.map((item) => text(item?.artistName)).filter(Boolean))];
+    if (artists.length === 1) return exact.find((item) => text(item?.artistName)) || null;
+    return null;
   } catch {
     return null;
   } finally {
