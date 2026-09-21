@@ -31,7 +31,7 @@ test('radar location marker is projected from RADAR_CENTER and drawn above rain'
   assert.match(browserRadar, /const y = \(world\.y - panel\.worldTop\) \* scaleY/);
 
   const satellite = browserRadar.indexOf('drawBase(satellite, panel, panelX);');
-  const rain = browserRadar.indexOf('for (const tile of panel.tiles');
+  const rain = browserRadar.indexOf('for (const { tile, bitmap } of loadedTiles)');
   const marker = browserRadar.indexOf('drawLocationMarker(panel, panelX);');
   const label = browserRadar.indexOf('drawPanelLabel(panel, panelX);');
 
@@ -55,7 +55,8 @@ test('every radar panel is generated without dry or sunny classification', () =>
   assert.doesNotMatch(browserRadar, /RAIN_ANALYSIS_WIDTH|RAIN_ANALYSIS_HEIGHT/);
   assert.doesNotMatch(browserRadar, /rainCanvas|rainContext|getImageData|hasRain|rainPixels/);
   assert.doesNotMatch(prepareAssets, /radar-sunny\.png|weather-sunny\.png/);
-  assert.match(browserRadar, /for \(const tile of panel\.tiles/);
+  assert.match(browserRadar, /Promise\.all\(\(panel\.tiles as TilePayload\[\]\)\.map\(async tile =>/);
+  assert.match(browserRadar, /for \(const \{ tile, bitmap \} of loadedTiles\)/);
   assert.match(browserRadar, /if \(!bitmap\) continue;/);
 });
 
