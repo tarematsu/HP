@@ -99,7 +99,7 @@ test('Actions history renderer reads summaries and enriches total track plays fr
   assert.equal(result.storage_source, 'other.sh_daily_summary+minute.sh_pages_track_history_read_model');
 });
 
-test('daily materialization uses the previous day member end as start and recomputes growth', async () => {
+test('daily materialization preserves member boundaries already persisted in OTHER_DB', async () => {
   const calls = [];
   const previous = summaryRow({
     period_key: '2026-07-25',
@@ -110,9 +110,9 @@ test('daily materialization uses the previous day member end as start and recomp
     member_growth: 8,
   });
   const current = summaryRow({
-    member_start: 205,
+    member_start: 198,
     member_end: 205,
-    member_growth: 0,
+    member_growth: 7,
   });
 
   const result = await loadMaterializedSummary(

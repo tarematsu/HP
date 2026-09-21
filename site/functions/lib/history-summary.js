@@ -56,47 +56,11 @@ export function summaryContextStartKey(mode, value) {
   return date.toISOString().slice(0, 10);
 }
 
-function previousMemberEnd(source, currentKey, expectedKey) {
-  const exact = finiteNumber(source.get(expectedKey)?.member_end);
-  if (exact != null) return exact;
-  let bestKey = '';
-  let bestValue = null;
-  for (const [key, row] of source) {
-    const value = finiteNumber(row?.member_end);
-    if (value == null || key >= currentKey || key <= bestKey) continue;
-    bestKey = key;
-    bestValue = value;
-  }
-  return bestValue;
-}
-
-// Member periods are measured from the final known value immediately before the
-// period to the final value acquired inside the period. If the exact previous UTC
-// period is absent, use the nearest earlier valid boundary instead of retaining a
-// same-period start value that incorrectly produces zero growth.
-export function applyPreviousPeriodMemberStart(rows, mode, contextRows = rows) {
-  const source = new Map();
-  for (const row of Array.isArray(contextRows) ? contextRows : []) {
-    const key = String(row?.period_key || '');
-    if (key) source.set(key, row);
-  }
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const key = String(row?.period_key || '');
-    if (key) source.set(key, row);
-  }
-
-  return (Array.isArray(rows) ? rows : []).map((row) => {
-    const key = String(row?.period_key || '');
-    const previousKey = previousSummaryPeriodKey(mode, key);
-    const previousEnd = previousMemberEnd(source, key, previousKey);
-    if (previousEnd == null) return row;
-    const memberEnd = finiteNumber(row?.member_end);
-    return {
-      ...row,
-      member_start: previousEnd,
-      member_growth: memberEnd == null ? null : memberEnd - previousEnd,
-    };
-  });
+// Retained as a compatibility export for older callers/tests. Historical daily
+// member boundaries are now canonical data in OTHER_DB and must not be
+// recalculated on read.
+export function applyPreviousPeriodMemberStart(rows) {
+  return Array.isArray(rows) ? rows : [];
 }
 
 export function currentSummaryPeriodStart(mode, now = Date.now()) {
@@ -292,13 +256,8 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
   const evidence = await loadPeriodBoundaryEvidence(env.DB || env.MINUTE_DB, evidenceTargets, mode);
   const boundedRows = applyPeriodBoundaryEvidence(baseRows, evidence);
   const completed = applySummaryCompleteness(boundedRows, mode, now);
-  const memberContext = [
-    ...fetchedRows,
-    ...completed.rows,
-  ];
-  const rows = applyPreviousPeriodMemberStart(completed.rows, mode, memberContext);
   return {
-    rows,
+    rows: completed.rows,
     excluded_stream_growth_count: completed.excludedCount,
     boundary_evidence_count: evidence.size,
     live_overlay_count: 0,
