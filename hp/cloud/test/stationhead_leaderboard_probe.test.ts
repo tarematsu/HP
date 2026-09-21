@@ -34,7 +34,8 @@ describe("Stationhead leaderboard probe", () => {
   it("keeps leaderboard data while redacting credentials and secret query values", () => {
     const normalized = normalizeStationheadLeaderboardProbe([sample()], NOW);
     expect(normalized).toHaveLength(1);
-    const record = normalized![0];
+    if (!normalized?.[0]) throw new Error("expected one normalized leaderboard record");
+    const record = normalized[0];
     expect(record.url).toContain("week=current");
     expect(record.url).toContain("token=%5Bredacted%5D");
     expect(record.body).toContain('"rank":1');
@@ -104,9 +105,13 @@ describe("Stationhead leaderboard probe", () => {
     expect(historyKeys).toHaveLength(2);
     expect(new Set(historyKeys).size).toBe(1);
     for (const item of puts) {
-      expect(item.body).toContain('"rank":1');
-      expect(item.body).not.toContain("secret-token");
-      expect(item.body).not.toContain("private-device");
+      const stored = JSON.parse(item.body) as {
+        records?: Array<{ body?: string }>;
+      };
+      const storedBody = stored.records?.[0]?.body;
+      expect(storedBody).toContain('"rank":1');
+      expect(storedBody).not.toContain("secret-token");
+      expect(storedBody).not.toContain("private-device");
     }
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
