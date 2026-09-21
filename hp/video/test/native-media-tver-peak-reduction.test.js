@@ -78,17 +78,19 @@ test('TVer quality discovery is event driven and player-local', () => {
 });
 
 test('TVer fullscreen uses one watchdog-owned bounded fallback sequence', () => {
-  const key = watchdog.indexOf("homepanel:tver-fullscreen-key");
   const control = watchdog.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  assert.ok(key >= 0 && control > key);
+  const key = watchdog.indexOf("homepanel:tver-fullscreen-key");
+  assert.ok(control >= 0 && key > control);
   assert.match(watchdog, /if \(state\) state\.fullscreenDirty = true/);
   assert.match(watchdog, /state\.fullscreenDirty = false/);
   assert.match(watchdog, /homepanel:tver-wake/);
   assert.match(watchdog, /const isEnterFullscreenControl = element =>/);
-  assert.match(watchdog, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
+  assert.match(watchdog, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
+  assert.match(watchdog, /Array\.from\(document\.querySelectorAll\(selector\)\)/);
   assert.match(watchdog, /__homePanelTverFullscreenRecovery/);
   assert.match(watchdog, /fullscreenRecovery\.attempts/);
-  assert.match(watchdog, /attempts < 4/);
+  assert.match(watchdog, /controlPoint && attempts < 3/);
+  assert.match(watchdog, /attempts < 7/);
   assert.match(watchdog, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
   assert.match(watchdog, /request\.call\(target\)/);
   assert.doesNotMatch(loop, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
