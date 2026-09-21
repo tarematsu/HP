@@ -157,7 +157,9 @@ async function refreshHistoryMaterializedAt() {
     });
     if (!response.ok) return;
     setHistoryMaterializedAt(response.headers.get('x-materialized-at'));
-    void response.body?.cancel?.();
+    // Let the small one-day response finish normally. Cancelling it after reading
+    // the header surfaces as a failed fetch in browsers and in the live audit.
+    await response.arrayBuffer();
   } catch {
     // Keep the last materialized timestamp visible when the metadata refresh is unavailable.
   }
