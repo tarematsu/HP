@@ -24,8 +24,9 @@ function createDatabase() {
 }
 
 function memberRow(db, key) {
-  return db.prepare(`SELECT member_start,member_end,member_growth
+  const row = db.prepare(`SELECT member_start,member_end,member_growth
     FROM sh_daily_summary WHERE period_key=?`).get(key);
+  return row ? { ...row } : null;
 }
 
 test('daily member migration persists historical correction exactly once', () => {
