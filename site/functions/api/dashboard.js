@@ -1,4 +1,5 @@
 import { onRequestGet as dashboardCore } from '../lib/dashboard-core.js';
+import { augmentDashboardChartData } from '../lib/dashboard-chart-support.js';
 import { loadDashboardDailySummaries } from '../lib/dashboard-daily-summaries.js';
 
 export * from '../lib/dashboard-core.js';
@@ -41,10 +42,11 @@ export async function onRequestGet(context) {
   }
   if (!payload || typeof payload !== 'object' || !payload.ok) return response;
 
+  const chartPayload = await augmentDashboardChartData(context.env, payload, now);
   const headers = new Headers(response.headers);
   headers.delete('content-length');
   return new Response(JSON.stringify({
-    ...payload,
+    ...chartPayload,
     daily_summaries: summaries,
   }), {
     status: response.status,

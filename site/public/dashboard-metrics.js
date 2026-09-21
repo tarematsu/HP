@@ -4,6 +4,7 @@ import './dashboard-header.js?v=20260921.4';
 import './dashboard-tabs.js?v=20260921.4';
 import './dashboard-fetch-cache.js?v=20260921.4';
 import './dashboard-current-enhancements.js?v=20260921.4';
+import './dashboard-chart-comparison.js?v=20260922.1';
 import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260921.4';
 
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
