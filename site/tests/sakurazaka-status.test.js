@@ -5,7 +5,7 @@ import { onRequestGet } from '../functions/api/sakurazaka46jp-status.js';
 
 const NOW = 1_700_000_000_000;
 
-function db() {
+function db({ active = true } = {}) {
   return {
     prepare(sql) {
       return {
@@ -44,6 +44,19 @@ function db() {
           }
           throw new Error(`unexpected SQL: ${sql}`);
         },
+        async first() {
+          if (sql.includes('FROM sh_official_news_announcements')) {
+            return active ? {
+              id: 1,
+              event_name: 'Official Listening Party',
+              scheduled_at: NOW - 600_000,
+              first_broadcast_at: NOW - 600_000,
+              last_broadcast_at: NOW - 60_000,
+              status: 'active',
+            } : null;
+          }
+          throw new Error(`unexpected SQL: ${sql}`);
+        },
       };
     },
   };
@@ -59,6 +72,8 @@ test('Sakurazaka status exposes latest per-minute main and chat samples without 
     const payload = await response.json();
     assert.equal(payload.ok, true);
     assert.equal(payload.handle, 'sakurazaka46jp');
+    assert.equal(payload.collection_active, true);
+    assert.equal(payload.active_event.status, 'active');
     assert.equal(payload.sample_count, 1);
     assert.equal(payload.chat_sample_count, 1);
     assert.equal(payload.latest_main.station_id, 777);
@@ -69,6 +84,14 @@ test('Sakurazaka status exposes latest per-minute main and chat samples without 
   } finally {
     Date.now = realDateNow;
   }
+});
+
+test('Sakurazaka status marks collection inactive after the official event ends', async () => {
+  const response = await onRequestGet({ env: { OTHER_DB: db({ active: false }) } });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.collection_active, false);
+  assert.equal(payload.active_event, null);
 });
 
 test('Sakurazaka status returns 503 when OTHER_DB is unavailable', async () => {
