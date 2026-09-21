@@ -1,3 +1,5 @@
+#include "stationhead_leaderboard_probe_spool.h"
+
 namespace hp {
 
 void CloudClient::QueueTelemetry(std::string json, TelemetryCallback callback) {
@@ -46,6 +48,17 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
     telemetry = pendingTelemetry_;
   }
   if (telemetry && !telemetry->json.empty()) body += ",\"telemetry\":" + telemetry->json;
+
+  const std::vector<std::string> leaderboardProbe =
+      stationhead_leaderboard_probe_spool::ReadBatch();
+  if (!leaderboardProbe.empty()) {
+    body += ",\"leaderboardProbe\":[";
+    for (size_t index = 0; index < leaderboardProbe.size(); ++index) {
+      if (index != 0) body.push_back(',');
+      body += leaderboardProbe[index];
+    }
+    body.push_back(']');
+  }
   body.push_back('}');
 
   const HttpResponse exchange = Request(
@@ -99,6 +112,23 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
         }
       }
       if (callback) callback(std::move(receipt));
+    }
+  }
+
+  if (!leaderboardProbe.empty() && root.HasKey(L"leaderboardProbe") &&
+      root.GetNamedValue(L"leaderboardProbe").ValueType() == JsonValueType::Object) {
+    try {
+      const JsonObject receipt = root.GetNamedObject(L"leaderboardProbe");
+      const bool reported = receipt.GetNamedBoolean(L"reported", false);
+      const double acceptedValue = receipt.GetNamedNumber(L"accepted", 0);
+      const size_t accepted = acceptedValue > 0 && std::isfinite(acceptedValue)
+          ? static_cast<size_t>(std::min<double>(acceptedValue, leaderboardProbe.size()))
+          : 0;
+      if (reported && accepted > 0) {
+        stationhead_leaderboard_probe_spool::Acknowledge(accepted);
+      }
+    } catch (...) {
+      // Keep the spool for the next exchange if the acknowledgement is malformed.
     }
   }
   return translated;
