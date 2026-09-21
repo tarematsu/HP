@@ -1,6 +1,6 @@
 import './history/history-global-fixes.js';
 import './pages-ui-tweaks.js?v=20260921.1';
-import './dashboard-header.js?v=20260921.4';
+import './dashboard-header.js?v=20260922.1';
 import './dashboard-tabs.js?v=20260921.4';
 import './dashboard-fetch-cache.js?v=20260921.4';
 import './dashboard-current-enhancements.js?v=20260921.4';
