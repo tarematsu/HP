@@ -21,6 +21,7 @@ function assetVersion(source, asset) {
 test('dashboard asset dependency chain uses one explicit deployment version', () => {
   const versions = [
     assetVersion(html, 'app-lite.css'),
+    assetVersion(html, 'monochrome.css'),
     assetVersion(html, 'dashboard-metrics.js'),
     assetVersion(entry, 'dashboard-header.js'),
     assetVersion(entry, 'dashboard-tabs.js'),
@@ -34,7 +35,7 @@ test('dashboard asset dependency chain uses one explicit deployment version', ()
 });
 
 test('fixed entry URLs without a version cannot silently return stale layout code', () => {
-  assert.doesNotMatch(html, /(?:href|src)="\/(?:app-lite\.css|dashboard-metrics\.js)"/);
+  assert.doesNotMatch(html, /(?:href|src)="\/(?:app-lite\.css|monochrome\.css|dashboard-metrics\.js)"/);
   assert.doesNotMatch(entry, /(?:from |import\()'\/(?:dashboard-client\.js)'/);
   assert.doesNotMatch(header, /stylesheetHref = '\/dashboard-fixes\.css'/);
 });
