@@ -1,5 +1,6 @@
 #include "app.h"
 #include "app_startup_tick_fallback.h"
+#include "stationhead_leaderboard_probe_spool.h"
 #include "web_renderer.h"
 
 namespace hp {
@@ -75,6 +76,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       UpdateAirHistory(snapshot);
       return 0;
     }
+    case kStationheadLeaderboardProbeWakeMessage:
+      if (cloud_) cloud_->RefreshNow();
+      return 0;
 
     case WM_HP_PRIMARY_RELOAD_READY:
       return stationhead_ ? 1 : 0;
