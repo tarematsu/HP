@@ -77,7 +77,7 @@ test('dashboard displays completed UTC-day changes from the canonical response',
 test('dashboard declares and implements a light white-base theme', async () => {
   const html = await text('public/index.html');
   const css = await text('public/app-lite.css');
-  assert.match(html, /name="theme-color" content="#f6f8fb"/);
+  assert.match(html, /name="theme-color" content="#ffffff"/);
   assert.match(html, /name="color-scheme" content="light"/);
   assert.match(css, /color-scheme:\s*light/);
   assert.match(css, /--bg:\s*#f6f8fb/);
@@ -85,12 +85,15 @@ test('dashboard declares and implements a light white-base theme', async () => {
   assert.match(css, /#audienceChart \{[^}]*background:\s*#fff/);
 });
 
-test('mobile dashboard keeps one stylesheet and one entry script', async () => {
+test('mobile dashboard keeps both first-paint stylesheets and one entry script', async () => {
   const html = await text('public/index.html');
   const entry = await text('public/dashboard-metrics.js');
   assert.match(html, /\/app-lite\.css\?v=20260921\.4/);
+  assert.match(html, /\/monochrome\.css\?v=20260921\.4/);
+  assert.ok(html.indexOf('/app-lite.css?v=20260921.4') < html.indexOf('/monochrome.css?v=20260921.4'));
+  assert.ok(html.indexOf('/monochrome.css?v=20260921.4') < html.indexOf('</head>'));
   assert.match(html, /type="module" src="\/dashboard-metrics\.js\?v=20260921\.4"/);
-  assert.equal((html.match(/<link rel="stylesheet"/g) || []).length, 1);
+  assert.equal((html.match(/<link rel="stylesheet"/g) || []).length, 2);
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(entry, /import\('\/dashboard-client\.js\?v=20260921\.4'\)/);
 });
