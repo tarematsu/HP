@@ -121,9 +121,12 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
       const JsonObject receipt = root.GetNamedObject(L"leaderboardProbe");
       const bool reported = receipt.GetNamedBoolean(L"reported", false);
       const double acceptedValue = receipt.GetNamedNumber(L"accepted", 0);
-      const size_t accepted = acceptedValue > 0 && std::isfinite(acceptedValue)
-          ? static_cast<size_t>(std::min<double>(acceptedValue, leaderboardProbe.size()))
-          : 0;
+      size_t accepted = 0;
+      if (acceptedValue > 0 && std::isfinite(acceptedValue) &&
+          std::trunc(acceptedValue) == acceptedValue &&
+          acceptedValue <= static_cast<double>(leaderboardProbe.size())) {
+        accepted = static_cast<size_t>(acceptedValue);
+      }
       if (reported && accepted > 0) {
         stationhead_leaderboard_probe_spool::Acknowledge(accepted);
       }
