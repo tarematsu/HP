@@ -13,7 +13,7 @@ const MODES = [
     path: '/',
     panel: '#currentView',
     tab: '#modeTabs button[data-view="current"]',
-    requiredText: 'NOW PLAYING',
+    requiredText: '再生中の曲',
   },
   {
     name: 'daily',
@@ -52,7 +52,7 @@ const MODES = [
     path: '/#likes',
     panel: '#likesView',
     tab: '#modeTabs button[data-mode="likes"]',
-    requiredText: 'TOP TRACKS',
+    requiredText: '最新いいねランキング',
     notice: '#likesNotice',
   },
   {
