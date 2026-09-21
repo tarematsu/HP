@@ -132,18 +132,16 @@ test('track ranking replaces placeholder names from Spotify metadata and persist
   assert.equal(row.title, 'Recovered title');
   assert.equal(row.artist, '櫻坂46');
   assert.equal(row.thumbnail_url, 'https://example.test/cover.jpg');
-  assert.deepEqual(
-    db.prepare('SELECT title,artist FROM sh_tracks WHERE id=1').get(),
-    { title: 'Recovered title', artist: '櫻坂46' },
-  );
-  assert.deepEqual(
-    db.prepare(`SELECT title,artist FROM sh_track_ranking_current WHERE track_identity='track:1'`).get(),
-    { title: 'Recovered title', artist: '櫻坂46' },
-  );
-  assert.deepEqual(
-    db.prepare(`SELECT DISTINCT title,artist FROM sh_track_ranking_occurrence WHERE track_identity='track:1'`).all(),
-    [{ title: 'Recovered title', artist: '櫻坂46' }],
-  );
+  const track = db.prepare('SELECT title,artist FROM sh_tracks WHERE id=1').get();
+  assert.equal(track.title, 'Recovered title');
+  assert.equal(track.artist, '櫻坂46');
+  const current = db.prepare(`SELECT title,artist FROM sh_track_ranking_current WHERE track_identity='track:1'`).get();
+  assert.equal(current.title, 'Recovered title');
+  assert.equal(current.artist, '櫻坂46');
+  const occurrences = db.prepare(`SELECT DISTINCT title,artist FROM sh_track_ranking_occurrence WHERE track_identity='track:1'`).all();
+  assert.equal(occurrences.length, 1);
+  assert.equal(occurrences[0].title, 'Recovered title');
+  assert.equal(occurrences[0].artist, '櫻坂46');
 });
 
 test('track ranking recovers legacy key identifiers from metadata ISRC and persists ranking identifiers', async () => {
@@ -170,16 +168,12 @@ test('track ranking recovers legacy key identifiers from metadata ISRC and persi
   assert.equal(row.artist, '櫻坂46');
   assert.equal(row.spotify_id, 'sp-old');
   assert.equal(row.isrc, 'JPOLD000001');
-  assert.deepEqual(
-    db.prepare(`SELECT title,artist,isrc,spotify_id FROM sh_track_ranking_current
-      WHERE track_identity='key:isrc:JPOLD000001'`).get(),
-    {
-      title: 'Recovered by ISRC',
-      artist: '櫻坂46',
-      isrc: 'JPOLD000001',
-      spotify_id: 'sp-old',
-    },
-  );
+  const persisted = db.prepare(`SELECT title,artist,isrc,spotify_id FROM sh_track_ranking_current
+    WHERE track_identity='key:isrc:JPOLD000001'`).get();
+  assert.equal(persisted.title, 'Recovered by ISRC');
+  assert.equal(persisted.artist, '櫻坂46');
+  assert.equal(persisted.isrc, 'JPOLD000001');
+  assert.equal(persisted.spotify_id, 'sp-old');
 });
 
 test('FACTS schema publishes materialized cleanup and ranking state', () => {
