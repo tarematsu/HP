@@ -5,6 +5,7 @@ const jstExtremaTime = new Intl.DateTimeFormat('ja-JP', {
 });
 let lastPayload = null;
 let redrawTimer = 0;
+let observedCanvasWidth = 0;
 
 const finite = (value) => {
   if (value === null || value === undefined || value === '') return null;
@@ -110,25 +111,32 @@ function drawSeries(context, rows, xFor, yFor, color, width) {
   context.stroke();
 }
 
+function canvasWidth(canvas) {
+  if (!canvas) return 0;
+  const width = Math.round(canvas.getBoundingClientRect().width);
+  return Number.isFinite(width) && width > 0 ? width : 0;
+}
+
 function drawComparison(payload) {
   const canvas = document.getElementById('audienceChart');
   const current = normalizeCurrent(payload?.history);
-  if (!canvas || !current.length) return;
+  if (!canvas || !current.length) return false;
+
+  const width = canvasWidth(canvas);
+  if (!width) return false;
 
   const minTime = current[0].observed_at;
   const maxTime = current.at(-1).observed_at;
   const previous = normalizePrevious(payload?.previous_day_history, minTime, maxTime);
   ensureLegend(previous.length > 0);
 
-  const bounds = canvas.getBoundingClientRect();
-  const width = Math.max(300, Math.round(bounds.width || 900));
   const height = width < 520 ? 270 : Math.max(280, Math.min(370, Math.round(width * .42)));
   const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(width * pixelRatio);
   canvas.height = Math.round(height * pixelRatio);
   canvas.style.height = `${height}px`;
   const context = canvas.getContext('2d');
-  if (!context) return;
+  if (!context) return false;
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.clearRect(0, 0, width, height);
 
@@ -240,6 +248,8 @@ function drawComparison(payload) {
       );
     }
   }
+  observedCanvasWidth = width;
+  return true;
 }
 
 function scheduleDraw(payload = lastPayload) {
@@ -249,5 +259,19 @@ function scheduleDraw(payload = lastPayload) {
   redrawTimer = setTimeout(() => drawComparison(lastPayload), 280);
 }
 
+function installCanvasResizeObserver() {
+  const canvas = document.getElementById('audienceChart');
+  if (!canvas || typeof ResizeObserver === 'undefined') return;
+  const observer = new ResizeObserver((entries) => {
+    const width = Math.round(entries[0]?.contentRect?.width || canvasWidth(canvas));
+    if (!width || width === observedCanvasWidth || !lastPayload?.ok) return;
+    observedCanvasWidth = width;
+    clearTimeout(redrawTimer);
+    requestAnimationFrame(() => drawComparison(lastPayload));
+  });
+  observer.observe(canvas);
+}
+
+installCanvasResizeObserver();
 window.addEventListener('dashboard:payload', (event) => scheduleDraw(event?.detail?.payload));
 window.addEventListener('resize', () => scheduleDraw(), { passive: true });
