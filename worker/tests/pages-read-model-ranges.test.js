@@ -122,7 +122,7 @@ test('canonical materialized variants exclude playback history', () => {
   assert.equal(materialized.get('history:daily').cadence_minutes, 360);
   assert.equal(materialized.get('history:weekly').cadence_minutes, 360);
   assert.equal(materialized.get('history:monthly').cadence_minutes, 360);
-  assert.equal(materialized.get('dashboard').cadence_minutes, 30);
+  assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 
 test('Actions cadence follows the materialized API contract', () => {
