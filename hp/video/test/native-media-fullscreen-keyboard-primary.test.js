@@ -38,24 +38,27 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.doesNotMatch(youtube, /const videoFullscreenPoint = media =>/);
 });
 
-test('TVer watchdog owns trusted F retries and the real fullscreen control', () => {
-  const key = tver.indexOf('homepanel:tver-fullscreen-key');
+test('TVer prefers the real fullscreen control before trusted F fallback', () => {
   const control = tver.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  assert.ok(key >= 0 && control > key);
+  const key = tver.indexOf('homepanel:tver-fullscreen-key');
+  assert.ok(control >= 0 && key > control);
   assert.match(tver, /const isEnterFullscreenControl = element =>/);
   assert.match(tver, /const fullscreenControlPoint = media =>/);
   assert.match(tver, /__homePanelTverFullscreenRecovery/);
+  assert.match(tver, /__homePanelTverFullscreenPending/);
   assert.match(tver, /fullscreenRecovery\.requestedAt = Date\.now\(\)/);
   assert.match(tver, /fullscreenRecovery\.attempts = attempts \+ 1/);
-  assert.match(tver, /attempts < 4/);
-  assert.match(tver, /const fullscreenButton = controls\.find\(isEnterFullscreenControl\)/);
+  assert.match(tver, /controlPoint && attempts < 3/);
+  assert.match(tver, /attempts < 7/);
+  assert.match(tver, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
+  assert.match(tver, /Array\.from\(document\.querySelectorAll\(selector\)\)/);
   assert.doesNotMatch(tverEpisode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
   assert.doesNotMatch(tver, /const videoFullscreenPoint = media =>/);
   assert.doesNotMatch(tver, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
 });
 
 test('TVer requests fullscreen before ad-specific controls', () => {
-  const fullscreen = tver.indexOf("homepanel:tver-fullscreen-key");
+  const fullscreen = tver.indexOf('const controlPoint = fullscreenControlPoint(video)');
   const ad = tver.indexOf('if (adActive) {');
   assert.ok(fullscreen >= 0 && ad > fullscreen);
 });
