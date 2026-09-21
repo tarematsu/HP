@@ -23,7 +23,7 @@ const api='/api/sakurazaka46jp-status';
 const intFmt=new Intl.NumberFormat('ja-JP',{maximumFractionDigits:0});
 const avgFmt=new Intl.NumberFormat('ja-JP',{minimumFractionDigits:1,maximumFractionDigits:1});
 const ftime=(ms)=>Number.isFinite(Number(ms))?new Date(Number(ms)).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',hour12:false}):'-';
-const esc=(v)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot',"'":'&#39;'}[c]));
+const esc=(v)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const age=(ms)=>{const n=Number(ms);if(!Number.isFinite(n))return '-';if(n<60000)return `${Math.max(0,Math.round(n/1000))}秒`;if(n<3600000)return `${Math.round(n/60000)}分`;return `${(n/3600000).toFixed(1)}時間`};
 const gap=(rows,i)=>{if(i>=rows.length-1)return '-';const diff=Number(rows[i]?.observed_at)-Number(rows[i+1]?.observed_at);return Number.isFinite(diff)?`${Math.round(diff/60000)}分`:'-'};
 const live=(v)=>v===true||Number(v)===1||String(v).toLowerCase()==='true';
@@ -33,7 +33,7 @@ function listenerStats(rows){
   const anchor=rows.find((row)=>live(row?.is_broadcasting)&&Number.isFinite(Number(row?.listener_count)));
   if(!anchor)return null;
   const anchorBroadcast=anchor?.broadcast_id==null?'':String(anchor.broadcast_id);
-  const anchorStart=Number(anchor?.broadcast_start_time);
+  const anchorStart=anchor?.broadcast_start_time==null?null:Number(anchor.broadcast_start_time);
   const values=rows
     .filter((row)=>{
       if(!live(row?.is_broadcasting))return false;
