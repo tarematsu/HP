@@ -8,9 +8,7 @@ export const PREVIOUS_DAY_HISTORY_SQL = `WITH latest_channel AS (
   ORDER BY minute_at DESC,id DESC
   LIMIT 1
 )
-SELECT
-  r.bucket_at,r.observed_at,r.listener_count,r.online_member_count,
-  r.total_member_count,r.total_listens,r.comment_velocity
+SELECT r.observed_at,r.online_member_count
 FROM sh_dashboard_history_5m AS r
 WHERE r.channel_id=(SELECT channel_id FROM latest_channel)
   AND r.bucket_at>=? AND r.bucket_at<?
@@ -91,10 +89,9 @@ export async function augmentDashboardChartData(env, payload, now = Date.now()) 
       return [];
     }),
   ]);
-  const fallback = velocityFallbackByBucket(fallbackRows);
   return {
     ...payload,
-    history: mergeVelocityFallback(payload.history, fallback),
-    previous_day_history: mergeVelocityFallback(previousRows, fallback),
+    history: mergeVelocityFallback(payload.history, velocityFallbackByBucket(fallbackRows)),
+    previous_day_history: previousRows,
   };
 }
