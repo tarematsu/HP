@@ -58,7 +58,6 @@ jobs:
           best = payload.get("best") if isinstance(payload.get("best"), dict) else {}
           top_summary = {
               "received_at": payload.get("received_at", ""),
-              "device_id": payload.get("device_id", ""),
               "records": payload.get("records", ""),
               "history_key": payload.get("history_key", ""),
           }
