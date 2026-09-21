@@ -1,4 +1,4 @@
-const stylesheetHref = '/dashboard-fixes.css?v=20260921.4';
+const stylesheetHref = '/dashboard-fixes.css?v=20260922.1';
 if (!document.querySelector(`link[href="${stylesheetHref}"]`)) {
   const stylesheet = document.createElement('link');
   stylesheet.rel = 'stylesheet';
@@ -104,41 +104,65 @@ const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
   minute: '2-digit',
   hour12: false,
 });
-const UTC_UPDATED_PATTERN = /^最終取得\s+(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+UTC(?:.*)$/;
-let acquisitionUpdatedAt = null;
-let historyMaterializedAt = null;
-let renderingUpdatedLabel = false;
+const HISTORY_MATERIALIZED_AT_CACHE_KEY = 'sh.history.materialized-at.v1';
 
-function acquisitionTimestamp(value) {
-  const match = String(value || '').match(UTC_UPDATED_PATTERN);
-  if (!match) return null;
-  const [, month, day, hour, minute, second] = match;
-  const now = Date.now();
-  const currentYear = new Date(now).getUTCFullYear();
-  let year = currentYear;
-  let timestamp = Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
-  const HALF_YEAR_MS = 183 * 86_400_000;
-  if (timestamp - now > HALF_YEAR_MS) year -= 1;
-  else if (now - timestamp > HALF_YEAR_MS) year += 1;
-  return Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+function cachedHistoryMaterializedAt() {
+  try {
+    const value = Number(localStorage.getItem(HISTORY_MATERIALIZED_AT_CACHE_KEY));
+    if (!Number.isFinite(value) || value <= 0 || value > Date.now() + 5 * 60_000) return null;
+    return value;
+  } catch {
+    return null;
+  }
 }
+
+function cacheHistoryMaterializedAt(value) {
+  try {
+    localStorage.setItem(HISTORY_MATERIALIZED_AT_CACHE_KEY, String(value));
+  } catch {
+    // Storage can be unavailable in restricted browser modes.
+  }
+}
+
+let historyMaterializedAt = cachedHistoryMaterializedAt();
+let renderingUpdatedLabel = false;
 
 const description = document.getElementById('description');
 const updated = document.getElementById('updated');
 function renderUpdatedLabel() {
   if (!updated || renderingUpdatedLabel) return;
-  const parsed = acquisitionTimestamp(updated.textContent);
-  if (parsed != null) acquisitionUpdatedAt = parsed;
-  const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_TIME.format(new Date(acquisitionUpdatedAt));
   const historyText = historyMaterializedAt == null ? '—' : JST_TIME.format(new Date(historyMaterializedAt));
-  const next = `最終取得 ${acquisitionText}　履歴更新 ${historyText}`;
+  const next = `更新 ${historyText}`;
   if (next === updated.textContent) return;
   renderingUpdatedLabel = true;
   updated.textContent = next;
-  updated.title = `最終取得 ${acquisitionText} JST / 履歴更新 ${historyText} JST`;
+  updated.title = `更新 ${historyText} JST`;
   updated.setAttribute('aria-label', updated.title);
   renderingUpdatedLabel = false;
 }
+
+function setHistoryMaterializedAt(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp > Date.now() + 5 * 60_000) return;
+  historyMaterializedAt = timestamp;
+  cacheHistoryMaterializedAt(timestamp);
+  renderUpdatedLabel();
+}
+
+async function refreshHistoryMaterializedAt() {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  try {
+    const response = await fetch(`/api/history?mode=daily&from=${todayUtc}&to=${todayUtc}`, {
+      headers: { accept: 'application/json' },
+    });
+    if (!response.ok) return;
+    setHistoryMaterializedAt(response.headers.get('x-materialized-at'));
+    void response.body?.cancel?.();
+  } catch {
+    // Keep the last materialized timestamp visible when the metadata refresh is unavailable.
+  }
+}
+
 if (updated) {
   updated.className = 'subtle';
   if (description) description.replaceWith(updated);
@@ -149,11 +173,9 @@ if (updated) {
     characterData: true,
   });
   window.addEventListener('history:materialized-at', (event) => {
-    const value = Number(event?.detail?.updatedAt);
-    if (!Number.isFinite(value) || value <= 0) return;
-    historyMaterializedAt = value;
-    renderUpdatedLabel();
+    setHistoryMaterializedAt(event?.detail?.updatedAt);
   });
+  void refreshHistoryMaterializedAt();
 }
 description?.remove();
 

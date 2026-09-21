@@ -3,7 +3,7 @@ const STATIONHEAD_BUDDIES_URL = 'https://stationhead.com/c/buddies';
 const integer = new Intl.NumberFormat('ja-JP');
 const jstGoalDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
-  month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  month: '2-digit', day: '2-digit',
 });
 const jstChartDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
