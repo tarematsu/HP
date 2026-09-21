@@ -1,5 +1,8 @@
 import { isRealIsoDate } from './api-utils.js';
-import { SUMMARY_TABLES } from './history-summary.js';
+import {
+  previousSummaryPeriodKey,
+  SUMMARY_TABLES,
+} from './history-summary.js';
 import {
   applySummaryCompleteness,
   currentPeriodKey,
@@ -113,23 +116,28 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
   const table = SUMMARY_TABLES[mode];
   if (!table) throw new Error(`unsupported summary mode: ${mode}`);
 
-  // Only the current UTC daily row stays outside R2. It is loaded from
-  // /api/history-current and merged in the browser. Weekly and monthly rows,
-  // including their current periods when available, are served from R2.
+  // Keep one prior daily row in the bounded read for compatibility with the
+  // existing materialization contract. Persisted member metrics are not
+  // recalculated from it; the requested range is filtered before rendering.
   const currentKey = currentPeriodKey(mode, now);
   const currentFilter = mode === 'daily' ? ' AND period_key<?' : '';
-  const queryLimit = summaryLimit(mode);
+  const previousDailyKey = mode === 'daily' ? previousSummaryPeriodKey('daily', from) : null;
+  const queryFrom = previousDailyKey || from;
+  const queryLimit = summaryLimit(mode) + (mode === 'daily' && queryFrom < from ? 1 : 0);
   const statement = env.OTHER_DB.prepare(
     `SELECT ${SUMMARY_COLUMNS} FROM ${table}
      WHERE period_key>=? AND period_key<=?${currentFilter}
      ORDER BY period_key ASC LIMIT ?`,
   );
   const bindings = mode === 'daily'
-    ? [from, to, currentKey, queryLimit]
+    ? [queryFrom, to, currentKey, queryLimit]
     : [from, to, queryLimit];
   const result = await statement.bind(...bindings).all();
-  const rows = result.results || [];
-  if (mode === 'daily') validateDailySummaryRows(rows);
+  const fetchedRows = result.results || [];
+  if (mode === 'daily') validateDailySummaryRows(fetchedRows);
+  const rows = mode === 'daily'
+    ? fetchedRows.filter((row) => String(row?.period_key || '') >= from)
+    : fetchedRows;
 
   // Historical track totals are canonical summary data. Calculate them only
   // when a closed period has not been populated yet, persist the result to
