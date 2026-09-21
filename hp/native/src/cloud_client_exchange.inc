@@ -1,4 +1,4 @@
-#include "stationhead_leaderboard_probe_spool.h"
+#include "stationhead_leaderboard_capture_spool.h"
 
 namespace hp {
 
@@ -49,21 +49,24 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   }
   if (telemetry && !telemetry->json.empty()) body += ",\"telemetry\":" + telemetry->json;
 
-  const std::vector<std::string> leaderboardProbe =
-      stationhead_leaderboard_probe_spool::ReadBatch();
-  if (!leaderboardProbe.empty()) {
+  // Keep the established Cloud field names for wire compatibility, but source
+  // them exclusively from the rebuilt dedicated-WebView capture spool.
+  const std::vector<std::string> leaderboardCapture =
+      stationhead_leaderboard_capture_spool::ReadBatch();
+  if (!leaderboardCapture.empty()) {
     body += ",\"leaderboardProbe\":[";
-    for (size_t index = 0; index < leaderboardProbe.size(); ++index) {
+    for (size_t index = 0; index < leaderboardCapture.size(); ++index) {
       if (index != 0) body.push_back(',');
-      body += leaderboardProbe[index];
+      body += leaderboardCapture[index];
     }
     body.push_back(']');
   }
-  const size_t leaderboardSpoolRecords = stationhead_leaderboard_probe_spool::Count();
+  const size_t leaderboardSpoolRecords =
+      stationhead_leaderboard_capture_spool::Count();
   body += ",\"leaderboardProbeStatus\":{\"spoolRecords\":";
   body += std::to_string(leaderboardSpoolRecords);
   body += ",\"batchRecords\":";
-  body += std::to_string(leaderboardProbe.size());
+  body += std::to_string(leaderboardCapture.size());
   body += "}";
   body.push_back('}');
 
@@ -121,7 +124,7 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
     }
   }
 
-  if (!leaderboardProbe.empty() && root.HasKey(L"leaderboardProbe") &&
+  if (!leaderboardCapture.empty() && root.HasKey(L"leaderboardProbe") &&
       root.GetNamedValue(L"leaderboardProbe").ValueType() == JsonValueType::Object) {
     try {
       const JsonObject receipt = root.GetNamedObject(L"leaderboardProbe");
@@ -130,14 +133,14 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
       size_t accepted = 0;
       if (acceptedValue > 0 && std::isfinite(acceptedValue) &&
           std::trunc(acceptedValue) == acceptedValue &&
-          acceptedValue <= static_cast<double>(leaderboardProbe.size())) {
+          acceptedValue <= static_cast<double>(leaderboardCapture.size())) {
         accepted = static_cast<size_t>(acceptedValue);
       }
       if (reported && accepted > 0) {
-        stationhead_leaderboard_probe_spool::Acknowledge(accepted);
+        stationhead_leaderboard_capture_spool::Acknowledge(accepted);
       }
     } catch (...) {
-      // Keep the spool for the next exchange if the acknowledgement is malformed.
+      // Keep the capture spool for the next exchange if acknowledgement is malformed.
     }
   }
   return translated;
