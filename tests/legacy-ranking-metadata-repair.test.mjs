@@ -21,6 +21,14 @@ test('legacy ranking repair scans persisted ranking rows instead of only recent 
   assert.doesNotMatch(repair, /observed_at>=\$\{cutoff\}/);
 });
 
+test('legacy ranking repair uses historical queue duration to disambiguate Apple results', () => {
+  assert.match(repair, /FROM sh_queue_revision_items item/);
+  assert.match(repair, /item\.track_id=current\.track_id/);
+  assert.match(repair, /item\.duration_ms IS NOT NULL AND item\.duration_ms>0/);
+  assert.match(repair, /AS duration_ms/);
+  assert.match(repair, /appleMetadata\(title, candidate\.duration_ms\)/);
+});
+
 test('legacy ranking repair accepts duplicate Apple releases when the artist agrees', () => {
   assert.match(repair, /const artists = \[\.\.\.new Set\(exact\.map/);
   assert.match(repair, /if \(artists\.length === 1\) return exact\.find/);

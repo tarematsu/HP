@@ -88,7 +88,13 @@ function candidates() {
           ELSE NULL
         END
       ) AS spotify_id,
-      COALESCE(NULLIF(TRIM(current.isrc),''),NULLIF(TRIM(tracks.isrc),'')) AS isrc
+      COALESCE(NULLIF(TRIM(current.isrc),''),NULLIF(TRIM(tracks.isrc),'')) AS isrc,
+      (SELECT item.duration_ms
+        FROM sh_queue_revision_items item
+        WHERE item.track_id=current.track_id
+          AND item.duration_ms IS NOT NULL AND item.duration_ms>0
+        ORDER BY item.revision_id DESC
+        LIMIT 1) AS duration_ms
     FROM sh_track_ranking_current current
     LEFT JOIN sh_tracks tracks ON tracks.id=current.track_id
     WHERE current.latest_like_count>0
@@ -99,7 +105,7 @@ function candidates() {
         OR LOWER(TRIM(current.artist)) IN ('アーティスト不明','unknown','unknown artist','_','-','—')
       )
   )
-  SELECT track_identity,track_id,title,artist,spotify_id,isrc,latest_like_count,latest_observed_at
+  SELECT track_identity,track_id,title,artist,spotify_id,isrc,duration_ms,latest_like_count,latest_observed_at
   FROM unresolved
   WHERE spotify_id IS NOT NULL AND TRIM(spotify_id)<>''
   ORDER BY latest_like_count DESC,latest_observed_at DESC,track_identity
