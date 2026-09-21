@@ -8,7 +8,7 @@ const headerCss = readFileSync(new URL('../public/dashboard-fixes.css', import.m
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 
 test('dashboard header repair runs before tabs and dashboard client startup', () => {
-  assert.ok(dashboardEntry.indexOf("import './dashboard-header.js?v=20260921.4'") < dashboardEntry.indexOf("import './dashboard-tabs.js?v=20260921.4'"));
+  assert.ok(dashboardEntry.indexOf("import './dashboard-header.js?v=20260922.1'") < dashboardEntry.indexOf("import './dashboard-tabs.js?v=20260921.4'"));
   assert.match(headerRepair, /dashboard-fixes\.css\?v=20260921\.4/);
   assert.match(headerRepair, /description\.replaceWith\(updated\)/);
   assert.match(headerRepair, /querySelector\('\.live-line'\)\?\.remove\(\)/);
