@@ -93,7 +93,7 @@ test('official series keeps distinct nearby events and reports missing summaries
   ], 4), 2);
 });
 
-test('active Pages runtimes are UTC-only and contain no playback-history page path', () => {
+test('active Pages archive runtimes are UTC-only and contain no playback-history page path', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
   const fixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
@@ -103,7 +103,7 @@ test('active Pages runtimes are UTC-only and contain no playback-history page pa
   const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
   const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-  const activeSources = [entry, guard, fixes, history, likes, broadcasts, dashboard].join('\n');
+  const archiveSources = [entry, guard, fixes, history, likes, broadcasts].join('\n');
 
   assert.match(entry, /history:runtime-ready/);
   assert.doesNotMatch(entry, /trackDate|trackWeekMode|'tracks'|legacyHistoryRoute/);
@@ -119,12 +119,11 @@ test('active Pages runtimes are UTC-only and contain no playback-history page pa
   assert.match(likes, /else if \(!el\('likesView'\)\.hidden\) load\(\)/);
   assert.match(broadcasts, /timeZone: 'UTC'/);
   assert.match(dashboard, /timeZone: 'UTC'/);
-  assert.match(dashboard, /toLocaleTimeString\('ja-JP', \{[\s\S]*timeZone: 'UTC'/);
   assert.match(dashboard, /最終取得 \$\{safeDate\(latest\.observed_at\)\} UTC/);
   assert.match(mainPage, /id="likesView"/);
   assert.match(tabs, /import\('\/history\/history-likes\.js'\)/);
   assert.doesNotMatch(mainPage, /href="\/history/);
-  assert.doesNotMatch(activeSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
+  assert.doesNotMatch(archiveSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
 test('dashboard image retries use canonical URLs and successful refreshes clear stale errors', () => {

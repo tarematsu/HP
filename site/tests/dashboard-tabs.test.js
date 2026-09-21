@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const currentEnhancements = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
 const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const redirects = readFileSync(new URL('../public/_redirects', import.meta.url), 'utf8');
@@ -55,12 +56,12 @@ test('tab selection stays on the root document and never navigates to history pa
   assert.doesNotMatch(historyEntry, /legacyHistoryRoute|location\.replace/);
 });
 
-test('current and history chart details remain isolated', () => {
+test('current and history chart details are owned by their respective renderers', () => {
   assert.match(page, /id="currentChartDetail"[^>]*data-current-chart-detail/);
   assert.match(page, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((page.match(/id="chartDetail"/g) || []).length, 1);
-  assert.match(tabsClient, /savedHistoryDetail/);
-  assert.match(tabsClient, /currentChartDetail\.textContent/);
+  assert.match(currentEnhancements, /byId\('currentChartDetail'\)/);
+  assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
 });
 
 test('standalone history and likes HTML pages are removed', () => {

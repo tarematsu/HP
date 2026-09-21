@@ -1,9 +1,6 @@
 const DASHBOARD_URL = '/api/dashboard';
 const CACHE_KEY = 'sh.dashboard.v3';
-const HISTORY_LIMIT = 300;
-const DAY_MS = 86_400_000;
 const integer = new Intl.NumberFormat('ja-JP');
-const compact = new Intl.NumberFormat('ja-JP', { notation: 'compact', maximumFractionDigits: 1 });
 const dateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'UTC',
   month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -16,13 +13,9 @@ const etaTime = new Intl.DateTimeFormat('ja-JP', {
 const state = {
   payload: null,
   queue: [],
-  history: [],
   playbackIndex: -1,
-  selectedChartIndex: -1,
-  chart: null,
   refreshing: false,
   abortController: null,
-  resizeTimer: 0,
 };
 
 const byId = (id) => document.getElementById(id);
@@ -288,123 +281,6 @@ function renderGoal(payload) {
   }
 }
 
-function chartComment(row) {
-  for (const candidate of [row?.comment_velocity, row?.comment_velocity_max, row?.comment_count_delta]) {
-    const value = finite(candidate);
-    if (value != null) return Math.max(0, value);
-  }
-  return 0;
-}
-
-function normalizedHistory(rows) {
-  const cutoff = Date.now() - DAY_MS;
-  const byTime = new Map();
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const observedAt = finite(row?.observed_at);
-    if (observedAt == null || observedAt < cutoff) continue;
-    byTime.set(observedAt, {
-      observed_at: observedAt,
-      online_member_count: finite(row.online_member_count),
-      comment_velocity: chartComment(row),
-    });
-  }
-  return [...byTime.values()].sort((left, right) => left.observed_at - right.observed_at).slice(-HISTORY_LIMIT);
-}
-
-function drawChart() {
-  const canvas = byId('audienceChart');
-  if (!canvas) return;
-  const rows = normalizedHistory(state.history);
-  const bounds = canvas.getBoundingClientRect();
-  const width = Math.max(300, Math.round(bounds.width || 900));
-  const height = width < 520 ? 260 : Math.max(270, Math.min(360, Math.round(width * .42)));
-  const ratio = Math.min(2, window.devicePixelRatio || 1);
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  canvas.style.height = `${height}px`;
-  const context = canvas.getContext('2d');
-  if (!context) return;
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.clearRect(0, 0, width, height);
-  if (!rows.length) {
-    context.font = '13px system-ui';
-    context.textAlign = 'center';
-    context.fillText('履歴データを読み込み中です。', width / 2, height / 2);
-    state.chart = null;
-    return;
-  }
-  const padding = { left: 42, right: 46, top: 18, bottom: 38 };
-  const plotWidth = Math.max(1, width - padding.left - padding.right);
-  const plotHeight = Math.max(1, height - padding.top - padding.bottom);
-  const times = rows.map((row) => row.observed_at);
-  const minTime = Math.min(...times);
-  const maxTime = Math.max(...times);
-  const span = Math.max(1, maxTime - minTime);
-  const x = times.map((time) => padding.left + plotWidth * (time - minTime) / span);
-  const online = rows.map((row) => row.online_member_count).filter((value) => value != null);
-  const minimum = online.length ? Math.min(...online) : 0;
-  const maximum = online.length ? Math.max(...online) : 1;
-  const range = Math.max(1, maximum - minimum);
-  const y = (value) => padding.top + plotHeight - (Number(value) - minimum) * plotHeight / range;
-  const comments = rows.map(chartComment);
-  const commentMax = Math.max(1, ...comments);
-  context.strokeStyle = 'rgba(31,45,68,.12)';
-  context.lineWidth = 1;
-  for (let index = 0; index <= 4; index += 1) {
-    const vertical = padding.top + plotHeight * index / 4;
-    context.beginPath();
-    context.moveTo(padding.left, vertical);
-    context.lineTo(width - padding.right, vertical);
-    context.stroke();
-  }
-  context.fillStyle = 'rgba(22,139,115,.35)';
-  comments.forEach((value, index) => {
-    if (value <= 0) return;
-    const barHeight = plotHeight * value / commentMax;
-    context.fillRect(x[index] - 2, padding.top + plotHeight - barHeight, 4, barHeight);
-  });
-  context.beginPath();
-  context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d93f79';
-  context.lineWidth = 2.5;
-  rows.forEach((row, index) => {
-    if (row.online_member_count == null) return;
-    if (index === 0) context.moveTo(x[index], y(row.online_member_count));
-    else context.lineTo(x[index], y(row.online_member_count));
-  });
-  context.stroke();
-  context.fillStyle = '#667287';
-  context.font = '11px system-ui';
-  context.textAlign = 'center';
-  for (let index = 0; index < 5; index += 1) {
-    const position = Math.round((rows.length - 1) * index / 4);
-    context.fillText(
-      new Date(rows[position].observed_at).toLocaleTimeString('ja-JP', {
-        timeZone: 'UTC', hour: '2-digit', minute: '2-digit',
-      }),
-      x[position],
-      height - 16,
-    );
-  }
-  state.chart = { rows, x };
-}
-
-function selectChartPoint(event) {
-  if (!state.chart?.x?.length) return;
-  const bounds = byId('audienceChart').getBoundingClientRect();
-  const pointer = event.clientX - bounds.left;
-  let selected = 0;
-  let distance = Infinity;
-  state.chart.x.forEach((point, index) => {
-    const next = Math.abs(point - pointer);
-    if (next < distance) {
-      distance = next;
-      selected = index;
-    }
-  });
-  const row = state.chart.rows[selected];
-  setText('chartDetail', `${safeDate(row.observed_at)} UTC　オンライン ${number(row.online_member_count)}人　コメント勢い ${number(chartComment(row))}件 / 2分`);
-}
-
 function saveCache() {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), payload: state.payload }));
@@ -414,12 +290,10 @@ function saveCache() {
 function applyPayload(payload, save = true) {
   state.payload = payload;
   state.queue = Array.isArray(payload.queue) ? payload.queue : [];
-  state.history = normalizedHistory(payload.history);
   state.playbackIndex = -1;
   renderHeader(payload);
   renderGoal(payload);
   renderNowPlaying(true);
-  requestAnimationFrame(drawChart);
   if (save) saveCache();
 }
 
@@ -465,11 +339,6 @@ async function refreshDashboard() {
 }
 
 restoreCache();
-byId('audienceChart')?.addEventListener('pointerup', selectChartPoint);
-window.addEventListener('resize', () => {
-  clearTimeout(state.resizeTimer);
-  state.resizeTimer = setTimeout(drawChart, 150);
-}, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) state.abortController?.abort();
   else refreshDashboard();
