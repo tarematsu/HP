@@ -104,7 +104,6 @@ const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
   minute: '2-digit',
   hour12: false,
 });
-const UTC_UPDATED_PATTERN = /^最終取得\s+(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+UTC(?:.*)$/;
 const HISTORY_MATERIALIZED_AT_CACHE_KEY = 'sh.history.materialized-at.v1';
 
 function cachedHistoryMaterializedAt() {
@@ -125,37 +124,19 @@ function cacheHistoryMaterializedAt(value) {
   }
 }
 
-let acquisitionUpdatedAt = null;
 let historyMaterializedAt = cachedHistoryMaterializedAt();
 let renderingUpdatedLabel = false;
-
-function acquisitionTimestamp(value) {
-  const match = String(value || '').match(UTC_UPDATED_PATTERN);
-  if (!match) return null;
-  const [, month, day, hour, minute, second] = match;
-  const now = Date.now();
-  const currentYear = new Date(now).getUTCFullYear();
-  let year = currentYear;
-  let timestamp = Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
-  const HALF_YEAR_MS = 183 * 86_400_000;
-  if (timestamp - now > HALF_YEAR_MS) year -= 1;
-  else if (now - timestamp > HALF_YEAR_MS) year += 1;
-  return Date.UTC(year, Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
-}
 
 const description = document.getElementById('description');
 const updated = document.getElementById('updated');
 function renderUpdatedLabel() {
   if (!updated || renderingUpdatedLabel) return;
-  const parsed = acquisitionTimestamp(updated.textContent);
-  if (parsed != null) acquisitionUpdatedAt = parsed;
-  const acquisitionText = acquisitionUpdatedAt == null ? '—' : JST_TIME.format(new Date(acquisitionUpdatedAt));
   const historyText = historyMaterializedAt == null ? '—' : JST_TIME.format(new Date(historyMaterializedAt));
-  const next = `最終取得 ${acquisitionText}　履歴更新 ${historyText}`;
+  const next = `更新 ${historyText}`;
   if (next === updated.textContent) return;
   renderingUpdatedLabel = true;
   updated.textContent = next;
-  updated.title = `最終取得 ${acquisitionText} JST / 履歴更新 ${historyText} JST`;
+  updated.title = `更新 ${historyText} JST`;
   updated.setAttribute('aria-label', updated.title);
   renderingUpdatedLabel = false;
 }
