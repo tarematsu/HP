@@ -1,5 +1,9 @@
 import type { Env } from "./sources";
 import { applyStationheadLeaderboardProbeInput } from "./stationhead_leaderboard_probe";
+import {
+  applyNativeLeaderboardProbeStatus,
+  type LeaderboardProbeOutcome,
+} from "./stationhead_leaderboard_probe_status";
 import { applyCompactTelemetryInput } from "./telemetry_compact";
 
 const EXCHANGE_MAGIC = new TextEncoder().encode("HPEX0001");
@@ -9,6 +13,7 @@ export interface DeviceExchangeInput {
   versions?: Record<string, unknown>;
   telemetry?: unknown;
   leaderboardProbe?: unknown;
+  leaderboardProbeStatus?: unknown;
 }
 
 export function validDeviceExchangeInput(value: unknown): DeviceExchangeInput | null {
@@ -61,19 +66,36 @@ async function applyTelemetry(
   }
 }
 
+function emptyLeaderboardOutcome(): LeaderboardProbeOutcome {
+  return {
+    submitted: false,
+    accepted: 0,
+    stored: false,
+    reported: false,
+    error: "none",
+  };
+}
+
 async function applyLeaderboardProbe(
   env: Env,
   deviceId: string,
   leaderboardProbe: unknown,
   payload: Record<string, unknown>,
-): Promise<void> {
+): Promise<LeaderboardProbeOutcome> {
+  const outcome = emptyLeaderboardOutcome();
+  outcome.submitted = true;
   try {
     const result = await applyStationheadLeaderboardProbeInput(leaderboardProbe, env, deviceId);
     if (result.status === 200) {
       payload.leaderboardProbe = result.body;
-      return;
+      outcome.accepted = Number(result.body.accepted ?? 0);
+      outcome.stored = result.body.stored === true;
+      outcome.reported = result.body.reported === true;
+      return outcome;
     }
     payload.leaderboardProbeError = { status: result.status, detail: result.body };
+    outcome.error = result.status === 400 ? "invalid" : "unavailable";
+    return outcome;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("device-exchange-leaderboard-probe-failed", {
@@ -83,6 +105,32 @@ async function applyLeaderboardProbe(
     payload.leaderboardProbeError = {
       status: 503,
       detail: { error: "leaderboard probe temporarily unavailable" },
+    };
+    outcome.error = "unavailable";
+    return outcome;
+  }
+}
+
+async function applyLeaderboardProbeStatus(
+  env: Env,
+  status: unknown,
+  outcome: LeaderboardProbeOutcome,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const result = await applyNativeLeaderboardProbeStatus(status, env, outcome);
+    if (result.status === 200) {
+      payload.leaderboardProbeStatus = result.body;
+      return;
+    }
+    payload.leaderboardProbeStatusError = { status: result.status, detail: result.body };
+  } catch (error) {
+    console.error("device-exchange-leaderboard-probe-status-failed", {
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+    });
+    payload.leaderboardProbeStatusError = {
+      status: 503,
+      detail: { error: "leaderboard probe status temporarily unavailable" },
     };
   }
 }
@@ -97,8 +145,22 @@ export async function buildDeviceExchangeResponse(
   if (input.telemetry !== undefined) {
     await applyTelemetry(env, deviceId, input.telemetry, exchangeSideEffects);
   }
+  let leaderboardOutcome = emptyLeaderboardOutcome();
   if (input.leaderboardProbe !== undefined) {
-    await applyLeaderboardProbe(env, deviceId, input.leaderboardProbe, exchangeSideEffects);
+    leaderboardOutcome = await applyLeaderboardProbe(
+      env,
+      deviceId,
+      input.leaderboardProbe,
+      exchangeSideEffects,
+    );
+  }
+  if (input.leaderboardProbeStatus !== undefined) {
+    await applyLeaderboardProbeStatus(
+      env,
+      input.leaderboardProbeStatus,
+      leaderboardOutcome,
+      exchangeSideEffects,
+    );
   }
 
   const payload = await buildPayload(versionsFromInput(input));

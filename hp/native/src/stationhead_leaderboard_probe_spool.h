@@ -102,6 +102,11 @@ inline bool Append(std::wstring_view payload) {
   return true;
 }
 
+inline size_t Count() {
+  std::lock_guard lock(SpoolMutex());
+  return ReadLinesLocked().size();
+}
+
 inline std::vector<std::string> ReadBatch(
     size_t maximum = kProbeUploadBatchSize) {
   std::lock_guard lock(SpoolMutex());

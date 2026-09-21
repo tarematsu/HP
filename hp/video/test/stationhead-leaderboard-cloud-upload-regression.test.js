@@ -10,6 +10,8 @@ const appMessages = read('../../native/src/app_messages.cpp');
 const exchange = read('../../native/src/cloud_client_exchange.inc');
 const cloudPayload = read('../../cloud/src/device_exchange_payload.ts');
 const cloudProbe = read('../../cloud/src/stationhead_leaderboard_probe.ts');
+const cloudProbeStatus = read('../../cloud/src/stationhead_leaderboard_probe_status.ts');
+const unifiedWorker = read('../../cloud/src/unified_worker.js');
 const reportWorkflow = read('../../../.github/workflows/stationhead-leaderboard-probe-report.yml');
 
 test('leaderboard probe sends only bounded data records to the native trusted-origin bridge', () => {
@@ -25,17 +27,35 @@ test('native probe spool is durable, bounded, and wakes the existing cloud clien
   assert.match(spool, /stationhead-leaderboard-probe\.ndjson/);
   assert.match(spool, /kMaxProbeRecords = 20/);
   assert.match(spool, /kProbeUploadBatchSize = 8/);
+  assert.match(spool, /inline size_t Count\(\)/);
   assert.match(spool, /MoveFileExW[\s\S]*MOVEFILE_REPLACE_EXISTING \| MOVEFILE_WRITE_THROUGH/);
   assert.match(appMessages, /case kStationheadLeaderboardProbeWakeMessage:[\s\S]*cloud_->RefreshNow\(\)/);
 });
 
-test('device exchange uploads probe records separately from sensor telemetry and acknowledges reported rows only', () => {
+test('device exchange uploads probe records and non-secret diagnostics separately from sensor telemetry', () => {
   assert.match(exchange, /stationhead_leaderboard_probe_spool::ReadBatch\(\)/);
+  assert.match(exchange, /stationhead_leaderboard_probe_spool::Count\(\)/);
   assert.match(exchange, /,\\"leaderboardProbe\\":\[/);
+  assert.match(exchange, /,\\"leaderboardProbeStatus\\":\{\\"spoolRecords\\":/);
   assert.match(exchange, /GetNamedBoolean\(L"reported", false\)/);
   assert.match(exchange, /stationhead_leaderboard_probe_spool::Acknowledge\(accepted\)/);
   assert.match(cloudPayload, /leaderboardProbe\?: unknown/);
+  assert.match(cloudPayload, /leaderboardProbeStatus\?: unknown/);
   assert.match(cloudPayload, /applyStationheadLeaderboardProbeInput/);
+  assert.match(cloudPayload, /applyNativeLeaderboardProbeStatus/);
+});
+
+test('public leaderboard diagnostics expose only bounded operational state', () => {
+  assert.match(cloudProbeStatus, /diagnostics\/stationhead-leaderboard\/status\.json/);
+  assert.match(cloudProbeStatus, /spool_records/);
+  assert.match(cloudProbeStatus, /batch_records/);
+  assert.match(cloudProbeStatus, /last_probe_received_at/);
+  assert.match(cloudProbeStatus, /last_stored_at/);
+  assert.match(cloudProbeStatus, /last_reported_at/);
+  assert.doesNotMatch(cloudProbeStatus, /device_id/);
+  assert.doesNotMatch(cloudProbeStatus, /authorization|cookie|Bearer/i);
+  assert.match(unifiedWorker, /\/api\/health\/stationhead-leaderboard-probe/);
+  assert.match(unifiedWorker, /stationheadLeaderboardProbeStatusResponse\(env\)/);
 });
 
 test('cloud keeps full redacted history in R2 and reports bounded nested artifact data without logging bodies', () => {
