@@ -21,6 +21,11 @@ test('legacy ranking repair scans persisted ranking rows instead of only recent 
   assert.doesNotMatch(repair, /observed_at>=\$\{cutoff\}/);
 });
 
+test('legacy ranking repair accepts duplicate Apple releases when the artist agrees', () => {
+  assert.match(repair, /const artists = \[\.\.\.new Set\(exact\.map/);
+  assert.match(repair, /if \(artists\.length === 1\) return exact\.find/);
+});
+
 test('legacy ranking repair persists recovered metadata into reusable read models', () => {
   assert.match(repair, /INSERT INTO sh_track_metadata/);
   assert.match(repair, /UPDATE sh_track_ranking_current SET/);
