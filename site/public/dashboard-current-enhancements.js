@@ -1,9 +1,9 @@
 const DAY_MS = 86_400_000;
 const STATIONHEAD_BUDDIES_URL = 'https://stationhead.com/c/buddies';
 const integer = new Intl.NumberFormat('ja-JP');
-const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
+const jstGoalDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
-  year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
 const jstChartDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
@@ -21,6 +21,10 @@ const finite = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 const numberText = (value) => finite(value) == null ? '—' : integer.format(Number(value));
+const thousandText = (value) => {
+  const number = finite(value);
+  return number == null ? '—' : `${integer.format(Math.round(number / 1000))}K`;
+};
 
 function commentVelocity(row) {
   for (const candidate of [row?.comment_velocity, row?.comment_velocity_max, row?.comment_count_delta]) {
@@ -55,13 +59,6 @@ function ensureMetricLayout() {
     if (panel) metrics.append(panel);
   }
 
-  if (onlinePanel && !byId('online24h')) {
-    const stats = document.createElement('div');
-    stats.id = 'online24h';
-    stats.className = 'online-24h';
-    stats.innerHTML = '<span id="online24hMin">24h最小 —</span><span id="online24hMax">24h最大 —</span>';
-    onlinePanel.append(stats);
-  }
   if (onlinePanel && !byId('onlineYesterdayAvg')) {
     const average = document.createElement('div');
     average.id = 'onlineYesterdayAvg';
@@ -81,33 +78,22 @@ function ensureMetricLayout() {
     const goal = document.createElement('div');
     goal.id = 'metricGoalCompact';
     goal.className = 'metric-goal-compact';
-    const targetRow = document.createElement('span');
-    targetRow.className = 'metric-goal-row';
-    targetRow.append(document.createTextNode('目標 '));
+    const row = document.createElement('span');
+    row.className = 'metric-goal-row';
     const target = byId('streamGoal') || document.createElement('b');
     target.id = 'streamGoal';
-    targetRow.append(target);
-    const etaRow = document.createElement('span');
-    etaRow.className = 'metric-goal-row';
-    etaRow.append(document.createTextNode('予想 '));
     const eta = byId('goalEta') || document.createElement('strong');
     eta.id = 'goalEta';
-    etaRow.append(eta);
-    goal.append(targetRow, etaRow);
+    row.append(
+      document.createTextNode('目標 '),
+      target,
+      document.createTextNode(' 予想 '),
+      eta,
+    );
+    goal.append(row);
     streamsPanel.append(goal);
   }
   document.querySelector('.goal-card')?.remove();
-}
-
-function renderOnlineRange(rows) {
-  ensureMetricLayout();
-  const values = rows.map((row) => row.online_member_count).filter((value) => value != null);
-  const minimum = values.length ? Math.min(...values) : null;
-  const maximum = values.length ? Math.max(...values) : null;
-  const minNode = byId('online24hMin');
-  const maxNode = byId('online24hMax');
-  if (minNode) minNode.textContent = `24h最小 ${numberText(minimum)}人`;
-  if (maxNode) maxNode.textContent = `24h最大 ${numberText(maximum)}人`;
 }
 
 function goalEtaText(payload) {
@@ -117,7 +103,7 @@ function goalEtaText(payload) {
   const prediction = payload?.goal_prediction;
   const eta = finite(prediction?.eta);
   if (eta != null && eta > 0 && finite(prediction?.rate_per_hour) > 0) {
-    return `${jstDateTime.format(new Date(eta))} JST`;
+    return jstGoalDateTime.format(new Date(eta));
   }
   if (current != null && goal != null && goal > 0 && current >= goal) return '目標達成済み';
   return '予測データ不足';
@@ -129,7 +115,7 @@ function renderCompactGoal(payload = lastGoalPayload) {
   ensureMetricLayout();
   const goal = finite(payload?.latest?.stream_goal);
   const goalNode = byId('streamGoal');
-  if (goalNode) goalNode.textContent = goal == null || goal <= 0 ? '—' : numberText(goal);
+  if (goalNode) goalNode.textContent = goal == null || goal <= 0 ? '—' : thousandText(goal);
   const etaNode = byId('goalEta');
   const etaText = goalEtaText(payload);
   if (etaNode && etaNode.textContent !== etaText) etaNode.textContent = etaText;
@@ -288,7 +274,7 @@ function drawEnhancedChart(rows) {
   context.font = '10px system-ui';
   context.fillStyle = '#667287';
   context.textAlign = 'left';
-  context.fillText('オンライン(人)', 4, 12);
+  context.fillText('オンライン数(人)', 4, 12);
   context.textAlign = 'right';
   context.fillText('コメント/2分', width - 4, 12);
   context.textAlign = 'center';
@@ -321,7 +307,6 @@ function scheduleDraw() {
 function applyPayload(payload) {
   if (!payload?.ok) return;
   lastRows = normalizeHistory(payload.history);
-  renderOnlineRange(lastRows);
   renderCompactGoal(payload);
   enforceStationheadLink();
   scheduleDraw();
@@ -345,7 +330,7 @@ function selectEnhancedPoint(event) {
   const row = lastChartModel.rows[selected];
   const detail = byId('currentChartDetail');
   if (detail) {
-    detail.textContent = `${jstChartDateTime.format(new Date(row.observed_at))} JST　オンライン ${numberText(row.online_member_count)}人　コメント勢い ${numberText(commentVelocity(row))}件 / 2分`;
+    detail.textContent = `${jstChartDateTime.format(new Date(row.observed_at))} JST　オンライン数 ${numberText(row.online_member_count)}人　コメント勢い ${numberText(commentVelocity(row))}件 / 2分`;
   }
 }
 
