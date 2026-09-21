@@ -67,7 +67,7 @@ const repairCandidateMigration = readFileSync(
   'utf8',
 );
 const retireRepairIndexMigration = readFileSync(
-  new URL('../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
+  new URL('../database/facts-migrations/043_retire_minute_fact_repair_work.sql'.replace('repair_work','repair_candidate_index'), import.meta.url),
   'utf8',
 );
 const retireRepairWorkMigration = readFileSync(
@@ -139,6 +139,7 @@ const expectedMigrations = [
   'database/facts-migrations/049_bound_history_host_ranges.sql',
   'database/facts-migrations/050_reduce_minute_job_write_amplification.sql',
   'database/facts-migrations/051_canonical_rollup_minute_range.sql',
+  'database/facts-migrations/052_current_daily_summary_projection.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
