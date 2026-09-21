@@ -34,7 +34,8 @@ describe("Stationhead leaderboard probe", () => {
   it("keeps leaderboard data while redacting credentials and secret query values", () => {
     const normalized = normalizeStationheadLeaderboardProbe([sample()], NOW);
     expect(normalized).toHaveLength(1);
-    const record = normalized![0];
+    if (!normalized?.[0]) throw new Error("expected one normalized leaderboard record");
+    const record = normalized[0];
     expect(record.url).toContain("week=current");
     expect(record.url).toContain("token=%5Bredacted%5D");
     expect(record.body).toContain('"rank":1');
