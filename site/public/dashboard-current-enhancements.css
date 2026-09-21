@@ -145,6 +145,11 @@
     font-size: clamp(1.15rem, 6vw, 1.65rem) !important;
   }
 
+  #totalStreams {
+    font-size: clamp(1rem, 5vw, 1.4rem) !important;
+    letter-spacing: -.055em !important;
+  }
+
   .online-24h,
   .metrics .delta,
   .metric-goal-compact {
