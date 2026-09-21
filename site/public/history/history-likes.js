@@ -6,7 +6,7 @@ import {
 (() => {
   'use strict';
 
-  const CACHE_PREFIX = 'sh.track-like-ranking.v2:';
+  const CACHE_PREFIX = 'sh.track-like-ranking.v3:';
   const CACHE_MS = 5 * 60_000;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateTime = new Intl.DateTimeFormat('ja-JP', {
@@ -182,7 +182,7 @@ import {
     state.controller = controller;
     el('likesLoad').disabled = true;
     setNotice('読み込み中…');
-    const url = '/api/track-history?ranking_only=1&ranking_limit=500';
+    const url = '/api/track-history?ranking_only=1&ranking_limit=500&metadata_revision=3';
     try {
       const result = await fetchJson(url, controller.signal, force);
       if (controller.signal.aborted) return;

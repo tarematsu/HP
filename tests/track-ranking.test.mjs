@@ -33,6 +33,23 @@ function rankingDatabase() {
       spotify_url TEXT,
       updated_at INTEGER
     );
+    CREATE TABLE sh_track_metadata(
+      spotify_id TEXT PRIMARY KEY,
+      isrc TEXT,
+      title TEXT,
+      artist TEXT,
+      display_title TEXT,
+      thumbnail_url TEXT,
+      fetched_at INTEGER
+    );
+    CREATE TABLE sh_track_dictionary(
+      isrc TEXT PRIMARY KEY,
+      spotify_id TEXT,
+      title TEXT,
+      artist TEXT,
+      thumbnail_url TEXT,
+      metadata_fetched_at INTEGER
+    );
     CREATE TABLE sh_track_counter_current(
       occurrence_key TEXT PRIMARY KEY,
       track_key TEXT NOT NULL,
@@ -90,6 +107,54 @@ test('track ranking is seeded and maintained at counter update time', async () =
   assert.equal(updated.rows[0].latest_like_count, 30);
   assert.equal(updated.rows[0].rank, 1);
   assert.equal(updated.summary.max_like_count, 30);
+});
+
+test('track ranking replaces placeholder names from Spotify metadata', async () => {
+  const db = rankingDatabase();
+  db.exec(`
+    UPDATE sh_tracks SET title='曲名不明',artist='-' WHERE id=1;
+    UPDATE sh_track_ranking_current
+      SET title='曲名不明',artist='-' WHERE track_identity='track:1';
+    INSERT INTO sh_track_metadata(
+      spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
+    ) VALUES(
+      'sp1','JPTEST1','Recovered title','櫻坂46',
+      'Recovered title — 櫻坂46','https://example.test/cover.jpg',4000
+    );
+  `);
+
+  const result = await loadTrackRanking(d1Adapter(db), { limit: 500 });
+  const row = result.rows.find((item) => item.track_identity === 'track:1');
+
+  assert.equal(row.title, 'Recovered title');
+  assert.equal(row.artist, '櫻坂46');
+  assert.equal(row.thumbnail_url, 'https://example.test/cover.jpg');
+});
+
+test('track ranking recovers legacy key identifiers from metadata ISRC', async () => {
+  const db = rankingDatabase();
+  db.exec(`
+    INSERT INTO sh_track_ranking_current(
+      track_identity,track_id,title,artist,isrc,spotify_id,
+      latest_like_count,latest_observed_at,latest_occurrence_key
+    ) VALUES(
+      'key:isrc:JPOLD000001',NULL,'曲名不明','-',NULL,NULL,12,3500,'legacy-occ'
+    );
+    INSERT INTO sh_track_metadata(
+      spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
+    ) VALUES(
+      'sp-old','JPOLD000001','Recovered by ISRC','櫻坂46',
+      'Recovered by ISRC — 櫻坂46',NULL,3600
+    );
+  `);
+
+  const result = await loadTrackRanking(d1Adapter(db), { limit: 500 });
+  const row = result.rows.find((item) => item.track_identity === 'key:isrc:JPOLD000001');
+
+  assert.equal(row.title, 'Recovered by ISRC');
+  assert.equal(row.artist, '櫻坂46');
+  assert.equal(row.spotify_id, 'sp-old');
+  assert.equal(row.isrc, 'JPOLD000001');
 });
 
 test('FACTS schema publishes materialized cleanup and ranking state', () => {
