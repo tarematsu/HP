@@ -1,7 +1,9 @@
 export const TRACK_RANKING_SQL = `SELECT
   current.track_identity,current.track_id,
-  COALESCE(NULLIF(TRIM(direct.title),''),NULLIF(TRIM(by_isrc.title),''),NULLIF(TRIM(by_spotify.title),''),current.title) AS title,
-  COALESCE(NULLIF(TRIM(direct.artist),''),NULLIF(TRIM(by_isrc.artist),''),NULLIF(TRIM(by_spotify.artist),''),current.artist) AS artist,
+  current.title AS current_title,current.artist AS current_artist,
+  direct.title AS direct_title,direct.artist AS direct_artist,
+  by_isrc.title AS isrc_title,by_isrc.artist AS isrc_artist,
+  by_spotify.title AS spotify_title,by_spotify.artist AS spotify_artist,
   COALESCE(NULLIF(TRIM(direct.isrc),''),NULLIF(TRIM(by_isrc.isrc),''),NULLIF(TRIM(by_spotify.isrc),''),current.isrc) AS isrc,
   COALESCE(NULLIF(TRIM(direct.spotify_id),''),NULLIF(TRIM(by_isrc.spotify_id),''),NULLIF(TRIM(by_spotify.spotify_id),''),current.spotify_id) AS spotify_id,
   current.latest_like_count,current.latest_observed_at,current.latest_occurrence_key
@@ -46,6 +48,26 @@ function placeholder(value, type) {
     || /^spotify[_:-]?[a-z0-9]{8,}$/i.test(source);
 }
 
+function usable(value, type) {
+  const source = text(value);
+  return source && !placeholder(source, type) ? source : null;
+}
+
+function identityValue(row, prefix) {
+  const identity = text(row?.track_identity);
+  const marker = `${prefix}:`;
+  if (!identity?.startsWith(marker)) return null;
+  return text(identity.slice(marker.length));
+}
+
+function rowSpotifyId(row) {
+  return text(row?.spotify_id) || identityValue(row, 'spotify');
+}
+
+function rowIsrc(row) {
+  return normalizedIsrc(row?.isrc) || normalizedIsrc(identityValue(row, 'isrc')) || null;
+}
+
 function chunks(values, size = 70) {
   const result = [];
   for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
@@ -62,44 +84,102 @@ async function safeRows(db, sql, bindings) {
 }
 
 async function metadataRows(db, rows) {
-  const spotifyIds = [...new Set(rows.map((row) => text(row.spotify_id)).filter(Boolean))];
-  const isrcs = [...new Set(rows.map((row) => normalizedIsrc(row.isrc)).filter(Boolean))];
+  const spotifyIds = [...new Set(rows.map(rowSpotifyId).filter(Boolean))];
+  const isrcs = [...new Set(rows.map(rowIsrc).filter(Boolean))];
   const metadata = [];
+
   for (const part of chunks(spotifyIds)) {
     const marks = part.map(() => '?').join(',');
-    metadata.push(...await safeRows(db, `SELECT spotify_id,title,artist,display_title,thumbnail_url,fetched_at
-      FROM sh_track_metadata WHERE spotify_id IN (${marks}) ORDER BY fetched_at DESC`, part));
+    let found = await safeRows(db, `SELECT spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
+      FROM sh_track_metadata WHERE spotify_id IN (${marks}) ORDER BY fetched_at DESC`, part);
+    if (!found.length) {
+      found = await safeRows(db, `SELECT spotify_id,title,artist,display_title,thumbnail_url,fetched_at
+        FROM sh_track_metadata WHERE spotify_id IN (${marks}) ORDER BY fetched_at DESC`, part);
+    }
+    metadata.push(...found);
   }
+
   for (const part of chunks(isrcs)) {
     const marks = part.map(() => '?').join(',');
+    metadata.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
+      FROM sh_track_metadata
+      WHERE isrc IS NOT NULL AND TRIM(isrc)<>'' AND UPPER(REPLACE(REPLACE(isrc,'-',''),' ','')) IN (${marks})
+      ORDER BY fetched_at DESC`, part));
     metadata.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,NULL AS display_title,thumbnail_url,metadata_fetched_at AS fetched_at
       FROM sh_track_dictionary WHERE isrc IN (${marks}) ORDER BY metadata_fetched_at DESC`, part));
   }
   return metadata;
 }
 
-function enrichRanking(rows, metadata) {
+function mergeMetadata(current, candidate) {
+  if (!current) return {
+    ...candidate,
+    title: usable(candidate?.title, 'title'),
+    artist: usable(candidate?.artist, 'artist'),
+    isrc: normalizedIsrc(candidate?.isrc) || null,
+  };
+  return {
+    ...candidate,
+    ...current,
+    title: usable(current.title, 'title') || usable(candidate?.title, 'title'),
+    artist: usable(current.artist, 'artist') || usable(candidate?.artist, 'artist'),
+    display_title: text(current.display_title) || text(candidate?.display_title),
+    thumbnail_url: text(current.thumbnail_url) || text(candidate?.thumbnail_url),
+    spotify_id: text(current.spotify_id) || text(candidate?.spotify_id),
+    isrc: normalizedIsrc(current.isrc) || normalizedIsrc(candidate?.isrc) || null,
+    fetched_at: Math.max(Number(current.fetched_at || 0), Number(candidate?.fetched_at || 0)) || null,
+  };
+}
+
+function metadataMaps(metadata) {
   const bySpotify = new Map();
   const byIsrc = new Map();
   for (const row of metadata) {
     const spotifyId = text(row.spotify_id);
     const isrc = normalizedIsrc(row.isrc);
-    if (spotifyId && !bySpotify.has(spotifyId)) bySpotify.set(spotifyId, row);
-    if (isrc && !byIsrc.has(isrc)) byIsrc.set(isrc, row);
+    if (spotifyId) bySpotify.set(spotifyId, mergeMetadata(bySpotify.get(spotifyId), row));
+    if (isrc) byIsrc.set(isrc, mergeMetadata(byIsrc.get(isrc), row));
   }
+  return { bySpotify, byIsrc };
+}
+
+function enrichRanking(rows, metadata) {
+  const { bySpotify, byIsrc } = metadataMaps(metadata);
   return rows.map((row) => {
-    const metadataRow = bySpotify.get(text(row.spotify_id)) || byIsrc.get(normalizedIsrc(row.isrc));
-    if (!metadataRow) return { ...row, thumbnail_url: null };
-    const metadataTitle = text(metadataRow.title);
-    const metadataArtist = text(metadataRow.artist);
+    const spotifyId = rowSpotifyId(row);
+    const isrc = rowIsrc(row);
+    const metadataRow = bySpotify.get(spotifyId) || byIsrc.get(isrc) || null;
+    const {
+      current_title: currentTitle,
+      current_artist: currentArtist,
+      direct_title: directTitle,
+      direct_artist: directArtist,
+      isrc_title: isrcTitle,
+      isrc_artist: isrcArtist,
+      spotify_title: spotifyTitle,
+      spotify_artist: spotifyArtist,
+      ...publicRow
+    } = row;
+    const title = usable(metadataRow?.title, 'title')
+      || usable(directTitle, 'title')
+      || usable(isrcTitle, 'title')
+      || usable(spotifyTitle, 'title')
+      || usable(currentTitle, 'title')
+      || '曲名不明';
+    const artist = usable(metadataRow?.artist, 'artist')
+      || usable(directArtist, 'artist')
+      || usable(isrcArtist, 'artist')
+      || usable(spotifyArtist, 'artist')
+      || usable(currentArtist, 'artist')
+      || '—';
     return {
-      ...row,
-      title: placeholder(row.title, 'title') && metadataTitle ? metadataTitle : row.title,
-      artist: placeholder(row.artist, 'artist') && metadataArtist ? metadataArtist : row.artist,
-      display_title: text(metadataRow.display_title),
-      thumbnail_url: text(metadataRow.thumbnail_url),
-      spotify_id: text(row.spotify_id) || text(metadataRow.spotify_id),
-      isrc: normalizedIsrc(row.isrc) || normalizedIsrc(metadataRow.isrc) || null,
+      ...publicRow,
+      title,
+      artist,
+      display_title: text(metadataRow?.display_title),
+      thumbnail_url: text(metadataRow?.thumbnail_url),
+      spotify_id: spotifyId || text(metadataRow?.spotify_id),
+      isrc: isrc || normalizedIsrc(metadataRow?.isrc) || null,
     };
   });
 }
