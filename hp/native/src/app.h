@@ -6,6 +6,7 @@
 #include "render_state.h"
 #include "sensors.h"
 #include "stationhead_fallback_revision_gate.h"
+#include "stationhead_leaderboard_collector.h"
 #include "update_client.h"
 
 namespace hp {
@@ -77,6 +78,7 @@ class App {
   std::unique_ptr<SensorHub> sensors_;
   AppStationheadHandle stationhead_;
   std::array<AppStationheadHandle, kStationheadPeerCount> stationheadPeers_;
+  std::unique_ptr<StationheadLeaderboardCollector> stationheadLeaderboardCollector_;
   std::vector<AirHistorySample> airHistory_;
   std::wstring toastText_;
   std::atomic<bool> telemetryBusy_{false};
@@ -89,6 +91,7 @@ class App {
   bool rendererStarted_ = false;
   bool stationheadStarted_ = false;
   std::array<bool, kStationheadPeerCount> stationheadPeerStarted_{};
+  bool stationheadLeaderboardCollectorStarted_ = false;
   bool cloudStarted_ = false;
   bool startupUpdateScheduled_ = false;
   bool stationheadPlaybackFallbackActive_ = false;
