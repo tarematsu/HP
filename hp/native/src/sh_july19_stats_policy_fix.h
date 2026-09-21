@@ -106,203 +106,114 @@ inline std::wstring StationheadJuly19AuthCaptureScript() {
 }
 
 inline std::wstring StationheadJuly19LeaderboardProbeScript() {
-  static constexpr wchar_t kScript[] = LR"JS(
+  static constexpr wchar_t kPart1[] = LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
   if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
-  if (window.__homepanelStationheadLeaderboardProbeInstalled) return;
-  window.__homepanelStationheadLeaderboardProbeInstalled = true;
-  window.__homepanelStationheadLeaderboardProbeStarted = false;
-  window.__homepanelStationheadLeaderboardRecords = [];
-
-  const storageKey = 'homepanel.stationhead.leaderboardProbe.v1';
-  const leaderboardPage = () => /(^|\/)leaderboard(?:\/|$)/i.test(String(location.pathname || ''));
-  const stationheadUrl = value => {
+  if (window.__homepanelLeaderboardProbeInstalled) return;
+  window.__homepanelLeaderboardProbeInstalled = true;
+  const key = 'homepanel.stationhead.leaderboardProbe.v1';
+  const onBoard = () => /(^|\/)leaderboard(?:\/|$)/i.test(location.pathname);
+  const post = (kind, detail) => {
     try {
-      const parsed = new URL(String(value || ''), location.href);
-      const parsedHost = String(parsed.hostname || '').toLowerCase();
-      return parsed.protocol === 'https:' &&
-        (parsedHost === 'stationhead.com' || parsedHost.endsWith('.stationhead.com'));
-    } catch (_) {
-      return false;
-    }
-  };
-  const postProbe = (kind, detail) => {
-    try {
-      const compact = String(detail || '').replace(/\s+/g, ' ').slice(0, 1400);
       window.chrome?.webview?.postMessage({
         type: 'stationhead-play-stats-error',
-        error: 'leaderboard-probe:' + kind + ':' + compact,
+        error: 'leaderboard-probe:' + kind + ':' + String(detail || '').replace(/\s+/g, ' ').slice(0, 1400),
       });
     } catch (_) {}
   };
-  const store = record => {
+  const save = row => {
     try {
       const safe = {
         observed_at: Date.now(),
-        source: String(record?.source || 'network').slice(0, 40),
-        page: String(record?.page || location.href || '').slice(0, 1000),
-        url: String(record?.url || '').slice(0, 2000),
-        method: String(record?.method || 'GET').slice(0, 16),
-        status: Number(record?.status || 0),
-        content_type: String(record?.content_type || '').slice(0, 200),
-        body: String(record?.body || '').slice(0, 262144),
+        source: String(row.source || '').slice(0, 32),
+        page: String(row.page || location.href).slice(0, 1000),
+        url: String(row.url || '').slice(0, 2000),
+        method: String(row.method || 'GET').slice(0, 16),
+        status: Number(row.status || 0),
+        content_type: String(row.content_type || '').slice(0, 160),
+        body: String(row.body || '').slice(0, 262144),
       };
-      const records = Array.isArray(window.__homepanelStationheadLeaderboardRecords)
-        ? window.__homepanelStationheadLeaderboardRecords
-        : [];
-      records.push(safe);
-      while (records.length > 20) records.shift();
-      window.__homepanelStationheadLeaderboardRecords = records;
-      localStorage.setItem(storageKey, JSON.stringify(records));
-      postProbe(
-        safe.source,
-        safe.method + ' ' + safe.status + ' ' + safe.url +
-          (safe.body ? ' body=' + safe.body.slice(0, 800) : ''),
-      );
-    } catch (error) {
-      postProbe('store-error', String(error?.message || error));
-    }
+      const rows = JSON.parse(localStorage.getItem(key) || '[]');
+      rows.push(safe);
+      localStorage.setItem(key, JSON.stringify(rows.slice(-20)));
+      post(safe.source, safe.method + ' ' + safe.status + ' ' + safe.url +
+        (safe.body ? ' body=' + safe.body.slice(0, 800) : ''));
+    } catch (error) { post('save-error', error?.message || error); }
   };
-  const recordResponse = (url, method, response) => {
-    if (!leaderboardPage() || !response) return;
-    const responseUrl = String(response.url || url || '');
-    if (!stationheadUrl(responseUrl)) return;
-    const contentType = String(response.headers?.get?.('content-type') || '');
-    if (!/json|text|javascript/i.test(contentType)) {
-      store({
-        source: 'network', page: location.href, url: responseUrl, method,
-        status: response.status, content_type: contentType, body: '',
-      });
-      return;
-    }
-    Promise.resolve(response.clone().text()).then(body => {
-      store({
-        source: 'network', page: location.href, url: responseUrl, method,
-        status: response.status, content_type: contentType, body,
-      });
-    }).catch(() => {});
-  };
-
-  const authFetch = window.fetch ? window.fetch.bind(window) : null;
-  if (authFetch) {
+  const originalFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (originalFetch) {
     window.fetch = function(input, init) {
-      const url = typeof input === 'string' ? input : (input && input.url) || '';
-      const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
-      const promise = authFetch(input, init);
-      Promise.resolve(promise).then(response => recordResponse(url, method, response)).catch(() => {});
-      return promise;
+      const url = typeof input === 'string' ? input : (input?.url || '');
+      const method = String(init?.method || input?.method || 'GET').toUpperCase();
+      const result = originalFetch(input, init);
+      if (onBoard()) Promise.resolve(result).then(async response => {
+        const responseUrl = String(response?.url || url || '');
+        if (!/stationhead\.com/i.test(responseUrl)) return;
+        const type = String(response.headers?.get?.('content-type') || '');
+        const body = /json|text/i.test(type) ? await response.clone().text().catch(() => '') : '';
+        save({ source: 'fetch', page: location.href, url: responseUrl,
+          method, status: response.status, content_type: type, body });
+      }).catch(() => {});
+      return result;
     };
   }
-
-  const NativeXhr = window.XMLHttpRequest;
-  if (NativeXhr) {
-    const currentOpen = NativeXhr.prototype.open;
-    const currentSend = NativeXhr.prototype.send;
-    NativeXhr.prototype.open = function(method, url, ...rest) {
-      this.__homepanelLeaderboardMethod = String(method || 'GET').toUpperCase();
-      return currentOpen.call(this, method, url, ...rest);
+)JS";
+  static constexpr wchar_t kPart2[] = LR"JS(
+  const Xhr = window.XMLHttpRequest;
+  if (Xhr) {
+    const open = Xhr.prototype.open;
+    const send = Xhr.prototype.send;
+    Xhr.prototype.open = function(method, url, ...rest) {
+      this.__hpLbMethod = String(method || 'GET').toUpperCase();
+      return open.call(this, method, url, ...rest);
     };
-    NativeXhr.prototype.send = function(...args) {
-      if (leaderboardPage()) {
-        this.addEventListener('loadend', () => {
-          try {
-            const contentType = String(this.getResponseHeader('content-type') || '');
-            let body = '';
-            if (/json|text|javascript/i.test(contentType) &&
-                (this.responseType === '' || this.responseType === 'text')) {
-              body = String(this.responseText || '');
-            }
-            store({
-              source: 'xhr', page: location.href,
-              url: String(this.responseURL || this.__homepanelUrl || ''),
-              method: this.__homepanelLeaderboardMethod || 'GET', status: this.status,
-              content_type: contentType, body,
-            });
-          } catch (_) {}
-        }, { once: true });
-      }
-      return currentSend.apply(this, args);
+    Xhr.prototype.send = function(...args) {
+      if (onBoard()) this.addEventListener('loadend', () => {
+        try {
+          const type = String(this.getResponseHeader('content-type') || '');
+          const body = /json|text/i.test(type) && (!this.responseType || this.responseType === 'text')
+            ? String(this.responseText || '') : '';
+          save({ source: 'xhr', page: location.href, url: this.responseURL,
+            method: this.__hpLbMethod, status: this.status, content_type: type, body });
+        } catch (_) {}
+      }, { once: true });
+      return send.apply(this, args);
     };
   }
-
-  const replayCandidate = (url, page) => {
-    const headers = window.__homepanelStationheadAuthHeaders;
-    if (!authFetch || !headers?.authorization || !stationheadUrl(url)) return;
-    authFetch(url, {
-      method: 'GET', credentials: 'include', cache: 'no-store',
-      headers: Object.assign({ accept: 'application/json, text/plain, */*' }, headers),
-    }).then(async response => {
-      const body = await response.text().catch(() => '');
-      store({
-        source: 'replay', page, url, method: 'GET', status: response.status,
-        content_type: String(response.headers.get('content-type') || ''), body,
-      });
-    }).catch(error => postProbe('replay-error', String(error?.message || error)));
-  };
-
-  const start = () => {
-    if (window.top !== window || window.__homepanelStationheadLeaderboardProbeStarted) return;
-    if (!window.__homepanelStationheadAuthHeaders?.authorization) return;
-    window.__homepanelStationheadLeaderboardProbeStarted = true;
+  if (window.top === window) {
     const launch = () => {
-      try {
-        const frame = document.createElement('iframe');
-        frame.id = '__homepanelStationheadLeaderboardProbeFrame';
-        frame.src = '/leaderboard?homepanel_probe=1&ts=' + Date.now();
-        frame.setAttribute('aria-hidden', 'true');
-        frame.style.cssText = 'position:fixed!important;left:-10000px!important;top:-10000px!important;width:1px!important;height:1px!important;border:0!important;opacity:0!important;pointer-events:none!important;';
-        frame.addEventListener('load', () => {
-          setTimeout(() => {
-            try {
-              const frameWindow = frame.contentWindow;
-              const frameDocument = frame.contentDocument;
-              const href = String(frameWindow?.location?.href || '');
-              const text = String(frameDocument?.body?.innerText || '').slice(0, 32768);
-              const resources = Array.from(frameWindow?.performance?.getEntriesByType?.('resource') || [])
-                .map(entry => String(entry?.name || ''))
-                .filter(url => /production1\.stationhead\.com/i.test(url))
-                .slice(0, 80);
-              store({
-                source: 'dom-snapshot', page: href, url: href,
-                method: 'GET', status: 0, content_type: 'text/plain',
-                body: JSON.stringify({ text, resources }),
-              });
-              const candidate = resources.find(url =>
-                /leaderboard|ranking|rank|weekly|week|chart|top/i.test(url));
-              if (candidate) replayCandidate(candidate, href);
-              else postProbe('discovery', resources.length
-                ? 'no rank-like API name; resources=' + resources.join(',').slice(0, 1100)
-                : 'no Stationhead API resources observed');
-            } catch (error) {
-              postProbe('inspect-error', String(error?.message || error));
-            }
-          }, 10000);
-        }, { once: true });
-        (document.body || document.documentElement).appendChild(frame);
-        setTimeout(() => {
-          try { frame.remove(); } catch (_) {}
-        }, 30000);
-        postProbe('start', frame.src);
-      } catch (error) {
-        postProbe('start-error', String(error?.message || error));
-      }
+      if (document.getElementById('__hpLeaderboardProbe')) return;
+      const frame = document.createElement('iframe');
+      frame.id = '__hpLeaderboardProbe';
+      frame.src = '/leaderboard?homepanel_probe=1&ts=' + Date.now();
+      frame.setAttribute('aria-hidden', 'true');
+      frame.style.cssText = 'position:fixed;left:-10000px;top:-10000px;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+      frame.addEventListener('load', () => setTimeout(() => {
+        try {
+          const w = frame.contentWindow;
+          const d = frame.contentDocument;
+          const resources = Array.from(w?.performance?.getEntriesByType?.('resource') || [])
+            .map(x => String(x?.name || '')).filter(x => /stationhead\.com/i.test(x)).slice(0, 80);
+          save({ source: 'snapshot', page: String(w?.location?.href || ''),
+            url: String(w?.location?.href || ''), method: 'GET', status: 0,
+            content_type: 'text/plain', body: JSON.stringify({
+              text: String(d?.body?.innerText || '').slice(0, 32768), resources,
+            }) });
+        } catch (error) { post('snapshot-error', error?.message || error); }
+      }, 10000), { once: true });
+      (document.body || document.documentElement).appendChild(frame);
+      post('start', frame.src);
+      setTimeout(() => { try { frame.remove(); } catch (_) {} }, 30000);
     };
-    if (document.body || document.documentElement) launch();
-    else document.addEventListener('DOMContentLoaded', launch, { once: true });
-  };
-  const waitForAuth = () => {
-    if (window.top !== window || window.__homepanelStationheadLeaderboardProbeStarted) return;
-    if (window.__homepanelStationheadAuthHeaders?.authorization) {
-      start();
-      return;
-    }
-    setTimeout(waitForAuth, 1000);
-  };
-  if (window.top === window) setTimeout(waitForAuth, 0);
+    if (document.body) setTimeout(launch, 3000);
+    else document.addEventListener('DOMContentLoaded', () => setTimeout(launch, 3000), { once: true });
+  }
 })()
 )JS";
-  return kScript;
+  std::wstring script = kPart1;
+  script.append(kPart2);
+  return script;
 }
 
 inline std::wstring StationheadJuly19AuthAndLoginSettlementScript() {
