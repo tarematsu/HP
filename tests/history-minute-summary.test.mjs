@@ -130,7 +130,7 @@ test('current daily history reads the incremental projection for the latest live
   const plan = db.prepare(`EXPLAIN QUERY PLAN ${CURRENT_DAILY_MINUTE_SUMMARY_SQL}`)
     .all(start, start + 86_400_000, 10)
     .map((item) => item.detail).join('\n');
-  assert.match(plan, /sh_current_daily_summary/);
+  assert.match(plan, /SEARCH p USING PRIMARY KEY \(channel_id=\? AND day_at=\?\)/);
   assert.match(plan, /idx_sh_minute_facts_live_minute/);
   assert.match(plan, /idx_sh_total_member_daily_latest \(channel_id=\? AND day_at=\?\)/);
 });
