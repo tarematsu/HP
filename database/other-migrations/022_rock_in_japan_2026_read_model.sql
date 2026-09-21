@@ -1,6 +1,9 @@
 -- Final canonical read model for the 2026-09-21 ROCK IN JAPAN FESTIVAL listening party.
 -- Live collection ended at 12:16 JST; published history must never depend on the raw
 -- collection tables after this migration has materialized the event series.
+-- The provisioner replays active OTHER_DB migrations, so the canonical row is only
+-- rewritten while the source raw rows still exist. Later raw retention cleanup cannot
+-- replace a completed read model with an empty series.
 
 CREATE TABLE IF NOT EXISTS sh_official_broadcast_series (
   host_handle TEXT NOT NULL,
@@ -17,7 +20,7 @@ ON sh_official_broadcast_series(host_handle,started_at);
 INSERT INTO sh_official_broadcast_series(
   host_handle,event_name,started_at,points_json,source_ref,refreshed_at
 )
-VALUES(
+SELECT
   'sakurazaka46jp',
   '2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』',
   1789958700000,
@@ -39,6 +42,12 @@ VALUES(
   ),'[]'),
   'stationhead-finalized',
   CAST(strftime('%s','now') AS INTEGER)*1000
+WHERE EXISTS (
+  SELECT 1 FROM sh_sakurazaka46jp_main
+  WHERE observed_at>=1789958700000
+    AND observed_at<1789960620000
+    AND is_broadcasting=1
+    AND listener_count IS NOT NULL
 )
 ON CONFLICT(host_handle,event_name) DO UPDATE SET
   started_at=excluded.started_at,
