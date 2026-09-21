@@ -43,17 +43,7 @@ WHERE observed_at>=1789960620000
             AND started_at<1789960620000
             AND broadcast_id IS NOT NULL
         )
-        OR (
-          json_valid(m.raw_json)
-          AND CAST(json_extract(m.raw_json,'$.broadcast.id') AS INTEGER) IN (
-            SELECT broadcast_id FROM sh_host_broadcast_sessions
-            WHERE source_scope='sakurazaka46jp_solo'
-              AND lower(handle)='sakurazaka46jp'
-              AND started_at>=1789957800000
-              AND started_at<1789960620000
-              AND broadcast_id IS NOT NULL
-          )
-        )
+        OR m.broadcast_start_time BETWEEN 1789957800000 AND 1789960619999
       )
   );
 
@@ -68,30 +58,10 @@ WHERE observed_at>=1789960620000
         AND started_at<1789960620000
         AND broadcast_id IS NOT NULL
     )
-    OR (
-      json_valid(raw_json)
-      AND CAST(json_extract(raw_json,'$.broadcast.id') AS INTEGER) IN (
-        SELECT broadcast_id FROM sh_host_broadcast_sessions
-        WHERE source_scope='sakurazaka46jp_solo'
-          AND lower(handle)='sakurazaka46jp'
-          AND started_at>=1789957800000
-          AND started_at<1789960620000
-          AND broadcast_id IS NOT NULL
-      )
-    )
+    OR broadcast_start_time BETWEEN 1789957800000 AND 1789960619999
   );
 
 DELETE FROM sh_sakurazaka46jp_track_metadata
-WHERE observed_at>=1789960620000
-  AND session_id IN (
-    SELECT id FROM sh_host_broadcast_sessions
-    WHERE source_scope='sakurazaka46jp_solo'
-      AND lower(handle)='sakurazaka46jp'
-      AND started_at>=1789957800000
-      AND started_at<1789960620000
-  );
-
-DELETE FROM sh_host_profile_snapshots
 WHERE observed_at>=1789960620000
   AND session_id IN (
     SELECT id FROM sh_host_broadcast_sessions
@@ -112,26 +82,6 @@ WHERE observed_at>=1789960620000
   );
 
 DELETE FROM sh_host_queue_items
-WHERE observed_at>=1789960620000
-  AND session_id IN (
-    SELECT id FROM sh_host_broadcast_sessions
-    WHERE source_scope='sakurazaka46jp_solo'
-      AND lower(handle)='sakurazaka46jp'
-      AND started_at>=1789957800000
-      AND started_at<1789960620000
-  );
-
-DELETE FROM sh_host_comments
-WHERE observed_at>=1789960620000
-  AND session_id IN (
-    SELECT id FROM sh_host_broadcast_sessions
-    WHERE source_scope='sakurazaka46jp_solo'
-      AND lower(handle)='sakurazaka46jp'
-      AND started_at>=1789957800000
-      AND started_at<1789960620000
-  );
-
-DELETE FROM sh_host_raw_events
 WHERE observed_at>=1789960620000
   AND session_id IN (
     SELECT id FROM sh_host_broadcast_sessions
@@ -276,41 +226,20 @@ SET ended_at=1789960619999,
       SELECT COUNT(m.listener_count)
       FROM sh_sakurazaka46jp_main m
       WHERE m.observed_at<1789960620000
-        AND m.broadcast_id IN (
-          SELECT broadcast_id FROM sh_host_broadcast_sessions
-          WHERE source_scope='sakurazaka46jp_solo'
-            AND lower(handle)='sakurazaka46jp'
-            AND started_at>=1789957800000
-            AND started_at<1789960620000
-            AND broadcast_id IS NOT NULL
-        )
+        AND m.broadcast_start_time BETWEEN 1789957800000 AND 1789960619999
     ),
     listener_avg=(
       SELECT AVG(m.listener_count)
       FROM sh_sakurazaka46jp_main m
       WHERE m.observed_at<1789960620000
         AND m.listener_count IS NOT NULL
-        AND m.broadcast_id IN (
-          SELECT broadcast_id FROM sh_host_broadcast_sessions
-          WHERE source_scope='sakurazaka46jp_solo'
-            AND lower(handle)='sakurazaka46jp'
-            AND started_at>=1789957800000
-            AND started_at<1789960620000
-            AND broadcast_id IS NOT NULL
-        )
+        AND m.broadcast_start_time BETWEEN 1789957800000 AND 1789960619999
     ),
     listener_max=(
       SELECT MAX(m.listener_count)
       FROM sh_sakurazaka46jp_main m
       WHERE m.observed_at<1789960620000
-        AND m.broadcast_id IN (
-          SELECT broadcast_id FROM sh_host_broadcast_sessions
-          WHERE source_scope='sakurazaka46jp_solo'
-            AND lower(handle)='sakurazaka46jp'
-            AND started_at>=1789957800000
-            AND started_at<1789960620000
-            AND broadcast_id IS NOT NULL
-        )
+        AND m.broadcast_start_time BETWEEN 1789957800000 AND 1789960619999
     ),
     distinct_tracks=COALESCE((
       SELECT COUNT(DISTINCT COALESCE(spotify_id,isrc,CAST(stationhead_track_id AS TEXT)))
