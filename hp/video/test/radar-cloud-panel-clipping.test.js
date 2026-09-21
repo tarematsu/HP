@@ -18,7 +18,7 @@ const radarTile = readFileSync(
 test('cloud radar clips every logical panel before drawing partial edge tiles', () => {
   assert.match(
     browserRadar,
-    /context\.save\(\);[\s\S]*context\.rect\(panelX, 0, panelWidth, logicalOutputHeight\);[\s\S]*context\.clip\(\);[\s\S]*for \(const tile of panel\.tiles[\s\S]*context\.restore\(\);/,
+    /context\.save\(\);[\s\S]*context\.rect\(panelX, 0, panelWidth, logicalOutputHeight\);[\s\S]*context\.clip\(\);[\s\S]*drawBase\(satellite, panel, panelX\);[\s\S]*for \(const \{ tile, bitmap \} of loadedTiles\)[\s\S]*context\.restore\(\);/,
   );
 });
 
