@@ -238,7 +238,7 @@ if (summaryCards) {
 
 document.querySelector('[data-mode="broadcasts"]')?.addEventListener('click', () => {
   scheduleRender();
-  scheduleLiveRefresh(0);
+  setTimeout(() => scheduleLiveRefresh(0), 0);
 });
 document.getElementById('load')?.addEventListener('click', () => scheduleRender(50));
 document.querySelectorAll('#rangePresets button').forEach((button) =>
