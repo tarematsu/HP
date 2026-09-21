@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const tweaks = readFileSync(new URL('../public/pages-ui-tweaks.js', import.meta.url), 'utf8');
+const finalFixes = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
 
 test('Pages UI tweaks load before the dashboard runtime', () => {
   assert.match(entry, /pages-ui-tweaks\.js\?v=20260921\.1/);
@@ -15,11 +16,17 @@ test('current chart moves before now playing and drops its heading block', () =>
   assert.match(tweaks, /headingBlock\.remove\(\)/);
 });
 
-test('likes update and CSV buttons are removed without breaking existing runtime hooks', () => {
-  assert.match(tweaks, /likeActions\.remove\(\)/);
-  assert.match(tweaks, /for \(const id of \['likesLoad', 'likesCsv'\]\)/);
-  assert.match(tweaks, /document\.createElement\('span'\)/);
-  assert.match(tweaks, /hook\.hidden = true/);
+test('likes update stays hidden while CSV moves to the song table header', () => {
+  assert.match(tweaks, /likesLoad\.replaceWith\(hook\)/);
+  assert.match(tweaks, /panel\.querySelector\('#likesTbody'\)/);
+  assert.match(tweaks, /likesTableHead\.append\(likesCsv\)/);
+  assert.match(tweaks, /if \(!likeActions\.childElementCount\) likeActions\.remove\(\)/);
+});
+
+test('mobile likes ranking keeps the latest-like metric to the right of track metadata', () => {
+  assert.match(finalFixes, /grid-template-columns: 28px 38px minmax\(0, 1fr\) minmax\(60px, auto\) !important/);
+  assert.match(finalFixes, /#likesView \.like-rank-metrics \{[\s\S]*grid-column: 4 !important/);
+  assert.match(finalFixes, /#likesView \.like-rank-metrics span \{[\s\S]*text-align: right !important/);
 });
 
 test('official listening-party labels remove the gap after a leading date', () => {

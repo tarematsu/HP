@@ -11,14 +11,23 @@ if (chartCard && primaryGrid) {
 const likesView = document.getElementById('likesView');
 const likeActions = likesView?.querySelector('.like-actions');
 if (likesView && likeActions) {
-  likeActions.remove();
-  for (const id of ['likesLoad', 'likesCsv']) {
+  const likesLoad = document.getElementById('likesLoad');
+  const likesCsv = document.getElementById('likesCsv');
+
+  if (likesLoad) {
     const hook = document.createElement('span');
-    hook.id = id;
+    hook.id = 'likesLoad';
     hook.hidden = true;
     hook.setAttribute('aria-hidden', 'true');
-    likesView.append(hook);
+    likesLoad.replaceWith(hook);
   }
+
+  const likesTablePanel = [...likesView.querySelectorAll('.data-panel')]
+    .find((panel) => panel.querySelector('#likesTbody'));
+  const likesTableHead = likesTablePanel?.querySelector('.section-head');
+  if (likesCsv && likesTableHead) likesTableHead.append(likesCsv);
+
+  if (!likeActions.childElementCount) likeActions.remove();
 }
 
 const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
