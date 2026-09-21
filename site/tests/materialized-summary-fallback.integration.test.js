@@ -58,3 +58,72 @@ test('completed history models fail closed instead of reading live Pages databas
     globalThis.caches = originalCaches;
   }
 });
+
+test('history ranges are filtered before the materialized payload reaches the browser', async () => {
+  const originalCaches = globalThis.caches;
+  let cachedRequest = null;
+  let cachedResponse = null;
+  globalThis.caches = {
+    default: {
+      async match() { return undefined; },
+      async put(request, response) {
+        cachedRequest = request;
+        cachedResponse = response;
+      },
+    },
+  };
+
+  try {
+    const now = Date.now();
+    const response = await onRequest({
+      request: new Request('https://skrzk.test/api/history?mode=weekly&from=2026-06-01&to=2026-06-30'),
+      env: {
+        PAGES_READ_MODEL_SERVICE: {
+          async fetch(request) {
+            assert.equal(new URL(request.url).searchParams.get('key'), 'history:weekly');
+            return Response.json({
+              ok: true,
+              mode: 'weekly',
+              timezone: 'UTC',
+              rows: [
+                { period_key: '2026-05-25', sample_count: 500 },
+                { period_key: '2026-06-01', sample_count: 510 },
+                { period_key: '2026-06-29', sample_count: 520 },
+                { period_key: '2026-07-06', sample_count: 530 },
+              ],
+            }, {
+              headers: {
+                'cache-control': 'public, max-age=30',
+                'x-materialized-at': String(now),
+                'x-materialized-cadence-seconds': '21600',
+                'x-api-source': 'actions-r2',
+              },
+            });
+          },
+        },
+      },
+      async next() {
+        throw new Error('live history must not run');
+      },
+      waitUntil(promise) {
+        void promise;
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized-range');
+    assert.equal(response.headers.get('x-history-range-filter'), 'edge');
+    assert.equal(response.headers.get('x-api-source'), 'actions-r2');
+    const data = await response.json();
+    assert.equal(data.from, '2026-06-01');
+    assert.equal(data.to, '2026-06-30');
+    assert.equal(data.read_path, 'r2-materialized-range');
+    assert.deepEqual(data.rows.map((row) => row.period_key), ['2026-06-01', '2026-06-29']);
+    assert.ok(cachedRequest);
+    assert.match(cachedRequest.url, /from=2026-06-01/);
+    assert.match(cachedRequest.url, /to=2026-06-30/);
+    assert.ok(cachedResponse);
+  } finally {
+    globalThis.caches = originalCaches;
+  }
+});

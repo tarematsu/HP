@@ -187,13 +187,17 @@ async function applyHistoryRange(origin, request, modelKey, range) {
   const payload = await origin.clone().json().catch(() => null);
   if (!payload || !Array.isArray(payload.rows)) return origin;
   const mode = String(modelKey).slice('history:'.length);
+  const readPath = 'r2-materialized-range';
   const headers = new Headers(origin.headers);
   headers.delete('content-length');
+  headers.set('x-history-read-path', readPath);
+  headers.set('x-history-range-filter', 'edge');
   return new Response(JSON.stringify({
     ...payload,
     from: range.from || payload.from,
     to: range.to || payload.to,
     rows: payload.rows.filter((row) => rowWithinHistoryRange(row, mode, range)),
+    read_path: readPath,
   }), {
     status: origin.status,
     statusText: origin.statusText,
