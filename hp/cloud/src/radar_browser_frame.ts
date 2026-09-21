@@ -138,7 +138,6 @@ export async function renderRepresentativeRadarFrame(
         if (!response.ok) throw new Error(`radar display tile HTTP ${response.status}`);
         return g.createImageBitmap(await response.blob());
       };
-      const satellite = await loadRequired(payload.satelliteUrl);
 
       const drawBase = (bitmap: any, panel: any, panelX: number) => {
         const cropWidth = panel.baseCropWidth as number;
@@ -232,8 +231,20 @@ export async function renderRepresentativeRadarFrame(
         );
       };
 
+      type TilePayload = { url: string; destX: number; destY: number };
+      const [satellite, loadedPanels] = await Promise.all([
+        loadRequired(payload.satelliteUrl),
+        Promise.all(payload.panels.map(async panel => (
+          Promise.all((panel.tiles as TilePayload[]).map(async tile => ({
+            tile,
+            bitmap: await loadRain(tile.url),
+          })))
+        ))),
+      ]);
+
       for (let panelIndex = 0; panelIndex < payload.panels.length; panelIndex += 1) {
         const panel = payload.panels[panelIndex]!;
+        const loadedTiles = loadedPanels[panelIndex]!;
         const panelX = panelIndex * panelWidth;
         context.save();
         context.beginPath();
@@ -244,8 +255,7 @@ export async function renderRepresentativeRadarFrame(
         const scaleX = panelWidth / panel.sourceWidth;
         const scaleY = logicalOutputHeight / panel.sourceHeight;
 
-        for (const tile of panel.tiles as Array<{ url: string; destX: number; destY: number }>) {
-          const bitmap = await loadRain(tile.url);
+        for (const { tile, bitmap } of loadedTiles) {
           if (!bitmap) continue;
           context.drawImage(
             bitmap,
