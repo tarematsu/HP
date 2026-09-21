@@ -155,7 +155,8 @@ import {
   function renderTable() {
     const body = el('likesTbody');
     body.replaceChildren();
-    if (!state.rows.length) {
+    const rows = eligibleRankingRows();
+    if (!rows.length) {
       const row = document.createElement('tr');
       const cell = document.createElement('td');
       cell.colSpan = 5;
@@ -165,10 +166,10 @@ import {
       return;
     }
     const fragment = document.createDocumentFragment();
-    for (const item of state.rows) {
+    rows.forEach((item, index) => {
       const row = document.createElement('tr');
       for (const value of [
-        item.rank,
+        index + 1,
         trackName(item),
         artistName(item),
         fmt(item.latest_like_count),
@@ -179,7 +180,7 @@ import {
         row.appendChild(cell);
       }
       fragment.appendChild(row);
-    }
+    });
     body.appendChild(fragment);
   }
 
@@ -219,8 +220,8 @@ import {
 
   function exportCsv() {
     const header = ['順位', '曲名', 'アーティスト', '最新いいね', '最終観測'];
-    const lines = [header, ...state.rows.map((row) => [
-      row.rank,
+    const lines = [header, ...eligibleRankingRows().map((row, index) => [
+      index + 1,
       trackName(row),
       artistName(row),
       row.latest_like_count,
