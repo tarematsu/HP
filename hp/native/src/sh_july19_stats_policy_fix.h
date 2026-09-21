@@ -234,13 +234,13 @@ inline std::wstring StationheadJuly19AuthCaptureScript() {
             } catch (error) {
               postProbe('inspect-error', String(error?.message || error));
             }
-          }, 10'000);
+          }, 10000);
         };
         frame.addEventListener('load', inspect, { once: true });
         (document.body || document.documentElement).appendChild(frame);
         setTimeout(() => {
           try { frame.remove(); } catch (_) {}
-        }, 30'000);
+        }, 30000);
         postProbe('start', frame.src);
       } catch (error) {
         postProbe('start-error', String(error?.message || error));
