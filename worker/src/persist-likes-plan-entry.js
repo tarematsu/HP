@@ -121,14 +121,8 @@ async function loadLikesComparisonState(db, stationId, startTime, analysis, incl
   };
 }
 
-function queueItemPositions(tracks, nullPositions, changedKeys) {
-  const positions = new Set(nullPositions);
-  for (const track of Array.isArray(tracks) ? tracks : EMPTY_TRACKS) {
-    const key = observationTrackKey(track);
-    const position = num(track?.position);
-    if (position != null && key && changedKeys.has(key)) positions.add(position);
-  }
-  return [...positions];
+function queueItemRepairPositions(nullPositions) {
+  return uniqueNumbers(nullPositions);
 }
 
 export async function prepareQueueLikesPersistenceWithinBudget(env, body, observedAt) {
@@ -192,8 +186,7 @@ export async function prepareQueueLikesPersistenceWithinBudget(env, body, observ
   const changes = likesChanged ? planLikeChanges(tracks, comparison.latestRows) : null;
   const observationKeys = (changes?.observations || []).map((entry) => entry.trackKey);
   const migrationKeys = (changes?.currentLikeMigrations || []).map((entry) => entry.trackKey);
-  const changedKeys = new Set(observationKeys.concat(migrationKeys));
-  const itemPositions = queueItemPositions(tracks, comparison.nullPositions, changedKeys);
+  const itemPositions = queueItemRepairPositions(comparison.nullPositions);
   return {
     likes_changed: likesChanged,
     complete_likes: completeLikes,
