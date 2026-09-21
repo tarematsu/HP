@@ -18,6 +18,14 @@ function requestWithUrl(input, url) {
     : url.href;
 }
 
+function announceMaterializedAt(response) {
+  const updatedAt = Number(response?.headers?.get('x-materialized-at'));
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0 || !browser) return;
+  browser.dispatchEvent(new CustomEvent('history:materialized-at', {
+    detail: { updatedAt },
+  }));
+}
+
 function migrateHistorySessionCache() {
   const storage = browser?.sessionStorage;
   if (!storage || storage.getItem(HISTORY_CACHE_MIGRATION_KEY) === '1') return;
@@ -28,7 +36,7 @@ function migrateHistorySessionCache() {
   storage.setItem(HISTORY_CACHE_MIGRATION_KEY, '1');
 }
 
-function guardedFetch(input, init) {
+async function guardedFetch(input, init) {
   const url = requestUrl(input);
   if (!url || url.origin !== browser.location.origin) return nativeFetch(input, init);
 
@@ -38,7 +46,9 @@ function guardedFetch(input, init) {
   if (url.pathname === '/api/sakurazaka46jp') {
     url.searchParams.set('revision', '3');
   }
-  return nativeFetch(requestWithUrl(input, url), init);
+  const response = await nativeFetch(requestWithUrl(input, url), init);
+  if (url.pathname === '/api/history') announceMaterializedAt(response);
+  return response;
 }
 
 export function installHistoryRequestGuard() {
