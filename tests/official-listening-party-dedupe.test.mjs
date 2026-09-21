@@ -20,8 +20,10 @@ test('completed ROCK IN fail-safe source is retired so it cannot recreate a dupl
   assert.match(migration, /DELETE FROM sh_official_news_announcements/);
 });
 
-test('old official-party session cache is purged before the history view loads', () => {
+test('old official-party session and HTTP caches cannot keep the duplicate response alive', () => {
   assert.match(tweaks, /OFFICIAL_PARTY_CACHE_PREFIX = 'sakurazaka46jp:v1:r8:'/);
+  assert.match(tweaks, /OFFICIAL_PARTY_API_REVISION = '9'/);
+  assert.match(tweaks, /url\.searchParams\.set\('v', OFFICIAL_PARTY_API_REVISION\)/);
   assert.match(tweaks, /sessionStorage\.removeItem\(key\)/);
   assert.match(tweaks, /clearOfficialPartyCache\(\);/);
 });

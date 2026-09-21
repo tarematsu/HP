@@ -23,6 +23,23 @@ if (likesView && likeActions) {
 
 const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
 const OFFICIAL_PARTY_CACHE_PREFIX = 'sakurazaka46jp:v1:r8:';
+const OFFICIAL_PARTY_API_REVISION = '9';
+const pagesUiNativeFetch = window.fetch.bind(window);
+
+function officialPartyRequest(input) {
+  const raw = typeof input === 'string' || input instanceof URL ? String(input) : input?.url;
+  if (!raw) return null;
+  try {
+    const url = new URL(raw, location.href);
+    if (url.origin !== location.origin || url.pathname !== '/api/sakurazaka46jp') return null;
+    url.searchParams.set('v', OFFICIAL_PARTY_API_REVISION);
+    return input instanceof Request ? new Request(url.toString(), input) : url.toString();
+  } catch {
+    return null;
+  }
+}
+
+window.fetch = (input, init) => pagesUiNativeFetch(officialPartyRequest(input) || input, init);
 
 function clearOfficialPartyCache() {
   try {
