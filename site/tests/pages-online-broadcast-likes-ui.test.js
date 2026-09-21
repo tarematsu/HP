@@ -15,11 +15,14 @@ test('current online card uses the requested label and three daily averages with
   assert.match(daily, /getElementById\('online24h'\)\?\.remove\(\)/);
 });
 
-test('like ranking keeps only Sakurazaka46 and unknown artists before taking the top ten', () => {
+test('like ranking and track list keep only Sakurazaka46 and unknown artists', () => {
   assert.match(likes, /function includedInLikeRanking/);
   assert.match(likes, /if \(!artist \|\| artist === '—'\) return true/);
   assert.match(likes, /return artist\.normalize\('NFKC'\)\.includes\('櫻坂46'\)/);
   assert.match(likes, /eligibleRankingRows\(\)\.slice\(0, 10\)/);
+  assert.match(likes, /const rows = eligibleRankingRows\(\);/);
+  assert.match(likes, /rows\.forEach\(\(item, index\) =>/);
+  assert.match(likes, /eligibleRankingRows\(\)\.map\(\(row, index\) =>/);
   assert.match(likes, /displayRank = index \+ 1/);
 });
 
