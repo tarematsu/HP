@@ -20,6 +20,8 @@ const ADMIN_TOKEN_COOKIE = 'video_scraper_admin_token';
 const TVER_FEED_PATH = '/v1/native/tver-feed';
 const YOUTUBE_START_PATH = '/v1/native/youtube-start';
 const TVER_FEED_HEALTH_PATH = '/api/health/tver-feed';
+const RADAR_FRAME_KEY = 'radar/frames/representative/latest.png';
+const RADAR_STALE_AFTER_MS = 90 * 60 * 1000;
 
 function cookieValue(request, name) {
   const header = request.headers.get('cookie');
@@ -104,6 +106,51 @@ function homePanelRuntimeEnv(env, ctx) {
   };
 }
 
+async function radarFrameObservability(env) {
+  const checkedAt = Date.now();
+  if (!env?.UPDATE_BUCKET) {
+    return {
+      ok: false,
+      status: 'unavailable',
+      checkedAt: new Date(checkedAt).toISOString(),
+      error: 'UPDATE_BUCKET binding unavailable',
+    };
+  }
+  try {
+    const frame = await env.UPDATE_BUCKET.head(RADAR_FRAME_KEY);
+    if (!frame) {
+      return {
+        ok: false,
+        status: 'missing',
+        checkedAt: new Date(checkedAt).toISOString(),
+        lastSuccessAt: null,
+        ageSeconds: null,
+        staleAfterSeconds: RADAR_STALE_AFTER_MS / 1000,
+      };
+    }
+    const uploadedAt = frame.uploaded instanceof Date
+      ? frame.uploaded.getTime()
+      : Date.parse(String(frame.uploaded || ''));
+    const ageMs = Number.isFinite(uploadedAt) ? Math.max(0, checkedAt - uploadedAt) : Infinity;
+    const stale = ageMs > RADAR_STALE_AFTER_MS;
+    return {
+      ok: !stale,
+      status: stale ? 'stale' : 'fresh',
+      checkedAt: new Date(checkedAt).toISOString(),
+      lastSuccessAt: Number.isFinite(uploadedAt) ? new Date(uploadedAt).toISOString() : null,
+      ageSeconds: Number.isFinite(ageMs) ? Math.floor(ageMs / 1000) : null,
+      staleAfterSeconds: RADAR_STALE_AFTER_MS / 1000,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 'error',
+      checkedAt: new Date(checkedAt).toISOString(),
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+    };
+  }
+}
+
 async function tverFeedHealthResponse(env) {
   const health = await tverFeedObservability(env);
   return Response.json(health, {
@@ -117,34 +164,41 @@ async function tverFeedHealthResponse(env) {
 
 async function homePanelCloudHealthResponse(request, env, ctx) {
   const tverPromise = tverFeedObservability(env);
+  const radarPromise = radarFrameObservability(env);
   try {
-    const [videoResponse, tverFeed] = await Promise.all([
+    const [videoResponse, tverFeed, radar] = await Promise.all([
       integratedVideoFetch(request, undefined, env, ctx),
       tverPromise,
+      radarPromise,
     ]);
     let videoHealth = {};
     try {
       videoHealth = await videoResponse.json();
     } catch {
     }
+    const videoOk = videoResponse.ok && videoHealth?.ok !== false;
+    const ok = videoOk && radar.ok;
     return Response.json({
       ...videoHealth,
+      ok,
       tverFeed,
+      radar,
     }, {
-      status: videoResponse.status,
+      status: ok ? videoResponse.status : 503,
       headers: {
         'Cache-Control': 'no-store',
         'X-Content-Type-Options': 'nosniff'
       }
     });
   } catch (error) {
-    const tverFeed = await tverPromise;
+    const [tverFeed, radar] = await Promise.all([tverPromise, radarPromise]);
     return Response.json({
       ok: false,
       service: 'homepanel-video',
       error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
       checkedAt: new Date().toISOString(),
       tverFeed,
+      radar,
     }, {
       status: 503,
       headers: {
