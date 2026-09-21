@@ -168,6 +168,12 @@ function qualityFlagsForReasons(reasons) {
   return flags;
 }
 
+function isBoundaryOnlyIncomplete(reasons) {
+  return reasons.length > 0 && reasons.every((reason) => (
+    reason === 'missing_period_start' || reason === 'missing_period_end'
+  ));
+}
+
 export function applySummaryCompleteness(rows, mode, now = Date.now()) {
   let excludedCount = 0;
   const completedRows = (Array.isArray(rows) ? rows : []).map((row) => {
@@ -194,6 +200,20 @@ export function applySummaryCompleteness(rows, mode, now = Date.now()) {
         exclusion_reasons: [],
       };
     }
+
+    const qualityFlags = appendFlags(row?.quality_flags, qualityFlagsForReasons(evaluation.reasons));
+    if (isBoundaryOnlyIncomplete(evaluation.reasons)) {
+      return {
+        ...row,
+        period_complete: false,
+        listener_metrics_excluded: false,
+        stream_growth_excluded: false,
+        member_growth_excluded: false,
+        exclusion_reasons: evaluation.reasons,
+        quality_flags: qualityFlags,
+      };
+    }
+
     excludedCount += 1;
     return {
       ...row,
@@ -207,7 +227,7 @@ export function applySummaryCompleteness(rows, mode, now = Date.now()) {
       stream_growth_excluded: true,
       member_growth_excluded: true,
       exclusion_reasons: evaluation.reasons,
-      quality_flags: appendFlags(row?.quality_flags, qualityFlagsForReasons(evaluation.reasons)),
+      quality_flags: qualityFlags,
     };
   });
   return { rows: completedRows, excludedCount };
