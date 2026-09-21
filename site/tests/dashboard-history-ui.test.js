@@ -6,6 +6,7 @@ const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const dashboardDaily = readFileSync(new URL('../public/dashboard-daily-summaries.js', import.meta.url), 'utf8');
 const dashboardClient = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
+const dashboardChart = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
 const historyLikes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
@@ -20,7 +21,7 @@ test('main page renders current track likes from the dashboard response', () => 
   assert.match(dashboardClient, /`♡ \$\{integer\.format\(bites\)\}`/);
   assert.equal((dashboardClient.match(/\/api\/dashboard/g) || []).length, 1);
   assert.match(dashboardClient, /payload\.queue/);
-  assert.match(dashboardClient, /payload\.history/);
+  assert.match(dashboardChart, /payload\.history/);
 });
 
 test('main page labels member and stream deltas with their actual dates', () => {
