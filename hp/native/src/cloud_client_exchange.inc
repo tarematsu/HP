@@ -59,6 +59,12 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
     }
     body.push_back(']');
   }
+  const size_t leaderboardSpoolRecords = stationhead_leaderboard_probe_spool::Count();
+  body += ",\"leaderboardProbeStatus\":{\"spoolRecords\":";
+  body += std::to_string(leaderboardSpoolRecords);
+  body += ",\"batchRecords\":";
+  body += std::to_string(leaderboardProbe.size());
+  body += "}";
   body.push_back('}');
 
   const HttpResponse exchange = Request(
