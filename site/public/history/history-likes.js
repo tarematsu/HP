@@ -32,8 +32,10 @@ import {
   const artistName = (row) => displayTrackArtist(row);
 
   function setNotice(text, error = false) {
-    el('likesNotice').textContent = text;
-    el('likesNotice').classList.toggle('error', error);
+    const node = el('likesNotice');
+    node.textContent = text;
+    node.hidden = !text;
+    node.classList.toggle('error', error);
   }
 
   function readCache(url) {
@@ -200,7 +202,7 @@ import {
       state.rows = Array.isArray(result.data.ranking) ? result.data.ranking : [];
       state.summary = result.data.ranking_summary || {};
       render();
-      setNotice(`上位10曲 · 対象${fmt(eligibleRankingRows().length)}曲${result.cached ? ' · キャッシュ' : ''}`);
+      setNotice('');
     } catch (error) {
       if (error?.name === 'AbortError') return;
       state.rows = [];
