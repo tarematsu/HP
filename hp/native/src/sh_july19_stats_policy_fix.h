@@ -132,11 +132,15 @@ inline std::wstring StationheadJuly19LeaderboardProbeScript() {
         method: String(row.method || 'GET').slice(0, 16),
         status: Number(row.status || 0),
         content_type: String(row.content_type || '').slice(0, 160),
-        body: String(row.body || '').slice(0, 262144),
+        body: String(row.body || '').slice(0, 65536),
       };
       const rows = JSON.parse(localStorage.getItem(key) || '[]');
       rows.push(safe);
       localStorage.setItem(key, JSON.stringify(rows.slice(-20)));
+      try {
+        window.chrome?.webview?.postMessage(
+          'stationhead-leaderboard-probe:' + JSON.stringify(safe));
+      } catch (_) {}
       post(safe.source, safe.method + ' ' + safe.status + ' ' + safe.url +
         (safe.body ? ' body=' + safe.body.slice(0, 800) : ''));
     } catch (error) { post('save-error', error?.message || error); }
