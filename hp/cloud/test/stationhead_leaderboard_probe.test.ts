@@ -67,6 +67,7 @@ describe("Stationhead leaderboard probe", () => {
       expect(dispatch.client_payload.body).toContain('"rank":1');
       expect(dispatch.client_payload.body).not.toContain("secret-token");
       expect(dispatch.client_payload.body).not.toContain("private-device");
+      expect(dispatch.client_payload.candidates[0].url).toContain("token=%5Bredacted%5D");
       return new Response(null, { status: 204 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -78,22 +79,33 @@ describe("Stationhead leaderboard probe", () => {
       GITHUB_RADAR_DISPATCH_TOKEN: "github-test-token",
     } as Env;
 
-    const result = await applyStationheadLeaderboardProbeInput(
+    const first = await applyStationheadLeaderboardProbeInput(
+      [sample()],
+      env,
+      "homepanel-device",
+    );
+    const second = await applyStationheadLeaderboardProbeInput(
       [sample()],
       env,
       "homepanel-device",
     );
 
-    expect(result.status).toBe(200);
-    expect(result.body).toMatchObject({ accepted: 1, stored: true, reported: true });
-    expect(put).toHaveBeenCalledTimes(2);
-    expect(puts.some(item => item.key === "diagnostics/stationhead-leaderboard/latest.json")).toBe(true);
-    expect(puts.some(item => item.key.startsWith("diagnostics/stationhead-leaderboard/history/"))).toBe(true);
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ accepted: 1, stored: true, reported: true });
+    expect(second.status).toBe(200);
+    expect(second.body.historyKey).toBe(first.body.historyKey);
+    expect(put).toHaveBeenCalledTimes(4);
+    expect(puts.filter(item => item.key === "diagnostics/stationhead-leaderboard/latest.json")).toHaveLength(2);
+    const historyKeys = puts
+      .filter(item => item.key.startsWith("diagnostics/stationhead-leaderboard/history/"))
+      .map(item => item.key);
+    expect(historyKeys).toHaveLength(2);
+    expect(new Set(historyKeys).size).toBe(1);
     for (const item of puts) {
       expect(item.body).toContain('"rank":1');
       expect(item.body).not.toContain("secret-token");
       expect(item.body).not.toContain("private-device");
     }
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
