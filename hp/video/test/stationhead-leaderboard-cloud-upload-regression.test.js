@@ -38,15 +38,16 @@ test('device exchange uploads probe records separately from sensor telemetry and
   assert.match(cloudPayload, /applyStationheadLeaderboardProbeInput/);
 });
 
-test('cloud keeps full redacted history in R2 and reports bounded candidate data without logging the body', () => {
+test('cloud keeps full redacted history in R2 and reports bounded nested artifact data without logging bodies', () => {
   assert.match(cloudProbe, /diagnostics\/stationhead-leaderboard\/history\//);
   assert.match(cloudProbe, /diagnostics\/stationhead-leaderboard\/latest\.json/);
   assert.match(cloudProbe, /SECRET_KEY/);
   assert.match(cloudProbe, /MAX_REPORT_BODY_CHARS = 24_576/);
   assert.match(cloudProbe, /MAX_REPORT_PREVIEW_CHARS = 768/);
   assert.match(cloudProbe, /candidates: records\.map/);
+  assert.match(cloudProbe, /best: \{/);
   assert.match(cloudProbe, /event_type: "stationhead-leaderboard-probe"/);
   assert.match(reportWorkflow, /actions\/upload-artifact@v4/);
-  assert.match(reportWorkflow, /Response body is intentionally omitted from logs/);
-  assert.doesNotMatch(reportWorkflow, /summary\.write\([^\n]*payload\.get\("body"/);
+  assert.match(reportWorkflow, /Response bodies and candidate previews are intentionally omitted from logs/);
+  assert.doesNotMatch(reportWorkflow, /summary\.write\([^\n]*best\.get\("body"/);
 });
