@@ -6,9 +6,6 @@ namespace hp {
 namespace {
 
 constexpr int64_t kStationheadBoundaryRetryWindowMs = 3 * 60'000;
-constexpr int64_t kYuukiarGenerationPauseStartUnixMs = 1'789'957'800'000LL;
-constexpr int64_t kYuukiarGenerationPauseEndUnixMs = 1'789'963'200'000LL;
-constexpr std::wstring_view kYuukiarStationheadProfile = L"spotify-v2-2";
 
 struct TrackBoundaryRetryState {
   bool armed = false;
@@ -16,7 +13,6 @@ struct TrackBoundaryRetryState {
 };
 
 std::map<const StationheadHandleBase*, TrackBoundaryRetryState> boundaryRetries;
-std::map<const StationheadHandleBase*, bool> temporaryGenerationPauses;
 
 TrackBoundaryRetryState& BoundaryRetryStateFor(
     const StationheadHandleBase* owner) {
@@ -33,13 +29,6 @@ void ArmBoundaryRetryState(
   if (state.armed) return;
   state.armed = true;
   state.deadline = nowMs + kStationheadBoundaryRetryWindowMs;
-}
-
-bool IsYuukiarGenerationPaused(
-    const StationheadPlayer& player, int64_t nowMs) noexcept {
-  return player.UsesWebViewProfile(kYuukiarStationheadProfile) &&
-         nowMs >= kYuukiarGenerationPauseStartUnixMs &&
-         nowMs < kYuukiarGenerationPauseEndUnixMs;
 }
 
 bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
@@ -59,8 +48,6 @@ void SyncStationheadBackgroundPreview(
 
 static_assert(kStationheadBoundaryRetryWindowMs >
               2 * kStationheadTrackTransitionGraceMs);
-static_assert(kYuukiarGenerationPauseStartUnixMs <
-              kYuukiarGenerationPauseEndUnixMs);
 }  // namespace
 
 StationheadHandleBase::operator bool() const noexcept {
@@ -70,7 +57,6 @@ StationheadHandleBase::operator bool() const noexcept {
 void StationheadHandleBase::Stop() {
   if (!player_ || stopIssued_) return;
   stopIssued_ = true;
-  temporaryGenerationPauses.erase(this);
   ClearBoundaryRetryState(this);
   if (startIssued_) player_->Stop();
 }
@@ -121,10 +107,7 @@ int64_t StationheadHandleBase::NextWakeAt() const noexcept {
 }
 
 void StationheadHandleBase::RefreshVisibility() {
-  if (!player_ || !startIssued_ || stopIssued_ ||
-      temporaryGenerationPauses.contains(this)) {
-    return;
-  }
+  if (!player_) return;
   const StationheadStatus status = RawStatus();
   if (SuppressTrackTransitionGap(
           status.audioPlaying, RequiresInteractiveStationhead(status))) {
@@ -137,13 +120,6 @@ void StationheadHandleBase::RefreshVisibility() {
 
 void StationheadHandleBase::Start() {
   if (!player_ || startIssued_ || stopIssued_) return;
-  const int64_t nowMs = UnixMillis();
-  if (IsYuukiarGenerationPaused(*player_, nowMs)) {
-    temporaryGenerationPauses[this] = true;
-    ClearBoundaryRetryState(this);
-    return;
-  }
-  temporaryGenerationPauses.erase(this);
   startIssued_ = true;
   ClearBoundaryRetryState(this);
   SetStationheadBackgroundPreview(true);
@@ -154,33 +130,7 @@ void StationheadHandleBase::Start() {
 }
 
 void StationheadHandleBase::Tick(int64_t nowMs) {
-  if (!player_ || stopIssued_) return;
-
-  const bool generationPaused = IsYuukiarGenerationPaused(*player_, nowMs);
-  const bool wasTemporarilyPaused = temporaryGenerationPauses.contains(this);
-  if (generationPaused) {
-    temporaryGenerationPauses[this] = true;
-    if (startIssued_) {
-      player_->SelectTab(StationheadTabKind::None);
-      player_->Stop();
-      startIssued_ = false;
-      playbackObserved_ = false;
-      playbackMissingSinceAt_ = 0;
-      transitionSuppressed_ = false;
-      ++contentRevision_;
-      ClearBoundaryRetryState(this);
-    }
-    return;
-  }
-
-  if (!startIssued_) {
-    if (wasTemporarilyPaused) {
-      temporaryGenerationPauses.erase(this);
-      Start();
-    }
-    if (!startIssued_) return;
-  }
-
+  if (!player_ || !startIssued_ || stopIssued_) return;
   player_->RecoverUnavailableAuthorization();
   SyncStationheadBackgroundPreview(*player_, workspaceBounds_);
   if (player_->SpotifyAuthorizationActive()) player_->RequestImmediateTick();
@@ -235,7 +185,6 @@ uint32_t StationheadHandleBase::ConsumeChangeFlags() {
 
 void StationheadHandleBase::AssignPlayer(
     std::unique_ptr<StationheadPlayer> player) noexcept {
-  temporaryGenerationPauses.erase(this);
   ClearBoundaryRetryState(this);
   player_ = std::move(player);
   startIssued_ = false;
@@ -245,15 +194,10 @@ void StationheadHandleBase::AssignPlayer(
   transitionSuppressed_ = false;
   ++contentRevision_;
   ApplyAudioState();
-  if (player_ && IsYuukiarGenerationPaused(*player_, UnixMillis())) {
-    temporaryGenerationPauses[this] = true;
-    return;
-  }
   ApplyBounds();
 }
 
 void StationheadHandleBase::ResetPlayer() noexcept {
-  temporaryGenerationPauses.erase(this);
   ClearBoundaryRetryState(this);
   player_.reset();
   startIssued_ = false;
@@ -314,7 +258,7 @@ void StationheadHandleBase::RaiseActiveHost() const {
 }
 
 void StationheadHandleBase::ApplyBounds() {
-  if (!player_ || stopIssued_ || temporaryGenerationPauses.contains(this)) return;
+  if (!player_ || stopIssued_) return;
   player_->SetBounds(workspaceBounds_);
   RaiseActiveHost();
 }

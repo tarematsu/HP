@@ -29,12 +29,8 @@ test('Stationhead handle owns a one-way startup lifecycle', () => {
 });
 
 test('stopped players cannot receive active handle work', () => {
-  const tick = section(handles, 'void StationheadHandleBase::Tick(',
-    'void StationheadHandleBase::ShowAfterAudioStop()');
-  assert.match(tick, /if \(!player_ \|\| stopIssued_\) return;/);
-  assert.match(tick, /if \(!startIssued_\) \{[\s\S]*wasTemporarilyPaused[\s\S]*if \(!startIssued_\) return;/);
-
   for (const signature of [
+    'void StationheadHandleBase::Tick(',
     'void StationheadHandleBase::ShowAfterAudioStop()',
     'void StationheadHandleBase::ReleaseCompletedAuth()',
   ]) {
