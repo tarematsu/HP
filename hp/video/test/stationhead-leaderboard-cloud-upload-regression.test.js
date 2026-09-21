@@ -1,12 +1,17 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const read = relative => readFileSync(new URL(relative, import.meta.url), 'utf8');
-const probeScript = read('../../native/src/sh_july19_stats_policy_fix.h');
-const messagePolicy = read('../../native/src/sh_leaderboard_probe_message_policy.h');
-const spool = read('../../native/src/stationhead_leaderboard_probe_spool.h');
+const url = relative => new URL(relative, import.meta.url);
+const read = relative => readFileSync(url(relative), 'utf8');
+const playbackPolicy = read('../../native/src/sh_july19_stats_policy_fix.h');
+const messagePolicy = read('../../native/src/sh_stats_webview_message_policy_fix.h');
+const collector = read('../../native/src/stationhead_leaderboard_collector.cpp');
+const collectorHeader = read('../../native/src/stationhead_leaderboard_collector.h');
+const spool = read('../../native/src/stationhead_leaderboard_capture_spool.h');
+const app = read('../../native/src/app.cpp');
 const appMessages = read('../../native/src/app_messages.cpp');
+const cmake = read('../../native/CMakeLists.txt');
 const exchange = read('../../native/src/cloud_client_exchange.inc');
 const cloudPayload = read('../../cloud/src/device_exchange_payload.ts');
 const cloudProbe = read('../../cloud/src/stationhead_leaderboard_probe.ts');
@@ -14,31 +19,61 @@ const cloudProbeStatus = read('../../cloud/src/stationhead_leaderboard_probe_sta
 const unifiedWorker = read('../../cloud/src/unified_worker.js');
 const reportWorkflow = read('../../../.github/workflows/stationhead-leaderboard-probe-report.yml');
 
-test('leaderboard probe sends only bounded data records to the native trusted-origin bridge', () => {
-  assert.match(probeScript, /stationhead-leaderboard-probe:' \+ JSON\.stringify\(safe\)/);
-  assert.match(probeScript, /body: String\(row\.body \|\| ''\)\.slice\(0, 65536\)/);
-  assert.doesNotMatch(probeScript, /JSON\.stringify\(window\.__homepanelStationheadAuthHeaders\)/);
-  assert.match(messagePolicy, /IsTrustedStationheadSource/);
-  assert.match(messagePolicy, /CaptureProbeMessage/);
-  assert.match(messagePolicy, /stationhead_leaderboard_probe_spool::Append/);
+test('legacy leaderboard interception is completely absent from playback WebViews', () => {
+  assert.doesNotMatch(playbackPolicy, /StationheadJuly19LeaderboardProbeScript/);
+  assert.doesNotMatch(playbackPolicy, /__homepanelLeaderboardProbeInstalled/);
+  assert.doesNotMatch(playbackPolicy, /homepanel_probe|__hpLeaderboardProbe/);
+  assert.doesNotMatch(playbackPolicy, /stationhead-leaderboard-probe:/);
+  assert.doesNotMatch(messagePolicy, /leaderboard_probe|LeaderboardProbe/);
+  assert.equal(existsSync(url('../../native/src/sh_leaderboard_probe_message_policy.h')), false);
+  assert.equal(existsSync(url('../../native/src/stationhead_leaderboard_probe_spool.h')), false);
+  assert.match(playbackPolicy, /StationheadJuly19AuthCaptureScript/);
+  assert.match(playbackPolicy, /StationheadLoginSettlementScript/);
 });
 
-test('native probe spool is durable, bounded, and wakes the existing cloud client', () => {
+test('leaderboard acquisition uses one short-lived hidden WebView on the logged-in sixth profile', () => {
+  assert.match(collector, /https:\/\/www\.stationhead\.com\/leaderboard/);
+  assert.match(collector, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
+  assert.match(collector, /put_ProfileName\(profileName_\.c_str\(\)\)/);
+  assert.match(collector, /put_IsInPrivateModeEnabled\(FALSE\)/);
+  assert.match(collector, /CreateCoreWebView2ControllerWithOptions/);
+  assert.match(collector, /put_IsVisible\(FALSE\)/);
+  assert.match(collector, /add_NavigationCompleted/);
+  assert.match(collector, /ExecuteScript/);
+  assert.match(collector, /document\.querySelectorAll\('tr,\[role="row"\]'\)/);
+  assert.match(collector, /signed_in:/);
+  assert.match(collector, /resource_paths/);
+  assert.match(collector, /CloseController\(\)/);
+  assert.match(collectorHeader, /NextWakeAt\(\) const noexcept/);
+  assert.match(cmake, /src\/stationhead_leaderboard_collector\.cpp/);
+
+  assert.match(app, /StationheadLeaderboardCollector>[\s\S]*kStationheadOzekiProfile/);
+  const stationheadStart = app.indexOf('stationhead_->Start();');
+  const collectorStart = app.indexOf('stationheadLeaderboardCollector_->Start(now);');
+  assert.ok(stationheadStart >= 0 && collectorStart > stationheadStart);
+  assert.match(app, /stationheadLeaderboardCollector_->Tick\(now\)/);
+  assert.match(app, /stationheadLeaderboardCollector_->NextWakeAt\(\)/);
+  assert.match(app, /stationheadLeaderboardCollector_->Stop\(\)/);
+});
+
+test('new native capture spool is durable, bounded, wakes cloud, and deletes legacy disk state', () => {
+  assert.match(spool, /stationhead-leaderboard-capture\.ndjson/);
   assert.match(spool, /stationhead-leaderboard-probe\.ndjson/);
-  assert.match(spool, /kMaxProbeRecords = 20/);
-  assert.match(spool, /kProbeUploadBatchSize = 8/);
+  assert.match(spool, /RemoveLegacyProbeSpool/);
+  assert.match(spool, /kMaxCaptureRecords = 20/);
+  assert.match(spool, /kCaptureUploadBatchSize = 8/);
   assert.match(spool, /inline size_t Count\(\)/);
   assert.match(spool, /MoveFileExW[\s\S]*MOVEFILE_REPLACE_EXISTING \| MOVEFILE_WRITE_THROUGH/);
-  assert.match(appMessages, /case kStationheadLeaderboardProbeWakeMessage:[\s\S]*cloud_->RefreshNow\(\)/);
+  assert.match(appMessages, /case kStationheadLeaderboardCaptureWakeMessage:[\s\S]*cloud_->RefreshNow\(\)/);
 });
 
-test('device exchange uploads probe records and non-secret diagnostics separately from sensor telemetry', () => {
-  assert.match(exchange, /stationhead_leaderboard_probe_spool::ReadBatch\(\)/);
-  assert.match(exchange, /stationhead_leaderboard_probe_spool::Count\(\)/);
+test('device exchange preserves the secure Cloud wire contract with the rebuilt capture spool', () => {
+  assert.match(exchange, /stationhead_leaderboard_capture_spool::ReadBatch\(\)/);
+  assert.match(exchange, /stationhead_leaderboard_capture_spool::Count\(\)/);
   assert.match(exchange, /,\\"leaderboardProbe\\":\[/);
   assert.match(exchange, /,\\"leaderboardProbeStatus\\":\{\\"spoolRecords\\":/);
   assert.match(exchange, /GetNamedBoolean\(L"reported", false\)/);
-  assert.match(exchange, /stationhead_leaderboard_probe_spool::Acknowledge\(accepted\)/);
+  assert.match(exchange, /stationhead_leaderboard_capture_spool::Acknowledge\(accepted\)/);
   assert.match(cloudPayload, /leaderboardProbe\?: unknown/);
   assert.match(cloudPayload, /leaderboardProbeStatus\?: unknown/);
   assert.match(cloudPayload, /applyStationheadLeaderboardProbeInput/);
@@ -58,7 +93,7 @@ test('public leaderboard diagnostics expose only bounded operational state', () 
   assert.match(unifiedWorker, /stationheadLeaderboardProbeStatusResponse\(env\)/);
 });
 
-test('cloud keeps full redacted history in R2 and reports bounded nested artifact data without logging bodies', () => {
+test('cloud keeps redacted capture history in R2 without logging response bodies', () => {
   assert.match(cloudProbe, /diagnostics\/stationhead-leaderboard\/history\//);
   assert.match(cloudProbe, /diagnostics\/stationhead-leaderboard\/latest\.json/);
   assert.match(cloudProbe, /SECRET_KEY/);
