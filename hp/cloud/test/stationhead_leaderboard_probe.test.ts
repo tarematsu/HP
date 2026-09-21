@@ -26,6 +26,7 @@ function sample(overrides: Record<string, unknown> = {}): Record<string, unknown
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
