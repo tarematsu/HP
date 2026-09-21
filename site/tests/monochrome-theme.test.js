@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const theme = readFileSync(new URL('../public/monochrome.css', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
-const dashboardChart = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
+const dashboardChart = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
 const historyChart = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
 test('dashboard loads the monochrome UI theme', () => {
