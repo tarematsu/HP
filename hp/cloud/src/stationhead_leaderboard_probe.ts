@@ -125,7 +125,6 @@ function bestRecord(records: StationheadLeaderboardProbeRecord[]): StationheadLe
 
 async function dispatchProbeReport(
   env: Env,
-  deviceId: string,
   receivedAt: number,
   records: StationheadLeaderboardProbeRecord[],
   historyKey: string,
@@ -136,7 +135,6 @@ async function dispatchProbeReport(
   const payload = {
     version: 1,
     received_at: new Date(receivedAt).toISOString(),
-    device_id: deviceId,
     records: records.length,
     history_key: historyKey,
     candidates: records.map(item => ({
@@ -217,7 +215,7 @@ export async function applyStationheadLeaderboardProbeInput(
     }),
   ]);
 
-  const reported = await dispatchProbeReport(env, deviceId, receivedAt, records, historyKey);
+  const reported = await dispatchProbeReport(env, receivedAt, records, historyKey);
   return {
     status: 200,
     body: {
