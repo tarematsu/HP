@@ -55,9 +55,11 @@ function usable(value, type) {
 
 function identityValue(row, prefix) {
   const identity = text(row?.track_identity);
-  const marker = `${prefix}:`;
-  if (!identity?.startsWith(marker)) return null;
-  return text(identity.slice(marker.length));
+  if (!identity) return null;
+  for (const marker of [`${prefix}:`, `key:${prefix}:`]) {
+    if (identity.startsWith(marker)) return text(identity.slice(marker.length));
+  }
+  return null;
 }
 
 function rowSpotifyId(row) {
