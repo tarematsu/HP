@@ -3,6 +3,8 @@
   const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
   const PERSISTED_CACHE_MAX_AGE_MS = 6 * 60 * 60_000;
   const HIDDEN_CACHE_MAX_AGE_MS = 120_000;
+  const TRANSIENT_DASHBOARD_STATUSES = new Set([502, 503, 504]);
+  const DASHBOARD_RETRY_DELAYS_MS = Object.freeze([500, 1500, 3000]);
   const state = {
     latestObservedAt: 0,
     queueRevision: '',
@@ -144,6 +146,43 @@
     });
   }
 
+  function waitForRetry(delayMs, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+        return;
+      }
+      let timer = null;
+      const onAbort = () => {
+        if (timer) clearTimeout(timer);
+        reject(signal.reason || new DOMException('Aborted', 'AbortError'));
+      };
+      timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, delayMs);
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  async function fetchDashboardWithRetry(requestInput, init) {
+    let response = await nativeFetch(requestInput, init);
+    for (const delayMs of DASHBOARD_RETRY_DELAYS_MS) {
+      if (!TRANSIENT_DASHBOARD_STATUSES.has(response.status)) return response;
+      await waitForRetry(delayMs, init?.signal);
+      response = await nativeFetch(requestInput, init);
+    }
+    return response;
+  }
+
+  function clearTransientStatus() {
+    const node = document.getElementById('statusMessage');
+    if (!node) return;
+    if (!/^(?:データを取得できませんでした。|更新に失敗しました。保存済みの表示を継続します。)$/.test(node.textContent || '')) return;
+    node.textContent = '';
+    node.hidden = true;
+  }
+
   restorePersistedState();
 
   window.fetch = async (input, init = {}) => {
@@ -164,13 +203,14 @@
     const requestInput = input instanceof Request
       ? new Request(url.toString(), input)
       : url.toString();
-    const response = await nativeFetch(requestInput, init);
+    const response = await fetchDashboardWithRetry(requestInput, init);
     if (!response.ok) return response;
 
     try {
       const payload = mergePayload(await response.clone().json());
       const headers = new Headers(response.headers);
       headers.delete('content-length');
+      if (payload?.ok) clearTransientStatus();
       return new Response(JSON.stringify(payload), {
         status: response.status,
         statusText: response.statusText,
