@@ -26,16 +26,21 @@ test('completion only considers jobs belonging to expected keys', () => {
   assert.match(reconcile, /status IN \('pending','processing','dead'\)/);
 });
 
-test('reconciliation fingerprints source content and verifies the source twice', () => {
+test('reconciliation fingerprints source content and verifies concurrent appends with one tip seek', () => {
   assert.match(reconcile, /function sourceFingerprint/);
   assert.match(reconcile, /FINGERPRINT_COLUMNS/);
-  assert.match(reconcile, /const verified = await loadExpectedMinutes/);
+  assert.match(reconcile, /async function loadSourceTip/);
+  assert.match(reconcile, /ORDER BY observed_at DESC,id DESC\s+LIMIT 1/);
+  assert.match(reconcile, /const finalTip = loadedTip\(await loadSourceTip/);
+  assert.doesNotMatch(reconcile, /const verified = await loadExpectedMinutes/);
   assert.match(reconcile, /sourceChanged/);
   assert.match(reconcile, /source-changed-during-reconcile/);
 });
 
-test('stale historical days are retried and summaries use source generations', () => {
+test('stale historical days rotate once per UTC day while yesterday remains frequent', () => {
   assert.match(reconcile, /DEFAULT_LOOKBACK_DAYS = 90/);
+  assert.match(reconcile, /HISTORICAL_RECONCILE_UTC_HOUR = 0/);
+  assert.match(reconcile, /if \(utcHour !== historicalHour\) return periods/);
   assert.match(rollup, /minuteFactReconcileCandidates\(now\)/);
   assert.match(rollup, /for \(const period of periods\)/);
   assert.match(rollup, /minute_generation:/);
