@@ -86,7 +86,7 @@ test('Actions history renderer reads summaries and enriches total track plays fr
 
   assert.equal(calls.length, 2);
   assert.deepEqual(calls.find((call) => call.source === 'other').bindings, [
-    '2026-07-01', '2026-07-28', '2026-07-28', 800,
+    '2026-06-30', '2026-07-28', '2026-07-28', 801,
   ]);
   assert.deepEqual(calls.find((call) => call.source === 'minute').bindings, [
     '2026-07-01', '2026-07-28',
@@ -97,6 +97,40 @@ test('Actions history renderer reads summaries and enriches total track plays fr
   assert.equal(result.live_overlay_count, 0);
   assert.equal(result.live_source, 'summary-only');
   assert.equal(result.storage_source, 'other.sh_daily_summary+minute.sh_pages_track_history_read_model');
+});
+
+test('daily materialization uses the previous day member end as start and recomputes growth', async () => {
+  const calls = [];
+  const previous = summaryRow({
+    period_key: '2026-07-25',
+    period_start: PERIOD_START - DAY,
+    period_end: PERIOD_END - DAY,
+    member_start: 190,
+    member_end: 198,
+    member_growth: 8,
+  });
+  const current = summaryRow({
+    member_start: 205,
+    member_end: 205,
+    member_growth: 0,
+  });
+
+  const result = await loadMaterializedSummary(
+    environment(calls, [previous, current]),
+    'daily',
+    '2026-07-26',
+    '2026-07-26',
+    Date.parse('2026-07-28T01:00:00Z'),
+  );
+
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].period_key, '2026-07-26');
+  assert.equal(result.rows[0].member_start, 198);
+  assert.equal(result.rows[0].member_end, 205);
+  assert.equal(result.rows[0].member_growth, 7);
+  assert.deepEqual(calls.find((call) => call.source === 'other').bindings, [
+    '2026-07-25', '2026-07-26', '2026-07-28', 801,
+  ]);
 });
 
 test('daily materialization rejects sample counts above one row per minute', async () => {
