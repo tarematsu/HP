@@ -53,6 +53,27 @@ runs:
             > public-health-endpoints.log 2>&1
         ) &
         health_pid=$!
+        (
+          set -euo pipefail
+          mkdir -p observability-gate
+          resolver_output="$(mktemp)"
+          GITHUB_OUTPUT="$resolver_output" \
+            node .github/scripts/cloudflare-worker-public-url.mjs \
+              homepanel-cloud \
+              /api/health/stationhead-leaderboard-probe \
+              > stationhead-leaderboard-probe-url.log 2>&1
+          probe_url="$(awk -F= '$1 == "health-url" { print substr($0, index($0, "=") + 1) }' "$resolver_output" | tail -n 1)"
+          if [[ -z "$probe_url" ]]; then
+            echo "Unable to resolve leaderboard probe diagnostic URL" >&2
+            exit 1
+          fi
+          STATIONHEAD_LEADERBOARD_PROBE_STATUS_URL="$probe_url" \
+          STATIONHEAD_LEADERBOARD_PROBE_STATUS_OUTPUT="observability-gate/stationhead-leaderboard-probe-status.json" \
+          GITHUB_STEP_SUMMARY=stationhead-leaderboard-probe-summary.md \
+            node .github/scripts/capture-stationhead-leaderboard-probe-status.mjs \
+            > stationhead-leaderboard-probe-status.log 2>&1
+        ) &
+        leaderboard_probe_pid=$!
 
         mkdir -p live-tail
         tail_worker_list="${LIVE_TAIL_WORKERS:-${LIVE_TAIL_WORKER:-}}"
@@ -77,9 +98,11 @@ runs:
 
         query_status=0
         health_status=0
+        leaderboard_probe_status=0
         tail_status=0
         wait "$query_pid" || query_status=$?
         wait "$health_pid" || health_status=$?
+        wait "$leaderboard_probe_pid" || leaderboard_probe_status=$?
 
         : > live-tail.log
         if (( ${#tail_pids[@]} == 0 )); then
@@ -110,11 +133,23 @@ runs:
           cat observability-query.log
         fi
         cat public-health-endpoints.log
+        if [[ -f stationhead-leaderboard-probe-url.log ]]; then
+          cat stationhead-leaderboard-probe-url.log
+        fi
+        if [[ -f stationhead-leaderboard-probe-status.log ]]; then
+          cat stationhead-leaderboard-probe-status.log
+        fi
+        if (( leaderboard_probe_status != 0 )); then
+          echo "::warning title=Leaderboard probe diagnostic mirror unavailable::exit_code=$leaderboard_probe_status"
+        fi
         if [[ -f observability-summary.md ]]; then
           cat observability-summary.md >> "$actual_summary"
         fi
         if [[ -f public-health-endpoints.md ]]; then
           cat public-health-endpoints.md >> "$actual_summary"
+        fi
+        if [[ -f stationhead-leaderboard-probe-summary.md ]]; then
+          cat stationhead-leaderboard-probe-summary.md >> "$actual_summary"
         fi
 
         query_outcome=success
