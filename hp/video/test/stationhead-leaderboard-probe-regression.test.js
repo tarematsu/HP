@@ -6,11 +6,12 @@ const policy = readFileSync(
   new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url), 'utf8');
 
 test('authenticated Stationhead session launches a hidden leaderboard discovery page', () => {
-  assert.match(policy, /startLeaderboardProbe\(\)/);
+  assert.match(policy, /StationheadJuly19LeaderboardProbeScript/);
   assert.match(policy, /frame\.src = '\/leaderboard\?homepanel_probe=1&ts='/);
   assert.match(policy, /window\.top !== window/);
   assert.match(policy, /__homepanelStationheadAuthHeaders\?\.authorization/);
   assert.match(policy, /frame\.style\.cssText = 'position:fixed!important;left:-10000px/);
+  assert.match(policy, /setTimeout\(waitForAuth, 1000\)/);
 });
 
 test('leaderboard page traffic is captured without persisting auth headers', () => {
