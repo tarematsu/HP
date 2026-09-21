@@ -1,4 +1,5 @@
 import type { Env } from "./sources";
+import { applyStationheadLeaderboardProbeInput } from "./stationhead_leaderboard_probe";
 import { applyCompactTelemetryInput } from "./telemetry_compact";
 
 const EXCHANGE_MAGIC = new TextEncoder().encode("HPEX0001");
@@ -7,6 +8,7 @@ const ENCODER = new TextEncoder();
 export interface DeviceExchangeInput {
   versions?: Record<string, unknown>;
   telemetry?: unknown;
+  leaderboardProbe?: unknown;
 }
 
 export function validDeviceExchangeInput(value: unknown): DeviceExchangeInput | null {
@@ -59,17 +61,48 @@ async function applyTelemetry(
   }
 }
 
+async function applyLeaderboardProbe(
+  env: Env,
+  deviceId: string,
+  leaderboardProbe: unknown,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const result = await applyStationheadLeaderboardProbeInput(leaderboardProbe, env, deviceId);
+    if (result.status === 200) {
+      payload.leaderboardProbe = result.body;
+      return;
+    }
+    payload.leaderboardProbeError = { status: result.status, detail: result.body };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("device-exchange-leaderboard-probe-failed", {
+      deviceId,
+      error: message.slice(0, 300),
+    });
+    payload.leaderboardProbeError = {
+      status: 503,
+      detail: { error: "leaderboard probe temporarily unavailable" },
+    };
+  }
+}
+
 export async function buildDeviceExchangeResponse(
   input: DeviceExchangeInput,
   env: Env,
   deviceId: string,
   buildPayload: (versions: Record<string, unknown>) => Promise<Record<string, unknown>>,
 ): Promise<Response> {
-  const telemetryPayload: Record<string, unknown> = {};
-  if (input.telemetry !== undefined) await applyTelemetry(env, deviceId, input.telemetry, telemetryPayload);
+  const exchangeSideEffects: Record<string, unknown> = {};
+  if (input.telemetry !== undefined) {
+    await applyTelemetry(env, deviceId, input.telemetry, exchangeSideEffects);
+  }
+  if (input.leaderboardProbe !== undefined) {
+    await applyLeaderboardProbe(env, deviceId, input.leaderboardProbe, exchangeSideEffects);
+  }
 
   const payload = await buildPayload(versionsFromInput(input));
-  Object.assign(payload, telemetryPayload);
+  Object.assign(payload, exchangeSideEffects);
 
   const jsonBytes = ENCODER.encode(JSON.stringify(payload));
   const body = exchangeBody(jsonBytes);
