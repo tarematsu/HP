@@ -134,6 +134,9 @@ void App::StartServices() {
   stationhead_ = std::move(stationheadPlayer);
   stationhead_->SetAudioMuted(stationheadAudioMuted_);
   stationhead_->SetForegroundAllowed(false);
+  stationheadLeaderboardCollector_ =
+      std::make_unique<StationheadLeaderboardCollector>(
+          window_, stationheadUserData, kStationheadOzekiProfile, *logger_);
   logger_->Info(
       L"Six Stationhead windows prepared with existing spotify-v2-1 through spotify-v2-6 WebView2 profiles");
 
@@ -213,6 +216,13 @@ void App::StartDeferredServices(int64_t now) {
     MarkStationheadPlacementDirty();
     logger_->Info(L"Stationhead #6 launch issued at +180 seconds");
   }
+  if (stationheadStarted_ && !stationheadLeaderboardCollectorStarted_ &&
+      stationheadLeaderboardCollector_) {
+    stationheadLeaderboardCollector_->Start(now);
+    stationheadLeaderboardCollectorStarted_ = true;
+    logger_->Info(
+        L"Stationhead leaderboard collector attached to spotify-v2-6 profile");
+  }
   ApplyStationheadWindowPlacement();
 
   if (!cloudStarted_ && cloud_) {
@@ -230,6 +240,10 @@ void App::StartDeferredServices(int64_t now) {
 void App::StopServices() {
   if (window_) KillTimer(window_, kCentralTimer);
   nextAppTickAt_ = 0;
+  if (stationheadLeaderboardCollectorStarted_ && stationheadLeaderboardCollector_) {
+    stationheadLeaderboardCollector_->Stop();
+  }
+  stationheadLeaderboardCollectorStarted_ = false;
   for (size_t i = 0; i < stationheadPeers_.size(); ++i) {
     if (stationheadPeerStarted_[i] && stationheadPeers_[i]) {
       stationheadPeers_[i]->Stop();
@@ -240,6 +254,7 @@ void App::StopServices() {
   if (sensors_) sensors_->Stop();
   if (telemetryThread_.joinable()) telemetryThread_.join();
   if (updateThread_.joinable()) updateThread_.join();
+  stationheadLeaderboardCollector_.reset();
   for (auto& peer : stationheadPeers_) peer.reset();
   stationhead_.reset();
   cloud_.reset();
@@ -264,6 +279,9 @@ void App::Tick() {
   if (stationheadStarted_ && stationhead_) {
     stationhead_->Tick(now);
     stationheadStatus = stationhead_->Status();
+  }
+  if (stationheadLeaderboardCollectorStarted_ && stationheadLeaderboardCollector_) {
+    stationheadLeaderboardCollector_->Tick(now);
   }
 
   // Exactly one Stationhead may own an operational foreground surface at once.
@@ -370,6 +388,12 @@ void App::Tick() {
           nextTickMs,
           NextDelayFromDeadline(now, stationhead_->NextWakeAt(), kMaxAppTimerMs));
     }
+  }
+  if (stationheadLeaderboardCollectorStarted_ && stationheadLeaderboardCollector_) {
+    nextTickMs = std::min(
+        nextTickMs,
+        NextDelayFromDeadline(
+            now, stationheadLeaderboardCollector_->NextWakeAt(), kMaxAppTimerMs));
   }
   if (toastUntil_ > 0) {
     nextTickMs = std::min(
