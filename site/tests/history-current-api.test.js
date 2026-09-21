@@ -18,14 +18,14 @@ function dailyDatabase(assertions) {
           },
         };
       }
-      assert.match(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
+      assert.match(sql, /FROM sh_current_daily_summary AS p/);
       assert.match(sql, /FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute/);
       assert.match(sql, /FROM sh_total_member_daily INDEXED BY idx_sh_total_member_daily_latest/);
-      assert.match(sql, /WHERE f\.source_code=1/);
-      assert.match(sql, /f\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
-      assert.match(sql, /f\.minute_at>=\?1 AND f\.minute_at<\?2/);
-      assert.match(sql, /day_at=\?1/);
-      assert.match(sql, /f\.minute_at AS observed_at/);
+      assert.match(sql, /WHERE source_code=1/);
+      assert.match(sql, /p\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
+      assert.match(sql, /p\.day_at=\?1/);
+      assert.match(sql, /p\.period_start<\?2/);
+      assert.doesNotMatch(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
       assert.doesNotMatch(sql, /FROM sh_channel_snapshots|sh_total_member_daily_latest d|idx_sh_minute_facts_observed_id/);
       return {
         bind(start, end, limit) {
@@ -57,7 +57,7 @@ function dailyDatabase(assertions) {
   };
 }
 
-test('current daily summary scans only canonical minutes in the UTC day', async () => {
+test('current daily summary reads the incremental UTC-day projection', async () => {
   let bindings;
   const summary = await loadCurrentMinuteSummary({
     MINUTE_DB: dailyDatabase((value) => { bindings = value; }),

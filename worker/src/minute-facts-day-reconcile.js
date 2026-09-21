@@ -6,6 +6,7 @@ const DEFAULT_LOOKBACK_DAYS = 90;
 const DEFAULT_CANDIDATE_LIMIT = 4;
 const DEFAULT_ENQUEUE_LIMIT = 50;
 const RECONCILE_BUILD_VERSION = 3;
+const HISTORICAL_RECONCILE_UTC_HOUR = 0;
 
 const SOURCE_COLUMNS = `id,observed_at,channel_id,channel_alias,channel_name,station_id,
   is_launched,is_broadcasting,chat_status,listener_count,online_member_count,
@@ -78,8 +79,15 @@ export function minuteFactReconcileCandidates(now = Date.now(), options = {}) {
   const currentDay = Math.floor(now / DAY_MS) * DAY_MS;
   const periods = [periodAtAge(currentDay, 1)];
   if (lookbackDays <= 1 || limit <= 1) return periods;
+
+  // Yesterday stays hourly for late-arriving source rows. Older history rotates
+  // once per UTC day instead of multiplying the same range scans every hour.
+  const historicalHour = integer(options.historicalUtcHour) ?? HISTORICAL_RECONCILE_UTC_HOUR;
+  const utcHour = Math.floor((now - currentDay) / HOUR_MS);
+  if (utcHour !== historicalHour) return periods;
+
   const historicalSpan = lookbackDays - 1;
-  const rotation = Math.floor(now / HOUR_MS) % historicalSpan;
+  const rotation = Math.floor(currentDay / DAY_MS) % historicalSpan;
   for (let offset = 0; periods.length < limit; offset += 1) {
     const age = 2 + ((rotation + offset) % historicalSpan);
     periods.push(periodAtAge(currentDay, age));
@@ -100,6 +108,16 @@ async function loadExpectedMinutes(sourceDb, period) {
     .bind(period.start, period.end)
     .all();
   return result.results || [];
+}
+
+async function loadSourceTip(sourceDb, period) {
+  return sourceDb.prepare(`SELECT id,observed_at
+    FROM sh_channel_snapshots INDEXED BY idx_sh_channel_snapshots_observed_id
+    WHERE observed_at>=? AND observed_at<?
+    ORDER BY observed_at DESC,id DESC
+    LIMIT 1`)
+    .bind(period.start, period.end)
+    .first();
 }
 
 async function loadMaterializedFacts(minuteDb, period) {
@@ -144,14 +162,22 @@ function sourceFingerprint(rows) {
   return `${RECONCILE_BUILD_VERSION}:${rows.length}:${hash.toString(16).padStart(8, '0')}`;
 }
 
-function sourceWatermark(rows) {
+function sourceTip(rows) {
   let maxId = 0;
   let maxObservedAt = 0;
   for (const row of rows) {
-    maxId = Math.max(maxId, integer(row.id) || 0);
-    maxObservedAt = Math.max(maxObservedAt, integer(row.observed_at) || 0);
+    const observedAt = integer(row.observed_at) || 0;
+    const id = integer(row.id) || 0;
+    if (observedAt > maxObservedAt || (observedAt === maxObservedAt && id > maxId)) {
+      maxObservedAt = observedAt;
+      maxId = id;
+    }
   }
-  return `${rows.length}:${maxObservedAt}:${maxId}`;
+  return `${maxObservedAt}:${maxId}`;
+}
+
+function loadedTip(row) {
+  return `${integer(row?.observed_at) || 0}:${integer(row?.id) || 0}`;
 }
 
 function classifyExpected(expected, materialized) {
@@ -203,7 +229,7 @@ export async function reconcileMinuteFactsForDay(env, period, now = Date.now()) 
   }
 
   const expected = await loadExpectedMinutes(env.DB, period);
-  const initialWatermark = sourceWatermark(expected);
+  const initialTip = sourceTip(expected);
   const generation = sourceFingerprint(expected);
   const materialized = await loadMaterializedFacts(env.MINUTE_DB, period);
   const { missing, stale } = classifyExpected(expected, materialized);
@@ -221,9 +247,10 @@ export async function reconcileMinuteFactsForDay(env, period, now = Date.now()) 
 
   const expectedKeys = new Set(expected.map((row) => minuteKey(row.channel_id, minuteAt(row))));
   const jobs = await loadRelevantJobState(env.MINUTE_DB, period, expectedKeys);
-  const verified = await loadExpectedMinutes(env.DB, period);
-  const finalWatermark = sourceWatermark(verified);
-  const sourceChanged = initialWatermark !== finalWatermark || generation !== sourceFingerprint(verified);
+  // Raw source snapshots are append-only. One indexed tip seek detects a
+  // concurrent append without loading and hashing the entire UTC day twice.
+  const finalTip = loadedTip(await loadSourceTip(env.DB, period));
+  const sourceChanged = initialTip !== finalTip;
   const sourceEmpty = expected.length === 0 && period.end <= Math.floor(now / DAY_MS) * DAY_MS;
 
   return {

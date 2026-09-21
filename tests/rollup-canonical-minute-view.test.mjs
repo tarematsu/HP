@@ -15,11 +15,11 @@ const manifest = JSON.parse(readFileSync(
 test('facts schema deploys the canonical rollup minute view', () => {
   assert.equal(
     manifest.schema,
-    'database/facts-migrations/051_canonical_rollup_minute_range.sql',
+    'database/facts-migrations/052_current_daily_summary_projection.sql',
   );
   assert.equal(
     manifest.migrations.at(-1),
-    'database/facts-migrations/051_canonical_rollup_minute_range.sql',
+    'database/facts-migrations/052_current_daily_summary_projection.sql',
   );
   assert.match(migration, /f\.minute_at AS observed_at/);
   assert.match(migration, /INDEXED BY idx_sh_minute_facts_time/);

@@ -1,0 +1,67 @@
+name: Refresh pages realtime read model
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/refresh-pages-realtime.yml'
+      - 'worker/scripts/refresh-pages-realtime-actions.mjs'
+      - 'worker/scripts/run-pages-read-model-actions.mjs'
+      - 'site/functions/api/dashboard.js'
+      - 'site/functions/lib/dashboard-**'
+      - 'site/functions/lib/api-contract.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-realtime-read-model
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Publish realtime dashboard read model
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      BUDDIES_DATABASE_NAME: stationhead-buddies
+      OTHER_DATABASE_NAME: stationhead-other
+      PAGES_RESPONSE_BUCKET: sh-pages-responses
+      PAGES_READ_MODEL_DEADLINE_MS: '480000'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          show-progress: false
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Refresh dashboard R2 response
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/refresh-pages-realtime-actions.mjs 2>&1 | tee pages-realtime-read-model.log
+      - name: Upload failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-realtime-read-model-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/pages-realtime-read-model.log
+          if-no-files-found: warn
+          retention-days: 3
