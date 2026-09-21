@@ -2,7 +2,8 @@ import type { Env } from "./sources";
 
 const MAX_RECORDS = 8;
 const MAX_BODY_CHARS = 65_536;
-const MAX_REPORT_BODY_CHARS = 32_768;
+const MAX_REPORT_BODY_CHARS = 24_576;
+const MAX_REPORT_PREVIEW_CHARS = 768;
 const MAX_URL_CHARS = 2_000;
 const MAX_PAGE_CHARS = 1_000;
 const MAX_CONTENT_TYPE_CHARS = 160;
@@ -138,6 +139,15 @@ async function dispatchProbeReport(
     device_id: deviceId,
     records: records.length,
     history_key: historyKey,
+    candidates: records.map(item => ({
+      source: item.source,
+      url: item.url,
+      method: item.method,
+      status: item.status,
+      content_type: item.content_type,
+      body_chars: item.body.length,
+      body_preview: item.body.slice(0, MAX_REPORT_PREVIEW_CHARS),
+    })),
     source: record.source,
     url: record.url,
     method: record.method,
