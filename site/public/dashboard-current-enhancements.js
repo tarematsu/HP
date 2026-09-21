@@ -21,6 +21,10 @@ const finite = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 const numberText = (value) => finite(value) == null ? '—' : integer.format(Number(value));
+const thousandText = (value) => {
+  const number = finite(value);
+  return number == null ? '—' : `${integer.format(Math.round(number / 1000))}K`;
+};
 
 function commentVelocity(row) {
   for (const candidate of [row?.comment_velocity, row?.comment_velocity_max, row?.comment_count_delta]) {
@@ -85,10 +89,14 @@ function ensureMetricLayout() {
     row.className = 'metric-goal-row';
     const target = byId('streamGoal') || document.createElement('b');
     target.id = 'streamGoal';
-    row.append(target, document.createTextNode(' → '));
     const eta = byId('goalEta') || document.createElement('strong');
     eta.id = 'goalEta';
-    row.append(eta);
+    row.append(
+      document.createTextNode('目標 '),
+      target,
+      document.createTextNode(' 予想 '),
+      eta,
+    );
     goal.append(row);
     streamsPanel.append(goal);
   }
@@ -125,7 +133,7 @@ function renderCompactGoal(payload = lastGoalPayload) {
   ensureMetricLayout();
   const goal = finite(payload?.latest?.stream_goal);
   const goalNode = byId('streamGoal');
-  if (goalNode) goalNode.textContent = goal == null || goal <= 0 ? '—' : numberText(goal);
+  if (goalNode) goalNode.textContent = goal == null || goal <= 0 ? '—' : thousandText(goal);
   const etaNode = byId('goalEta');
   const etaText = goalEtaText(payload);
   if (etaNode && etaNode.textContent !== etaText) etaNode.textContent = etaText;
