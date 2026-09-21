@@ -12,6 +12,10 @@ const header = readFileSync(new URL('../public/dashboard-header.js', import.meta
 const responsive = readFileSync(new URL('../public/period-display-fixes.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
+const persistenceMigration = readFileSync(
+  new URL('../../database/other-migrations/024_persist_daily_member_growth.sql', import.meta.url),
+  'utf8',
+);
 
 test('header last-updated formatter omits seconds while retaining JST conversion', () => {
   assert.match(header, /timeZone: 'Asia\/Tokyo'/);
@@ -34,43 +38,29 @@ test('daily weekly and monthly stream growth is rendered as bars', () => {
   assert.doesNotMatch(periodChart, /stream_end/);
 });
 
-test('member start uses the previous period end, correcting zero-growth historical rows', () => {
+test('historical member boundaries are read as persisted values without request-time recomputation', () => {
   const rows = [
     { period_key: '2024-11-21', member_start: 990, member_end: 1000, member_growth: 10 },
-    { period_key: '2024-11-22', member_start: 1012, member_end: 1012, member_growth: 0 },
-    { period_key: '2024-11-23', member_start: 1012, member_end: 1018, member_growth: 6 },
-    { period_key: '2024-11-24', member_start: 1018, member_end: 1024, member_growth: 6 },
-    { period_key: '2024-11-25', member_start: 1037, member_end: 1037, member_growth: 0 },
+    { period_key: '2024-11-22', member_start: 1000, member_end: 1012, member_growth: 12 },
+    { period_key: '2024-11-25', member_start: 1012, member_end: 1037, member_growth: 25 },
   ];
-  const corrected = applyPreviousPeriodMemberStart(rows, 'daily', rows);
-  const nov22 = corrected.find((row) => row.period_key === '2024-11-22');
-  const nov25 = corrected.find((row) => row.period_key === '2024-11-25');
+  const returned = applyPreviousPeriodMemberStart(rows, 'daily', rows);
+  assert.equal(returned, rows);
   assert.deepEqual(
-    [nov22.member_start, nov22.member_end, nov22.member_growth],
-    [1000, 1012, 12],
-  );
-  assert.deepEqual(
-    [nov25.member_start, nov25.member_end, nov25.member_growth],
-    [1024, 1037, 13],
-  );
-});
-
-test('member boundary repair falls back across missing UTC days', () => {
-  const rows = [
-    { period_key: '2024-11-20', member_end: 1000, member_growth: 3 },
-    { period_key: '2024-11-22', member_start: 1012, member_end: 1012, member_growth: 0 },
-    { period_key: '2024-11-25', member_start: 1037, member_end: 1037, member_growth: 0 },
-  ];
-  const corrected = applyPreviousPeriodMemberStart(rows.slice(1), 'daily', rows);
-  assert.deepEqual(
-    [corrected[0].member_start, corrected[0].member_end, corrected[0].member_growth],
-    [1000, 1012, 12],
-  );
-  assert.deepEqual(
-    [corrected[1].member_start, corrected[1].member_end, corrected[1].member_growth],
-    [1012, 1037, 25],
+    returned.map(({ member_start, member_end, member_growth }) => [member_start, member_end, member_growth]),
+    [[990, 1000, 10], [1000, 1012, 12], [1012, 1037, 25]],
   );
   assert.equal(summaryContextStartKey('daily', '2024-11-22'), '2024-10-08');
+});
+
+test('daily member repair is persisted once and future writes are normalized in OTHER_DB', () => {
+  assert.match(persistenceMigration, /CREATE TABLE IF NOT EXISTS sh_data_repairs/);
+  assert.match(persistenceMigration, /daily-member-growth-v1/);
+  assert.match(persistenceMigration, /INSERT OR IGNORE INTO sh_data_repairs/);
+  assert.match(persistenceMigration, /CREATE TRIGGER IF NOT EXISTS trg_sh_daily_summary_member_growth_insert/);
+  assert.match(persistenceMigration, /CREATE TRIGGER IF NOT EXISTS trg_sh_daily_summary_member_growth_update/);
+  assert.match(persistenceMigration, /previous\.period_key < NEW\.period_key/);
+  assert.match(persistenceMigration, /member_growth = NEW\.member_end -/);
 });
 
 test('current UTC day member boundaries read yesterday final and today latest separately', () => {
