@@ -8,14 +8,15 @@ const enhancement = readFileSync(new URL('../public/dashboard-current-enhancemen
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 
-test('current metrics are ordered online, total streams, total members and expose 24h online range', () => {
+test('current metrics are ordered online, total streams and total members without a 24h online range', () => {
   assert.match(metrics, /dashboard-current-enhancements\.js\?v=20260921\.4/);
   assert.match(metrics, /dashboard-client\.js\?v=20260921\.4/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260921\.4/);
   assert.match(metrics, /dashboard:payload/);
   assert.match(enhancement, /\[onlinePanel, streamsPanel, membersPanel\]/);
-  assert.match(enhancement, /24h最小/);
-  assert.match(enhancement, /24h最大/);
+  assert.doesNotMatch(enhancement, /24h最小/);
+  assert.doesNotMatch(enhancement, /24h最大/);
+  assert.doesNotMatch(enhancement, /renderOnlineRange/);
 });
 
 test('mobile dashboard tabs and metrics stay compact', () => {
@@ -27,7 +28,7 @@ test('mobile dashboard tabs and metrics stay compact', () => {
 });
 
 test('current chart draws numeric axes in black and green with JST labels', () => {
-  assert.match(enhancement, /オンライン\(人\)/);
+  assert.match(enhancement, /オンライン数\(人\)/);
   assert.match(enhancement, /コメント\/2分/);
   assert.match(enhancement, /時刻 \(JST\)/);
   assert.match(enhancement, /timeZone: 'Asia\/Tokyo'/);
