@@ -65,22 +65,134 @@ inline void DispatchTrustedMouseClick(
   }
 }
 
-inline void AttemptTrustedOnboardingClick(ICoreWebView2* sender) noexcept {
-  if (!sender) return;
+inline std::wstring StationheadLocateKeepStreamingScript() {
+  static constexpr wchar_t kScript[] = LR"JS(
+(() => {
+  const host = String(location.hostname || '').toLowerCase();
+  if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
+      window.top !== window || !document.body) return null;
+
+  const keepStreamingPattern = /^keep\s+streaming$/i;
+  const candidateSelector =
+    "button,[role='button'],a,input[type='button'],input[type='submit']," +
+    "div,span,p,[tabindex],[aria-label],[data-testid]";
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const labelsOf = element => [
+    element?.getAttribute?.('aria-label'),
+    element?.getAttribute?.('data-testid'),
+    element?.getAttribute?.('title'),
+    element?.getAttribute?.('alt'),
+    element?.getAttribute?.('value'),
+    element?.innerText,
+    element?.textContent,
+  ].map(normalize).filter(Boolean);
+  const rendered = element => {
+    if (!(element instanceof HTMLElement) || !element.isConnected ||
+        element.disabled || element.getAttribute('aria-hidden') === 'true' ||
+        element.getAttribute('aria-disabled') === 'true') return false;
+    const rect = element.getBoundingClientRect();
+    if (!rect || rect.width <= 2 || rect.height <= 2) return false;
+    const style = getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+      Number(style.opacity || 1) > 0 && style.pointerEvents !== 'none';
+  };
+  const clickableTargetFor = element => {
+    for (let current = element, depth = 0;
+         current && current !== document.body && depth < 8;
+         current = current.parentElement, depth += 1) {
+      if (!rendered(current)) continue;
+      const tag = String(current.tagName || '').toLowerCase();
+      const role = String(current.getAttribute?.('role') || '').toLowerCase();
+      const style = getComputedStyle(current);
+      if (tag === 'button' || tag === 'a' || tag === 'input' ||
+          role === 'button' || current.getAttribute?.('tabindex') !== null ||
+          typeof current.onclick === 'function' || style.cursor === 'pointer') {
+        return current;
+      }
+    }
+    return rendered(element) ? element : null;
+  };
+  const pointOf = element => {
+    if (!element || !rendered(element)) return null;
+    let rect = element.getBoundingClientRect();
+    let x = rect.left + rect.width / 2;
+    let y = rect.top + rect.height / 2;
+    const inViewport = () =>
+      rect.right > 0 && rect.bottom > 0 && rect.left < innerWidth &&
+      rect.top < innerHeight && x >= 0 && y >= 0 && x < innerWidth &&
+      y < innerHeight;
+    if (!inViewport()) {
+      try {
+        element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
+      } catch (_) {
+        try { element.scrollIntoView(); } catch (_) {}
+      }
+      rect = element.getBoundingClientRect();
+      x = rect.left + rect.width / 2;
+      y = rect.top + rect.height / 2;
+    }
+    if (!inViewport()) return null;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || (hit !== element && !element.contains(hit))) return null;
+    return { x, y };
+  };
+
+  for (const element of document.querySelectorAll(candidateSelector)) {
+    if (!rendered(element) ||
+        !labelsOf(element).some(label => keepStreamingPattern.test(label))) {
+      continue;
+    }
+    const point = pointOf(clickableTargetFor(element));
+    if (point) return point;
+  }
+  return null;
+})()
+)JS";
+  return kScript;
+}
+
+inline bool DispatchLocatedTrustedAction(
+    ICoreWebView2* view, LPCWSTR resultJson) noexcept {
+  if (!view || !resultJson) return false;
+  double x = 0.0;
+  double y = 0.0;
+  if (!ParseStationheadLocateButtonResult(resultJson, x, y)) return false;
+  DispatchTrustedMouseClick(view, x, y);
+  return true;
+}
+
+inline void AttemptTrustedOnboardingFallbackClick(
+    ComPtr<ICoreWebView2> view) noexcept {
+  if (!view) return;
   try {
     static const std::wstring locateScript = StationheadLocateStartButtonScript();
-    ComPtr<ICoreWebView2> view = sender;
     view->ExecuteScript(
         locateScript.c_str(),
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [view](HRESULT result, LPCWSTR resultJson) -> HRESULT {
-              if (FAILED(result) || !resultJson || !view) return S_OK;
-              double x = 0.0;
-              double y = 0.0;
-              if (!ParseStationheadLocateButtonResult(resultJson, x, y)) {
+              if (FAILED(result) || !view) return S_OK;
+              DispatchLocatedTrustedAction(view.Get(), resultJson);
+              return S_OK;
+            }).Get());
+  } catch (...) {
+  }
+}
+
+inline void AttemptTrustedOnboardingClick(ICoreWebView2* sender) noexcept {
+  if (!sender) return;
+  try {
+    static const std::wstring keepStreamingScript =
+        StationheadLocateKeepStreamingScript();
+    ComPtr<ICoreWebView2> view = sender;
+    view->ExecuteScript(
+        keepStreamingScript.c_str(),
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [view](HRESULT result, LPCWSTR resultJson) -> HRESULT {
+              if (SUCCEEDED(result) && view &&
+                  DispatchLocatedTrustedAction(view.Get(), resultJson)) {
                 return S_OK;
               }
-              DispatchTrustedMouseClick(view.Get(), x, y);
+              AttemptTrustedOnboardingFallbackClick(view);
               return S_OK;
             }).Get());
   } catch (...) {
@@ -99,13 +211,10 @@ WrapStationheadOnboardingWebMessageHandler(
           ICoreWebView2WebMessageReceivedEventArgs* args) noexcept -> HRESULT {
         if (!trustedInner || !sender || !args) return S_OK;
         if (TrustedStationheadMessage(sender, args) && StartVisibleMessage(args)) {
-          // Do not route recoverable onboarding through
-          // StationheadPlayer::AttemptNativeStartClick. That method intentionally
-          // suppresses ordinary Start Listening work while native audio is still
-          // present, but Connect/Reconnect Music/Spotify must remain clickable
-          // even when an expired session is still producing audio. The locator
-          // itself keeps the strict onboarding allowlist and rejects real login
-          // or account controls.
+          // Recoverable onboarding and Keep Streaming continuation prompts use
+          // trusted CDP input directly. This path deliberately has no dependency
+          // on foreground-window ownership or native audio state, so an external
+          // updater dialog cannot suspend the click.
           AttemptTrustedOnboardingClick(sender);
           return S_OK;
         }
