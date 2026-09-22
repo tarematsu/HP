@@ -50,7 +50,11 @@ test('Pages layout removes decorative chrome while keeping data sections', () =>
   assert.match(theme, /\.table-wrap\s*\{[\s\S]*border-radius:\s*0/);
 });
 
-test('redundant default helper copy is cleared at startup', () => {
-  assert.match(header, /\['currentChartDetail', 'chartDetail', 'notice'\]/);
-  assert.match(header, /element\.textContent = ''/);
+test('redundant chart helper copy is cleared at startup and after rerenders', () => {
+  assert.match(header, /CHART_HELPER_PREFIX = 'グラフをタッチ'/);
+  assert.match(header, /clearChartHelperCopy/);
+  assert.match(header, /startsWith\(CHART_HELPER_PREFIX\)/);
+  assert.match(header, /\['currentChartDetail', 'chartDetail'\]/);
+  assert.match(header, /new MutationObserver\(\(\) => clearChartHelperCopy\(element\)\)/);
+  assert.match(header, /replaceChildren\(\)/);
 });
