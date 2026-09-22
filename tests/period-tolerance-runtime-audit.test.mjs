@@ -31,15 +31,17 @@ function createDb() {
   return db;
 }
 
-test('weekly uses twelve hours and monthly uses two days', () => {
-  assert.equal(periodBoundaryToleranceMs('weekly'), 12 * 60 * 60 * 1000);
-  assert.equal(periodBoundaryToleranceMs('monthly'), 2 * 86400000);
+test('weekly/monthly boundary tolerance is approximately five percent of the period', () => {
+  assert.equal(periodBoundaryToleranceMs('weekly'), 7 * 86400000 * 0.05);
+  assert.equal(periodBoundaryToleranceMs('monthly'), 30 * 86400000 * 0.05);
+  assert.equal(periodBoundaryToleranceMs('monthly', '2026-05'), 31 * 86400000 * 0.05);
 
-  for (const [mode, key, tolerance] of [
-    ['weekly', '2026-07-06', WEEKLY_BOUNDARY_TOLERANCE_MS],
-    ['monthly', '2026-05', MONTHLY_BOUNDARY_TOLERANCE_MS],
+  for (const [mode, key] of [
+    ['weekly', '2026-07-06'],
+    ['monthly', '2026-05'],
   ]) {
     const bounds = expectedPeriodBounds(mode, key);
+    const tolerance = periodBoundaryToleranceMs(mode, key);
     const accepted = evaluatePeriodCompleteness({
       mode,
       periodKey: key,
@@ -60,7 +62,7 @@ test('weekly uses twelve hours and monthly uses two days', () => {
   }
 });
 
-test('boundary SQL accepts observations inside expanded weekly and monthly windows', () => {
+test('boundary SQL accepts observations inside five-percent weekly and monthly windows', () => {
   const db = createDb();
   const weekly = expectedPeriodBounds('weekly', '2026-07-06');
   const monthly = expectedPeriodBounds('monthly', '2026-05');
