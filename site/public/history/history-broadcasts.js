@@ -10,7 +10,8 @@
   const CACHE_MS = 15 * 60_000;
   const MAX_CACHE_POINTS = 30_000;
   const MAX_DRAW_POINTS = 2_400;
-  const CACHE_REVISION = '8';
+  const CACHE_REVISION = '9';
+  const API_REVISION = '3';
   const SESSION_MATCH_TOLERANCE_MS = 15 * 60_000;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const integer = new Intl.NumberFormat('ja-JP');
@@ -481,7 +482,12 @@
       if (!data) {
         controller?.abort();
         controller = new AbortController();
-        const params = new URLSearchParams({ from: fromInput.value, to: toInput.value, v: CACHE_REVISION });
+        const params = new URLSearchParams({
+          from: fromInput.value,
+          to: toInput.value,
+          v: CACHE_REVISION,
+          revision: API_REVISION,
+        });
         const response = await fetch(`/api/sakurazaka46jp?${params}`, {
           signal: controller.signal,
           headers: { accept: 'application/json' },
