@@ -1,0 +1,27 @@
+name: One-shot trigger HomePanel update check
+
+on:
+  push:
+    branches:
+      - ops/trigger-homepanel-update-2609230350
+    paths:
+      - '.github/workflows/one-shot-trigger-homepanel-update.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake production update check
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H 'Content-Type: application/json' \
+            -d '{}' \
+            'https://homepanel-cloud.tarematsu.workers.dev/v1/update/ping')"
+          echo "$response"
+          jq -e '.queued == true or .queued == false' <<< "$response" >/dev/null
