@@ -56,7 +56,7 @@ function renderOnlineAverage(id, summary, fallback) {
   const label = formatPeriodLabel(summary?.period_key, fallback);
   const value = finite(summary?.listener_avg);
   node.className = 'delta';
-  node.textContent = value == null ? `${label}平均 —` : `${label}平均 ${decimal.format(value)}人`;
+  node.textContent = value == null ? `${label}平均 —` : `${label}平均 ${decimal.format(value)}`;
   node.hidden = false;
 }
 
