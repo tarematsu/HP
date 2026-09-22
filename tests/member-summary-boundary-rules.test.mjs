@@ -14,12 +14,13 @@ const NOW = Date.parse('2026-09-23T00:00:00Z');
 
 function summaryRow(mode, key, overrides = {}) {
   const bounds = expectedPeriodBounds(mode, key);
+  const sampleCount = mode === 'daily' ? 1440 : mode === 'weekly' ? 2016 : 8928;
   return {
     period_key: key,
     period_start: bounds.start,
     period_end: bounds.end,
-    sample_count: mode === 'weekly' ? 2016 : 8928,
-    reliable_sample_count: mode === 'weekly' ? 2016 : 8928,
+    sample_count: sampleCount,
+    reliable_sample_count: sampleCount,
     listener_avg: 125,
     listener_min: 100,
     listener_max: 140,
