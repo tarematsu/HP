@@ -18,25 +18,26 @@ function section(text, start, end) {
   return text.slice(at, until);
 }
 
-test('Keep Streaming is published even while Stationhead is still playing', () => {
+test('Keep Streaming is published before stopped-playback recovery gating', () => {
   assert.ok(runtime.includes('const keepStreamingPattern = /^keep\\s+streaming$/i;'));
+
+  const keepStreaming = section(
+    runtime,
+    'const publishKeepStreaming = () => {',
+    'const splitConnectSurfaceVisible = () => {',
+  );
+  assert.match(keepStreaming, /keepStreamingVisible\(\)/);
+  assert.match(keepStreaming, /postText\('start-visible'\)/);
+  assert.doesNotMatch(keepStreaming, /playbackEstablished|playing\(\)/);
 
   const publish = section(
     runtime,
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  const continuationAt = publish.indexOf('if (keepStreamingVisible())');
-  const stoppedPlaybackGateAt = publish.indexOf(
-    'if (!playbackEstablished || playing()) return false;',
-  );
-
-  assert.ok(continuationAt >= 0);
-  assert.ok(stoppedPlaybackGateAt > continuationAt);
-  assert.match(
-    publish.slice(continuationAt, stoppedPlaybackGateAt),
-    /postText\('start-visible'\)/,
-  );
+  const continuationAt = publish.indexOf('if (publishKeepStreaming()) return true;');
+  const stoppedPlaybackGateAt = publish.indexOf('!playbackEstablished || playing()');
+  assert.ok(continuationAt >= 0 && stoppedPlaybackGateAt > continuationAt);
 });
 
 test('Keep Streaming uses a trusted CDP locator that is independent of audio state', () => {
