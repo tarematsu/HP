@@ -38,6 +38,27 @@ function queueIdentity(queue) {
   };
 }
 
+function presentationTrack(track, index) {
+  const result = { position: integer(track?.position) ?? index };
+  for (const key of [
+    'queue_track_id',
+    'stationhead_track_id',
+    'spotify_id',
+    'isrc',
+    'duration_ms',
+    'bite_count',
+    'title',
+    'artist',
+    'display_title',
+    'thumbnail_url',
+    'spotify_url',
+  ]) {
+    const value = track?.[key];
+    if (value !== null && value !== undefined && value !== '') result[key] = value;
+  }
+  return result;
+}
+
 function sameGeneration(state, identity, sourceHash) {
   return Boolean(state)
     && integer(state.station_id) === identity.stationId
@@ -120,6 +141,9 @@ export function materializeQueueWindow(queue, analysis, requestedCount) {
     Math.max(0, integer(requestedCount) ?? DEFAULT_INITIAL_TRACKS),
   );
   const tracks = fullTracks.slice(0, materializedCount);
+  const presentationTracks = materializedCount < totalTrackCount
+    ? fullTracks.map(presentationTrack)
+    : null;
   const sourceStructuralHash = String(analysis.structural_hash);
   const sourceLikesHash = typeof analysis.likes_hash === 'string' ? analysis.likes_hash : null;
   const structuralTracks = Array.isArray(analysis?.structural?.tracks)
@@ -128,6 +152,7 @@ export function materializeQueueWindow(queue, analysis, requestedCount) {
   const materialized = {
     ...queue,
     tracks,
+    ...(presentationTracks ? { presentation_tracks: presentationTracks } : {}),
     total_track_count: totalTrackCount,
     materialized_track_count: materializedCount,
     materialization_complete: materializedCount >= totalTrackCount,
