@@ -37,6 +37,17 @@ test('all-host table exposes requested six-column host ranking and tap selection
   assert.match(rankingAllHosts, /setSelectedHost\(defaultHost\)/);
 });
 
+test('all-host table excludes the two featured hosts and fits six columns on mobile', () => {
+  assert.match(rankingAllHosts, /EXCLUDED_ALL_HOSTS = new Set\(\['sakuramankai', 'sakurazaka46jp'\]\)/);
+  assert.match(rankingAllHosts, /\.filter\(\(row\) => !EXCLUDED_ALL_HOSTS\.has\(hostKey\(row\?\.host_name\)\)\)/);
+  for (const [column, width] of [[1, 7], [2, 31], [3, 20], [4, 14], [5, 14], [6, 14]]) {
+    assert.match(rankingAllHosts, new RegExp(`th:nth-child\\(${column}\\),[\\s\\S]*td:nth-child\\(${column}\\) \\{ width: ${width}% !important; \\}`));
+  }
+  assert.match(rankingAllHosts, /font-size: 8\.5px !important/);
+  assert.match(rankingAllHosts, /padding-left: 2px !important/);
+  assert.match(rankingAllHosts, /text-overflow: clip !important/);
+});
+
 test('all-host chart fills missing weeks only after the selected host first appears', () => {
   assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.6/);
   assert.match(rankingChart, /const sourceRows = rows\.filter/);
