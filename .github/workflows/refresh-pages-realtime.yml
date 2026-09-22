@@ -39,6 +39,7 @@ jobs:
       OTHER_DATABASE_NAME: stationhead-other
       PAGES_RESPONSE_BUCKET: sh-pages-responses
       PAGES_READ_MODEL_DEADLINE_MS: '480000'
+      PAGES_READ_MODEL_FORCE_DASHBOARD: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v7
         with:
