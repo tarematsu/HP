@@ -1,7 +1,5 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
 const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'likes']);
-const HISTORY_RUNTIME_URL = '/history/history-main.js';
-const LIKES_RUNTIME_URL = '/history/history-likes.js';
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
@@ -47,29 +45,6 @@ function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
   showOnly(currentView);
   updateTabs('current');
   if (updateUrl) updateLocation('current', { replace: replaceUrl });
-}
-
-function preloadModule(href) {
-  if (!document?.head || !href) return;
-  const alreadyPreloaded = [...document.querySelectorAll('link[rel="modulepreload"]')]
-    .some((link) => link.getAttribute('href') === href);
-  if (alreadyPreloaded) return;
-  const link = document.createElement('link');
-  link.rel = 'modulepreload';
-  link.href = href;
-  document.head.appendChild(link);
-}
-
-function scheduleRuntimePrefetch() {
-  const preload = () => {
-    preloadModule(HISTORY_RUNTIME_URL);
-    preloadModule(LIKES_RUNTIME_URL);
-  };
-  if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(preload, { timeout: 1200 });
-  } else {
-    setTimeout(preload, 350);
-  }
 }
 
 async function loadHistoryRuntime() {
@@ -188,4 +163,3 @@ showMode(initialMode, {
   replaceUrl: true,
   syncRuntime: false,
 });
-if (initialMode === 'current') scheduleRuntimePrefetch();
