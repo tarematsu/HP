@@ -83,18 +83,15 @@ function renderOverlay() {
   }
 }
 
-const tbody = document.getElementById('tbody');
-if (tbody) new MutationObserver(() => {
+function scheduleRankedRowsOnly() {
   if (active()) queueMicrotask(keepRankedRowsOnly);
-}).observe(tbody, { childList: true });
+}
 
-document.getElementById('modeTabs')?.addEventListener('click', () => {
-  queueMicrotask(keepRankedRowsOnly);
+window.addEventListener('history:data-loaded', (event) => {
+  if (String(event?.detail?.mode || '') === MODE) scheduleRankedRowsOnly();
 });
+document.getElementById('more')?.addEventListener('click', scheduleRankedRowsOnly);
 window.addEventListener('history:ranking-chart-drawn', (event) => {
   renderedWeeks = Array.isArray(event?.detail?.weeks) ? event.detail.weeks.map(isoDate).filter(Boolean) : [];
   scheduleOverlay(0);
-});
-window.addEventListener('history:runtime-ready', () => {
-  queueMicrotask(keepRankedRowsOnly);
 });

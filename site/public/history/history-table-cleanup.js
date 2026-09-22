@@ -117,12 +117,15 @@ function cleanTable() {
   }
 }
 
+function scheduleCleanup() {
+  queueMicrotask(cleanTable);
+}
+
 installMobileTableWidthStyle();
 clearStaleHistoryCache();
-const observer = new MutationObserver(cleanTable);
-const head = document.getElementById('thead');
-const body = document.getElementById('tbody');
-if (head) observer.observe(head, { childList: true, subtree: true });
-if (body) observer.observe(body, { childList: true, subtree: true });
-document.getElementById('modeTabs')?.addEventListener('click', () => queueMicrotask(cleanTable));
-queueMicrotask(cleanTable);
+window.addEventListener('history:data-loaded', scheduleCleanup);
+window.addEventListener('history:runtime-ready', scheduleCleanup);
+window.addEventListener('hashchange', scheduleCleanup);
+document.getElementById('modeTabs')?.addEventListener('click', scheduleCleanup);
+document.getElementById('more')?.addEventListener('click', scheduleCleanup);
+scheduleCleanup();

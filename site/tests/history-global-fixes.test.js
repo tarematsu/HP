@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fixes = readFileSync(new URL('../public/history/history-global-fixes.js', import.meta.url), 'utf8');
+const pageFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
 
 test('shared history fixes load for current, history, and likes views', () => {
   assert.match(entry, /import '\.\/history\/history-global-fixes\.js'/);
@@ -18,10 +19,11 @@ test('summary metrics remain single-line at intermediate desktop and tablet widt
   assert.match(fixes, /font-size:\s*clamp\(1\.15rem,\s*1\.8vw,\s*1\.55rem\)/);
 });
 
-test('ranking summary derives listed and out-of-rank counts from rendered numeric ranks', () => {
-  assert.match(fixes, /function finiteRank/);
-  assert.match(fixes, /const ranked = rows\.filter/);
-  assert.match(fixes, /const outOfRank = rows\.length - ranked/);
+test('ranking summary consumes the shared history payload instead of rendered-row observation', () => {
+  assert.match(pageFixes, /history:data-loaded/);
+  assert.match(pageFixes, /const rankedCount = rows\.filter/);
+  assert.match(pageFixes, /const outCount = rows\.length - rankedCount/);
+  assert.doesNotMatch(fixes, /function finiteRank|repairRankingSummary|rankingBody/);
 });
 
 test('current playback can recover missing labels from the track ranking projection', () => {

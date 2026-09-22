@@ -11,6 +11,13 @@ test('leaderboard list hides comparison and ranking-type columns', () => {
   assert.match(cleanup, /classList\.toggle\('compact-columns', mode === 'ranking'\)/);
 });
 
+test('table cleanup follows explicit history render and pagination events', () => {
+  assert.match(cleanup, /history:data-loaded/);
+  assert.match(cleanup, /history:runtime-ready/);
+  assert.match(cleanup, /getElementById\('more'\)\?\.addEventListener/);
+  assert.doesNotMatch(cleanup, /MutationObserver/);
+});
+
 test('compact leaderboard and likes tables fill the mobile viewport', () => {
   assert.match(entry, /history-table-cleanup\.js\?v=20260923\.1/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
