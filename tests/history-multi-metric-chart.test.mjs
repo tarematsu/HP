@@ -18,10 +18,12 @@ test('daily weekly and monthly charts expose listener average extrema and stream
   for (const key of ['listener_avg', 'listener_max', 'listener_min']) {
     assert.match(chart, new RegExp(`key: '${key}'`));
   }
+  assert.match(chart, /listener_avg'.*color: '#000000'/);
   assert.match(chart, /row\?\.stream_growth/);
-  for (const label of ['平均同接', '最大同接', '最小同接', '期間再生数']) {
+  for (const label of ['平均同接', '最大同接', '最小同接', '再生数']) {
     assert.match(chart, new RegExp(label));
   }
+  assert.doesNotMatch(chart, /期間再生数/);
   assert.match(chart, /history:data-loaded/);
 });
 
@@ -30,7 +32,7 @@ test('stream growth uses a separate right-hand scale with bars and selected-peri
   assert.match(chart, /streamCeiling/);
   assert.match(chart, /streamY/);
   assert.match(chart, /fillRect\(/);
-  assert.match(chart, /期間再生数 \$\{finite\(row\.stream_growth\)/);
+  assert.match(chart, /再生数 \$\{finite\(row\.stream_growth\)/);
   assert.match(chart, /最大同接 \$\{integer\.format/);
   assert.match(chart, /最小同接 \$\{integer\.format/);
   assert.doesNotMatch(chart, /stream_end|drawSeries\(streamSeries/);

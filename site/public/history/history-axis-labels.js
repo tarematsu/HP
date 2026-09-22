@@ -1,7 +1,7 @@
 const AXES_BY_MODE = Object.freeze({
-  daily: { left: '同接（人）', right: '期間再生数', x: '期間' },
-  weekly: { left: '同接（人）', right: '期間再生数', x: '期間' },
-  monthly: { left: '同接（人）', right: '期間再生数', x: '期間' },
+  daily: { left: '同接（人）', right: '再生数', x: '期間' },
+  weekly: { left: '同接（人）', right: '再生数', x: '期間' },
+  monthly: { left: '同接（人）', right: '再生数', x: '期間' },
   ranking: { left: '順位', right: '', x: '週' },
   broadcasts: { left: '同接（人）', right: '', x: '' },
 });

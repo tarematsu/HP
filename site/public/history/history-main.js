@@ -13,7 +13,7 @@ async function importModeRuntime(mode) {
   const key = runtimeKey(mode);
   if (!key) return;
   if (key === 'summary') {
-    await import('/history/history-period-chart.js?v=20260923.2');
+    await import('/history/history-period-chart.js?v=20260923.3');
     return;
   }
   if (key === 'ranking') {
@@ -46,7 +46,7 @@ if (initialMode !== requestedMode) history.replaceState(null, '', '/#weekly');
 await import('/history/history-request-guard.js?v=20260921.2');
 await import('/history/history-current-overlay.js');
 await import('/history/history-page-fixes.js?v=20260923.4');
-await import('/history/history-axis-labels.js?v=20260923.4');
+await import('/history/history-axis-labels.js?v=20260923.5');
 await import('/history/history-chart-stability.js?v=20260923.1');
 await import('/history/history-table-cleanup.js?v=20260923.1');
 await ensureHistoryModeRuntime(initialMode);

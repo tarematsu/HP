@@ -25,7 +25,7 @@ test('inactive tab runtimes are loaded on demand and never idle-prefetched', () 
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
   assert.doesNotMatch(tabs, /modulepreload|requestIdleCallback|scheduleRuntimePrefetch/);
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
-  assert.match(historyMain, /history-period-chart\.js\?v=20260923\.2/);
+  assert.match(historyMain, /history-period-chart\.js\?v=20260923\.3/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.5/);
   assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.2/);
 });
