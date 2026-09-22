@@ -5,8 +5,8 @@ import test from 'node:test';
 const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const historyData = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
-const historyGuard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
 const historyStyles = readFileSync(new URL('../public/history/history-lite.css', import.meta.url), 'utf8');
 const mainStyles = readFileSync(new URL('../public/app-lite.css', import.meta.url), 'utf8');
 const likesClient = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
@@ -40,7 +40,7 @@ test('embedded history defaults invalid hashes to weekly and lazy-loads mode run
   assert.doesNotMatch(historyEntry, /'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
   assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-lite\.js\?v=20260923\.2/);
+  assert.match(historyEntry, /history-lite\.js\?v=20260923\.3/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
   for (const mode of ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
 });
@@ -66,7 +66,7 @@ test('history keeps one visible chart and delegates rendering to mode-specific r
   assert.match(historyClient, /history:data-loaded/);
   assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.5/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.2/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.3/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(rankingChart, /history:data-loaded/);
   assert.match(broadcastClient, /function draw\(\)/);
@@ -83,7 +83,7 @@ test('active history timestamps and range defaults are explicitly UTC', () => {
 
 test('track-specific archive aggregation and runtime are removed', () => {
   assert.doesNotMatch(historyFixes, /aggregateCompleteTrackRows|history:track-rows|再生数ランキング/);
-  assert.doesNotMatch(historyGuard, /normalizeTrackRows|summarizeCompleteTrackRows|\/api\/track-history/);
+  assert.doesNotMatch(historyData, /normalizeTrackRows|summarizeCompleteTrackRows|\/api\/track-history/);
   assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode|'tracks'/);
   assert.doesNotMatch(historyClient, /TRACK_COLUMNS|trackDate|trackWeekMode|mode === 'tracks'|\/api\/track-history/);
 });
@@ -111,15 +111,18 @@ test('history visual tokens and panel sizing match the main dashboard', () => {
 
 test('history client uses only the canonical summary endpoints', () => {
   assert.match(historyClient, /\/api\/history\?/);
+  assert.match(historyData, /\/api\/history-current\?mode=daily/);
   assert.doesNotMatch(historyClient, /\/api\/track-history/);
   assert.match(historyClient, /weekly_metrics/);
   assert.match(broadcastClient, /\/api\/sakurazaka46jp\?/);
 });
 
-test('history client reduces repeated reads with browser session caching', () => {
+test('history client reduces repeated reads with mode-specific browser session caching', () => {
   assert.match(historyClient, /sessionStorage\.getItem/);
   assert.match(historyClient, /sessionStorage\.setItem/);
-  assert.match(historyClient, /5 \* 60_000/);
+  assert.match(historyClient, /historyCacheTtl\(mode\)/);
+  assert.match(historyData, /DAILY_HISTORY_CACHE_TTL_MS = 30_000/);
+  assert.match(historyData, /DEFAULT_HISTORY_CACHE_TTL_MS = 5 \* 60_000/);
 });
 
 test('history tables render newest rows first and paginate only in the browser', () => {
@@ -145,10 +148,12 @@ test('integrated likes view reads current ranking directly without playback coun
   assert.doesNotMatch(rankingLibrary, /FROM sh_track_counter_current/);
 });
 
-test('Sakurazaka endpoint and comparison client share one canonical name', () => {
+test('Sakurazaka endpoint and comparison client share one canonical name and direct revisions', () => {
   assert.match(sakurazakaApi, /subject: 'sakurazaka46jp'/);
   assert.match(sakurazakaApi, /cachedSakurazakaSeries/);
   assert.match(broadcastClient, /sakurazaka46jp:v1:/);
+  assert.match(broadcastClient, /CACHE_REVISION = '9'/);
+  assert.match(broadcastClient, /API_REVISION = '3'/);
   assert.match(broadcastClient, /\/api\/sakurazaka46jp\?/);
 });
 
