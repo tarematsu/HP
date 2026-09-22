@@ -238,11 +238,18 @@ export function attachPlaybackReadModelTrackMetadata(queue, rows = []) {
     const stationheadTrackId = integer(track.stationhead_track_id);
     const spotifyId = text(track.spotify_id);
     const isrc = normalizedIsrc(track.isrc);
+
     let metadata = mergeRow(null, byPosition.get(position));
-    if (queueTrackId != null) metadata = mergeRow(metadata, byQueueTrack.get(queueTrackId));
-    if (isrc) metadata = mergeRow(metadata, byIsrc.get(isrc));
-    if (spotifyId) metadata = mergeRow(metadata, bySpotify.get(spotifyId));
-    if (stationheadTrackId != null) metadata = mergeRow(metadata, byStationhead.get(stationheadTrackId));
+    const lookupQueueTrackId = queueTrackId ?? integer(metadata?.queue_track_id);
+    if (lookupQueueTrackId != null) metadata = mergeRow(metadata, byQueueTrack.get(lookupQueueTrackId));
+    const lookupStationheadTrackId = stationheadTrackId ?? integer(metadata?.stationhead_track_id);
+    if (lookupStationheadTrackId != null) {
+      metadata = mergeRow(metadata, byStationhead.get(lookupStationheadTrackId));
+    }
+    const lookupIsrc = isrc || normalizedIsrc(metadata?.isrc);
+    if (lookupIsrc) metadata = mergeRow(metadata, byIsrc.get(lookupIsrc));
+    const lookupSpotifyId = spotifyId || text(metadata?.spotify_id);
+    if (lookupSpotifyId) metadata = mergeRow(metadata, bySpotify.get(lookupSpotifyId));
     if (!metadata) return track;
 
     const title = trackTitleValue(track.title) || trackTitleValue(metadata.title);
@@ -253,28 +260,30 @@ export function attachPlaybackReadModelTrackMetadata(queue, rows = []) {
     const resolvedStationheadTrackId = stationheadTrackId ?? integer(metadata.stationhead_track_id);
     const resolvedSpotifyId = spotifyId || text(metadata.spotify_id);
     const resolvedIsrc = isrc || normalizedIsrc(metadata.isrc) || null;
+    const identityChanged = (resolvedQueueTrackId != null && resolvedQueueTrackId !== queueTrackId)
+      || (resolvedStationheadTrackId != null && resolvedStationheadTrackId !== stationheadTrackId)
+      || (resolvedSpotifyId != null && resolvedSpotifyId !== spotifyId)
+      || (resolvedIsrc != null && resolvedIsrc !== isrc);
 
     if (title === track.title
         && artist === track.artist
         && albumName === track.album_name
         && thumbnailUrl === track.thumbnail_url
-        && resolvedQueueTrackId === track.queue_track_id
-        && resolvedStationheadTrackId === track.stationhead_track_id
-        && resolvedSpotifyId === track.spotify_id
-        && resolvedIsrc === track.isrc) return track;
+        && !identityChanged) return track;
 
     changed = true;
-    return {
+    const result = {
       ...track,
       title,
       artist,
       album_name: albumName,
       thumbnail_url: thumbnailUrl,
-      queue_track_id: resolvedQueueTrackId,
-      stationhead_track_id: resolvedStationheadTrackId,
-      spotify_id: resolvedSpotifyId,
-      isrc: resolvedIsrc,
     };
+    if (resolvedQueueTrackId != null) result.queue_track_id = resolvedQueueTrackId;
+    if (resolvedStationheadTrackId != null) result.stationhead_track_id = resolvedStationheadTrackId;
+    if (resolvedSpotifyId != null) result.spotify_id = resolvedSpotifyId;
+    if (resolvedIsrc != null) result.isrc = resolvedIsrc;
+    return result;
   });
 
   return changed ? { ...queue, tracks } : queue;
