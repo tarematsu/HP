@@ -32,6 +32,7 @@ await import('/history/history-page-fixes.js');
 await import('/history/history-axis-labels.js?v=20260922.2');
 await import('/history/history-period-chart.js?v=20260921.1');
 await import('/history/history-ranking-chart.js?v=20260921.2');
+await import('/history/history-ranking-missing-gap.js?v=20260923.1');
 await import('/history/history-table-cleanup.js?v=20260921.2');
 await import('/history/history-broadcast-summary.js?v=20260921.1');
 await import('/history/history-lite.js');

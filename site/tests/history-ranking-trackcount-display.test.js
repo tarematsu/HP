@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+const rankingMissing = readFileSync(new URL('../public/history/history-ranking-missing-gap.js', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
@@ -14,6 +15,17 @@ test('ranking renders a two-host leaderboard chart', () => {
   assert.match(rankingChart, /週間リーダーボード順位/);
   assert.match(rankingChart, /panel\.hidden = false/);
   assert.match(rankingChart, /順位は上ほど高順位/);
+});
+
+test('ranking marks the known 2026 leaderboard gap as missing', () => {
+  assert.match(entry, /history-ranking-missing-gap\.js/);
+  assert.match(rankingMissing, /MISSING_START = '2026-01-27'/);
+  assert.match(rankingMissing, /MISSING_END = '2026-09-15'/);
+  assert.match(rankingMissing, /renderOverlay/);
+  assert.match(rankingMissing, /fillText\('欠測'/);
+  assert.match(rankingMissing, /createMissingRow/);
+  assert.match(rankingMissing, /灰色は欠測期間です/);
+  assert.match(rankingMissing, /\$\{match\[1\]\}\/\$\{Number\(match\[2\]\)\}\/\$\{Number\(match\[3\]\)\}/);
 });
 
 test('summary tables remove maximum likes and primary host while retaining track count', () => {
