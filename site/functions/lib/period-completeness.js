@@ -1,25 +1,23 @@
 import { isRealIsoDate } from './api-utils.js';
 
 const DAY_MS = 86400000;
+const MINUTE_MS = 60000;
 
-export const DAILY_BOUNDARY_TOLERANCE_MS = 15 * 60 * 1000;
-export const WEEKLY_BOUNDARY_TOLERANCE_MS = 12 * 60 * 60 * 1000;
-export const MONTHLY_BOUNDARY_TOLERANCE_MS = 2 * DAY_MS;
+export const DAILY_BOUNDARY_TOLERANCE_MS = 15 * MINUTE_MS;
+export const WEEKLY_BOUNDARY_TOLERANCE_MS = 7 * DAY_MS * 0.05;
+export const MONTHLY_BOUNDARY_TOLERANCE_MS = 30 * DAY_MS * 0.05;
 export const PERIOD_BOUNDARY_TOLERANCE_MS = DAILY_BOUNDARY_TOLERANCE_MS;
 export const DAILY_EXPECTED_SAMPLE_COUNT = 1440;
-// A daily rollup is complete when both period boundaries are represented.
-// Sample density varies across historical collectors (including 5-minute data),
-// so missing internal minutes are a quality signal, not a reason to discard
-// otherwise valid stream/member start-to-end growth.
 export const DAILY_MINIMUM_SAMPLE_COUNT = 1;
-// A weekly/monthly average needs at least hourly observations on every UTC day.
-// This accepts older 5/10-minute collections while excluding single-point days.
 export const SUMMARY_MINIMUM_DAILY_SAMPLES = 24;
-export const SUMMARY_DAILY_BOUNDARY_TOLERANCE_MS = 60 * 60 * 1000;
+export const SUMMARY_DAILY_BOUNDARY_TOLERANCE_MS = 60 * MINUTE_MS;
+export const SUMMARY_LISTENER_AVERAGE_MIN_COVERAGE = 0.5;
+export const SUMMARY_BOUNDARY_TOLERANCE_RATIO = 0.05;
 export const KNOWN_DAILY_STREAM_GAPS = new Set(['2026-04-30']);
 
 const EMAIL_WEEKLY_FROM = '2026-01-01';
 const EMAIL_WEEKLY_TO_EXCLUSIVE = '2026-07-01';
+const SUMMARY_COLLECTION_INTERVALS_MS = [MINUTE_MS, 5 * MINUTE_MS];
 
 function finiteNumber(value) {
   if (value == null || value === '') return null;
@@ -36,9 +34,12 @@ function validMonth(value) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(text);
 }
 
-export function periodBoundaryToleranceMs(mode) {
+export function periodBoundaryToleranceMs(mode, periodKey = null) {
   if (mode === 'weekly') return WEEKLY_BOUNDARY_TOLERANCE_MS;
-  if (mode === 'monthly') return MONTHLY_BOUNDARY_TOLERANCE_MS;
+  if (mode === 'monthly') {
+    const bounds = periodKey ? expectedPeriodBounds(mode, periodKey) : null;
+    return bounds ? (bounds.end - bounds.start) * SUMMARY_BOUNDARY_TOLERANCE_RATIO : MONTHLY_BOUNDARY_TOLERANCE_MS;
+  }
   return DAILY_BOUNDARY_TOLERANCE_MS;
 }
 
@@ -128,19 +129,14 @@ export function evaluatePeriodCompleteness({
   knownGap = false,
 }) {
   const bounds = expectedPeriodBounds(mode, periodKey);
-  if (!bounds) {
-    return { complete: false, trusted: false, reasons: ['invalid_period_key'], bounds: null };
-  }
+  if (!bounds) return { complete: false, trusted: false, reasons: ['invalid_period_key'], bounds: null };
 
   const suppliedTolerance = finiteNumber(toleranceMs);
   const effectiveToleranceMs = suppliedTolerance == null
-    ? periodBoundaryToleranceMs(mode)
+    ? periodBoundaryToleranceMs(mode, periodKey)
     : Math.max(0, suppliedTolerance);
   const current = now < bounds.end + effectiveToleranceMs;
-  const trusted = mode === 'weekly' && isTrustedEmailWeekly({
-    period_key: periodKey,
-    quality_flags: qualityFlags,
-  });
+  const trusted = mode === 'weekly' && isTrustedEmailWeekly({ period_key: periodKey, quality_flags: qualityFlags });
   if (trusted && !current) return { complete: true, trusted: true, reasons: [], bounds };
 
   const reasons = [];
@@ -151,12 +147,8 @@ export function evaluatePeriodCompleteness({
     if (samples < DAILY_MINIMUM_SAMPLE_COUNT) reasons.push('insufficient_samples');
     if (samples > DAILY_EXPECTED_SAMPLE_COUNT) reasons.push('excess_samples');
   }
-  if (!withinPeriodBoundaryTolerance(firstObservedAt, bounds.start, effectiveToleranceMs)) {
-    reasons.push('missing_period_start');
-  }
-  if (!withinPeriodBoundaryTolerance(lastObservedAt, bounds.end, effectiveToleranceMs)) {
-    reasons.push('missing_period_end');
-  }
+  if (!withinPeriodBoundaryTolerance(firstObservedAt, bounds.start, effectiveToleranceMs)) reasons.push('missing_period_start');
+  if (!withinPeriodBoundaryTolerance(lastObservedAt, bounds.end, effectiveToleranceMs)) reasons.push('missing_period_end');
   return { complete: reasons.length === 0, trusted: false, reasons, bounds };
 }
 
@@ -170,9 +162,15 @@ function qualityFlagsForReasons(reasons) {
   if (reasons.includes('missing_period_end')) flags.push('incomplete_period_end');
   if (reasons.includes('invalid_period_key')) flags.push('invalid_period_key');
   if (reasons.includes('missing_daily_coverage')) flags.push('incomplete_daily_coverage');
-  if (reasons.includes('insufficient_daily_samples')) flags.push('incomplete_daily_samples');
   if (reasons.includes('missing_daily_stream_boundary')) flags.push('incomplete_daily_stream_boundary');
   if (reasons.includes('missing_summary_stream_boundary')) flags.push('incomplete_summary_stream_boundary');
+  if (reasons.includes('insufficient_daily_samples')) flags.push('incomplete_daily_samples');
+  if (reasons.includes('insufficient_listener_coverage')) flags.push('incomplete_listener_coverage');
+  if (reasons.includes('missing_summary_stream_start')) flags.push('incomplete_summary_stream_start');
+  if (reasons.includes('missing_summary_stream_end')) flags.push('incomplete_summary_stream_end');
+  if (reasons.includes('invalid_summary_stream_order')) flags.push('invalid_summary_stream_order');
+  if (reasons.includes('missing_summary_member_start')) flags.push('incomplete_summary_member_start');
+  if (reasons.includes('missing_summary_member_end')) flags.push('incomplete_summary_member_end');
   return flags;
 }
 
@@ -184,8 +182,6 @@ export async function loadSummaryDailyCoverage(db, rows, mode) {
   const end = Math.max(...bounds.map((period) => period.end));
   const from = new Date(start).toISOString().slice(0, 10);
   const to = new Date(end).toISOString().slice(0, 10);
-  // One indexed, bounded read from the small daily summary table. The browser
-  // still receives only the prebuilt R2 response, never this query.
   const result = await db.prepare(`SELECT period_key,period_start,period_end,
       sample_count,reliable_sample_count,stream_start,stream_end
     FROM sh_daily_summary WHERE period_key>=? AND period_key<?
@@ -193,61 +189,176 @@ export async function loadSummaryDailyCoverage(db, rows, mode) {
   return result.results || [];
 }
 
-export function summaryDailyCoverageReasons(row, mode, dailyRows) {
-  if (mode === 'daily' || !Array.isArray(dailyRows)) return [];
-  // The archived email recap is an independent complete weekly source. All
-  // ordinary weekly/monthly rollups are based on daily facts.
-  if (mode === 'weekly' && isTrustedEmailWeekly(row)
-      && parseQualityFlags(row?.quality_flags).includes('stationhead_email_recap')) return [];
+function inferCollectionIntervalMs(day) {
+  const samples = finiteNumber(day?.sample_count) ?? finiteNumber(day?.reliable_sample_count);
+  if (samples == null || samples <= 0) return MINUTE_MS;
+  const first = finiteNumber(day?.period_start);
+  const last = finiteNumber(day?.period_end);
+  const span = first != null && last != null && last >= first ? Math.min(DAY_MS, last - first) : DAY_MS;
+  let best = SUMMARY_COLLECTION_INTERVALS_MS[0];
+  let bestScore = Infinity;
+  for (const interval of SUMMARY_COLLECTION_INTERVALS_MS) {
+    const expected = Math.max(1, Math.floor(span / interval) + 1);
+    const score = Math.abs(samples - expected) / expected;
+    if (score < bestScore) {
+      best = interval;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function dailyListenerCoverage(day, dayAt) {
+  if (!day) return 0;
+  const samples = finiteNumber(day?.reliable_sample_count) ?? finiteNumber(day?.sample_count);
+  if (samples == null || samples <= 0) return 0;
+  const interval = inferCollectionIntervalMs(day);
+  const first = finiteNumber(day?.period_start);
+  const last = finiteNumber(day?.period_end);
+  if (first == null || last == null || last < first) {
+    return Math.min(1, samples / Math.max(1, DAY_MS / interval));
+  }
+  const start = Math.max(dayAt, Math.min(dayAt + DAY_MS, first));
+  const end = Math.max(dayAt, Math.min(dayAt + DAY_MS, last));
+  const span = Math.max(0, end - start);
+  const timeCoverage = Math.min(1, span > 0 ? span / DAY_MS : interval / DAY_MS);
+  const expectedWithinSpan = Math.max(1, Math.floor(span / interval) + 1);
+  const density = Math.min(1, samples / expectedWithinSpan);
+  return Math.min(1, timeCoverage * density);
+}
+
+function summaryListenerCoverage(row, mode, dailyRows) {
+  if (!Array.isArray(dailyRows)) return null;
   const bounds = expectedPeriodBounds(mode, row?.period_key);
-  if (!bounds) return [];
-  const byDay = new Map(dailyRows.map((day) => [String(day.period_key), day]));
-  const reasons = new Set();
-  const summaryStreamStart = finiteNumber(row?.stream_start);
-  const summaryStreamEnd = finiteNumber(row?.stream_end);
-  if (summaryStreamStart == null || summaryStreamEnd == null
-      || summaryStreamStart <= 0 || summaryStreamEnd <= 0
-      || summaryStreamEnd < summaryStreamStart) reasons.add('missing_summary_stream_boundary');
-  const availableDays = dailyRows.filter((day) => {
-    const key = String(day.period_key || '');
-    return key >= new Date(bounds.start).toISOString().slice(0, 10)
-      && key < new Date(bounds.end).toISOString().slice(0, 10);
-  });
-  const highestDailySamples = Math.min(DAILY_EXPECTED_SAMPLE_COUNT,
-    Math.max(0, ...availableDays.map((day) => finiteNumber(day.sample_count) || 0)));
-  const minimumSamples = Math.max(SUMMARY_MINIMUM_DAILY_SAMPLES, Math.ceil(highestDailySamples / 2));
+  if (!bounds) return { ratio: 0, expectedDays: 0, missingDays: 0, sparseDays: 0 };
+  const byDay = new Map(dailyRows.map((day) => [String(day?.period_key || ''), day]));
+  let coverage = 0;
+  let expectedDays = 0;
+  let missingDays = 0;
+  let sparseDays = 0;
   for (let dayAt = bounds.start; dayAt < bounds.end; dayAt += DAY_MS) {
+    expectedDays += 1;
     const key = new Date(dayAt).toISOString().slice(0, 10);
     const day = byDay.get(key);
     if (!day) {
-      reasons.add('missing_daily_coverage');
+      missingDays += 1;
       continue;
     }
-    const samples = finiteNumber(day.sample_count);
-    const reliable = finiteNumber(day.reliable_sample_count);
-    if (samples == null || samples < minimumSamples
-        || reliable == null || reliable < minimumSamples
-        || samples > DAILY_EXPECTED_SAMPLE_COUNT) reasons.add('insufficient_daily_samples');
-    const first = finiteNumber(day.period_start);
-    const last = finiteNumber(day.period_end);
-    if (first == null || first > dayAt + SUMMARY_DAILY_BOUNDARY_TOLERANCE_MS
-        || last == null || last < dayAt + DAY_MS - SUMMARY_DAILY_BOUNDARY_TOLERANCE_MS) {
-      reasons.add('missing_daily_coverage');
-    }
-    const streamStart = finiteNumber(day.stream_start);
-    const streamEnd = finiteNumber(day.stream_end);
-    if (KNOWN_DAILY_STREAM_GAPS.has(key) || streamStart == null || streamEnd == null
-        || streamStart <= 0 || streamEnd <= 0 || streamEnd < streamStart) {
-      reasons.add('missing_daily_stream_boundary');
-    }
+    const dayCoverage = dailyListenerCoverage(day, dayAt);
+    coverage += dayCoverage;
+    if (dayCoverage < 0.5) sparseDays += 1;
   }
-  return [...reasons];
+  return {
+    ratio: expectedDays ? coverage / expectedDays : 0,
+    expectedDays,
+    missingDays,
+    sparseDays,
+  };
+}
+
+function summaryMetricAssessment(row, mode, dailyRows) {
+  const bounds = expectedPeriodBounds(mode, row?.period_key);
+  if (!bounds) return null;
+  const tolerance = (bounds.end - bounds.start) * SUMMARY_BOUNDARY_TOLERANCE_RATIO;
+  const hasBoundaryStart = Object.hasOwn(row || {}, 'boundary_start_at');
+  const hasBoundaryEnd = Object.hasOwn(row || {}, 'boundary_end_at');
+  const startAt = hasBoundaryStart ? row?.boundary_start_at : row?.period_start;
+  const endAt = hasBoundaryEnd ? row?.boundary_end_at : row?.period_end;
+  const startNear = withinPeriodBoundaryTolerance(startAt, bounds.start, tolerance);
+  const endNear = withinPeriodBoundaryTolerance(endAt, bounds.end, tolerance);
+  const listenerCoverage = summaryListenerCoverage(row, mode, dailyRows);
+  const listenerAverageReady = finiteNumber(row?.listener_avg) != null
+    && (listenerCoverage == null || listenerCoverage.ratio > SUMMARY_LISTENER_AVERAGE_MIN_COVERAGE);
+  const streamStart = finiteNumber(row?.stream_start);
+  const streamEnd = finiteNumber(row?.stream_end);
+  const memberStart = finiteNumber(row?.member_start);
+  const memberEnd = finiteNumber(row?.member_end);
+  const streamStartReady = startNear && streamStart != null && streamStart > 0;
+  const streamEndReady = endNear && streamEnd != null && streamEnd > 0;
+  const memberStartReady = startNear && memberStart != null && memberStart >= 0;
+  const memberEndReady = endNear && memberEnd != null && memberEnd >= 0;
+  const streamOrderValid = !streamStartReady || !streamEndReady || streamEnd >= streamStart;
+  const reasons = [];
+  if (listenerCoverage?.missingDays) reasons.push('missing_daily_coverage');
+  if (listenerCoverage?.sparseDays) reasons.push('insufficient_daily_samples');
+  if (!listenerAverageReady) reasons.push('insufficient_listener_coverage');
+  if (!streamStartReady) reasons.push('missing_summary_stream_start');
+  if (!streamEndReady) reasons.push('missing_summary_stream_end');
+  if (!streamOrderValid) reasons.push('invalid_summary_stream_order');
+  if (!memberStartReady) reasons.push('missing_summary_member_start');
+  if (!memberEndReady) reasons.push('missing_summary_member_end');
+  return {
+    listenerCoverage,
+    listenerAverageReady,
+    streamStartReady,
+    streamEndReady,
+    memberStartReady,
+    memberEndReady,
+    streamOrderValid,
+    reasons,
+  };
+}
+
+export function summaryDailyCoverageReasons(row, mode, dailyRows) {
+  if (mode === 'daily' || !Array.isArray(dailyRows)) return [];
+  if (mode === 'weekly' && isTrustedEmailWeekly(row)
+      && parseQualityFlags(row?.quality_flags).includes('stationhead_email_recap')) return [];
+  return summaryMetricAssessment(row, mode, dailyRows)?.reasons || [];
 }
 
 function isBoundaryOnlyIncomplete(reasons) {
   return reasons.length > 0 && reasons.every((reason) => (
     reason === 'missing_period_start' || reason === 'missing_period_end'
   ));
+}
+
+function applyDailyCompleteness(row, evaluation) {
+  const reasons = evaluation.reasons;
+  if (!reasons.length) {
+    return {
+      row: {
+        ...row,
+        period_complete: true,
+        listener_metrics_excluded: false,
+        stream_growth_excluded: false,
+        member_growth_excluded: false,
+        exclusion_reasons: [],
+      },
+      excluded: false,
+    };
+  }
+  const qualityFlags = appendFlags(row?.quality_flags, qualityFlagsForReasons(reasons));
+  if (isBoundaryOnlyIncomplete(reasons)) {
+    return {
+      row: {
+        ...row,
+        period_complete: false,
+        listener_metrics_excluded: false,
+        stream_growth_excluded: false,
+        member_growth_excluded: false,
+        exclusion_reasons: reasons,
+        quality_flags: qualityFlags,
+      },
+      excluded: false,
+    };
+  }
+  return {
+    row: {
+      ...row,
+      listener_avg: null,
+      listener_min: null,
+      listener_max: null,
+      stream_growth: null,
+      member_growth: null,
+      period_complete: false,
+      listener_metrics_excluded: true,
+      stream_growth_excluded: true,
+      member_growth_excluded: true,
+      exclusion_reasons: reasons,
+      quality_flags: qualityFlags,
+    },
+    excluded: true,
+  };
 }
 
 export function applySummaryCompleteness(rows, mode, now = Date.now(), dailyCoverage = null) {
@@ -266,52 +377,83 @@ export function applySummaryCompleteness(rows, mode, now = Date.now(), dailyCove
       now,
       knownGap: mode === 'daily' && KNOWN_DAILY_STREAM_GAPS.has(periodKey),
     });
-    const reasons = [...new Set([
-      ...evaluation.reasons,
-      ...summaryDailyCoverageReasons(row, mode, dailyCoverage),
-    ])];
-    if (!reasons.length) {
+
+    if (mode === 'daily') {
+      const result = applyDailyCompleteness(row, evaluation);
+      if (result.excluded) excludedCount += 1;
+      return result.row;
+    }
+    if (evaluation.trusted && evaluation.complete) {
       return {
         ...row,
         period_complete: true,
         listener_metrics_excluded: false,
+        listener_average_excluded: false,
         stream_growth_excluded: false,
         member_growth_excluded: false,
         exclusion_reasons: [],
       };
     }
 
-    const qualityFlags = appendFlags(row?.quality_flags, qualityFlagsForReasons(reasons));
-    if (mode === 'daily' && isBoundaryOnlyIncomplete(reasons)) {
+    const hardIncomplete = evaluation.reasons.includes('current_period')
+      || evaluation.reasons.includes('invalid_period_key');
+    const assessment = summaryMetricAssessment(row, mode, dailyCoverage);
+    if (!assessment || hardIncomplete) {
+      const reasons = [...new Set([...evaluation.reasons, ...(assessment?.reasons || [])])];
+      excludedCount += 1;
       return {
         ...row,
+        listener_avg: null,
+        listener_min: null,
+        listener_max: null,
+        stream_start: null,
+        stream_end: null,
+        member_start: null,
+        member_end: null,
+        stream_growth: null,
+        member_growth: null,
         period_complete: false,
-        listener_metrics_excluded: false,
-        stream_growth_excluded: false,
-        member_growth_excluded: false,
+        listener_metrics_excluded: true,
+        listener_average_excluded: true,
+        stream_growth_excluded: true,
+        member_growth_excluded: true,
         exclusion_reasons: reasons,
-        quality_flags: qualityFlags,
+        quality_flags: appendFlags(row?.quality_flags, qualityFlagsForReasons(reasons)),
       };
     }
 
-    excludedCount += 1;
+    const streamStart = finiteNumber(row?.stream_start);
+    const streamEnd = finiteNumber(row?.stream_end);
+    const memberStart = finiteNumber(row?.member_start);
+    const memberEnd = finiteNumber(row?.member_end);
+    const streamGrowthReady = assessment.streamStartReady && assessment.streamEndReady && assessment.streamOrderValid;
+    const memberGrowthReady = assessment.memberStartReady && assessment.memberEndReady;
+    const reasons = [...new Set([...evaluation.reasons, ...assessment.reasons])];
+    const periodComplete = reasons.length === 0;
+    const listenerMin = finiteNumber(row?.listener_min);
+    const listenerMax = finiteNumber(row?.listener_max);
+    const anyExcluded = !assessment.listenerAverageReady || !streamGrowthReady || !memberGrowthReady;
+    if (anyExcluded || !periodComplete) excludedCount += 1;
+
     return {
       ...row,
-      listener_avg: null,
-      listener_min: null,
-      listener_max: null,
-      stream_start: mode === 'daily' ? row?.stream_start : null,
-      stream_end: mode === 'daily' ? row?.stream_end : null,
-      member_start: mode === 'daily' ? row?.member_start : null,
-      member_end: mode === 'daily' ? row?.member_end : null,
-      stream_growth: null,
-      member_growth: null,
-      period_complete: false,
-      listener_metrics_excluded: true,
-      stream_growth_excluded: true,
-      member_growth_excluded: true,
+      listener_avg: assessment.listenerAverageReady ? row?.listener_avg : null,
+      listener_min: listenerMin == null ? null : row?.listener_min,
+      listener_max: listenerMax == null ? null : row?.listener_max,
+      stream_start: assessment.streamStartReady ? row?.stream_start : null,
+      stream_end: assessment.streamEndReady ? row?.stream_end : null,
+      member_start: assessment.memberStartReady ? row?.member_start : null,
+      member_end: assessment.memberEndReady ? row?.member_end : null,
+      stream_growth: streamGrowthReady ? streamEnd - streamStart : null,
+      member_growth: memberGrowthReady ? memberEnd - memberStart : null,
+      period_complete: periodComplete,
+      listener_metrics_excluded: !assessment.listenerAverageReady,
+      listener_average_excluded: !assessment.listenerAverageReady,
+      stream_growth_excluded: !streamGrowthReady,
+      member_growth_excluded: !memberGrowthReady,
+      listener_coverage_ratio: assessment.listenerCoverage?.ratio ?? null,
       exclusion_reasons: reasons,
-      quality_flags: qualityFlags,
+      quality_flags: appendFlags(row?.quality_flags, qualityFlagsForReasons(reasons)),
     };
   });
   return { rows: completedRows, excludedCount };
