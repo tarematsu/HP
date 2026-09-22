@@ -1,8 +1,4 @@
-const browser = typeof window === 'undefined' ? null : window;
-const previousFetch = browser?.fetch?.bind(browser) || null;
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
-const CACHE_MIGRATION_KEY = 'sh.history.period-bars-member-boundaries.v1';
-const HISTORY_CACHE_PREFIX = 'sh.history.v3:';
 const integer = new Intl.NumberFormat('ja-JP');
 
 let latestMode = '';
@@ -18,15 +14,6 @@ function finite(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function requestUrl(input) {
-  try {
-    const value = typeof input === 'string' || input instanceof URL ? input : input?.url;
-    return new URL(value, browser?.location?.href || 'https://history.invalid/');
-  } catch {
-    return null;
-  }
-}
-
 function activeMode() {
   const active = document.querySelector('#modeTabs button.active[data-mode]');
   return String(active?.dataset?.mode || latestMode || '');
@@ -36,48 +23,11 @@ function cssColor(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-function clearLegacyHistoryCache() {
-  try {
-    const storage = browser?.sessionStorage;
-    if (!storage || storage.getItem(CACHE_MIGRATION_KEY) === '1') return;
-    for (let index = storage.length - 1; index >= 0; index -= 1) {
-      const key = storage.key(index);
-      if (key?.startsWith(HISTORY_CACHE_PREFIX)) storage.removeItem(key);
-    }
-    storage.setItem(CACHE_MIGRATION_KEY, '1');
-  } catch {}
-}
-
 function scheduleDraw(delay = 0) {
   clearTimeout(drawTimer);
   drawTimer = setTimeout(() => {
     requestAnimationFrame(() => requestAnimationFrame(draw));
   }, delay);
-}
-
-async function captureHistoryResponse(input, response) {
-  if (!response?.ok) return;
-  const url = requestUrl(input);
-  if (!url || url.origin !== location.origin || url.pathname !== '/api/history') return;
-  const mode = String(url.searchParams.get('mode') || 'weekly').toLowerCase();
-  if (!SUMMARY_MODES.has(mode)) return;
-  try {
-    const data = await response.clone().json();
-    if (!data?.ok || !Array.isArray(data.rows)) return;
-    latestMode = mode;
-    latestRows = data.rows;
-    selectedIndex = null;
-    scheduleDraw();
-  } catch {}
-}
-
-if (browser && previousFetch) {
-  clearLegacyHistoryCache();
-  browser.fetch = async (input, init) => {
-    const response = await previousFetch(input, init);
-    void captureHistoryResponse(input, response);
-    return response;
-  };
 }
 
 function prepareCanvas() {
@@ -243,12 +193,16 @@ function draw() {
   canvas.dataset.periodChart = 'bars';
 }
 
-const tbody = document.getElementById('tbody');
-if (tbody) {
-  new MutationObserver(() => {
-    if (SUMMARY_MODES.has(activeMode())) scheduleDraw();
-  }).observe(tbody, { childList: true });
-}
+window.addEventListener('history:data-loaded', (event) => {
+  const detail = event?.detail || {};
+  const mode = String(detail.mode || '');
+  const data = detail.data;
+  if (!SUMMARY_MODES.has(mode) || !data?.ok || !Array.isArray(data.rows)) return;
+  latestMode = mode;
+  latestRows = data.rows;
+  selectedIndex = null;
+  scheduleDraw();
+});
 
 const chart = document.getElementById('chart');
 chart?.addEventListener('pointerup', (event) => {
