@@ -1,3 +1,9 @@
+import {
+  fetchHistoryPayload,
+  historyCacheTtl,
+  migrateHistoryCache,
+} from './history-data-client.js';
+
 (() => {
   'use strict';
 
@@ -58,6 +64,8 @@
   const numberText = (value) => finite(value) == null ? '—' : decimal.format(Number(value));
   const todayUtc = () => new Date().toISOString().slice(0, 10);
 
+  migrateHistoryCache(sessionStorage);
+
   function parseDate(value) {
     if (value === null || value === undefined || value === '') return null;
     const text = String(value);
@@ -106,9 +114,7 @@
     if (force) sessionStorage.removeItem(cacheKey(url));
     const cached = force ? null : readCache(url, ttl);
     if (cached) return { data: cached, cached: true };
-    const response = await fetch(url, { signal, headers: { accept: 'application/json' } });
-    const data = await response.json();
-    if (!response.ok || !data?.ok) throw new Error(data?.error || `API ${response.status}`);
+    const data = await fetchHistoryPayload(url, { signal });
     writeCache(url, data);
     return { data, cached: false };
   }
@@ -307,8 +313,11 @@
         if (host) params.set('host', host);
       }
       const url = `/api/history?${params}`;
-      const ttl = mode === 'broadcasts' ? 15 * 60_000 : 5 * 60_000;
-      const { data, cached } = await fetchJson(url, { ttl, signal: controller.signal, force });
+      const { data, cached } = await fetchJson(url, {
+        ttl: historyCacheTtl(mode),
+        signal: controller.signal,
+        force,
+      });
       if (token !== state.requestToken || state.mode !== mode) return;
 
       state.data = data;
