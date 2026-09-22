@@ -19,14 +19,16 @@ test('summary metrics remain single-line at intermediate desktop and tablet widt
   assert.match(fixes, /font-size:\s*clamp\(1\.15rem,\s*1\.8vw,\s*1\.55rem\)/);
 });
 
-test('ranking summary counts calendar weeks and treats missing weeks as out of rank', () => {
+test('ranking summary counts recorded calendar weeks and treats missing weeks as out of rank', () => {
   assert.match(pageFixes, /history:data-loaded/);
   assert.match(pageFixes, /setText\('periodLabel', '総週数'\)/);
   assert.match(pageFixes, /setText\('maxLabel', 'ランクイン週数'\)/);
   assert.match(pageFixes, /setText\('streamLabel', '圏外週数'\)/);
-  assert.match(pageFixes, /const totalWeeks = range\.length \|\| new Set\(fallbackWeeks\)\.size/);
+  assert.match(pageFixes, /Array\.isArray\(payload\?\.ranking_weeks\) && payload\.ranking_weeks\.length/);
+  assert.match(pageFixes, /const weekKeys = new Set\(sourceWeeks\.map\(mondayOnOrBefore\)\.filter\(Boolean\)\)/);
   assert.match(pageFixes, /outWeeks: Math\.max\(0, totalWeeks - rankedWeeks\)/);
   assert.match(pageFixes, /value === null \|\| value === undefined \|\| value === ''/);
+  assert.doesNotMatch(pageFixes, /weeklyRange|mondayOnOrAfter|WEEK_MS/);
   assert.doesNotMatch(pageFixes, /rows\.length - rankedCount/);
   assert.doesNotMatch(fixes, /function finiteRank|repairRankingSummary|rankingBody/);
 });
