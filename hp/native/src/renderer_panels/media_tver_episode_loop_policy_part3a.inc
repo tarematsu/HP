@@ -124,9 +124,9 @@ LR"JS(
       // let progress/end state from the previous media item carry into the new
       // source. Preserve a genuine end candidate long enough for post-roll
       // detection; the identity check below still rejects a mismatched source.
-      if (state.video !== video || (sourceChanged && !state.endCandidateAt)) {
-        resetMediaState(state, video);
-      } else if (sourceIdentity && !state.mediaSourceIdentity) {
+      if (state.video !== video) resetMediaState(state, video);
+      else if (sourceChanged && !state.endCandidateAt) resetMediaState(state, video);
+      else if (sourceIdentity && !state.mediaSourceIdentity) {
         state.mediaSourceIdentity = sourceIdentity;
       }
       if (!video) return;
