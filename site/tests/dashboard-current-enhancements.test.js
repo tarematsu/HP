@@ -38,6 +38,9 @@ test('current chart draws numeric axes in black and green with JST labels from o
   assert.match(chart, /timeZone: 'Asia\/Tokyo'/);
   assert.match(chart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\.5\)/);
   assert.match(chart, /rgba\(22,139,115,\.42\)/);
+  assert.match(chart, /const EXTREMA_POINT_COLOR = '#888'/);
+  assert.match(chart, /if \(minRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
+  assert.match(chart, /if \(maxRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
   assert.match(chart, /`最小 \$\{integer\.format\(currentMin\)\}（\$\{jstExtremaTime\.format/);
   assert.match(chart, /`最大 \$\{integer\.format\(currentMax\)\}（\$\{jstExtremaTime\.format/);
   assert.doesNotMatch(chart, /strokeRect\(/);
