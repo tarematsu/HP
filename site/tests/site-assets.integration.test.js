@@ -88,14 +88,16 @@ test('dashboard declares and implements a light white-base theme', async () => {
 test('mobile dashboard keeps both first-paint stylesheets and one entry script', async () => {
   const html = await text('public/index.html');
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(html, /\/app-lite\.css\?v=20260922\.1/);
-  assert.match(html, /\/monochrome\.css\?v=20260922\.1/);
-  assert.ok(html.indexOf('/app-lite.css?v=20260922.1') < html.indexOf('/monochrome.css?v=20260922.1'));
-  assert.ok(html.indexOf('/monochrome.css?v=20260922.1') < html.indexOf('</head>'));
-  assert.match(html, /type="module" src="\/dashboard-metrics\.js\?v=20260922\.1"/);
+  const appLite = html.match(/\/app-lite\.css\?v=[^"']+/)?.[0];
+  const monochrome = html.match(/\/monochrome\.css\?v=[^"']+/)?.[0];
+  assert.ok(appLite, 'app-lite.css must have an explicit deployment version');
+  assert.ok(monochrome, 'monochrome.css must have an explicit deployment version');
+  assert.ok(html.indexOf(appLite) < html.indexOf(monochrome));
+  assert.ok(html.indexOf(monochrome) < html.indexOf('</head>'));
+  assert.match(html, /type="module" src="\/dashboard-metrics\.js\?v=[^"']+"/);
   assert.equal((html.match(/<link rel="stylesheet"/g) || []).length, 2);
   assert.equal((html.match(/<script /g) || []).length, 1);
-  assert.match(entry, /import\('\/dashboard-client\.js\?v=20260922\.1'\)/);
+  assert.match(entry, /import\('\/dashboard-client\.js\?v=[^']+'\)/);
 });
 
 test('dashboard mobile layout prevents metric and goal number clipping', async () => {
