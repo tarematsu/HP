@@ -11,7 +11,6 @@ export const DAILY_EXPECTED_SAMPLE_COUNT = 1440;
 export const DAILY_MINIMUM_SAMPLE_COUNT = 1;
 export const SUMMARY_MINIMUM_DAILY_SAMPLES = 24;
 export const SUMMARY_DAILY_BOUNDARY_TOLERANCE_MS = 60 * MINUTE_MS;
-export const SUMMARY_LISTENER_AVERAGE_MIN_COVERAGE = 0.5;
 export const SUMMARY_BOUNDARY_TOLERANCE_RATIO = 0.05;
 export const WEEKLY_MEMBER_BOUNDARY_TOLERANCE_MS = DAY_MS;
 export const MONTHLY_MEMBER_BOUNDARY_TOLERANCE_MS = 3 * DAY_MS;
@@ -173,7 +172,7 @@ function qualityFlagsForReasons(reasons) {
   if (reasons.includes('missing_daily_stream_boundary')) flags.push('incomplete_daily_stream_boundary');
   if (reasons.includes('missing_summary_stream_boundary')) flags.push('incomplete_summary_stream_boundary');
   if (reasons.includes('insufficient_daily_samples')) flags.push('incomplete_daily_samples');
-  if (reasons.includes('insufficient_listener_coverage')) flags.push('incomplete_listener_coverage');
+  if (reasons.includes('missing_listener_average')) flags.push('missing_listener_average');
   if (reasons.includes('missing_summary_stream_start')) flags.push('incomplete_summary_stream_start');
   if (reasons.includes('missing_summary_stream_end')) flags.push('incomplete_summary_stream_end');
   if (reasons.includes('invalid_summary_stream_order')) flags.push('invalid_summary_stream_order');
@@ -306,8 +305,7 @@ function summaryMetricAssessment(row, mode, dailyRows) {
   const startNear = withinPeriodBoundaryTolerance(startAt, bounds.start, tolerance);
   const endNear = withinPeriodBoundaryTolerance(endAt, bounds.end, tolerance);
   const listenerCoverage = summaryListenerCoverage(row, mode, dailyRows);
-  const listenerAverageReady = finiteNumber(row?.listener_avg) != null
-    && (listenerCoverage == null || listenerCoverage.ratio > SUMMARY_LISTENER_AVERAGE_MIN_COVERAGE);
+  const listenerAverageReady = finiteNumber(row?.listener_avg) != null;
   const streamStart = finiteNumber(row?.stream_start);
   const streamEnd = finiteNumber(row?.stream_end);
   const memberStartBoundary = resolveMemberBoundary(
@@ -324,7 +322,7 @@ function summaryMetricAssessment(row, mode, dailyRows) {
   const reasons = [];
   if (listenerCoverage?.missingDays) reasons.push('missing_daily_coverage');
   if (listenerCoverage?.sparseDays) reasons.push('insufficient_daily_samples');
-  if (!listenerAverageReady) reasons.push('insufficient_listener_coverage');
+  if (!listenerAverageReady) reasons.push('missing_listener_average');
   if (!streamStartReady) reasons.push('missing_summary_stream_start');
   if (!streamEndReady) reasons.push('missing_summary_stream_end');
   if (!streamOrderValid) reasons.push('invalid_summary_stream_order');
