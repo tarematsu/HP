@@ -84,7 +84,7 @@ function setAxisLabel(id, text) {
 }
 
 function activeHistoryMode() {
-  return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || 'weekly');
+  return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || location.hash.slice(1) || 'weekly');
 }
 
 export function syncHistoryAxisLabels(mode = activeHistoryMode()) {
@@ -98,11 +98,7 @@ export function syncHistoryAxisLabels(mode = activeHistoryMode()) {
 installAxisStyles();
 syncHistoryAxisLabels();
 
-const tabs = document.getElementById('modeTabs');
-if (tabs) {
-  new MutationObserver(() => syncHistoryAxisLabels()).observe(tabs, {
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'aria-current'],
-  });
-}
+window.addEventListener('history:data-loaded', (event) => {
+  syncHistoryAxisLabels(String(event?.detail?.mode || activeHistoryMode()));
+});
+window.addEventListener('hashchange', () => syncHistoryAxisLabels());
