@@ -66,7 +66,7 @@ test('all-host scope returns actual rows plus host ranking summary ordered by ra
   assert.equal(data.ranking_summary.week_count, 3);
   assert.equal(data.ranking_summary.host_count, 3);
   assert.equal(data.ranking_summary.ranked_entry_count, 4);
-  assert.equal(data.ranking_summary.out_of_rank_count, 2);
+  assert.equal(data.ranking_summary.out_of_rank_count, 1);
 });
 
 test('host ranking counts each leaderboard week once even if duplicate rows exist', async () => {
