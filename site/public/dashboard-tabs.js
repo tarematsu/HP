@@ -49,7 +49,7 @@ function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260923.4').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -60,7 +60,7 @@ async function loadHistoryRuntime() {
 
 async function loadLikesRuntime() {
   if (!likesRuntimePromise) {
-    likesRuntimePromise = import('/history/history-likes.js').catch((error) => {
+    likesRuntimePromise = import('/history/history-likes.js?v=20260923.4').catch((error) => {
       likesRuntimePromise = null;
       throw error;
     });
