@@ -1,12 +1,7 @@
 const MISSING_START = '2026-01-26';
 const MISSING_END = '2026-09-14';
-const WEEK_MS = 7 * 86400000;
 const MODE = 'ranking';
-const previousFetch = window.fetch.bind(window);
 
-let rankingWeeks = [];
-let rankingFrom = null;
-let rankingTo = null;
 let renderedWeeks = [];
 let overlayTimer = 0;
 
@@ -16,41 +11,8 @@ function isoDate(value) {
   return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[3])).padStart(2, '0')}`;
 }
 
-function mondayOnOrAfter(value) {
-  const iso = isoDate(value);
-  if (!iso) return '';
-  const date = new Date(`${iso}T00:00:00Z`);
-  const delta = (8 - date.getUTCDay()) % 7;
-  date.setUTCDate(date.getUTCDate() + delta);
-  return date.toISOString().slice(0, 10);
-}
-
-function mondayOnOrBefore(value) {
-  const iso = isoDate(value);
-  if (!iso) return '';
-  const date = new Date(`${iso}T00:00:00Z`);
-  const delta = (date.getUTCDay() + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - delta);
-  return date.toISOString().slice(0, 10);
-}
-
-function weeklyRange(from, to) {
-  const start = mondayOnOrAfter(from);
-  const end = mondayOnOrBefore(to);
-  if (!start || !end || start > end) return [];
-  const weeks = [];
-  for (let ts = Date.parse(`${start}T00:00:00Z`); ts <= Date.parse(`${end}T00:00:00Z`); ts += WEEK_MS) {
-    weeks.push(new Date(ts).toISOString().slice(0, 10));
-  }
-  return weeks;
-}
-
 function completeWeeks() {
-  if (renderedWeeks.length) return renderedWeeks;
-  const source = [...new Set(rankingWeeks.map(isoDate).filter(Boolean))].sort();
-  const from = rankingFrom || source[0] || MISSING_START;
-  const to = rankingTo || source.at(-1) || MISSING_END;
-  return [...new Set([...weeklyRange(from, to), ...source])].sort();
+  return [...new Set(renderedWeeks.map(isoDate).filter(Boolean))].sort();
 }
 
 function isMissing(value) {
@@ -60,15 +22,6 @@ function isMissing(value) {
 
 function active() {
   return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || '') === MODE;
-}
-
-function requestUrl(input) {
-  try {
-    const value = typeof input === 'string' || input instanceof URL ? input : input?.url;
-    return new URL(value, location.href);
-  } catch {
-    return null;
-  }
 }
 
 function scheduleOverlay(delay = 0) {
@@ -91,26 +44,6 @@ function keepRankedRowsOnly() {
     if (!hasNumericRank(row)) row.remove();
   }
 }
-
-window.fetch = async (input, init) => {
-  const response = await previousFetch(input, init);
-  const url = requestUrl(input);
-  if (response.ok && url?.origin === location.origin && url.pathname === '/api/history'
-      && String(url.searchParams.get('mode') || '').toLowerCase() === MODE) {
-    try {
-      const data = await response.clone().json();
-      if (data?.ok) {
-        rankingWeeks = Array.isArray(data.ranking_weeks) ? data.ranking_weeks.map(isoDate).filter(Boolean) : [];
-        rankingFrom = isoDate(url.searchParams.get('from')) || null;
-        rankingTo = isoDate(url.searchParams.get('to')) || null;
-        renderedWeeks = [];
-        queueMicrotask(keepRankedRowsOnly);
-        scheduleOverlay(20);
-      }
-    } catch {}
-  }
-  return response;
-};
 
 function renderOverlay() {
   if (!active()) return;
@@ -157,22 +90,16 @@ function renderOverlay() {
 
 const tbody = document.getElementById('tbody');
 if (tbody) new MutationObserver(() => {
-  if (!active()) return;
-  queueMicrotask(keepRankedRowsOnly);
-  scheduleOverlay(20);
+  if (active()) queueMicrotask(keepRankedRowsOnly);
 }).observe(tbody, { childList: true });
 
 document.getElementById('modeTabs')?.addEventListener('click', () => {
   queueMicrotask(keepRankedRowsOnly);
-  scheduleOverlay(40);
 });
-document.getElementById('chart')?.addEventListener('pointerup', () => scheduleOverlay(20));
 window.addEventListener('history:ranking-chart-drawn', (event) => {
   renderedWeeks = Array.isArray(event?.detail?.weeks) ? event.detail.weeks.map(isoDate).filter(Boolean) : [];
   scheduleOverlay(0);
 });
-window.addEventListener('resize', () => scheduleOverlay(280), { passive: true });
 window.addEventListener('history:runtime-ready', () => {
   queueMicrotask(keepRankedRowsOnly);
-  scheduleOverlay(40);
 });
