@@ -15,8 +15,8 @@ test('daily weekly and monthly summary cards use average growth labels', () => {
   assert.match(labels, /MutationObserver/);
 });
 
-test('average-label runtime is cache-busted through the active dashboard entry chain', () => {
+test('average-label runtime is loaded without changing the shared dashboard deployment version', () => {
   assert.match(main, /history-summary-average-labels\.js\?v=20260923\.1/);
-  assert.match(tabs, /history-main\.js\?v=20260923\.6/);
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260923\.5/);
+  assert.match(tabs, /history-main\.js\?v=20260923\.5/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260923\.4/);
 });
