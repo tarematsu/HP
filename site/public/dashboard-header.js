@@ -104,11 +104,11 @@ const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
   minute: '2-digit',
   hour12: false,
 });
-const HISTORY_MATERIALIZED_AT_CACHE_KEY = 'sh.history.materialized-at.v1';
+const DASHBOARD_MATERIALIZED_AT_CACHE_KEY = 'sh.dashboard.materialized-at.v1';
 
-function cachedHistoryMaterializedAt() {
+function cachedDashboardMaterializedAt() {
   try {
-    const value = Number(localStorage.getItem(HISTORY_MATERIALIZED_AT_CACHE_KEY));
+    const value = Number(localStorage.getItem(DASHBOARD_MATERIALIZED_AT_CACHE_KEY));
     if (!Number.isFinite(value) || value <= 0 || value > Date.now() + 5 * 60_000) return null;
     return value;
   } catch {
@@ -116,53 +116,37 @@ function cachedHistoryMaterializedAt() {
   }
 }
 
-function cacheHistoryMaterializedAt(value) {
+function cacheDashboardMaterializedAt(value) {
   try {
-    localStorage.setItem(HISTORY_MATERIALIZED_AT_CACHE_KEY, String(value));
+    localStorage.setItem(DASHBOARD_MATERIALIZED_AT_CACHE_KEY, String(value));
   } catch {
     // Storage can be unavailable in restricted browser modes.
   }
 }
 
-let historyMaterializedAt = cachedHistoryMaterializedAt();
+let dashboardMaterializedAt = cachedDashboardMaterializedAt();
 let renderingUpdatedLabel = false;
 
 const description = document.getElementById('description');
 const updated = document.getElementById('updated');
 function renderUpdatedLabel() {
   if (!updated || renderingUpdatedLabel) return;
-  const historyText = historyMaterializedAt == null ? '—' : JST_TIME.format(new Date(historyMaterializedAt));
-  const next = `更新 ${historyText}`;
+  const refreshText = dashboardMaterializedAt == null ? '—' : JST_TIME.format(new Date(dashboardMaterializedAt));
+  const next = `更新 ${refreshText} (5分毎)`;
   if (next === updated.textContent) return;
   renderingUpdatedLabel = true;
   updated.textContent = next;
-  updated.title = `更新 ${historyText} JST`;
+  updated.title = `更新 ${refreshText} JST (5分毎)`;
   updated.setAttribute('aria-label', updated.title);
   renderingUpdatedLabel = false;
 }
 
-function setHistoryMaterializedAt(value) {
+function setDashboardMaterializedAt(value) {
   const timestamp = Number(value);
   if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp > Date.now() + 5 * 60_000) return;
-  historyMaterializedAt = timestamp;
-  cacheHistoryMaterializedAt(timestamp);
+  dashboardMaterializedAt = timestamp;
+  cacheDashboardMaterializedAt(timestamp);
   renderUpdatedLabel();
-}
-
-async function refreshHistoryMaterializedAt() {
-  const todayUtc = new Date().toISOString().slice(0, 10);
-  try {
-    const response = await fetch(`/api/history?mode=daily&from=${todayUtc}&to=${todayUtc}`, {
-      headers: { accept: 'application/json' },
-    });
-    if (!response.ok) return;
-    setHistoryMaterializedAt(response.headers.get('x-materialized-at'));
-    // Let the small one-day response finish normally. Cancelling it after reading
-    // the header surfaces as a failed fetch in browsers and in the live audit.
-    await response.arrayBuffer();
-  } catch {
-    // Keep the last materialized timestamp visible when the metadata refresh is unavailable.
-  }
 }
 
 if (updated) {
@@ -174,10 +158,9 @@ if (updated) {
     subtree: true,
     characterData: true,
   });
-  window.addEventListener('history:materialized-at', (event) => {
-    setHistoryMaterializedAt(event?.detail?.updatedAt);
+  window.addEventListener('dashboard:materialized-at', (event) => {
+    setDashboardMaterializedAt(event?.detail?.updatedAt);
   });
-  void refreshHistoryMaterializedAt();
 }
 description?.remove();
 
