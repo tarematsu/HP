@@ -1,4 +1,5 @@
 const MODE = 'ranking';
+const EXCLUDED_ALL_HOSTS = new Set(['sakuramankai', 'sakurazaka46jp']);
 const ALL_HOST_COLUMNS = [
   ['position', '順位'],
   ['host_name', 'ホスト名'],
@@ -29,6 +30,11 @@ function displayValue(key, value) {
   return integer.format(number);
 }
 
+function visibleHostRows(data) {
+  return (Array.isArray(data?.host_rankings) ? data.host_rankings : [])
+    .filter((row) => !EXCLUDED_ALL_HOSTS.has(hostKey(row?.host_name)));
+}
+
 function setSelectedHost(host) {
   selectedHost = String(host || '').trim();
   const selectedKey = hostKey(selectedHost);
@@ -57,7 +63,11 @@ function installStyle() {
       text-decoration-thickness: 1px;
       text-underline-offset: 3px;
       cursor: pointer;
+      width: 100%;
       max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     #historyView table.all-host-ranking-table tr.selected-ranking-host td {
       background: rgba(31, 45, 68, .055);
@@ -67,26 +77,42 @@ function installStyle() {
         width: 100% !important;
         min-width: 100% !important;
         table-layout: fixed !important;
-        font-size: 10.5px;
+        font-size: 10px !important;
       }
       #historyView table.all-host-ranking-table th:nth-child(1),
-      #historyView table.all-host-ranking-table td:nth-child(1) { width: 8% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(1) { width: 7% !important; }
       #historyView table.all-host-ranking-table th:nth-child(2),
-      #historyView table.all-host-ranking-table td:nth-child(2) { width: 32% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(2) { width: 31% !important; }
       #historyView table.all-host-ranking-table th:nth-child(3),
-      #historyView table.all-host-ranking-table td:nth-child(3) { width: 17% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(3) { width: 20% !important; }
       #historyView table.all-host-ranking-table th:nth-child(4),
-      #historyView table.all-host-ranking-table td:nth-child(4) { width: 15% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(4) { width: 14% !important; }
       #historyView table.all-host-ranking-table th:nth-child(5),
       #historyView table.all-host-ranking-table td:nth-child(5) { width: 14% !important; }
       #historyView table.all-host-ranking-table th:nth-child(6),
       #historyView table.all-host-ranking-table td:nth-child(6) { width: 14% !important; }
       #historyView table.all-host-ranking-table th,
       #historyView table.all-host-ranking-table td {
-        padding-left: 4px !important;
-        padding-right: 4px !important;
+        padding-left: 3px !important;
+        padding-right: 3px !important;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      #historyView table.all-host-ranking-table th {
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+        font-size: 8.5px !important;
+        line-height: 1.15 !important;
+        letter-spacing: -.035em !important;
+        text-overflow: clip !important;
+        white-space: nowrap !important;
+      }
+      #historyView table.all-host-ranking-table th:not(:nth-child(2)),
+      #historyView table.all-host-ranking-table td:not(:nth-child(2)) {
+        text-align: center !important;
+      }
+      #historyView table.all-host-ranking-table .ranking-host-button {
+        font-size: 10px !important;
       }
     }
   `;
@@ -116,8 +142,8 @@ function render(data) {
   }
 
   forcedRefresh = false;
-  lastData = data;
-  const rows = data.host_rankings;
+  const rows = visibleHostRows(data);
+  lastData = { ...data, host_rankings: rows };
   table.classList.add('all-host-ranking-table');
 
   const headRow = document.createElement('tr');
@@ -161,8 +187,14 @@ function render(data) {
   const more = document.getElementById('more');
   if (more) more.hidden = true;
 
-  const defaultHost = String(data.chart_hosts?.[0] || rows[0]?.host_name || '').trim();
+  const defaultHost = String(rows[0]?.host_name || '').trim();
   setSelectedHost(defaultHost);
+  const currentChartHost = String(data.chart_hosts?.[0] || '').trim();
+  if (defaultHost && hostKey(defaultHost) !== hostKey(currentChartHost)) {
+    queueMicrotask(() => window.dispatchEvent(new CustomEvent('history:ranking-host-selected', {
+      detail: { host: defaultHost },
+    })));
+  }
 }
 
 function exportCsv() {
