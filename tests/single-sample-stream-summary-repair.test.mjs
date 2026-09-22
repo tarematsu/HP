@@ -68,6 +68,7 @@ test('known historical ranges overwrite recorded closing values with next-day op
   f.day('2024-09-19', 20, 3023102, 3023102, '["stream_end_next_day_start_single_sample_v1"]');
   f.day('2025-08-31', 30, 27800000, 27850000);
   f.day('2025-09-01', 30, 27860000, 27900000);
+  f.day('2025-09-02', 30, 27950000, 28000000);
   f.day('2025-09-30', 30, 32000000, 32050000);
   f.day('2025-10-01', 30, 32120000, 32150000);
   f.parent('weekly', '2025-08-25', 27400000, 27850000);
@@ -84,13 +85,17 @@ test('known historical ranges overwrite recorded closing values with next-day op
     [27860000, 60000],
   );
   assert.deepEqual(
+    [f.get('2025-09-01').stream_end, f.get('2025-09-01').stream_growth],
+    [27950000, 90000],
+  );
+  assert.deepEqual(
     [f.get('2025-09-30').stream_end, f.get('2025-09-30').stream_growth],
     [32120000, 120000],
   );
   assert.equal(f.db.prepare("SELECT stream_end FROM sh_weekly_summary WHERE period_key='2025-08-25'").get().stream_end, 27860000);
   assert.equal(f.db.prepare("SELECT stream_end FROM sh_monthly_summary WHERE period_key='2025-08'").get().stream_end, 27860000);
   assert.equal(f.db.prepare("SELECT stream_end FROM sh_monthly_summary WHERE period_key='2025-09'").get().stream_end, 32120000);
-  assert.deepEqual(result.daily.map((row) => row.key), ['2024-09-18', '2025-08-31', '2025-09-01', '2025-09-30']);
+  assert.deepEqual(result.daily.map((row) => row.key), ['2024-09-18', '2025-08-31', '2025-09-01', '2025-09-02', '2025-09-30']);
 });
 
 test('repairs matching one-sample days outside the known range but leaves multi-sample days alone', async () => {
