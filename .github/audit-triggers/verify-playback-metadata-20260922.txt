@@ -1,0 +1,1 @@
+Verify production Pages playback metadata after PR #1352.
