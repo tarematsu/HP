@@ -137,13 +137,21 @@ inline std::vector<std::string> ReadBatch(
   return lines;
 }
 
-inline bool Acknowledge(size_t count) {
+inline bool Acknowledge(const std::vector<std::string>& batch, size_t count) {
   if (count == 0) return true;
+  if (count > batch.size()) return false;
   std::lock_guard lock(SpoolMutex());
   auto lines = ReadLinesLocked();
-  const size_t consumed = std::min(count, lines.size());
+  // Append can evict the oldest records while the HTTP request is in flight.
+  // A receipt belongs to the sent batch, never to the current queue positions.
+  // On a changed prefix retain everything for the next exchange.
+  if (lines.size() < count ||
+      !std::equal(batch.begin(), batch.begin() +
+          static_cast<std::ptrdiff_t>(count), lines.begin())) {
+    return false;
+  }
   lines.erase(lines.begin(),
-              lines.begin() + static_cast<std::ptrdiff_t>(consumed));
+              lines.begin() + static_cast<std::ptrdiff_t>(count));
   return WriteLinesLocked(lines);
 }
 

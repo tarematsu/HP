@@ -156,7 +156,7 @@ test('device exchange preserves the secure Cloud wire contract with the rebuilt 
   assert.match(exchange, /\\"collectorTicked\\"/);
   assert.match(exchange, /\\"lastError\\"/);
   assert.match(exchange, /GetNamedBoolean\(L"reported", false\)/);
-  assert.match(exchange, /stationhead_leaderboard_capture_spool::Acknowledge\(accepted\)/);
+  assert.match(exchange, /stationhead_leaderboard_capture_spool::Acknowledge\(leaderboardCapture, accepted\)/);
   assert.match(cloudPayload, /leaderboardProbe\?: unknown/);
   assert.match(cloudPayload, /leaderboardProbeStatus\?: unknown/);
   assert.match(cloudPayload, /applyStationheadLeaderboardProbeInput/);
