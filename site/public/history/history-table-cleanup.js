@@ -1,6 +1,6 @@
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
 const SUMMARY_REMOVED_LABELS = new Set(['最大いいね', '主なホスト', '有効記録数', '同接有効数']);
-const RANKING_REMOVED_LABELS = new Set(['前週順位', '順位データ出典', '品質']);
+const RANKING_REMOVED_LABELS = new Set(['前週順位', '前週比', 'ランキング種別', '順位データ出典', '品質']);
 const RENAMED_LABELS = new Map([
   ['記録数', ['取得記録数', 'その期間に保存された全サンプル数']],
 ]);
@@ -32,10 +32,13 @@ function removedLabels(mode) {
 function cleanTable() {
   const mode = activeMode();
   const removedSet = removedLabels(mode);
-  if (cleaning || !removedSet) return;
   const head = document.getElementById('thead');
   const body = document.getElementById('tbody');
   if (!head || !body) return;
+
+  head.closest('table')?.classList.toggle('compact-columns', mode === 'ranking');
+  if (cleaning || !removedSet) return;
+
   const headers = [...head.querySelectorAll('th')];
   if (SUMMARY_MODES.has(mode)) {
     for (const cell of headers) {
