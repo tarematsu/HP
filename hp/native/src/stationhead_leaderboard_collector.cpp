@@ -8,12 +8,21 @@
 namespace hp {
 namespace {
 constexpr wchar_t kLeaderboardUrl[] = L"https://www.stationhead.com/leaderboard";
-constexpr int64_t kInitialCaptureDelayMs = 15'000;
-constexpr int64_t kCaptureIntervalMs = 30 * 60'000;
 constexpr int64_t kRetryIntervalMs = 5 * 60'000;
 constexpr int64_t kRenderSettleMs = 10'000;
 constexpr int64_t kCaptureTimeoutMs = 45'000;
+constexpr int64_t kDayMs = 24 * 60 * 60'000;
+constexpr int64_t kJstOffsetMs = 9 * 60 * 60'000;
+constexpr int64_t kDailyCaptureOffsetMs = 5 * 60'000;
 constexpr size_t kMaxSnapshotCharacters = 28 * 1024;
+
+int64_t NextDailyCaptureAt(int64_t nowMs) noexcept {
+  const int64_t jstNow = nowMs + kJstOffsetMs;
+  const int64_t jstDayStart = (jstNow / kDayMs) * kDayMs;
+  int64_t candidate = jstDayStart + kDailyCaptureOffsetMs - kJstOffsetMs;
+  if (candidate <= nowMs) candidate += kDayMs;
+  return candidate;
+}
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
   return alive && alive->load(std::memory_order_acquire);
@@ -70,12 +79,12 @@ void StationheadLeaderboardCollector::Start(int64_t nowMs) {
   started_ = true;
   creating_ = false;
   captureInFlight_ = false;
-  nextCaptureAt_ = nowMs + kInitialCaptureDelayMs;
+  nextCaptureAt_ = NextDailyCaptureAt(nowMs);
   captureDueAt_ = 0;
   timeoutAt_ = 0;
   UpdateNextWake();
   stationhead_leaderboard_diagnostics::Mark("started", true);
-  log_.Info(L"Stationhead leaderboard dedicated collector scheduled");
+  log_.Info(L"Stationhead leaderboard dedicated collector scheduled daily at 00:05 JST");
 }
 
 void StationheadLeaderboardCollector::Stop() {
@@ -376,7 +385,7 @@ void StationheadLeaderboardCollector::CompleteCapture(
   captureDueAt_ = 0;
   timeoutAt_ = 0;
   CloseController();
-  nextCaptureAt_ = nowMs + (signedIn ? kCaptureIntervalMs : kRetryIntervalMs);
+  nextCaptureAt_ = signedIn ? NextDailyCaptureAt(nowMs) : nowMs + kRetryIntervalMs;
   stationhead_leaderboard_diagnostics::Mark("completed", true, true);
   UpdateNextWake();
 }
