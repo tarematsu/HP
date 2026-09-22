@@ -25,51 +25,40 @@ const youtubePlaylistFallback = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url), 'utf8');
 const mediaPanel = [mediaBase, mediaHost, mediaWindow].join('\n');
 
-test('TVer uses media events plus a player-local observer that sleeps while healthy', () => {
-  assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
-  assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
-  assert.match(tverEpisode, /const suspendPlayerObserver = \(\) =>/);
-  assert.match(tverEpisode, /playerObserverActive = false/);
-  assert.match(tverEpisode, /if \(observerNeeded\) bindPlayerObserver\(video\)/);
-  assert.match(tverEpisode, /suspendPlayerObserver\(\)/);
-  assert.doesNotMatch(tverEpisode, /observer\.observe\(document\.(?:documentElement|body)/);
-  assert.doesNotMatch(tverEpisode, /setInterval\(ensure/);
-  assert.doesNotMatch(tverEpisode, /addEventListener\('timeupdate'/);
-  assert.match(tverEpisode, /event\.target instanceof HTMLMediaElement/);
+test('TVer uses one player-local observer plus media events', () => {
+  assert.match(tverEpisode, /state\.playerObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(tverEpisode, /state\.playerObserver\.observe\(player/);
+  assert.match(tverEpisode, /state\.videoAbort = new AbortController/);
+  assert.match(tverEpisode, /'playing','pause','waiting','stalled','ended','error'/);
   assert.match(tverEpisode, /homepanel:tver-wake/);
-});
-
-test('TVer progress sampling uses adaptive one-shot timers and tightens only near the end', () => {
-  assert.match(tverEpisode, /progressSteadyIntervalMs = 2000/);
-  assert.match(tverEpisode, /progressNearEndIntervalMs = 500/);
-  assert.match(tverEpisode, /progressFinalIntervalMs = 200/);
-  assert.match(tverEpisode, /if \(remaining <= 3\) return progressFinalIntervalMs/);
-  assert.match(tverEpisode, /if \(remaining <= 15\) return progressNearEndIntervalMs/);
-  assert.match(tverEpisode, /const armProgressSampler = \(\) =>/);
-  assert.match(tverEpisode, /const delay = progressIntervalFor\(video\)/);
-  assert.match(tverEpisode, /state\.progressTimer = setTimeout\(\(\) =>/);
-  assert.match(tverEpisode, /sampleProgress\(video, state\)/);
+  assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
+  assert.doesNotMatch(tverEpisode, /setInterval\(/);
   assert.doesNotMatch(tverEpisode, /addEventListener\('timeupdate'/);
 });
 
-test('TVer healthy playback avoids style-heavy ad marker scanning', () => {
-  assert.match(tverEpisode, /const healthyProgram =/);
-  assert.match(tverEpisode, /const playbackRolledBack =/);
-  assert.match(
-    tverEpisode,
-    /const advertisementActive = healthyProgram && !playbackRolledBack[\s\S]*\? false : detectAd\(video, state\)/,
-  );
-  assert.match(tverEpisode, /currentTime \+ 5 < state\.maxTime/);
+test('TVer completion uses event-time media facts instead of progress polling', () => {
+  assert.match(tverEpisode, /event\.type === 'ended'/);
+  assert.match(tverEpisode, /const length = duration\(\)/);
+  assert.match(tverEpisode, /const at = currentTime\(\)/);
+  assert.match(tverEpisode, /key === state\.programKey/);
+  assert.match(tverEpisode, /at >= Math\.max\(3, length - 10\)/);
+  assert.doesNotMatch(tverEpisode, /progressSteadyIntervalMs|progressNearEndIntervalMs|progressFinalIntervalMs/);
+  assert.doesNotMatch(tverEpisode, /progressTimer|timeupdate/);
 });
 
-test('TVer event bridge deduplicates setup wakes and playback loss is one-shot', () => {
-  assert.match(tverEpisode, /lastWakeSignature/);
-  assert.match(tverEpisode, /pendingWakeSignature/);
-  assert.match(tverEpisode, /signature === lastWakeSignature/);
-  assert.match(tverEpisode, /setupFlags\.join\('\+'\)/);
-  assert.match(tverEpisode, /wakeNative\('recovery:' \+ reason/);
-  assert.match(tverEpisode, /wakeNative\('ui:' \+ playerUiRevision\)/);
-  assert.doesNotMatch(tverEpisode, /recoveryWakeTimer|recovery:tick:|armRecoveryWake/);
+test('TVer healthy playback avoids page-wide ad scanning', () => {
+  assert.match(tverEpisode, /const explicitAd = \(\) =>/);
+  assert.match(tverEpisode, /player\.querySelectorAll\(selectors\.join\(','\)\)/);
+  assert.match(tverEpisode, /const adActive = ad\(\)/);
+  assert.doesNotMatch(tverEpisode, /document\.querySelectorAll\(selectors\.join\(','\)\)/);
+});
+
+test('TVer event wakeups use one debounced timer with no recovery ticker', () => {
+  assert.match(tverEpisode, /const wake = \(delay = 80\) =>/);
+  assert.match(tverEpisode, /clearTimeout\(state\.wakeTimer\)/);
+  assert.match(tverEpisode, /state\.wakeTimer = setTimeout/);
+  assert.match(tverEpisode, /post\('homepanel:tver-wake'\)/);
+  assert.doesNotMatch(tverEpisode, /lastWakeSignature|pendingWakeSignature|recoveryWakeTimer|recovery:tick:/);
 });
 
 test('YouTube runtime owns event wakeups and the only ad readiness observer', () => {
