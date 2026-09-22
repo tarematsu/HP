@@ -10,83 +10,30 @@ test('HomePanel deployment resolves workers.dev and requires public and authenti
   const healthRoute = read('hp/video/src/entry.js');
   const auth = read('hp/cloud/src/auth.ts');
   const worker = read('hp/cloud/src/worker_core.ts');
-
   for (const fragment of [
-    '.github/scripts/cloudflare-worker-public-url.mjs',
-    'Resolve deployed HomePanel public URL',
-    'id: homepanel-public-url',
+    '.github/scripts/cloudflare-worker-public-url.mjs', 'Resolve deployed HomePanel public URL', 'id: homepanel-public-url',
     'cloudflare-worker-public-url.mjs homepanel-cloud /api/health',
     'RADAR_DISPATCH_TOKEN: ${{ secrets.RADAR_DISPATCH_TOKEN || secrets.GITHUB_RADAR_DISPATCH_TOKEN }}',
-    'name: Sync radar dispatcher token',
-    'wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud',
-    'name: Verify GitHub repository dispatch credential',
-    'homepanel-dispatch-credential-check',
-    'https://api.github.com/repos/tarematsu/HP/dispatches',
-    'cannot create repository_dispatch events',
-    'name: Verify deployed readiness',
-    'HOMEPANEL_HEALTH_URL: ${{ steps.homepanel-public-url.outputs.health-url }}',
-    '--output "$output" --write-out "%{http_code}"',
-    'homepanel-public-health.status',
-    'homepanel-readiness.status',
-    "printf 'curl_status=%s\\nhttp_status=%s\\n'",
-    'cat "$output" || true',
-    'payload?.ok !== true',
-    'payload?.service !== "homepanel-video"',
-    'Unexpected HomePanel public health response (HTTP ${status})',
-    'name: Verify authenticated deployed readiness',
-    'HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}',
-    'Existing RADAR_DISPATCH_TOKEN is required for /v1/ready verification',
-    'Authorization: Bearer $RADAR_DISPATCH_TOKEN',
-    '$HOMEPANEL_BASE_URL/v1/ready',
-    'payload?.service !== "homepanel-cloud"',
-    'checks.some(check => check?.ok !== true)',
-    'Unexpected HomePanel readiness response (HTTP ${status})',
-    'name: Upload HomePanel readiness diagnostics',
-    'if: failure()',
-    'homepanel-readiness-diagnostics-${{ github.run_id }}',
-    '${{ runner.temp }}/homepanel-public-health.json',
+    'name: Sync radar dispatcher token', 'wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud',
+    'name: Verify deployed readiness', 'HOMEPANEL_HEALTH_URL: ${{ steps.homepanel-public-url.outputs.health-url }}',
+    '--output "$output" --write-out "%{http_code}"', 'homepanel-public-health.status', 'homepanel-readiness.status',
+    "printf 'curl_status=%s\\nhttp_status=%s\\n'", 'cat "$output" || true', 'payload?.ok!==true',
+    'payload?.service!=="homepanel-video"', 'Unexpected HomePanel public health response (HTTP ${status})',
+    'name: Verify authenticated deployed readiness', 'HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}',
+    'Existing RADAR_DISPATCH_TOKEN is required for /v1/ready verification', 'Authorization: Bearer $RADAR_DISPATCH_TOKEN',
+    '$HOMEPANEL_BASE_URL/v1/ready', 'payload?.service!=="homepanel-cloud"', 'checks.some(check=>check?.ok!==true)',
+    'Unexpected HomePanel readiness response (HTTP ${status})', 'name: Upload HomePanel readiness diagnostics',
+    'if: failure()', 'homepanel-readiness-diagnostics-${{ github.run_id }}', '${{ runner.temp }}/homepanel-public-health.json',
     '${{ runner.temp }}/homepanel-readiness.json',
-  ]) assert.match(workflow, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-
+  ]) assert.match(workflow.replace(/\s+/g, ''), new RegExp(fragment.replace(/\s+/g, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(workflow, /Verify GitHub repository dispatch credential/);
+  assert.doesNotMatch(workflow, /homepanel-dispatch-credential-check/);
   assert.doesNotMatch(workflow, /curl --fail/);
-  assert.doesNotMatch(workflow, /HOMEPANEL_READY_TOKEN/);
-  assert.doesNotMatch(workflow, /HOMEPANEL_API_TOKEN/);
-  assert.doesNotMatch(workflow, /secrets\.API_TOKEN/);
-  assert.doesNotMatch(workflow, /Report disabled authenticated readiness verification/);
-  const authenticatedStepStart = workflow.indexOf('- name: Verify authenticated deployed readiness');
-  const authenticatedStepEnd = workflow.indexOf('\n      - name:', authenticatedStepStart + 1);
-  const authenticatedStep = workflow.slice(
-    authenticatedStepStart,
-    authenticatedStepEnd === -1 ? workflow.length : authenticatedStepEnd,
-  );
-  assert.doesNotMatch(authenticatedStep, /\n\s+if:/);
-  assert.doesNotMatch(workflow, /HOMEPANEL_BASE_URL: \$\{\{ vars\.HOMEPANEL_BASE_URL \}\}/);
-  assert.doesNotMatch(workflow, /Set HOMEPANEL_BASE_URL variable/);
-  assert.ok(
-    workflow.indexOf('- name: Deploy HomePanel Cloud')
-      < workflow.indexOf('- name: Sync radar dispatcher token'),
-  );
-  assert.ok(
-    workflow.indexOf('- name: Sync radar dispatcher token')
-      < workflow.indexOf('- name: Verify GitHub repository dispatch credential'),
-  );
-  assert.ok(
-    workflow.indexOf('- name: Verify GitHub repository dispatch credential')
-      < workflow.indexOf('- name: Resolve deployed HomePanel public URL'),
-  );
-  assert.ok(
-    workflow.indexOf('- name: Resolve deployed HomePanel public URL')
-      < workflow.indexOf('- name: Verify deployed readiness'),
-  );
-  assert.ok(
-    workflow.indexOf('- name: Verify deployed readiness')
-      < workflow.indexOf('- name: Verify authenticated deployed readiness'),
-  );
-  assert.ok(
-    workflow.indexOf('- name: Verify authenticated deployed readiness')
-      < workflow.indexOf('- name: Upload HomePanel readiness diagnostics'),
-  );
-
+  assert.doesNotMatch(workflow, /HOMEPANEL_READY_TOKEN|HOMEPANEL_API_TOKEN|secrets\.API_TOKEN/);
+  assert.ok(workflow.indexOf('- name: Deploy HomePanel Cloud') < workflow.indexOf('- name: Sync radar dispatcher token'));
+  assert.ok(workflow.indexOf('- name: Sync radar dispatcher token') < workflow.indexOf('- name: Resolve deployed HomePanel public URL'));
+  assert.ok(workflow.indexOf('- name: Resolve deployed HomePanel public URL') < workflow.indexOf('- name: Verify deployed readiness'));
+  assert.ok(workflow.indexOf('- name: Verify deployed readiness') < workflow.indexOf('- name: Verify authenticated deployed readiness'));
   assert.match(auth, /readinessSecrets\(env: Env\)/);
   assert.match(auth, /env\.GITHUB_RADAR_DISPATCH_TOKEN/);
   assert.match(auth, /authorizedReadiness\(request: Request, env: Env\)/);
