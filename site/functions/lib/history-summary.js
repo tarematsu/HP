@@ -1,4 +1,4 @@
-import { applySummaryCompleteness } from './period-completeness.js';
+import { applySummaryCompleteness, loadSummaryDailyCoverage } from './period-completeness.js';
 import {
   applyPeriodBoundaryEvidence,
   loadPeriodBoundaryEvidence,
@@ -337,7 +337,8 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
       error: String(error?.message || error).slice(0, 300),
     }));
   });
-  const completed = applySummaryCompleteness(repairedRows, mode, now);
+  const dailyCoverage = await loadSummaryDailyCoverage(env.OTHER_DB, repairedRows, mode);
+  const completed = applySummaryCompleteness(repairedRows, mode, now, dailyCoverage);
   return {
     rows: completed.rows,
     excluded_stream_growth_count: completed.excludedCount,

@@ -5,6 +5,7 @@ import {
 } from './history-summary.js';
 import {
   applySummaryCompleteness,
+  loadSummaryDailyCoverage,
   currentPeriodKey,
 } from './period-completeness.js';
 import { onRequestGet as publicHistory } from '../api/history.js';
@@ -152,7 +153,8 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     : new Map();
   await persistClosedPeriodTrackCounts(env.OTHER_DB, table, rows, trackCounts, mode, now);
 
-  const completed = applySummaryCompleteness(rows, mode, now);
+  const dailyCoverage = await loadSummaryDailyCoverage(env.OTHER_DB, rows, mode);
+  const completed = applySummaryCompleteness(rows, mode, now, dailyCoverage);
   const enrichedRows = completed.rows.map((row) => {
     const key = String(row?.period_key || '');
     const calculated = finiteNumber(trackCounts.get(key));
