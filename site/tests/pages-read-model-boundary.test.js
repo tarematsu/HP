@@ -40,6 +40,32 @@ test('queue read model accepts both an array and an object envelope', () => {
   assert.equal(partiallyMaterialized.registeredItems, 22);
 });
 
+test('Pages prefers the full presentation queue without expanding persistence writes', () => {
+  const row = queueFromReadModel({
+    station_id: 3,
+    queue_id: 4,
+    start_time: 5,
+    observed_at: 6,
+    is_paused: 0,
+    queue_json: JSON.stringify({
+      total_track_count: 4,
+      materialized_track_count: 2,
+      tracks: [
+        { position: 0, title: 'A' },
+        { position: 1, title: 'B' },
+      ],
+      presentation_tracks: [
+        { position: 0, title: 'A' },
+        { position: 1, title: 'B' },
+        { position: 2, title: 'C' },
+        { position: 3, title: 'D' },
+      ],
+    }),
+  });
+  assert.deepEqual(row.queue.map(({ title }) => title), ['A', 'B', 'C', 'D']);
+  assert.equal(row.registeredItems, 4);
+});
+
 test('queue read-model presentation fields survive playback normalization', () => {
   const { queue } = queueFromReadModel({
     station_id: 3,

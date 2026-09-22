@@ -79,12 +79,15 @@ test('same queue generation honors a larger requested window and new generation 
   assert.equal(chooseMaterializedTrackCount(queue, fullAnalysis(queue, 'changed'), state), 22);
 });
 
-test('materialized queue retains total count and full source hash while omitting the tail', async () => {
+test('materialized queue retains total count and full source hash while omitting the persistence tail', async () => {
   const queue = fullQueue();
   const analysis = fullAnalysis(queue);
   const materialized = materializeQueueWindow(queue, analysis, 22);
 
   assert.equal(materialized.queue.tracks.length, 22);
+  assert.equal(materialized.queue.presentation_tracks.length, 80);
+  assert.equal(materialized.queue.presentation_tracks[79].spotify_id, 'spotify-79');
+  assert.equal(Object.hasOwn(materialized.queue.presentation_tracks[79], 'preview_url'), false);
   assert.equal(materialized.queue.total_track_count, 80);
   assert.equal(materialized.queue.materialized_track_count, 22);
   assert.equal(materialized.queue.materialization_complete, false);
@@ -92,6 +95,13 @@ test('materialized queue retains total count and full source hash while omitting
   assert.equal(materialized.analysis.structural.source_structural_hash, 'full-structure-a');
   assert.equal(materialized.analysis.likes.payload.length, 22);
   assert.equal(await queueStructuralHash(materialized.queue), 'full-structure-a');
+});
+
+test('fully materialized queue does not duplicate presentation tracks', () => {
+  const queue = fullQueue(12);
+  const materialized = materializeQueueWindow(queue, fullAnalysis(queue), 12);
+  assert.equal(materialized.queue.tracks.length, 12);
+  assert.equal(Object.hasOwn(materialized.queue, 'presentation_tracks'), false);
 });
 
 test('omitted-tail like gaps do not make a complete visible window incomplete', async () => {
