@@ -20,6 +20,10 @@ test('playback Actions repair recovers missing track identity by station, queue 
   assert.match(script, /text\(track\.spotify_id\) \|\| text\(identity\?\.spotify_id\)/);
 });
 
+test('stationhead identity comes from the facts database where sh_tracks is materialized', () => {
+  assert.match(script, /function stationheadIdentityRows\(ids\)[\s\S]*?return query\(factsDatabase,[\s\S]*?FROM sh_tracks/);
+});
+
 test('playback Actions repair hydrates recovered identity from track metadata and persists queue_json', () => {
   assert.match(script, /FROM sh_track_metadata/);
   assert.match(script, /trackTitleValue\(track\.title\) \|\| trackTitleValue\(metadata\?\.title\)/);
