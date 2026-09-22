@@ -3,8 +3,10 @@ import './pages-ui-tweaks.js?v=20260921.1';
 import './dashboard-header.js?v=20260922.3';
 import './dashboard-tabs.js?v=20260922.3';
 import './dashboard-fetch-cache.js?v=20260922.3';
-import './dashboard-current-enhancements.js?v=20260921.4';
-import './dashboard-chart-comparison.js?v=20260922.2';
+import './dashboard-current-layout.js?v=20260923.1';
+import './dashboard-chart-stability.js?v=20260923.1';
+import './dashboard-chart-comparison.js?v=20260923.1';
+import './dashboard-chart-detail.js?v=20260923.1';
 import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260922.3';
 
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
@@ -79,10 +81,10 @@ function requestUrl(input) {
   return input?.url || '';
 }
 
-function renderPayload(payload) {
+function renderPayload(payload, source = 'network') {
   if (!payload?.ok) return;
   renderDashboardDailySummaries(payload.daily_summaries);
-  window.dispatchEvent(new CustomEvent('dashboard:payload', { detail: { payload } }));
+  window.dispatchEvent(new CustomEvent('dashboard:payload', { detail: { payload, source } }));
   const status = document.getElementById('statusMessage');
   if (status) {
     status.textContent = '';
@@ -94,7 +96,7 @@ function restoreDashboardCache() {
   try {
     const cached = JSON.parse(localStorage.getItem(DASHBOARD_CACHE_KEY) || 'null');
     if (!cached || Date.now() - Number(cached.savedAt || 0) > 6 * 60 * 60_000) return;
-    renderPayload(cached.payload);
+    renderPayload(cached.payload, 'cache');
   } catch {
     localStorage.removeItem(DASHBOARD_CACHE_KEY);
   }
@@ -114,7 +116,7 @@ async function captureDashboard(input, response) {
   if (!url || new URL(url, location.href).pathname !== '/api/dashboard') return;
   announceDashboardMaterializedAt(response);
   try {
-    renderPayload(await response.clone().json());
+    renderPayload(await response.clone().json(), 'network');
   } catch {
     // The dashboard client owns request error reporting.
   }
