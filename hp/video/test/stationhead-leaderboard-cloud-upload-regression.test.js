@@ -157,16 +157,17 @@ test('public leaderboard diagnostics expose only bounded operational state', () 
   assert.match(unifiedWorker, /stationheadLeaderboardProbeStatusResponse\(env\)/);
 });
 
-test('cloud keeps redacted capture history in R2 without logging response bodies', () => {
+test('cloud keeps redacted capture history in R2 for direct pull reporting', () => {
   assert.match(cloudProbe, /diagnostics\/stationhead-leaderboard\/history\//);
   assert.match(cloudProbe, /diagnostics\/stationhead-leaderboard\/latest\.json/);
   assert.match(cloudProbe, /SECRET_KEY/);
-  assert.match(cloudProbe, /MAX_REPORT_BODY_CHARS = 24_576/);
-  assert.match(cloudProbe, /MAX_REPORT_PREVIEW_CHARS = 768/);
-  assert.match(cloudProbe, /candidates: records\.map/);
-  assert.match(cloudProbe, /best: \{/);
-  assert.match(cloudProbe, /event_type: "stationhead-leaderboard-probe"/);
+  assert.match(cloudProbe, /MAX_BODY_CHARS = 65_536/);
+  assert.match(cloudProbe, /contentIdentity\(deviceId, records\)/);
+  assert.match(cloudProbe, /DATA_BUCKET\.head\(LATEST_KEY\)/);
+  assert.match(cloudProbe, /delivery: "r2-pull"/);
+  assert.doesNotMatch(cloudProbe, /repository_dispatch|GITHUB_RADAR_DISPATCH_TOKEN/);
+  assert.match(reportWorkflow, /LATEST_KEY: diagnostics\/stationhead-leaderboard\/latest\.json/);
+  assert.match(reportWorkflow, /Cloudflare R2 REST API/);
+  assert.match(reportWorkflow, /name: stationhead-leaderboard-latest/);
   assert.match(reportWorkflow, /actions\/upload-artifact@v4/);
-  assert.match(reportWorkflow, /Response bodies and candidate previews are intentionally omitted from logs/);
-  assert.doesNotMatch(reportWorkflow, /summary\.write\([^\n]*best\.get\("body"/);
 });
