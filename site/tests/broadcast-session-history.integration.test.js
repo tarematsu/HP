@@ -67,7 +67,19 @@ test('verified listening party metadata repairs track counts and supplies concis
       listener_avg: 788.8,
       listener_max: 901,
       likes_max: null,
-      distinct_tracks: 5,
+      distinct_tracks: 7,
+      host_handle: 'sakurazaka46jp',
+      has_data: 1,
+    },
+    {
+      event_name: '2025.12.30『THANK YOU BUDDIES!! THANK YOU 2025!! 櫻坂46 YEAR-END LISTENING PARTY』',
+      started_at: 5,
+      ended_at: 6,
+      sample_count: 1,
+      listener_avg: 833.4,
+      listener_max: 983,
+      likes_max: null,
+      distinct_tracks: 22,
       host_handle: 'sakurazaka46jp',
       has_data: 1,
     },
@@ -75,8 +87,10 @@ test('verified listening party metadata repairs track counts and supplies concis
 
   assert.equal(parsed.rows[0].distinct_tracks, 20);
   assert.equal(parsed.rows[0].broadcast_content, '小林由依卒業コンサート DAY2セットリスト');
-  assert.equal(parsed.rows[1].distinct_tracks, 7);
-  assert.equal(parsed.rows[1].broadcast_content, '13th Single「Unhappy birthday構文」Special Edition全7曲');
+  assert.equal(parsed.rows[1].distinct_tracks, 5);
+  assert.equal(parsed.rows[1].broadcast_content, '13th Single「Unhappy birthday構文」Special Edition（トラブルで実再生5曲）');
+  assert.equal(parsed.rows[2].distinct_tracks, 29);
+  assert.equal(parsed.rows[2].broadcast_content, '2025年リリース22曲＋Interlude7曲（全29曲・楽曲尺93分19秒）');
 });
 
 test('an empty UTC range reports whether the compact summary is provisioned', () => {
