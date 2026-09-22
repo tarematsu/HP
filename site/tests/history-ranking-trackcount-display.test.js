@@ -10,8 +10,11 @@ const materialized = readFileSync(new URL('../functions/lib/materialized-history
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
 test('ranking renders a two-host leaderboard chart', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.2/);
+  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.3/);
   assert.match(rankingChart, /const HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
+  assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
+  assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
+  assert.match(rankingChart, /HOST_COLORS\.get\(item\.host\)/);
   assert.match(rankingChart, /週間リーダーボード順位/);
   assert.match(rankingChart, /panel\.hidden = false/);
   assert.match(rankingChart, /順位は上ほど高順位/);

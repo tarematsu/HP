@@ -2,6 +2,10 @@ const browser = typeof window === 'undefined' ? null : window;
 const previousFetch = browser?.fetch?.bind(browser) || null;
 const RANKING_MODE = 'ranking';
 const HOSTS = ['sakuramankai', 'sakurazaka46jp'];
+const HOST_COLORS = new Map([
+  ['sakuramankai', '#000000'],
+  ['sakurazaka46jp', '#d93f79'],
+]);
 const WEEK_MS = 7 * 86400000;
 const integer = new Intl.NumberFormat('ja-JP');
 
@@ -196,7 +200,7 @@ function draw() {
     context.fillText(`#${integer.format(rank)}`, area.left - 7, y + 3);
   }
 
-  const colors = [cssColor('--accent', '#d93f79'), cssColor('--blue', '#2776b9')];
+  const colors = model.series.map((item) => HOST_COLORS.get(item.host) || '#667287');
   model.series.forEach((item, seriesIndex) => {
     context.save();
     context.strokeStyle = colors[seriesIndex];
