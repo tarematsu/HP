@@ -32,14 +32,17 @@ test('mobile dashboard navigation stays on a four-column two-row grid', () => {
   assert.doesNotMatch(responsive, /repeat\(6,/);
 });
 
-test('daily weekly and monthly stream growth is rendered as bars from the shared payload', () => {
-  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.2/);
+test('daily weekly and monthly stream growth uses black average listener line and replay bars', () => {
+  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.3/);
   assert.match(periodChart, /new Set\(\['daily', 'weekly', 'monthly'\]\)/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(periodChart, /detail\.data/);
   assert.match(periodChart, /row\?\.stream_growth/);
   assert.match(periodChart, /fillRect\(/);
-  assert.match(periodChart, /期間再生数/);
+  assert.match(periodChart, /listener_avg'.*color: '#000000'/);
+  assert.match(periodChart, /appendLegend\('再生数'/);
+  assert.match(periodChart, /同接・再生数の推移/);
+  assert.doesNotMatch(periodChart, /期間再生数/);
   assert.doesNotMatch(periodChart, /stream_end|previousFetch|response\.clone\(\)\.json/);
 });
 
