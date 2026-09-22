@@ -100,10 +100,19 @@ function restoreDashboardCache() {
   }
 }
 
+function announceDashboardMaterializedAt(response) {
+  const updatedAt = Number(response?.headers?.get('x-materialized-at'));
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) return;
+  window.dispatchEvent(new CustomEvent('dashboard:materialized-at', {
+    detail: { updatedAt },
+  }));
+}
+
 async function captureDashboard(input, response) {
   if (!response.ok) return;
   const url = requestUrl(input);
   if (!url || new URL(url, location.href).pathname !== '/api/dashboard') return;
+  announceDashboardMaterializedAt(response);
   try {
     renderPayload(await response.clone().json());
   } catch {
