@@ -2,10 +2,13 @@ const browser = typeof window === 'undefined' ? null : window;
 const previousFetch = browser?.fetch?.bind(browser) || null;
 const RANKING_MODE = 'ranking';
 const HOSTS = ['sakuramankai', 'sakurazaka46jp'];
+const WEEK_MS = 7 * 86400000;
 const integer = new Intl.NumberFormat('ja-JP');
 
 let rows = [];
 let rankingWeeks = [];
+let rankingFrom = null;
+let rankingTo = null;
 let drawTimer = 0;
 let resizeTimer = 0;
 let selectedWeekIndex = null;
@@ -15,6 +18,41 @@ function finite(value) {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isoDate(value) {
+  const match = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(String(value || '').trim());
+  if (!match) return '';
+  return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[3])).padStart(2, '0')}`;
+}
+
+function mondayOnOrAfter(value) {
+  const iso = isoDate(value);
+  if (!iso) return '';
+  const date = new Date(`${iso}T00:00:00Z`);
+  const delta = (8 - date.getUTCDay()) % 7;
+  date.setUTCDate(date.getUTCDate() + delta);
+  return date.toISOString().slice(0, 10);
+}
+
+function mondayOnOrBefore(value) {
+  const iso = isoDate(value);
+  if (!iso) return '';
+  const date = new Date(`${iso}T00:00:00Z`);
+  const delta = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - delta);
+  return date.toISOString().slice(0, 10);
+}
+
+function weeklyRange(from, to) {
+  const start = mondayOnOrAfter(from);
+  const end = mondayOnOrBefore(to);
+  if (!start || !end || start > end) return [];
+  const weeks = [];
+  for (let ts = Date.parse(`${start}T00:00:00Z`); ts <= Date.parse(`${end}T00:00:00Z`); ts += WEEK_MS) {
+    weeks.push(new Date(ts).toISOString().slice(0, 10));
+  }
+  return weeks;
 }
 
 function requestUrl(input) {
@@ -48,7 +86,9 @@ async function captureRankingResponse(input, response) {
     const data = await response.clone().json();
     if (!data?.ok || !Array.isArray(data.rows)) return;
     rows = data.rows;
-    rankingWeeks = Array.isArray(data.ranking_weeks) ? data.ranking_weeks : [];
+    rankingWeeks = Array.isArray(data.ranking_weeks) ? data.ranking_weeks.map(isoDate).filter(Boolean) : [];
+    rankingFrom = isoDate(url.searchParams.get('from')) || null;
+    rankingTo = isoDate(url.searchParams.get('to')) || null;
     selectedWeekIndex = null;
     scheduleDraw();
   } catch {}
@@ -87,12 +127,17 @@ function appendLegend(label, color) {
 
 function buildModel() {
   const featuredRows = rows.filter((row) => HOSTS.includes(String(row?.host_name || '').trim().toLowerCase()));
-  const weeks = rankingWeeks.length
-    ? [...new Set(rankingWeeks.map(String))].sort()
-    : [...new Set(featuredRows.map((row) => String(row.ranking_date || '')).filter(Boolean))].sort();
+  const sourceWeeks = rankingWeeks.length
+    ? [...new Set(rankingWeeks.map(isoDate).filter(Boolean))].sort()
+    : [...new Set(featuredRows.map((row) => isoDate(row.ranking_date)).filter(Boolean))].sort();
+  const rangeStart = rankingFrom || sourceWeeks[0] || '';
+  const rangeEnd = rankingTo || sourceWeeks.at(-1) || '';
+  const weeks = [...new Set([...weeklyRange(rangeStart, rangeEnd), ...sourceWeeks])].sort();
   const byHostWeek = new Map();
   for (const row of featuredRows) {
-    byHostWeek.set(`${String(row.host_name || '').trim().toLowerCase()}\u0000${row.ranking_date}`, finite(row.rank));
+    const week = isoDate(row.ranking_date);
+    if (!week) continue;
+    byHostWeek.set(`${String(row.host_name || '').trim().toLowerCase()}\u0000${week}`, finite(row.rank));
   }
   const series = HOSTS.map((host) => ({
     host,
@@ -101,9 +146,9 @@ function buildModel() {
   return { weeks, series };
 }
 
-function shortWeek(value) {
+function fullWeek(value) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
-  return match ? `${Number(match[2])}/${Number(match[3])}` : String(value || '');
+  return match ? `${match[1]}/${Number(match[2])}/${Number(match[3])}` : String(value || '');
 }
 
 function tickIndices(length, count) {
@@ -182,10 +227,10 @@ function draw() {
 
   context.fillStyle = cssColor('--muted', '#667287');
   context.font = '10px system-ui';
-  context.textAlign = 'center';
   context.textBaseline = 'top';
   const xTickCount = Math.min(model.weeks.length, width < 520 ? 4 : 6);
-  for (const index of tickIndices(model.weeks.length, xTickCount)) {
+  const xTicks = tickIndices(model.weeks.length, xTickCount);
+  for (const index of xTicks) {
     const x = positions[index];
     context.beginPath();
     context.strokeStyle = 'rgba(31,45,68,.16)';
@@ -193,7 +238,10 @@ function draw() {
     context.lineTo(x, area.top + area.height + 5);
     context.stroke();
     context.fillStyle = cssColor('--muted', '#667287');
-    context.fillText(shortWeek(model.weeks[index]), x, area.top + area.height + 9);
+    const first = index === 0;
+    const last = index === model.weeks.length - 1;
+    context.textAlign = first ? 'left' : last ? 'right' : 'center';
+    context.fillText(fullWeek(model.weeks[index]), first ? x + 2 : last ? x - 2 : x, area.top + area.height + 9);
   }
 
   const title = document.getElementById('chartTitle');
