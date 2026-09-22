@@ -10,7 +10,7 @@ const materialized = readFileSync(new URL('../functions/lib/materialized-history
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
 test('ranking renders a two-host leaderboard chart', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.3/);
+  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.4/);
   assert.match(rankingChart, /const HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
   assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
@@ -20,8 +20,8 @@ test('ranking renders a two-host leaderboard chart', () => {
   assert.match(rankingChart, /順位は上ほど高順位/);
 });
 
-test('ranking uses a complete Monday timeline and keeps the table ranked-only', () => {
-  assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.2/);
+test('ranking uses a complete Monday timeline and reuses it for the missing-gap overlay', () => {
+  assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.4/);
   assert.match(rankingChart, /function weeklyRange\(from, to\)/);
   assert.match(rankingChart, /mondayOnOrAfter/);
   assert.match(rankingChart, /mondayOnOrBefore/);
@@ -35,8 +35,7 @@ test('ranking uses a complete Monday timeline and keeps the table ranked-only', 
   assert.match(rankingMissing, /MISSING_START = '2026-01-26'/);
   assert.match(rankingMissing, /MISSING_END = '2026-09-14'/);
   assert.match(rankingMissing, /function completeWeeks\(\)/);
-  assert.match(rankingMissing, /renderedWeeks\.length/);
-  assert.match(rankingMissing, /\.\.\.weeklyRange\(from, to\)/);
+  assert.match(rankingMissing, /new Set\(renderedWeeks\.map\(isoDate\)/);
   assert.match(rankingMissing, /fillText\('欠測'/);
   assert.match(rankingMissing, /空白週は圏外です/);
   assert.match(rankingMissing, /history:ranking-chart-drawn/);
@@ -44,8 +43,10 @@ test('ranking uses a complete Monday timeline and keeps the table ranked-only', 
   assert.match(rankingMissing, /keepRankedRowsOnly/);
   assert.match(rankingMissing, /\^#\?\\d\+\$/);
   assert.match(rankingMissing, /if \(!hasNumericRank\(row\)\) row\.remove\(\)/);
+  assert.doesNotMatch(rankingMissing, /window\.fetch|response\.clone\(\)\.json|weeklyRange\(|requestUrl\(/);
   assert.doesNotMatch(rankingMissing, /createMissingRow/);
   assert.doesNotMatch(rankingMissing, /clearRect\(area\.left/);
+  assert.doesNotMatch(rankingChart, /DOMNodeInserted/);
 });
 
 test('summary tables remove maximum likes and primary host while retaining track count', () => {
