@@ -84,7 +84,7 @@ function draw() {
   const positions = rows.map((_, index) => area.left + step * (index + 0.5));
 
   const listenerSeries = [
-    { key: 'listener_avg', label: '平均同接', color: cssColor('--accent', '#d93f79'), width: 2.6 },
+    { key: 'listener_avg', label: '平均同接', color: '#000000', width: 2.6 },
     { key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 1.9 },
     { key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 1.9 },
   ];
@@ -166,7 +166,7 @@ function draw() {
       detail.textContent = `${row.period_key || ''}　平均同接 ${integer.format(Math.round(finite(row.listener_avg) || 0))}`
         + `　最大同接 ${integer.format(Math.round(finite(row.listener_max) || 0))}`
         + `　最小同接 ${integer.format(Math.round(finite(row.listener_min) || 0))}`
-        + `　期間再生数 ${finite(row.stream_growth) == null ? '—' : integer.format(Math.round(Number(row.stream_growth)))}`;
+        + `　再生数 ${finite(row.stream_growth) == null ? '—' : integer.format(Math.round(Number(row.stream_growth)))}`;
     } else {
       detail.textContent = '';
     }
@@ -177,11 +177,11 @@ function draw() {
     const items = listenerSeries
       .filter((series) => rows.some((row) => finite(row?.[series.key]) != null))
       .map((series) => appendLegend(series.label, series.color));
-    if (streamValues.length) items.push(appendLegend('期間再生数', streamColor, 'period-stream-bars'));
+    if (streamValues.length) items.push(appendLegend('再生数', streamColor, 'period-stream-bars'));
     legend.replaceChildren(...items);
   }
   const title = document.getElementById('chartTitle');
-  if (title) title.textContent = '同接・期間再生数の推移';
+  if (title) title.textContent = '同接・再生数の推移';
   const foot = document.getElementById('chartFoot');
   if (foot) foot.textContent = '';
   const start = document.getElementById('chartStartDate');
