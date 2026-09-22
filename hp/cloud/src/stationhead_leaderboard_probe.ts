@@ -78,23 +78,40 @@ export async function applyStationheadLeaderboardProbeInput(value: unknown, env:
   if (!records) return { status: 400, body: { error: "invalid leaderboard probe" } };
   const digest = await sha256Hex(contentIdentity(deviceId, records));
   const historyKey = `${HISTORY_PREFIX}${digest.slice(0, 32)}.json`;
-  const previous = await env.DATA_BUCKET.head(LATEST_KEY);
-  if (previous?.customMetadata?.contentDigest === digest) {
-    return { status: 200, body: { accepted: records.length, stored: false, unchanged: true, reported: true, delivery: "r2-pull", historyKey } };
-  }
-  const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
   const options = { httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { contentDigest: digest } };
   const weeklyCandidate = stationheadWeeklyCandidateFromRecords(records, digest);
+  const weeklyKey = weeklyCandidate ? stationheadWeeklyCandidateKey(weeklyCandidate.ranking_date) : null;
+  const previous = await env.DATA_BUCKET.head(LATEST_KEY);
+  if (previous?.customMetadata?.contentDigest === digest) {
+    let weeklySeeded = false;
+    if (weeklyCandidate && weeklyKey) {
+      const existingWeekly = await env.DATA_BUCKET.head(weeklyKey);
+      if (existingWeekly?.customMetadata?.contentDigest !== digest) {
+        await env.DATA_BUCKET.put(weeklyKey, JSON.stringify(weeklyCandidate), options);
+        weeklySeeded = true;
+      }
+    }
+    return {
+      status: 200,
+      body: {
+        accepted: records.length,
+        stored: false,
+        unchanged: true,
+        reported: true,
+        delivery: "r2-pull",
+        historyKey,
+        weeklyCandidate: weeklyCandidate?.ranking_date ?? null,
+        weeklySeeded,
+      },
+    };
+  }
+  const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
   const writes: Promise<unknown>[] = [
     env.DATA_BUCKET.put(historyKey, serialized, options),
     env.DATA_BUCKET.put(LATEST_KEY, serialized, options),
   ];
-  if (weeklyCandidate) {
-    writes.push(env.DATA_BUCKET.put(
-      stationheadWeeklyCandidateKey(weeklyCandidate.ranking_date),
-      JSON.stringify(weeklyCandidate),
-      options,
-    ));
+  if (weeklyCandidate && weeklyKey) {
+    writes.push(env.DATA_BUCKET.put(weeklyKey, JSON.stringify(weeklyCandidate), options));
   }
   await Promise.all(writes);
   return {
@@ -107,6 +124,7 @@ export async function applyStationheadLeaderboardProbeInput(value: unknown, env:
       delivery: "r2-pull",
       historyKey,
       weeklyCandidate: weeklyCandidate?.ranking_date ?? null,
+      weeklySeeded: Boolean(weeklyCandidate),
     },
   };
 }
