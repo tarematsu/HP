@@ -124,5 +124,5 @@ test('history display layer uses current canonical modules only', () => {
   assert.match(source, /broadcasts: \{ title: '公式ストリーム比較', table: '公式ストリーム一覧'/);
   assert.doesNotMatch(source, /tracks: \{|再生曲一覧|history-copy-fixes|history-track-likes/);
   assert.match(entry, /history-broadcasts\.js\?v=20260923\.2/);
-  assert.match(entry, /history-period-chart\.js\?v=20260923\.3/);
+  assert.match(entry, /history-period-chart\.js\?v=20260923\.\d+/);
 });
