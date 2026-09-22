@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8');
 
-test('dashboard entry installs the previous-day comparison overlay', async () => {
+test('dashboard entry installs the sole previous-day comparison chart renderer', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260922\.2/);
+  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260923\.1/);
+  assert.doesNotMatch(entry, /dashboard-current-enhancements\.js/);
 });
 
 test('online chart overlays the previous 24-hour series in gray on the current time axis', async () => {
@@ -30,17 +31,12 @@ test('online comparison chart still renders comment velocity from the dashboard 
 });
 
 test('online extrema labels omit borders and include JST time', async () => {
-  for (const file of [
-    'public/dashboard-chart-comparison.js',
-    'public/dashboard-current-enhancements.js',
-  ]) {
-    const source = await text(file);
-    assert.match(source, /const jstExtremaTime = new Intl\.DateTimeFormat/);
-    assert.match(source, /timeZone: 'Asia\/Tokyo'/);
-    assert.match(source, /`最小 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
-    assert.match(source, /`最大 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
-    assert.doesNotMatch(source, /strokeRect\(/);
-  }
+  const source = await text('public/dashboard-chart-comparison.js');
+  assert.match(source, /const jstExtremaTime = new Intl\.DateTimeFormat/);
+  assert.match(source, /timeZone: 'Asia\/Tokyo'/);
+  assert.match(source, /`最小 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
+  assert.match(source, /`最大 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
+  assert.doesNotMatch(source, /strokeRect\(/);
 });
 
 test('online comparison chart waits for a real canvas width and redraws after layout changes', async () => {

@@ -4,19 +4,20 @@ import test from 'node:test';
 
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const enhancement = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
+const layout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
+const chart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 
-test('current metrics are ordered online, total streams and total members without a 24h online range', () => {
-  assert.match(metrics, /dashboard-current-enhancements\.js\?v=20260921\.4/);
+test('current metrics are ordered online, total streams and total members without a duplicate chart renderer', () => {
+  assert.match(metrics, /dashboard-current-layout\.js\?v=20260923\.1/);
+  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260923\.1/);
+  assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
   assert.match(metrics, /dashboard-client\.js\?v=[^']+/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260921\.4/);
   assert.match(metrics, /dashboard:payload/);
-  assert.match(enhancement, /\[onlinePanel, streamsPanel, membersPanel\]/);
-  assert.doesNotMatch(enhancement, /24h最小/);
-  assert.doesNotMatch(enhancement, /24h最大/);
-  assert.doesNotMatch(enhancement, /renderOnlineRange/);
+  assert.match(layout, /\[onlinePanel, streamsPanel, membersPanel\]/);
+  assert.doesNotMatch(layout, /audienceChart|getContext\('2d'\)|drawEnhancedChart/);
 });
 
 test('mobile dashboard tabs and metrics stay compact', () => {
@@ -27,22 +28,22 @@ test('mobile dashboard tabs and metrics stay compact', () => {
   assert.match(css, /white-space:\s*nowrap !important/);
 });
 
-test('current chart draws numeric axes in black and green with JST labels', () => {
-  assert.match(enhancement, /オンライン数\(人\)/);
-  assert.match(enhancement, /コメント\/2分/);
-  assert.match(enhancement, /時刻 \(JST\)/);
-  assert.match(enhancement, /timeZone: 'Asia\/Tokyo'/);
-  assert.match(enhancement, /strokeStyle = '#111'/);
-  assert.match(enhancement, /rgba\(22,139,115,\.32\)/);
-  assert.match(enhancement, /`最小 \$\{numberText\(onlineRawMin\)\}（\$\{jstExtremaTime\.format/);
-  assert.match(enhancement, /`最大 \$\{numberText\(onlineRawMax\)\}（\$\{jstExtremaTime\.format/);
-  assert.doesNotMatch(enhancement, /strokeRect\(/);
+test('current chart draws numeric axes in black and green with JST labels from one renderer', () => {
+  assert.match(chart, /オンライン数\(人\)/);
+  assert.match(chart, /コメント\/2分/);
+  assert.match(chart, /時刻 \(JST\)/);
+  assert.match(chart, /timeZone: 'Asia\/Tokyo'/);
+  assert.match(chart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\.5\)/);
+  assert.match(chart, /rgba\(22,139,115,\.42\)/);
+  assert.match(chart, /`最小 \$\{integer\.format\(currentMin\)\}（\$\{jstExtremaTime\.format/);
+  assert.match(chart, /`最大 \$\{integer\.format\(currentMax\)\}（\$\{jstExtremaTime\.format/);
+  assert.doesNotMatch(chart, /strokeRect\(/);
 });
 
 test('stream goal is moved into the metric and ETA is display-only JST', () => {
-  assert.match(enhancement, /metricGoalCompact/);
-  assert.match(enhancement, /jstGoalDateTime = new Intl\.DateTimeFormat[\s\S]*timeZone: 'Asia\/Tokyo'/);
-  assert.match(enhancement, /jstGoalDateTime\.format/);
+  assert.match(layout, /metricGoalCompact/);
+  assert.match(layout, /jstGoalDateTime = new Intl\.DateTimeFormat[\s\S]*timeZone: 'Asia\/Tokyo'/);
+  assert.match(layout, /jstGoalDateTime\.format/);
   assert.match(css, /\.goal-card\s*\{[\s\S]*display:\s*none !important/);
 });
 
