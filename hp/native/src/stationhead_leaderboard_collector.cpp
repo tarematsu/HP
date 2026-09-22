@@ -316,8 +316,8 @@ for (let index = 0; index < all_lines.length && expectedRank <= 100; index += 1)
   if (Number(all_lines[index]) !== expectedRank) continue;
   let handle = '';
   for (let cursor = index + 1; cursor < Math.min(all_lines.length, index + 7); cursor += 1) {
-    const match = all_lines[cursor].match(/^@([A-Za-z0-9_.-]{1,80})$/);
-    if (match) {
+    const match = all_lines[cursor].match(/^@?([A-Za-z0-9_.-]{1,80})$/);
+    if (match && !/^\d+$/.test(match[1])) {
       handle = match[1];
       break;
     }
