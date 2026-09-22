@@ -1,23 +1,42 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const currentChartDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
+const redirects = readFileSync(new URL('../public/_redirects', import.meta.url), 'utf8');
+
+const historyPageUrl = new URL('../public/history/index.html', import.meta.url);
+const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.url);
 
 test('dashboard starts on current and exposes every mode in one tab panel', () => {
-  assert.match(page, /data-view="current"[^>]*>現在</);
-  for (const mode of ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts', 'likes']) {
+  assert.ok(page.indexOf('data-view="current"') < page.indexOf('data-mode="daily"'));
+  assert.match(page, /data-view="current" class="active" aria-current="page">現在/);
+  assert.match(page, /id="currentView" class="dashboard-view"/);
+  assert.match(page, /id="historyView" class="dashboard-view history-view" hidden/);
+  assert.match(page, /id="likesView" class="dashboard-view likes-view" hidden/);
+  for (const mode of ['daily', 'weekly', 'monthly', 'ranking', 'likes', 'broadcasts']) {
     assert.match(page, new RegExp(`data-mode="${mode}"`));
   }
-  assert.match(tabsClient, /const initialMode = modeFromHash\(\) \|\| 'current'/);
+  assert.doesNotMatch(page, /data-mode="tracks"|id="trackControls"/);
 });
 
 test('archive and likes markup are integrated below the shared tab panel', () => {
-  assert.match(page, /id="historyView"/);
-  assert.match(page, /id="likesView"/);
-  assert.doesNotMatch(page, /href="\/history/);
+  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
+    assert.match(page, new RegExp(`id="${id}"`));
+  }
+  for (const id of ['likesLoad', 'likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
+    assert.match(page, new RegExp(`id="${id}"`));
+  }
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260923\.4'/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260923\.5'\)/);
+  assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
+  assert.match(tabsClient, /showOnly\(historyView\)/);
+  assert.match(tabsClient, /showOnly\(likesView\)/);
+  assert.match(historyEntry, /VALID_MODES/);
 });
 
 test('inactive history and likes runtimes are not prefetched from the current tab', () => {
@@ -44,5 +63,23 @@ test('history and likes startup release unintended skip-link focus', () => {
 
 test('tab selection stays on the root document and never navigates to history pages', () => {
   assert.match(tabsClient, /mode === 'current' \? '\/' : `\/#\$\{mode\}`/);
-  assert.doesNotMatch(tabsClient, /location\.href\s*=\s*['"]\/history/);
+  assert.match(tabsClient, /event\.preventDefault\(\)/);
+  assert.doesNotMatch(page, /href="\/history/);
+  assert.doesNotMatch(tabsClient, /location\.(?:assign|replace)\([^)]*history/);
+  assert.doesNotMatch(historyEntry, /legacyHistoryRoute|location\.replace/);
+});
+
+test('current and history chart details are owned by their respective renderers', () => {
+  assert.match(page, /id="currentChartDetail"[^>]*data-current-chart-detail/);
+  assert.match(page, /id="chartDetail"[^>]*data-history-chart-detail/);
+  assert.equal((page.match(/id="chartDetail"/g) || []).length, 1);
+  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260923\.4/);
+  assert.match(currentChartDetail, /document\.getElementById\('currentChartDetail'\)/);
+  assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
+});
+
+test('standalone history and likes HTML pages are removed', () => {
+  assert.equal(existsSync(historyPageUrl), false);
+  assert.equal(existsSync(likesPageUrl), false);
+  assert.doesNotMatch(redirects, /^\/history/m);
 });
