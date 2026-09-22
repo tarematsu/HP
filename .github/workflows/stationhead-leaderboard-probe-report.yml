@@ -154,7 +154,7 @@ jobs:
             `- **cloud stored**: \`${String(payload.cloud?.stored ?? false)}\``,
             `- **cloud accepted**: \`${String(payload.cloud?.accepted ?? 0)}\``,
             '',
-            'This snapshot was read through the Cloudflare R2 REST API. No Worker public URL or repository_dispatch is required.',
+            'This snapshot was read through the Cloudflare R2 REST API without using a Worker public URL.',
             '',
           ].join('\n'));
           NODE
