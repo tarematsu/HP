@@ -306,11 +306,11 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
     .split(/\n+/)
     .map(line => bounded(line, 120))
     .filter(Boolean)
-    .slice(0, 800);
+    .slice(0, 1600);
   const lines = allLines.slice(0, 120);
   const leaderboard = [];
   let expectedRank = 1;
-  for (let index = 0; index < allLines.length && expectedRank <= 200; index += 1) {
+  for (let index = 0; index < allLines.length && expectedRank <= 100; index += 1) {
     if (allLines[index] !== String(expectedRank)) continue;
     let host = '';
     for (let lookahead = index + 1; lookahead < Math.min(allLines.length, index + 8); lookahead += 1) {
@@ -338,7 +338,7 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
   const signed_in = !/^\/sign-in(?:\/|$)/i.test(path);
   const text_ready = lines.length >= 10 && links.length >= 5;
   const leaderboard_ready = !signed_in || (
-    /^\/leaderboard\/?$/i.test(path) && leaderboard.length >= 50 && text_ready
+    /^\/leaderboard\/?$/i.test(path) && leaderboard.length >= 100 && text_ready
   );
   return {
     schema: 2,
