@@ -8,8 +8,12 @@ const headerCss = readFileSync(new URL('../public/dashboard-fixes.css', import.m
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 
 test('dashboard header repair runs before tabs and dashboard client startup', () => {
-  assert.ok(dashboardEntry.indexOf("import './dashboard-header.js?v=20260922.1'") < dashboardEntry.indexOf("import './dashboard-tabs.js?v=20260922.1'"));
-  assert.match(headerRepair, /dashboard-fixes\.css\?v=20260922\.1/);
+  const headerImport = dashboardEntry.match(/import '\.\/dashboard-header\.js\?v=[^']+'/)?.[0];
+  const tabsImport = dashboardEntry.match(/import '\.\/dashboard-tabs\.js\?v=[^']+'/)?.[0];
+  assert.ok(headerImport, 'dashboard-header.js must have an explicit deployment version');
+  assert.ok(tabsImport, 'dashboard-tabs.js must have an explicit deployment version');
+  assert.ok(dashboardEntry.indexOf(headerImport) < dashboardEntry.indexOf(tabsImport));
+  assert.match(headerRepair, /dashboard-fixes\.css\?v=[^']+/);
   assert.match(headerRepair, /description\.replaceWith\(updated\)/);
   assert.match(headerRepair, /querySelector\('\.live-line'\)\?\.remove\(\)/);
   assert.match(headerRepair, /querySelector\('\.app-launch'\)\?\.remove\(\)/);
