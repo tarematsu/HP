@@ -189,10 +189,15 @@ test('normal track history skips the unused like-ranking status payload', async 
   assert.equal(prepared.some((sql) => sql.includes("model_key='track-history-status'")), false);
 });
 
-test('history guard is installed before the consolidated embedded runtime', () => {
+test('history runtime uses direct data requests instead of global fetch guards', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-  const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
-  assert.ok(entry.indexOf('history-request-guard.js') < entry.indexOf('history-lite.js'));
-  assert.doesNotMatch(guard, /\/api\/track-history|ranking', '0'/);
-  assert.match(guard, /searchParams\.set\('revision', '3'\)/);
+  const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+  const dataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
+  const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+  const tweaks = readFileSync(new URL('../public/pages-ui-tweaks.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(entry, /history-request-guard|history-current-overlay/);
+  assert.match(history, /history-data-client\.js/);
+  assert.match(dataClient, /fetchHistoryPayload/);
+  assert.match(broadcasts, /revision: API_REVISION/);
+  assert.doesNotMatch(tweaks, /window\.fetch|pagesUiNativeFetch|officialPartyRequest/);
 });

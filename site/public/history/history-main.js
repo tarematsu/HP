@@ -22,7 +22,7 @@ async function importModeRuntime(mode) {
     return;
   }
   await import('/history/history-broadcast-summary.js?v=20260923.2');
-  await import('/history/history-broadcasts.js?v=20260923.2');
+  await import('/history/history-broadcasts.js?v=20260923.3');
 }
 
 async function ensureHistoryModeRuntime(mode) {
@@ -43,12 +43,10 @@ window.__ensureHistoryModeRuntime = ensureHistoryModeRuntime;
 const initialMode = VALID_MODES.has(requestedMode) ? requestedMode : 'weekly';
 if (initialMode !== requestedMode) history.replaceState(null, '', '/#weekly');
 
-await import('/history/history-request-guard.js?v=20260921.2');
-await import('/history/history-current-overlay.js');
 await import('/history/history-page-fixes.js?v=20260923.5');
 await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260923.2');
 await import('/history/history-table-cleanup.js?v=20260923.1');
 await ensureHistoryModeRuntime(initialMode);
-await import('/history/history-lite.js?v=20260923.2');
+await import('/history/history-lite.js?v=20260923.3');
 window.dispatchEvent(new Event('history:runtime-ready'));

@@ -95,7 +95,7 @@ test('official series keeps distinct nearby events and reports missing summaries
 
 test('active Pages archive runtimes are UTC-only except the official-party today highlight', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-  const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
+  const dataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
   const fixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
   const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
   const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
@@ -103,11 +103,11 @@ test('active Pages archive runtimes are UTC-only except the official-party today
   const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
   const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-  const utcArchiveSources = [entry, guard, fixes, history, likes].join('\n');
+  const utcArchiveSources = [entry, dataClient, fixes, history, likes].join('\n');
 
   assert.match(entry, /history:runtime-ready/);
-  assert.doesNotMatch(entry, /trackDate|trackWeekMode|'tracks'|legacyHistoryRoute/);
-  assert.doesNotMatch(guard, /TRACK_CACHE_PREFIX|\/api\/track-history|history:track-rows/);
+  assert.doesNotMatch(entry, /trackDate|trackWeekMode|'tracks'|legacyHistoryRoute|history-request-guard|history-current-overlay/);
+  assert.doesNotMatch(dataClient, /TRACK_CACHE_PREFIX|\/api\/track-history|history:track-rows/);
   assert.doesNotMatch(fixes, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
   assert.match(history, /function applyPreset\(days\)/);
   assert.match(history, /todayUtc/);
