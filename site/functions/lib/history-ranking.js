@@ -30,6 +30,31 @@ function validRank(value) {
   return number != null && number > 0;
 }
 
+function fandomLabel(artistName, relationType) {
+  const artist = String(artistName || '').trim();
+  if (!artist) return null;
+  return `${artist}(${relationType === 'official' ? '公式' : 'ファンダム'})`;
+}
+
+function decorateFandomRows(rows) {
+  const byHost = new Map();
+  for (const row of rows || []) {
+    const artistName = String(row?.artist_name || '').trim();
+    if (!artistName) continue;
+    const relationType = row?.fandom_type === 'official' ? 'official' : 'fandom';
+    byHost.set(hostKey(row.host_name), { artistName, relationType });
+  }
+  for (const row of rows || []) {
+    const metadata = byHost.get(hostKey(row.host_name));
+    if (metadata) {
+      row.artist_name = metadata.artistName;
+      row.fandom_type = metadata.relationType;
+    }
+    row.fandom_label = fandomLabel(row.artist_name, row.fandom_type);
+  }
+  return rows;
+}
+
 function expandWeeklyDates(values) {
   const sorted = [...new Set(values.filter(validDate))].sort();
   if (sorted.length < 2) return sorted;
@@ -195,6 +220,10 @@ export async function loadRanking(requestUrl, env, summaryLoader) {
   let rankingSql = `SELECT
 r.ranking_date,r.observed_at,r.ranking_type,r.rank,
 r.channel_name AS host_name,r.channel_alias AS host_alias,
+(SELECT f.artist_name FROM sh_channel_fandoms f
+ WHERE lower(trim(f.host_name))=lower(trim(r.channel_name)) LIMIT 1) AS artist_name,
+(SELECT f.relation_type FROM sh_channel_fandoms f
+ WHERE lower(trim(f.host_name))=lower(trim(r.channel_name)) LIMIT 1) AS fandom_type,
 r.source_sheet,r.quality_score,r.quality_flags
 FROM sh_channel_rankings r
 WHERE r.ranking_date>=? AND r.ranking_date<=?`;
@@ -227,7 +256,7 @@ GROUP BY lower(trim(channel_name))
 ORDER BY first_ranking_date ASC`).all(),
     ]);
 
-    const actualRows = rankingResult.results || [];
+    const actualRows = decorateFandomRows(rankingResult.results || []);
     const weeklyMetrics = (weeklyResult.rows || []).map((row) => ({ ...row, ranking_date: row.period_key }));
     const rankingWeeks = expandWeeklyDates((weeksResult.results || []).map((row) => row.ranking_date));
     const firstSeenRows = firstSeenResult.results || [];
@@ -240,6 +269,7 @@ ORDER BY first_ranking_date ASC`).all(),
         : actualHosts;
 
     const completedRows = completeRankingTimeline(actualRows, rankingWeeks, hosts, firstSeen);
+    decorateFandomRows(completedRows);
     const aggregateAllHosts = scope === 'all' && !hostSearch;
     const rows = aggregateAllHosts ? [...actualRows] : completedRows;
     const hostOrder = scope === 'featured' && !hostSearch ? FEATURED_HOSTS : [];
