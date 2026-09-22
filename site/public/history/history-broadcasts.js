@@ -22,6 +22,7 @@
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   });
   const DATE_PREFIX = /^\s*\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/;
+  const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
   const SERIES_COLORS = [
     ['--accent', '#d93f79'],
     ['--accent-2', '#6657d8'],
@@ -74,7 +75,7 @@
   }
 
   function eventLabel(item) {
-    const name = String(item?.event_name || '公式リスパ').trim();
+    const name = String(item?.event_name || '公式リスパ').trim().replace(OFFICIAL_EVENT_DATE_GAP, '$1');
     if (DATE_PREFIX.test(name)) return name;
     const startedAt = Number(item?.started_at);
     return Number.isFinite(startedAt)
@@ -540,11 +541,12 @@
     draw();
   }
 
-  const tableObserver = new MutationObserver(() => scheduleTableEnhance());
-  const tableHead = document.getElementById('thead');
-  const tableBody = document.getElementById('tbody');
-  if (tableHead) tableObserver.observe(tableHead, { childList: true, subtree: true });
-  if (tableBody) tableObserver.observe(tableBody, { childList: true, subtree: true });
+  window.addEventListener('history:data-loaded', (event) => {
+    if (String(event?.detail?.mode || '') === 'broadcasts') scheduleTableEnhance();
+  });
+  document.getElementById('more')?.addEventListener('click', () => {
+    if (active()) queueMicrotask(() => scheduleTableEnhance());
+  });
 
   canvas.addEventListener('click', handlePointer, true);
   canvas.addEventListener('touchstart', handlePointer, { capture: true, passive: true });
