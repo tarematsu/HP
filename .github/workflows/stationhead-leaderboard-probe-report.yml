@@ -8,9 +8,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: stationhead-leaderboard-r2-import
+  cancel-in-progress: false
+
 jobs:
   report:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -301,6 +306,37 @@ jobs:
             '',
           ].join('\n'));
           NODE
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Import weekly leaderboard into Other.db
+        working-directory: worker
+        env:
+          OTHER_DATABASE_NAME: stationhead-other
+          STATIONHEAD_LEADERBOARD_ARTIFACT: ../probe-artifact/stationhead-leaderboard-latest.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          node scripts/import-stationhead-weekly-leaderboard-actions.mjs "$STATIONHEAD_LEADERBOARD_ARTIFACT" \
+            2>&1 | tee stationhead-weekly-leaderboard-import.log
+
+      - name: Upload leaderboard import failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stationhead-weekly-leaderboard-import-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/stationhead-weekly-leaderboard-import.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload probe status artifact
         uses: actions/upload-artifact@v4
