@@ -153,7 +153,7 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
         accepted = static_cast<size_t>(acceptedValue);
       }
       if (reported && accepted > 0) {
-        stationhead_leaderboard_capture_spool::Acknowledge(accepted);
+        stationhead_leaderboard_capture_spool::Acknowledge(leaderboardCapture, accepted);
       }
     } catch (...) {
       // Keep the capture spool for the next exchange if acknowledgement is malformed.
