@@ -12,6 +12,7 @@ const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minim
 
 let lastData = null;
 let selectedHost = '';
+let forcedRefresh = false;
 
 function hostKey(value) {
   return String(value || '').trim().toLowerCase();
@@ -102,11 +103,21 @@ function render(data) {
     table.classList.remove('all-host-ranking-table');
     lastData = null;
     selectedHost = '';
+    forcedRefresh = false;
     return;
   }
 
+  if (!Array.isArray(data.host_rankings)) {
+    if (!forcedRefresh) {
+      forcedRefresh = true;
+      queueMicrotask(() => document.getElementById('load')?.click());
+    }
+    return;
+  }
+
+  forcedRefresh = false;
   lastData = data;
-  const rows = Array.isArray(data.host_rankings) ? data.host_rankings : [];
+  const rows = data.host_rankings;
   table.classList.add('all-host-ranking-table');
 
   const headRow = document.createElement('tr');
