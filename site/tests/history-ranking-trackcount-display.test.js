@@ -9,29 +9,28 @@ const tableCleanup = readFileSync(new URL('../public/history/history-table-clean
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
-test('ranking renders a two-host leaderboard chart only when that mode is loaded', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.5/);
+test('ranking chart keeps featured comparison and switches to one searched host for all-host scope', () => {
+  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.6/);
   assert.match(entry, /runtimeKey\(mode\)/);
   assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
-  assert.match(rankingChart, /const HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
+  assert.match(rankingChart, /const FEATURED_HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
   assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
-  assert.match(rankingChart, /HOST_COLORS\.get\(item\.host\)/);
+  assert.match(rankingChart, /detail\.data\.chart_hosts/);
+  assert.match(rankingChart, /chartHosts\.length === 1 \? 'single-host' : 'featured-hosts'/);
+  assert.match(rankingChart, /function hideChart\(\)/);
+  assert.match(rankingChart, /if \(!chartHosts\.length \|\| !model\.weeks\.length\)/);
   assert.match(rankingChart, /週間リーダーボード順位/);
-  assert.match(rankingChart, /panel\.hidden = false/);
-  assert.match(rankingChart, /順位は上ほど高順位/);
+  assert.match(rankingChart, /順位推移/);
   assert.match(rankingChart, /history:data-loaded/);
   assert.doesNotMatch(rankingChart, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });
 
-test('ranking uses a complete Monday timeline and reuses it for the missing-gap overlay', () => {
+test('ranking chart derives its week axis from returned host rows so pre-debut weeks are not reintroduced', () => {
   assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.6/);
-  assert.match(rankingChart, /function weeklyRange\(from, to\)/);
-  assert.match(rankingChart, /mondayOnOrAfter/);
-  assert.match(rankingChart, /mondayOnOrBefore/);
-  assert.match(rankingChart, /rankingFrom = isoDate\(detail\.from\)/);
-  assert.match(rankingChart, /rankingTo = isoDate\(detail\.to\)/);
-  assert.match(rankingChart, /\.\.\.weeklyRange\(rangeStart, rangeEnd\)/);
+  assert.match(rankingChart, /const sourceRows = rows\.filter/);
+  assert.match(rankingChart, /const weeks = \[\.\.\.new Set\(sourceRows\.map/);
+  assert.doesNotMatch(rankingChart, /weeklyRange|mondayOnOrAfter|mondayOnOrBefore|rankingFrom|rankingTo/);
   assert.match(rankingChart, /function fullWeek\(value\)/);
   assert.match(rankingChart, /context\.textAlign = first \? 'left' : last \? 'right' : 'center'/);
   assert.match(rankingChart, /first \? x \+ 2 : last \? x - 2 : x/);
