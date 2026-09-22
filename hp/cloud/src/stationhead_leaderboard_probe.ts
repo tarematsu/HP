@@ -1,4 +1,8 @@
 import type { Env } from "./sources";
+import {
+  stationheadWeeklyCandidateFromRecords,
+  stationheadWeeklyCandidateKey,
+} from "./stationhead_leaderboard_weekly";
 
 const MAX_RECORDS = 8;
 const MAX_BODY_CHARS = 65_536;
@@ -80,11 +84,31 @@ export async function applyStationheadLeaderboardProbeInput(value: unknown, env:
   }
   const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
   const options = { httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { contentDigest: digest } };
-  await Promise.all([
+  const weeklyCandidate = stationheadWeeklyCandidateFromRecords(records, digest);
+  const writes: Promise<unknown>[] = [
     env.DATA_BUCKET.put(historyKey, serialized, options),
     env.DATA_BUCKET.put(LATEST_KEY, serialized, options),
-  ]);
-  return { status: 200, body: { accepted: records.length, stored: true, unchanged: false, reported: true, delivery: "r2-pull", historyKey } };
+  ];
+  if (weeklyCandidate) {
+    writes.push(env.DATA_BUCKET.put(
+      stationheadWeeklyCandidateKey(weeklyCandidate.ranking_date),
+      JSON.stringify(weeklyCandidate),
+      options,
+    ));
+  }
+  await Promise.all(writes);
+  return {
+    status: 200,
+    body: {
+      accepted: records.length,
+      stored: true,
+      unchanged: false,
+      reported: true,
+      delivery: "r2-pull",
+      historyKey,
+      weeklyCandidate: weeklyCandidate?.ranking_date ?? null,
+    },
+  };
 }
 
 export async function stationheadLeaderboardLatestProbeResponse(env: Env): Promise<Response> {
