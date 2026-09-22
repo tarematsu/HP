@@ -45,11 +45,17 @@ export function sanitizeQueueTrackMetadata(queue) {
   let changed = false;
   const tracks = queue.tracks.map((track) => {
     if (!track || typeof track !== 'object') return track;
-    const title = trackTitleValue(track.title);
-    const artist = trackArtistValue(track.artist);
-    if (title === track.title && artist === track.artist) return track;
+    const rawTitle = normalizedText(track.title);
+    const rawArtist = normalizedText(track.artist);
+    const titleIsPlaceholder = Boolean(rawTitle && !trackTitleValue(track.title));
+    const artistIsPlaceholder = Boolean(rawArtist && !trackArtistValue(track.artist));
+    if (!titleIsPlaceholder && !artistIsPlaceholder) return track;
     changed = true;
-    return { ...track, title, artist };
+    return {
+      ...track,
+      ...(titleIsPlaceholder ? { title: null } : {}),
+      ...(artistIsPlaceholder ? { artist: null } : {}),
+    };
   });
   return changed ? { ...queue, tracks } : queue;
 }
