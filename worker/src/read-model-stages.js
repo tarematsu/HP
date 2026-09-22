@@ -16,6 +16,12 @@ function integer(value) {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
 
+function positiveInteger(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+}
+
 function timestamp(value) {
   const numeric = integer(value);
   if (numeric != null) return numeric;
@@ -45,6 +51,66 @@ function queueValueFromJson(value) {
 
 function objectValue(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function sameStableQueueTrack(current, previous) {
+  const currentQueueTrackId = positiveInteger(current?.queue_track_id);
+  const previousQueueTrackId = positiveInteger(previous?.queue_track_id);
+  if (currentQueueTrackId != null && previousQueueTrackId != null) {
+    return currentQueueTrackId === previousQueueTrackId;
+  }
+
+  const currentStationheadTrackId = positiveInteger(current?.stationhead_track_id);
+  const previousStationheadTrackId = positiveInteger(previous?.stationhead_track_id);
+  if (currentStationheadTrackId != null && previousStationheadTrackId != null) {
+    return currentStationheadTrackId === previousStationheadTrackId;
+  }
+
+  const currentIsrc = normalizedIsrc(current?.isrc);
+  const previousIsrc = normalizedIsrc(previous?.isrc);
+  if (currentIsrc && previousIsrc) return currentIsrc === previousIsrc;
+
+  const currentSpotifyId = String(current?.spotify_id || '').trim();
+  const previousSpotifyId = String(previous?.spotify_id || '').trim();
+  if (currentSpotifyId && previousSpotifyId) return currentSpotifyId === previousSpotifyId;
+
+  const currentDuration = positiveInteger(current?.duration_ms);
+  const previousDuration = positiveInteger(previous?.duration_ms);
+  return currentDuration != null && currentDuration === previousDuration;
+}
+
+function preserveStablePositionMetadata(queue, previousQueue) {
+  if (!queue?.tracks?.length || !previousQueue?.tracks?.length) return queue;
+  const previousByPosition = new Map(previousQueue.tracks.map((track, index) => [
+    integer(track?.position) ?? index,
+    track,
+  ]));
+  let changed = false;
+  const tracks = queue.tracks.map((track, index) => {
+    if (!track || typeof track !== 'object') return track;
+    const position = integer(track.position) ?? index;
+    const previous = previousByPosition.get(position);
+    if (!previous || !sameStableQueueTrack(track, previous)) return track;
+
+    const title = track.title || previous.title || null;
+    const artist = track.artist || previous.artist || null;
+    const albumName = track.album_name || previous.album_name || null;
+    const thumbnailUrl = track.thumbnail_url || previous.thumbnail_url || null;
+    if (title === track.title
+        && artist === track.artist
+        && albumName === track.album_name
+        && thumbnailUrl === track.thumbnail_url) return track;
+
+    changed = true;
+    return {
+      ...track,
+      title,
+      artist,
+      album_name: albumName,
+      thumbnail_url: thumbnailUrl,
+    };
+  });
+  return changed ? { ...queue, tracks } : queue;
 }
 
 export function stableChannelPresentation(value) {
@@ -134,7 +200,8 @@ export async function preserveReadModelForWrite(env, readModel) {
       || integer(previous.queue_id) !== integer(readModel.queue.queue_id)
       || timestamp(previous.start_time) !== timestamp(readModel.queue.start_time)) return baseReadModel;
   const previousQueue = sanitizeQueueTrackMetadata(queueValueFromJson(previous.queue_json));
-  const preserved = preserveReadModelTrackMetadata(queue, previousQueue);
+  const identityPreserved = preserveReadModelTrackMetadata(queue, previousQueue);
+  const preserved = preserveStablePositionMetadata(identityPreserved, previousQueue);
   return preserved === queue
     ? baseReadModel
     : { ...baseReadModel, queue: { ...baseReadModel.queue, value: preserved } };
