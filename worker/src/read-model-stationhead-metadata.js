@@ -101,19 +101,18 @@ function collectKeys(tracks, limit) {
   for (let index = 0; index < (tracks || []).length; index += 1) {
     const track = tracks[index];
     if (!track || !trackNeedsHydration(track)) continue;
-    if (spotifyIds.size < limit) {
-      const spotifyId = text(track.spotify_id);
-      if (spotifyId) spotifyIds.add(spotifyId);
+    const spotifyId = text(track.spotify_id);
+    const isrc = normalizedIsrc(track.isrc);
+    const stationheadTrackId = integer(track.stationhead_track_id);
+
+    if (spotifyIds.size < limit && spotifyId) spotifyIds.add(spotifyId);
+    if (isrcs.size < limit && isrc) isrcs.add(isrc);
+    if (stationheadTrackIds.size < limit && stationheadTrackId != null) {
+      stationheadTrackIds.add(stationheadTrackId);
     }
-    if (isrcs.size < limit) {
-      const isrc = normalizedIsrc(track.isrc);
-      if (isrc) isrcs.add(isrc);
+    if (!spotifyId && !isrc && stationheadTrackId == null && positions.size < limit) {
+      positions.add(integer(track.position) ?? index);
     }
-    if (stationheadTrackIds.size < limit) {
-      const stationheadTrackId = integer(track.stationhead_track_id);
-      if (stationheadTrackId != null) stationheadTrackIds.add(stationheadTrackId);
-    }
-    if (positions.size < limit) positions.add(integer(track.position) ?? index);
     if (spotifyIds.size === limit
         && isrcs.size === limit
         && stationheadTrackIds.size === limit
