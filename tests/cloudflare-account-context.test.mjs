@@ -211,10 +211,16 @@ test('the composite action is the single production credential resolver', () => 
   assert.match(leaderboardReport, /uses: \.\/\.github\/actions\/cloudflare-context/);
   assert.match(leaderboardReport, /\/r2\/buckets/);
   assert.match(leaderboardReport, /diagnostics\/stationhead-leaderboard\/status\.json/);
+  assert.match(leaderboardReport, /diagnostics\/stationhead-leaderboard\/latest\.json/);
   assert.match(leaderboardReport, /\.result\.buckets/);
-  assert.match(leaderboardReport, /objects\/\$\{encoded_key\}/);
+  assert.match(leaderboardReport, /objects\/\$\{encoded_status_key\}/);
+  assert.match(leaderboardReport, /objects\/\$\{encoded_latest_key\}/);
   assert.match(leaderboardReport, /stationhead-leaderboard-probe-status\.json/);
+  assert.match(leaderboardReport, /stationhead-leaderboard-latest\.json/);
+  assert.match(leaderboardReport, /latest_raw="\$\(mktemp\)"/);
   assert.match(leaderboardReport, /forbidden diagnostic field/);
+  assert.match(leaderboardReport, /forbidden leaderboard field/);
+  assert.match(leaderboardReport, /device_.?id/);
   assert.doesNotMatch(
     leaderboardReport,
     /cloudflare-worker-public-url|workers\.dev|PROBE_URL|repository_dispatch/,
