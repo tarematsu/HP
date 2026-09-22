@@ -1,13 +1,13 @@
 import './history/history-global-fixes.js';
 import './pages-ui-tweaks.js?v=20260921.1';
-import './dashboard-header.js?v=20260922.3';
-import './dashboard-tabs.js?v=20260922.3';
-import './dashboard-current-layout.js?v=20260923.1';
-import './dashboard-chart-stability.js?v=20260923.1';
-import './dashboard-chart-comparison.js?v=20260923.1';
-import './dashboard-chart-detail.js?v=20260923.1';
-import './dashboard-daily-summaries.js?v=20260923.1';
-import './dashboard-fetch-cache.js?v=20260923.1';
+import './dashboard-header.js?v=20260923.4';
+import './dashboard-tabs.js?v=20260923.4';
+import './dashboard-current-layout.js?v=20260923.4';
+import './dashboard-chart-stability.js?v=20260923.4';
+import './dashboard-chart-comparison.js?v=20260923.4';
+import './dashboard-chart-detail.js?v=20260923.4';
+import './dashboard-daily-summaries.js?v=20260923.4';
+import './dashboard-fetch-cache.js?v=20260923.4';
 
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
 const imageRetryTimers = new WeakMap();
@@ -74,7 +74,7 @@ function installImageState(id) {
 installImageState('channelImage');
 installImageState('trackImage');
 
-void import('/dashboard-client.js?v=20260923.1').catch((error) => {
+void import('/dashboard-client.js?v=20260923.4').catch((error) => {
   console.error('dashboard client failed to start', error);
   const status = document.getElementById('statusMessage');
   if (status) {
