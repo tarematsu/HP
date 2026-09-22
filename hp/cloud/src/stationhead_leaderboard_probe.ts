@@ -7,6 +7,8 @@ const MAX_PAGE_CHARS = 1_000;
 const MAX_CONTENT_TYPE_CHARS = 160;
 const HISTORY_PREFIX = "diagnostics/stationhead-leaderboard/history/";
 const LATEST_KEY = "diagnostics/stationhead-leaderboard/latest.json";
+const WEEKLY_PREFIX = "diagnostics/stationhead-leaderboard/weekly/";
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const SECRET_KEY = /authorization|token|secret|password|cookie|device.?uid|session/i;
 const SECRET_QUERY = /authorization|token|auth|code|key|secret|password|cookie|device.?uid|session|signature/i;
 const BEARER = /Bearer\s+[A-Za-z0-9._~+\/-]+=*/gi;
@@ -68,21 +70,60 @@ function stableBody(body: string): unknown {
 function contentIdentity(deviceId: string, records: StationheadLeaderboardProbeRecord[]): string {
   return JSON.stringify({ version: 1, device_id: deviceId, records: records.map(({ observed_at: _observedAt, body, ...record }) => ({ ...record, body: stableBody(body) })) });
 }
+function isoDateFromShiftedJst(value: number): string {
+  return new Date(value + JST_OFFSET_MS).toISOString().slice(0, 10);
+}
+export function stationheadLeaderboardWeekForObservedAt(observedAt: number): string | null {
+  if (!Number.isSafeInteger(observedAt)) return null;
+  const local = new Date(observedAt + JST_OFFSET_MS);
+  const day = local.getUTCDay();
+  if (day === 1 && local.getUTCHours() >= 18) return isoDateFromShiftedJst(observedAt);
+  if (day !== 2) return null;
+  return isoDateFromShiftedJst(observedAt - 86_400_000);
+}
+export function stationheadLeaderboardWeeklyCandidateKey(week: string): string {
+  return `${WEEKLY_PREFIX}${week}.json`;
+}
+function weeklyCandidate(records: StationheadLeaderboardProbeRecord[]): { week: string; observedAt: number } | null {
+  const candidates = records
+    .map(record => ({ week: stationheadLeaderboardWeekForObservedAt(record.observed_at), observedAt: record.observed_at }))
+    .filter((candidate): candidate is { week: string; observedAt: number } => Boolean(candidate.week))
+    .sort((a, b) => a.observedAt - b.observedAt);
+  return candidates.at(-1) ?? null;
+}
+async function putWeeklyCandidate(env: Env, candidate: { week: string; observedAt: number } | null, serialized: string, digest: string): Promise<void> {
+  if (!candidate || !env.DATA_BUCKET) return;
+  const key = stationheadLeaderboardWeeklyCandidateKey(candidate.week);
+  const previous = await env.DATA_BUCKET.head(key);
+  const previousObservedAt = Number(previous?.customMetadata?.observedAt ?? 0);
+  if (Number.isFinite(previousObservedAt) && previousObservedAt > candidate.observedAt) return;
+  await env.DATA_BUCKET.put(key, serialized, {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+    customMetadata: {
+      contentDigest: digest,
+      observedAt: String(candidate.observedAt),
+      week: candidate.week,
+    },
+  });
+}
 export async function applyStationheadLeaderboardProbeInput(value: unknown, env: Env, deviceId: string): Promise<StationheadLeaderboardProbeResult> {
   if (!env.DATA_BUCKET) return { status: 503, body: { error: "probe storage unavailable" } };
   const receivedAt = Date.now(); const records = normalizeStationheadLeaderboardProbe(value, receivedAt);
   if (!records) return { status: 400, body: { error: "invalid leaderboard probe" } };
   const digest = await sha256Hex(contentIdentity(deviceId, records));
   const historyKey = `${HISTORY_PREFIX}${digest.slice(0, 32)}.json`;
+  const candidate = weeklyCandidate(records);
+  const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
   const previous = await env.DATA_BUCKET.head(LATEST_KEY);
   if (previous?.customMetadata?.contentDigest === digest) {
+    await putWeeklyCandidate(env, candidate, serialized, digest);
     return { status: 200, body: { accepted: records.length, stored: false, unchanged: true, reported: true, delivery: "r2-pull", historyKey } };
   }
-  const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
   const options = { httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { contentDigest: digest } };
   await Promise.all([
     env.DATA_BUCKET.put(historyKey, serialized, options),
     env.DATA_BUCKET.put(LATEST_KEY, serialized, options),
+    putWeeklyCandidate(env, candidate, serialized, digest),
   ]);
   return { status: 200, body: { accepted: records.length, stored: true, unchanged: false, reported: true, delivery: "r2-pull", historyKey } };
 }
