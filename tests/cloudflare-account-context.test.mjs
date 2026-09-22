@@ -57,10 +57,7 @@ test('Cloudflare account discovery requires exactly one valid account', async ()
   assert.equal(accountId, 'account-1');
 
   await assert.rejects(
-    resolveCloudflareAccountId({
-      token: 'token',
-      fetchImpl: async () => response({ success: true, result: [] }),
-    }),
+    resolveCloudflareAccountId({ token: 'token', fetchImpl: async () => response({ success: true, result: [] }) }),
     /found 0/,
   );
   await assert.rejects(
@@ -125,6 +122,7 @@ test('the composite action is the single production credential resolver', () => 
   const deploymentGuard = readSource('.github/scripts/assert-actions-only-cloudflare.mjs');
   const cloudDeploy = readSource('.github/workflows/cloud-deploy.yml');
   const pruneUpdates = readSource('.github/workflows/prune-homepanel-updates.yml');
+  const leaderboardReport = readSource('.github/workflows/stationhead-leaderboard-probe-report.yml');
   const observability = readSource('.github/workflows/sh-observability.yml');
   const nativeBuild = readSource('.github/workflows/native-windows-build.yml');
 
@@ -208,5 +206,17 @@ test('the composite action is the single production credential resolver', () => 
   assert.doesNotMatch(
     pruneUpdates,
     /user\/tokens\/verify|accounts\?per_page=50|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|aws s3api|sha256sum/,
+  );
+
+  assert.match(leaderboardReport, /uses: \.\/\.github\/actions\/cloudflare-context/);
+  assert.match(leaderboardReport, /\/r2\/buckets/);
+  assert.match(leaderboardReport, /diagnostics\/stationhead-leaderboard\/status\.json/);
+  assert.match(leaderboardReport, /\.result\.buckets/);
+  assert.match(leaderboardReport, /objects\/\$\{encoded_key\}/);
+  assert.match(leaderboardReport, /stationhead-leaderboard-probe-status\.json/);
+  assert.match(leaderboardReport, /forbidden diagnostic field/);
+  assert.doesNotMatch(
+    leaderboardReport,
+    /cloudflare-worker-public-url|workers\.dev|PROBE_URL|repository_dispatch/,
   );
 });
