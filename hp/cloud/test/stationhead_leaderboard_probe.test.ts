@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  applyStationheadLeaderboardProbeInput,
-  normalizeStationheadLeaderboardProbe,
-} from "../src/stationhead_leaderboard_probe";
+import { applyStationheadLeaderboardProbeInput, normalizeStationheadLeaderboardProbe } from "../src/stationhead_leaderboard_probe";
 import type { Env } from "../src/sources";
 
 const NOW = Date.UTC(2026, 8, 22, 4, 0, 0);
-
 function sample(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     observed_at: NOW - 1000,
@@ -16,19 +12,12 @@ function sample(overrides: Record<string, unknown> = {}): Record<string, unknown
     method: "GET",
     status: 200,
     content_type: "application/json",
-    body: JSON.stringify({
-      ranking: [{ rank: 1, name: "buddies", listens: 1234 }],
-      authorization: "Bearer secret-token",
-      nested: { device_uid: "private-device", keep: "ok" },
-    }),
+    body: JSON.stringify({ ranking: [{ rank: 1, name: "buddies", listens: 1234 }], authorization: "Bearer secret-token", nested: { device_uid: "private-device", keep: "ok" } }),
     ...overrides,
   };
 }
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
-});
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Stationhead leaderboard probe", () => {
   it("keeps leaderboard data while redacting credentials and secret query values", () => {
@@ -47,72 +36,34 @@ describe("Stationhead leaderboard probe", () => {
   });
 
   it("rejects non-Stationhead destinations and oversized batches", () => {
-    expect(normalizeStationheadLeaderboardProbe([
-      sample({ url: "https://example.com/leaderboard" }),
-    ], NOW)).toBeNull();
-    expect(normalizeStationheadLeaderboardProbe(
-      Array.from({ length: 9 }, () => sample()),
-      NOW,
-    )).toBeNull();
+    expect(normalizeStationheadLeaderboardProbe([sample({ url: "https://example.com/leaderboard" })], NOW)).toBeNull();
+    expect(normalizeStationheadLeaderboardProbe(Array.from({ length: 9 }, () => sample()), NOW)).toBeNull();
   });
 
-  it("writes redacted R2 history and dispatches a bounded nested safe report", async () => {
+  it("writes redacted R2 history/latest and performs no GitHub dispatch", async () => {
     const puts: Array<{ key: string; body: string }> = [];
-    const put = vi.fn(async (key: string, body: string) => {
-      puts.push({ key, body });
-      return {};
-    });
-    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-      const dispatch = JSON.parse(String(init?.body ?? "{}"));
-      expect(dispatch.event_type).toBe("stationhead-leaderboard-probe");
-      expect(Object.keys(dispatch.client_payload).length).toBeLessThanOrEqual(10);
-      expect(dispatch.client_payload.best.body).toContain('"rank":1');
-      expect(dispatch.client_payload.best.body).not.toContain("secret-token");
-      expect(dispatch.client_payload.best.body).not.toContain("private-device");
-      expect(dispatch.client_payload.candidates[0].url).toContain("token=%5Bredacted%5D");
-      expect(dispatch.client_payload.candidates[0].body_preview).toContain('"rank":1');
-      return new Response(null, { status: 204 });
-    });
+    const put = vi.fn(async (key: string, body: string) => { puts.push({ key, body }); return {}; });
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const env = { DB: {} as D1Database, DATA_BUCKET: { put } as unknown as R2Bucket } as Env;
 
-    const env = {
-      DB: {} as D1Database,
-      DATA_BUCKET: { put } as unknown as R2Bucket,
-      GITHUB_RADAR_DISPATCH_TOKEN: "github-test-token",
-    } as Env;
-
-    const first = await applyStationheadLeaderboardProbeInput(
-      [sample()],
-      env,
-      "homepanel-device",
-    );
-    const second = await applyStationheadLeaderboardProbeInput(
-      [sample()],
-      env,
-      "homepanel-device",
-    );
+    const first = await applyStationheadLeaderboardProbeInput([sample()], env, "homepanel-device");
+    const second = await applyStationheadLeaderboardProbeInput([sample()], env, "homepanel-device");
 
     expect(first.status).toBe(200);
-    expect(first.body).toMatchObject({ accepted: 1, stored: true, reported: true });
-    expect(second.status).toBe(200);
+    expect(first.body).toMatchObject({ accepted: 1, stored: true, reported: true, delivery: "r2-pull" });
     expect(second.body.historyKey).toBe(first.body.historyKey);
     expect(put).toHaveBeenCalledTimes(4);
     expect(puts.filter(item => item.key === "diagnostics/stationhead-leaderboard/latest.json")).toHaveLength(2);
-    const historyKeys = puts
-      .filter(item => item.key.startsWith("diagnostics/stationhead-leaderboard/history/"))
-      .map(item => item.key);
-    expect(historyKeys).toHaveLength(2);
-    expect(new Set(historyKeys).size).toBe(1);
+    expect(new Set(puts.filter(item => item.key.startsWith("diagnostics/stationhead-leaderboard/history/")).map(item => item.key)).size).toBe(1);
     for (const item of puts) {
-      const stored = JSON.parse(item.body) as {
-        records?: Array<{ body?: string }>;
-      };
+      const stored = JSON.parse(item.body) as { records?: Array<{ body?: string }> };
       const storedBody = stored.records?.[0]?.body;
       expect(storedBody).toContain('"rank":1');
       expect(storedBody).not.toContain("secret-token");
       expect(storedBody).not.toContain("private-device");
     }
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
