@@ -17,8 +17,9 @@ async function importModeRuntime(mode) {
     return;
   }
   if (key === 'ranking') {
-    await import('/history/history-ranking-chart.js?v=20260923.6');
+    await import('/history/history-ranking-chart.js?v=20260923.7');
     await import('/history/history-ranking-missing-gap.js?v=20260923.6');
+    await import('/history/history-ranking-all-host-table.js?v=20260923.1');
     return;
   }
   await import('/history/history-broadcast-summary.js?v=20260923.2');
