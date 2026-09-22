@@ -98,10 +98,6 @@ export function syncHistoryAxisLabels(mode = activeHistoryMode()) {
 installAxisStyles();
 syncHistoryAxisLabels();
 
-document.getElementById('modeTabs')?.addEventListener('click', () => {
-  queueMicrotask(() => syncHistoryAxisLabels());
-});
-
 const tabs = document.getElementById('modeTabs');
 if (tabs) {
   new MutationObserver(() => syncHistoryAxisLabels()).observe(tabs, {
