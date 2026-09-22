@@ -17,12 +17,13 @@ const persistenceMigration = readFileSync(
   'utf8',
 );
 
-test('header update formatter omits seconds and renders the five-minute dashboard materialized time in JST', () => {
+test('header update formatter omits seconds and renders the dashboard materialized time in JST', () => {
   assert.match(header, /timeZone: 'Asia\/Tokyo'/);
   assert.doesNotMatch(header, /second:\s*'2-digit'/);
   assert.match(header, /DASHBOARD_MATERIALIZED_AT_CACHE_KEY/);
-  assert.match(header, /const next = `更新 \$\{refreshText\} \(5分毎\)`/);
-  assert.match(header, /updated\.title = `更新 \$\{refreshText\} JST \(5分毎\)`/);
+  assert.match(header, /const next = `更新 \$\{refreshText\}`/);
+  assert.match(header, /updated\.title = `更新 \$\{refreshText\} JST`/);
+  assert.doesNotMatch(header, /5分毎/);
 });
 
 test('mobile dashboard navigation stays on a four-column two-row grid', () => {
