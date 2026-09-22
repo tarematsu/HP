@@ -46,9 +46,11 @@ test('ranking uses a complete Monday timeline and reuses it for the missing-gap 
   assert.match(rankingMissing, /history:ranking-chart-drawn/);
   assert.match(rankingMissing, /scheduleOverlay\(0\)/);
   assert.match(rankingMissing, /keepRankedRowsOnly/);
+  assert.match(rankingMissing, /history:data-loaded/);
+  assert.match(rankingMissing, /getElementById\('more'\)\?\.addEventListener/);
   assert.match(rankingMissing, /\^#\?\\d\+\$/);
   assert.match(rankingMissing, /if \(!hasNumericRank\(row\)\) row\.remove\(\)/);
-  assert.doesNotMatch(rankingMissing, /window\.fetch|response\.clone\(\)\.json|weeklyRange\(|requestUrl\(/);
+  assert.doesNotMatch(rankingMissing, /window\.fetch|response\.clone\(\)\.json|weeklyRange\(|requestUrl\(|MutationObserver/);
   assert.doesNotMatch(rankingMissing, /createMissingRow/);
   assert.doesNotMatch(rankingMissing, /clearRect\(area\.left/);
   assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
