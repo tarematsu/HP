@@ -120,6 +120,6 @@ test('history runtime is one consolidated client embedded in the dashboard', () 
   assert.match(runtime, /state\.rows = Array\.isArray\(data\.rows\) \? data\.rows : \[\]/);
   assert.doesNotMatch(runtime, /mondayJstKey|expectedStart|expectedEnd/);
   assert.match(html, /id="historyView"/);
-  assert.match(tabs, /import\('\/history\/history-main\.js'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.4'\)/);
   assert.doesNotMatch(html, /history-period-completeness\.js|history-track-likes\.js/);
 });
