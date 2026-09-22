@@ -28,12 +28,16 @@ test('ranking uses a complete Monday timeline and keeps the table ranked-only', 
   assert.match(rankingChart, /function fullWeek\(value\)/);
   assert.match(rankingChart, /context\.textAlign = first \? 'left' : last \? 'right' : 'center'/);
   assert.match(rankingChart, /first \? x \+ 2 : last \? x - 2 : x/);
+  assert.match(rankingChart, /history:ranking-chart-drawn/);
   assert.match(rankingMissing, /MISSING_START = '2026-01-26'/);
   assert.match(rankingMissing, /MISSING_END = '2026-09-14'/);
   assert.match(rankingMissing, /function completeWeeks\(\)/);
+  assert.match(rankingMissing, /renderedWeeks\.length/);
   assert.match(rankingMissing, /\.\.\.weeklyRange\(from, to\)/);
   assert.match(rankingMissing, /fillText\('欠測'/);
   assert.match(rankingMissing, /空白週は圏外です/);
+  assert.match(rankingMissing, /history:ranking-chart-drawn/);
+  assert.match(rankingMissing, /scheduleOverlay\(0\)/);
   assert.match(rankingMissing, /keepRankedRowsOnly/);
   assert.match(rankingMissing, /\^#\?\\d\+\$/);
   assert.match(rankingMissing, /if \(!hasNumericRank\(row\)\) row\.remove\(\)/);
