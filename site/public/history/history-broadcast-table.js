@@ -1,12 +1,15 @@
 (() => {
   const MODE = 'broadcasts';
-  const VISIBLE_HEADERS = ['日付', '名前', '平均同接', '最大同接', '曲数', '時間'];
+  const VISIBLE_HEADERS = ['日付', '放送時間', '時間', '平均同接', '最大同接', '曲数', '名前'];
   const TECHNICAL_HEADERS = ['放送名', '開始日時（UTC）', '最小同接', '推定再生数', 'コメント数'];
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
   const integer = new Intl.NumberFormat('ja-JP');
   const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const jstDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
+  });
+  const jstTime = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   });
   const STYLE_ID = 'official-party-table-layout';
 
@@ -52,6 +55,20 @@
     return jstDate.format(date);
   }
 
+  function clockText(value) {
+    const timestamp = finite(value);
+    if (timestamp == null) return null;
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return null;
+    return jstTime.format(date).replace(/\s+/g, '');
+  }
+
+  function broadcastTimeLabel(row) {
+    const start = clockText(row?.started_at);
+    const end = clockText(row?.ended_at);
+    return start && end ? `${start}-${end}` : '—';
+  }
+
   function splitEvent(row) {
     const raw = String(row?.event_name || '公式リスパ').trim();
     const match = DATE_PREFIX.exec(raw);
@@ -73,8 +90,8 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      #historyView .table-wrap table.official-party-table th:nth-child(n+7),
-      #historyView .table-wrap table.official-party-table td:nth-child(n+7) {
+      #historyView .table-wrap table.official-party-table th:nth-child(n+8),
+      #historyView .table-wrap table.official-party-table td:nth-child(n+8) {
         display: none !important;
       }
     `;
@@ -119,11 +136,12 @@
       const estimated = average != null && tracks != null ? Math.round(average * tracks) : null;
       const values = [
         identity.date,
-        identity.name,
+        broadcastTimeLabel(row),
+        elapsedLabel(durationMinutes(row)),
         numberText(average),
         numberText(maximum),
         numberText(tracks, integer),
-        elapsedLabel(durationMinutes(row)),
+        identity.name,
         String(row?.event_name || '公式リスパ').trim(),
         utcDateTime(row?.started_at),
         numberText(minimum),
