@@ -35,7 +35,7 @@ export function queueNeedsPreservation(queue) {
   const trackCount = tracks.length;
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
-    if (!track || typeof track !== 'object' || !hasTrackIdentity(track)) continue;
+    if (!track || typeof track !== 'object') continue;
     if (trackNeedsHydration(track) || !track.album_name) return true;
   }
   return false;
@@ -48,8 +48,13 @@ export function readModelMetadataTask(readModel) {
   const trackCount = tracks.length;
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
-    if (!track || typeof track !== 'object' || !hasTrackIdentity(track)) continue;
-    if (trackNeedsHydration(track)) return 'read-model-hydration';
+    if (!track || typeof track !== 'object') continue;
+    const hasIdentity = hasTrackIdentity(track);
+    if (trackNeedsHydration(track)) {
+      if (hasIdentity) return 'read-model-hydration';
+      preserve = true;
+      continue;
+    }
     if (!track.album_name) preserve = true;
   }
   return preserve ? 'read-model-preserve' : null;
