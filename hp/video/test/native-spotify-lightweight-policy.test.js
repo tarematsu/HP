@@ -40,10 +40,10 @@ test('Spotify CSS narrows presentation suppression and removes non-playback DOM'
   assert.doesNotMatch(policy, /MutationObserver/);
 });
 
-test('Spotify delegates image and downloadable-font network suppression to the shared UDF', () => {
+test('Spotify keeps authentication images available while shared fonts stay reduced', () => {
   assert.doesNotMatch(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT)/);
   assert.doesNotMatch(policy, /AddWebResourceRequestedFilter|add_WebResourceRequested/);
-  assert.match(environment, /blockImages = true;/);
+  assert.match(environment, /blockImages = false;/);
   assert.match(environment, /blockFonts = true;/);
   assert.match(environment, /imagesEnabled=false,loadsImagesAutomatically=false/);
   assert.match(environment, /downloadableBinaryFontsEnabled=false/);
