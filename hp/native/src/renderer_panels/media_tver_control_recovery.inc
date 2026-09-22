@@ -113,6 +113,7 @@ LR"JS(
     return explicitAd() ||
         (shortMedia && key !== state.programKey && video.playbackRate <= 1.05);
   };
+)JS" LR"JS(
 
   const actionLane = action => {
     if (action === 'fullscreen') return 'fullscreen';
@@ -232,6 +233,7 @@ LR"JS(
     setTimeout(cleanup, 1400);
     return [point.x, point.y];
   };
+)JS" LR"JS(
 
   const bindVideo = () => {
     if (state.video === video) return;
@@ -352,6 +354,7 @@ LR"JS(
     recheck();
     return 'recovery';
   };
+)JS" LR"JS(
 
   if (adActive) {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|^スキップ$|skip\s+(?:this\s+)?ad/i;
