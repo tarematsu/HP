@@ -31,12 +31,17 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
   for (const id of ['likesLoad', 'likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
     assert.match(page, new RegExp(`id="${id}"`));
   }
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=[^']+'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js'\)/);
-  assert.match(tabsClient, /import\('\/history\/history-likes\.js'\)/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260923\.4'/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260923\.4'\)/);
+  assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
   assert.match(historyEntry, /VALID_MODES/);
+});
+
+test('inactive history and likes runtimes are not prefetched from the current tab', () => {
+  assert.doesNotMatch(tabsClient, /modulepreload|preloadModule|scheduleRuntimePrefetch|requestIdleCallback/);
+  assert.doesNotMatch(page, /modulepreload[^>]*(?:history-main|history-likes)/);
 });
 
 test('history and likes startup release unintended skip-link focus', () => {
@@ -60,7 +65,7 @@ test('current and history chart details are owned by their respective renderers'
   assert.match(page, /id="currentChartDetail"[^>]*data-current-chart-detail/);
   assert.match(page, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((page.match(/id="chartDetail"/g) || []).length, 1);
-  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260923\.1/);
+  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260923\.4/);
   assert.match(currentChartDetail, /document\.getElementById\('currentChartDetail'\)/);
   assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
 });
