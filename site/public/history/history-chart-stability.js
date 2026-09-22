@@ -39,13 +39,9 @@ function reveal(delay = 0) {
 
 if (canvas) {
   conceal();
-  new MutationObserver(() => {
-    if (!armed) return;
-    const mode = activeMode();
-    if (['daily', 'weekly', 'monthly'].includes(mode) && canvas.dataset.periodChart) reveal(0);
-  }).observe(canvas, {
-    attributes: true,
-    attributeFilter: ['data-period-chart'],
+
+  window.addEventListener('history:period-chart-drawn', (event) => {
+    if (['daily', 'weekly', 'monthly'].includes(String(event?.detail?.mode || activeMode()))) reveal(0);
   });
 
   window.addEventListener('history:ranking-chart-drawn', () => {
