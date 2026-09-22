@@ -80,7 +80,7 @@ test('native leaderboard diagnostics expose categorical collector progress only'
     'spool_stored',
     'completed',
   ]) {
-    assert.match(collector, new RegExp(`Mark\\(\"${stage}\"`));
+    assert.match(collector, new RegExp(`Mark\\(\\s*\"${stage}\"`));
   }
   assert.match(collector, /MarkTick\(\)/);
   assert.match(collector, /MarkFailure\([\s\S]*ErrorCategory/);
