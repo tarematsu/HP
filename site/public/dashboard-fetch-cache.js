@@ -23,6 +23,38 @@
     return url;
   }
 
+  function dispatchPayload(payload, source) {
+    if (!payload?.ok) return;
+    window.dispatchEvent(new CustomEvent('dashboard:payload', {
+      detail: { payload, source },
+    }));
+  }
+
+  function announceMaterializedAt(response) {
+    const updatedAt = Number(response?.headers?.get('x-materialized-at'));
+    if (!Number.isFinite(updatedAt) || updatedAt <= 0) return;
+    window.dispatchEvent(new CustomEvent('dashboard:materialized-at', {
+      detail: { updatedAt },
+    }));
+  }
+
+  function responseWithParsedPayload(payload, response, extraHeaders = {}) {
+    const snapshot = structuredClone(payload);
+    const headers = new Headers(response?.headers || {});
+    headers.delete('content-length');
+    for (const [key, value] of Object.entries(extraHeaders)) headers.set(key, value);
+    const next = new Response(JSON.stringify(snapshot), {
+      status: response?.status || 200,
+      statusText: response?.statusText || '',
+      headers,
+    });
+    Object.defineProperty(next, 'json', {
+      configurable: true,
+      value: async () => structuredClone(snapshot),
+    });
+    return next;
+  }
+
   function mergeHistory(previous, incoming) {
     const rows = new Map();
     for (const row of [...(previous || []), ...(incoming || [])]) {
@@ -130,6 +162,7 @@
       // Preserve the original save time so an old persisted response is not
       // mistaken for a fresh hidden-tab network response.
       state.cachedAt = savedAt;
+      dispatchPayload(state.lastPayload, 'cache');
     } catch {
       localStorage.removeItem(DASHBOARD_CACHE_KEY);
     }
@@ -137,12 +170,9 @@
 
   function cachedResponse() {
     if (!state.lastPayload || Date.now() - state.cachedAt > HIDDEN_CACHE_MAX_AGE_MS) return null;
-    return new Response(JSON.stringify(structuredClone(state.lastPayload)), {
-      status: 200,
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'x-dashboard-cache': 'hidden-tab',
-      },
+    return responseWithParsedPayload(state.lastPayload, null, {
+      'content-type': 'application/json; charset=utf-8',
+      'x-dashboard-cache': 'hidden-tab',
     });
   }
 
@@ -206,16 +236,14 @@
     const response = await fetchDashboardWithRetry(requestInput, init);
     if (!response.ok) return response;
 
+    announceMaterializedAt(response);
     try {
       const payload = mergePayload(await response.clone().json());
-      const headers = new Headers(response.headers);
-      headers.delete('content-length');
-      if (payload?.ok) clearTransientStatus();
-      return new Response(JSON.stringify(payload), {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
+      if (payload?.ok) {
+        clearTransientStatus();
+        dispatchPayload(payload, 'network');
+      }
+      return responseWithParsedPayload(payload, response);
     } catch {
       return response;
     }
