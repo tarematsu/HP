@@ -99,8 +99,28 @@ function mergeIdentityRows(rows) {
   return [...byStationhead.values()];
 }
 
+function enrichIdentityRows(identityRows, metadataRows) {
+  const bySpotify = new Map();
+  const byIsrc = new Map();
+  for (const row of metadataRows || []) {
+    const spotifyId = text(row?.spotify_id);
+    const isrc = normalizedIsrc(row?.isrc);
+    if (spotifyId) bySpotify.set(spotifyId, mergeRow(bySpotify.get(spotifyId), row));
+    if (isrc) byIsrc.set(isrc, mergeRow(byIsrc.get(isrc), row));
+  }
+  return identityRows.map((row) => {
+    const byIsrcRow = byIsrc.get(normalizedIsrc(row?.isrc));
+    const bySpotifyRow = bySpotify.get(text(row?.spotify_id));
+    let enriched = row;
+    if (bySpotifyRow) enriched = mergeRow(enriched, bySpotifyRow);
+    if (byIsrcRow) enriched = mergeRow(enriched, byIsrcRow);
+    return enriched;
+  });
+}
+
 export async function loadPlaybackReadModelTrackMetadata(env, tracks, limit = 80) {
-  const keys = collectKeys(tracks, Math.max(1, Math.trunc(Number(limit) || 80)));
+  const boundedLimit = Math.max(1, Math.trunc(Number(limit) || 80));
+  const keys = collectKeys(tracks, boundedLimit);
   if (!keys.spotifyIds.size && !keys.isrcs.size && !keys.stationheadTrackIds.size) return [];
 
   const stationheadIds = [...keys.stationheadTrackIds];
@@ -113,14 +133,15 @@ export async function loadPlaybackReadModelTrackMetadata(env, tracks, limit = 80
   for (const row of identityRows) {
     const spotifyId = text(row.spotify_id);
     const isrc = normalizedIsrc(row.isrc);
-    if (spotifyId && keys.spotifyIds.size < limit) keys.spotifyIds.add(spotifyId);
-    if (isrc && keys.isrcs.size < limit) keys.isrcs.add(isrc);
+    if (spotifyId && keys.spotifyIds.size < boundedLimit) keys.spotifyIds.add(spotifyId);
+    if (isrc && keys.isrcs.size < boundedLimit) keys.isrcs.add(isrc);
   }
 
   const metadataRows = (keys.spotifyIds.size || keys.isrcs.size)
     ? await loadReadModelTrackMetadata(env, [...keys.spotifyIds], [...keys.isrcs])
     : [];
-  return [...identityRows, ...metadataRows];
+  const enrichedIdentityRows = enrichIdentityRows(identityRows, metadataRows);
+  return [...enrichedIdentityRows, ...metadataRows];
 }
 
 export function attachPlaybackReadModelTrackMetadata(queue, rows = []) {
