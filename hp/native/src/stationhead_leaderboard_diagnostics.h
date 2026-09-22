@@ -55,6 +55,24 @@ inline void Mark(std::string_view stage, bool started = false,
   if (changed) WakeCloud();
 }
 
+inline void MarkTick() {
+  bool changed = false;
+  {
+    std::lock_guard lock(StateMutex());
+    Snapshot& state = State();
+    if (!state.ticked) {
+      state.ticked = true;
+      if (state.stage == "started") {
+        state.stage = "tick";
+        state.lastSuccessStage = "tick";
+        state.lastTransitionAt = UnixMillis();
+      }
+      changed = true;
+    }
+  }
+  if (changed) WakeCloud();
+}
+
 inline void MarkFailure(std::string_view error) {
   {
     std::lock_guard lock(StateMutex());
