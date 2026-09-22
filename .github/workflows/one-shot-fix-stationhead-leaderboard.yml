@@ -96,14 +96,6 @@ jobs:
               lines.insert(heading + 1, '    ranking,')
           collector.write_text('\n'.join(lines) + '\n')
 
-          workflow = Path('.github/workflows/stationhead-leaderboard-probe-report.yml')
-          lines = workflow.read_text().splitlines()
-          for title in ('Upload probe status artifact', 'Upload latest leaderboard records artifact'):
-              index = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {title}')
-              if index + 1 >= len(lines) or lines[index + 1].strip() != 'if: always()':
-                  lines.insert(index + 1, '        if: always()')
-          workflow.write_text('\n'.join(lines) + '\n')
-
           regression = Path('hp/video/test/stationhead-leaderboard-cloud-upload-regression.test.js')
           text = regression.read_text()
           old = '  assert.match(collector, /lines\\.length >= 10 && links\\.length >= 5/);'
@@ -117,9 +109,10 @@ jobs:
           node --test hp/video/test/stationhead-leaderboard-cloud-upload-regression.test.js
           node --input-type=module -e "import('./worker/scripts/import-stationhead-weekly-leaderboard-actions.mjs').then(({parseLeaderboardSnapshot})=>{const p=parseLeaderboardSnapshot({ranking:[{rank:1,handle:'sakanactionjp'},{rank:31,handle:'sakurazaka46jp'},{rank:52,handle:'sakuramankai'}]});if(!p||p.rows.length!==3||p.rows[1].channel_name!=='sakurazaka46jp'||p.rows[1].streams!==null||p.rows[2].rank!==52)throw new Error('rank-only parser regression');console.log('rank-only parser ok')})"
 
-          rm .github/workflows/one-shot-fix-stationhead-leaderboard.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
+          git add worker/scripts/import-stationhead-weekly-leaderboard-actions.mjs \
+            hp/native/src/stationhead_leaderboard_collector.cpp \
+            hp/video/test/stationhead-leaderboard-cloud-upload-regression.test.js
           git commit -m 'Capture and import rank-only Stationhead weekly leaderboard'
           git push origin HEAD:fix/stationhead-leaderboard-artifact-on-failure
