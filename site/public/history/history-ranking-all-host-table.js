@@ -31,8 +31,17 @@ function displayValue(key, value) {
 }
 
 function visibleHostRows(data) {
-  return (Array.isArray(data?.host_rankings) ? data.host_rankings : [])
+  const visible = (Array.isArray(data?.host_rankings) ? data.host_rankings : [])
     .filter((row) => !EXCLUDED_ALL_HOSTS.has(hostKey(row?.host_name)));
+  let previousWeeks = null;
+  let previousPosition = 0;
+  return visible.map((row, index) => {
+    const rankedWeeks = Number(row?.ranked_weeks) || 0;
+    const position = rankedWeeks === previousWeeks ? previousPosition : index + 1;
+    previousWeeks = rankedWeeks;
+    previousPosition = position;
+    return { ...row, position };
+  });
 }
 
 function setSelectedHost(host) {
