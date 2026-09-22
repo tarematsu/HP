@@ -1,3 +1,9 @@
+import {
+  sanitizeMetadataRow,
+  trackArtistValue,
+  trackTitleValue,
+} from './track-metadata-quality.js';
+
 function normalizedIsrc(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
@@ -28,12 +34,15 @@ function missingIndex(error) {
 }
 
 function complete(row) {
-  return Boolean(row?.title && row?.artist && row?.thumbnail_url);
+  return Boolean(trackTitleValue(row?.title)
+    && trackArtistValue(row?.artist)
+    && row?.thumbnail_url);
 }
 
 function uniqueRows(rows) {
   const byIdentity = new Map();
-  for (const row of rows || []) {
+  for (const rawRow of rows || []) {
+    const row = sanitizeMetadataRow(rawRow);
     const spotifyId = text(row?.spotify_id);
     const isrc = normalizedIsrc(row?.isrc);
     const key = `${spotifyId || ''}|${isrc || ''}`;
@@ -46,8 +55,8 @@ function uniqueRows(rows) {
     byIdentity.set(key, {
       ...row,
       ...current,
-      title: current.title || row.title || null,
-      artist: current.artist || row.artist || null,
+      title: trackTitleValue(current.title) || trackTitleValue(row.title),
+      artist: trackArtistValue(current.artist) || trackArtistValue(row.artist),
       thumbnail_url: current.thumbnail_url || row.thumbnail_url || null,
       fetched_at: Math.max(Number(current.fetched_at || 0), Number(row.fetched_at || 0)) || null,
     });
@@ -73,9 +82,6 @@ async function metadataRowsBySpotify(db, spotifyIds) {
 
 async function metadataRowsByIsrc(db, isrcs) {
   if (!isrcs.length) return [];
-  // idx_sh_track_metadata_isrc is a partial index. INDEXED BY becomes a hard
-  // query-planner contract, so repeat its predicate verbatim; otherwise SQLite
-  // returns "no query solution" instead of choosing another access path.
   const where = `WHERE isrc IS NOT NULL AND TRIM(isrc)<>''
       AND isrc IN (${placeholders(isrcs.length)})
     ORDER BY fetched_at DESC`;
@@ -124,21 +130,23 @@ async function indexedRows(db, spotifyIds, isrcs, { dictionary = false } = {}) {
 function mergeSources(primaryRows, fallbackRows) {
   const fallbackBySpotify = new Map();
   const fallbackByIsrc = new Map();
-  for (const row of fallbackRows) {
+  for (const rawRow of fallbackRows) {
+    const row = sanitizeMetadataRow(rawRow);
     const spotifyId = text(row?.spotify_id);
     const isrc = normalizedIsrc(row?.isrc);
     if (spotifyId && !fallbackBySpotify.has(spotifyId)) fallbackBySpotify.set(spotifyId, row);
     if (isrc && !fallbackByIsrc.has(isrc)) fallbackByIsrc.set(isrc, row);
   }
-  const merged = primaryRows.map((row) => {
+  const merged = primaryRows.map((rawRow) => {
+    const row = sanitizeMetadataRow(rawRow);
     const fallback = fallbackByIsrc.get(normalizedIsrc(row?.isrc))
       || fallbackBySpotify.get(text(row?.spotify_id));
     if (!fallback) return row;
     return {
       ...fallback,
       ...row,
-      title: row.title || fallback.title || null,
-      artist: row.artist || fallback.artist || null,
+      title: trackTitleValue(row.title) || trackTitleValue(fallback.title),
+      artist: trackArtistValue(row.artist) || trackArtistValue(fallback.artist),
       thumbnail_url: row.thumbnail_url || fallback.thumbnail_url || null,
       fetched_at: Math.max(Number(row.fetched_at || 0), Number(fallback.fetched_at || 0)) || null,
     };
