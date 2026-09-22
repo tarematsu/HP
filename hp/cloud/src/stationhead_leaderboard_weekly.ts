@@ -96,8 +96,10 @@ function rowsFromLines(value: unknown): StationheadWeeklyLeaderboardRow[] {
     if (lines[index] !== String(expectedRank)) continue;
     let channel: string | null = null;
     for (let lookahead = index + 1; lookahead < Math.min(lines.length, index + 8); lookahead += 1) {
-      channel = normalizedHandle(lines[lookahead]);
-      if (channel && lines[lookahead].startsWith("@")) break;
+      const candidateLine = lines[lookahead];
+      if (candidateLine === undefined) continue;
+      channel = normalizedHandle(candidateLine);
+      if (channel && candidateLine.startsWith("@")) break;
       channel = null;
     }
     if (!channel) continue;
