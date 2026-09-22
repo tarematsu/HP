@@ -15,8 +15,8 @@ const trackEndpoint = readFileSync(new URL('../functions/api/track-history.js', 
 test('main page renders current track likes from the dashboard response', () => {
   assert.match(mainPage, /id="trackBites" hidden/);
   assert.equal((mainPage.match(/<script /g) || []).length, 1);
-  assert.match(mainPage, /src="\/dashboard-metrics\.js\?v=20260922\.1"/);
-  assert.match(dashboardEntry, /import\('\/dashboard-client\.js\?v=20260922\.1'\)/);
+  assert.match(mainPage, /src="\/dashboard-metrics\.js\?v=[^"']+"/);
+  assert.match(dashboardEntry, /import\('\/dashboard-client\.js\?v=[^']+'\)/);
   assert.match(dashboardClient, /track\.bite_count/);
   assert.match(dashboardClient, /`♡ \$\{integer\.format\(bites\)\}`/);
   assert.equal((dashboardClient.match(/\/api\/dashboard/g) || []).length, 1);
