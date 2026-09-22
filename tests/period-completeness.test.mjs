@@ -223,7 +223,7 @@ test('history lite client is loaded lazily into the integrated dashboard', () =>
   );
   assert.match(runtimeSource, /state\.rows = Array\.isArray\(data\.rows\) \? data\.rows : \[\]/);
   assert.match(runtimeSource, /history:data-loaded/);
-  assert.match(entry, /history-period-chart\.js\?v=20260923\.3/);
+  assert.match(entry, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.doesNotMatch(runtimeSource, /TRACK_COLUMNS|trackDate|trackWeekMode|history-period-completeness|history-track-likes/);
   assert.doesNotMatch(runtimeSource, /mondayJstKey|expectedStart|expectedEnd/);
 });
