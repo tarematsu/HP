@@ -1,3 +1,5 @@
+import { trackNeedsHydration } from './track-metadata-quality.js';
+
 function normalizedIdentity(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
@@ -20,7 +22,7 @@ export function queueNeedsHydration(queue) {
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
     if (!track || typeof track !== 'object' || !hasTrackIdentity(track)) continue;
-    if (!track.title || !track.artist || !track.thumbnail_url) return true;
+    if (trackNeedsHydration(track)) return true;
   }
   return false;
 }
@@ -32,7 +34,7 @@ export function queueNeedsPreservation(queue) {
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
     if (!track || typeof track !== 'object' || !hasTrackIdentity(track)) continue;
-    if (!track.title || !track.artist || !track.album_name || !track.thumbnail_url) return true;
+    if (trackNeedsHydration(track) || !track.album_name) return true;
   }
   return false;
 }
@@ -45,7 +47,7 @@ export function readModelMetadataTask(readModel) {
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
     if (!track || typeof track !== 'object' || !hasTrackIdentity(track)) continue;
-    if (!track.title || !track.artist || !track.thumbnail_url) return 'read-model-hydration';
+    if (trackNeedsHydration(track)) return 'read-model-hydration';
     if (!track.album_name) preserve = true;
   }
   return preserve ? 'read-model-preserve' : null;
