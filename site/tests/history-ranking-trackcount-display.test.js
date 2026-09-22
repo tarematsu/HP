@@ -9,8 +9,10 @@ const tableCleanup = readFileSync(new URL('../public/history/history-table-clean
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
-test('ranking renders a two-host leaderboard chart', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.4/);
+test('ranking renders a two-host leaderboard chart only when that mode is loaded', () => {
+  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.5/);
+  assert.match(entry, /runtimeKey\(mode\)/);
+  assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
   assert.match(rankingChart, /const HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
   assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
@@ -18,15 +20,17 @@ test('ranking renders a two-host leaderboard chart', () => {
   assert.match(rankingChart, /週間リーダーボード順位/);
   assert.match(rankingChart, /panel\.hidden = false/);
   assert.match(rankingChart, /順位は上ほど高順位/);
+  assert.match(rankingChart, /history:data-loaded/);
+  assert.doesNotMatch(rankingChart, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });
 
 test('ranking uses a complete Monday timeline and reuses it for the missing-gap overlay', () => {
-  assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.5/);
+  assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.6/);
   assert.match(rankingChart, /function weeklyRange\(from, to\)/);
   assert.match(rankingChart, /mondayOnOrAfter/);
   assert.match(rankingChart, /mondayOnOrBefore/);
-  assert.match(rankingChart, /rankingFrom = isoDate\(url\.searchParams\.get\('from'\)\)/);
-  assert.match(rankingChart, /rankingTo = isoDate\(url\.searchParams\.get\('to'\)\)/);
+  assert.match(rankingChart, /rankingFrom = isoDate\(detail\.from\)/);
+  assert.match(rankingChart, /rankingTo = isoDate\(detail\.to\)/);
   assert.match(rankingChart, /\.\.\.weeklyRange\(rangeStart, rangeEnd\)/);
   assert.match(rankingChart, /function fullWeek\(value\)/);
   assert.match(rankingChart, /context\.textAlign = first \? 'left' : last \? 'right' : 'center'/);
@@ -47,7 +51,7 @@ test('ranking uses a complete Monday timeline and reuses it for the missing-gap 
   assert.doesNotMatch(rankingMissing, /window\.fetch|response\.clone\(\)\.json|weeklyRange\(|requestUrl\(/);
   assert.doesNotMatch(rankingMissing, /createMissingRow/);
   assert.doesNotMatch(rankingMissing, /clearRect\(area\.left/);
-  assert.doesNotMatch(rankingChart, /DOMNodeInserted/);
+  assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
 });
 
 test('summary tables remove maximum likes and primary host while retaining track count', () => {
