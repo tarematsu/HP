@@ -102,9 +102,9 @@ jobs:
           set -o pipefail
           node scripts/refresh-pages-dashboard-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
       - name: Publish due pages read models
+        if: steps.d1-write-budget.outputs.read_allowed == 'true'
         env:
           PAGES_STREAM_ZERO_REPAIR_ENABLED: ${{ steps.d1-write-budget.outputs.allowed }}
-        if: steps.d1-write-budget.outputs.read_allowed == 'true'
         shell: bash
         run: |
           set -o pipefail
