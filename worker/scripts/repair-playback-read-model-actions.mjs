@@ -139,16 +139,10 @@ function enrichQueueIdentity(identityRows, stationheadRows) {
   });
 }
 
-function hydrateQueue(queue, identityRows, metadataMaps) {
-  if (!Array.isArray(queue?.tracks) || !queue.tracks.length) return queue;
-  const identityByPosition = new Map();
-  for (const row of identityRows) {
-    const position = integer(row?.position);
-    if (position != null) identityByPosition.set(position, row);
-  }
-
+function hydrateTrackArray(tracks, identityByPosition, metadataMaps) {
+  if (!Array.isArray(tracks) || !tracks.length) return { tracks, changed: false };
   let changed = false;
-  const tracks = queue.tracks.map((track, index) => {
+  const hydrated = tracks.map((track, index) => {
     if (!track || typeof track !== 'object') return track;
     const position = integer(track.position) ?? index;
     const identity = identityByPosition.get(position);
@@ -172,7 +166,36 @@ function hydrateQueue(queue, identityRows, metadataMaps) {
     if (JSON.stringify(next) !== JSON.stringify(track)) changed = true;
     return next;
   });
-  return changed ? { ...queue, tracks } : queue;
+  return { tracks: hydrated, changed };
+}
+
+function hydrateQueue(queue, identityRows, metadataMaps) {
+  if (!queue || typeof queue !== 'object') return queue;
+  const identityByPosition = new Map();
+  for (const row of identityRows) {
+    const position = integer(row?.position);
+    if (position != null) identityByPosition.set(position, row);
+  }
+
+  const materialized = hydrateTrackArray(queue.tracks, identityByPosition, metadataMaps);
+  const presentation = hydrateTrackArray(queue.presentation_tracks, identityByPosition, metadataMaps);
+  if (!materialized.changed && !presentation.changed) return queue;
+  return {
+    ...queue,
+    ...(Array.isArray(queue.tracks) ? { tracks: materialized.tracks } : {}),
+    ...(Array.isArray(queue.presentation_tracks)
+      ? { presentation_tracks: presentation.tracks }
+      : {}),
+  };
+}
+
+function collectTrackKeys(tracks, spotifyIds, isrcs) {
+  for (const track of Array.isArray(tracks) ? tracks : []) {
+    const spotifyId = text(track?.spotify_id);
+    const isrc = normalizeIsrc(track?.isrc);
+    if (spotifyId) spotifyIds.add(spotifyId);
+    if (isrc) isrcs.add(isrc);
+  }
 }
 
 const models = currentModels();
@@ -196,21 +219,13 @@ for (const model of models) {
     if (spotifyId) spotifyIds.add(spotifyId);
     if (isrc) isrcs.add(isrc);
   }
-  for (const track of queue.tracks || []) {
-    const spotifyId = text(track?.spotify_id);
-    const isrc = normalizeIsrc(track?.isrc);
-    if (spotifyId) spotifyIds.add(spotifyId);
-    if (isrc) isrcs.add(isrc);
-  }
+  collectTrackKeys(queue.tracks, spotifyIds, isrcs);
+  collectTrackKeys(queue.presentation_tracks, spotifyIds, isrcs);
   prepared.push({ model, queue, identityRows });
 }
 
 const stationheadRows = stationheadIdentityRows([...stationheadIds]);
-const stationheadById = new Map();
 for (const row of stationheadRows) {
-  const id = integer(row.stationhead_track_id);
-  if (id == null || stationheadById.has(id)) continue;
-  stationheadById.set(id, row);
   const spotifyId = text(row.spotify_id);
   const isrc = normalizeIsrc(row.isrc);
   if (spotifyId) spotifyIds.add(spotifyId);

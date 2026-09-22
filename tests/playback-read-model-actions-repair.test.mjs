@@ -24,6 +24,13 @@ test('stationhead identity comes from the facts database where sh_tracks is mate
   assert.match(script, /function stationheadIdentityRows\(ids\)[\s\S]*?return query\(factsDatabase,[\s\S]*?FROM sh_tracks/);
 });
 
+test('playback Actions repair hydrates both materialized and presentation tracks', () => {
+  assert.match(script, /hydrateTrackArray\(queue\.tracks, identityByPosition, metadataMaps\)/);
+  assert.match(script, /hydrateTrackArray\(queue\.presentation_tracks, identityByPosition, metadataMaps\)/);
+  assert.match(script, /presentation_tracks: presentation\.tracks/);
+  assert.match(script, /collectTrackKeys\(queue\.presentation_tracks, spotifyIds, isrcs\)/);
+});
+
 test('playback Actions repair hydrates recovered identity from track metadata and persists queue_json', () => {
   assert.match(script, /FROM sh_track_metadata/);
   assert.match(script, /trackTitleValue\(track\.title\) \|\| trackTitleValue\(metadata\?\.title\)/);
