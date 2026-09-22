@@ -115,9 +115,10 @@ LR"JS(
       scheduleEnsure(40);
     }, { passive: true });
     video.addEventListener('emptied', () => {
-      clearEndCandidate();
-      clearProgressSampler();
-      clearRecovery();
+      // The same video element can be reused for another TVer media source.
+      // Drop all completion/progress state immediately so an ended event from
+      // the replacement cannot inherit the previous program's near-end state.
+      resetMediaState(state, video);
       scheduleEnsure(40);
     }, { passive: true });
     for (const eventName of ['loadedmetadata', 'durationchange']) {
