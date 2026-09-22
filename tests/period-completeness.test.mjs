@@ -39,45 +39,49 @@ test('daily period uses UTC boundaries corresponding to 09:00 Japan', () => {
   }).format(new Date(bounds.start)), '2026-07-01 09:00');
 });
 
-test('daily, weekly, and monthly use their configured boundary tolerances', () => {
+test('daily keeps fifteen minutes while weekly/monthly use about five percent of the period', () => {
   assert.equal(periodBoundaryToleranceMs('daily'), DAILY_BOUNDARY_TOLERANCE_MS);
   assert.equal(periodBoundaryToleranceMs('weekly'), WEEKLY_BOUNDARY_TOLERANCE_MS);
   assert.equal(periodBoundaryToleranceMs('monthly'), MONTHLY_BOUNDARY_TOLERANCE_MS);
   assert.equal(DAILY_BOUNDARY_TOLERANCE_MS, 15 * 60 * 1000);
-  assert.equal(WEEKLY_BOUNDARY_TOLERANCE_MS, 12 * 60 * 60 * 1000);
-  assert.equal(MONTHLY_BOUNDARY_TOLERANCE_MS, 2 * 86400000);
+  assert.equal(WEEKLY_BOUNDARY_TOLERANCE_MS, 7 * 86400000 * 0.05);
+  assert.equal(MONTHLY_BOUNDARY_TOLERANCE_MS, 30 * 86400000 * 0.05);
+  assert.equal(periodBoundaryToleranceMs('monthly', '2026-05'), 31 * 86400000 * 0.05);
 });
 
-test('weekly accepts entrance and exit observations within twelve hours', () => {
+test('weekly accepts entrance and exit observations within five percent', () => {
   const bounds = expectedPeriodBounds('weekly', '2026-07-06');
+  const tolerance = periodBoundaryToleranceMs('weekly', '2026-07-06');
   const result = evaluatePeriodCompleteness({
     mode: 'weekly',
     periodKey: '2026-07-06',
-    firstObservedAt: bounds.start - WEEKLY_BOUNDARY_TOLERANCE_MS,
-    lastObservedAt: bounds.end + WEEKLY_BOUNDARY_TOLERANCE_MS,
-    now: bounds.end + WEEKLY_BOUNDARY_TOLERANCE_MS + 1,
+    firstObservedAt: bounds.start - tolerance,
+    lastObservedAt: bounds.end + tolerance,
+    now: bounds.end + tolerance + 1,
   });
   assert.equal(result.complete, true);
 });
 
-test('monthly accepts entrance and exit observations within two days', () => {
+test('monthly accepts entrance and exit observations within five percent', () => {
   const bounds = expectedPeriodBounds('monthly', '2026-05');
+  const tolerance = periodBoundaryToleranceMs('monthly', '2026-05');
   const result = evaluatePeriodCompleteness({
     mode: 'monthly',
     periodKey: '2026-05',
-    firstObservedAt: bounds.start + MONTHLY_BOUNDARY_TOLERANCE_MS,
-    lastObservedAt: bounds.end - MONTHLY_BOUNDARY_TOLERANCE_MS,
-    now: bounds.end + MONTHLY_BOUNDARY_TOLERANCE_MS + 1,
+    firstObservedAt: bounds.start + tolerance,
+    lastObservedAt: bounds.end - tolerance,
+    now: bounds.end + tolerance + 1,
   });
   assert.equal(result.complete, true);
 });
 
-test('weekly and monthly reject evidence beyond their tolerance', () => {
-  for (const [mode, periodKey, tolerance] of [
-    ['weekly', '2026-07-06', WEEKLY_BOUNDARY_TOLERANCE_MS],
-    ['monthly', '2026-05', MONTHLY_BOUNDARY_TOLERANCE_MS],
+test('weekly and monthly reject evidence beyond five percent', () => {
+  for (const [mode, periodKey] of [
+    ['weekly', '2026-07-06'],
+    ['monthly', '2026-05'],
   ]) {
     const bounds = expectedPeriodBounds(mode, periodKey);
+    const tolerance = periodBoundaryToleranceMs(mode, periodKey);
     const result = evaluatePeriodCompleteness({
       mode,
       periodKey,
