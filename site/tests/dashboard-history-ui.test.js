@@ -9,6 +9,7 @@ const dashboardClient = readFileSync(new URL('../public/dashboard-client.js', im
 const dashboardChart = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
+const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const historyLikes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const trackEndpoint = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 
@@ -53,8 +54,9 @@ test('archive removes the track playback tab and its aggregation runtime', () =>
   assert.doesNotMatch(historyFixes, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
 });
 
-test('sparse daily summaries draw visible point markers instead of an empty canvas', () => {
-  assert.match(historyFixes, /location\.hash !== '#daily'/);
-  assert.match(historyFixes, /state\.lines > 0/);
-  assert.match(historyFixes, /this\.arc\(x, y, 3/);
+test('sparse daily summaries draw visible point markers without global canvas patches', () => {
+  assert.match(periodChart, /mode === 'daily' && lineCount === 0/);
+  assert.match(periodChart, /context\.arc\(x, y, 3/);
+  assert.match(periodChart, /context\.fill\(\)/);
+  assert.doesNotMatch(historyFixes, /CanvasRenderingContext2D\.prototype|beginPathWithDailyPoints|strokeWithDailyPoints/);
 });
