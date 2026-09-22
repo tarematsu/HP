@@ -7,7 +7,7 @@ const source = name => readFileSync(
 
 const host = source('media_host.inc');
 const youtubePolicy = source('media_youtube_control_recovery.inc');
-const tverPolicy = source('media_tver_playback_policy_main1.inc');
+const tverPolicy = source('media_tver_control_recovery.inc');
 
 const section = (text, start, end) => {
   const from = text.indexOf(start);
@@ -34,14 +34,14 @@ test('YouTube policy returns exact CSS coordinates for trusted controls', () => 
   );
 });
 
-test('TVer policy returns exact CSS coordinates for trusted controls', () => {
-  assert.match(tverPolicy, /const rect = visibleRect\(element\)/);
-  assert.match(tverPolicy, /const centerX = rect\.left \+ rect\.width \/ 2/);
-  assert.match(tverPolicy, /const centerY = rect\.top \+ rect\.height \/ 2/);
-  assert.match(tverPolicy, /return \[centerX, centerY\]/);
+test('TVer policy returns the same exact CSS coordinates for trusted controls', () => {
+  assert.match(tverPolicy, /const rect = element\.getBoundingClientRect/);
+  assert.match(tverPolicy, /const x = Number\(rect\?\.left\) \+ Number\(rect\?\.width\) \/ 2/);
+  assert.match(tverPolicy, /const y = Number\(rect\?\.top\) \+ Number\(rect\?\.height\) \/ 2/);
+  assert.match(tverPolicy, /return \[point\.x, point\.y\]/);
   assert.doesNotMatch(
     tverPolicy,
-    /centerX \/ window\.innerWidth|centerY \/ window\.innerHeight/,
+    /point\.x \/ innerWidth|point\.y \/ innerHeight/,
   );
 });
 
@@ -78,7 +78,7 @@ test('YouTube watchdog uses the shared CSS path without native coordinate conver
   );
 });
 
-test('TVer watchdog uses the same shared CSS path with TVer post-click handling', () => {
+test('TVer watchdog uses the same shared CSS path', () => {
   const tver = section(
     host,
     'void ProbeTverWatchdog()',

@@ -117,15 +117,16 @@ test('YouTube clean player renders content video while preserving Skip Ad', () =
   assert.doesNotMatch(youtubeClean, /MutationObserver|homepanel:youtube-wake/);
 });
 
-test('TVer episode playback is one-shot 1.75x, native-queue based and player-local', () => {
-  assert.match(tverEpisode, /const playbackRate = 1\.75/);
-  assert.match(tverEpisode, /const targetVolume = 1\.0/);
+test('TVer playback uses one YouTube-style event runtime with native queue ownership', () => {
+  assert.match(tverEpisode, /window\.__homePanelTverRuntime/);
+  assert.match(tverEpisode, /video\.defaultPlaybackRate = 1\.75/);
+  assert.match(tverEpisode, /video\.volume = 1\.0/);
   assert.match(tverQueue, /struct NativeMediaTverNativeQueueState/);
   assert.match(tverQueue, /queueEpisodeIds/);
   assert.doesNotMatch(tverEpisode, /__homePanelTverEpisodeQueue|sessionStorage|location\.replace/);
-  assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
-  assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
-  assert.match(tverEpisode, /const suspendPlayerObserver = \(\) =>/);
+  assert.match(tverEpisode, /state\.playerObserver = new MutationObserver/);
+  assert.match(tverEpisode, /state\.playerObserver\.observe\(player/);
+  assert.match(tverEpisode, /state\.videoAbort = new AbortController/);
   assert.match(tverEpisode, /homepanel:tver-media-init/);
   assert.match(tverEpisode, /homepanel:tver-ended/);
   assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
@@ -150,20 +151,16 @@ test('TVer media initialization performs one pointer wake without burst polling'
   );
 });
 
-test('TVer ads enter fullscreen before Skip automation', () => {
-  const fullscreen = tverWatchdog.indexOf("homepanel:tver-fullscreen-key");
-  const adStart = tverWatchdog.indexOf('if (adActive) {');
-  const survey = tverWatchdog.indexOf('const surveyRoots = Array.from', adStart);
-  const branch = tverWatchdog.slice(adStart, survey);
-  assert.ok(fullscreen >= 0 && adStart > fullscreen);
-  assert.match(tverWatchdog, /__homePanelTverFullscreenRecovery/);
-  assert.match(tverWatchdog, /fullscreenRecovery\.attempts/);
-  assert.doesNotMatch(tverEpisode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
-  assert.doesNotMatch(tverWatchdog, /const videoFullscreenPoint = media =>/);
-  assert.match(tverWatchdog, /state\.fullscreenDirty = false/);
-  assert.match(branch, /skipButton/);
-  assert.doesNotMatch(branch, /fullscreenButton|isEnterFullscreenControl/);
-  assert.doesNotMatch(branch, /video\.play\(|video\.volume|playbackRate|surveyRoots/);
+test('TVer ads prioritize Skip and retain fullscreen recovery as a fallback', () => {
+  const adStart = tverEpisode.indexOf('if (adActive) {');
+  const skip = tverEpisode.indexOf("arm(skip, 'skip-ad', 600)", adStart);
+  const fullscreen = tverEpisode.indexOf('if (!fullscreen()) return requestFullscreen();', skip);
+  assert.ok(adStart >= 0 && skip > adStart && fullscreen > skip);
+  assert.match(tverEpisode, /post\('homepanel:tver-fullscreen-key'\)/);
+  assert.match(tverEpisode, /arm\(fullscreenControl\(\), 'fullscreen', 1200\)/);
+  assert.doesNotMatch(tverEpisode, /__homePanelTverFullscreenRecovery|fullscreenAttemptCount/);
+  const branch = tverEpisode.slice(adStart, fullscreen);
+  assert.doesNotMatch(branch, /video\.play\(|video\.volume = 1\.0|playbackRate = 1\.75/);
 });
 
 test('TVer completion reuses the existing controller through the host navigation path', () => {

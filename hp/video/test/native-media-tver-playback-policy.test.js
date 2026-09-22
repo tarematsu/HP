@@ -1,188 +1,92 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
-const policy = [
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy_guard.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy_main1.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy_main2.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy_force_fullscreen.inc', import.meta.url), 'utf8'),
-].join('\n');
-const episodeLoop = [
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part1.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2a.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2b_observer.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2b_events.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part3a.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part3b.inc', import.meta.url), 'utf8'),
-].join('\n');
+const runtime = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const watchdog = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
 const mediaSection = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const nativeQueue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 
-test('TVer playback policy is scoped to episode pages while queue state is native-owned', () => {
-  assert.match(policy, /kNativeMediaTverPlaybackWatchdogPolicyScript/);
-  assert.match(policy, /location\.pathname\.startsWith\('\/episodes\/'\)/);
-  assert.doesNotMatch(policy + episodeLoop, /__homePanelTverEpisodeQueue|sessionStorage/);
-  assert.doesNotMatch(policy + episodeLoop, /location\.replace\(/);
+test('TVer uses one episode-scoped runtime while queue state stays native-owned', () => {
+  assert.match(runtime, /location\.pathname\.startsWith\('\/episodes\/'\)/);
+  assert.match(runtime, /window\.__homePanelTverRuntime/);
+  assert.match(watchdog, /kNativeMediaTverControlRecoveryScript/);
+  assert.doesNotMatch(runtime, /__homePanelTverEpisodeQueue|sessionStorage/);
   assert.match(nativeQueue, /struct NativeMediaTverNativeQueueState/);
   assert.match(nativeQueue, /std::vector<std::wstring> queueEpisodeIds/);
   assert.match(nativeQueue, /std::vector<std::wstring> consumedEpisodeIds/);
-  assert.doesNotMatch(policy, /__homePanelTverSeriesPath|callSeriesSeasons|callSeasonEpisodes/);
 });
 
-test('TVer page guard no longer selects or persists episodes', () => {
-  assert.match(policy, /Episode selection is native-owned/);
-  assert.doesNotMatch(policy, /guardCloudEpisode|episodeQueueKey|launcherParam/);
-  assert.doesNotMatch(policy, /JSON\.parse|JSON\.stringify|sessionStorage/);
-});
-
-test('TVer ad branch runs before survey and program recovery', () => {
-  const adIndex = policy.indexOf('if (adActive) {');
-  const surveyIndex = policy.indexOf('const surveyRoots = Array.from');
-  const pausedIndex = policy.indexOf('if (video.paused && !video.ended)');
-  assert.ok(adIndex >= 0);
-  assert.ok(surveyIndex > adIndex);
-  assert.ok(pausedIndex > surveyIndex);
-});
-
-test('TVer fullscreen is attempted before ad-specific Skip handling', () => {
-  const fullscreenIndex = policy.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  const adIndex = policy.indexOf('if (adActive) {');
-  const surveyIndex = policy.indexOf('const surveyRoots = Array.from');
-  const adBranch = policy.slice(adIndex, surveyIndex);
-  assert.ok(fullscreenIndex >= 0 && adIndex > fullscreenIndex);
-  assert.match(adBranch, /const skipButton = adControls\.find/);
-  assert.match(adBranch, /if \(skipButton\) return point\(skipButton\)/);
-  assert.doesNotMatch(adBranch, /fullscreenButton|isEnterFullscreenControl/);
+test('TVer ad skip is chosen before ordinary program recovery', () => {
+  const adIndex = runtime.indexOf('if (adActive) {');
+  const skipIndex = runtime.indexOf("arm(skip, 'skip-ad', 600)", adIndex);
+  const normalFullscreen = runtime.indexOf('if (!fullscreen()) return requestFullscreen();', skipIndex);
+  const paused = runtime.indexOf('if (video.paused && !video.ended)', normalFullscreen);
+  assert.ok(adIndex >= 0 && skipIndex > adIndex);
+  assert.ok(normalFullscreen > skipIndex && paused > normalFullscreen);
+  const adBranch = runtime.slice(adIndex, normalFullscreen);
   assert.doesNotMatch(adBranch, /video\.play\(/);
-  assert.doesNotMatch(adBranch, /video\.volume/);
-  assert.doesNotMatch(adBranch, /playbackRate/);
-  assert.doesNotMatch(adBranch, /surveyRoots/);
+  assert.doesNotMatch(adBranch, /video\.volume = 1\.0/);
+  assert.doesNotMatch(adBranch, /video\.playbackRate = 1\.75/);
 });
 
-test('healthy playing TVer content avoids page-wide survey scanning', () => {
-  assert.match(policy, /if \(!video \|\| video\.paused\) \{/);
-  assert.match(policy, /const surveyRoots = Array\.from\(document\.querySelectorAll/);
-  assert.match(policy, /if \(!video\) return null/);
-  assert.match(policy, /const root = playerRootFor\(video\)/);
+test('TVer fullscreen mirrors YouTube key-first recovery with trusted button fallback', () => {
+  assert.match(runtime, /const requestFullscreen = \(\) =>/);
+  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
+  const fallback = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
+  assert.ok(key >= 0 && fallback > key);
+  assert.match(runtime, /document\.fullscreenElement/);
+  assert.match(runtime, /document\.elementFromPoint/);
+  assert.match(runtime, /全画面\|フルスクリーン\|fullscreen\|full screen/);
+  assert.match(mediaSection, /message == L"homepanel:tver-fullscreen-key"/);
+  assert.match(mediaSection, /NativeMediaDispatchFullscreenKey\(sender, true\)/);
 });
 
-test('TVer low quality uses bounded event-driven trusted clicks instead of polling', () => {
-  assert.match(policy, /state\.lowQualitySet \|\| state\.qualityAttemptExhausted/);
-  assert.match(policy, /qualityActionCount/);
-  assert.match(policy, />= 6/);
-  assert.match(policy, /const qualityMenu = qualityControls\.find/);
-  assert.match(policy, /return point\(lowOption\)/);
-  assert.match(policy, /return point\(target\)/);
-  assert.match(episodeLoop, /MutationObserver/);
-  assert.match(episodeLoop, /setupFlags\.push\('quality'\)/);
-  assert.match(episodeLoop, /lowClickPending/);
-  assert.doesNotMatch(episodeLoop, /lowOption\.click\(\)/);
-  assert.doesNotMatch(episodeLoop, /setInterval\s*\(\s*ensure/);
+test('TVer low quality uses bounded trusted clicks without polling', () => {
+  assert.match(runtime, /state\.qualityApplied/);
+  assert.match(runtime, /state\.qualityAttempts/);
+  assert.match(runtime, /Number\(state\.qualityAttempts \|\| 0\) < 4/);
+  assert.match(runtime, /arm\(low, 'quality-low', 700\)/);
+  assert.match(runtime, /arm\(menu, 'quality-menu', 700\)/);
+  assert.doesNotMatch(runtime, /\.click\(\)/);
+  assert.doesNotMatch(runtime, /setInterval\(/);
 });
 
-test('paused TVer program recovery is idempotent and never toggles the video surface', () => {
-  assert.match(policy, /if \(video\.paused && !video\.ended\)/);
-  assert.match(policy, /const pending = video\.play\(\)/);
-  assert.match(policy, /pending\.catch\(\(\) => \{\}\)/);
-  assert.doesNotMatch(policy, /point\(video\)/);
-  assert.doesNotMatch(policy, /video\.pause\(/);
-  assert.doesNotMatch(policy, /__homePanelTverResumeBlocked/);
-  assert.doesNotMatch(policy, /findPlayButton/);
+test('paused TVer program recovery is idempotent and uses the same trusted control path', () => {
+  assert.match(runtime, /if \(video\.paused && !video\.ended\)/);
+  assert.match(runtime, /video\.play\(\)\?\.catch\?\.\(\(\) => \{\}\)/);
+  assert.match(runtime, /arm\(play, 'play', 1200\)/);
+  assert.doesNotMatch(runtime, /video\.pause\(/);
+  assert.doesNotMatch(runtime, /point\(video\)/);
 });
 
-test('TVer fullscreen retries are watchdog-owned and bounded', () => {
-  assert.match(policy, /const browserFullscreen = document\.fullscreenElement/);
-  assert.match(policy, /if \(state\) state\.fullscreenDirty = true/);
-  const control = policy.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  const key = policy.indexOf('homepanel:tver-fullscreen-key');
-  assert.ok(control >= 0 && key > control);
-  assert.match(policy, /controlPoint && attempts < 3/);
-  assert.match(policy, /attempts < 7/);
-  assert.match(policy, /__homePanelTverFullscreenRecovery/);
-  assert.match(policy, /fullscreenRecovery\.requestedAt = Date\.now\(\)/);
-  assert.match(policy, /fullscreenRecovery\.attempts = attempts \+ 1/);
-  assert.match(policy, /Date\.now\(\) - requestedAt >= 1000/);
-  assert.match(policy, /state\.fullscreenDirty = false/);
-  assert.match(policy, /__homePanelTverFullscreenPending/);
-  assert.match(policy, /window\.setTimeout\(\(\) => \{/);
-  assert.match(policy, /\}, 800\)/);
-  assert.match(policy, /homepanel:tver-wake/);
-  assert.match(policy, /const isEnterFullscreenControl = element =>/);
-  assert.match(policy, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
-  assert.match(policy, /Array\.from\(document\.querySelectorAll\(selector\)\)/);
-  assert.match(policy, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
-  assert.match(policy, /request\.call\(target\)/);
-  assert.doesNotMatch(episodeLoop, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
-  assert.doesNotMatch(policy, /const videoFullscreenPoint = media =>/);
-  assert.doesNotMatch(policy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
-  assert.match(policy, /kNativeMediaTverForceFullscreenAnyMediaScript/);
-  assert.match(
-    mediaSection,
-    /#define kNativeMediaTverForceFullscreenAdSafeScript[\s\S]*kNativeMediaTverForceFullscreenAnyMediaScript[\s\S]*#include "media_trusted_input\.inc"/,
-  );
+test('TVer natural completion requires the active program media near its real end', () => {
+  assert.match(runtime, /event\.type === 'ended'/);
+  assert.match(runtime, /key === state\.programKey/);
+  assert.match(runtime, /at >= Math\.max\(3, length - 10\)/);
+  assert.match(runtime, /state\.programEndPending = true/);
+  assert.match(runtime, /state\.endReported = true/);
+  assert.match(runtime, /post\('homepanel:tver-ended'\)/);
+  assert.doesNotMatch(runtime, /episodeMaxPlaybackMs|postrollGraceMs/);
 });
 
-test('TVer completion requires forward playback on the current program video', () => {
-  assert.match(episodeLoop, /programProgressOrigin: Number\.NaN/);
-  assert.match(episodeLoop, /programPlaybackConfirmed: false/);
-  assert.match(episodeLoop, /currentTime >= state\.programProgressOrigin \+ 1/);
-  assert.match(
-    episodeLoop,
-    /if \(!state\.programPlaybackConfirmed\) \{[\s\S]*scheduleEnsure\(0\);[\s\S]*return;/,
-  );
-  assert.match(episodeLoop, /if \(state\.video !== video\) resetMediaState\(state, video\)/);
-  assert.match(episodeLoop, /if \(state\.programPlaybackConfirmed && video\.ended/);
-  assert.match(episodeLoop, /const completedItem = state\.programPlaybackConfirmed &&/);
+test('TVer program speed and volume are applied only after the ad branch', () => {
+  const adIndex = runtime.indexOf('if (adActive) {');
+  const rateIndex = runtime.indexOf('video.defaultPlaybackRate = 1.75');
+  const volumeIndex = runtime.indexOf('video.volume = 1.0');
+  assert.ok(adIndex >= 0 && rateIndex > adIndex && volumeIndex > adIndex);
+  assert.match(runtime, /if \(video\.muted\) video\.muted = false/);
 });
 
-test('TVer holds completion for post-roll then reports completion to native', () => {
-  assert.match(episodeLoop, /postrollGraceMs = 12000/);
-  assert.match(episodeLoop, /postrollAfterProgram: false/);
-  assert.match(episodeLoop, /const completedProgram = state\.programPlaybackConfirmed &&/);
-  assert.ok(episodeLoop.includes('if (!duration || shortAdLength) return true;'));
-  assert.match(episodeLoop, /const completedPostroll = state\.postrollAfterProgram/);
-  assert.match(episodeLoop, /Date\.now\(\) - state\.endCandidateAt >= postrollGraceMs/);
-  assert.match(episodeLoop, /postMessage\('homepanel:tver-ended'\)/);
-  assert.match(episodeLoop, /endReported/);
-});
-
-test('TVer program volume stays at 100 percent while ads remain untouched', () => {
-  assert.match(episodeLoop, /const targetVolume = 1\.0/);
-  assert.match(episodeLoop, /const enforceVolume = video =>/);
-  const adStart = episodeLoop.indexOf('if (advertisementActive) {');
-  const adEnd = episodeLoop.indexOf('if (state.adActive) {', adStart);
-  const adBranch = episodeLoop.slice(adStart, adEnd);
-  assert.doesNotMatch(adBranch, /enforceVolume\(/);
-  assert.doesNotMatch(adBranch, /video\.volume/);
-  assert.doesNotMatch(adBranch, /video\.playbackRate/);
-  assert.match(policy, /video\.volume !== 1\.0/);
-});
-
-test('event policy sends one playback-loss wake and setup-only state wakes', () => {
-  assert.match(episodeLoop, /homepanel:tver-wake/);
-  assert.match(episodeLoop, /wakeNative\('recovery:' \+ reason/);
-  assert.match(episodeLoop, /setupFlags\.push\('quality'\)/);
-  assert.match(episodeLoop, /!browserFullscreen && state\.fullscreenDirty/);
-  assert.match(episodeLoop, /wakeNative\('setup:' \+ setupFlags\.join\('\+'\)/);
-  assert.match(episodeLoop, /window\.__homePanelTverAdActive = true;[\s\S]*wakeNative\('ad:'/);
-  assert.match(episodeLoop, /fullscreenchange[\s\S]*wakeNative\('fullscreen-change:'/);
-  assert.doesNotMatch(episodeLoop, /recovery:tick:|recoveryWakeTimer|armRecoveryWake/);
-  assert.doesNotMatch(episodeLoop, /restartRequested|wakeNative\('restart:'/);
+test('TVer observation is player-scoped and event-driven', () => {
+  assert.match(runtime, /state\.playerObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(runtime, /state\.playerObserver\.observe\(player/);
+  assert.match(runtime, /state\.videoAbort = new AbortController/);
+  assert.match(runtime, /document\.addEventListener\('fullscreenchange'/);
+  assert.doesNotMatch(runtime, /setInterval\(/);
 });

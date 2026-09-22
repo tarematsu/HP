@@ -1,112 +1,70 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const wrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
-const loop = [
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part1.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2a.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2b_observer.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part2b_events.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part3a.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_episode_loop_policy_part3b.inc', import.meta.url), 'utf8'),
-].join('\n');
-const watchdog = [
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy_guard.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy_main1.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy_main2.inc', import.meta.url), 'utf8'),
-  readFileSync(
-    new URL('../../native/src/renderer_panels/media_tver_playback_policy_force_fullscreen.inc', import.meta.url), 'utf8'),
-].join('\n');
+const runtime = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const watchdog = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
 
-test('episode pages route to one bounded TVer event policy', () => {
+test('episode pages route to one unified TVer control-recovery policy', () => {
   assert.match(wrapper, /#include "media_tver_episode_loop_policy\.inc"/);
   assert.match(wrapper, /kNativeMediaTverEpisodeLoopPolicyScript/);
+  assert.match(watchdog, /kNativeMediaTverControlRecoveryScript/);
   assert.doesNotMatch(wrapper, /media_tver_series_dom_policy/);
 });
 
-test('TVer episode ad detection is bounded to the player subtree', () => {
-  assert.match(loop, /const playerRootFor = video =>/);
-  assert.match(loop, /depth < 5/);
-  assert.match(loop, /root\.querySelectorAll\(selectors\.join\(','\)\)/);
-  assert.doesNotMatch(loop, /document\.querySelectorAll\(selectors\.join\(','\)\)/);
+test('TVer ad detection stays inside the player subtree', () => {
+  assert.match(runtime, /const player = video\.closest/);
+  assert.match(runtime, /player\.querySelectorAll\(selectors\.join\(','\)\)/);
+  assert.doesNotMatch(runtime, /document\.querySelectorAll\(selectors\.join\(','\)\)/);
 });
 
-test('TVer player observer filters relevant added nodes only', () => {
-  assert.match(loop, /const interestingPlayerSelector = \[/);
-  assert.match(loop, /for \(const node of mutation\.addedNodes\)/);
-  assert.match(loop, /element\.matches\?\.\(interestingPlayerSelector\)/);
-  assert.match(loop, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
-  assert.doesNotMatch(loop, /observe\(document\.(?:documentElement|body)/);
+test('TVer uses one scoped observer and media event bindings', () => {
+  assert.match(runtime, /state\.playerObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
+  assert.match(runtime, /state\.playerObserver\.observe\(player/);
+  assert.match(runtime, /state\.videoAbort = new AbortController/);
+  assert.doesNotMatch(runtime, /observe\(document\.(?:documentElement|body)/);
+  assert.doesNotMatch(runtime, /setInterval\(/);
 });
 
-test('known TVer ads use media facts before fallback DOM marker scan', () => {
-  const activeIndex = loop.indexOf('if (state.adActive)');
-  const markerIndex = loop.indexOf('return explicitAdMarker(video)', activeIndex);
-  assert.ok(activeIndex >= 0 && markerIndex > activeIndex);
-  assert.match(loop, /if \(shortAdLength && !video\.ended\) return true/);
+test('TVer ad classification uses explicit player markers plus bounded short-media fallback', () => {
+  assert.match(runtime, /const explicitAd = \(\) =>/);
+  assert.match(runtime, /shortMedia = length >= 5 && length <= 65/);
+  assert.match(runtime, /explicitAd\(\) \|\|/);
+  assert.match(runtime, /video\.playbackRate <= 1\.05/);
 });
 
-test('TVer playback rate is initialized once per current video', () => {
-  assert.match(loop, /if \(!state\.playbackSettingsApplied\)/);
-  assert.match(loop, /video\.defaultPlaybackRate = playbackRate/);
-  assert.match(loop, /video\.playbackRate = playbackRate/);
-  assert.doesNotMatch(loop, /addEventListener\('ratechange'/);
+test('TVer playback rate is applied directly without a ratechange observer', () => {
+  assert.match(runtime, /video\.defaultPlaybackRate = 1\.75/);
+  assert.match(runtime, /video\.playbackRate = 1\.75/);
+  assert.doesNotMatch(runtime, /addEventListener\('ratechange'/);
 });
 
-test('TVer quality discovery is event driven and player-local', () => {
-  assert.doesNotMatch(loop, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
-  assert.match(loop, /!state\.lowQualitySet && !state\.qualityAttemptExhausted/);
-  assert.match(loop, /const root = playerRootFor\(video\)/);
-  assert.match(loop, /for \(const element of root\.querySelectorAll\(/);
-  assert.match(loop, /state\.lowQualitySet = true/);
-  assert.match(loop, /scheduleEnsure\(40\)/);
+test('TVer quality discovery is bounded and event-driven', () => {
+  assert.match(runtime, /state\.qualityAttempts/);
+  assert.match(runtime, /Number\(state\.qualityAttempts \|\| 0\) < 4/);
+  assert.match(runtime, /arm\(low, 'quality-low', 700\)/);
+  assert.match(runtime, /arm\(menu, 'quality-menu', 700\)/);
+  assert.doesNotMatch(runtime, /qualityProbeIntervalMs|qualityProbeLimit|setInterval\(/);
 });
 
-test('TVer fullscreen uses one watchdog-owned bounded fallback sequence', () => {
-  const control = watchdog.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  const key = watchdog.indexOf("homepanel:tver-fullscreen-key");
-  assert.ok(control >= 0 && key > control);
-  assert.match(watchdog, /if \(state\) state\.fullscreenDirty = true/);
-  assert.match(watchdog, /state\.fullscreenDirty = false/);
-  assert.match(watchdog, /homepanel:tver-wake/);
-  assert.match(watchdog, /const isEnterFullscreenControl = element =>/);
-  assert.match(watchdog, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
-  assert.match(watchdog, /Array\.from\(document\.querySelectorAll\(selector\)\)/);
-  assert.match(watchdog, /__homePanelTverFullscreenRecovery/);
-  assert.match(watchdog, /fullscreenRecovery\.attempts/);
-  assert.match(watchdog, /controlPoint && attempts < 3/);
-  assert.match(watchdog, /attempts < 7/);
-  assert.match(watchdog, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
-  assert.match(watchdog, /request\.call\(target\)/);
-  assert.doesNotMatch(loop, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
-  assert.doesNotMatch(watchdog, /const videoFullscreenPoint = media =>/);
-  assert.doesNotMatch(watchdog, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
+test('TVer fullscreen uses the same key-then-button sequence as YouTube', () => {
+  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
+  const control = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
+  assert.ok(key >= 0 && control > key);
+  assert.match(runtime, /document\.fullscreenElement/);
+  assert.match(runtime, /document\.elementFromPoint/);
+  assert.doesNotMatch(runtime, /fullscreenAttemptCount|__homePanelTverFullscreenRecovery/);
 });
 
-test('healthy TVer watchdog only enumerates fullscreen controls while recovery is dirty', () => {
-  assert.match(watchdog, /if \(!video \|\| video\.paused\)/);
-  assert.doesNotMatch(watchdog, /const playerControls = \(\) =>/);
-  const fullscreenRecovery = watchdog.indexOf('const fullscreenControlPoint = media =>');
-  const healthyFastPath = watchdog.indexOf('const trackedVideo = state && state.video');
-  assert.ok(fullscreenRecovery >= 0 && healthyFastPath > fullscreenRecovery);
-  assert.doesNotMatch(watchdog, /isExitFullscreenControl/);
+test('healthy TVer runtime does not enumerate page-wide controls', () => {
+  assert.match(runtime, /const controls = \(\) => Array\.from\(player\.querySelectorAll/);
   assert.doesNotMatch(
-    watchdog,
-    /Array\.from\(document\.querySelectorAll\(\s*'button, \[role="button"\], a, \[aria-label\], \[title\]'/,
+    runtime,
+    /Array\.from\(document\.querySelectorAll\(\s*'button/,
   );
 });

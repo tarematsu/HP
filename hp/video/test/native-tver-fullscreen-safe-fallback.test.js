@@ -3,62 +3,50 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
-const watchdog = readExpandedNativeSource(
-  '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
+const runtime = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const fullscreen = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_playback_policy_force_fullscreen.inc', import.meta.url),
   'utf8',
 );
-const episode = readExpandedNativeSource(
-  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 
-test('TVer viewport fill is only a visual fallback while browser fullscreen stays authoritative', () => {
-  assert.match(episode, /__homePanelTverEnsureViewportFullscreen/);
-  assert.match(episode, /data-homepanel-tver-viewport-root/);
-  assert.match(episode, /position:fixed !important/);
-  assert.match(episode, /coversViewport\(target\)/);
-  assert.match(watchdog, /__homePanelTverEnsureViewportFullscreen\(video\)/);
-  assert.match(watchdog, /if \(browserFullscreen\) \{/);
-  assert.doesNotMatch(watchdog, /browserFullscreen \|\| viewportFullscreen/);
+test('TVer no longer treats CSS viewport fill as fullscreen', () => {
+  assert.doesNotMatch(runtime, /__homePanelTverEnsureViewportFullscreen/);
+  assert.doesNotMatch(runtime, /data-homepanel-tver-viewport-root/);
+  assert.doesNotMatch(runtime, /position:fixed !important/);
+  assert.match(runtime, /document\.fullscreenElement/);
 });
 
 test('TVer fullscreen never falls back to a blind video-corner click', () => {
-  assert.match(watchdog, /const fullscreenControlPoint = media =>/);
-  assert.match(watchdog, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
-  assert.match(watchdog, /const documentButton = Array\.from\(document\.querySelectorAll\(selector\)\)/);
-  assert.match(watchdog, /document\.elementFromPoint\(centerX, centerY\)/);
-  assert.doesNotMatch(watchdog, /const videoFullscreenPoint = media =>/);
-  assert.doesNotMatch(watchdog, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
+  assert.match(runtime, /const fullscreenControl = \(\) =>/);
+  assert.match(runtime, /arm\(fullscreenControl\(\), 'fullscreen', 1200\)/);
+  assert.match(runtime, /document\.elementFromPoint\(point\.x, point\.y\)/);
+  assert.doesNotMatch(runtime, /videoFullscreenPoint|fullscreenPoint =/);
 });
 
-test('TVer watchdog keeps bounded control-first browser-fullscreen fallbacks', () => {
-  assert.match(watchdog, /__homePanelTverFullscreenRecovery/);
-  assert.match(watchdog, /fullscreenRecovery\.attempts/);
-  const control = watchdog.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  const key = watchdog.indexOf('homepanel:tver-fullscreen-key');
-  assert.ok(control >= 0 && key > control);
-  assert.match(watchdog, /controlPoint && attempts < 3/);
-  assert.match(watchdog, /attempts < 7/);
-  assert.match(watchdog, /Date\.now\(\) - requestedAt >= 1000/);
-  assert.match(watchdog, /__homePanelTverFullscreenPending/);
-  assert.doesNotMatch(episode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
+test('TVer fullscreen uses YouTube-style key first and real control fallback', () => {
+  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
+  const control = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
+  assert.ok(key >= 0 && control > key);
+  assert.match(runtime, /state\.fullscreenKeyRequestedAt/);
+  assert.match(runtime, /wake\(1200\)/);
+  assert.doesNotMatch(runtime, /__homePanelTverFullscreenRecovery|fullscreenAttemptCount/);
 });
 
-test('TVer fullscreen verification can directly request browser fullscreen as fallback', () => {
-  assert.match(fullscreen, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
-  assert.match(fullscreen, /request\.call\(target\)/);
+test('TVer post-click fullscreen helper only verifies state and wakes recovery', () => {
+  assert.match(fullscreen, /document\.fullscreenElement/);
+  assert.match(fullscreen, /state\.fullscreenKeyRequestedAt = 0/);
   assert.match(fullscreen, /homepanel:tver-wake/);
-  assert.match(fullscreen, /__homePanelTverFullscreenRecovery/);
+  assert.doesNotMatch(fullscreen, /requestFullscreen|webkitRequestFullscreen|request\.call/);
 });
 
 test('natural TVer completion has no wall-clock safety cap', () => {
   assert.doesNotMatch(
-    episode,
+    runtime,
     /episodeMaxPlaybackMs|episodeStartedAt|episodeLimitTimer|armEpisodeLimit|enforceEpisodeLimit/,
   );
-  assert.match(episode, /state\.programPlaybackConfirmed && video\.ended/);
-  assert.match(episode, /const completedItem = state\.programPlaybackConfirmed &&/);
-  assert.match(episode, /mediaIdentity\(video\) === state\.endCandidateIdentity/);
-  assert.match(episode, /if \(stableEnd && completedItem\)/);
-  assert.doesNotMatch(episode, /video\.loop = holdUntilDeadline/);
+  assert.match(runtime, /event\.type === 'ended'/);
+  assert.match(runtime, /key === state\.programKey/);
+  assert.match(runtime, /state\.programEndPending = true/);
+  assert.match(runtime, /post\('homepanel:tver-ended'\)/);
 });

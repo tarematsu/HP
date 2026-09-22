@@ -13,7 +13,7 @@ const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
-const tverEpisode = readExpandedNativeSource(
+const tverRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const tverQueue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
@@ -46,21 +46,22 @@ test('TVer queue, progression and cycle restart are native-owned', () => {
   assert.match(tverQueue, /NativeMediaTverAdvanceEpisode/);
   assert.match(tverQueue, /Queue exhaustion starts a fresh cycle/);
   assert.match(mediaWrapper, /homepanel:tver-ended/);
-  assert.doesNotMatch(tverEpisode, /episodeQueueKey|advanceEpisode|sessionStorage|location\.replace/);
+  assert.doesNotMatch(tverRuntime, /episodeQueueKey|advanceEpisode|sessionStorage|location\.replace/);
   assert.doesNotMatch(composition, /AdvanceNativeMediaTverSeries|gNativeMediaTverUseDeathGame/);
 });
 
-test('TVer is event driven and player-local', () => {
-  assert.match(tverEpisode, /const playbackRate = 1\.75/);
-  assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
-  assert.match(tverEpisode, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
-  assert.match(tverEpisode, /event\.target instanceof HTMLMediaElement/);
-  assert.match(tverEpisode, /homepanel:tver-media-init/);
-  assert.match(tverEpisode, /homepanel:tver-ended/);
-  assert.doesNotMatch(tverEpisode, /observe\(document\.(?:documentElement|body)/);
-  assert.doesNotMatch(tverEpisode, /setInterval\(ensure/);
-  assert.doesNotMatch(tverEpisode, /addEventListener\('ratechange'/);
-  assert.doesNotMatch(tverEpisode, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
+test('TVer is event driven and player-local through one control runtime', () => {
+  assert.match(tverRuntime, /window\.__homePanelTverRuntime/);
+  assert.match(tverRuntime, /video\.defaultPlaybackRate = 1\.75/);
+  assert.match(tverRuntime, /state\.playerObserver = new MutationObserver/);
+  assert.match(tverRuntime, /state\.playerObserver\.observe\(player/);
+  assert.match(tverRuntime, /state\.videoAbort = new AbortController/);
+  assert.match(tverRuntime, /homepanel:tver-media-init/);
+  assert.match(tverRuntime, /homepanel:tver-ended/);
+  assert.doesNotMatch(tverRuntime, /observe\(document\.(?:documentElement|body)/);
+  assert.doesNotMatch(tverRuntime, /setInterval\(/);
+  assert.doesNotMatch(tverRuntime, /addEventListener\('ratechange'/);
+  assert.doesNotMatch(tverRuntime, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
 });
 
 test('hidden YouTube and TVer share direct CSS WebView2 trusted input', () => {

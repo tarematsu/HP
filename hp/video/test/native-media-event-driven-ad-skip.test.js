@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
 const youtubeClean = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url),
@@ -13,13 +14,8 @@ const youtubeRuntime = readFileSync(
   ),
   'utf8',
 );
-const tver = readFileSync(
-  new URL(
-    '../../native/src/renderer_panels/media_tver_episode_loop_policy_part2b_observer.inc',
-    import.meta.url,
-  ),
-  'utf8',
-);
+const tver = readExpandedNativeSource(
+  '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 
 test('YouTube ad skip readiness has one event-driven runtime owner', () => {
   assert.match(youtubeClean, /ytp-ad-skip-button/);
@@ -43,17 +39,15 @@ test('YouTube ad skip readiness has one event-driven runtime owner', () => {
   assert.doesNotMatch(youtubeRuntime, /setInterval\s*\(/);
 });
 
-test('TVer skip controls wake recovery on actionable attribute changes', () => {
-  assert.match(tver, /const skipControlSelector = \[/);
-  assert.match(tver, /const skipControlObservers = new Map\(\)/);
-  assert.match(tver, /wakeNative\('skip-ready:' \+ playerUiRevision\)/);
-  assert.match(tver, /scheduleEnsure\(0\)/);
+test('TVer skip controls use the same event-wake plus trusted-target model', () => {
+  assert.match(tver, /state\.playerObserver = new MutationObserver\(\(\) => wake\(0\)\)/);
   assert.match(
     tver,
-    /attributeFilter: \['disabled', 'aria-disabled', 'aria-hidden', 'class', 'style'\]/,
+    /attributeFilter: \['class','disabled','aria-disabled','aria-hidden'\]/,
   );
-  assert.match(tver, /playerObserver\.observe\(root, \{ childList: true, subtree: true \}\)/);
-  assert.match(tver, /disconnectSkipControlObservers\(\)/);
-  assert.match(tver, /wakeNative\('ui:' \+ playerUiRevision\)/);
+  assert.match(tver, /const skipPattern =/);
+  assert.match(tver, /arm\(skip, 'skip-ad', 600\)/);
+  assert.match(tver, /document\.elementFromPoint/);
+  assert.match(tver, /post\('homepanel:tver-wake'\)/);
   assert.doesNotMatch(tver, /setInterval\s*\(/);
 });

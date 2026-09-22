@@ -3,46 +3,38 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { readExpandedNativeSource } from './helpers/read-expanded-native-source.js';
 
-const episode = readExpandedNativeSource(
+const runtime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
-const playbackPolicy = readExpandedNativeSource(
-  '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
 const mediaBase = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 
-test('TVer event policy reports playback loss but never owns playback recovery', () => {
-  assert.doesNotMatch(episode, /video\.play\s*\(/);
-  assert.doesNotMatch(episode, /playButton\.click\s*\(/);
-  assert.match(episode, /startRecovery\(eventName\)/);
-  assert.match(episode, /if \(!video\.ended\) startRecovery\('pause'\)/);
-  assert.match(episode, /wakeNative\('recovery:' \+ reason/);
-  assert.doesNotMatch(episode, /recovery:tick:|recoveryWakeTimer|armRecoveryWake/);
+test('one TVer runtime owns event reporting and idempotent playback recovery', () => {
+  assert.match(runtime, /window\.__homePanelTverRuntime/);
+  assert.match(runtime, /'playing','pause','waiting','stalled','ended','error'/);
+  assert.match(runtime, /if \(video\.paused && !video\.ended\)/);
+  assert.match(runtime, /video\.play\(\)\?\.catch/);
+  assert.match(runtime, /arm\(play, 'play', 1200\)/);
+  assert.match(runtime, /post\('homepanel:tver-wake'\)/);
+  assert.doesNotMatch(runtime, /recoveryPending|recoveryWakeTimer|armRecoveryWake/);
 });
 
-test('paused TVer playback recovery is idempotent and never toggles the video surface', () => {
-  assert.match(playbackPolicy, /if \(video\.paused && !video\.ended\)/);
-  assert.match(playbackPolicy, /const pending = video\.play\(\)/);
-  assert.match(playbackPolicy, /pending\.catch\(\(\) => \{\}\)/);
-  assert.doesNotMatch(playbackPolicy, /point\(video\)/);
-  assert.doesNotMatch(playbackPolicy, /video\.pause\s*\(/);
-  assert.doesNotMatch(playbackPolicy, /__homePanelTverResumeBlocked/);
+test('paused TVer playback recovery never toggles the video surface', () => {
+  assert.match(runtime, /if \(video\.paused && !video\.ended\)/);
+  assert.match(runtime, /video\.play\(\)\?\.catch/);
+  assert.match(runtime, /arm\(play, 'play', 1200\)/);
+  assert.doesNotMatch(runtime, /point\(video\)/);
+  assert.doesNotMatch(runtime, /video\.pause\s*\(/);
+  assert.doesNotMatch(runtime, /__homePanelTverResumeBlocked/);
 });
 
-test('TVer fullscreen recovery stays bounded and targets labelled controls', () => {
-  const control = playbackPolicy.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  const key = playbackPolicy.indexOf('homepanel:tver-fullscreen-key');
-  assert.ok(control >= 0 && key > control);
-  assert.match(playbackPolicy, /const fullscreenControlPoint = media =>/);
-  assert.match(playbackPolicy, /const root = playerRootFor\(media\)/);
-  assert.match(playbackPolicy, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
-  assert.match(playbackPolicy, /Array\.from\(document\.querySelectorAll\(selector\)\)/);
-  assert.match(playbackPolicy, /__homePanelTverFullscreenRecovery/);
-  assert.match(playbackPolicy, /fullscreenRecovery\.video !== video/);
-  assert.match(playbackPolicy, /controlPoint && attempts < 3/);
-  assert.match(playbackPolicy, /attempts < 7/);
-  assert.doesNotMatch(episode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
-  assert.doesNotMatch(playbackPolicy, /const videoFullscreenPoint = media =>/);
-  assert.doesNotMatch(playbackPolicy, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
+test('TVer fullscreen recovery is key-first and then targets a labelled real control', () => {
+  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
+  const control = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
+  assert.ok(key >= 0 && control > key);
+  assert.match(runtime, /const fullscreenControl = \(\) =>/);
+  assert.match(runtime, /全画面\|フルスクリーン\|fullscreen\|full screen/);
+  assert.match(runtime, /document\.elementFromPoint/);
+  assert.doesNotMatch(runtime, /__homePanelTverFullscreenRecovery|fullscreenAttemptCount/);
 });
 
 test('TVer routing keys live directly in the shared media base', () => {
