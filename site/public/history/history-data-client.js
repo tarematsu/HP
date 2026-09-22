@@ -62,7 +62,7 @@ async function overlayCurrentDaily(url, baseData, { signal, fetchImpl, now }) {
   if (!requestedRangeIncludesToday(url, day)) return baseData;
 
   try {
-    const liveUrl = requestUrl('/api/history-current?mode=daily');
+    const liveUrl = new URL('/api/history-current?mode=daily', url);
     const liveResponse = await fetchImpl(liveUrl.href, {
       signal,
       cache: 'no-store',
