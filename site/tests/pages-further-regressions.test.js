@@ -109,10 +109,9 @@ test('active Pages archive runtimes are UTC-only except the official-party today
   assert.doesNotMatch(entry, /trackDate|trackWeekMode|'tracks'|legacyHistoryRoute/);
   assert.doesNotMatch(guard, /TRACK_CACHE_PREFIX|\/api\/track-history|history:track-rows/);
   assert.doesNotMatch(fixes, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
-  assert.match(fixes, /applyUtcPreset/);
-  assert.match(fixes, /inclusivePresetStart/);
-  assert.match(history, /timeZone: 'UTC'/);
+  assert.match(history, /function applyPreset\(days\)/);
   assert.match(history, /todayUtc/);
+  assert.match(history, /timeZone: 'UTC'/);
   assert.match(likes, /timeZone: 'UTC'/);
   assert.match(likes, /ranking_only=1/);
   assert.doesNotMatch(likes, /currentUtcWeekRange|completeTrackRows|week_play_count/);
