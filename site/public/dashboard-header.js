@@ -174,7 +174,21 @@ if (actions && tabs) actions.replaceWith(tabs);
 const broadcastsTab = document.querySelector('#modeTabs [data-mode="broadcasts"]');
 if (broadcastsTab) broadcastsTab.textContent = '公式リスパ';
 
-for (const id of ['currentChartDetail', 'chartDetail', 'notice']) {
-  const element = document.getElementById(id);
-  if (element) element.textContent = '';
+const CHART_HELPER_PREFIX = 'グラフをタッチ';
+function clearChartHelperCopy(element) {
+  if (!element) return;
+  if (element.textContent.trim().startsWith(CHART_HELPER_PREFIX)) element.replaceChildren();
 }
+
+for (const id of ['currentChartDetail', 'chartDetail']) {
+  const element = document.getElementById(id);
+  if (!element) continue;
+  clearChartHelperCopy(element);
+  new MutationObserver(() => clearChartHelperCopy(element)).observe(element, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+  });
+}
+
+document.getElementById('notice')?.replaceChildren();
