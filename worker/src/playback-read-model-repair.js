@@ -1,5 +1,9 @@
 import { attachReadModelTrackMetadata } from './minute-facts-read-model.js';
 import { loadReadModelTrackMetadata } from './read-model-metadata-indexed.js';
+import {
+  sanitizeQueueTrackMetadata,
+  trackNeedsHydration,
+} from './track-metadata-quality.js';
 
 function text(value) {
   if (value == null || value === '') return null;
@@ -27,7 +31,7 @@ function incompletePlaybackMetadataKeys(queue) {
   let incomplete = false;
 
   for (const track of tracks) {
-    if (track?.title && track?.artist && track?.thumbnail_url) continue;
+    if (!trackNeedsHydration(track)) continue;
     incomplete = true;
 
     const spotifyId = text(track?.spotify_id);
@@ -60,12 +64,20 @@ export async function repairPlaybackReadModels(env) {
     FROM sh_queue_read_model_current WHERE queue_json IS NOT NULL`).all();
   let repaired = 0;
   for (const row of current.results || []) {
-    const queue = safeQueue(row.queue_json);
+    const originalQueue = safeQueue(row.queue_json);
+    const queue = sanitizeQueueTrackMetadata(originalQueue);
     const keys = incompletePlaybackMetadataKeys(queue);
-    if (!keys || (!keys.spotifyIds.length && !keys.isrcs.length)) continue;
+    if (!keys || (!keys.spotifyIds.length && !keys.isrcs.length)) {
+      if (queue && queue !== originalQueue) {
+        await db.prepare(`UPDATE sh_queue_read_model_current SET queue_json=? WHERE channel_id=?`)
+          .bind(JSON.stringify(queue), row.channel_id).run();
+        repaired += 1;
+      }
+      continue;
+    }
     const metadataRows = await playbackMetadataRows(env, keys.spotifyIds, keys.isrcs);
     const hydrated = attachReadModelTrackMetadata(queue, metadataRows);
-    if (hydrated === queue) continue;
+    if (hydrated === originalQueue) continue;
     await db.prepare(`UPDATE sh_queue_read_model_current SET queue_json=? WHERE channel_id=?`)
       .bind(JSON.stringify(hydrated), row.channel_id).run();
     repaired += 1;
