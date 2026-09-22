@@ -8,8 +8,6 @@ const wrapper = read('../../native/src/renderer_panels/media_section.inc');
 const youtube = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 const tver = readExpandedNativeSource(
-  '../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url);
-const tverEpisode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const tverVerify = read(
   '../../native/src/renderer_panels/media_tver_playback_policy_force_fullscreen.inc');
@@ -38,36 +36,34 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.doesNotMatch(youtube, /const videoFullscreenPoint = media =>/);
 });
 
-test('TVer prefers the real fullscreen control before trusted F fallback', () => {
-  const control = tver.indexOf('const controlPoint = fullscreenControlPoint(video)');
-  const key = tver.indexOf('homepanel:tver-fullscreen-key');
-  assert.ok(control >= 0 && key > control);
-  assert.match(tver, /const isEnterFullscreenControl = element =>/);
-  assert.match(tver, /const fullscreenControlPoint = media =>/);
-  assert.match(tver, /__homePanelTverFullscreenRecovery/);
-  assert.match(tver, /__homePanelTverFullscreenPending/);
-  assert.match(tver, /fullscreenRecovery\.requestedAt = Date\.now\(\)/);
-  assert.match(tver, /fullscreenRecovery\.attempts = attempts \+ 1/);
-  assert.match(tver, /controlPoint && attempts < 3/);
-  assert.match(tver, /attempts < 7/);
-  assert.match(tver, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
-  assert.match(tver, /Array\.from\(document\.querySelectorAll\(selector\)\)/);
-  assert.doesNotMatch(tverEpisode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
-  assert.doesNotMatch(tver, /const videoFullscreenPoint = media =>/);
-  assert.doesNotMatch(tver, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
+test('TVer mirrors YouTube with trusted fullscreen request then labelled-button fallback', () => {
+  const request = tver.slice(
+    tver.indexOf('const requestFullscreen = () =>'),
+    tver.indexOf('if (adActive) {'),
+  );
+  const key = request.indexOf("post('homepanel:tver-fullscreen-key')");
+  const fallback = request.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
+  assert.ok(key >= 0 && fallback > key);
+  assert.match(request, /fullscreenKeyRequestedAt/);
+  assert.match(request, /wake\(1200\)/);
+  assert.match(tver, /全画面\|フルスクリーン\|fullscreen\|full screen/);
+  assert.match(tver, /document\.elementFromPoint/);
+  assert.doesNotMatch(tver, /__homePanelTverFullscreenRecovery|fullscreenAttemptCount/);
 });
 
-test('TVer requests fullscreen before ad-specific controls', () => {
-  const fullscreen = tver.indexOf('const controlPoint = fullscreenControlPoint(video)');
+test('TVer ads prioritize Skip and only use fullscreen recovery when Skip is unavailable', () => {
   const ad = tver.indexOf('if (adActive) {');
-  assert.ok(fullscreen >= 0 && ad > fullscreen);
+  const skip = tver.indexOf("arm(skip, 'skip-ad', 600)", ad);
+  const fullscreen = tver.indexOf('if (!fullscreen()) return requestFullscreen();', skip);
+  assert.ok(ad >= 0 && skip > ad && fullscreen > skip);
 });
 
-test('YouTube key messages remain source checked and TVer verification rearms fallback', () => {
+test('fullscreen key messages stay source checked and TVer verification only rearms runtime', () => {
   assert.match(wrapper, /homepanel:youtube-fullscreen-key/);
   assert.match(wrapper, /sourceContains\(L"youtube\.com\/watch"\)/);
+  assert.match(wrapper, /homepanel:tver-fullscreen-key/);
+  assert.match(wrapper, /sourceContains\(L"tver\.jp\/episodes\/"\)/);
   assert.match(tverVerify, /homepanel:tver-wake/);
-  assert.match(tverVerify, /fullscreenDirty = true/);
-  assert.match(tverVerify, /__homePanelTverFullscreenRecovery/);
-  assert.match(tverVerify, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
+  assert.match(tverVerify, /fullscreenKeyRequestedAt = 0/);
+  assert.doesNotMatch(tverVerify, /requestFullscreen|webkitRequestFullscreen|__homePanelTverFullscreenRecovery/);
 });
