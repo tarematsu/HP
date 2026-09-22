@@ -1,4 +1,9 @@
 import type { Env } from "./sources";
+import {
+  parseStationheadLeaderboardSnapshot,
+  stationheadLeaderboardCandidateWindow,
+  STATIONHEAD_WEEKLY_CANDIDATE_KEY,
+} from "./stationhead_leaderboard_weekly_import";
 
 const MAX_RECORDS = 8;
 const MAX_BODY_CHARS = 65_536;
@@ -68,23 +73,62 @@ function stableBody(body: string): unknown {
 function contentIdentity(deviceId: string, records: StationheadLeaderboardProbeRecord[]): string {
   return JSON.stringify({ version: 1, device_id: deviceId, records: records.map(({ observed_at: _observedAt, body, ...record }) => ({ ...record, body: stableBody(body) })) });
 }
+
+function usableWeeklySnapshot(records: StationheadLeaderboardProbeRecord[], receivedAt: number): boolean {
+  const window = stationheadLeaderboardCandidateWindow(receivedAt);
+  if (!window) return false;
+  return records.some((record) => {
+    if (record.source !== "dedicated-webview-dom" || record.status !== 200) return false;
+    if (record.observed_at < window.startMs || record.observed_at >= window.endMs) return false;
+    try {
+      const rows = parseStationheadLeaderboardSnapshot(JSON.parse(record.body));
+      return rows.length >= 5 && rows[0]?.rank === 1;
+    } catch {
+      return false;
+    }
+  });
+}
+
 export async function applyStationheadLeaderboardProbeInput(value: unknown, env: Env, deviceId: string): Promise<StationheadLeaderboardProbeResult> {
   if (!env.DATA_BUCKET) return { status: 503, body: { error: "probe storage unavailable" } };
   const receivedAt = Date.now(); const records = normalizeStationheadLeaderboardProbe(value, receivedAt);
   if (!records) return { status: 400, body: { error: "invalid leaderboard probe" } };
   const digest = await sha256Hex(contentIdentity(deviceId, records));
   const historyKey = `${HISTORY_PREFIX}${digest.slice(0, 32)}.json`;
-  const previous = await env.DATA_BUCKET.head(LATEST_KEY);
-  if (previous?.customMetadata?.contentDigest === digest) {
-    return { status: 200, body: { accepted: records.length, stored: false, unchanged: true, reported: true, delivery: "r2-pull", historyKey } };
-  }
   const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
   const options = { httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { contentDigest: digest } };
-  await Promise.all([
+  const candidateWindow = stationheadLeaderboardCandidateWindow(receivedAt);
+  const weeklyUsable = !!candidateWindow && usableWeeklySnapshot(records, receivedAt);
+  const weeklyOptions = candidateWindow ? {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+    customMetadata: { contentDigest: digest, rankingWeek: candidateWindow.rankingDate },
+  } : null;
+
+  const previous = await env.DATA_BUCKET.head(LATEST_KEY);
+  if (previous?.customMetadata?.contentDigest === digest) {
+    let weeklyCandidateStored = false;
+    if (weeklyUsable && weeklyOptions && candidateWindow) {
+      const weeklyPrevious = await env.DATA_BUCKET.head(STATIONHEAD_WEEKLY_CANDIDATE_KEY);
+      if (
+        weeklyPrevious?.customMetadata?.rankingWeek !== candidateWindow.rankingDate
+        || weeklyPrevious?.customMetadata?.contentDigest !== digest
+      ) {
+        await env.DATA_BUCKET.put(STATIONHEAD_WEEKLY_CANDIDATE_KEY, serialized, weeklyOptions);
+        weeklyCandidateStored = true;
+      }
+    }
+    return { status: 200, body: { accepted: records.length, stored: false, unchanged: true, reported: true, delivery: "r2-pull", historyKey, weeklyCandidateStored } };
+  }
+
+  const writes: Promise<unknown>[] = [
     env.DATA_BUCKET.put(historyKey, serialized, options),
     env.DATA_BUCKET.put(LATEST_KEY, serialized, options),
-  ]);
-  return { status: 200, body: { accepted: records.length, stored: true, unchanged: false, reported: true, delivery: "r2-pull", historyKey } };
+  ];
+  if (weeklyUsable && weeklyOptions) {
+    writes.push(env.DATA_BUCKET.put(STATIONHEAD_WEEKLY_CANDIDATE_KEY, serialized, weeklyOptions));
+  }
+  await Promise.all(writes);
+  return { status: 200, body: { accepted: records.length, stored: true, unchanged: false, reported: true, delivery: "r2-pull", historyKey, weeklyCandidateStored: weeklyUsable } };
 }
 
 export async function stationheadLeaderboardLatestProbeResponse(env: Env): Promise<Response> {
