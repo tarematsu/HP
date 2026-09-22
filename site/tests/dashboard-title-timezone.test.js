@@ -7,7 +7,7 @@ const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.me
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
-const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
+const historyData = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 
 test('dashboard title is the hashtag, browser title, and links to an X search for the same text', () => {
   assert.match(header, /const DASHBOARD_TITLE = '#櫻坂46_ステへ統計'/);
@@ -35,8 +35,7 @@ test('header shows the dashboard materialization time in JST without seconds', (
   assert.doesNotMatch(metrics, /response\?\.headers\?\.get\('x-materialized-at'\)|dashboard:materialized-at/);
   assert.match(fetchCache, /response\?\.headers\?\.get\('x-materialized-at'\)/);
   assert.match(fetchCache, /dashboard:materialized-at/);
-  assert.match(guard, /x-materialized-at/);
-  assert.match(guard, /history:materialized-at/);
+  assert.doesNotMatch(historyData, /history:materialized-at|x-materialized-at/);
 
   // Dashboard/history data timestamps and date-range boundaries remain UTC.
   assert.match(dashboard, /timeZone: 'UTC'/);
