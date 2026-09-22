@@ -6,14 +6,15 @@ const historyMain = readFileSync(new URL('../public/history/history-main.js', im
 const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.js', import.meta.url), 'utf8');
 const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 
-test('history runtime installs dedicated axis labels', () => {
-  assert.match(historyMain, /history-axis-labels\.js\?v=20260923\.4/);
+test('history runtime installs dedicated event-driven axis labels', () => {
+  assert.match(historyMain, /history-axis-labels\.js\?v=20260923\.5/);
   assert.match(axisLabels, /historyChartAxisTitles/);
   assert.match(axisLabels, /chartYAxisLeft/);
   assert.match(axisLabels, /chartYAxisRight/);
   assert.match(axisLabels, /chartXAxisTitle/);
-  assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'/);
-  assert.match(axisLabels, /new MutationObserver/);
+  assert.match(axisLabels, /history:data-loaded/);
+  assert.match(axisLabels, /hashchange/);
+  assert.doesNotMatch(axisLabels, /new MutationObserver|modeTabs'\)\?\.addEventListener\('click'/);
 });
 
 test('history chart hides duplicate endpoint labels', () => {
