@@ -52,37 +52,33 @@ function isCandidate(row) {
   return isKnownHistoricalRange(String(row.period_key)) || Number(row.sample_count) === 1;
 }
 
-function parentContainsRepairedDay(rows, range, repairedSet) {
-  return rows.some((row) => row.period_key >= range.startKey
-    && row.period_key < range.endKey && repairedSet.has(row.period_key));
-}
-
-async function rebuildParents(otherDb, dailyRows, repairedKeys, now) {
-  const repairedSet = new Set(repairedKeys);
+async function repairParentPeriodEnds(otherDb, dailyRepairs, now) {
   const report = { weekly: [], monthly: [] };
   for (const [mode, table, toRange] of [
     ['weekly', 'sh_weekly_summary', utcWeeklyRange],
     ['monthly', 'sh_monthly_summary', utcMonthlyRange],
   ]) {
-    const parents = await otherDb.prepare(`SELECT period_key,stream_start,stream_end,stream_growth,quality_flags FROM ${table} ORDER BY period_key`).all();
+    const parents = await otherDb.prepare(`SELECT period_key,stream_start,stream_end,stream_growth FROM ${table} ORDER BY period_key`).all();
     for (const parent of parents.results || []) {
       const range = toRange(mode === 'monthly' ? `${parent.period_key}-01` : parent.period_key);
-      if (!parentContainsRepairedDay(dailyRows, range, repairedSet)) continue;
-      const rows = dailyRows.filter((row) => row.period_key >= range.startKey && row.period_key < range.endKey);
-      const streamStart = rows.map((row) => finite(row.stream_start)).find((value) => value != null) ?? null;
-      const streamEnd = rows.map((row) => finite(row.stream_end)).findLast((value) => value != null) ?? null;
+      const boundaryRepair = dailyRepairs.find((row) => nextDayKey(String(row.key)) === range.endKey);
+      if (!boundaryRepair) continue;
+      const previousDailyEnd = finite(boundaryRepair.before[1]);
+      const parentEnd = finite(parent.stream_end);
+      if (parentEnd !== previousDailyEnd) continue;
+      const streamEnd = finite(boundaryRepair.after[1]);
+      const streamStart = finite(parent.stream_start);
       const streamGrowth = growth(streamStart, streamEnd);
-      if (finite(parent.stream_start) === streamStart
-          && finite(parent.stream_end) === streamEnd
-          && finite(parent.stream_growth) === streamGrowth) continue;
-      await otherDb.prepare(`UPDATE ${table} SET stream_start=?,stream_end=?,stream_growth=?,updated_at=?
-        WHERE period_key=? AND stream_start IS ? AND stream_end IS ? AND stream_growth IS ?`)
-        .bind(streamStart, streamEnd, streamGrowth, now, parent.period_key,
-          parent.stream_start, parent.stream_end, parent.stream_growth).run();
+      if (parentEnd === streamEnd && finite(parent.stream_growth) === streamGrowth) continue;
+      const result = await otherDb.prepare(`UPDATE ${table} SET stream_end=?,stream_growth=?,updated_at=?
+        WHERE period_key=? AND stream_end IS ? AND stream_growth IS ?`)
+        .bind(streamEnd, streamGrowth, now, parent.period_key, parent.stream_end, parent.stream_growth).run();
+      if (Number(result?.meta?.changes ?? result?.changes ?? 0) < 1) continue;
       report[mode].push({
         key: parent.period_key,
         before: [parent.stream_start, parent.stream_end, parent.stream_growth],
         after: [streamStart, streamEnd, streamGrowth],
+        source_day: boundaryRepair.key,
       });
     }
   }
@@ -124,8 +120,7 @@ export async function repairSingleSampleStreamSummaries({ otherDb, now = Date.no
   }
 
   if (!daily.length) return { ok: true, daily: [], weekly: [], monthly: [] };
-  const refreshed = await otherDb.prepare(`SELECT period_key,stream_start,stream_end FROM sh_daily_summary ORDER BY period_key`).all();
-  const parents = await rebuildParents(otherDb, refreshed.results || [], daily.map((row) => row.key), now);
+  const parents = await repairParentPeriodEnds(otherDb, daily, now);
   return { ok: true, daily, ...parents };
 }
 
