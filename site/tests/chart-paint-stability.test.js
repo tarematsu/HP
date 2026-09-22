@@ -3,21 +3,27 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const dashboardCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const dashboardLayout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const dashboardStability = readFileSync(new URL('../public/dashboard-chart-stability.js', import.meta.url), 'utf8');
 const dashboardDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyStability = readFileSync(new URL('../public/history/history-chart-stability.js', import.meta.url), 'utf8');
 
-test('dashboard has one canvas renderer and labels cache versus network payloads', () => {
+test('dashboard has one response parser and one canvas renderer', () => {
   assert.doesNotMatch(dashboard, /dashboard-current-enhancements\.js/);
-  assert.match(dashboard, /dashboard-current-layout\.js\?v=20260923\.1/);
-  assert.match(dashboard, /dashboard-chart-stability\.js\?v=20260923\.1/);
-  assert.match(dashboard, /dashboard-chart-comparison\.js\?v=20260923\.1/);
-  assert.match(dashboard, /dashboard-chart-detail\.js\?v=20260923\.1/);
-  assert.match(dashboard, /renderPayload\(cached\.payload, 'cache'\)/);
-  assert.match(dashboard, /renderPayload\(await response\.clone\(\)\.json\(\), 'network'\)/);
-  assert.match(dashboard, /detail: \{ payload, source \}/);
+  assert.match(dashboard, /dashboard-current-layout\.js\?v=20260923\.4/);
+  assert.match(dashboard, /dashboard-chart-stability\.js\?v=20260923\.4/);
+  assert.match(dashboard, /dashboard-chart-comparison\.js\?v=20260923\.4/);
+  assert.match(dashboard, /dashboard-chart-detail\.js\?v=20260923\.4/);
+  assert.match(dashboard, /dashboard-fetch-cache\.js\?v=20260923\.4/);
+  assert.doesNotMatch(dashboard, /window\.fetch|response\.clone\(\)\.json|renderPayload|restoreDashboardCache/);
+  assert.match(dashboardCache, /function dispatchPayload\(payload, source\)/);
+  assert.match(dashboardCache, /detail: \{ payload, source \}/);
+  assert.match(dashboardCache, /function responseWithParsedPayload/);
+  assert.match(dashboardCache, /Object\.defineProperty\(next, 'json'/);
+  assert.match(dashboardCache, /dispatchPayload\(state\.lastPayload, 'cache'\)/);
+  assert.match(dashboardCache, /dispatchPayload\(payload, 'network'\)/);
   assert.doesNotMatch(dashboardLayout, /audienceChart|getContext\('2d'\)|clearRect\(/);
 });
 
