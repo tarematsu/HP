@@ -13,6 +13,8 @@ export const SUMMARY_MINIMUM_DAILY_SAMPLES = 24;
 export const SUMMARY_DAILY_BOUNDARY_TOLERANCE_MS = 60 * MINUTE_MS;
 export const SUMMARY_LISTENER_AVERAGE_MIN_COVERAGE = 0.5;
 export const SUMMARY_BOUNDARY_TOLERANCE_RATIO = 0.05;
+export const WEEKLY_MEMBER_BOUNDARY_TOLERANCE_MS = DAY_MS;
+export const MONTHLY_MEMBER_BOUNDARY_TOLERANCE_MS = 3 * DAY_MS;
 export const KNOWN_DAILY_STREAM_GAPS = new Set(['2026-04-30']);
 
 const EMAIL_WEEKLY_FROM = '2026-01-01';
@@ -41,6 +43,12 @@ export function periodBoundaryToleranceMs(mode, periodKey = null) {
     return bounds ? (bounds.end - bounds.start) * SUMMARY_BOUNDARY_TOLERANCE_RATIO : MONTHLY_BOUNDARY_TOLERANCE_MS;
   }
   return DAILY_BOUNDARY_TOLERANCE_MS;
+}
+
+export function memberBoundaryToleranceMs(mode) {
+  if (mode === 'weekly') return WEEKLY_MEMBER_BOUNDARY_TOLERANCE_MS;
+  if (mode === 'monthly') return MONTHLY_MEMBER_BOUNDARY_TOLERANCE_MS;
+  return DAY_MS;
 }
 
 export function parseQualityFlags(value) {
@@ -178,12 +186,13 @@ export async function loadSummaryDailyCoverage(db, rows, mode) {
   if (mode === 'daily' || !rows?.length) return null;
   const bounds = rows.map((row) => expectedPeriodBounds(mode, row?.period_key)).filter(Boolean);
   if (!bounds.length) return [];
-  const start = Math.min(...bounds.map((period) => period.start));
-  const end = Math.max(...bounds.map((period) => period.end));
+  const margin = memberBoundaryToleranceMs(mode);
+  const start = Math.min(...bounds.map((period) => period.start)) - margin;
+  const end = Math.max(...bounds.map((period) => period.end)) + margin + DAY_MS;
   const from = new Date(start).toISOString().slice(0, 10);
   const to = new Date(end).toISOString().slice(0, 10);
   const result = await db.prepare(`SELECT period_key,period_start,period_end,
-      sample_count,reliable_sample_count,stream_start,stream_end
+      sample_count,reliable_sample_count,stream_start,stream_end,member_start,member_end
     FROM sh_daily_summary WHERE period_key>=? AND period_key<?
     ORDER BY period_key ASC LIMIT 2000`).bind(from, to).all();
   return result.results || [];
@@ -256,10 +265,40 @@ function summaryListenerCoverage(row, mode, dailyRows) {
   };
 }
 
+function nearestDailyMemberBoundary(dailyRows, targetAt, toleranceMs) {
+  if (!Array.isArray(dailyRows)) return null;
+  let best = null;
+  for (const day of dailyRows) {
+    const key = String(day?.period_key || '');
+    if (!validDate(key)) continue;
+    const dayStart = Date.parse(`${key}T00:00:00Z`);
+    const candidates = [
+      { value: finiteNumber(day?.member_start), observedAt: dayStart },
+      { value: finiteNumber(day?.member_end), observedAt: dayStart + DAY_MS },
+    ];
+    for (const candidate of candidates) {
+      if (candidate.value == null) continue;
+      const distance = Math.abs(candidate.observedAt - targetAt);
+      if (distance > toleranceMs) continue;
+      if (!best || distance < best.distance) best = { ...candidate, distance };
+    }
+  }
+  return best;
+}
+
+function resolveMemberBoundary(row, dailyRows, field, fallbackAt, targetAt, toleranceMs) {
+  const fallbackValue = finiteNumber(row?.[field]);
+  if (fallbackValue != null && withinPeriodBoundaryTolerance(fallbackAt, targetAt, toleranceMs)) {
+    return { value: fallbackValue, observedAt: finiteNumber(fallbackAt) };
+  }
+  return nearestDailyMemberBoundary(dailyRows, targetAt, toleranceMs);
+}
+
 function summaryMetricAssessment(row, mode, dailyRows) {
   const bounds = expectedPeriodBounds(mode, row?.period_key);
   if (!bounds) return null;
   const tolerance = (bounds.end - bounds.start) * SUMMARY_BOUNDARY_TOLERANCE_RATIO;
+  const memberTolerance = memberBoundaryToleranceMs(mode);
   const hasBoundaryStart = Object.hasOwn(row || {}, 'boundary_start_at');
   const hasBoundaryEnd = Object.hasOwn(row || {}, 'boundary_end_at');
   const startAt = hasBoundaryStart ? row?.boundary_start_at : row?.period_start;
@@ -271,12 +310,16 @@ function summaryMetricAssessment(row, mode, dailyRows) {
     && (listenerCoverage == null || listenerCoverage.ratio > SUMMARY_LISTENER_AVERAGE_MIN_COVERAGE);
   const streamStart = finiteNumber(row?.stream_start);
   const streamEnd = finiteNumber(row?.stream_end);
-  const memberStart = finiteNumber(row?.member_start);
-  const memberEnd = finiteNumber(row?.member_end);
+  const memberStartBoundary = resolveMemberBoundary(
+    row, dailyRows, 'member_start', startAt, bounds.start, memberTolerance,
+  );
+  const memberEndBoundary = resolveMemberBoundary(
+    row, dailyRows, 'member_end', endAt, bounds.end, memberTolerance,
+  );
   const streamStartReady = startNear && streamStart != null && streamStart > 0;
   const streamEndReady = endNear && streamEnd != null && streamEnd > 0;
-  const memberStartReady = startNear && memberStart != null && memberStart >= 0;
-  const memberEndReady = endNear && memberEnd != null && memberEnd >= 0;
+  const memberStartReady = memberStartBoundary != null;
+  const memberEndReady = memberEndBoundary != null;
   const streamOrderValid = !streamStartReady || !streamEndReady || streamEnd >= streamStart;
   const reasons = [];
   if (listenerCoverage?.missingDays) reasons.push('missing_daily_coverage');
@@ -294,6 +337,10 @@ function summaryMetricAssessment(row, mode, dailyRows) {
     streamEndReady,
     memberStartReady,
     memberEndReady,
+    memberStart: memberStartBoundary?.value ?? null,
+    memberEnd: memberEndBoundary?.value ?? null,
+    memberStartAt: memberStartBoundary?.observedAt ?? null,
+    memberEndAt: memberEndBoundary?.observedAt ?? null,
     streamOrderValid,
     reasons,
   };
@@ -312,16 +359,35 @@ function isBoundaryOnlyIncomplete(reasons) {
   ));
 }
 
+function dailyMemberMetrics(row) {
+  const memberStart = finiteNumber(row?.member_start);
+  const memberEnd = finiteNumber(row?.member_end);
+  const ready = memberStart != null && memberEnd != null;
+  return {
+    memberStart,
+    memberEnd,
+    memberGrowth: ready ? memberEnd - memberStart : null,
+    ready,
+  };
+}
+
 function applyDailyCompleteness(row, evaluation) {
   const reasons = evaluation.reasons;
+  const member = dailyMemberMetrics(row);
+  const normalizedRow = {
+    ...row,
+    member_start: member.memberStart,
+    member_end: member.memberEnd,
+    member_growth: member.memberGrowth,
+    member_growth_excluded: !member.ready,
+  };
   if (!reasons.length) {
     return {
       row: {
-        ...row,
+        ...normalizedRow,
         period_complete: true,
         listener_metrics_excluded: false,
         stream_growth_excluded: false,
-        member_growth_excluded: false,
         exclusion_reasons: [],
       },
       excluded: false,
@@ -331,11 +397,10 @@ function applyDailyCompleteness(row, evaluation) {
   if (isBoundaryOnlyIncomplete(reasons)) {
     return {
       row: {
-        ...row,
+        ...normalizedRow,
         period_complete: false,
         listener_metrics_excluded: false,
         stream_growth_excluded: false,
-        member_growth_excluded: false,
         exclusion_reasons: reasons,
         quality_flags: qualityFlags,
       },
@@ -344,7 +409,7 @@ function applyDailyCompleteness(row, evaluation) {
   }
   return {
     row: {
-      ...row,
+      ...normalizedRow,
       listener_avg: null,
       listener_min: null,
       listener_max: null,
@@ -424,8 +489,8 @@ export function applySummaryCompleteness(rows, mode, now = Date.now(), dailyCove
 
     const streamStart = finiteNumber(row?.stream_start);
     const streamEnd = finiteNumber(row?.stream_end);
-    const memberStart = finiteNumber(row?.member_start);
-    const memberEnd = finiteNumber(row?.member_end);
+    const memberStart = assessment.memberStart;
+    const memberEnd = assessment.memberEnd;
     const streamGrowthReady = assessment.streamStartReady && assessment.streamEndReady && assessment.streamOrderValid;
     const memberGrowthReady = assessment.memberStartReady && assessment.memberEndReady;
     const reasons = [...new Set([...evaluation.reasons, ...assessment.reasons])];
@@ -442,8 +507,8 @@ export function applySummaryCompleteness(rows, mode, now = Date.now(), dailyCove
       listener_max: listenerMax == null ? null : row?.listener_max,
       stream_start: assessment.streamStartReady ? row?.stream_start : null,
       stream_end: assessment.streamEndReady ? row?.stream_end : null,
-      member_start: assessment.memberStartReady ? row?.member_start : null,
-      member_end: assessment.memberEndReady ? row?.member_end : null,
+      member_start: assessment.memberStartReady ? memberStart : null,
+      member_end: assessment.memberEndReady ? memberEnd : null,
       stream_growth: streamGrowthReady ? streamEnd - streamStart : null,
       member_growth: memberGrowthReady ? memberEnd - memberStart : null,
       period_complete: periodComplete,

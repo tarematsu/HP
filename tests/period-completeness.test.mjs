@@ -110,7 +110,7 @@ test('completed daily period keeps stream and listener metrics', () => {
   assert.equal(result.rows[0].period_complete, true);
 });
 
-test('missing entrance or exit keeps observed historical metrics and marks quality only', () => {
+test('missing period entrance or exit keeps listener and stream metrics, but member growth still requires both member boundaries', () => {
   const bounds = expectedPeriodBounds('daily', '2026-06-30');
   const result = applySummaryCompleteness([summaryRow('daily', '2026-06-30', {
     period_start: bounds.start + 60 * 60000,
@@ -128,8 +128,8 @@ test('missing entrance or exit keeps observed historical metrics and marks quali
   assert.equal(result.rows[0].listener_metrics_excluded, false);
   assert.equal(result.rows[0].stream_growth, 999);
   assert.equal(result.rows[0].stream_growth_excluded, false);
-  assert.equal(result.rows[0].member_growth, 12);
-  assert.equal(result.rows[0].member_growth_excluded, false);
+  assert.equal(result.rows[0].member_growth, null);
+  assert.equal(result.rows[0].member_growth_excluded, true);
   assert.equal(result.rows[0].period_complete, false);
   assert.deepEqual(result.rows[0].exclusion_reasons, ['missing_period_start', 'missing_period_end']);
   assert.match(result.rows[0].quality_flags, /incomplete_period_start/);
