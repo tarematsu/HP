@@ -6,6 +6,7 @@ const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', im
 const headerRepair = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const headerCss = readFileSync(new URL('../public/dashboard-fixes.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
+const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
 test('dashboard header repair runs before tabs and dashboard client startup', () => {
   const headerImport = dashboardEntry.match(/import '\.\/dashboard-header\.js\?v=[^']+'/)?.[0];
@@ -50,11 +51,8 @@ test('hash navigation hides skip-link focus until a real Tab focuses the skip li
   assert.match(headerRepair, /pointerdown/);
 });
 
-test('integrated history creates inert removed-control compatibility before loading legacy runtime', () => {
-  assert.match(historyEntry, /installRemovedControlCompatibility\(\)/);
-  assert.ok(historyEntry.indexOf('installRemovedControlCompatibility();') < historyEntry.indexOf("await import('/history/history-lite.js')"));
-  for (const suffix of ['Controls', 'Date', 'WeekMode']) {
-    assert.match(historyEntry, new RegExp(`\\['track', '${suffix}'\\]\\.join\\(''\\)`));
-  }
-  assert.match(historyEntry, /node\.hidden = true/);
+test('integrated history no longer creates compatibility controls for the removed track mode', () => {
+  assert.doesNotMatch(historyEntry, /installRemovedControlCompatibility|trackDate|trackWeekMode|trackControls/);
+  assert.doesNotMatch(historyClient, /trackDate|trackWeekMode|trackControls|TRACK_COLUMNS|mode === 'tracks'/);
+  assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
 });
