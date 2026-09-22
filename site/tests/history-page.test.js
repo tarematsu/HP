@@ -64,7 +64,7 @@ test('history keeps one visible chart and delegates rendering to mode-specific r
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
   assert.doesNotMatch(historyClient, /drawSummaryChart|prepareCanvas|history-broadcasts\.js/);
   assert.match(historyClient, /history:data-loaded/);
-  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.2/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.3/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.5/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.2/);
   assert.match(periodChart, /history:data-loaded/);
