@@ -12,6 +12,14 @@ const fullscreen = readFileSync(
 const episode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 
+test('TVer viewport fullscreen is the primary deterministic path', () => {
+  assert.match(episode, /__homePanelTverEnsureViewportFullscreen/);
+  assert.match(episode, /data-homepanel-tver-viewport-root/);
+  assert.match(episode, /position:fixed !important/);
+  assert.match(episode, /coversViewport\(target\)/);
+  assert.match(watchdog, /browserFullscreen \|\| viewportFullscreen/);
+});
+
 test('TVer fullscreen never falls back to a blind video-corner click', () => {
   assert.match(watchdog, /const fullscreenControlPoint = media =>/);
   assert.match(watchdog, /const scopedButton = scopedControls\.find\(isEnterFullscreenControl\)/);
@@ -21,7 +29,7 @@ test('TVer fullscreen never falls back to a blind video-corner click', () => {
   assert.doesNotMatch(watchdog, /const fullscreenPoint = videoFullscreenPoint\(video\)/);
 });
 
-test('TVer watchdog owns bounded control-first fullscreen retries', () => {
+test('TVer watchdog keeps bounded control-first browser-fullscreen fallbacks', () => {
   assert.match(watchdog, /__homePanelTverFullscreenRecovery/);
   assert.match(watchdog, /fullscreenRecovery\.attempts/);
   const control = watchdog.indexOf('const controlPoint = fullscreenControlPoint(video)');
@@ -34,17 +42,21 @@ test('TVer watchdog owns bounded control-first fullscreen retries', () => {
   assert.doesNotMatch(episode, /fullscreenAttemptCount|fullscreenKeyRequestedAt/);
 });
 
-test('TVer fullscreen verification can directly request browser fullscreen', () => {
+test('TVer fullscreen verification can directly request browser fullscreen as fallback', () => {
   assert.match(fullscreen, /requestFullscreen|webkitRequestFullscreen|msRequestFullscreen/);
   assert.match(fullscreen, /request\.call\(target\)/);
   assert.match(fullscreen, /homepanel:tver-wake/);
   assert.match(fullscreen, /__homePanelTverFullscreenRecovery/);
 });
 
-test('natural TVer completion remains allowed before the 60-minute safety cap', () => {
-  assert.match(episode, /episodeMaxPlaybackMs = 60 \* 60 \* 1000/);
-  assert.match(episode, /if \(state\.programPlaybackConfirmed && video\.ended/);
+test('natural TVer completion has no wall-clock safety cap', () => {
+  assert.doesNotMatch(
+    episode,
+    /episodeMaxPlaybackMs|episodeStartedAt|episodeLimitTimer|armEpisodeLimit|enforceEpisodeLimit/,
+  );
+  assert.match(episode, /state\.programPlaybackConfirmed && video\.ended/);
   assert.match(episode, /const completedItem = state\.programPlaybackConfirmed &&/);
+  assert.match(episode, /mediaIdentity\(video\) === state\.endCandidateIdentity/);
   assert.match(episode, /if \(stableEnd && completedItem\)/);
   assert.doesNotMatch(episode, /video\.loop = holdUntilDeadline/);
 });
