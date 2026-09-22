@@ -9,7 +9,7 @@ const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8
 
 test('dashboard entry installs the sole previous-day comparison chart renderer', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260923\.4/);
+  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260923\.5/);
   assert.doesNotMatch(entry, /dashboard-current-enhancements\.js/);
 });
 
@@ -30,12 +30,15 @@ test('online comparison chart still renders comment velocity from the dashboard 
   assert.match(source, /コメント\/2分/);
 });
 
-test('online extrema labels omit borders and include JST time', async () => {
+test('online extrema labels omit borders, use gray points, and include JST time', async () => {
   const source = await text('public/dashboard-chart-comparison.js');
+  assert.match(source, /const EXTREMA_POINT_COLOR = '#888'/);
   assert.match(source, /const jstExtremaTime = new Intl\.DateTimeFormat/);
   assert.match(source, /timeZone: 'Asia\/Tokyo'/);
   assert.match(source, /`最小 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
   assert.match(source, /`最大 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
+  assert.match(source, /if \(minRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
+  assert.match(source, /if \(maxRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
   assert.doesNotMatch(source, /strokeRect\(/);
 });
 
