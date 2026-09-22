@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
+const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
@@ -14,7 +15,7 @@ test('dashboard title is the hashtag, browser title, and links to an X search fo
   assert.match(header, /dataset\.dashboardTitleLink = 'true'/);
 });
 
-test('header shows only the materialized-history update time in JST without seconds', () => {
+test('header shows the successful five-minute dashboard materialization time in JST without seconds', () => {
   assert.match(header, /const JST_TIME = new Intl\.DateTimeFormat/);
   assert.match(header, /timeZone: 'Asia\/Tokyo'/);
   assert.match(header, /hour: '2-digit'/);
@@ -22,12 +23,15 @@ test('header shows only the materialized-history update time in JST without seco
   assert.doesNotMatch(header, /year: 'numeric'/);
   assert.doesNotMatch(header, /month: '2-digit'/);
   assert.doesNotMatch(header, /day: '2-digit'/);
-  assert.match(header, /const next = `更新 \$\{historyText\}`/);
-  assert.match(header, /updated\.title = `更新 \$\{historyText\} JST`/);
-  assert.match(header, /history:materialized-at/);
+  assert.match(header, /const next = `更新 \$\{refreshText\} \(5分毎\)`/);
+  assert.match(header, /updated\.title = `更新 \$\{refreshText\} JST \(5分毎\)`/);
+  assert.match(header, /dashboard:materialized-at/);
+  assert.doesNotMatch(header, /history:materialized-at/);
   assert.doesNotMatch(header, /UTC_UPDATED_PATTERN/);
   assert.doesNotMatch(header, /acquisitionUpdatedAt/);
   assert.doesNotMatch(header, /JST_TIME[\s\S]*second:\s*'2-digit'/);
+  assert.match(metrics, /response\?\.headers\?\.get\('x-materialized-at'\)/);
+  assert.match(metrics, /dashboard:materialized-at/);
   assert.match(guard, /x-materialized-at/);
   assert.match(guard, /history:materialized-at/);
 
@@ -38,14 +42,13 @@ test('header shows only the materialized-history update time in JST without seco
   assert.match(history, /const todayUtc = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
 });
 
-test('history materialized time is restored immediately and refreshed from a tiny materialized history request', () => {
-  assert.match(header, /HISTORY_MATERIALIZED_AT_CACHE_KEY = 'sh\.history\.materialized-at\.v1'/);
-  assert.match(header, /localStorage\.getItem\(HISTORY_MATERIALIZED_AT_CACHE_KEY\)/);
-  assert.match(header, /localStorage\.setItem\(HISTORY_MATERIALIZED_AT_CACHE_KEY, String\(value\)\)/);
-  assert.match(header, /let historyMaterializedAt = cachedHistoryMaterializedAt\(\)/);
-  assert.match(header, /fetch\(`\/api\/history\?mode=daily&from=\$\{todayUtc\}&to=\$\{todayUtc\}`/);
-  assert.match(header, /response\.headers\.get\('x-materialized-at'\)/);
-  assert.match(header, /await response\.arrayBuffer\(\)/);
-  assert.doesNotMatch(header, /response\.body\?\.cancel|response\.body\.cancel/);
-  assert.match(header, /void refreshHistoryMaterializedAt\(\)/);
+test('dashboard materialized time is restored immediately and updated from the existing dashboard response', () => {
+  assert.match(header, /DASHBOARD_MATERIALIZED_AT_CACHE_KEY = 'sh\.dashboard\.materialized-at\.v1'/);
+  assert.match(header, /localStorage\.getItem\(DASHBOARD_MATERIALIZED_AT_CACHE_KEY\)/);
+  assert.match(header, /localStorage\.setItem\(DASHBOARD_MATERIALIZED_AT_CACHE_KEY, String\(value\)\)/);
+  assert.match(header, /let dashboardMaterializedAt = cachedDashboardMaterializedAt\(\)/);
+  assert.match(header, /setDashboardMaterializedAt\(event\?\.detail\?\.updatedAt\)/);
+  assert.doesNotMatch(header, /fetch\(`\/api\/history/);
+  assert.doesNotMatch(header, /refreshHistoryMaterializedAt/);
+  assert.match(metrics, /announceDashboardMaterializedAt\(response\)/);
 });
