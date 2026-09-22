@@ -3,10 +3,53 @@ import type { Env } from "./sources";
 const STATUS_KEY = "diagnostics/stationhead-leaderboard/status.json";
 const MAX_SPOOL_RECORDS = 20;
 const MAX_BATCH_RECORDS = 8;
+const NATIVE_STAGES = new Set([
+  "bootstrap",
+  "constructed",
+  "started",
+  "tick",
+  "capture_begin",
+  "environment_ready",
+  "controller_ready",
+  "webview_ready",
+  "navigating",
+  "navigation_completed",
+  "snapshot_started",
+  "snapshot_parsed",
+  "spool_stored",
+  "completed",
+  "failed",
+  "stopped",
+]);
+const NATIVE_ERRORS = new Set([
+  "none",
+  "capture_timeout",
+  "environment_create",
+  "controller_start",
+  "controller_create",
+  "webview_unavailable",
+  "navigation_handler",
+  "navigation_failed",
+  "navigate_start",
+  "snapshot_execute",
+  "snapshot_start",
+  "snapshot_parse",
+  "spool_write",
+  "other",
+]);
 
 export interface NativeLeaderboardProbeStatus {
   spoolRecords: number;
   batchRecords: number;
+  diagnosticSchema: number | null;
+  collectorStage: string | null;
+  lastSuccessStage: string | null;
+  collectorStarted: boolean;
+  collectorTicked: boolean;
+  lastTransitionAt: number | null;
+  lastFailureAt: number | null;
+  lastError: string | null;
+  exchangeAt: number | null;
 }
 
 export interface LeaderboardProbeOutcome {
@@ -24,6 +67,15 @@ type StoredStatus = {
   native: {
     spool_records: number;
     batch_records: number;
+    diagnostic_schema: number | null;
+    collector_stage: string | null;
+    last_success_stage: string | null;
+    collector_started: boolean;
+    collector_ticked: boolean;
+    last_transition_at: string | null;
+    last_failure_at: string | null;
+    last_error: string | null;
+    exchange_at: string | null;
   };
   cloud: {
     reached: true;
@@ -45,6 +97,27 @@ function boundedInteger(value: unknown, maximum: number): number | null {
   return Number.isSafeInteger(number) && number >= 0 && number <= maximum ? number : null;
 }
 
+function optionalTimestamp(value: unknown): number | null {
+  if (value === undefined || value === null) return null;
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 && number <= 8_640_000_000_000_000
+    ? number
+    : null;
+}
+
+function timestampIso(value: number | null): string | null {
+  if (value === null) return null;
+  try {
+    return new Date(value).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function optionalEnum(value: unknown, allowed: Set<string>): string | null {
+  return typeof value === "string" && allowed.has(value) ? value : null;
+}
+
 export function normalizeNativeLeaderboardProbeStatus(
   value: unknown,
 ): NativeLeaderboardProbeStatus | null {
@@ -53,7 +126,25 @@ export function normalizeNativeLeaderboardProbeStatus(
   const spoolRecords = boundedInteger(input.spoolRecords, MAX_SPOOL_RECORDS);
   const batchRecords = boundedInteger(input.batchRecords, MAX_BATCH_RECORDS);
   if (spoolRecords === null || batchRecords === null || batchRecords > spoolRecords) return null;
-  return { spoolRecords, batchRecords };
+
+  const diagnosticSchema = input.diagnosticSchema === undefined
+    ? null
+    : boundedInteger(input.diagnosticSchema, 10);
+  if (input.diagnosticSchema !== undefined && diagnosticSchema !== 2) return null;
+
+  return {
+    spoolRecords,
+    batchRecords,
+    diagnosticSchema,
+    collectorStage: optionalEnum(input.collectorStage, NATIVE_STAGES),
+    lastSuccessStage: optionalEnum(input.lastSuccessStage, NATIVE_STAGES),
+    collectorStarted: input.collectorStarted === true,
+    collectorTicked: input.collectorTicked === true,
+    lastTransitionAt: optionalTimestamp(input.lastTransitionAt),
+    lastFailureAt: optionalTimestamp(input.lastFailureAt),
+    lastError: optionalEnum(input.lastError, NATIVE_ERRORS),
+    exchangeAt: optionalTimestamp(input.exchangeAt),
+  };
 }
 
 async function readPreviousStatus(env: Env): Promise<StoredStatus | null> {
@@ -104,6 +195,15 @@ export async function applyNativeLeaderboardProbeStatus(
     native: {
       spool_records: native.spoolRecords,
       batch_records: native.batchRecords,
+      diagnostic_schema: native.diagnosticSchema,
+      collector_stage: native.collectorStage,
+      last_success_stage: native.lastSuccessStage,
+      collector_started: native.collectorStarted,
+      collector_ticked: native.collectorTicked,
+      last_transition_at: timestampIso(native.lastTransitionAt),
+      last_failure_at: timestampIso(native.lastFailureAt),
+      last_error: native.lastError,
+      exchange_at: timestampIso(native.exchangeAt),
     },
     cloud: {
       reached: true,
@@ -138,7 +238,19 @@ export async function stationheadLeaderboardProbeStatusResponse(env: Env): Promi
     version: 1,
     updated_at: null,
     stage: "no_status",
-    native: { spool_records: null, batch_records: null },
+    native: {
+      spool_records: null,
+      batch_records: null,
+      diagnostic_schema: null,
+      collector_stage: null,
+      last_success_stage: null,
+      collector_started: false,
+      collector_ticked: false,
+      last_transition_at: null,
+      last_failure_at: null,
+      last_error: null,
+      exchange_at: null,
+    },
     cloud: {
       reached: false,
       probe_submitted: false,

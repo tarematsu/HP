@@ -15,6 +15,40 @@ const ALLOWED_STAGES = new Set([
   'cloud_error',
 ]);
 const ALLOWED_ERRORS = new Set(['none', 'invalid', 'unavailable']);
+const ALLOWED_NATIVE_STAGES = new Set([
+  'bootstrap',
+  'constructed',
+  'started',
+  'tick',
+  'capture_begin',
+  'environment_ready',
+  'controller_ready',
+  'webview_ready',
+  'navigating',
+  'navigation_completed',
+  'snapshot_started',
+  'snapshot_parsed',
+  'spool_stored',
+  'completed',
+  'failed',
+  'stopped',
+]);
+const ALLOWED_NATIVE_ERRORS = new Set([
+  'none',
+  'capture_timeout',
+  'environment_create',
+  'controller_start',
+  'controller_create',
+  'webview_unavailable',
+  'navigation_handler',
+  'navigation_failed',
+  'navigate_start',
+  'snapshot_execute',
+  'snapshot_start',
+  'snapshot_parse',
+  'spool_write',
+  'other',
+]);
 
 function safeInteger(value, maximum) {
   return Number.isSafeInteger(value) && value >= 0 && value <= maximum ? value : null;
@@ -29,6 +63,10 @@ function safeIsoTimestamp(value) {
   if (typeof value !== 'string' || value.length > 40) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+function safeEnum(value, allowed) {
+  return typeof value === 'string' && allowed.has(value) ? value : null;
 }
 
 export function sanitizeLeaderboardProbeStatus(value) {
@@ -56,6 +94,15 @@ export function sanitizeLeaderboardProbeStatus(value) {
     native: {
       spool_records: safeInteger(native.spool_records, 20),
       batch_records: safeInteger(native.batch_records, 8),
+      diagnostic_schema: safeInteger(native.diagnostic_schema, 10),
+      collector_stage: safeEnum(native.collector_stage, ALLOWED_NATIVE_STAGES),
+      last_success_stage: safeEnum(native.last_success_stage, ALLOWED_NATIVE_STAGES),
+      collector_started: safeBoolean(native.collector_started),
+      collector_ticked: safeBoolean(native.collector_ticked),
+      last_transition_at: safeIsoTimestamp(native.last_transition_at),
+      last_failure_at: safeIsoTimestamp(native.last_failure_at),
+      last_error: safeEnum(native.last_error, ALLOWED_NATIVE_ERRORS),
+      exchange_at: safeIsoTimestamp(native.exchange_at),
     },
     cloud: {
       reached: safeBoolean(cloud.reached),
@@ -137,6 +184,15 @@ function summaryMarkdown(result) {
     ['Capture', result.fetch_ok ? 'ok' : result.error || 'failed'],
     ['HTTP', result.http_status ?? '-'],
     ['Stage', diagnostic?.stage ?? '-'],
+    ['Native schema', diagnostic?.native?.diagnostic_schema ?? '-'],
+    ['Collector stage', diagnostic?.native?.collector_stage ?? '-'],
+    ['Last success stage', diagnostic?.native?.last_success_stage ?? '-'],
+    ['Collector started', diagnostic?.native?.collector_started ?? false],
+    ['Collector ticked', diagnostic?.native?.collector_ticked ?? false],
+    ['Native error', diagnostic?.native?.last_error ?? '-'],
+    ['Last transition', diagnostic?.native?.last_transition_at ?? '-'],
+    ['Last failure', diagnostic?.native?.last_failure_at ?? '-'],
+    ['Last exchange', diagnostic?.native?.exchange_at ?? '-'],
     ['Spool records', diagnostic?.native?.spool_records ?? '-'],
     ['Batch records', diagnostic?.native?.batch_records ?? '-'],
     ['Cloud reached', diagnostic?.cloud?.reached ?? false],
@@ -173,6 +229,11 @@ async function main() {
     `fetch_ok=${result.fetch_ok}`,
     `http_status=${result.http_status ?? 'none'}`,
     `stage=${diagnostic?.stage ?? 'none'}`,
+    `native_schema=${diagnostic?.native?.diagnostic_schema ?? 'none'}`,
+    `collector_stage=${diagnostic?.native?.collector_stage ?? 'none'}`,
+    `collector_started=${diagnostic?.native?.collector_started ?? false}`,
+    `collector_ticked=${diagnostic?.native?.collector_ticked ?? false}`,
+    `native_error=${diagnostic?.native?.last_error ?? 'none'}`,
     `spool=${diagnostic?.native?.spool_records ?? 'none'}`,
     `batch=${diagnostic?.native?.batch_records ?? 'none'}`,
     `dispatch_ok=${diagnostic?.cloud?.dispatch_ok ?? false}`,

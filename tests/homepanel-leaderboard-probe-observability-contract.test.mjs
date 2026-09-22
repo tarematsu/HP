@@ -30,6 +30,15 @@ test('leaderboard probe mirror whitelists only non-secret diagnostic fields', ()
     native: {
       spool_records: 3,
       batch_records: 2,
+      diagnostic_schema: 2,
+      collector_stage: 'navigation_completed',
+      last_success_stage: 'navigation_completed',
+      collector_started: true,
+      collector_ticked: true,
+      last_transition_at: '2026-09-22T00:00:00.500Z',
+      last_failure_at: null,
+      last_error: 'none',
+      exchange_at: '2026-09-22T00:00:00.750Z',
       device_id: 'must-not-survive',
     },
     cloud: {
@@ -57,6 +66,15 @@ test('leaderboard probe mirror whitelists only non-secret diagnostic fields', ()
     native: {
       spool_records: 3,
       batch_records: 2,
+      diagnostic_schema: 2,
+      collector_stage: 'navigation_completed',
+      last_success_stage: 'navigation_completed',
+      collector_started: true,
+      collector_ticked: true,
+      last_transition_at: '2026-09-22T00:00:00.500Z',
+      last_failure_at: null,
+      last_error: 'none',
+      exchange_at: '2026-09-22T00:00:00.750Z',
     },
     cloud: {
       reached: true,

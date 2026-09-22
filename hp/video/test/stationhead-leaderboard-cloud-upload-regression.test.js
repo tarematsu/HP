@@ -8,6 +8,7 @@ const playbackPolicy = read('../../native/src/sh_july19_stats_policy_fix.h');
 const messagePolicy = read('../../native/src/sh_stats_webview_message_policy_fix.h');
 const collector = read('../../native/src/stationhead_leaderboard_collector.cpp');
 const collectorHeader = read('../../native/src/stationhead_leaderboard_collector.h');
+const diagnostics = read('../../native/src/stationhead_leaderboard_diagnostics.h');
 const spool = read('../../native/src/stationhead_leaderboard_capture_spool.h');
 const app = read('../../native/src/app.cpp');
 const appMessages = read('../../native/src/app_messages.cpp');
@@ -56,6 +57,35 @@ test('leaderboard acquisition uses one short-lived hidden WebView on the logged-
   assert.match(app, /stationheadLeaderboardCollector_->Stop\(\)/);
 });
 
+test('native leaderboard diagnostics expose categorical collector progress only', () => {
+  assert.match(diagnostics, /kDiagnosticSchema = 2/);
+  assert.match(diagnostics, /std::string stage = "bootstrap"/);
+  assert.match(diagnostics, /std::string lastSuccessStage = "bootstrap"/);
+  assert.match(diagnostics, /std::string lastError = "none"/);
+  assert.match(diagnostics, /MarkTick\(\)/);
+  assert.match(diagnostics, /ErrorCategory/);
+  assert.doesNotMatch(diagnostics, /authorization|cookie|Bearer/i);
+
+  for (const stage of [
+    'constructed',
+    'started',
+    'capture_begin',
+    'environment_ready',
+    'controller_ready',
+    'webview_ready',
+    'navigating',
+    'navigation_completed',
+    'snapshot_started',
+    'snapshot_parsed',
+    'spool_stored',
+    'completed',
+  ]) {
+    assert.match(collector, new RegExp(`Mark\\(\\s*\"${stage}\"`));
+  }
+  assert.match(collector, /MarkTick\(\)/);
+  assert.match(collector, /MarkFailure\([\s\S]*ErrorCategory/);
+});
+
 test('new native capture spool is durable, bounded, wakes cloud, and deletes legacy disk state', () => {
   assert.match(spool, /stationhead-leaderboard-capture\.ndjson/);
   assert.match(spool, /stationhead-leaderboard-probe\.ndjson/);
@@ -70,8 +100,15 @@ test('new native capture spool is durable, bounded, wakes cloud, and deletes leg
 test('device exchange preserves the secure Cloud wire contract with the rebuilt capture spool', () => {
   assert.match(exchange, /stationhead_leaderboard_capture_spool::ReadBatch\(\)/);
   assert.match(exchange, /stationhead_leaderboard_capture_spool::Count\(\)/);
+  assert.match(exchange, /stationhead_leaderboard_diagnostics::Read\(\)/);
   assert.match(exchange, /,\\"leaderboardProbe\\":\[/);
   assert.match(exchange, /,\\"leaderboardProbeStatus\\":\{\\"spoolRecords\\":/);
+  assert.match(exchange, /\\"diagnosticSchema\\"/);
+  assert.match(exchange, /\\"collectorStage\\"/);
+  assert.match(exchange, /\\"lastSuccessStage\\"/);
+  assert.match(exchange, /\\"collectorStarted\\"/);
+  assert.match(exchange, /\\"collectorTicked\\"/);
+  assert.match(exchange, /\\"lastError\\"/);
   assert.match(exchange, /GetNamedBoolean\(L"reported", false\)/);
   assert.match(exchange, /stationhead_leaderboard_capture_spool::Acknowledge\(accepted\)/);
   assert.match(cloudPayload, /leaderboardProbe\?: unknown/);
@@ -84,6 +121,12 @@ test('public leaderboard diagnostics expose only bounded operational state', () 
   assert.match(cloudProbeStatus, /diagnostics\/stationhead-leaderboard\/status\.json/);
   assert.match(cloudProbeStatus, /spool_records/);
   assert.match(cloudProbeStatus, /batch_records/);
+  assert.match(cloudProbeStatus, /diagnostic_schema/);
+  assert.match(cloudProbeStatus, /collector_stage/);
+  assert.match(cloudProbeStatus, /last_success_stage/);
+  assert.match(cloudProbeStatus, /collector_started/);
+  assert.match(cloudProbeStatus, /collector_ticked/);
+  assert.match(cloudProbeStatus, /last_error/);
   assert.match(cloudProbeStatus, /last_probe_received_at/);
   assert.match(cloudProbeStatus, /last_stored_at/);
   assert.match(cloudProbeStatus, /last_reported_at/);

@@ -1,4 +1,5 @@
 #include "stationhead_leaderboard_capture_spool.h"
+#include "stationhead_leaderboard_diagnostics.h"
 
 namespace hp {
 
@@ -63,10 +64,25 @@ std::optional<HttpResponse> CloudClient::TryCompressedExchange(
   }
   const size_t leaderboardSpoolRecords =
       stationhead_leaderboard_capture_spool::Count();
+  const auto leaderboardDiagnostics = stationhead_leaderboard_diagnostics::Read();
   body += ",\"leaderboardProbeStatus\":{\"spoolRecords\":";
   body += std::to_string(leaderboardSpoolRecords);
   body += ",\"batchRecords\":";
   body += std::to_string(leaderboardCapture.size());
+  body += ",\"diagnosticSchema\":";
+  body += std::to_string(leaderboardDiagnostics.schema);
+  body += ",\"collectorStage\":\"" + leaderboardDiagnostics.stage + "\"";
+  body += ",\"lastSuccessStage\":\"" + leaderboardDiagnostics.lastSuccessStage + "\"";
+  body += ",\"collectorStarted\":";
+  body += leaderboardDiagnostics.started ? "true" : "false";
+  body += ",\"collectorTicked\":";
+  body += leaderboardDiagnostics.ticked ? "true" : "false";
+  body += ",\"lastTransitionAt\":";
+  body += std::to_string(leaderboardDiagnostics.lastTransitionAt);
+  body += ",\"lastFailureAt\":";
+  body += std::to_string(leaderboardDiagnostics.lastFailureAt);
+  body += ",\"lastError\":\"" + leaderboardDiagnostics.lastError + "\"";
+  body += ",\"exchangeAt\":" + std::to_string(UnixMillis());
   body += "}";
   body.push_back('}');
 

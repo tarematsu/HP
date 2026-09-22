@@ -2,6 +2,7 @@
 
 #include "shared_webview_environment.h"
 #include "stationhead_leaderboard_capture_spool.h"
+#include "stationhead_leaderboard_diagnostics.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -56,7 +57,9 @@ bool AppendCaptureRecord(std::wstring_view source, std::wstring_view page,
 StationheadLeaderboardCollector::StationheadLeaderboardCollector(
     HWND window, fs::path userDataFolder, std::wstring profileName, Logger& log)
     : window_(window), userDataFolder_(std::move(userDataFolder)),
-      profileName_(std::move(profileName)), log_(log) {}
+      profileName_(std::move(profileName)), log_(log) {
+  stationhead_leaderboard_diagnostics::Mark("constructed");
+}
 
 StationheadLeaderboardCollector::~StationheadLeaderboardCollector() { Stop(); }
 
@@ -71,6 +74,7 @@ void StationheadLeaderboardCollector::Start(int64_t nowMs) {
   captureDueAt_ = 0;
   timeoutAt_ = 0;
   UpdateNextWake();
+  stationhead_leaderboard_diagnostics::Mark("started", true);
   log_.Info(L"Stationhead leaderboard dedicated collector scheduled");
 }
 
@@ -86,10 +90,12 @@ void StationheadLeaderboardCollector::Stop() {
   captureDueAt_ = 0;
   timeoutAt_ = 0;
   nextWakeAt_ = 0;
+  stationhead_leaderboard_diagnostics::Mark("stopped");
 }
 
 void StationheadLeaderboardCollector::Tick(int64_t nowMs) {
   if (!started_) return;
+  stationhead_leaderboard_diagnostics::MarkTick();
 
   if ((creating_ || controller_) && timeoutAt_ > 0 && nowMs >= timeoutAt_) {
     FailCapture(nowMs, L"capture-timeout");
@@ -121,6 +127,7 @@ void StationheadLeaderboardCollector::BeginCapture(int64_t nowMs) {
   const uint64_t generation = ++generation_;
   const auto alive = alive_;
   UpdateNextWake();
+  stationhead_leaderboard_diagnostics::Mark("capture_begin", true, true);
 
   SharedWebViewEnvironment::Instance().Acquire(
       userDataFolder_,
@@ -133,6 +140,7 @@ void StationheadLeaderboardCollector::BeginCapture(int64_t nowMs) {
           return;
         }
         environment_ = environment;
+        stationhead_leaderboard_diagnostics::Mark("environment_ready", true, true);
         CreateController(generation);
       });
 }
@@ -175,6 +183,7 @@ void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
               return S_OK;
             }
             controller_ = controller;
+            stationhead_leaderboard_diagnostics::Mark("controller_ready", true, true);
             ConfigureAndNavigate(generation);
             return S_OK;
           }).Get());
@@ -194,6 +203,7 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
     FailCapture(UnixMillis(), L"webview-unavailable");
     return;
   }
+  stationhead_leaderboard_diagnostics::Mark("webview_ready", true, true);
 
   const auto alive = alive_;
   const HRESULT navigationHandler = webview_->add_NavigationCompleted(
@@ -213,6 +223,8 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
             const int64_t now = UnixMillis();
             captureDueAt_ = now + kRenderSettleMs;
             timeoutAt_ = now + kCaptureTimeoutMs;
+            stationhead_leaderboard_diagnostics::Mark(
+                "navigation_completed", true, true);
             UpdateNextWake();
             return S_OK;
           }).Get(),
@@ -223,6 +235,7 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
     return;
   }
 
+  stationhead_leaderboard_diagnostics::Mark("navigating", true, true);
   const HRESULT navigate = webview_->Navigate(kLeaderboardUrl);
   if (FAILED(navigate)) {
     FailCapture(UnixMillis(), L"navigate-failed:" + HResultHex(navigate));
@@ -236,6 +249,7 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
   captureDueAt_ = 0;
   timeoutAt_ = nowMs + kCaptureTimeoutMs;
   UpdateNextWake();
+  stationhead_leaderboard_diagnostics::Mark("snapshot_started", true, true);
 
   static constexpr wchar_t kSnapshotScript[] = LR"JS(
 (() => {
@@ -310,6 +324,8 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
             try {
               using winrt::Windows::Data::Json::JsonObject;
               const JsonObject snapshot = JsonObject::Parse(resultJson);
+              stationhead_leaderboard_diagnostics::Mark(
+                  "snapshot_parsed", true, true);
               const std::wstring page =
                   snapshot.GetNamedString(L"page", kLeaderboardUrl).c_str();
               const bool signedIn = snapshot.GetNamedBoolean(L"signed_in", false);
@@ -338,6 +354,8 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
                 FailCapture(UnixMillis(), L"spool-write-failed");
                 return S_OK;
               }
+              stationhead_leaderboard_diagnostics::Mark(
+                  "spool_stored", true, true);
               log_.Info(L"Stationhead leaderboard capture stored signed_in=" +
                         std::wstring(signedIn ? L"true" : L"false"));
               CompleteCapture(UnixMillis(), signedIn);
@@ -359,12 +377,15 @@ void StationheadLeaderboardCollector::CompleteCapture(
   timeoutAt_ = 0;
   CloseController();
   nextCaptureAt_ = nowMs + (signedIn ? kCaptureIntervalMs : kRetryIntervalMs);
+  stationhead_leaderboard_diagnostics::Mark("completed", true, true);
   UpdateNextWake();
 }
 
 void StationheadLeaderboardCollector::FailCapture(
     int64_t nowMs, std::wstring_view reason) {
   const std::wstring safeReason = TrimReason(reason);
+  stationhead_leaderboard_diagnostics::MarkFailure(
+      stationhead_leaderboard_diagnostics::ErrorCategory(safeReason));
   try {
     using winrt::Windows::Data::Json::JsonObject;
     using winrt::Windows::Data::Json::JsonValue;
