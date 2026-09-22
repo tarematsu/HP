@@ -19,10 +19,15 @@ test('summary metrics remain single-line at intermediate desktop and tablet widt
   assert.match(fixes, /font-size:\s*clamp\(1\.15rem,\s*1\.8vw,\s*1\.55rem\)/);
 });
 
-test('ranking summary consumes the shared history payload instead of rendered-row observation', () => {
+test('ranking summary counts calendar weeks and treats missing weeks as out of rank', () => {
   assert.match(pageFixes, /history:data-loaded/);
-  assert.match(pageFixes, /const rankedCount = rows\.filter/);
-  assert.match(pageFixes, /const outCount = rows\.length - rankedCount/);
+  assert.match(pageFixes, /setText\('periodLabel', '総週数'\)/);
+  assert.match(pageFixes, /setText\('maxLabel', 'ランクイン週数'\)/);
+  assert.match(pageFixes, /setText\('streamLabel', '圏外週数'\)/);
+  assert.match(pageFixes, /const totalWeeks = range\.length \|\| new Set\(fallbackWeeks\)\.size/);
+  assert.match(pageFixes, /outWeeks: Math\.max\(0, totalWeeks - rankedWeeks\)/);
+  assert.match(pageFixes, /value === null \|\| value === undefined \|\| value === ''/);
+  assert.doesNotMatch(pageFixes, /rows\.length - rankedCount/);
   assert.doesNotMatch(fixes, /function finiteRank|repairRankingSummary|rankingBody/);
 });
 
