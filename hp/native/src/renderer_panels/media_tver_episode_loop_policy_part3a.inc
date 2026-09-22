@@ -18,11 +18,6 @@ LR"JS(
     try { state.clearRecoveryState?.(); } catch (_) {}
     try { state.clearProgressSampler?.(); } catch (_) {}
   };
-  const clearEpisodeLimitTimer = state => {
-    if (!state?.episodeLimitTimer) return;
-    try { clearTimeout(state.episodeLimitTimer); } catch (_) {}
-    state.episodeLimitTimer = 0;
-  };
   const resetPlaybackSetup = (state, video = state.video) => {
     clearRuntimeTimers(state);
     Object.assign(state, playbackDefaults(), { video });
@@ -32,6 +27,7 @@ LR"JS(
     state.maxDuration = 0;
     state.maxTime = 0;
     state.endCandidateAt = 0;
+    state.endCandidateIdentity = '';
   };
   const createEpisodeState = path => ({
     path,
@@ -41,9 +37,8 @@ LR"JS(
     maxDuration: 0,
     maxTime: 0,
     endCandidateAt: 0,
+    endCandidateIdentity: '',
     endReported: false,
-    episodeStartedAt: 0,
-    episodeLimitTimer: 0,
     adActive: false,
     adVideo: null,
     adIdentity: '',
@@ -58,7 +53,6 @@ LR"JS(
       let state = window.__homePanelSakuraMeetsState;
       if (!state || state.path !== location.pathname) {
         clearRuntimeTimers(state || {});
-        clearEpisodeLimitTimer(state || {});
         state = createEpisodeState(location.pathname);
         window.__homePanelSakuraMeetsState = state;
       }
@@ -80,6 +74,7 @@ LR"JS(
         if (!state.adActive || adMediaChanged) {
           const completedProgram = state.programPlaybackConfirmed &&
               state.endCandidateAt > 0 &&
+              state.endCandidateIdentity !== '' &&
               state.maxDuration >= 5 &&
               state.maxTime >= Math.max(3, state.maxDuration - 10);
           if (!state.adActive) state.postrollAfterProgram = completedProgram;
@@ -121,6 +116,13 @@ LR"JS(
 
       if (state.video !== video) resetMediaState(state, video);
       if (!video) return;
+      if (typeof window.__homePanelTverEnsureViewportFullscreen === 'function') {
+        try {
+          if (window.__homePanelTverEnsureViewportFullscreen(video)) {
+            state.fullscreenDirty = false;
+          }
+        } catch (_) {}
+      }
       bindVideoEvents(video, state);
       const observerNeeded = state.adActive || state.recoveryPending ||
           !state.playbackSettingsApplied ||
@@ -142,14 +144,21 @@ LR"JS(
       sampleProgress(video, state, true);
       try { state.armProgressSampler?.(); } catch (_) {}
 
-      if (state.programPlaybackConfirmed && video.ended && !state.endCandidateAt) {
-        state.endCandidateAt = Date.now();
-        window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
-      }
       const completedItem = state.programPlaybackConfirmed &&
           state.maxDuration >= 5 &&
           state.maxTime >= Math.max(3, state.maxDuration - 10);
+      if (state.programPlaybackConfirmed && video.ended &&
+          !state.endCandidateAt && completedItem) {
+        const identity = mediaIdentity(video);
+        if (identity) {
+          state.endCandidateIdentity = identity;
+          state.endCandidateAt = Date.now();
+          window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
+        }
+      }
       const stableEnd = state.endCandidateAt > 0 &&
+          state.endCandidateIdentity !== '' && video.ended &&
+          mediaIdentity(video) === state.endCandidateIdentity &&
           Date.now() - state.endCandidateAt >= postrollGraceMs;
       if (stableEnd && completedItem) {
         if (postEpisodeEnded(state)) return;
