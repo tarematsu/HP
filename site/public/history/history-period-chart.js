@@ -64,6 +64,24 @@ function appendLegend(label, color, className = '') {
   return span;
 }
 
+function formatPeriodTick(periodKey, mode) {
+  const text = String(periodKey || '');
+  if (mode === 'monthly' && /^\d{4}-\d{2}$/.test(text)) return text.replace('-', '/');
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[1]}/${match[2]}/${match[3]}` : text;
+}
+
+function xAxisTickIndices(rowCount, plotWidth) {
+  if (rowCount <= 0) return [];
+  const target = Math.min(rowCount, Math.max(4, Math.floor(plotWidth / 140)));
+  if (target <= 1) return [0];
+  const indexes = [];
+  for (let index = 0; index < target; index += 1) {
+    indexes.push(Math.round(index * (rowCount - 1) / (target - 1)));
+  }
+  return [...new Set(indexes)];
+}
+
 function draw() {
   const mode = activeMode();
   if (!SUMMARY_MODES.has(mode) || mode !== latestMode) return;
@@ -121,6 +139,29 @@ function draw() {
       context.fillText(integer.format(Math.round(streamCeiling * (1 - ratio))), width - area.right + 7, y + 3);
     }
   }
+
+  const xAxisY = area.top + area.height;
+  const xTickIndexes = xAxisTickIndices(rows.length, area.width);
+  context.save();
+  context.strokeStyle = 'rgba(31,45,68,.24)';
+  context.fillStyle = cssColor('--muted', '#667287');
+  context.lineWidth = 1;
+  context.font = width < 480 ? '9px system-ui' : '10px system-ui';
+  context.textAlign = 'center';
+  context.textBaseline = 'top';
+  context.beginPath();
+  context.moveTo(area.left, xAxisY);
+  context.lineTo(width - area.right, xAxisY);
+  context.stroke();
+  for (const rowIndex of xTickIndexes) {
+    const x = positions[rowIndex];
+    context.beginPath();
+    context.moveTo(x, xAxisY);
+    context.lineTo(x, xAxisY + 4);
+    context.stroke();
+    context.fillText(formatPeriodTick(rows[rowIndex]?.period_key, mode), x, xAxisY + 7);
+  }
+  context.restore();
 
   if (streamValues.length) {
     const barWidth = Math.max(2, Math.min(18, step * 0.58));
