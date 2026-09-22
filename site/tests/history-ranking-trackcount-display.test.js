@@ -17,10 +17,10 @@ test('ranking renders a two-host leaderboard chart', () => {
   assert.match(rankingChart, /順位は上ほど高順位/);
 });
 
-test('ranking marks the known 2026 leaderboard gap as missing', () => {
+test('ranking marks the known 2026 leaderboard gap as missing on Monday week keys', () => {
   assert.match(entry, /history-ranking-missing-gap\.js/);
-  assert.match(rankingMissing, /MISSING_START = '2026-01-27'/);
-  assert.match(rankingMissing, /MISSING_END = '2026-09-15'/);
+  assert.match(rankingMissing, /MISSING_START = '2026-01-26'/);
+  assert.match(rankingMissing, /MISSING_END = '2026-09-14'/);
   assert.match(rankingMissing, /renderOverlay/);
   assert.match(rankingMissing, /fillText\('欠測'/);
   assert.match(rankingMissing, /createMissingRow/);

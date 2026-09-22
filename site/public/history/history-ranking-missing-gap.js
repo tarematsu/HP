@@ -1,6 +1,6 @@
 const HOSTS = ['sakuramankai', 'sakurazaka46jp'];
-const MISSING_START = '2026-01-27';
-const MISSING_END = '2026-09-15';
+const MISSING_START = '2026-01-26';
+const MISSING_END = '2026-09-14';
 const WEEK_MS = 7 * 86400000;
 const MODE = 'ranking';
 const previousFetch = window.fetch.bind(window);
