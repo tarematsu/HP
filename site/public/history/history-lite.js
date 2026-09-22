@@ -19,7 +19,6 @@
     weekly: { title: '週次集計', table: '週次集計一覧', chart: '同接・再生数の推移' },
     monthly: { title: '月次集計', table: '月次集計一覧', chart: '同接・再生数の推移' },
     ranking: { title: '週間リーダーボード', table: '週間リーダーボード', chart: '' },
-    tracks: { title: '再生曲', table: '再生曲一覧', chart: '' },
     broadcasts: { title: '公式ストリーム比較', table: '公式ストリーム一覧', chart: '公式ステヘ 同接推移（開始0分比較）' },
   });
 
@@ -29,11 +28,6 @@
     ['stream_start', '再生数（開始）'], ['stream_end', '再生数（終了）'], ['stream_growth', '再生数増加'],
     ['member_start', 'メンバー（開始）'], ['member_end', 'メンバー（終了）'], ['member_growth', 'メンバー増加'],
     ['likes_max', '最大いいね'], ['distinct_tracks', '曲数'], ['primary_host', '主なホスト'], ['quality_score', '品質'],
-  ];
-  const TRACK_COLUMNS = [
-    ['play_date', '日付'], ['title', '曲名'], ['artist', 'アーティスト'], ['play_count', '再生回数'],
-    ['daily_share', 'その日の割合'], ['like_count', 'いいね数'],
-    ['first_played_at', '最初の再生'], ['last_played_at', '最後の再生'],
   ];
   const BROADCAST_COLUMNS = [
     ['event_name', '放送名'], ['started_at', '開始日時（UTC）'], ['ended_at', '終了日時（UTC）'],
@@ -53,9 +47,6 @@
     data: null,
     controller: null,
     requestToken: 0,
-    chartModel: null,
-    selectedChartIndex: null,
-    resizeTimer: 0,
   };
 
   const el = (id) => document.getElementById(id);
@@ -122,18 +113,6 @@
     return { data, cached: false };
   }
 
-  function mondayOf(value) {
-    const date = new Date(`${value}T00:00:00Z`);
-    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
-    return date.toISOString().slice(0, 10);
-  }
-
-  function sundayOf(value) {
-    const date = new Date(`${mondayOf(value)}T00:00:00Z`);
-    date.setUTCDate(date.getUTCDate() + 6);
-    return date.toISOString().slice(0, 10);
-  }
-
   function shiftDate(value, days) {
     const date = new Date(`${value}T00:00:00Z`);
     date.setUTCDate(date.getUTCDate() + Number(days || 0));
@@ -151,30 +130,29 @@
   }
 
   function columnsFor(mode) {
-    if (mode === 'tracks') return TRACK_COLUMNS;
     if (mode === 'ranking') return RANKING_COLUMNS;
     if (mode === 'broadcasts') return BROADCAST_COLUMNS;
     return SUMMARY_COLUMNS;
   }
 
-  function displayCell(key, row, mode = state.mode) {
+  function displayCell(key, row) {
     const value = row?.[key];
     if (value == null || value === '') return '—';
     if (key.endsWith('_at')) return formatDate(value, true);
-    if (key === 'daily_share') return `${numberText(Number(value) * 100)}%`;
     if (key === 'quality_score') return numberText(value);
     if (['rank_change', 'stream_growth', 'member_growth'].includes(key)) {
       const number = finite(value);
       return number == null ? '—' : `${number > 0 ? '+' : ''}${integer.format(number)}`;
     }
     if (typeof value === 'number') return numberText(value);
-    if (mode === 'tracks' && key === 'title') return value || row?.display_title || row?.spotify_id || '曲名不明';
     return String(value);
   }
 
   function tableOrder(rows, mode) {
-    if (mode === 'tracks') return [...rows].sort((a, b) => (b.first_played_at || 0) - (a.first_played_at || 0));
-    if (mode === 'ranking') return [...rows].sort((a, b) => String(b.ranking_date || '').localeCompare(String(a.ranking_date || '')) || Number(a.rank || 9999) - Number(b.rank || 9999));
+    if (mode === 'ranking') {
+      return [...rows].sort((a, b) => String(b.ranking_date || '').localeCompare(String(a.ranking_date || ''))
+        || Number(a.rank || 9999) - Number(b.rank || 9999));
+    }
     return [...rows].reverse();
   }
 
@@ -189,6 +167,7 @@
       head.appendChild(cell);
     }
     el('thead').replaceChildren(head);
+
     const rows = state.tableRows.slice(0, state.visibleRows);
     const fragment = document.createDocumentFragment();
     for (const row of rows) {
@@ -238,189 +217,22 @@
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   }
 
-  function sum(rows, key) {
-    return rows.reduce((total, row) => total + (finite(row?.[key]) || 0), 0);
-  }
-
   function updateSummary() {
     const rows = state.rows;
-    setText('periodLabel', state.mode === 'tracks' ? '曲数' : state.mode === 'ranking' ? '順位行' : '期間数');
-    setText('maxLabel', state.mode === 'tracks' ? '再生回数' : '平均同接');
-    setText('streamLabel', state.mode === 'tracks' ? '最大いいね' : '再生数増加');
-    setText('memberLabel', state.mode === 'tracks' ? '対象日数' : 'メンバー増加');
+    setText('periodLabel', state.mode === 'ranking' ? '順位行' : '期間数');
+    setText('maxLabel', '平均同接');
+    setText('streamLabel', '再生数増加');
+    setText('memberLabel', 'メンバー増加');
     setText('periods', numberText(rows.length));
-    if (state.mode === 'tracks') {
-      setText('maxListener', numberText(sum(rows, 'play_count')));
-      setText('streamGrowth', numberText(Math.max(0, ...rows.map((row) => finite(row.like_count) || 0))));
-      setText('memberGrowth', numberText(new Set(rows.map((row) => row.play_date).filter(Boolean)).size));
-    } else if (state.mode === 'ranking') {
+    if (state.mode === 'ranking') {
       setText('maxListener', '—');
       setText('streamGrowth', '—');
       setText('memberGrowth', '—');
-    } else {
-      setText('maxListener', numberText(average(rows, 'listener_avg')));
-      setText('streamGrowth', numberText(average(rows, 'stream_growth')));
-      setText('memberGrowth', numberText(average(rows, 'member_growth')));
+      return;
     }
-  }
-
-  function cssColor(name, fallback) {
-    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
-  }
-
-  function prepareCanvas() {
-    const canvas = el('chart');
-    const context = canvas.getContext('2d');
-    const width = Math.max(320, Math.round(canvas.clientWidth || 960));
-    const height = Math.max(260, Math.round(canvas.clientHeight || 360));
-    const ratio = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(height * ratio);
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    context.clearRect(0, 0, width, height);
-    return { canvas, context, width, height };
-  }
-
-  function drawEmpty(message) {
-    const { context, width, height } = prepareCanvas();
-    context.fillStyle = cssColor('--muted', '#667287');
-    context.font = '14px system-ui';
-    context.textAlign = 'center';
-    context.fillText(message, width / 2, height / 2);
-    el('chartLegend').replaceChildren();
-    setText('chartStartDate', '—');
-    setText('chartEndDate', '—');
-    setText('chartDetail', 'グラフを表示できるデータがありません。');
-    state.chartModel = null;
-  }
-
-  function chartBounds(values, paddingRatio = 0.08) {
-    if (!values.length) return { minimum: 0, maximum: 1, range: 1 };
-    const rawMinimum = Math.min(...values);
-    const rawMaximum = Math.max(...values);
-    const rawRange = rawMaximum - rawMinimum;
-    const padding = Math.max(1, rawRange * paddingRatio);
-    const minimum = Math.max(0, rawMinimum - padding);
-    const maximum = Math.max(minimum + 1, rawMaximum + padding);
-    return { minimum, maximum, range: maximum - minimum };
-  }
-
-  function drawSummaryChart() {
-    const keys = ['listener_avg', 'listener_max', 'listener_min', 'stream_end'];
-    const rows = state.rows.filter((row) => keys.some((key) => finite(row?.[key]) != null));
-    if (!rows.length) return drawEmpty('表示できる集計データがありません。');
-
-    const { canvas, context, width, height } = prepareCanvas();
-    const area = { left: 58, right: 70, top: 18, bottom: 42 };
-    area.width = Math.max(1, width - area.left - area.right);
-    area.height = Math.max(1, height - area.top - area.bottom);
-    const positions = rows.map((_, index) => area.left + area.width * index / Math.max(1, rows.length - 1));
-    const listenerSeries = [
-      { key: 'listener_avg', label: '平均同接', color: cssColor('--accent', '#d93f79'), width: 2.6 },
-      { key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 1.9 },
-      { key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 1.9 },
-    ];
-    const streamSeries = {
-      key: 'stream_end', label: '再生数', color: cssColor('--green', '#168b73'), width: 2.1,
-    };
-    const listenerValues = listenerSeries.flatMap(({ key }) =>
-      rows.map((row) => finite(row?.[key])).filter((value) => value != null));
-    const streamValues = rows.map((row) => finite(row?.stream_end)).filter((value) => value != null);
-    const listenerBounds = chartBounds(listenerValues);
-    const streamBounds = chartBounds(streamValues, 0.05);
-    const yFor = (value, bounds) => area.top + area.height
-      - (Number(value) - bounds.minimum) / bounds.range * area.height;
-
-    context.strokeStyle = 'rgba(31,45,68,.12)';
-    context.fillStyle = cssColor('--muted', '#667287');
-    context.lineWidth = 1;
-    context.font = '10.5px system-ui';
-    for (let index = 0; index <= 4; index += 1) {
-      const ratio = index / 4;
-      const y = area.top + area.height * ratio;
-      context.beginPath();
-      context.moveTo(area.left, y);
-      context.lineTo(width - area.right, y);
-      context.stroke();
-      if (listenerValues.length) {
-        const value = listenerBounds.maximum - listenerBounds.range * ratio;
-        context.textAlign = 'right';
-        context.fillText(integer.format(Math.round(value)), area.left - 7, y + 3);
-      }
-      if (streamValues.length) {
-        const value = streamBounds.maximum - streamBounds.range * ratio;
-        context.textAlign = 'left';
-        context.fillText(integer.format(Math.round(value)), width - area.right + 7, y + 3);
-      }
-    }
-
-    const drawSeries = (seriesItem, bounds, dash = []) => {
-      if (!rows.some((row) => finite(row?.[seriesItem.key]) != null)) return;
-      context.save();
-      context.strokeStyle = seriesItem.color;
-      context.lineWidth = seriesItem.width;
-      context.setLineDash(dash);
-      context.beginPath();
-      let open = false;
-      rows.forEach((row, index) => {
-        const value = finite(row?.[seriesItem.key]);
-        if (value == null) {
-          open = false;
-          return;
-        }
-        const y = yFor(value, bounds);
-        if (!open) context.moveTo(positions[index], y);
-        else context.lineTo(positions[index], y);
-        open = true;
-      });
-      context.stroke();
-      context.restore();
-    };
-
-    listenerSeries.forEach((item) => drawSeries(item, listenerBounds));
-    if (streamValues.length) drawSeries(streamSeries, streamBounds, [6, 4]);
-
-    if (Number.isInteger(state.selectedChartIndex) && rows[state.selectedChartIndex]) {
-      const row = rows[state.selectedChartIndex];
-      setText('chartDetail', `${row.period_key || ''}　平均同接 ${numberText(row.listener_avg)}　最大同接 ${numberText(row.listener_max)}　最小同接 ${numberText(row.listener_min)}　再生数 ${numberText(row.stream_end)}`);
-    } else {
-      setText('chartDetail', 'グラフをタッチすると、その期間の平均・最大・最小同接と再生数を表示します。');
-    }
-
-    const legend = document.createDocumentFragment();
-    for (const item of [...listenerSeries, streamSeries]) {
-      if (!rows.some((row) => finite(row?.[item.key]) != null)) continue;
-      const span = document.createElement('span');
-      const marker = document.createElement('i');
-      marker.style.background = item.color;
-      span.append(marker, document.createTextNode(item.label));
-      legend.appendChild(span);
-    }
-    el('chartLegend').replaceChildren(legend);
-    setText('chartStartDate', rows[0].period_key || '—');
-    setText('chartEndDate', rows.at(-1).period_key || '—');
-    state.chartModel = { positions, rows };
-    canvas.dataset.left = String(area.left);
-    canvas.dataset.chartWidth = String(area.width);
-  }
-
-  function drawChart() {
-    if (['tracks', 'ranking', 'broadcasts'].includes(state.mode)) return;
-    drawSummaryChart();
-  }
-
-  function handleChartPointer(event) {
-    if (!state.chartModel || state.mode === 'broadcasts') return;
-    const bounds = el('chart').getBoundingClientRect();
-    const pointer = event.clientX - bounds.left;
-    let nearest = 0;
-    let distance = Infinity;
-    state.chartModel.positions.forEach((position, index) => {
-      const next = Math.abs(position - pointer);
-      if (next < distance) { distance = next; nearest = index; }
-    });
-    state.selectedChartIndex = nearest;
-    drawSummaryChart();
+    setText('maxListener', numberText(average(rows, 'listener_avg')));
+    setText('streamGrowth', numberText(average(rows, 'stream_growth')));
+    setText('memberGrowth', numberText(average(rows, 'member_growth')));
   }
 
   function updateModeUi() {
@@ -429,22 +241,19 @@
       const selected = button.dataset.mode === state.mode;
       button.classList.toggle('active', selected);
       if (selected) button.setAttribute('aria-current', 'page');
-      else button.removeAttribute('aria-current');
+      else if (button.dataset.view !== 'current') button.removeAttribute('aria-current');
     });
     setText('guideTitle', config.title);
     setText('tableTitle', config.table);
     setText('chartTitle', config.chart);
     el('controls').hidden = state.mode === 'broadcasts';
-    el('standardControls').hidden = state.mode === 'tracks';
-    el('trackControls').hidden = state.mode !== 'tracks';
+    el('standardControls').hidden = false;
     el('rankingControls').hidden = state.mode !== 'ranking';
-    el('chartPanel').hidden = ['tracks', 'ranking'].includes(state.mode);
+    el('chartPanel').hidden = state.mode === 'ranking';
     el('rankingWeeklyPanel').hidden = state.mode !== 'ranking';
     setText('chartFoot', state.mode === 'broadcasts'
       ? '横軸は各放送の開始からの経過時間です。'
-      : '左軸は同接（平均・最大・最小）、右軸は各期間終了時点の再生数です。');
-    state.selectedChartIndex = null;
-    state.chartModel = null;
+      : '左軸は同接（平均・最大・最小）、右軸は各期間の再生数増加です。');
   }
 
   function resetData() {
@@ -461,21 +270,17 @@
     state.tableRows = tableOrder(state.rows, state.mode);
     renderTable(true);
     renderRankingWeekly(state.data?.weekly_metrics || []);
-    if (!['tracks', 'ranking', 'broadcasts'].includes(state.mode)) requestAnimationFrame(drawChart);
   }
 
-  async function resolveTrackRange(signal, force) {
-    if (!el('trackDate').value) {
-      const { data } = await fetchJson('/api/track-history?latest=1', { ttl: 5 * 60_000, signal, force });
-      el('trackDate').value = data.latest_date || todayUtc();
-    }
-    if (el('trackWeekMode').checked) {
-      el('from').value = mondayOf(el('trackDate').value);
-      el('to').value = sundayOf(el('trackDate').value);
-    } else {
-      el('from').value = el('trackDate').value;
-      el('to').value = el('trackDate').value;
-    }
+  function publishHistoryData(mode, data, from, to, cached) {
+    window.dispatchEvent(new CustomEvent('history:data-loaded', {
+      detail: { mode, data, from, to, cached },
+    }));
+  }
+
+  async function ensureModeRuntime(mode) {
+    const ensure = window.__ensureHistoryModeRuntime;
+    if (typeof ensure === 'function') await ensure(mode);
   }
 
   async function loadMode({ force = false } = {}) {
@@ -488,43 +293,33 @@
     setNotice('読み込み中…');
 
     try {
-      if (mode === 'tracks') await resolveTrackRange(controller.signal, force);
       if (mode === 'broadcasts') {
         el('from').value = '2024-05-01';
         el('to').value = todayUtc();
       }
       const from = el('from').value;
       const to = el('to').value;
-      let data;
-      let cached = false;
-
-      if (mode === 'tracks') {
-        const url = `/api/track-history?${new URLSearchParams({ from, to, limit: '2000' })}`;
-        ({ data, cached } = await fetchJson(url, { ttl: 10 * 60_000, signal: controller.signal, force }));
-        if (token !== state.requestToken || state.mode !== mode) return;
-        state.data = data;
-        state.rows = Array.isArray(data.rows) ? data.rows : [];
-        setNotice(`${formatDate(from)}〜${formatDate(to)} · ${numberText(state.rows.length)}件 · ${data.timezone || 'UTC'}${data.truncated ? ' · 表示上限' : ''}${cached ? ' · キャッシュ' : ''}`);
-      } else if (mode === 'ranking') {
-        const params = new URLSearchParams({ mode, from, to, scope: el('rankingScope').value, limit: '5000' });
+      const params = new URLSearchParams({ mode, from, to });
+      if (mode === 'ranking') {
+        params.set('scope', el('rankingScope').value);
+        params.set('limit', '5000');
         const host = el('rankingHost').value.trim();
         if (host) params.set('host', host);
-        const url = `/api/history?${params}`;
-        ({ data, cached } = await fetchJson(url, { ttl: 5 * 60_000, signal: controller.signal, force }));
-        if (token !== state.requestToken || state.mode !== mode) return;
-        state.data = data;
-        state.rows = Array.isArray(data.rows) ? data.rows : [];
+      }
+      const url = `/api/history?${params}`;
+      const ttl = mode === 'broadcasts' ? 15 * 60_000 : 5 * 60_000;
+      const { data, cached } = await fetchJson(url, { ttl, signal: controller.signal, force });
+      if (token !== state.requestToken || state.mode !== mode) return;
+
+      state.data = data;
+      state.rows = Array.isArray(data.rows) ? data.rows : [];
+      if (mode === 'ranking') {
         setNotice(`${numberText(state.rows.length)}行${data.truncated ? ' · 最大5000件' : ''}${cached ? ' · キャッシュ' : ''}`);
       } else {
-        const url = `/api/history?${new URLSearchParams({ mode, from, to })}`;
-        ({ data, cached } = await fetchJson(url, { ttl: mode === 'broadcasts' ? 15 * 60_000 : 5 * 60_000, signal: controller.signal, force }));
-        if (token !== state.requestToken || state.mode !== mode) return;
-        state.data = data;
-        state.rows = Array.isArray(data.rows) ? data.rows : [];
         setNotice(`${numberText(state.rows.length)}件を表示 · UTC${cached ? ' · キャッシュ' : ''}`);
       }
-
       renderLoadedData();
+      publishHistoryData(mode, data, from, to, cached);
     } catch (error) {
       if (error?.name !== 'AbortError' && token === state.requestToken) {
         console.error(error);
@@ -540,15 +335,25 @@
     }
   }
 
-  function setMode(mode) {
+  async function setMode(mode) {
     if (!MODES[mode]) return;
     state.controller?.abort();
-    state.requestToken += 1;
+    const transitionToken = ++state.requestToken;
     state.mode = mode;
     resetData();
     updateModeUi();
     history.replaceState(null, '', `#${mode}`);
-    loadMode();
+    try {
+      await ensureModeRuntime(mode);
+    } catch (error) {
+      if (transitionToken === state.requestToken) {
+        console.error('history mode runtime failed to load', error);
+        setNotice('表示機能の読み込みに失敗しました。再読み込みしてください。', true);
+      }
+      return;
+    }
+    if (transitionToken !== state.requestToken || state.mode !== mode) return;
+    void loadMode();
   }
 
   function exportCsv() {
@@ -565,35 +370,29 @@
     URL.revokeObjectURL(link.href);
   }
 
-  function start() {
+  async function start() {
     el('to').value = todayUtc();
     applyPreset('all');
     document.querySelectorAll('#modeTabs button').forEach((button) =>
-      button.addEventListener('click', () => setMode(button.dataset.mode)));
+      button.addEventListener('click', () => void setMode(button.dataset.mode)));
     document.querySelectorAll('#rangePresets button').forEach((button) =>
       button.addEventListener('click', () => {
         applyPreset(button.dataset.days);
-        loadMode();
+        void loadMode();
       }));
-    el('load').addEventListener('click', () => loadMode({ force: true }));
+    el('load').addEventListener('click', () => void loadMode({ force: true }));
     el('more').addEventListener('click', () => {
       state.visibleRows += PAGE_SIZE;
       renderTable(false);
     });
     el('csv').addEventListener('click', exportCsv);
-    el('trackDate').addEventListener('change', () => loadMode());
-    el('trackWeekMode').addEventListener('change', () => loadMode());
-    el('rankingScope').addEventListener('change', () => loadMode());
+    el('rankingScope').addEventListener('change', () => void loadMode());
     el('rankingHost').addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') { event.preventDefault(); loadMode(); }
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void loadMode();
+      }
     });
-    el('chart').addEventListener('pointerup', handleChartPointer);
-    window.addEventListener('resize', () => {
-      clearTimeout(state.resizeTimer);
-      state.resizeTimer = setTimeout(() => {
-        if (!['tracks', 'ranking', 'broadcasts'].includes(state.mode) && state.rows.length) drawChart();
-      }, 160);
-    }, { passive: true });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) state.controller?.abort();
     });
@@ -601,9 +400,19 @@
     const requestedMode = location.hash.slice(1);
     state.mode = MODES[requestedMode] ? requestedMode : 'weekly';
     updateModeUi();
-    loadMode();
-    void import('/history/history-broadcasts.js');
+    const startupToken = ++state.requestToken;
+    try {
+      await ensureModeRuntime(state.mode);
+    } catch (error) {
+      if (startupToken === state.requestToken) {
+        console.error('history mode runtime failed to start', error);
+        setNotice('表示機能の初期化に失敗しました。再読み込みしてください。', true);
+      }
+      return;
+    }
+    if (startupToken !== state.requestToken) return;
+    void loadMode();
   }
 
-  start();
+  void start();
 })();

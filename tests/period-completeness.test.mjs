@@ -212,8 +212,9 @@ test('track rows retain details but incomplete dates are marked for total exclus
 test('history lite client is loaded lazily into the integrated dashboard', () => {
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
+  const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
   assert.match(html, /id="historyView"/);
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.4'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.5'\)/);
   assert.doesNotMatch(html, /history-period-completeness\.js|history-copy-fixes\.js|history-track-likes\.js/);
 
   const runtimeSource = readFileSync(
@@ -221,8 +222,8 @@ test('history lite client is loaded lazily into the integrated dashboard', () =>
     'utf8',
   );
   assert.match(runtimeSource, /state\.rows = Array\.isArray\(data\.rows\) \? data\.rows : \[\]/);
-  assert.match(runtimeSource, /const TRACK_COLUMNS/);
-  assert.match(runtimeSource, /\['like_count', 'いいね数'\]/);
+  assert.match(runtimeSource, /history:data-loaded/);
+  assert.match(entry, /history-period-chart\.js\?v=20260923\.2/);
+  assert.doesNotMatch(runtimeSource, /TRACK_COLUMNS|trackDate|trackWeekMode|history-period-completeness|history-track-likes/);
   assert.doesNotMatch(runtimeSource, /mondayJstKey|expectedStart|expectedEnd/);
-  assert.doesNotMatch(runtimeSource, /history-period-completeness|history-track-likes/);
 });

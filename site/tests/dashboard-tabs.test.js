@@ -32,7 +32,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260923\.4'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260923\.4'\)/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260923\.5'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
@@ -42,6 +42,14 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
 test('inactive history and likes runtimes are not prefetched from the current tab', () => {
   assert.doesNotMatch(tabsClient, /modulepreload|preloadModule|scheduleRuntimePrefetch|requestIdleCallback/);
   assert.doesNotMatch(page, /modulepreload[^>]*(?:history-main|history-likes)/);
+});
+
+test('history mode-specific runtimes are lazy-loaded only after history starts', () => {
+  assert.match(historyEntry, /function ensureHistoryModeRuntime/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.2/);
+  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.5/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.2/);
+  assert.doesNotMatch(tabsClient, /history-period-chart|history-ranking-chart|history-broadcasts/);
 });
 
 test('history and likes startup release unintended skip-link focus', () => {

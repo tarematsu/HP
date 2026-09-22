@@ -8,7 +8,10 @@ const dashboardLayout = readFileSync(new URL('../public/dashboard-current-layout
 const dashboardStability = readFileSync(new URL('../public/dashboard-chart-stability.js', import.meta.url), 'utf8');
 const dashboardDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
+const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyStability = readFileSync(new URL('../public/history/history-chart-stability.js', import.meta.url), 'utf8');
+const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
+const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 
 test('dashboard has one response parser and one canvas renderer', () => {
   assert.doesNotMatch(dashboard, /dashboard-current-enhancements\.js/);
@@ -36,11 +39,16 @@ test('dashboard first paint stays hidden until the comparison renderer settles',
   assert.match(dashboardDetail, /dashboard:payload/);
 });
 
-test('history hides intermediate generic chart paint until specialized renderers finish', () => {
-  const stabilityIndex = historyMain.indexOf('history-chart-stability.js');
-  const periodIndex = historyMain.indexOf('history-period-chart.js');
-  const liteIndex = historyMain.indexOf('history-lite.js');
-  assert.ok(stabilityIndex >= 0 && periodIndex > stabilityIndex && liteIndex > periodIndex);
+test('history has one specialized canvas renderer per mode and hides paint until it settles', () => {
+  assert.match(historyMain, /function ensureHistoryModeRuntime/);
+  assert.match(historyMain, /history-period-chart\.js\?v=20260923\.2/);
+  assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.5/);
+  assert.match(historyLite, /history:data-loaded/);
+  assert.doesNotMatch(historyLite, /function drawSummaryChart|function prepareCanvas|getContext\('2d'\)/);
+  assert.match(periodChart, /history:data-loaded/);
+  assert.match(rankingChart, /history:data-loaded/);
+  assert.doesNotMatch(periodChart, /window\.fetch|response\.clone\(\)\.json/);
+  assert.doesNotMatch(rankingChart, /window\.fetch|response\.clone\(\)\.json/);
   assert.match(historyStability, /data-period-chart/);
   assert.match(historyStability, /history:ranking-chart-drawn/);
   assert.match(historyStability, /paintPending/);

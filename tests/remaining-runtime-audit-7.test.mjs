@@ -116,8 +116,13 @@ test('history display layer uses current canonical modules only', () => {
     new URL('../site/public/history/history-lite.js', import.meta.url),
     'utf8',
   );
+  const entry = readFileSync(
+    new URL('../site/public/history/history-main.js', import.meta.url),
+    'utf8',
+  );
   assert.match(source, /CACHE_PREFIX = 'sh\.history\.v3:'/);
-  assert.match(source, /tracks: \{ title: '再生曲', table: '再生曲一覧'/);
   assert.match(source, /broadcasts: \{ title: '公式ストリーム比較', table: '公式ストリーム一覧'/);
-  assert.doesNotMatch(source, /history-copy-fixes|history-track-likes/);
+  assert.doesNotMatch(source, /tracks: \{|再生曲一覧|history-copy-fixes|history-track-likes/);
+  assert.match(entry, /history-broadcasts\.js\?v=20260923\.2/);
+  assert.match(entry, /history-period-chart\.js\?v=20260923\.2/);
 });

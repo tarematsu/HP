@@ -91,16 +91,18 @@ test('Sakurazaka series prefers canonical OTHER_DB history and falls back to MIN
   assert.equal(loaded.failSafe[0].samples[0].sourceSamples, 2);
 });
 
-test('history client owns chart, table, formatting, and cache logic in one module', () => {
+test('history client owns table formatting and cache while charts are mode-specific', () => {
   const source = readFileSync(
     new URL('../site/public/history/history-lite.js', import.meta.url),
     'utf8',
   );
   assert.match(source, /const integer = new Intl\.NumberFormat/);
   assert.match(source, /const dateOnly = new Intl\.DateTimeFormat/);
-  assert.match(source, /function drawSummaryChart/);
   assert.match(source, /function renderTable/);
+  assert.match(source, /function publishHistoryData/);
+  assert.match(source, /history:data-loaded/);
   assert.match(source, /sessionStorage\.getItem/);
   assert.match(source, /sessionStorage\.setItem/);
-  assert.doesNotMatch(source, /broadcast-series|history-current|mode === 'raw'/);
+  assert.doesNotMatch(source, /function drawSummaryChart|function prepareCanvas|chartModel|broadcast-series|history-current|mode === 'raw'/);
+  assert.doesNotMatch(source, /TRACK_COLUMNS|trackDate|trackWeekMode|mode === 'tracks'/);
 });

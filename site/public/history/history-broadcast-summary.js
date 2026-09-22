@@ -1,13 +1,11 @@
 const browser = typeof window === 'undefined' ? null : window;
 const previousFetch = browser?.fetch?.bind(browser) || null;
-const CACHE_PREFIX = 'sh.history.v3:';
 const SERIES_CACHE_PREFIX = 'sakurazaka46jp:v1:';
 const BROADCAST_MODE = 'broadcasts';
 const LIVE_REFRESH_MS = 15_000;
 const integer = new Intl.NumberFormat('ja-JP');
 
 let rows = [];
-let rowsUrl = '';
 let renderTimer = 0;
 let liveRefreshTimer = 0;
 let liveCollectionActive = null;
@@ -58,38 +56,10 @@ function formatMinutes(value) {
   return minutes ? `${hours}時間${minutes}分` : `${hours}時間`;
 }
 
-function cacheUrl() {
-  const from = document.getElementById('from')?.value || '';
-  const to = document.getElementById('to')?.value || '';
-  return `/api/history?${new URLSearchParams({ mode: BROADCAST_MODE, from, to })}`;
-}
-
-function restoreCachedRows(url = cacheUrl()) {
-  try {
-    const cached = JSON.parse(browser?.sessionStorage?.getItem(`${CACHE_PREFIX}${url}`) || 'null');
-    if (!Array.isArray(cached?.data?.rows)) return false;
-    rows = cached.data.rows;
-    rowsUrl = url;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 function render() {
   if (!active()) return;
-  const currentUrl = cacheUrl();
-  if (rowsUrl !== currentUrl && !restoreCachedRows(currentUrl)) {
-    rows = [];
-    rowsUrl = currentUrl;
-  }
-
-  const maximums = rows
-    .map((row) => finite(row?.listener_max))
-    .filter((value) => value != null);
-  const durations = rows
-    .map(durationMinutes)
-    .filter((value) => value != null);
+  const maximums = rows.map((row) => finite(row?.listener_max)).filter((value) => value != null);
+  const durations = rows.map(durationMinutes).filter((value) => value != null);
   const averageDuration = durations.length
     ? durations.reduce((sum, value) => sum + value, 0) / durations.length
     : null;
@@ -105,28 +75,13 @@ function scheduleRender(delay = 0) {
   renderTimer = setTimeout(render, delay);
 }
 
-async function captureHistoryResponse(input, response) {
-  if (!response?.ok) return;
-  const url = requestUrl(input);
-  if (!url || url.origin !== location.origin || url.pathname !== '/api/history') return;
-  if (String(url.searchParams.get('mode') || '').toLowerCase() !== BROADCAST_MODE) return;
-  try {
-    const data = await response.clone().json();
-    if (!data?.ok || !Array.isArray(data.rows)) return;
-    rows = data.rows;
-    rowsUrl = `${url.pathname}${url.search}`;
-    scheduleRender();
-  } catch {}
-}
-
 function mergeLiveSeries(basePayload, statusPayload) {
   if (!basePayload?.ok || !statusPayload?.ok || statusPayload.collection_active !== true) {
     return basePayload;
   }
   const samples = Array.isArray(statusPayload.samples) ? statusPayload.samples : [];
   const anchor = samples.find((sample) =>
-    epochMs(sample?.broadcast_start_time) != null
-      && finite(sample?.listener_count) != null);
+    epochMs(sample?.broadcast_start_time) != null && finite(sample?.listener_count) != null);
   if (!anchor) return basePayload;
 
   const start = epochMs(anchor.broadcast_start_time);
@@ -177,13 +132,17 @@ function mergeLiveSeries(basePayload, statusPayload) {
   return { ...basePayload, series };
 }
 
-function scheduleLiveRefresh(delay = LIVE_REFRESH_MS) {
+function clearLiveRefresh() {
   clearTimeout(liveRefreshTimer);
   liveRefreshTimer = 0;
-  if (!active() || document.visibilityState === 'hidden' || liveCollectionActive === false) return;
+}
+
+function scheduleLiveRefresh(delay = LIVE_REFRESH_MS) {
+  clearLiveRefresh();
+  if (!active() || document.visibilityState === 'hidden' || liveCollectionActive !== true) return;
   liveRefreshTimer = setTimeout(() => {
     liveRefreshTimer = 0;
-    if (!active() || document.visibilityState === 'hidden' || liveCollectionActive === false) return;
+    if (!active() || document.visibilityState === 'hidden' || liveCollectionActive !== true) return;
     clearSeriesCache();
     document.getElementById('load')?.click();
     scheduleLiveRefresh();
@@ -191,19 +150,15 @@ function scheduleLiveRefresh(delay = LIVE_REFRESH_MS) {
 }
 
 function updateLiveCollectionState(statusPayload) {
-  const next = statusPayload?.collection_active === true;
-  liveCollectionActive = next;
-  if (!next) {
-    clearTimeout(liveRefreshTimer);
-    liveRefreshTimer = 0;
+  liveCollectionActive = statusPayload?.collection_active === true;
+  if (!liveCollectionActive) {
+    clearLiveRefresh();
     return;
   }
-  if (active() && document.visibilityState !== 'hidden' && !liveRefreshTimer) {
-    scheduleLiveRefresh();
-  }
+  if (active() && document.visibilityState !== 'hidden' && !liveRefreshTimer) scheduleLiveRefresh();
 }
 
-async function mergeLiveStatusResponse(input, init, baseResponse) {
+async function mergeLiveStatusResponse(input, baseResponse) {
   const url = requestUrl(input);
   if (!baseResponse?.ok || !url || url.origin !== location.origin || url.pathname !== '/api/sakurazaka46jp') {
     return baseResponse;
@@ -243,33 +198,29 @@ function clearSeriesCache() {
 if (browser && previousFetch) {
   browser.fetch = async (input, init) => {
     const baseResponse = await previousFetch(input, init);
-    void captureHistoryResponse(input, baseResponse);
-    return mergeLiveStatusResponse(input, init, baseResponse);
+    return mergeLiveStatusResponse(input, baseResponse);
   };
 }
 
-const summaryCards = document.getElementById('summaryCards');
-if (summaryCards) {
-  new MutationObserver(() => {
-    if (active()) scheduleRender();
-  }).observe(summaryCards, { subtree: true, childList: true, characterData: true });
-}
+window.addEventListener('history:data-loaded', (event) => {
+  const detail = event?.detail || {};
+  if (detail.mode !== BROADCAST_MODE || !detail.data?.ok || !Array.isArray(detail.data.rows)) return;
+  rows = detail.data.rows;
+  scheduleRender();
+});
 
 document.querySelector('[data-mode="broadcasts"]')?.addEventListener('click', () => {
+  if (!active()) {
+    clearLiveRefresh();
+    return;
+  }
   scheduleRender();
-  setTimeout(() => scheduleLiveRefresh(0), 0);
+  if (liveCollectionActive === true) scheduleLiveRefresh();
 });
 document.getElementById('load')?.addEventListener('click', () => scheduleRender(50));
 document.querySelectorAll('#rangePresets button').forEach((button) =>
   button.addEventListener('click', () => scheduleRender(50)));
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    clearTimeout(liveRefreshTimer);
-    liveRefreshTimer = 0;
-  } else if (active()) {
-    scheduleLiveRefresh(0);
-  }
+  if (document.visibilityState === 'hidden') clearLiveRefresh();
+  else if (active() && liveCollectionActive === true) scheduleLiveRefresh();
 });
-
-scheduleRender();
-scheduleLiveRefresh(0);

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 test('official listening party uses live refresh only while collection is active', () => {
   const status = readFileSync(new URL('../site/functions/api/sakurazaka46jp-status.js', import.meta.url), 'utf8');
   const summary = readFileSync(new URL('../site/public/history/history-broadcast-summary.js', import.meta.url), 'utf8');
+  const historyEntry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
 
   assert.match(status, /cache-control': 'no-store'/);
   assert.match(status, /collection_active: Boolean\(activeAnnouncement\)/);
@@ -12,10 +13,14 @@ test('official listening party uses live refresh only while collection is active
   assert.match(summary, /LIVE_REFRESH_MS = 15_000/);
   assert.match(summary, /\/api\/sakurazaka46jp-status/);
   assert.match(summary, /statusPayload\.collection_active !== true/);
-  assert.match(summary, /liveCollectionActive === false/);
+  assert.match(summary, /liveCollectionActive !== true/);
+  assert.match(summary, /liveCollectionActive === true/);
   assert.match(summary, /mergeLiveSeries/);
   assert.match(summary, /SERIES_CACHE_PREFIX = 'sakurazaka46jp:v1:'/);
   assert.match(summary, /document\.getElementById\('load'\)\?\.click\(\)/);
+  assert.doesNotMatch(summary, /scheduleLiveRefresh\(0\);\s*$/m);
+  assert.match(historyEntry, /history-broadcast-summary\.js\?v=20260923\.2/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.2/);
 });
 
 test('ended official listening parties are materialized into the canonical read model', () => {
