@@ -5,6 +5,8 @@
 
 namespace hp {
 
+inline constexpr UINT kStationheadLeaderboardCollectorWakeMessage = WM_APP + 32;
+
 class StationheadLeaderboardCollector {
  public:
   StationheadLeaderboardCollector(HWND window, fs::path userDataFolder,
