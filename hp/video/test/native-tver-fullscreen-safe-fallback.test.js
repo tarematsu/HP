@@ -12,12 +12,14 @@ const fullscreen = readFileSync(
 const episode = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 
-test('TVer viewport fullscreen is the primary deterministic path', () => {
+test('TVer viewport fill is only a visual fallback while browser fullscreen stays authoritative', () => {
   assert.match(episode, /__homePanelTverEnsureViewportFullscreen/);
   assert.match(episode, /data-homepanel-tver-viewport-root/);
   assert.match(episode, /position:fixed !important/);
   assert.match(episode, /coversViewport\(target\)/);
-  assert.match(watchdog, /browserFullscreen \|\| viewportFullscreen/);
+  assert.match(watchdog, /__homePanelTverEnsureViewportFullscreen\(video\)/);
+  assert.match(watchdog, /if \(browserFullscreen\) \{/);
+  assert.doesNotMatch(watchdog, /browserFullscreen \|\| viewportFullscreen/);
 });
 
 test('TVer fullscreen never falls back to a blind video-corner click', () => {
