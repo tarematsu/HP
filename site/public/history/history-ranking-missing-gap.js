@@ -7,6 +7,7 @@ const previousFetch = window.fetch.bind(window);
 let rankingWeeks = [];
 let rankingFrom = null;
 let rankingTo = null;
+let renderedWeeks = [];
 let overlayTimer = 0;
 
 function isoDate(value) {
@@ -45,6 +46,7 @@ function weeklyRange(from, to) {
 }
 
 function completeWeeks() {
+  if (renderedWeeks.length) return renderedWeeks;
   const source = [...new Set(rankingWeeks.map(isoDate).filter(Boolean))].sort();
   const from = rankingFrom || source[0] || MISSING_START;
   const to = rankingTo || source.at(-1) || MISSING_END;
@@ -101,6 +103,7 @@ window.fetch = async (input, init) => {
         rankingWeeks = Array.isArray(data.ranking_weeks) ? data.ranking_weeks.map(isoDate).filter(Boolean) : [];
         rankingFrom = isoDate(url.searchParams.get('from')) || null;
         rankingTo = isoDate(url.searchParams.get('to')) || null;
+        renderedWeeks = [];
         queueMicrotask(keepRankedRowsOnly);
         scheduleOverlay(20);
       }
@@ -164,6 +167,10 @@ document.getElementById('modeTabs')?.addEventListener('click', () => {
   scheduleOverlay(40);
 });
 document.getElementById('chart')?.addEventListener('pointerup', () => scheduleOverlay(20));
+window.addEventListener('history:ranking-chart-drawn', (event) => {
+  renderedWeeks = Array.isArray(event?.detail?.weeks) ? event.detail.weeks.map(isoDate).filter(Boolean) : [];
+  scheduleOverlay(0);
+});
 window.addEventListener('resize', () => scheduleOverlay(280), { passive: true });
 window.addEventListener('history:runtime-ready', () => {
   queueMicrotask(keepRankedRowsOnly);
