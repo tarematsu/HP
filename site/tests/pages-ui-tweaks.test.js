@@ -29,8 +29,11 @@ test('mobile likes ranking keeps the latest-like metric to the right of track me
   assert.match(finalFixes, /#likesView \.like-rank-metrics span \{[\s\S]*text-align: right !important/);
 });
 
-test('official listening-party labels remove the gap after a leading date', () => {
+test('official listening-party labels remove the gap after a leading date after explicit renders', () => {
   assert.match(tweaks, /OFFICIAL_EVENT_DATE_GAP/);
+  assert.match(tweaks, /history:data-loaded/);
+  assert.match(tweaks, /getElementById\('more'\)\?\.addEventListener/);
+  assert.doesNotMatch(tweaks, /MutationObserver/);
   const normalize = (value) => value.replace(/(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g, '$1');
   assert.equal(
     normalize('2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』'),

@@ -102,6 +102,11 @@ test('Pages labels official Stationhead events as official listening parties', (
   assert.match(source, /revision: API_REVISION/);
   assert.match(source, /sakurazaka46jp:v1:r\$\{CACHE_REVISION\}:/);
   assert.match(source, /DATE_PREFIX/);
+  assert.match(source, /OFFICIAL_EVENT_DATE_GAP/);
+  assert.match(source, /replace\(OFFICIAL_EVENT_DATE_GAP, '\$1'\)/);
+  assert.match(source, /history:data-loaded/);
+  assert.match(source, /getElementById\('more'\)\?\.addEventListener/);
+  assert.doesNotMatch(source, /MutationObserver/);
   assert.match(source, /集計値のみ/);
   assert.match(source, /データ未取得/);
 });

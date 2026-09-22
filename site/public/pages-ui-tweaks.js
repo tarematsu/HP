@@ -49,12 +49,11 @@ function normalizeOfficialEventText(root) {
 }
 
 const historyView = document.getElementById('historyView');
-if (historyView) {
-  normalizeOfficialEventText(historyView);
-  new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      if (mutation.type === 'characterData') normalizeOfficialEventText(mutation.target);
-      for (const node of mutation.addedNodes) normalizeOfficialEventText(node);
-    }
-  }).observe(historyView, { subtree: true, childList: true, characterData: true });
+function scheduleOfficialEventTextNormalization() {
+  if (!historyView) return;
+  queueMicrotask(() => normalizeOfficialEventText(historyView));
 }
+
+window.addEventListener('history:data-loaded', scheduleOfficialEventTextNormalization);
+document.getElementById('more')?.addEventListener('click', scheduleOfficialEventTextNormalization);
+scheduleOfficialEventTextNormalization();
