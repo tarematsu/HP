@@ -19,6 +19,10 @@ test('HomePanel deployment resolves workers.dev and requires public and authenti
     'RADAR_DISPATCH_TOKEN: ${{ secrets.RADAR_DISPATCH_TOKEN || secrets.GITHUB_RADAR_DISPATCH_TOKEN }}',
     'name: Sync radar dispatcher token',
     'wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud',
+    'name: Verify GitHub repository dispatch credential',
+    'homepanel-dispatch-credential-check',
+    'https://api.github.com/repos/tarematsu/HP/dispatches',
+    'cannot create repository_dispatch events',
     'name: Verify deployed readiness',
     'HOMEPANEL_HEALTH_URL: ${{ steps.homepanel-public-url.outputs.health-url }}',
     '--output "$output" --write-out "%{http_code}"',
@@ -64,6 +68,10 @@ test('HomePanel deployment resolves workers.dev and requires public and authenti
   );
   assert.ok(
     workflow.indexOf('- name: Sync radar dispatcher token')
+      < workflow.indexOf('- name: Verify GitHub repository dispatch credential'),
+  );
+  assert.ok(
+    workflow.indexOf('- name: Verify GitHub repository dispatch credential')
       < workflow.indexOf('- name: Resolve deployed HomePanel public URL'),
   );
   assert.ok(
