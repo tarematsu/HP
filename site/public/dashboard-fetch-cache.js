@@ -48,10 +48,14 @@
       statusText: response?.statusText || '',
       headers,
     });
-    Object.defineProperty(next, 'json', {
-      configurable: true,
-      value: async () => structuredClone(snapshot),
-    });
+    try {
+      Object.defineProperty(next, 'json', {
+        configurable: true,
+        value: async () => structuredClone(snapshot),
+      });
+    } catch {
+      // Native Response.json() remains a correct fallback if the instance is not extensible.
+    }
     return next;
   }
 
