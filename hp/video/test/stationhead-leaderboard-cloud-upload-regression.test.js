@@ -32,14 +32,16 @@ test('legacy leaderboard interception is completely absent from playback WebView
   assert.match(playbackPolicy, /StationheadLoginSettlementScript/);
 });
 
-test('leaderboard acquisition reuses one hidden WebView and waits for rendered ranking data', () => {
+test('leaderboard acquisition keeps one 1x1 background WebView active and waits for rendered ranking data', () => {
   assert.match(collector, /https:\/\/www\.stationhead\.com\/leaderboard/);
   assert.match(collector, /about:blank/);
   assert.match(collector, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
   assert.match(collector, /put_ProfileName\(profileName_\.c_str\(\)\)/);
   assert.match(collector, /put_IsInPrivateModeEnabled\(FALSE\)/);
   assert.match(collector, /CreateCoreWebView2ControllerWithOptions/);
-  assert.match(collector, /put_IsVisible\(FALSE\)/);
+  assert.match(collector, /RECT bounds\{0, 0, 1, 1\}/);
+  assert.match(collector, /put_IsVisible\(TRUE\)/);
+  assert.doesNotMatch(collector, /put_IsVisible\(FALSE\)/);
   assert.match(collector, /add_NavigationCompleted/);
   assert.match(collector, /NavigateCurrent\(generation_\)/);
   assert.match(collectorHeader, /void NavigateCurrent\(uint64_t generation\)/);
