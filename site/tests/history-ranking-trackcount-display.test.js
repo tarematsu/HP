@@ -21,7 +21,7 @@ test('ranking renders a two-host leaderboard chart', () => {
 });
 
 test('ranking uses a complete Monday timeline and keeps the table ranked-only', () => {
-  assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.2/);
+  assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.3/);
   assert.match(rankingChart, /function weeklyRange\(from, to\)/);
   assert.match(rankingChart, /mondayOnOrAfter/);
   assert.match(rankingChart, /mondayOnOrBefore/);
@@ -37,7 +37,8 @@ test('ranking uses a complete Monday timeline and keeps the table ranked-only', 
   assert.match(rankingMissing, /function completeWeeks\(\)/);
   assert.match(rankingMissing, /renderedWeeks\.length/);
   assert.match(rankingMissing, /\.\.\.weeklyRange\(from, to\)/);
-  assert.match(rankingMissing, /fillText\('欠測'/);
+  assert.doesNotMatch(rankingMissing, /fillText\('欠測'/);
+  assert.match(rankingMissing, /document\.createTextNode\('欠測'\)/);
   assert.match(rankingMissing, /空白週は圏外です/);
   assert.match(rankingMissing, /history:ranking-chart-drawn/);
   assert.match(rankingMissing, /scheduleOverlay\(0\)/);
