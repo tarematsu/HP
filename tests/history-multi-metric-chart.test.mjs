@@ -37,3 +37,12 @@ test('stream growth uses a separate right-hand scale with bars and selected-peri
   assert.match(chart, /最小同接 \$\{integer\.format/);
   assert.doesNotMatch(chart, /stream_end|drawSeries\(streamSeries/);
 });
+
+test('period charts draw at least four responsive x-axis dates with years', () => {
+  assert.match(chart, /function formatPeriodTick\(periodKey, mode\)/);
+  assert.match(chart, /mode === 'monthly'/);
+  assert.match(chart, /`\$\{match\[1\]\}\/\$\{match\[2\]\}\/\$\{match\[3\]\}`/);
+  assert.match(chart, /Math\.max\(4, Math\.floor\(plotWidth \/ 140\)\)/);
+  assert.match(chart, /xAxisTickIndices\(rows\.length, area\.width\)/);
+  assert.match(chart, /fillText\(formatPeriodTick\(rows\[rowIndex\]\?\.period_key, mode\)/);
+});
