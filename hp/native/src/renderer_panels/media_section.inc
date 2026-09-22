@@ -75,6 +75,18 @@ bool NativeMediaWebViewSourceContains(
          source.find(needle) != std::wstring::npos;
 }
 
+std::wstring_view NativeMediaTverEpisodeIdFromUrl(
+    std::wstring_view url) noexcept {
+  static constexpr std::wstring_view marker = L"tver.jp/episodes/";
+  const size_t markerAt = url.find(marker);
+  if (markerAt == std::wstring_view::npos) return {};
+  const size_t start = markerAt + marker.size();
+  if (start >= url.size()) return {};
+  size_t end = url.find_first_of(L"/?#", start);
+  if (end == std::wstring_view::npos) end = url.size();
+  return end > start ? url.substr(start, end - start) : std::wstring_view{};
+}
+
 struct NativeMediaWatchdogExecutionState {
   std::mutex mutex;
   HWND hostWindow = nullptr;
@@ -177,10 +189,37 @@ void NativeMediaDispatchFullscreenKeyEvents(
           }).Get());
 }
 
+void NativeMediaRequestTverBrowserFullscreen(
+    ICoreWebView2* webview) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2> view = webview;
+  static constexpr wchar_t kRequest[] = LR"JSON({"expression":"(async()=>{const videos=Array.from(document.querySelectorAll('video'));const video=videos.find(v=>{const r=v.getBoundingClientRect();const s=getComputedStyle(v);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden';})||videos[0]||null;if(!video)return false;if(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement)return true;const target=video.closest('[data-testid*=player i],[class*=player i],[id*=player i]')||video.parentElement||video;const request=target.requestFullscreen||target.webkitRequestFullscreen||target.msRequestFullscreen;if(typeof request!=='function')return false;try{const pending=request.call(target);if(pending&&typeof pending.then==='function')await pending;return !!(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement);}catch(_){return false;}})()","userGesture":true,"awaitPromise":true,"returnByValue":true})JSON";
+  const HRESULT started = view->CallDevToolsProtocolMethod(
+      L"Runtime.evaluate", kRequest,
+      Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+          [view](HRESULT result, LPCWSTR json) -> HRESULT {
+            const bool entered = SUCCEEDED(result) && json &&
+                std::wstring_view(json).find(L"\"value\":true") !=
+                    std::wstring_view::npos;
+            if (entered) {
+              view->ExecuteScript(
+                  kNativeMediaTverForceFullscreenAdSafeScript, nullptr);
+            } else {
+              NativeMediaDispatchFullscreenKeyEvents(view.Get(), true);
+            }
+            return S_OK;
+          }).Get());
+  if (FAILED(started)) NativeMediaDispatchFullscreenKeyEvents(view.Get(), true);
+}
+
 void NativeMediaDispatchFullscreenKey(
     ICoreWebView2* webview, bool tver) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2> view = webview;
+  if (tver) {
+    NativeMediaRequestTverBrowserFullscreen(view.Get());
+    return;
+  }
   static constexpr wchar_t kYoutubeFocus[] = LR"JS(
 (() => {
   const target = document.querySelector('#movie_player') ||
@@ -193,26 +232,15 @@ void NativeMediaDispatchFullscreenKey(
   return true;
 })()
 )JS";
-  static constexpr wchar_t kTverFocus[] = LR"JS(
-(() => {
-  const target = document.querySelector('video') || document.body;
-  if (!(target instanceof HTMLElement)) return false;
-  if (target !== document.body && !target.hasAttribute('tabindex'))
-    target.setAttribute('tabindex', '-1');
-  try { target.focus({ preventScroll: true }); }
-  catch (_) { try { target.focus(); } catch (_) {} }
-  return true;
-})()
-)JS";
   const HRESULT focusStarted = view->ExecuteScript(
-      tver ? kTverFocus : kYoutubeFocus,
+      kYoutubeFocus,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [view, tver](HRESULT, LPCWSTR) -> HRESULT {
-            NativeMediaDispatchFullscreenKeyEvents(view.Get(), tver);
+          [view](HRESULT, LPCWSTR) -> HRESULT {
+            NativeMediaDispatchFullscreenKeyEvents(view.Get(), false);
             return S_OK;
           }).Get());
   if (FAILED(focusStarted)) {
-    NativeMediaDispatchFullscreenKeyEvents(view.Get(), tver);
+    NativeMediaDispatchFullscreenKeyEvents(view.Get(), false);
   }
 }
 
@@ -222,16 +250,21 @@ void NativeMediaEnsureEventWakeBridge(
   static ComPtr<ICoreWebView2> installedWebview;
   static EventRegistrationToken installedToken{};
   static EventRegistrationToken installedProcessFailedToken{};
+  static EventRegistrationToken installedNavigationStartingToken{};
   if (!webview || !hostWindow || !IsWindow(hostWindow) || !alive) return;
-  if (installedWebview.Get() == webview && installedToken.value != 0) return;
+  if (installedWebview.Get() == webview && installedToken.value != 0 &&
+      installedNavigationStartingToken.value != 0) return;
 
   if (installedWebview && installedToken.value != 0)
     installedWebview->remove_WebMessageReceived(installedToken);
   if (installedWebview && installedProcessFailedToken.value != 0)
     installedWebview->remove_ProcessFailed(installedProcessFailedToken);
+  if (installedWebview && installedNavigationStartingToken.value != 0)
+    installedWebview->remove_NavigationStarting(installedNavigationStartingToken);
   installedWebview.Reset();
   installedToken = {};
   installedProcessFailedToken = {};
+  installedNavigationStartingToken = {};
 
   ComPtr<ICoreWebView2Settings> settings;
   if (FAILED(webview->get_Settings(&settings)) || !settings ||
@@ -291,6 +324,33 @@ void NativeMediaEnsureEventWakeBridge(
       &token);
   if (FAILED(registered)) return;
 
+  EventRegistrationToken navigationStartingToken{};
+  const HRESULT navigationRegistered = webview->add_NavigationStarting(
+      Callback<ICoreWebView2NavigationStartingEventHandler>(
+          [hostWindow, safeAlive](
+              ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args)
+              -> HRESULT {
+            if (!safeAlive->load(std::memory_order_acquire) || !args ||
+                !hostWindow || !IsWindow(hostWindow)) return S_OK;
+            LPWSTR rawUri = nullptr;
+            if (FAILED(args->get_Uri(&rawUri)) || !rawUri) return S_OK;
+            const std::wstring requested(rawUri);
+            CoTaskMemFree(rawUri);
+            const std::wstring_view requestedId =
+                NativeMediaTverEpisodeIdFromUrl(requested);
+            if (requestedId.empty()) return S_OK;
+            const std::wstring expected =
+                NativeMediaTverCurrentEpisodeUrl(hostWindow, safeAlive);
+            const std::wstring_view expectedId =
+                NativeMediaTverEpisodeIdFromUrl(expected);
+            if (expectedId.empty() || requestedId == expectedId) return S_OK;
+            args->put_Cancel(TRUE);
+            PostMessageW(hostWindow, WM_TIMER,
+                         kNativeMediaTverWatchdogTimer, 0);
+            return S_OK;
+          }).Get(),
+      &navigationStartingToken);
+
   EventRegistrationToken processFailedToken{};
   const HRESULT processRegistered = webview->add_ProcessFailed(
       Callback<ICoreWebView2ProcessFailedEventHandler>(
@@ -309,6 +369,8 @@ void NativeMediaEnsureEventWakeBridge(
 
   installedWebview = webview;
   installedToken = token;
+  if (SUCCEEDED(navigationRegistered))
+    installedNavigationStartingToken = navigationStartingToken;
   if (SUCCEEDED(processRegistered)) installedProcessFailedToken = processFailedToken;
 }
 
