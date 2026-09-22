@@ -11,6 +11,8 @@ const historyStyles = readFileSync(new URL('../public/history/history-lite.css',
 const mainStyles = readFileSync(new URL('../public/app-lite.css', import.meta.url), 'utf8');
 const likesClient = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const broadcastClient = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
+const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const trackHistoryApi = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const rankingLibrary = readFileSync(new URL('../functions/lib/track-ranking.js', import.meta.url), 'utf8');
 const sakurazakaApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
@@ -18,7 +20,7 @@ const middleware = readFileSync(new URL('../functions/_middleware.js', import.me
 
 const ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
 
- test('main dashboard exposes archive modes and likes without separate pages', () => {
+test('main dashboard exposes archive modes and likes without separate pages', () => {
   for (const mode of ARCHIVE_MODES) {
     assert.match(mainPage, new RegExp(`data-view="history" data-mode="${mode}"`));
   }
@@ -32,11 +34,13 @@ test('monthly tab appears before leaderboard in the shared panel', () => {
   assert.ok(mainPage.indexOf('data-mode="monthly"') < mainPage.indexOf('data-mode="ranking"'));
 });
 
-test('embedded history defaults invalid hashes to weekly', () => {
-  assert.match(historyEntry, /const VALID_MODES = new Set\(\['daily', 'weekly', 'ranking', 'monthly', 'broadcasts'\]\)/);
+test('embedded history defaults invalid hashes to weekly and lazy-loads mode runtimes', () => {
+  assert.match(historyEntry, /const SUMMARY_MODES = new Set\(\['daily', 'weekly', 'monthly'\]\)/);
+  assert.match(historyEntry, /const VALID_MODES = new Set\(\[\.\.\.SUMMARY_MODES, 'ranking', 'broadcasts'\]\)/);
   assert.doesNotMatch(historyEntry, /'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
-  assert.match(historyEntry, /import\('\/history\/history-lite\.js'\)/);
+  assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
+  assert.match(historyEntry, /history-lite\.js\?v=20260923\.2/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
   for (const mode of ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
 });
@@ -54,12 +58,17 @@ test('history keeps the guide as an accessible hidden label source', () => {
   assert.match(historyClient, /setText\('tableTitle', config\.table\)/);
 });
 
-test('history keeps one visible chart and delegates official series rendering', () => {
+test('history keeps one visible chart and delegates rendering to mode-specific runtimes', () => {
   assert.match(mainPage, /<canvas id="chart"[^>]*><\/canvas>/);
   assert.match(historyStyles, /\.chart-panel \{[^}]*margin-top/);
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
-  assert.match(historyClient, /function drawSummaryChart/);
-  assert.match(historyClient, /import\('\/history\/history-broadcasts\.js'\)/);
+  assert.doesNotMatch(historyClient, /drawSummaryChart|prepareCanvas|history-broadcasts\.js/);
+  assert.match(historyClient, /history:data-loaded/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.2/);
+  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.5/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.2/);
+  assert.match(periodChart, /history:data-loaded/);
+  assert.match(rankingChart, /history:data-loaded/);
   assert.match(broadcastClient, /function draw\(\)/);
 });
 
@@ -72,10 +81,11 @@ test('active history timestamps and range defaults are explicitly UTC', () => {
   assert.doesNotMatch([historyEntry, historyClient, historyFixes, likesClient].join('\n'), /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
-test('track-specific archive aggregation and request hooks are removed', () => {
+test('track-specific archive aggregation and runtime are removed', () => {
   assert.doesNotMatch(historyFixes, /aggregateCompleteTrackRows|history:track-rows|再生数ランキング/);
   assert.doesNotMatch(historyGuard, /normalizeTrackRows|summarizeCompleteTrackRows|\/api\/track-history/);
-  assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode/);
+  assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode|'tracks'/);
+  assert.doesNotMatch(historyClient, /TRACK_COLUMNS|trackDate|trackWeekMode|mode === 'tracks'|\/api\/track-history/);
 });
 
 test('history visual tokens and panel sizing match the main dashboard', () => {
@@ -101,7 +111,7 @@ test('history visual tokens and panel sizing match the main dashboard', () => {
 
 test('history client uses only the canonical summary endpoints', () => {
   assert.match(historyClient, /\/api\/history\?/);
-  assert.doesNotMatch(mainPage, /\/api\/track-history/);
+  assert.doesNotMatch(historyClient, /\/api\/track-history/);
   assert.match(historyClient, /weekly_metrics/);
   assert.match(broadcastClient, /\/api\/sakurazaka46jp\?/);
 });
