@@ -4,6 +4,10 @@ import {
 } from './minute-facts-read-model.js';
 import { loadReadModelTrackMetadata } from './read-model-metadata-indexed.js';
 import { queueNeedsPreservation } from './read-model-metadata-plan.js';
+import {
+  sanitizeQueueTrackMetadata,
+  trackNeedsHydration,
+} from './track-metadata-quality.js';
 
 const READ_MODEL_CHECKPOINT_MS = 20 * 60_000;
 
@@ -43,10 +47,6 @@ function objectValue(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
 }
 
-// current_stream_count is a minute fact and changes on nearly every collection.
-// Persisting it inside the presentation blob caused an otherwise static channel
-// row to be rewritten each minute. The dashboard overlays the canonical fact
-// value, so retain stream_goal but strip only the volatile counter.
 export function stableChannelPresentation(value) {
   const presentation = objectValue(value) || {};
   let changed = false;
@@ -77,7 +77,7 @@ function incompleteTrackMetadataKeys(tracks) {
 
   for (let index = 0, length = tracks.length; index < length; index += 1) {
     const track = tracks[index];
-    if (!track || (track.title && track.artist && track.thumbnail_url)) continue;
+    if (!track || !trackNeedsHydration(track)) continue;
 
     if (spotifyIds.size < TRACK_METADATA_KEY_LIMIT) {
       const spotifyId = String(track.spotify_id || '').trim();
@@ -101,36 +101,44 @@ function incompleteTrackMetadataKeys(tracks) {
 
 export async function hydrateReadModelMetadata(env, readModel) {
   if (!readModel || typeof readModel !== 'object') throw new Error('minute fact read model payload is missing');
-  const queue = readModel?.queue?.value;
+  const originalQueue = readModel?.queue?.value;
+  const queue = sanitizeQueueTrackMetadata(originalQueue);
   if (!queue?.tracks?.length) return readModel;
 
+  const baseReadModel = queue === originalQueue
+    ? readModel
+    : { ...readModel, queue: { ...readModel.queue, value: queue } };
   const { spotifyIds, isrcs } = incompleteTrackMetadataKeys(queue.tracks);
-  if (!spotifyIds.length && !isrcs.length) return readModel;
+  if (!spotifyIds.length && !isrcs.length) return baseReadModel;
 
   const rows = await loadReadModelTrackMetadata(env, spotifyIds, isrcs);
   const hydrated = attachReadModelTrackMetadata(queue, rows);
   return hydrated === queue
-    ? readModel
-    : { ...readModel, queue: { ...readModel.queue, value: hydrated } };
+    ? baseReadModel
+    : { ...baseReadModel, queue: { ...baseReadModel.queue, value: hydrated } };
 }
 
 export async function preserveReadModelForWrite(env, readModel) {
   if (!readModel || typeof readModel !== 'object') throw new Error('minute fact read model payload is missing');
-  const queue = readModel?.queue?.value;
+  const originalQueue = readModel?.queue?.value;
+  const queue = sanitizeQueueTrackMetadata(originalQueue);
+  const baseReadModel = queue === originalQueue
+    ? readModel
+    : { ...readModel, queue: { ...readModel.queue, value: queue } };
   const channelId = integer(readModel?.channel?.channel_id);
   if (!env?.MINUTE_DB || channelId == null || !queue?.tracks?.length
-      || !queueNeedsPreservation(queue)) return readModel;
+      || !queueNeedsPreservation(queue)) return baseReadModel;
 
   const previous = await env.MINUTE_DB.prepare(`SELECT queue_id,start_time,queue_json
     FROM sh_queue_read_model_current WHERE channel_id=? LIMIT 1`).bind(channelId).first();
   if (!previous
       || integer(previous.queue_id) !== integer(readModel.queue.queue_id)
-      || timestamp(previous.start_time) !== timestamp(readModel.queue.start_time)) return readModel;
-  const previousQueue = queueValueFromJson(previous.queue_json);
+      || timestamp(previous.start_time) !== timestamp(readModel.queue.start_time)) return baseReadModel;
+  const previousQueue = sanitizeQueueTrackMetadata(queueValueFromJson(previous.queue_json));
   const preserved = preserveReadModelTrackMetadata(queue, previousQueue);
   return preserved === queue
-    ? readModel
-    : { ...readModel, queue: { ...readModel.queue, value: preserved } };
+    ? baseReadModel
+    : { ...baseReadModel, queue: { ...baseReadModel.queue, value: preserved } };
 }
 
 export async function prepareReadModelForWrite(env, readModel) {
@@ -150,6 +158,7 @@ export async function writePreparedReadModel(env, readModel) {
   const collectorId = String(collector.collector_id || '').trim();
   if (!collectorId) throw new Error('collector read model identity is missing');
   const presentationJson = JSON.stringify(stableChannelPresentation(channel.presentation));
+  const queueValue = sanitizeQueueTrackMetadata(queue.value);
 
   await env.MINUTE_DB.batch([
     env.MINUTE_DB.prepare(`INSERT INTO sh_channel_read_model(channel_id,observed_at,presentation_json)
@@ -178,7 +187,7 @@ export async function writePreparedReadModel(env, readModel) {
         integer(queue.queue_id),
         timestamp(queue.start_time),
         booleanCode(queue.is_paused),
-        JSON.stringify(queue.value || null),
+        JSON.stringify(queueValue || null),
       ),
     env.MINUTE_DB.prepare(`INSERT INTO sh_collector_read_model(
         collector_id,last_run_at,last_success_at,last_error_present,updated_at
