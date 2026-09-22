@@ -68,7 +68,7 @@ test('history runtime is embedded in the main dashboard and reuses prepared char
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(html, /id="historyView"/);
-  assert.match(tabs, /import\('\/history\/history-main\.js'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.4'\)/);
   assert.doesNotMatch(html, /href="\/history/);
 
   const runtime = readFileSync(
