@@ -76,6 +76,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       UpdateAirHistory(snapshot);
       return 0;
     }
+    case kStationheadLeaderboardCollectorWakeMessage:
+      ScheduleNextTick(1);
+      return 0;
     case kStationheadLeaderboardCaptureWakeMessage:
       if (cloud_) cloud_->RefreshNow();
       return 0;
