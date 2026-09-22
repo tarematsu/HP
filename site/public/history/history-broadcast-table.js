@@ -1,6 +1,6 @@
 (() => {
   const MODE = 'broadcasts';
-  const VISIBLE_HEADERS = ['日付', '時間', '長さ', '平均同接', '最大同接', '曲数', '推定再生数', '名前'];
+  const VISIBLE_HEADERS = ['日付', '時間', '長さ', '平均同接', '最大同接', '曲数', '推定再生数', '放送内容', '名前'];
   const TECHNICAL_HEADERS = ['放送名', '開始日時（UTC）', '最小同接', 'コメント数'];
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
   const integer = new Intl.NumberFormat('ja-JP');
@@ -90,8 +90,8 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      #historyView .table-wrap table.official-party-table th:nth-child(n+9),
-      #historyView .table-wrap table.official-party-table td:nth-child(n+9) {
+      #historyView .table-wrap table.official-party-table th:nth-child(n+10),
+      #historyView .table-wrap table.official-party-table td:nth-child(n+10) {
         display: none !important;
       }
     `;
@@ -142,6 +142,7 @@
         numberText(maximum),
         numberText(tracks, integer),
         numberText(estimated, integer),
+        String(row?.broadcast_content || '—'),
         identity.name,
         String(row?.event_name || '公式リスパ').trim(),
         utcDateTime(row?.started_at),
