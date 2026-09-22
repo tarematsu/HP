@@ -268,6 +268,12 @@ void StationheadLeaderboardCollector::NavigateCurrent(uint64_t generation) {
     FailCapture(UnixMillis(), L"navigate-failed:" + HResultHex(navigate));
     return;
   }
+
+  // NavigationCompleted is useful when WebView2 emits it, but it is not reliable
+  // enough to be the sole trigger for capture. Start bounded DOM polling after a
+  // short settle delay so the collector can recover even when that event is lost.
+  const int64_t now = UnixMillis();
+  captureDueAt_ = now + kRenderSettleMs;
   UpdateNextWake();
 }
 
@@ -357,7 +363,13 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
             }
             captureInFlight_ = false;
             if (FAILED(result) || !resultJson) {
-              FailCapture(UnixMillis(),
+              const int64_t now = UnixMillis();
+              if (timeoutAt_ > 0 && now + kContentPollIntervalMs < timeoutAt_) {
+                captureDueAt_ = now + kContentPollIntervalMs;
+                UpdateNextWake();
+                return S_OK;
+              }
+              FailCapture(now,
                           L"snapshot-execute-failed:" + HResultHex(result));
               return S_OK;
             }
@@ -421,6 +433,11 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
           }).Get());
   if (FAILED(execute)) {
     captureInFlight_ = false;
+    if (timeoutAt_ > 0 && nowMs + kContentPollIntervalMs < timeoutAt_) {
+      captureDueAt_ = nowMs + kContentPollIntervalMs;
+      UpdateNextWake();
+      return;
+    }
     FailCapture(nowMs, L"snapshot-start-failed:" + HResultHex(execute));
   }
 }
