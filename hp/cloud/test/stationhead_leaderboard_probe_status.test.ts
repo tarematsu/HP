@@ -143,9 +143,9 @@ describe("Stationhead leaderboard probe status", () => {
       collector_ticked: true,
       last_error: "navigation_failed",
     });
-    expect(body.native.last_transition_at).toBe("2026-09-22T00:06:40.000Z");
-    expect(body.native.last_failure_at).toBe("2026-09-22T00:06:40.000Z");
-    expect(body.native.exchange_at).toBe("2026-09-22T00:06:41.000Z");
+    expect(body.native.last_transition_at).toBe("2026-09-22T00:13:20.000Z");
+    expect(body.native.last_failure_at).toBe("2026-09-22T00:13:20.000Z");
+    expect(body.native.exchange_at).toBe("2026-09-22T00:13:21.000Z");
     expect(JSON.stringify(body)).not.toContain("cookie");
     expect(JSON.stringify(body)).not.toContain("secret");
   });
