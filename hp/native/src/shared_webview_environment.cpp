@@ -86,10 +86,13 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
                                        Completion completion) {
   if (!completion) return;
 
-  // All current playback surfaces intentionally share one UDF. Normalize every
-  // caller to the same environment-level policy so whichever component starts
-  // first cannot accidentally create an unrestricted environment for the rest.
-  blockImages = true;
+  // All current playback surfaces intentionally share one UDF. Keep images
+  // enabled at the browser-environment level because Stationhead's Spotify
+  // authorization popup must use this same Environment/Profile and reCAPTCHA
+  // may require image resources. Stationhead playback still applies its own
+  // per-WebView image request blocking. Downloadable web fonts remain disabled
+  // globally to retain the low-cost shared renderer policy.
+  blockImages = false;
   blockFonts = true;
 
   std::wstring requestedKey;
