@@ -1,16 +1,13 @@
 const RANKING_MODE = 'ranking';
-const HOSTS = ['sakuramankai', 'sakurazaka46jp'];
+const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp'];
 const HOST_COLORS = new Map([
   ['sakuramankai', '#000000'],
   ['sakurazaka46jp', '#d93f79'],
 ]);
-const WEEK_MS = 7 * 86400000;
 const integer = new Intl.NumberFormat('ja-JP');
 
 let rows = [];
-let rankingWeeks = [];
-let rankingFrom = null;
-let rankingTo = null;
+let chartHosts = [];
 let drawTimer = 0;
 let resizeTimer = 0;
 let selectedWeekIndex = null;
@@ -22,39 +19,14 @@ function finite(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function hostKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 function isoDate(value) {
   const match = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(String(value || '').trim());
   if (!match) return '';
   return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[3])).padStart(2, '0')}`;
-}
-
-function mondayOnOrAfter(value) {
-  const iso = isoDate(value);
-  if (!iso) return '';
-  const date = new Date(`${iso}T00:00:00Z`);
-  const delta = (8 - date.getUTCDay()) % 7;
-  date.setUTCDate(date.getUTCDate() + delta);
-  return date.toISOString().slice(0, 10);
-}
-
-function mondayOnOrBefore(value) {
-  const iso = isoDate(value);
-  if (!iso) return '';
-  const date = new Date(`${iso}T00:00:00Z`);
-  const delta = (date.getUTCDay() + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - delta);
-  return date.toISOString().slice(0, 10);
-}
-
-function weeklyRange(from, to) {
-  const start = mondayOnOrAfter(from);
-  const end = mondayOnOrBefore(to);
-  if (!start || !end || start > end) return [];
-  const weeks = [];
-  for (let ts = Date.parse(`${start}T00:00:00Z`); ts <= Date.parse(`${end}T00:00:00Z`); ts += WEEK_MS) {
-    weeks.push(new Date(ts).toISOString().slice(0, 10));
-  }
-  return weeks;
 }
 
 function activeMode() {
@@ -62,6 +34,7 @@ function activeMode() {
 }
 
 function cssColor(name, fallback) {
+  if (!name) return fallback;
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
@@ -93,23 +66,28 @@ function appendLegend(label, color) {
   return span;
 }
 
+function colorForHost(host, index) {
+  const preset = HOST_COLORS.get(hostKey(host));
+  if (preset) return preset;
+  if (chartHosts.length === 1) return cssColor('--text', '#1f2d44');
+  const fallbacks = ['#667287', '#2776b9', '#168b73', '#c56a18'];
+  return fallbacks[index % fallbacks.length];
+}
+
 function buildModel() {
-  const featuredRows = rows.filter((row) => HOSTS.includes(String(row?.host_name || '').trim().toLowerCase()));
-  const sourceWeeks = rankingWeeks.length
-    ? [...new Set(rankingWeeks.map(isoDate).filter(Boolean))].sort()
-    : [...new Set(featuredRows.map((row) => isoDate(row.ranking_date)).filter(Boolean))].sort();
-  const rangeStart = rankingFrom || sourceWeeks[0] || '';
-  const rangeEnd = rankingTo || sourceWeeks.at(-1) || '';
-  const weeks = [...new Set([...weeklyRange(rangeStart, rangeEnd), ...sourceWeeks])].sort();
+  if (!chartHosts.length) return { weeks: [], series: [] };
+  const allowed = new Set(chartHosts.map(hostKey));
+  const sourceRows = rows.filter((row) => allowed.has(hostKey(row?.host_name)));
+  const weeks = [...new Set(sourceRows.map((row) => isoDate(row?.ranking_date)).filter(Boolean))].sort();
   const byHostWeek = new Map();
-  for (const row of featuredRows) {
+  for (const row of sourceRows) {
     const week = isoDate(row.ranking_date);
     if (!week) continue;
-    byHostWeek.set(`${String(row.host_name || '').trim().toLowerCase()}\u0000${week}`, finite(row.rank));
+    byHostWeek.set(`${hostKey(row.host_name)}\u0000${week}`, finite(row.rank));
   }
-  const series = HOSTS.map((host) => ({
+  const series = chartHosts.map((host) => ({
     host,
-    values: weeks.map((week) => byHostWeek.get(`${host}\u0000${week}`) ?? null),
+    values: weeks.map((week) => byHostWeek.get(`${hostKey(host)}\u0000${week}`) ?? null),
   }));
   return { weeks, series };
 }
@@ -128,10 +106,22 @@ function tickIndices(length, count) {
   return [...indexes].sort((a, b) => a - b);
 }
 
+function hideChart() {
+  const panel = document.getElementById('chartPanel');
+  if (panel) panel.hidden = true;
+  document.getElementById('chartLegend')?.replaceChildren();
+  const detail = document.getElementById('chartDetail');
+  if (detail) detail.textContent = '';
+  chartModel = null;
+}
+
 function draw() {
   if (activeMode() !== RANKING_MODE) return;
   const model = buildModel();
-  if (!model.weeks.length) return;
+  if (!chartHosts.length || !model.weeks.length) {
+    hideChart();
+    return;
+  }
 
   const panel = document.getElementById('chartPanel');
   if (!panel) return;
@@ -164,7 +154,7 @@ function draw() {
     context.fillText(`#${integer.format(rank)}`, area.left - 7, y + 3);
   }
 
-  const colors = model.series.map((item) => HOST_COLORS.get(item.host) || '#667287');
+  const colors = model.series.map((item, index) => colorForHost(item.host, index));
   model.series.forEach((item, seriesIndex) => {
     context.save();
     context.strokeStyle = colors[seriesIndex];
@@ -212,9 +202,11 @@ function draw() {
   }
 
   const title = document.getElementById('chartTitle');
-  if (title) title.textContent = '週間リーダーボード順位';
+  if (title) title.textContent = chartHosts.length === 1
+    ? `${chartHosts[0]} 順位推移`
+    : '週間リーダーボード順位';
   const legend = document.getElementById('chartLegend');
-  if (legend) legend.replaceChildren(...HOSTS.map((host, index) => appendLegend(host, colors[index])));
+  if (legend) legend.replaceChildren(...model.series.map((item, index) => appendLegend(item.host, colors[index])));
   const foot = document.getElementById('chartFoot');
   if (foot) foot.textContent = '順位は上ほど高順位です。';
   const start = document.getElementById('chartStartDate');
@@ -225,28 +217,29 @@ function draw() {
   if (detail) {
     if (Number.isInteger(selectedWeekIndex) && model.weeks[selectedWeekIndex]) {
       const week = model.weeks[selectedWeekIndex];
-      const values = model.series.map((item) => item.values[selectedWeekIndex]);
-      detail.textContent = `${week}　sakuramankai ${values[0] == null ? '圏外' : `#${integer.format(values[0])}`}`
-        + `　sakurazaka46jp ${values[1] == null ? '圏外' : `#${integer.format(values[1])}`}`;
+      detail.textContent = `${week}　${model.series.map((item) => {
+        const rank = item.values[selectedWeekIndex];
+        return `${item.host} ${rank == null ? '圏外' : `#${integer.format(rank)}`}`;
+      }).join('　')}`;
     } else {
       detail.textContent = '';
     }
   }
 
   chartModel = { positions, weeks: model.weeks };
-  canvas.dataset.rankingChart = 'featured-hosts';
-  window.dispatchEvent(new CustomEvent('history:ranking-chart-drawn', { detail: { weeks: model.weeks } }));
+  canvas.dataset.rankingChart = chartHosts.length === 1 ? 'single-host' : 'featured-hosts';
+  window.dispatchEvent(new CustomEvent('history:ranking-chart-drawn', {
+    detail: { weeks: model.weeks, hosts: [...chartHosts] },
+  }));
 }
 
 window.addEventListener('history:data-loaded', (event) => {
   const detail = event?.detail || {};
   if (detail.mode !== RANKING_MODE || !detail.data?.ok || !Array.isArray(detail.data.rows)) return;
   rows = detail.data.rows;
-  rankingWeeks = Array.isArray(detail.data.ranking_weeks)
-    ? detail.data.ranking_weeks.map(isoDate).filter(Boolean)
-    : [];
-  rankingFrom = isoDate(detail.from) || null;
-  rankingTo = isoDate(detail.to) || null;
+  chartHosts = Array.isArray(detail.data.chart_hosts)
+    ? detail.data.chart_hosts.map((host) => String(host || '').trim()).filter(Boolean)
+    : detail.data.scope === 'featured' ? FEATURED_HOSTS : [];
   selectedWeekIndex = null;
   scheduleDraw();
 });
@@ -272,6 +265,6 @@ document.getElementById('chart')?.addEventListener('pointerup', (event) => {
 window.addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    if (activeMode() === RANKING_MODE) draw();
+    if (activeMode() === RANKING_MODE && chartHosts.length) draw();
   }, 240);
 }, { passive: true });
