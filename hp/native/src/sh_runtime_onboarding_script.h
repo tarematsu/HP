@@ -2,12 +2,14 @@
 
 namespace hp {
 
-// Recoverable Stationhead music-service onboarding. This is appended inside the
-// same compact-runtime IIFE after the base interaction helpers are declared.
-// It deliberately reuses visible/account/blocking helpers from that owner and
-// only publishes signals for the explicit native trusted-click allowlist.
+// Recoverable Stationhead music-service onboarding plus explicit playback
+// continuation prompts. This is appended inside the same compact-runtime IIFE
+// after the base interaction helpers are declared. It deliberately reuses
+// visible/account/blocking helpers from that owner and only publishes signals
+// for the explicit native trusted-click allowlist.
 inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
+  const keepStreamingPattern = /^keep\s+streaming$/i;
   const recoverableOnboardingPattern =
     /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go)$/i;
   const connectSurfaceLabelPattern =
@@ -39,6 +41,13 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     onboardingRendered(element) &&
     onboardingLabelsOf(element).some(label => pattern.test(label));
 
+  const keepStreamingVisible = () => {
+    for (const element of document.querySelectorAll(onboardingCandidateSelector)) {
+      if (onboardingMatches(element, keepStreamingPattern)) return true;
+    }
+    return false;
+  };
+
   const splitConnectSurfaceVisible = () => {
     // Stationhead has rendered music-service prompts in several different DOM
     // shapes: semantic buttons, styled div/span controls, and a label with a
@@ -69,13 +78,20 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   };
 
   const publishRecoverableOnboarding = () => {
+    if (!pageActive || !document.body) return false;
+
+    // Keep Streaming is a continuation confirmation rather than a startup
+    // action. It must remain actionable while native audio is still present.
+    if (keepStreamingVisible()) {
+      postText('start-visible');
+      return true;
+    }
+
     // Connect/Reconnect-style recovery is not a normal foreground action.
     // Arm it only after this document has positively played once and native
     // playback state has subsequently gone false. Start Listening keeps its
     // separate startup path and is not gated by this recovery condition.
-    if (!pageActive || !document.body || !playbackEstablished || playing()) {
-      return false;
-    }
+    if (!playbackEstablished || playing()) return false;
     const authenticated = accountVisible();
     // A genuine login form/route always wins. Only the explicit allowlisted
     // music-service recovery surface is permitted to clear a stale login latch.
