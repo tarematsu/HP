@@ -304,21 +304,38 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
       return (url.origin + url.pathname).slice(0, 320);
     } catch (_) { return ''; }
   };
-  const rows = Array.from(document.querySelectorAll('tr,[role="row"]'))
-    .slice(0, 15)
-    .map(row => Array.from(row.querySelectorAll('th,td,[role="cell"],[role="gridcell"]'))
-      .slice(0, 8)
-      .map(cell => bounded(cell.innerText || cell.textContent, 80))
-      .filter(Boolean))
-    .filter(cells => cells.length > 0);
   const root = document.querySelector('main') || document.body;
-  const lines = String(root?.innerText || '')
-    .split(/\n+/)
-    .map(line => bounded(line, 120))
-    .filter(Boolean)
-    .slice(0, 80);
-  const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
-    .slice(0, 15)
+const all_lines = String(root?.innerText || '')
+  .split(/\n+/)
+  .map(line => bounded(line, 120))
+  .filter(Boolean)
+  .slice(0, 800);
+const ranking = [];
+let expectedRank = 1;
+for (let index = 0; index < all_lines.length && expectedRank <= 100; index += 1) {
+  if (Number(all_lines[index]) !== expectedRank) continue;
+  let handle = '';
+  for (let cursor = index + 1; cursor < Math.min(all_lines.length, index + 7); cursor += 1) {
+    const match = all_lines[cursor].match(/^@([A-Za-z0-9_.-]{1,80})$/);
+    if (match) {
+      handle = match[1];
+      break;
+    }
+  }
+  if (!handle) continue;
+  ranking.push({ rank: expectedRank, handle });
+  expectedRank += 1;
+}
+const rows = Array.from(document.querySelectorAll('tr,[role="row"]'))
+  .slice(0, 25)
+  .map(row => Array.from(row.querySelectorAll('th,td,[role="cell"],[role="gridcell"]'))
+    .slice(0, 8)
+    .map(cell => bounded(cell.innerText || cell.textContent, 80))
+    .filter(Boolean))
+  .filter(cells => cells.length > 0);
+const lines = all_lines.slice(0, 120);
+const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
+  .slice(0, 25)
     .map(link => ({
       text: bounded(link.innerText || link.textContent, 80),
       url: stationheadUrl(link.href),
@@ -330,9 +347,9 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
     .slice(-20);
   const path = String(location.pathname || '');
   const signed_in = !/^\/sign-in(?:\/|$)/i.test(path);
-  const leaderboard_ready = !signed_in || (
-    /^\/leaderboard\/?$/i.test(path) && lines.length >= 10 && links.length >= 5
-  );
+  const leaderboard_ready = signed_in && (
+  /^\/leaderboard\/?$/i.test(path) && ranking.length >= 10
+);
   return {
     schema: 2,
     captured_at: Date.now(),
@@ -342,6 +359,7 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
     signed_in,
     leaderboard_ready,
     heading: bounded(root?.querySelector?.('h1,h2')?.innerText, 240),
+    ranking,
     rows,
     lines,
     links,

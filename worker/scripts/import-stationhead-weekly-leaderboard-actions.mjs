@@ -68,9 +68,9 @@ function headerKind(value) {
 
 function normalizeCandidateRow(rank, nameValue, streamsValue, daysValue = null) {
   const name = displayAndCanonicalName(nameValue);
-  const streams = parseMetric(streamsValue);
+  const streams = streamsValue == null ? null : parseMetric(streamsValue);
   const days = daysValue == null ? null : parseMetric(daysValue);
-  if (!rank || !name || streams == null || streams < 0) return null;
+  if (!rank || !name || (streams != null && streams < 0)) return null;
   return {
     rank,
     channel_name: name.canonical,
@@ -79,7 +79,6 @@ function normalizeCandidateRow(rank, nameValue, streamsValue, daysValue = null) 
     days: days != null && days >= 0 && days <= 366 ? days : null,
   };
 }
-
 function uniqueSortedRows(rows) {
   const byRank = new Map();
   const channels = new Set();
