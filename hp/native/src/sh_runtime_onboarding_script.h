@@ -48,6 +48,12 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     return false;
   };
 
+  const publishKeepStreaming = () => {
+    if (!pageActive || !document.body || !keepStreamingVisible()) return false;
+    postText('start-visible');
+    return true;
+  };
+
   const splitConnectSurfaceVisible = () => {
     // Stationhead has rendered music-service prompts in several different DOM
     // shapes: semantic buttons, styled div/span controls, and a label with a
@@ -78,20 +84,18 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   };
 
   const publishRecoverableOnboarding = () => {
-    if (!pageActive || !document.body) return false;
-
     // Keep Streaming is a continuation confirmation rather than a startup
-    // action. It must remain actionable while native audio is still present.
-    if (keepStreamingVisible()) {
-      postText('start-visible');
-      return true;
-    }
+    // action. Check it before the stopped-playback recovery gate so it remains
+    // actionable while native audio is still present.
+    if (publishKeepStreaming()) return true;
 
     // Connect/Reconnect-style recovery is not a normal foreground action.
     // Arm it only after this document has positively played once and native
     // playback state has subsequently gone false. Start Listening keeps its
     // separate startup path and is not gated by this recovery condition.
-    if (!playbackEstablished || playing()) return false;
+    if (!pageActive || !document.body || !playbackEstablished || playing()) {
+      return false;
+    }
     const authenticated = accountVisible();
     // A genuine login form/route always wins. Only the explicit allowlisted
     // music-service recovery surface is permitted to clear a stale login latch.
