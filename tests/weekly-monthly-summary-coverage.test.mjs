@@ -115,7 +115,7 @@ for (const [mode, key] of [['weekly', '2026-09-07'], ['monthly', '2026-08']]) {
     assert.equal(row.stream_growth_excluded, true);
   });
 
-  test(`${mode} uses a five-percent period-boundary window independently for start and end`, () => {
+  test(`${mode} keeps member boundaries on their wider tolerance while stream stays on five percent`, () => {
     const f = setup(mode, key);
     const span = f.bounds.end - f.bounds.start;
     const daily = f.db.prepare('SELECT * FROM sh_daily_summary ORDER BY period_key').all();
@@ -140,9 +140,9 @@ for (const [mode, key] of [['weekly', '2026-09-07'], ['monthly', '2026-08']]) {
     assert.equal(row.stream_start, null);
     assert.equal(row.stream_end, 2000);
     assert.equal(row.stream_growth, null);
-    assert.equal(row.member_start, null);
+    assert.equal(row.member_start, 300);
     assert.equal(row.member_end, 310);
-    assert.equal(row.member_growth, null);
+    assert.equal(row.member_growth, 10);
   });
 }
 
