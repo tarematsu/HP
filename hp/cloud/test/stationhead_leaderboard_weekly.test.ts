@@ -33,7 +33,7 @@ describe("Stationhead weekly leaderboard candidate", () => {
 
   it("falls back to rendered text while ignoring previous-rank numbers", () => {
     const lines: string[] = ["Weekly Leaderboard", "Rank"];
-    for (let rank = 1; rank <= 60; rank += 1) {
+    for (let rank = 1; rank <= 100; rank += 1) {
       lines.push(String(rank), `@fallback${rank}`, "I'm ON Stationhead");
       if (rank % 3 === 0) lines.push(String(Math.max(1, rank - 2)));
       else if (rank % 5 === 0) lines.push("new");
@@ -43,17 +43,18 @@ describe("Stationhead weekly leaderboard candidate", () => {
       signed_in: true,
       lines,
     }));
-    expect(rows).toHaveLength(60);
+    expect(rows).toHaveLength(100);
     expect(rows?.[29]).toEqual({ rank: 30, channel_name: "fallback30" });
+    expect(rows?.[99]).toEqual({ rank: 100, channel_name: "fallback100" });
   });
 
   it("rejects partial, duplicate, signed-out, and out-of-window snapshots", () => {
     expect(stationheadWeeklyRowsFromBody(JSON.stringify({
       path: "/leaderboard",
       signed_in: true,
-      leaderboard: leaderboard(20),
+      leaderboard: leaderboard(99),
     }))).toBeNull();
-    const duplicate = leaderboard(60);
+    const duplicate = leaderboard();
     duplicate[20] = { rank: 21, host: "host1" };
     expect(stationheadWeeklyRowsFromBody(JSON.stringify({
       path: "/leaderboard",
@@ -63,7 +64,7 @@ describe("Stationhead weekly leaderboard candidate", () => {
     expect(stationheadWeeklyRowsFromBody(JSON.stringify({
       path: "/leaderboard",
       signed_in: false,
-      leaderboard: leaderboard(60),
+      leaderboard: leaderboard(),
     }))).toBeNull();
 
     const sunday = Date.UTC(2026, 8, 20, 12, 0, 0);
@@ -71,7 +72,7 @@ describe("Stationhead weekly leaderboard candidate", () => {
       observed_at: sunday,
       source: "dedicated-webview-dom",
       status: 200,
-      body: JSON.stringify({ path: "/leaderboard", signed_in: true, leaderboard: leaderboard(60) }),
+      body: JSON.stringify({ path: "/leaderboard", signed_in: true, leaderboard: leaderboard() }),
     }], DIGEST)).toBeNull();
   });
 
