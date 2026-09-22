@@ -34,6 +34,10 @@ LR"JS(
       state.recoveryPending = false;
       state.recoverySince = 0;
     };
+    const clearEndCandidate = () => {
+      state.endCandidateAt = 0;
+      state.endCandidateIdentity = '';
+    };
     const startRecovery = reason => {
       if (window.__homePanelSakuraMeetsState !== state || state.adActive ||
           state.recoveryPending) return;
@@ -74,7 +78,16 @@ LR"JS(
       }
       clearProgressSampler();
       sampleProgress(video, state, true);
+      const identity = mediaIdentity(video);
+      const completedItem = state.maxDuration >= 5 &&
+          state.maxTime >= Math.max(3, state.maxDuration - 10);
+      if (!identity || !completedItem) {
+        clearEndCandidate();
+        scheduleEnsure(0);
+        return;
+      }
       clearRecovery();
+      state.endCandidateIdentity = identity;
       state.endCandidateAt = Date.now();
       window.setTimeout(scheduleEnsure, postrollGraceMs + 100);
     }, { passive: true });
@@ -91,15 +104,18 @@ LR"JS(
       scheduleEnsure(40);
     }, { passive: true });
     video.addEventListener('play', () => {
+      if (!video.ended) clearEndCandidate();
       armProgressSampler();
       scheduleEnsure(40);
     }, { passive: true });
     video.addEventListener('playing', () => {
+      clearEndCandidate();
       clearRecovery();
       armProgressSampler();
       scheduleEnsure(40);
     }, { passive: true });
     video.addEventListener('emptied', () => {
+      clearEndCandidate();
       clearProgressSampler();
       clearRecovery();
       scheduleEnsure(40);
