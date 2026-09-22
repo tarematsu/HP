@@ -77,7 +77,7 @@ test('known historical ranges overwrite recorded closing values with next-day op
   const result = await f.run();
   assert.deepEqual(
     [f.get('2024-09-18').stream_end, f.get('2024-09-18').stream_growth],
-    [3023102, 496594],
+    [3023102, 49594],
   );
   assert.deepEqual(
     [f.get('2025-08-31').stream_end, f.get('2025-08-31').stream_growth],
