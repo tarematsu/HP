@@ -97,7 +97,9 @@ test('Pages labels official Stationhead events as official listening parties', (
   assert.match(source, /button\.textContent = '公式リスパ'/);
   assert.match(source, /tableTitle\.textContent = '公式リスパ一覧'/);
   assert.match(source, /公式リスパ 同接推移/);
-  assert.match(source, /CACHE_REVISION = '8'/);
+  assert.match(source, /CACHE_REVISION = '9'/);
+  assert.match(source, /API_REVISION = '3'/);
+  assert.match(source, /revision: API_REVISION/);
   assert.match(source, /sakurazaka46jp:v1:r\$\{CACHE_REVISION\}:/);
   assert.match(source, /DATE_PREFIX/);
   assert.match(source, /集計値のみ/);
