@@ -19,6 +19,30 @@ const json = (data, status = 200, headers = {}) =>
 const HISTORY_CACHE_MAX = 32;
 const historyLoadCache = new Map();
 
+const OFFICIAL_BROADCAST_METADATA = new Map([
+  ['2024.07.23『YUI KOBAYASHI GRADUATION CONCERT』Stationhead Listening Party', {
+    content: '小林由依卒業コンサート DAY2セットリスト', tracks: 20,
+  }],
+  ['2024.11.22「4th YEAR ANNIVERSARY LIVE」開催直前！Stationheadリスニングパーティー', {
+    content: '3rd YEAR ANNIVERSARY LIVE DAY1・DAY2セットリスト',
+  }],
+  ['2024.11.25「4th YEAR ANNIVERSARY LIVE」Stationheadリスニングパーティー', {
+    content: '4th YEAR ANNIVERSARY LIVE DAY2セットリスト',
+  }],
+  ['2025.04.30 2nd Album『Addiction』Stationheadリスニングパーティー', {
+    content: '2nd Album「Addiction」DISC1全24曲', tracks: 24,
+  }],
+  ['2025.10.29 13th Single『Unhappy birthday構文』リリース記念Stationheadリスニングパーティー', {
+    content: '13th Single「Unhappy birthday構文」Special Edition全7曲', tracks: 7,
+  }],
+  ['2025.12.30『THANK YOU BUDDIES!! THANK YOU 2025!! 櫻坂46 YEAR-END LISTENING PARTY』', {
+    content: '2025年リリース曲全22曲', tracks: 22,
+  }],
+  ['2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』', {
+    content: 'ROCK IN JAPAN FESTIVAL 2026予定セットリスト',
+  }],
+]);
+
 function rankingCacheKey(url) {
   const from = url.searchParams.get('from') || '2024-06-01';
   const to = url.searchParams.get('to') || todayUtcString();
@@ -127,6 +151,9 @@ export function parseBroadcastSummaryRows(resultRows) {
     if (Number(source?.has_data) === 1) hasData = true;
     if (source?.event_name == null) continue;
     const { has_data: ignored, ...row } = source;
+    const metadata = OFFICIAL_BROADCAST_METADATA.get(String(row.event_name || '').trim());
+    if (metadata?.content) row.broadcast_content = metadata.content;
+    if (Number.isFinite(metadata?.tracks)) row.distinct_tracks = metadata.tracks;
     rows.push(row);
   }
   return { rows, setupRequired: rows.length === 0 && !hasData };
@@ -174,7 +201,7 @@ async function loadBroadcastPayload(env, from, to) {
 
 async function loadBroadcasts(env, from, to) {
   const payload = await cachedHistoryLoad(
-    `broadcasts:v6:${from}:${to}`,
+    `broadcasts:v7:${from}:${to}`,
     30000,
     () => loadBroadcastPayload(env, from, to),
   );
