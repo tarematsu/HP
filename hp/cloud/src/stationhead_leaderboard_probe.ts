@@ -55,25 +55,41 @@ async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
+function stableBody(body: string): unknown {
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const { captured_at: _capturedAt, ...stable } = parsed;
+      return stable;
+    }
+  } catch {}
+  return body;
+}
+function contentIdentity(deviceId: string, records: StationheadLeaderboardProbeRecord[]): string {
+  return JSON.stringify({ version: 1, device_id: deviceId, records: records.map(({ observed_at: _observedAt, body, ...record }) => ({ ...record, body: stableBody(body) })) });
+}
 export async function applyStationheadLeaderboardProbeInput(value: unknown, env: Env, deviceId: string): Promise<StationheadLeaderboardProbeResult> {
   if (!env.DATA_BUCKET) return { status: 503, body: { error: "probe storage unavailable" } };
   const receivedAt = Date.now(); const records = normalizeStationheadLeaderboardProbe(value, receivedAt);
   if (!records) return { status: 400, body: { error: "invalid leaderboard probe" } };
-  const identity = JSON.stringify({ version: 1, device_id: deviceId, records }); const digest = await sha256Hex(identity); const historyKey = `${HISTORY_PREFIX}${digest.slice(0, 32)}.json`;
+  const digest = await sha256Hex(contentIdentity(deviceId, records));
+  const historyKey = `${HISTORY_PREFIX}${digest.slice(0, 32)}.json`;
+  const previous = await env.DATA_BUCKET.head(LATEST_KEY);
+  if (previous?.customMetadata?.contentDigest === digest) {
+    return { status: 200, body: { accepted: records.length, stored: false, unchanged: true, reported: true, delivery: "r2-pull", historyKey } };
+  }
   const serialized = JSON.stringify({ version: 1, device_id: deviceId, received_at: receivedAt, digest, records });
+  const options = { httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { contentDigest: digest } };
   await Promise.all([
-    env.DATA_BUCKET.put(historyKey, serialized, { httpMetadata: { contentType: "application/json; charset=utf-8" } }),
-    env.DATA_BUCKET.put(LATEST_KEY, serialized, { httpMetadata: { contentType: "application/json; charset=utf-8" } }),
+    env.DATA_BUCKET.put(historyKey, serialized, options),
+    env.DATA_BUCKET.put(LATEST_KEY, serialized, options),
   ]);
-  return { status: 200, body: { accepted: records.length, stored: true, reported: true, delivery: "r2-pull", historyKey } };
+  return { status: 200, body: { accepted: records.length, stored: true, unchanged: false, reported: true, delivery: "r2-pull", historyKey } };
 }
 
 export async function stationheadLeaderboardLatestProbeResponse(env: Env): Promise<Response> {
   if (!env.DATA_BUCKET) return Response.json({ error: "probe storage unavailable" }, { status: 503 });
   const object = await env.DATA_BUCKET.get(LATEST_KEY);
   if (!object) return Response.json({ error: "probe unavailable" }, { status: 404, headers: { "Cache-Control": "no-store" } });
-  return new Response(object.body, {
-    status: 200,
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
-  });
+  return new Response(object.body, { status: 200, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
 }
