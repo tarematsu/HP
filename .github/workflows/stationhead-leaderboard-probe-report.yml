@@ -344,19 +344,21 @@ jobs:
           retention-days: 7
 
       - name: Upload probe status artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: stationhead-leaderboard-probe-status
           path: probe-artifact/stationhead-leaderboard-probe-status.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
           compression-level: 9
 
       - name: Upload latest leaderboard records artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: stationhead-leaderboard-latest
           path: probe-artifact/stationhead-leaderboard-latest.json
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
           compression-level: 9

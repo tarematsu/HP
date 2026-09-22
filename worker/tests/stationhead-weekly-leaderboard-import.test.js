@@ -29,6 +29,14 @@ function artifactWith(snapshot, overrides = {}) {
   };
 }
 
+function completeRanking(first = 'sakurazaka46jp', streams = 1000) {
+  return Array.from({ length: 10 }, (_, index) => ({
+    rank: index + 1,
+    handle: index === 0 ? first : `station${index + 1}`,
+    streams: streams - index,
+  }));
+}
+
 function createFakeDb(initialRows = []) {
   const state = {
     rows: initialRows.map((row) => ({ ...row })),
@@ -133,15 +141,37 @@ test('extracts only an authenticated ready leaderboard and assigns the JST Monda
     path: '/leaderboard',
     signed_in: true,
     leaderboard_ready: true,
-    rows: [
-      ['Rank', 'Username', 'Streams', 'Days'],
-      ['1', 'sakurazaka46jp', '12345', '7'],
-    ],
+    ranking: completeRanking('sakurazaka46jp', 12345),
   });
   const extracted = extractLeaderboardFromArtifact(artifact);
   assert.equal(extracted.status, 'ready');
   assert.equal(extracted.ranking_date, '2026-09-21');
   assert.equal(extracted.rows[0].streams, 12345);
+});
+
+test('rejects signed-out and incomplete rank-only captures before a database write', async () => {
+  const db = createFakeDb();
+  const snapshot = {
+    schema: 2, path: '/leaderboard', signed_in: false,
+    leaderboard_ready: true, ranking: completeRanking(),
+  };
+  assert.deepEqual(extractLeaderboardFromArtifact(artifactWith(snapshot)),
+    { status: 'skipped', reason: 'no-authenticated-ready-snapshot' });
+  assert.equal(db.state.batches, 0);
+
+  snapshot.signed_in = true;
+  snapshot.leaderboard_ready = false;
+  assert.deepEqual(extractLeaderboardFromArtifact(artifactWith(snapshot)),
+    { status: 'skipped', reason: 'no-authenticated-ready-snapshot' });
+
+  snapshot.leaderboard_ready = true;
+  snapshot.ranking = completeRanking().slice(0, 9);
+  await assert.rejects(importLeaderboardArtifact(artifactWith(snapshot), db),
+    /could not be parsed into ranking rows/);
+  snapshot.ranking = completeRanking().filter((row) => row.rank !== 5);
+  await assert.rejects(importLeaderboardArtifact(artifactWith(snapshot), db),
+    /could not be parsed into ranking rows/);
+  assert.equal(db.state.batches, 0);
 });
 
 test('imports the weekly leaderboard once and skips the same R2 digest', async () => {
@@ -152,27 +182,23 @@ test('imports the weekly leaderboard once and skips the same R2 digest', async (
     path: '/leaderboard',
     signed_in: true,
     leaderboard_ready: true,
-    rows: [
-      ['Rank', 'Username', 'Streams', 'Days'],
-      ['1', 'sakurazaka46jp', '12,345', '7'],
-      ['2', 'sakuramankai', '9,100', '6'],
-    ],
+    ranking: completeRanking('sakurazaka46jp', 12345),
   });
 
   const first = await importLeaderboardArtifact(artifact, db, 111);
   assert.equal(first.status, 'imported');
-  assert.equal(first.row_count, 2);
+  assert.equal(first.row_count, 10);
   assert.equal(db.state.batches, 1);
-  assert.equal(db.state.rows.length, 2);
+  assert.equal(db.state.rows.length, 10);
   assert.equal(db.state.rows[0].ranking_type, RANKING_TYPE);
   assert.equal(db.state.rows[0].source_sheet, SOURCE_SHEET);
   assert.equal(db.state.rows[0].total_listens, 12345);
-  assert.equal(JSON.parse(db.state.rows[0].raw_json).active_days, 7);
+  assert.equal(JSON.parse(db.state.rows[0].raw_json).active_days, null);
 
   const second = await importLeaderboardArtifact(artifact, db, 222);
   assert.equal(second.status, 'unchanged');
   assert.equal(db.state.batches, 1);
-  assert.equal(db.state.rows.length, 2);
+  assert.equal(db.state.rows.length, 10);
 });
 
 test('a new R2 digest replaces the whole weekly ranking instead of duplicating it', async () => {
@@ -182,10 +208,7 @@ test('a new R2 digest replaces the whole weekly ranking instead of duplicating i
     path: '/leaderboard',
     signed_in: true,
     leaderboard_ready: true,
-    ranking: [
-      { rank: 1, name: 'sakurazaka46jp', streams: 1000, days: 7 },
-      { rank: 2, name: 'sakuramankai', streams: 900, days: 7 },
-    ],
+    ranking: completeRanking(),
   }, { digest: 'digest-1' });
   await importLeaderboardArtifact(firstArtifact, db, 111);
 
@@ -194,15 +217,13 @@ test('a new R2 digest replaces the whole weekly ranking instead of duplicating i
     path: '/leaderboard',
     signed_in: true,
     leaderboard_ready: true,
-    ranking: [
-      { rank: 1, name: 'buddies', streams: 1200, days: 7 },
-    ],
+    ranking: completeRanking('buddies', 1200),
   }, { digest: 'digest-2' });
   const result = await importLeaderboardArtifact(secondArtifact, db, 222);
 
   assert.equal(result.status, 'imported');
   assert.equal(db.state.batches, 2);
-  assert.equal(db.state.rows.length, 1);
+  assert.equal(db.state.rows.length, 10);
   assert.equal(db.state.rows[0].channel_name, 'buddies');
   assert.equal(JSON.parse(db.state.rows[0].raw_json).source_digest, 'digest-2');
 });

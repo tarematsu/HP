@@ -220,6 +220,8 @@ test('the composite action is the single production credential resolver', () => 
   assert.match(leaderboardReport, /latest_raw="\$\(mktemp\)"/);
   assert.match(leaderboardReport, /forbidden diagnostic field/);
   assert.match(leaderboardReport, /forbidden leaderboard field/);
+  assert.match(leaderboardReport, /name: Upload probe status artifact\n\s+if: always\(\)/);
+  assert.match(leaderboardReport, /name: Upload latest leaderboard records artifact\n\s+if: always\(\)/);
   assert.match(leaderboardReport, /device_.?id/);
   assert.doesNotMatch(
     leaderboardReport,

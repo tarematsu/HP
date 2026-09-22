@@ -9,6 +9,7 @@ export const SOURCE_SHEET = 'weekly';
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DEFAULT_ARTIFACT = '../probe-artifact/stationhead-leaderboard-latest.json';
 const MAX_ROWS = 100;
+const MIN_COMPLETE_ROWS = 10;
 
 function compactText(value, maximum = 120) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maximum);
@@ -246,8 +247,7 @@ export function extractLeaderboardFromArtifact(artifact) {
   let sawReadySnapshot = false;
   for (const { record, snapshot } of candidates) {
     const path = compactText(snapshot.path || '', 320);
-    const directRanking = Array.isArray(snapshot.ranking);
-    const ready = directRanking || (
+    const ready = (
       snapshot.schema === 2
       && snapshot.signed_in === true
       && snapshot.leaderboard_ready === true
@@ -256,7 +256,10 @@ export function extractLeaderboardFromArtifact(artifact) {
     if (!ready) continue;
     sawReadySnapshot = true;
     const parsed = parseLeaderboardSnapshot(snapshot);
-    if (!parsed?.rows?.length) continue;
+    // The native collector declares readiness only after ten ordered ranks.
+    // Reject partial captures before the weekly DELETE/INSERT replacement.
+    if (!parsed || parsed.rows.length < MIN_COMPLETE_ROWS
+      || parsed.rows.some((row, index) => row.rank !== index + 1)) continue;
     const observedAt = Number(record.observed_at) || Number(snapshot.captured_at);
     const rankingDate = mondayDateInJst(observedAt);
     if (!rankingDate) throw new Error('leaderboard snapshot has no valid observed_at timestamp');
