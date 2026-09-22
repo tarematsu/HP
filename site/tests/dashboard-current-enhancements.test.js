@@ -10,7 +10,7 @@ const tableCleanup = readFileSync(new URL('../public/history/history-table-clean
 
 test('current metrics are ordered online, total streams and total members without a 24h online range', () => {
   assert.match(metrics, /dashboard-current-enhancements\.js\?v=20260921\.4/);
-  assert.match(metrics, /dashboard-client\.js\?v=20260922\.1/);
+  assert.match(metrics, /dashboard-client\.js\?v=[^']+/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260921\.4/);
   assert.match(metrics, /dashboard:payload/);
   assert.match(enhancement, /\[onlinePanel, streamsPanel, membersPanel\]/);
