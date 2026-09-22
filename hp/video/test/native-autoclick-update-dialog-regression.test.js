@@ -9,8 +9,10 @@ const native = path => readFileSync(
 
 const updater = native('updater_entry.cpp');
 const clickers = new Map([
-  ['Stationhead', native('sh_onboarding_click_policy.h')],
-  ['Spotify', native('spotify_background_click.inc')],
+  ['Stationhead onboarding', native('sh_onboarding_click_policy.h')],
+  ['Stationhead playback', native('sh_script_blocking_extension.h')],
+  ['Spotify playback', native('spotify_background_click.inc')],
+  ['Spotify saved-email login', native('spotify_saved_email_login.h')],
   ['media trusted input', native('renderer_panels/media_trusted_input.inc')],
   ['media host', native('renderer_panels/media_host.inc')],
 ]);
