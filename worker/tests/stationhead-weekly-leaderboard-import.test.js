@@ -64,23 +64,21 @@ test('weekly window covers Monday 18:00 JST through Wednesday 00:00 JST', () => 
 
 test('weekly import rejects incomplete and ambiguous snapshots before D1 writes', () => {
   assert.throws(() => validateWeeklyLeaderboardPayload(payload({
-    rows: rows(20),
-    row_count: 20,
-  })), /50-200 rows/);
+    rows: rows(99),
+    row_count: 99,
+  })), /exactly 100 rows/);
 
-  const duplicateHost = rows(60);
+  const duplicateHost = rows();
   duplicateHost[10] = { rank: 11, channel_name: 'host1' };
   assert.throws(() => validateWeeklyLeaderboardPayload(payload({
     rows: duplicateHost,
-    row_count: 60,
   })), /duplicate leaderboard channel/);
 
-  const rankGap = rows(60);
+  const rankGap = rows();
   rankGap[30] = { rank: 90, channel_name: 'host31' };
   assert.throws(() => validateWeeklyLeaderboardPayload(payload({
     rows: rankGap,
-    row_count: 60,
-  })), /leaderboard ranks must be contiguous|duplicate leaderboard rank/);
+  })), /duplicate leaderboard rank|leaderboard ranks must be contiguous/);
 
   assert.throws(() => validateWeeklyLeaderboardPayload(payload({
     ranking_date: '2026-09-22',
