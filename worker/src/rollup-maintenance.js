@@ -22,9 +22,9 @@ const MINUTE_SOURCE_REPAIR_KEYS = Object.freeze([
 ]);
 const MAX_DAILY_MINUTE_SAMPLES = 1_440;
 const STREAM_VALUE_SQL = `COALESCE(
-  CASE WHEN validated_stream_count IS NOT NULL AND validated_stream_count>=0
+  CASE WHEN validated_stream_count IS NOT NULL AND validated_stream_count>0
     AND validated_stream_count IS NOT total_listens THEN validated_stream_count END,
-  CASE WHEN current_stream_count IS NOT NULL AND current_stream_count>=0
+  CASE WHEN current_stream_count IS NOT NULL AND current_stream_count>0
     AND current_stream_count IS NOT total_listens THEN current_stream_count END
 )`;
 const DAILY_MINUTE_ROWS_CTE = `WITH ranked_daily_rows AS (
@@ -68,12 +68,14 @@ SELECT
 // only compact fact columns for that day, select the dominant channel, and only
 // then join context tables for that channel. This avoids multiplying every
 // channel's daily facts across the context/session/host/member lookups.
-const MINUTE_STREAM_VALUE_SQL = `CASE WHEN current_stream_count IS NOT NULL
-  AND current_stream_count>=0 AND current_stream_count IS NOT total_listens
+const MINUTE_STREAM_VALUE_SQL = `CASE
+  WHEN source_code IN (3,4) THEN CASE WHEN total_listens>0 THEN total_listens END
+  WHEN current_stream_count IS NOT NULL
+  AND current_stream_count>0 AND current_stream_count IS NOT total_listens
   THEN current_stream_count END`;
 const MINUTE_DAILY_ROWS_CTE = `WITH daily_fact_rows AS MATERIALIZED (
   SELECT
-    f.id,f.minute_at AS observed_at,f.channel_id,f.listener_count,
+    f.id,f.minute_at AS observed_at,f.channel_id,f.listener_count,f.source_code,
     f.total_member_count,f.reported_total_listens,f.reported_current_stream_count,
     f.broadcast_session_id
   FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time
@@ -85,7 +87,7 @@ const MINUTE_DAILY_ROWS_CTE = `WITH daily_fact_rows AS MATERIALIZED (
   LIMIT 1
 ), selected_rows AS MATERIALIZED (
   SELECT
-    f.id,f.observed_at,f.channel_id,f.listener_count,
+    f.id,f.observed_at,f.channel_id,f.listener_count,f.source_code,
     COALESCE(d.last_total_member_count,f.total_member_count) AS total_member_count,
     f.reported_total_listens AS total_listens,
     f.reported_current_stream_count AS current_stream_count,

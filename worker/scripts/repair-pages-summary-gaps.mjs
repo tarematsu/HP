@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
+import { repairZeroStreamSummaries } from './repair-zero-stream-summaries.mjs';
 
 const DAY_MS = 86_400_000;
 const DEFAULT_DAILY_LOOKBACK_DAYS = 45;
@@ -11,12 +12,14 @@ const DEFAULT_MONTHLY_LOOKBACK_MONTHS = 12;
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 
-const MINUTE_STREAM_VALUE_SQL = `CASE WHEN current_stream_count IS NOT NULL
-  AND current_stream_count>=0 AND current_stream_count IS NOT total_listens
+const MINUTE_STREAM_VALUE_SQL = `CASE
+  WHEN source_code IN (3,4) THEN CASE WHEN total_listens>0 THEN total_listens END
+  WHEN current_stream_count IS NOT NULL
+  AND current_stream_count>0 AND current_stream_count IS NOT total_listens
   THEN current_stream_count END`;
 const MINUTE_DAILY_ROWS_CTE = `WITH daily_fact_rows AS MATERIALIZED (
   SELECT
-    f.id,f.minute_at AS observed_at,f.channel_id,f.listener_count,
+    f.id,f.minute_at AS observed_at,f.channel_id,f.listener_count,f.source_code,
     f.total_member_count,f.reported_total_listens,f.reported_current_stream_count,
     f.broadcast_session_id
   FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time
@@ -28,7 +31,7 @@ const MINUTE_DAILY_ROWS_CTE = `WITH daily_fact_rows AS MATERIALIZED (
   LIMIT 1
 ), selected_rows AS MATERIALIZED (
   SELECT
-    f.id,f.observed_at,f.channel_id,f.listener_count,
+    f.id,f.observed_at,f.channel_id,f.listener_count,f.source_code,
     COALESCE(d.last_total_member_count,f.total_member_count) AS total_member_count,
     f.reported_total_listens AS total_listens,
     f.reported_current_stream_count AS current_stream_count,
@@ -263,6 +266,10 @@ async function main() {
     cwd: workerRoot,
     wranglerScript,
   });
+  if (process.env.PAGES_STREAM_ZERO_REPAIR_ENABLED === 'true') {
+    const repair = await repairZeroStreamSummaries({ minuteDb, otherDb });
+    console.log(JSON.stringify({ event: 'zero_stream_summary_repair', ...repair }));
+  }
   const result = await repairPagesSummaryGaps({ minuteDb, otherDb });
   console.log(JSON.stringify({ event: 'pages_summary_gap_repair', ...result }));
 }
