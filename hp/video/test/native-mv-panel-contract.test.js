@@ -176,7 +176,7 @@ test('TVer completion reuses the existing controller through the host navigation
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });
 
-test('media WebView delegates image and font suppression to the shared UDF', () => {
+test('media WebView keeps authentication images enabled while shared downloadable fonts remain reduced', () => {
   assert.match(
     mediaHost,
     /SharedWebViewEnvironment::Instance\(\)\.Acquire\(\s*userDataFolder_, false, false,/,
@@ -185,7 +185,7 @@ test('media WebView delegates image and font suppression to the shared UDF', () 
   assert.doesNotMatch(mediaHost, /webResourceRequestedToken_/);
   assert.doesNotMatch(mediaHost, /add_WebResourceRequested|AddWebResourceRequestedFilter/);
 
-  assert.match(webviewEnvironment, /blockImages = true;/);
+  assert.match(webviewEnvironment, /blockImages = false;/);
   assert.match(webviewEnvironment, /blockFonts = true;/);
   assert.match(webviewEnvironment, /imagesEnabled=false,loadsImagesAutomatically=false/);
   assert.match(webviewEnvironment, /downloadableBinaryFontsEnabled=false/);

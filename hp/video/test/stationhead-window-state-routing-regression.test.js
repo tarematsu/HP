@@ -90,15 +90,16 @@ test('non-auth playback selection changes only foreground state, not onscreen ge
   assert.doesNotMatch(interactive, /!status\.audioPlaying/);
 });
 
-test('authentication and playback remain onscreen while z-order selects the foreground surface', () => {
+test('authentication overlays the media panel while playback remains onscreen underneath', () => {
   const apply = section(
     layout,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
   assert.match(apply, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(apply, /const RECT monitorPanelBounds = StationheadMonitorPanelBounds\(workspaceBounds\)/);
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
-  assert.match(apply, /authHostBounds = surfaceBounds/);
+  assert.match(apply, /authHostBounds = showAuth \? monitorPanelBounds : surfaceBounds/);
   assert.match(apply, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(apply, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
   assert.doesNotMatch(apply, /StationheadOffscreenBounds|authOffscreen/);

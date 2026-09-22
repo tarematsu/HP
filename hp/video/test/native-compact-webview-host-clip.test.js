@@ -11,7 +11,7 @@ const spotifyLayout = readFileSync(
   'utf8',
 );
 
-test('Stationhead keeps 360x960 in background and expands only the selected monitor viewport', () => {
+test('Stationhead keeps 360x960 in background and expands monitor or interactive playback on the media panel', () => {
   assert.match(stationheadLayout, /CreateRectRgn\(0, 0, 1, 1\)/);
   assert.match(stationheadLayout, /SetWindowRgn\(window, nullptr, TRUE\)/);
   assert.match(stationheadLayout, /kStationheadPlaybackViewportWidth = 360/);
@@ -19,7 +19,7 @@ test('Stationhead keeps 360x960 in background and expands only the selected moni
   assert.match(stationheadLayout, /StationheadPlaybackControllerBounds\(\)/);
   assert.match(
     stationheadLayout,
-    /const RECT playbackControllerBounds = monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
+    /const bool fullPanelPlayback =[\s\S]*playbackForeground && \(monitorForeground \|\| interactivePlayback\)[\s\S]*const RECT playbackControllerBounds = fullPanelPlayback[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
   );
   assert.doesNotMatch(stationheadLayout, /kStationheadCompactPlayback|compactPlayback|useCompactPlayback/);
   assert.match(stationheadLayout, /ApplyHostVisualClip\(hostWindow, playbackForeground\)/);

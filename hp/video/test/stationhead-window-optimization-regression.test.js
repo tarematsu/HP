@@ -54,14 +54,14 @@ test('background rendering keeps a real full-client Stationhead host behind the 
   );
   assert.match(applyLayout, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /playbackHostBounds = surfaceBounds/);
-  assert.match(applyLayout, /authHostBounds = surfaceBounds/);
+  assert.match(applyLayout, /const RECT authHostBounds = showAuth \? monitorPanelBounds : surfaceBounds/);
   assert.match(applyLayout, /controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(applyLayout, /StationheadOffscreenBounds|authOffscreen/);
   assert.doesNotMatch(applyLayout, /hostWidth = .*\? .* : 1/);
   assert.doesNotMatch(applyLayout, /put_IsVisible\(FALSE\)/);
 });
 
-test('normal background keeps 360x960 while the selected named monitor expands', () => {
+test('normal background keeps 360x960 while monitor or interactive login expands', () => {
   const keepBehind = section(
     layoutSource,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
@@ -81,9 +81,10 @@ test('normal background keeps 360x960 while the selected named monitor expands',
   );
   assert.match(applyLayout, /StationheadBackgroundBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
+  assert.match(applyLayout, /const bool interactivePlayback = showPlayback;/);
   assert.match(
     applyLayout,
-    /const RECT playbackControllerBounds = monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
+    /const bool fullPanelPlayback =[\s\S]*playbackForeground && \(monitorForeground \|\| interactivePlayback\)[\s\S]*const RECT playbackControllerBounds = fullPanelPlayback[\s\S]*StationheadPlaybackControllerBounds\(\)/,
   );
   assert.match(layoutSource, /kStationheadPlaybackViewportWidth = 360/);
   assert.match(layoutSource, /kStationheadPlaybackViewportHeight = 960/);
@@ -94,7 +95,7 @@ test('normal background keeps 360x960 while the selected named monitor expands',
   );
 });
 
-test('explicit Stationhead presentation stays fixed while named monitor may use full playback viewport', () => {
+test('explicit Stationhead presentation uses the same media panel as a named monitor', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
@@ -107,11 +108,9 @@ test('explicit Stationhead presentation stays fixed while named monitor may use 
     /showPlayback \|\| \(!showAuth && !hidePlayback && monitorForeground\)/,
   );
   assert.match(applyLayout, /playbackHostBounds = surfaceBounds/);
+  assert.match(applyLayout, /playbackHostBounds = monitorPanelBounds/);
   assert.match(applyLayout, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
-  assert.match(
-    applyLayout,
-    /monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
-  );
+  assert.match(applyLayout, /playbackForeground && \(monitorForeground \|\| interactivePlayback\)/);
   assert.doesNotMatch(applyLayout, /compactPlayback|useCompactPlayback/);
   assert.doesNotMatch(applyLayout, /playbackHostBounds = playbackForeground \? workspaceBounds/);
 
@@ -120,17 +119,18 @@ test('explicit Stationhead presentation stays fixed while named monitor may use 
     'void StationheadPlayer::SetVisible(bool visible)',
     'void StationheadPlayer::LayoutControllers()',
   );
-  assert.match(visible, /StationheadBackgroundBounds\(bounds_\)/);
+  assert.match(visible, /StationheadMonitorPanelBounds\(bounds_\)/);
   assert.match(visible, /HWND_TOP/);
 });
 
-test('authentication keeps its full-client auth viewport and background playback policy', () => {
+test('authentication uses the media-panel auth viewport while playback stays backgrounded', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
-  assert.match(applyLayout, /authHostBounds = surfaceBounds/);
+  assert.match(applyLayout, /const RECT monitorPanelBounds = StationheadMonitorPanelBounds\(workspaceBounds\)/);
+  assert.match(applyLayout, /authHostBounds = showAuth \? monitorPanelBounds : surfaceBounds/);
   assert.match(applyLayout, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
   assert.match(applyLayout, /const RECT authControllerBounds\{0, 0, authWidth, authHeight\};/);
   assert.doesNotMatch(applyLayout, /StationheadOffscreenBounds|authOffscreen/);
@@ -140,9 +140,10 @@ test('authentication keeps its full-client auth viewport and background playback
     'bool ActiveAuthSurfaceMatches(',
     'RECT ResolveStationheadWorkspaceBounds(',
   );
-  assert.match(activeAuth, /StationheadBackgroundBounds\(workspaceBounds\)/);
-  assert.match(activeAuth, /SurfaceMatches\(hostWindow, controller, surface, HWND_BOTTOM\)/);
-  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, surface, HWND_TOP, false\)/);
+  assert.match(activeAuth, /const RECT playbackSurface = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(activeAuth, /const RECT authSurface = StationheadMonitorPanelBounds\(workspaceBounds\)/);
+  assert.match(activeAuth, /SurfaceMatches\(hostWindow, controller, playbackSurface, HWND_BOTTOM\)/);
+  assert.match(activeAuth, /SurfaceMatches\(authHostWindow, authController, authSurface, HWND_TOP, false\)/);
 });
 
 test('playback viewport no longer depends on stable-audio or navigation state', () => {

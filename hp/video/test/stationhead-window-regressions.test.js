@@ -23,7 +23,7 @@ test('single Stationhead resolves placement against the parent client', () => {
   assert.match(layout, /ResolveStationheadWorkspaceBounds\(window_, bounds\)/);
 });
 
-test('background host stays full-client with 360x960 unless its named monitor is selected', () => {
+test('background host stays full-client at 360x960 while interactive surfaces use the media panel', () => {
   const behind = section(layout, 'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()');
   assert.match(behind, /ApplyStationheadChildLayout/);
@@ -33,11 +33,12 @@ test('background host stays full-client with 360x960 unless its named monitor is
   const apply = section(layout, 'void ApplyStationheadChildLayout(',
     '}  // namespace');
   assert.match(apply, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(apply, /const RECT monitorPanelBounds = StationheadMonitorPanelBounds\(workspaceBounds\)/);
   assert.match(apply, /playbackHostBounds = surfaceBounds/);
-  assert.match(apply, /authHostBounds = surfaceBounds/);
+  assert.match(apply, /authHostBounds = showAuth \? monitorPanelBounds : surfaceBounds/);
   assert.match(
     apply,
-    /const RECT playbackControllerBounds = monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
+    /const bool fullPanelPlayback =[\s\S]*playbackForeground && \(monitorForeground \|\| interactivePlayback\)[\s\S]*const RECT playbackControllerBounds = fullPanelPlayback[\s\S]*StationheadPlaybackControllerBounds\(\)/,
   );
   assert.match(layout, /kStationheadPlaybackViewportWidth = 360/);
   assert.match(layout, /kStationheadPlaybackViewportHeight = 960/);

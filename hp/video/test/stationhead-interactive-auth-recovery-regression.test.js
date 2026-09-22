@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Stationhead playback host uses the media panel for a named monitor while confirmed login stays independently foregroundable', () => {
+test('Stationhead monitor and confirmed login share the media-panel foreground geometry', () => {
   const policy = section(
     layout,
     'struct StationheadSurfacePolicy {',
@@ -47,8 +47,9 @@ test('Stationhead playback host uses the media panel for a named monitor while c
   assert.match(layout, /StationheadMonitorPanelBounds\(const RECT& workspaceBounds\)[\s\S]*ComputeNativeDashboardLayout\(workspaceBounds\)\.media/);
   assert.match(childLayout, /const bool playbackForeground\s*=\s*[\s\S]*showPlayback \|\|/);
   assert.match(childLayout, /!showAuth && !hidePlayback && monitorForeground/);
-  assert.match(childLayout, /RECT playbackHostBounds = surfaceBounds;[\s\S]*if \(monitorForeground && playbackForeground\) \{[\s\S]*playbackHostBounds = StationheadMonitorPanelBounds\(workspaceBounds\);/);
-  assert.match(childLayout, /const RECT authHostBounds = surfaceBounds;/);
+  assert.match(childLayout, /const bool interactivePlayback = showPlayback;/);
+  assert.match(childLayout, /if \(playbackForeground && \(monitorForeground \|\| interactivePlayback\)\) \{[\s\S]*playbackHostBounds = monitorPanelBounds;/);
+  assert.match(childLayout, /const RECT authHostBounds = showAuth \? monitorPanelBounds : surfaceBounds;/);
   assert.match(childLayout, /const HWND hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM;/);
   assert.doesNotMatch(childLayout, /StationheadOffscreenBounds/);
   assert.match(childLayout, /controller->put_IsVisible\(TRUE\)/);

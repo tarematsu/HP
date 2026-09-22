@@ -18,10 +18,11 @@ function section(text, start, end) {
 const applyLayout = section(layout, 'void ApplyStationheadChildLayout(',
   '}  // namespace');
 
-test('auth promotion keeps playback host alive onscreen behind the auth surface', () => {
+test('auth promotion keeps playback alive behind a media-panel auth overlay', () => {
   assert.match(applyLayout, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(applyLayout, /const RECT monitorPanelBounds = StationheadMonitorPanelBounds\(workspaceBounds\)/);
   assert.match(applyLayout, /playbackHostBounds = surfaceBounds/);
-  assert.match(applyLayout, /authHostBounds = surfaceBounds/);
+  assert.match(applyLayout, /authHostBounds = showAuth \? monitorPanelBounds : surfaceBounds/);
   assert.match(applyLayout, /hostPlacement = playbackForeground \? HWND_TOP : HWND_BOTTOM/);
   assert.match(applyLayout, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
   assert.match(applyLayout, /controller->put_IsVisible\(TRUE\)/);
@@ -29,12 +30,12 @@ test('auth promotion keeps playback host alive onscreen behind the auth surface'
   assert.doesNotMatch(applyLayout, /StationheadOffscreenBounds|offscreen|SW_HIDE/);
 });
 
-test('background stays 360x960 while the selected named monitor expands to full host', () => {
+test('background stays 360x960 while monitor or interactive playback expands to the media panel', () => {
   assert.match(applyLayout, /SetWindowPos\(hostWindow, hostPlacement/);
   assert.match(applyLayout, /SetWindowPos\(authHostWindow, authPlacement/);
   assert.match(
     applyLayout,
-    /const RECT playbackControllerBounds = monitorForeground[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
+    /const bool fullPanelPlayback =[\s\S]*playbackForeground && \(monitorForeground \|\| interactivePlayback\)[\s\S]*const RECT playbackControllerBounds = fullPanelPlayback[\s\S]*RECT\{0, 0, playbackWidth, playbackHeight\}[\s\S]*StationheadPlaybackControllerBounds\(\)/,
   );
   assert.match(applyLayout, /const RECT authControllerBounds\{0, 0, authWidth, authHeight\};/);
   assert.match(layout, /kStationheadPlaybackViewportWidth = 360/);

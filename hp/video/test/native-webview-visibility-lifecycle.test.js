@@ -47,15 +47,16 @@ test('Stationhead playback rendering suppression remains disabled', () => {
   );
 });
 
-test('Stationhead layout keeps playback and auth WebViews visible on the same onscreen surface', () => {
+test('Stationhead layout keeps playback alive while interactive auth overlays the media panel', () => {
   const layout = section(
     stationheadLayout,
     'void ApplyStationheadChildLayout(',
     '}  // namespace',
   );
   assert.match(layout, /const RECT surfaceBounds = StationheadBackgroundBounds\(workspaceBounds\)/);
+  assert.match(layout, /const RECT monitorPanelBounds = StationheadMonitorPanelBounds\(workspaceBounds\)/);
   assert.match(layout, /playbackHostBounds = surfaceBounds/);
-  assert.match(layout, /authHostBounds = surfaceBounds/);
+  assert.match(layout, /authHostBounds = showAuth \? monitorPanelBounds : surfaceBounds/);
   assert.doesNotMatch(layout, /StationheadOffscreenBounds|authOffscreen/);
   assert.match(layout, /controller->put_IsVisible\(TRUE\)/);
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
