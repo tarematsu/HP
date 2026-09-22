@@ -83,7 +83,7 @@ for (const [mode, key] of [['weekly', '2026-09-07'], ['monthly', '2026-08']]) {
     assert.ok(row.exclusion_reasons.includes('missing_daily_coverage'));
   });
 
-  test(`${mode} hides only listener average when roughly half the period lacks listener observations`, async () => {
+  test(`${mode} keeps listener average regardless of listener coverage`, async () => {
     const f = setup(mode, key);
     const days = periodDays(f.bounds);
     const deleteCount = Math.ceil(days / 2);
@@ -92,14 +92,15 @@ for (const [mode, key] of [['weekly', '2026-09-07'], ['monthly', '2026-08']]) {
       f.db.prepare('DELETE FROM sh_daily_summary WHERE period_key=?').run(day);
     }
     const row = (await f.get()).rows[0];
-    assert.equal(row.listener_avg, null);
+    assert.equal(row.listener_avg, 125);
     assert.equal(row.listener_min, 100);
     assert.equal(row.listener_max, 140);
     assert.equal(row.stream_start, 1000);
     assert.equal(row.stream_end, 2000);
     assert.equal(row.stream_growth, 1000);
-    assert.equal(row.listener_average_excluded, true);
-    assert.ok(row.exclusion_reasons.includes('insufficient_listener_coverage'));
+    assert.equal(row.listener_average_excluded, false);
+    assert.ok(row.exclusion_reasons.includes('missing_daily_coverage'));
+    assert.ok(!row.exclusion_reasons.includes('insufficient_listener_coverage'));
   });
 
   test(`${mode} keeps one available stream boundary and suppresses only growth`, async () => {
