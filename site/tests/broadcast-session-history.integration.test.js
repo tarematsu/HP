@@ -45,6 +45,40 @@ test('broadcast history reads UTC timestamps from the compact official summary t
   }]);
 });
 
+test('verified listening party metadata repairs track counts and supplies concise content', () => {
+  const parsed = parseBroadcastSummaryRows([
+    {
+      event_name: '2024.07.23『YUI KOBAYASHI GRADUATION CONCERT』Stationhead Listening Party',
+      started_at: 1,
+      ended_at: 2,
+      sample_count: 1,
+      listener_avg: 1019.1,
+      listener_max: 1080,
+      likes_max: null,
+      distinct_tracks: 2,
+      host_handle: 'sakurazaka46jp',
+      has_data: 1,
+    },
+    {
+      event_name: '2025.10.29 13th Single『Unhappy birthday構文』リリース記念Stationheadリスニングパーティー',
+      started_at: 3,
+      ended_at: 4,
+      sample_count: 1,
+      listener_avg: 788.8,
+      listener_max: 901,
+      likes_max: null,
+      distinct_tracks: 5,
+      host_handle: 'sakurazaka46jp',
+      has_data: 1,
+    },
+  ]);
+
+  assert.equal(parsed.rows[0].distinct_tracks, 20);
+  assert.equal(parsed.rows[0].broadcast_content, '小林由依卒業コンサート DAY2セットリスト');
+  assert.equal(parsed.rows[1].distinct_tracks, 7);
+  assert.equal(parsed.rows[1].broadcast_content, '13th Single「Unhappy birthday構文」Special Edition全7曲');
+});
+
 test('an empty UTC range reports whether the compact summary is provisioned', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_official_broadcast_summary (
