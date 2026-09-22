@@ -10,6 +10,6 @@ test('dashboard retries transient materialized read-model outages without live D
   assert.match(fetchCache, /const DASHBOARD_RETRY_DELAYS_MS = Object\.freeze\(\[500, 1500, 3000\]\)/);
   assert.match(fetchCache, /async function fetchDashboardWithRetry/);
   assert.match(fetchCache, /await waitForRetry\(delayMs, init\?\.signal\)/);
-  assert.match(fetchCache, /if \(payload\?\.ok\) clearTransientStatus\(\)/);
+  assert.match(fetchCache, /if \(payload\?\.ok\) \{[\s\S]*clearTransientStatus\(\);[\s\S]*dispatchPayload\(payload, 'network'\);/);
   assert.match(middleware, /const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set\(\)/);
 });
