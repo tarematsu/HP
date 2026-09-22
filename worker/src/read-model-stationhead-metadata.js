@@ -12,6 +12,7 @@ function text(value) {
 }
 
 function integer(value) {
+  if (value === undefined || value === null || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
 }
