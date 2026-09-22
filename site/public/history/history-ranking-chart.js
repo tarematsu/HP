@@ -268,6 +268,7 @@ function draw() {
 
   chartModel = { positions, weeks: model.weeks };
   canvas.dataset.rankingChart = 'featured-hosts';
+  window.dispatchEvent(new CustomEvent('history:ranking-chart-drawn', { detail: { weeks: model.weeks } }));
 }
 
 const tbody = document.getElementById('tbody');
