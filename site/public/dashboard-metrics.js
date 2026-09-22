@@ -1,7 +1,8 @@
 import './history/history-global-fixes.js';
 import './pages-ui-tweaks.js?v=20260921.1';
 import './dashboard-header.js?v=20260923.4';
-import './dashboard-tabs.js?v=20260923.4';
+import './unofficial-listening-parties.js?v=20260923.1';
+import './dashboard-tabs.js?v=20260923.6';
 import './dashboard-current-layout.js?v=20260923.4';
 import './dashboard-chart-stability.js?v=20260923.4';
 import './dashboard-chart-comparison.js?v=20260923.5';
