@@ -11,6 +11,15 @@ visualFixes.textContent = `
 `;
 document.head.appendChild(visualFixes);
 
+try {
+  for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = sessionStorage.key(index) || '';
+    if (key.startsWith('sh.history.v3:/api/history?') && key.includes('mode=ranking')) {
+      sessionStorage.removeItem(key);
+    }
+  }
+} catch {}
+
 const integer = new Intl.NumberFormat('ja-JP');
 
 function setText(id, value) {
