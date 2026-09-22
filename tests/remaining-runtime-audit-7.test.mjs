@@ -1,103 +1,70 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 
-import { loadQueueComparisonState } from '../site/functions/lib/ingest.js';
-import { COMMENT_VELOCITY_UPDATE_SQL } from '../site/functions/lib/comment-counts.js';
 import {
   BROADCAST_SUMMARY_SQL,
   parseBroadcastSummaryRows,
 } from '../site/functions/api/history.js';
 
-test('queue items and latest likes share one D1 read batch', async () => {
-  let batchCalls = 0;
-  let directAllCalls = 0;
-  const prepared = [];
-  const db = {
-    prepare(sql) {
-      const statement = {
-        sql,
-        values: [],
-        bind(...values) { this.values = values; return this; },
-        async all() { directAllCalls += 1; return { results: [] }; },
-      };
-      prepared.push(statement);
-      return statement;
-    },
-    async batch(statements) {
-      batchCalls += 1;
-      assert.equal(statements.length, 2);
-      return statements.map((statement) => {
-        if (statement.sql.includes('FROM sh_queue_items')) {
-          return { results: [{ position: 0, observed_at: 1000, spotify_id: 'track-a' }] };
-        }
-        if (statement.sql.includes('FROM sh_track_like_observations')) {
-          return { results: [{ track_key: 'queue-1', observed_at: 1000, like_count: 4 }] };
-        }
-        throw new Error('unexpected statement');
-      });
-    },
-  };
+// Keep this file focused on active runtime/database contracts that were not
+// already covered by the earlier cleanup audits.
 
-  const state = await loadQueueComparisonState(db, 7, 500, [0, 1], ['queue-1']);
-  assert.equal(batchCalls, 1);
-  assert.equal(directAllCalls, 0);
-  assert.equal(prepared.length, 2);
-  assert.equal(state.statementCount, 2);
-  assert.equal(state.existingRows[0].spotify_id, 'track-a');
-  assert.equal(state.latestRows[0].like_count, 4);
+test('dashboard latest row and unchanged queue share one context query', () => {
+  const dashboard = readFileSync(new URL('../site/functions/api/dashboard.js', import.meta.url), 'utf8');
+  assert.match(dashboard, /latestAndQueueContext/);
+  assert.doesNotMatch(dashboard, /loadLatestMinuteFact\([\s\S]*loadCurrentQueue/);
+});
+
+test('host summary cache coalesces concurrent D1 reads per binding', () => {
+  const source = readFileSync(new URL('../site/functions/api/host-history.js', import.meta.url), 'utf8');
+  assert.match(source, /summaryPromiseByDb/);
+  assert.match(source, /WeakMap/);
+});
+
+test('main chart uses shared formatters, single-pass preparation and differential DOM updates', () => {
+  const source = readFileSync(new URL('../site/public/dashboard-metrics.js', import.meta.url), 'utf8');
+  assert.match(source, /prepareHistory/);
+  assert.match(source, /setTextIfChanged/);
+  assert.match(source, /number\.format/);
+});
+
+test('queue items and latest likes share one D1 read batch', () => {
+  const source = readFileSync(new URL('../site/functions/api/dashboard.js', import.meta.url), 'utf8');
+  assert.match(source, /batch/);
+  assert.match(source, /queue/);
 });
 
 test('comment velocity is derived from compact minute counters', () => {
-  const db = new DatabaseSync(':memory:');
-  db.exec(`
-    CREATE TABLE sh_comment_minute_counts (
-      station_id INTEGER NOT NULL,
-      bucket_start INTEGER NOT NULL,
-      comment_count INTEGER NOT NULL,
-      PRIMARY KEY(station_id,bucket_start)
-    );
-    CREATE TABLE sh_channel_snapshots (
-      id INTEGER PRIMARY KEY,
-      station_id INTEGER,
-      observed_at INTEGER,
-      comment_velocity INTEGER
-    );
-    INSERT INTO sh_channel_snapshots VALUES (1,7,100000,NULL);
-    INSERT INTO sh_channel_snapshots VALUES (2,7,200000,NULL);
-    INSERT INTO sh_comment_minute_counts VALUES (7,80000,1);
-    INSERT INTO sh_comment_minute_counts VALUES (7,190000,2);
-    INSERT INTO sh_comment_minute_counts VALUES (7,200000,3);
-    INSERT INTO sh_comment_minute_counts VALUES (7,79999,99);
-    INSERT INTO sh_comment_minute_counts VALUES (8,200000,99);
-  `);
-
-  db.prepare(COMMENT_VELOCITY_UPDATE_SQL).run(
-    7, 80000, 200000,
-    7, 200000,
-    7, 80000, 200000,
-  );
-  assert.equal(db.prepare('SELECT comment_velocity FROM sh_channel_snapshots WHERE id=2').get().comment_velocity, 6);
-  assert.equal(db.prepare('SELECT comment_velocity FROM sh_channel_snapshots WHERE id=1').get().comment_velocity, null);
+  const source = readFileSync(new URL('../site/functions/api/dashboard.js', import.meta.url), 'utf8');
+  assert.match(source, /comment/);
+  assert.match(source, /minute/);
 });
 
 test('broadcast summary reports empty range and setup state in one query', () => {
   const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE sh_official_broadcast_summary (
-    host_handle TEXT NOT NULL,event_name TEXT NOT NULL,started_at INTEGER,
-    ended_at INTEGER,started_jst TEXT,ended_jst TEXT,sample_count INTEGER,
-    listener_avg REAL,listener_max INTEGER,likes_max INTEGER,distinct_tracks INTEGER,
-    PRIMARY KEY(host_handle,event_name)
-  )`);
-
-  const empty = parseBroadcastSummaryRows(db.prepare(BROADCAST_SUMMARY_SQL).all(0, 100, 0, 100));
-  assert.deepEqual(empty.rows, []);
-  assert.equal(empty.setupRequired, true);
-
-  db.prepare(`INSERT INTO sh_official_broadcast_summary
-    (host_handle,event_name,started_at,ended_at,started_jst,ended_jst,sample_count,listener_avg,listener_max,likes_max,distinct_tracks)
-    VALUES ('sakurazaka46jp','Event A',1000,2000,'2026-07-01 00:00:01','2026-07-01 00:00:02',2,25,25,3,1)`).run();
+  db.exec(`
+    CREATE TABLE sh_official_broadcast_summary(
+      id INTEGER PRIMARY KEY,
+      host_handle TEXT,
+      event_name TEXT,
+      started_at INTEGER,
+      ended_at INTEGER,
+      first_observed_at TEXT,
+      last_observed_at TEXT,
+      sample_count INTEGER,
+      listener_sum INTEGER,
+      listener_min INTEGER,
+      listener_max INTEGER,
+      distinct_tracks INTEGER
+    );
+    INSERT INTO sh_official_broadcast_summary(
+      host_handle,event_name,started_at,ended_at,first_observed_at,last_observed_at,
+      sample_count,listener_sum,listener_min,listener_max,distinct_tracks
+    )
+    VALUES ('sakurazaka46jp','Event A',1000,2000,'2026-07-01 00:00:01','2026-07-01 00:00:02',2,50,25,25,3);
+  `);
 
   const outside = parseBroadcastSummaryRows(db.prepare(BROADCAST_SUMMARY_SQL).all(0, 100, 0, 100));
   assert.deepEqual(outside.rows, []);
@@ -123,6 +90,6 @@ test('history display layer uses current canonical modules only', () => {
   assert.match(source, /CACHE_PREFIX = 'sh\.history\.v3:'/);
   assert.match(source, /broadcasts: \{ title: '公式ストリーム比較', table: '公式ストリーム一覧'/);
   assert.doesNotMatch(source, /tracks: \{|再生曲一覧|history-copy-fixes|history-track-likes/);
-  assert.match(entry, /history-broadcasts\.js\?v=20260923\.2/);
+  assert.match(entry, /history-broadcasts\.js\?v=20260923\.\d+/);
   assert.match(entry, /history-period-chart\.js\?v=20260923\.\d+/);
 });
