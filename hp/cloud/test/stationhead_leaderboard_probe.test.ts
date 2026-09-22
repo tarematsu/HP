@@ -23,7 +23,11 @@ describe("Stationhead leaderboard probe", () => {
   it("skips all R2 writes when leaderboard content is unchanged", async () => {
     const puts: Array<{ key: string; body: string; options?: R2PutOptions }> = [];
     let latestDigest: string | undefined;
-    const put = vi.fn(async (key: string, body: string, options?: R2PutOptions) => { puts.push({ key, body, options }); if (key.endsWith("latest.json")) latestDigest = options?.customMetadata?.contentDigest; return {}; });
+    const put = vi.fn(async (key: string, body: string, options?: R2PutOptions) => {
+      puts.push(options === undefined ? { key, body } : { key, body, options });
+      if (key.endsWith("latest.json")) latestDigest = options?.customMetadata?.contentDigest;
+      return {};
+    });
     const head = vi.fn(async () => latestDigest ? ({ customMetadata: { contentDigest: latestDigest } }) : null);
     vi.spyOn(Date, "now").mockReturnValue(NOW);
     const env = { DB: {} as D1Database, DATA_BUCKET: { put, head } as unknown as R2Bucket } as Env;
