@@ -118,6 +118,7 @@ LR"JS(
       // The same video element can be reused for another TVer media source.
       // Drop all completion/progress state immediately so an ended event from
       // the replacement cannot inherit the previous program's near-end state.
+      clearEndCandidate();
       resetMediaState(state, video);
       scheduleEnsure(40);
     }, { passive: true });
