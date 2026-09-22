@@ -8,9 +8,8 @@
 namespace hp {
 namespace {
 constexpr wchar_t kLeaderboardUrl[] = L"https://www.stationhead.com/leaderboard";
-constexpr wchar_t kIdleUrl[] = L"about:blank";
 constexpr int64_t kInitialCaptureDelayMs = 15'000;
-constexpr int64_t kCaptureIntervalMs = 30 * 60'000;
+constexpr int64_t kCaptureIntervalMs = 60 * 60'000;
 constexpr int64_t kRetryIntervalMs = 5 * 60'000;
 constexpr int64_t kRenderSettleMs = 2'000;
 constexpr int64_t kContentPollIntervalMs = 2'000;
@@ -467,12 +466,15 @@ void StationheadLeaderboardCollector::CompleteCapture(
   timeoutAt_ = 0;
   nextCaptureAt_ = nowMs + (signedIn ? kCaptureIntervalMs : kRetryIntervalMs);
   stationhead_leaderboard_diagnostics::Mark("completed", true, true);
-  UpdateNextWake();
 
-  // Keep the successfully-created controller/profile alive so recurring captures do
-  // not repeatedly race WebView2 profile controller creation. Unload Stationhead
-  // while idle to keep CPU/network use low; cookies remain in the shared profile.
-  if (webview_) webview_->Navigate(kIdleUrl);
+  // A successful snapshot is already durably queued and wakes the cloud uploader.
+  // Tear down the dedicated WebView/controller immediately so every hourly capture
+  // starts from a fresh window while the shared profile keeps the login session.
+  ++generation_;
+  creating_ = false;
+  CloseController();
+  environment_.Reset();
+  UpdateNextWake();
 }
 
 void StationheadLeaderboardCollector::FailCapture(
