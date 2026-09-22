@@ -1,5 +1,6 @@
 const DAY_MS = 86_400_000;
 const STATIONHEAD_BUDDIES_URL = 'https://stationhead.com/c/buddies';
+const EXTREMA_POINT_COLOR = '#888';
 const integer = new Intl.NumberFormat('ja-JP');
 const jstGoalDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
@@ -284,7 +285,7 @@ function drawEnhancedChart(rows) {
   const minIndex = rows.findIndex((row) => row.online_member_count === onlineRawMin);
   const maxIndex = rows.findIndex((row) => row.online_member_count === onlineRawMax);
   if (minIndex >= 0) {
-    context.fillStyle = '#111';
+    context.fillStyle = EXTREMA_POINT_COLOR;
     context.beginPath();
     context.arc(x[minIndex], yOnline(onlineRawMin), 3.5, 0, Math.PI * 2);
     context.fill();
@@ -299,7 +300,7 @@ function drawEnhancedChart(rows) {
     );
   }
   if (maxIndex >= 0) {
-    context.fillStyle = '#111';
+    context.fillStyle = EXTREMA_POINT_COLOR;
     context.beginPath();
     context.arc(x[maxIndex], yOnline(onlineRawMax), 3.5, 0, Math.PI * 2);
     context.fill();
