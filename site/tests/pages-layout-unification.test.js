@@ -6,7 +6,7 @@ const header = readFileSync(new URL('../public/dashboard-header.js', import.meta
 const css = readFileSync(new URL('../public/pages-layout-unification.css', import.meta.url), 'utf8');
 
 test('cross-view layout stylesheet is loaded after dashboard refinements', () => {
-  assert.match(header, /pages-layout-unification\.css\?v=20260921\.1/);
+  assert.match(header, /pages-layout-unification\.css\?v=20260923\.1/);
   assert.ok(
     header.indexOf('currentEnhancementsHref') < header.indexOf('layoutUnificationHref'),
     'layout unification must load after current enhancements',
@@ -23,10 +23,12 @@ test('mobile metric goal cannot inherit oversized metric typography', () => {
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*#metricGoalCompact strong,[\s\S]*font-size:\s*8\.5px !important/);
 });
 
-test('history and likes tables preserve readable widths on mobile', () => {
+test('leaderboard and likes tables keep intrinsic mobile widths instead of forced whitespace', () => {
   assert.match(css, /#historyView \.table-wrap table[\s\S]*min-width:\s*760px !important/);
-  assert.match(css, /#likesView \.table-wrap table[\s\S]*min-width:\s*620px !important/);
-  assert.match(css, /\.table-wrap th,[\s\S]*\.table-wrap td[\s\S]*padding:\s*6px 7px !important/);
+  assert.match(css, /#historyView \.table-wrap table\.compact-columns\s*\{[\s\S]*min-width:\s*0 !important/);
+  assert.match(css, /#likesView \.table-wrap table\s*\{[\s\S]*min-width:\s*0 !important/);
+  assert.match(css, /#historyView \.table-wrap table\.compact-columns th,[\s\S]*#likesView \.table-wrap td[\s\S]*padding-inline:\s*5px !important/);
+  assert.doesNotMatch(css, /#likesView \.table-wrap table\s*\{[\s\S]{0,120}min-width:\s*620px !important/);
 });
 
 test('cards, controls and section gaps share one visual rhythm', () => {

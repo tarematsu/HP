@@ -30,7 +30,7 @@ if (!document.querySelector(`link[href="${currentEnhancementsHref}"]`)) {
   document.head.append(currentEnhancements);
 }
 
-const layoutUnificationHref = '/pages-layout-unification.css?v=20260921.1';
+const layoutUnificationHref = '/pages-layout-unification.css?v=20260923.1';
 if (!document.querySelector(`link[href="${layoutUnificationHref}"]`)) {
   const layoutUnification = document.createElement('link');
   layoutUnification.rel = 'stylesheet';
