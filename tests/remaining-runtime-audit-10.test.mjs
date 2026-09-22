@@ -63,22 +63,29 @@ test('host summary falls back to official broadcast history when session trackin
   assert.equal(summary.recentSessions[0].track_count, 9);
 });
 
-test('history runtime is embedded in the main dashboard and reuses prepared chart state', () => {
+test('history runtime is embedded, lazy, and has one chart owner per mode', () => {
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
+  const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../site/public/history/history-lite.js', import.meta.url), 'utf8');
+  const period = readFileSync(new URL('../site/public/history/history-period-chart.js', import.meta.url), 'utf8');
+  const ranking = readFileSync(new URL('../site/public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(html, /id="historyView"/);
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.4'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.5'\)/);
   assert.doesNotMatch(html, /href="\/history/);
+  assert.match(entry, /function ensureHistoryModeRuntime/);
+  assert.match(entry, /history-period-chart\.js/);
+  assert.match(entry, /history-ranking-chart\.js/);
+  assert.match(entry, /history-broadcasts\.js/);
 
-  const runtime = readFileSync(
-    new URL('../site/public/history/history-lite.js', import.meta.url),
-    'utf8',
-  );
-  assert.match(runtime, /function prepareCanvas\(\)/);
-  assert.match(runtime, /function drawSummaryChart\(\)/);
-  assert.match(runtime, /state\.chartModel = \{ positions, rows \}/);
-  assert.match(runtime, /state\.chartModel\.positions\.forEach/);
   assert.match(runtime, /const PAGE_SIZE = 200/);
   assert.match(runtime, /sessionStorage\.getItem/);
+  assert.match(runtime, /publishHistoryData/);
+  assert.doesNotMatch(runtime, /prepareCanvas|drawSummaryChart|chartModel|history-broadcasts\.js/);
+  assert.match(period, /history:data-loaded/);
+  assert.match(ranking, /history:data-loaded/);
+  assert.doesNotMatch(period, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
+  assert.doesNotMatch(ranking, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });
