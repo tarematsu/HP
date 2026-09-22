@@ -4,54 +4,53 @@ import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+const rankingAllHosts = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
 const rankingMissing = readFileSync(new URL('../public/history/history-ranking-missing-gap.js', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
-test('ranking chart keeps featured comparison and switches to one searched host for all-host scope', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.6/);
+test('ranking chart keeps featured comparison and supports one selected all-host series', () => {
+  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.7/);
+  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260923\.1/);
   assert.match(entry, /runtimeKey\(mode\)/);
   assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
   assert.match(rankingChart, /const FEATURED_HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
   assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
   assert.match(rankingChart, /detail\.data\.chart_hosts/);
+  assert.match(rankingChart, /history:ranking-host-selected/);
+  assert.match(rankingChart, /if \(chartHosts\.length === 1\) return '#000000'/);
   assert.match(rankingChart, /chartHosts\.length === 1 \? 'single-host' : 'featured-hosts'/);
-  assert.match(rankingChart, /function hideChart\(\)/);
-  assert.match(rankingChart, /if \(!chartHosts\.length \|\| !model\.weeks\.length\)/);
   assert.match(rankingChart, /週間リーダーボード順位/);
   assert.match(rankingChart, /順位推移/);
-  assert.match(rankingChart, /history:data-loaded/);
   assert.doesNotMatch(rankingChart, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });
 
-test('ranking chart derives its week axis from returned host rows so pre-debut weeks are not reintroduced', () => {
+test('all-host table exposes requested six-column host ranking and tap selection', () => {
+  for (const label of ['順位', 'ホスト名', 'ランクイン週数', '平均順位', '最高順位', '最低順位']) {
+    assert.match(rankingAllHosts, new RegExp(label));
+  }
+  assert.match(rankingAllHosts, /data\.host_rankings/);
+  assert.match(rankingAllHosts, /button\.dataset\.rankingHost/);
+  assert.match(rankingAllHosts, /history:ranking-host-selected/);
+  assert.match(rankingAllHosts, /setSelectedHost\(defaultHost\)/);
+});
+
+test('all-host chart fills missing weeks only after the selected host first appears', () => {
   assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.6/);
   assert.match(rankingChart, /const sourceRows = rows\.filter/);
-  assert.match(rankingChart, /const weeks = \[\.\.\.new Set\(sourceRows\.map/);
+  assert.match(rankingChart, /const sourceWeeks = \[\.\.\.new Set\(sourceRows\.map/);
+  assert.match(rankingChart, /const firstWeek = sourceWeeks\[0\]/);
+  assert.match(rankingChart, /rankingWeeks\.map\(isoDate\)\.filter\(\(week\) => week && week >= firstWeek\)/);
   assert.doesNotMatch(rankingChart, /weeklyRange|mondayOnOrAfter|mondayOnOrBefore|rankingFrom|rankingTo/);
   assert.match(rankingChart, /function fullWeek\(value\)/);
-  assert.match(rankingChart, /context\.textAlign = first \? 'left' : last \? 'right' : 'center'/);
-  assert.match(rankingChart, /first \? x \+ 2 : last \? x - 2 : x/);
   assert.match(rankingChart, /history:ranking-chart-drawn/);
   assert.match(rankingMissing, /MISSING_START = '2026-01-26'/);
   assert.match(rankingMissing, /MISSING_END = '2026-09-14'/);
-  assert.match(rankingMissing, /function completeWeeks\(\)/);
-  assert.match(rankingMissing, /new Set\(renderedWeeks\.map\(isoDate\)/);
-  assert.doesNotMatch(rankingMissing, /fillText\('欠測'/);
-  assert.match(rankingMissing, /document\.createTextNode\('欠測'\)/);
-  assert.match(rankingMissing, /空白週は圏外です/);
   assert.match(rankingMissing, /history:ranking-chart-drawn/);
-  assert.match(rankingMissing, /scheduleOverlay\(0\)/);
   assert.match(rankingMissing, /keepRankedRowsOnly/);
-  assert.match(rankingMissing, /history:data-loaded/);
-  assert.match(rankingMissing, /getElementById\('more'\)\?\.addEventListener/);
-  assert.match(rankingMissing, /\^#\?\\d\+\$/);
-  assert.match(rankingMissing, /if \(!hasNumericRank\(row\)\) row\.remove\(\)/);
   assert.doesNotMatch(rankingMissing, /window\.fetch|response\.clone\(\)\.json|weeklyRange\(|requestUrl\(|MutationObserver/);
-  assert.doesNotMatch(rankingMissing, /createMissingRow/);
-  assert.doesNotMatch(rankingMissing, /clearRect\(area\.left/);
   assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
 });
 

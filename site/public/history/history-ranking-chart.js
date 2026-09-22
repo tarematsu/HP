@@ -7,7 +7,9 @@ const HOST_COLORS = new Map([
 const integer = new Intl.NumberFormat('ja-JP');
 
 let rows = [];
+let rankingWeeks = [];
 let chartHosts = [];
+let chartScope = 'featured';
 let drawTimer = 0;
 let resizeTimer = 0;
 let selectedWeekIndex = null;
@@ -67,9 +69,9 @@ function appendLegend(label, color) {
 }
 
 function colorForHost(host, index) {
+  if (chartHosts.length === 1) return '#000000';
   const preset = HOST_COLORS.get(hostKey(host));
   if (preset) return preset;
-  if (chartHosts.length === 1) return cssColor('--text', '#1f2d44');
   const fallbacks = ['#667287', '#2776b9', '#168b73', '#c56a18'];
   return fallbacks[index % fallbacks.length];
 }
@@ -78,7 +80,13 @@ function buildModel() {
   if (!chartHosts.length) return { weeks: [], series: [] };
   const allowed = new Set(chartHosts.map(hostKey));
   const sourceRows = rows.filter((row) => allowed.has(hostKey(row?.host_name)));
-  const weeks = [...new Set(sourceRows.map((row) => isoDate(row?.ranking_date)).filter(Boolean))].sort();
+  const sourceWeeks = [...new Set(sourceRows.map((row) => isoDate(row?.ranking_date)).filter(Boolean))].sort();
+  let weeks = sourceWeeks;
+  if (chartScope === 'all' && chartHosts.length === 1 && sourceWeeks.length) {
+    const firstWeek = sourceWeeks[0];
+    const completeWeeks = rankingWeeks.map(isoDate).filter((week) => week && week >= firstWeek);
+    if (completeWeeks.length) weeks = [...new Set([...completeWeeks, ...sourceWeeks])].sort();
+  }
   const byHostWeek = new Map();
   for (const row of sourceRows) {
     const week = isoDate(row.ranking_date);
@@ -237,9 +245,23 @@ window.addEventListener('history:data-loaded', (event) => {
   const detail = event?.detail || {};
   if (detail.mode !== RANKING_MODE || !detail.data?.ok || !Array.isArray(detail.data.rows)) return;
   rows = detail.data.rows;
+  rankingWeeks = Array.isArray(detail.data.ranking_weeks)
+    ? detail.data.ranking_weeks.map(isoDate).filter(Boolean)
+    : [];
+  chartScope = detail.data.scope === 'all' ? 'all' : 'featured';
   chartHosts = Array.isArray(detail.data.chart_hosts)
     ? detail.data.chart_hosts.map((host) => String(host || '').trim()).filter(Boolean)
     : detail.data.scope === 'featured' ? FEATURED_HOSTS : [];
+  selectedWeekIndex = null;
+  scheduleDraw();
+});
+
+window.addEventListener('history:ranking-host-selected', (event) => {
+  if (activeMode() !== RANKING_MODE) return;
+  const host = String(event?.detail?.host || '').trim();
+  if (!host) return;
+  chartHosts = [host];
+  chartScope = 'all';
   selectedWeekIndex = null;
   scheduleDraw();
 });
