@@ -302,7 +302,21 @@ export async function processRawMaterializeStage(env, body, dependencies = {}) {
     common,
   } = validatePreparedStage(body, RAW_MATERIALIZE_MESSAGE);
   const materialize = dependencies.materialize || prepareMaterializedQueue;
-  const materialized = await materialize(env?.DB, queue, body.queue_analysis || null, env);
+
+  // Hydrate the full queue before materialization. presentation_tracks is derived
+  // from this source queue, so enriching only the compact materialized window
+  // would permanently serialize placeholders for tracks outside that window.
+  const sourceMetadata = metadataForCollectedQueue(trackMetadata, queue);
+  const hydratedSourceQueue = attachCollectedTrackMetadata(queue, sourceMetadata);
+  const materialized = await materialize(
+    env?.DB,
+    hydratedSourceQueue,
+    body.queue_analysis || null,
+    env,
+  );
+
+  // Keep dictionary writes bounded to the materialized window while the
+  // presentation projection retains metadata inherited from the full queue.
   const visibleMetadata = metadataForCollectedQueue(trackMetadata, materialized.queue);
   const metadataDue = await (dependencies.collectedMetadataDue || collectedMetadataDue)(
     env,
