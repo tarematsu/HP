@@ -276,7 +276,6 @@ function draw() {
 }
 
 const tbody = document.getElementById('tbody');
-tbody?.addEventListener('DOMNodeInserted', () => scheduleDraw());
 if (tbody) new MutationObserver(() => {
   if (activeMode() === RANKING_MODE) scheduleDraw();
 }).observe(tbody, { childList: true });
