@@ -26,28 +26,23 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new):
+          def splice_between(path, start_pred, end_pred, replacement):
               p = Path(path)
-              s = p.read_text()
-              if old not in s:
-                  raise SystemExit(f'expected block not found in {path}')
-              p.write_text(s.replace(old, new, 1))
+              lines = p.read_text().splitlines()
+              start = next((i for i, line in enumerate(lines) if start_pred(line)), None)
+              if start is None:
+                  raise SystemExit(f'start marker not found: {path}')
+              end = next((i for i in range(start + 1, len(lines)) if end_pred(lines[i])), None)
+              if end is None:
+                  raise SystemExit(f'end marker not found: {path}')
+              lines[start:end] = replacement.splitlines()
+              p.write_text('\n'.join(lines) + '\n')
 
-          importer = 'worker/scripts/import-stationhead-weekly-leaderboard-actions.mjs'
-          replace_once(importer, """function normalizeCandidateRow(rank, nameValue, streamsValue, daysValue = null) {
-            const name = displayAndCanonicalName(nameValue);
-            const streams = parseMetric(streamsValue);
-            const days = daysValue == null ? null : parseMetric(daysValue);
-            if (!rank || !name || streams == null || streams < 0) return null;
-            return {
-              rank,
-              channel_name: name.canonical,
-              channel_alias: name.display,
-              streams,
-              days: days != null && days >= 0 && days <= 366 ? days : null,
-            };
-          }
-          """, """function normalizeCandidateRow(rank, nameValue, streamsValue, daysValue = null) {
+          importer = Path('worker/scripts/import-stationhead-weekly-leaderboard-actions.mjs')
+          lines = importer.read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if line.startswith('function normalizeCandidateRow('))
+          end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith('function uniqueSortedRows('))
+          lines[start:end] = '''function normalizeCandidateRow(rank, nameValue, streamsValue, daysValue = null) {
             const name = displayAndCanonicalName(nameValue);
             const streams = streamsValue == null ? null : parseMetric(streamsValue);
             const days = daysValue == null ? null : parseMetric(daysValue);
@@ -60,25 +55,15 @@ jobs:
               days: days != null && days >= 0 && days <= 366 ? days : null,
             };
           }
-          """)
+          '''.splitlines()
+          importer.write_text('\n'.join(lines) + '\n')
 
-          collector = 'hp/native/src/stationhead_leaderboard_collector.cpp'
-          replace_once(collector, """  const rows = Array.from(document.querySelectorAll('tr,[role=\"row\"]'))
-            .slice(0, 15)
-            .map(row => Array.from(row.querySelectorAll('th,td,[role=\"cell\"],[role=\"gridcell\"]'))
-              .slice(0, 8)
-              .map(cell => bounded(cell.innerText || cell.textContent, 80))
-              .filter(Boolean))
-            .filter(cells => cells.length > 0);
-          const root = document.querySelector('main') || document.body;
-          const lines = String(root?.innerText || '')
-            .split(/\\n+/)
-            .map(line => bounded(line, 120))
-            .filter(Boolean)
-            .slice(0, 80);
-          const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
-            .slice(0, 15)
-          """, """  const root = document.querySelector('main') || document.body;
+          collector = Path('hp/native/src/stationhead_leaderboard_collector.cpp')
+          lines = collector.read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if "const rows = Array.from(document.querySelectorAll('tr,[role=\"row\"]'))" in line)
+          links = next(i for i in range(start + 1, len(lines)) if "const links = Array.from(root?.querySelectorAll?.('a[href]') || [])" in lines[i])
+          map_line = next(i for i in range(links + 1, len(lines)) if '.map(link => ({' in lines[i])
+          replacement = '''  const root = document.querySelector('main') || document.body;
           const all_lines = String(root?.innerText || '')
             .split(/\\n+/)
             .map(line => bounded(line, 120))
@@ -100,44 +85,41 @@ jobs:
             ranking.push({ rank: expectedRank, handle });
             expectedRank += 1;
           }
-          const rows = Array.from(document.querySelectorAll('tr,[role=\"row\"]'))
+          const rows = Array.from(document.querySelectorAll('tr,[role="row"]'))
             .slice(0, 25)
-            .map(row => Array.from(row.querySelectorAll('th,td,[role=\"cell\"],[role=\"gridcell\"]'))
+            .map(row => Array.from(row.querySelectorAll('th,td,[role="cell"],[role="gridcell"]'))
               .slice(0, 8)
               .map(cell => bounded(cell.innerText || cell.textContent, 80))
               .filter(Boolean))
             .filter(cells => cells.length > 0);
           const lines = all_lines.slice(0, 120);
           const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
-            .slice(0, 25)
-          """)
+            .slice(0, 25)'''.splitlines()
+          lines[start:map_line] = replacement
 
-          replace_once(collector, """  const leaderboard_ready = !signed_in || (
-            /^\\/leaderboard\\/?$/i.test(path) && lines.length >= 10 && links.length >= 5
-          );
-          return {
-          """, """  const leaderboard_ready = signed_in && (
+          ready_start = next(i for i, line in enumerate(lines) if 'const leaderboard_ready =' in line)
+          ready_end = next(i for i in range(ready_start + 1, len(lines)) if lines[i].strip() == ');')
+          lines[ready_start:ready_end + 1] = '''  const leaderboard_ready = signed_in && (
             /^\\/leaderboard\\/?$/i.test(path) && ranking.length >= 10
-          );
-          return {
-          """)
+          );'''.splitlines()
 
-          replace_once(collector, """    heading: bounded(root?.querySelector?.('h1,h2')?.innerText, 240),
-            rows,
-            lines,
-          """, """    heading: bounded(root?.querySelector?.('h1,h2')?.innerText, 240),
-            ranking,
-            rows,
-            lines,
-          """)
+          heading = next(i for i, line in enumerate(lines) if "heading: bounded(root?.querySelector?.('h1,h2')?.innerText, 240)," in line)
+          if not any('ranking,' in line for line in lines[heading + 1:heading + 4]):
+              lines.insert(heading + 1, '    ranking,')
+          collector.write_text('\n'.join(lines) + '\n')
 
-          workflow = '.github/workflows/stationhead-leaderboard-probe-report.yml'
-          replace_once(workflow, "      - name: Upload probe status artifact\n        uses: actions/upload-artifact@v4\n", "      - name: Upload probe status artifact\n        if: always()\n        uses: actions/upload-artifact@v4\n")
-          replace_once(workflow, "      - name: Upload latest leaderboard records artifact\n        uses: actions/upload-artifact@v4\n", "      - name: Upload latest leaderboard records artifact\n        if: always()\n        uses: actions/upload-artifact@v4\n")
+          workflow = Path('.github/workflows/stationhead-leaderboard-probe-report.yml')
+          lines = workflow.read_text().splitlines()
+          for title in ('Upload probe status artifact', 'Upload latest leaderboard records artifact'):
+              index = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {title}')
+              if index + 1 >= len(lines) or lines[index + 1].strip() != 'if: always()':
+                  lines.insert(index + 1, '        if: always()')
+          workflow.write_text('\n'.join(lines) + '\n')
           PY
 
           node --test worker/tests/stationhead-weekly-leaderboard-import.test.js
           node --test hp/video/test/stationhead-leaderboard-cloud-upload-regression.test.js
+          node --input-type=module -e "import('./worker/scripts/import-stationhead-weekly-leaderboard-actions.mjs').then(({parseLeaderboardSnapshot})=>{const p=parseLeaderboardSnapshot({ranking:[{rank:1,handle:'sakanactionjp'},{rank:31,handle:'sakurazaka46jp'},{rank:52,handle:'sakuramankai'}]});if(!p||p.rows.length!==3||p.rows[1].channel_name!=='sakurazaka46jp'||p.rows[1].streams!==null||p.rows[2].rank!==52)throw new Error('rank-only parser regression');console.log('rank-only parser ok')})"
 
           rm .github/workflows/one-shot-fix-stationhead-leaderboard.yml
           git config user.name github-actions[bot]
