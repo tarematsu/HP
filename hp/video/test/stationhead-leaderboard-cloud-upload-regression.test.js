@@ -120,6 +120,19 @@ test('native leaderboard diagnostics expose categorical collector progress only'
   assert.match(collector, /MarkFailure\([\s\S]*ErrorCategory/);
 });
 
+test('leaderboard wake channel rearms the app scheduler and cloud upload', () => {
+  assert.match(diagnostics, /kWakeMessage = WM_APP \+ 31/);
+  assert.match(spool, /kStationheadLeaderboardCaptureWakeMessage = WM_APP \+ 31/);
+  assert.match(diagnostics, /PostMessageW\(window, kWakeMessage, 0, 0\)/);
+
+  const wakeCaseStart = appMessages.indexOf('case kStationheadLeaderboardCaptureWakeMessage:');
+  const nextCaseStart = appMessages.indexOf('case WM_HP_PRIMARY_RELOAD_READY:', wakeCaseStart);
+  assert.ok(wakeCaseStart >= 0 && nextCaseStart > wakeCaseStart);
+  const wakeCase = appMessages.slice(wakeCaseStart, nextCaseStart);
+  assert.match(wakeCase, /ScheduleNextTick\(1\)/);
+  assert.match(wakeCase, /cloud_->RefreshNow\(\)/);
+});
+
 test('new native capture spool is durable, bounded, wakes cloud, and deletes legacy disk state', () => {
   assert.match(spool, /stationhead-leaderboard-capture\.ndjson/);
   assert.match(spool, /stationhead-leaderboard-probe\.ndjson/);
@@ -128,7 +141,6 @@ test('new native capture spool is durable, bounded, wakes cloud, and deletes leg
   assert.match(spool, /kCaptureUploadBatchSize = 8/);
   assert.match(spool, /inline size_t Count\(\)/);
   assert.match(spool, /MoveFileExW[\s\S]*MOVEFILE_REPLACE_EXISTING \| MOVEFILE_WRITE_THROUGH/);
-  assert.match(appMessages, /case kStationheadLeaderboardCaptureWakeMessage:[\s\S]*cloud_->RefreshNow\(\)/);
 });
 
 test('device exchange preserves the secure Cloud wire contract with the rebuilt capture spool', () => {
