@@ -76,10 +76,11 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       UpdateAirHistory(snapshot);
       return 0;
     }
-    case kStationheadLeaderboardCollectorWakeMessage:
-      ScheduleNextTick(1);
-      return 0;
     case kStationheadLeaderboardCaptureWakeMessage:
+      // Leaderboard diagnostics and capture-spool writes share this wake channel.
+      // Re-arm the central timer as well as refreshing Cloud so deadlines that are
+      // moved earlier by asynchronous WebView2 callbacks are observed promptly.
+      ScheduleNextTick(1);
       if (cloud_) cloud_->RefreshNow();
       return 0;
 
