@@ -146,6 +146,45 @@ function matchingHosts(firstSeenRows, hostSearch) {
     .map((row) => row.host_name));
 }
 
+function summarizeHostRankings(actualRows) {
+  const groups = new Map();
+  for (const row of actualRows || []) {
+    const rank = finiteNumber(row?.rank);
+    const week = String(row?.ranking_date || '');
+    const name = String(row?.host_name || '').trim();
+    const key = hostKey(name);
+    if (!key || !validDate(week) || rank == null || rank <= 0) continue;
+    if (!groups.has(key)) groups.set(key, { host_name: name, by_week: new Map() });
+    const group = groups.get(key);
+    const previous = group.by_week.get(week);
+    if (previous == null || rank < previous) group.by_week.set(week, rank);
+  }
+
+  const summaries = [...groups.values()].map((group) => {
+    const ranks = [...group.by_week.values()];
+    return {
+      host_name: group.host_name,
+      ranked_weeks: ranks.length,
+      average_rank: ranks.reduce((sum, rank) => sum + rank, 0) / ranks.length,
+      best_rank: Math.min(...ranks),
+      worst_rank: Math.max(...ranks),
+    };
+  }).sort((a, b) => b.ranked_weeks - a.ranked_weeks
+    || a.average_rank - b.average_rank
+    || a.best_rank - b.best_rank
+    || a.worst_rank - b.worst_rank
+    || a.host_name.localeCompare(b.host_name));
+
+  let previousWeeks = null;
+  let previousPosition = 0;
+  return summaries.map((summary, index) => {
+    const position = previousWeeks === summary.ranked_weeks ? previousPosition : index + 1;
+    previousWeeks = summary.ranked_weeks;
+    previousPosition = position;
+    return { position, ...summary };
+  });
+}
+
 export async function loadRanking(requestUrl, env, summaryLoader) {
   const from = requestUrl.searchParams.get('from') || '2024-06-01';
   const to = requestUrl.searchParams.get('to') || new Date().toISOString().slice(0, 10);
@@ -207,9 +246,10 @@ ORDER BY first_ranking_date ASC`).all(),
     addRankChanges(rows);
     sortRankingRows(rows, hostOrder);
 
+    const hostRankings = summarizeHostRankings(actualRows);
     const chartHosts = scope === 'featured' && !hostSearch
       ? FEATURED_HOSTS
-      : hosts.length === 1 ? hosts : [];
+      : hostRankings[0]?.host_name ? [hostRankings[0].host_name] : [];
     const outOfRankCount = completedRows.filter((row) => !validRank(row.rank)).length;
 
     return json({
@@ -221,6 +261,7 @@ ORDER BY first_ranking_date ASC`).all(),
       host_search: hostSearch,
       featured_hosts: FEATURED_HOSTS,
       chart_hosts: chartHosts,
+      host_rankings: hostRankings,
       rows,
       weekly_metrics: weeklyMetrics,
       ranking_weeks: rankingWeeks,
@@ -228,7 +269,7 @@ ORDER BY first_ranking_date ASC`).all(),
       host_count: hosts.length,
       ranking_summary: {
         week_count: rankingWeeks.length,
-        host_count: hosts.length,
+        host_count: hostRankings.length,
         ranked_entry_count: actualRows.filter((row) => validRank(row.rank)).length,
         out_of_rank_count: outOfRankCount,
       },
@@ -247,6 +288,7 @@ ORDER BY first_ranking_date ASC`).all(),
         host_search: hostSearch,
         featured_hosts: FEATURED_HOSTS,
         chart_hosts: [],
+        host_rankings: [],
         rows: [],
         weekly_metrics: [],
         ranking_weeks: [],
