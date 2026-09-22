@@ -7,6 +7,7 @@ const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', im
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyLite = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const historyDataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
 const pageFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
 const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
@@ -27,11 +28,13 @@ test('inactive tab runtimes are loaded on demand and never idle-prefetched', () 
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
   assert.match(historyMain, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.5/);
-  assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.2/);
+  assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.\d+/);
 });
 
-test('history payload is parsed once by the table runtime then shared with mode renderers', () => {
-  assert.match(historyLite, /await response\.json\(\)/);
+test('history payload is parsed once by the data client then shared with table and mode renderers', () => {
+  assert.match(historyDataClient, /await response\.json\(\)/);
+  assert.match(historyLite, /fetchHistoryPayload/);
+  assert.doesNotMatch(historyLite, /await response\.json\(\)/);
   assert.match(historyLite, /function publishHistoryData/);
   assert.match(historyLite, /history:data-loaded/);
   assert.doesNotMatch(historyLite, /function drawSummaryChart|function prepareCanvas/);
