@@ -82,8 +82,7 @@ if (typeof document !== 'undefined') {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('dashboard:payload', () => {
-    setOnlineLabels();
-    removeOnlineRange();
+  window.addEventListener('dashboard:payload', (event) => {
+    renderDashboardDailySummaries(event?.detail?.payload?.daily_summaries);
   });
 }

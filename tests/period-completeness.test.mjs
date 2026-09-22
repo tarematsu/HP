@@ -213,7 +213,7 @@ test('history lite client is loaded lazily into the integrated dashboard', () =>
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   assert.match(html, /id="historyView"/);
-  assert.match(tabs, /import\('\/history\/history-main\.js'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.4'\)/);
   assert.doesNotMatch(html, /history-period-completeness\.js|history-copy-fixes\.js|history-track-likes\.js/);
 
   const runtimeSource = readFileSync(

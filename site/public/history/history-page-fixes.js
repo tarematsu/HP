@@ -81,9 +81,12 @@ function enrichHistoryPayload(payload) {
 window.fetch = async function historyMetadataFetch(input, init) {
   const response = await originalFetch(input, init);
   try {
-    const requestUrl = typeof input === 'string' ? input : input?.url;
-    const pathname = requestUrl ? new URL(requestUrl, location.href).pathname : '';
-    if (!pathname.endsWith('/api/track-history') && !pathname.endsWith('/api/history')) return response;
+    const requestUrl = typeof input === 'string' || input instanceof URL ? String(input) : input?.url;
+    const url = requestUrl ? new URL(requestUrl, location.href) : null;
+    const pathname = url?.pathname || '';
+    const needsMetadata = pathname.endsWith('/api/track-history')
+      || (pathname.endsWith('/api/history') && String(url.searchParams.get('mode') || '').toLowerCase() === 'ranking');
+    if (!needsMetadata) return response;
     const payload = await response.clone().json();
     const enriched = enrichHistoryPayload(payload);
     if (enriched === payload) return response;

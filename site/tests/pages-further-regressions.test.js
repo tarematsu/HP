@@ -123,15 +123,18 @@ test('active Pages archive runtimes are UTC-only except the official-party today
   assert.match(dashboard, /timeZone: 'UTC'/);
   assert.match(dashboard, /最終取得 \$\{safeDate\(latest\.observed_at\)\} UTC/);
   assert.match(mainPage, /id="likesView"/);
-  assert.match(tabs, /import\('\/history\/history-likes\.js'\)/);
+  assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
   assert.doesNotMatch(mainPage, /href="\/history/);
   assert.doesNotMatch(utcArchiveSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
 test('dashboard image retries use canonical URLs and successful refreshes clear stale errors', () => {
   const source = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+  const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
   assert.match(source, /IMAGE_RETRY_DELAYS/);
   assert.match(source, /canonicalImageSource/);
   assert.match(source, /image\.dataset\.lastSource = source/);
-  assert.match(source, /status\.hidden = true/);
+  assert.match(fetchCache, /function clearTransientStatus/);
+  assert.match(fetchCache, /node\.hidden = true/);
+  assert.match(fetchCache, /clearTransientStatus\(\)/);
 });

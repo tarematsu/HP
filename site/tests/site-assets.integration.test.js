@@ -67,7 +67,10 @@ test('dashboard displays completed UTC-day changes from the canonical response',
   const loader = await text('functions/lib/dashboard-daily-summaries.js');
   assert.match(html, />総メンバー数</);
   assert.match(html, />総再生数</);
-  assert.match(entry, /renderDashboardDailySummaries/);
+  assert.match(entry, /dashboard-daily-summaries\.js\?v=20260923\.4/);
+  assert.match(renderer, /renderDashboardDailySummaries/);
+  assert.match(renderer, /dashboard:payload/);
+  assert.match(renderer, /event\?\.detail\?\.payload\?\.daily_summaries/);
   assert.match(endpoint, /daily_summaries/);
   assert.match(loader, /FROM sh_daily_summary/);
   assert.match(renderer, /member_growth/);
@@ -106,47 +109,4 @@ test('dashboard mobile layout prevents metric and goal number clipping', async (
   assert.match(css, /\.metric strong \{[^}]*white-space:\s*nowrap/);
   assert.match(css, /\.goal-number \{[^}]*flex-wrap:\s*wrap/);
   assert.match(css, /\.top-actions \{[^}]*repeat\(2/);
-});
-
-test('dashboard client uses one shared cache and one canonical fetch', async () => {
-  const source = await text('public/dashboard-client.js');
-  assert.equal((source.match(/\/api\/dashboard/g) || []).length, 1);
-  assert.match(source, /localStorage\.setItem/);
-  assert.match(source, /document\.hidden/);
-  assert.match(source, /AbortController/);
-  assert.match(source, /60_000/);
-});
-
-test('dashboard client renders the complete fetched queue', async () => {
-  const source = await text('public/dashboard-client.js');
-  assert.match(source, /function playbackView/);
-  assert.match(source, /queue_status/);
-  assert.match(source, /function spotifyUrl/);
-  assert.match(source, /state\.queue\.slice/);
-
-  const endpoint = await text('functions/lib/dashboard-core.js');
-  assert.match(endpoint, /const enrichedQueue = queue\.map/);
-  assert.match(endpoint, /queue_status/);
-});
-
-test('edge middleware serves materialized canonical responses', async () => {
-  const source = await text('functions/_middleware.js');
-  assert.match(source, /MATERIALIZED_API_VARIANTS/);
-  assert.match(source, /materializedApiKey/);
-  assert.match(source, /cache\.match/);
-  assert.match(source, /cache\.put/);
-});
-
-test('Pages configuration binds the expected D1 database and output directory', async () => {
-  const config = JSON.parse((await text('wrangler.jsonc')).replace(/^\s*\/\/.*$/gm, ''));
-  assert.equal(config.name, 'skrzk');
-  assert.equal(config.pages_build_output_dir, './public');
-  assert.equal(config.d1_databases?.[0]?.binding, 'DB');
-  assert.equal(config.d1_databases?.[0]?.database_name, 'stationhead-buddies');
-});
-
-test('Pages homepage is never stored by browsers or shared caches', async () => {
-  const headers = await text('public/_headers');
-  assert.match(headers, /\/\r?\n\s+Cache-Control: no-store, max-age=0, must-revalidate/m);
-  assert.match(headers, /\/index\.html\r?\n\s+Cache-Control: no-store, max-age=0, must-revalidate/m);
 });

@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
@@ -31,8 +32,9 @@ test('header shows the dashboard materialization time in JST without seconds', (
   assert.doesNotMatch(header, /UTC_UPDATED_PATTERN/);
   assert.doesNotMatch(header, /acquisitionUpdatedAt/);
   assert.doesNotMatch(header, /JST_TIME[\s\S]*second:\s*'2-digit'/);
-  assert.match(metrics, /response\?\.headers\?\.get\('x-materialized-at'\)/);
-  assert.match(metrics, /dashboard:materialized-at/);
+  assert.doesNotMatch(metrics, /response\?\.headers\?\.get\('x-materialized-at'\)|dashboard:materialized-at/);
+  assert.match(fetchCache, /response\?\.headers\?\.get\('x-materialized-at'\)/);
+  assert.match(fetchCache, /dashboard:materialized-at/);
   assert.match(guard, /x-materialized-at/);
   assert.match(guard, /history:materialized-at/);
 
@@ -51,5 +53,5 @@ test('dashboard materialized time is restored immediately and updated from the e
   assert.match(header, /setDashboardMaterializedAt\(event\?\.detail\?\.updatedAt\)/);
   assert.doesNotMatch(header, /fetch\(`\/api\/history/);
   assert.doesNotMatch(header, /refreshHistoryMaterializedAt/);
-  assert.match(metrics, /announceDashboardMaterializedAt\(response\)/);
+  assert.match(fetchCache, /announceMaterializedAt\(response\)/);
 });

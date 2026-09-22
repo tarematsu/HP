@@ -1,17 +1,15 @@
 import './history/history-global-fixes.js';
 import './pages-ui-tweaks.js?v=20260921.1';
-import './dashboard-header.js?v=20260922.3';
-import './dashboard-tabs.js?v=20260922.3';
-import './dashboard-fetch-cache.js?v=20260922.3';
-import './dashboard-current-layout.js?v=20260923.1';
-import './dashboard-chart-stability.js?v=20260923.1';
-import './dashboard-chart-comparison.js?v=20260923.1';
-import './dashboard-chart-detail.js?v=20260923.1';
-import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260922.3';
+import './dashboard-header.js?v=20260923.4';
+import './dashboard-tabs.js?v=20260923.4';
+import './dashboard-current-layout.js?v=20260923.4';
+import './dashboard-chart-stability.js?v=20260923.4';
+import './dashboard-chart-comparison.js?v=20260923.4';
+import './dashboard-chart-detail.js?v=20260923.4';
+import './dashboard-daily-summaries.js?v=20260923.4';
+import './dashboard-fetch-cache.js?v=20260923.4';
 
-const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
-const nativeFetch = window.fetch.bind(window);
 const imageRetryTimers = new WeakMap();
 
 function clearImageRetry(image) {
@@ -76,60 +74,7 @@ function installImageState(id) {
 installImageState('channelImage');
 installImageState('trackImage');
 
-function requestUrl(input) {
-  if (typeof input === 'string' || input instanceof URL) return String(input);
-  return input?.url || '';
-}
-
-function renderPayload(payload, source = 'network') {
-  if (!payload?.ok) return;
-  renderDashboardDailySummaries(payload.daily_summaries);
-  window.dispatchEvent(new CustomEvent('dashboard:payload', { detail: { payload, source } }));
-  const status = document.getElementById('statusMessage');
-  if (status) {
-    status.textContent = '';
-    status.hidden = true;
-  }
-}
-
-function restoreDashboardCache() {
-  try {
-    const cached = JSON.parse(localStorage.getItem(DASHBOARD_CACHE_KEY) || 'null');
-    if (!cached || Date.now() - Number(cached.savedAt || 0) > 6 * 60 * 60_000) return;
-    renderPayload(cached.payload, 'cache');
-  } catch {
-    localStorage.removeItem(DASHBOARD_CACHE_KEY);
-  }
-}
-
-function announceDashboardMaterializedAt(response) {
-  const updatedAt = Number(response?.headers?.get('x-materialized-at'));
-  if (!Number.isFinite(updatedAt) || updatedAt <= 0) return;
-  window.dispatchEvent(new CustomEvent('dashboard:materialized-at', {
-    detail: { updatedAt },
-  }));
-}
-
-async function captureDashboard(input, response) {
-  if (!response.ok) return;
-  const url = requestUrl(input);
-  if (!url || new URL(url, location.href).pathname !== '/api/dashboard') return;
-  announceDashboardMaterializedAt(response);
-  try {
-    renderPayload(await response.clone().json(), 'network');
-  } catch {
-    // The dashboard client owns request error reporting.
-  }
-}
-
-window.fetch = async (input, init) => {
-  const response = await nativeFetch(input, init);
-  void captureDashboard(input, response);
-  return response;
-};
-
-restoreDashboardCache();
-void import('/dashboard-client.js?v=20260922.3').catch((error) => {
+void import('/dashboard-client.js?v=20260923.4').catch((error) => {
   console.error('dashboard client failed to start', error);
   const status = document.getElementById('statusMessage');
   if (status) {

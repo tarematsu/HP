@@ -25,7 +25,10 @@ test('main page renders current track likes from the dashboard response', () => 
 });
 
 test('main page labels member and stream deltas with their actual dates', () => {
-  assert.match(dashboardEntry, /renderDashboardDailySummaries/);
+  assert.match(dashboardEntry, /dashboard-daily-summaries\.js\?v=20260923\.4/);
+  assert.match(dashboardDaily, /renderDashboardDailySummaries/);
+  assert.match(dashboardDaily, /dashboard:payload/);
+  assert.match(dashboardDaily, /event\?\.detail\?\.payload\?\.daily_summaries/);
   assert.match(dashboardDaily, /formatPeriodLabel\(data\?\.yesterday\?\.period_key, '昨日'\)/);
   assert.match(dashboardDaily, /formatPeriodLabel\(data\?\.day_before_yesterday\?\.period_key, '一昨日'\)/);
   assert.match(dashboardDaily, /`\$\{Number\(match\[2\]\)\}月\$\{Number\(match\[3\]\)\}日`/);

@@ -4,18 +4,21 @@ import test from 'node:test';
 
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 
-test('current metrics are ordered online, total streams and total members without a duplicate chart renderer', () => {
-  assert.match(metrics, /dashboard-current-layout\.js\?v=20260923\.1/);
-  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260923\.1/);
+test('current metrics are ordered online, total streams and total members without a duplicate chart or fetch renderer', () => {
+  assert.match(metrics, /dashboard-current-layout\.js\?v=20260923\.4/);
+  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260923\.4/);
+  assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260923\.4/);
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
-  assert.match(metrics, /dashboard-client\.js\?v=[^']+/);
+  assert.match(metrics, /dashboard-client\.js\?v=20260923\.4/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260921\.4/);
-  assert.match(metrics, /dashboard:payload/);
+  assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
+  assert.match(fetchCache, /dashboard:payload/);
   assert.match(layout, /\[onlinePanel, streamsPanel, membersPanel\]/);
   assert.doesNotMatch(layout, /audienceChart|getContext\('2d'\)|drawEnhancedChart/);
 });

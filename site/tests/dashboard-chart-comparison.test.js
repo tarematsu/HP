@@ -9,7 +9,7 @@ const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8
 
 test('dashboard entry installs the sole previous-day comparison chart renderer', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260923\.1/);
+  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260923\.4/);
   assert.doesNotMatch(entry, /dashboard-current-enhancements\.js/);
 });
 
