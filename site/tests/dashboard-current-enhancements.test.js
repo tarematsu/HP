@@ -12,7 +12,7 @@ const tableCleanup = readFileSync(new URL('../public/history/history-table-clean
 
 test('current metrics are ordered online, total streams and total members without a duplicate chart or fetch renderer', () => {
   assert.match(metrics, /dashboard-current-layout\.js\?v=20260923\.4/);
-  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260923\.4/);
+  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260923\.5/);
   assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260923\.4/);
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
   assert.match(metrics, /dashboard-client\.js\?v=20260923\.4/);
