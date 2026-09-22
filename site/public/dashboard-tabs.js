@@ -1,9 +1,10 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'likes']);
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'likes', 'unofficial']);
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
 const likesView = document.getElementById('likesView');
+const unofficialView = document.getElementById('unofficialView');
 const tabs = document.getElementById('modeTabs');
 const skipLink = document.querySelector('.skip-link');
 let historyRuntimePromise = null;
@@ -18,9 +19,7 @@ function releaseUnexpectedSkipLinkFocus() {
 
 function updateTabs(mode) {
   tabs?.querySelectorAll('button').forEach((button) => {
-    const selected = mode === 'current'
-      ? button.dataset.view === 'current'
-      : button.dataset.mode === mode;
+    const selected = button.dataset.view === mode || button.dataset.mode === mode;
     button.classList.toggle('active', selected);
     if (selected) button.setAttribute('aria-current', 'page');
     else button.removeAttribute('aria-current');
@@ -38,6 +37,7 @@ function showOnly(view) {
   if (currentView) currentView.hidden = view !== currentView;
   if (historyView) historyView.hidden = view !== historyView;
   if (likesView) likesView.hidden = view !== likesView;
+  if (unofficialView) unofficialView.hidden = view !== unofficialView;
 }
 
 function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
@@ -118,6 +118,14 @@ async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
   }
 }
 
+function showUnofficial({ updateUrl = true, replaceUrl = false } = {}) {
+  activeMode = 'unofficial';
+  showOnly(unofficialView);
+  updateTabs('unofficial');
+  if (updateUrl) updateLocation('unofficial', { replace: replaceUrl });
+  releaseUnexpectedSkipLinkFocus();
+}
+
 function modeFromLocation() {
   const mode = location.hash.slice(1);
   return VIEW_MODES.has(mode) ? mode : 'current';
@@ -126,6 +134,7 @@ function modeFromLocation() {
 function showMode(mode, options = {}) {
   if (mode === 'current') showCurrent(options);
   else if (mode === 'likes') void showLikes(options);
+  else if (mode === 'unofficial') showUnofficial(options);
   else void showHistory(mode, options);
 }
 
@@ -146,6 +155,10 @@ tabs?.addEventListener('click', (event) => {
   }
   if (button.dataset.view === 'likes') {
     void showLikes();
+    return;
+  }
+  if (button.dataset.view === 'unofficial') {
+    showUnofficial();
     return;
   }
   if (button.dataset.mode) {
