@@ -29,9 +29,10 @@ test('history client exposes only current canonical modes', () => {
     'utf8',
   );
 
-  for (const mode of ['daily', 'weekly', 'monthly', 'ranking', 'tracks', 'broadcasts']) {
+  for (const mode of ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']) {
     assert.match(source, new RegExp(`${mode}:`));
   }
+  assert.doesNotMatch(source, /tracks:|再生曲一覧|TRACK_COLUMNS|trackDate|trackWeekMode/);
   assert.match(source, /CACHE_PREFIX = 'sh\.history\.v3:'/);
 });
 
