@@ -8,11 +8,13 @@
 namespace hp {
 namespace {
 constexpr wchar_t kLeaderboardUrl[] = L"https://www.stationhead.com/leaderboard";
+constexpr wchar_t kIdleUrl[] = L"about:blank";
 constexpr int64_t kInitialCaptureDelayMs = 15'000;
 constexpr int64_t kCaptureIntervalMs = 30 * 60'000;
 constexpr int64_t kRetryIntervalMs = 5 * 60'000;
-constexpr int64_t kRenderSettleMs = 10'000;
-constexpr int64_t kCaptureTimeoutMs = 45'000;
+constexpr int64_t kRenderSettleMs = 2'000;
+constexpr int64_t kContentPollIntervalMs = 2'000;
+constexpr int64_t kCaptureTimeoutMs = 90'000;
 constexpr size_t kMaxSnapshotCharacters = 28 * 1024;
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
@@ -97,18 +99,19 @@ void StationheadLeaderboardCollector::Tick(int64_t nowMs) {
   if (!started_) return;
   stationhead_leaderboard_diagnostics::MarkTick();
 
-  if ((creating_ || controller_) && timeoutAt_ > 0 && nowMs >= timeoutAt_) {
+  if ((creating_ || controller_ || captureInFlight_) && timeoutAt_ > 0 &&
+      nowMs >= timeoutAt_) {
     FailCapture(nowMs, L"capture-timeout");
     return;
   }
 
-  if (controller_ && !captureInFlight_ && captureDueAt_ > 0 &&
+  if (webview_ && !captureInFlight_ && captureDueAt_ > 0 &&
       nowMs >= captureDueAt_) {
     CaptureSnapshot(nowMs, generation_);
     return;
   }
 
-  if (!creating_ && !controller_ && nextCaptureAt_ > 0 &&
+  if (!creating_ && !captureInFlight_ && nextCaptureAt_ > 0 &&
       nowMs >= nextCaptureAt_) {
     BeginCapture(nowMs);
     return;
@@ -118,16 +121,29 @@ void StationheadLeaderboardCollector::Tick(int64_t nowMs) {
 }
 
 void StationheadLeaderboardCollector::BeginCapture(int64_t nowMs) {
-  if (!started_ || creating_ || controller_) return;
-  creating_ = true;
-  captureInFlight_ = false;
+  if (!started_ || creating_ || captureInFlight_) return;
+
   nextCaptureAt_ = 0;
   captureDueAt_ = 0;
   timeoutAt_ = nowMs + kCaptureTimeoutMs;
+  stationhead_leaderboard_diagnostics::Mark("capture_begin", true, true);
+
+  if (controller_ && webview_) {
+    UpdateNextWake();
+    NavigateCurrent(generation_);
+    return;
+  }
+
+  if (controller_ || webview_) {
+    ++generation_;
+    CloseController();
+    environment_.Reset();
+  }
+
+  creating_ = true;
   const uint64_t generation = ++generation_;
   const auto alive = alive_;
   UpdateNextWake();
-  stationhead_leaderboard_diagnostics::Mark("capture_begin", true, true);
 
   SharedWebViewEnvironment::Instance().Acquire(
       userDataFolder_,
@@ -212,7 +228,7 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
                                     ICoreWebView2NavigationCompletedEventArgs* args)
               -> HRESULT {
             if (!CallbackAlive(alive) || !started_ || generation != generation_ ||
-                !args) {
+                !args || timeoutAt_ <= 0) {
               return S_OK;
             }
             BOOL success = FALSE;
@@ -235,11 +251,20 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
     return;
   }
 
+  NavigateCurrent(generation);
+}
+
+void StationheadLeaderboardCollector::NavigateCurrent(uint64_t generation) {
+  if (!started_ || generation != generation_ || !webview_) return;
+  captureDueAt_ = 0;
   stationhead_leaderboard_diagnostics::Mark("navigating", true, true);
+  webview_->Stop();
   const HRESULT navigate = webview_->Navigate(kLeaderboardUrl);
   if (FAILED(navigate)) {
     FailCapture(UnixMillis(), L"navigate-failed:" + HResultHex(navigate));
+    return;
   }
+  UpdateNextWake();
 }
 
 void StationheadLeaderboardCollector::CaptureSnapshot(
@@ -247,7 +272,6 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
   if (!started_ || generation != generation_ || !webview_ || captureInFlight_) return;
   captureInFlight_ = true;
   captureDueAt_ = 0;
-  timeoutAt_ = nowMs + kCaptureTimeoutMs;
   UpdateNextWake();
   stationhead_leaderboard_diagnostics::Mark("snapshot_started", true, true);
 
@@ -259,6 +283,15 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
     try {
       const url = new URL(String(value || ''), location.href);
       return url.protocol === 'https:' ? (url.origin + url.pathname).slice(0, 320) : '';
+    } catch (_) { return ''; }
+  };
+  const stationheadUrl = value => {
+    try {
+      const url = new URL(String(value || ''), location.href);
+      const host = String(url.hostname || '').toLowerCase();
+      if (url.protocol !== 'https:' ||
+          (host !== 'stationhead.com' && !host.endsWith('.stationhead.com'))) return '';
+      return (url.origin + url.pathname).slice(0, 320);
     } catch (_) { return ''; }
   };
   const rows = Array.from(document.querySelectorAll('tr,[role="row"]'))
@@ -278,22 +311,26 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
     .slice(0, 15)
     .map(link => ({
       text: bounded(link.innerText || link.textContent, 80),
-      url: safeUrl(link.href),
+      url: stationheadUrl(link.href),
     }))
     .filter(link => link.text || link.url);
   const resource_paths = Array.from(performance.getEntriesByType('resource') || [])
-    .map(entry => safeUrl(entry?.name || ''))
-    .filter(url => /(^https:\/\/|\.)stationhead\.com\//i.test(url) ||
-                   /^https:\/\/production\d*\.stationhead\.com\//i.test(url))
-    .slice(-15);
+    .map(entry => stationheadUrl(entry?.name || ''))
+    .filter(Boolean)
+    .slice(-20);
   const path = String(location.pathname || '');
+  const signed_in = !/^\/sign-in(?:\/|$)/i.test(path);
+  const leaderboard_ready = !signed_in || (
+    /^\/leaderboard\/?$/i.test(path) && lines.length >= 10 && links.length >= 5
+  );
   return {
     schema: 2,
     captured_at: Date.now(),
     title: bounded(document.title, 240),
     page: safeUrl(location.href),
     path: path.slice(0, 320),
-    signed_in: !/^\/sign-in(?:\/|$)/i.test(path),
+    signed_in,
+    leaderboard_ready,
     heading: bounded(root?.querySelector?.('h1,h2')?.innerText, 240),
     rows,
     lines,
@@ -329,6 +366,20 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
               const std::wstring page =
                   snapshot.GetNamedString(L"page", kLeaderboardUrl).c_str();
               const bool signedIn = snapshot.GetNamedBoolean(L"signed_in", false);
+              const bool contentReady =
+                  snapshot.GetNamedBoolean(L"leaderboard_ready", !signedIn);
+              const int64_t now = UnixMillis();
+
+              if (signedIn && !contentReady) {
+                if (timeoutAt_ > 0 && now + kContentPollIntervalMs < timeoutAt_) {
+                  captureDueAt_ = now + kContentPollIntervalMs;
+                  UpdateNextWake();
+                  return S_OK;
+                }
+                FailCapture(now, L"content-not-ready");
+                return S_OK;
+              }
+
               winrt::hstring serialized = snapshot.Stringify();
               if (serialized.size() > kMaxSnapshotCharacters) {
                 JsonObject reduced = snapshot;
@@ -375,10 +426,14 @@ void StationheadLeaderboardCollector::CompleteCapture(
   captureInFlight_ = false;
   captureDueAt_ = 0;
   timeoutAt_ = 0;
-  CloseController();
   nextCaptureAt_ = nowMs + (signedIn ? kCaptureIntervalMs : kRetryIntervalMs);
   stationhead_leaderboard_diagnostics::Mark("completed", true, true);
   UpdateNextWake();
+
+  // Keep the successfully-created controller/profile alive so recurring captures do
+  // not repeatedly race WebView2 profile controller creation. Unload Stationhead
+  // while idle to keep CPU/network use low; cookies remain in the shared profile.
+  if (webview_) webview_->Navigate(kIdleUrl);
 }
 
 void StationheadLeaderboardCollector::FailCapture(
@@ -399,11 +454,17 @@ void StationheadLeaderboardCollector::FailCapture(
   } catch (...) {
   }
   log_.Warn(L"Stationhead leaderboard capture failed: " + safeReason);
+
+  // Invalidate every outstanding environment/controller/navigation/script callback
+  // before tearing down the failed attempt. This prevents a late callback from an
+  // old timed-out attempt resurrecting a controller during the next retry window.
+  ++generation_;
   creating_ = false;
   captureInFlight_ = false;
   captureDueAt_ = 0;
   timeoutAt_ = 0;
   CloseController();
+  environment_.Reset();
   nextCaptureAt_ = nowMs + kRetryIntervalMs;
   UpdateNextWake();
 }
