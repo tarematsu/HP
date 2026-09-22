@@ -16,6 +16,16 @@ test('ranking renders a two-host leaderboard chart', () => {
   assert.match(rankingChart, /順位は上ほど高順位/);
 });
 
+test('ranking marks the known 2026 leaderboard gap as missing', () => {
+  assert.match(rankingChart, /KNOWN_MISSING_START = '2026-01-27'/);
+  assert.match(rankingChart, /KNOWN_MISSING_END = '2026-09-15'/);
+  assert.match(rankingChart, /drawMissingBand/);
+  assert.match(rankingChart, /fillText\('欠測'/);
+  assert.match(rankingChart, /missingRow/);
+  assert.match(rankingChart, /灰色は欠測期間です/);
+  assert.match(rankingChart, /\$\{match\[1\]\}\/\$\{Number\(match\[2\]\)\}\/\$\{Number\(match\[3\]\)\}/);
+});
+
 test('summary tables remove maximum likes and primary host while retaining track count', () => {
   assert.match(entry, /history-table-cleanup\.js/);
   assert.match(tableCleanup, /最大いいね/);
