@@ -19,18 +19,28 @@ test('summary metrics remain single-line at intermediate desktop and tablet widt
   assert.match(fixes, /font-size:\s*clamp\(1\.15rem,\s*1\.8vw,\s*1\.55rem\)/);
 });
 
-test('ranking summary counts recorded calendar weeks and treats missing weeks as out of rank', () => {
+test('featured and single-host ranking summaries count host weeks from the returned timeline', () => {
   assert.match(pageFixes, /history:data-loaded/);
   assert.match(pageFixes, /setText\('periodLabel', '総週数'\)/);
   assert.match(pageFixes, /setText\('maxLabel', 'ランクイン週数'\)/);
   assert.match(pageFixes, /setText\('streamLabel', '圏外週数'\)/);
-  assert.match(pageFixes, /Array\.isArray\(payload\?\.ranking_weeks\) && payload\.ranking_weeks\.length/);
-  assert.match(pageFixes, /const weekKeys = new Set\(sourceWeeks\.map\(mondayOnOrBefore\)\.filter\(Boolean\)\)/);
+  assert.match(pageFixes, /const singleHost = Array\.isArray\(payload\?\.chart_hosts\) && payload\.chart_hosts\.length === 1/);
+  assert.match(pageFixes, /rows\.map\(\(row\) => row\?\.ranking_date\)/);
   assert.match(pageFixes, /outWeeks: Math\.max\(0, totalWeeks - rankedWeeks\)/);
   assert.match(pageFixes, /value === null \|\| value === undefined \|\| value === ''/);
   assert.doesNotMatch(pageFixes, /weeklyRange|mondayOnOrAfter|WEEK_MS/);
   assert.doesNotMatch(pageFixes, /rows\.length - rankedCount/);
   assert.doesNotMatch(fixes, /function finiteRank|repairRankingSummary|rankingBody/);
+});
+
+test('all-host ranking summary uses aggregate leaderboard metrics', () => {
+  assert.match(pageFixes, /setText\('periodLabel', '対象週数'\)/);
+  assert.match(pageFixes, /setText\('maxLabel', '掲載ホスト数'\)/);
+  assert.match(pageFixes, /setText\('streamLabel', '延べランクイン数'\)/);
+  assert.match(pageFixes, /setText\('memberLabel', '圏外補完数'\)/);
+  assert.match(pageFixes, /payload\.scope === 'all' && !singleSelectedHost/);
+  assert.match(pageFixes, /summary\.ranked_entry_count/);
+  assert.match(pageFixes, /summary\.out_of_rank_count/);
 });
 
 test('current playback can recover missing labels from the track ranking projection', () => {
