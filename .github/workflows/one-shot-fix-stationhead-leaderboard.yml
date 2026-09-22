@@ -26,18 +26,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          def splice_between(path, start_pred, end_pred, replacement):
-              p = Path(path)
-              lines = p.read_text().splitlines()
-              start = next((i for i, line in enumerate(lines) if start_pred(line)), None)
-              if start is None:
-                  raise SystemExit(f'start marker not found: {path}')
-              end = next((i for i in range(start + 1, len(lines)) if end_pred(lines[i])), None)
-              if end is None:
-                  raise SystemExit(f'end marker not found: {path}')
-              lines[start:end] = replacement.splitlines()
-              p.write_text('\n'.join(lines) + '\n')
-
           importer = Path('worker/scripts/import-stationhead-weekly-leaderboard-actions.mjs')
           lines = importer.read_text().splitlines()
           start = next(i for i, line in enumerate(lines) if line.startswith('function normalizeCandidateRow('))
@@ -115,6 +103,14 @@ jobs:
               if index + 1 >= len(lines) or lines[index + 1].strip() != 'if: always()':
                   lines.insert(index + 1, '        if: always()')
           workflow.write_text('\n'.join(lines) + '\n')
+
+          regression = Path('hp/video/test/stationhead-leaderboard-cloud-upload-regression.test.js')
+          text = regression.read_text()
+          old = '  assert.match(collector, /lines\\.length >= 10 && links\\.length >= 5/);'
+          new = "  assert.match(collector, /const ranking = \\[\\]/);\n  assert.match(collector, /expectedRank <= 100/);\n  assert.match(collector, /ranking\\.length >= 10/);"
+          if old not in text:
+              raise SystemExit('old leaderboard ready regression assertion not found')
+          regression.write_text(text.replace(old, new, 1))
           PY
 
           node --test worker/tests/stationhead-weekly-leaderboard-import.test.js
