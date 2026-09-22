@@ -1,4 +1,5 @@
 const DAY_MS = 86_400_000;
+const EXTREMA_POINT_COLOR = '#888';
 const integer = new Intl.NumberFormat('ja-JP');
 const jstExtremaTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -218,7 +219,7 @@ function drawComparison(payload) {
     const minRow = current.find((row) => row.online_member_count === currentMin);
     const maxRow = current.find((row) => row.online_member_count === currentMax);
     if (minRow) {
-      context.fillStyle = '#111';
+      context.fillStyle = EXTREMA_POINT_COLOR;
       context.beginPath();
       context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3.5, 0, Math.PI * 2);
       context.fill();
@@ -233,7 +234,7 @@ function drawComparison(payload) {
       );
     }
     if (maxRow) {
-      context.fillStyle = '#111';
+      context.fillStyle = EXTREMA_POINT_COLOR;
       context.beginPath();
       context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3.5, 0, Math.PI * 2);
       context.fill();
