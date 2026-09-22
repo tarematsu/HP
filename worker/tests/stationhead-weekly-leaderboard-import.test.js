@@ -120,7 +120,10 @@ test('line fallback requires a consecutive leaderboard sequence', () => {
   assert.equal(parsed.rows.length, 3);
   assert.equal(parsed.rows[0].channel_name, 'sakurazaka46jp');
   assert.equal(parsed.rows[0].streams, 12345);
-  assert.equal(parsed.rows[0].days, 7);
+  // Bare small integers are ambiguous in the line-only fallback because they can
+  // be either the next rank or an optional Days metric. The table parser above
+  // is authoritative for Days; line fallback intentionally preserves rank/host/streams.
+  assert.equal(parsed.rows[0].days, null);
 });
 
 test('extracts only an authenticated ready leaderboard and assigns the JST Monday date', () => {
