@@ -23,6 +23,7 @@ async function importModeRuntime(mode) {
   }
   await import('/history/history-broadcast-summary.js?v=20260923.2');
   await import('/history/history-broadcasts.js?v=20260923.3');
+  await import('/history/history-broadcast-table.js?v=20260923.1');
 }
 
 async function ensureHistoryModeRuntime(mode) {
