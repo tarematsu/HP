@@ -67,11 +67,6 @@ function renderOverlay() {
     context.save();
     context.fillStyle = 'rgba(100, 107, 116, .16)';
     context.fillRect(left, area.top, Math.max(1, right - left), area.height);
-    context.fillStyle = 'rgba(70, 77, 86, .82)';
-    context.font = '600 11px system-ui';
-    context.textAlign = 'center';
-    context.textBaseline = 'top';
-    context.fillText('欠測', (left + right) / 2, area.top + 7);
     context.restore();
   }
 
