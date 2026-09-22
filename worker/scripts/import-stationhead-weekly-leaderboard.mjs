@@ -8,8 +8,7 @@ export const UNIQUE_INDEX = 'uq_other_channel_rankings_week_host';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-const MIN_ROWS = 50;
-const MAX_ROWS = 200;
+const EXPECTED_ROWS = 100;
 const UPSERT_CHUNK_SIZE = 25;
 
 function mondayDate(value) {
@@ -49,8 +48,8 @@ export function validateWeeklyLeaderboardPayload(value) {
   }
   const digest = String(value.digest || '').trim().toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(digest)) throw new Error('digest must be a SHA-256 hex string');
-  if (!Array.isArray(value.rows) || value.rows.length < MIN_ROWS || value.rows.length > MAX_ROWS) {
-    throw new Error(`weekly leaderboard must contain ${MIN_ROWS}-${MAX_ROWS} rows`);
+  if (!Array.isArray(value.rows) || value.rows.length !== EXPECTED_ROWS) {
+    throw new Error(`weekly leaderboard must contain exactly ${EXPECTED_ROWS} rows`);
   }
 
   const rows = [];
@@ -60,7 +59,7 @@ export function validateWeeklyLeaderboardPayload(value) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('leaderboard row must be an object');
     const rank = Number(raw.rank);
     const channelName = normalizeHost(raw.channel_name ?? raw.host ?? raw.handle ?? raw.name);
-    if (!Number.isSafeInteger(rank) || rank < 1 || rank > MAX_ROWS) throw new Error(`invalid leaderboard rank: ${raw.rank}`);
+    if (!Number.isSafeInteger(rank) || rank < 1 || rank > EXPECTED_ROWS) throw new Error(`invalid leaderboard rank: ${raw.rank}`);
     if (!channelName) throw new Error(`invalid leaderboard channel: ${raw.channel_name}`);
     if (ranks.has(rank)) throw new Error(`duplicate leaderboard rank: ${rank}`);
     if (hosts.has(channelName)) throw new Error(`duplicate leaderboard channel: ${channelName}`);
@@ -106,6 +105,7 @@ function upsertStatement(db, snapshot, row, importedAt) {
   ON CONFLICT DO UPDATE SET
     observed_at=excluded.observed_at,
     rank=excluded.rank,
+    channel_name=excluded.channel_name,
     channel_alias=CASE
       WHEN sh_channel_rankings.channel_alias IS NULL
         OR trim(sh_channel_rankings.channel_alias)=''
@@ -147,12 +147,18 @@ async function verifyUniqueIndex(db) {
 async function alreadyImported(db, snapshot) {
   const row = await db.prepare(`SELECT
     COUNT(*) AS row_count,
+    COUNT(DISTINCT rank) AS rank_count,
+    MIN(rank) AS min_rank,
+    MAX(rank) AS max_rank,
     SUM(CASE WHEN json_valid(raw_json) AND json_extract(raw_json,'$.digest')=? THEN 1 ELSE 0 END) AS digest_rows
   FROM sh_channel_rankings
   WHERE ranking_date=? AND ranking_type=?`)
     .bind(snapshot.digest, snapshot.ranking_date, RANKING_TYPE)
     .first();
   return Number(row?.row_count || 0) === snapshot.rows.length
+    && Number(row?.rank_count || 0) === snapshot.rows.length
+    && Number(row?.min_rank || 0) === 1
+    && Number(row?.max_rank || 0) === snapshot.rows.length
     && Number(row?.digest_rows || 0) === snapshot.rows.length;
 }
 
@@ -174,6 +180,8 @@ async function verifyImportedRows(db, snapshot) {
     COUNT(*) AS row_count,
     COUNT(DISTINCT lower(trim(channel_name))) AS host_count,
     COUNT(DISTINCT rank) AS rank_count,
+    MIN(rank) AS min_rank,
+    MAX(rank) AS max_rank,
     SUM(CASE WHEN json_valid(raw_json) AND json_extract(raw_json,'$.digest')=? THEN 1 ELSE 0 END) AS digest_rows
   FROM sh_channel_rankings
   WHERE ranking_date=? AND ranking_type=?`)
@@ -183,11 +191,15 @@ async function verifyImportedRows(db, snapshot) {
     rows: Number(row?.row_count || 0),
     hosts: Number(row?.host_count || 0),
     ranks: Number(row?.rank_count || 0),
+    minRank: Number(row?.min_rank || 0),
+    maxRank: Number(row?.max_rank || 0),
     digestRows: Number(row?.digest_rows || 0),
   };
   if (counts.rows !== snapshot.rows.length
       || counts.hosts !== snapshot.rows.length
       || counts.ranks !== snapshot.rows.length
+      || counts.minRank !== 1
+      || counts.maxRank !== snapshot.rows.length
       || counts.digestRows !== snapshot.rows.length) {
     throw new Error(`weekly leaderboard verification failed: ${JSON.stringify(counts)}`);
   }
