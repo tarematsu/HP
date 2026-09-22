@@ -41,9 +41,12 @@ function validRank(value) {
 
 function rankingWeekCounts(payload) {
   const rows = Array.isArray(payload?.rows) ? payload.rows : [];
-  const sourceWeeks = Array.isArray(payload?.ranking_weeks) && payload.ranking_weeks.length
-    ? payload.ranking_weeks
-    : rows.map((row) => row?.ranking_date);
+  const singleHost = Array.isArray(payload?.chart_hosts) && payload.chart_hosts.length === 1;
+  const sourceWeeks = singleHost
+    ? rows.map((row) => row?.ranking_date)
+    : Array.isArray(payload?.ranking_weeks) && payload.ranking_weeks.length
+      ? payload.ranking_weeks
+      : rows.map((row) => row?.ranking_date);
   const weekKeys = new Set(sourceWeeks.map(mondayOnOrBefore).filter(Boolean));
   const totalWeeks = weekKeys.size;
   const rankedWeeks = new Set(rows
@@ -57,11 +60,21 @@ function rankingWeekCounts(payload) {
   };
 }
 
-function applyRankingPresentation(payload) {
-  if (!payload || payload.mode !== 'ranking') return;
+function applyAllHostSummary(payload) {
+  const summary = payload?.ranking_summary || {};
+  setText('periodLabel', '対象週数');
+  setText('maxLabel', '掲載ホスト数');
+  setText('streamLabel', '延べランクイン数');
+  setText('memberLabel', '圏外補完数');
+  setText('periods', integer.format(Number(summary.week_count || 0)));
+  setText('maxListener', integer.format(Number(summary.listed_host_count ?? summary.host_count ?? 0)));
+  setText('streamGrowth', integer.format(Number(summary.ranked_entry_count || 0)));
+  setText('memberGrowth', integer.format(Number(summary.out_of_rank_count || 0)));
+}
+
+function applyHostSummary(payload) {
   const hostCount = Number(payload.host_count || 0);
   const { totalWeeks, rankedWeeks, outWeeks } = rankingWeekCounts(payload);
-
   setText('periodLabel', '総週数');
   setText('maxLabel', 'ランクイン週数');
   setText('streamLabel', '圏外週数');
@@ -70,6 +83,15 @@ function applyRankingPresentation(payload) {
   setText('maxListener', integer.format(rankedWeeks));
   setText('streamGrowth', integer.format(outWeeks));
   setText('memberGrowth', integer.format(hostCount));
+}
+
+function applyRankingPresentation(payload) {
+  if (!payload || payload.mode !== 'ranking') return;
+  const singleSelectedHost = payload.scope === 'all'
+    && Array.isArray(payload.chart_hosts)
+    && payload.chart_hosts.length === 1;
+  if (payload.scope === 'all' && !singleSelectedHost) applyAllHostSummary(payload);
+  else applyHostSummary(payload);
 }
 
 window.addEventListener('history:data-loaded', (event) => {
