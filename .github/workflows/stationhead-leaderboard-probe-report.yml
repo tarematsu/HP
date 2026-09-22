@@ -20,36 +20,141 @@ jobs:
         with:
           api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
 
-      - name: Resolve HomePanel probe status URL
-        id: probe-url
-        run: node .github/scripts/cloudflare-worker-public-url.mjs homepanel-cloud /api/health/stationhead-leaderboard-probe
-
-      - name: Pull R2-backed probe status
+      - name: Pull probe status directly from R2
         shell: bash
         env:
-          PROBE_URL: ${{ steps.probe-url.outputs.health-url }}
+          STATUS_KEY: diagnostics/stationhead-leaderboard/status.json
         run: |
           set -euo pipefail
           mkdir -p probe-artifact
-          curl --fail --silent --show-error --retry 3 --retry-all-errors \
-            -H 'Accept: application/json' \
-            "$PROBE_URL" \
-            -o probe-artifact/stationhead-leaderboard-probe-status.json
+          artifact='probe-artifact/stationhead-leaderboard-probe-status.json'
+          api='https://api.cloudflare.com/client/v4'
+          auth_header="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
+          encoded_key="$(jq -rn --arg value "$STATUS_KEY" '$value | split("/") | map(@uri) | join("/")')"
+
+          bucket_cursor=''
+          found=0
+          while true; do
+            query=(--get --data-urlencode 'per_page=1000')
+            [[ -z "$bucket_cursor" ]] || query+=(--data-urlencode "cursor=$bucket_cursor")
+            buckets_response="$(curl --fail-with-body --silent --show-error \
+              -H "$auth_header" "${query[@]}" \
+              "$api/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets")"
+            jq -e \
+              '.success == true and
+               (.result.buckets | type == "array") and
+               all(.result.buckets[]?; .name | type == "string") and
+               ((.result_info.cursor? // null) | type == "null" or type == "string")' \
+              <<< "$buckets_response" >/dev/null
+
+            mapfile -t bucket_names < <(jq -r '.result.buckets[]?.name' <<< "$buckets_response")
+            for bucket in "${bucket_names[@]}"; do
+              [[ "$bucket" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]] || continue
+              candidate="$(mktemp)"
+              status_code="$(curl --silent --show-error \
+                -H "$auth_header" \
+                --output "$candidate" \
+                --write-out '%{http_code}' \
+                "$api/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${bucket}/objects/${encoded_key}" || true)"
+              if [[ "$status_code" == '200' ]]; then
+                found=$((found + 1))
+                [[ "$found" -eq 1 ]] || {
+                  echo 'Leaderboard probe status exists in more than one R2 bucket.' >&2
+                  exit 1
+                }
+                mv "$candidate" "$artifact"
+              else
+                rm -f "$candidate"
+                [[ "$status_code" == '404' ]] || {
+                  echo "R2 object lookup failed with HTTP ${status_code}." >&2
+                  exit 1
+                }
+              fi
+            done
+
+            next_cursor="$(jq -r '.result_info.cursor // empty' <<< "$buckets_response")"
+            [[ -n "$next_cursor" ]] || break
+            [[ "$next_cursor" != "$bucket_cursor" ]] || {
+              echo 'Cloudflare R2 bucket listing returned a repeated cursor.' >&2
+              exit 1
+            }
+            bucket_cursor="$next_cursor"
+          done
+
+          if [[ "$found" -eq 0 ]]; then
+            cat > "$artifact" <<'JSON'
+          {
+            "version": 1,
+            "updated_at": null,
+            "stage": "no_status",
+            "native": {
+              "spool_records": null,
+              "batch_records": null,
+              "diagnostic_schema": null,
+              "collector_stage": null,
+              "last_success_stage": null,
+              "collector_started": false,
+              "collector_ticked": false,
+              "last_transition_at": null,
+              "last_failure_at": null,
+              "last_error": null,
+              "exchange_at": null
+            },
+            "cloud": {
+              "reached": false,
+              "probe_submitted": false,
+              "accepted": 0,
+              "stored": false,
+              "dispatch_ok": false,
+              "error": "none"
+            },
+            "history": {
+              "last_probe_received_at": null,
+              "last_stored_at": null,
+              "last_reported_at": null
+            }
+          }
+          JSON
+          fi
+
           node - <<'NODE'
           const fs = require('node:fs');
           const path = 'probe-artifact/stationhead-leaderboard-probe-status.json';
           const payload = JSON.parse(fs.readFileSync(path, 'utf8'));
           if (!payload || payload.version !== 1) throw new Error('invalid leaderboard probe status payload');
+
+          const forbiddenKeys = /^(device_?id|authorization|cookie|body|token|secret)$/i;
+          const forbiddenValue = /\bBearer\s+[A-Za-z0-9._~+\/-]+=*|authorization:|cookie:/i;
+          const visit = (value, trail = []) => {
+            if (Array.isArray(value)) {
+              value.forEach((entry, index) => visit(entry, trail.concat(String(index))));
+              return;
+            }
+            if (value && typeof value === 'object') {
+              for (const [key, entry] of Object.entries(value)) {
+                if (forbiddenKeys.test(key)) throw new Error(`forbidden diagnostic field: ${trail.concat(key).join('.')}`);
+                visit(entry, trail.concat(key));
+              }
+              return;
+            }
+            if (typeof value === 'string' && forbiddenValue.test(value)) {
+              throw new Error(`credential-like diagnostic value at ${trail.join('.')}`);
+            }
+          };
+          visit(payload);
+
           const summary = process.env.GITHUB_STEP_SUMMARY;
           fs.appendFileSync(summary, [
-            '## Stationhead leaderboard probe (R2 pull)',
+            '## Stationhead leaderboard probe (direct R2 read)',
             '',
             `- **updated_at**: \`${String(payload.updated_at ?? '')}\``,
             `- **stage**: \`${String(payload.stage ?? '')}\``,
-            `- **stored**: \`${String(payload.cloud?.stored ?? false)}\``,
-            `- **accepted**: \`${String(payload.cloud?.accepted ?? 0)}\``,
+            `- **native collector_stage**: \`${String(payload.native?.collector_stage ?? '')}\``,
+            `- **native spool_records**: \`${String(payload.native?.spool_records ?? '')}\``,
+            `- **cloud stored**: \`${String(payload.cloud?.stored ?? false)}\``,
+            `- **cloud accepted**: \`${String(payload.cloud?.accepted ?? 0)}\``,
             '',
-            'GitHub Actions pulled this snapshot on demand from the R2-backed HomePanel diagnostic endpoint; the Worker does not push repository_dispatch events.',
+            'This snapshot was read through the Cloudflare R2 REST API. No Worker public URL or repository_dispatch is required.',
             '',
           ].join('\n'));
           NODE
