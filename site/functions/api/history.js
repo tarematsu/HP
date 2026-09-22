@@ -33,10 +33,10 @@ const OFFICIAL_BROADCAST_METADATA = new Map([
     content: '2nd Album「Addiction」DISC1全24曲', tracks: 24,
   }],
   ['2025.10.29 13th Single『Unhappy birthday構文』リリース記念Stationheadリスニングパーティー', {
-    content: '13th Single「Unhappy birthday構文」Special Edition全7曲', tracks: 7,
+    content: '13th Single「Unhappy birthday構文」Special Edition（トラブルで実再生5曲）', tracks: 5,
   }],
   ['2025.12.30『THANK YOU BUDDIES!! THANK YOU 2025!! 櫻坂46 YEAR-END LISTENING PARTY』', {
-    content: '2025年リリース曲全22曲', tracks: 22,
+    content: '2025年リリース22曲＋Interlude7曲（全29曲・楽曲尺93分19秒）', tracks: 29,
   }],
   ['2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』', {
     content: 'ROCK IN JAPAN FESTIVAL 2026予定セットリスト',
@@ -201,7 +201,7 @@ async function loadBroadcastPayload(env, from, to) {
 
 async function loadBroadcasts(env, from, to) {
   const payload = await cachedHistoryLoad(
-    `broadcasts:v7:${from}:${to}`,
+    `broadcasts:v8:${from}:${to}`,
     30000,
     () => loadBroadcastPayload(env, from, to),
   );
