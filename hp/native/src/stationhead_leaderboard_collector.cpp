@@ -212,9 +212,13 @@ void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
 
 void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) {
   if (!started_ || generation != generation_ || !controller_) return;
-  controller_->put_IsVisible(FALSE);
+  // WebView2 can suspend/throttle an invisible controller before navigation and
+  // script execution complete. Keep this 1x1 controller logically visible, just
+  // like the normal Stationhead background surfaces, so capture continues while
+  // remaining effectively invisible to the user.
   RECT bounds{0, 0, 1, 1};
   controller_->put_Bounds(bounds);
+  controller_->put_IsVisible(TRUE);
   if (FAILED(controller_->get_CoreWebView2(&webview_)) || !webview_) {
     FailCapture(UnixMillis(), L"webview-unavailable");
     return;
