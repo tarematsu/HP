@@ -5,9 +5,11 @@ function normalizedIdentity(value) {
 }
 
 function hasTrackIdentity(track) {
+  const stationheadTrackId = Number(track?.stationhead_track_id);
   return Boolean(
     String(track?.spotify_id || '').trim()
-      || normalizedIdentity(track?.isrc),
+      || normalizedIdentity(track?.isrc)
+      || (Number.isFinite(stationheadTrackId) && stationheadTrackId > 0),
   );
 }
 
