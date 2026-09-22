@@ -249,9 +249,10 @@ bool ActiveAuthSurfaceMatches(HWND hostWindow,
       !IsWindowVisible(authHostWindow)) {
     return false;
   }
-  const RECT surface = StationheadBackgroundBounds(workspaceBounds);
-  return SurfaceMatches(hostWindow, controller, surface, HWND_BOTTOM) &&
-         SurfaceMatches(authHostWindow, authController, surface, HWND_TOP, false);
+  const RECT playbackSurface = StationheadBackgroundBounds(workspaceBounds);
+  const RECT authSurface = StationheadMonitorPanelBounds(workspaceBounds);
+  return SurfaceMatches(hostWindow, controller, playbackSurface, HWND_BOTTOM) &&
+         SurfaceMatches(authHostWindow, authController, authSurface, HWND_TOP, false);
 }
 
 RECT ResolveStationheadWorkspaceBounds(HWND parent,
@@ -303,13 +304,15 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                                  bool monitorForeground) {
   const bool playbackForeground =
       showPlayback || (!showAuth && !hidePlayback && monitorForeground);
+  const bool interactivePlayback = showPlayback;
 
   const RECT surfaceBounds = StationheadBackgroundBounds(workspaceBounds);
+  const RECT monitorPanelBounds = StationheadMonitorPanelBounds(workspaceBounds);
   RECT playbackHostBounds = surfaceBounds;
-  if (monitorForeground && playbackForeground) {
-    playbackHostBounds = StationheadMonitorPanelBounds(workspaceBounds);
+  if (playbackForeground && (monitorForeground || interactivePlayback)) {
+    playbackHostBounds = monitorPanelBounds;
   }
-  const RECT authHostBounds = surfaceBounds;
+  const RECT authHostBounds = showAuth ? monitorPanelBounds : surfaceBounds;
   const HWND hostPlacement = playbackForeground ? HWND_TOP : HWND_BOTTOM;
   const HWND authPlacement = showAuth ? HWND_TOP : HWND_BOTTOM;
 
@@ -317,14 +320,16 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int playbackHeight = RectHeight(playbackHostBounds);
   const int authWidth = RectWidth(authHostBounds);
   const int authHeight = RectHeight(authHostBounds);
-  const RECT playbackControllerBounds = monitorForeground && playbackForeground
+  const bool fullPanelPlayback =
+      playbackForeground && (monitorForeground || interactivePlayback);
+  const RECT playbackControllerBounds = fullPanelPlayback
       ? RECT{0, 0, playbackWidth, playbackHeight}
       : StationheadPlaybackControllerBounds();
   const RECT authControllerBounds{0, 0, authWidth, authHeight};
 
-  // Keep normal/background playback at the fixed 360x960 viewport. A named
-  // monitor uses the same media-panel rectangle as YouTube/TVer, while auth
-  // promotion can still use the full workspace independently.
+  // Keep normal/background playback at the fixed 360x960 viewport. Named
+  // monitor, Stationhead login-required, and Spotify authorization surfaces all
+  // use the same media-panel rectangle as YouTube/TVer when promoted for input.
   if (authHostWindow && IsWindow(authHostWindow)) {
     const bool geometryMatches =
         WindowClientSizeMatches(authHostWindow, authWidth, authHeight) &&
@@ -540,11 +545,9 @@ void StationheadPlayer::SetVisible(bool visible) {
       return;
     }
   } else if (foregroundGranted && loginRequired_ && viewVisible_) {
-    const RECT expectedPlayback = monitorForeground
-        ? StationheadMonitorPanelBounds(bounds_)
-        : StationheadBackgroundBounds(bounds_);
+    const RECT expectedPlayback = StationheadMonitorPanelBounds(bounds_);
     if (SurfaceMatches(hostWindow_, controller_.Get(), expectedPlayback,
-                       HWND_TOP, !monitorForeground) &&
+                       HWND_TOP, false) &&
         BackgroundAuthSurfaceMatches(
             authHostWindow_, authController_.Get(), bounds_) &&
         WindowContainsFocus(hostWindow_)) {

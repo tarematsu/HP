@@ -41,7 +41,7 @@ test('Stationhead playback and auth leave the WebView2 memory target unmanaged i
   assert.match(layout, /authController->put_IsVisible\(TRUE\)/);
 });
 
-test('named Stationhead monitor overlays the media panel while auth promotion keeps native media alive underneath', () => {
+test('named Stationhead monitor and interactive auth both overlay the YouTube media panel', () => {
   assert.match(routing, /SetStationheadMonitorProfile\(selectedProfile\)/);
   assert.match(routing, /StationheadProfileNumberFromWindow\(child\) != context->selectedProfile/);
   assert.match(routing, /const bool nativeMediaForeground = monitorMode_ != MonitorMode::Off;/);
@@ -51,6 +51,11 @@ test('named Stationhead monitor overlays the media panel while auth promotion ke
   assert.match(routing, /monitorAuthSlots_/);
   assert.match(routing, /PostMessageW\(parent_, WM_TIMER, 0, 0\)/);
   assert.match(bridge, /inline std::atomic<unsigned> gStationheadMonitorProfile\{0\}/);
+  assert.match(layout, /const RECT monitorPanelBounds = StationheadMonitorPanelBounds\(workspaceBounds\)/);
+  assert.match(layout, /const RECT authHostBounds = showAuth \? monitorPanelBounds : surfaceBounds/);
+  assert.match(layout, /playbackForeground && \(monitorForeground \|\| interactivePlayback\)/);
+  assert.match(layout, /const RECT expectedPlayback = StationheadMonitorPanelBounds\(bounds_\);/);
+  assert.match(layout, /SurfaceMatches\(authHostWindow, authController, authSurface, HWND_TOP, false\)/);
   assert.match(layout, /ApplyHostVisualClip\(hostWindow, playbackForeground\)/);
   assert.match(layout, /authPlacement = showAuth \? HWND_TOP : HWND_BOTTOM/);
 });
