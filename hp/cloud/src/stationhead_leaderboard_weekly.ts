@@ -1,8 +1,7 @@
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MONDAY_NIGHT_LOCAL_HOUR = 18;
-const MIN_WEEKLY_ROWS = 50;
-const MAX_WEEKLY_ROWS = 200;
+const EXPECTED_WEEKLY_ROWS = 100;
 
 export const STATIONHEAD_WEEKLY_CANDIDATE_PREFIX = "diagnostics/stationhead-leaderboard/weekly/";
 
@@ -67,13 +66,13 @@ function normalizedHandle(value: unknown): string | null {
 
 function normalizedRank(value: unknown): number | null {
   const rank = Number(value);
-  return Number.isSafeInteger(rank) && rank >= 1 && rank <= MAX_WEEKLY_ROWS ? rank : null;
+  return Number.isSafeInteger(rank) && rank >= 1 && rank <= EXPECTED_WEEKLY_ROWS ? rank : null;
 }
 
 function directRows(value: unknown): StationheadWeeklyLeaderboardRow[] {
   if (!Array.isArray(value)) return [];
   const rows: StationheadWeeklyLeaderboardRow[] = [];
-  for (const item of value.slice(0, MAX_WEEKLY_ROWS)) {
+  for (const item of value.slice(0, EXPECTED_WEEKLY_ROWS)) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const row = item as JsonRecord;
     const rank = normalizedRank(row.rank);
@@ -87,12 +86,12 @@ function directRows(value: unknown): StationheadWeeklyLeaderboardRow[] {
 function rowsFromLines(value: unknown): StationheadWeeklyLeaderboardRow[] {
   if (!Array.isArray(value)) return [];
   const lines = value
-    .slice(0, 800)
+    .slice(0, 1_600)
     .map(item => String(item ?? "").trim())
     .filter(Boolean);
   const rows: StationheadWeeklyLeaderboardRow[] = [];
   let expectedRank = 1;
-  for (let index = 0; index < lines.length && expectedRank <= MAX_WEEKLY_ROWS; index += 1) {
+  for (let index = 0; index < lines.length && expectedRank <= EXPECTED_WEEKLY_ROWS; index += 1) {
     if (lines[index] !== String(expectedRank)) continue;
     let channel: string | null = null;
     for (let lookahead = index + 1; lookahead < Math.min(lines.length, index + 8); lookahead += 1) {
@@ -110,7 +109,7 @@ function rowsFromLines(value: unknown): StationheadWeeklyLeaderboardRow[] {
 }
 
 function completeRows(rows: StationheadWeeklyLeaderboardRow[]): StationheadWeeklyLeaderboardRow[] | null {
-  if (rows.length < MIN_WEEKLY_ROWS || rows.length > MAX_WEEKLY_ROWS) return null;
+  if (rows.length !== EXPECTED_WEEKLY_ROWS) return null;
   const byRank = new Map<number, StationheadWeeklyLeaderboardRow>();
   const hosts = new Set<string>();
   for (const row of rows) {
@@ -119,7 +118,7 @@ function completeRows(rows: StationheadWeeklyLeaderboardRow[]): StationheadWeekl
     hosts.add(row.channel_name);
   }
   const ordered: StationheadWeeklyLeaderboardRow[] = [];
-  for (let rank = 1; rank <= rows.length; rank += 1) {
+  for (let rank = 1; rank <= EXPECTED_WEEKLY_ROWS; rank += 1) {
     const row = byRank.get(rank);
     if (!row) return null;
     ordered.push(row);
