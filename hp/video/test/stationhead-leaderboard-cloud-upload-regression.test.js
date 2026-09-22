@@ -32,9 +32,10 @@ test('legacy leaderboard interception is completely absent from playback WebView
   assert.match(playbackPolicy, /StationheadLoginSettlementScript/);
 });
 
-test('leaderboard acquisition keeps one 1x1 background WebView active and waits for rendered ranking data', () => {
+test('leaderboard acquisition uses a disposable 1x1 background WebView and waits for rendered ranking data', () => {
   assert.match(collector, /https:\/\/www\.stationhead\.com\/leaderboard/);
-  assert.match(collector, /about:blank/);
+  assert.doesNotMatch(collector, /about:blank/);
+  assert.match(collector, /kCaptureIntervalMs = 60 \* 60'000/);
   assert.match(collector, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
   assert.match(collector, /put_ProfileName\(profileName_\.c_str\(\)\)/);
   assert.match(collector, /put_IsInPrivateModeEnabled\(FALSE\)/);
@@ -76,8 +77,10 @@ test('leaderboard acquisition keeps one 1x1 background WebView active and waits 
   assert.match(snapshotBody, /FAILED\(result\)[\s\S]*captureDueAt_ = now \+ kContentPollIntervalMs/);
   assert.match(snapshotBody, /FAILED\(execute\)[\s\S]*captureDueAt_ = nowMs \+ kContentPollIntervalMs/);
   const completeBody = collector.slice(completeStart, failStart);
-  assert.doesNotMatch(completeBody, /CloseController\(\)/);
-  assert.match(completeBody, /webview_->Navigate\(kIdleUrl\)/);
+  assert.match(completeBody, /\+\+generation_/);
+  assert.match(completeBody, /CloseController\(\)/);
+  assert.match(completeBody, /environment_\.Reset\(\)/);
+  assert.doesNotMatch(completeBody, /Navigate\(/);
 
   const failBody = collector.slice(failStart, collector.indexOf('void StationheadLeaderboardCollector::CloseController'));
   assert.match(failBody, /\+\+generation_/);
