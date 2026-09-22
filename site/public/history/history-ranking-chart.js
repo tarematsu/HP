@@ -1,5 +1,3 @@
-const browser = typeof window === 'undefined' ? null : window;
-const previousFetch = browser?.fetch?.bind(browser) || null;
 const RANKING_MODE = 'ranking';
 const HOSTS = ['sakuramankai', 'sakurazaka46jp'];
 const HOST_COLORS = new Map([
@@ -59,15 +57,6 @@ function weeklyRange(from, to) {
   return weeks;
 }
 
-function requestUrl(input) {
-  try {
-    const value = typeof input === 'string' || input instanceof URL ? input : input?.url;
-    return new URL(value, browser?.location?.href || 'https://history.invalid/');
-  } catch {
-    return null;
-  }
-}
-
 function activeMode() {
   return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || '');
 }
@@ -79,31 +68,6 @@ function cssColor(name, fallback) {
 function scheduleDraw(delay = 0) {
   clearTimeout(drawTimer);
   drawTimer = setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(draw)), delay);
-}
-
-async function captureRankingResponse(input, response) {
-  if (!response?.ok) return;
-  const url = requestUrl(input);
-  if (!url || url.origin !== location.origin || url.pathname !== '/api/history') return;
-  if (String(url.searchParams.get('mode') || '').toLowerCase() !== RANKING_MODE) return;
-  try {
-    const data = await response.clone().json();
-    if (!data?.ok || !Array.isArray(data.rows)) return;
-    rows = data.rows;
-    rankingWeeks = Array.isArray(data.ranking_weeks) ? data.ranking_weeks.map(isoDate).filter(Boolean) : [];
-    rankingFrom = isoDate(url.searchParams.get('from')) || null;
-    rankingTo = isoDate(url.searchParams.get('to')) || null;
-    selectedWeekIndex = null;
-    scheduleDraw();
-  } catch {}
-}
-
-if (browser && previousFetch) {
-  browser.fetch = async (input, init) => {
-    const response = await previousFetch(input, init);
-    void captureRankingResponse(input, response);
-    return response;
-  };
 }
 
 function prepareCanvas() {
@@ -233,8 +197,7 @@ function draw() {
   context.font = '10px system-ui';
   context.textBaseline = 'top';
   const xTickCount = Math.min(model.weeks.length, width < 520 ? 4 : 6);
-  const xTicks = tickIndices(model.weeks.length, xTickCount);
-  for (const index of xTicks) {
+  for (const index of tickIndices(model.weeks.length, xTickCount)) {
     const x = positions[index];
     context.beginPath();
     context.strokeStyle = 'rgba(31,45,68,.16)';
@@ -275,12 +238,18 @@ function draw() {
   window.dispatchEvent(new CustomEvent('history:ranking-chart-drawn', { detail: { weeks: model.weeks } }));
 }
 
-const tbody = document.getElementById('tbody');
-if (tbody) new MutationObserver(() => {
-  if (activeMode() === RANKING_MODE) scheduleDraw();
-}).observe(tbody, { childList: true });
-
-document.getElementById('modeTabs')?.addEventListener('click', () => scheduleDraw(20));
+window.addEventListener('history:data-loaded', (event) => {
+  const detail = event?.detail || {};
+  if (detail.mode !== RANKING_MODE || !detail.data?.ok || !Array.isArray(detail.data.rows)) return;
+  rows = detail.data.rows;
+  rankingWeeks = Array.isArray(detail.data.ranking_weeks)
+    ? detail.data.ranking_weeks.map(isoDate).filter(Boolean)
+    : [];
+  rankingFrom = isoDate(detail.from) || null;
+  rankingTo = isoDate(detail.to) || null;
+  selectedWeekIndex = null;
+  scheduleDraw();
+});
 
 document.getElementById('chart')?.addEventListener('pointerup', (event) => {
   if (activeMode() !== RANKING_MODE || !chartModel?.positions?.length) return;
