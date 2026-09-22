@@ -302,11 +302,27 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
       .filter(Boolean))
     .filter(cells => cells.length > 0);
   const root = document.querySelector('main') || document.body;
-  const lines = String(root?.innerText || '')
+  const allLines = String(root?.innerText || '')
     .split(/\n+/)
     .map(line => bounded(line, 120))
     .filter(Boolean)
-    .slice(0, 80);
+    .slice(0, 800);
+  const lines = allLines.slice(0, 120);
+  const leaderboard = [];
+  let expectedRank = 1;
+  for (let index = 0; index < allLines.length && expectedRank <= 200; index += 1) {
+    if (allLines[index] !== String(expectedRank)) continue;
+    let host = '';
+    for (let lookahead = index + 1; lookahead < Math.min(allLines.length, index + 8); lookahead += 1) {
+      const match = allLines[lookahead].match(/^@([a-z0-9][a-z0-9_.-]{0,63})$/i);
+      if (!match) continue;
+      host = String(match[1] || '').toLowerCase();
+      break;
+    }
+    if (!host) continue;
+    leaderboard.push({ rank: expectedRank, host });
+    expectedRank += 1;
+  }
   const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
     .slice(0, 15)
     .map(link => ({
@@ -320,8 +336,9 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
     .slice(-20);
   const path = String(location.pathname || '');
   const signed_in = !/^\/sign-in(?:\/|$)/i.test(path);
+  const text_ready = lines.length >= 10 && links.length >= 5;
   const leaderboard_ready = !signed_in || (
-    /^\/leaderboard\/?$/i.test(path) && lines.length >= 10 && links.length >= 5
+    /^\/leaderboard\/?$/i.test(path) && leaderboard.length >= 50 && text_ready
   );
   return {
     schema: 2,
@@ -332,6 +349,7 @@ void StationheadLeaderboardCollector::CaptureSnapshot(
     signed_in,
     leaderboard_ready,
     heading: bounded(root?.querySelector?.('h1,h2')?.innerText, 240),
+    leaderboard,
     rows,
     lines,
     links,
