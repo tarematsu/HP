@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/run-track-metadata-repair.yml'
       - 'worker/scripts/repair-track-metadata-actions.mjs'
+      - 'worker/scripts/repair-playback-read-model-actions.mjs'
       - 'worker/scripts/repair-legacy-ranking-isrc-actions.mjs'
       - 'worker/scripts/repair-legacy-ranking-all-actions.mjs'
       - 'worker/scripts/repair-legacy-ranking-metadata-actions.mjs'
@@ -60,6 +61,8 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Repair metadata backlog and playback read models
         run: node scripts/repair-track-metadata-actions.mjs
+      - name: Repair current playback read models from queue identity
+        run: node scripts/repair-playback-read-model-actions.mjs
       - name: Repair all unresolved legacy like-ranking metadata by ISRC
         run: node scripts/repair-legacy-ranking-all-actions.mjs
       - name: Repair legacy like-ranking metadata
