@@ -20,44 +20,60 @@ function createDb() {
   return db;
 }
 
+function rankingRows(db) {
+  return db.prepare('SELECT ranking_date, ranking_type FROM sh_channel_rankings ORDER BY id')
+    .all()
+    .map((row) => ({ ...row }));
+}
+
 test('existing weekly leaderboard source dates are normalized to Monday', () => {
   const db = createDb();
-  db.exec(`
-    INSERT INTO sh_channel_rankings(ranking_date, ranking_type) VALUES
-      ('2026-01-26', '週間リーダーボード'),
-      ('2026-01-27', '週間リーダーボード'),
-      ('2026-01-28', '週間リーダーボード'),
-      ('2026-01-28', '日次ランキング');
-  `);
+  try {
+    db.exec(`
+      INSERT INTO sh_channel_rankings(ranking_date, ranking_type) VALUES
+        ('2026-01-26', '週間リーダーボード'),
+        ('2026-01-27', '週間リーダーボード'),
+        ('2026-01-28', '週間リーダーボード'),
+        ('2026-01-28', '日次ランキング');
+    `);
 
-  db.exec(migration);
-  const rows = db.prepare('SELECT ranking_date, ranking_type FROM sh_channel_rankings ORDER BY id').all();
-  assert.deepEqual(rows, [
-    { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード' },
-    { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード' },
-    { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード' },
-    { ranking_date: '2026-01-28', ranking_type: '日次ランキング' },
-  ]);
-  db.close();
+    db.exec(migration);
+    assert.deepEqual(rankingRows(db), [
+      { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード' },
+      { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード' },
+      { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード' },
+      { ranking_date: '2026-01-28', ranking_type: '日次ランキング' },
+    ]);
+
+    db.exec(migration);
+    assert.deepEqual(rankingRows(db).slice(0, 3).map((row) => row.ranking_date), [
+      '2026-01-26', '2026-01-26', '2026-01-26',
+    ]);
+  } finally {
+    db.close();
+  }
 });
 
 test('future weekly leaderboard inserts and updates are kept on Monday', () => {
   const db = createDb();
-  db.exec(migration);
+  try {
+    db.exec(migration);
 
-  db.exec(`INSERT INTO sh_channel_rankings(ranking_date, ranking_type)
-    VALUES ('2026-09-20', '週間リーダーボード')`);
-  assert.equal(
-    db.prepare('SELECT ranking_date FROM sh_channel_rankings WHERE id=1').get().ranking_date,
-    '2026-09-14',
-  );
+    db.exec(`INSERT INTO sh_channel_rankings(ranking_date, ranking_type)
+      VALUES ('2026-09-20', '週間リーダーボード')`);
+    assert.equal(
+      db.prepare('SELECT ranking_date FROM sh_channel_rankings WHERE id=1').get().ranking_date,
+      '2026-09-14',
+    );
 
-  db.exec(`INSERT INTO sh_channel_rankings(ranking_date, ranking_type)
-    VALUES ('2026-09-23', '日次ランキング')`);
-  db.exec(`UPDATE sh_channel_rankings SET ranking_type='週間リーダーボード' WHERE id=2`);
-  assert.equal(
-    db.prepare('SELECT ranking_date FROM sh_channel_rankings WHERE id=2').get().ranking_date,
-    '2026-09-21',
-  );
-  db.close();
+    db.exec(`INSERT INTO sh_channel_rankings(ranking_date, ranking_type)
+      VALUES ('2026-09-23', '日次ランキング')`);
+    db.exec(`UPDATE sh_channel_rankings SET ranking_type='週間リーダーボード' WHERE id=2`);
+    assert.equal(
+      db.prepare('SELECT ranking_date FROM sh_channel_rankings WHERE id=2').get().ranking_date,
+      '2026-09-21',
+    );
+  } finally {
+    db.close();
+  }
 });
