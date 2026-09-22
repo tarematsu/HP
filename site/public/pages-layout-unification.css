@@ -406,15 +406,26 @@
     font-size: 10.5px !important;
   }
 
+  #historyView .table-wrap table.compact-columns {
+    min-width: 0 !important;
+  }
+
   #likesView .table-wrap table {
     width: max-content !important;
-    min-width: 620px !important;
+    min-width: 0 !important;
     font-size: 10.5px !important;
   }
 
   .table-wrap th,
   .table-wrap td {
     padding: 6px 7px !important;
+  }
+
+  #historyView .table-wrap table.compact-columns th,
+  #historyView .table-wrap table.compact-columns td,
+  #likesView .table-wrap th,
+  #likesView .table-wrap td {
+    padding-inline: 5px !important;
   }
 
   .table-wrap th {
