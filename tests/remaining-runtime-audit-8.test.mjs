@@ -12,13 +12,16 @@ test('live summary SQL aggregates rows inside D1', () => {
   assert.doesNotMatch(sql, /LIMIT 100000/);
 });
 
-test('active history endpoint keeps ranking implementation outside public routes', () => {
+test('active history endpoint keeps ranking implementation isolated from legacy history code', () => {
   const history = readFileSync(new URL('../site/functions/api/history.js', import.meta.url), 'utf8');
   const ranking = readFileSync(new URL('../site/functions/lib/history-ranking.js', import.meta.url), 'utf8');
   const implementation = readFileSync(new URL('../site/functions/lib/history-legacy.mjs', import.meta.url), 'utf8');
 
   assert.match(history, /\.\.\/lib\/history-ranking\.js/);
-  assert.match(ranking, /\.\/history-legacy\.mjs/);
+  assert.doesNotMatch(ranking, /\.\/history-legacy\.mjs/);
+  assert.match(ranking, /export async function loadRanking/);
+  assert.match(ranking, /ranking_summary/);
+  assert.match(ranking, /chart_hosts/);
   assert.doesNotMatch(implementation, /sh_legacy_(?:history_rows|snapshots)/);
   assert.match(implementation, /export async function loadRanking/);
 });
