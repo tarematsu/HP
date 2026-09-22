@@ -6,19 +6,20 @@ const entry = readFileSync(new URL('../public/history/history-main.js', import.m
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 
 test('official listening party table uses the compact requested column order', () => {
-  assert.match(entry, /history-broadcast-table\.js\?v=20260923\.2/);
-  assert.match(table, /VISIBLE_HEADERS = \['日付', '放送時間', '時間', '平均同接', '最大同接', '曲数', '名前'\]/);
+  assert.match(entry, /history-broadcast-table\.js\?v=20260923\.3/);
+  assert.match(table, /VISIBLE_HEADERS = \['日付', '時間', '長さ', '平均同接', '最大同接', '曲数', '推定再生数', '名前'\]/);
   assert.match(table, /DATE_PREFIX/);
   assert.match(table, /raw\.slice\(match\[0\]\.length\)\.trim\(\)/);
   assert.match(table, /broadcastTimeLabel\(row\)/);
   assert.match(table, /`\$\{start\}-\$\{end\}`/);
   assert.match(table, /elapsedLabel\(durationMinutes\(row\)\)/);
+  assert.match(table, /Math\.round\(average \* tracks\)/);
 });
 
 test('official listening party table preserves hidden compatibility columns for metric enrichment', () => {
-  assert.match(table, /TECHNICAL_HEADERS = \['放送名', '開始日時（UTC）', '最小同接', '推定再生数', 'コメント数'\]/);
-  assert.match(table, /official-party-table th:nth-child\(n\+8\)/);
-  assert.match(table, /official-party-table td:nth-child\(n\+8\)/);
+  assert.match(table, /TECHNICAL_HEADERS = \['放送名', '開始日時（UTC）', '最小同接', 'コメント数'\]/);
+  assert.match(table, /official-party-table th:nth-child\(n\+9\)/);
+  assert.match(table, /official-party-table td:nth-child\(n\+9\)/);
 });
 
 test('official listening party table layout does not rewrite the graph legend', () => {
