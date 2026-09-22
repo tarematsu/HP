@@ -24,6 +24,7 @@ LR"JS(
   };
   const resetMediaState = (state, video = state.video) => {
     resetPlaybackSetup(state, video);
+    state.mediaSourceIdentity = mediaSourceIdentity(video);
     state.maxDuration = 0;
     state.maxTime = 0;
     state.endCandidateAt = 0;
@@ -32,6 +33,7 @@ LR"JS(
   const createEpisodeState = path => ({
     path,
     video: null,
+    mediaSourceIdentity: '',
     nativeWakeVideo: null,
     nativeWakeSource: '',
     maxDuration: 0,
@@ -59,6 +61,10 @@ LR"JS(
 
       const video = currentVideo();
       requestNativeMediaInit(video, state);
+      const sourceIdentity = mediaSourceIdentity(video);
+      const sourceChanged = state.video === video && !!sourceIdentity &&
+          !!state.mediaSourceIdentity &&
+          sourceIdentity !== state.mediaSourceIdentity;
       const currentTime = Number(video?.currentTime);
       const playbackRolledBack = state.video === video && state.maxTime >= 10 &&
           Number.isFinite(currentTime) && currentTime + 5 < state.maxTime;
@@ -114,13 +120,21 @@ LR"JS(
         window.__homePanelTverAdActive = false;
       }
 
+      // TVer may reuse the same <video> node while replacing currentSrc. Never
+      // let progress/end state from the previous media item carry into the new
+      // source. Preserve a genuine end candidate long enough for post-roll
+      // detection; the identity check below still rejects a mismatched source.
       if (state.video !== video) resetMediaState(state, video);
+      else if (sourceChanged && !state.endCandidateAt) resetMediaState(state, video);
+      else if (sourceIdentity && !state.mediaSourceIdentity) {
+        state.mediaSourceIdentity = sourceIdentity;
+      }
       if (!video) return;
       if (typeof window.__homePanelTverEnsureViewportFullscreen === 'function') {
         try {
-          if (window.__homePanelTverEnsureViewportFullscreen(video)) {
-            state.fullscreenDirty = false;
-          }
+          // Viewport fill is only a visual fallback. Browser fullscreen remains
+          // dirty until the watchdog verifies document.fullscreenElement.
+          window.__homePanelTverEnsureViewportFullscreen(video);
         } catch (_) {}
       }
       bindVideoEvents(video, state);

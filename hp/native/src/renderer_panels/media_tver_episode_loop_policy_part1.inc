@@ -26,6 +26,41 @@ LR"JS(
   };
   installCleanPresentation();
 
+  // TVer can auto-route to its own recommended/next episode inside the same
+  // document. The native queue is the only component allowed to choose the
+  // next episode, so suppress same-document episode route changes here. A
+  // native WebView Navigate is external to these History API hooks.
+  const lockedEpisodePath = location.pathname;
+  const isDifferentEpisodeRoute = value => {
+    if (value == null || value === '') return false;
+    try {
+      const target = new URL(String(value), location.href);
+      return target.origin === location.origin &&
+          target.pathname.startsWith('/episodes/') &&
+          target.pathname !== lockedEpisodePath;
+    } catch (_) {
+      return false;
+    }
+  };
+  if (!window.__homePanelTverEpisodeRouteGuardInstalled) {
+    window.__homePanelTverEpisodeRouteGuardInstalled = true;
+    for (const methodName of ['pushState', 'replaceState']) {
+      const original = history[methodName];
+      if (typeof original !== 'function') continue;
+      history[methodName] = function(stateValue, title, url) {
+        if (isDifferentEpisodeRoute(url)) return;
+        return original.apply(this, arguments);
+      };
+    }
+    document.addEventListener('click', event => {
+      const element = event.target instanceof Element ? event.target : null;
+      const anchor = element?.closest?.('a[href]');
+      if (!anchor || !isDifferentEpisodeRoute(anchor.href)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
+
   const playbackRate = 1.75;
   const targetVolume = 1.0;
   const postrollGraceMs = 12000;
@@ -63,9 +98,11 @@ LR"JS(
     }
     return fallback;
   };
+  const mediaSourceIdentity = video =>
+      video ? normalize(video.currentSrc || video.src || '') : '';
   const mediaIdentity = video => {
     if (!video) return '';
-    const source = normalize(video.currentSrc || video.src || '');
+    const source = mediaSourceIdentity(video);
     const duration = Number.isFinite(video.duration) && video.duration > 0
         ? Math.round(video.duration * 10) / 10 : 0;
     return source ? source + '|' + duration
@@ -123,7 +160,7 @@ LR"JS(
   };
   const requestNativeMediaInit = (video, state) => {
     if (!video || !state) return;
-    const source = normalize(video.currentSrc || video.src || '');
+    const source = mediaSourceIdentity(video);
     if (state.nativeWakeVideo !== video) {
       state.nativeWakeVideo = video;
       state.nativeWakeSource = source;

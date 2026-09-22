@@ -94,16 +94,16 @@ LR"JS(
   };
 
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
-  let viewportFullscreen = false;
+  // Keep the CSS viewport fill as a visual fallback, but never treat it as
+  // browser fullscreen. The old shortcut stopped all trusted fullscreen
+  // attempts as soon as the CSS overlay covered the WebView.
   if (video && typeof window.__homePanelTverEnsureViewportFullscreen === 'function') {
-    try {
-      viewportFullscreen =
-          !!window.__homePanelTverEnsureViewportFullscreen(video);
-    } catch (_) {}
+    try { window.__homePanelTverEnsureViewportFullscreen(video); }
+    catch (_) {}
   }
   const browserFullscreen = document.fullscreenElement ||
       document.webkitFullscreenElement || document.msFullscreenElement;
-  if (browserFullscreen || viewportFullscreen) {
+  if (browserFullscreen) {
     if (state) state.fullscreenDirty = false;
     resetFullscreenRecovery();
   } else if (video) {
