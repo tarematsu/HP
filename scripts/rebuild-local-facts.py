@@ -262,7 +262,7 @@ def add_legacy_facts(facts: sqlite3.Connection, legacy: sqlite3.Connection, chan
             channel_id, minute_at, observed, observed, source_code, source_priority,
             f"{source}:{row['source_id']}", 3, session_id, 1,
             integer(row["listener_count"]), None, integer(row["total_member_count"]), None,
-            integer(row["total_stream_count"]), None, 0, 0, 100 if track_id is not None else 0,
+            (integer(row["total_stream_count"]) or None), None, 0, 0, 100 if track_id is not None else 0,
             1 if track_id is not None else 0, None, None, 0, score, flags,
         )
         fact_rows.append(values)
@@ -345,7 +345,7 @@ def write_summary_sql(facts: sqlite3.Connection, path: Path, now: int) -> dict[s
 
     def summarize(key: str, rows: list[dict]) -> tuple:
         listeners = [int(row["listener_count"]) for row in rows if row["listener_count"] is not None]
-        streams = [int(row["reported_total_listens"]) for row in rows if row["reported_total_listens"] is not None]
+        streams = [int(row["reported_total_listens"]) for row in rows if row["reported_total_listens"] is not None and int(row["reported_total_listens"]) > 0]
         members = [int(row["total_member_count"]) for row in rows if row["total_member_count"] is not None]
         scores = [int(row["quality_score_code"]) for row in rows]
         hosts_seen = Counter(
