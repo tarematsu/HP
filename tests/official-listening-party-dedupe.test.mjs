@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const migration = readFileSync(new URL('../database/other-migrations/023_dedupe_rock_in_2026_official_party.sql', import.meta.url), 'utf8');
+const broadcasts = readFileSync(new URL('../site/public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const tweaks = readFileSync(new URL('../site/public/pages-ui-tweaks.js', import.meta.url), 'utf8');
 
 const CANONICAL_EVENT = '2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』';
@@ -20,10 +21,10 @@ test('completed ROCK IN fail-safe source is retired so it cannot recreate a dupl
   assert.match(migration, /DELETE FROM sh_official_news_announcements/);
 });
 
-test('old official-party session and HTTP caches cannot keep the duplicate response alive', () => {
-  assert.match(tweaks, /OFFICIAL_PARTY_CACHE_PREFIX = 'sakurazaka46jp:v1:r8:'/);
-  assert.match(tweaks, /OFFICIAL_PARTY_API_REVISION = '9'/);
-  assert.match(tweaks, /url\.searchParams\.set\('v', OFFICIAL_PARTY_API_REVISION\)/);
-  assert.match(tweaks, /sessionStorage\.removeItem\(key\)/);
-  assert.match(tweaks, /clearOfficialPartyCache\(\);/);
+test('official-party cache/API revisions live at the single request owner', () => {
+  assert.match(broadcasts, /CACHE_REVISION = '9'/);
+  assert.match(broadcasts, /API_REVISION = '3'/);
+  assert.match(broadcasts, /sakurazaka46jp:v1:r\$\{CACHE_REVISION\}:/);
+  assert.match(broadcasts, /revision: API_REVISION/);
+  assert.doesNotMatch(tweaks, /OFFICIAL_PARTY_CACHE_PREFIX|OFFICIAL_PARTY_API_REVISION|window\.fetch|clearOfficialPartyCache/);
 });
