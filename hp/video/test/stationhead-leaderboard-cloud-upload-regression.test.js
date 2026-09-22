@@ -32,21 +32,42 @@ test('legacy leaderboard interception is completely absent from playback WebView
   assert.match(playbackPolicy, /StationheadLoginSettlementScript/);
 });
 
-test('leaderboard acquisition uses one short-lived hidden WebView on the logged-in sixth profile', () => {
+test('leaderboard acquisition reuses one hidden WebView and waits for rendered ranking data', () => {
   assert.match(collector, /https:\/\/www\.stationhead\.com\/leaderboard/);
+  assert.match(collector, /about:blank/);
   assert.match(collector, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
   assert.match(collector, /put_ProfileName\(profileName_\.c_str\(\)\)/);
   assert.match(collector, /put_IsInPrivateModeEnabled\(FALSE\)/);
   assert.match(collector, /CreateCoreWebView2ControllerWithOptions/);
   assert.match(collector, /put_IsVisible\(FALSE\)/);
   assert.match(collector, /add_NavigationCompleted/);
+  assert.match(collector, /NavigateCurrent\(generation_\)/);
+  assert.match(collectorHeader, /void NavigateCurrent\(uint64_t generation\)/);
+  assert.match(collector, /kCaptureTimeoutMs = 90'000/);
+  assert.match(collector, /kContentPollIntervalMs = 2'000/);
   assert.match(collector, /ExecuteScript/);
   assert.match(collector, /document\.querySelectorAll\('tr,\[role="row"\]'\)/);
-  assert.match(collector, /signed_in:/);
+  assert.match(collector, /signed_in/);
+  assert.match(collector, /leaderboard_ready/);
+  assert.match(collector, /lines\.length >= 10 && links\.length >= 5/);
+  assert.match(collector, /GetNamedBoolean\(L"leaderboard_ready", !signedIn\)/);
+  assert.match(collector, /captureDueAt_ = now \+ kContentPollIntervalMs/);
   assert.match(collector, /resource_paths/);
   assert.match(collector, /CloseController\(\)/);
   assert.match(collectorHeader, /NextWakeAt\(\) const noexcept/);
   assert.match(cmake, /src\/stationhead_leaderboard_collector\.cpp/);
+
+  const completeStart = collector.indexOf('void StationheadLeaderboardCollector::CompleteCapture');
+  const failStart = collector.indexOf('void StationheadLeaderboardCollector::FailCapture');
+  assert.ok(completeStart >= 0 && failStart > completeStart);
+  const completeBody = collector.slice(completeStart, failStart);
+  assert.doesNotMatch(completeBody, /CloseController\(\)/);
+  assert.match(completeBody, /webview_->Navigate\(kIdleUrl\)/);
+
+  const failBody = collector.slice(failStart, collector.indexOf('void StationheadLeaderboardCollector::CloseController'));
+  assert.match(failBody, /\+\+generation_/);
+  assert.match(failBody, /CloseController\(\)/);
+  assert.match(failBody, /environment_\.Reset\(\)/);
 
   assert.match(app, /StationheadLeaderboardCollector>[\s\S]*kStationheadOzekiProfile/);
   const stationheadStart = app.indexOf('stationhead_->Start();');
