@@ -59,9 +59,20 @@ test('leaderboard acquisition keeps one 1x1 background WebView active and waits 
   assert.match(collectorHeader, /NextWakeAt\(\) const noexcept/);
   assert.match(cmake, /src\/stationhead_leaderboard_collector\.cpp/);
 
+  const navigateStart = collector.indexOf('void StationheadLeaderboardCollector::NavigateCurrent');
+  const snapshotStart = collector.indexOf('void StationheadLeaderboardCollector::CaptureSnapshot');
+  assert.ok(navigateStart >= 0 && snapshotStart > navigateStart);
+  const navigateBody = collector.slice(navigateStart, snapshotStart);
+  assert.match(navigateBody, /webview_->Navigate\(kLeaderboardUrl\)/);
+  assert.match(navigateBody, /captureDueAt_ = now \+ kRenderSettleMs/);
+  assert.match(navigateBody, /UpdateNextWake\(\)/);
+
   const completeStart = collector.indexOf('void StationheadLeaderboardCollector::CompleteCapture');
   const failStart = collector.indexOf('void StationheadLeaderboardCollector::FailCapture');
   assert.ok(completeStart >= 0 && failStart > completeStart);
+  const snapshotBody = collector.slice(snapshotStart, completeStart);
+  assert.match(snapshotBody, /FAILED\(result\)[\s\S]*captureDueAt_ = now \+ kContentPollIntervalMs/);
+  assert.match(snapshotBody, /FAILED\(execute\)[\s\S]*captureDueAt_ = nowMs \+ kContentPollIntervalMs/);
   const completeBody = collector.slice(completeStart, failStart);
   assert.doesNotMatch(completeBody, /CloseController\(\)/);
   assert.match(completeBody, /webview_->Navigate\(kIdleUrl\)/);
