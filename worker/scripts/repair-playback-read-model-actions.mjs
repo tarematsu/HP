@@ -75,7 +75,7 @@ function queueIdentityRows(stationId, startTime) {
 
 function stationheadIdentityRows(ids) {
   if (!ids.length) return [];
-  return query(buddiesDatabase, `SELECT stationhead_track_id,spotify_id,isrc,title,artist
+  return query(factsDatabase, `SELECT stationhead_track_id,spotify_id,isrc,title,artist
     FROM sh_tracks
     WHERE stationhead_track_id IN (${ids.map(quote).join(',')})
     ORDER BY last_seen_at DESC`);
