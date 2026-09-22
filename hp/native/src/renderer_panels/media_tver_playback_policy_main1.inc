@@ -94,9 +94,16 @@ LR"JS(
   };
 
   const adActive = (state && state.adActive) || window.__homePanelTverAdActive;
+  let viewportFullscreen = false;
+  if (video && typeof window.__homePanelTverEnsureViewportFullscreen === 'function') {
+    try {
+      viewportFullscreen =
+          !!window.__homePanelTverEnsureViewportFullscreen(video);
+    } catch (_) {}
+  }
   const browserFullscreen = document.fullscreenElement ||
       document.webkitFullscreenElement || document.msFullscreenElement;
-  if (browserFullscreen) {
+  if (browserFullscreen || viewportFullscreen) {
     if (state) state.fullscreenDirty = false;
     resetFullscreenRecovery();
   } else if (video) {
