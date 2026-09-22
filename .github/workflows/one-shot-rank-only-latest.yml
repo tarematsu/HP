@@ -1,0 +1,121 @@
+name: One-shot rank-only leaderboard latest
+
+on:
+  push:
+    branches:
+      - fix/stationhead-weekly-rank-only-latest
+    paths:
+      - '.github/workflows/one-shot-rank-only-latest.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/stationhead-weekly-rank-only-latest
+          fetch-depth: 0
+
+      - name: Patch and test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          importer = Path('worker/scripts/import-stationhead-weekly-leaderboard-actions.mjs')
+          lines = importer.read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if line.startswith('function normalizeCandidateRow('))
+          end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith('function uniqueSortedRows('))
+          lines[start:end] = '''function normalizeCandidateRow(rank, nameValue, streamsValue, daysValue = null) {
+            const name = displayAndCanonicalName(nameValue);
+            const streams = streamsValue == null ? null : parseMetric(streamsValue);
+            const days = daysValue == null ? null : parseMetric(daysValue);
+            if (!rank || !name || (streams != null && streams < 0)) return null;
+            return {
+              rank,
+              channel_name: name.canonical,
+              channel_alias: name.display,
+              streams,
+              days: days != null && days >= 0 && days <= 366 ? days : null,
+            };
+          }
+          '''.splitlines()
+          importer.write_text('\n'.join(lines) + '\n')
+
+          collector = Path('hp/native/src/stationhead_leaderboard_collector.cpp')
+          lines = collector.read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if "const rows = Array.from(document.querySelectorAll('tr,[role=\"row\"]'))" in line)
+          links = next(i for i in range(start + 1, len(lines)) if "const links = Array.from(root?.querySelectorAll?.('a[href]') || [])" in lines[i])
+          map_line = next(i for i in range(links + 1, len(lines)) if '.map(link => ({' in lines[i])
+          replacement = '''  const root = document.querySelector('main') || document.body;
+          const all_lines = String(root?.innerText || '')
+            .split(/\\n+/)
+            .map(line => bounded(line, 120))
+            .filter(Boolean)
+            .slice(0, 800);
+          const ranking = [];
+          let expectedRank = 1;
+          for (let index = 0; index < all_lines.length && expectedRank <= 100; index += 1) {
+            if (Number(all_lines[index]) !== expectedRank) continue;
+            let handle = '';
+            for (let cursor = index + 1; cursor < Math.min(all_lines.length, index + 7); cursor += 1) {
+              const match = all_lines[cursor].match(/^@([A-Za-z0-9_.-]{1,80})$/);
+              if (match) {
+                handle = match[1];
+                break;
+              }
+            }
+            if (!handle) continue;
+            ranking.push({ rank: expectedRank, handle });
+            expectedRank += 1;
+          }
+          const rows = Array.from(document.querySelectorAll('tr,[role="row"]'))
+            .slice(0, 25)
+            .map(row => Array.from(row.querySelectorAll('th,td,[role="cell"],[role="gridcell"]'))
+              .slice(0, 8)
+              .map(cell => bounded(cell.innerText || cell.textContent, 80))
+              .filter(Boolean))
+            .filter(cells => cells.length > 0);
+          const lines = all_lines.slice(0, 120);
+          const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
+            .slice(0, 25)'''.splitlines()
+          lines[start:map_line] = replacement
+
+          ready_start = next(i for i, line in enumerate(lines) if 'const leaderboard_ready =' in line)
+          ready_end = next(i for i in range(ready_start + 1, len(lines)) if lines[i].strip() == ');')
+          lines[ready_start:ready_end + 1] = '''  const leaderboard_ready = signed_in && (
+            /^\\/leaderboard\\/?$/i.test(path) && ranking.length >= 10
+          );'''.splitlines()
+
+          heading = next(i for i, line in enumerate(lines) if "heading: bounded(root?.querySelector?.('h1,h2')?.innerText, 240)," in line)
+          if not any('ranking,' in line for line in lines[heading + 1:heading + 4]):
+              lines.insert(heading + 1, '    ranking,')
+          collector.write_text('\n'.join(lines) + '\n')
+
+          regression = Path('hp/video/test/stationhead-leaderboard-cloud-upload-regression.test.js')
+          text = regression.read_text()
+          old = '  assert.match(collector, /lines\\.length >= 10 && links\\.length >= 5/);'
+          new = "  assert.match(collector, /const ranking = \\[\\]/);\n  assert.match(collector, /expectedRank <= 100/);\n  assert.match(collector, /ranking\\.length >= 10/);"
+          if old not in text:
+              raise SystemExit('old leaderboard ready regression assertion not found')
+          regression.write_text(text.replace(old, new, 1))
+
+          rank_test = Path('worker/tests/stationhead-weekly-leaderboard-rank-only.test.js')
+          rank_test.write_text('''import assert from 'node:assert/strict';\nimport test from 'node:test';\n\nimport { parseLeaderboardSnapshot } from '../scripts/import-stationhead-weekly-leaderboard-actions.mjs';\n\ntest('parses rank-only structured Stationhead weekly leaderboard', () => {\n  const parsed = parseLeaderboardSnapshot({ ranking: [\n    { rank: 1, handle: 'sakanactionjp' },\n    { rank: 31, handle: 'sakurazaka46jp' },\n    { rank: 52, handle: 'sakuramankai' },\n  ] });\n  assert.equal(parsed?.parser, 'direct-ranking');\n  assert.deepEqual(parsed?.rows.map(({rank, channel_name, streams}) => ({rank, channel_name, streams})), [\n    { rank: 1, channel_name: 'sakanactionjp', streams: null },\n    { rank: 31, channel_name: 'sakurazaka46jp', streams: null },\n    { rank: 52, channel_name: 'sakuramankai', streams: null },\n  ]);\n});\n''')
+          PY
+
+          node --test worker/tests/stationhead-weekly-leaderboard-import.test.js worker/tests/stationhead-weekly-leaderboard-rank-only.test.js
+          node --test hp/video/test/stationhead-leaderboard-cloud-upload-regression.test.js
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add worker/scripts/import-stationhead-weekly-leaderboard-actions.mjs \
+            worker/tests/stationhead-weekly-leaderboard-rank-only.test.js \
+            hp/native/src/stationhead_leaderboard_collector.cpp \
+            hp/video/test/stationhead-leaderboard-cloud-upload-regression.test.js
+          git commit -m 'Capture and import rank-only Stationhead weekly leaderboard'
+          git push origin HEAD:fix/stationhead-weekly-rank-only-latest
