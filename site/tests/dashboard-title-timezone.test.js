@@ -15,7 +15,7 @@ test('dashboard title is the hashtag, browser title, and links to an X search fo
   assert.match(header, /dataset\.dashboardTitleLink = 'true'/);
 });
 
-test('header shows the successful five-minute dashboard materialization time in JST without seconds', () => {
+test('header shows the dashboard materialization time in JST without seconds', () => {
   assert.match(header, /const JST_TIME = new Intl\.DateTimeFormat/);
   assert.match(header, /timeZone: 'Asia\/Tokyo'/);
   assert.match(header, /hour: '2-digit'/);
@@ -23,8 +23,9 @@ test('header shows the successful five-minute dashboard materialization time in 
   assert.doesNotMatch(header, /year: 'numeric'/);
   assert.doesNotMatch(header, /month: '2-digit'/);
   assert.doesNotMatch(header, /day: '2-digit'/);
-  assert.match(header, /const next = `更新 \$\{refreshText\} \(5分毎\)`/);
-  assert.match(header, /updated\.title = `更新 \$\{refreshText\} JST \(5分毎\)`/);
+  assert.match(header, /const next = `更新 \$\{refreshText\}`/);
+  assert.match(header, /updated\.title = `更新 \$\{refreshText\} JST`/);
+  assert.doesNotMatch(header, /5分毎/);
   assert.match(header, /dashboard:materialized-at/);
   assert.doesNotMatch(header, /history:materialized-at/);
   assert.doesNotMatch(header, /UTC_UPDATED_PATTERN/);

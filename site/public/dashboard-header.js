@@ -132,11 +132,11 @@ const updated = document.getElementById('updated');
 function renderUpdatedLabel() {
   if (!updated || renderingUpdatedLabel) return;
   const refreshText = dashboardMaterializedAt == null ? '—' : JST_TIME.format(new Date(dashboardMaterializedAt));
-  const next = `更新 ${refreshText} (5分毎)`;
+  const next = `更新 ${refreshText}`;
   if (next === updated.textContent) return;
   renderingUpdatedLabel = true;
   updated.textContent = next;
-  updated.title = `更新 ${refreshText} JST (5分毎)`;
+  updated.title = `更新 ${refreshText} JST`;
   updated.setAttribute('aria-label', updated.title);
   renderingUpdatedLabel = false;
 }
