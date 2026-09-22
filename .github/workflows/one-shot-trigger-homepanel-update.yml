@@ -16,6 +16,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Probe Stationhead weekly leaderboard API without session
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(mktemp)"
+          status="$(curl --silent --show-error --location \
+            --output "$body" --write-out '%{http_code}' \
+            -H 'Accept: application/json' \
+            'https://www.stationhead.com/api/weeklyLeaderboard' || true)"
+          echo "status=$status"
+          echo "content-type=$(file -b --mime-type "$body")"
+          head -c 2000 "$body" | sed -E 's/[[:cntrl:]]/ /g'
+          echo
+
       - name: Wake production update check
         shell: bash
         run: |
