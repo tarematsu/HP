@@ -37,11 +37,57 @@ function testEnv() {
 }
 
 describe("Stationhead leaderboard probe status", () => {
-  it("accepts only bounded non-secret native counters", () => {
+  it("continues to accept bounded legacy native counters", () => {
     expect(normalizeNativeLeaderboardProbeStatus({ spoolRecords: 3, batchRecords: 2 }))
-      .toEqual({ spoolRecords: 3, batchRecords: 2 });
+      .toMatchObject({
+        spoolRecords: 3,
+        batchRecords: 2,
+        diagnosticSchema: null,
+        collectorStage: null,
+      });
     expect(normalizeNativeLeaderboardProbeStatus({ spoolRecords: 21, batchRecords: 2 })).toBeNull();
     expect(normalizeNativeLeaderboardProbeStatus({ spoolRecords: 2, batchRecords: 3 })).toBeNull();
+  });
+
+  it("accepts only allow-listed non-secret native stage diagnostics", () => {
+    const normalized = normalizeNativeLeaderboardProbeStatus({
+      spoolRecords: 0,
+      batchRecords: 0,
+      diagnosticSchema: 2,
+      collectorStage: "navigation_completed",
+      lastSuccessStage: "navigation_completed",
+      collectorStarted: true,
+      collectorTicked: true,
+      lastTransitionAt: 1_790_036_000_000,
+      lastFailureAt: 0,
+      lastError: "none",
+      exchangeAt: 1_790_036_001_000,
+      authorization: "must-not-pass",
+    });
+    expect(normalized).toEqual({
+      spoolRecords: 0,
+      batchRecords: 0,
+      diagnosticSchema: 2,
+      collectorStage: "navigation_completed",
+      lastSuccessStage: "navigation_completed",
+      collectorStarted: true,
+      collectorTicked: true,
+      lastTransitionAt: 1_790_036_000_000,
+      lastFailureAt: null,
+      lastError: "none",
+      exchangeAt: 1_790_036_001_000,
+    });
+    expect(normalizeNativeLeaderboardProbeStatus({
+      spoolRecords: 0,
+      batchRecords: 0,
+      diagnosticSchema: 2,
+      collectorStage: "cookie_dump",
+    })?.collectorStage).toBeNull();
+    expect(normalizeNativeLeaderboardProbeStatus({
+      spoolRecords: 0,
+      batchRecords: 0,
+      diagnosticSchema: 3,
+    })).toBeNull();
   });
 
   it("shows native spooled state before cloud probe submission", async () => {
@@ -57,9 +103,51 @@ describe("Stationhead leaderboard probe status", () => {
     const response = await stationheadLeaderboardProbeStatusResponse(env);
     const body = await response.json() as Record<string, any>;
     expect(body.stage).toBe("native_spooled");
-    expect(body.native).toEqual({ spool_records: 2, batch_records: 0 });
+    expect(body.native).toMatchObject({
+      spool_records: 2,
+      batch_records: 0,
+      diagnostic_schema: null,
+      collector_stage: null,
+    });
     expect(body.cloud.reached).toBe(true);
     expect(JSON.stringify(body)).not.toContain("device_id");
+  });
+
+  it("persists collector progress and categorical failures without credentials", async () => {
+    const { env } = testEnv();
+    await applyNativeLeaderboardProbeStatus(
+      {
+        spoolRecords: 0,
+        batchRecords: 0,
+        diagnosticSchema: 2,
+        collectorStage: "failed",
+        lastSuccessStage: "webview_ready",
+        collectorStarted: true,
+        collectorTicked: true,
+        lastTransitionAt: 1_790_036_000_000,
+        lastFailureAt: 1_790_036_000_000,
+        lastError: "navigation_failed",
+        exchangeAt: 1_790_036_001_000,
+        cookie: "secret",
+      },
+      env,
+      outcome(),
+    );
+    const response = await stationheadLeaderboardProbeStatusResponse(env);
+    const body = await response.json() as Record<string, any>;
+    expect(body.native).toMatchObject({
+      diagnostic_schema: 2,
+      collector_stage: "failed",
+      last_success_stage: "webview_ready",
+      collector_started: true,
+      collector_ticked: true,
+      last_error: "navigation_failed",
+    });
+    expect(body.native.last_transition_at).toBe("2026-09-22T00:06:40.000Z");
+    expect(body.native.last_failure_at).toBe("2026-09-22T00:06:40.000Z");
+    expect(body.native.exchange_at).toBe("2026-09-22T00:06:41.000Z");
+    expect(JSON.stringify(body)).not.toContain("cookie");
+    expect(JSON.stringify(body)).not.toContain("secret");
   });
 
   it("preserves report history after acknowledgement drains the spool", async () => {
@@ -95,5 +183,7 @@ describe("Stationhead leaderboard probe status", () => {
     const body = await response.json() as Record<string, any>;
     expect(body.stage).toBe("no_status");
     expect(body.cloud.reached).toBe(false);
+    expect(body.native.diagnostic_schema).toBeNull();
+    expect(body.native.collector_stage).toBeNull();
   });
 });
