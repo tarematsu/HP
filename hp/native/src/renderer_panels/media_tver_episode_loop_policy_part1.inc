@@ -29,7 +29,6 @@ LR"JS(
   const playbackRate = 1.75;
   const targetVolume = 1.0;
   const postrollGraceMs = 12000;
-  const episodeMaxPlaybackMs = 60 * 60 * 1000;
   const progressSteadyIntervalMs = 2000;
   const progressNearEndIntervalMs = 500;
   const progressFinalIntervalMs = 200;
@@ -140,25 +139,6 @@ LR"JS(
       window.chrome?.webview?.postMessage('homepanel:tver-media-init');
     } catch (_) {}
   };
-  const enforceEpisodeLimit = state => {
-    if (!state || !state.episodeStartedAt || state.endReported) return false;
-    if (Date.now() - state.episodeStartedAt < episodeMaxPlaybackMs) return false;
-    if (postEpisodeEnded(state)) return true;
-    wakeNative('episode-limit-post-failed:' + state.path, true);
-    return false;
-  };
-  const armEpisodeLimit = state => {
-    if (!state || !state.episodeStartedAt || state.endReported ||
-        state.episodeLimitTimer) return;
-    const remaining = Math.max(
-        1, episodeMaxPlaybackMs - (Date.now() - state.episodeStartedAt));
-    state.episodeLimitTimer = window.setTimeout(() => {
-      state.episodeLimitTimer = 0;
-      if (window.__homePanelSakuraMeetsState !== state ||
-          location.pathname !== state.path || state.endReported) return;
-      if (!enforceEpisodeLimit(state)) armEpisodeLimit(state);
-    }, remaining);
-  };
 
   const progressIntervalFor = video => {
     if (!video || !Number.isFinite(video.duration) ||
@@ -188,11 +168,6 @@ LR"JS(
                  currentTime >= state.programProgressOrigin + 1) {
         state.programPlaybackConfirmed = true;
       }
-      if (state.programPlaybackConfirmed && !state.episodeStartedAt) {
-        state.episodeStartedAt = now;
-        armEpisodeLimit(state);
-      }
-      if (enforceEpisodeLimit(state)) return;
       state.maxTime = Math.max(state.maxTime, currentTime);
     }
     if (Number.isFinite(video.duration)) {

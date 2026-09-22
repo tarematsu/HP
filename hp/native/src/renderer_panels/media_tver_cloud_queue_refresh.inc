@@ -3,7 +3,6 @@ namespace {
 constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
     30ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
-constexpr UINT kNativeMediaTverStartupTimeoutLimit = 30U;
 
 struct NativeMediaTverCloudQueueRefreshResult {
   std::wstring generatedAt;
@@ -24,7 +23,6 @@ struct NativeMediaTverNativeQueueState {
   std::wstring currentEpisodeId;
   std::wstring appliedGeneratedAt;
   ULONGLONG navigationStartedAt = 0;
-  UINT startupTimeoutCount = 0;
   bool startupReloadPending = false;
   bool mediaReady = false;
 };
@@ -116,7 +114,6 @@ void NativeMediaTverResetQueuePhaseLocked(
   state.currentEpisodeId.clear();
   state.appliedGeneratedAt.clear();
   state.navigationStartedAt = 0;
-  state.startupTimeoutCount = 0;
   state.startupReloadPending = false;
   state.mediaReady = false;
 }
@@ -215,7 +212,6 @@ std::wstring NativeMediaTverCurrentEpisodeUrl(
     if (state.queueEpisodeIds.empty()) return {};
     state.currentEpisodeId = state.queueEpisodeIds.front();
     state.navigationStartedAt = 0;
-    state.startupTimeoutCount = 0;
     state.startupReloadPending = false;
     state.mediaReady = false;
   }
@@ -244,7 +240,6 @@ void NativeMediaTverMarkMediaReady(std::wstring_view source) noexcept {
   }
   state.mediaReady = true;
   state.navigationStartedAt = 0;
-  state.startupTimeoutCount = 0;
   state.startupReloadPending = false;
 }
 
@@ -256,13 +251,17 @@ bool NativeMediaTverStartupExpired(
     return false;
   }
   if (!NativeMediaTverSourceMatchesEpisode(source, state.currentEpisodeId)) {
-    state.startupReloadPending = false;
+    // A redirect or stale page is a recovery condition, not evidence that the
+    // current episode completed. Reload the current queue item in place.
+    state.startupReloadPending = true;
     return true;
   }
   if (!state.mediaReady && !state.latestEpisodeIds.empty() &&
       !NativeMediaTverContainsId(
           state.latestEpisodeIds, state.currentEpisodeId)) {
-    state.startupReloadPending = false;
+    // Cloud-feed churn must not silently consume the episode while playback is
+    // still unresolved. Keep the same current item until an explicit end.
+    state.startupReloadPending = true;
     return true;
   }
   if (state.mediaReady || state.navigationStartedAt == 0) return false;
@@ -271,11 +270,9 @@ bool NativeMediaTverStartupExpired(
     return false;
   }
 
-  if (state.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit) {
-    ++state.startupTimeoutCount;
-  }
-  state.startupReloadPending =
-      state.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit;
+  // Startup recovery is intentionally unbounded. A playback failure may reload
+  // the current episode, but it never acquires authority to advance the queue.
+  state.startupReloadPending = true;
   return true;
 }
 
@@ -291,18 +288,21 @@ bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
       !NativeMediaTverContainsId(
           state.latestEpisodeIds, state.currentEpisodeId);
 
-  // A matching episode that merely missed media-ready is reloaded in place.
-  // The caller sees true and navigates CurrentEpisodeUrl(), which still points
-  // at this episode because the queue item is deliberately left untouched.
-  if (state.startupReloadPending && sourceMatches && !missingFromLatest) {
+  // Startup failures and redirects may request navigation, but they never
+  // consume the current episode. The host will navigate CurrentEpisodeUrl(),
+  // which still resolves to this exact queue item.
+  if (state.startupReloadPending) {
     state.startupReloadPending = false;
     state.navigationStartedAt = 0;
     state.mediaReady = false;
     return true;
   }
-  state.startupReloadPending = false;
 
-  if (!sourceMatches || missingFromLatest) {
+  // A delayed end message from a previous document must not consume whichever
+  // episode happens to be current now.
+  if (!sourceMatches) return false;
+
+  if (missingFromLatest) {
     if (!NativeMediaTverContainsId(
             state.rejectedEpisodeIds, state.currentEpisodeId)) {
       state.rejectedEpisodeIds.push_back(state.currentEpisodeId);
@@ -320,7 +320,6 @@ bool NativeMediaTverAdvanceEpisode(std::wstring_view source) noexcept {
   if (current != state.queueEpisodeIds.end()) state.queueEpisodeIds.erase(current);
   state.currentEpisodeId.clear();
   state.navigationStartedAt = 0;
-  state.startupTimeoutCount = 0;
   state.mediaReady = false;
   NativeMediaTverRebuildQueueLocked(state);
   return !state.queueEpisodeIds.empty();
