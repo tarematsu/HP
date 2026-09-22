@@ -67,10 +67,6 @@ jobs:
           npm run check --workspace video
           npm run check:unified-bundle --workspace cloud
 
-      # Cloudflare Queues permits only one active push consumer per Queue. The
-      # retired standalone Worker must release its consumer before the unified
-      # Worker can attach to videoscraper-manual-imports. The Queue is explicit
-      # because legacy consumer records may omit script_name.
       - name: Release manual import Queue consumer — Delete retired homepanel-video Worker
         run: node .github/scripts/delete-cloudflare-worker.mjs homepanel-video videoscraper-manual-imports
 
@@ -92,27 +88,10 @@ jobs:
               exit "$status"
             fi
           }
-
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            run_deploy npm run deploy --workspace cloud
-            exit 0
-          fi
-
-          if [ -z "${BEFORE_SHA:-}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            run_deploy npm run deploy --workspace cloud
-            exit 0
-          fi
-
-          if ! git -C "$GITHUB_WORKSPACE" cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
-            git -C "$GITHUB_WORKSPACE" fetch --no-tags --depth=1 origin "$BEFORE_SHA"
-          fi
-
-          if git -C "$GITHUB_WORKSPACE" diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- \
-            hp/package-lock.json \
-            hp/cloud/migrations \
-            hp/cloud/scripts/deploy-existing.mjs \
-            hp/cloud/wrangler.jsonc \
-            hp/cloud/package.json; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then run_deploy npm run deploy --workspace cloud; exit 0; fi
+          if [ -z "${BEFORE_SHA:-}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then run_deploy npm run deploy --workspace cloud; exit 0; fi
+          if ! git -C "$GITHUB_WORKSPACE" cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then git -C "$GITHUB_WORKSPACE" fetch --no-tags --depth=1 origin "$BEFORE_SHA"; fi
+          if git -C "$GITHUB_WORKSPACE" diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- hp/package-lock.json hp/cloud/migrations hp/cloud/scripts/deploy-existing.mjs hp/cloud/wrangler.jsonc hp/cloud/package.json; then
             run_deploy npm run deploy:worker --workspace cloud
           else
             echo "Migration-sensitive files changed; applying pending migrations before deployment."
@@ -135,27 +114,7 @@ jobs:
 
       - name: Report missing radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN == '' }}
-        run: echo "::error::RADAR_DISPATCH_TOKEN is required for automatic radar dispatch and authenticated /v1/ready verification"
-
-      - name: Verify GitHub repository dispatch credential
-        shell: bash
-        run: |
-          set -euo pipefail
-          : "${RADAR_DISPATCH_TOKEN:?RADAR_DISPATCH_TOKEN is required for repository dispatch}"
-          response="$RUNNER_TEMP/github-dispatch-preflight.json"
-          http_status="$(curl --silent --show-error \
-            --output "$response" --write-out "%{http_code}" \
-            --request POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer $RADAR_DISPATCH_TOKEN" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/tarematsu/HP/dispatches \
-            -d '{"event_type":"homepanel-dispatch-credential-check"}')"
-          if [[ "$http_status" != "204" ]]; then
-            cat "$response" || true
-            echo "::error::RADAR_DISPATCH_TOKEN cannot create repository_dispatch events (HTTP $http_status). Grant Contents: write for tarematsu/HP or replace the expired/revoked credential."
-            exit 1
-          fi
+        run: echo "::error::RADAR_DISPATCH_TOKEN is required for authenticated /v1/ready verification"
 
       - name: Resolve deployed HomePanel public URL
         id: homepanel-public-url
@@ -167,30 +126,13 @@ jobs:
           HOMEPANEL_HEALTH_URL: ${{ steps.homepanel-public-url.outputs.health-url }}
         run: |
           set -euo pipefail
-          output="$RUNNER_TEMP/homepanel-public-health.json"
-          status_output="$RUNNER_TEMP/homepanel-public-health.status"
+          output="$RUNNER_TEMP/homepanel-public-health.json"; status_output="$RUNNER_TEMP/homepanel-public-health.status"
           set +e
-          http_status="$(curl --silent --show-error \
-            --retry 4 --retry-delay 5 --retry-all-errors \
-            --output "$output" --write-out "%{http_code}" \
-            -H "Accept: application/json" \
-            "$HOMEPANEL_HEALTH_URL")"
-          curl_status=$?
+          http_status="$(curl --silent --show-error --retry 4 --retry-delay 5 --retry-all-errors --output "$output" --write-out "%{http_code}" -H "Accept: application/json" "$HOMEPANEL_HEALTH_URL")"; curl_status=$?
           set -e
-          printf 'curl_status=%s\nhttp_status=%s\n' "$curl_status" "$http_status" > "$status_output"
-          cat "$output" || true
-          if (( curl_status != 0 )); then
-            echo "::error::HomePanel public health request failed with curl status $curl_status and HTTP $http_status"
-            exit "$curl_status"
-          fi
-          node -e '
-            const fs = require("node:fs");
-            const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            const status = Number(process.argv[2]);
-            if (status !== 200 || payload?.ok !== true || payload?.service !== "homepanel-video") {
-              throw new Error(`Unexpected HomePanel public health response (HTTP ${status}): ${JSON.stringify(payload)}`);
-            }
-          ' "$output" "$http_status"
+          printf 'curl_status=%s\nhttp_status=%s\n' "$curl_status" "$http_status" > "$status_output"; cat "$output" || true
+          if (( curl_status != 0 )); then echo "::error::HomePanel public health request failed with curl status $curl_status and HTTP $http_status"; exit "$curl_status"; fi
+          node -e 'const fs=require("node:fs");const payload=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const status=Number(process.argv[2]);if(status!==200||payload?.ok!==true||payload?.service!=="homepanel-video")throw new Error(`Unexpected HomePanel public health response (HTTP ${status}): ${JSON.stringify(payload)}`);' "$output" "$http_status"
 
       - name: Verify authenticated deployed readiness
         shell: bash
@@ -199,40 +141,13 @@ jobs:
         run: |
           set -euo pipefail
           : "${RADAR_DISPATCH_TOKEN:?Existing RADAR_DISPATCH_TOKEN is required for /v1/ready verification}"
-          output="$RUNNER_TEMP/homepanel-readiness.json"
-          status_output="$RUNNER_TEMP/homepanel-readiness.status"
+          output="$RUNNER_TEMP/homepanel-readiness.json"; status_output="$RUNNER_TEMP/homepanel-readiness.status"
           set +e
-          http_status="$(curl --silent --show-error \
-            --retry 4 --retry-delay 5 --retry-all-errors \
-            --output "$output" --write-out "%{http_code}" \
-            -H "Accept: application/json" \
-            -H "Authorization: Bearer $RADAR_DISPATCH_TOKEN" \
-            "$HOMEPANEL_BASE_URL/v1/ready")"
-          curl_status=$?
+          http_status="$(curl --silent --show-error --retry 4 --retry-delay 5 --retry-all-errors --output "$output" --write-out "%{http_code}" -H "Accept: application/json" -H "Authorization: Bearer $RADAR_DISPATCH_TOKEN" "$HOMEPANEL_BASE_URL/v1/ready")"; curl_status=$?
           set -e
-          printf 'curl_status=%s\nhttp_status=%s\n' "$curl_status" "$http_status" > "$status_output"
-          cat "$output" || true
-          if (( curl_status != 0 )); then
-            echo "::error::HomePanel readiness request failed with curl status $curl_status and HTTP $http_status"
-            exit "$curl_status"
-          fi
-          node -e '
-            const fs = require("node:fs");
-            const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            const status = Number(process.argv[2]);
-            const checks = payload?.checks && typeof payload.checks === "object"
-              ? Object.values(payload.checks)
-              : [];
-            if (
-              status !== 200
-              || payload?.ok !== true
-              || payload?.service !== "homepanel-cloud"
-              || checks.length === 0
-              || checks.some(check => check?.ok !== true)
-            ) {
-              throw new Error(`Unexpected HomePanel readiness response (HTTP ${status}): ${JSON.stringify(payload)}`);
-            }
-          ' "$output" "$http_status"
+          printf 'curl_status=%s\nhttp_status=%s\n' "$curl_status" "$http_status" > "$status_output"; cat "$output" || true
+          if (( curl_status != 0 )); then echo "::error::HomePanel readiness request failed with curl status $curl_status and HTTP $http_status"; exit "$curl_status"; fi
+          node -e 'const fs=require("node:fs");const payload=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const status=Number(process.argv[2]);const checks=payload?.checks&&typeof payload.checks==="object"?Object.values(payload.checks):[];if(status!==200||payload?.ok!==true||payload?.service!=="homepanel-cloud"||checks.length===0||checks.some(check=>check?.ok!==true))throw new Error(`Unexpected HomePanel readiness response (HTTP ${status}): ${JSON.stringify(payload)}`);' "$output" "$http_status"
 
       - name: Upload HomePanel readiness diagnostics
         if: failure()
@@ -244,6 +159,5 @@ jobs:
             ${{ runner.temp }}/homepanel-public-health.status
             ${{ runner.temp }}/homepanel-readiness.json
             ${{ runner.temp }}/homepanel-readiness.status
-            ${{ runner.temp }}/github-dispatch-preflight.json
           if-no-files-found: ignore
           retention-days: 7
