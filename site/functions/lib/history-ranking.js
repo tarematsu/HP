@@ -234,6 +234,9 @@ WHERE r.ranking_date>=? AND r.ranking_date<=?`;
   } else if (scope === 'featured') {
     rankingSql += ' AND lower(r.channel_name) IN (?,?)';
     binds.push(...FEATURED_HOSTS);
+  } else {
+    rankingSql += ' AND lower(r.channel_name) NOT IN (?,?)';
+    binds.push(...FEATURED_HOSTS);
   }
   rankingSql += ' ORDER BY r.ranking_date ASC, r.rank ASC LIMIT ?';
   binds.push(limit);
