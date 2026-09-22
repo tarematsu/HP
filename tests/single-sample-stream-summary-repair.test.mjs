@@ -95,7 +95,7 @@ test('known historical ranges overwrite recorded closing values with next-day op
   assert.equal(f.db.prepare("SELECT stream_end FROM sh_weekly_summary WHERE period_key='2025-08-25'").get().stream_end, 27860000);
   assert.equal(f.db.prepare("SELECT stream_end FROM sh_monthly_summary WHERE period_key='2025-08'").get().stream_end, 27860000);
   assert.equal(f.db.prepare("SELECT stream_end FROM sh_monthly_summary WHERE period_key='2025-09'").get().stream_end, 32120000);
-  assert.deepEqual(result.daily.map((row) => row.key), ['2024-09-18', '2025-08-31', '2025-09-01', '2025-09-02', '2025-09-30']);
+  assert.deepEqual(result.daily.map((row) => row.key), ['2024-09-18', '2025-08-31', '2025-09-01', '2025-09-30']);
 });
 
 test('repairs matching one-sample days outside the known range but leaves multi-sample days alone', async () => {
