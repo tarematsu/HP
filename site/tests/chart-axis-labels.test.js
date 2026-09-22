@@ -7,11 +7,13 @@ const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.j
 const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 
 test('history runtime installs dedicated axis labels', () => {
-  assert.match(historyMain, /history-axis-labels\.js\?v=20260922\.2/);
+  assert.match(historyMain, /history-axis-labels\.js\?v=20260923\.4/);
   assert.match(axisLabels, /historyChartAxisTitles/);
   assert.match(axisLabels, /chartYAxisLeft/);
   assert.match(axisLabels, /chartYAxisRight/);
   assert.match(axisLabels, /chartXAxisTitle/);
+  assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'/);
+  assert.match(axisLabels, /new MutationObserver/);
 });
 
 test('history chart hides duplicate endpoint labels', () => {
