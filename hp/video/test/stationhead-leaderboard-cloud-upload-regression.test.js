@@ -51,7 +51,9 @@ test('leaderboard acquisition keeps one 1x1 background WebView active and waits 
   assert.match(collector, /document\.querySelectorAll\('tr,\[role="row"\]'\)/);
   assert.match(collector, /signed_in/);
   assert.match(collector, /leaderboard_ready/);
-  assert.match(collector, /lines\.length >= 10 && links\.length >= 5/);
+  assert.match(collector, /const ranking = \[\]/);
+  assert.match(collector, /expectedRank <= 100/);
+  assert.match(collector, /ranking\.length >= 10/);
   assert.match(collector, /GetNamedBoolean\(L"leaderboard_ready", !signedIn\)/);
   assert.match(collector, /captureDueAt_ = now \+ kContentPollIntervalMs/);
   assert.match(collector, /resource_paths/);
