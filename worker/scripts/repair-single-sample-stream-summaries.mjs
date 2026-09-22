@@ -7,8 +7,10 @@ import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const DAY_MS = 86_400_000;
 const FLAG = 'stream_end_next_day_start_single_sample_v1';
-const KNOWN_START = '2024-09-02';
-const KNOWN_END = '2024-10-07';
+const KNOWN_RANGES = [
+  { start: '2024-09-02', end: '2024-10-07', reason: 'known_2024_daily_opening_only' },
+  { start: '2025-08-01', end: '2025-09-30', reason: 'known_2025_aug_sep_daily_opening_only' },
+];
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 
@@ -40,16 +42,19 @@ function addFlag(value) {
   return JSON.stringify([...new Set([...parseFlags(value), FLAG])]);
 }
 
-function isKnownHistoricalRange(key) {
-  return key >= KNOWN_START && key <= KNOWN_END;
+function knownHistoricalRange(key) {
+  return KNOWN_RANGES.find((range) => key >= range.start && key <= range.end) || null;
 }
 
 function isCandidate(row) {
+  const key = String(row?.period_key || '');
   const start = finite(row?.stream_start);
+  if (start == null) return false;
+  if (knownHistoricalRange(key)) return true;
   const end = finite(row?.stream_end);
-  if (start == null || (end != null && end !== start)) return false;
+  if (end != null && end !== start) return false;
   if (parseFlags(row?.quality_flags).includes(FLAG)) return false;
-  return isKnownHistoricalRange(String(row.period_key)) || Number(row.sample_count) === 1;
+  return Number(row.sample_count) === 1;
 }
 
 async function repairParentPeriodEnds(otherDb, dailyRepairs, now) {
@@ -103,6 +108,7 @@ export async function repairSingleSampleStreamSummaries({ otherDb, now = Date.no
     if (streamStart == null || nextStart == null || nextStart < streamStart) continue;
     if (parseFlags(next.quality_flags).includes('stream_start_previous_day_end')) continue;
     const streamGrowth = growth(streamStart, nextStart);
+    if (finite(row.stream_end) === nextStart && finite(row.stream_growth) === streamGrowth) continue;
     const qualityFlags = addFlag(row.quality_flags);
     const result = await otherDb.prepare(`UPDATE sh_daily_summary
       SET stream_end=?,stream_growth=?,quality_flags=?,updated_at=?
@@ -110,9 +116,10 @@ export async function repairSingleSampleStreamSummaries({ otherDb, now = Date.no
       .bind(nextStart, streamGrowth, qualityFlags, now, row.period_key, row.sample_count,
         row.stream_start, row.stream_end, row.quality_flags).run();
     if (Number(result?.meta?.changes ?? result?.changes ?? 0) < 1) continue;
+    const knownRange = knownHistoricalRange(String(row.period_key));
     daily.push({
       key: row.period_key,
-      reason: isKnownHistoricalRange(String(row.period_key)) ? 'known_2024_single_boundary_range' : 'single_sample_day',
+      reason: knownRange?.reason || 'single_sample_day',
       before: [row.stream_start, row.stream_end, row.stream_growth],
       after: [streamStart, nextStart, streamGrowth],
       next_day: next.period_key,
