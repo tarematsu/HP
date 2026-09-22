@@ -26,46 +26,46 @@ test('TVer advances only through the native cloud-owned episode queue', () => {
   assert.doesNotMatch(episode, /あなたにおすすめ|関連番組|ランキング|SeriesPath/);
 });
 
-test('TVer completed program waits for post-roll before native advancement', () => {
+test('TVer completed program waits for stable post-roll before native advancement', () => {
   assert.match(episode, /postrollGraceMs = 12000/);
   assert.match(episode, /completedItem = state\.programPlaybackConfirmed &&/);
   assert.match(episode, /state\.maxTime >= Math\.max\(3, state\.maxDuration - 10\)/);
+  assert.match(episode, /mediaIdentity\(video\) === state\.endCandidateIdentity/);
   assert.match(episode, /Date\.now\(\) - state\.endCandidateAt >= postrollGraceMs/);
   assert.match(episode, /postrollAfterProgram/);
   assert.match(episode, /postMessage\('homepanel:tver-ended'\)/);
   assert.match(episode, /endReported/);
 });
 
-test('TVer matching-URL startup timeouts reload in place until the 15-minute limit', () => {
+test('TVer startup failures reload the same episode without a fail-forward limit', () => {
   assert.match(queue, /kNativeMediaTverStartupTimeoutMs = 30ULL \* 1000ULL/);
-  assert.match(queue, /kNativeMediaTverStartupTimeoutLimit = 30U/);
-  assert.match(queue, /startupTimeoutCount = 0/);
+  assert.doesNotMatch(queue, /kNativeMediaTverStartupTimeoutLimit|startupTimeoutCount/);
   assert.match(queue, /startupReloadPending = false/);
   assert.match(queue, /NativeMediaTverMarkNavigationStarted/);
   assert.match(queue, /NativeMediaTverMarkMediaReady/);
   assert.match(queue, /NativeMediaTverStartupExpired/);
-  assert.match(queue, /state\.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit/);
-  assert.match(queue, /\+\+state\.startupTimeoutCount/);
-  assert.match(
-    queue,
-    /state\.startupReloadPending =\s*state\.startupTimeoutCount < kNativeMediaTverStartupTimeoutLimit/,
-  );
-  assert.match(queue, /if \(state\.startupReloadPending && sourceMatches && !missingFromLatest\)/);
-  assert.match(queue, /return true;[\s\S]*state\.startupReloadPending = false/);
+  assert.match(queue, /state\.startupReloadPending = true;\s*return true;/);
+  assert.match(queue, /if \(state\.startupReloadPending\)/);
   assert.match(host, /NativeMediaTverStartupExpired\(source, now\)/);
   assert.match(host, /NativeMediaTverAdvanceEpisode\(source\)/);
   assert.doesNotMatch(queue, /document\.querySelectorAll|setTimeout|setInterval/);
 });
 
-test('TVer stale or redirected pages still fail forward immediately', () => {
+test('TVer stale or redirected pages cannot consume the current queue item', () => {
   assert.match(queue, /!NativeMediaTverSourceMatchesEpisode\(source, state\.currentEpisodeId\)/);
-  assert.match(queue, /state\.startupReloadPending = false;\s*return true;/);
-  assert.match(queue, /!state\.mediaReady && !state\.latestEpisodeIds\.empty\(\)/);
-  assert.match(queue, /state\.rejectedEpisodeIds\.push_back\(state\.currentEpisodeId\)/);
-  assert.match(queue, /state\.lastAttemptAt = 0;/);
+  assert.match(
+    queue,
+    /A redirect or stale page is a recovery condition[\s\S]*state\.startupReloadPending = true;\s*return true;/,
+  );
+  const recovery = queue.indexOf('if (state.startupReloadPending)');
+  const staleGuard = queue.indexOf('if (!sourceMatches) return false;');
+  assert.ok(recovery >= 0 && staleGuard > recovery);
+  assert.match(queue, /if \(!sourceMatches\) return false;/);
 });
 
-test('TVer queue never retries an episode rejected after an id redirect', () => {
+test('TVer only rejects a removed current item when an explicit matching end advances it', () => {
+  assert.match(queue, /if \(missingFromLatest\) \{/);
+  assert.match(queue, /state\.rejectedEpisodeIds\.push_back\(state\.currentEpisodeId\)/);
   assert.match(queue, /NativeMediaTverContainsId\(state\.rejectedEpisodeIds, id\)/);
   assert.match(
     queue,
