@@ -1,7 +1,7 @@
 (() => {
   const MODE = 'broadcasts';
-  const VISIBLE_HEADERS = ['日付', '放送時間', '時間', '平均同接', '最大同接', '曲数', '名前'];
-  const TECHNICAL_HEADERS = ['放送名', '開始日時（UTC）', '最小同接', '推定再生数', 'コメント数'];
+  const VISIBLE_HEADERS = ['日付', '時間', '長さ', '平均同接', '最大同接', '曲数', '推定再生数', '名前'];
+  const TECHNICAL_HEADERS = ['放送名', '開始日時（UTC）', '最小同接', 'コメント数'];
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
   const integer = new Intl.NumberFormat('ja-JP');
   const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
@@ -90,8 +90,8 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      #historyView .table-wrap table.official-party-table th:nth-child(n+8),
-      #historyView .table-wrap table.official-party-table td:nth-child(n+8) {
+      #historyView .table-wrap table.official-party-table th:nth-child(n+9),
+      #historyView .table-wrap table.official-party-table td:nth-child(n+9) {
         display: none !important;
       }
     `;
@@ -141,11 +141,11 @@
         numberText(average),
         numberText(maximum),
         numberText(tracks, integer),
+        numberText(estimated, integer),
         identity.name,
         String(row?.event_name || '公式リスパ').trim(),
         utcDateTime(row?.started_at),
         numberText(minimum),
-        numberText(estimated, integer),
         '—',
       ];
       const tableRow = document.createElement('tr');
