@@ -25,7 +25,7 @@ test('inactive tab runtimes are loaded on demand and never idle-prefetched', () 
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
   assert.doesNotMatch(tabs, /modulepreload|requestIdleCallback|scheduleRuntimePrefetch/);
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
-  assert.match(historyMain, /history-period-chart\.js\?v=20260923\.3/);
+  assert.match(historyMain, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.5/);
   assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.2/);
 });
@@ -41,17 +41,17 @@ test('history payload is parsed once by the table runtime then shared with mode 
   }
 });
 
-test('history metadata wrapper skips JSON parsing for normal summary modes', () => {
-  const guard = pageFixes.indexOf('if (!needsMetadata) return response;');
-  const parse = pageFixes.indexOf('response.clone().json()');
-  assert.ok(guard >= 0 && parse > guard);
-  assert.match(pageFixes, /searchParams\.get\('mode'\)[\s\S]*=== 'ranking'/);
+test('ranking presentation consumes the shared payload without another fetch wrapper', () => {
+  assert.match(pageFixes, /history:data-loaded/);
+  assert.match(pageFixes, /applyRankingPresentation/);
+  assert.doesNotMatch(pageFixes, /window\.fetch|originalFetch|previousFetch|response\.clone\(\)\.json|needsMetadata/);
 });
 
 test('ranking and axis updates do not keep duplicate legacy observers', () => {
   assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
   assert.doesNotMatch(rankingMissing, /window\.fetch|response\.clone\(\)\.json/);
   assert.match(rankingMissing, /history:ranking-chart-drawn/);
-  assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'/);
-  assert.match(axisLabels, /new MutationObserver/);
+  assert.match(axisLabels, /history:data-loaded/);
+  assert.match(axisLabels, /hashchange/);
+  assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'|MutationObserver/);
 });

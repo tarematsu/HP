@@ -140,21 +140,35 @@ function draw() {
     if (!rows.some((row) => finite(row?.[series.key]) != null)) return;
     context.save();
     context.strokeStyle = series.color;
+    context.fillStyle = series.color;
     context.lineWidth = series.width;
     context.beginPath();
     let open = false;
+    let lineCount = 0;
+    const points = [];
     rows.forEach((row, index) => {
       const value = finite(row?.[series.key]);
       if (value == null) {
         open = false;
         return;
       }
-      const y = listenerY(value);
-      if (!open) context.moveTo(positions[index], y);
-      else context.lineTo(positions[index], y);
+      const point = [positions[index], listenerY(value)];
+      points.push(point);
+      if (!open) context.moveTo(point[0], point[1]);
+      else {
+        context.lineTo(point[0], point[1]);
+        lineCount += 1;
+      }
       open = true;
     });
     context.stroke();
+    if (mode === 'daily' && lineCount === 0) {
+      for (const [x, y] of points) {
+        context.beginPath();
+        context.arc(x, y, 3, 0, Math.PI * 2);
+        context.fill();
+      }
+    }
     context.restore();
   };
   listenerSeries.forEach(drawLine);
@@ -191,6 +205,7 @@ function draw() {
 
   chartModel = { positions, rows };
   canvas.dataset.periodChart = 'bars';
+  window.dispatchEvent(new CustomEvent('history:period-chart-drawn', { detail: { mode } }));
 }
 
 window.addEventListener('history:data-loaded', (event) => {

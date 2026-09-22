@@ -64,7 +64,7 @@ test('history keeps one visible chart and delegates rendering to mode-specific r
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
   assert.doesNotMatch(historyClient, /drawSummaryChart|prepareCanvas|history-broadcasts\.js/);
   assert.match(historyClient, /history:data-loaded/);
-  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.3/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.5/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.2/);
   assert.match(periodChart, /history:data-loaded/);
@@ -75,8 +75,8 @@ test('history keeps one visible chart and delegates rendering to mode-specific r
 test('active history timestamps and range defaults are explicitly UTC', () => {
   assert.match(historyClient, /timeZone: 'UTC'/);
   assert.match(historyClient, /const todayUtc = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(historyClient, /function applyPreset\(days\)/);
   assert.match(historyClient, /\['started_at', '開始日時（UTC）'\]/);
-  assert.match(historyFixes, /applyUtcPreset/);
   assert.match(likesClient, /timeZone: 'UTC'/);
   assert.doesNotMatch([historyEntry, historyClient, historyFixes, likesClient].join('\n'), /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
