@@ -22,6 +22,7 @@ class StationheadLeaderboardCollector {
   void BeginCapture(int64_t nowMs);
   void CreateController(uint64_t generation);
   void ConfigureAndNavigate(uint64_t generation);
+  void NavigateCurrent(uint64_t generation);
   void CaptureSnapshot(int64_t nowMs, uint64_t generation);
   void CompleteCapture(int64_t nowMs, bool signedIn);
   void FailCapture(int64_t nowMs, std::wstring_view reason);
