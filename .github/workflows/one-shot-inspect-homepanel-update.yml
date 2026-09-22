@@ -1,0 +1,46 @@
+name: One-shot inspect HomePanel update state
+
+on:
+  push:
+    branches:
+      - ops/trigger-homepanel-update-2609230350
+    paths:
+      - '.github/workflows/one-shot-inspect-homepanel-update.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Query device update state
+        shell: bash
+        env:
+          DATABASE_ID: 1c8eb0f8-cd73-4156-9ba7-b49bb18f13a3
+        run: |
+          set -euo pipefail
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DATABASE_ID}/query"
+          query() {
+            local sql="$1"
+            curl --fail-with-body --silent --show-error \
+              -X POST \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H 'Content-Type: application/json' \
+              --data "$(jq -nc --arg sql "$sql" '{sql:$sql}')" \
+              "$api" | jq -c '{success,errors,result:[.result[]? | {results,success,meta}]}'
+          }
+
+          echo '--- HEARTBEATS ---'
+          query "SELECT device_id,last_seen_at,app_version,stationhead_ok,outbox_count,last_sequence FROM device_heartbeats ORDER BY last_seen_at DESC LIMIT 10"
+          echo '--- UPDATE COMMANDS ---'
+          query "SELECT id,device_id,command,created_at,expires_at,delivered_at,completed_at,success,result,payload FROM device_commands WHERE command='check_update' ORDER BY id DESC LIMIT 20"
+          echo '--- UPDATE STATE ---'
+          query "SELECT source,version,payload,observed_at,fetched_at,status FROM current_state WHERE source='update'"
