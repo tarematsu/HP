@@ -1,8 +1,8 @@
+import { preserveReadModelTrackMetadata } from './minute-facts-read-model.js';
 import {
-  attachReadModelTrackMetadata,
-  preserveReadModelTrackMetadata,
-} from './minute-facts-read-model.js';
-import { loadReadModelTrackMetadata } from './read-model-metadata-indexed.js';
+  attachPlaybackReadModelTrackMetadata,
+  loadPlaybackReadModelTrackMetadata,
+} from './read-model-stationhead-metadata.js';
 import { queueNeedsPreservation } from './read-model-metadata-plan.js';
 import {
   sanitizeQueueTrackMetadata,
@@ -108,11 +108,10 @@ export async function hydrateReadModelMetadata(env, readModel) {
   const baseReadModel = queue === originalQueue
     ? readModel
     : { ...readModel, queue: { ...readModel.queue, value: queue } };
-  const { spotifyIds, isrcs } = incompleteTrackMetadataKeys(queue.tracks);
-  if (!spotifyIds.length && !isrcs.length) return baseReadModel;
+  const rows = await loadPlaybackReadModelTrackMetadata(env, queue.tracks, TRACK_METADATA_KEY_LIMIT);
+  if (!rows.length) return baseReadModel;
 
-  const rows = await loadReadModelTrackMetadata(env, spotifyIds, isrcs);
-  const hydrated = attachReadModelTrackMetadata(queue, rows);
+  const hydrated = attachPlaybackReadModelTrackMetadata(queue, rows);
   return hydrated === queue
     ? baseReadModel
     : { ...baseReadModel, queue: { ...baseReadModel.queue, value: hydrated } };
