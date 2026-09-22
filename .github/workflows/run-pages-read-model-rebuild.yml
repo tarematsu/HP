@@ -12,6 +12,7 @@ on:
       - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/repair-pages-summary-gaps.mjs'
       - 'worker/scripts/repair-zero-stream-summaries.mjs'
+      - 'worker/scripts/repair-single-sample-stream-summaries.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
       - 'worker/scripts/refresh-pages-dashboard-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
@@ -108,7 +109,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          node scripts/repair-pages-summary-gaps.mjs 2>&1 | tee pages-read-model-actions.log
+          node scripts/repair-single-sample-stream-summaries.mjs 2>&1 | tee pages-read-model-actions.log
+          node scripts/repair-pages-summary-gaps.mjs 2>&1 | tee -a pages-read-model-actions.log
           node scripts/run-pages-read-model-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
       - name: Upload pages read-model repair log
         if: always()
