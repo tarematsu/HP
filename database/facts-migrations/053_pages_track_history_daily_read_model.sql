@@ -1,3 +1,5 @@
+-- Re-apply with the legacy track-history backfill so the daily projection and
+-- its maintenance triggers are guaranteed to exist before seeded rows arrive.
 -- Materialize per-day play totals so public Pages requests never need to
 -- json_extract and aggregate the track-history row payloads.
 CREATE TABLE IF NOT EXISTS sh_pages_track_history_daily_read_model (
