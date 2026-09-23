@@ -35,17 +35,37 @@ function displayValue(key, value) {
   return integer.format(number);
 }
 
+function metadataByHost(data) {
+  const result = new Map();
+  for (const row of Array.isArray(data?.rows) ? data.rows : []) {
+    const key = hostKey(row?.host_name);
+    if (!key || result.has(key)) continue;
+    result.set(key, row);
+  }
+  return result;
+}
+
 function visibleHostRows(data) {
+  const metadata = metadataByHost(data);
   const visible = (Array.isArray(data?.host_rankings) ? data.host_rankings : [])
     .filter((row) => !EXCLUDED_ALL_HOSTS.has(hostKey(row?.host_name)));
   let previousWeeks = null;
   let previousPosition = 0;
   return visible.map((row, index) => {
+    const source = metadata.get(hostKey(row?.host_name));
+    const artistName = String(row?.artist_name || source?.artist_name || '').trim();
+    const fandomType = row?.fandom_type || source?.fandom_type;
     const rankedWeeks = Number(row?.ranked_weeks) || 0;
     const position = rankedWeeks === previousWeeks ? previousPosition : index + 1;
     previousWeeks = rankedWeeks;
     previousPosition = position;
-    return { ...row, position };
+    return {
+      ...row,
+      position,
+      stationhead_channel_name: String(row?.stationhead_channel_name || source?.stationhead_channel_name || '').trim() || null,
+      artist_name: artistName || null,
+      relation_label: artistName ? (fandomType === 'official' ? '公式' : 'ファンダム') : null,
+    };
   });
 }
 
