@@ -96,6 +96,56 @@ test('remote D1 sends large statements through a temporary file instead of argv'
   assert.equal(existsSync(filePath), false);
 });
 
+test('remote D1 script sends many bounded statements through one SQL file', async () => {
+  let filePath = null;
+  let fileContents = null;
+  let calls = 0;
+  const db = createWranglerRemoteD1({
+    database: 'test-db',
+    cwd: workerRoot,
+    wranglerScript: '/tmp/wrangler.js',
+    maxFileStatementBytes: 90_000,
+    execFileSync(_command, args) {
+      calls += 1;
+      assert.equal(args.includes('--command'), false);
+      const fileIndex = args.indexOf('--file');
+      assert.ok(fileIndex >= 0);
+      filePath = args[fileIndex + 1];
+      fileContents = readFileSync(filePath, 'utf8');
+      return resultJson([{ success: true, results: [], meta: { changes: 3 } }]);
+    },
+  });
+
+  const result = await db.script([
+    db.prepare('INSERT INTO chunks(id,payload) VALUES(?1,?2)').bind(1, 'a'.repeat(40_000)),
+    db.prepare('INSERT INTO chunks(id,payload) VALUES(?1,?2)').bind(2, "b'b".repeat(10_000)),
+    db.prepare('UPDATE model SET generation_id=?1 WHERE id=1').bind('generation-1'),
+  ]);
+  assert.equal(result.meta.changes, 3);
+  assert.equal(calls, 1);
+  assert.match(fileContents, /INSERT INTO chunks\(id,payload\) VALUES\(1,'a+/);
+  assert.match(fileContents, /INSERT INTO chunks\(id,payload\) VALUES\(2,'b''bb''b/);
+  assert.match(fileContents, /UPDATE model SET generation_id='generation-1' WHERE id=1;/);
+  assert.equal(existsSync(filePath), false);
+});
+
+test('remote D1 rejects any individual file statement above the safety ceiling', async () => {
+  const db = createWranglerRemoteD1({
+    database: 'test-db',
+    cwd: workerRoot,
+    wranglerScript: '/tmp/wrangler.js',
+    maxCommandBytes: 32,
+    maxFileStatementBytes: 1000,
+    execFileSync() {
+      throw new Error('oversized statement must be rejected before Wrangler');
+    },
+  });
+  await assert.rejects(
+    db.script([db.prepare('INSERT INTO payloads(value) VALUES(?1)').bind('x'.repeat(1200))]),
+    /remote D1 statement is \d+ bytes; limit is 1000/,
+  );
+});
+
 test('remote D1 retries Cloudflare code 7500 and preserves exponential delays', async () => {
   let attempts = 0;
   const delays = [];
