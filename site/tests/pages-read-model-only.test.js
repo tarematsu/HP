@@ -23,10 +23,11 @@ test('dashboard composes completed daily summaries through a focused loader', ()
   assert.doesNotMatch(dashboard, /FROM sh_daily_summary/);
 });
 
-test('like ranking bypasses the playback-history read model', () => {
+test('like ranking reads only the worker-materialized status payload', () => {
   assert.match(tracks, /ranking_only/);
-  assert.match(tracks, /loadTrackRanking/);
+  assert.match(tracks, /track-history-status/);
   assert.match(tracks, /current_track_like_ranking/);
+  assert.doesNotMatch(tracks, /TRACK_RANKING_SQL|TRACK_RANKING_SUMMARY_SQL|sh_track_ranking_current|FROM sh_tracks/);
   assert.match(ranking, /FROM sh_track_ranking_current/);
   assert.doesNotMatch(ranking, /FROM sh_track_counter_current/);
 });
