@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
+const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 
 test('like ranking removes the redundant top-ten/cache status line after loading', () => {
   assert.doesNotMatch(likes, /上位10曲 · 対象/);
@@ -18,12 +20,16 @@ test('official listening party lines do not recycle colors across dates', () => 
   assert.match(broadcasts, /const index = series\.indexOf\(item\)/);
 });
 
-test('official listening party table exposes requested listener, track, estimate, and comment metrics', () => {
+test('official listening party table exposes final listener, track, estimate, and comment metrics', () => {
   for (const label of ['平均同接', '最小同接', '最大同接', '曲数', '推定再生数', 'コメント数']) {
-    assert.match(broadcasts, new RegExp(label));
+    assert.match(table, new RegExp(label));
   }
-  assert.match(broadcasts, /Math\.round\(average \* tracks\)/);
-  assert.match(broadcasts, /minListener/);
-  assert.match(broadcasts, /comment_count/);
-  assert.match(broadcasts, /\/api\/host-history\?mode=sessions&limit=500/);
+  for (const field of ['listener_avg', 'listener_min', 'listener_max', 'distinct_tracks', 'estimated_streams', 'comment_count']) {
+    assert.match(historyApi, new RegExp(field));
+    assert.match(table, new RegExp(field));
+  }
+  assert.match(historyApi, /Math\.round\(average \* tracks\)/);
+  assert.match(historyApi, /sh_host_station_snapshots/);
+  assert.match(historyApi, /sh_host_broadcast_sessions/);
+  assert.doesNotMatch(broadcasts, /\/api\/host-history|enhanceBroadcastTable|TABLE_METRICS/);
 });
