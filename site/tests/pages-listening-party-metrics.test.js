@@ -20,7 +20,7 @@ test('official listening party lines do not recycle colors across dates', () => 
   assert.match(broadcasts, /const index = series\.indexOf\(item\)/);
 });
 
-test('official listening party table exposes final listener, track, estimate, and comment metrics', () => {
+test('official listening party table exposes final materialized listener, track, estimate, and comment metrics', () => {
   for (const label of ['平均同接', '最小同接', '最大同接', '曲数', '推定再生数', 'コメント数']) {
     assert.match(table, new RegExp(label));
   }
@@ -29,7 +29,7 @@ test('official listening party table exposes final listener, track, estimate, an
     assert.match(table, new RegExp(field));
   }
   assert.match(historyApi, /Math\.round\(average \* tracks\)/);
-  assert.match(historyApi, /sh_host_station_snapshots/);
-  assert.match(historyApi, /sh_host_broadcast_sessions/);
+  assert.match(historyApi, /FROM sh_official_broadcast_summary/);
+  assert.doesNotMatch(historyApi, /sh_host_station_snapshots|sh_host_broadcast_sessions|sh_official_broadcast_series|json_each/);
   assert.doesNotMatch(broadcasts, /\/api\/host-history|enhanceBroadcastTable|TABLE_METRICS/);
 });
