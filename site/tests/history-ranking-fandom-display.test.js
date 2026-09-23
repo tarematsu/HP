@@ -4,57 +4,16 @@ import test from 'node:test';
 
 import { loadRanking } from '../functions/lib/history-ranking.js';
 
-const summaryLoader = async () => ({
-  rows: [],
-  live_overlay_count: 0,
-  latest_live_observed_at: null,
-});
-
-function dbFor(actualRows, { fandomTableMissing = false } = {}) {
-  return {
-    prepare(sql) {
-      const execute = async () => {
-        if (sql.includes('GROUP_CONCAT(DISTINCT channel_alias)')) {
-          return {
-            results: [{
-              host_name: 'sakuramankai',
-              host_aliases: 'sakuramankai',
-              first_ranking_date: '2026-09-07',
-            }],
-          };
-        }
-        if (sql.includes('SELECT DISTINCT ranking_date')) {
-          return {
-            results: [
-              { ranking_date: '2026-09-07' },
-              { ranking_date: '2026-09-21' },
-            ],
-          };
-        }
-        if (sql.includes('FROM sh_channel_fandoms')) {
-          if (fandomTableMissing) throw new Error('no such table: sh_channel_fandoms');
-          return {
-            results: [{
-              host_name: 'sakuramankai',
-              artist_name: '櫻坂46',
-              relation_type: 'fandom',
-            }],
-          };
-        }
-        if (sql.includes('FROM sh_channel_rankings r')) return { results: actualRows };
-        throw new Error(`unexpected SQL: ${sql}`);
-      };
-      return {
-        bind() {
-          return { all: execute };
-        },
-        all: execute,
-      };
-    },
+function rankingRows({ withFandom = true } = {}) {
+  const metadata = withFandom ? {
+    artist_name: '櫻坂46',
+    fandom_type: 'fandom',
+    fandom_label: '櫻坂46(ファンダム)',
+  } : {
+    artist_name: null,
+    fandom_type: null,
+    fandom_label: null,
   };
-}
-
-function rankingRows() {
   return [
     {
       ranking_date: '2026-09-07',
@@ -62,6 +21,7 @@ function rankingRows() {
       rank: 10,
       host_name: 'sakuramankai',
       host_alias: 'sakuramankai',
+      ...metadata,
     },
     {
       ranking_date: '2026-09-21',
@@ -69,16 +29,70 @@ function rankingRows() {
       rank: 8,
       host_name: 'sakuramankai',
       host_alias: 'sakuramankai',
+      ...metadata,
     },
   ];
+}
+
+function dbFor({ withFandom = true } = {}) {
+  const rows = rankingRows({ withFandom });
+  const gapMetadata = withFandom ? {
+    artist_name: '櫻坂46',
+    fandom_type: 'fandom',
+    fandom_label: '櫻坂46(ファンダム)',
+  } : {
+    artist_name: null,
+    fandom_type: null,
+    fandom_label: null,
+  };
+  const model = {
+    version: 1,
+    refreshed_at: 1_790_000_000_000,
+    source_max_ranking_date: '2026-09-21',
+    ranking_weeks: ['2026-09-07', '2026-09-14', '2026-09-21'],
+    actual_rows: rows,
+    completed_rows: [
+      rows[0],
+      {
+        ranking_date: '2026-09-14',
+        observed_at: Date.parse('2026-09-14T00:00:00Z'),
+        ranking_type: '週間リーダーボード',
+        rank: null,
+        host_name: 'sakuramankai',
+        host_alias: 'sakuramankai',
+        source_sheet: null,
+        quality_score: null,
+        quality_flags: 'not_listed',
+        synthetic: true,
+        is_out_of_rank: true,
+        ...gapMetadata,
+      },
+      rows[1],
+    ],
+    weekly_metrics: [],
+  };
+  return {
+    prepare(sql) {
+      assert.match(sql, /FROM sh_weekly_ranking_read_model/);
+      return {
+        async first() {
+          return {
+            payload_json: JSON.stringify(model),
+            source_max_ranking_date: model.source_max_ranking_date,
+            refreshed_at: model.refreshed_at,
+          };
+        },
+      };
+    },
+  };
 }
 
 function request() {
   return new URL('https://example.test/api/history?mode=ranking&scope=all&host=sakuramankai&from=2026-09-07&to=2026-09-21');
 }
 
-test('ranking API exposes fandom metadata in rows, host summaries, and synthetic gap weeks', async () => {
-  const response = await loadRanking(request(), { OTHER_DB: dbFor(rankingRows()) }, summaryLoader);
+test('ranking API exposes materialized fandom metadata in rows, host summaries, and synthetic gap weeks', async () => {
+  const response = await loadRanking(request(), { OTHER_DB: dbFor() });
   const data = await response.json();
 
   assert.equal(data.rows.length, 3);
@@ -89,12 +103,8 @@ test('ranking API exposes fandom metadata in rows, host summaries, and synthetic
   assert.equal(data.host_rankings[0].fandom_label, '櫻坂46(ファンダム)');
 });
 
-test('ranking data remains available before the fandom metadata migration is applied', async () => {
-  const response = await loadRanking(
-    request(),
-    { OTHER_DB: dbFor(rankingRows(), { fandomTableMissing: true }) },
-    summaryLoader,
-  );
+test('ranking data remains available when the materialized model has no fandom metadata', async () => {
+  const response = await loadRanking(request(), { OTHER_DB: dbFor({ withFandom: false }) });
   const data = await response.json();
 
   assert.equal(data.ok, true);
