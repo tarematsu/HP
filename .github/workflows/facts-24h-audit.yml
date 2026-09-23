@@ -87,10 +87,17 @@ jobs:
         run: node worker/scripts/audit-facts-24h.mjs
 
       - name: Report source gaps that cannot be reconstructed
-        if: steps.audit.outputs.needs_repair == 'true' && steps.verify.outputs.needs_repair == 'true'
+        if: steps.audit.outputs.needs_repair == 'true' && steps.verify.outputs.has_minute_gaps == 'true'
         run: |
           echo "::warning title=Unrecoverable minute gaps::Some 24-hour minute buckets remain absent after source-verified Buddies DB reconstruction. The source window did not contain enough data to reconstruct them safely."
           echo "- Remaining gaps after Buddies DB reconstruction are source-unavailable and were not fabricated." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail unresolved listener anomalies
+        if: steps.audit.outputs.needs_repair == 'true' && steps.verify.outputs.has_listener_anomaly == 'true'
+        run: |
+          echo "::error title=Listener anomaly remains::The 24-hour facts window still contains implausible listener values after source-verified Buddies DB reconstruction."
+          echo "- Listener anomaly check still fails after reconstruction; the suspicious values were not silently accepted or fabricated." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
 
       - name: Remove temporary source data
         if: always()
