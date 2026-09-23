@@ -21,11 +21,6 @@ const REQUIRED_RETENTION_INDEXES = Object.freeze([
   'idx_sh_ingest_claims_observed',
   'idx_sh_ingest_conflicts_observed',
 ]);
-const CHANNEL_SNAPSHOT_TABLE = {
-  name: 'sh_channel_snapshots',
-  timeColumn: 'observed_at',
-  keyColumn: 'id',
-};
 const AUXILIARY_TABLES = [
   // These sources remain useful for repairs inside the rebuild horizon. Past
   // that horizon they can be removed independently of channel snapshots.
@@ -37,7 +32,6 @@ const AUXILIARY_TABLES = [
   { name: 'sh_ingest_claims', timeColumn: 'observed_at', keyColumn: 'rowid' },
   { name: 'sh_ingest_conflicts', timeColumn: 'observed_at', keyColumn: 'id' },
 ];
-const ALL_TABLES = [CHANNEL_SNAPSHOT_TABLE, ...AUXILIARY_TABLES];
 
 function integer(value) {
   const parsed = Number(value);
