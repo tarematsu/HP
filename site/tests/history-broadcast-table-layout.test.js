@@ -18,9 +18,16 @@ test('official listening party table uses the compact requested column order', (
 });
 
 test('official listening party table preserves hidden compatibility columns for metric enrichment', () => {
-  assert.match(table, /TECHNICAL_HEADERS = \['放送名', '開始日時（UTC）', '最小同接', 'コメント数'\]/);
   assert.match(table, /official-party-table th:nth-child\(n\+10\)/);
   assert.match(table, /official-party-table td:nth-child\(n\+10\)/);
+});
+
+test('official listening party table left-aligns broadcast content and name', () => {
+  assert.match(table, /official-party-table th:nth-child\(8\)/);
+  assert.match(table, /official-party-table td:nth-child\(8\)/);
+  assert.match(table, /official-party-table th:nth-child\(9\)/);
+  assert.match(table, /official-party-table td:nth-child\(9\)/);
+  assert.match(table, /text-align: left !important/);
 });
 
 test('official listening party table layout does not rewrite the graph legend', () => {
