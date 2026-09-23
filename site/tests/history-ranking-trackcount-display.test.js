@@ -12,7 +12,7 @@ const current = readFileSync(new URL('../functions/api/history-current.js', impo
 
 test('ranking chart keeps featured comparison and supports one selected all-host series', () => {
   assert.match(entry, /history-ranking-chart\.js\?v=20260923\.7/);
-  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260923\.1/);
+  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260923\.2/);
   assert.match(entry, /runtimeKey\(mode\)/);
   assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
   assert.match(rankingChart, /const FEATURED_HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
