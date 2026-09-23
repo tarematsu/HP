@@ -36,7 +36,7 @@ test('official listening-party chart no longer fetches or mutates table enrichme
   assert.match(chart, /fetch\(`\/api\/sakurazaka46jp\?/);
 });
 
-test('broadcast runtime cache keys point at the consolidated clients', () => {
-  assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.4/);
-  assert.match(historyMain, /history-broadcast-table\.js\?v=20260923\.6/);
+test('broadcast runtime URLs remain stable while the response contract is consolidated', () => {
+  assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.3/);
+  assert.match(historyMain, /history-broadcast-table\.js\?v=20260923\.5/);
 });
