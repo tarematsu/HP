@@ -46,25 +46,51 @@ test('broadcast history reports setup-required only when no imported event exist
   assert.deepEqual(body.rows, []);
 });
 
-test('history endpoint restores the ranking leaderboard from OTHER_DB', async () => {
+test('history endpoint restores the ranking leaderboard from the weekly read model', async () => {
   resetHistoryLoadCache();
-  const otherDb = new FakeD1Database()
-    .route('all', /FROM sh_channel_rankings r/, {
-      results: [{
+  const model = {
+    version: 1,
+    refreshed_at: 1_790_000_000_000,
+    source_max_ranking_date: '2026-07-14',
+    ranking_weeks: ['2026-07-07', '2026-07-14'],
+    actual_rows: [{
+      ranking_date: '2026-07-07',
+      observed_at: Date.parse('2026-07-07T00:00:00Z'),
+      ranking_type: '週間リーダーボード',
+      rank: 3,
+      host_name: 'sakuramankai',
+      host_alias: '櫻坂46',
+      source_sheet: 'weekly',
+      quality_score: 1,
+      quality_flags: null,
+    }],
+    completed_rows: [
+      {
         ranking_date: '2026-07-07',
         observed_at: Date.parse('2026-07-07T00:00:00Z'),
         ranking_type: '週間リーダーボード',
         rank: 3,
         host_name: 'sakuramankai',
         host_alias: '櫻坂46',
-        source_sheet: 'weekly',
-        quality_score: 1,
-        quality_flags: null,
-      }],
-    })
-    .route('all', /SELECT DISTINCT ranking_date/, {
-      results: [{ ranking_date: '2026-07-07' }, { ranking_date: '2026-07-14' }],
-    });
+      },
+      {
+        ranking_date: '2026-07-14',
+        observed_at: Date.parse('2026-07-14T00:00:00Z'),
+        ranking_type: '週間リーダーボード',
+        rank: null,
+        host_name: 'sakuramankai',
+        host_alias: 'sakuramankai',
+        synthetic: true,
+        is_out_of_rank: true,
+      },
+    ],
+    weekly_metrics: [],
+  };
+  const otherDb = new FakeD1Database().route('first', /FROM sh_weekly_ranking_read_model/, {
+    payload_json: JSON.stringify(model),
+    source_max_ranking_date: model.source_max_ranking_date,
+    refreshed_at: model.refreshed_at,
+  });
   const response = await historyGet({
     request: new Request('https://skrzk.test/api/history?mode=ranking&from=2026-07-01&to=2026-07-31'),
     env: { DB: new FakeD1Database(), OTHER_DB: otherDb },
@@ -78,7 +104,9 @@ test('history endpoint restores the ranking leaderboard from OTHER_DB', async ()
   assert.equal(body.rows[0].rank, null);
   assert.equal(body.rows[0].is_out_of_rank, true);
   assert.equal(body.rows.find((row) => row.ranking_date === '2026-07-07' && row.host_name === 'sakuramankai').rank, 3);
-  assert.ok(otherDb.callsMatching(/FROM sh_channel_rankings/).length >= 2);
+  assert.equal(otherDb.callsMatching(/FROM sh_weekly_ranking_read_model/).length, 1);
+  assert.equal(otherDb.callsMatching(/FROM sh_channel_rankings/).length, 0);
+  assert.equal(body.read_path, 'weekly-ranking-read-model');
 });
 
 test('history rejects impossible dates before querying D1', async () => {
@@ -100,7 +128,6 @@ test('history rejects impossible dates before querying D1', async () => {
 test('Sakurazaka series rejects impossible dates before querying D1', async () => {
   const env = {
     OTHER_DB: { prepare() { throw new Error('D1 should not be queried'); } },
-    MINUTE_DB: { prepare() { throw new Error('D1 should not be queried'); } },
   };
   const response = await sakurazakaGet({
     request: new Request('https://skrzk.test/api/sakurazaka46jp?from=2026-02-30&to=2026-03-01'),
