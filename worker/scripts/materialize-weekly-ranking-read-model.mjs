@@ -6,11 +6,22 @@ import { fileURLToPath } from 'node:url';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const DAY_MS = 86_400_000;
-const MODEL_VERSION = 1;
+const MODEL_VERSION = 2;
 const CHUNK_STORAGE = 'chunked-json-v1';
 // D1 limits each SQL statement to 100,000 bytes. Keep source chunks well below
 // that so SQL quoting/escaping cannot push an INSERT over the statement limit.
 const CHUNK_MAX_BYTES = 40_000;
+const STATIONHEAD_CHANNEL_BY_ARTIST = new Map([
+  ['櫻坂46', 'Buddies'],
+  ['SixTONES', 'team SixTONES'],
+  ['BTS', 'BTS ARMY'],
+  ['JO1', 'JAM'],
+  ['BE:FIRST', 'BESTY'],
+  ['King & Prince', 'Tiara'],
+  ['Stray Kids', 'STAYS'],
+  ['SB19', 'ATIN'],
+  ['ROSÉ', 'numberoneHQ'],
+]);
 
 function hostKey(value) {
   return String(value || '').trim().toLowerCase();
@@ -40,11 +51,14 @@ function expandWeeklyDates(values) {
 function decorateRows(rows, fandomRows) {
   const metadata = new Map();
   for (const row of fandomRows || []) {
-    const artistName = String(row?.artist_name || '').trim();
+    const key = hostKey(row?.host_name);
+    const correctedSbuddies = key === 'sbuddies1819';
+    const artistName = correctedSbuddies ? 'SB19' : String(row?.artist_name || '').trim();
     if (!artistName) continue;
-    metadata.set(hostKey(row.host_name), {
+    metadata.set(key, {
       artist_name: artistName,
-      fandom_type: row.relation_type === 'official' ? 'official' : 'fandom',
+      fandom_type: correctedSbuddies ? 'fandom' : row.relation_type === 'official' ? 'official' : 'fandom',
+      stationhead_channel_name: STATIONHEAD_CHANNEL_BY_ARTIST.get(artistName) || null,
     });
   }
   return (rows || []).map((row) => {
@@ -54,10 +68,12 @@ function decorateRows(rows, fandomRows) {
       decorated.artist_name = fandom.artist_name;
       decorated.fandom_type = fandom.fandom_type;
       decorated.fandom_label = fandomLabel(fandom.artist_name, fandom.fandom_type);
+      decorated.stationhead_channel_name = fandom.stationhead_channel_name;
     } else {
       decorated.artist_name = null;
       decorated.fandom_type = null;
       decorated.fandom_label = null;
+      decorated.stationhead_channel_name = null;
     }
     return decorated;
   });
@@ -93,6 +109,7 @@ function completeTimeline(actualRows, rankingWeeks) {
         artist_name: row.artist_name || null,
         fandom_type: row.fandom_type || null,
         fandom_label: row.fandom_label || null,
+        stationhead_channel_name: row.stationhead_channel_name || null,
       });
     }
   }
@@ -123,6 +140,7 @@ function completeTimeline(actualRows, rankingWeeks) {
         artist_name: metadata.artist_name || null,
         fandom_type: metadata.fandom_type || null,
         fandom_label: metadata.fandom_label || null,
+        stationhead_channel_name: metadata.stationhead_channel_name || null,
         synthetic: true,
         is_out_of_rank: true,
       });
@@ -176,8 +194,9 @@ function readChunkPointer(payloadJson) {
     if (value?.storage !== CHUNK_STORAGE) return null;
     const generationId = String(value.generation_id || '').trim();
     const chunkCount = Number(value.chunk_count);
+    const modelVersion = Number(value.model_version) || 0;
     if (!generationId || !Number.isSafeInteger(chunkCount) || chunkCount < 1) return null;
-    return { generationId, chunkCount };
+    return { generationId, chunkCount, modelVersion };
   } catch {
     return null;
   }
@@ -202,7 +221,7 @@ async function ensureReadModelTable(db) {
 async function existingModelIsComplete(db, existing, sourceMaxRankingDate) {
   if (!existing?.source_max_ranking_date || existing.source_max_ranking_date !== sourceMaxRankingDate) return false;
   const pointer = readChunkPointer(existing.payload_json);
-  if (!pointer) return false;
+  if (!pointer || pointer.modelVersion !== MODEL_VERSION) return false;
   const countRow = await db.prepare(`SELECT COUNT(*) AS chunk_count
     FROM sh_weekly_ranking_read_model_chunks
     WHERE generation_id=?`).bind(pointer.generationId).first();
@@ -256,6 +275,7 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now()) {
     generation_id: generationId,
     chunk_count: chunks.length,
     payload_bytes: Buffer.byteLength(serialized, 'utf8'),
+    model_version: MODEL_VERSION,
   });
 
   const statements = [
