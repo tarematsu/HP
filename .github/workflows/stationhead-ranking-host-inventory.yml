@@ -1,0 +1,53 @@
+name: Stationhead ranking host inventory
+
+on:
+  push:
+    paths:
+      - '.github/workflows/stationhead-ranking-host-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      OTHER_DATABASE_NAME: stationhead-other
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Query complete ranking host inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute "$OTHER_DATABASE_NAME" --remote --yes --json --command "
+            SELECT
+              MIN(channel_name) AS host_name,
+              MIN(ranking_date) AS first_seen,
+              MAX(ranking_date) AS last_seen,
+              COUNT(*) AS ranked_rows
+            FROM sh_channel_rankings
+            WHERE channel_name IS NOT NULL AND trim(channel_name) <> ''
+            GROUP BY lower(trim(channel_name))
+            ORDER BY lower(trim(channel_name));
+          " | tee ../stationhead-ranking-host-inventory.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stationhead-ranking-host-inventory
+          path: stationhead-ranking-host-inventory.json
+          retention-days: 1
