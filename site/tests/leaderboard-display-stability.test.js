@@ -17,5 +17,6 @@ test('refresh keeps an already stable history chart visible until replacement pa
   assert.match(chartStability, /function hasStablePaint\(\)/);
   assert.match(chartStability, /if \(!hasStablePaint\(\)\) conceal\(\);/);
   assert.match(chartStability, /let paintedMode = ''/);
-  assert.match(chartStability, /nextMode && nextMode !== paintedMode/);
+  assert.match(chartStability, /if \(nextMode !== paintedMode\) conceal\(nextMode\)/);
+  assert.match(chartStability, /nextMode === 'broadcasts'[\s\S]*prepareBroadcastCanvas\(\)/);
 });
