@@ -95,6 +95,26 @@ test('official listening-party read model joins canonical series and the nearest
   assert.equal(parsed.rows[0].estimated_streams, 446);
 });
 
+test('missing official listening-party metrics do not become a zero stream estimate', () => {
+  const parsed = parseBroadcastSummaryRows([
+    {
+      event_name: 'Event Missing',
+      listener_avg: null,
+      distinct_tracks: null,
+      has_data: 1,
+    },
+    {
+      event_name: 'Event Missing Tracks',
+      listener_avg: 100,
+      distinct_tracks: null,
+      has_data: 1,
+    },
+  ]);
+
+  assert.equal(parsed.rows[0].estimated_streams, null);
+  assert.equal(parsed.rows[1].estimated_streams, null);
+});
+
 test('verified listening party metadata repairs track counts and supplies content and official source', () => {
   const parsed = parseBroadcastSummaryRows([
     {
