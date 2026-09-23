@@ -49,13 +49,26 @@ test('allowlisted onboarding is signaled before first playback and despite stale
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  assert.match(
-    publish,
-    /!pageActive \|\| !document\.body \|\| !recoverableOnboardingVisible\(\)/,
-  );
+  assert.match(publish, /if \(!pageActive \|\| !document\.body\) return false;/);
+  assert.match(publish, /releasePlaybackOnlyForOnboarding\(\);/);
   assert.doesNotMatch(publish, /!playbackEstablished|\bplaying\(\)/);
   assert.doesNotMatch(publish, /const authenticated = accountVisible\(\);/);
   assert.match(publish, /if \(blockingLogin\(true\)\) return false;/);
+});
+
+test('stale playback-only rendering is released from exact onboarding labels before geometry checks', () => {
+  assert.match(onboarding, /const playbackOnlyAttribute = 'data-homepanel-stationhead-playback-only'/);
+  const release = section(
+    onboarding,
+    'const releasePlaybackOnlyForOnboarding = () => {',
+    'const keepStreamingVisible = () => {',
+  );
+  assert.match(release, /hasAttribute\?\.\(playbackOnlyAttribute\)/);
+  assert.match(release, /onboardingLabelMatches\(element, keepStreamingPattern\)/);
+  assert.match(release, /onboardingLabelMatches\(element, recoverableOnboardingPattern\)/);
+  assert.match(release, /onboardingLabelMatches\(element, connectSurfaceLabelPattern\)/);
+  assert.match(release, /removeAttribute\(playbackOnlyAttribute\)/);
+  assert.doesNotMatch(release, /getBoundingClientRect|getComputedStyle/);
 });
 
 test('recoverable onboarding does not depend on semantic button or heading markup', () => {
@@ -69,23 +82,31 @@ test('recoverable onboarding does not depend on semantic button or heading marku
   assert.match(locator, /const candidateSelector = semanticSelector \+ ',div,span,p'/);
   assert.match(locator, /const clickableTargetFor = element =>/);
   assert.match(locator, /style\.cursor === 'pointer'/);
-  assert.match(locator, /const pointForPattern = pattern =>/);
+  assert.match(locator, /const actionablePointForPattern = pattern =>/);
+  assert.match(locator, /const plainPointForPattern = pattern =>/);
   assert.match(locator, /const splitConnectSurfacePoint = \(\) =>/);
   assert.doesNotMatch(locator, /joinPartyHeadingPattern/);
 });
 
-test('all allowlisted onboarding actions use the same non-semantic click resolver', () => {
+test('split Reconnect Music surface is resolved before plain text fallback', () => {
   const onboardingSection = section(
     locator,
-    '// All allowlisted onboarding actions share one resolution path.',
+    '// Prefer genuine actionable controls before any text-only fallback.',
     '// Playback-start actions remain blocked',
   );
-  assert.match(onboardingSection, /pointForPattern\(allowedOnboardingPattern\)/);
-  assert.match(onboardingSection, /splitConnectSurfacePoint\(\)/);
-  assert.match(locator, /clickableTargetFor\(element\)/);
+  const actionableAt = onboardingSection.indexOf(
+    'actionablePointForPattern(allowedOnboardingPattern)',
+  );
+  const splitAt = onboardingSection.indexOf('splitConnectSurfacePoint()');
+  const plainAt = onboardingSection.indexOf(
+    'plainPointForPattern(allowedOnboardingPattern)',
+  );
+  assert.ok(actionableAt >= 0 && splitAt > actionableAt && plainAt > splitAt);
+  assert.match(locator, /const clickableTargetFor = element =>/);
+  assert.match(locator, /return null;/);
 });
 
-test('playback start actions also resolve non-semantic targets through clickable ancestors', () => {
+test('playback start actions prefer clickable ancestors but retain a non-semantic fallback', () => {
   const playback = section(
     locator,
     '// Playback-start actions remain blocked',
@@ -94,6 +115,7 @@ test('playback start actions also resolve non-semantic targets through clickable
   assert.match(playback, /document\.querySelectorAll\(candidateSelector\)/);
   assert.match(playback, /matchesLabel\(element, startPattern\)/);
   assert.match(playback, /clickableTargetFor\(element\)/);
+  assert.match(playback, /plainStartFallback/);
 });
 
 test('compact runtime composes onboarding before lifecycle execution', () => {
