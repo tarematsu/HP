@@ -4,8 +4,10 @@
 
 namespace hp {
 
-inline constexpr int64_t kStationheadTrackTransitionGraceMs =
-    kStationheadAudioLossGraceMs;
+// UI/status smoothing for ordinary track transitions stays on the one-minute
+// health-check cadence. The actual recovery/foreground threshold is the
+// independent two-minute kStationheadAudioLossGraceMs in sh_audio_loss_policy.h.
+inline constexpr int64_t kStationheadTrackTransitionGraceMs = 60'000;
 
 inline bool StationheadNeedsForeground(const StationheadStatus& status) noexcept {
   return !status.audioPlaying;
