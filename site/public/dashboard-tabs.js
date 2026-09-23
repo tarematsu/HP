@@ -175,7 +175,7 @@ function showUnofficial({ updateUrl = true, replaceUrl = false } = {}) {
   activeMode = 'unofficial';
   showOnly(unofficialView);
   updateTabs('unofficial');
-  if (updateUrl) updateLocation('unofficial');
+  if (updateUrl) updateLocation('unofficial', { replace: replaceUrl });
   releaseUnexpectedSkipLinkFocus();
 }
 
