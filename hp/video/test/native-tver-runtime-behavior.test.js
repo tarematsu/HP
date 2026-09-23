@@ -9,7 +9,7 @@ const script = native.match(/LR"JS\(([\s\S]*?)\)JS"\s*$/)?.[1]
   ?.replaceAll(')JS" LR"JS(', '');
 assert.ok(script, 'extract the JavaScript executed by the TVer WebView');
 
-function playerScenario(duration, controls = [], portalOptions = []) {
+function playerScenario(duration, controls = [], portalOptions = [], dialogs = []) {
   let clock = 1000;
   const messages = [];
   let handlers = new Map();
@@ -25,6 +25,7 @@ function playerScenario(duration, controls = [], portalOptions = []) {
   };
   const document = {
     querySelectorAll: selector => selector === 'video' ? [video]
+      : selector === '[role="dialog"]' ? dialogs
       : selector.includes('[role="menu"]') ? portalOptions : [],
     addEventListener: () => {}, elementFromPoint: () => portalOptions[0] || controls[0] || null,
     fullscreenElement: null,
@@ -57,6 +58,19 @@ function playerScenario(duration, controls = [], portalOptions = []) {
     },
   };
 }
+
+test('required questionnaire stays visible and playback waits for an answer', () => {
+  const dialog = {
+    querySelector: selector => selector.includes('questionnaire-') ? {} : null,
+    getAttribute: () => null, textContent: 'アンケート 回答後に再生 閉じる',
+  };
+  const scene = playerScenario(1800, [], [], [dialog]);
+  scene.video.playbackRate = 1;
+  const action = scene.run();
+  assert.equal(action, 'recovery');
+  assert.equal(scene.video.playbackRate, 1);
+  assert.deepEqual(scene.messages, ['homepanel:tver-media-init']);
+});
 
 test('a short pre-roll with inherited 1.75x cannot advance the episode', () => {
   const scene = playerScenario(8);

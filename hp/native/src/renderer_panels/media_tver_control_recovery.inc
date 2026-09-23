@@ -45,6 +45,28 @@ LR"JS(
     return 'recovery';
   }
 
+  // TVer requires an answered questionnaire before playback. Closing it
+  // returns to the poster and the next Play click opens it again. Keep the
+  // player below the dialog and let the viewer complete the form.
+  const questionnaire = Array.from(document.querySelectorAll('[role="dialog"]'))
+      .find(dialog => dialog.querySelector('form[id^="questionnaire-"]') ||
+          /アンケート/.test(dialog.getAttribute('aria-label') || '') ||
+          /アンケート/.test(dialog.textContent || ''));
+  if (questionnaire) {
+    state.viewportPlayer?.removeAttribute?.('data-homepanel-tver-fill');
+    for (const ancestor of state.viewportAncestors || []) {
+      ancestor.removeAttribute?.('data-homepanel-tver-fill-ancestor');
+    }
+    state.viewportPlayer = null;
+    state.viewportAncestors = [];
+    if (!state.mediaInitSent) {
+      state.mediaInitSent = true;
+      post('homepanel:tver-media-init');
+    }
+    recheck();
+    return 'recovery';
+  }
+
   const player = video.closest(
       '[data-testid*="player" i],[class*="player" i],[id*="player" i]') ||
       video.parentElement || video;
@@ -381,6 +403,8 @@ LR"JS(
   const dialogs = Array.from(document.querySelectorAll(
       '[role="dialog"],[aria-modal="true"]')).filter(valid);
   for (const root of dialogs) {
+    if (root.querySelector('form[id^="questionnaire-"]') ||
+        /アンケート/.test(root.textContent || '')) continue;
     const close = Array.from(root.querySelectorAll(
         'button,[role="button"],[aria-label],[title]')).find(element =>
           valid(element) && /^(閉じる|とじる|close|dismiss)$/i.test(text(element)));
