@@ -63,6 +63,80 @@ LR"JS(
       state.mediaInitSent = true;
       post('homepanel:tver-media-init');
     }
+    const form = questionnaire.querySelector('form[id^="questionnaire-"]');
+    const storageKey = 'homepanel:tver:questionnaire:v1';
+    const readFields = () => {
+      const year = form?.querySelector('[name="birthYear"]')?.value || '';
+      const month = form?.querySelector('[name="birthMonth"]')?.value || '';
+      const postCode = form?.querySelector('[name="postCode"]')?.value || '';
+      const genderCode = form?.querySelector('[role="radio"][aria-checked="true"]')
+          ?.getAttribute('value') || '';
+      return { year, month, postCode, genderCode };
+    };
+    const validFields = fields => fields &&
+        /^\d{4}$/.test(fields.year) && Number(fields.year) >= 1900 &&
+        Number(fields.year) <= new Date().getFullYear() &&
+        /^(?:[1-9]|1[0-2])$/.test(fields.month) &&
+        /^\d{7}$/.test(fields.postCode) &&
+        ['1','2','9'].includes(fields.genderCode);
+    if (form && state.questionnaireCaptureForm !== form) {
+      state.questionnaireCaptureForm = form;
+      state.questionnaireFilledForm = null;
+      state.questionnaireSubmitCount = 0;
+      form.addEventListener('submit', () => {
+        const fields = readFields();
+        if (validFields(fields)) {
+          try { localStorage.setItem(storageKey, JSON.stringify(fields)); }
+          catch (_) {}
+        }
+      }, true);
+    }
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(storageKey) || 'null'); }
+    catch (_) {}
+    if (form && validFields(saved)) {
+      if (state.questionnaireFilledForm !== form) {
+        for (const [name, value] of [
+          ['birthYear', saved.year], ['birthMonth', saved.month],
+          ['postCode', saved.postCode]
+        ]) {
+          const input = form.querySelector(`[name="${name}"]`);
+          if (!input) continue;
+          const setter = Object.getOwnPropertyDescriptor(
+              HTMLInputElement.prototype, 'value')?.set;
+          if (setter) setter.call(input, value);
+          else input.value = value;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        const gender = Array.from(form.querySelectorAll('[role="radio"]'))
+            .find(option => option.getAttribute('value') === saved.genderCode);
+        gender?.click();
+        state.questionnaireFilledForm = form;
+        state.questionnaireFilledAt = Date.now();
+        wake(350);
+        return 'recovery';
+      }
+      const fields = readFields();
+      const submit = Array.from(document.querySelectorAll('button[type="submit"][form]'))
+          .find(button => button.getAttribute('form') === form.id);
+      const rect = submit?.getBoundingClientRect();
+      const x = rect && rect.left + rect.width / 2;
+      const y = rect && rect.top + rect.height / 2;
+      if (validFields(fields) && fields.year === saved.year &&
+          fields.month === saved.month && fields.postCode === saved.postCode &&
+          fields.genderCode === saved.genderCode && submit && !submit.disabled &&
+          rect.width > 0 && rect.height > 0 &&
+          x >= 0 && y >= 0 && x < innerWidth && y < innerHeight &&
+          Date.now() - state.questionnaireFilledAt >= 300 &&
+          (!state.questionnaireLastSubmitAt ||
+           Date.now() - state.questionnaireLastSubmitAt >= 2000) &&
+          state.questionnaireSubmitCount < 3) {
+        state.questionnaireLastSubmitAt = Date.now();
+        state.questionnaireSubmitCount++;
+        return [x, y];
+      }
+    }
     recheck();
     return 'recovery';
   }
