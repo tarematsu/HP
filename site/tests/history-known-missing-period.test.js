@@ -52,6 +52,12 @@ test('known gap replaces any stored values only in the returned read model', () 
   assert.equal(after.listener_avg, 202);
 });
 
+test('current or future gap periods are not materialized yet', () => {
+  const now = Date.parse('2026-01-14T12:00:00Z');
+  const rows = materializeKnownMissingPeriods([], 'daily', '2026-01-14', '2026-01-15', now);
+  assert.deepEqual(rows, []);
+});
+
 test('weekly and monthly periods overlapping the gap are treated as missing', () => {
   assert.equal(isKnownMissingPeriod('weekly', '2026-01-12'), true);
   assert.equal(isKnownMissingPeriod('weekly', '2026-06-22'), true);
@@ -64,7 +70,7 @@ test('weekly and monthly periods overlapping the gap are treated as missing', ()
 test('known missing rows are never persisted to D1', () => {
   assert.doesNotMatch(gapSource, /\.prepare\(|\bINSERT\b|\bUPDATE\b|\bDELETE\b/);
   assert.match(materializedSource, /isKnownMissingPeriod\(mode, key\)/);
-  assert.match(materializedSource, /rows: materializeKnownMissingPeriods\(enrichedRows, mode, from, to\)/);
+  assert.match(materializedSource, /rows: materializeKnownMissingPeriods\(enrichedRows, mode, from, to, now\)/);
   assert.match(materializedSource, /if \(!key \|\| key >= currentKey \|\| isKnownMissingPeriod\(mode, key\)/);
 });
 
