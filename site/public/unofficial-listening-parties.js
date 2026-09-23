@@ -1,16 +1,16 @@
 const EVENTS = [
-  { date: '2024/08/02', time: '22:30', name: '櫻坂46 × INI Streaming Party - ロッキン前夜祭コラボパーティー', place: 'BUDDIES STATIONHEAD' },
-  { date: '2024/09/06', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY1', place: 'BUDDIES STATIONHEAD' },
-  { date: '2024/09/07', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY2', place: 'LOCKEY Stationhead' },
-  { date: '2024/09/15', time: '20:30', name: '櫻坂46 × JO1 ロッキン出演&9thリリース記念コラボパーティー', place: 'BUDDIES STATIONHEAD' },
-  { date: '2024/10/25', time: '23:50', name: '櫻坂46 × INI Streaming Party 第1夜', place: 'BUDDIES STATIONHEAD' },
-  { date: '2024/11/01', time: '23:00', name: '櫻坂46 × INI Streaming Party 第2夜', place: 'MINIチャンネル' },
-  { date: '2024/12/10', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY1', place: 'BUDDIES STATIONHEAD' },
-  { date: '2024/12/13', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY2', place: 'Team IMP.' },
-  { date: '2024/12/19', time: '22:00', name: '#FELIX ( #StrayKids) × #Sakurazaka46 🌸 Collab Listening Party', place: 'FELIX STREAM STATION' },
-  { date: '2024/12/29', time: '20:30', name: '櫻坂46 × NiziU Collab Listening Party', place: 'WithUチャンネル' },
-  { date: '2024/12/30', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY1', place: 'Ohisama CH.' },
-  { date: '2025/01/03', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', place: 'BUDDIES STATIONHEAD' },
+  { date: '2024/08/02', time: '22:30', name: '櫻坂46 × INI Streaming Party - ロッキン前夜祭コラボパーティー', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1818995243200758205' },
+  { date: '2024/09/06', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY1', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1831301387424342514' },
+  { date: '2024/09/07', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY2', place: 'LOCKEY Stationhead', source: 'https://x.com/skr_Stationhead/status/1831301387424342514' },
+  { date: '2024/09/15', time: '20:30', name: '櫻坂46 × JO1 ロッキン出演&9thリリース記念コラボパーティー', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1834834469531902262' },
+  { date: '2024/10/25', time: '23:50', name: '櫻坂46 × INI Streaming Party 第1夜', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/saku_saka46/status/1849435676288196988' },
+  { date: '2024/11/01', time: '23:00', name: '櫻坂46 × INI Streaming Party 第2夜', place: 'MINIチャンネル', source: 'https://x.com/skr_Stationhead/status/1851972681962525075' },
+  { date: '2024/12/10', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY1', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1866105637178142945' },
+  { date: '2024/12/13', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY2', place: 'Team IMP.', source: 'https://x.com/skr_Stationhead/status/1866105637178142945' },
+  { date: '2024/12/19', time: '22:00', name: '#FELIX ( #StrayKids) × #Sakurazaka46 🌸 Collab Listening Party', place: 'FELIX STREAM STATION', source: 'https://x.com/skr_Stationhead/status/1869336911619494103' },
+  { date: '2024/12/29', time: '20:30', name: '櫻坂46 × NiziU Collab Listening Party', place: 'WithUチャンネル', source: 'https://x.com/skr_Stationhead/status/1872235924760735993' },
+  { date: '2024/12/30', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY1', place: 'Ohisama CH.', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
+  { date: '2025/01/03', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
 ];
 
 function mountTab() {
@@ -41,7 +41,7 @@ function mountView() {
       <div class="table-wrap">
         <table class="unofficial-listening-table">
           <thead>
-            <tr><th>日付</th><th>時間</th><th>名前</th><th>場所</th></tr>
+            <tr><th>日付</th><th>時間</th><th>名前</th><th>場所</th><th>出典</th></tr>
           </thead>
           <tbody id="unofficialListeningTbody"></tbody>
         </table>
@@ -57,6 +57,15 @@ function mountView() {
       cell.textContent = value;
       row.append(cell);
     }
+
+    const sourceCell = document.createElement('td');
+    const sourceLink = document.createElement('a');
+    sourceLink.href = event.source;
+    sourceLink.target = '_blank';
+    sourceLink.rel = 'noopener noreferrer';
+    sourceLink.textContent = 'X告知';
+    sourceCell.append(sourceLink);
+    row.append(sourceCell);
     tbody.append(row);
   }
 }
