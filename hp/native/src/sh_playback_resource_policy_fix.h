@@ -7,12 +7,11 @@ namespace hp {
 // Keep every Stationhead profile on a stable periodic-work phase. Profiles are
 // created as spotify-v2-1 .. spotify-v2-6; unknown profile names fall back to
 // the first slot rather than bypassing serialization.
-inline size_t StationheadPeriodicProfileSlot(
-    const std::wstring& profileName) noexcept {
-  constexpr wchar_t kPrefix[] = L"spotify-v2-";
-  constexpr size_t kPrefixLength = _countof(kPrefix) - 1;
-  if (profileName.size() != kPrefixLength + 1 ||
-      profileName.compare(0, kPrefixLength, kPrefix) != 0) {
+inline constexpr size_t StationheadPeriodicProfileSlot(
+    std::wstring_view profileName) noexcept {
+  constexpr std::wstring_view kPrefix = L"spotify-v2-";
+  if (profileName.size() != kPrefix.size() + 1 ||
+      profileName.substr(0, kPrefix.size()) != kPrefix) {
     return 0;
   }
   const wchar_t suffix = profileName.back();
@@ -21,7 +20,7 @@ inline size_t StationheadPeriodicProfileSlot(
 }
 
 inline ULONGLONG StationheadProfileAudioHealthScanDelayMs(
-    ULONGLONG now, const std::wstring& profileName) noexcept {
+    ULONGLONG now, std::wstring_view profileName) noexcept {
   return AudioHealthScanDelayMs(now, StationheadPeriodicProfileSlot(profileName));
 }
 
