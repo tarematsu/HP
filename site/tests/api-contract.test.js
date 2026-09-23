@@ -21,16 +21,17 @@ function unique(values, label) {
 test('API contract contains unique canonical paths only', () => {
   const canonical = canonicalApiPaths();
   unique(canonical, 'canonical API paths');
-  assert.equal(canonical.length, 8);
+  assert.equal(canonical.length, 9);
   assert.ok(canonical.includes('/api/history-current'));
   assert.ok(canonical.includes('/api/sakurazaka46jp-status'));
+  assert.ok(canonical.includes('/api/first-week-comparison'));
   assert.equal(existsSync(new URL('../functions/api/_middleware.js', import.meta.url)), false);
 });
 
 test('GET /api catalog is generated from the canonical contract only', () => {
   const catalog = apiCatalog(0);
   assert.equal(catalog.contract_version, API_CONTRACT_VERSION);
-  assert.equal(catalog.contract_version, 6);
+  assert.equal(catalog.contract_version, 7);
   assert.deepEqual(catalog.groups, API_GROUPS);
   assert.equal('compatibility' in catalog, false);
   assert.equal('retired' in catalog, false);
@@ -57,14 +58,16 @@ test('materialized response freshness follows canonical generation cadences', ()
 test('current minute history uses a 30-second shared cache', () => {
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history-current?mode=daily')), 30);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history?mode=daily')), 300);
+  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/first-week-comparison')), 3600);
 });
 
 test('Sakurazaka status endpoint bypasses shared edge cache', () => {
   assert.equal(edgeCacheableApiRequest(new Request('https://skrzk.test/api/sakurazaka46jp-status')), false);
 });
 
-test('cache middleware contains the canonical Sakurazaka policy', () => {
+test('cache middleware contains the canonical Sakurazaka policies', () => {
   const source = readFileSync(new URL('../functions/lib/cache-middleware.js', import.meta.url), 'utf8');
   assert.match(source, /\/api\/sakurazaka46jp/);
+  assert.match(source, /\/api\/first-week-comparison/);
   assert.match(source, /ttl: 3600/);
 });
