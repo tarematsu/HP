@@ -26,6 +26,8 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     header: assetVersion(entry, 'dashboard-header.js'),
     tabs: assetVersion(entry, 'dashboard-tabs.js'),
     fetchCache: assetVersion(entry, 'dashboard-fetch-cache.js'),
+    metricStyle: assetVersion(entry, 'dashboard-current-metric-style.js'),
+    queueMetadataStability: assetVersion(entry, 'dashboard-queue-metadata-stability.js'),
     dailySummaries: assetVersion(entry, 'dashboard-daily-summaries.js'),
     comparison: assetVersion(entry, 'dashboard-chart-comparison.js'),
     chartDetail: assetVersion(entry, 'dashboard-chart-detail.js'),
@@ -33,7 +35,7 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
-  assert.equal(versions.entry, '20260923.10');
+  assert.equal(versions.entry, '20260923.11');
   assert.equal(versions.comparison, '20260923.6');
   assert.equal(versions.chartDetail, '20260923.5');
   for (const [asset, version] of Object.entries(versions)) {
