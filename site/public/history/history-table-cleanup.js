@@ -144,10 +144,7 @@ function resetSharedHistorySummary(mode) {
   if (more) more.hidden = true;
 }
 
-function prepareTableForModeTransition(event) {
-  const button = event?.target?.closest?.('button[data-mode]');
-  if (!button) return;
-  const mode = String(button.dataset.mode || '');
+function resetHistoryTable(mode) {
   if (!HISTORY_MODES.has(mode)) return;
   const head = document.getElementById('thead');
   const body = document.getElementById('tbody');
@@ -158,6 +155,12 @@ function prepareTableForModeTransition(event) {
   head.replaceChildren();
   body.replaceChildren();
   resetSharedHistorySummary(mode);
+}
+
+function prepareTableForModeTransition(event) {
+  const button = event?.target?.closest?.('button[data-mode]');
+  if (!button) return;
+  resetHistoryTable(String(button.dataset.mode || ''));
 }
 
 function ensureRankingFandomColumn(head, body) {
@@ -250,5 +253,6 @@ document.getElementById('modeTabs')?.addEventListener('click', (event) => {
   prepareTableForModeTransition(event);
   scheduleCleanup();
 });
+document.getElementById('rankingScope')?.addEventListener('change', () => resetHistoryTable('ranking'));
 document.getElementById('more')?.addEventListener('click', scheduleCleanup);
 scheduleCleanup();
