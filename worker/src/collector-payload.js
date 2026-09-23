@@ -1,4 +1,5 @@
 import { firstDefined } from './collector-config.js';
+import { trackDisplayTitleParts } from './track-metadata-quality.js';
 
 const COMPACT_QUEUE_MARKER = Symbol('compact-queue');
 const QUEUE_STRUCTURAL_PAYLOAD = Symbol.for('stationhead.queue.structural-payload');
@@ -182,13 +183,20 @@ export function minuteFactQueue(queue) {
       const source = trackRaw?.track || trackRaw || {};
       const artist = source?.artist || source?.artists?.[0] || {};
       const album = source?.album || {};
+      const directTitle = boundedText(track?.title ?? source?.title ?? source?.name, 500);
+      const displayTitle = boundedText(
+        track?.display_title ?? source?.display_title ?? source?.displayTitle,
+        500,
+      );
+      const display = trackDisplayTitleParts(displayTitle, directTitle);
+      const directArtist = boundedText(
+        track?.artist ?? (typeof artist === 'string' ? artist : (artist?.name ?? source?.artist_name)),
+        500,
+      );
       return {
         ...track,
-        title: boundedText(track?.title ?? source?.title ?? source?.name, 500),
-        artist: boundedText(
-          track?.artist ?? (typeof artist === 'string' ? artist : (artist?.name ?? source?.artist_name)),
-          500,
-        ),
+        title: directTitle || display.title,
+        artist: directArtist || display.artist,
         album_name: boundedText(track?.album_name ?? album?.name ?? source?.album_name, 500),
         thumbnail_url: boundedText(
           track?.thumbnail_url ?? source?.thumbnail_url ?? source?.image_url
@@ -197,6 +205,7 @@ export function minuteFactQueue(queue) {
             ?? album?.images?.[0]?.url,
           2_048,
         ),
+        ...(displayTitle ? { display_title: displayTitle } : {}),
       };
     }),
   };
@@ -249,6 +258,13 @@ export function extractQueue(channel, stationId) {
     const durationMs = track?.duration ?? null;
     const previewUrl = track?.preview ?? null;
     const biteCount = track?.bite_count ?? null;
+    const directTitle = boundedText(track?.title ?? track?.name, 500);
+    const displayTitle = boundedText(track?.display_title ?? track?.displayTitle, 500);
+    const display = trackDisplayTitleParts(displayTitle, directTitle);
+    const directArtist = boundedText(
+      typeof artist === 'string' ? artist : (artist?.name ?? track?.artist_name),
+      500,
+    );
 
     structuralTracks[position] = {
       position,
@@ -279,11 +295,8 @@ export function extractQueue(channel, stationId) {
       duration_ms: durationMs,
       preview_url: previewUrl,
       bite_count: biteCount,
-      title: boundedText(track?.title ?? track?.name, 500),
-      artist: boundedText(
-        typeof artist === 'string' ? artist : (artist?.name ?? track?.artist_name),
-        500,
-      ),
+      title: directTitle || display.title,
+      artist: directArtist || display.artist,
       album_name: boundedText(album?.name ?? track?.album_name, 500),
       thumbnail_url: boundedText(
         track?.thumbnail_url ?? track?.image_url ?? track?.artwork_url ?? track?.album_art_url
@@ -292,6 +305,7 @@ export function extractQueue(channel, stationId) {
           ?? item?.thumbnail_url ?? item?.image_url ?? item?.artwork_url ?? item?.album_art_url,
         2_048,
       ),
+      ...(displayTitle ? { display_title: displayTitle } : {}),
     };
   }
 

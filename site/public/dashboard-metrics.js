@@ -11,7 +11,6 @@ import './dashboard-chart-comparison.js?v=20260923.6';
 import './dashboard-chart-detail.js?v=20260923.5';
 import './dashboard-daily-summaries.js?v=20260923.4';
 import './dashboard-fetch-cache.js?v=20260923.4';
-import './dashboard-queue-metadata-stability.js?v=20260923.1';
 
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
 const imageRetryTimers = new WeakMap();
