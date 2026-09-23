@@ -110,9 +110,10 @@ test('integrated likes UI contains no playback totals or weekly play merge', () 
   assert.match(source, /ranking_only=1/);
 });
 
-function directRankingDb(rankingSize = 0) {
+function materializedRankingDb(rankingSize = 0) {
   const prepared = [];
   const rows = Array.from({ length: rankingSize }, (_, index) => ({
+    rank: index + 1,
     track_identity: `track:${index + 1}`,
     track_id: index + 1,
     title: `Song ${index + 1}`,
@@ -125,33 +126,33 @@ function directRankingDb(rankingSize = 0) {
     prepared,
     prepare(sql) {
       prepared.push(sql);
-      const statement = {
-        args: [],
-        bind(...args) { statement.args = args; return statement; },
-        async all() {
-          if (sql.includes('FROM sh_track_ranking_current')) {
-            return { results: rows.slice(0, Number(statement.args[0] || 500)) };
-          }
-          return { results: [] };
-        },
+      return {
+        bind() { return this; },
+        async all() { return { results: [] }; },
         async first() {
-          if (sql.includes('FROM sh_track_ranking_current')) {
+          if (sql.includes("model_key='track-history-status'")) {
             return {
-              track_count: rows.length,
-              max_like_count: rows[0]?.latest_like_count || 0,
-              latest_observed_at: rows.at(-1)?.latest_observed_at || null,
+              payload_json: JSON.stringify({
+                ranking: rows,
+                ranking_summary: {
+                  track_count: rows.length,
+                  max_like_count: rows[0]?.latest_like_count || 0,
+                  latest_observed_at: rows.at(-1)?.latest_observed_at || null,
+                },
+                ranking_scope: 'all-time-latest-counter',
+                generated_at: rows.at(-1)?.latest_observed_at || null,
+              }),
             };
           }
           return null;
         },
       };
-      return statement;
     },
   };
 }
 
-test('like ranking reads the current ranking projection directly', async () => {
-  const db = directRankingDb(300);
+test('like ranking reads the materialized ranking payload directly', async () => {
+  const db = materializedRankingDb(300);
   const response = await trackHistory({
     request: new Request('https://pages.test/api/track-history?ranking_only=1&ranking_limit=40'),
     env: { MINUTE_DB: db },
@@ -163,6 +164,9 @@ test('like ranking reads the current ranking projection directly', async () => {
   assert.equal(payload.ranking_summary.track_count, 300);
   assert.equal(payload.ranking_truncated, true);
   assert.equal(payload.method, 'current_track_like_ranking');
+  assert.equal(db.prepared.length, 1);
+  assert.equal(db.prepared[0].includes("model_key='track-history-status'"), true);
+  assert.equal(db.prepared.some((sql) => sql.includes('sh_track_ranking_current')), false);
   assert.equal(db.prepared.some((sql) => sql.includes('sh_pages_track_history_read_model')), false);
 });
 
