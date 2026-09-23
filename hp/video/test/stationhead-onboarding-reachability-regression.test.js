@@ -6,6 +6,7 @@ const source = name => readFileSync(
   new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
 
 const interaction = source('sh_runtime_interaction_script.h');
+const recoverablePolicy = source('sh_recoverable_action_policy.h');
 const onboarding = source('sh_runtime_onboarding_script.h');
 const lifecycle = source('sh_runtime_lifecycle_script.h');
 const compact = source('sh_compact_runtime_script.h');
@@ -22,11 +23,11 @@ function section(text, start, end) {
 }
 
 test('recoverable Stationhead onboarding clears stale login state and signals native click', () => {
-  assert.match(onboarding, /const recoverableOnboardingPattern =/);
-  assert.match(onboarding, /\(\?:re\)\?connect/);
-  assert.match(onboarding, /spotify/);
-  assert.match(onboarding, /continue/);
-  assert.match(onboarding, /let\(\?:'\|’\)\?s/);
+  assert.match(onboarding, /const recoverableOnboardingPattern = \{\{RECOVERABLE_ACTION_PATTERN\}\}/);
+  assert.match(recoverablePolicy, /\(\?:re\)\?connect/);
+  assert.match(recoverablePolicy, /spotify/);
+  assert.match(recoverablePolicy, /continue/);
+  assert.match(recoverablePolicy, /let\(\?:'\|’\)\?s/);
   assert.match(onboarding, /const recoverableOnboardingVisible = \(\) =>/);
 
   const publish = section(
@@ -92,7 +93,7 @@ test('recoverable onboarding covers semantic, heading and non-semantic Stationhe
 test('split Reconnect Music surface is resolved before plain text fallback', () => {
   const onboardingSection = section(
     locator,
-    '// Prefer genuine actionable controls before any text-only fallback.',
+    '// Every recoverable music-service action is current-state driven and',
     '// Playback-start actions remain blocked',
   );
   const actionableAt = onboardingSection.indexOf(

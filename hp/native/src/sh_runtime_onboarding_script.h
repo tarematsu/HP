@@ -10,8 +10,7 @@ namespace hp {
 inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
   const keepStreamingPattern = /^keep\s+streaming$/i;
-  const recoverableOnboardingPattern =
-    /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go|listen\s+here\s+instead)$/i;
+  const recoverableOnboardingPattern = {{RECOVERABLE_ACTION_PATTERN}};
   const connectSurfaceLabelPattern =
     /^(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:music|spotify(?:\s+account)?)$/i;
   const connectSurfaceActionPattern =
@@ -96,8 +95,8 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
 
   const recoverableOnboardingVisible = () => {
     // Do not depend on element semantics. A visually button-like Stationhead
-    // control may be a div/span. Exact allowlisted labels keep this broad DOM
-    // search from turning account/login controls into automatic clicks.
+    // control may be a div/span. The shared action policy keeps this broad DOM
+    // search synchronized with the native trusted-click locator.
     for (const element of document.querySelectorAll(onboardingCandidateSelector)) {
       if (onboardingMatches(element, recoverableOnboardingPattern)) return true;
     }
@@ -112,14 +111,11 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     // the trusted native allowlist while visible.
     if (publishKeepStreaming()) return true;
 
-    // Connect/Reconnect/Continue/Let's GO/Listen here instead are explicit
-    // Stationhead onboarding actions, not playback-state transitions. Signal
-    // them whenever they are visible, including before first playback and while
-    // stale audio state still reports playing. There is intentionally no
-    // one-shot latch here: if Stationhead cycles through the same onboarding
-    // sequence again, each newly visible step is eligible again. The native
-    // locator revalidates the same narrow allowlist at click-time. Genuine login
-    // routes/forms still block automation.
+    // Every allowlisted music-service recovery/continuation action is treated as
+    // an independent current-state action rather than a step in a fixed sequence.
+    // This covers full loops, shortened flows such as Connect Spotify -> Listen
+    // here instead, repeated steps, and future wording variants admitted by the
+    // shared policy. There is intentionally no one-shot or sequence latch.
     if (!recoverableOnboardingVisible()) return false;
 
     // Once an explicit recoverable onboarding control is visible, do not let an

@@ -45,7 +45,7 @@ test('native trusted locator prefers actionable controls then split dialog then 
   assert.match(locator, /style\.cursor === 'pointer'/);
   const body = section(
     locator,
-    '// Prefer genuine actionable controls before any text-only fallback.',
+    '// Every recoverable music-service action is current-state driven and',
     '// Playback-start actions remain blocked',
   );
   const actionableAt = body.indexOf('actionablePointForPattern(allowedOnboardingPattern)');
