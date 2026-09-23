@@ -103,6 +103,8 @@ namespace {
 bool gNativeMediaMuted = false;
 
 constexpr wchar_t kNativeMediaRootWindowClass[] = L"HomePanelNativeWindow";
+constexpr wchar_t kNativeMediaOfflineOverlayClass[] =
+    L"HomePanelNativeMediaOfflineOverlay";
 
 HWND FindNativeMediaRootWindow() noexcept {
   struct Context {
@@ -124,12 +126,120 @@ HWND FindNativeMediaRootWindow() noexcept {
       reinterpret_cast<LPARAM>(&context));
   return context.found;
 }
+
+LRESULT CALLBACK NativeMediaOfflineOverlayWindowProc(
+    HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept {
+  if (message == WM_NCHITTEST) return HTTRANSPARENT;
+  if (message == WM_ERASEBKGND) return 1;
+  if (message == WM_PAINT) {
+    PAINTSTRUCT paint{};
+    HDC dc = BeginPaint(window, &paint);
+    if (!dc) return 0;
+    RECT client{};
+    GetClientRect(window, &client);
+    FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(245, 245, 245));
+    const int height = std::max(1L, client.bottom - client.top);
+    const int fontHeight = std::clamp(height / 9, 28, 52);
+    HFONT font = CreateFontW(
+        -fontHeight, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+    HGDIOBJ previous = font ? SelectObject(dc, font) : nullptr;
+    DrawTextW(dc, L"インターネット接続がありません", -1, &client,
+              DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    if (previous) SelectObject(dc, previous);
+    if (font) DeleteObject(font);
+    EndPaint(window, &paint);
+    return 0;
+  }
+  return DefWindowProcW(window, message, wParam, lParam);
+}
+
+bool EnsureNativeMediaOfflineOverlayClass() noexcept {
+  static const bool registered = []() noexcept {
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = NativeMediaOfflineOverlayWindowProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = kNativeMediaOfflineOverlayClass;
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    if (RegisterClassW(&wc)) return true;
+    return GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+  }();
+  return registered;
+}
+
+void SetNativeMediaOfflineOverlay(HWND hostWindow, bool visible) noexcept {
+  if (!hostWindow || !IsWindow(hostWindow)) return;
+  HWND overlay = FindWindowExW(
+      hostWindow, nullptr, kNativeMediaOfflineOverlayClass, nullptr);
+  if (!visible) {
+    if (overlay) ShowWindow(overlay, SW_HIDE);
+    return;
+  }
+  if (!overlay) {
+    if (!EnsureNativeMediaOfflineOverlayClass()) return;
+    overlay = CreateWindowExW(
+        WS_EX_NOACTIVATE, kNativeMediaOfflineOverlayClass, L"",
+        WS_CHILD | WS_CLIPSIBLINGS,
+        0, 0, 1, 1, hostWindow, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!overlay) return;
+  }
+  RECT client{};
+  if (!GetClientRect(hostWindow, &client)) return;
+  const int width = std::max<LONG>(1, client.right - client.left);
+  const int height = std::max<LONG>(1, client.bottom - client.top);
+  SetWindowPos(
+      overlay, HWND_TOP, 0, 0, width, height,
+      SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  InvalidateRect(overlay, nullptr, TRUE);
+}
+
+ComPtr<ICoreWebView2NavigationCompletedEventHandler>
+WrapNativeMediaNavigationCompletedHandler(
+    ICoreWebView2NavigationCompletedEventHandler* handler,
+    HWND hostWindow) noexcept {
+  if (!handler) return {};
+  ComPtr<ICoreWebView2NavigationCompletedEventHandler> inner = handler;
+  return Callback<ICoreWebView2NavigationCompletedEventHandler>(
+      [inner = std::move(inner), hostWindow](
+          ICoreWebView2* sender,
+          ICoreWebView2NavigationCompletedEventArgs* args) noexcept -> HRESULT {
+        if (args) {
+          BOOL succeeded = FALSE;
+          if (SUCCEEDED(args->get_IsSuccess(&succeeded))) {
+            if (succeeded) {
+              SetNativeMediaOfflineOverlay(hostWindow, false);
+            } else {
+              COREWEBVIEW2_WEB_ERROR_STATUS status{};
+              if (SUCCEEDED(args->get_WebErrorStatus(&status)) &&
+                  status == COREWEBVIEW2_WEB_ERROR_STATUS_DISCONNECTED) {
+                SetNativeMediaOfflineOverlay(hostWindow, true);
+              }
+            }
+          }
+        }
+        if (!inner) return S_OK;
+        try {
+          return inner->Invoke(sender, args);
+        } catch (...) {
+          return E_FAIL;
+        }
+      });
+}
 }  // namespace
 
 // The media panel owns phase cadence, navigation, event-driven playback policy
 // and trusted WebView2 input. TVer episode choice is cloud-queue based; the old
 // renderer-level two-series alternation no longer participates in navigation.
+#undef add_NavigationCompleted
+#define add_NavigationCompleted(handler, token)                              \
+  add_NavigationCompleted(                                                   \
+      WrapNativeMediaNavigationCompletedHandler((handler), hostWindow_).Get(), \
+      (token))
 #include "renderer_panels/media_section.inc"
+#undef add_NavigationCompleted
 
 // Rain-radar rendering is intentionally separate from the media/WebView module.
 #include "renderer_panels/radar_section.inc"
