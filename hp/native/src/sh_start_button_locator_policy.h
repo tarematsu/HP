@@ -19,7 +19,7 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   const startPattern =
     /^(?:(?:start|join|resume|continue)\s+(?:listening|station|show|room)|listen\s+(?:now|live)|continue|let(?:'|’)?s\s+go|続ける|続行|次へ)$/i;
   const allowedOnboardingPattern =
-    /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go)$/i;
+    /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go|listen\s+here\s+instead)$/i;
   const connectSurfaceLabelPattern =
     /^(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:music|spotify(?:\s+account)?)$/i;
   const connectSurfaceActionPattern =
@@ -185,7 +185,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   // Prefer genuine actionable controls before any text-only fallback. In the
   // split `Reconnect Music` layout the heading and the Reconnect button are
   // siblings; clicking the heading first would consume every retry without
-  // ever reaching the real action.
+  // ever reaching the real action. The allowlist is intentionally stateless so
+  // recurring Connect/Reconnect/Listen here instead loops remain clickable.
   const actionableOnboardingPoint =
       actionablePointForPattern(allowedOnboardingPattern);
   if (actionableOnboardingPoint) return actionableOnboardingPoint;
