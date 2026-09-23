@@ -10,10 +10,10 @@ const fullscreen = readFileSync(
   'utf8',
 );
 
-test('TVer no longer treats CSS viewport fill as fullscreen', () => {
-  assert.doesNotMatch(runtime, /__homePanelTverEnsureViewportFullscreen/);
-  assert.doesNotMatch(runtime, /data-homepanel-tver-viewport-root/);
-  assert.doesNotMatch(runtime, /position:fixed !important/);
+test('TVer viewport fill remains independent from browser fullscreen retries', () => {
+  assert.match(runtime, /data-homepanel-tver-fill/);
+  assert.match(runtime, /position:fixed !important/);
+  assert.match(runtime, /if \(!fullscreen\(\)\) return requestFullscreen\(\)/);
   assert.match(runtime, /document\.fullscreenElement/);
 });
 

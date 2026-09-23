@@ -27,8 +27,13 @@ LR"JS(
       .replace(/\s+/g, ' ').trim();
   const visible = element => {
     if (!valid(element)) return false;
-    const style = getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    for (let node = element; node && node !== document.body;
+         node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' ||
+          Number(style.opacity) <= 0.05 ||
+          node.getAttribute?.('aria-hidden') === 'true') return false;
+    }
     const rect = element.getBoundingClientRect?.();
     return Boolean(rect && rect.width > 0 && rect.height > 0);
   };
@@ -43,6 +48,47 @@ LR"JS(
   const player = video.closest(
       '[data-testid*="player" i],[class*="player" i],[id*="player" i]') ||
       video.parentElement || video;
+  // Fill the WebView even when Chromium rejects browser fullscreen while the
+  // native panel is behind another window. Keep the controls in the player.
+  if (document.createElement && (document.head || document.documentElement)) {
+    if (!document.getElementById('homepanel-tver-viewport-fill')) {
+      const style = document.createElement('style');
+      style.id = 'homepanel-tver-viewport-fill';
+      style.textContent = `
+        [data-homepanel-tver-fill-ancestor] {
+          transform:none !important; contain:none !important;
+          filter:none !important; overflow:visible !important;
+        }
+        [data-homepanel-tver-fill] {
+          position:fixed !important; inset:0 !important;
+          width:100vw !important; height:100vh !important;
+          max-width:none !important; max-height:none !important;
+          z-index:2147483000 !important; background:#000 !important;
+        }
+        [data-homepanel-tver-fill] video {
+          width:100% !important; height:100% !important;
+          object-fit:contain !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    }
+    const previous = state.viewportPlayer;
+    if (previous !== player) {
+      previous?.removeAttribute?.('data-homepanel-tver-fill');
+      for (const ancestor of state.viewportAncestors || []) {
+        ancestor.removeAttribute?.('data-homepanel-tver-fill-ancestor');
+      }
+      state.viewportPlayer = player;
+      state.viewportAncestors = [];
+      player.setAttribute?.('data-homepanel-tver-fill', '');
+      for (let ancestor = player.parentElement;
+           ancestor && ancestor !== document.body;
+           ancestor = ancestor.parentElement) {
+        ancestor.setAttribute?.('data-homepanel-tver-fill-ancestor', '');
+        state.viewportAncestors.push(ancestor);
+      }
+    }
+  }
   const fullscreen = () => Boolean(
       document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement);
@@ -89,7 +135,7 @@ LR"JS(
       + '[role="radio"],[aria-label],[title],[data-testid]'));
   const explicitAd = () => {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|^スキップ$|skip\s+(?:this\s+)?ad/i;
-    if (controls().some(element => valid(element) && skipPattern.test(text(element)))) {
+    if (controls().some(element => visible(element) && skipPattern.test(text(element)))) {
       return true;
     }
     const selectors = [
@@ -153,10 +199,11 @@ LR"JS(
         node.style.setProperty('visibility', 'visible', 'important');
       }
     };
+    const inPlayer = player.contains?.(element) || false;
     for (let node = element; node && node !== player.parentElement;
          node = node.parentElement) {
       remember(node);
-      if (node === player) break;
+      if (!inPlayer || node === player) break;
     }
 
     const center = () => {
@@ -212,7 +259,7 @@ LR"JS(
     };
     function onClick(event) {
       const accepted = valid(element) &&
-          (action !== 'skip-ad' || ad()) &&
+          (action !== 'skip-ad' || (visible(element) && ad())) &&
           (action !== 'play' || (!ad() && video.paused && !video.ended)) &&
           (action !== 'fullscreen' || !fullscreen());
       if (!accepted) {
@@ -373,7 +420,7 @@ LR"JS(
 
   if (adActive) {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|^スキップ$|skip\s+(?:this\s+)?ad/i;
-    const skip = controls().find(element => valid(element) &&
+    const skip = controls().find(element => visible(element) &&
         skipPattern.test(text(element))) || null;
     if (skip) {
       const action = arm(skip, 'skip-ad', 600);
@@ -406,8 +453,15 @@ LR"JS(
 
   if (!state.qualityApplied) {
     const candidates = controls().filter(valid);
-    const low = candidates.find(element =>
-      /^(低|低画質|low)(?:[（(](?:選択中|設定中)[）)])?$/i.test(text(element).trim())) || null;
+    // TVer may portal menu options outside the video's nearest player node.
+    const portalOptions = state.qualityLastAttemptAt ? Array.from(
+      document.querySelectorAll(
+        '[role="menu"] [role="menuitem"], [role="menu"] [role="radio"], '
+        + '[role="dialog"] [role="option"], [role="listbox"] [role="option"]')) : [];
+    const low = [...candidates, ...portalOptions].find(element =>
+      visible(element) &&
+      /^(低|低画質|low)(?:[（(](?:選択中|設定中)[）)])?$/i
+        .test(text(element).trim())) || null;
     if (low) {
       const selected = low.getAttribute('aria-checked') === 'true' ||
           low.getAttribute('aria-selected') === 'true' ||
@@ -420,8 +474,10 @@ LR"JS(
       }
     } else {
       const menu = candidates.find(element =>
-        /^(画質|画質設定|quality|quality settings)$/i.test(text(element))) || null;
-      if (menu && now - Number(state.qualityLastAttemptAt || 0) >= 1200) {
+        /^(画質|画質設定|設定|quality|quality settings|settings)$/i
+          .test(text(element))) || null;
+      if (menu && (!state.qualityLastAttemptAt ||
+                   now - state.qualityLastAttemptAt >= 1200)) {
         const action = arm(menu, 'quality-menu', 700);
         if (action) {
           state.qualityLastAttemptAt = now;

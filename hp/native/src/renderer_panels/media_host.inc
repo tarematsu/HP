@@ -321,8 +321,8 @@ class NativeMediaPanelHost final {
                 }
                 if (phase_ == Phase::Tver && IsTverPage()) {
                   StopYoutubeMonitors();
-                  ExecutePolicyScript(
-                      webview_.Get(), kNativeMediaTverLoopScript, nullptr);
+                  // BeginTverPlaybackMonitor immediately runs the same TVer
+                  // policy. Do not inject a second copy on navigation.
                   BeginTverPlaybackMonitor();
                 } else if (phase_ == Phase::YouTube && IsYoutubePlaylistPage()) {
                   StopTverPlaybackMonitor();

@@ -1,4 +1,4 @@
-// TVer watchdog reuses the same unified runtime installed at navigation time.
+// The TVer watchdog is the sole owner of the unified runtime.
 // Action coordinates are returned to the native trusted-click dispatcher just
 // like the YouTube control recovery path.
 namespace {

@@ -14,7 +14,7 @@ test('TVer runtime routes only episode pages to the active policies', () => {
   assert.doesNotMatch(wrapper, /PrepareNativeMediaTverSeriesResolution\(/);
   assert.doesNotMatch(wrapper, /NativeMediaTverNavigationPendingFor\(/);
   assert.match(wrapper, /tver\.jp\/episodes\//);
-  assert.match(wrapper, /kNativeMediaTverEpisodeLoopPolicyScript/);
+  assert.doesNotMatch(wrapper, /kNativeMediaTverEpisodeLoopPolicyScript/);
   assert.match(wrapper, /kNativeMediaTverPlaybackWatchdogPolicyScript/);
   assert.match(wrapper, /kNativeMediaTverUnexpectedPageScript/);
 });

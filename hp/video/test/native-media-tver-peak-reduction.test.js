@@ -12,7 +12,7 @@ const watchdog = readFileSync(
 
 test('episode pages route to one unified TVer control-recovery policy', () => {
   assert.match(wrapper, /#include "media_tver_episode_loop_policy\.inc"/);
-  assert.match(wrapper, /kNativeMediaTverEpisodeLoopPolicyScript/);
+  assert.match(wrapper, /kNativeMediaTverPlaybackWatchdogPolicyScript/);
   assert.match(watchdog, /kNativeMediaTverControlRecoveryScript/);
   assert.doesNotMatch(wrapper, /media_tver_series_dom_policy/);
 });

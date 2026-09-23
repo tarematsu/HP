@@ -38,9 +38,9 @@ test('TVer fullscreen recovery is key-first and then targets a labelled real con
 });
 
 test('TVer routing keys live directly in the shared media base', () => {
-  assert.match(mediaBase, /kNativeMediaTverLoopScript\[\]/);
+  assert.doesNotMatch(mediaBase, /kNativeMediaTverLoopScript\[\]/);
   assert.match(mediaBase, /kNativeMediaTverWatchdogScript\[\]/);
-  assert.match(mediaBase, /homepanel-tver-loop-routing-key/);
+  assert.doesNotMatch(mediaBase, /homepanel-tver-loop-routing-key/);
   assert.match(mediaBase, /homepanel-tver-watchdog-routing-key/);
   assert.doesNotMatch(mediaBase, /MutationObserver|querySelectorAll|video\.play/);
 });
