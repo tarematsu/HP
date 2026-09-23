@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-played-tracks-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/played-tracks.css?v=20260923.1';
+  link.href = '/played-tracks.css?v=20260924.1';
   link.dataset.playedTracksStyles = '1';
   document.head.append(link);
 }
@@ -28,11 +28,18 @@ function mountView() {
   section.hidden = true;
   section.innerHTML = `
     <div class="played-tracks-toolbar">
-      <span class="played-tracks-date">対象日 2026/9/22</span>
+      <label class="played-tracks-week-toggle" for="playedTracksWeekMode">
+        <input id="playedTracksWeekMode" type="checkbox">
+        <span>週表示</span>
+      </label>
       <button id="playedTracksLoad" class="button" type="button">更新</button>
     </div>
 
-    <p id="playedTracksNotice" class="notice" role="status">2026/9/22 の再生曲を読み込みます。</p>
+    <div class="played-tracks-period-scroller" id="playedTracksPeriodScroller" aria-label="再生曲の表示期間">
+      <div class="played-tracks-period-strip" id="playedTracksPeriodStrip" role="list"></div>
+    </div>
+
+    <p id="playedTracksNotice" class="notice" role="status">最新の再生曲データを読み込みます。</p>
 
     <section class="summary-cards played-tracks-summary" aria-label="再生曲集計概要">
       <article><span>のべ再生曲数</span><strong id="playedTracksTotal">-</strong></article>
@@ -42,7 +49,7 @@ function mountView() {
     <section class="card chart-panel">
       <div class="section-head"><div><p class="kicker">COMPOSITION</p><h2>曲別再生割合</h2></div></div>
       <div class="played-tracks-chart-wrap">
-        <canvas id="playedTracksChart" width="960" height="360" aria-label="2026年9月22日の曲別再生割合の円グラフ"></canvas>
+        <canvas id="playedTracksChart" width="960" height="360" aria-label="曲別再生割合の円グラフ"></canvas>
       </div>
     </section>
 
