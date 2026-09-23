@@ -67,6 +67,8 @@ test('history mode switches clear stale shared chart state before the next rende
   assert.match(historyStability, /chartLegend'\)\?\.replaceChildren\(\)/);
   assert.match(historyStability, /chartStartDate/);
   assert.match(historyStability, /chartEndDate/);
+  assert.match(historyStability, /\['chartYAxisLeft', 'chartYAxisRight', 'chartXAxisTitle'\]/);
+  assert.match(historyStability, /function clearAxisLabel\(id\)/);
   assert.match(historyStability, /nextMode === 'broadcasts'[\s\S]*prepareBroadcastCanvas\(\)/);
   assert.match(historyStability, /canvas\.width = canvas\.width/);
   assert.match(historyStability, /paintedMode = 'broadcasts'/);
