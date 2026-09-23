@@ -13,14 +13,6 @@ const finite = (value) => {
 };
 const numberText = (value) => finite(value) == null ? '—' : integer.format(Number(value));
 
-function commentVelocity(row) {
-  for (const candidate of [row?.comment_velocity, row?.comment_velocity_max, row?.comment_count_delta]) {
-    const value = finite(candidate);
-    if (value != null) return Math.max(0, value);
-  }
-  return 0;
-}
-
 function normalizeHistory(history) {
   const list = Array.isArray(history) ? history : [];
   const latest = list.reduce((maximum, row) => Math.max(maximum, finite(row?.observed_at) || 0), 0);
@@ -33,7 +25,6 @@ function normalizeHistory(history) {
     byTime.set(observedAt, {
       observed_at: observedAt,
       online_member_count: finite(row.online_member_count),
-      comment_velocity: commentVelocity(row),
     });
   }
   return [...byTime.values()].sort((a, b) => a.observed_at - b.observed_at);
@@ -47,7 +38,7 @@ function selectPoint(event) {
   const minTime = rows[0].observed_at;
   const maxTime = rows.at(-1).observed_at;
   const span = Math.max(1, maxTime - minTime);
-  const padding = { left: 50, right: 50 };
+  const padding = { left: 50, right: 24 };
   const plotWidth = Math.max(1, bounds.width - padding.left - padding.right);
   const pointer = event.clientX - bounds.left;
   let selected = 0;
@@ -63,7 +54,7 @@ function selectPoint(event) {
   const row = rows[selected];
   const detail = document.getElementById('currentChartDetail');
   if (detail) {
-    detail.textContent = `${jstChartDateTime.format(new Date(row.observed_at))} JST　オンライン数 ${numberText(row.online_member_count)}人　コメント勢い ${numberText(row.comment_velocity)}件 / 2分`;
+    detail.textContent = `${jstChartDateTime.format(new Date(row.observed_at))} JST　オンライン数 ${numberText(row.online_member_count)}人`;
   }
 }
 
