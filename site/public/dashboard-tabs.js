@@ -74,7 +74,7 @@ async function loadHistoryRuntime() {
 
 async function loadPlayedTracksRuntime() {
   if (!playedTracksRuntimePromise) {
-    playedTracksRuntimePromise = import('/played-tracks.js?v=20260924.1').catch((error) => {
+    playedTracksRuntimePromise = import('/played-tracks.js?v=20260924.2').catch((error) => {
       playedTracksRuntimePromise = null;
       throw error;
     });
@@ -144,6 +144,7 @@ async function showPlayedTracks({ updateUrl = true, replaceUrl = false } = {}) {
     if (notice) {
       notice.textContent = '再生曲データの初期化に失敗しました。再読み込みしてください。';
       notice.classList.add('error');
+      notice.hidden = false;
     }
   } finally {
     releaseUnexpectedSkipLinkFocus();
