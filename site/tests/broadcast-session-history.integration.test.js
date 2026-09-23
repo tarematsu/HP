@@ -162,7 +162,7 @@ test('verified listening party metadata repairs track counts and supplies conten
   assert.equal(parsed.rows[1].distinct_tracks, 5);
   assert.equal(parsed.rows[1].broadcast_content, '13th Single「Unhappy birthday構文」Special Edition（トラブルで実再生5曲）');
   assert.equal(parsed.rows[2].distinct_tracks, 29);
-  assert.equal(parsed.rows[2].broadcast_content, '2025年リリース22曲＋Interlude7曲（全29曲・楽曲尺93分19秒）');
+  assert.equal(parsed.rows[2].broadcast_content, '2025年にリリースした曲');
 });
 
 test('an empty UTC range reports whether the compact summary is provisioned', () => {
