@@ -64,6 +64,32 @@ function appendLegend(label, color, className = '') {
   return span;
 }
 
+function drawMissingBands(context, rows, positions, area) {
+  if (!rows.length || !positions.length) return false;
+  const step = area.width / Math.max(1, rows.length);
+  let segmentStart = -1;
+  let painted = false;
+  const paint = (start, end) => {
+    const left = Math.max(area.left, positions[start] - step / 2);
+    const right = Math.min(area.left + area.width, positions[end] + step / 2);
+    context.fillRect(left, area.top, Math.max(1, right - left), area.height);
+    painted = true;
+  };
+
+  context.save();
+  context.fillStyle = 'rgba(100, 107, 116, .16)';
+  for (let index = 0; index <= rows.length; index += 1) {
+    const missing = index < rows.length && rows[index]?.known_missing === true;
+    if (missing && segmentStart < 0) segmentStart = index;
+    if (!missing && segmentStart >= 0) {
+      paint(segmentStart, index - 1);
+      segmentStart = -1;
+    }
+  }
+  context.restore();
+  return painted;
+}
+
 function formatPeriodTick(periodKey, mode) {
   const text = String(periodKey || '');
   if (mode === 'monthly' && /^\d{4}-\d{2}$/.test(text)) return text.replace('-', '/');
@@ -87,9 +113,7 @@ function draw() {
   if (!SUMMARY_MODES.has(mode) || mode !== latestMode) return;
   const chartPanel = document.getElementById('chartPanel');
   if (!chartPanel || chartPanel.hidden) return;
-  const rows = latestRows.filter((row) =>
-    ['listener_avg', 'listener_max', 'listener_min', 'stream_growth']
-      .some((key) => finite(row?.[key]) != null));
+  const rows = latestRows;
   if (!rows.length) return;
 
   const prepared = prepareCanvas();
@@ -100,6 +124,7 @@ function draw() {
   area.height = Math.max(1, height - area.top - area.bottom);
   const step = area.width / Math.max(1, rows.length);
   const positions = rows.map((_, index) => area.left + step * (index + 0.5));
+  const hasMissingBand = drawMissingBands(context, rows, positions, area);
 
   const listenerSeries = [
     { key: 'listener_avg', label: '平均同接', color: '#000000', width: 2.6 },
@@ -218,10 +243,14 @@ function draw() {
   if (detail) {
     if (Number.isInteger(selectedIndex) && rows[selectedIndex]) {
       const row = rows[selectedIndex];
-      detail.textContent = `${row.period_key || ''}　平均同接 ${integer.format(Math.round(finite(row.listener_avg) || 0))}`
-        + `　最大同接 ${integer.format(Math.round(finite(row.listener_max) || 0))}`
-        + `　最小同接 ${integer.format(Math.round(finite(row.listener_min) || 0))}`
-        + `　再生数 ${finite(row.stream_growth) == null ? '—' : integer.format(Math.round(Number(row.stream_growth)))}`;
+      if (row.known_missing === true) {
+        detail.textContent = `${row.period_key || ''}　欠測`;
+      } else {
+        detail.textContent = `${row.period_key || ''}　平均同接 ${integer.format(Math.round(finite(row.listener_avg) || 0))}`
+          + `　最大同接 ${integer.format(Math.round(finite(row.listener_max) || 0))}`
+          + `　最小同接 ${integer.format(Math.round(finite(row.listener_min) || 0))}`
+          + `　再生数 ${finite(row.stream_growth) == null ? '—' : integer.format(Math.round(Number(row.stream_growth)))}`;
+      }
     } else {
       detail.textContent = '';
     }
@@ -233,12 +262,13 @@ function draw() {
       .filter((series) => rows.some((row) => finite(row?.[series.key]) != null))
       .map((series) => appendLegend(series.label, series.color));
     if (streamValues.length) items.push(appendLegend('再生数', streamColor, 'period-stream-bars'));
+    if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'period-missing-band'));
     legend.replaceChildren(...items);
   }
   const title = document.getElementById('chartTitle');
   if (title) title.textContent = '同接・再生数の推移';
   const foot = document.getElementById('chartFoot');
-  if (foot) foot.textContent = '';
+  if (foot) foot.textContent = hasMissingBand ? '灰色は欠測期間です。' : '';
   const start = document.getElementById('chartStartDate');
   const end = document.getElementById('chartEndDate');
   if (start) start.textContent = rows[0]?.period_key || '—';
