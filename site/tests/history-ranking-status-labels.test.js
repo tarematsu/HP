@@ -28,5 +28,5 @@ test('leaderboard list hides missing and out-of-rank rows while keeping ranked r
 
 test('ranking list filter stays lazy and loads before the history data request', () => {
   assert.match(tabsSource, /history-ranking-table-status\.js\?v=20260923\.2/);
-  assert.match(tabsSource, /if \(mode === 'ranking'\) await loadRankingStatusRuntime\(\);\n    await loadHistoryRuntime\(\);/);
+  assert.match(tabsSource, /if \(mode === 'ranking'\) \{[\s\S]*await loadRankingStatusRuntime\(\);[\s\S]*if \(activeMode !== mode\) return;[\s\S]*\}[\s\S]*await loadHistoryRuntime\(\)/);
 });
