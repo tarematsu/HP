@@ -49,7 +49,7 @@ function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260923.6').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260923.7').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
