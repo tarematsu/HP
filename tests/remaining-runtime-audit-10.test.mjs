@@ -73,12 +73,13 @@ test('history runtime is embedded, lazy, and has one chart owner per mode', () =
 
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(html, /id="historyView"/);
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.8'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.9'\)/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.match(entry, /function ensureHistoryModeRuntime/);
   assert.match(entry, /history-period-chart\.js/);
   assert.match(entry, /history-ranking-chart\.js/);
   assert.match(entry, /history-broadcasts\.js/);
+  assert.doesNotMatch(entry, /history-ranking-missing-gap/);
 
   assert.match(runtime, /const PAGE_SIZE = 200/);
   assert.match(runtime, /sessionStorage\.getItem/);
@@ -86,6 +87,7 @@ test('history runtime is embedded, lazy, and has one chart owner per mode', () =
   assert.doesNotMatch(runtime, /prepareCanvas|drawSummaryChart|chartModel|history-broadcasts\.js/);
   assert.match(period, /history:data-loaded/);
   assert.match(ranking, /history:data-loaded/);
+  assert.match(ranking, /function drawMissingBand\(/);
   assert.doesNotMatch(period, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
   assert.doesNotMatch(ranking, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });

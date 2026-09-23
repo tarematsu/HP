@@ -1,5 +1,7 @@
 const RANKING_MODE = 'ranking';
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp'];
+const MISSING_START = '2026-01-26';
+const MISSING_END = '2026-09-14';
 const HOST_COLORS = new Map([
   ['sakuramankai', '#000000'],
   ['sakurazaka46jp', '#d93f79'],
@@ -31,6 +33,11 @@ function isoDate(value) {
   return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[3])).padStart(2, '0')}`;
 }
 
+function isMissingWeek(value) {
+  const week = isoDate(value);
+  return Boolean(week && week >= MISSING_START && week <= MISSING_END);
+}
+
 function activeMode() {
   return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || '');
 }
@@ -60,8 +67,9 @@ function prepareCanvas() {
   return { canvas, context, width, height };
 }
 
-function appendLegend(label, color) {
+function appendLegend(label, color, datasetKey = '') {
   const span = document.createElement('span');
+  if (datasetKey) span.dataset[datasetKey] = 'true';
   const marker = document.createElement('i');
   marker.style.background = color;
   span.append(marker, document.createTextNode(label));
@@ -114,6 +122,22 @@ function tickIndices(length, count) {
   return [...indexes].sort((a, b) => a - b);
 }
 
+function drawMissingBand(context, weeks, positions, area) {
+  const missingIndexes = weeks
+    .map((week, index) => isMissingWeek(week) ? index : -1)
+    .filter((index) => index >= 0);
+  if (!missingIndexes.length) return false;
+
+  const step = positions.length > 1 ? area.width / (positions.length - 1) : area.width;
+  const left = Math.max(area.left, positions[missingIndexes[0]] - step / 2);
+  const right = Math.min(area.left + area.width, positions[missingIndexes.at(-1)] + step / 2);
+  context.save();
+  context.fillStyle = 'rgba(100, 107, 116, .16)';
+  context.fillRect(left, area.top, Math.max(1, right - left), area.height);
+  context.restore();
+  return true;
+}
+
 function hideChart() {
   const panel = document.getElementById('chartPanel');
   if (panel) panel.hidden = true;
@@ -143,6 +167,7 @@ function draw() {
   const positions = model.weeks.map((_, index) => area.left
     + area.width * index / Math.max(1, model.weeks.length - 1));
 
+  const hasMissingBand = drawMissingBand(context, model.weeks, positions, area);
   const ranks = model.series.flatMap((item) => item.values.filter((value) => value != null && value > 0));
   const maxRank = Math.max(1, ...ranks);
   const yFor = (rank) => area.top + ((Math.max(1, Number(rank)) - 1) / Math.max(1, maxRank - 1)) * area.height;
@@ -214,9 +239,13 @@ function draw() {
     ? `${chartHosts[0]} 順位推移`
     : '週間リーダーボード順位';
   const legend = document.getElementById('chartLegend');
-  if (legend) legend.replaceChildren(...model.series.map((item, index) => appendLegend(item.host, colors[index])));
+  if (legend) {
+    const items = model.series.map((item, index) => appendLegend(item.host, colors[index]));
+    if (hasMissingBand) items.push(appendLegend('欠測', 'rgba(100, 107, 116, .55)', 'rankingMissingLegend'));
+    legend.replaceChildren(...items);
+  }
   const foot = document.getElementById('chartFoot');
-  if (foot) foot.textContent = '順位は上ほど高順位です。';
+  if (foot) foot.textContent = '順位は上ほど高順位です。灰色は欠測期間です。空白週は圏外です。';
   const start = document.getElementById('chartStartDate');
   const end = document.getElementById('chartEndDate');
   if (start) start.textContent = model.weeks[0] || '—';

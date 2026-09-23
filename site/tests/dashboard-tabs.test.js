@@ -31,8 +31,8 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
   for (const id of ['likesLoad', 'likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
     assert.match(page, new RegExp(`id="${id}"`));
   }
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260923\.7'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260923\.8'\)/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260923\.8'/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260923\.9'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
@@ -47,7 +47,8 @@ test('inactive history and likes runtimes are not prefetched from the current ta
 test('history mode-specific runtimes are lazy-loaded only after history starts', () => {
   assert.match(historyEntry, /function ensureHistoryModeRuntime/);
   assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
-  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.7/);
+  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.8/);
+  assert.doesNotMatch(historyEntry, /history-ranking-missing-gap/);
   assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260923\.2/);
   assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
   assert.match(tabsClient, /if \(mode === 'ranking'\) await loadRankingStatusRuntime\(\)/);
