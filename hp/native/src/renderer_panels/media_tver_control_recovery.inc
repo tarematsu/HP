@@ -109,9 +109,9 @@ LR"JS(
   const ad = () => {
     const length = duration();
     const shortMedia = length >= 5 && length <= 65;
-    const key = mediaKey();
-    return explicitAd() ||
-        (shortMedia && key !== state.programKey && video.playbackRate <= 1.05);
+    // TVer can reuse the same video element and retain our 1.75x setting for
+    // a pre-roll. Playback rate is therefore not evidence of program media.
+    return explicitAd() || shortMedia;
   };
 )JS" LR"JS(
 
@@ -245,7 +245,8 @@ LR"JS(
         const key = mediaKey();
         const length = duration();
         const at = currentTime();
-        if (key && key === state.programKey && length >= 5 &&
+        if (key && key === state.programKey && !ad() && length > 65 &&
+            state.programStartedAt && Date.now() - state.programStartedAt >= 30000 &&
             at >= Math.max(3, length - 10)) {
           state.programEndPending = true;
         }
@@ -254,7 +255,7 @@ LR"JS(
     };
     for (const name of [
       'playing','pause','waiting','stalled','ended','error',
-      'loadedmetadata','durationchange','emptied'
+      'loadedmetadata','durationchange','emptied','ratechange'
     ]) {
       video.addEventListener(name, handler, {
         passive: true, signal: state.videoAbort.signal
@@ -295,7 +296,11 @@ LR"JS(
     state.mediaStartedAt = now;
     state.mediaOrigin = currentTime();
     state.qualityApplied = false;
-    state.qualityAttempts = 0;
+    state.qualityLastAttemptAt = 0;
+    state.programEndPending = false;
+    state.programCandidateKey = '';
+    state.programKey = '';
+    state.programStartedAt = 0;
     state.fullscreenKeyRequestedAt = 0;
   }
 
@@ -305,8 +310,10 @@ LR"JS(
       state.programCandidateKey = key;
       state.programCandidateOrigin = currentTime();
     }
-    if (currentTime() >= Number(state.programCandidateOrigin || 0) + 1 ||
-        duration() > 65) {
+    // A short pre-roll without an ad badge must never become the program.
+    if (duration() > 65 && (currentTime() >=
+        Number(state.programCandidateOrigin || 0) + 1)) {
+      if (state.programKey !== key) state.programStartedAt = now;
       state.programKey = key;
     }
   }
@@ -343,7 +350,8 @@ LR"JS(
       state.fullscreenKeyRequestedAt = 0;
       return null;
     }
-    if (!Number(state.fullscreenKeyRequestedAt || 0)) {
+    if (!state.fullscreenKeyRequestedAt ||
+        now - state.fullscreenKeyRequestedAt >= 4000) {
       state.fullscreenKeyRequestedAt = now;
       wake(1200);
       post('homepanel:tver-fullscreen-key');
@@ -369,8 +377,6 @@ LR"JS(
     return 'recovery';
   }
 
-  if (!fullscreen()) return requestFullscreen();
-
   try {
     video.defaultPlaybackRate = 1.75;
     if (video.playbackRate !== 1.75) video.playbackRate = 1.75;
@@ -394,7 +400,7 @@ LR"JS(
   if (!state.qualityApplied) {
     const candidates = controls().filter(valid);
     const low = candidates.find(element =>
-      /^(低|低画質|low)$/i.test(text(element).replace(/画質$/, '').trim())) || null;
+      /^(低|低画質|low)(?:[（(](?:選択中|設定中)[）)])?$/i.test(text(element).trim())) || null;
     if (low) {
       const selected = low.getAttribute('aria-checked') === 'true' ||
           low.getAttribute('aria-selected') === 'true' ||
@@ -405,17 +411,23 @@ LR"JS(
         const action = arm(low, 'quality-low', 700);
         if (action) return action;
       }
-    } else if (Number(state.qualityAttempts || 0) < 4) {
+    } else {
       const menu = candidates.find(element =>
         /^(画質|画質設定|quality|quality settings)$/i.test(text(element))) || null;
-      state.qualityAttempts = Number(state.qualityAttempts || 0) + 1;
-      const action = arm(menu, 'quality-menu', 700);
-      if (action) return action;
-      if (state.qualityAttempts >= 4) state.qualityApplied = true;
-    } else {
-      state.qualityApplied = true;
+      if (menu && now - Number(state.qualityLastAttemptAt || 0) >= 1200) {
+        const action = arm(menu, 'quality-menu', 700);
+        if (action) {
+          state.qualityLastAttemptAt = now;
+          return action;
+        }
+      }
     }
   }
+
+  // Browser fullscreen can be refused in a background WebView. Keep applying
+  // program settings and checking quality while fullscreen retries continue.
+  if (!state.qualityApplied) recheck();
+  if (!fullscreen()) return requestFullscreen();
 
   return null;
 })()
