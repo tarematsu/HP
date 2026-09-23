@@ -13,6 +13,10 @@ const workflow = readFileSync(
   new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url),
   'utf8',
 );
+const repairWorkflow = readFileSync(
+  new URL('../.github/workflows/repair-pages-summaries.yml', import.meta.url),
+  'utf8',
+);
 
 const NOW = Date.UTC(2026, 6, 28, 0, 4);
 const SAFE_KEYS = ['dashboard'];
@@ -36,7 +40,10 @@ test('D1 budget deferral refreshes dashboard and only reuses unchanged history',
     workflow,
     /name: Publish due pages read models\n        if: steps\.d1-write-budget\.outputs\.read_allowed == 'true'/,
   );
-  assert.match(workflow, /node scripts\/repair-pages-summary-gaps\.mjs/);
+  assert.doesNotMatch(workflow, /node scripts\/repair-pages-summary-gaps\.mjs/);
+  assert.match(repairWorkflow, /cron: '23 4 \* \* \*'/);
+  assert.match(repairWorkflow, /node scripts\/repair-pages-summary-gaps\.mjs/);
+  assert.match(repairWorkflow, /PAGES_STREAM_ZERO_REPAIR_ENABLED: 'true'/);
   assert.match(workflow, /dashboard refresh and reuse-only history freshness checks will still run\./);
   assert.match(workflow, /site\/functions\/lib\/materialized-history\.js/);
   assert.doesNotMatch(workflow, /Rebuild track history|track-history generation/);
