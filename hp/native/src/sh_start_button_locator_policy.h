@@ -30,7 +30,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
   const semanticSelector =
     "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
-  const candidateSelector = semanticSelector + ',div,span,p';
+  const candidateSelector =
+    semanticSelector + ",h1,h2,h3,[role='heading'],div,span,p";
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const labelsOf = element => [
     element?.getAttribute?.('aria-label'),
