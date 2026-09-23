@@ -59,9 +59,10 @@ function resetSharedChartPresentation() {
   if (end) end.textContent = '—';
   if (detail) detail.textContent = 'グラフを読み込み中です。';
   for (const id of ['chartYAxisLeft', 'chartYAxisRight', 'chartXAxisTitle']) clearAxisLabel(id);
-  delete canvas?.dataset?.sakurazakaMaxMinute;
-  delete canvas?.dataset?.sakurazakaLeft;
-  delete canvas?.dataset?.sakurazakaWidth;
+  canvas.width = canvas.width;
+  delete canvas.dataset.sakurazakaMaxMinute;
+  delete canvas.dataset.sakurazakaLeft;
+  delete canvas.dataset.sakurazakaWidth;
 }
 
 function prepareBroadcastCanvas() {
@@ -69,7 +70,6 @@ function prepareBroadcastCanvas() {
   clearTimeout(fallbackTimer);
   clearTimeout(revealTimer);
   armed = false;
-  canvas.width = canvas.width;
   canvas.style.opacity = '1';
   canvas.style.pointerEvents = '';
   delete canvas.dataset.paintPending;
@@ -77,6 +77,13 @@ function prepareBroadcastCanvas() {
   delete canvas.dataset.periodChart;
   delete canvas.dataset.rankingChart;
   paintedMode = 'broadcasts';
+}
+
+function prepareRankingQueryChange() {
+  if (activeMode() !== 'ranking') return;
+  resetSharedChartPresentation();
+  paintedMode = '';
+  conceal('ranking');
 }
 
 if (canvas) {
@@ -105,6 +112,11 @@ if (canvas) {
       return;
     }
     if (nextMode !== paintedMode) conceal(nextMode);
+  }, true);
+
+  document.getElementById('rankingScope')?.addEventListener('change', prepareRankingQueryChange, true);
+  document.getElementById('rankingHost')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') prepareRankingQueryChange();
   }, true);
 
   document.getElementById('load')?.addEventListener('click', () => {
