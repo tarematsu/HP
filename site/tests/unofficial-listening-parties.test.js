@@ -21,7 +21,7 @@ test('unofficial listening party view is table-only with the requested columns',
 
 test('historical unofficial listening party rows use formal hosting channel names', () => {
   const rows = [...viewSource.matchAll(/\{ date: '[^']+'.+?\},/g)];
-  assert.equal(rows.length, 16);
+  assert.equal(rows.length, 15);
   assert.equal((viewSource.match(/place: ''/g) || []).length, 0);
   assert.match(viewSource, /date: '2024\/08\/02'.+place: 'BUDDIES STATIONHEAD'/);
   assert.match(viewSource, /date: '2024\/09\/07'.+place: 'LOCKEY Stationhead'/);
@@ -33,18 +33,17 @@ test('historical unofficial listening party rows use formal hosting channel name
   assert.doesNotMatch(viewSource, /BUDDIESチャンネル|Buddiesチャンネル|Ohisamaチャンネル|imp714p/);
 });
 
-test('expanded history includes verified 2025 and 2026 collaborative parties', () => {
+test('expanded history adds only the verified three-Sakamichi joint event', () => {
   assert.match(viewSource, /date: '2025\/07\/19', time: '23:00', name: '#坂道Stationhead DAY1', place: "乃木坂46fan's Stationhead"/);
   assert.match(viewSource, /date: '2025\/07\/20', time: '21:00', name: '#坂道Stationhead DAY2', place: 'BUDDIES STATIONHEAD'/);
   assert.match(viewSource, /date: '2025\/07\/21', time: '22:00', name: '#坂道Stationhead DAY3', place: 'Ohisama CH\.'/);
-  assert.match(viewSource, /date: '2026\/07\/22', time: '23:00', name: 'シアターおひさま「妄想W-KEYAKI FES\.2026」', place: 'Ohisama CH\.'/);
+  assert.doesNotMatch(viewSource, /妄想W-KEYAKI FES\.2026|ケヤキダービー/);
 });
 
 test('historical rows expose announcement sources with an appropriate label', () => {
   assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 12);
   assert.match(viewSource, /https:\/\/note\.com\/kyounosuke1218\/n\/n7b8aa8d414a8/);
   assert.match(viewSource, /sourceLabel: '告知記事'/);
-  assert.match(viewSource, /https:\/\/t\.co\/PInSOa9NTx/);
   assert.match(viewSource, /sourceLink\.textContent = event\.sourceLabel \|\| 'X告知'/);
   assert.match(viewSource, /sourceLink\.target = '_blank'/);
   assert.match(viewSource, /sourceLink\.rel = 'noopener noreferrer'/);
