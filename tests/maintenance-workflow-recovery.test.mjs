@@ -215,6 +215,7 @@ test('maintenance workflows enforce Runtime then Pages publication order', () =>
   const watchdog = read('.github/workflows/recover-maintenance-workflows.yml');
   const runtimeWorkflow = read('.github/workflows/run-runtime-offline-maintenance.yml');
   const pagesWorkflow = read('.github/workflows/run-pages-read-model-rebuild.yml');
+  const summaryRepairWorkflow = read('.github/workflows/repair-pages-summaries.yml');
 
   assert.match(watchdog, /- "Publish GitHub Actions runner health"/);
   assert.match(watchdog, /- "Rebuild pages read models"/);
@@ -225,8 +226,10 @@ test('maintenance workflows enforce Runtime then Pages publication order', () =>
   assert.doesNotMatch(runtimeWorkflow, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
   assert.doesNotMatch(pagesWorkflow, /workflow_run:/);
   assert.match(pagesWorkflow, /cron: '26,56 \* \* \* \*'/);
-  assert.match(pagesWorkflow, /github\.event_name == 'schedule'/);
-  assert.match(pagesWorkflow, /repair-pages-summary-gaps\.mjs/);
+  assert.doesNotMatch(pagesWorkflow, /github\.event_name == 'schedule'/);
+  assert.doesNotMatch(pagesWorkflow, /repair-pages-summary-gaps\.mjs/);
+  assert.match(summaryRepairWorkflow, /cron: '23 4 \* \* \*'/);
+  assert.match(summaryRepairWorkflow, /repair-pages-summary-gaps\.mjs/);
 });
 
 test('recovery watchdog is offset, budget-safe, and wired to shared policy', () => {
