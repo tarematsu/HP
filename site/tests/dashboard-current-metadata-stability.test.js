@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const metricStyle = readFileSync(new URL('../public/dashboard-current-metric-style.js', import.meta.url), 'utf8');
+const metadataStability = readFileSync(new URL('../public/dashboard-queue-metadata-stability.js', import.meta.url), 'utf8');
+
+test('online, members and total streams use one explicit current metric size', () => {
+  assert.match(metrics, /dashboard-current-metric-style\.js\?v=20260923\.1/);
+  assert.match(metricStyle, /#online,[\s\S]*#members,[\s\S]*#totalStreams/);
+  assert.match(metricStyle, /font-size: clamp\(1\.75rem, 5\.8vw, 2\.5rem\) !important/);
+  assert.match(metricStyle, /@media \(max-width: 760px\)[\s\S]*font-size: clamp\(1rem, 5vw, 1\.4rem\) !important/);
+});
+
+test('dashboard preserves known metadata only for the same stable track identity', () => {
+  assert.match(metrics, /dashboard-queue-metadata-stability\.js\?v=20260923\.1/);
+  assert.ok(
+    metrics.indexOf('dashboard-fetch-cache.js') < metrics.indexOf('dashboard-queue-metadata-stability.js'),
+  );
+  assert.match(metadataStability, /open\.spotify\.com\\\/track\\\/\(\[A-Za-z0-9\]\+\)/);
+  assert.match(metadataStability, /const known = new Map\(\)/);
+  assert.match(metadataStability, /usableText\(track\.title, TITLE_PLACEHOLDERS\) \|\| previous\.title/);
+  assert.match(metadataStability, /usableText\(track\.artist, ARTIST_PLACEHOLDERS\) \|\| previous\.artist/);
+  assert.match(metadataStability, /normalizedText\(track\.thumbnail_url\) \|\| previous\.thumbnail_url/);
+  assert.match(metadataStability, /restoreKnownMetadata\(\)/);
+  assert.doesNotMatch(metadataStability, /previousQueue\[index\]|known\.get\(index\)/);
+});
