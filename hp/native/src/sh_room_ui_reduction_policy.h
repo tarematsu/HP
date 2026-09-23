@@ -48,10 +48,8 @@ inline std::wstring StationheadRoomUiReductionScript() {
     style.id = styleId;
     style.textContent = `
       /* Static room cleanup before playback. Keep selectors tied to explicit
-         presentation semantics. Generic button class bundles are intentionally
-         avoided because Stationhead reuses them for Connect/Reconnect/Continue. */
-      aside,
-      [role='complementary'],
+         presentation semantics. Never hide generic structural containers or
+         reusable button classes because recovery controls can be mounted there. */
       [data-testid*='chat' i], [id*='chat' i], [class*='chat' i], [aria-label*='chat' i],
       [data-testid*='thread' i], [id*='thread' i], [class*='thread' i], [aria-label*='thread' i],
       [data-testid*='listener' i], [id*='listener' i], [class*='listener' i], [aria-label*='listener' i],
@@ -78,8 +76,8 @@ inline std::wstring StationheadRoomUiReductionScript() {
       aside:has(textarea[class~='min-w-0'][class~='flex-1'][class~='resize-none'][class~='bg-transparent']),
       [role='complementary']:has(textarea[class~='min-w-0'][class~='flex-1'][class~='resize-none'][class~='bg-transparent']),
 
-      /* Audited room mini-player controls; playback itself is not modified. */
-      footer,
+      /* Hide only explicit mini-player controls; keep footer itself available
+         because Stationhead can mount recovery actions in structural shells. */
       button[aria-label='Toggle Mute'],
       [aria-label='Volume'],
       input[type='range'] {
