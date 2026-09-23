@@ -128,6 +128,8 @@
     const head = document.getElementById('thead');
     const body = document.getElementById('tbody');
     if (!head || !body) return;
+    const tableTitle = document.getElementById('tableTitle');
+    if (tableTitle) tableTitle.textContent = '公式リスパ一覧';
 
     const table = head.closest('table');
     table?.classList.remove('compact-columns');
