@@ -99,7 +99,7 @@ function normalizedRows(rows, from = '', to = '') {
 
 function colorFor(index) {
   const hue = Math.round((index * 137.508 + 332) % 360);
-  return `hsl(${hue} 58% 52%)`;
+  return `hsl(${hue} 100% 60%)`;
 }
 
 function periodOptions() {
@@ -210,9 +210,10 @@ function drawPie() {
     return;
   }
 
-  const radius = Math.min(rect.width, rect.height) * 0.42;
+  const radius = Math.min(rect.width, rect.height) * 0.32;
   const centerX = rect.width / 2;
   const centerY = rect.height / 2;
+  const topLabels = [];
   let angle = -Math.PI / 2;
   state.rows.forEach((row, index) => {
     const next = angle + Math.PI * 2 * row.play_count / state.total;
@@ -225,8 +226,65 @@ function drawPie() {
     context.strokeStyle = '#fff';
     context.lineWidth = 1.5;
     context.stroke();
+
+    if (index < 5) {
+      topLabels.push({
+        row,
+        index,
+        midAngle: (angle + next) / 2,
+      });
+    }
     angle = next;
   });
+
+  const labelRadius = radius * 1.24;
+  const elbowRadius = radius * 1.08;
+  const minLabelGap = 28;
+  const labelMargin = 6;
+  const labelFont = rect.width < 520 ? 11 : 12;
+  const titleLimit = rect.width < 520 ? 14 : 22;
+  const sides = [
+    topLabels.filter(({ midAngle }) => Math.cos(midAngle) >= 0),
+    topLabels.filter(({ midAngle }) => Math.cos(midAngle) < 0),
+  ];
+
+  for (const labels of sides) {
+    labels.sort((left, right) => Math.sin(left.midAngle) - Math.sin(right.midAngle));
+    let previousY = -Infinity;
+    for (const label of labels) {
+      const direction = Math.cos(label.midAngle) >= 0 ? 1 : -1;
+      const edgeX = centerX + Math.cos(label.midAngle) * radius;
+      const edgeY = centerY + Math.sin(label.midAngle) * radius;
+      const elbowX = centerX + Math.cos(label.midAngle) * elbowRadius;
+      const elbowY = centerY + Math.sin(label.midAngle) * elbowRadius;
+      const desiredY = centerY + Math.sin(label.midAngle) * labelRadius;
+      const minY = labelFont * 1.5;
+      const maxY = rect.height - labelFont * 1.5;
+      const labelY = Math.max(minY, Math.min(maxY, Math.max(desiredY, previousY + minLabelGap)));
+      previousY = labelY;
+      const lineEndX = direction > 0 ? rect.width - labelMargin : labelMargin;
+      const textX = lineEndX + direction * 2;
+
+      context.beginPath();
+      context.moveTo(edgeX, edgeY);
+      context.lineTo(elbowX, elbowY);
+      context.lineTo(lineEndX, labelY);
+      context.strokeStyle = colorFor(label.index);
+      context.lineWidth = 1.5;
+      context.stroke();
+
+      const rawTitle = trackLabel(label.row);
+      const title = rawTitle.length > titleLimit ? `${rawTitle.slice(0, titleLimit - 1)}…` : rawTitle;
+      context.fillStyle = colorFor(label.index);
+      context.textAlign = direction > 0 ? 'right' : 'left';
+      context.textBaseline = 'bottom';
+      context.font = `600 ${labelFont}px system-ui, sans-serif`;
+      context.fillText(title, textX, labelY - 1);
+      context.textBaseline = 'top';
+      context.font = `700 ${labelFont}px system-ui, sans-serif`;
+      context.fillText(integer.format(label.row.play_count), textX, labelY + 1);
+    }
+  }
 }
 
 function render() {
@@ -234,7 +292,7 @@ function render() {
   renderTable();
   drawPie();
   const canvas = byId('playedTracksChart');
-  if (canvas) canvas.setAttribute('aria-label', `${selectedDescription()} の曲別再生割合の円グラフ`);
+  if (canvas) canvas.setAttribute('aria-label', `${selectedDescription()} の曲別再生割合の円グラフ。上位5曲は曲名と再生数を表示`);
 }
 
 function setNotice(message, error = false) {
