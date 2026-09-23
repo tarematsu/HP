@@ -74,7 +74,7 @@ async function loadHistoryRuntime() {
 
 async function loadPlayedTracksRuntime() {
   if (!playedTracksRuntimePromise) {
-    playedTracksRuntimePromise = import('/played-tracks.js?v=20260923.1').catch((error) => {
+    playedTracksRuntimePromise = import('/played-tracks.js?v=20260924.1').catch((error) => {
       playedTracksRuntimePromise = null;
       throw error;
     });

@@ -7,13 +7,96 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin: 7px 0;
+  margin: 7px 0 2px;
 }
 
-.played-tracks-date {
+.played-tracks-week-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
   color: var(--muted);
-  font-size: .72rem;
+  font-size: .78rem;
+  font-weight: 750;
+  user-select: none;
+}
+
+.played-tracks-week-toggle input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+}
+
+.played-tracks-period-scroller {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 2px 0 8px;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.played-tracks-period-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 7px;
+  width: max-content;
+  min-width: 100%;
+  padding: 5px 45%;
+  box-sizing: border-box;
+}
+
+.played-tracks-period {
+  display: grid;
+  flex: 0 0 76px;
+  min-width: 76px;
+  padding: 7px 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  opacity: .38;
+  text-align: center;
+  cursor: pointer;
+  transition: opacity .15s ease, border-color .15s ease, background .15s ease, transform .15s ease;
+  scroll-snap-align: center;
+}
+
+.played-tracks-period:hover,
+.played-tracks-period:focus-visible {
+  opacity: .72;
+}
+
+.played-tracks-period.is-selected {
+  border-color: currentColor;
+  background: var(--panel-2);
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.played-tracks-period-date {
+  display: block;
+  font-size: .84rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.played-tracks-period-sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: .69rem;
   font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.played-tracks-period.is-selected .played-tracks-period-sub {
+  color: inherit;
 }
 
 .played-tracks-summary {
@@ -82,12 +165,11 @@
 
 @media (max-width: 760px) {
   .played-tracks-toolbar {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
   }
 
-  .played-tracks-toolbar .button {
-    align-self: flex-start;
+  .played-tracks-period-strip {
+    padding-inline: calc(50vw - 38px);
   }
 
   .played-tracks-chart-wrap {

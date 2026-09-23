@@ -1,9 +1,13 @@
-const TARGET_DATE = '2026-09-22';
 const integer = new Intl.NumberFormat('ja-JP');
 const percent = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const state = {
   loading: false,
-  loaded: false,
+  periodsLoaded: false,
+  availableDates: [],
+  selectedPeriod: '',
+  weekMode: false,
+  loadedRangeKey: '',
   rows: [],
   total: 0,
 };
@@ -15,24 +19,105 @@ function finiteCount(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
+function parseDateKey(value) {
+  const text = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const date = new Date(`${text}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function dateKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(value, days) {
+  const date = parseDateKey(value);
+  if (!date) return '';
+  date.setUTCDate(date.getUTCDate() + days);
+  return dateKey(date);
+}
+
+function startOfWeek(value) {
+  const date = parseDateKey(value);
+  if (!date) return '';
+  const offset = (date.getUTCDay() + 6) % 7;
+  date.setUTCDate(date.getUTCDate() - offset);
+  return dateKey(date);
+}
+
+function shortDate(value) {
+  const date = parseDateKey(value);
+  if (!date) return '--/--';
+  return `${String(date.getUTCMonth() + 1).padStart(2, '0')}/${String(date.getUTCDate()).padStart(2, '0')}`;
+}
+
+function longDate(value) {
+  const date = parseDateKey(value);
+  if (!date) return value;
+  return `${date.getUTCFullYear()}/${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
+}
+
+function weekday(value) {
+  const date = parseDateKey(value);
+  return date ? WEEKDAYS[date.getUTCDay()] : '';
+}
+
 function trackLabel(row) {
   const title = String(row?.title || row?.display_title || '').trim();
   if (title && title !== '曲情報なし') return title;
   return row?.spotify_id || row?.isrc || row?.stationhead_track_id || '曲名不明';
 }
 
-function normalizedRows(rows) {
-  return (Array.isArray(rows) ? rows : [])
-    .filter((row) => String(row?.play_date || '') === TARGET_DATE)
-    .map((row) => ({ ...row, play_count: finiteCount(row?.play_count) }))
-    .filter((row) => row.play_count > 0)
-    .sort((left, right) => right.play_count - left.play_count
-      || trackLabel(left).localeCompare(trackLabel(right), 'ja'));
+function trackIdentity(row) {
+  const spotify = String(row?.spotify_id || '').trim();
+  if (spotify) return `spotify:${spotify}`;
+  const isrc = String(row?.isrc || '').trim();
+  if (isrc) return `isrc:${isrc}`;
+  const title = trackLabel(row).normalize('NFKC').toLocaleLowerCase('ja');
+  const artist = String(row?.artist || '').trim().normalize('NFKC').toLocaleLowerCase('ja');
+  return `label:${title}\u0000${artist}`;
+}
+
+function normalizedRows(rows, from = '', to = '') {
+  const grouped = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const playDate = String(row?.play_date || '');
+    if ((from && playDate < from) || (to && playDate > to)) continue;
+    const count = finiteCount(row?.play_count);
+    if (!count) continue;
+    const key = trackIdentity(row);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.play_count += count;
+    } else {
+      grouped.set(key, { ...row, play_count: count });
+    }
+  }
+  return [...grouped.values()].sort((left, right) => right.play_count - left.play_count
+    || trackLabel(left).localeCompare(trackLabel(right), 'ja'));
 }
 
 function colorFor(index) {
   const hue = Math.round((index * 137.508 + 332) % 360);
   return `hsl(${hue} 58% 52%)`;
+}
+
+function periodOptions() {
+  if (!state.weekMode) return state.availableDates;
+  return [...new Set(state.availableDates.map(startOfWeek).filter(Boolean))].sort();
+}
+
+function selectedRange() {
+  if (!state.selectedPeriod) return { from: '', to: '' };
+  return state.weekMode
+    ? { from: state.selectedPeriod, to: addDays(state.selectedPeriod, 6) }
+    : { from: state.selectedPeriod, to: state.selectedPeriod };
+}
+
+function selectedDescription() {
+  const { from, to } = selectedRange();
+  if (!from) return '';
+  return state.weekMode ? `${longDate(from)}〜${longDate(to)}` : longDate(from);
 }
 
 function renderSummary() {
@@ -148,6 +233,8 @@ function render() {
   renderSummary();
   renderTable();
   drawPie();
+  const canvas = byId('playedTracksChart');
+  if (canvas) canvas.setAttribute('aria-label', `${selectedDescription()} の曲別再生割合の円グラフ`);
 }
 
 function setNotice(message, error = false) {
@@ -157,30 +244,134 @@ function setNotice(message, error = false) {
   notice.classList.toggle('error', error);
 }
 
-export async function loadPlayedTracks({ force = false } = {}) {
-  if (state.loading || (state.loaded && !force)) return;
+function scrollSelectedPeriod({ smooth = false } = {}) {
+  requestAnimationFrame(() => {
+    const button = byId('playedTracksPeriodStrip')?.querySelector('.played-tracks-period.is-selected');
+    button?.scrollIntoView({
+      behavior: smooth ? 'smooth' : 'auto',
+      block: 'nearest',
+      inline: 'center',
+    });
+  });
+}
+
+function renderPeriodNavigator({ smooth = false } = {}) {
+  const strip = byId('playedTracksPeriodStrip');
+  if (!strip) return;
+  strip.replaceChildren();
+  for (const period of periodOptions()) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'played-tracks-period';
+    button.dataset.period = period;
+    const selected = period === state.selectedPeriod;
+    button.classList.toggle('is-selected', selected);
+    button.setAttribute('aria-pressed', String(selected));
+    button.setAttribute('aria-label', state.weekMode
+      ? `${longDate(period)}からの週`
+      : `${longDate(period)} ${weekday(period)}曜日`);
+
+    const date = document.createElement('span');
+    date.className = 'played-tracks-period-date';
+    date.textContent = shortDate(period);
+    const sub = document.createElement('span');
+    sub.className = 'played-tracks-period-sub';
+    sub.textContent = state.weekMode ? '(週)' : `(${weekday(period)})`;
+    button.append(date, sub);
+    strip.append(button);
+  }
+  scrollSelectedPeriod({ smooth });
+}
+
+async function fetchJson(url, { force = false } = {}) {
+  const response = await fetch(url, {
+    headers: { accept: 'application/json' },
+    cache: force ? 'reload' : 'default',
+  });
+  const payload = await response.json();
+  if (!response.ok || payload?.ok !== true) {
+    throw new Error(payload?.error || `track history API ${response.status}`);
+  }
+  return payload;
+}
+
+async function loadPeriodIndex({ force = false } = {}) {
+  if (state.periodsLoaded && !force) return;
+  const payload = await fetchJson('/api/track-history?dates_only=1', { force });
+  state.availableDates = (Array.isArray(payload.dates) ? payload.dates : [])
+    .filter((value, index, values) => parseDateKey(value) && values.indexOf(value) === index)
+    .sort();
+  state.periodsLoaded = true;
+
+  const options = periodOptions();
+  if (!state.selectedPeriod || !options.includes(state.selectedPeriod)) {
+    state.selectedPeriod = options.at(-1) || '';
+  }
+  renderPeriodNavigator();
+}
+
+async function loadSelectedPeriod({ force = false } = {}) {
+  const { from, to } = selectedRange();
+  if (!from || !to) {
+    state.rows = [];
+    state.total = 0;
+    state.loadedRangeKey = '';
+    render();
+    setNotice('再生曲データがありません。');
+    return;
+  }
+  const rangeKey = `${from}:${to}`;
+  if (!force && state.loadedRangeKey === rangeKey) return;
+
+  setNotice(`${selectedDescription()} の再生曲を読み込み中…`);
+  const payload = await fetchJson(`/api/track-history?from=${from}&to=${to}&limit=10000&ranking=0`, { force });
+  state.rows = normalizedRows(payload.rows, from, to);
+  state.total = state.rows.reduce((sum, row) => sum + row.play_count, 0);
+  state.loadedRangeKey = rangeKey;
+  render();
+  setNotice(state.total > 0
+    ? `${selectedDescription()} のべ ${integer.format(state.total)} 曲を集計`
+    : `${selectedDescription()} の再生曲データはありません。`);
+}
+
+async function selectPeriod(period) {
+  if (!period || period === state.selectedPeriod) return;
+  state.selectedPeriod = period;
+  renderPeriodNavigator({ smooth: true });
+  await loadPlayedTracks();
+}
+
+function switchWeekMode(enabled) {
+  if (state.weekMode === enabled) return;
+  const previous = state.selectedPeriod;
+  state.weekMode = enabled;
+  const options = periodOptions();
+  if (enabled) {
+    const week = startOfWeek(previous || state.availableDates.at(-1));
+    state.selectedPeriod = options.includes(week) ? week : options.at(-1) || '';
+  } else {
+    const weekStart = previous;
+    const weekEnd = addDays(weekStart, 6);
+    const withinWeek = state.availableDates.filter((date) => date >= weekStart && date <= weekEnd);
+    state.selectedPeriod = withinWeek.at(-1) || state.availableDates.at(-1) || '';
+  }
+  state.loadedRangeKey = '';
+  renderPeriodNavigator();
+  void loadPlayedTracks();
+}
+
+export async function loadPlayedTracks({ force = false, refreshPeriods = false } = {}) {
+  if (state.loading) return;
   state.loading = true;
   const button = byId('playedTracksLoad');
   if (button) button.disabled = true;
-  setNotice('2026/9/22 の再生曲を読み込み中…');
 
   try {
-    const url = `/api/track-history?from=${TARGET_DATE}&to=${TARGET_DATE}&limit=10000&ranking=0`;
-    const response = await fetch(url, {
-      headers: { accept: 'application/json' },
-      cache: force ? 'reload' : 'default',
-    });
-    const payload = await response.json();
-    if (!response.ok || payload?.ok !== true) {
-      throw new Error(payload?.error || `track history API ${response.status}`);
+    if (!state.periodsLoaded || refreshPeriods) {
+      setNotice('再生曲の日付一覧を読み込み中…');
+      await loadPeriodIndex({ force: force || refreshPeriods });
     }
-    state.rows = normalizedRows(payload.rows);
-    state.total = state.rows.reduce((sum, row) => sum + row.play_count, 0);
-    state.loaded = true;
-    render();
-    setNotice(state.total > 0
-      ? `2026/9/22 のべ ${integer.format(state.total)} 曲を集計`
-      : '2026/9/22 の再生曲データはありません。');
+    await loadSelectedPeriod({ force });
   } catch (error) {
     console.error('played tracks failed to load', error);
     setNotice('再生曲データの取得に失敗しました。', true);
@@ -190,15 +381,21 @@ export async function loadPlayedTracks({ force = false } = {}) {
   }
 }
 
-byId('playedTracksLoad')?.addEventListener('click', () => loadPlayedTracks({ force: true }));
+byId('playedTracksLoad')?.addEventListener('click', () => loadPlayedTracks({ force: true, refreshPeriods: true }));
+byId('playedTracksWeekMode')?.addEventListener('change', (event) => switchWeekMode(Boolean(event.currentTarget.checked)));
+byId('playedTracksPeriodStrip')?.addEventListener('click', (event) => {
+  const button = event.target.closest('.played-tracks-period');
+  if (!button) return;
+  void selectPeriod(button.dataset.period);
+});
 
 if ('ResizeObserver' in window) {
   const canvas = byId('playedTracksChart');
-  if (canvas) new ResizeObserver(() => { if (state.loaded) drawPie(); }).observe(canvas);
+  if (canvas) new ResizeObserver(() => { if (state.loadedRangeKey) drawPie(); }).observe(canvas);
 } else {
-  window.addEventListener('resize', () => { if (state.loaded) drawPie(); });
+  window.addEventListener('resize', () => { if (state.loadedRangeKey) drawPie(); });
 }
 
 void loadPlayedTracks();
 
-export { TARGET_DATE, normalizedRows };
+export { normalizedRows, startOfWeek };
