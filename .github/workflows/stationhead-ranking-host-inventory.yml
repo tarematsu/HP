@@ -1,6 +1,6 @@
 name: Stationhead ranking host inventory
 
-# One-shot diagnostic for production D1 mapping coverage after historical backfill 3.
+# One-shot diagnostic for production D1 mapping coverage after historical backfill 4.
 on:
   push:
     paths:
@@ -43,13 +43,15 @@ jobs:
                 MIN(channel_name) AS host_name,
                 MIN(ranking_date) AS first_seen,
                 MAX(ranking_date) AS last_seen,
-                COUNT(*) AS ranked_rows
+                COUNT(*) AS ranked_rows,
+                GROUP_CONCAT(DISTINCT NULLIF(trim(channel_alias), '')) AS aliases
               FROM sh_channel_rankings
               WHERE channel_name IS NOT NULL AND trim(channel_name) <> ''
               GROUP BY lower(trim(channel_name))
             )
             SELECT
               h.host_name,
+              h.aliases,
               h.first_seen,
               h.last_seen,
               h.ranked_rows,
