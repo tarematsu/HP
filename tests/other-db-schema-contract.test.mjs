@@ -11,8 +11,9 @@ import {
   normalizedIsrc,
 } from '../worker/scripts/track-metadata-consolidation-lib.mjs';
 
-test('OTHER_DB schema contract retains rankings and Sakurazaka raw/derived collection', () => {
+test('OTHER_DB schema contract retains rankings, their read model, and Sakurazaka raw/derived collection', () => {
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_channel_rankings'));
+  assert.ok(OTHER_REQUIRED_TABLES.includes('sh_weekly_ranking_read_model'));
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_main'));
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_chat'));
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_track_metadata'));
@@ -35,6 +36,14 @@ test('featured ranking reads keep the channel/date/rank expression index', () =>
   const migrationPath = 'database/other-migrations/015_channel_rankings_featured_index.sql';
   const migration = readFileSync(migrationPath, 'utf8');
   assert.match(migration, /ON sh_channel_rankings\(lower\(channel_name\), ranking_date, rank\)/);
+});
+
+test('weekly ranking read model has one canonical payload row', () => {
+  const migration = readFileSync('database/other-migrations/037_weekly_ranking_read_model.sql', 'utf8');
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_weekly_ranking_read_model/);
+  assert.match(migration, /id INTEGER PRIMARY KEY CHECK \(id = 1\)/);
+  assert.match(migration, /payload_json TEXT NOT NULL/);
+  assert.match(migration, /refreshed_at INTEGER NOT NULL/);
 });
 
 test('OTHER_DB metadata advances through collection test to the pending official listening party', () => {
