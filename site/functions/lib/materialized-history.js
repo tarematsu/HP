@@ -171,7 +171,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     return row;
   });
   return {
-    rows: materializeKnownMissingPeriods(enrichedRows, mode, from, to),
+    rows: materializeKnownMissingPeriods(enrichedRows, mode, from, to, now),
     excluded_stream_growth_count: completed.excludedCount,
     boundary_evidence_count: 0,
     live_overlay_count: 0,
