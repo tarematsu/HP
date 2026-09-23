@@ -5,7 +5,6 @@
     '曲数', '推定再生数', 'コメント数', '放送内容', '名前', '出典',
   ];
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
-  const YEAR_END_2025_CONTENT = '2025年にリリースした曲(29曲)';
   const integer = new Intl.NumberFormat('ja-JP');
   const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const jstDate = new Intl.DateTimeFormat('ja-JP', {
@@ -69,14 +68,6 @@
     const date = `${match[1]}/${String(Number(match[2])).padStart(2, '0')}/${String(Number(match[3])).padStart(2, '0')}`;
     const name = raw.slice(match[0].length).trim() || '公式リスパ';
     return { date, name };
-  }
-
-  function broadcastContent(row, identity) {
-    const eventName = String(row?.event_name || '');
-    if (identity?.date === '2025/12/30' && eventName.includes('THANK YOU 2025')) {
-      return YEAR_END_2025_CONTENT;
-    }
-    return String(row?.broadcast_content || '—');
   }
 
   function durationMinutes(row) {
@@ -167,7 +158,7 @@
         numberText(tracks, integer),
         numberText(estimated, integer),
         numberText(row?.comment_count, integer),
-        broadcastContent(row, identity),
+        String(row?.broadcast_content || '—'),
         identity.name,
       ];
       const tableRow = document.createElement('tr');
