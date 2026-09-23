@@ -12,15 +12,18 @@ const storage = readFileSync(new URL('.github/scripts/cloudflare_d1_storage.py',
 test('observability free-tier audit appends current D1 storage without making SQL queries', () => {
   assert.match(entry, /from cloudflare_d1_storage import append_d1_storage_diagnostics/);
   assert.match(entry, /append_d1_storage_diagnostics\(\)/);
-  assert.match(storage, /\/d1\/database\/\{database_id\}\?fields=\{fields\}/);
+  assert.match(storage, /\/d1\/database\/\{database_id\}\?\{query\}/);
+  assert.match(storage, /urlencode\(\{"fields": "uuid,name,file_size"\}\)/);
   assert.match(storage, /file_size/);
   assert.match(storage, /### D1 database storage/);
   assert.match(storage, /Current configured D1 total/);
+  assert.match(storage, /Available-size subtotal/);
+  assert.match(storage, /full configured D1 total: \*\*unavailable\*\*/);
   assert.match(storage, /no SQL query executed/);
   assert.doesNotMatch(storage, /\/query[`"']/);
 });
 
-test('free-tier audit self-test includes D1 storage rendering coverage', () => {
+test('free-tier audit self-test covers complete, partial, and unavailable D1 size reporting', () => {
   const result = spawnSync('python3', ['.github/scripts/audit-cloudflare-free-tier.py', '--self-test'], {
     cwd: rootPath,
     encoding: 'utf8',
