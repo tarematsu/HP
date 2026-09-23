@@ -100,6 +100,7 @@ function summarizeHostRankings(actualRows) {
         artist_name: String(row?.artist_name || '').trim() || null,
         fandom_type: row?.fandom_type === 'official' ? 'official' : row?.artist_name ? 'fandom' : null,
         fandom_label: String(row?.fandom_label || '').trim() || null,
+        stationhead_channel_name: String(row?.stationhead_channel_name || '').trim() || null,
         by_week: new Map(),
       });
     }
@@ -121,6 +122,7 @@ function summarizeHostRankings(actualRows) {
       summary.artist_name = group.artist_name;
       summary.fandom_type = group.fandom_type;
       summary.fandom_label = group.fandom_label;
+      summary.stationhead_channel_name = group.stationhead_channel_name;
     }
     return summary;
   }).sort((a, b) => b.ranked_weeks - a.ranked_weeks
