@@ -52,10 +52,14 @@ test('broadcast history reads UTC timestamps from the compact official summary t
   }]);
 });
 
-test('official listening-party read model joins the nearest host session and snapshot minimum', () => {
+test('official listening-party read model joins canonical series and the nearest host session', () => {
   const db = new DatabaseSync(':memory:');
   createSummaryTable(db);
   db.exec(`
+    CREATE TABLE sh_official_broadcast_series (
+      host_handle TEXT,event_name TEXT,started_at INTEGER,points_json TEXT,
+      source_ref TEXT,refreshed_at INTEGER
+    );
     CREATE TABLE sh_host_broadcast_sessions (
       id INTEGER PRIMARY KEY,handle TEXT,started_at INTEGER,ended_at INTEGER,
       average_listeners REAL,peak_listeners INTEGER,track_count INTEGER,comment_count INTEGER
@@ -67,6 +71,9 @@ test('official listening-party read model joins the nearest host session and sna
   db.prepare(`INSERT INTO sh_official_broadcast_summary VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
     'sakurazaka46jp', 'Event A', 1_000_000, null, '2025-01-01 09:00:01',
     null, 2, null, null, 12, null,
+  );
+  db.prepare(`INSERT INTO sh_official_broadcast_series VALUES(?,?,?,?,?,?)`).run(
+    'sakurazaka46jp', 'Event A', 1_000_000, '[[0,95,1],[1,150,1]]', 'test', 1,
   );
   db.prepare(`INSERT INTO sh_host_broadcast_sessions VALUES(?,?,?,?,?,?,?,?)`).run(
     7, 'sakurazaka46jp', 1_000_600, 1_090_000, 111.5, 150, 4, 321,
@@ -81,7 +88,7 @@ test('official listening-party read model joins the nearest host session and sna
   assert.equal(parsed.rows[0].session_id, 7);
   assert.equal(parsed.rows[0].ended_at, 1_090_000);
   assert.equal(parsed.rows[0].listener_avg, 111.5);
-  assert.equal(parsed.rows[0].listener_min, 98);
+  assert.equal(parsed.rows[0].listener_min, 95);
   assert.equal(parsed.rows[0].listener_max, 150);
   assert.equal(parsed.rows[0].distinct_tracks, 4);
   assert.equal(parsed.rows[0].comment_count, 321);
