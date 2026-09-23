@@ -50,7 +50,7 @@ test('all-host table excludes the two featured hosts and fits seven columns on m
 });
 
 test('all-host chart fills missing weeks only after the selected host first appears', () => {
-  assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.6/);
+  assert.match(entry, /history-ranking-missing-gap\.js\?v=20260923\.7/);
   assert.match(rankingChart, /const sourceRows = rows\.filter/);
   assert.match(rankingChart, /const sourceWeeks = \[\.\.\.new Set\(sourceRows\.map/);
   assert.match(rankingChart, /const firstWeek = sourceWeeks\[0\]/);
@@ -61,7 +61,7 @@ test('all-host chart fills missing weeks only after the selected host first appe
   assert.match(rankingMissing, /MISSING_START = '2026-01-26'/);
   assert.match(rankingMissing, /MISSING_END = '2026-09-14'/);
   assert.match(rankingMissing, /history:ranking-chart-drawn/);
-  assert.match(rankingMissing, /keepRankedRowsOnly/);
+  assert.doesNotMatch(rankingMissing, /getElementById\('tbody'\)|row\.remove\(|keepRankedRowsOnly|history:data-loaded/);
   assert.doesNotMatch(rankingMissing, /window\.fetch|response\.clone\(\)\.json|weeklyRange\(|requestUrl\(|MutationObserver/);
   assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
 });
