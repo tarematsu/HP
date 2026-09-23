@@ -218,7 +218,7 @@ test('history lite client is loaded lazily into the integrated dashboard', () =>
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
   assert.match(html, /id="historyView"/);
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.8'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.9'\)/);
   assert.doesNotMatch(html, /history-period-completeness\.js|history-copy-fixes\.js|history-track-likes\.js/);
 
   const runtimeSource = readFileSync(
@@ -228,6 +228,7 @@ test('history lite client is loaded lazily into the integrated dashboard', () =>
   assert.match(runtimeSource, /state\.rows = Array\.isArray\(data\.rows\) \? data\.rows : \[\]/);
   assert.match(runtimeSource, /history:data-loaded/);
   assert.match(entry, /history-period-chart\.js\?v=20260923\.\d+/);
+  assert.doesNotMatch(entry, /history-ranking-missing-gap/);
   assert.doesNotMatch(runtimeSource, /TRACK_COLUMNS|trackDate|trackWeekMode|history-period-completeness|history-track-likes/);
   assert.doesNotMatch(runtimeSource, /mondayJstKey|expectedStart|expectedEnd/);
 });
