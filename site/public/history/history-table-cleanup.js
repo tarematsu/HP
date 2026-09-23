@@ -46,7 +46,7 @@ function installMobileTableWidthStyle() {
   style.id = MOBILE_TABLE_STYLE_ID;
   style.textContent = `
     @media (max-width: 760px) {
-      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table),
+      #historyView .table-wrap table.compact-columns,
       #likesView .table-wrap table {
         width: 100% !important;
         min-width: 100% !important;
