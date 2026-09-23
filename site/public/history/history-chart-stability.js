@@ -3,6 +3,7 @@ const STABLE_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking']);
 let armed = false;
 let fallbackTimer = 0;
 let revealTimer = 0;
+let paintedMode = '';
 
 function activeMode() {
   return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || location.hash.slice(1) || 'weekly');
@@ -46,10 +47,14 @@ if (canvas) {
   conceal();
 
   window.addEventListener('history:period-chart-drawn', (event) => {
-    if (['daily', 'weekly', 'monthly'].includes(String(event?.detail?.mode || activeMode()))) reveal(0);
+    const mode = String(event?.detail?.mode || activeMode());
+    if (!['daily', 'weekly', 'monthly'].includes(mode)) return;
+    paintedMode = mode;
+    reveal(0);
   });
 
   window.addEventListener('history:ranking-chart-drawn', () => {
+    paintedMode = 'ranking';
     if (activeMode() === 'ranking') reveal(80);
   });
 
@@ -57,7 +62,7 @@ if (canvas) {
     const button = event.target.closest('button[data-mode]');
     if (!button) return;
     const nextMode = String(button.dataset.mode || '');
-    if (nextMode && nextMode !== activeMode()) conceal(nextMode);
+    if (nextMode && nextMode !== paintedMode) conceal(nextMode);
   }, true);
 
   document.getElementById('load')?.addEventListener('click', () => {
