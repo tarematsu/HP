@@ -1,0 +1,49 @@
+name: Materialize weekly leaderboard read model
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Tuesday 02:37 JST, after the hourly leaderboard import has had time to ingest the new week.
+    - cron: '37 17 * * 1'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/materialize-weekly-ranking-read-model.yml'
+      - 'worker/scripts/materialize-weekly-ranking-read-model.mjs'
+      - 'database/other-migrations/037_weekly_ranking_read_model.sql'
+      - 'site/functions/lib/history-ranking.js'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-ranking-read-model
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Materialize weekly leaderboard read model
+        working-directory: worker
+        env:
+          OTHER_DATABASE_NAME: stationhead-other
+        run: node scripts/materialize-weekly-ranking-read-model.mjs
