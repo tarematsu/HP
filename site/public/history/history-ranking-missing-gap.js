@@ -29,22 +29,6 @@ function scheduleOverlay(delay = 0) {
   overlayTimer = setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(renderOverlay)), delay);
 }
 
-function hasNumericRank(row) {
-  const text = String(row?.cells?.[2]?.textContent || '').trim();
-  return /^#?\d+$/.test(text);
-}
-
-function keepRankedRowsOnly() {
-  if (!active()) return;
-  const tbody = document.getElementById('tbody');
-  if (!tbody) return;
-
-  for (const row of [...tbody.querySelectorAll('tr')]) {
-    if (row.cells.length < 3) continue;
-    if (!hasNumericRank(row)) row.remove();
-  }
-}
-
 function renderOverlay() {
   if (!active()) return;
   const weeks = completeWeeks();
@@ -83,14 +67,6 @@ function renderOverlay() {
   }
 }
 
-function scheduleRankedRowsOnly() {
-  if (active()) queueMicrotask(keepRankedRowsOnly);
-}
-
-window.addEventListener('history:data-loaded', (event) => {
-  if (String(event?.detail?.mode || '') === MODE) scheduleRankedRowsOnly();
-});
-document.getElementById('more')?.addEventListener('click', scheduleRankedRowsOnly);
 window.addEventListener('history:ranking-chart-drawn', (event) => {
   renderedWeeks = Array.isArray(event?.detail?.weeks) ? event.detail.weeks.map(isoDate).filter(Boolean) : [];
   scheduleOverlay(0);
