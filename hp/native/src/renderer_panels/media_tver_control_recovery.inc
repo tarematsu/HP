@@ -76,7 +76,7 @@ LR"JS(
     const validFields = fields => fields &&
         /^\d{4}$/.test(fields.year) && Number(fields.year) >= 1900 &&
         Number(fields.year) <= new Date().getFullYear() &&
-        /^(?:[1-9]|1[0-2])$/.test(fields.month) &&
+        /^(?:0?[1-9]|1[0-2])$/.test(fields.month) &&
         /^\d{7}$/.test(fields.postCode) &&
         ['1','2','9'].includes(fields.genderCode);
     if (form && state.questionnaireCaptureForm !== form) {
