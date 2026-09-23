@@ -11,7 +11,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   static constexpr std::wstring_view kFragment = LR"JS(
   const keepStreamingPattern = /^keep\s+streaming$/i;
   const recoverableOnboardingPattern =
-    /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go)$/i;
+    /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:spotify(?:\s+account)?|music)|continue(?:\s+with\s+spotify)?|let(?:'|’)?s\s+go|listen\s+here\s+instead)$/i;
   const connectSurfaceLabelPattern =
     /^(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:music|spotify(?:\s+account)?)$/i;
   const connectSurfaceActionPattern =
@@ -112,11 +112,14 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     // the trusted native allowlist while visible.
     if (publishKeepStreaming()) return true;
 
-    // Connect/Reconnect/Continue/Let's GO are explicit Stationhead onboarding
-    // actions, not playback-state transitions. Signal them whenever they are
-    // visible, including before first playback and while stale audio state still
-    // reports playing. The native locator revalidates the same narrow allowlist
-    // at click-time. Genuine login routes/forms still block automation.
+    // Connect/Reconnect/Continue/Let's GO/Listen here instead are explicit
+    // Stationhead onboarding actions, not playback-state transitions. Signal
+    // them whenever they are visible, including before first playback and while
+    // stale audio state still reports playing. There is intentionally no
+    // one-shot latch here: if Stationhead cycles through the same onboarding
+    // sequence again, each newly visible step is eligible again. The native
+    // locator revalidates the same narrow allowlist at click-time. Genuine login
+    // routes/forms still block automation.
     if (!recoverableOnboardingVisible()) return false;
 
     // Once an explicit recoverable onboarding control is visible, do not let an
