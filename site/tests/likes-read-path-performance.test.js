@@ -3,47 +3,21 @@ import test from 'node:test';
 
 import { onRequestGet as trackHistory } from '../functions/api/track-history.js';
 
-test('likes endpoint stays read-only and uses only three bounded reads', async () => {
+test('likes endpoint stays read-only and uses one materialized payload read', async () => {
   const prepared = [];
   const writes = [];
   const db = {
     prepare(sql) {
       prepared.push(sql);
       const statement = {
-        args: [],
-        bind(...args) {
-          statement.args = args;
-          return statement;
-        },
-        async all() {
-          if (sql.includes('FROM sh_track_ranking_current current')) {
-            return {
-              results: [{
-                track_identity: 'spotify:test-track',
-                track_id: 1,
-                current_title: 'Test Song',
-                current_artist: '櫻坂46',
-                direct_title: 'Test Song',
-                direct_artist: '櫻坂46',
-                isrc_title: null,
-                isrc_artist: null,
-                spotify_title: null,
-                spotify_artist: null,
-                isrc: 'JPAAA0000001',
-                spotify_id: 'test-track',
-                latest_like_count: 123,
-                latest_observed_at: 1_700_000_000_000,
-                latest_occurrence_key: 'occurrence:1',
-              }],
-            };
-          }
-          return { results: [] };
-        },
+        bind() { return statement; },
+        async all() { return { results: [] }; },
         async first() {
           if (sql.includes("model_key='track-history-status'")) {
             return {
               payload_json: JSON.stringify({
                 ranking: [{
+                  rank: 1,
                   track_identity: 'spotify:test-track',
                   spotify_id: 'test-track',
                   isrc: 'JPAAA0000001',
@@ -51,15 +25,16 @@ test('likes endpoint stays read-only and uses only three bounded reads', async (
                   artist: '櫻坂46',
                   display_title: 'Test Song',
                   thumbnail_url: 'https://example.test/cover.jpg',
+                  latest_like_count: 123,
+                  latest_observed_at: 1_700_000_000_000,
                 }],
+                ranking_summary: {
+                  track_count: 1,
+                  max_like_count: 123,
+                  latest_observed_at: 1_700_000_000_000,
+                },
+                generated_at: 1_700_000_000_000,
               }),
-            };
-          }
-          if (sql.includes('FROM sh_track_ranking_current')) {
-            return {
-              track_count: 1,
-              max_like_count: 123,
-              latest_observed_at: 1_700_000_000_000,
             };
           }
           return null;
@@ -80,13 +55,15 @@ test('likes endpoint stays read-only and uses only three bounded reads', async (
   const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(payload.read_path, 'read_only');
+  assert.equal(payload.read_path, 'track-history-status-read-model');
   assert.equal(payload.ranking.length, 1);
   assert.equal(payload.ranking[0].latest_like_count, 123);
   assert.equal(payload.ranking[0].thumbnail_url, 'https://example.test/cover.jpg');
   assert.equal(payload.ranking_summary.track_count, 1);
   assert.equal(payload.ranking_truncated, false);
-  assert.equal(prepared.length, 3);
+  assert.equal(prepared.length, 1);
+  assert.match(prepared[0], /sh_pages_payload_read_model/);
+  assert.doesNotMatch(prepared[0], /sh_track_ranking_current|sh_tracks|COUNT\(|MAX\(/);
   assert.equal(prepared.some((sql) => /\b(?:UPDATE|INSERT|DELETE)\b/i.test(sql)), false);
   assert.deepEqual(writes, []);
 });
