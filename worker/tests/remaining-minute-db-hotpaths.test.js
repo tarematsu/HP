@@ -174,9 +174,9 @@ test('track resolution reports the failing D1 substage', async () => {
 test('dashboard rollup scans one completed five-minute bucket only at its boundary', () => {
   assert.match(rollup, /completedDashboardBucket/);
   assert.match(rollup, /bucket_facts/);
-  assert.match(rollup, /previous\.minute_at>=f\.minute_at-60000/);
+  assert.match(rollup, /f\.minute_at>=\? AND f\.minute_at<\?/);
   assert.match(rollup, /INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
-  assert.doesNotMatch(rollup, /RANGE BETWEEN|ROW_NUMBER\(\)|MAX\(comment_velocity\) OVER/);
+  assert.doesNotMatch(rollup, /previous\.|comment_count|comment_velocity|RANGE BETWEEN|ROW_NUMBER\(\)/);
 });
 
 test('playback patch writes finalized position on the fact row only', () => {
