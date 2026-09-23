@@ -62,6 +62,11 @@ function localBaseline(rows, index, radiusMinutes) {
   return { count: values.length, median: median(values) };
 }
 
+function strongestBaseline(localMedian, broadcastMedian) {
+  const candidates = [localMedian, broadcastMedian].filter((value) => value != null);
+  return candidates.length ? Math.max(...candidates) : null;
+}
+
 export function auditListenerAnomalies(rawRows = [], options = {}) {
   const rows = normalizeRows(rawRows);
   const hardLowMax = finiteInteger(options.hardLowMax) ?? DEFAULT_HARD_LOW_LISTENER_MAX;
@@ -81,7 +86,7 @@ export function auditListenerAnomalies(rawRows = [], options = {}) {
     const row = rows[index];
     if (row.is_broadcasting !== 1) continue;
     const local = localBaseline(rows, index, localRadiusMinutes);
-    const contextBaseline = local.median ?? broadcastMedian;
+    const contextBaseline = strongestBaseline(local.median, broadcastMedian);
 
     if (row.listener_count == null || row.listener_count < 0) {
       anomalies.push({
