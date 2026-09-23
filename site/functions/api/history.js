@@ -41,7 +41,7 @@ const OFFICIAL_BROADCAST_METADATA = new Map([
     source_url: 'https://sakurazaka46.com/s/s46/news/detail/M01853',
   }],
   ['2025.12.30『THANK YOU BUDDIES!! THANK YOU 2025!! 櫻坂46 YEAR-END LISTENING PARTY』', {
-    content: '2025年リリース22曲＋Interlude7曲（全29曲・楽曲尺93分19秒）', tracks: 29,
+    content: '2025年にリリースした曲', tracks: 29,
     source_url: 'https://sakurazaka46.com/s/s46/news/detail/R00518',
   }],
   ['2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』', {
