@@ -156,6 +156,17 @@ export const BROADCAST_READ_MODEL_SQL = `WITH summaries AS (
     listener_avg,listener_max,likes_max,distinct_tracks,host_handle
   FROM sh_official_broadcast_summary
   WHERE host_handle='sakurazaka46jp' AND started_at>=?1 AND started_at<?2
+), canonical_metrics AS (
+  SELECT series.event_name,
+    MIN(CAST(json_extract(point.value,'$[1]') AS REAL)) AS canonical_listener_min,
+    AVG(CAST(json_extract(point.value,'$[1]') AS REAL)) AS canonical_listener_avg,
+    MAX(CAST(json_extract(point.value,'$[1]') AS REAL)) AS canonical_listener_max
+  FROM sh_official_broadcast_series series
+  JOIN json_each(series.points_json) point
+  WHERE series.host_handle='sakurazaka46jp'
+    AND series.started_at>=?1 AND series.started_at<?2
+    AND json_extract(point.value,'$[1]') IS NOT NULL
+  GROUP BY series.event_name
 ), session_candidates AS (
   SELECT summaries.event_name,
     sessions.id AS session_id,
@@ -191,9 +202,9 @@ SELECT summaries.event_name,
   summaries.started_at,
   COALESCE(summaries.ended_at,selected.session_ended_at) AS ended_at,
   summaries.sample_count,
-  COALESCE(summaries.listener_avg,selected.average_listeners,metrics.snapshot_listener_avg) AS listener_avg,
-  metrics.listener_min,
-  COALESCE(summaries.listener_max,selected.peak_listeners,metrics.snapshot_listener_max) AS listener_max,
+  COALESCE(summaries.listener_avg,selected.average_listeners,canonical.canonical_listener_avg,metrics.snapshot_listener_avg) AS listener_avg,
+  COALESCE(canonical.canonical_listener_min,metrics.listener_min) AS listener_min,
+  COALESCE(summaries.listener_max,selected.peak_listeners,canonical.canonical_listener_max,metrics.snapshot_listener_max) AS listener_max,
   summaries.likes_max,
   CASE
     WHEN COALESCE(summaries.distinct_tracks,0)>0 THEN summaries.distinct_tracks
@@ -204,6 +215,7 @@ SELECT summaries.event_name,
   selected.session_id,
   1 AS has_data
 FROM summaries
+LEFT JOIN canonical_metrics canonical ON canonical.event_name=summaries.event_name
 LEFT JOIN selected_sessions selected ON selected.event_name=summaries.event_name
 LEFT JOIN snapshot_metrics metrics ON metrics.session_id=selected.session_id
 UNION ALL
