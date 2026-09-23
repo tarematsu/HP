@@ -236,8 +236,8 @@ export function parseBroadcastSummaryRows(resultRows) {
     if (metadata?.content) row.broadcast_content = metadata.content;
     if (Number.isFinite(metadata?.tracks)) row.distinct_tracks = metadata.tracks;
     row.source_url = metadata?.source_url || null;
-    const average = Number(row.listener_avg);
-    const tracks = Number(row.distinct_tracks);
+    const average = row.listener_avg == null || row.listener_avg === '' ? null : Number(row.listener_avg);
+    const tracks = row.distinct_tracks == null || row.distinct_tracks === '' ? null : Number(row.distinct_tracks);
     row.estimated_streams = Number.isFinite(average) && Number.isFinite(tracks)
       ? Math.round(average * tracks)
       : null;
