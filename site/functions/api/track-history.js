@@ -40,6 +40,22 @@ async function loadTrackHistoryStatus(db) {
   }
 }
 
+async function loadTrackHistoryDates(db) {
+  try {
+    const result = await db.prepare(`SELECT play_date
+      FROM sh_pages_track_history_daily_read_model
+      WHERE row_count>0
+      ORDER BY play_date ASC`).all();
+    return (result.results || []).map((row) => String(row.play_date || '')).filter(validDate);
+  } catch (error) {
+    if (!/no such table/i.test(String(error?.message || ''))) throw error;
+    const result = await db.prepare(`SELECT DISTINCT play_date
+      FROM sh_pages_track_history_read_model
+      ORDER BY play_date ASC`).all();
+    return (result.results || []).map((row) => String(row.play_date || '')).filter(validDate);
+  }
+}
+
 function rankingFromStatus(metadata, limit) {
   const fullRanking = Array.isArray(metadata?.ranking) ? metadata.ranking : [];
   const rows = fullRanking.slice(0, limit);
@@ -77,6 +93,18 @@ export async function onRequestGet({ request, env }) {
         generated_at: metadata.generated_at || ranking.summary.latest_observed_at || null,
         method: 'current_track_like_ranking',
         read_path: 'track-history-status-read-model',
+      });
+    }
+
+    if (url.searchParams.get('dates_only') === '1') {
+      const dates = await loadTrackHistoryDates(env.MINUTE_DB);
+      return json({
+        ok: true,
+        mode: 'dates',
+        timezone: 'UTC',
+        dates,
+        latest_date: dates.at(-1) || null,
+        read_path: 'track-history-daily-read-model',
       });
     }
 
