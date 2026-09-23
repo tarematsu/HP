@@ -204,10 +204,20 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         + 'yt-confirm-dialog-renderer,ytd-confirm-dialog-renderer')) {
       if (!root.getClientRects().length || root.matches(surveySelector) ||
           root.querySelector(surveySelector)) continue;
-      const close = Array.from(root.querySelectorAll(
+      const controls = Array.from(root.querySelectorAll(
           'button,tp-yt-paper-button,[role="button"],[aria-label],[title]'))
-          .find(element => element.getClientRects().length &&
-              /^(閉じる|close)$/i.test(text(element)));
+          .filter(element => element.getClientRects().length && valid(element));
+      const dialogText = text(root);
+      if (/(視聴を続けていますか|動画がまもなく一時停止されます|still watching|continue watching)/i
+          .test(dialogText)) {
+        const keepWatching = controls.find(element =>
+            /^(はい|yes|続ける|視聴を続ける|continue|continue watching)$/i
+                .test(text(element)));
+        if (keepWatching) {
+          return arm(keepWatching, 'dialog-continue-watching', 1000);
+        }
+      }
+      const close = controls.find(element => /^(閉じる|close)$/i.test(text(element)));
       if (close) return arm(close, 'dialog-close', 500);
     }
     return null;
