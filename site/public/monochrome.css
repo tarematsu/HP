@@ -200,6 +200,10 @@ tbody tr:hover {
   box-shadow: none;
 }
 
+.mode-tabs.dashboard-tabs {
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+}
+
 .mode-tabs button,
 .mode-tabs a,
 .mode-tabs.dashboard-tabs button {
@@ -611,7 +615,7 @@ table {
   }
 
   .mode-tabs.dashboard-tabs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .metrics {
@@ -704,7 +708,7 @@ table {
   }
 
   .mode-tabs.dashboard-tabs {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .mode-tabs.dashboard-tabs button {
