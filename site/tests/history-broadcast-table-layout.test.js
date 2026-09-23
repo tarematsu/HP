@@ -7,7 +7,7 @@ const table = readFileSync(new URL('../public/history/history-broadcast-table.js
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 
 test('official listening party table uses final read-model columns with source at the right edge', () => {
-  assert.match(entry, /history-broadcast-table\.js\?v=20260923\.5/);
+  assert.match(entry, /history-broadcast-table\.js\?v=20260923\.6/);
   for (const label of [
     '日付', '時間', '長さ', '平均同接', '最小同接', '最大同接',
     '曲数', '推定再生数', 'コメント数', '放送内容', '名前', '出典',
@@ -19,7 +19,13 @@ test('official listening party table uses final read-model columns with source a
   assert.match(table, /broadcastTimeLabel\(row\)/);
   assert.match(table, /elapsedLabel\(durationMinutes\(row\)\)/);
   assert.match(table, /row\?\.estimated_streams/);
-  assert.match(table, /row\?\.broadcast_content/);
+  assert.match(table, /broadcastContent\(row, identity\)/);
+});
+
+test('2025 year-end listening party uses the requested description', () => {
+  assert.match(table, /YEAR_END_2025_CONTENT = '2025年にリリースした曲\(29曲\)'/);
+  assert.match(table, /identity\?\.date === '2025\/12\/30'/);
+  assert.match(table, /eventName\.includes\('THANK YOU 2025'\)/);
 });
 
 test('official listening party source URLs are owned by the server read model', () => {
