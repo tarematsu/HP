@@ -3,6 +3,7 @@ const EXCLUDED_ALL_HOSTS = new Set(['sakuramankai', 'sakurazaka46jp']);
 const ALL_HOST_COLUMNS = [
   ['position', '順位'],
   ['host_name', 'ホスト名'],
+  ['fandom_label', 'ファンダム'],
   ['ranked_weeks', 'ランクイン週数'],
   ['average_rank', '平均順位'],
   ['best_rank', '最高順位'],
@@ -24,6 +25,7 @@ function activeMode() {
 }
 
 function displayValue(key, value) {
+  if (key === 'fandom_label') return String(value || '').trim() || '—';
   const number = Number(value);
   if (value == null || value === '' || !Number.isFinite(number)) return '—';
   if (key === 'average_rank') return decimal.format(number);
@@ -91,15 +93,17 @@ function installStyle() {
       #historyView table.all-host-ranking-table th:nth-child(1),
       #historyView table.all-host-ranking-table td:nth-child(1) { width: 7% !important; }
       #historyView table.all-host-ranking-table th:nth-child(2),
-      #historyView table.all-host-ranking-table td:nth-child(2) { width: 31% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(2) { width: 22% !important; }
       #historyView table.all-host-ranking-table th:nth-child(3),
-      #historyView table.all-host-ranking-table td:nth-child(3) { width: 20% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(3) { width: 24% !important; }
       #historyView table.all-host-ranking-table th:nth-child(4),
-      #historyView table.all-host-ranking-table td:nth-child(4) { width: 14% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(4) { width: 13% !important; }
       #historyView table.all-host-ranking-table th:nth-child(5),
-      #historyView table.all-host-ranking-table td:nth-child(5) { width: 14% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(5) { width: 12% !important; }
       #historyView table.all-host-ranking-table th:nth-child(6),
-      #historyView table.all-host-ranking-table td:nth-child(6) { width: 14% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(6) { width: 11% !important; }
+      #historyView table.all-host-ranking-table th:nth-child(7),
+      #historyView table.all-host-ranking-table td:nth-child(7) { width: 11% !important; }
       #historyView table.all-host-ranking-table th,
       #historyView table.all-host-ranking-table td {
         padding-left: 3px !important;
@@ -116,8 +120,8 @@ function installStyle() {
         text-overflow: clip !important;
         white-space: nowrap !important;
       }
-      #historyView table.all-host-ranking-table th:not(:nth-child(2)),
-      #historyView table.all-host-ranking-table td:not(:nth-child(2)) {
+      #historyView table.all-host-ranking-table th:not(:nth-child(2)):not(:nth-child(3)),
+      #historyView table.all-host-ranking-table td:not(:nth-child(2)):not(:nth-child(3)) {
         text-align: center !important;
       }
       #historyView table.all-host-ranking-table .ranking-host-button {

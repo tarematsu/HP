@@ -30,6 +30,43 @@ function validRank(value) {
   return number != null && number > 0;
 }
 
+function fandomLabel(artistName, relationType) {
+  const artist = String(artistName || '').trim();
+  if (!artist) return null;
+  return `${artist}(${relationType === 'official' ? '公式' : 'ファンダム'})`;
+}
+
+function decorateFandomRows(rows, metadataRows = rows) {
+  const byHost = new Map();
+  for (const row of metadataRows || []) {
+    const artistName = String(row?.artist_name || '').trim();
+    if (!artistName) continue;
+    const relationType = (row?.fandom_type || row?.relation_type) === 'official' ? 'official' : 'fandom';
+    byHost.set(hostKey(row.host_name), { artistName, relationType });
+  }
+  for (const row of rows || []) {
+    const metadata = byHost.get(hostKey(row.host_name));
+    if (metadata) {
+      row.artist_name = metadata.artistName;
+      row.fandom_type = metadata.relationType;
+    }
+    row.fandom_label = fandomLabel(row.artist_name, row.fandom_type);
+  }
+  return rows;
+}
+
+async function loadFandomMetadata(env) {
+  try {
+    const result = await env.OTHER_DB.prepare(`SELECT host_name,artist_name,relation_type
+FROM sh_channel_fandoms
+ORDER BY host_name`).all();
+    return result.results || [];
+  } catch (error) {
+    if (/no such table|no such column/i.test(String(error?.message || ''))) return [];
+    throw error;
+  }
+}
+
 function expandWeeklyDates(values) {
   const sorted = [...new Set(values.filter(validDate))].sort();
   if (sorted.length < 2) return sorted;
@@ -154,21 +191,40 @@ function summarizeHostRankings(actualRows) {
     const name = String(row?.host_name || '').trim();
     const key = hostKey(name);
     if (!key || !validDate(week) || rank == null || rank <= 0) continue;
-    if (!groups.has(key)) groups.set(key, { host_name: name, by_week: new Map() });
+    if (!groups.has(key)) {
+      groups.set(key, {
+        host_name: name,
+        artist_name: String(row?.artist_name || '').trim() || null,
+        fandom_type: row?.fandom_type === 'official' ? 'official' : row?.artist_name ? 'fandom' : null,
+        fandom_label: String(row?.fandom_label || '').trim() || null,
+        by_week: new Map(),
+      });
+    }
     const group = groups.get(key);
+    if (!group.fandom_label && row?.fandom_label) {
+      group.artist_name = String(row.artist_name || '').trim() || null;
+      group.fandom_type = row.fandom_type === 'official' ? 'official' : 'fandom';
+      group.fandom_label = String(row.fandom_label).trim();
+    }
     const previous = group.by_week.get(week);
     if (previous == null || rank < previous) group.by_week.set(week, rank);
   }
 
   const summaries = [...groups.values()].map((group) => {
     const ranks = [...group.by_week.values()];
-    return {
+    const summary = {
       host_name: group.host_name,
       ranked_weeks: ranks.length,
       average_rank: ranks.reduce((sum, rank) => sum + rank, 0) / ranks.length,
       best_rank: Math.min(...ranks),
       worst_rank: Math.max(...ranks),
     };
+    if (group.fandom_label) {
+      summary.artist_name = group.artist_name;
+      summary.fandom_type = group.fandom_type;
+      summary.fandom_label = group.fandom_label;
+    }
+    return summary;
   }).sort((a, b) => b.ranked_weeks - a.ranked_weeks
     || a.average_rank - b.average_rank
     || a.best_rank - b.best_rank
@@ -230,7 +286,8 @@ GROUP BY lower(trim(channel_name))
 ORDER BY first_ranking_date ASC`).all(),
     ]);
 
-    const actualRows = rankingResult.results || [];
+    const fandomRows = await loadFandomMetadata(env);
+    const actualRows = decorateFandomRows(rankingResult.results || [], fandomRows);
     const weeklyMetrics = (weeklyResult.rows || []).map((row) => ({ ...row, ranking_date: row.period_key }));
     const rankingWeeks = expandWeeklyDates((weeksResult.results || []).map((row) => row.ranking_date));
     const firstSeenRows = firstSeenResult.results || [];
@@ -243,6 +300,7 @@ ORDER BY first_ranking_date ASC`).all(),
         : actualHosts;
 
     const completedRows = completeRankingTimeline(actualRows, rankingWeeks, hosts, firstSeen);
+    decorateFandomRows(completedRows, fandomRows);
     const aggregateAllHosts = scope === 'all' && !hostSearch;
     const rows = aggregateAllHosts ? [...actualRows] : completedRows;
     const hostOrder = scope === 'featured' && !hostSearch ? FEATURED_HOSTS : [];

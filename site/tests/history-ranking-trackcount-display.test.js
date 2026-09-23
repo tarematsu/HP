@@ -12,7 +12,7 @@ const current = readFileSync(new URL('../functions/api/history-current.js', impo
 
 test('ranking chart keeps featured comparison and supports one selected all-host series', () => {
   assert.match(entry, /history-ranking-chart\.js\?v=20260923\.7/);
-  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260923\.1/);
+  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260923\.2/);
   assert.match(entry, /runtimeKey\(mode\)/);
   assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
   assert.match(rankingChart, /const FEATURED_HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
@@ -27,20 +27,21 @@ test('ranking chart keeps featured comparison and supports one selected all-host
   assert.doesNotMatch(rankingChart, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });
 
-test('all-host table exposes requested six-column host ranking and tap selection', () => {
-  for (const label of ['順位', 'ホスト名', 'ランクイン週数', '平均順位', '最高順位', '最低順位']) {
+test('all-host table exposes fandom after host name and supports tap selection', () => {
+  for (const label of ['順位', 'ホスト名', 'ファンダム', 'ランクイン週数', '平均順位', '最高順位', '最低順位']) {
     assert.match(rankingAllHosts, new RegExp(label));
   }
+  assert.match(rankingAllHosts, /\['fandom_label', 'ファンダム'\]/);
   assert.match(rankingAllHosts, /data\.host_rankings/);
   assert.match(rankingAllHosts, /button\.dataset\.rankingHost/);
   assert.match(rankingAllHosts, /history:ranking-host-selected/);
   assert.match(rankingAllHosts, /setSelectedHost\(defaultHost\)/);
 });
 
-test('all-host table excludes the two featured hosts and fits six columns on mobile', () => {
+test('all-host table excludes the two featured hosts and fits seven columns on mobile', () => {
   assert.match(rankingAllHosts, /EXCLUDED_ALL_HOSTS = new Set\(\['sakuramankai', 'sakurazaka46jp'\]\)/);
   assert.match(rankingAllHosts, /\.filter\(\(row\) => !EXCLUDED_ALL_HOSTS\.has\(hostKey\(row\?\.host_name\)\)\)/);
-  for (const [column, width] of [[1, 7], [2, 31], [3, 20], [4, 14], [5, 14], [6, 14]]) {
+  for (const [column, width] of [[1, 7], [2, 22], [3, 24], [4, 13], [5, 12], [6, 11], [7, 11]]) {
     assert.match(rankingAllHosts, new RegExp(`th:nth-child\\(${column}\\),[\\s\\S]*td:nth-child\\(${column}\\) \\{ width: ${width}% !important; \\}`));
   }
   assert.match(rankingAllHosts, /font-size: 8\.5px !important/);

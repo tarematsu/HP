@@ -19,7 +19,7 @@ async function importModeRuntime(mode) {
   if (key === 'ranking') {
     await import('/history/history-ranking-chart.js?v=20260923.7');
     await import('/history/history-ranking-missing-gap.js?v=20260923.6');
-    await import('/history/history-ranking-all-host-table.js?v=20260923.1');
+    await import('/history/history-ranking-all-host-table.js?v=20260923.2');
     return;
   }
   await import('/history/history-broadcast-summary.js?v=20260923.2');
@@ -48,7 +48,7 @@ if (initialMode !== requestedMode) history.replaceState(null, '', '/#weekly');
 await import('/history/history-page-fixes.js?v=20260923.7');
 await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260923.2');
-await import('/history/history-table-cleanup.js?v=20260923.1');
+await import('/history/history-table-cleanup.js?v=20260923.2');
 await ensureHistoryModeRuntime(initialMode);
 await import('/history/history-summary-average-labels.js?v=20260923.1');
 await import('/history/history-lite.js?v=20260923.3');

@@ -4,10 +4,41 @@ const RANKING_REMOVED_LABELS = new Set(['前週順位', '前週比', 'ランキ�
 const RENAMED_LABELS = new Map([
   ['記録数', ['取得記録数', 'その期間に保存された全サンプル数']],
 ]);
-const CACHE_MIGRATION_KEY = 'sh.history.display-cleanup.v3';
+const CACHE_MIGRATION_KEY = 'sh.history.display-cleanup.v4';
 const HISTORY_CACHE_PREFIX = 'sh.history.v3:';
 const MOBILE_TABLE_STYLE_ID = 'compact-mobile-table-widths';
+const rankingFandomByRow = new Map();
+const rankingFandomByHost = new Map();
 let cleaning = false;
+
+function normalizeHost(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function formatFandom(row) {
+  const explicit = String(row?.fandom_label || '').trim();
+  if (explicit) return explicit;
+  const artist = String(row?.artist_name || '').trim();
+  if (!artist) return '—';
+  return `${artist}(${row?.fandom_type === 'official' ? '公式' : 'ファンダム'})`;
+}
+
+function rankingRowKey(week, host) {
+  return `${String(week || '').trim()}\u0000${normalizeHost(host)}`;
+}
+
+function captureRankingFandom(payload) {
+  rankingFandomByRow.clear();
+  rankingFandomByHost.clear();
+  if (!payload || payload.mode !== 'ranking' || !Array.isArray(payload.rows)) return;
+  for (const row of payload.rows) {
+    const host = normalizeHost(row?.host_name);
+    if (!host) continue;
+    const label = formatFandom(row);
+    rankingFandomByRow.set(rankingRowKey(row?.ranking_date, host), label);
+    if (label !== '—') rankingFandomByHost.set(host, label);
+  }
+}
 
 function installMobileTableWidthStyle() {
   if (document.getElementById(MOBILE_TABLE_STYLE_ID)) return;
@@ -23,11 +54,20 @@ function installMobileTableWidthStyle() {
       }
 
       #historyView .table-wrap table.compact-columns th:nth-child(1),
-      #historyView .table-wrap table.compact-columns td:nth-child(1) { width: 40% !important; }
+      #historyView .table-wrap table.compact-columns td:nth-child(1) { width: 27% !important; }
       #historyView .table-wrap table.compact-columns th:nth-child(2),
-      #historyView .table-wrap table.compact-columns td:nth-child(2) { width: 44% !important; }
+      #historyView .table-wrap table.compact-columns td:nth-child(2) { width: 28% !important; }
       #historyView .table-wrap table.compact-columns th:nth-child(3),
-      #historyView .table-wrap table.compact-columns td:nth-child(3) { width: 16% !important; }
+      #historyView .table-wrap table.compact-columns td:nth-child(3) { width: 33% !important; }
+      #historyView .table-wrap table.compact-columns th:nth-child(4),
+      #historyView .table-wrap table.compact-columns td:nth-child(4) { width: 12% !important; }
+
+      #historyView .table-wrap table.compact-columns th:nth-child(2),
+      #historyView .table-wrap table.compact-columns td:nth-child(2),
+      #historyView .table-wrap table.compact-columns th:nth-child(3),
+      #historyView .table-wrap table.compact-columns td:nth-child(3) {
+        overflow-wrap: anywhere;
+      }
 
       #likesView .table-wrap th:nth-child(1),
       #likesView .table-wrap td:nth-child(1) { width: 10% !important; }
@@ -75,6 +115,38 @@ function removedLabels(mode) {
   return null;
 }
 
+function ensureRankingFandomColumn(head, body) {
+  const headers = [...head.querySelectorAll('th')];
+  const existingIndex = headers.findIndex((cell) => cell.textContent.trim() === 'ファンダム');
+  if (existingIndex >= 0) return;
+  const hostIndex = headers.findIndex((cell) => cell.textContent.trim() === 'ホスト');
+  if (hostIndex < 0) return;
+
+  const fandomHeader = document.createElement('th');
+  fandomHeader.scope = 'col';
+  fandomHeader.textContent = 'ファンダム';
+  headers[hostIndex].after(fandomHeader);
+
+  for (const row of body.querySelectorAll('tr')) {
+    const cells = [...row.querySelectorAll('td')];
+    if (cells.length === 1 && cells[0].colSpan > 1) {
+      cells[0].colSpan += 1;
+      continue;
+    }
+    const hostCell = cells[hostIndex];
+    if (!hostCell) continue;
+    const week = cells[0]?.textContent?.trim() || '';
+    const host = hostCell.textContent.trim();
+    const label = rankingFandomByRow.get(rankingRowKey(week, host))
+      || rankingFandomByHost.get(normalizeHost(host))
+      || '—';
+    const fandomCell = document.createElement('td');
+    fandomCell.className = 'ranking-fandom-cell';
+    fandomCell.textContent = label;
+    hostCell.after(fandomCell);
+  }
+}
+
 function cleanTable() {
   const mode = activeMode();
   const removedSet = removedLabels(mode);
@@ -98,7 +170,6 @@ function cleanTable() {
     .map((cell, index) => removedSet.has(cell.textContent.trim()) ? index : -1)
     .filter((index) => index >= 0)
     .sort((a, b) => b - a);
-  if (!removed.length) return;
   cleaning = true;
   try {
     for (const index of removed) {
@@ -112,6 +183,7 @@ function cleanTable() {
         }
       }
     }
+    if (mode === 'ranking') ensureRankingFandomColumn(head, body);
   } finally {
     cleaning = false;
   }
@@ -123,7 +195,10 @@ function scheduleCleanup() {
 
 installMobileTableWidthStyle();
 clearStaleHistoryCache();
-window.addEventListener('history:data-loaded', scheduleCleanup);
+window.addEventListener('history:data-loaded', (event) => {
+  captureRankingFandom(event?.detail?.data);
+  scheduleCleanup();
+});
 window.addEventListener('history:runtime-ready', scheduleCleanup);
 window.addEventListener('hashchange', scheduleCleanup);
 document.getElementById('modeTabs')?.addEventListener('click', scheduleCleanup);

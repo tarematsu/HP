@@ -23,6 +23,7 @@ function dbFor(actualRows) {
       const execute = async () => {
         if (sql.includes('GROUP_CONCAT(DISTINCT channel_alias)')) return { results: firstSeen };
         if (sql.includes('SELECT DISTINCT ranking_date')) return { results: weeks };
+        if (sql.includes('FROM sh_channel_fandoms')) return { results: [] };
         if (sql.includes('FROM sh_channel_rankings r')) {
           let results = [...actualRows];
           const hostParams = params.slice(2, 4).map((value) => String(value || '').toLowerCase());
