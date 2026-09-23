@@ -34,7 +34,7 @@ test('recoverable Stationhead onboarding clears stale login state and signals na
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  const blockingAt = publish.indexOf('blockingLogin(authenticated)');
+  const blockingAt = publish.indexOf('blockingLogin(true)');
   const readyAt = publish.indexOf("type: 'stationhead-auth-ready'");
   const clickAt = publish.indexOf("postText('start-visible')");
   assert.ok(blockingAt >= 0 && readyAt > blockingAt && clickAt > readyAt);
@@ -54,8 +54,8 @@ test('allowlisted onboarding is signaled before first playback and despite stale
     /!pageActive \|\| !document\.body \|\| !recoverableOnboardingVisible\(\)/,
   );
   assert.doesNotMatch(publish, /!playbackEstablished|\bplaying\(\)/);
-  assert.match(publish, /const authenticated = accountVisible\(\);/);
-  assert.match(publish, /if \(blockingLogin\(authenticated\)\) return false;/);
+  assert.doesNotMatch(publish, /const authenticated = accountVisible\(\);/);
+  assert.match(publish, /if \(blockingLogin\(true\)\) return false;/);
 });
 
 test('recoverable onboarding does not depend on semantic button or heading markup', () => {
