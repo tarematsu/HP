@@ -1,16 +1,16 @@
 const EVENTS = [
-  { date: '2024/08/02', time: '22:30', name: '櫻坂46 × INI Streaming Party - ロッキン前夜祭コラボパーティー', place: '' },
-  { date: '2024/09/06', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY1', place: '' },
-  { date: '2024/09/07', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY2', place: '' },
-  { date: '2024/09/15', time: '20:30', name: '櫻坂46 × JO1 ロッキン出演&9thリリース記念コラボパーティー', place: '' },
-  { date: '2024/10/25', time: '23:50', name: '櫻坂46 × INI Streaming Party 第1夜', place: 'Buddies' },
-  { date: '2024/11/01', time: '23:00', name: '櫻坂46 × INI Streaming Party 第2夜', place: 'MINI' },
-  { date: '2024/12/10', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY1', place: 'Buddies' },
+  { date: '2024/08/02', time: '22:30', name: '櫻坂46 × INI Streaming Party - ロッキン前夜祭コラボパーティー', place: 'BUDDIES STATIONHEAD' },
+  { date: '2024/09/06', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY1', place: 'BUDDIES STATIONHEAD' },
+  { date: '2024/09/07', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY2', place: 'LOCKEY Stationhead' },
+  { date: '2024/09/15', time: '20:30', name: '櫻坂46 × JO1 ロッキン出演&9thリリース記念コラボパーティー', place: 'BUDDIES STATIONHEAD' },
+  { date: '2024/10/25', time: '23:50', name: '櫻坂46 × INI Streaming Party 第1夜', place: 'BUDDIES STATIONHEAD' },
+  { date: '2024/11/01', time: '23:00', name: '櫻坂46 × INI Streaming Party 第2夜', place: 'MINIチャンネル' },
+  { date: '2024/12/10', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY1', place: 'BUDDIES STATIONHEAD' },
   { date: '2024/12/13', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY2', place: 'Team IMP.' },
-  { date: '2024/12/19', time: '22:00', name: '#FELIX ( #StrayKids) × #Sakurazaka46 🌸 Collab Listening Party', place: '' },
-  { date: '2024/12/29', time: '20:30', name: '櫻坂46 × NiziU Collab Listening Party', place: '' },
-  { date: '2024/12/30', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY1', place: 'Ohisama' },
-  { date: '2025/01/03', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', place: 'Buddies' },
+  { date: '2024/12/19', time: '22:00', name: '#FELIX ( #StrayKids) × #Sakurazaka46 🌸 Collab Listening Party', place: 'FELIX STREAM STATION' },
+  { date: '2024/12/29', time: '20:30', name: '櫻坂46 × NiziU Collab Listening Party', place: 'WithUチャンネル' },
+  { date: '2024/12/30', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY1', place: 'Ohisama CH.' },
+  { date: '2025/01/03', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', place: 'BUDDIES STATIONHEAD' },
 ];
 
 function mountTab() {
