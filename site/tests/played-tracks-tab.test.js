@@ -22,9 +22,19 @@ test('played tracks exposes horizontal day navigation and weekly mode', () => {
   assert.match(runtime, /\/api\/track-history\?dates_only=1/);
   assert.match(runtime, /state\.selectedPeriod = options\.at\(-1\)/);
   assert.match(runtime, /sub\.textContent = state\.weekMode \? '\(週\)' : `\(\$\{weekday\(period\)\}\)`/);
+  assert.match(runtime, /renderPeriodNavigator\(\{ alignEnd: true \}\)/);
+  assert.match(runtime, /scroller\.scrollLeft = scroller\.scrollWidth/);
   assert.match(runtime, /scrollIntoView\(\{/);
   assert.match(runtime, /inline: 'center'/);
   assert.doesNotMatch(runtime, /TARGET_DATE|2026-09-22/);
+});
+
+test('played tracks removes manual refresh and hides successful aggregate status', () => {
+  assert.doesNotMatch(shell, /id="playedTracksLoad"|>更新<\/button>/);
+  assert.match(shell, /延べ再生曲数/);
+  assert.doesNotMatch(shell, /のべ再生曲数/);
+  assert.doesNotMatch(runtime, /曲を集計/);
+  assert.match(runtime, /setNotice\(state\.total > 0 \? '' :/);
 });
 
 test('weekly played tracks uses a Monday start and seven-day range', () => {
@@ -50,8 +60,9 @@ test('track history exposes a lightweight date index from the daily read model',
 });
 
 test('played tracks runtime is lazy while its shell loads before dashboard tabs', () => {
-  assert.match(metrics, /played-tracks-shell\.js\?v=20260924\.1/);
+  assert.match(metrics, /played-tracks-shell\.js\?v=20260924\.2/);
   assert.ok(metrics.indexOf('played-tracks-shell.js') < metrics.indexOf('dashboard-tabs.js'));
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260924\.2/);
   assert.match(tabs, /'played-tracks'/);
-  assert.match(tabs, /import\('\/played-tracks\.js\?v=20260924\.1'\)/);
+  assert.match(tabs, /import\('\/played-tracks\.js\?v=20260924\.2'\)/);
 });
