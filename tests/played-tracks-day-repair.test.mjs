@@ -22,6 +22,12 @@ test('played-tracks repair is bounded to one explicit UTC day and writes the rea
   assert.match(repair, /DELETE FROM sh_pages_track_history_read_model\s+WHERE play_date=\? AND updated_at<>\?/s);
 });
 
+test('played-tracks repair uses file-backed script writes when the remote adapter supports them', () => {
+  assert.match(repair, /typeof db\.script === 'function'/);
+  assert.match(repair, /await db\.script\(statements\)/);
+  assert.match(repair, /await db\.batch\(statements\)/);
+});
+
 test('played-tracks repair workflow is one-shot on relevant main changes and has no recurring schedule', () => {
   assert.match(workflow, /push:\s*\n\s*branches: \[main\]/);
   assert.match(workflow, /workflow_dispatch:/);

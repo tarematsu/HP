@@ -71,6 +71,15 @@ async function ensureReadModelSchema(db) {
     ON sh_pages_track_history_read_model(play_date,first_played_at,row_key)`).run();
 }
 
+async function writeStatements(db, statements) {
+  if (!statements.length) return;
+  if (typeof db.script === 'function') {
+    await db.script(statements);
+    return;
+  }
+  await db.batch(statements);
+}
+
 async function persistDay(db, day, rows, generation) {
   await ensureReadModelSchema(db);
   const statements = rows.map((row) => db.prepare(`INSERT INTO sh_pages_track_history_read_model(
@@ -89,7 +98,7 @@ async function persistDay(db, day, rows, generation) {
     ));
 
   for (let offset = 0; offset < statements.length; offset += 100) {
-    await db.batch(statements.slice(offset, offset + 100));
+    await writeStatements(db, statements.slice(offset, offset + 100));
   }
 
   await db.prepare(`DELETE FROM sh_pages_track_history_read_model
