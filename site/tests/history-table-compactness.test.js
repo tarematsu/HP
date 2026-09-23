@@ -45,13 +45,15 @@ test('history tab transitions reset shared summary and pagination state', () => 
 });
 
 test('compact leaderboard and likes tables fill the mobile viewport', () => {
-  assert.match(entry, /history-table-cleanup\.js\?v=20260923\.6/);
+  assert.match(entry, /history-table-cleanup\.js\?v=20260923\.7/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
   assert.match(cleanup, /#historyView \.table-wrap table\.compact-columns,[\s\S]*#likesView \.table-wrap table[\s\S]*width: 100% !important;[\s\S]*min-width: 100% !important;[\s\S]*table-layout: fixed !important;/);
-  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(1\)[\s\S]*width: 27% !important/);
-  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(2\)[\s\S]*width: 28% !important/);
-  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(3\)[\s\S]*width: 33% !important/);
-  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(4\)[\s\S]*width: 12% !important/);
+  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(1\)[\s\S]*width: 22% !important/);
+  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(2\)[\s\S]*width: 19% !important/);
+  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(3\)[\s\S]*width: 17% !important/);
+  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(4\)[\s\S]*width: 20% !important/);
+  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(5\)[\s\S]*width: 12% !important/);
+  assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(6\)[\s\S]*width: 10% !important/);
 });
 
 test('legacy compact spacing remains available underneath the runtime override', () => {
