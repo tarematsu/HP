@@ -1,6 +1,37 @@
 #pragma once
 
+#include "audio_health_scan_coordinator.h"
+
 namespace hp {
+
+// Keep every Stationhead profile on a stable periodic-work phase. Profiles are
+// created as spotify-v2-1 .. spotify-v2-6; unknown profile names fall back to
+// the first slot rather than bypassing serialization.
+inline size_t StationheadPeriodicProfileSlot(
+    const std::wstring& profileName) noexcept {
+  constexpr wchar_t kPrefix[] = L"spotify-v2-";
+  constexpr size_t kPrefixLength = _countof(kPrefix) - 1;
+  if (profileName.size() != kPrefixLength + 1 ||
+      profileName.compare(0, kPrefixLength, kPrefix) != 0) {
+    return 0;
+  }
+  const wchar_t suffix = profileName.back();
+  if (suffix < L'1' || suffix > L'6') return 0;
+  return static_cast<size_t>(suffix - L'1');
+}
+
+inline ULONGLONG StationheadProfileAudioHealthScanDelayMs(
+    ULONGLONG now, const std::wstring& profileName) noexcept {
+  return AudioHealthScanDelayMs(now, StationheadPeriodicProfileSlot(profileName));
+}
+
+static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-1") == 0);
+static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-2") == 1);
+static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-3") == 2);
+static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-4") == 3);
+static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-5") == 4);
+static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-6") == 5);
+static_assert(StationheadPeriodicProfileSlot(L"Default") == 0);
 
 // The historical filename is retained because the playback statistics contract
 // is referenced by the Stationhead startup policy. Runtime request filtering
@@ -69,3 +100,9 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
 
 #undef StationheadApiPlayStatsScript
 #define StationheadApiPlayStatsScript StationheadPrimaryPlayStatsScript
+
+// sh_track_boundary_message_policy.h is parsed later in the native PCH. Route
+// both of its native audio-health deadlines through the profile-derived slot,
+// so the six WebViews probe at 10-second phases instead of all using slot 0.
+#define AudioHealthScanDelayMs(now, ignoredSlot) \
+  StationheadProfileAudioHealthScanDelayMs((now), profileName_)
