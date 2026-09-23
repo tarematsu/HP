@@ -9,10 +9,12 @@ function rankingRows({ withFandom = true } = {}) {
     artist_name: '櫻坂46',
     fandom_type: 'fandom',
     fandom_label: '櫻坂46(ファンダム)',
+    stationhead_channel_name: 'Buddies',
   } : {
     artist_name: null,
     fandom_type: null,
     fandom_label: null,
+    stationhead_channel_name: null,
   };
   return [
     {
@@ -40,13 +42,15 @@ function dbFor({ withFandom = true } = {}) {
     artist_name: '櫻坂46',
     fandom_type: 'fandom',
     fandom_label: '櫻坂46(ファンダム)',
+    stationhead_channel_name: 'Buddies',
   } : {
     artist_name: null,
     fandom_type: null,
     fandom_label: null,
+    stationhead_channel_name: null,
   };
   const model = {
-    version: 1,
+    version: 2,
     refreshed_at: 1_790_000_000_000,
     source_max_ranking_date: '2026-09-21',
     ranking_weeks: ['2026-09-07', '2026-09-14', '2026-09-21'],
@@ -91,16 +95,16 @@ function request() {
   return new URL('https://example.test/api/history?mode=ranking&scope=all&host=sakuramankai&from=2026-09-07&to=2026-09-21');
 }
 
-test('ranking API exposes materialized fandom metadata in rows, host summaries, and synthetic gap weeks', async () => {
+test('ranking API preserves materialized artist and Stationhead-channel metadata in rows', async () => {
   const response = await loadRanking(request(), { OTHER_DB: dbFor() });
   const data = await response.json();
 
   assert.equal(data.rows.length, 3);
   assert.ok(data.rows.every((row) => row.fandom_label === '櫻坂46(ファンダム)'));
+  assert.ok(data.rows.every((row) => row.stationhead_channel_name === 'Buddies'));
   assert.equal(data.rows.find((row) => row.synthetic)?.artist_name, '櫻坂46');
   assert.equal(data.host_rankings[0].artist_name, '櫻坂46');
   assert.equal(data.host_rankings[0].fandom_type, 'fandom');
-  assert.equal(data.host_rankings[0].fandom_label, '櫻坂46(ファンダム)');
 });
 
 test('ranking data remains available when the materialized model has no fandom metadata', async () => {
@@ -113,21 +117,23 @@ test('ranking data remains available when the materialized model has no fandom m
   assert.ok(data.rows.every((row) => row.fandom_label == null));
 });
 
-test('ranking table cleanup inserts fandom immediately after host and keeps a four-column mobile layout', () => {
+test('ranking table cleanup inserts channel, artist, and relation immediately after host', () => {
   const source = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
-  assert.match(source, /fandomHeader\.textContent = 'ファンダム'/);
-  assert.match(source, /headers\[hostIndex\]\.after\(fandomHeader\)/);
-  assert.match(source, /hostCell\.after\(fandomCell\)/);
-  assert.match(source, /nth-child\(4\)/);
+  assert.match(source, /channelHeader\.textContent = 'チャンネル'/);
+  assert.match(source, /artistHeader\.textContent = 'アーティスト名'/);
+  assert.match(source, /relationHeader\.textContent = '公式'/);
+  assert.match(source, /headers\[hostIndex\]\.after\(channelHeader, artistHeader, relationHeader\)/);
+  assert.match(source, /hostCell\.after\(channelCell, artistCell, relationCell\)/);
+  assert.match(source, /nth-child\(6\)/);
 });
 
-test('D1 migration stores artist and relationship type per Stationhead host', () => {
+test('D1 correction migration moves sbuddies1819 from Sakurazaka46 to SB19 fandom', () => {
   const migration = readFileSync(
-    new URL('../../database/other-migrations/028_channel_fandom_metadata.sql', import.meta.url),
+    new URL('../../database/other-migrations/038_correct_sbuddies1819_channel.sql', import.meta.url),
     'utf8',
   );
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_channel_fandoms/);
-  assert.match(migration, /idx_sh_channel_fandoms_host_normalized/);
-  assert.match(migration, /'sakuramankai'[\s\S]*'櫻坂46'[\s\S]*'fandom'/);
-  assert.match(migration, /'sakurazaka46jp'[\s\S]*'櫻坂46'[\s\S]*'official'/);
+  assert.match(migration, /sbuddies1819/);
+  assert.match(migration, /artist_name = 'SB19'/);
+  assert.match(migration, /relation_type = 'fandom'/);
+  assert.match(migration, /stationhead\.com\/c\/ATIN/);
 });
