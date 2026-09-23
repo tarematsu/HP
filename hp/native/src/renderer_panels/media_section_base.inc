@@ -22,8 +22,6 @@ constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 
 constexpr const wchar_t* kNativeMediaPlayAllScript = kNativeMediaYoutubeReliablePlayAllScript;
 constexpr const wchar_t* kNativeMediaYoutubeWatchdogScript = kNativeMediaYoutubeControlRecoveryScript;
-constexpr wchar_t kNativeMediaTverLoopScript[] =
-    L"null/*homepanel-tver-loop-routing-key*/";
 constexpr wchar_t kNativeMediaTverWatchdogScript[] =
     L"null/*homepanel-tver-watchdog-routing-key*/";
 

@@ -378,11 +378,6 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
   if (script == kNativeMediaYoutubeCleanPlayerScript) return kNativeMediaNoopScript;
-  if (script == kNativeMediaTverLoopScript) {
-    NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
-    return NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")
-        ? kNativeMediaTverEpisodeLoopPolicyScript : kNativeMediaNoopScript;
-  }
   if (script == kNativeMediaTverWatchdogScript) {
     NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {

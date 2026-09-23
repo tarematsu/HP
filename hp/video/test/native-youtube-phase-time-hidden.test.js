@@ -22,7 +22,7 @@ test('cursor hiding remains independent after clock removal', () => {
   assert.match(wrapper, /kNativeMediaCursorSuppressionScript/);
   assert.match(wrapper, /cursor:none !important/);
   assert.match(host, /AddScriptToExecuteOnDocumentCreated\(\s*kNativeMediaCursorSuppressionScript/);
-  assert.match(wrapper, /script == kNativeMediaTverLoopScript/);
+  assert.doesNotMatch(wrapper, /script == kNativeMediaTverLoopScript/);
   assert.match(wrapper, /script == kNativeMediaTverWatchdogScript/);
   assert.match(wrapper, /script == kNativeMediaYoutubeWatchdogScript/);
 });

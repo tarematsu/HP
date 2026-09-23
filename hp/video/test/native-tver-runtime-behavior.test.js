@@ -9,7 +9,7 @@ const script = native.match(/LR"JS\(([\s\S]*?)\)JS"\s*$/)?.[1]
   ?.replaceAll(')JS" LR"JS(', '');
 assert.ok(script, 'extract the JavaScript executed by the TVer WebView');
 
-function playerScenario(duration, controls = []) {
+function playerScenario(duration, controls = [], portalOptions = []) {
   let clock = 1000;
   const messages = [];
   let handlers = new Map();
@@ -24,8 +24,9 @@ function playerScenario(duration, controls = []) {
     addEventListener: (name, callback) => handlers.set(name, callback),
   };
   const document = {
-    querySelectorAll: selector => selector === 'video' ? [video] : [],
-    addEventListener: () => {}, elementFromPoint: () => controls[0] || null,
+    querySelectorAll: selector => selector === 'video' ? [video]
+      : selector.includes('[role="menu"]') ? portalOptions : [],
+    addEventListener: () => {}, elementFromPoint: () => portalOptions[0] || controls[0] || null,
     fullscreenElement: null,
   };
   const window = { chrome: { webview: { postMessage: value => messages.push(value) } } };
@@ -36,7 +37,10 @@ function playerScenario(duration, controls = []) {
     },
     history: { pushState() {}, replaceState() {} },
     Date: { now: () => clock },
-    getComputedStyle: () => ({ display: 'block', visibility: 'visible' }),
+    getComputedStyle: element => ({
+      display: element.hidden ? 'none' : 'block',
+      visibility: 'visible', opacity: element.opacity ?? '1',
+    }),
     MutationObserver: class { observe() {} disconnect() {} },
     AbortController, Element: class {},
     setTimeout: () => 1, clearTimeout: () => {},
@@ -62,6 +66,33 @@ test('a short pre-roll with inherited 1.75x cannot advance the episode', () => {
   scene.ended();
   scene.run();
   assert.equal(scene.messages.includes('homepanel:tver-ended'), false);
+});
+
+test('a hidden ad skip control cannot suppress program setup or receive a click', () => {
+  const skip = {
+    isConnected: true, disabled: false, hidden: true,
+    getAttribute: name => name === 'aria-label' ? '広告をスキップ' : null,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 30 }),
+  };
+  const scene = playerScenario(1800, [skip]);
+  scene.video.playbackRate = 1;
+  const action = scene.run();
+  assert.equal(scene.video.playbackRate, 1.75);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
+  assert.equal(Array.isArray(action), false);
+});
+
+test('an ad skip control inside a transparent parent is not an active ad', () => {
+  const skip = {
+    isConnected: true, disabled: false,
+    parentElement: { opacity: '0', parentElement: null, getAttribute: () => null },
+    getAttribute: name => name === 'aria-label' ? '広告をスキップ' : null,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 80, height: 30 }),
+  };
+  const scene = playerScenario(1800, [skip]);
+  scene.video.playbackRate = 1;
+  scene.run();
+  assert.equal(scene.video.playbackRate, 1.75);
 });
 
 test('program speed applies and fullscreen retries even when fullscreen is refused', () => {
@@ -115,6 +146,32 @@ test('quality menu is retried past four attempts without claiming low quality', 
   }
   assert.equal(scene.window.__homePanelTverRuntime.qualityApplied, false);
   assert.ok(scene.window.__homePanelTverRuntime.qualityLastAttemptAt > 9000);
+});
+
+test('settings menu finds low quality when TVer portals its options outside the player', () => {
+  const makeControl = label => ({
+    isConnected: true, disabled: false, parentElement: null,
+    getAttribute: name => name === 'aria-label' ? label : null,
+    removeAttribute() {}, addEventListener() {}, removeEventListener() {},
+    contains: () => false,
+    getBoundingClientRect: () => ({ left: 10, top: 10, width: 40, height: 40 }),
+    style: {
+      cssText: '', getPropertyValue: () => '', getPropertyPriority: () => '',
+      setProperty() {}, removeProperty() {},
+    },
+  });
+  const settings = makeControl('設定');
+  const low = makeControl('低');
+  const scene = playerScenario(1800, [settings], [low]);
+  assert.equal(Array.isArray(scene.run()), true);
+  scene.advance(2000);
+  assert.equal(Array.isArray(scene.run()), true);
+  assert.equal(scene.window.__homePanelTverRuntime.qualityApplied, false);
+  low.getAttribute = name => name === 'aria-label' ? '低'
+    : name === 'aria-checked' ? 'true' : null;
+  scene.advance(2000);
+  scene.run();
+  assert.equal(scene.window.__homePanelTverRuntime.qualityApplied, true);
 });
 
 test('replacement video with the same source starts fresh program completion state', () => {
