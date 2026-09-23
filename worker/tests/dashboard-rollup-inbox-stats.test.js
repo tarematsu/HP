@@ -132,8 +132,8 @@ test('five-minute rollup catches up a completed bucket once after a missed bound
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM sh_dashboard_history_5m').get().count, 1);
   assert.equal(rows[0].listener_count, 14);
   assert.equal(rows[0].total_listens, 44);
-  assert.equal(rows[0].comment_velocity, 12);
-  assert.doesNotMatch(FACTS_HISTORY_24H_SQL, /FROM sh_minute_facts AS f\s+WHERE f\.source_code=1[\s\S]*RANGE BETWEEN/);
+  assert.equal(rows[0].comment_velocity, undefined);
+  assert.doesNotMatch(FACTS_HISTORY_24H_SQL, /comment_velocity|FROM sh_minute_facts AS f\s+WHERE f\.source_code=1[\s\S]*RANGE BETWEEN/);
   assert.match(FACTS_HISTORY_24H_SQL, /FROM sh_dashboard_history_5m r/);
 });
 
