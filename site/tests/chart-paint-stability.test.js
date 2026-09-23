@@ -69,7 +69,14 @@ test('history mode switches clear stale shared chart state before the next rende
   assert.match(historyStability, /chartEndDate/);
   assert.match(historyStability, /\['chartYAxisLeft', 'chartYAxisRight', 'chartXAxisTitle'\]/);
   assert.match(historyStability, /function clearAxisLabel\(id\)/);
-  assert.match(historyStability, /nextMode === 'broadcasts'[\s\S]*prepareBroadcastCanvas\(\)/);
   assert.match(historyStability, /canvas\.width = canvas\.width/);
+  assert.match(historyStability, /nextMode === 'broadcasts'[\s\S]*prepareBroadcastCanvas\(\)/);
   assert.match(historyStability, /paintedMode = 'broadcasts'/);
+});
+
+test('ranking query changes cannot leave the previous table chart visible', () => {
+  assert.match(historyStability, /function prepareRankingQueryChange\(\)/);
+  assert.match(historyStability, /paintedMode = ''[\s\S]*conceal\('ranking'\)/);
+  assert.match(historyStability, /getElementById\('rankingScope'\)\?\.addEventListener\('change', prepareRankingQueryChange/);
+  assert.match(historyStability, /getElementById\('rankingHost'\)\?\.addEventListener\('keydown',[\s\S]*event\.key === 'Enter'[\s\S]*prepareRankingQueryChange\(\)/);
 });
