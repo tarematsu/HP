@@ -1,6 +1,6 @@
 name: Stationhead ranking host inventory
 
-# One-shot diagnostic for production D1 mapping coverage after historical backfill 4.
+# One-shot diagnostic for production D1 mapping coverage after historical backfill 5.
 on:
   push:
     paths:
