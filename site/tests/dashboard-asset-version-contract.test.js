@@ -28,6 +28,7 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fetchCache: assetVersion(entry, 'dashboard-fetch-cache.js'),
     metricStyle: assetVersion(entry, 'dashboard-current-metric-style.js'),
     queueMetadataStability: assetVersion(entry, 'dashboard-queue-metadata-stability.js'),
+    officialListeningPartyCopy: assetVersion(entry, 'official-listening-party-copy.js'),
     dailySummaries: assetVersion(entry, 'dashboard-daily-summaries.js'),
     comparison: assetVersion(entry, 'dashboard-chart-comparison.js'),
     chartDetail: assetVersion(entry, 'dashboard-chart-detail.js'),
