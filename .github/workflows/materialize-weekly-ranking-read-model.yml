@@ -10,6 +10,7 @@ on:
     paths:
       - '.github/workflows/materialize-weekly-ranking-read-model.yml'
       - 'worker/scripts/materialize-weekly-ranking-read-model.mjs'
+      - 'worker/scripts/remote-d1-adapter.mjs'
       - 'database/other-migrations/037_weekly_ranking_read_model.sql'
       - 'site/functions/lib/history-ranking.js'
 
