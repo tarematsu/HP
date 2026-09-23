@@ -88,6 +88,18 @@
   height: 32px !important;
 }
 
+/* Keep all dashboard tabs on one row once there is tablet/desktop width. */
+#modeTabs.mode-tabs.dashboard-tabs {
+  display: grid !important;
+  grid-template-columns: repeat(9, minmax(0, 1fr)) !important;
+  grid-template-rows: 34px !important;
+  grid-auto-flow: row !important;
+}
+
+#modeTabs.mode-tabs.dashboard-tabs > button {
+  min-width: 0 !important;
+}
+
 /* Ranking has two control groups. Keep its update button compact like the
    daily/weekly/monthly views instead of stretching across a whole row. */
 @media (min-width: 1001px) {
@@ -121,6 +133,11 @@
 }
 
 @media (min-width: 761px) and (max-width: 1000px) {
+  #modeTabs.mode-tabs.dashboard-tabs > button {
+    padding-inline: 2px !important;
+    font-size: 10px !important;
+  }
+
   #controls:has(#rankingControls:not([hidden])) {
     grid-template-columns: minmax(0, 1fr) auto !important;
   }
@@ -157,6 +174,11 @@
 }
 
 @media (max-width: 760px) {
+  #modeTabs.mode-tabs.dashboard-tabs {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    grid-template-rows: repeat(2, 32px) !important;
+  }
+
   #modeTabs.mode-tabs.dashboard-tabs > button,
   #modeTabs.mode-tabs.dashboard-tabs > button:last-child {
     grid-column: auto !important;
