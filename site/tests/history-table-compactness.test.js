@@ -24,8 +24,15 @@ test('mode-specific table layout classes do not leak across tabs', () => {
   assert.match(cleanup, /syncTableModeClasses\(head\.closest\('table'\), mode\)/);
 });
 
+test('history tab transitions clear the previous table before the next mode renders', () => {
+  assert.match(cleanup, /function prepareTableForModeTransition\(event\)/);
+  assert.match(cleanup, /table\?\.classList\.remove\('all-host-ranking-table'\)/);
+  assert.match(cleanup, /head\.replaceChildren\(\);[\s\S]*body\.replaceChildren\(\)/);
+  assert.match(cleanup, /getElementById\('modeTabs'\)\?\.addEventListener\('click',[\s\S]*prepareTableForModeTransition\(event\)/);
+});
+
 test('compact leaderboard and likes tables fill the mobile viewport', () => {
-  assert.match(entry, /history-table-cleanup\.js\?v=20260923\.5/);
+  assert.match(entry, /history-table-cleanup\.js\?v=20260923\.6/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
   assert.match(cleanup, /#historyView \.table-wrap table\.compact-columns,[\s\S]*#likesView \.table-wrap table[\s\S]*width: 100% !important;[\s\S]*min-width: 100% !important;[\s\S]*table-layout: fixed !important;/);
   assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(1\)[\s\S]*width: 27% !important/);
