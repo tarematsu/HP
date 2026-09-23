@@ -21,6 +21,9 @@ function createSummaryTable(db) {
     listener_max INTEGER,
     likes_max INTEGER,
     distinct_tracks INTEGER,
+    listener_min REAL,
+    comment_count INTEGER,
+    session_id INTEGER,
     PRIMARY KEY(host_handle,event_name)
   )`);
 }
@@ -28,7 +31,10 @@ function createSummaryTable(db) {
 test('broadcast history reads UTC timestamps from the compact official summary table', () => {
   const db = new DatabaseSync(':memory:');
   createSummaryTable(db);
-  db.prepare(`INSERT INTO sh_official_broadcast_summary VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
+  db.prepare(`INSERT INTO sh_official_broadcast_summary(
+    host_handle,event_name,started_at,ended_at,started_jst,ended_jst,
+    sample_count,listener_avg,listener_max,likes_max,distinct_tracks
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
     'sakurazaka46jp', 'Event A', 1000, 2000, '2025-01-01 09:00:01',
     '2025-01-01 09:00:02', 2, 110, 120, 12, 2,
   );
@@ -52,35 +58,19 @@ test('broadcast history reads UTC timestamps from the compact official summary t
   }]);
 });
 
-test('official listening-party read model joins canonical series and the nearest host session', () => {
+test('official listening-party read model reads only materialized summary metrics', () => {
   const db = new DatabaseSync(':memory:');
   createSummaryTable(db);
-  db.exec(`
-    CREATE TABLE sh_official_broadcast_series (
-      host_handle TEXT,event_name TEXT,started_at INTEGER,points_json TEXT,
-      source_ref TEXT,refreshed_at INTEGER
-    );
-    CREATE TABLE sh_host_broadcast_sessions (
-      id INTEGER PRIMARY KEY,handle TEXT,started_at INTEGER,ended_at INTEGER,
-      average_listeners REAL,peak_listeners INTEGER,track_count INTEGER,comment_count INTEGER
-    );
-    CREATE TABLE sh_host_station_snapshots (
-      id INTEGER PRIMARY KEY,session_id INTEGER,listener_count INTEGER
-    );
-  `);
-  db.prepare(`INSERT INTO sh_official_broadcast_summary VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
-    'sakurazaka46jp', 'Event A', 1_000_000, null, '2025-01-01 09:00:01',
-    null, 2, null, null, 12, null,
+  db.prepare(`INSERT INTO sh_official_broadcast_summary(
+    host_handle,event_name,started_at,ended_at,started_jst,ended_jst,
+    sample_count,listener_avg,listener_max,likes_max,distinct_tracks,
+    listener_min,comment_count,session_id
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    'sakurazaka46jp', 'Event A', 1_000_000, 1_090_000, '2025-01-01 09:00:01',
+    '2025-01-01 09:01:30', 2, 111.5, 150, 12, 4, 95, 321, 7,
   );
-  db.prepare(`INSERT INTO sh_official_broadcast_series VALUES(?,?,?,?,?,?)`).run(
-    'sakurazaka46jp', 'Event A', 1_000_000, '[[0,95,1],[1,150,1]]', 'test', 1,
-  );
-  db.prepare(`INSERT INTO sh_host_broadcast_sessions VALUES(?,?,?,?,?,?,?,?)`).run(
-    7, 'sakurazaka46jp', 1_000_600, 1_090_000, 111.5, 150, 4, 321,
-  );
-  db.prepare(`INSERT INTO sh_host_station_snapshots VALUES(?,?,?)`).run(1, 7, 98);
-  db.prepare(`INSERT INTO sh_host_station_snapshots VALUES(?,?,?)`).run(2, 7, 150);
 
+  assert.doesNotMatch(BROADCAST_READ_MODEL_SQL, /json_each|sh_official_broadcast_series|sh_host_station_snapshots|sh_host_broadcast_sessions/);
   const rows = db.prepare(BROADCAST_READ_MODEL_SQL).all(0, 2_000_000);
   const parsed = parseBroadcastSummaryRows(rows);
 

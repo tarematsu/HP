@@ -8,6 +8,10 @@ const runner = readFileSync(
   new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url),
   'utf8',
 );
+const historyRunner = readFileSync(
+  new URL('../scripts/run-pages-history-read-model-actions.mjs', import.meta.url),
+  'utf8',
+);
 const workflow = readFileSync(
   new URL('../../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url),
   'utf8',
@@ -30,7 +34,7 @@ const ALL_VARIANTS = [
 
 const SIX_HOUR_VARIANTS = ALL_VARIANTS.slice(0, -1);
 
-test('Actions applies contract-driven six-hour and daily read-model cadences', () => {
+test('shared Actions cadence resolver still exposes contract-driven due keys', () => {
   assert.deepEqual([...dueVariantKeys(cycleStart + 26 * MINUTE)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycleStart + 56 * MINUTE)], ['dashboard']);
@@ -47,13 +51,17 @@ test('track-history read-model generation is absent from scheduled Actions', () 
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history|track-history generation/);
 });
 
-test('workflow keeps independent scheduled opportunities without Worker queues', () => {
+test('scheduled rebuild owns only history models and leaves dashboard to realtime dispatch', () => {
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
-  assert.match(workflow, /Refresh dashboard and reusable history models during D1 budget deferral/);
+  assert.match(workflow, /Refresh reusable history models during D1 budget deferral/);
   assert.match(workflow, /Publish due pages read models/);
+  assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
+  assert.doesNotMatch(workflow, /node scripts\/refresh-pages-dashboard-actions\.mjs/);
+  assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
+  assert.match(historyRunner, /variant\.key !== 'dashboard'/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.equal(runtime.triggers, undefined);

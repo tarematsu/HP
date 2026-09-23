@@ -32,7 +32,9 @@ const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', imp
 test('all durable reconstruction sources share a thirty-day retention floor', () => {
   assert.match(retention, /REBUILD_SOURCE_RETENTION_MS = 30 \* 24 \* 60 \* 60_000/);
   assert.match(retention, /MIN_RETENTION_MS = REBUILD_SOURCE_RETENTION_MS/);
-  assert.match(retention, /name: 'sh_channel_snapshots'/);
+  assert.match(retention, /FROM sh_channel_snapshots INDEXED BY idx_sh_channel_snapshots_observed_id/);
+  assert.match(retention, /FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time/);
+  assert.match(retention, /factKeys\.has\(factKey\(row\.channelId, minute\)\)/);
   assert.match(retention, /name: 'sh_queue_snapshots'/);
   assert.match(retention, /name: 'sh_comment_minute_counts'/);
   assert.match(retention, /timeColumn: 'bucket_start'/);

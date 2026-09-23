@@ -132,7 +132,7 @@ test('history tables render newest rows first and paginate only in the browser',
   assert.match(historyClient, /function exportCsv/);
 });
 
-test('integrated likes view reads current ranking directly without playback counts', () => {
+test('integrated likes view reads materialized current ranking without playback counts', () => {
   assert.match(mainPage, /id="likesView"/);
   assert.match(mainPage, /id="likesRankingList"/);
   assert.match(mainPage, /最新いいね/);
@@ -143,7 +143,8 @@ test('integrated likes view reads current ranking directly without playback coun
   assert.match(likesClient, /el\('likesLoad'\)/);
   assert.doesNotMatch(likesClient, /week_play_count|play_count_excluded|currentUtcWeekRange/);
   assert.match(trackHistoryApi, /ranking_only/);
-  assert.match(trackHistoryApi, /loadTrackRanking/);
+  assert.match(trackHistoryApi, /track-history-status/);
+  assert.doesNotMatch(trackHistoryApi, /loadTrackRanking|TRACK_RANKING_SQL|sh_track_ranking_current/);
   assert.match(rankingLibrary, /FROM sh_track_ranking_current/);
   assert.doesNotMatch(rankingLibrary, /FROM sh_track_counter_current/);
 });

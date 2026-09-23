@@ -6,11 +6,18 @@ const header = readFileSync(new URL('../public/dashboard-header.js', import.meta
 const css = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
 
 test('final screenshot-audit overrides load after cross-view unification', () => {
-  assert.match(header, /pages-layout-final-fixes\.css\?v=20260922\.2/);
+  assert.match(header, /pages-layout-final-fixes\.css\?v=20260924\.1/);
   assert.ok(
     header.indexOf('layoutUnificationHref') < header.indexOf('layoutFinalFixesHref'),
     'final layout fixes must load last',
   );
+});
+
+test('dashboard tabs use two rows of five on phones and one row on wider screens', () => {
+  assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(9, minmax\(0, 1fr\)\) !important/);
+  assert.match(css, /grid-template-rows:\s*34px !important/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\) !important/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*repeat\(2, 32px\) !important/);
 });
 
 test('legacy span-two mobile tab placement is cancelled', () => {

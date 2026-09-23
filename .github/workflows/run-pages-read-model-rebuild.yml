@@ -11,10 +11,9 @@ on:
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
-      - 'worker/scripts/refresh-pages-dashboard-actions.mjs'
+      - 'worker/scripts/run-pages-history-read-model-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/pages-response-**'
-      - 'site/functions/api/dashboard.js'
       - 'site/functions/api/history.js'
       - 'site/functions/lib/api-contract.js'
       - 'site/functions/lib/materialized-history.js'
@@ -23,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       force_all:
-        description: Force every read-model variant instead of normal due-only cadence
+        description: Force every history read-model variant instead of normal due-only cadence
         required: false
         default: true
         type: boolean
@@ -87,24 +86,26 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ steps.d1-write-budget.outputs.reason }}" == 'telemetry-unavailable' ]]; then
-            echo "Deferring D1-heavy read-model generation because usage telemetry is unavailable. Existing KV/R2 responses remain active; dashboard refresh and reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy history read-model generation because usage telemetry is unavailable. Existing R2 responses remain active; reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
           else
-            echo "Deferring D1-heavy read-model generation because the D1 read budget is unavailable or exceeded (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}). Existing KV/R2 responses remain active; dashboard refresh and reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy history read-model generation because the D1 read budget is unavailable or exceeded (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}). Existing R2 responses remain active; reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
           fi
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Refresh dashboard and reusable history models during D1 budget deferral
+      - name: Refresh reusable history models during D1 budget deferral
         if: steps.d1-write-budget.outputs.read_allowed != 'true'
         shell: bash
+        env:
+          PAGES_READ_MODEL_REUSE_ONLY: 'true'
         run: |
           set -o pipefail
-          node scripts/refresh-pages-dashboard-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
+          node scripts/run-pages-history-read-model-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
       - name: Publish due pages read models
         if: steps.d1-write-budget.outputs.read_allowed == 'true'
         shell: bash
         run: |
           set -o pipefail
-          node scripts/run-pages-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
+          node scripts/run-pages-history-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
       - name: Upload pages read-model log
         if: always()
         uses: actions/upload-artifact@v4

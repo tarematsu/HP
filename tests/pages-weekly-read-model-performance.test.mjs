@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { buildWeeklyRankingReadModel } from '../worker/scripts/materialize-weekly-ranking-read-model.mjs';
+import {
+  shouldRefreshWeeklyRankingReadModel,
+  sourceRevision,
+} from '../worker/scripts/materialize-weekly-ranking-read-model-if-stale.mjs';
 
 test('weekly leaderboard read model materializes missing weeks and fandom metadata ahead of Pages reads', () => {
   const model = buildWeeklyRankingReadModel([
@@ -48,13 +52,67 @@ test('Pages leaderboard reads only the weekly materialized model', () => {
   assert.doesNotMatch(source, /FROM sh_channel_rankings|FROM sh_channel_fandoms|summaryLoader\s*\(/);
 });
 
-test('weekly leaderboard read model refresh is scheduled once on Tuesday JST after ingestion', () => {
+test('weekly leaderboard read model refresh is chained to the hourly import instead of an independent cron', () => {
   const workflow = readFileSync(
     new URL('../.github/workflows/materialize-weekly-ranking-read-model.yml', import.meta.url),
     'utf8',
   );
-  assert.match(workflow, /cron: '37 17 \* \* 1'/);
-  assert.match(workflow, /Materialize weekly leaderboard read model/);
+  const gate = readFileSync(
+    new URL('../worker/scripts/materialize-weekly-ranking-read-model-if-stale.mjs', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(workflow, /cron:/);
+  assert.match(workflow, /workflow_run:/);
+  assert.match(workflow, /Stationhead leaderboard probe report/);
+  assert.match(workflow, /materialize-weekly-ranking-read-model-if-stale\.mjs/);
+  assert.match(gate, /MAX\(imported_at\)/);
+  assert.match(gate, /MAX\(updated_at\)/);
+  assert.match(gate, /MAX\(verified_at\)/);
+  assert.match(gate, /materializeWeeklyRankingReadModel/);
+});
+
+test('weekly leaderboard freshness gate skips current sources and rebuilds same-week revisions', () => {
+  const source = {
+    max_ranking_date: '2026-09-21',
+    max_ranking_imported_at: 200,
+    max_weekly_summary_updated_at: 180,
+    max_fandom_verified_at: 150,
+  };
+  assert.equal(sourceRevision(source), '2026-09-21:200:180:150');
+  assert.equal(shouldRefreshWeeklyRankingReadModel(source, {
+    source_max_ranking_date: '2026-09-21',
+    refreshed_at: 200,
+    chunk_complete: true,
+  }), false);
+  assert.equal(shouldRefreshWeeklyRankingReadModel({
+    ...source,
+    max_ranking_imported_at: 201,
+  }, {
+    source_max_ranking_date: '2026-09-21',
+    refreshed_at: 200,
+    chunk_complete: true,
+  }), true);
+  assert.equal(shouldRefreshWeeklyRankingReadModel({
+    ...source,
+    max_weekly_summary_updated_at: 205,
+  }, {
+    source_max_ranking_date: '2026-09-21',
+    refreshed_at: 200,
+    chunk_complete: true,
+  }), true);
+  assert.equal(shouldRefreshWeeklyRankingReadModel({
+    ...source,
+    max_ranking_date: '2026-09-28',
+  }, {
+    source_max_ranking_date: '2026-09-21',
+    refreshed_at: 999,
+    chunk_complete: true,
+  }), true);
+  assert.equal(shouldRefreshWeeklyRankingReadModel(source, {
+    source_max_ranking_date: '2026-09-21',
+    refreshed_at: 999,
+    chunk_complete: false,
+  }), true);
 });
 
 test('official listening-party Pages read path never reconstructs minute series or probes at request time', () => {
