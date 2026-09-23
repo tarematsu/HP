@@ -1,7 +1,16 @@
 (() => {
   const MODE = 'broadcasts';
-  const VISIBLE_HEADERS = ['日付', '時間', '長さ', '平均同接', '最大同接', '曲数', '推定再生数', '放送内容', '名前'];
+  const VISIBLE_HEADERS = ['日付', '時間', '長さ', '平均同接', '最大同接', '曲数', '推定再生数', '放送内容', '名前', '出典'];
   const TECHNICAL_HEADERS = ['放送名', '開始日時（UTC）', '最小同接', 'コメント数'];
+  const OFFICIAL_NEWS = new Map([
+    ['2024.07.23『YUI KOBAYASHI GRADUATION CONCERT』Stationhead Listening Party', 'https://sakurazaka46.com/s/s46/news/detail/M01328'],
+    ['2024.11.22「4th YEAR ANNIVERSARY LIVE」開催直前！Stationheadリスニングパーティー', 'https://sakurazaka46.com/s/s46/news/detail/M01519'],
+    ['2024.11.25「4th YEAR ANNIVERSARY LIVE」Stationheadリスニングパーティー', 'https://sakurazaka46.com/s/s46/news/detail/M01523'],
+    ['2025.04.30 2nd Album『Addiction』Stationheadリスニングパーティー', 'https://sakurazaka46.com/s/s46/news/detail/M01667'],
+    ['2025.10.29 13th Single『Unhappy birthday構文』リリース記念Stationheadリスニングパーティー', 'https://sakurazaka46.com/s/s46/news/detail/M01853'],
+    ['2025.12.30『THANK YOU BUDDIES!! THANK YOU 2025!! 櫻坂46 YEAR-END LISTENING PARTY』', 'https://sakurazaka46.com/s/s46/news/detail/R00518'],
+    ['2026.09.21 『ROCK IN JAPAN FESTIVAL 2026 SETLIST LISTENING PARTY』', 'https://sakurazaka46.com/s/s46/news/detail/R00621'],
+  ]);
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
   const integer = new Intl.NumberFormat('ja-JP');
   const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
@@ -90,14 +99,16 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
-      #historyView .table-wrap table.official-party-table th:nth-child(n+10),
-      #historyView .table-wrap table.official-party-table td:nth-child(n+10) {
+      #historyView .table-wrap table.official-party-table th:nth-child(n+11),
+      #historyView .table-wrap table.official-party-table td:nth-child(n+11) {
         display: none !important;
       }
       #historyView .table-wrap table.official-party-table th:nth-child(8),
       #historyView .table-wrap table.official-party-table td:nth-child(8),
       #historyView .table-wrap table.official-party-table th:nth-child(9),
-      #historyView .table-wrap table.official-party-table td:nth-child(9) {
+      #historyView .table-wrap table.official-party-table td:nth-child(9),
+      #historyView .table-wrap table.official-party-table th:nth-child(10),
+      #historyView .table-wrap table.official-party-table td:nth-child(10) {
         text-align: left !important;
       }
     `;
@@ -114,6 +125,22 @@
   function createCell(value) {
     const cell = document.createElement('td');
     cell.textContent = String(value ?? '—');
+    return cell;
+  }
+
+  function createSourceCell(eventName) {
+    const cell = document.createElement('td');
+    const source = OFFICIAL_NEWS.get(String(eventName || '').trim());
+    if (!source) {
+      cell.textContent = '—';
+      return cell;
+    }
+    const link = document.createElement('a');
+    link.href = source;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = '公式告知';
+    cell.appendChild(link);
     return cell;
   }
 
@@ -135,12 +162,13 @@
     const ordered = [...(Array.isArray(rows) ? rows : [])].reverse();
     for (const row of ordered) {
       const identity = splitEvent(row);
+      const eventName = String(row?.event_name || '公式リスパ').trim();
       const average = finite(row?.listener_avg);
       const maximum = finite(row?.listener_max);
       const tracks = finite(row?.distinct_tracks);
       const minimum = finite(row?.listener_min);
       const estimated = average != null && tracks != null ? Math.round(average * tracks) : null;
-      const values = [
+      const visibleValues = [
         identity.date,
         broadcastTimeLabel(row),
         elapsedLabel(durationMinutes(row)),
@@ -150,13 +178,17 @@
         numberText(estimated, integer),
         String(row?.broadcast_content || '—'),
         identity.name,
-        String(row?.event_name || '公式リスパ').trim(),
+      ];
+      const technicalValues = [
+        eventName,
         utcDateTime(row?.started_at),
         numberText(minimum),
         '—',
       ];
       const tableRow = document.createElement('tr');
-      for (const value of values) tableRow.appendChild(createCell(value));
+      for (const value of visibleValues) tableRow.appendChild(createCell(value));
+      tableRow.appendChild(createSourceCell(eventName));
+      for (const value of technicalValues) tableRow.appendChild(createCell(value));
       fragment.appendChild(tableRow);
     }
 
