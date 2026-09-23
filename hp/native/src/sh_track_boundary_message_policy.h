@@ -16,6 +16,56 @@ inline constexpr int64_t StationheadAudioHealthCheckIntervalMs() noexcept {
   return 1 * 60'000;
 }
 
+inline constexpr int64_t StationheadScheduledReloadIntervalMs() noexcept {
+  return 50 * 60'000;
+}
+
+inline constexpr int64_t StationheadScheduledReloadStaggerMs() noexcept {
+  return 5 * 60'000;
+}
+
+inline constexpr int64_t StationheadScheduledReloadFirstBaseMs() noexcept {
+  return 20 * 60'000;
+}
+
+inline int StationheadScheduledReloadOrdinal(
+    const std::wstring& profileName) noexcept {
+  constexpr wchar_t kPrefix[] = L"spotify-v2-";
+  constexpr size_t kPrefixLength = _countof(kPrefix) - 1;
+  if (profileName.size() != kPrefixLength + 1 ||
+      profileName.compare(0, kPrefixLength, kPrefix) != 0) {
+    return 1;
+  }
+  const wchar_t suffix = profileName.back();
+  return suffix >= L'1' && suffix <= L'6' ? suffix - L'0' : 1;
+}
+
+inline int64_t StationheadScheduledReloadFirstDelayMs(
+    const std::wstring& profileName) noexcept {
+  return StationheadScheduledReloadFirstBaseMs() +
+      static_cast<int64_t>(StationheadScheduledReloadOrdinal(profileName)) *
+          StationheadScheduledReloadStaggerMs();
+}
+
+inline int64_t StationheadScheduledReloadProjectedWallDeadline(
+    ULONGLONG dueTick) noexcept {
+  if (dueTick == 0) return 0;
+  const ULONGLONG nowTick = GetTickCount64();
+  const int64_t wallNow = UnixMillis();
+  if (dueTick <= nowTick) return wallNow > 0 ? wallNow : 1;
+  const ULONGLONG remaining = dueTick - nowTick;
+  return remaining > static_cast<ULONGLONG>(INT64_MAX - wallNow)
+      ? INT64_MAX
+      : wallNow + static_cast<int64_t>(remaining);
+}
+
+namespace stationhead_scheduled_reload {
+inline const ULONGLONG appStartTick = []() noexcept {
+  const ULONGLONG tick = GetTickCount64();
+  return tick == 0 ? 1 : tick;
+}();
+}  // namespace stationhead_scheduled_reload
+
 inline constexpr int64_t StationheadAudioRecoverySettleMs() noexcept {
   return 15'000;
 }
@@ -34,6 +84,9 @@ static_assert(StationheadPlaybackNavigationActive(false, true, false));
 static_assert(!StationheadPlaybackNavigationActive(false, true, true));
 static_assert(!StationheadPlaybackNavigationActive(false, false, false));
 static_assert(StationheadAudioHealthCheckIntervalMs() == 60'000);
+static_assert(StationheadScheduledReloadIntervalMs() == 3'000'000);
+static_assert(StationheadScheduledReloadStaggerMs() == 300'000);
+static_assert(StationheadScheduledReloadFirstBaseMs() == 1'200'000);
 static_assert(StationheadAudioRecoverySettleMs() == 15'000);
 
 }  // namespace hp
@@ -41,10 +94,20 @@ static_assert(StationheadAudioRecoverySettleMs() == 15'000);
 // Stationhead keeps one long-lived room URL. Normal silence recovery is a
 // single bounded sequence: one lightweight Start Listening repair, one reload,
 // one WebView rebuild, then managed fallback. Authentication always interrupts
-// the destructive sequence and gets foreground ownership.
+// the destructive sequence and gets foreground ownership. A separate scheduled
+// reload is anchored to process/app startup: profiles spotify-v2-1..6 first
+// reload at +25/+30/+35/+40/+45/+50 minutes, then retain a 50-minute period.
 #define NextWakeAt()                                                          \
   NextWakeAt() const noexcept {                                               \
     int64_t next = NextWakeAtBase();                                          \
+    if (scheduledReloadNextTick_ != 0) {                                      \
+      const ULONGLONG wakeTick = scheduledReloadRetryTick_ != 0               \
+          ? scheduledReloadRetryTick_                                         \
+          : scheduledReloadNextTick_;                                         \
+      const int64_t due =                                                     \
+          ::hp::StationheadScheduledReloadProjectedWallDeadline(wakeTick);    \
+      if (next <= 0 || due < next) next = due;                                \
+    }                                                                         \
     if (audioHealthCheckStartedAt_.Active()) {                                \
       const int64_t due = audioHealthCheckStartedAt_ +                        \
           ::hp::StationheadAudioHealthCheckIntervalMs();                      \
@@ -64,6 +127,7 @@ static_assert(StationheadAudioRecoverySettleMs() == 15'000);
     RecoverUnavailableAuthorizationBase();                                   \
     const int64_t nowMs = UnixMillis();                                       \
     EscalateAudioLossRecovery(nowMs);                                         \
+    PollScheduledReload(nowMs);                                               \
     PollPeriodicAudioHealth(nowMs);                                           \
   }                                                                           \
   void RecoverUnavailableAuthorizationBase()
@@ -221,6 +285,70 @@ static_assert(StationheadAudioRecoverySettleMs() == 15'000);
           L"fallback: Stationhead remained silent after bounded recovery");  \
     }                                                                         \
   }                                                                           \
+  void EnsureScheduledReloadInitialized() noexcept {                          \
+    if (scheduledReloadNextTick_ != 0) return;                                \
+    const int64_t delayMs =                                                   \
+        ::hp::StationheadScheduledReloadFirstDelayMs(profileName_);           \
+    const ULONGLONG delay = static_cast<ULONGLONG>(delayMs);                  \
+    const ULONGLONG startTick =                                               \
+        ::hp::stationhead_scheduled_reload::appStartTick;                     \
+    scheduledReloadNextTick_ = delay > UINT64_MAX - startTick                 \
+        ? UINT64_MAX                                                          \
+        : startTick + delay;                                                  \
+  }                                                                           \
+  void AdvanceScheduledReloadAfter(ULONGLONG nowTick) noexcept {              \
+    const ULONGLONG interval = static_cast<ULONGLONG>(                        \
+        ::hp::StationheadScheduledReloadIntervalMs());                        \
+    do {                                                                      \
+      if (scheduledReloadNextTick_ > UINT64_MAX - interval) {                 \
+        scheduledReloadNextTick_ = UINT64_MAX;                                \
+        break;                                                                \
+      }                                                                       \
+      scheduledReloadNextTick_ += interval;                                   \
+    } while (scheduledReloadNextTick_ <= nowTick);                            \
+  }                                                                           \
+  void PollScheduledReload(int64_t nowMs) {                                   \
+    EnsureScheduledReloadInitialized();                                       \
+    const ULONGLONG nowTick = GetTickCount64();                               \
+    if (scheduledReloadRetryTick_ != 0 &&                                     \
+        nowTick < scheduledReloadRetryTick_) {                                \
+      return;                                                                 \
+    }                                                                         \
+    if (nowTick < scheduledReloadNextTick_) {                                 \
+      scheduledReloadRetryTick_ = 0;                                          \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    bool statusNavigating = false;                                            \
+    {                                                                         \
+      std::lock_guard lock(mutex_);                                           \
+      statusNavigating = status_.navigating;                                  \
+    }                                                                         \
+    const bool navigationActive =                                             \
+        ::hp::StationheadPlaybackNavigationActive(                            \
+            navigationInFlight_.load(std::memory_order_acquire),              \
+            statusNavigating, spotifyAuthorization_);                         \
+    const bool recoveryActive = audioLossRecoveryStage_ !=                    \
+        ::hp::StationheadAudioRecoveryStage::Idle;                            \
+    if (!webview_ || !webViewConfigured_ || !startupNavigationStarted_ ||     \
+        spotifyAuthorization_ || loginRequired_ || navigationActive ||        \
+        creating_.load(std::memory_order_relaxed) ||                          \
+        recreating_.load(std::memory_order_relaxed) || recoveryActive) {      \
+      constexpr ULONGLONG kRetryDelayMs = 15'000;                             \
+      scheduledReloadRetryTick_ = nowTick > UINT64_MAX - kRetryDelayMs        \
+          ? UINT64_MAX                                                        \
+          : nowTick + kRetryDelayMs;                                          \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    scheduledReloadRetryTick_ = 0;                                            \
+    AdvanceScheduledReloadAfter(nowTick);                                     \
+    trackBoundaryRefreshPending_ = false;                                     \
+    ResetAudioLossEscalation();                                               \
+    log_.Info(L"Stationhead " + std::wstring(RoleTag()) +                    \
+              L" scheduled reload; next slot remains on 50-minute cadence"); \
+    NavigateCurrentUrl(nowMs, L"scheduled Stationhead 50-minute reload");    \
+  }                                                                           \
   void PollPeriodicAudioHealth(int64_t nowMs) {                               \
     const auto lifecycle = createCallbackAlive_;                              \
     const auto previousLifecycle = audioHealthLifecycle_.lock();              \
@@ -290,6 +418,8 @@ static_assert(StationheadAudioRecoverySettleMs() == 15'000);
   std::weak_ptr<std::atomic<bool>> audioLossRecoveryLifecycle_;               \
   MonotonicElapsedTimestamp audioHealthCheckStartedAt_;                       \
   std::weak_ptr<std::atomic<bool>> audioHealthLifecycle_;                     \
+  ULONGLONG scheduledReloadNextTick_ = 0;                                     \
+  ULONGLONG scheduledReloadRetryTick_ = 0;                                    \
   MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
   int64_t periodicRefreshNavigationObserved_
 

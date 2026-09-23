@@ -5,11 +5,12 @@ namespace hp {
 
 // A single WebView2 audio pulse during initial Stationhead startup must not arm
 // fallback. Require continuous audio first. Native audio health is sampled once
-// per minute; destructive silence recovery begins only after one full minute of
-// continuous audio loss. The final second is reserved for rendering any
-// authentication controls before native code probes the DOM.
+// per minute. Keep the player in the background through short track gaps, then
+// restore the operation surface only after two full minutes of continuous audio
+// loss. One additional second lets the newly restored layout expose any
+// authentication controls before the DOM probe and destructive recovery ladder.
 inline constexpr int64_t kStationheadAudioLossArmStabilityMs = 5'000;
-inline constexpr int64_t kStationheadAudioLossGraceMs = 59'000;
+inline constexpr int64_t kStationheadAudioLossGraceMs = 120'000;
 inline constexpr int64_t kStationheadAudioLossDomSettleMs = 1'000;
 inline constexpr int64_t kStationheadFallbackMinimumDwellMs = 15'000;
 inline constexpr int64_t kStationheadPrimaryRecoveryStabilityMs = 2'000;
@@ -54,11 +55,11 @@ static_assert(!StationheadAudioLossCanArm(true, false, 4'999));
 static_assert(StationheadAudioLossCanArm(true, false, 5'000));
 static_assert(!StationheadAudioLossCanArm(true, true, 60'000));
 static_assert(!StationheadAudioLossCanProbe(
-    true, false, true, false, false, false, 59'999));
+    true, false, true, false, false, false, 120'999));
 static_assert(StationheadAudioLossCanProbe(
-    true, false, true, false, false, false, 60'000));
-static_assert(!StationheadAudioLossCanFallback(true, false, 59'999));
-static_assert(StationheadAudioLossCanFallback(true, false, 60'000));
+    true, false, true, false, false, false, 121'000));
+static_assert(!StationheadAudioLossCanFallback(true, false, 120'999));
+static_assert(StationheadAudioLossCanFallback(true, false, 121'000));
 static_assert(!StationheadFallbackDwellSatisfied(14'999));
 static_assert(StationheadFallbackDwellSatisfied(15'000));
 

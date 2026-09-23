@@ -26,7 +26,7 @@ test('Stationhead has no independent event-driven pause-play repair loop', () =>
   assert.doesNotMatch(stationheadEvents, /nativeSetInterval/);
   assert.doesNotMatch(stationheadEvents, /media\.pause\(\)|media\.play\?\.\(\)/);
 
-  assert.match(stationheadPolicy, /kStationheadAudioLossGraceMs = 59'000/);
+  assert.match(stationheadPolicy, /kStationheadAudioLossGraceMs = 120'000/);
   assert.match(stationheadPolicy, /kStationheadAudioLossDomSettleMs = 1'000/);
   assert.match(stationheadRecovery, /StationheadAudioRecoveryStage/);
   assert.match(stationheadRecovery, /RecoveryStage::LightRepair/);
@@ -43,6 +43,8 @@ test('shared audio-health coordinator keeps Stationhead on a true one-minute cyc
   assert.match(coordinator, /TryClaimAudioHealthScan/);
   assert.match(coordinator, /kAudioHealthScanMinimumGapMs = 4ULL \* 1000ULL/);
   assert.match(coordinator, /ReleaseAudioHealthScan/);
+  assert.match(stationheadRecovery,
+    /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
 });
 
 test('Stationhead one-minute health path observes audio without performing playback repair', () => {
@@ -121,7 +123,7 @@ test('Spotify observer still reacts immediately to explicit playback interruptio
   assert.match(spotifyEvents, /next > recoveryTime \+ 0\.10/);
 });
 
-test('Stationhead does not use a preventive periodic page reload', () => {
+test('Stationhead does not use the retired preventive refresh implementation', () => {
   assert.doesNotMatch(stationheadRecovery, /StationheadPeriodicRefreshIntervalMs/);
   assert.doesNotMatch(stationheadRecovery, /RefreshPeriodicNavigation/);
   assert.doesNotMatch(stationheadRecovery, /50-minute periodic refresh/);
