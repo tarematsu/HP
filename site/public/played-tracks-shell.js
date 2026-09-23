@@ -32,17 +32,16 @@ function mountView() {
         <input id="playedTracksWeekMode" type="checkbox">
         <span>週表示</span>
       </label>
-      <button id="playedTracksLoad" class="button" type="button">更新</button>
     </div>
 
     <div class="played-tracks-period-scroller" id="playedTracksPeriodScroller" aria-label="再生曲の表示期間">
       <div class="played-tracks-period-strip" id="playedTracksPeriodStrip" role="list"></div>
     </div>
 
-    <p id="playedTracksNotice" class="notice" role="status">最新の再生曲データを読み込みます。</p>
+    <p id="playedTracksNotice" class="notice" role="status" hidden></p>
 
     <section class="summary-cards played-tracks-summary" aria-label="再生曲集計概要">
-      <article><span>のべ再生曲数</span><strong id="playedTracksTotal">-</strong></article>
+      <article><span>延べ再生曲数</span><strong id="playedTracksTotal">-</strong></article>
       <article><span>曲数</span><strong id="playedTracksUnique">-</strong></article>
     </section>
 
