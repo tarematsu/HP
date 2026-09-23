@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { buildWeeklyRankingReadModel } from '../worker/scripts/materialize-weekly-ranking-read-model.mjs';
 
-test('weekly leaderboard read model materializes missing weeks and fandom metadata ahead of Pages reads', () => {
+test('weekly leaderboard read model materializes missing weeks and channel metadata ahead of Pages reads', () => {
   const model = buildWeeklyRankingReadModel([
     {
       ranking_date: '2026-09-07',
@@ -28,6 +28,7 @@ test('weekly leaderboard read model materializes missing weeks and fandom metada
     relation_type: 'fandom',
   }], [], 1234);
 
+  assert.equal(model.version, 2);
   assert.deepEqual(model.ranking_weeks, ['2026-09-07', '2026-09-14', '2026-09-21']);
   assert.equal(model.source_max_ranking_date, '2026-09-21');
   assert.equal(model.refreshed_at, 1234);
@@ -35,7 +36,27 @@ test('weekly leaderboard read model materializes missing weeks and fandom metada
   const gap = model.completed_rows.find((row) => row.ranking_date === '2026-09-14');
   assert.equal(gap.synthetic, true);
   assert.equal(gap.rank, null);
-  assert.equal(gap.fandom_label, '櫻坂46(ファンダム)');
+  assert.equal(gap.artist_name, '櫻坂46');
+  assert.equal(gap.stationhead_channel_name, 'Buddies');
+});
+
+test('sbuddies1819 is materialized as ATIN supporting SB19 even before the correction migration runs', () => {
+  const model = buildWeeklyRankingReadModel([{
+    ranking_date: '2026-09-21',
+    observed_at: 1,
+    ranking_type: '週間リーダーボード',
+    rank: 50,
+    host_name: 'sbuddies1819',
+    host_alias: 'sbuddies1819',
+  }], [{
+    host_name: 'sbuddies1819',
+    artist_name: '櫻坂46',
+    relation_type: 'fandom',
+  }], [], 1234);
+
+  assert.equal(model.actual_rows[0].artist_name, 'SB19');
+  assert.equal(model.actual_rows[0].stationhead_channel_name, 'ATIN');
+  assert.equal(model.actual_rows[0].fandom_type, 'fandom');
 });
 
 test('Pages leaderboard reads only the weekly materialized model', () => {
