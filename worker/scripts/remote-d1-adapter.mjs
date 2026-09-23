@@ -7,6 +7,7 @@ import { join } from 'node:path';
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 1_000;
 const DEFAULT_MAX_COMMAND_BYTES = 64 * 1024;
+const DEFAULT_MAX_FILE_STATEMENT_BYTES = 90_000;
 
 function jsonStartIndexes(text) {
   const indexes = [];
@@ -154,6 +155,15 @@ function statementResult(output) {
   return results[0];
 }
 
+function scriptResult(output) {
+  const results = wranglerD1Results(output);
+  if (!results.length) throw new Error('Wrangler returned no D1 result for SQL file');
+  if (results.some((result) => !result.success)) {
+    throw new Error('Wrangler reported an unsuccessful D1 file statement');
+  }
+  return results.at(-1);
+}
+
 function commandFailureDetail(error) {
   const stderr = String(error?.stderr || '').trim();
   const stdout = String(error?.stdout || '').trim();
@@ -173,6 +183,13 @@ function defaultSleepSync(milliseconds) {
   Atomics.wait(state, 0, 0, milliseconds);
 }
 
+function renderPreparedStatement(item) {
+  if (!item || typeof item.__sql !== 'string' || !Array.isArray(item.__bindings)) {
+    throw new TypeError('remote D1 received an incompatible prepared statement');
+  }
+  return `${bindD1Sql(item.__sql, item.__bindings).replace(/;+\s*$/, '')};`;
+}
+
 export function createWranglerRemoteD1({
   database,
   cwd,
@@ -181,6 +198,7 @@ export function createWranglerRemoteD1({
   maxRetries = DEFAULT_MAX_RETRIES,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
   maxCommandBytes = DEFAULT_MAX_COMMAND_BYTES,
+  maxFileStatementBytes = DEFAULT_MAX_FILE_STATEMENT_BYTES,
   sleepSync = defaultSleepSync,
 }) {
   if (!String(database || '').trim()) throw new Error('remote D1 database name is required');
@@ -189,6 +207,10 @@ export function createWranglerRemoteD1({
   const retryCount = Math.max(0, Math.min(5, Math.trunc(Number(maxRetries)) || 0));
   const baseRetryDelayMs = Math.max(0, Math.min(30_000, Math.trunc(Number(retryDelayMs)) || 0));
   const commandByteLimit = Math.max(1, Math.trunc(Number(maxCommandBytes)) || DEFAULT_MAX_COMMAND_BYTES);
+  const fileStatementByteLimit = Math.max(
+    commandByteLimit,
+    Math.trunc(Number(maxFileStatementBytes)) || DEFAULT_MAX_FILE_STATEMENT_BYTES,
+  );
 
   const execute = (tail) => {
     for (let attempt = 0; attempt <= retryCount; attempt += 1) {
@@ -218,18 +240,30 @@ export function createWranglerRemoteD1({
     throw new Error(`Wrangler D1 execute exhausted retries for ${database}`);
   };
 
-  const executeStatement = (renderedSql) => {
-    if (Buffer.byteLength(renderedSql, 'utf8') <= commandByteLimit) {
-      return execute(['--command', renderedSql]);
-    }
+  const executeFile = (sqlText) => {
     const temporaryDirectory = mkdtempSync(join(tmpdir(), 'wrangler-d1-'));
     const sqlFile = join(temporaryDirectory, 'statement.sql');
     try {
-      writeFileSync(sqlFile, `${renderedSql.replace(/;+\s*$/, '')};\n`, 'utf8');
+      writeFileSync(sqlFile, sqlText, 'utf8');
       return execute(['--file', sqlFile]);
     } finally {
       rmSync(temporaryDirectory, { recursive: true, force: true });
     }
+  };
+
+  const ensureStatementSize = (renderedSql) => {
+    const bytes = Buffer.byteLength(renderedSql, 'utf8');
+    if (bytes > fileStatementByteLimit) {
+      throw new Error(`remote D1 statement is ${bytes} bytes; limit is ${fileStatementByteLimit}`);
+    }
+  };
+
+  const executeStatement = (renderedSql) => {
+    ensureStatementSize(renderedSql);
+    if (Buffer.byteLength(renderedSql, 'utf8') <= commandByteLimit) {
+      return execute(['--command', renderedSql]);
+    }
+    return executeFile(`${renderedSql.replace(/;+\s*$/, '')};\n`);
   };
 
   const createStatement = (sql, bindings = []) => ({
@@ -250,17 +284,22 @@ export function createWranglerRemoteD1({
 
   return {
     prepare(sql) { return createStatement(sql); },
+    async script(statements = []) {
+      if (!statements.length) return { success: true, results: [], meta: {} };
+      const rendered = statements.map(renderPreparedStatement);
+      for (const statement of rendered) ensureStatementSize(statement);
+      return scriptResult(executeFile(`${rendered.join('\n')}\n`));
+    },
     async batch(statements = []) {
       if (!statements.length) return [];
-      const rendered = statements.map((item) => {
-        if (!item || typeof item.__sql !== 'string' || !Array.isArray(item.__bindings)) {
-          throw new TypeError('remote D1 batch received an incompatible statement');
-        }
-        return `${bindD1Sql(item.__sql, item.__bindings).replace(/;+\s*$/, '')};`;
-      });
-      // Remote --file uses D1 import and returns one aggregate result. A multi-query
+      const rendered = statements.map(renderPreparedStatement);
+      // Remote --file uses D1 import and returns aggregate result metadata. A multi-query
       // --command preserves the per-statement results expected by the D1 batch API.
-      const results = wranglerD1Results(execute(['--command', rendered.join('\n')]));
+      const joined = rendered.join('\n');
+      if (Buffer.byteLength(joined, 'utf8') > commandByteLimit) {
+        throw new Error('remote D1 batch exceeds command size; use script() for large write-only batches');
+      }
+      const results = wranglerD1Results(execute(['--command', joined]));
       if (results.length !== statements.length) {
         throw new Error(`Wrangler returned ${results.length} D1 results for ${statements.length} statements`);
       }
