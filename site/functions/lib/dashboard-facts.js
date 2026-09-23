@@ -5,17 +5,6 @@
 // collector.
 export const FACTS_FRESH_MS = 10 * 60 * 1000;
 
-function commentVelocitySql(alias = 'f') {
-  return `COALESCE((
-    SELECT SUM(recent.comment_count)
-    FROM sh_minute_facts AS recent INDEXED BY idx_sh_minute_facts_source_channel_minute_desc
-    WHERE recent.source_code=1
-      AND recent.channel_id=${alias}.channel_id
-      AND recent.minute_at>=${alias}.minute_at-60000
-      AND recent.minute_at<=${alias}.minute_at
-  ),0)`;
-}
-
 export const FACTS_LATEST_SQL = `SELECT
   f.id,f.minute_at,f.observed_at,f.channel_id,
   f.is_broadcasting,f.listener_count,f.online_member_count,
@@ -26,7 +15,7 @@ export const FACTS_LATEST_SQL = `SELECT
     AS total_member_count,f.guest_count,
   f.reported_total_listens AS total_listens,
   f.reported_current_stream_count AS current_stream_count,
-  f.is_paused,${commentVelocitySql('f')} AS comment_velocity,
+  f.is_paused,
   COALESCE(v.station_id_override,s.station_id) AS station_id,
   COALESCE(v.host_id_override,s.host_id) AS host_id,
   COALESCE(v.broadcast_start_time_override,s.broadcast_start_time) AS broadcast_start_time,
@@ -48,7 +37,7 @@ function rollupHistorySql(whereClause) {
     WHERE source_code=1 ORDER BY minute_at DESC,id DESC LIMIT 1
   ), history AS MATERIALIZED (
     SELECT r.observed_at,r.listener_count,r.online_member_count,
-      r.total_member_count,r.total_listens,r.comment_velocity,
+      r.total_member_count,r.total_listens,
       (r.observed_at/86400000)*86400000 AS day_at
     FROM sh_dashboard_history_5m r
     WHERE r.channel_id=(SELECT channel_id FROM latest_channel)
@@ -69,7 +58,7 @@ function rollupHistorySql(whereClause) {
   )
   SELECT h.observed_at,h.listener_count,h.online_member_count,
     COALESCE(d.last_total_member_count,h.total_member_count) AS total_member_count,
-    h.total_listens,h.comment_velocity
+    h.total_listens
   FROM history h
   LEFT JOIN daily_members d ON d.day_at=h.day_at
   ORDER BY h.observed_at ASC
@@ -151,7 +140,6 @@ export function mergeFactsLatest(snapshot, fact) {
     'host_account_id',
     'host_handle',
     'broadcast_start_time',
-    'comment_velocity',
   ]) {
     if (fact[field] !== undefined) merged[field] = fact[field];
   }
