@@ -53,7 +53,8 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          node scripts/repair-single-sample-stream-summaries.mjs 2>&1 | tee pages-summary-repair.log
+          node scripts/repair-historical-stream-boundaries.mjs 2>&1 | tee pages-summary-repair.log
+          node scripts/repair-single-sample-stream-summaries.mjs 2>&1 | tee -a pages-summary-repair.log
           node scripts/repair-pages-summary-gaps.mjs 2>&1 | tee -a pages-summary-repair.log
       - name: Record budget deferral
         if: steps.d1-budget.outputs.allowed != 'true'
