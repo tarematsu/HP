@@ -1,0 +1,100 @@
+.played-tracks-view {
+  margin-top: 0;
+}
+
+.played-tracks-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 7px 0;
+}
+
+.played-tracks-date {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 700;
+}
+
+.played-tracks-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.played-tracks-chart-wrap {
+  display: grid;
+  place-items: center;
+  min-height: 320px;
+}
+
+#playedTracksChart {
+  display: block;
+  width: min(100%, 560px);
+  height: 360px;
+}
+
+.played-tracks-table .track-name-cell {
+  min-width: 0;
+}
+
+.played-tracks-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.played-tracks-swatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 2px;
+}
+
+.played-tracks-title {
+  display: block;
+  overflow: hidden;
+  font-weight: 720;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.played-tracks-artist {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: .9em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.played-tracks-total-row td {
+  background: var(--panel-2);
+  font-weight: 800;
+}
+
+.played-tracks-number,
+.played-tracks-share {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .played-tracks-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .played-tracks-toolbar .button {
+    align-self: flex-start;
+  }
+
+  .played-tracks-chart-wrap {
+    min-height: 260px;
+  }
+
+  #playedTracksChart {
+    height: 280px;
+  }
+}
