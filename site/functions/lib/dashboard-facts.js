@@ -70,6 +70,8 @@ export const FACTS_HISTORY_24H_SQL = rollupHistorySql(
 );
 export const FACTS_HISTORY_SINCE_SQL = rollupHistorySql('r.observed_at>?');
 
+// Worker-side prediction materialization uses its own aggregate.  Retain this
+// SQL only for offline tests/diagnostics; public loadFactsDashboard never runs it.
 export const FACTS_PREDICTION_24H_SQL = `WITH latest_channel AS (
   SELECT channel_id FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
   WHERE source_code=1 ORDER BY minute_at DESC,id DESC LIMIT 1
@@ -148,7 +150,7 @@ export function mergeFactsLatest(snapshot, fact) {
 
 export async function loadFactsDashboard(
   db,
-  { since = 0, includeHistory = true, includePrediction = true } = {},
+  { since = 0, includeHistory = true, includePrediction: _includePrediction = true } = {},
 ) {
   const initial = since <= 0;
   const historyStatement = !includeHistory
@@ -156,18 +158,14 @@ export async function loadFactsDashboard(
     : initial
       ? db.prepare(FACTS_HISTORY_24H_SQL)
       : db.prepare(FACTS_HISTORY_SINCE_SQL).bind(since);
-  const predictionStatement = !includePrediction || (initial && includeHistory)
-    ? null
-    : db.prepare(FACTS_PREDICTION_24H_SQL);
-  const [latest, historyResult, predictionResult] = await Promise.all([
+  const [latest, historyResult] = await Promise.all([
     db.prepare(FACTS_LATEST_SQL).first(),
     historyStatement ? historyStatement.all() : Promise.resolve({ results: [] }),
-    predictionStatement ? predictionStatement.first() : Promise.resolve(null),
   ]);
   return {
     latest,
     history: historyResult?.results || [],
-    prediction: predictionResult,
+    prediction: null,
   };
 }
 
