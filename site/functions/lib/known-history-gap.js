@@ -1,4 +1,7 @@
-import { expectedPeriodBounds } from './period-completeness.js';
+import {
+  currentPeriodKey,
+  expectedPeriodBounds,
+} from './period-completeness.js';
 
 const DAY_MS = 86_400_000;
 export const KNOWN_HISTORY_GAP_START = '2026-01-14';
@@ -80,16 +83,18 @@ function missingRow(mode, periodKey, existing) {
   return row;
 }
 
-export function materializeKnownMissingPeriods(rows, mode, from, to) {
+export function materializeKnownMissingPeriods(rows, mode, from, to, now = Date.now()) {
   if (!['daily', 'weekly', 'monthly'].includes(mode)) return Array.isArray(rows) ? rows : [];
   const requested = requestBounds(from, to);
   if (!requested) return Array.isArray(rows) ? rows : [];
+  const currentKey = currentPeriodKey(mode, now);
 
   const byKey = new Map((Array.isArray(rows) ? rows : [])
     .map((row) => [String(row?.period_key || ''), row])
     .filter(([key]) => key));
 
   for (const periodKey of knownMissingPeriodKeys(mode)) {
+    if (periodKey >= currentKey) continue;
     const bounds = expectedPeriodBounds(mode, periodKey);
     if (!overlaps(bounds, requested)) continue;
     byKey.set(periodKey, missingRow(mode, periodKey, byKey.get(periodKey)));
