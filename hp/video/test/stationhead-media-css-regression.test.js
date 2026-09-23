@@ -27,3 +27,11 @@ test('Stationhead room CSS recognizes the production channel route', () => {
   assert.match(room, /__homepanelStationheadRoomUiReduction/);
   assert.match(room, /data-homepanel-stationhead-playback-only/);
 });
+
+test('pre-playback room CSS never hides generic reusable button class bundles', () => {
+  assert.doesNotMatch(room, /button--full-width/);
+  assert.doesNotMatch(room, /cursor-pointer[^\n]*flex-col[^\n]*items-center/);
+  assert.doesNotMatch(room, /border-borderRoom[^\n]*caption-2-semibold/);
+  assert.match(room, /a\[aria-label='Open threads'\]/);
+  assert.match(room, /button\[aria-label='View streaming party details'\]/);
+});
