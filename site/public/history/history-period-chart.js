@@ -113,7 +113,9 @@ function draw() {
   if (!SUMMARY_MODES.has(mode) || mode !== latestMode) return;
   const chartPanel = document.getElementById('chartPanel');
   if (!chartPanel || chartPanel.hidden) return;
-  const rows = latestRows;
+  const rows = latestRows.filter((row) => row?.known_missing === true
+    || ['listener_avg', 'listener_max', 'listener_min', 'stream_growth']
+      .some((key) => finite(row?.[key]) != null));
   if (!rows.length) return;
 
   const prepared = prepareCanvas();
