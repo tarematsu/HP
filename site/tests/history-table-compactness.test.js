@@ -31,6 +31,14 @@ test('history tab transitions clear the previous table before the next mode rend
   assert.match(cleanup, /getElementById\('modeTabs'\)\?\.addEventListener\('click',[\s\S]*prepareTableForModeTransition\(event\)/);
 });
 
+test('history tab transitions reset shared summary and pagination state', () => {
+  assert.match(cleanup, /function resetSharedHistorySummary\(mode\)/);
+  assert.match(cleanup, /for \(const id of \['periods', 'maxListener', 'streamGrowth', 'memberGrowth'\]\) setText\(id, '—'\)/);
+  assert.match(cleanup, /notice\.textContent = '読み込み中…'/);
+  assert.match(cleanup, /if \(more\) more\.hidden = true/);
+  assert.match(cleanup, /resetSharedHistorySummary\(mode\)/);
+});
+
 test('compact leaderboard and likes tables fill the mobile viewport', () => {
   assert.match(entry, /history-table-cleanup\.js\?v=20260923\.6/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
