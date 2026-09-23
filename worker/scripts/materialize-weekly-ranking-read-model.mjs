@@ -8,7 +8,9 @@ import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 const DAY_MS = 86_400_000;
 const MODEL_VERSION = 1;
 const CHUNK_STORAGE = 'chunked-json-v1';
-const CHUNK_MAX_BYTES = 256 * 1024;
+// D1 limits each SQL statement to 100,000 bytes. Keep source chunks well below
+// that so SQL quoting/escaping cannot push an INSERT over the statement limit.
+const CHUNK_MAX_BYTES = 40_000;
 
 function hostKey(value) {
   return String(value || '').trim().toLowerCase();
@@ -207,6 +209,12 @@ async function existingModelIsComplete(db, existing, sourceMaxRankingDate) {
   return Number(countRow?.chunk_count) === pointer.chunkCount;
 }
 
+async function runWriteScript(db, statements) {
+  if (typeof db.script === 'function') return db.script(statements);
+  for (const statement of statements) await statement.run();
+  return null;
+}
+
 export async function materializeWeeklyRankingReadModel(db, now = Date.now()) {
   await ensureReadModelTable(db);
   const [rankingResult, fandomResult, weeklyResult, existing] = await Promise.all([
@@ -243,30 +251,34 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now()) {
   const serialized = JSON.stringify(model);
   const chunks = splitUtf8String(serialized);
   const generationId = `${now}-${model.source_max_ranking_date || 'none'}`;
-  await db.prepare('DELETE FROM sh_weekly_ranking_read_model_chunks WHERE generation_id=?')
-    .bind(generationId).run();
-  for (let index = 0; index < chunks.length; index += 1) {
-    await db.prepare(`INSERT INTO sh_weekly_ranking_read_model_chunks(
-      generation_id,chunk_index,payload_chunk,refreshed_at
-    ) VALUES(?,?,?,?)`).bind(generationId, index, chunks[index], now).run();
-  }
-
   const pointerJson = JSON.stringify({
     storage: CHUNK_STORAGE,
     generation_id: generationId,
     chunk_count: chunks.length,
     payload_bytes: Buffer.byteLength(serialized, 'utf8'),
   });
-  await db.prepare(`INSERT INTO sh_weekly_ranking_read_model(id,source_max_ranking_date,payload_json,refreshed_at)
+
+  const statements = [
+    db.prepare('DELETE FROM sh_weekly_ranking_read_model_chunks WHERE generation_id=?')
+      .bind(generationId),
+  ];
+  for (let index = 0; index < chunks.length; index += 1) {
+    statements.push(db.prepare(`INSERT INTO sh_weekly_ranking_read_model_chunks(
+      generation_id,chunk_index,payload_chunk,refreshed_at
+    ) VALUES(?,?,?,?)`).bind(generationId, index, chunks[index], now));
+  }
+  // Publish the small pointer only after every chunk statement. If the import fails before
+  // this point, Pages keeps serving the previous generation rather than partial JSON.
+  statements.push(db.prepare(`INSERT INTO sh_weekly_ranking_read_model(id,source_max_ranking_date,payload_json,refreshed_at)
     VALUES(1,?,?,?)
     ON CONFLICT(id) DO UPDATE SET
       source_max_ranking_date=excluded.source_max_ranking_date,
       payload_json=excluded.payload_json,
       refreshed_at=excluded.refreshed_at`)
-    .bind(model.source_max_ranking_date, pointerJson, now)
-    .run();
-  await db.prepare('DELETE FROM sh_weekly_ranking_read_model_chunks WHERE generation_id<>?')
-    .bind(generationId).run();
+    .bind(model.source_max_ranking_date, pointerJson, now));
+  statements.push(db.prepare('DELETE FROM sh_weekly_ranking_read_model_chunks WHERE generation_id<>?')
+    .bind(generationId));
+  await runWriteScript(db, statements);
 
   return {
     status: 'materialized',
