@@ -1,0 +1,26 @@
+-- Fifth historical leaderboard fandom backfill.
+-- These mappings use the production ranking handle together with public fandom/Stationhead evidence.
+-- Keep handles without a defensible artist/fandom match unmapped.
+INSERT INTO sh_channel_fandoms(
+  host_name, artist_name, relation_type, source_url, source_note, verified_at
+) VALUES
+  ('streamersbloom', 'BINI', 'fandom', 'https://www.sotwe.com/TVBforBINI?lang=en', 'BINI fan accounts identify Blooms as the BINI fandom and actively direct Blooms to stream BINI on Stationhead; the historical handle streamersbloom is a fan-streaming handle, not an artist-official account.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('soobinus1', 'SOOBIN', 'fandom', 'https://twstalker.com/streamingsoob', 'Public SOOBIN streaming support explicitly identifies itself as a SOOBIN fan account and links its Stationhead activity; numbered soobinus historical hosts belong to the same SOOBIN fan-streaming naming pattern.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('soobinus2', 'SOOBIN', 'fandom', 'https://twstalker.com/streamingsoob', 'Public SOOBIN streaming support explicitly identifies itself as a SOOBIN fan account and links its Stationhead activity; numbered soobinus historical hosts belong to the same SOOBIN fan-streaming naming pattern.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('soobinus3', 'SOOBIN', 'fandom', 'https://twstalker.com/streamingsoob', 'Public SOOBIN streaming support explicitly identifies itself as a SOOBIN fan account and links its Stationhead activity; numbered soobinus historical hosts belong to the same SOOBIN fan-streaming naming pattern.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('astronautjinmoon', 'JIN', 'fandom', 'https://bts.ibighit.com/jpn/discography/jin/detail/astronaut/', 'The handle combines JIN solo identifiers The Astronaut and Moon; BIGHIT confirms The Astronaut as JIN solo material, while the ranking account is not an artist-official handle and is classified as fandom.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('ksjmyanmar', 'JIN', 'fandom', 'https://kimseokjinglobal.com/fan-club/fan-bases/', 'Kim Seokjin Global lists Jin Myanmar among JIN fanbases; KSJ is Kim Seokjin and the historical ksjmyanmar handle matches a regional fan-support naming pattern.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('seokjinity', 'JIN', 'fandom', 'https://jp.pinterest.com/pin/650981321113421195/', 'Archived Seokjinity social content is explicitly centered on Kim Seokjin/JIN; the historical Stationhead host therefore represents fandom activity rather than an official artist account.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('sugaglobalunion', 'SUGA', 'fandom', 'https://www.stationhead.com/for-fans', 'Stationhead lists Agust D among dedicated fan communities; the handle SUGA Global Union is fan-union naming and is distinct from an artist-official account.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('nctdreamph', 'NCT DREAM', 'fandom', 'https://twstalker.com/search/NCT%20Dream', 'Public NCT DREAM PH profiles identify themselves as Philippine-based fans/supporters of NCT DREAM; the historical nctdreamph host follows that regional fanbase identity.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('yumalune2', 'YUMA (&TEAM)', 'fandom', 'https://www.andteam-official.jp/news/2eb4fb4f2fea', '&TEAM official material identifies YUMA as an &TEAM member and LUNÉ as the fan community; yumalune2 is therefore a YUMA/&TEAM fandom handle.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('youmestation01', 'ME:I', 'fandom', 'https://source.twstalker.com/ME_I_STRBASE', 'ME:I STREAMING BASE explicitly operates/promotes the 24-hour YOU:ME Stationhead channel for ME:I; youmestation01 is a fan-support Stationhead handle, not ME:I official.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('zhangzhehanfang', 'Zhang Zhehan', 'fandom', 'https://www.stationhead.com/for-fans', 'Stationhead lists Zhang Zhehan as a dedicated fan-channel artist; the historical handle is a Zhang Zhehan fan-named host rather than an official artist account.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('zhangzhehanliza', 'Zhang Zhehan', 'fandom', 'https://www.stationhead.com/for-fans', 'Stationhead lists Zhang Zhehan as a dedicated fan-channel artist; the historical handle is a Zhang Zhehan fan-named host rather than an official artist account.', CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+  ('zhangzhehansolo', 'Zhang Zhehan', 'fandom', 'https://fanlore.org/wiki/Zhang_Zhehan', 'Public fandom references describe Zhang Zhehan solo fans; the historical zhangzhehansolo Stationhead handle is explicitly a solo-fandom naming pattern.', CAST(strftime('%s', 'now') AS INTEGER) * 1000)
+ON CONFLICT(host_name) DO UPDATE SET
+  artist_name = excluded.artist_name,
+  relation_type = excluded.relation_type,
+  source_url = excluded.source_url,
+  source_note = excluded.source_note,
+  verified_at = excluded.verified_at;
