@@ -35,6 +35,17 @@ function validRank(value) {
   return number != null && number > 0;
 }
 
+function correctKnownHostMetadata(row) {
+  const next = { ...row };
+  if (hostKey(next.host_name) === 'sbuddies1819') {
+    next.artist_name = 'SB19';
+    next.fandom_type = 'fandom';
+    next.fandom_label = 'SB19(ファンダム)';
+    next.stationhead_channel_name = 'ATIN';
+  }
+  return next;
+}
+
 function uniqueHosts(rows) {
   const result = [];
   const seen = new Set();
@@ -193,8 +204,12 @@ export async function loadRanking(requestUrl, env, _summaryLoader) {
     const model = await loadWeeklyRankingReadModel(env.OTHER_DB, stored);
     if (!model) return readModelUnavailable(from, to, scope, hostSearch);
 
-    const sourceActual = (Array.isArray(model.actual_rows) ? model.actual_rows : []).filter((row) => inRange(row, from, to));
-    const sourceCompleted = (Array.isArray(model.completed_rows) ? model.completed_rows : []).filter((row) => inRange(row, from, to));
+    const sourceActual = (Array.isArray(model.actual_rows) ? model.actual_rows : [])
+      .filter((row) => inRange(row, from, to))
+      .map(correctKnownHostMetadata);
+    const sourceCompleted = (Array.isArray(model.completed_rows) ? model.completed_rows : [])
+      .filter((row) => inRange(row, from, to))
+      .map(correctKnownHostMetadata);
     const featured = new Set(FEATURED_HOSTS.map(hostKey));
     let selectedKeys;
     if (hostSearch) {
