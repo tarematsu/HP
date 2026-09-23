@@ -7,6 +7,7 @@ const config = source('config.h');
 const cloudConfig = source('cloud_config.cpp');
 const app = source('app.cpp');
 const policy = source('sh_track_boundary_message_policy.h');
+const audioLossPolicy = source('sh_audio_loss_policy.h');
 const trackScript = source('sh_track_boundary_script.h');
 
 function section(text, start, end) {
@@ -54,6 +55,7 @@ test('scheduled reload participates in wake scheduling and waits for safe naviga
 
 test('one-minute native audio health remains active beside scheduled reloads', () => {
   assert.match(policy, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
+  assert.match(audioLossPolicy, /kStationheadAudioLossGraceMs = 120'000/);
   const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
   assert.match(wake, /audioHealthCheckStartedAt_/);
   assert.match(wake, /StationheadAudioHealthCheckIntervalMs\(\)/);
