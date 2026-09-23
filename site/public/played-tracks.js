@@ -300,6 +300,7 @@ function setNotice(message, error = false) {
   if (!notice) return;
   notice.textContent = message;
   notice.classList.toggle('error', error);
+  notice.hidden = !message;
 }
 
 function scrollSelectedPeriod({ smooth = false } = {}) {
@@ -313,7 +314,7 @@ function scrollSelectedPeriod({ smooth = false } = {}) {
   });
 }
 
-function renderPeriodNavigator({ smooth = false } = {}) {
+function renderPeriodNavigator({ smooth = false, alignEnd = false } = {}) {
   const strip = byId('playedTracksPeriodStrip');
   if (!strip) return;
   strip.replaceChildren();
@@ -337,6 +338,12 @@ function renderPeriodNavigator({ smooth = false } = {}) {
     sub.textContent = state.weekMode ? '(週)' : `(${weekday(period)})`;
     button.append(date, sub);
     strip.append(button);
+  }
+
+  if (alignEnd) {
+    const scroller = byId('playedTracksPeriodScroller');
+    if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+    return;
   }
   scrollSelectedPeriod({ smooth });
 }
@@ -365,7 +372,7 @@ async function loadPeriodIndex({ force = false } = {}) {
   if (!state.selectedPeriod || !options.includes(state.selectedPeriod)) {
     state.selectedPeriod = options.at(-1) || '';
   }
-  renderPeriodNavigator();
+  renderPeriodNavigator({ alignEnd: true });
 }
 
 async function loadSelectedPeriod({ force = false } = {}) {
@@ -387,9 +394,7 @@ async function loadSelectedPeriod({ force = false } = {}) {
   state.total = state.rows.reduce((sum, row) => sum + row.play_count, 0);
   state.loadedRangeKey = rangeKey;
   render();
-  setNotice(state.total > 0
-    ? `${selectedDescription()} のべ ${integer.format(state.total)} 曲を集計`
-    : `${selectedDescription()} の再生曲データはありません。`);
+  setNotice(state.total > 0 ? '' : `${selectedDescription()} の再生曲データはありません。`);
 }
 
 async function selectPeriod(period) {
@@ -421,8 +426,6 @@ function switchWeekMode(enabled) {
 export async function loadPlayedTracks({ force = false, refreshPeriods = false } = {}) {
   if (state.loading) return;
   state.loading = true;
-  const button = byId('playedTracksLoad');
-  if (button) button.disabled = true;
 
   try {
     if (!state.periodsLoaded || refreshPeriods) {
@@ -435,11 +438,9 @@ export async function loadPlayedTracks({ force = false, refreshPeriods = false }
     setNotice('再生曲データの取得に失敗しました。', true);
   } finally {
     state.loading = false;
-    if (button) button.disabled = false;
   }
 }
 
-byId('playedTracksLoad')?.addEventListener('click', () => loadPlayedTracks({ force: true, refreshPeriods: true }));
 byId('playedTracksWeekMode')?.addEventListener('change', (event) => switchWeekMode(Boolean(event.currentTarget.checked)));
 byId('playedTracksPeriodStrip')?.addEventListener('click', (event) => {
   const button = event.target.closest('.played-tracks-period');
