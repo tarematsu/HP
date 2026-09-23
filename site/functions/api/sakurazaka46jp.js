@@ -8,7 +8,7 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 9;
+const SERIES_CACHE_VERSION = 10;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const SUMMARY_MISMATCH_RATIO = 0.45;
@@ -81,6 +81,8 @@ LEFT JOIN sh_official_broadcast_summary summary
 WHERE series.host_handle='sakurazaka46jp' AND series.started_at>=? AND series.started_at<?
 ORDER BY series.started_at ASC`;
 
+// Retained for offline/background materializers and regression coverage. Public
+// Pages requests no longer execute this query.
 export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH target_host AS (
   SELECT id FROM sh_hosts
   WHERE lower(COALESCE(current_handle,''))='sakurazaka46jp'
@@ -123,6 +125,8 @@ SELECT json_group_array(json_array(elapsed_minute,listener_count,source_samples)
   COUNT(*) AS point_count,COALESCE(MAX(total_points),0) AS total_points
 FROM ordered`;
 
+// Kept as a compatibility export only. Ended events are materialized by the
+// official-news Worker into sh_official_broadcast_series before Pages reads them.
 export const SAKURAZAKA_FAILSAFE_SERIES_SQL = `WITH minute_points AS (
   SELECT
     'news:' || announcements.id AS series_key,
@@ -349,7 +353,7 @@ function staticOfficialEvents(fromTs, toTs) {
     Number(event.started_at) >= fromTs && Number(event.started_at) < toTs);
 }
 
-export async function loadSakurazakaSeriesRows(minuteDb, otherDb, fromTs, toTs) {
+export async function loadSakurazakaSeriesRows(_minuteDb, otherDb, fromTs, toTs) {
   const historicalRows = [];
   const summaryResult = await otherDb.prepare(SAKURAZAKA_EVENT_SQL).bind(fromTs, toTs).all();
   const summaries = [...(summaryResult.results || [])];
@@ -378,33 +382,23 @@ export async function loadSakurazakaSeriesRows(minuteDb, otherDb, fromTs, toTs) 
       });
       continue;
     }
-    const start = Number(summary.started_at || 0);
-    const end = Number(summary.ended_at || start) + 60_000;
-    const pointsResult = await minuteDb.prepare(SAKURAZAKA_MINUTE_SERIES_SQL)
-      .bind(start, start, end).all();
-    const points = pointsResult.results?.[0] || {};
     historicalRows.push({
-      series_key: `historical:${summary.event_name}`,
+      series_key: `summary:${summary.event_name}`,
       event_name: summary.event_name,
       started_at: summary.started_at,
-      points_json: points.points_json || '[]',
-      point_count: points.point_count || 0,
-      total_points: points.total_points || 0,
+      points_json: '[]',
+      point_count: 0,
+      total_points: 0,
       expected_listener_avg: summary.listener_avg,
       expected_listener_max: summary.listener_max,
+      source: 'historical_summary_only',
     });
   }
-  let failSafeRows = [];
-  try {
-    const failSafeResult = await otherDb.prepare(SAKURAZAKA_FAILSAFE_SERIES_SQL).bind(fromTs, toTs).all();
-    failSafeRows = failSafeResult.results || [];
-  } catch (error) {
-    if (!/no such table/i.test(String(error?.message || ''))) throw error;
-  }
+
   const decodedHistorical = decodeSakurazakaSeriesRows(historicalRows, 'historical_import');
   return {
     historical: validateSakurazakaHistoricalSeries(decodedHistorical),
-    failSafe: decodeSakurazakaSeriesRows(failSafeRows, 'official_news_fail_safe'),
+    failSafe: [],
     summaryCount: summaries.length,
   };
 }
@@ -413,7 +407,7 @@ async function loadSakurazakaSeries(env, from, to) {
   const fromTs = parseDateStart(from);
   const toTs = addDays(parseDateStart(to), 1);
   const { historical, failSafe, summaryCount } = await loadSakurazakaSeriesRows(
-    env.MINUTE_DB,
+    null,
     env.OTHER_DB,
     fromTs,
     toTs,
@@ -442,11 +436,12 @@ async function loadSakurazakaSeries(env, from, to) {
     truncated: trimmed.truncated,
     x_origin: 'broadcast_start',
     x_unit: 'minute',
+    read_path: 'official-broadcast-read-model',
   };
 }
 
 export async function onRequestGet({ request, env }) {
-  if (!env.OTHER_DB || !env.MINUTE_DB) return json({ ok: false, error: 'history database bindings missing' }, 500);
+  if (!env.OTHER_DB) return json({ ok: false, error: 'history database binding missing' }, 500);
   try {
     const url = new URL(request.url);
     const today = todayUtcString();
