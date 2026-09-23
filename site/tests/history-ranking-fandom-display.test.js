@@ -44,7 +44,7 @@ function dbFor(actualRows) {
   };
 }
 
-test('ranking API exposes a formatted fandom label and carries it into synthetic gap weeks', async () => {
+test('ranking API exposes fandom metadata in rows, host summaries, and synthetic gap weeks', async () => {
   const actualRows = [
     {
       ranking_date: '2026-09-07',
@@ -72,6 +72,9 @@ test('ranking API exposes a formatted fandom label and carries it into synthetic
   assert.equal(data.rows.length, 3);
   assert.ok(data.rows.every((row) => row.fandom_label === '櫻坂46(ファンダム)'));
   assert.equal(data.rows.find((row) => row.synthetic)?.artist_name, '櫻坂46');
+  assert.equal(data.host_rankings[0].artist_name, '櫻坂46');
+  assert.equal(data.host_rankings[0].fandom_type, 'fandom');
+  assert.equal(data.host_rankings[0].fandom_label, '櫻坂46(ファンダム)');
 });
 
 test('ranking table cleanup inserts fandom immediately after host and keeps a four-column mobile layout', () => {
@@ -88,6 +91,7 @@ test('D1 migration stores artist and relationship type per Stationhead host', ()
     'utf8',
   );
   assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_channel_fandoms/);
+  assert.match(migration, /idx_sh_channel_fandoms_host_normalized/);
   assert.match(migration, /'sakuramankai'[\s\S]*'櫻坂46'[\s\S]*'fandom'/);
   assert.match(migration, /'sakurazaka46jp'[\s\S]*'櫻坂46'[\s\S]*'official'/);
 });
