@@ -14,7 +14,6 @@ on:
       - 'worker/scripts/run-pages-history-read-model-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/pages-response-**'
-      - 'site/functions/api/dashboard.js'
       - 'site/functions/api/history.js'
       - 'site/functions/lib/api-contract.js'
       - 'site/functions/lib/materialized-history.js'
