@@ -1,5 +1,9 @@
 import { environmentView } from '../../packages/sh-shared/environment-view.mjs';
 import { logSampledSuccess } from './sampled-success-log.js';
+import {
+  attachTitleArtistIdentity,
+  loadTitleArtistIdentityRows,
+} from './track-title-artist-identity.js';
 
 let configModulePromise;
 let ingestModulePromise;
@@ -101,8 +105,14 @@ function filteredQueue(queue, rows, stage) {
 }
 
 async function enrichmentQueue(sourceEnv, queue, stage) {
-  const rows = await dictionaryRows(sourceEnv?.DB, queue);
-  return filteredQueue(queue, rows, stage);
+  if (!queue?.tracks?.length) return queue;
+  const identityRows = await loadTitleArtistIdentityRows(sourceEnv?.DB, queue.tracks, 80);
+  const identifiedTracks = attachTitleArtistIdentity(queue.tracks, identityRows);
+  const identifiedQueue = identifiedTracks === queue.tracks
+    ? queue
+    : { ...queue, tracks: identifiedTracks };
+  const rows = await dictionaryRows(sourceEnv?.DB, identifiedQueue);
+  return filteredQueue(identifiedQueue, rows, stage);
 }
 
 function spotifyEnrichmentConfig(config) {
