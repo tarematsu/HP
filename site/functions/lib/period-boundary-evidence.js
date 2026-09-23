@@ -13,6 +13,8 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+// Retained for explicit maintenance/backfill callers and regression coverage.
+// Public Pages history reads use sh_period_boundary_evidence only.
 export function periodBoundaryEvidenceSql(toleranceMs = PERIOD_BOUNDARY_TOLERANCE_MS) {
   return `WITH periods AS (
     SELECT
@@ -143,88 +145,15 @@ async function loadPreaggregatedEvidence(db, payload, mode) {
   }
 }
 
-async function persistLoadedEvidence(db, rows, mode, now = Date.now()) {
-  if (!rows.length || typeof db?.batch !== 'function') return;
-  const statements = [];
-  for (const row of rows) {
-    const periodKey = String(row?.period_key || '');
-    const bounds = expectedPeriodBounds(mode, periodKey);
-    if (!bounds) continue;
-    for (const boundaryName of ['start', 'end']) {
-      const suffix = boundaryName === 'start' ? 'start' : 'end';
-      const observedAt = finiteNumber(row?.[`boundary_${suffix}_at`]);
-      if (observedAt == null) continue;
-      statements.push(db.prepare(`INSERT INTO sh_period_boundary_evidence (
-          mode,period_key,boundary_name,target_at,observed_at,
-          stream_observed_at,stream_value,member_observed_at,member_value,
-          source_id,updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        ON CONFLICT(mode,period_key,boundary_name) DO UPDATE SET
-          target_at=excluded.target_at,
-          observed_at=excluded.observed_at,
-          stream_observed_at=excluded.stream_observed_at,
-          stream_value=excluded.stream_value,
-          member_observed_at=excluded.member_observed_at,
-          member_value=excluded.member_value,
-          updated_at=excluded.updated_at`)
-        .bind(
-          mode,
-          periodKey,
-          boundaryName,
-          boundaryName === 'start' ? bounds.start : bounds.end,
-          observedAt,
-          finiteNumber(row?.[`stream_${suffix}`]) == null ? null : observedAt,
-          finiteNumber(row?.[`stream_${suffix}`]),
-          finiteNumber(row?.[`member_${suffix}`]) == null ? null : observedAt,
-          finiteNumber(row?.[`member_${suffix}`]),
-          null,
-          now,
-        ));
-    }
-  }
-  if (!statements.length) return;
-  try {
-    await db.batch(statements);
-  } catch (error) {
-    if (!/no such table:\s*sh_period_boundary_evidence/i.test(String(error?.message || error))) throw error;
-  }
-}
-
 export async function loadPeriodBoundaryEvidence(db, rows, mode) {
   const periods = periodPayload(rows, mode);
   if (!periods.length) return new Map();
-  const payload = JSON.stringify(periods);
-  const preaggregated = await loadPreaggregatedEvidence(db, payload, mode);
+  const preaggregated = await loadPreaggregatedEvidence(db, JSON.stringify(periods), mode);
   const complete = new Map();
-  const missingKeys = new Set(periods.map((period) => period.period_key));
   for (const row of preaggregated) {
     if (Number(row?.has_start) !== 1 || Number(row?.has_end) !== 1) continue;
-    const key = String(row.period_key);
-    complete.set(key, row);
-    missingKeys.delete(key);
+    complete.set(String(row.period_key), row);
   }
-  if (!missingKeys.size) return complete;
-
-  const missingPeriods = periods.filter((period) => missingKeys.has(period.period_key));
-  const toleranceMs = periodBoundaryToleranceMs(mode);
-  let result;
-  try {
-    result = await db.prepare(periodBoundaryEvidenceSql(toleranceMs))
-      .bind(JSON.stringify(missingPeriods))
-      .all();
-  } catch (error) {
-    if (!/no such table|no such column/i.test(String(error?.message || ''))) throw error;
-    return complete;
-  }
-  const loaded = result.results || [];
-  await persistLoadedEvidence(db, loaded, mode).catch((error) => {
-    console.warn(JSON.stringify({
-      event: 'period_boundary_preaggregate_persist_failed',
-      mode,
-      error: String(error?.message || error).slice(0, 300),
-    }));
-  });
-  for (const row of loaded) complete.set(String(row.period_key), row);
   return complete;
 }
 

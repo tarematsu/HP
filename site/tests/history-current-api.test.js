@@ -8,9 +8,9 @@ const NOW = Date.UTC(2026, 6, 30, 1, 23, 45);
 function dailyDatabase(assertions) {
   return {
     prepare(sql) {
-      if (/FROM sh_pages_track_history_read_model/.test(sql)) {
-        assert.match(sql, /SUM\(CASE/);
-        assert.match(sql, /json_extract\(row_json,'\$\.play_count'\)/);
+      if (/FROM sh_pages_track_history_daily_read_model/.test(sql)) {
+        assert.match(sql, /SELECT play_count AS track_count/);
+        assert.doesNotMatch(sql, /SUM\(|json_extract|sh_pages_track_history_read_model/);
         return {
           bind(periodKey) {
             assert.equal(periodKey, '2026-07-30');
@@ -57,7 +57,7 @@ function dailyDatabase(assertions) {
   };
 }
 
-test('current daily summary reads the incremental UTC-day projection', async () => {
+test('current daily summary reads incremental projections only', async () => {
   let bindings;
   const summary = await loadCurrentMinuteSummary({
     MINUTE_DB: dailyDatabase((value) => { bindings = value; }),
@@ -77,7 +77,7 @@ test('current daily summary reads the incremental UTC-day projection', async () 
   assert.match(summary.rows[0].quality_flags, /minute_facts/);
   assert.match(summary.rows[0].quality_flags, /incomplete_current_period/);
   assert.equal(summary.live_source, 'minute_facts');
-  assert.equal(summary.storage_source, 'minute.sh_minute_facts+minute.sh_pages_track_history_read_model');
+  assert.equal(summary.storage_source, 'minute.sh_current_daily_summary+minute.sh_pages_track_history_daily_read_model');
   assert.equal(summary.read_path, 'minute-current-daily');
   assert.equal(summary.live_overlay_count, 1);
 });

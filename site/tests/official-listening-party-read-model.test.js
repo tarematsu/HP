@@ -7,16 +7,16 @@ const historyMain = readFileSync(new URL('../public/history/history-main.js', im
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 
-test('official listening-party API returns a complete server-side read model', () => {
+test('official listening-party API returns a complete materialized server-side read model', () => {
   assert.match(historyApi, /BROADCAST_READ_MODEL_SQL/);
-  assert.match(historyApi, /sh_host_broadcast_sessions/);
-  assert.match(historyApi, /sh_host_station_snapshots/);
+  assert.match(historyApi, /FROM sh_official_broadcast_summary/);
+  assert.doesNotMatch(historyApi, /sh_host_broadcast_sessions|sh_host_station_snapshots|sh_official_broadcast_series|json_each/);
   assert.match(historyApi, /listener_min/);
   assert.match(historyApi, /comment_count/);
   assert.match(historyApi, /estimated_streams/);
   assert.match(historyApi, /source_url/);
   assert.match(historyApi, /read_model_complete: loaded\.complete/);
-  assert.match(historyApi, /official-listening-parties:v1/);
+  assert.match(historyApi, /official-listening-parties:v2/);
 });
 
 test('official listening-party table renders final fields directly without hidden enrichment columns', () => {
