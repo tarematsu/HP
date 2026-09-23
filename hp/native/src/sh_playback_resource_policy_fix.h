@@ -24,6 +24,17 @@ inline ULONGLONG StationheadProfileAudioHealthScanDelayMs(
   return AudioHealthScanDelayMs(now, StationheadPeriodicProfileSlot(profileName));
 }
 
+inline ULONGLONG StationheadProfileAudioHealthRetryMs(
+    std::wstring_view profileName) noexcept {
+  const ULONGLONG now = GetTickCount64();
+  const size_t slot = StationheadPeriodicProfileSlot(profileName);
+  if (AudioHealthScanSlotDue(now, slot)) {
+    return kAudioHealthScanRetryMs;
+  }
+  return std::min<ULONGLONG>(
+      AudioHealthScanDelayMs(now, slot), kAudioHealthScanSlotSpacingMs);
+}
+
 static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-1") == 0);
 static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-2") == 1);
 static_assert(StationheadPeriodicProfileSlot(L"spotify-v2-3") == 2);
@@ -101,7 +112,13 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
 #define StationheadApiPlayStatsScript StationheadPrimaryPlayStatsScript
 
 // sh_track_boundary_message_policy.h is parsed later in the native PCH. Route
-// both of its native audio-health deadlines through the profile-derived slot,
-// so the six WebViews probe at 10-second phases instead of all using slot 0.
+// its native audio-health scheduling and claim through the profile-derived slot.
+// Slots are one minute apart in a six-minute cycle, while the lightweight
+// scheduler may still wake once per minute to approach a profile's next slot.
 #define AudioHealthScanDelayMs(now, ignoredSlot) \
   StationheadProfileAudioHealthScanDelayMs((now), profileName_)
+#define TryClaimAudioHealthScan(now) \
+  TryClaimAudioHealthScanSlot( \
+      (now), StationheadPeriodicProfileSlot(profileName_))
+#define kAudioHealthScanRetryMs \
+  StationheadProfileAudioHealthRetryMs(profileName_)
