@@ -7,7 +7,7 @@ const table = readFileSync(new URL('../public/history/history-broadcast-table.js
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 
 test('official listening party table uses final read-model columns with source at the right edge', () => {
-  assert.match(entry, /history-broadcast-table\.js\?v=20260923\.6/);
+  assert.match(entry, /history-broadcast-table\.js\?v=20260923\.5/);
   for (const label of [
     '日付', '時間', '長さ', '平均同接', '最小同接', '最大同接',
     '曲数', '推定再生数', 'コメント数', '放送内容', '名前', '出典',
