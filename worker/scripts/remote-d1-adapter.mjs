@@ -1,8 +1,12 @@
 import { execFileSync as defaultExecFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_DELAY_MS = 1_000;
+const DEFAULT_MAX_COMMAND_BYTES = 64 * 1024;
 
 function jsonStartIndexes(text) {
   const indexes = [];
@@ -176,6 +180,7 @@ export function createWranglerRemoteD1({
   execFileSync = defaultExecFileSync,
   maxRetries = DEFAULT_MAX_RETRIES,
   retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  maxCommandBytes = DEFAULT_MAX_COMMAND_BYTES,
   sleepSync = defaultSleepSync,
 }) {
   if (!String(database || '').trim()) throw new Error('remote D1 database name is required');
@@ -183,6 +188,7 @@ export function createWranglerRemoteD1({
   if (!String(wranglerScript || '').trim()) throw new Error('Wrangler script path is required');
   const retryCount = Math.max(0, Math.min(5, Math.trunc(Number(maxRetries)) || 0));
   const baseRetryDelayMs = Math.max(0, Math.min(30_000, Math.trunc(Number(retryDelayMs)) || 0));
+  const commandByteLimit = Math.max(1, Math.trunc(Number(maxCommandBytes)) || DEFAULT_MAX_COMMAND_BYTES);
 
   const execute = (tail) => {
     for (let attempt = 0; attempt <= retryCount; attempt += 1) {
@@ -212,19 +218,33 @@ export function createWranglerRemoteD1({
     throw new Error(`Wrangler D1 execute exhausted retries for ${database}`);
   };
 
+  const executeStatement = (renderedSql) => {
+    if (Buffer.byteLength(renderedSql, 'utf8') <= commandByteLimit) {
+      return execute(['--command', renderedSql]);
+    }
+    const temporaryDirectory = mkdtempSync(join(tmpdir(), 'wrangler-d1-'));
+    const sqlFile = join(temporaryDirectory, 'statement.sql');
+    try {
+      writeFileSync(sqlFile, `${renderedSql.replace(/;+\s*$/, '')};\n`, 'utf8');
+      return execute(['--file', sqlFile]);
+    } finally {
+      rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  };
+
   const createStatement = (sql, bindings = []) => ({
     __sql: String(sql),
     __bindings: bindings,
     bind(...values) { return createStatement(sql, values); },
     async all() {
-      return statementResult(execute(['--command', bindD1Sql(sql, bindings)]));
+      return statementResult(executeStatement(bindD1Sql(sql, bindings)));
     },
     async first(columnName) {
-      const row = statementResult(execute(['--command', bindD1Sql(sql, bindings)])).results[0] || null;
+      const row = statementResult(executeStatement(bindD1Sql(sql, bindings))).results[0] || null;
       return columnName == null ? row : row?.[columnName] ?? null;
     },
     async run() {
-      return statementResult(execute(['--command', bindD1Sql(sql, bindings)]));
+      return statementResult(executeStatement(bindD1Sql(sql, bindings)));
     },
   });
 
