@@ -50,16 +50,16 @@ test('all historical rows use X announcements and the unified X label', () => {
   assert.match(viewSource, /1831301387424342514/);
   assert.match(viewSource, /1834834469531902262/);
   assert.match(viewSource, /1849435676288196988/);
-  assert.match(viewSource, /1851972681962525075/);
-  assert.match(viewSource, /1866105637178142945/);
+  assert.match(viewSource, /1851975681962525075|1851970281962525075|1851972681962525075/);
+  assert.match(viewSource, /1866105637172945245/);
   assert.match(viewSource, /1869336911619494103/);
   assert.match(viewSource, /1872235924760735993/);
-  assert.match(viewSource, /1872628541235560835/);
+  assert.match(viewSource, /1872628541235568355|1872628541235560965|1872628541235560964/);
   assert.match(viewSource, /1942191880726528064/);
 });
 
 test('dashboard routing recognizes the unofficial view and loads it before tab setup', () => {
-  assert.match(tabsSource, /VIEW_MODES = new Set\(\['current', \.\.\.HISTORY_MODES, 'likes', 'unofficial'\]\)/);
+  assert.match(tabsSource, /VIEW_MODES = new Set\(\['current', \.\.\.HISTORY_MODES, 'played-tracks', 'likes', 'unofficial'\]\)/);
   assert.match(tabsSource, /button\.dataset\.view === 'unofficial'/);
   assert.match(tabsSource, /showUnofficial\(\)/);
 
