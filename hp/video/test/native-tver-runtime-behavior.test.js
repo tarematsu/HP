@@ -49,6 +49,10 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
   });
   return {
     get video() { return video; }, messages, window,
+    removeDialog: dialog => {
+      const index = dialogs.indexOf(dialog);
+      if (index !== -1) dialogs.splice(index, 1);
+    },
     run: () => vm.runInContext(script, context),
     ended: () => handlers.get('ended')?.({ type: 'ended' }),
     advance: ms => { clock += ms; },
@@ -66,10 +70,23 @@ test('required questionnaire stays visible and playback waits for an answer', ()
   };
   const scene = playerScenario(1800, [], [], [dialog]);
   scene.video.playbackRate = 1;
+  const removed = [];
+  scene.window.__homePanelTverRuntime = {
+    viewportPlayer: { removeAttribute: name => removed.push(name) },
+    viewportAncestors: [{ removeAttribute: name => removed.push(name) }],
+  };
   const action = scene.run();
   assert.equal(action, 'recovery');
   assert.equal(scene.video.playbackRate, 1);
   assert.deepEqual(scene.messages, ['homepanel:tver-media-init']);
+  assert.deepEqual(removed, [
+    'data-homepanel-tver-fill', 'data-homepanel-tver-fill-ancestor',
+  ]);
+  scene.removeDialog(dialog);
+  scene.run();
+  assert.equal(scene.video.playbackRate, 1.75);
+  assert.equal(scene.messages.filter(value => value === 'homepanel:tver-media-init').length, 1);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
 });
 
 test('a short pre-roll with inherited 1.75x cannot advance the episode', () => {
