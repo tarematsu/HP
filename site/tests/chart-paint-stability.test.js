@@ -43,6 +43,7 @@ test('history has one specialized canvas renderer per mode and hides paint until
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
   assert.match(historyMain, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.8/);
+  assert.match(historyMain, /history-chart-stability\.js\?v=20260923\.5/);
   assert.doesNotMatch(historyMain, /history-ranking-missing-gap/);
   assert.match(historyLite, /history:data-loaded/);
   assert.doesNotMatch(historyLite, /function drawSummaryChart|function prepareCanvas|getContext\('2d'\)/);
@@ -59,4 +60,23 @@ test('history has one specialized canvas renderer per mode and hides paint until
   assert.match(historyStability, /paintPending/);
   assert.match(historyStability, /paintStable/);
   assert.match(historyStability, /document\.getElementById\('load'\)/);
+});
+
+test('history mode switches clear stale shared chart state before the next renderer paints', () => {
+  assert.match(historyStability, /function resetSharedChartPresentation\(\)/);
+  assert.match(historyStability, /chartLegend'\)\?\.replaceChildren\(\)/);
+  assert.match(historyStability, /chartStartDate/);
+  assert.match(historyStability, /chartEndDate/);
+  assert.match(historyStability, /\['chartYAxisLeft', 'chartYAxisRight', 'chartXAxisTitle'\]/);
+  assert.match(historyStability, /function clearAxisLabel\(id\)/);
+  assert.match(historyStability, /canvas\.width = canvas\.width/);
+  assert.match(historyStability, /nextMode === 'broadcasts'[\s\S]*prepareBroadcastCanvas\(\)/);
+  assert.match(historyStability, /paintedMode = 'broadcasts'/);
+});
+
+test('ranking query changes cannot leave the previous table chart visible', () => {
+  assert.match(historyStability, /function prepareRankingQueryChange\(\)/);
+  assert.match(historyStability, /paintedMode = ''[\s\S]*conceal\('ranking'\)/);
+  assert.match(historyStability, /getElementById\('rankingScope'\)\?\.addEventListener\('change', prepareRankingQueryChange/);
+  assert.match(historyStability, /getElementById\('rankingHost'\)\?\.addEventListener\('keydown',[\s\S]*event\.key === 'Enter'[\s\S]*prepareRankingQueryChange\(\)/);
 });

@@ -18,8 +18,34 @@ test('table cleanup follows explicit history render and pagination events', () =
   assert.doesNotMatch(cleanup, /MutationObserver/);
 });
 
+test('mode-specific table layout classes do not leak across tabs', () => {
+  assert.match(cleanup, /classList\.toggle\('official-party-table', mode === 'broadcasts'\)/);
+  assert.match(cleanup, /mode !== 'ranking'\) table\.classList\.remove\('all-host-ranking-table'\)/);
+  assert.match(cleanup, /syncTableModeClasses\(head\.closest\('table'\), mode\)/);
+});
+
+test('history tab transitions clear the previous table before the next mode renders', () => {
+  assert.match(cleanup, /function prepareTableForModeTransition\(event\)/);
+  assert.match(cleanup, /function resetHistoryTable\(mode\)/);
+  assert.match(cleanup, /table\?\.classList\.remove\('all-host-ranking-table'\)/);
+  assert.match(cleanup, /head\.replaceChildren\(\);[\s\S]*body\.replaceChildren\(\)/);
+  assert.match(cleanup, /getElementById\('modeTabs'\)\?\.addEventListener\('click',[\s\S]*prepareTableForModeTransition\(event\)/);
+});
+
+test('ranking scope changes clear the previous ranking layout before reload', () => {
+  assert.match(cleanup, /getElementById\('rankingScope'\)\?\.addEventListener\('change', \(\) => resetHistoryTable\('ranking'\)\)/);
+});
+
+test('history tab transitions reset shared summary and pagination state', () => {
+  assert.match(cleanup, /function resetSharedHistorySummary\(mode\)/);
+  assert.match(cleanup, /for \(const id of \['periods', 'maxListener', 'streamGrowth', 'memberGrowth'\]\) setText\(id, '—'\)/);
+  assert.match(cleanup, /notice\.textContent = '読み込み中…'/);
+  assert.match(cleanup, /if \(more\) more\.hidden = true/);
+  assert.match(cleanup, /resetSharedHistorySummary\(mode\)/);
+});
+
 test('compact leaderboard and likes tables fill the mobile viewport', () => {
-  assert.match(entry, /history-table-cleanup\.js\?v=20260923\.4/);
+  assert.match(entry, /history-table-cleanup\.js\?v=20260923\.6/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
   assert.match(cleanup, /#historyView \.table-wrap table\.compact-columns,[\s\S]*#likesView \.table-wrap table[\s\S]*width: 100% !important;[\s\S]*min-width: 100% !important;[\s\S]*table-layout: fixed !important;/);
   assert.match(cleanup, /table\.compact-columns:not\(\.all-host-ranking-table\) th:nth-child\(1\)[\s\S]*width: 27% !important/);

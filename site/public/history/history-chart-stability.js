@@ -43,6 +43,49 @@ function hasStablePaint() {
   return Boolean(canvas?.dataset?.paintStable === 'true' && canvas.style.opacity !== '0');
 }
 
+function clearAxisLabel(id) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.textContent = '';
+  node.hidden = true;
+}
+
+function resetSharedChartPresentation() {
+  document.getElementById('chartLegend')?.replaceChildren();
+  const start = document.getElementById('chartStartDate');
+  const end = document.getElementById('chartEndDate');
+  const detail = document.getElementById('chartDetail');
+  if (start) start.textContent = '—';
+  if (end) end.textContent = '—';
+  if (detail) detail.textContent = 'グラフを読み込み中です。';
+  for (const id of ['chartYAxisLeft', 'chartYAxisRight', 'chartXAxisTitle']) clearAxisLabel(id);
+  canvas.width = canvas.width;
+  delete canvas.dataset.sakurazakaMaxMinute;
+  delete canvas.dataset.sakurazakaLeft;
+  delete canvas.dataset.sakurazakaWidth;
+}
+
+function prepareBroadcastCanvas() {
+  if (!canvas) return;
+  clearTimeout(fallbackTimer);
+  clearTimeout(revealTimer);
+  armed = false;
+  canvas.style.opacity = '1';
+  canvas.style.pointerEvents = '';
+  delete canvas.dataset.paintPending;
+  delete canvas.dataset.paintStable;
+  delete canvas.dataset.periodChart;
+  delete canvas.dataset.rankingChart;
+  paintedMode = 'broadcasts';
+}
+
+function prepareRankingQueryChange() {
+  if (activeMode() !== 'ranking') return;
+  resetSharedChartPresentation();
+  paintedMode = '';
+  conceal('ranking');
+}
+
 if (canvas) {
   conceal();
 
@@ -62,7 +105,18 @@ if (canvas) {
     const button = event.target.closest('button[data-mode]');
     if (!button) return;
     const nextMode = String(button.dataset.mode || '');
-    if (nextMode && nextMode !== paintedMode) conceal(nextMode);
+    if (!nextMode) return;
+    resetSharedChartPresentation();
+    if (nextMode === 'broadcasts') {
+      prepareBroadcastCanvas();
+      return;
+    }
+    if (nextMode !== paintedMode) conceal(nextMode);
+  }, true);
+
+  document.getElementById('rankingScope')?.addEventListener('change', prepareRankingQueryChange, true);
+  document.getElementById('rankingHost')?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') prepareRankingQueryChange();
   }, true);
 
   document.getElementById('load')?.addEventListener('click', () => {

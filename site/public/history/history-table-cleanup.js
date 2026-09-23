@@ -1,4 +1,5 @@
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
+const HISTORY_MODES = new Set([...SUMMARY_MODES, 'ranking', 'broadcasts']);
 const SUMMARY_REMOVED_LABELS = new Set(['最大いいね', '主なホスト', '有効記録数', '同接有効数']);
 const RANKING_REMOVED_LABELS = new Set(['前週順位', '前週比', 'ランキング種別', '順位データ出典', '品質']);
 const RENAMED_LABELS = new Map([
@@ -115,6 +116,53 @@ function removedLabels(mode) {
   return null;
 }
 
+function syncTableModeClasses(table, mode) {
+  if (!table) return;
+  table.classList.toggle('compact-columns', mode === 'ranking');
+  table.classList.toggle('official-party-table', mode === 'broadcasts');
+  if (mode !== 'ranking') table.classList.remove('all-host-ranking-table');
+}
+
+function setText(id, value) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = String(value);
+}
+
+function resetSharedHistorySummary(mode) {
+  if (!HISTORY_MODES.has(mode)) return;
+  setText('periodLabel', mode === 'ranking' ? '総週数' : '期間数');
+  setText('maxLabel', mode === 'ranking' ? 'ランクイン週数' : '平均同接');
+  setText('streamLabel', mode === 'ranking' ? '圏外週数' : mode === 'broadcasts' ? '最大同接' : '再生数増加');
+  setText('memberLabel', mode === 'ranking' ? '対象ホスト' : mode === 'broadcasts' ? '平均時間' : 'メンバー増加');
+  for (const id of ['periods', 'maxListener', 'streamGrowth', 'memberGrowth']) setText(id, '—');
+  const notice = document.getElementById('notice');
+  if (notice) {
+    notice.textContent = '読み込み中…';
+    notice.classList.remove('error');
+  }
+  const more = document.getElementById('more');
+  if (more) more.hidden = true;
+}
+
+function resetHistoryTable(mode) {
+  if (!HISTORY_MODES.has(mode)) return;
+  const head = document.getElementById('thead');
+  const body = document.getElementById('tbody');
+  if (!head || !body) return;
+  const table = head.closest('table');
+  table?.classList.remove('all-host-ranking-table');
+  syncTableModeClasses(table, mode);
+  head.replaceChildren();
+  body.replaceChildren();
+  resetSharedHistorySummary(mode);
+}
+
+function prepareTableForModeTransition(event) {
+  const button = event?.target?.closest?.('button[data-mode]');
+  if (!button) return;
+  resetHistoryTable(String(button.dataset.mode || ''));
+}
+
 function ensureRankingFandomColumn(head, body) {
   const headers = [...head.querySelectorAll('th')];
   const existingIndex = headers.findIndex((cell) => cell.textContent.trim() === 'ファンダム');
@@ -154,7 +202,7 @@ function cleanTable() {
   const body = document.getElementById('tbody');
   if (!head || !body) return;
 
-  head.closest('table')?.classList.toggle('compact-columns', mode === 'ranking');
+  syncTableModeClasses(head.closest('table'), mode);
   if (cleaning || !removedSet) return;
 
   const headers = [...head.querySelectorAll('th')];
@@ -201,6 +249,10 @@ window.addEventListener('history:data-loaded', (event) => {
 });
 window.addEventListener('history:runtime-ready', scheduleCleanup);
 window.addEventListener('hashchange', scheduleCleanup);
-document.getElementById('modeTabs')?.addEventListener('click', scheduleCleanup);
+document.getElementById('modeTabs')?.addEventListener('click', (event) => {
+  prepareTableForModeTransition(event);
+  scheduleCleanup();
+});
+document.getElementById('rankingScope')?.addEventListener('change', () => resetHistoryTable('ranking'));
 document.getElementById('more')?.addEventListener('click', scheduleCleanup);
 scheduleCleanup();
