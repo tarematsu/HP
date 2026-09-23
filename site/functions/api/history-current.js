@@ -48,14 +48,10 @@ function normalizeMinuteRow(row, trackCount = null) {
 
 async function loadCurrentTrackCount(db, periodKey) {
   try {
-    const bound = db.prepare(`SELECT
-        SUM(CASE
-          WHEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)>0
-            THEN CAST(json_extract(row_json,'$.play_count') AS INTEGER)
-          ELSE 1
-        END) AS track_count
-      FROM sh_pages_track_history_read_model
-      WHERE play_date=?`)
+    const bound = db.prepare(`SELECT play_count AS track_count
+      FROM sh_pages_track_history_daily_read_model
+      WHERE play_date=?
+      LIMIT 1`)
       .bind(periodKey);
     const row = typeof bound.first === 'function'
       ? await bound.first()
@@ -63,7 +59,7 @@ async function loadCurrentTrackCount(db, periodKey) {
     const value = Number(row?.track_count);
     return Number.isFinite(value) ? value : null;
   } catch (error) {
-    if (/no such table|no such function|malformed json/i.test(String(error?.message || error))) return null;
+    if (/no such table|no such column/i.test(String(error?.message || error))) return null;
     throw error;
   }
 }
@@ -108,7 +104,7 @@ export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.n
     latest_live_observed_at: completed.rows.at(-1)?.period_end || null,
     live_truncated: false,
     live_source: 'minute_facts',
-    storage_source: 'minute.sh_minute_facts+minute.sh_pages_track_history_read_model',
+    storage_source: 'minute.sh_current_daily_summary+minute.sh_pages_track_history_daily_read_model',
     read_path: 'minute-current-daily',
   };
 }
