@@ -40,11 +40,10 @@ test('expanded history adds only the verified three-Sakamichi joint event', () =
   assert.doesNotMatch(viewSource, /妄想W-KEYAKI FES\.2026|ケヤキダービー/);
 });
 
-test('historical rows expose announcement sources with an appropriate label', () => {
-  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 12);
-  assert.match(viewSource, /https:\/\/note\.com\/kyounosuke1218\/n\/n7b8aa8d414a8/);
-  assert.match(viewSource, /sourceLabel: '告知記事'/);
-  assert.match(viewSource, /sourceLink\.textContent = event\.sourceLabel \|\| 'X告知'/);
+test('all historical rows use X announcements and the unified X label', () => {
+  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 15);
+  assert.doesNotMatch(viewSource, /note\.com|sourceLabel|告知記事/);
+  assert.match(viewSource, /sourceLink\.textContent = 'X告知'/);
   assert.match(viewSource, /sourceLink\.target = '_blank'/);
   assert.match(viewSource, /sourceLink\.rel = 'noopener noreferrer'/);
   assert.match(viewSource, /1818995243200758205/);
@@ -56,6 +55,7 @@ test('historical rows expose announcement sources with an appropriate label', ()
   assert.match(viewSource, /1869336911619494103/);
   assert.match(viewSource, /1872235924760735993/);
   assert.match(viewSource, /1872628541235560835/);
+  assert.match(viewSource, /1942191880726528064/);
 });
 
 test('dashboard routing recognizes the unofficial view and loads it before tab setup', () => {

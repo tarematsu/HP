@@ -11,9 +11,9 @@ const EVENTS = [
   { date: '2024/12/29', time: '20:30', name: '櫻坂46 × NiziU Collab Listening Party', place: 'WithUチャンネル', source: 'https://x.com/skr_Stationhead/status/1872235924760735993' },
   { date: '2024/12/30', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY1', place: 'Ohisama CH.', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
   { date: '2025/01/03', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
-  { date: '2025/07/19', time: '23:00', name: '#坂道Stationhead DAY1', place: "乃木坂46fan's Stationhead", source: 'https://note.com/kyounosuke1218/n/n7b8aa8d414a8', sourceLabel: '告知記事' },
-  { date: '2025/07/20', time: '21:00', name: '#坂道Stationhead DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://note.com/kyounosuke1218/n/n7b8aa8d414a8', sourceLabel: '告知記事' },
-  { date: '2025/07/21', time: '22:00', name: '#坂道Stationhead DAY3', place: 'Ohisama CH.', source: 'https://note.com/kyounosuke1218/n/n7b8aa8d414a8', sourceLabel: '告知記事' },
+  { date: '2025/07/19', time: '23:00', name: '#坂道Stationhead DAY1', place: "乃木坂46fan's Stationhead", source: 'https://x.com/HNZ_Stationhead/status/1942191880726528064' },
+  { date: '2025/07/20', time: '21:00', name: '#坂道Stationhead DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/HNZ_Stationhead/status/1942191880726528064' },
+  { date: '2025/07/21', time: '22:00', name: '#坂道Stationhead DAY3', place: 'Ohisama CH.', source: 'https://x.com/HNZ_Stationhead/status/1942191880726528064' },
 ];
 
 function mountTab() {
@@ -66,7 +66,7 @@ function mountView() {
     sourceLink.href = event.source;
     sourceLink.target = '_blank';
     sourceLink.rel = 'noopener noreferrer';
-    sourceLink.textContent = event.sourceLabel || 'X告知';
+    sourceLink.textContent = 'X告知';
     sourceCell.append(sourceLink);
     row.append(sourceCell);
     tbody.append(row);
