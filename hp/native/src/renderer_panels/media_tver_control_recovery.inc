@@ -109,16 +109,29 @@ LR"JS(
           input.dispatchEvent(new Event('input', { bubbles: true }));
           input.dispatchEvent(new Event('change', { bubbles: true }));
         }
-        const gender = Array.from(form.querySelectorAll('[role="radio"]'))
-            .find(option => option.getAttribute('value') === saved.genderCode);
-        gender?.click();
         state.questionnaireFilledForm = form;
         state.questionnaireFilledAt = Date.now();
         wake(350);
         return 'recovery';
       }
       const fields = readFields();
-      const submit = Array.from(document.querySelectorAll('button[type="submit"][form]'))
+      if (fields.genderCode !== saved.genderCode) {
+        const gender = Array.from(form.querySelectorAll('[role="radio"]'))
+            .find(option => option.getAttribute('value') === saved.genderCode);
+        const rect = gender?.getBoundingClientRect();
+        const x = rect && rect.left + rect.width / 2;
+        const y = rect && rect.top + rect.height / 2;
+        if (rect?.width > 0 && rect.height > 0 &&
+            x >= 0 && y >= 0 && x < innerWidth && y < innerHeight &&
+            (!state.questionnaireLastGenderClickAt ||
+             Date.now() - state.questionnaireLastGenderClickAt >= 1000)) {
+          state.questionnaireLastGenderClickAt = Date.now();
+          return [x, y];
+        }
+        recheck();
+        return 'recovery';
+      }
+      const submit = Array.from(questionnaire.querySelectorAll('button[type="submit"][form]'))
           .find(button => button.getAttribute('form') === form.id);
       const rect = submit?.getBoundingClientRect();
       const x = rect && rect.left + rect.width / 2;
@@ -140,6 +153,7 @@ LR"JS(
     recheck();
     return 'recovery';
   }
+)JS" LR"JS(
 
   const player = video.closest(
       '[data-testid*="player" i],[class*="player" i],[id*="player" i]') ||

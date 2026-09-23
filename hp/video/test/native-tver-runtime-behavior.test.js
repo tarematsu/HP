@@ -113,6 +113,7 @@ test('saved questionnaire answers are filled and submitted before player control
     getAttribute: name => name === 'value' ? '9' : name === 'aria-checked'
       ? String(selectedGender === '9') : null,
     click: () => { selectedGender = '9'; },
+    getBoundingClientRect: () => ({ left: 50, top: 50, width: 50, height: 50 }),
   };
   const form = {
     id: 'questionnaire-test', addEventListener() {},
@@ -122,25 +123,28 @@ test('saved questionnaire answers are filled and submitted before player control
       : selector.includes('aria-checked') && selectedGender ? gender : null,
     querySelectorAll: () => [gender],
   };
+  const submit = {
+    getAttribute: name => name === 'form' ? form.id : null,
+    disabled: false,
+    getBoundingClientRect: () => ({ left: 100, top: 200, width: 100, height: 40 }),
+  };
   const dialog = {
-    querySelector: () => form, getAttribute: () => null,
-    textContent: 'アンケート',
+    querySelector: () => form, querySelectorAll: () => [submit],
+    getAttribute: () => null, textContent: 'アンケート',
   };
   const scene = playerScenario(1800, [], [], [dialog]);
   scene.stored.set('homepanel:tver:questionnaire:v1', JSON.stringify({
     year: '2000', month: '4', postCode: '1050004', genderCode: '9',
   }));
-  scene.submitButtons.push({
-    getAttribute: name => name === 'form' ? form.id : null,
-    disabled: false,
-    getBoundingClientRect: () => ({ left: 100, top: 200, width: 100, height: 40 }),
-  });
   assert.equal(scene.run(), 'recovery');
   assert.equal(inputs.birthYear.value, '2000');
   assert.equal(inputs.birthMonth.value, '4');
   assert.equal(inputs.postCode.value, '1050004');
-  assert.equal(selectedGender, '9');
   scene.advance(400);
+  assert.deepEqual(Array.from(scene.run()), [75, 75]);
+  gender.click(); // The host dispatches the returned trusted click.
+  scene.advance(400);
+  assert.equal(selectedGender, '9');
   assert.deepEqual(Array.from(scene.run()), [150, 220]);
   scene.removeDialog(dialog);
   scene.run();
