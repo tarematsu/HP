@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS sh_channel_fandoms (
 CREATE INDEX IF NOT EXISTS idx_sh_channel_fandoms_artist
   ON sh_channel_fandoms(artist_name, relation_type);
 
+CREATE INDEX IF NOT EXISTS idx_sh_channel_fandoms_host_normalized
+  ON sh_channel_fandoms(lower(trim(host_name)));
+
 INSERT INTO sh_channel_fandoms(
   host_name, artist_name, relation_type, source_url, source_note, verified_at
 ) VALUES
