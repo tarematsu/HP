@@ -3,12 +3,15 @@ const EXCLUDED_ALL_HOSTS = new Set(['sakuramankai', 'sakurazaka46jp']);
 const ALL_HOST_COLUMNS = [
   ['position', '順位'],
   ['host_name', 'ホスト名'],
-  ['fandom_label', 'ファンダム'],
+  ['stationhead_channel_name', 'チャンネル'],
+  ['artist_name', 'アーティスト名'],
+  ['relation_label', '公式'],
   ['ranked_weeks', 'ランクイン週数'],
   ['average_rank', '平均順位'],
   ['best_rank', '最高順位'],
   ['worst_rank', '最低順位'],
 ];
+const TEXT_COLUMNS = new Set(['stationhead_channel_name', 'artist_name', 'relation_label']);
 const integer = new Intl.NumberFormat('ja-JP');
 const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 
@@ -25,24 +28,44 @@ function activeMode() {
 }
 
 function displayValue(key, value) {
-  if (key === 'fandom_label') return String(value || '').trim() || '—';
+  if (TEXT_COLUMNS.has(key)) return String(value || '').trim() || '—';
   const number = Number(value);
   if (value == null || value === '' || !Number.isFinite(number)) return '—';
   if (key === 'average_rank') return decimal.format(number);
   return integer.format(number);
 }
 
+function metadataByHost(data) {
+  const result = new Map();
+  for (const row of Array.isArray(data?.rows) ? data.rows : []) {
+    const key = hostKey(row?.host_name);
+    if (!key || result.has(key)) continue;
+    result.set(key, row);
+  }
+  return result;
+}
+
 function visibleHostRows(data) {
+  const metadata = metadataByHost(data);
   const visible = (Array.isArray(data?.host_rankings) ? data.host_rankings : [])
     .filter((row) => !EXCLUDED_ALL_HOSTS.has(hostKey(row?.host_name)));
   let previousWeeks = null;
   let previousPosition = 0;
   return visible.map((row, index) => {
+    const source = metadata.get(hostKey(row?.host_name));
+    const artistName = String(row?.artist_name || source?.artist_name || '').trim();
+    const fandomType = row?.fandom_type || source?.fandom_type;
     const rankedWeeks = Number(row?.ranked_weeks) || 0;
     const position = rankedWeeks === previousWeeks ? previousPosition : index + 1;
     previousWeeks = rankedWeeks;
     previousPosition = position;
-    return { ...row, position };
+    return {
+      ...row,
+      position,
+      stationhead_channel_name: String(row?.stationhead_channel_name || source?.stationhead_channel_name || '').trim() || null,
+      artist_name: artistName || null,
+      relation_label: artistName ? (fandomType === 'official' ? '公式' : 'ファンダム') : null,
+    };
   });
 }
 
@@ -88,44 +111,46 @@ function installStyle() {
         width: 100% !important;
         min-width: 100% !important;
         table-layout: fixed !important;
-        font-size: 10px !important;
+        font-size: 9px !important;
       }
       #historyView table.all-host-ranking-table th:nth-child(1),
-      #historyView table.all-host-ranking-table td:nth-child(1) { width: 7% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(1) { width: 5% !important; }
       #historyView table.all-host-ranking-table th:nth-child(2),
-      #historyView table.all-host-ranking-table td:nth-child(2) { width: 22% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(2) { width: 17% !important; }
       #historyView table.all-host-ranking-table th:nth-child(3),
-      #historyView table.all-host-ranking-table td:nth-child(3) { width: 24% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(3) { width: 14% !important; }
       #historyView table.all-host-ranking-table th:nth-child(4),
-      #historyView table.all-host-ranking-table td:nth-child(4) { width: 13% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(4) { width: 18% !important; }
       #historyView table.all-host-ranking-table th:nth-child(5),
-      #historyView table.all-host-ranking-table td:nth-child(5) { width: 12% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(5) { width: 10% !important; }
       #historyView table.all-host-ranking-table th:nth-child(6),
-      #historyView table.all-host-ranking-table td:nth-child(6) { width: 11% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(6) { width: 10% !important; }
       #historyView table.all-host-ranking-table th:nth-child(7),
-      #historyView table.all-host-ranking-table td:nth-child(7) { width: 11% !important; }
+      #historyView table.all-host-ranking-table td:nth-child(7) { width: 9% !important; }
+      #historyView table.all-host-ranking-table th:nth-child(8),
+      #historyView table.all-host-ranking-table td:nth-child(8) { width: 9% !important; }
+      #historyView table.all-host-ranking-table th:nth-child(9),
+      #historyView table.all-host-ranking-table td:nth-child(9) { width: 8% !important; }
       #historyView table.all-host-ranking-table th,
       #historyView table.all-host-ranking-table td {
-        padding-left: 3px !important;
-        padding-right: 3px !important;
+        padding-left: 2px !important;
+        padding-right: 2px !important;
         overflow: hidden;
         text-overflow: ellipsis;
       }
       #historyView table.all-host-ranking-table th {
-        padding-left: 2px !important;
-        padding-right: 2px !important;
-        font-size: 8.5px !important;
-        line-height: 1.15 !important;
-        letter-spacing: -.035em !important;
+        font-size: 8px !important;
+        line-height: 1.1 !important;
+        letter-spacing: -.04em !important;
         text-overflow: clip !important;
         white-space: nowrap !important;
       }
-      #historyView table.all-host-ranking-table th:not(:nth-child(2)):not(:nth-child(3)),
-      #historyView table.all-host-ranking-table td:not(:nth-child(2)):not(:nth-child(3)) {
+      #historyView table.all-host-ranking-table th:not(:nth-child(2)):not(:nth-child(3)):not(:nth-child(4)),
+      #historyView table.all-host-ranking-table td:not(:nth-child(2)):not(:nth-child(3)):not(:nth-child(4)) {
         text-align: center !important;
       }
       #historyView table.all-host-ranking-table .ranking-host-button {
-        font-size: 10px !important;
+        font-size: 9px !important;
       }
     }
   `;
