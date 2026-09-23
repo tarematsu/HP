@@ -1,0 +1,58 @@
+name: Probe legacy Track History day
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-track-history-legacy-day.yml'
+      - 'worker/scripts/probe-track-history-legacy-day-actions.mjs'
+  workflow_dispatch:
+    inputs:
+      day:
+        description: UTC day to inspect (YYYY-MM-DD)
+        required: false
+        default: '2026-01-12'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe-legacy-track-history-day
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      TRACK_HISTORY_PROBE_DAY: ${{ inputs.day || '2026-01-12' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Probe old D1 sources
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/probe-track-history-legacy-day-actions.mjs 2>&1 | tee probe-track-history-legacy-day.log
+      - name: Upload probe log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-track-history-legacy-day-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/probe-track-history-legacy-day.log
+          if-no-files-found: error
+          retention-days: 7
