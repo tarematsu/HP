@@ -12,9 +12,9 @@ assert.ok(script, 'extract the JavaScript executed by the TVer WebView');
 function playerScenario(duration, controls = []) {
   let clock = 1000;
   const messages = [];
-  const handlers = new Map();
+  let handlers = new Map();
   const player = { querySelectorAll: () => controls };
-  const video = {
+  let video = {
     isConnected: true, disabled: false, currentSrc: 'program-or-ad',
     duration, currentTime: 0, playbackRate: 1.75, defaultPlaybackRate: 1,
     muted: false, volume: 1, paused: false, ended: false,
@@ -43,10 +43,14 @@ function playerScenario(duration, controls = []) {
     innerWidth: 640, innerHeight: 360,
   });
   return {
-    video, messages, window,
+    get video() { return video; }, messages, window,
     run: () => vm.runInContext(script, context),
     ended: () => handlers.get('ended')?.({ type: 'ended' }),
     advance: ms => { clock += ms; },
+    replaceVideo: () => {
+      handlers = new Map();
+      video = { ...video, currentTime: 0, ended: false };
+    },
   };
 }
 
@@ -111,4 +115,21 @@ test('quality menu is retried past four attempts without claiming low quality', 
   }
   assert.equal(scene.window.__homePanelTverRuntime.qualityApplied, false);
   assert.ok(scene.window.__homePanelTverRuntime.qualityLastAttemptAt > 9000);
+});
+
+test('replacement video with the same source starts fresh program completion state', () => {
+  const scene = playerScenario(120);
+  scene.run();
+  scene.video.currentTime = 2;
+  scene.advance(31000);
+  scene.run();
+  assert.equal(scene.window.__homePanelTverRuntime.programKey, scene.video.currentSrc);
+  scene.replaceVideo();
+  scene.run();
+  assert.equal(scene.window.__homePanelTverRuntime.programKey, '');
+  scene.video.currentTime = 120;
+  scene.video.ended = true;
+  scene.ended();
+  scene.run();
+  assert.equal(scene.messages.includes('homepanel:tver-ended'), false);
 });

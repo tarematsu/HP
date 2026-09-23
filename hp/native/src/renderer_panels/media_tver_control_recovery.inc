@@ -237,6 +237,12 @@ LR"JS(
 
   const bindVideo = () => {
     if (state.video === video) return;
+    if (state.video) {
+      // A replacement <video> can use the same source URL. Its ended event
+      // must not inherit the previous element's program confirmation.
+      state.mediaKey = null;
+      state.mediaInitSent = false;
+    }
     state.videoAbort?.abort();
     state.videoAbort = new AbortController();
     state.video = video;
@@ -264,6 +270,7 @@ LR"JS(
   };
 
   if (state.player !== player) {
+    if (state.player) state.mediaKey = null;
     state.playerObserver?.disconnect();
     state.pageAbort?.abort();
     state.videoAbort?.abort();
