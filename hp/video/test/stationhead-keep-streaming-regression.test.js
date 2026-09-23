@@ -18,7 +18,7 @@ function section(text, start, end) {
   return text.slice(at, until);
 }
 
-test('Keep Streaming is published before stopped-playback recovery gating', () => {
+test('Keep Streaming is published before the shared onboarding allowlist path', () => {
   assert.ok(runtime.includes('const keepStreamingPattern = /^keep\\s+streaming$/i;'));
 
   const keepStreaming = section(
@@ -36,8 +36,9 @@ test('Keep Streaming is published before stopped-playback recovery gating', () =
     ')JS";',
   );
   const continuationAt = publish.indexOf('if (publishKeepStreaming()) return true;');
-  const stoppedPlaybackGateAt = publish.indexOf('!playbackEstablished || playing()');
-  assert.ok(continuationAt >= 0 && stoppedPlaybackGateAt > continuationAt);
+  const onboardingAt = publish.indexOf('!recoverableOnboardingVisible()');
+  assert.ok(continuationAt >= 0 && onboardingAt > continuationAt);
+  assert.doesNotMatch(publish, /playbackEstablished|\bplaying\(\)/);
 });
 
 test('Keep Streaming uses a trusted CDP locator that is independent of audio state', () => {

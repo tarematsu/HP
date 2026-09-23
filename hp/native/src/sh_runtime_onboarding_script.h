@@ -2,7 +2,7 @@
 
 namespace hp {
 
-// Recoverable Stationhead music-service onboarding plus explicit playback
+// Stationhead music-service onboarding/recovery plus explicit playback
 // continuation prompts. This is appended inside the same compact-runtime IIFE
 // after the base interaction helpers are declared. It deliberately reuses
 // visible/account/blocking helpers from that owner and only publishes signals
@@ -84,24 +84,20 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   };
 
   const publishRecoverableOnboarding = () => {
-    // Keep Streaming is a continuation confirmation rather than a startup
-    // action. Check it before the stopped-playback recovery gate so it remains
-    // actionable while native audio is still present.
+    // Keep Streaming is a continuation confirmation and is always eligible for
+    // the trusted native allowlist while visible.
     if (publishKeepStreaming()) return true;
 
-    // Connect/Reconnect-style recovery is not a normal foreground action.
-    // Arm it only after this document has positively played once and native
-    // playback state has subsequently gone false. Start Listening keeps its
-    // separate startup path and is not gated by this recovery condition.
-    if (!pageActive || !document.body || !playbackEstablished || playing()) {
+    // Connect/Reconnect/Continue/Let's GO are explicit Stationhead onboarding
+    // actions, not playback-state transitions. Signal them whenever they are
+    // visible, including before first playback and while stale audio state still
+    // reports playing. The native locator revalidates the same narrow allowlist
+    // at click-time. Genuine login routes/forms still block automation.
+    if (!pageActive || !document.body || !recoverableOnboardingVisible()) {
       return false;
     }
     const authenticated = accountVisible();
-    // A genuine login form/route always wins. Only the explicit allowlisted
-    // music-service recovery surface is permitted to clear a stale login latch.
-    if (blockingLogin(authenticated) || !recoverableOnboardingVisible()) {
-      return false;
-    }
+    if (blockingLogin(authenticated)) return false;
     cancelAuthReady();
     lastBlocking = false;
     window.__homepanelStationheadBlockingLoginVisible = false;
