@@ -151,78 +151,20 @@ WHERE NOT EXISTS (
 )
 ORDER BY started_at ASC`;
 
-export const BROADCAST_READ_MODEL_SQL = `WITH summaries AS (
-  SELECT event_name,started_at,ended_at,sample_count,
-    listener_avg,listener_max,likes_max,distinct_tracks,host_handle
-  FROM sh_official_broadcast_summary
-  WHERE host_handle='sakurazaka46jp' AND started_at>=?1 AND started_at<?2
-), canonical_metrics AS (
-  SELECT series.event_name,
-    MIN(CAST(json_extract(point.value,'$[1]') AS REAL)) AS canonical_listener_min,
-    AVG(CAST(json_extract(point.value,'$[1]') AS REAL)) AS canonical_listener_avg,
-    MAX(CAST(json_extract(point.value,'$[1]') AS REAL)) AS canonical_listener_max
-  FROM sh_official_broadcast_series series
-  JOIN json_each(series.points_json) point
-  WHERE series.host_handle='sakurazaka46jp'
-    AND series.started_at>=?1 AND series.started_at<?2
-    AND json_extract(point.value,'$[1]') IS NOT NULL
-  GROUP BY series.event_name
-), session_candidates AS (
-  SELECT summaries.event_name,
-    sessions.id AS session_id,
-    sessions.started_at AS session_started_at,
-    sessions.ended_at AS session_ended_at,
-    sessions.average_listeners,
-    sessions.peak_listeners,
-    sessions.track_count,
-    sessions.comment_count,
-    ROW_NUMBER() OVER (
-      PARTITION BY summaries.event_name
-      ORDER BY CASE WHEN sessions.id IS NULL THEN 1 ELSE 0 END,
-        ABS(COALESCE(sessions.started_at,summaries.started_at)-summaries.started_at),
-        sessions.id DESC
-    ) AS candidate_rank
-  FROM summaries
-  LEFT JOIN sh_host_broadcast_sessions sessions
-    ON sessions.handle='sakurazaka46jp'
-   AND ABS(sessions.started_at-summaries.started_at)<=900000
-), selected_sessions AS (
-  SELECT * FROM session_candidates WHERE candidate_rank=1
-), snapshot_metrics AS (
-  SELECT snapshots.session_id,
-    MIN(snapshots.listener_count) AS listener_min,
-    AVG(snapshots.listener_count) AS snapshot_listener_avg,
-    MAX(snapshots.listener_count) AS snapshot_listener_max
-  FROM sh_host_station_snapshots snapshots
-  JOIN selected_sessions selected ON selected.session_id=snapshots.session_id
-  WHERE snapshots.listener_count IS NOT NULL
-  GROUP BY snapshots.session_id
-)
-SELECT summaries.event_name,
-  summaries.started_at,
-  COALESCE(summaries.ended_at,selected.session_ended_at) AS ended_at,
-  summaries.sample_count,
-  COALESCE(summaries.listener_avg,selected.average_listeners,canonical.canonical_listener_avg,metrics.snapshot_listener_avg) AS listener_avg,
-  COALESCE(canonical.canonical_listener_min,metrics.listener_min) AS listener_min,
-  COALESCE(summaries.listener_max,selected.peak_listeners,canonical.canonical_listener_max,metrics.snapshot_listener_max) AS listener_max,
-  summaries.likes_max,
-  CASE
-    WHEN COALESCE(summaries.distinct_tracks,0)>0 THEN summaries.distinct_tracks
-    ELSE NULLIF(selected.track_count,0)
-  END AS distinct_tracks,
-  CASE WHEN selected.session_id IS NULL THEN NULL ELSE selected.comment_count END AS comment_count,
-  summaries.host_handle,
-  selected.session_id,
-  1 AS has_data
-FROM summaries
-LEFT JOIN canonical_metrics canonical ON canonical.event_name=summaries.event_name
-LEFT JOIN selected_sessions selected ON selected.event_name=summaries.event_name
-LEFT JOIN snapshot_metrics metrics ON metrics.session_id=selected.session_id
+export const BROADCAST_READ_MODEL_SQL = `SELECT
+  event_name,started_at,ended_at,sample_count,
+  listener_avg,listener_min,listener_max,likes_max,distinct_tracks,
+  comment_count,host_handle,session_id,1 AS has_data
+FROM sh_official_broadcast_summary
+WHERE host_handle='sakurazaka46jp' AND started_at>=?1 AND started_at<?2
 UNION ALL
 SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
   EXISTS(SELECT 1 FROM sh_official_broadcast_summary
     WHERE host_handle='sakurazaka46jp') AS has_data
-WHERE NOT EXISTS (SELECT 1 FROM summaries)
+WHERE NOT EXISTS (
+  SELECT 1 FROM sh_official_broadcast_summary
+  WHERE host_handle='sakurazaka46jp' AND started_at>=?1 AND started_at<?2
+)
 ORDER BY started_at ASC`;
 
 export function parseBroadcastSummaryRows(resultRows) {
@@ -250,9 +192,9 @@ async function queryBroadcastRows(env, fromTs, toTs) {
   try {
     const result = await env.OTHER_DB.prepare(BROADCAST_READ_MODEL_SQL)
       .bind(fromTs, toTs).all();
-    return { result, storageSource: 'other.official_broadcast_read_model', complete: true };
+    return { result, storageSource: 'other.official_broadcast_summary', complete: true };
   } catch (error) {
-    if (!/no such table|no such view/i.test(String(error?.message || ''))) throw error;
+    if (!/no such table|no such view|no such column/i.test(String(error?.message || ''))) throw error;
     const result = await env.OTHER_DB.prepare(BROADCAST_SUMMARY_SQL)
       .bind(fromTs, toTs, fromTs, toTs).all();
     return { result, storageSource: 'other.official_broadcast_summary', complete: false };
@@ -266,7 +208,7 @@ async function loadBroadcastPayload(env, from, to) {
   try {
     loaded = await queryBroadcastRows(env, fromTs, toTs);
   } catch (error) {
-    if (!/no such table|no such view/i.test(String(error?.message || ''))) throw error;
+    if (!/no such table|no such view|no such column/i.test(String(error?.message || ''))) throw error;
     return {
       ok: true,
       mode: 'broadcasts',
@@ -290,7 +232,7 @@ async function loadBroadcastPayload(env, from, to) {
     rows: parsed.rows,
     setup_required: parsed.setupRequired,
     read_model_complete: loaded.complete,
-    read_model: loaded.complete ? 'official-listening-parties:v1' : 'official-broadcast-summary:fallback',
+    read_model: loaded.complete ? 'official-listening-parties:v2' : 'official-broadcast-summary:fallback',
     storage_source: loaded.storageSource,
     diagnostic: {
       imported_rows: null,
@@ -303,7 +245,7 @@ async function loadBroadcastPayload(env, from, to) {
 
 async function loadBroadcasts(env, from, to) {
   const payload = await cachedHistoryLoad(
-    `broadcasts:v9:${from}:${to}`,
+    `broadcasts:v10:${from}:${to}`,
     30000,
     () => loadBroadcastPayload(env, from, to),
   );
