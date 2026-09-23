@@ -46,26 +46,26 @@ function installMobileTableWidthStyle() {
   style.id = MOBILE_TABLE_STYLE_ID;
   style.textContent = `
     @media (max-width: 760px) {
-      #historyView .table-wrap table.compact-columns,
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table),
       #likesView .table-wrap table {
         width: 100% !important;
         min-width: 100% !important;
         table-layout: fixed !important;
       }
 
-      #historyView .table-wrap table.compact-columns th:nth-child(1),
-      #historyView .table-wrap table.compact-columns td:nth-child(1) { width: 27% !important; }
-      #historyView .table-wrap table.compact-columns th:nth-child(2),
-      #historyView .table-wrap table.compact-columns td:nth-child(2) { width: 28% !important; }
-      #historyView .table-wrap table.compact-columns th:nth-child(3),
-      #historyView .table-wrap table.compact-columns td:nth-child(3) { width: 33% !important; }
-      #historyView .table-wrap table.compact-columns th:nth-child(4),
-      #historyView .table-wrap table.compact-columns td:nth-child(4) { width: 12% !important; }
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) th:nth-child(1),
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) td:nth-child(1) { width: 27% !important; }
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) th:nth-child(2),
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) td:nth-child(2) { width: 28% !important; }
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) th:nth-child(3),
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) td:nth-child(3) { width: 33% !important; }
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) th:nth-child(4),
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) td:nth-child(4) { width: 12% !important; }
 
-      #historyView .table-wrap table.compact-columns th:nth-child(2),
-      #historyView .table-wrap table.compact-columns td:nth-child(2),
-      #historyView .table-wrap table.compact-columns th:nth-child(3),
-      #historyView .table-wrap table.compact-columns td:nth-child(3) {
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) th:nth-child(2),
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) td:nth-child(2),
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) th:nth-child(3),
+      #historyView .table-wrap table.compact-columns:not(.all-host-ranking-table) td:nth-child(3) {
         overflow-wrap: anywhere;
       }
 
