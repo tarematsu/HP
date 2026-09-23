@@ -11,7 +11,7 @@ test('played tracks tab is mounted immediately before likes', () => {
   assert.match(shell, /querySelector\('\[data-view="likes"\]'\)/);
   assert.match(shell, /button\.dataset\.view = 'played-tracks'/);
   assert.match(shell, /likes\.insertAdjacentElement\('beforebegin', button\)/);
-  assert.match(shell, /id="playedTracksView"/);
+  assert.match(shell, /section\.id = 'playedTracksView'/);
 });
 
 test('played tracks uses the fixed September 22 experiment range', () => {
