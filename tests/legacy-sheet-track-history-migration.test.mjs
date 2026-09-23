@@ -6,6 +6,10 @@ const migration = readFileSync(
   new URL('../database/facts-migrations/054_legacy_spreadsheet_track_history.sql', import.meta.url),
   'utf8',
 );
+const countReconciliation = readFileSync(
+  new URL('../database/facts-migrations/055_legacy_spreadsheet_track_history_counts.sql', import.meta.url),
+  'utf8',
+);
 const workflow = readFileSync(
   new URL('../.github/workflows/import-legacy-sheet-track-history.yml', import.meta.url),
   'utf8',
@@ -27,9 +31,9 @@ test('legacy spreadsheet track-history seed uses the 09:00 JST reporting day', (
   assert.equal(days.at(-1)[1], '2025-07-29');
 });
 
-test('legacy spreadsheet track-history seed preserves the verified aggregate totals', () => {
-  const packedMatch = migration.match(/VALUES\('([0-9A-F]+)'\)\s*\),\s*positions/s);
-  assert.ok(packedMatch, 'packed play payload is missing');
+test('legacy spreadsheet count reconciliation preserves the verified source aggregate', () => {
+  const packedMatch = countReconciliation.match(/VALUES\('([0-9A-F]+)'\)\s*\),\s*positions/s);
+  assert.ok(packedMatch, 'reconciled packed play payload is missing');
   const packed = packedMatch[1];
   assert.equal(packed.length % 6, 0);
   assert.equal(packed.length / 6, 1822);
@@ -39,6 +43,7 @@ test('legacy spreadsheet track-history seed preserves the verified aggregate tot
     playCount += Number.parseInt(packed.slice(offset + 4, offset + 6), 16);
   }
   assert.equal(playCount, 14119);
+  assert.match(countReconciliation, /json_set\([\s\S]*'\$\.play_count'/);
 });
 
 test('legacy spreadsheet rows are protected from later ordinary track-history cleanup', () => {
@@ -52,8 +57,10 @@ test('legacy spreadsheet rows are protected from later ordinary track-history cl
 test('legacy Track History is imported by a dedicated one-time workflow, not the normal migration tip', () => {
   assert.equal(descriptor.schema, 'database/facts-migrations/052_current_daily_summary_projection.sql');
   assert.equal(descriptor.migrations.includes('database/facts-migrations/054_legacy_spreadsheet_track_history.sql'), false);
+  assert.equal(descriptor.migrations.includes('database/facts-migrations/055_legacy_spreadsheet_track_history_counts.sql'), false);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /053_pages_track_history_daily_read_model\.sql/);
   assert.match(workflow, /054_legacy_spreadsheet_track_history\.sql/);
+  assert.match(workflow, /055_legacy_spreadsheet_track_history_counts\.sql/);
   assert.match(workflow, /day_count: 33, row_count: 1822, total_plays: 14119/);
 });
