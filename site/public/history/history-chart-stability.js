@@ -16,6 +16,7 @@ function conceal(mode = activeMode()) {
   canvas.style.opacity = '0';
   canvas.style.pointerEvents = 'none';
   canvas.dataset.paintPending = 'true';
+  delete canvas.dataset.paintStable;
   delete canvas.dataset.periodChart;
   delete canvas.dataset.rankingChart;
   fallbackTimer = setTimeout(() => reveal(0), 1800);
@@ -37,6 +38,10 @@ function reveal(delay = 0) {
   }, delay);
 }
 
+function hasStablePaint() {
+  return Boolean(canvas?.dataset?.paintStable === 'true' && canvas.style.opacity !== '0');
+}
+
 if (canvas) {
   conceal();
 
@@ -50,7 +55,12 @@ if (canvas) {
 
   document.getElementById('modeTabs')?.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-mode]');
-    if (button) conceal(button.dataset.mode);
+    if (!button) return;
+    const nextMode = String(button.dataset.mode || '');
+    if (nextMode && nextMode !== activeMode()) conceal(nextMode);
   }, true);
-  document.getElementById('load')?.addEventListener('click', () => conceal(), true);
+
+  document.getElementById('load')?.addEventListener('click', () => {
+    if (!hasStablePaint()) conceal();
+  }, true);
 }
