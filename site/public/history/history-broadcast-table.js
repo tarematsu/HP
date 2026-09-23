@@ -94,6 +94,12 @@
       #historyView .table-wrap table.official-party-table td:nth-child(n+10) {
         display: none !important;
       }
+      #historyView .table-wrap table.official-party-table th:nth-child(8),
+      #historyView .table-wrap table.official-party-table td:nth-child(8),
+      #historyView .table-wrap table.official-party-table th:nth-child(9),
+      #historyView .table-wrap table.official-party-table td:nth-child(9) {
+        text-align: left !important;
+      }
     `;
     document.head.appendChild(style);
   }
