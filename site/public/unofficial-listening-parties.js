@@ -14,7 +14,6 @@ const EVENTS = [
   { date: '2025/07/19', time: '23:00', name: '#坂道Stationhead DAY1', place: "乃木坂46fan's Stationhead", source: 'https://note.com/kyounosuke1218/n/n7b8aa8d414a8', sourceLabel: '告知記事' },
   { date: '2025/07/20', time: '21:00', name: '#坂道Stationhead DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://note.com/kyounosuke1218/n/n7b8aa8d414a8', sourceLabel: '告知記事' },
   { date: '2025/07/21', time: '22:00', name: '#坂道Stationhead DAY3', place: 'Ohisama CH.', source: 'https://note.com/kyounosuke1218/n/n7b8aa8d414a8', sourceLabel: '告知記事' },
-  { date: '2026/07/22', time: '23:00', name: 'シアターおひさま「妄想W-KEYAKI FES.2026」', place: 'Ohisama CH.', source: 'https://t.co/PInSOa9NTx' },
 ];
 
 function mountTab() {
