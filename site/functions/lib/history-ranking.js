@@ -30,10 +30,9 @@ function validRank(value) {
   return number != null && number > 0;
 }
 
-function fandomLabel(artistName, relationType) {
-  const artist = String(artistName || '').trim();
-  if (!artist) return null;
-  return `${artist}(${relationType === 'official' ? '公式' : 'ファンダム'})`;
+function relationLabel(relationType, artistName) {
+  if (!String(artistName || '').trim()) return null;
+  return relationType === 'official' ? '公式' : 'ファンダム';
 }
 
 function decorateFandomRows(rows, metadataRows = rows) {
@@ -42,27 +41,44 @@ function decorateFandomRows(rows, metadataRows = rows) {
     const artistName = String(row?.artist_name || '').trim();
     if (!artistName) continue;
     const relationType = (row?.fandom_type || row?.relation_type) === 'official' ? 'official' : 'fandom';
-    byHost.set(hostKey(row.host_name), { artistName, relationType });
+    byHost.set(hostKey(row.host_name), {
+      artistName,
+      relationType,
+      stationheadChannelName: String(row?.stationhead_channel_name || '').trim() || null,
+    });
   }
   for (const row of rows || []) {
     const metadata = byHost.get(hostKey(row.host_name));
     if (metadata) {
       row.artist_name = metadata.artistName;
       row.fandom_type = metadata.relationType;
+      row.stationhead_channel_name = metadata.stationheadChannelName;
     }
-    row.fandom_label = fandomLabel(row.artist_name, row.fandom_type);
+    row.relation_label = relationLabel(row.fandom_type, row.artist_name);
+    row.fandom_label = String(row.artist_name || '').trim() || null;
   }
   return rows;
 }
 
 async function loadFandomMetadata(env) {
   try {
-    const result = await env.OTHER_DB.prepare(`SELECT host_name,artist_name,relation_type
+    const result = await env.OTHER_DB.prepare(`SELECT host_name,artist_name,relation_type,stationhead_channel_name
 FROM sh_channel_fandoms
 ORDER BY host_name`).all();
     return result.results || [];
   } catch (error) {
-    if (/no such table|no such column/i.test(String(error?.message || ''))) return [];
+    if (/no such column/i.test(String(error?.message || ''))) {
+      try {
+        const legacy = await env.OTHER_DB.prepare(`SELECT host_name,artist_name,relation_type
+FROM sh_channel_fandoms
+ORDER BY host_name`).all();
+        return legacy.results || [];
+      } catch (legacyError) {
+        if (/no such table/i.test(String(legacyError?.message || ''))) return [];
+        throw legacyError;
+      }
+    }
+    if (/no such table/i.test(String(error?.message || ''))) return [];
     throw error;
   }
 }
@@ -194,17 +210,21 @@ function summarizeHostRankings(actualRows) {
     if (!groups.has(key)) {
       groups.set(key, {
         host_name: name,
+        stationhead_channel_name: String(row?.stationhead_channel_name || '').trim() || null,
         artist_name: String(row?.artist_name || '').trim() || null,
         fandom_type: row?.fandom_type === 'official' ? 'official' : row?.artist_name ? 'fandom' : null,
-        fandom_label: String(row?.fandom_label || '').trim() || null,
+        relation_label: String(row?.relation_label || '').trim() || null,
+        fandom_label: String(row?.artist_name || '').trim() || null,
         by_week: new Map(),
       });
     }
     const group = groups.get(key);
-    if (!group.fandom_label && row?.fandom_label) {
+    if (!group.artist_name && row?.artist_name) {
+      group.stationhead_channel_name = String(row.stationhead_channel_name || '').trim() || null;
       group.artist_name = String(row.artist_name || '').trim() || null;
       group.fandom_type = row.fandom_type === 'official' ? 'official' : 'fandom';
-      group.fandom_label = String(row.fandom_label).trim();
+      group.relation_label = relationLabel(group.fandom_type, group.artist_name);
+      group.fandom_label = group.artist_name;
     }
     const previous = group.by_week.get(week);
     if (previous == null || rank < previous) group.by_week.set(week, rank);
@@ -219,10 +239,12 @@ function summarizeHostRankings(actualRows) {
       best_rank: Math.min(...ranks),
       worst_rank: Math.max(...ranks),
     };
-    if (group.fandom_label) {
+    if (group.artist_name) {
+      summary.stationhead_channel_name = group.stationhead_channel_name;
       summary.artist_name = group.artist_name;
       summary.fandom_type = group.fandom_type;
-      summary.fandom_label = group.fandom_label;
+      summary.relation_label = group.relation_label;
+      summary.fandom_label = group.artist_name;
     }
     return summary;
   }).sort((a, b) => b.ranked_weeks - a.ranked_weeks
