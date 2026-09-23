@@ -3,7 +3,10 @@ import {
   runCommittedIsrcMetadataEnrichment,
   runCommittedSpotifyMetadataEnrichment,
 } from './committed-metadata-enrichment.js';
-import { queueNeedsPreservation } from './read-model-metadata-plan.js';
+import {
+  queueNeedsPreservation,
+  readModelNeedsHydration,
+} from './read-model-metadata-plan.js';
 import {
   hydrateReadModelMetadata,
   preserveReadModelForWrite,
@@ -12,6 +15,7 @@ import {
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
+const READ_MODEL_HYDRATION_RETRY_DELAYS_SECONDS = Object.freeze([2, 5, 10]);
 
 function taskKind(body) {
   if (body?.message_type !== 'stationhead-track-metadata'
@@ -21,9 +25,21 @@ function taskKind(body) {
   return String(body.task || '');
 }
 
-async function sendTrackMetadataTask(env, body, task, fields, dependencies) {
+function hydrationAttempt(body) {
+  const value = Number(body?.hydration_attempt);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
+async function sendTrackMetadataTask(
+  env,
+  body,
+  task,
+  fields,
+  dependencies,
+  sendOptions = JSON_QUEUE_SEND_OPTIONS,
+) {
   if (dependencies.enqueueTask) {
-    await dependencies.enqueueTask(task, fields, body);
+    await dependencies.enqueueTask(task, fields, body, sendOptions);
     return;
   }
   if (!env?.TRACK_METADATA_QUEUE?.send) throw new Error('TRACK_METADATA_QUEUE binding is missing');
@@ -32,23 +48,37 @@ async function sendTrackMetadataTask(env, body, task, fields, dependencies) {
     message_version: 1,
     task,
     ...fields,
-  }, JSON_QUEUE_SEND_OPTIONS);
+  }, sendOptions);
 }
 
-async function enqueueReadModelStage(env, body, readModel, task, dependencies) {
+async function enqueueReadModelStage(
+  env,
+  body,
+  readModel,
+  task,
+  dependencies,
+  stageOptions = {},
+) {
   if (dependencies.enqueueReadModelStage) {
-    await dependencies.enqueueReadModelStage(task, readModel, body);
+    await dependencies.enqueueReadModelStage(task, readModel, body, stageOptions);
     return;
   }
   if (task === 'read-model-write' && dependencies.enqueueReadModelWrite) {
     await dependencies.enqueueReadModelWrite(readModel, body);
     return;
   }
-  await sendTrackMetadataTask(env, body, task, {
+  const attempt = stageOptions.hydrationAttempt ?? hydrationAttempt(body);
+  const fields = {
     job_id: body.job_id,
     observed_at: body.observed_at ?? null,
     read_model: readModel,
-  }, dependencies);
+    ...(attempt > 0 ? { hydration_attempt: attempt } : {}),
+  };
+  const delaySeconds = Number(stageOptions.delaySeconds);
+  const sendOptions = Number.isFinite(delaySeconds) && delaySeconds > 0
+    ? { contentType: 'json', delaySeconds: Math.trunc(delaySeconds) }
+    : JSON_QUEUE_SEND_OPTIONS;
+  await sendTrackMetadataTask(env, body, task, fields, dependencies, sendOptions);
 }
 
 async function enqueueCommittedIsrcStage(env, body, job, dependencies) {
@@ -123,6 +153,27 @@ export async function processTrackMetadataTask(env, body, dependencies = EMPTY_D
     if (!body.read_model || !body.job_id) throw new Error('read-model preserve task is invalid');
     const preserve = dependencies.preserveReadModelForWrite || preserveReadModelForWrite;
     const readModel = await preserve(env, body.read_model);
+    const attempt = hydrationAttempt(body);
+    const retryDelay = READ_MODEL_HYDRATION_RETRY_DELAYS_SECONDS[attempt];
+    if (readModelNeedsHydration(readModel) && retryDelay != null) {
+      const nextAttempt = attempt + 1;
+      await enqueueReadModelStage(
+        env,
+        body,
+        readModel,
+        'read-model-hydration',
+        dependencies,
+        { hydrationAttempt: nextAttempt, delaySeconds: retryDelay },
+      );
+      return {
+        task: kind,
+        job_id: body.job_id,
+        pending: true,
+        next_task: 'read-model-hydration',
+        hydration_attempt: nextAttempt,
+        retry_after_seconds: retryDelay,
+      };
+    }
     await enqueueReadModelStage(env, body, readModel, 'read-model-write', dependencies);
     return { task: kind, job_id: body.job_id, pending: true, next_task: 'read-model-write' };
   }
