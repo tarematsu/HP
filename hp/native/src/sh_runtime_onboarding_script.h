@@ -19,7 +19,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   const playbackOnlyAttribute = 'data-homepanel-stationhead-playback-only';
   const onboardingCandidateSelector =
     "button,[role='button'],a,input[type='button'],input[type='submit']," +
-    "div,span,p,[tabindex],[aria-label],[data-testid]";
+    "h1,h2,h3,[role='heading'],div,span,p,[tabindex],[aria-label],[data-testid]";
   const onboardingLabelsOf = element => [
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('data-testid'),
@@ -77,9 +77,9 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
 
   const splitConnectSurfaceVisible = () => {
     // Stationhead has rendered music-service prompts in several different DOM
-    // shapes: semantic buttons, styled div/span controls, and a label with a
-    // separate Connect/Reconnect action. Treat the visible text as the stable
-    // contract and keep all matching local to the same ancestor surface.
+    // shapes: semantic buttons, styled div/span controls, and a heading/label
+    // with a separate Connect/Reconnect action. Treat the visible text as the
+    // stable contract and keep all matching local to the same ancestor surface.
     for (const anchor of document.querySelectorAll(onboardingCandidateSelector)) {
       if (!onboardingMatches(anchor, connectSurfaceLabelPattern)) continue;
       for (let surface = anchor.parentElement, depth = 0;
