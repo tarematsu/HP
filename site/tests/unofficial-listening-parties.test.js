@@ -13,19 +13,20 @@ test('unofficial listening party tab is mounted immediately after the official t
 });
 
 test('unofficial listening party view is table-only with the requested columns', () => {
-  assert.match(viewSource, /<th>日付<\/th><th>時間<\/th><th>長さ<\/th><th>名前<\/th><th>場所<\/th>/);
-  assert.doesNotMatch(viewSource, /最大同接/);
+  assert.match(viewSource, /<th>日付<\/th><th>時間<\/th><th>名前<\/th><th>場所<\/th>/);
+  assert.doesNotMatch(viewSource, /長さ|duration|最大同接/);
   assert.doesNotMatch(viewSource, /<canvas\b/);
   assert.doesNotMatch(viewSource, /chart-panel/);
 });
 
-test('historical unofficial listening party rows and known locations are embedded', () => {
+test('historical unofficial listening party rows use normalized channel names', () => {
   const rows = [...viewSource.matchAll(/\{ date: '[^']+'.+?\},/g)];
   assert.equal(rows.length, 12);
-  assert.match(viewSource, /date: '2024\/10\/25'.+place: 'BUDDIESチャンネル'/);
-  assert.match(viewSource, /date: '2024\/12\/13'.+place: 'imp714p'/);
-  assert.match(viewSource, /date: '2025\/01\/03'.+place: 'Buddiesチャンネル'/);
-  assert.equal((viewSource.match(/duration: ''/g) || []).length, 12);
+  assert.match(viewSource, /date: '2024\/10\/25'.+place: 'Buddies'/);
+  assert.match(viewSource, /date: '2024\/11\/01'.+place: 'MINI'/);
+  assert.match(viewSource, /date: '2024\/12\/13'.+place: 'Team IMP\.'/);
+  assert.match(viewSource, /date: '2024\/12\/30'.+place: 'Ohisama'/);
+  assert.doesNotMatch(viewSource, /BUDDIESチャンネル|Buddiesチャンネル|MINIチャンネル|Ohisamaチャンネル|imp714p/);
 });
 
 test('dashboard routing recognizes the unofficial view and loads it before tab setup', () => {
