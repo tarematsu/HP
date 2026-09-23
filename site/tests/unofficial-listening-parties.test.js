@@ -13,7 +13,7 @@ test('unofficial listening party tab is mounted immediately after the official t
 });
 
 test('unofficial listening party view is table-only with the requested columns', () => {
-  assert.match(viewSource, /<th>日付<\/th><th>時間<\/th><th>名前<\/th><th>場所<\/th>/);
+  assert.match(viewSource, /<th>日付<\/th><th>時間<\/th><th>名前<\/th><th>場所<\/th><th>出典<\/th>/);
   assert.doesNotMatch(viewSource, /長さ|duration|最大同接/);
   assert.doesNotMatch(viewSource, /<canvas\b/);
   assert.doesNotMatch(viewSource, /chart-panel/);
@@ -31,6 +31,22 @@ test('historical unofficial listening party rows use formal hosting channel name
   assert.match(viewSource, /date: '2024\/12\/29'.+place: 'WithUチャンネル'/);
   assert.match(viewSource, /date: '2024\/12\/30'.+place: 'Ohisama CH\.'/);
   assert.doesNotMatch(viewSource, /BUDDIESチャンネル|Buddiesチャンネル|Ohisamaチャンネル|imp714p/);
+});
+
+test('every historical row links to a Buddies Stationhead X announcement source', () => {
+  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 12);
+  assert.match(viewSource, /sourceLink\.textContent = 'X告知'/);
+  assert.match(viewSource, /sourceLink\.target = '_blank'/);
+  assert.match(viewSource, /sourceLink\.rel = 'noopener noreferrer'/);
+  assert.match(viewSource, /1818995243200758205/);
+  assert.match(viewSource, /1831301387424342514/);
+  assert.match(viewSource, /1834834469531902262/);
+  assert.match(viewSource, /1849435676288196988/);
+  assert.match(viewSource, /1851972681962525075/);
+  assert.match(viewSource, /1866105637178142945/);
+  assert.match(viewSource, /1869336911619494103/);
+  assert.match(viewSource, /1872235924760735993/);
+  assert.match(viewSource, /1872628541235560835/);
 });
 
 test('dashboard routing recognizes the unofficial view and loads it before tab setup', () => {
