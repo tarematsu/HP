@@ -3,6 +3,7 @@ const STABLE_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking']);
 let armed = false;
 let fallbackTimer = 0;
 let revealTimer = 0;
+let paintedMode = '';
 
 function activeMode() {
   return String(document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode || location.hash.slice(1) || 'weekly');
@@ -16,6 +17,7 @@ function conceal(mode = activeMode()) {
   canvas.style.opacity = '0';
   canvas.style.pointerEvents = 'none';
   canvas.dataset.paintPending = 'true';
+  delete canvas.dataset.paintStable;
   delete canvas.dataset.periodChart;
   delete canvas.dataset.rankingChart;
   fallbackTimer = setTimeout(() => reveal(0), 1800);
@@ -37,20 +39,33 @@ function reveal(delay = 0) {
   }, delay);
 }
 
+function hasStablePaint() {
+  return Boolean(canvas?.dataset?.paintStable === 'true' && canvas.style.opacity !== '0');
+}
+
 if (canvas) {
   conceal();
 
   window.addEventListener('history:period-chart-drawn', (event) => {
-    if (['daily', 'weekly', 'monthly'].includes(String(event?.detail?.mode || activeMode()))) reveal(0);
+    const mode = String(event?.detail?.mode || activeMode());
+    if (!['daily', 'weekly', 'monthly'].includes(mode)) return;
+    paintedMode = mode;
+    reveal(0);
   });
 
   window.addEventListener('history:ranking-chart-drawn', () => {
+    paintedMode = 'ranking';
     if (activeMode() === 'ranking') reveal(80);
   });
 
   document.getElementById('modeTabs')?.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-mode]');
-    if (button) conceal(button.dataset.mode);
+    if (!button) return;
+    const nextMode = String(button.dataset.mode || '');
+    if (nextMode && nextMode !== paintedMode) conceal(nextMode);
   }, true);
-  document.getElementById('load')?.addEventListener('click', () => conceal(), true);
+
+  document.getElementById('load')?.addEventListener('click', () => {
+    if (!hasStablePaint()) conceal();
+  }, true);
 }
