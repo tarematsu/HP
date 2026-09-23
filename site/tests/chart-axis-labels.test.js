@@ -31,8 +31,8 @@ test('history axis titles cover summary, ranking, and official listening-party m
   assert.doesNotMatch(axisLabels, /期間再生数/);
 });
 
-test('current 24-hour chart keeps explicit left, right, and bottom axis labels', () => {
+test('current 24-hour chart keeps explicit online and bottom axis labels', () => {
   assert.match(currentChart, /fillText\('オンライン数\(人\)'/);
-  assert.match(currentChart, /fillText\('コメント\/2分'/);
+  assert.doesNotMatch(currentChart, /fillText\('コメント\/2分'/);
   assert.match(currentChart, /fillText\('時刻 \(JST\)'/);
 });

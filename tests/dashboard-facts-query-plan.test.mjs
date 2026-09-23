@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { FACTS_LATEST_SQL } from '../site/functions/lib/dashboard-facts.js';
 
-test('latest facts query seeks one fact and a channel-local comment range', () => {
+test('latest facts query seeks one fact without a comment-range scan', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`
     CREATE TABLE sh_minute_facts(
@@ -38,10 +38,9 @@ test('latest facts query seeks one fact and a channel-local comment range', () =
   const details = db.prepare(`EXPLAIN QUERY PLAN ${FACTS_LATEST_SQL}`).all()
     .map((row) => String(row.detail));
   assert.ok(details.some((line) => line.includes('idx_sh_minute_facts_live_minute (source_code=?)')));
-  assert.ok(details.some((line) => line.includes(
-    'idx_sh_minute_facts_source_channel_minute_desc (source_code=? AND channel_id=? AND minute_at>? AND minute_at<?)',
-  )));
+  assert.ok(!details.some((line) => line.includes('idx_sh_minute_facts_source_channel_minute_desc')));
   assert.ok(details.some((line) => line.includes('SEARCH v USING INTEGER PRIMARY KEY')));
   assert.ok(!details.some((line) => line.includes('MATERIALIZE sh_minute_fact_context')));
+  assert.doesNotMatch(FACTS_LATEST_SQL, /comment_count|comment_velocity/);
   db.close();
 });

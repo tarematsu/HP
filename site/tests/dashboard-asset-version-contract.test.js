@@ -18,20 +18,27 @@ function assetVersion(source, asset) {
   return match[1];
 }
 
-test('dashboard asset dependency chain uses one explicit deployment version', () => {
-  const versions = [
-    assetVersion(html, 'app-lite.css'),
-    assetVersion(html, 'monochrome.css'),
-    assetVersion(html, 'dashboard-metrics.js'),
-    assetVersion(entry, 'dashboard-header.js'),
-    assetVersion(entry, 'dashboard-tabs.js'),
-    assetVersion(entry, 'dashboard-fetch-cache.js'),
-    assetVersion(entry, 'dashboard-daily-summaries.js'),
-    assetVersion(entry, 'dashboard-client.js'),
-    assetVersion(header, 'dashboard-fixes.css'),
-  ];
+test('dashboard asset dependency chain gives every cacheable asset an explicit version', () => {
+  const versions = {
+    appLite: assetVersion(html, 'app-lite.css'),
+    monochrome: assetVersion(html, 'monochrome.css'),
+    entry: assetVersion(html, 'dashboard-metrics.js'),
+    header: assetVersion(entry, 'dashboard-header.js'),
+    tabs: assetVersion(entry, 'dashboard-tabs.js'),
+    fetchCache: assetVersion(entry, 'dashboard-fetch-cache.js'),
+    dailySummaries: assetVersion(entry, 'dashboard-daily-summaries.js'),
+    comparison: assetVersion(entry, 'dashboard-chart-comparison.js'),
+    chartDetail: assetVersion(entry, 'dashboard-chart-detail.js'),
+    client: assetVersion(entry, 'dashboard-client.js'),
+    fixes: assetVersion(header, 'dashboard-fixes.css'),
+  };
 
-  assert.equal(new Set(versions).size, 1, `dashboard assets use mixed versions: ${versions.join(', ')}`);
+  assert.equal(versions.entry, '20260923.5');
+  assert.equal(versions.comparison, '20260923.6');
+  assert.equal(versions.chartDetail, '20260923.5');
+  for (const [asset, version] of Object.entries(versions)) {
+    assert.match(version, /^\d{8}\.\d+$/, `${asset} has an invalid deployment version: ${version}`);
+  }
 });
 
 test('fixed entry URLs without a version cannot silently return stale layout code', () => {

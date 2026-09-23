@@ -2,7 +2,7 @@ name: Audit and repair Stationhead 24h facts
 
 on:
   schedule:
-    - cron: "0 0,12 * * *"
+    - cron: "7 12 * * *"
   workflow_dispatch:
 
 permissions:

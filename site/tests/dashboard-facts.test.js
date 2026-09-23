@@ -19,7 +19,7 @@ const dayText = (value) => new Date(value).toISOString().slice(0, 10);
 test('facts dashboard SQL preserves the unified dashboard response contract', () => {
   assert.match(FACTS_LATEST_SQL, /FROM sh_minute_facts AS f/);
   assert.match(FACTS_LATEST_SQL, /INDEXED BY idx_sh_minute_facts_live_minute/);
-  assert.match(FACTS_LATEST_SQL, /recent INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
+  assert.doesNotMatch(FACTS_LATEST_SQL, /comment_velocity|comment_count|recent INDEXED BY/);
   assert.match(FACTS_LATEST_SQL, /reported_total_listens AS total_listens/);
   assert.match(FACTS_LATEST_SQL, /reported_current_stream_count AS current_stream_count/);
   assert.doesNotMatch(FACTS_LATEST_SQL, /previous\./);
@@ -29,7 +29,7 @@ test('facts dashboard SQL preserves the unified dashboard response contract', ()
   assert.match(FACTS_HISTORY_24H_SQL, /FROM sh_dashboard_history_5m r/);
   assert.match(FACTS_HISTORY_24H_SQL, /r\.bucket_at>=unixepoch\('now','-24 hours'\)\*1000/);
   assert.match(FACTS_HISTORY_24H_SQL, /SELECT d\.last_total_member_count/);
-  assert.doesNotMatch(FACTS_HISTORY_24H_SQL, /ROW_NUMBER\(\) OVER|RANGE BETWEEN 60000/);
+  assert.doesNotMatch(FACTS_HISTORY_24H_SQL, /comment_velocity|ROW_NUMBER\(\) OVER|RANGE BETWEEN 60000/);
   assert.match(FACTS_HISTORY_SINCE_SQL, /FROM sh_dashboard_history_5m r/);
   assert.match(FACTS_HISTORY_SINCE_SQL, /r\.observed_at>\?/);
   assert.match(FACTS_PREDICTION_24H_SQL, /FROM sh_dashboard_history_5m r/);
@@ -160,7 +160,7 @@ test('unified dashboard includes facts, history and completed daily summaries', 
   assert.equal(payload.daily_summaries.yesterday.stream_growth, 55);
   assert.equal(payload.daily_summaries.day_before_yesterday.member_growth, 7);
   assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
-  assert.equal(other.callsMatching(/FROM sh_comment_velocity_samples/).length, 1);
+  assert.equal(other.callsMatching(/FROM sh_comment_velocity_samples/).length, 0);
   assert.equal(facts.callsMatching(/r\.bucket_at>=\? AND r\.bucket_at<\?/).length, 1);
   assert.equal(db.callsMatching(/snapshots\.observed_at >=/).length, 0);
 });

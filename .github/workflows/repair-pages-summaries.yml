@@ -1,0 +1,70 @@
+name: Repair pages summaries
+
+on:
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-summary-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair historical Pages summaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      OTHER_DATABASE_NAME: stationhead-other
+      D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
+      D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '2750000'
+      D1_ACTIONS_READ_PROJECTION_MINUTES: '60'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          show-progress: false
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Check D1 Actions read and write budgets
+        id: d1-budget
+        run: node ../scripts/cloudflare-d1-write-guard.mjs
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Repair historical summaries
+        if: steps.d1-budget.outputs.allowed == 'true'
+        env:
+          PAGES_STREAM_ZERO_REPAIR_ENABLED: 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/repair-single-sample-stream-summaries.mjs 2>&1 | tee pages-summary-repair.log
+          node scripts/repair-pages-summary-gaps.mjs 2>&1 | tee -a pages-summary-repair.log
+      - name: Record budget deferral
+        if: steps.d1-budget.outputs.allowed != 'true'
+        shell: bash
+        run: |
+          echo "Pages summary repair deferred by D1 budget guard: ${{ steps.d1-budget.outputs.reason }}" | tee pages-summary-repair.log
+      - name: Upload repair log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-summary-repair-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/pages-summary-repair.log
+          if-no-files-found: ignore
+          retention-days: 7
