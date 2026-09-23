@@ -349,7 +349,11 @@ ORDER BY rank ASC`).bind(extracted.ranking_date, RANKING_TYPE).all();
       now,
     ));
   }
-  await db.batch(statements);
+  if (typeof db.script === 'function') {
+    await db.script(statements);
+  } else {
+    await db.batch(statements);
+  }
   return {
     status: 'imported',
     ranking_date: extracted.ranking_date,
