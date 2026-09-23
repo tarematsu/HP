@@ -5,7 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const DAY_MS = 86_400_000;
-const MODEL_VERSION = 1;
+const MODEL_VERSION = 2;
+const STATIONHEAD_CHANNEL_BY_ARTIST = new Map([
+  ['櫻坂46', 'Buddies'],
+  ['SixTONES', 'team SixTONES'],
+  ['BTS', 'BTS ARMY'],
+  ['JO1', 'JAM'],
+  ['BE:FIRST', 'BESTY'],
+  ['King & Prince', 'Tiara'],
+  ['Stray Kids', 'STAYS'],
+  ['SB19', 'ATIN'],
+  ['ROSÉ', 'numberoneHQ'],
+]);
 
 function hostKey(value) {
   return String(value || '').trim().toLowerCase();
@@ -40,6 +51,7 @@ function decorateRows(rows, fandomRows) {
     metadata.set(hostKey(row.host_name), {
       artist_name: artistName,
       fandom_type: row.relation_type === 'official' ? 'official' : 'fandom',
+      stationhead_channel_name: STATIONHEAD_CHANNEL_BY_ARTIST.get(artistName) || null,
     });
   }
   return (rows || []).map((row) => {
@@ -49,10 +61,12 @@ function decorateRows(rows, fandomRows) {
       decorated.artist_name = fandom.artist_name;
       decorated.fandom_type = fandom.fandom_type;
       decorated.fandom_label = fandomLabel(fandom.artist_name, fandom.fandom_type);
+      decorated.stationhead_channel_name = fandom.stationhead_channel_name;
     } else {
       decorated.artist_name = null;
       decorated.fandom_type = null;
       decorated.fandom_label = null;
+      decorated.stationhead_channel_name = null;
     }
     return decorated;
   });
@@ -89,6 +103,7 @@ function completeTimeline(actualRows, rankingWeeks) {
     const key = hostKey(host);
     const first = firstSeen.get(key);
     if (!first) continue;
+    const hostMetadata = actualRows.find((row) => hostKey(row.host_name) === key);
     for (const week of rankingWeeks) {
       if (week < first) continue;
       const actual = actualByWeekHost.get(`${week}\u0000${key}`);
@@ -106,9 +121,10 @@ function completeTimeline(actualRows, rankingWeeks) {
         source_sheet: null,
         quality_score: null,
         quality_flags: 'not_listed',
-        artist_name: actualRows.find((row) => hostKey(row.host_name) === key)?.artist_name || null,
-        fandom_type: actualRows.find((row) => hostKey(row.host_name) === key)?.fandom_type || null,
-        fandom_label: actualRows.find((row) => hostKey(row.host_name) === key)?.fandom_label || null,
+        artist_name: hostMetadata?.artist_name || null,
+        fandom_type: hostMetadata?.fandom_type || null,
+        fandom_label: hostMetadata?.fandom_label || null,
+        stationhead_channel_name: hostMetadata?.stationhead_channel_name || null,
         synthetic: true,
         is_out_of_rank: true,
       });
@@ -141,6 +157,15 @@ async function ensureReadModelTable(db) {
   )`).run();
 }
 
+function storedModelVersion(existing) {
+  try {
+    const payload = JSON.parse(String(existing?.payload_json || '{}'));
+    return Number(payload?.version) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function materializeWeeklyRankingReadModel(db, now = Date.now()) {
   await ensureReadModelTable(db);
   const [rankingResult, fandomResult, weeklyResult, existing] = await Promise.all([
@@ -156,7 +181,7 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now()) {
       member_start,member_end,member_growth,likes_max,distinct_tracks,primary_host,
       quality_score,quality_flags
       FROM sh_weekly_summary ORDER BY period_key ASC`).all(),
-    db.prepare('SELECT source_max_ranking_date,refreshed_at FROM sh_weekly_ranking_read_model WHERE id=1').first(),
+    db.prepare('SELECT source_max_ranking_date,payload_json,refreshed_at FROM sh_weekly_ranking_read_model WHERE id=1').first(),
   ]);
 
   const model = buildWeeklyRankingReadModel(
@@ -165,7 +190,9 @@ export async function materializeWeeklyRankingReadModel(db, now = Date.now()) {
     weeklyResult.results || [],
     now,
   );
-  if (existing?.source_max_ranking_date && existing.source_max_ranking_date === model.source_max_ranking_date) {
+  if (existing?.source_max_ranking_date
+      && existing.source_max_ranking_date === model.source_max_ranking_date
+      && storedModelVersion(existing) === MODEL_VERSION) {
     return {
       status: 'unchanged',
       source_max_ranking_date: model.source_max_ranking_date,
