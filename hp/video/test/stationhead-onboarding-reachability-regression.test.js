@@ -43,10 +43,7 @@ test('recoverable Stationhead onboarding clears stale login state and signals na
   assert.match(interaction, /if \(publishRecoverableOnboarding\(\)\) return;/);
 });
 
-test('recoverable onboarding is armed only after established playback is lost', () => {
-  assert.match(interaction, /let playbackEstablished = false;/);
-  assert.match(interaction, /if \(current\) playbackEstablished = true;/);
-
+test('allowlisted onboarding is signaled before first playback and despite stale playing state', () => {
   const publish = section(
     onboarding,
     'const publishRecoverableOnboarding = () => {',
@@ -54,9 +51,11 @@ test('recoverable onboarding is armed only after established playback is lost', 
   );
   assert.match(
     publish,
-    /!pageActive \|\| !document\.body \|\| !playbackEstablished \|\| playing\(\)/,
+    /!pageActive \|\| !document\.body \|\| !recoverableOnboardingVisible\(\)/,
   );
+  assert.doesNotMatch(publish, /!playbackEstablished|\bplaying\(\)/);
   assert.match(publish, /const authenticated = accountVisible\(\);/);
+  assert.match(publish, /if \(blockingLogin\(authenticated\)\) return false;/);
 });
 
 test('recoverable onboarding does not depend on semantic button or heading markup', () => {
@@ -104,7 +103,7 @@ test('compact runtime composes onboarding before lifecycle execution', () => {
   assert.match(compact, /script\.append\(onboarding\)/);
 });
 
-test('existing four-second media probe retries recoverable onboarding without a new high-rate poller', () => {
+test('existing four-second media probe retries allowlisted onboarding without a new high-rate poller', () => {
   const probe = section(
     lifecycle,
     'const probeMediaProgress = () => {',
