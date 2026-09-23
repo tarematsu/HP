@@ -30,7 +30,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
   const semanticSelector =
     "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
-  const candidateSelector = semanticSelector + ',div,span,p';
+  const candidateSelector =
+    semanticSelector + ",h1,h2,h3,[role='heading'],div,span,p";
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const labelsOf = element => [
     element?.getAttribute?.('aria-label'),
@@ -64,7 +65,7 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
 
   const clickableTargetFor = element => {
     for (let current = element, depth = 0;
-         current && current !== document.body && depth < 8;
+         current && current !== document.body && depth < 12;
          current = current.parentElement, depth += 1) {
       if (!rendered(current)) continue;
       const tag = String(current.tagName || '').toLowerCase();
@@ -77,7 +78,7 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
         return current;
       }
     }
-    return rendered(element) ? element : null;
+    return null;
   };
 )JS");
 
@@ -105,17 +106,26 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     return { x, y };
   };
 
-  const pointForPattern = pattern => {
+  const actionablePointForPattern = pattern => {
     for (const element of document.querySelectorAll(candidateSelector)) {
       if (!visuallyRendered(element) || !matchesLabel(element, pattern)) continue;
-      const target = clickableTargetFor(element);
-      const point = pointOf(target);
+      const point = pointOf(clickableTargetFor(element));
+      if (point) return point;
+    }
+    return null;
+  };
+
+  const plainPointForPattern = pattern => {
+    for (const element of document.querySelectorAll(candidateSelector)) {
+      if (!rendered(element) || !matchesLabel(element, pattern)) continue;
+      const point = pointOf(element);
       if (point) return point;
     }
     return null;
   };
 
   const splitConnectSurfacePoint = () => {
+    let plainFallback = null;
     for (const anchor of document.querySelectorAll(candidateSelector)) {
       if (!visuallyRendered(anchor) ||
           !matchesLabel(anchor, connectSurfaceLabelPattern)) continue;
@@ -126,13 +136,15 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
         for (const action of surface.querySelectorAll(candidateSelector)) {
           if (!visuallyRendered(action) ||
               !matchesLabel(action, connectSurfaceActionPattern)) continue;
-          const target = clickableTargetFor(action);
-          const point = pointOf(target);
-          if (point) return point;
+          const actionable = pointOf(clickableTargetFor(action));
+          if (actionable) return actionable;
+          if (!plainFallback && rendered(action)) {
+            plainFallback = pointOf(action);
+          }
         }
       }
     }
-    return null;
+    return plainFallback;
   };
 
   const playing = () => {
@@ -170,21 +182,32 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
 
   if (!document.body) return null;
 
-  // All allowlisted onboarding actions share one resolution path. This covers
-  // semantic buttons as well as visually identical div/span controls.
-  const onboardingPoint = pointForPattern(allowedOnboardingPattern);
-  if (onboardingPoint) return onboardingPoint;
+  // Prefer genuine actionable controls before any text-only fallback. In the
+  // split `Reconnect Music` layout the heading and the Reconnect button are
+  // siblings; clicking the heading first would consume every retry without
+  // ever reaching the real action.
+  const actionableOnboardingPoint =
+      actionablePointForPattern(allowedOnboardingPattern);
+  if (actionableOnboardingPoint) return actionableOnboardingPoint;
   const splitConnectPoint = splitConnectSurfacePoint();
   if (splitConnectPoint) return splitConnectPoint;
+  const plainOnboardingPoint = plainPointForPattern(allowedOnboardingPattern);
+  if (plainOnboardingPoint) return plainOnboardingPoint;
 
   // Playback-start actions remain blocked by genuine login/account UI and by an
   // already-playing document, but their DOM semantics are intentionally ignored.
   if (playing() || accountInteractionVisible()) return null;
+  let plainStartFallback = null;
   for (const element of document.querySelectorAll(candidateSelector)) {
     if (!visuallyRendered(element) || !matchesLabel(element, startPattern)) continue;
     if (element.matches?.('audio,video') || element.querySelector?.('audio,video')) continue;
     const target = clickableTargetFor(element);
-    if (!target) continue;
+    if (!target) {
+      if (!plainStartFallback && rendered(element)) {
+        plainStartFallback = pointOf(element);
+      }
+      continue;
+    }
     const href = String(
       target.getAttribute?.('href') || element.getAttribute?.('href') || '').toLowerCase();
     if (/(^|\/)(login|signin|sign-in|auth|account|settings)(\/|$)|spotify|authorize|consent/.test(href)) {
@@ -198,7 +221,7 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     const point = pointOf(target);
     if (point) return point;
   }
-  return null;
+  return plainStartFallback;
 })()
 )JS");
   return script;

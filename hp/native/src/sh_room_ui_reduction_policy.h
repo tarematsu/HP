@@ -47,10 +47,9 @@ inline std::wstring StationheadRoomUiReductionScript() {
     const style = document.createElement('style');
     style.id = styleId;
     style.textContent = `
-      /* Static room cleanup before playback. These selectors are intentionally
-         presentation-only; account/playback/media elements are not matched. */
-      aside,
-      [role='complementary'],
+      /* Static room cleanup before playback. Keep selectors tied to explicit
+         presentation semantics. Never hide generic structural containers or
+         reusable button classes because recovery controls can be mounted there. */
       [data-testid*='chat' i], [id*='chat' i], [class*='chat' i], [aria-label*='chat' i],
       [data-testid*='thread' i], [id*='thread' i], [class*='thread' i], [aria-label*='thread' i],
       [data-testid*='listener' i], [id*='listener' i], [class*='listener' i], [aria-label*='listener' i],
@@ -64,16 +63,9 @@ inline std::wstring StationheadRoomUiReductionScript() {
       button[aria-label='Add a GIF'],
       button[aria-label*='react' i],
 
-      /* Audited room action rows: Follow/Threads/Request/Ask/Share/App/Access. */
-      :is(a,button)[class~='button--full-width'][class~='button--md'][class~='h-12'][class~='justify-between'],
+      /* Explicit room action/presentation contracts only. */
       a[aria-label='Open threads'],
       a[href$='/threads'],
-
-      /* Audited host/profile and listener-count presentation controls. */
-      button[class~='w-full'][class~='cursor-pointer'][class~='flex-col'][class~='items-center'][class~='gap-1.5'],
-      button[class~='h-6'][class~='shrink-0'][class~='rounded-xl'][class~='border-borderRoom'][class~='caption-2-semibold'],
-
-      /* Audited streaming-party presentation card controls. */
       button[aria-label='View streaming party details'],
       button[aria-label='Copy link'],
 
@@ -84,8 +76,8 @@ inline std::wstring StationheadRoomUiReductionScript() {
       aside:has(textarea[class~='min-w-0'][class~='flex-1'][class~='resize-none'][class~='bg-transparent']),
       [role='complementary']:has(textarea[class~='min-w-0'][class~='flex-1'][class~='resize-none'][class~='bg-transparent']),
 
-      /* Audited room mini-player controls; playback itself is not modified. */
-      footer,
+      /* Hide only explicit mini-player controls; keep footer itself available
+         because Stationhead can mount recovery actions in structural shells. */
       button[aria-label='Toggle Mute'],
       [aria-label='Volume'],
       input[type='range'] {

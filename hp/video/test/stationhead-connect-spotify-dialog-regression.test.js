@@ -16,10 +16,10 @@ function section(text, start, end) {
   return text.slice(startAt, endAt);
 }
 
-test('CONNECT SPOTIFY is detected without relying on a dialog heading or button tag', () => {
+test('CONNECT SPOTIFY is detected across button, heading and non-semantic markup', () => {
   assert.match(onboarding, /recoverableOnboardingPattern/);
   assert.match(onboarding, /onboardingCandidateSelector/);
-  assert.match(onboarding, /div,span,p/);
+  assert.match(onboarding, /h1,h2,h3,\[role='heading'\],div,span,p/);
   assert.match(onboarding, /onboardingMatches\(element, recoverableOnboardingPattern\)/);
   assert.doesNotMatch(onboarding, /join\s+the\s+party/i);
 });
@@ -31,16 +31,26 @@ test('CONNECT SPOTIFY is eligible before first playback and with stale audio sta
     ')JS";',
   );
   assert.match(publish, /recoverableOnboardingVisible\(\)/);
+  assert.match(publish, /releasePlaybackOnlyForOnboarding\(\)/);
   assert.doesNotMatch(publish, /playbackEstablished|\bplaying\(\)/);
   assert.match(publish, /postText\('start-visible'\)/);
 });
 
-test('native trusted locator resolves visible text to the nearest clickable ancestor', () => {
+test('native trusted locator prefers actionable controls then split dialog then text fallback', () => {
   assert.match(locator, /allowedOnboardingPattern/);
-  assert.match(locator, /const candidateSelector = semanticSelector \+ ',div,span,p'/);
+  assert.match(locator, /const candidateSelector =/);
+  assert.match(locator, /h1,h2,h3,\[role='heading'\],div,span,p/);
   assert.match(locator, /const clickableTargetFor = element =>/);
   assert.match(locator, /typeof current\.onclick === 'function'/);
   assert.match(locator, /style\.cursor === 'pointer'/);
-  assert.match(locator, /pointForPattern\(allowedOnboardingPattern\)/);
+  const body = section(
+    locator,
+    '// Prefer genuine actionable controls before any text-only fallback.',
+    '// Playback-start actions remain blocked',
+  );
+  const actionableAt = body.indexOf('actionablePointForPattern(allowedOnboardingPattern)');
+  const splitAt = body.indexOf('splitConnectSurfacePoint()');
+  const plainAt = body.indexOf('plainPointForPattern(allowedOnboardingPattern)');
+  assert.ok(actionableAt >= 0 && splitAt > actionableAt && plainAt > splitAt);
   assert.doesNotMatch(locator, /join\s+the\s+party/i);
 });

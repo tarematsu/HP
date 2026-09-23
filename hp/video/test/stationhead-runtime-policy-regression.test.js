@@ -42,11 +42,13 @@ test('native Stationhead click locator allows explicit onboarding actions throug
   assert.match(body, /spotify/);
   assert.match(body, /continue/);
   assert.match(body, /let\(\?:'\|’\)\?s/);
-  assert.match(body, /pointForPattern\(allowedOnboardingPattern\)/);
+  assert.match(body, /actionablePointForPattern\(allowedOnboardingPattern\)/);
+  assert.match(body, /splitConnectSurfacePoint\(\)/);
+  assert.match(body, /plainPointForPattern\(allowedOnboardingPattern\)/);
   assert.match(body, /const accountInteractionVisible = \(\) =>/);
   assert.match(body, /credentialSelector/);
   assert.match(body, /homepanelStationheadBlockingLoginVisible === true/);
-  const allowedAt = body.indexOf('pointForPattern(allowedOnboardingPattern)');
+  const allowedAt = body.indexOf('actionablePointForPattern(allowedOnboardingPattern)');
   const authGuardAt = body.indexOf('if (playing() || accountInteractionVisible()) return null;');
   assert.ok(allowedAt >= 0 && authGuardAt > allowedAt);
   assert.match(body, /login\|signin\|sign-in\|auth\|account\|settings/);
@@ -58,22 +60,24 @@ test('native Stationhead click locator allows explicit onboarding actions throug
   );
 });
 
-test('native Stationhead click locator resolves text targets independent of DOM semantics', () => {
+test('native Stationhead click locator resolves semantic, heading and text targets safely', () => {
   const body = section(
     locator,
     'inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed()',
     '}  // namespace hp',
   );
-  assert.match(body, /const candidateSelector = semanticSelector \+ ',div,span,p'/);
+  assert.match(body, /const candidateSelector =/);
+  assert.match(body, /h1,h2,h3,\[role='heading'\],div,span,p/);
   assert.match(body, /const clickableTargetFor = element =>/);
   assert.match(body, /role === 'button'/);
   assert.match(body, /typeof current\.onclick === 'function'/);
   assert.match(body, /style\.cursor === 'pointer'/);
-  assert.match(body, /return rendered\(element\) \? element : null/);
-  assert.match(body, /const pointForPattern = pattern =>/);
+  assert.match(body, /const actionablePointForPattern = pattern =>/);
+  assert.match(body, /const plainPointForPattern = pattern =>/);
+  assert.doesNotMatch(body, /return rendered\(element\) \? element : null/);
 });
 
-test('split Connect surfaces use generic visible labels instead of a fixed heading', () => {
+test('split Connect surfaces support headings and prefer the actual action', () => {
   const body = section(
     locator,
     'inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed()',
@@ -85,10 +89,10 @@ test('split Connect surfaces use generic visible labels instead of a fixed headi
   assert.match(body, /surface\.querySelectorAll\(candidateSelector\)/);
   assert.match(body, /clickableTargetFor\(action\)/);
   assert.doesNotMatch(body, /join\s+the\s+party/i);
-  assert.doesNotMatch(body, /headingSelector|findConnectMusicHeading/);
+  assert.doesNotMatch(body, /findConnectMusicHeading/);
 });
 
-test('Start Listening and equivalent playback actions use the same generic resolver', () => {
+test('Start Listening and equivalent playback actions prefer clickable ancestors with fallback', () => {
   const body = section(
     locator,
     '// Playback-start actions remain blocked',
@@ -97,6 +101,7 @@ test('Start Listening and equivalent playback actions use the same generic resol
   assert.match(body, /document\.querySelectorAll\(candidateSelector\)/);
   assert.match(body, /matchesLabel\(element, startPattern\)/);
   assert.match(body, /clickableTargetFor\(element\)/);
+  assert.match(body, /plainStartFallback/);
 });
 
 test('Connect/Reconnect Music remains auto-clickable instead of becoming login-required', () => {
