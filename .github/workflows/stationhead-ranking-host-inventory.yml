@@ -44,7 +44,8 @@ jobs:
                 MIN(ranking_date) AS first_seen,
                 MAX(ranking_date) AS last_seen,
                 COUNT(*) AS ranked_rows,
-                GROUP_CONCAT(DISTINCT NULLIF(trim(channel_alias), '')) AS aliases
+                GROUP_CONCAT(DISTINCT NULLIF(trim(channel_alias), '')) AS aliases,
+                GROUP_CONCAT(ranking_date || ':' || COALESCE(rank, '')) AS appearances
               FROM sh_channel_rankings
               WHERE channel_name IS NOT NULL AND trim(channel_name) <> ''
               GROUP BY lower(trim(channel_name))
@@ -55,6 +56,7 @@ jobs:
               h.first_seen,
               h.last_seen,
               h.ranked_rows,
+              h.appearances,
               f.artist_name,
               f.relation_type,
               CASE WHEN f.host_name IS NULL THEN 0 ELSE 1 END AS mapped
