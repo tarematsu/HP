@@ -36,15 +36,29 @@ jobs:
         run: |
           set -euo pipefail
           npx wrangler d1 execute "$OTHER_DATABASE_NAME" --remote --yes --json --command "
+            WITH hosts AS (
+              SELECT
+                lower(trim(channel_name)) AS host_key,
+                MIN(channel_name) AS host_name,
+                MIN(ranking_date) AS first_seen,
+                MAX(ranking_date) AS last_seen,
+                COUNT(*) AS ranked_rows
+              FROM sh_channel_rankings
+              WHERE channel_name IS NOT NULL AND trim(channel_name) <> ''
+              GROUP BY lower(trim(channel_name))
+            )
             SELECT
-              MIN(channel_name) AS host_name,
-              MIN(ranking_date) AS first_seen,
-              MAX(ranking_date) AS last_seen,
-              COUNT(*) AS ranked_rows
-            FROM sh_channel_rankings
-            WHERE channel_name IS NOT NULL AND trim(channel_name) <> ''
-            GROUP BY lower(trim(channel_name))
-            ORDER BY lower(trim(channel_name));
+              h.host_name,
+              h.first_seen,
+              h.last_seen,
+              h.ranked_rows,
+              f.artist_name,
+              f.relation_type,
+              CASE WHEN f.host_name IS NULL THEN 0 ELSE 1 END AS mapped
+            FROM hosts h
+            LEFT JOIN sh_channel_fandoms f
+              ON lower(trim(f.host_name)) = h.host_key
+            ORDER BY h.host_key;
           " | tee ../stationhead-ranking-host-inventory.json
       - uses: actions/upload-artifact@v4
         with:
