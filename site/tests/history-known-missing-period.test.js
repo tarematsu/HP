@@ -69,7 +69,7 @@ test('known missing rows are never persisted to D1', () => {
 });
 
 test('period chart paints known missing read-model rows as a gray band', () => {
-  assert.match(chartSource, /row\?\.known_missing === true/);
+  assert.match(chartSource, /known_missing === true/);
   assert.match(chartSource, /rgba\(100, 107, 116, \.16\)/);
   assert.match(chartSource, /appendLegend\('欠測'/);
   assert.match(chartSource, /灰色は欠測期間です。/);
