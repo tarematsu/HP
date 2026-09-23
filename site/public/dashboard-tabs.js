@@ -60,7 +60,7 @@ async function loadRankingStatusRuntime() {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260923.9').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260923.10').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -91,14 +91,20 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
   if (updateUrl) updateLocation(mode, { replace: replaceUrl });
 
   try {
-    if (mode === 'ranking') await loadRankingStatusRuntime();
+    if (mode === 'ranking') {
+      await loadRankingStatusRuntime();
+      if (activeMode !== mode) return;
+    }
     await loadHistoryRuntime();
+    if (activeMode !== mode) return;
     if (syncRuntime && historyRuntimeMode !== mode) {
       tabs?.querySelector(`button[data-mode="${mode}"]`)
         ?.dispatchEvent(new Event('click'));
     }
+    if (activeMode !== mode) return;
     historyRuntimeMode = mode;
   } catch (error) {
+    if (activeMode !== mode) return;
     console.error('history runtime failed to start', error);
     const notice = document.getElementById('notice');
     if (notice) {
@@ -119,6 +125,7 @@ async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
   try {
     await loadLikesRuntime();
   } catch (error) {
+    if (activeMode !== 'likes') return;
     console.error('likes runtime failed to start', error);
     const notice = document.getElementById('likesNotice');
     if (notice) {
