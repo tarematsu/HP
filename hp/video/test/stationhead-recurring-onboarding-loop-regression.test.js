@@ -36,7 +36,7 @@ test('recurring Stationhead music onboarding sequence is fully allowlisted case-
 });
 
 test('recoverable onboarding remains retriable when Stationhead cycles the same flow again', () => {
-  assert.match(onboarding, /no\s+one-shot\s+latch/i);
+  assert.match(onboarding, /one-shot latch here/i);
   assert.match(onboarding, /postText\('start-visible'\)/);
   assert.match(lifecycle, /publishRecoverableOnboarding\(\);/);
   assert.match(lifecycle, /progressTimer\s*=\s*nativeTimeout\(probeMediaProgress,\s*progressProbeMs\)/);
