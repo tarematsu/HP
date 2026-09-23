@@ -1,14 +1,16 @@
 import './history/history-global-fixes.js';
 import './pages-ui-tweaks.js?v=20260921.1';
 import './dashboard-header.js?v=20260923.4';
-import './unofficial-listening-parties.js?v=20260923.1';
+import './unofficial-listening-parties.js?v=20260923.2';
 import './dashboard-tabs.js?v=20260923.9';
 import './dashboard-current-layout.js?v=20260923.4';
+import './dashboard-current-metric-style.js?v=20260923.1';
 import './dashboard-chart-stability.js?v=20260923.4';
 import './dashboard-chart-comparison.js?v=20260923.6';
 import './dashboard-chart-detail.js?v=20260923.5';
 import './dashboard-daily-summaries.js?v=20260923.4';
 import './dashboard-fetch-cache.js?v=20260923.4';
+import './dashboard-queue-metadata-stability.js?v=20260923.1';
 
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
 const imageRetryTimers = new WeakMap();
