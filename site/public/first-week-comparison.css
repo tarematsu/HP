@@ -1,0 +1,149 @@
+.first-week-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.first-week-metric-toggle {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line, #d9dee7);
+  border-radius: 10px;
+  background: var(--soft, #f5f7fa);
+}
+
+.first-week-metric-toggle button {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: .76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.first-week-metric-toggle button.active {
+  background: var(--card, #fff);
+  box-shadow: 0 1px 4px rgba(20, 31, 48, .12);
+}
+
+.first-week-chart-panel,
+.first-week-data-panel {
+  margin-top: 12px;
+}
+
+#firstWeekChart {
+  display: block;
+  width: 100%;
+  height: 360px;
+  touch-action: manipulation;
+}
+
+.first-week-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px 10px;
+  max-width: 72%;
+}
+
+.first-week-legend span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 5px;
+  font-size: .68rem;
+  color: var(--muted, #667287);
+  white-space: nowrap;
+}
+
+.first-week-legend i,
+.first-week-detail-values i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 999px;
+}
+
+.first-week-legend .is-missing {
+  opacity: .52;
+}
+
+.first-week-detail-values {
+  display: grid;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.first-week-detail-values > div {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.first-week-detail-values strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.first-week-table td:nth-child(3),
+.first-week-table td:nth-child(4),
+.first-week-table th:nth-child(3),
+.first-week-table th:nth-child(4) {
+  white-space: nowrap;
+}
+
+.first-week-status-missing {
+  color: var(--muted, #667287);
+}
+
+@media (max-width: 760px) {
+  .first-week-toolbar {
+    margin-bottom: 8px;
+  }
+
+  .first-week-metric-toggle {
+    flex: 1 1 auto;
+  }
+
+  .first-week-metric-toggle button {
+    min-height: 30px;
+    padding-inline: 8px;
+    font-size: 10px;
+  }
+
+  #firstWeekLoad {
+    min-height: 36px;
+  }
+
+  .first-week-chart-panel,
+  .first-week-data-panel {
+    margin-top: 8px;
+  }
+
+  #firstWeekChart {
+    height: 300px;
+  }
+
+  .first-week-legend {
+    justify-content: flex-start;
+    max-width: 100%;
+    margin-top: 5px;
+  }
+
+  .first-week-legend span {
+    max-width: 48%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 9px;
+  }
+}
