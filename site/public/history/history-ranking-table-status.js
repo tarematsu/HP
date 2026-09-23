@@ -45,7 +45,7 @@ function capture(payload) {
   }
 }
 
-function applyStatusLabels() {
+function hideNonRankedRows() {
   if (activeMode() !== MODE || !statusByRow.size) return;
   const head = document.getElementById('thead');
   const body = document.getElementById('tbody');
@@ -57,19 +57,16 @@ function applyStatusLabels() {
   const rankIndex = headers.indexOf('順位');
   if (weekIndex < 0 || hostIndex < 0 || rankIndex < 0) return;
 
-  for (const row of body.querySelectorAll('tr')) {
+  for (const row of [...body.querySelectorAll('tr')]) {
     const cells = [...row.querySelectorAll('td')];
     if (cells.length <= Math.max(weekIndex, hostIndex, rankIndex)) continue;
     const status = statusByRow.get(rowKey(cells[weekIndex].textContent, cells[hostIndex].textContent));
-    if (!status) continue;
-    cells[rankIndex].textContent = status;
-    cells[rankIndex].classList.toggle('ranking-missing-cell', status === '欠測');
-    cells[rankIndex].classList.toggle('ranking-out-cell', status === '圏外');
+    if (status === '欠測' || status === '圏外') row.remove();
   }
 }
 
 function scheduleApply() {
-  queueMicrotask(() => queueMicrotask(applyStatusLabels));
+  queueMicrotask(() => queueMicrotask(hideNonRankedRows));
 }
 
 window.addEventListener('history:data-loaded', (event) => {
