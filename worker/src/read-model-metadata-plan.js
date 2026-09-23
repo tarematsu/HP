@@ -1,15 +1,28 @@
 import { trackNeedsHydration } from './track-metadata-quality.js';
+import { trackTitleArtistKey } from './track-title-artist-identity.js';
 
 function normalizedIdentity(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
 
-function hasTrackIdentity(track) {
+function hasStableTrackIdentity(track) {
   const stationheadTrackId = Number(track?.stationhead_track_id);
   return Boolean(
     String(track?.spotify_id || '').trim()
       || normalizedIdentity(track?.isrc)
       || (Number.isFinite(stationheadTrackId) && stationheadTrackId > 0),
+  );
+}
+
+function hasHydrationLookup(track) {
+  return hasStableTrackIdentity(track) || Boolean(trackTitleArtistKey(track));
+}
+
+function needsProviderIdentity(track) {
+  return Boolean(
+    trackTitleArtistKey(track)
+      && !String(track?.spotify_id || '').trim()
+      && !normalizedIdentity(track?.isrc),
   );
 }
 
@@ -23,8 +36,8 @@ export function queueNeedsHydration(queue) {
   const trackCount = tracks.length;
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
-    if (!track || typeof track !== 'object' || !hasTrackIdentity(track)) continue;
-    if (trackNeedsHydration(track)) return true;
+    if (!track || typeof track !== 'object' || !hasHydrationLookup(track)) continue;
+    if (trackNeedsHydration(track) || needsProviderIdentity(track)) return true;
   }
   return false;
 }
@@ -36,7 +49,7 @@ export function queueNeedsPreservation(queue) {
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
     if (!track || typeof track !== 'object') continue;
-    if (trackNeedsHydration(track) || !track.album_name) return true;
+    if (trackNeedsHydration(track) || needsProviderIdentity(track) || !track.album_name) return true;
   }
   return false;
 }
@@ -49,9 +62,9 @@ export function readModelMetadataTask(readModel) {
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
     if (!track || typeof track !== 'object') continue;
-    const hasIdentity = hasTrackIdentity(track);
-    if (trackNeedsHydration(track)) {
-      if (hasIdentity) return 'read-model-hydration';
+    const hasLookup = hasHydrationLookup(track);
+    if (trackNeedsHydration(track) || needsProviderIdentity(track)) {
+      if (hasLookup) return 'read-model-hydration';
       preserve = true;
       continue;
     }
