@@ -40,10 +40,26 @@ export const ENDED_READ_MODEL_CANDIDATES_SQL = `SELECT
 
 export const UPSERT_ENDED_SUMMARY_SQL = `INSERT INTO sh_official_broadcast_summary(
     host_handle,event_name,started_at,ended_at,started_jst,ended_jst,
-    sample_count,listener_avg,listener_max,likes_max,distinct_tracks,refreshed_at
+    sample_count,listener_avg,listener_min,listener_max,likes_max,distinct_tracks,
+    comment_count,session_id,refreshed_at
   )
   SELECT 'sakurazaka46jp',?,?,?,?,?,
-    COUNT(p.listener_count),AVG(p.listener_count),MAX(p.listener_count),NULL,NULL,?
+    COUNT(p.listener_count),AVG(p.listener_count),MIN(p.listener_count),MAX(p.listener_count),NULL,NULL,
+    (
+      SELECT s.comment_count
+      FROM sh_host_broadcast_sessions AS s
+      WHERE s.handle='sakurazaka46jp' AND ABS(s.started_at-?)<=900000
+      ORDER BY ABS(s.started_at-?),s.id DESC
+      LIMIT 1
+    ),
+    (
+      SELECT s.id
+      FROM sh_host_broadcast_sessions AS s
+      WHERE s.handle='sakurazaka46jp' AND ABS(s.started_at-?)<=900000
+      ORDER BY ABS(s.started_at-?),s.id DESC
+      LIMIT 1
+    ),
+    ?
   FROM sh_official_news_station_probes AS p
   WHERE p.announcement_id=?
     AND p.is_broadcasting=1
@@ -56,9 +72,12 @@ export const UPSERT_ENDED_SUMMARY_SQL = `INSERT INTO sh_official_broadcast_summa
     ended_jst=excluded.ended_jst,
     sample_count=excluded.sample_count,
     listener_avg=excluded.listener_avg,
+    listener_min=excluded.listener_min,
     listener_max=excluded.listener_max,
     likes_max=COALESCE(sh_official_broadcast_summary.likes_max,excluded.likes_max),
     distinct_tracks=COALESCE(sh_official_broadcast_summary.distinct_tracks,excluded.distinct_tracks),
+    comment_count=COALESCE(excluded.comment_count,sh_official_broadcast_summary.comment_count),
+    session_id=COALESCE(excluded.session_id,sh_official_broadcast_summary.session_id),
     refreshed_at=excluded.refreshed_at`;
 
 export const UPSERT_ENDED_SERIES_SQL = `INSERT INTO sh_official_broadcast_series(
@@ -117,6 +136,10 @@ export async function materializeEndedOfficialReadModels(env, completedAt = Date
           end,
           jstDateTime(start),
           jstDateTime(end),
+          start,
+          start,
+          start,
+          start,
           refreshedAt,
           announcement.id,
           start,
