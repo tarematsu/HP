@@ -122,6 +122,20 @@ function syncTableModeClasses(table, mode) {
   if (mode !== 'ranking') table.classList.remove('all-host-ranking-table');
 }
 
+function prepareTableForModeTransition(event) {
+  const button = event?.target?.closest?.('button[data-mode]');
+  if (!button) return;
+  const mode = String(button.dataset.mode || '');
+  const head = document.getElementById('thead');
+  const body = document.getElementById('tbody');
+  if (!head || !body) return;
+  const table = head.closest('table');
+  table?.classList.remove('all-host-ranking-table');
+  syncTableModeClasses(table, mode);
+  head.replaceChildren();
+  body.replaceChildren();
+}
+
 function ensureRankingFandomColumn(head, body) {
   const headers = [...head.querySelectorAll('th')];
   const existingIndex = headers.findIndex((cell) => cell.textContent.trim() === 'ファンダム');
@@ -208,6 +222,9 @@ window.addEventListener('history:data-loaded', (event) => {
 });
 window.addEventListener('history:runtime-ready', scheduleCleanup);
 window.addEventListener('hashchange', scheduleCleanup);
-document.getElementById('modeTabs')?.addEventListener('click', scheduleCleanup);
+document.getElementById('modeTabs')?.addEventListener('click', (event) => {
+  prepareTableForModeTransition(event);
+  scheduleCleanup();
+});
 document.getElementById('more')?.addEventListener('click', scheduleCleanup);
 scheduleCleanup();
