@@ -42,17 +42,20 @@ test('dashboard first paint stays hidden until the comparison renderer settles',
 test('history has one specialized canvas renderer per mode and hides paint until it settles', () => {
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
   assert.match(historyMain, /history-period-chart\.js\?v=20260923\.\d+/);
-  assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.7/);
+  assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.8/);
+  assert.doesNotMatch(historyMain, /history-ranking-missing-gap/);
   assert.match(historyLite, /history:data-loaded/);
   assert.doesNotMatch(historyLite, /function drawSummaryChart|function prepareCanvas|getContext\('2d'\)/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(periodChart, /history:period-chart-drawn/);
   assert.match(rankingChart, /history:data-loaded/);
+  assert.match(rankingChart, /function drawMissingBand\(/);
+  assert.match(rankingChart, /drawMissingBand\(context, model\.weeks, positions, area\)/);
   assert.doesNotMatch(periodChart, /window\.fetch|response\.clone\(\)\.json/);
   assert.doesNotMatch(rankingChart, /window\.fetch|response\.clone\(\)\.json/);
   assert.match(historyStability, /history:period-chart-drawn/);
   assert.match(historyStability, /history:ranking-chart-drawn/);
-  assert.doesNotMatch(historyStability, /MutationObserver/);
+  assert.doesNotMatch(historyStability, /MutationObserver|getContext\('2d'\)|clearRect\(/);
   assert.match(historyStability, /paintPending/);
   assert.match(historyStability, /paintStable/);
   assert.match(historyStability, /document\.getElementById\('load'\)/);
