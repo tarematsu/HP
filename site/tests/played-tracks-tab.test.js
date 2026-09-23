@@ -34,6 +34,14 @@ test('weekly played tracks uses a Monday start and seven-day range', () => {
   assert.match(runtime, /normalizedRows\(payload\.rows, from, to\)/);
 });
 
+test('played tracks chart uses neon colors and labels only the top five tracks', () => {
+  assert.match(runtime, /hsl\(\$\{hue\} 100% 60%\)/);
+  assert.match(runtime, /if \(index < 5\)/);
+  assert.match(runtime, /const rawTitle = trackLabel\(label\.row\)/);
+  assert.match(runtime, /integer\.format\(label\.row\.play_count\)/);
+  assert.match(runtime, /上位5曲は曲名と再生数を表示/);
+});
+
 test('track history exposes a lightweight date index from the daily read model', () => {
   assert.match(api, /url\.searchParams\.get\('dates_only'\) === '1'/);
   assert.match(api, /FROM sh_pages_track_history_daily_read_model/);
