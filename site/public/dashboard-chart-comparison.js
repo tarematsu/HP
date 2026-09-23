@@ -14,14 +14,6 @@ const finite = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 
-function commentVelocity(row) {
-  for (const candidate of [row?.comment_velocity, row?.comment_velocity_max, row?.comment_count_delta]) {
-    const value = finite(candidate);
-    if (value != null) return Math.max(0, value);
-  }
-  return 0;
-}
-
 function normalizeCurrent(rows) {
   const list = Array.isArray(rows) ? rows : [];
   const latest = list.reduce((maximum, row) => Math.max(maximum, finite(row?.observed_at) || 0), 0);
@@ -34,7 +26,6 @@ function normalizeCurrent(rows) {
     byTime.set(observedAt, {
       observed_at: observedAt,
       online_member_count: finite(row.online_member_count),
-      comment_velocity: commentVelocity(row),
     });
   }
   return [...byTime.values()].sort((a, b) => a.observed_at - b.observed_at);
@@ -141,7 +132,7 @@ function drawComparison(payload) {
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.clearRect(0, 0, width, height);
 
-  const padding = { left: 50, right: 50, top: 28, bottom: 42 };
+  const padding = { left: 50, right: 24, top: 28, bottom: 42 };
   const plotWidth = Math.max(1, width - padding.left - padding.right);
   const plotHeight = Math.max(1, height - padding.top - padding.bottom);
   const timeSpan = Math.max(1, maxTime - minTime);
@@ -160,10 +151,6 @@ function drawComparison(payload) {
   const onlineRange = Math.max(1, onlineMax - onlineMin);
   const yOnline = (value) => padding.top + plotHeight - (Number(value) - onlineMin) * plotHeight / onlineRange;
 
-  const commentValues = current.map((row) => commentVelocity(row));
-  const commentMax = Math.max(1, ...commentValues);
-  const yComment = (value) => padding.top + plotHeight - Number(value) * plotHeight / commentMax;
-
   context.font = '10px system-ui';
   context.lineWidth = 1;
   for (let index = 0; index <= 4; index += 1) {
@@ -178,18 +165,7 @@ function drawComparison(payload) {
     context.textAlign = 'right';
     context.textBaseline = 'middle';
     context.fillText(integer.format(Math.round(onlineMax - onlineRange * ratio)), padding.left - 6, y);
-    context.textAlign = 'left';
-    context.fillText(integer.format(Math.round(commentMax - commentMax * ratio)), width - padding.right + 6, y);
   }
-
-  context.fillStyle = 'rgba(22,139,115,.42)';
-  current.forEach((row) => {
-    const value = commentVelocity(row);
-    if (value <= 0) return;
-    const barWidth = Math.max(2, Math.min(5, plotWidth / Math.max(1, current.length) * .7));
-    const top = yComment(value);
-    context.fillRect(xFor(row.observed_at) - barWidth / 2, top, barWidth, padding.top + plotHeight - top);
-  });
 
   drawSeries(context, previous, xFor, yOnline, '#969ca6', 2);
   drawSeries(context, current, xFor, yOnline, '#111', 2.5);
@@ -208,8 +184,6 @@ function drawComparison(payload) {
   context.fillStyle = '#667287';
   context.textAlign = 'left';
   context.fillText('オンライン数(人)', 4, 12);
-  context.textAlign = 'right';
-  context.fillText('コメント/2分', width - 4, 12);
   context.textAlign = 'center';
   context.fillText('時刻 (JST)', width / 2, height - 2);
 
