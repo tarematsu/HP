@@ -26,9 +26,14 @@ test('mode-specific table layout classes do not leak across tabs', () => {
 
 test('history tab transitions clear the previous table before the next mode renders', () => {
   assert.match(cleanup, /function prepareTableForModeTransition\(event\)/);
+  assert.match(cleanup, /function resetHistoryTable\(mode\)/);
   assert.match(cleanup, /table\?\.classList\.remove\('all-host-ranking-table'\)/);
   assert.match(cleanup, /head\.replaceChildren\(\);[\s\S]*body\.replaceChildren\(\)/);
   assert.match(cleanup, /getElementById\('modeTabs'\)\?\.addEventListener\('click',[\s\S]*prepareTableForModeTransition\(event\)/);
+});
+
+test('ranking scope changes clear the previous ranking layout before reload', () => {
+  assert.match(cleanup, /getElementById\('rankingScope'\)\?\.addEventListener\('change', \(\) => resetHistoryTable\('ranking'\)\)/);
 });
 
 test('history tab transitions reset shared summary and pagination state', () => {
