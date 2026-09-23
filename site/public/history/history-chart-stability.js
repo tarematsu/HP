@@ -43,6 +43,34 @@ function hasStablePaint() {
   return Boolean(canvas?.dataset?.paintStable === 'true' && canvas.style.opacity !== '0');
 }
 
+function resetSharedChartPresentation() {
+  document.getElementById('chartLegend')?.replaceChildren();
+  const start = document.getElementById('chartStartDate');
+  const end = document.getElementById('chartEndDate');
+  const detail = document.getElementById('chartDetail');
+  if (start) start.textContent = '—';
+  if (end) end.textContent = '—';
+  if (detail) detail.textContent = 'グラフを読み込み中です。';
+  delete canvas?.dataset?.sakurazakaMaxMinute;
+  delete canvas?.dataset?.sakurazakaLeft;
+  delete canvas?.dataset?.sakurazakaWidth;
+}
+
+function prepareBroadcastCanvas() {
+  if (!canvas) return;
+  clearTimeout(fallbackTimer);
+  clearTimeout(revealTimer);
+  armed = false;
+  canvas.width = canvas.width;
+  canvas.style.opacity = '1';
+  canvas.style.pointerEvents = '';
+  delete canvas.dataset.paintPending;
+  delete canvas.dataset.paintStable;
+  delete canvas.dataset.periodChart;
+  delete canvas.dataset.rankingChart;
+  paintedMode = 'broadcasts';
+}
+
 if (canvas) {
   conceal();
 
@@ -62,7 +90,13 @@ if (canvas) {
     const button = event.target.closest('button[data-mode]');
     if (!button) return;
     const nextMode = String(button.dataset.mode || '');
-    if (nextMode && nextMode !== paintedMode) conceal(nextMode);
+    if (!nextMode) return;
+    resetSharedChartPresentation();
+    if (nextMode === 'broadcasts') {
+      prepareBroadcastCanvas();
+      return;
+    }
+    if (nextMode !== paintedMode) conceal(nextMode);
   }, true);
 
   document.getElementById('load')?.addEventListener('click', () => {
