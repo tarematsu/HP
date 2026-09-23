@@ -179,21 +179,40 @@ function summarizeHostRankings(actualRows) {
     const name = String(row?.host_name || '').trim();
     const key = hostKey(name);
     if (!key || !validDate(week) || rank == null || rank <= 0) continue;
-    if (!groups.has(key)) groups.set(key, { host_name: name, by_week: new Map() });
+    if (!groups.has(key)) {
+      groups.set(key, {
+        host_name: name,
+        artist_name: String(row?.artist_name || '').trim() || null,
+        fandom_type: row?.fandom_type === 'official' ? 'official' : row?.artist_name ? 'fandom' : null,
+        fandom_label: String(row?.fandom_label || '').trim() || null,
+        by_week: new Map(),
+      });
+    }
     const group = groups.get(key);
+    if (!group.fandom_label && row?.fandom_label) {
+      group.artist_name = String(row.artist_name || '').trim() || null;
+      group.fandom_type = row.fandom_type === 'official' ? 'official' : 'fandom';
+      group.fandom_label = String(row.fandom_label).trim();
+    }
     const previous = group.by_week.get(week);
     if (previous == null || rank < previous) group.by_week.set(week, rank);
   }
 
   const summaries = [...groups.values()].map((group) => {
     const ranks = [...group.by_week.values()];
-    return {
+    const summary = {
       host_name: group.host_name,
       ranked_weeks: ranks.length,
       average_rank: ranks.reduce((sum, rank) => sum + rank, 0) / ranks.length,
       best_rank: Math.min(...ranks),
       worst_rank: Math.max(...ranks),
     };
+    if (group.fandom_label) {
+      summary.artist_name = group.artist_name;
+      summary.fandom_type = group.fandom_type;
+      summary.fandom_label = group.fandom_label;
+    }
+    return summary;
   }).sort((a, b) => b.ranked_weeks - a.ranked_weeks
     || a.average_rank - b.average_rank
     || a.best_rank - b.best_rank
