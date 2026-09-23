@@ -35,18 +35,18 @@ test('TVer ad classification uses explicit player markers plus bounded short-med
   assert.match(runtime, /const explicitAd = \(\) =>/);
   assert.match(runtime, /shortMedia = length >= 5 && length <= 65/);
   assert.match(runtime, /explicitAd\(\) \|\|/);
-  assert.match(runtime, /video\.playbackRate <= 1\.05/);
+  assert.match(runtime, /return explicitAd\(\) \|\| shortMedia/);
 });
 
-test('TVer playback rate is applied directly without a ratechange observer', () => {
+test('TVer playback rate is restored when the player changes it', () => {
   assert.match(runtime, /video\.defaultPlaybackRate = 1\.75/);
   assert.match(runtime, /video\.playbackRate = 1\.75/);
-  assert.doesNotMatch(runtime, /addEventListener\('ratechange'/);
+  assert.match(runtime, /'ratechange'/);
 });
 
-test('TVer quality discovery is bounded and event-driven', () => {
-  assert.match(runtime, /state\.qualityAttempts/);
-  assert.match(runtime, /Number\(state\.qualityAttempts \|\| 0\) < 4/);
+test('TVer quality discovery retries and is event-driven', () => {
+  assert.match(runtime, /qualityLastAttemptAt/);
+  assert.doesNotMatch(runtime, /qualityAttempts >= 4\) state\.qualityApplied = true/);
   assert.match(runtime, /arm\(low, 'quality-low', 700\)/);
   assert.match(runtime, /arm\(menu, 'quality-menu', 700\)/);
   assert.doesNotMatch(runtime, /qualityProbeIntervalMs|qualityProbeLimit|setInterval\(/);

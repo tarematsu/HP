@@ -16,7 +16,8 @@ test('TVer never advances an episode from a wall-clock playback deadline', () =>
 test('TVer advances only after natural completion of the active program media', () => {
   assert.match(runtime, /event\.type === 'ended'/);
   assert.match(runtime, /key === state\.programKey/);
-  assert.match(runtime, /length >= 5/);
+  assert.match(runtime, /!ad\(\) && length > 65/);
+  assert.match(runtime, /Date\.now\(\) - state\.programStartedAt >= 30000/);
   assert.match(runtime, /at >= Math\.max\(3, length - 10\)/);
   assert.match(runtime, /state\.programEndPending = true/);
   assert.match(runtime, /if \(state\.programEndPending && !state\.endReported\)/);

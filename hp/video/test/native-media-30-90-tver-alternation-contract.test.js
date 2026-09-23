@@ -60,7 +60,7 @@ test('TVer is event driven and player-local through one control runtime', () => 
   assert.match(tverRuntime, /homepanel:tver-ended/);
   assert.doesNotMatch(tverRuntime, /observe\(document\.(?:documentElement|body)/);
   assert.doesNotMatch(tverRuntime, /setInterval\(/);
-  assert.doesNotMatch(tverRuntime, /addEventListener\('ratechange'/);
+  assert.match(tverRuntime, /'ratechange'/);
   assert.doesNotMatch(tverRuntime, /qualityProbeIntervalMs|qualityProbeLimit|qualityProbeAttempts|qualityProbeAt/);
 });
 

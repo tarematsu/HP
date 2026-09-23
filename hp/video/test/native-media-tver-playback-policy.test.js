@@ -47,10 +47,10 @@ test('TVer fullscreen mirrors YouTube key-first recovery with trusted button fal
   assert.match(mediaSection, /NativeMediaDispatchFullscreenKey\(sender, true\)/);
 });
 
-test('TVer low quality uses bounded trusted clicks without polling', () => {
+test('TVer low quality keeps retrying trusted clicks until confirmed', () => {
   assert.match(runtime, /state\.qualityApplied/);
-  assert.match(runtime, /state\.qualityAttempts/);
-  assert.match(runtime, /Number\(state\.qualityAttempts \|\| 0\) < 4/);
+  assert.match(runtime, /qualityLastAttemptAt/);
+  assert.doesNotMatch(runtime, /qualityAttempts >= 4\) state\.qualityApplied = true/);
   assert.match(runtime, /arm\(low, 'quality-low', 700\)/);
   assert.match(runtime, /arm\(menu, 'quality-menu', 700\)/);
   assert.doesNotMatch(runtime, /\.click\(\)/);
