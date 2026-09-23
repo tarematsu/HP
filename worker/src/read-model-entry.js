@@ -7,6 +7,7 @@ import {
   prepareReadModelForWrite,
   writePreparedReadModel,
 } from './read-model-stages.js';
+import { resolveReadModelTitleArtistIdentity } from './read-model-title-artist-identity.js';
 
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
 const EMPTY_DEPENDENCIES = Object.freeze({});
@@ -27,7 +28,10 @@ export async function processReadModelMessage(env, body, dependencies = EMPTY_DE
     throw new Error('unsupported read model message');
   }
   const observedAt = Number(body.observed_at) || null;
-  const readModel = body.read_model;
+  const sourceReadModel = body.read_model;
+  const resolveIdentity = dependencies.resolveReadModelTitleArtistIdentity
+    || resolveReadModelTitleArtistIdentity;
+  const readModel = await resolveIdentity(env, sourceReadModel);
   const metadataQueue = env?.TRACK_METADATA_QUEUE;
   const metadataTask = readModelMetadataTask(readModel);
   const delegatedTask = metadataTask
