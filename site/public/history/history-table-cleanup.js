@@ -115,6 +115,13 @@ function removedLabels(mode) {
   return null;
 }
 
+function syncTableModeClasses(table, mode) {
+  if (!table) return;
+  table.classList.toggle('compact-columns', mode === 'ranking');
+  table.classList.toggle('official-party-table', mode === 'broadcasts');
+  if (mode !== 'ranking') table.classList.remove('all-host-ranking-table');
+}
+
 function ensureRankingFandomColumn(head, body) {
   const headers = [...head.querySelectorAll('th')];
   const existingIndex = headers.findIndex((cell) => cell.textContent.trim() === 'ファンダム');
@@ -154,7 +161,7 @@ function cleanTable() {
   const body = document.getElementById('tbody');
   if (!head || !body) return;
 
-  head.closest('table')?.classList.toggle('compact-columns', mode === 'ranking');
+  syncTableModeClasses(head.closest('table'), mode);
   if (cleaning || !removedSet) return;
 
   const headers = [...head.querySelectorAll('th')];
