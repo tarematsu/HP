@@ -5,17 +5,6 @@ on:
   schedule:
     # Tuesday 02:37 JST, after the hourly leaderboard import has had time to ingest the new week.
     - cron: '37 17 * * 1'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/materialize-weekly-ranking-read-model.yml'
-      - 'worker/scripts/materialize-weekly-ranking-read-model.mjs'
-      - 'worker/scripts/remote-d1-adapter.mjs'
-      - 'worker/scripts/other-db-tables.mjs'
-      - 'database/other-migrations/037_weekly_ranking_read_model.sql'
-      - 'database/other-migrations/038_weekly_ranking_read_model_chunks.sql'
-      - 'site/functions/lib/history-ranking.js'
-      - 'site/functions/lib/weekly-ranking-read-model.js'
 
 permissions:
   contents: read
