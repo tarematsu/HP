@@ -43,6 +43,13 @@ function hasStablePaint() {
   return Boolean(canvas?.dataset?.paintStable === 'true' && canvas.style.opacity !== '0');
 }
 
+function clearAxisLabel(id) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.textContent = '';
+  node.hidden = true;
+}
+
 function resetSharedChartPresentation() {
   document.getElementById('chartLegend')?.replaceChildren();
   const start = document.getElementById('chartStartDate');
@@ -51,6 +58,7 @@ function resetSharedChartPresentation() {
   if (start) start.textContent = '—';
   if (end) end.textContent = '—';
   if (detail) detail.textContent = 'グラフを読み込み中です。';
+  for (const id of ['chartYAxisLeft', 'chartYAxisRight', 'chartXAxisTitle']) clearAxisLabel(id);
   delete canvas?.dataset?.sakurazakaMaxMinute;
   delete canvas?.dataset?.sakurazakaLeft;
   delete canvas?.dataset?.sakurazakaWidth;
