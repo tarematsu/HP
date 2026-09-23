@@ -20,7 +20,8 @@ test('audio loss timing boundaries remain fixed', () => {
   assert.match(policy, /kStationheadAudioLossGraceMs = 120'000/);
   assert.match(policy, /kStationheadAudioLossDomSettleMs = 1'000/);
   assert.match(policy, /kStationheadFallbackMinimumDwellMs = 15'000/);
-  assert.match(handleHeader,
+  assert.match(handleHeader, /kStationheadTrackTransitionGraceMs = 60'000/);
+  assert.doesNotMatch(handleHeader,
     /kStationheadTrackTransitionGraceMs =\s*kStationheadAudioLossGraceMs/);
 });
 
