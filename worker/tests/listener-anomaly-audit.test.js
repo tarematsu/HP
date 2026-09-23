@@ -29,6 +29,12 @@ test('broadcasting listener count at or below 15 is flagged when surrounding tra
   assert.equal(result.anomalies[0].reason, 'implausibly_low_listener');
 });
 
+test('short sustained runs at or below 15 stay detectable against the full-window baseline', () => {
+  const result = auditListenerAnomalies(rows([100, 101, 102, 10, 9, 11, 103, 104, 100]));
+  assert.equal(result.hard_low_count, 3);
+  assert.deepEqual(result.anomalies.map((item) => item.listener_count), [10, 9, 11]);
+});
+
 test('isolated local collapse above 15 is also flagged', () => {
   const result = auditListenerAnomalies(rows([100, 102, 101, 103, 20, 99, 101, 104, 100]));
   assert.equal(result.anomaly_count, 1);
