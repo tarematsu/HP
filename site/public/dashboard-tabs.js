@@ -8,6 +8,7 @@ const unofficialView = document.getElementById('unofficialView');
 const tabs = document.getElementById('modeTabs');
 const skipLink = document.querySelector('.skip-link');
 let historyRuntimePromise = null;
+let rankingStatusRuntimePromise = null;
 let likesRuntimePromise = null;
 let historyRuntimeMode = null;
 let activeMode = 'current';
@@ -47,9 +48,19 @@ function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
   if (updateUrl) updateLocation('current', { replace: replaceUrl });
 }
 
+async function loadRankingStatusRuntime() {
+  if (!rankingStatusRuntimePromise) {
+    rankingStatusRuntimePromise = import('/history/history-ranking-table-status.js?v=20260923.1').catch((error) => {
+      rankingStatusRuntimePromise = null;
+      throw error;
+    });
+  }
+  return rankingStatusRuntimePromise;
+}
+
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260923.9').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260923.8').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -80,6 +91,7 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
   if (updateUrl) updateLocation(mode, { replace: replaceUrl });
 
   try {
+    if (mode === 'ranking') await loadRankingStatusRuntime();
     await loadHistoryRuntime();
     if (syncRuntime && historyRuntimeMode !== mode) {
       tabs?.querySelector(`button[data-mode="${mode}"]`)
