@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -65,6 +66,34 @@ test('remote D1 run returns Wrangler meta.changes', async () => {
   const result = await db.prepare('UPDATE items SET value=?1 WHERE id=?2').bind('next', 5).run();
   assert.equal(result.meta.changes, 9);
   assert.match(calls[0].at(-1), /value='next' WHERE id=5/);
+});
+
+test('remote D1 sends large statements through a temporary file instead of argv', async () => {
+  let filePath = null;
+  let fileContents = null;
+  let capturedArgs = null;
+  const db = createWranglerRemoteD1({
+    database: 'test-db',
+    cwd: workerRoot,
+    wranglerScript: '/tmp/wrangler.js',
+    maxCommandBytes: 32,
+    execFileSync(_command, args) {
+      capturedArgs = args;
+      const fileIndex = args.indexOf('--file');
+      assert.ok(fileIndex >= 0);
+      filePath = args[fileIndex + 1];
+      fileContents = readFileSync(filePath, 'utf8');
+      return resultJson([{ success: true, results: [], meta: { changes: 1 } }]);
+    },
+  });
+
+  const payload = 'x'.repeat(256);
+  const result = await db.prepare('INSERT INTO payloads(value) VALUES(?1)').bind(payload).run();
+  assert.equal(result.meta.changes, 1);
+  assert.equal(capturedArgs.includes('--command'), false);
+  assert.equal(capturedArgs.includes('--file'), true);
+  assert.match(fileContents, /INSERT INTO payloads\(value\) VALUES\('x{256}'\);/);
+  assert.equal(existsSync(filePath), false);
 });
 
 test('remote D1 retries Cloudflare code 7500 and preserves exponential delays', async () => {
