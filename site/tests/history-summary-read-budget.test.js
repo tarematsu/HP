@@ -79,7 +79,7 @@ test('public history reads persisted summaries without touching raw snapshot dat
   assert.ok(calls.every((sql) => !/sh_channel_snapshots|sh_minute_facts/.test(sql)));
 });
 
-test('completed boundary evidence is persisted while daily member values stay canonical', async () => {
+test('completed boundary evidence is applied without writes while daily member values stay canonical', async () => {
   const key = '2026-07-18';
   const expectedStart = Date.UTC(2026, 6, 18);
   const expectedEnd = expectedStart + DAY_MS;
@@ -104,21 +104,16 @@ test('completed boundary evidence is persisted while daily member values stay ca
     quality_score: 1,
     quality_flags: '[]',
   };
-  let updateBindings = null;
+  let writeAttempts = 0;
   const otherDb = {
     prepare(sql) {
-      if (/^\s*SELECT\b/i.test(sql)) {
-        return {
-          bind() {
-            return { all: async () => ({ results: [stored] }) };
-          },
-        };
+      if (!/^\s*SELECT\b/i.test(sql)) {
+        writeAttempts += 1;
+        assert.fail(`public history attempted a write: ${sql}`);
       }
-      assert.match(sql, /UPDATE sh_daily_summary SET/);
       return {
-        bind(...bindings) {
-          updateBindings = bindings;
-          return { run: async () => ({ success: true }) };
+        bind() {
+          return { all: async () => ({ results: [stored] }) };
         },
       };
     },
@@ -161,16 +156,5 @@ test('completed boundary evidence is persisted while daily member values stay ca
   assert.equal(result.rows[0].member_start, 200);
   assert.equal(result.rows[0].member_end, 205);
   assert.equal(result.rows[0].member_growth, 5);
-  assert.deepEqual(updateBindings, [
-    expectedStart + 60_000,
-    expectedEnd - 60_000,
-    100,
-    150,
-    50,
-    200,
-    205,
-    5,
-    NOW,
-    key,
-  ]);
+  assert.equal(writeAttempts, 0);
 });

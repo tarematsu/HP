@@ -109,9 +109,26 @@ function scheduleMetadataRepair() {
   metadataRepairFrame = requestAnimationFrame(() => { void repairPlaybackMetadata(); });
 }
 
-const currentView = document.getElementById('currentView');
-if (currentView) {
-  new MutationObserver(scheduleMetadataRepair).observe(currentView, {
+const nowPlayingLink = document.getElementById('nowPlayingLink');
+if (nowPlayingLink) {
+  new MutationObserver(scheduleMetadataRepair).observe(nowPlayingLink, {
+    attributes: true,
+    attributeFilter: ['href'],
+  });
+}
+for (const id of ['trackTitle', 'trackArtist']) {
+  const node = document.getElementById(id);
+  if (node) {
+    new MutationObserver(scheduleMetadataRepair).observe(node, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  }
+}
+const queue = document.getElementById('queue');
+if (queue) {
+  new MutationObserver(scheduleMetadataRepair).observe(queue, {
     childList: true,
     subtree: true,
     attributes: true,

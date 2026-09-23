@@ -40,18 +40,13 @@ test('track history and compact realtime likes share one D1 batch', async () => 
   assert.equal(loaded.likeRows[0].source, 'collector');
 });
 
-test('Sakurazaka series prefers canonical OTHER_DB history and falls back to MINUTE_DB', async () => {
+test('Sakurazaka series reads canonical OTHER_DB history without request-time minute reconstruction', async () => {
   let minuteCalls = 0;
   let otherCalls = 0;
   const minuteDb = {
     prepare() {
-      return {
-        bind() { return this; },
-        async all() {
-          minuteCalls += 1;
-          return { results: [{ points_json: '[[0,10,1]]', point_count: 1, total_points: 1 }] };
-        },
-      };
+      minuteCalls += 1;
+      throw new Error('Pages must not reconstruct official series from MINUTE_DB');
     },
   };
   const otherDb = {
@@ -73,22 +68,21 @@ test('Sakurazaka series prefers canonical OTHER_DB history and falls back to MIN
               { event_name: 'C', started_at: 300, ended_at: 400 },
             ] };
           }
-          return { results: [{ series_key: 'news:b', event_name: 'B', started_at: 200, points_json: '[[0,20,2]]', total_points: 1 }] };
+          throw new Error(`unexpected request-time query: ${sql}`);
         },
       };
     },
   };
 
   const loaded = await loadSakurazakaSeriesRows(minuteDb, otherDb, 0, 1000);
-  assert.equal(minuteCalls, 1);
-  assert.equal(otherCalls, 3);
+  assert.equal(minuteCalls, 0);
+  assert.equal(otherCalls, 2);
   assert.equal(loaded.historical.length, 2);
   assert.equal(loaded.historical[0].source, 'google_sheets_canonical');
   assert.equal(loaded.historical[0].samples[0].listener, 30);
-  assert.equal(loaded.historical[1].source, 'historical_import');
-  assert.equal(loaded.historical[1].samples[0].listener, 10);
-  assert.equal(loaded.failSafe[0].source, 'official_news_fail_safe');
-  assert.equal(loaded.failSafe[0].samples[0].sourceSamples, 2);
+  assert.equal(loaded.historical[1].source, 'historical_summary_only');
+  assert.deepEqual(loaded.historical[1].samples, []);
+  assert.deepEqual(loaded.failSafe, []);
 });
 
 test('history client owns table formatting and cache while charts are mode-specific', () => {

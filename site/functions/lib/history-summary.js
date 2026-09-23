@@ -269,47 +269,6 @@ function repairedBoundaryRow(base, bounded, mode) {
   };
 }
 
-function sameFinite(a, b) {
-  return finiteNumber(a) === finiteNumber(b);
-}
-
-async function persistCompletedBoundaryRepairs(db, table, baseRows, repairedRows, now) {
-  if (!db?.prepare) return 0;
-  const baseByKey = new Map(baseRows.map((row) => [String(row?.period_key || ''), row]));
-  const statements = [];
-  for (const row of repairedRows) {
-    const key = String(row?.period_key || '');
-    const base = baseByKey.get(key);
-    if (!base) continue;
-    if (finiteNumber(row?.boundary_start_at) == null || finiteNumber(row?.boundary_end_at) == null) continue;
-    const changed = !sameFinite(base.period_start, row.period_start)
-      || !sameFinite(base.period_end, row.period_end)
-      || !sameFinite(base.stream_start, row.stream_start)
-      || !sameFinite(base.stream_end, row.stream_end)
-      || !sameFinite(base.stream_growth, row.stream_growth)
-      || !sameFinite(base.member_start, row.member_start)
-      || !sameFinite(base.member_end, row.member_end)
-      || !sameFinite(base.member_growth, row.member_growth);
-    if (!changed) continue;
-    statements.push(db.prepare(`UPDATE ${table} SET
-        period_start=?,period_end=?,stream_start=?,stream_end=?,stream_growth=?,
-        member_start=?,member_end=?,member_growth=?,updated_at=?
-      WHERE period_key=?`).bind(
-      finiteNumber(row.period_start), finiteNumber(row.period_end),
-      finiteNumber(row.stream_start), finiteNumber(row.stream_end), finiteNumber(row.stream_growth),
-      finiteNumber(row.member_start), finiteNumber(row.member_end), finiteNumber(row.member_growth),
-      now, key,
-    ));
-  }
-  if (!statements.length) return 0;
-  if (typeof db.batch === 'function') {
-    await db.batch(statements);
-  } else {
-    for (const statement of statements) await statement.run();
-  }
-  return statements.length;
-}
-
 export async function loadSummaryWithLive(env, mode, from, to, now = Date.now()) {
   const table = SUMMARY_TABLES[mode] || SUMMARY_TABLES.weekly;
   const limit = mode === 'daily' ? 800 : mode === 'weekly' ? 160 : 60;
@@ -330,13 +289,6 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
     row,
     mode,
   ));
-  await persistCompletedBoundaryRepairs(env.OTHER_DB, table, baseRows, repairedRows, now).catch((error) => {
-    console.warn(JSON.stringify({
-      event: 'summary_boundary_repair_persist_failed',
-      mode,
-      error: String(error?.message || error).slice(0, 300),
-    }));
-  });
   const dailyCoverage = await loadSummaryDailyCoverage(env.OTHER_DB, repairedRows, mode);
   const completed = applySummaryCompleteness(repairedRows, mode, now, dailyCoverage);
   return {

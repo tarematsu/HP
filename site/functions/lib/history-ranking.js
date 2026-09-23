@@ -4,6 +4,9 @@ const JSON_HEADERS = {
 };
 
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp'];
+const READ_MODEL_SQL = `SELECT payload_json,source_max_ranking_date,refreshed_at
+FROM sh_weekly_ranking_read_model
+WHERE id=1`;
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...headers } });
 
@@ -30,54 +33,17 @@ function validRank(value) {
   return number != null && number > 0;
 }
 
-function fandomLabel(artistName, relationType) {
-  const artist = String(artistName || '').trim();
-  if (!artist) return null;
-  return `${artist}(${relationType === 'official' ? '公式' : 'ファンダム'})`;
-}
-
-function decorateFandomRows(rows, metadataRows = rows) {
-  const byHost = new Map();
-  for (const row of metadataRows || []) {
-    const artistName = String(row?.artist_name || '').trim();
-    if (!artistName) continue;
-    const relationType = (row?.fandom_type || row?.relation_type) === 'official' ? 'official' : 'fandom';
-    byHost.set(hostKey(row.host_name), { artistName, relationType });
-  }
+function uniqueHosts(rows) {
+  const result = [];
+  const seen = new Set();
   for (const row of rows || []) {
-    const metadata = byHost.get(hostKey(row.host_name));
-    if (metadata) {
-      row.artist_name = metadata.artistName;
-      row.fandom_type = metadata.relationType;
-    }
-    row.fandom_label = fandomLabel(row.artist_name, row.fandom_type);
+    const text = String(row?.host_name || '').trim();
+    const key = hostKey(text);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
   }
-  return rows;
-}
-
-async function loadFandomMetadata(env) {
-  try {
-    const result = await env.OTHER_DB.prepare(`SELECT host_name,artist_name,relation_type
-FROM sh_channel_fandoms
-ORDER BY host_name`).all();
-    return result.results || [];
-  } catch (error) {
-    if (/no such table|no such column/i.test(String(error?.message || ''))) return [];
-    throw error;
-  }
-}
-
-function expandWeeklyDates(values) {
-  const sorted = [...new Set(values.filter(validDate))].sort();
-  if (sorted.length < 2) return sorted;
-  const first = Date.parse(`${sorted[0]}T00:00:00Z`);
-  const last = Date.parse(`${sorted.at(-1)}T00:00:00Z`);
-  if (!Number.isFinite(first) || !Number.isFinite(last)) return sorted;
-  const expanded = new Set(sorted);
-  for (let ts = first; ts <= last; ts += 7 * 86400000) {
-    expanded.add(new Date(ts).toISOString().slice(0, 10));
-  }
-  return [...expanded].sort();
+  return result;
 }
 
 function sortRankingRows(rows, hostOrder = []) {
@@ -118,71 +84,6 @@ function addRankChanges(rows) {
   return rows;
 }
 
-function uniqueHosts(values) {
-  const result = [];
-  const seen = new Set();
-  for (const value of values) {
-    const text = String(value || '').trim();
-    const key = hostKey(text);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    result.push(text);
-  }
-  return result;
-}
-
-function firstSeenMap(rows) {
-  return new Map((rows || []).map((row) => [hostKey(row.host_name), String(row.first_ranking_date || '')]));
-}
-
-function completeRankingTimeline(actualRows, rankingWeeks, hosts, firstSeen) {
-  if (!hosts.length || !rankingWeeks.length) return [...actualRows];
-  const byWeekHost = new Map();
-  const firstActual = new Map();
-  for (const row of actualRows) {
-    const key = hostKey(row.host_name);
-    byWeekHost.set(`${row.ranking_date}\u0000${key}`, row);
-    const current = firstActual.get(key);
-    if (!current || String(row.ranking_date) < current) firstActual.set(key, String(row.ranking_date));
-  }
-  const completed = [];
-  for (const host of hosts) {
-    const key = hostKey(host);
-    const first = firstSeen.get(key) || firstActual.get(key) || '';
-    if (!first) continue;
-    for (const week of rankingWeeks) {
-      if (week < first) continue;
-      const existing = byWeekHost.get(`${week}\u0000${key}`);
-      if (existing) {
-        completed.push(existing);
-        continue;
-      }
-      completed.push({
-        ranking_date: week,
-        observed_at: Date.parse(`${week}T00:00:00Z`),
-        ranking_type: '週間リーダーボード',
-        rank: null,
-        host_name: host,
-        host_alias: host,
-        source_sheet: null,
-        quality_score: null,
-        quality_flags: 'not_listed',
-        is_out_of_rank: true,
-        synthetic: true,
-      });
-    }
-  }
-  return completed;
-}
-
-function matchingHosts(firstSeenRows, hostSearch) {
-  const needle = hostKey(hostSearch);
-  if (!needle) return [];
-  return uniqueHosts((firstSeenRows || [])
-    .filter((row) => hostKey(row.host_name).includes(needle) || hostKey(row.host_aliases).includes(needle))
-    .map((row) => row.host_name));
-}
-
 function summarizeHostRankings(actualRows) {
   const groups = new Map();
   for (const row of actualRows || []) {
@@ -201,11 +102,6 @@ function summarizeHostRankings(actualRows) {
       });
     }
     const group = groups.get(key);
-    if (!group.fandom_label && row?.fandom_label) {
-      group.artist_name = String(row.artist_name || '').trim() || null;
-      group.fandom_type = row.fandom_type === 'official' ? 'official' : 'fandom';
-      group.fandom_label = String(row.fandom_label).trim();
-    }
     const previous = group.by_week.get(week);
     if (previous == null || rank < previous) group.by_week.set(week, rank);
   }
@@ -241,76 +137,99 @@ function summarizeHostRankings(actualRows) {
   });
 }
 
-export async function loadRanking(requestUrl, env, summaryLoader) {
+function inRange(row, from, to) {
+  const week = String(row?.ranking_date || row?.period_key || '');
+  return validDate(week) && week >= from && week <= to;
+}
+
+function matchingHostKeys(rows, search) {
+  const needle = hostKey(search);
+  if (!needle) return new Set();
+  const keys = new Set();
+  for (const row of rows || []) {
+    const name = hostKey(row?.host_name);
+    const alias = hostKey(row?.host_alias);
+    if ((name && name.includes(needle)) || (alias && alias.includes(needle))) keys.add(name);
+  }
+  return keys;
+}
+
+function readModelUnavailable(from, to, scope, hostSearch) {
+  return json({
+    ok: true,
+    mode: 'ranking',
+    from,
+    to,
+    scope,
+    host_search: hostSearch,
+    featured_hosts: FEATURED_HOSTS,
+    chart_hosts: [],
+    host_rankings: [],
+    rows: [],
+    weekly_metrics: [],
+    ranking_weeks: [],
+    ranking_types: [],
+    host_count: 0,
+    ranking_summary: { week_count: 0, host_count: 0, ranked_entry_count: 0, out_of_rank_count: 0 },
+    setup_required: true,
+    read_path: 'weekly-ranking-read-model',
+  });
+}
+
+export async function loadRanking(requestUrl, env, _summaryLoader) {
   const from = requestUrl.searchParams.get('from') || '2024-06-01';
   const to = requestUrl.searchParams.get('to') || new Date().toISOString().slice(0, 10);
   const hostSearch = safeText(requestUrl.searchParams.get('host'));
   const scope = requestUrl.searchParams.get('scope') === 'all' ? 'all' : 'featured';
   const limit = Math.min(Math.max(Number(requestUrl.searchParams.get('limit')) || 5000, 20), 10000);
 
-  let rankingSql = `SELECT
-r.ranking_date,r.observed_at,r.ranking_type,r.rank,
-r.channel_name AS host_name,r.channel_alias AS host_alias,
-r.source_sheet,r.quality_score,r.quality_flags
-FROM sh_channel_rankings r
-WHERE r.ranking_date>=? AND r.ranking_date<=?`;
-  const binds = [from, to];
-  if (hostSearch) {
-    rankingSql += ' AND (r.channel_name LIKE ? OR r.channel_alias LIKE ?)';
-    binds.push(`%${hostSearch}%`, `%${hostSearch}%`);
-  } else if (scope === 'featured') {
-    rankingSql += ' AND lower(r.channel_name) IN (?,?)';
-    binds.push(...FEATURED_HOSTS);
-  } else {
-    rankingSql += ' AND lower(r.channel_name) NOT IN (?,?)';
-    binds.push(...FEATURED_HOSTS);
-  }
-  rankingSql += ' ORDER BY r.ranking_date ASC, r.rank ASC LIMIT ?';
-  binds.push(limit);
-
   try {
-    const [rankingResult, weeklyResult, weeksResult, firstSeenResult] = await Promise.all([
-      env.OTHER_DB.prepare(rankingSql).bind(...binds).all(),
-      summaryLoader(env, 'weekly', from, to),
-      env.OTHER_DB.prepare(`SELECT DISTINCT ranking_date
-FROM sh_channel_rankings
-WHERE ranking_date>=? AND ranking_date<=?
-ORDER BY ranking_date ASC`).bind(from, to).all(),
-      env.OTHER_DB.prepare(`SELECT
-MIN(channel_name) AS host_name,
-GROUP_CONCAT(DISTINCT channel_alias) AS host_aliases,
-MIN(ranking_date) AS first_ranking_date
-FROM sh_channel_rankings
-WHERE channel_name IS NOT NULL AND trim(channel_name)<>''
-GROUP BY lower(trim(channel_name))
-ORDER BY first_ranking_date ASC`).all(),
-    ]);
+    const stored = await env.OTHER_DB.prepare(READ_MODEL_SQL).first();
+    if (!stored?.payload_json) return readModelUnavailable(from, to, scope, hostSearch);
+    let model;
+    try {
+      model = JSON.parse(stored.payload_json);
+    } catch {
+      return readModelUnavailable(from, to, scope, hostSearch);
+    }
 
-    const fandomRows = await loadFandomMetadata(env);
-    const actualRows = decorateFandomRows(rankingResult.results || [], fandomRows);
-    const weeklyMetrics = (weeklyResult.rows || []).map((row) => ({ ...row, ranking_date: row.period_key }));
-    const rankingWeeks = expandWeeklyDates((weeksResult.results || []).map((row) => row.ranking_date));
-    const firstSeenRows = firstSeenResult.results || [];
-    const firstSeen = firstSeenMap(firstSeenRows);
-    const actualHosts = uniqueHosts(actualRows.map((row) => row.host_name));
-    const hosts = hostSearch
-      ? matchingHosts(firstSeenRows, hostSearch)
-      : scope === 'featured'
-        ? FEATURED_HOSTS
-        : actualHosts;
+    const sourceActual = (Array.isArray(model.actual_rows) ? model.actual_rows : []).filter((row) => inRange(row, from, to));
+    const sourceCompleted = (Array.isArray(model.completed_rows) ? model.completed_rows : []).filter((row) => inRange(row, from, to));
+    const featured = new Set(FEATURED_HOSTS.map(hostKey));
+    let selectedKeys;
+    if (hostSearch) {
+      selectedKeys = matchingHostKeys(sourceCompleted.length ? sourceCompleted : sourceActual, hostSearch);
+    } else if (scope === 'featured') {
+      selectedKeys = featured;
+    } else {
+      selectedKeys = new Set(uniqueHosts(sourceActual)
+        .map(hostKey)
+        .filter((key) => !featured.has(key)));
+    }
 
-    const completedRows = completeRankingTimeline(actualRows, rankingWeeks, hosts, firstSeen);
-    decorateFandomRows(completedRows, fandomRows);
+    const actualRowsAll = sourceActual.filter((row) => selectedKeys.has(hostKey(row.host_name)));
+    const completedRows = sourceCompleted.filter((row) => selectedKeys.has(hostKey(row.host_name)));
+    const truncated = actualRowsAll.length > limit;
+    const actualRows = actualRowsAll.slice(0, limit).map((row) => ({ ...row }));
     const aggregateAllHosts = scope === 'all' && !hostSearch;
-    const rows = aggregateAllHosts ? [...actualRows] : completedRows;
-    const hostOrder = scope === 'featured' && !hostSearch ? FEATURED_HOSTS : [];
+    const rows = aggregateAllHosts ? actualRows : completedRows.map((row) => ({ ...row }));
     addRankChanges(rows);
-    sortRankingRows(rows, hostOrder);
+    sortRankingRows(rows, scope === 'featured' && !hostSearch ? FEATURED_HOSTS : []);
 
-    const hostRankings = summarizeHostRankings(actualRows);
+    const hostRankings = summarizeHostRankings(actualRowsAll);
     const chartHosts = scope === 'featured' && !hostSearch
       ? FEATURED_HOSTS
       : hostRankings[0]?.host_name ? [hostRankings[0].host_name] : [];
+    const rankingWeeks = (Array.isArray(model.ranking_weeks) ? model.ranking_weeks : [])
+      .filter((week) => validDate(week) && week >= from && week <= to);
+    const weeklyMetrics = (Array.isArray(model.weekly_metrics) ? model.weekly_metrics : [])
+      .filter((row) => inRange(row, from, to))
+      .map((row) => ({ ...row, ranking_date: row.period_key }));
+    const hostCount = hostSearch
+      ? selectedKeys.size
+      : scope === 'featured'
+        ? FEATURED_HOSTS.length
+        : uniqueHosts(actualRowsAll).length;
     const outOfRankCount = completedRows.filter((row) => !validRank(row.rank)).length;
 
     return json({
@@ -326,38 +245,24 @@ ORDER BY first_ranking_date ASC`).all(),
       rows,
       weekly_metrics: weeklyMetrics,
       ranking_weeks: rankingWeeks,
-      ranking_types: [...new Set(actualRows.map((row) => row.ranking_type).filter(Boolean))],
-      host_count: hosts.length,
+      ranking_types: [...new Set(actualRowsAll.map((row) => row.ranking_type).filter(Boolean))],
+      host_count: hostCount,
       ranking_summary: {
         week_count: rankingWeeks.length,
         host_count: hostRankings.length,
-        ranked_entry_count: actualRows.filter((row) => validRank(row.rank)).length,
+        ranked_entry_count: actualRowsAll.filter((row) => validRank(row.rank)).length,
         out_of_rank_count: outOfRankCount,
       },
-      truncated: actualRows.length >= limit,
-      live_overlay_count: weeklyResult.live_overlay_count,
-      latest_live_observed_at: weeklyResult.latest_live_observed_at,
+      truncated,
+      live_overlay_count: 0,
+      latest_live_observed_at: null,
+      materialized_at: Number(stored.refreshed_at) || Number(model.refreshed_at) || null,
+      source_max_ranking_date: stored.source_max_ranking_date || model.source_max_ranking_date || null,
+      read_path: 'weekly-ranking-read-model',
     });
   } catch (error) {
     if (/no such table|no such column/i.test(String(error?.message || ''))) {
-      return json({
-        ok: true,
-        mode: 'ranking',
-        from,
-        to,
-        scope,
-        host_search: hostSearch,
-        featured_hosts: FEATURED_HOSTS,
-        chart_hosts: [],
-        host_rankings: [],
-        rows: [],
-        weekly_metrics: [],
-        ranking_weeks: [],
-        ranking_types: [],
-        host_count: 0,
-        ranking_summary: { week_count: 0, host_count: 0, ranked_entry_count: 0, out_of_rank_count: 0 },
-        setup_required: true,
-      });
+      return readModelUnavailable(from, to, scope, hostSearch);
     }
     throw error;
   }

@@ -3,57 +3,75 @@ import test from 'node:test';
 
 import { loadRanking } from '../functions/lib/history-ranking.js';
 
-const weeks = [
-  { ranking_date: '2026-01-26' },
-  { ranking_date: '2026-02-09' },
-];
+const rankingWeeks = ['2026-01-26', '2026-02-02', '2026-02-09'];
 
-const firstSeen = [
-  { host_name: 'alpha', host_aliases: 'Alpha', first_ranking_date: '2026-01-26' },
-  { host_name: 'beta', host_aliases: 'Beta', first_ranking_date: '2026-02-09' },
-  { host_name: 'gamma', host_aliases: 'Gamma', first_ranking_date: '2026-02-09' },
-  { host_name: 'sakuramankai', host_aliases: 'sakuramankai', first_ranking_date: '2026-01-26' },
-  { host_name: 'sakurazaka46jp', host_aliases: 'sakurazaka46jp', first_ranking_date: '2026-01-26' },
-];
+function hostKey(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function completeRows(actualRows) {
+  const firstSeen = new Map();
+  const byWeekHost = new Map();
+  const hosts = [];
+  const seenHosts = new Set();
+  for (const row of actualRows) {
+    const key = hostKey(row.host_name);
+    if (!seenHosts.has(key)) {
+      seenHosts.add(key);
+      hosts.push(row.host_name);
+    }
+    const week = String(row.ranking_date);
+    if (!firstSeen.has(key) || week < firstSeen.get(key)) firstSeen.set(key, week);
+    byWeekHost.set(`${week}\u0000${key}`, row);
+  }
+  const completed = [];
+  for (const host of hosts) {
+    const key = hostKey(host);
+    for (const week of rankingWeeks) {
+      if (week < firstSeen.get(key)) continue;
+      completed.push(byWeekHost.get(`${week}\u0000${key}`) || {
+        ranking_date: week,
+        observed_at: Date.parse(`${week}T00:00:00Z`),
+        ranking_type: '週間リーダーボード',
+        rank: null,
+        host_name: host,
+        host_alias: host,
+        source_sheet: null,
+        quality_score: null,
+        quality_flags: 'not_listed',
+        synthetic: true,
+        is_out_of_rank: true,
+      });
+    }
+  }
+  return completed;
+}
 
 function dbFor(actualRows) {
+  const model = {
+    version: 1,
+    refreshed_at: 1_790_000_000_000,
+    source_max_ranking_date: '2026-02-09',
+    ranking_weeks: rankingWeeks,
+    actual_rows: actualRows,
+    completed_rows: completeRows(actualRows),
+    weekly_metrics: [],
+  };
   return {
     prepare(sql) {
-      let params = [];
-      const execute = async () => {
-        if (sql.includes('GROUP_CONCAT(DISTINCT channel_alias)')) return { results: firstSeen };
-        if (sql.includes('SELECT DISTINCT ranking_date')) return { results: weeks };
-        if (sql.includes('FROM sh_channel_fandoms')) return { results: [] };
-        if (sql.includes('FROM sh_channel_rankings r')) {
-          let results = [...actualRows];
-          const hostParams = params.slice(2, 4).map((value) => String(value || '').toLowerCase());
-          if (sql.includes('lower(r.channel_name) NOT IN (?,?)')) {
-            const excluded = new Set(hostParams);
-            results = results.filter((row) => !excluded.has(String(row.host_name || '').toLowerCase()));
-          } else if (sql.includes('lower(r.channel_name) IN (?,?)')) {
-            const included = new Set(hostParams);
-            results = results.filter((row) => included.has(String(row.host_name || '').toLowerCase()));
-          }
-          return { results };
-        }
-        throw new Error(`unexpected SQL: ${sql}`);
-      };
+      assert.match(sql, /FROM sh_weekly_ranking_read_model/);
       return {
-        bind(...values) {
-          params = values;
-          return { all: execute };
+        async first() {
+          return {
+            payload_json: JSON.stringify(model),
+            source_max_ranking_date: model.source_max_ranking_date,
+            refreshed_at: model.refreshed_at,
+          };
         },
-        all: execute,
       };
     },
   };
 }
-
-const summaryLoader = async () => ({
-  rows: [],
-  live_overlay_count: 0,
-  latest_live_observed_at: null,
-});
 
 function request(params = '') {
   return new URL(`https://example.test/api/history?mode=ranking&from=2026-01-26&to=2026-02-09${params}`);
@@ -68,7 +86,7 @@ test('all-host scope excludes featured Sakurazaka hosts and orders the remaining
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 4, host_name: 'beta' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 6, host_name: 'gamma' },
   ];
-  const response = await loadRanking(request('&scope=all'), { OTHER_DB: dbFor(actualRows) }, summaryLoader);
+  const response = await loadRanking(request('&scope=all'), { OTHER_DB: dbFor(actualRows) });
   const data = await response.json();
 
   assert.equal(data.scope, 'all');
@@ -85,6 +103,7 @@ test('all-host scope excludes featured Sakurazaka hosts and orders the remaining
   assert.equal(data.ranking_summary.host_count, 3);
   assert.equal(data.ranking_summary.ranked_entry_count, 4);
   assert.equal(data.ranking_summary.out_of_rank_count, 1);
+  assert.equal(data.read_path, 'weekly-ranking-read-model');
 });
 
 test('featured scope still returns the two Sakurazaka hosts', async () => {
@@ -93,7 +112,7 @@ test('featured scope still returns the two Sakurazaka hosts', async () => {
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 2, host_name: 'sakurazaka46jp' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 3, host_name: 'alpha' },
   ];
-  const response = await loadRanking(request('&scope=featured'), { OTHER_DB: dbFor(actualRows) }, summaryLoader);
+  const response = await loadRanking(request('&scope=featured'), { OTHER_DB: dbFor(actualRows) });
   const data = await response.json();
   assert.deepEqual(data.chart_hosts, ['sakuramankai', 'sakurazaka46jp']);
   assert.deepEqual([...new Set(data.rows.map((row) => row.host_name))].sort(), ['sakuramankai', 'sakurazaka46jp']);
@@ -105,7 +124,7 @@ test('host ranking counts each leaderboard week once even if duplicate rows exis
     { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 3, host_name: 'alpha' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 7, host_name: 'alpha' },
   ];
-  const response = await loadRanking(request('&scope=all'), { OTHER_DB: dbFor(actualRows) }, summaryLoader);
+  const response = await loadRanking(request('&scope=all'), { OTHER_DB: dbFor(actualRows) });
   const data = await response.json();
   assert.deepEqual(data.host_rankings[0], {
     position: 1,
@@ -121,7 +140,7 @@ test('one searched host gets a chart timeline only from its first leaderboard ap
   const actualRows = [
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 3, host_name: 'beta' },
   ];
-  const response = await loadRanking(request('&scope=all&host=beta'), { OTHER_DB: dbFor(actualRows) }, summaryLoader);
+  const response = await loadRanking(request('&scope=all&host=beta'), { OTHER_DB: dbFor(actualRows) });
   const data = await response.json();
 
   assert.deepEqual(data.chart_hosts, ['beta']);
@@ -136,7 +155,7 @@ test('searched host fills missing weeks after first appearance but never before 
     { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 1, host_name: 'alpha' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 2, host_name: 'alpha' },
   ];
-  const response = await loadRanking(request('&scope=all&host=alpha'), { OTHER_DB: dbFor(actualRows) }, summaryLoader);
+  const response = await loadRanking(request('&scope=all&host=alpha'), { OTHER_DB: dbFor(actualRows) });
   const data = await response.json();
 
   assert.deepEqual(data.chart_hosts, ['alpha']);

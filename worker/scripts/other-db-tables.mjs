@@ -30,6 +30,7 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_official_broadcast_summary',
   'sh_official_broadcast_series',
   'sh_channel_rankings',
+  'sh_weekly_ranking_read_model',
 ]);
 
 export const OTHER_RETIRED_OBJECTS = Object.freeze([

@@ -65,7 +65,10 @@ async function load(){
     document.querySelector('#chats').innerHTML=chats.map((x,i)=>`<tr><td>${esc(ftime(x.observed_at))}</td><td>${esc(gap(chats,i))}</td><td>${esc(x.station_id??'-')}</td>${rawCell(x)}</tr>`).join('')||'<tr><td colspan="4" class="muted">なし</td></tr>';
   }catch(e){notice.textContent=`取得失敗: ${e.message}`}
 }
-document.querySelector('#reload').addEventListener('click',load);load();setInterval(load,15000);
+document.querySelector('#reload').addEventListener('click',load);
+load();
+setInterval(()=>{if(!document.hidden)load()},15000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)load()});
 </script>
 </body>
 </html>
