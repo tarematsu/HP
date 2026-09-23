@@ -12,6 +12,7 @@ import {
   preserveReadModelForWrite,
   writePreparedReadModel,
 } from './read-model-stages.js';
+import { resolveReadModelTitleArtistIdentity } from './read-model-title-artist-identity.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
@@ -131,17 +132,20 @@ export async function processTrackMetadataTask(env, body, dependencies = EMPTY_D
 
   if (kind === 'read-model-hydration') {
     if (!body.read_model || !body.job_id) throw new Error('read-model hydration task is invalid');
+    const resolveIdentity = dependencies.resolveReadModelTitleArtistIdentity
+      || resolveReadModelTitleArtistIdentity;
+    const identifiedReadModel = await resolveIdentity(env, body.read_model);
     if (dependencies.saveMinuteFactReadModels) {
-      await dependencies.saveMinuteFactReadModels(env, body.read_model, body.job_id);
+      await dependencies.saveMinuteFactReadModels(env, identifiedReadModel, body.job_id);
       return { task: kind, job_id: body.job_id };
     }
     if (dependencies.prepareReadModelForWrite) {
-      const readModel = await dependencies.prepareReadModelForWrite(env, body.read_model);
+      const readModel = await dependencies.prepareReadModelForWrite(env, identifiedReadModel);
       await enqueueReadModelStage(env, body, readModel, 'read-model-write', dependencies);
       return { task: kind, job_id: body.job_id, pending: true, next_task: 'read-model-write' };
     }
     const hydrate = dependencies.hydrateReadModelMetadata || hydrateReadModelMetadata;
-    const readModel = await hydrate(env, body.read_model);
+    const readModel = await hydrate(env, identifiedReadModel);
     const nextTask = queueNeedsPreservation(readModel?.queue?.value)
       ? 'read-model-preserve'
       : 'read-model-write';

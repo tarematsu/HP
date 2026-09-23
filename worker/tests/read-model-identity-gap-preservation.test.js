@@ -50,6 +50,19 @@ test('identity-free incomplete tracks are routed through preservation', () => {
   assert.equal(readModelMetadataTask(readModel(track)), 'read-model-preserve');
 });
 
+test('title and artist without provider ids are routed through identity hydration', () => {
+  const track = {
+    position: 0,
+    duration_ms: 240_000,
+    title: 'Known Song',
+    artist: 'Known Artist',
+    album_name: 'Known Album',
+    thumbnail_url: 'https://example.invalid/cover.jpg',
+  };
+  assert.equal(queueNeedsPreservation({ tracks: [track] }), true);
+  assert.equal(readModelMetadataTask(readModel(track)), 'read-model-hydration');
+});
+
 test('same queue position keeps known metadata across a temporary identity gap', async () => {
   const previousTrack = {
     position: 0,

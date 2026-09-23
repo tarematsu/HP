@@ -1,16 +1,37 @@
 import { trackNeedsHydration } from './track-metadata-quality.js';
+import { trackTitleArtistKey } from './track-title-artist-identity.js';
 
 function normalizedIdentity(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
 
-function hasTrackIdentity(track) {
-  const stationheadTrackId = Number(track?.stationhead_track_id);
+function providerIdentity(track) {
   return Boolean(
     String(track?.spotify_id || '').trim()
-      || normalizedIdentity(track?.isrc)
-      || (Number.isFinite(stationheadTrackId) && stationheadTrackId > 0),
+      || normalizedIdentity(track?.isrc),
   );
+}
+
+function stationheadIdentity(track) {
+  const stationheadTrackId = Number(track?.stationhead_track_id);
+  return Number.isFinite(stationheadTrackId) && stationheadTrackId > 0;
+}
+
+function identityState(track) {
+  const hasProviderIdentity = providerIdentity(track);
+  if (hasProviderIdentity) {
+    return {
+      hasProviderIdentity: true,
+      hasLookup: true,
+      needsProviderIdentity: false,
+    };
+  }
+  const hasTitleArtist = Boolean(trackTitleArtistKey(track));
+  return {
+    hasProviderIdentity: false,
+    hasLookup: stationheadIdentity(track) || hasTitleArtist,
+    needsProviderIdentity: hasTitleArtist,
+  };
 }
 
 function tracksFromQueue(queue) {
@@ -23,8 +44,11 @@ export function queueNeedsHydration(queue) {
   const trackCount = tracks.length;
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
-    if (!track || typeof track !== 'object' || !hasTrackIdentity(track)) continue;
-    if (trackNeedsHydration(track)) return true;
+    if (!track || typeof track !== 'object') continue;
+    const metadataIncomplete = trackNeedsHydration(track);
+    const identity = identityState(track);
+    if (!identity.hasLookup) continue;
+    if (metadataIncomplete || identity.needsProviderIdentity) return true;
   }
   return false;
 }
@@ -36,7 +60,9 @@ export function queueNeedsPreservation(queue) {
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
     if (!track || typeof track !== 'object') continue;
-    if (trackNeedsHydration(track) || !track.album_name) return true;
+    const metadataIncomplete = trackNeedsHydration(track);
+    const identity = identityState(track);
+    if (metadataIncomplete || identity.needsProviderIdentity || !track.album_name) return true;
   }
   return false;
 }
@@ -49,9 +75,10 @@ export function readModelMetadataTask(readModel) {
   for (let index = 0; index < trackCount; index += 1) {
     const track = tracks[index];
     if (!track || typeof track !== 'object') continue;
-    const hasIdentity = hasTrackIdentity(track);
-    if (trackNeedsHydration(track)) {
-      if (hasIdentity) return 'read-model-hydration';
+    const metadataIncomplete = trackNeedsHydration(track);
+    const identity = identityState(track);
+    if (metadataIncomplete || identity.needsProviderIdentity) {
+      if (identity.hasLookup) return 'read-model-hydration';
       preserve = true;
       continue;
     }

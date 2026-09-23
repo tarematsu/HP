@@ -4,6 +4,10 @@ import {
   text,
 } from './minute-facts-track-descriptor.js';
 import { resolveTracksBulk } from './minute-facts-track-resolution.js';
+import {
+  attachTitleArtistIdentity,
+  loadTitleArtistIdentityRows,
+} from './track-title-artist-identity.js';
 
 function lookupStatement(db, descriptor) {
   const aliases = Array.isArray(descriptor.aliases) ? descriptor.aliases : [];
@@ -98,7 +102,13 @@ export async function resolveSparseTracks(db, oldDb, tracks, observedAt, context
   if (!Array.isArray(tracks) || tracks.length !== 1) {
     return resolveTracksBulk(db, oldDb, tracks, observedAt, context);
   }
-  const descriptor = buildTrackDescriptor(tracks[0], {}, integer(tracks[0]?.position) ?? 0);
+  const identityRows = await loadTitleArtistIdentityRows([db, oldDb], tracks, 1);
+  const identifiedTracks = attachTitleArtistIdentity(tracks, identityRows);
+  const descriptor = buildTrackDescriptor(
+    identifiedTracks[0],
+    {},
+    integer(identifiedTracks[0]?.position) ?? 0,
+  );
   descriptor.trackId = await lookupTrackId(db, descriptor);
   let created = false;
   if (descriptor.trackId == null) {
