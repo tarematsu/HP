@@ -19,14 +19,18 @@ test('unofficial listening party view is table-only with the requested columns',
   assert.doesNotMatch(viewSource, /chart-panel/);
 });
 
-test('historical unofficial listening party rows use normalized channel names', () => {
+test('historical unofficial listening party rows use formal hosting channel names', () => {
   const rows = [...viewSource.matchAll(/\{ date: '[^']+'.+?\},/g)];
   assert.equal(rows.length, 12);
-  assert.match(viewSource, /date: '2024\/10\/25'.+place: 'Buddies'/);
-  assert.match(viewSource, /date: '2024\/11\/01'.+place: 'MINI'/);
+  assert.equal((viewSource.match(/place: ''/g) || []).length, 0);
+  assert.match(viewSource, /date: '2024\/08\/02'.+place: 'BUDDIES STATIONHEAD'/);
+  assert.match(viewSource, /date: '2024\/09\/07'.+place: 'LOCKEY Stationhead'/);
+  assert.match(viewSource, /date: '2024\/11\/01'.+place: 'MINIチャンネル'/);
   assert.match(viewSource, /date: '2024\/12\/13'.+place: 'Team IMP\.'/);
-  assert.match(viewSource, /date: '2024\/12\/30'.+place: 'Ohisama'/);
-  assert.doesNotMatch(viewSource, /BUDDIESチャンネル|Buddiesチャンネル|MINIチャンネル|Ohisamaチャンネル|imp714p/);
+  assert.match(viewSource, /date: '2024\/12\/19'.+place: 'FELIX STREAM STATION'/);
+  assert.match(viewSource, /date: '2024\/12\/29'.+place: 'WithUチャンネル'/);
+  assert.match(viewSource, /date: '2024\/12\/30'.+place: 'Ohisama CH\.'/);
+  assert.doesNotMatch(viewSource, /BUDDIESチャンネル|Buddiesチャンネル|Ohisamaチャンネル|imp714p/);
 });
 
 test('dashboard routing recognizes the unofficial view and loads it before tab setup', () => {
