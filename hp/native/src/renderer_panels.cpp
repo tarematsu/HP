@@ -214,7 +214,7 @@ WrapNativeMediaNavigationCompletedHandler(
             } else {
               COREWEBVIEW2_WEB_ERROR_STATUS status{};
               if (SUCCEEDED(args->get_WebErrorStatus(&status)) &&
-                  status == COREWEBVIEW2_WEB_ERROR_STATUS_INTERNET_DISCONNECTED) {
+                  status == COREWEBVIEW2_WEB_ERROR_STATUS_DISCONNECTED) {
                 SetNativeMediaOfflineOverlay(hostWindow, true);
               }
             }
@@ -233,6 +233,7 @@ WrapNativeMediaNavigationCompletedHandler(
 // The media panel owns phase cadence, navigation, event-driven playback policy
 // and trusted WebView2 input. TVer episode choice is cloud-queue based; the old
 // renderer-level two-series alternation no longer participates in navigation.
+#undef add_NavigationCompleted
 #define add_NavigationCompleted(handler, token)                              \
   add_NavigationCompleted(                                                   \
       WrapNativeMediaNavigationCompletedHandler((handler), hostWindow_).Get(), \
