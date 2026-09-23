@@ -22,7 +22,7 @@ test('dashboard payload parsing is owned by the fetch cache instead of the entry
 });
 
 test('inactive tab runtimes are loaded on demand and never idle-prefetched', () => {
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.6'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.8'\)/);
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
   assert.doesNotMatch(tabs, /modulepreload|requestIdleCallback|scheduleRuntimePrefetch/);
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
