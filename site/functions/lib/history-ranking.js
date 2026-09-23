@@ -1,3 +1,5 @@
+import { loadWeeklyRankingReadModel } from './weekly-ranking-read-model.js';
+
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=3600',
@@ -186,12 +188,8 @@ export async function loadRanking(requestUrl, env, _summaryLoader) {
   try {
     const stored = await env.OTHER_DB.prepare(READ_MODEL_SQL).first();
     if (!stored?.payload_json) return readModelUnavailable(from, to, scope, hostSearch);
-    let model;
-    try {
-      model = JSON.parse(stored.payload_json);
-    } catch {
-      return readModelUnavailable(from, to, scope, hostSearch);
-    }
+    const model = await loadWeeklyRankingReadModel(env.OTHER_DB, stored);
+    if (!model) return readModelUnavailable(from, to, scope, hostSearch);
 
     const sourceActual = (Array.isArray(model.actual_rows) ? model.actual_rows : []).filter((row) => inRange(row, from, to));
     const sourceCompleted = (Array.isArray(model.completed_rows) ? model.completed_rows : []).filter((row) => inRange(row, from, to));
