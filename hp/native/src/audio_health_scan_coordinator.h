@@ -3,17 +3,16 @@
 
 namespace hp {
 
-inline constexpr ULONGLONG kAudioHealthScanCycleMs = 60ULL * 1000ULL;
-inline constexpr ULONGLONG kAudioHealthScanSlotSpacingMs = 10'000ULL;
+inline constexpr ULONGLONG kAudioHealthScanCycleMs = 6ULL * 60ULL * 1000ULL;
+inline constexpr ULONGLONG kAudioHealthScanSlotSpacingMs = 60ULL * 1000ULL;
 inline constexpr ULONGLONG kAudioHealthScanRetryMs = 5ULL * 1000ULL;
 inline constexpr ULONGLONG kAudioHealthScanMinimumGapMs = 4ULL * 1000ULL;
 inline constexpr size_t kAudioHealthScanSlotCount = 6;
 
-// One process-wide clock serializes native audio probes. Stationhead owns slot 0
-// and is the only periodic audio-health client today; the remaining phases are
-// retained for compatibility with the existing coordinator contract. A full
-// cycle is one minute so Stationhead's safety probe cannot accidentally run at
-// the old 30-second cadence.
+// One process-wide clock serializes native audio probes. Stationhead maps its
+// six profiles to slots 0..5. Each slot starts one minute after the previous
+// slot, so only one Stationhead profile is eligible for the native audio probe
+// in each minute of the six-minute cycle.
 inline std::atomic<ULONGLONG> gAudioHealthScanEpochTick{0};
 inline std::atomic<ULONGLONG> gAudioHealthLastScanTick{0};
 inline std::atomic<bool> gAudioHealthScanInProgress{false};
@@ -23,9 +22,10 @@ inline ULONGLONG AudioHealthScanEpochTick(ULONGLONG now) noexcept {
   ULONGLONG epoch = gAudioHealthScanEpochTick.load(std::memory_order_acquire);
   if (epoch != 0) return epoch;
 
-  // Start one full cycle in the future so every surface receives a stable first
-  // deadline instead of being probed immediately during startup/auth work.
-  ULONGLONG candidate = now + kAudioHealthScanCycleMs;
+  // Start slot 0 one minute in the future. This avoids an immediate startup
+  // probe while still allowing the six profiles to enter their stable phases
+  // within the first six minutes rather than waiting a whole six-minute cycle.
+  ULONGLONG candidate = now + kAudioHealthScanSlotSpacingMs;
   if (candidate == 0) candidate = 1;
   ULONGLONG expected = 0;
   if (gAudioHealthScanEpochTick.compare_exchange_strong(
@@ -55,6 +55,18 @@ inline ULONGLONG AudioHealthScanDelayMs(
   return due > now ? due - now : 0;
 }
 
+inline bool AudioHealthScanSlotDue(
+    ULONGLONG now, size_t slotIndex) noexcept {
+  if (now == 0) now = GetTickCount64();
+  slotIndex = std::min(slotIndex, kAudioHealthScanSlotCount - 1);
+  const ULONGLONG epoch = AudioHealthScanEpochTick(now);
+  if (now < epoch) return false;
+  const ULONGLONG phase = (now - epoch) % kAudioHealthScanCycleMs;
+  const size_t activeSlot = static_cast<size_t>(
+      phase / kAudioHealthScanSlotSpacingMs);
+  return activeSlot == slotIndex;
+}
+
 inline bool TryClaimAudioHealthScan(ULONGLONG now) noexcept {
   if (now == 0) now = GetTickCount64();
   const ULONGLONG last =
@@ -80,11 +92,19 @@ inline bool TryClaimAudioHealthScan(ULONGLONG now) noexcept {
   return true;
 }
 
+inline bool TryClaimAudioHealthScanSlot(
+    ULONGLONG now, size_t slotIndex) noexcept {
+  if (now == 0) now = GetTickCount64();
+  if (!AudioHealthScanSlotDue(now, slotIndex)) return false;
+  return TryClaimAudioHealthScan(now);
+}
+
 inline void ReleaseAudioHealthScan() noexcept {
   gAudioHealthScanInProgress.store(false, std::memory_order_release);
 }
 
-static_assert(kAudioHealthScanCycleMs == 60ULL * 1000ULL);
+static_assert(kAudioHealthScanCycleMs == 6ULL * 60ULL * 1000ULL);
+static_assert(kAudioHealthScanSlotSpacingMs == 60ULL * 1000ULL);
 static_assert(kAudioHealthScanSlotSpacingMs * kAudioHealthScanSlotCount ==
               kAudioHealthScanCycleMs);
 static_assert(kAudioHealthScanMinimumGapMs < kAudioHealthScanSlotSpacingMs);
