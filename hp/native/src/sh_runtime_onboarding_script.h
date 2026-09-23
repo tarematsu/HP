@@ -16,6 +16,7 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     /^(?:re)?connect(?:\s+(?:to|with|your))?\s+(?:music|spotify(?:\s+account)?)$/i;
   const connectSurfaceActionPattern =
     /^(?:(?:re)?connect(?:\s+(?:to|with|your))?\s+spotify(?:\s+account)?|(?:re)?connect|spotify)$/i;
+  const playbackOnlyAttribute = 'data-homepanel-stationhead-playback-only';
   const onboardingCandidateSelector =
     "button,[role='button'],a,input[type='button'],input[type='submit']," +
     "div,span,p,[tabindex],[aria-label],[data-testid]";
@@ -28,6 +29,8 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     element?.innerText,
     element?.textContent,
   ].map(normalize).filter(Boolean);
+  const onboardingLabelMatches = (element, pattern) =>
+    onboardingLabelsOf(element).some(label => pattern.test(label));
   const onboardingRendered = element => {
     if (!(element instanceof Element) || !element.isConnected ||
         element.getAttribute('aria-hidden') === 'true') return false;
@@ -38,8 +41,26 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
       Number(style.opacity || 1) > 0;
   };
   const onboardingMatches = (element, pattern) =>
-    onboardingRendered(element) &&
-    onboardingLabelsOf(element).some(label => pattern.test(label));
+    onboardingRendered(element) && onboardingLabelMatches(element, pattern);
+
+  const releasePlaybackOnlyForOnboarding = () => {
+    const root = document.documentElement;
+    if (!root?.hasAttribute?.(playbackOnlyAttribute)) return false;
+    // Room rendering is normally hidden after a confirmed `playing` event. If
+    // Stationhead later inserts a recovery prompt without first emitting pause/
+    // waiting/stalled, geometry-based detection can never see that prompt. Look
+    // only for the exact allowlisted labels without reading layout, then restore
+    // the UI so the native locator can validate visibility and click normally.
+    for (const element of document.querySelectorAll(onboardingCandidateSelector)) {
+      if (onboardingLabelMatches(element, keepStreamingPattern) ||
+          onboardingLabelMatches(element, recoverableOnboardingPattern) ||
+          onboardingLabelMatches(element, connectSurfaceLabelPattern)) {
+        root.removeAttribute(playbackOnlyAttribute);
+        return true;
+      }
+    }
+    return false;
+  };
 
   const keepStreamingVisible = () => {
     for (const element of document.querySelectorAll(onboardingCandidateSelector)) {
@@ -84,6 +105,9 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   };
 
   const publishRecoverableOnboarding = () => {
+    if (!pageActive || !document.body) return false;
+    releasePlaybackOnlyForOnboarding();
+
     // Keep Streaming is a continuation confirmation and is always eligible for
     // the trusted native allowlist while visible.
     if (publishKeepStreaming()) return true;
@@ -93,9 +117,8 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     // visible, including before first playback and while stale audio state still
     // reports playing. The native locator revalidates the same narrow allowlist
     // at click-time. Genuine login routes/forms still block automation.
-    if (!pageActive || !document.body || !recoverableOnboardingVisible()) {
-      return false;
-    }
+    if (!recoverableOnboardingVisible()) return false;
+
     // Once an explicit recoverable onboarding control is visible, do not let an
     // unrelated standalone `Log in` header button suppress the click. Passing
     // `true` keeps blockingLogin's hard guards for login routes, credential
