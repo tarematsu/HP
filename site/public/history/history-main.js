@@ -20,7 +20,6 @@ async function importModeRuntime(mode) {
     await import('/history/history-ranking-chart.js?v=20260923.7');
     await import('/history/history-ranking-missing-gap.js?v=20260923.7');
     await import('/history/history-ranking-all-host-table.js?v=20260923.2');
-    await import('/history/history-ranking-table-status.js?v=20260923.1');
     return;
   }
   await import('/history/history-broadcast-summary.js?v=20260923.2');
