@@ -1,10 +1,10 @@
-name: Materialize weekly leaderboard read model
+name: Refresh weekly leaderboard read model after import
 
 on:
   workflow_dispatch:
-  schedule:
-    # Tuesday 02:37 JST, after the hourly leaderboard import has had time to ingest the new week.
-    - cron: '37 17 * * 1'
+  workflow_run:
+    workflows: ['Stationhead leaderboard probe report']
+    types: [completed]
 
 permissions:
   contents: read
@@ -15,10 +15,13 @@ concurrency:
 
 jobs:
   materialize:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
@@ -35,8 +38,8 @@ jobs:
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Materialize weekly leaderboard read model
+      - name: Refresh weekly leaderboard read model when source changed
         working-directory: worker
         env:
           OTHER_DATABASE_NAME: stationhead-other
-        run: node scripts/materialize-weekly-ranking-read-model.mjs
+        run: node scripts/materialize-weekly-ranking-read-model-if-stale.mjs
