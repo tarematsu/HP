@@ -9,9 +9,10 @@ const script = native.match(/LR"JS\(([\s\S]*?)\)JS"\s*$/)?.[1]
   ?.replaceAll(')JS" LR"JS(', '');
 assert.ok(script, 'extract the JavaScript executed by the TVer WebView');
 
-function playerScenario(duration, controls = [], portalOptions = []) {
+function playerScenario(duration, controls = [], portalOptions = [], dialogs = []) {
   let clock = 1000;
   const messages = [];
+  const stored = new Map();
   let handlers = new Map();
   const player = { querySelectorAll: () => controls };
   let video = {
@@ -25,18 +26,27 @@ function playerScenario(duration, controls = [], portalOptions = []) {
   };
   const document = {
     querySelectorAll: selector => selector === 'video' ? [video]
+      : selector === '[role="dialog"]' ? dialogs
+      : selector === 'button[type="submit"][form]' ? submitButtons
       : selector.includes('[role="menu"]') ? portalOptions : [],
     addEventListener: () => {}, elementFromPoint: () => portalOptions[0] || controls[0] || null,
     fullscreenElement: null,
   };
+  const submitButtons = [];
   const window = { chrome: { webview: { postMessage: value => messages.push(value) } } };
   const context = vm.createContext({
-    window, document, location: {
+    window, document, localStorage: {
+      getItem: key => stored.get(key) ?? null,
+      setItem: (key, value) => stored.set(key, value),
+    },
+    HTMLInputElement: class { set value(value) { this._value = value; } get value() { return this._value || ''; } },
+    Event: class { constructor(type, options) { this.type = type; this.bubbles = options.bubbles; } },
+    location: {
       hostname: 'tver.jp', pathname: '/episodes/test',
       href: 'https://tver.jp/episodes/test', origin: 'https://tver.jp',
     },
     history: { pushState() {}, replaceState() {} },
-    Date: { now: () => clock },
+    Date: class extends Date { static now() { return clock; } },
     getComputedStyle: element => ({
       display: element.hidden ? 'none' : 'block',
       visibility: 'visible', opacity: element.opacity ?? '1',
@@ -47,7 +57,11 @@ function playerScenario(duration, controls = [], portalOptions = []) {
     innerWidth: 640, innerHeight: 360,
   });
   return {
-    get video() { return video; }, messages, window,
+    get video() { return video; }, messages, window, stored, submitButtons,
+    removeDialog: dialog => {
+      const index = dialogs.indexOf(dialog);
+      if (index !== -1) dialogs.splice(index, 1);
+    },
     run: () => vm.runInContext(script, context),
     ended: () => handlers.get('ended')?.({ type: 'ended' }),
     advance: ms => { clock += ms; },
@@ -57,6 +71,107 @@ function playerScenario(duration, controls = [], portalOptions = []) {
     },
   };
 }
+
+test('required questionnaire stays visible and playback waits for an answer', () => {
+  const form = {
+    addEventListener() {}, querySelector: () => null, id: 'questionnaire-test',
+  };
+  const dialog = {
+    querySelector: selector => selector.includes('questionnaire-') ? form : null,
+    getAttribute: () => null, textContent: 'アンケート 回答後に再生 閉じる',
+  };
+  const scene = playerScenario(1800, [], [], [dialog]);
+  scene.video.playbackRate = 1;
+  const removed = [];
+  scene.window.__homePanelTverRuntime = {
+    viewportPlayer: { removeAttribute: name => removed.push(name) },
+    viewportAncestors: [{ removeAttribute: name => removed.push(name) }],
+  };
+  const action = scene.run();
+  assert.equal(action, 'recovery');
+  assert.equal(scene.video.playbackRate, 1);
+  assert.deepEqual(scene.messages, ['homepanel:tver-media-init']);
+  assert.deepEqual(removed, [
+    'data-homepanel-tver-fill', 'data-homepanel-tver-fill-ancestor',
+  ]);
+  scene.removeDialog(dialog);
+  scene.run();
+  assert.equal(scene.video.playbackRate, 1.75);
+  assert.equal(scene.messages.filter(value => value === 'homepanel:tver-media-init').length, 1);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
+});
+
+test('saved questionnaire answers are filled and submitted before player controls', () => {
+  const values = new Map();
+  const inputs = Object.fromEntries(['birthYear', 'birthMonth', 'postCode']
+    .map(name => [name, {
+      get value() { return this._value || ''; },
+      dispatchEvent: event => values.set(name, event.type),
+    }]));
+  let selectedGender = '';
+  const gender = {
+    getAttribute: name => name === 'value' ? '9' : name === 'aria-checked'
+      ? String(selectedGender === '9') : null,
+    click: () => { selectedGender = '9'; },
+    getBoundingClientRect: () => ({ left: 50, top: 50, width: 50, height: 50 }),
+  };
+  const form = {
+    id: 'questionnaire-test', addEventListener() {},
+    querySelector: selector => selector.includes('birthYear') ? inputs.birthYear
+      : selector.includes('birthMonth') ? inputs.birthMonth
+      : selector.includes('postCode') ? inputs.postCode
+      : selector.includes('aria-checked') && selectedGender ? gender : null,
+    querySelectorAll: () => [gender],
+  };
+  const submit = {
+    getAttribute: name => name === 'form' ? form.id : null,
+    disabled: false,
+    getBoundingClientRect: () => ({ left: 100, top: 200, width: 100, height: 40 }),
+  };
+  const dialog = {
+    querySelector: () => form, querySelectorAll: () => [submit],
+    getAttribute: () => null, textContent: 'アンケート',
+  };
+  const scene = playerScenario(1800, [], [], [dialog]);
+  scene.stored.set('homepanel:tver:questionnaire:v1', JSON.stringify({
+    year: '2000', month: '4', postCode: '1050004', genderCode: '9',
+  }));
+  assert.equal(scene.run(), 'recovery');
+  assert.equal(inputs.birthYear.value, '2000');
+  assert.equal(inputs.birthMonth.value, '4');
+  assert.equal(inputs.postCode.value, '1050004');
+  scene.advance(400);
+  assert.deepEqual(Array.from(scene.run()), [75, 75]);
+  gender.click(); // The host dispatches the returned trusted click.
+  scene.advance(400);
+  assert.equal(selectedGender, '9');
+  assert.deepEqual(Array.from(scene.run()), [150, 220]);
+  scene.removeDialog(dialog);
+  scene.run();
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
+});
+
+test('a manually submitted questionnaire supplies future automatic answers', () => {
+  let onSubmit;
+  const fields = { birthYear: '2000', birthMonth: '4', postCode: '1050004' };
+  const form = {
+    id: 'questionnaire-test',
+    addEventListener: (name, callback) => { if (name === 'submit') onSubmit = callback; },
+    querySelector: selector => selector.includes('aria-checked')
+      ? { getAttribute: () => '9' }
+      : Object.entries(fields).find(([name]) => selector.includes(name))
+        ? { value: Object.entries(fields).find(([name]) => selector.includes(name))[1] }
+        : null,
+  };
+  const scene = playerScenario(1800, [], [], [{
+    querySelector: () => form, getAttribute: () => null, textContent: 'アンケート',
+  }]);
+  scene.run();
+  onSubmit();
+  assert.deepEqual(JSON.parse(scene.stored.get('homepanel:tver:questionnaire:v1')), {
+    year: '2000', month: '4', postCode: '1050004', genderCode: '9',
+  });
+});
 
 test('a short pre-roll with inherited 1.75x cannot advance the episode', () => {
   const scene = playerScenario(8);
