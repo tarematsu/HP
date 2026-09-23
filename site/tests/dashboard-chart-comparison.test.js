@@ -9,7 +9,7 @@ const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8
 
 test('dashboard entry installs the sole previous-day comparison chart renderer', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260923\.5/);
+  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260923\.6/);
   assert.doesNotMatch(entry, /dashboard-current-enhancements\.js/);
 });
 
@@ -22,12 +22,11 @@ test('online chart overlays the previous 24-hour series in gray on the current t
   assert.match(source, /drawSeries\(context, current, xFor, yOnline, '#111', 2\.5\)/);
 });
 
-test('online comparison chart still renders comment velocity from the dashboard payload', async () => {
+test('current online chart no longer renders comment velocity', async () => {
   const source = await text('public/dashboard-chart-comparison.js');
-  assert.match(source, /comment_velocity/);
-  assert.match(source, /context\.fillStyle = 'rgba\(22,139,115,\.42\)'/);
-  assert.match(source, /context\.fillRect/);
-  assert.match(source, /コメント\/2分/);
+  assert.doesNotMatch(source, /comment_velocity|commentVelocity|コメント\/2分/);
+  assert.doesNotMatch(source, /rgba\(22,139,115/);
+  assert.match(source, /オンライン数\(人\)/);
 });
 
 test('online extrema labels omit borders, use gray points, and include JST time', async () => {
