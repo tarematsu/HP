@@ -104,3 +104,12 @@ export async function fetchHistoryPayload(url, {
   if (!response.ok || !data?.ok) throw new Error(data?.error || `API ${response.status}`);
   return overlayCurrentDaily(requestedUrl, data, { signal, fetchImpl, now });
 }
+
+if (typeof globalThis.addEventListener === 'function' && typeof globalThis.document !== 'undefined') {
+  globalThis.addEventListener('history:data-loaded', () => {
+    const notice = globalThis.document.getElementById('notice');
+    if (!notice) return;
+    notice.textContent = '';
+    notice.classList.remove('error');
+  });
+}
