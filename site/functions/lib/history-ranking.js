@@ -6,6 +6,17 @@ const JSON_HEADERS = {
 };
 
 const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp'];
+const STATIONHEAD_CHANNEL_BY_HOST = new Map([
+  ['sakuramankai', 'Buddies'],
+  ['sakurazaka46jp', '櫻坂46'],
+  ['sbuddies1819', 'ATIN'],
+  ['jo1andjam', 'JAM'],
+  ['vote6tones', 'team SixTONES'],
+  ['befirst', 'BESTY'],
+  ['straykids', 'STAYS'],
+  ['k_p_official', 'Tiara'],
+  ['rosehq', 'numberoneHQ'],
+]);
 const READ_MODEL_SQL = `SELECT payload_json,source_max_ranking_date,refreshed_at
 FROM sh_weekly_ranking_read_model
 WHERE id=1`;
@@ -33,6 +44,20 @@ function validDate(value) {
 function validRank(value) {
   const number = finiteNumber(value);
   return number != null && number > 0;
+}
+
+function correctKnownHostMetadata(row) {
+  const next = { ...row };
+  const key = hostKey(next.host_name);
+  const channel = STATIONHEAD_CHANNEL_BY_HOST.get(key);
+  if (channel) next.stationhead_channel_name = channel;
+  if (key === 'sbuddies1819') {
+    next.artist_name = 'SB19';
+    next.fandom_type = 'fandom';
+    next.fandom_label = 'SB19(ファンダム)';
+    next.stationhead_channel_name = 'ATIN';
+  }
+  return next;
 }
 
 function uniqueHosts(rows) {
@@ -100,6 +125,7 @@ function summarizeHostRankings(actualRows) {
         artist_name: String(row?.artist_name || '').trim() || null,
         fandom_type: row?.fandom_type === 'official' ? 'official' : row?.artist_name ? 'fandom' : null,
         fandom_label: String(row?.fandom_label || '').trim() || null,
+        stationhead_channel_name: String(row?.stationhead_channel_name || '').trim() || null,
         by_week: new Map(),
       });
     }
@@ -121,6 +147,7 @@ function summarizeHostRankings(actualRows) {
       summary.artist_name = group.artist_name;
       summary.fandom_type = group.fandom_type;
       summary.fandom_label = group.fandom_label;
+      summary.stationhead_channel_name = group.stationhead_channel_name;
     }
     return summary;
   }).sort((a, b) => b.ranked_weeks - a.ranked_weeks
@@ -191,8 +218,12 @@ export async function loadRanking(requestUrl, env, _summaryLoader) {
     const model = await loadWeeklyRankingReadModel(env.OTHER_DB, stored);
     if (!model) return readModelUnavailable(from, to, scope, hostSearch);
 
-    const sourceActual = (Array.isArray(model.actual_rows) ? model.actual_rows : []).filter((row) => inRange(row, from, to));
-    const sourceCompleted = (Array.isArray(model.completed_rows) ? model.completed_rows : []).filter((row) => inRange(row, from, to));
+    const sourceActual = (Array.isArray(model.actual_rows) ? model.actual_rows : [])
+      .filter((row) => inRange(row, from, to))
+      .map(correctKnownHostMetadata);
+    const sourceCompleted = (Array.isArray(model.completed_rows) ? model.completed_rows : [])
+      .filter((row) => inRange(row, from, to))
+      .map(correctKnownHostMetadata);
     const featured = new Set(FEATURED_HOSTS.map(hostKey));
     let selectedKeys;
     if (hostSearch) {

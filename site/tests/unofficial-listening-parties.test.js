@@ -59,7 +59,7 @@ test('all historical rows use X announcements and the unified X label', () => {
 });
 
 test('dashboard routing recognizes the unofficial view and loads it before tab setup', () => {
-  assert.match(tabsSource, /VIEW_MODES = new Set\(\['current', \.\.\.HISTORY_MODES, 'likes', 'unofficial'\]\)/);
+  assert.match(tabsSource, /VIEW_MODES = new Set\(\['current', \.\.\.HISTORY_MODES, 'played-tracks', 'likes', 'unofficial'\]\)/);
   assert.match(tabsSource, /button\.dataset\.view === 'unofficial'/);
   assert.match(tabsSource, /showUnofficial\(\)/);
 

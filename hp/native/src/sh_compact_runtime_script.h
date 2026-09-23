@@ -1,5 +1,6 @@
 #pragma once
 
+#include "sh_recoverable_action_policy.h"
 #include "sh_runtime_interaction_script.h"
 #include "sh_runtime_onboarding_script.h"
 #include "sh_runtime_blank_recovery_script.h"
@@ -47,6 +48,7 @@ inline std::wstring StationheadCompactRuntimeScript(
                     : std::wstring_view(L"stationhead");
   ReplaceStationheadRuntimeToken(script, L"{{GLOBAL}}", guard);
   ReplaceStationheadRuntimeToken(script, L"{{PREFIX}}", prefix);
+  InjectStationheadRecoverableActionPattern(script);
   return script;
 }
 

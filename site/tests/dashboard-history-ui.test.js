@@ -37,11 +37,12 @@ test('main page labels member and stream deltas with their actual dates', () => 
   assert.match(dashboardDaily, /streamsDayBeforeDelta', dayBeforeLabel/);
 });
 
-test('like ranking is an integrated view backed by the current ranking projection', () => {
+test('like ranking is an integrated view backed by the materialized status payload', () => {
   assert.match(mainPage, /id="likesView" class="dashboard-view likes-view" hidden/);
   assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
   assert.match(trackEndpoint, /ranking_only/);
-  assert.match(trackEndpoint, /loadTrackRanking/);
+  assert.match(trackEndpoint, /track-history-status/);
+  assert.doesNotMatch(trackEndpoint, /loadTrackRanking|TRACK_RANKING_SQL|sh_track_ranking_current/);
   assert.match(trackEndpoint, /current_track_like_ranking/);
   assert.match(historyLikes, /ranking_only=1/);
   assert.match(historyLikes, /likesRankingList/);

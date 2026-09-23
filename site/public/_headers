@@ -1,9 +1,23 @@
 /*
   X-Robots-Tag: noindex, nofollow, noarchive, nosnippet, noimageindex
-  Cache-Control: no-cache
 
 /
   Cache-Control: no-store, max-age=0, must-revalidate
 
 /index.html
   Cache-Control: no-store, max-age=0, must-revalidate
+
+/sakurazaka46jp
+  Cache-Control: no-store, max-age=0, must-revalidate
+
+/sakurazaka46jp/
+  Cache-Control: no-store, max-age=0, must-revalidate
+
+/sakurazaka46jp/index.html
+  Cache-Control: no-store, max-age=0, must-revalidate
+
+/*.js
+  Cache-Control: public, max-age=60, must-revalidate
+
+/*.css
+  Cache-Control: public, max-age=60, must-revalidate

@@ -11,16 +11,16 @@ const CHUNK_STORAGE = 'chunked-json-v1';
 // D1 limits each SQL statement to 100,000 bytes. Keep source chunks well below
 // that so SQL quoting/escaping cannot push an INSERT over the statement limit.
 const CHUNK_MAX_BYTES = 40_000;
-const STATIONHEAD_CHANNEL_BY_ARTIST = new Map([
-  ['櫻坂46', 'Buddies'],
-  ['SixTONES', 'team SixTONES'],
-  ['BTS', 'BTS ARMY'],
-  ['JO1', 'JAM'],
-  ['BE:FIRST', 'BESTY'],
-  ['King & Prince', 'Tiara'],
-  ['Stray Kids', 'STAYS'],
-  ['SB19', 'ATIN'],
-  ['ROSÉ', 'numberoneHQ'],
+const STATIONHEAD_CHANNEL_BY_HOST = new Map([
+  ['sakuramankai', 'Buddies'],
+  ['sakurazaka46jp', '櫻坂46'],
+  ['sbuddies1819', 'ATIN'],
+  ['jo1andjam', 'JAM'],
+  ['vote6tones', 'team SixTONES'],
+  ['befirst', 'BESTY'],
+  ['straykids', 'STAYS'],
+  ['k_p_official', 'Tiara'],
+  ['rosehq', 'numberoneHQ'],
 ]);
 
 function hostKey(value) {
@@ -54,11 +54,11 @@ function decorateRows(rows, fandomRows) {
     const key = hostKey(row?.host_name);
     const correctedSbuddies = key === 'sbuddies1819';
     const artistName = correctedSbuddies ? 'SB19' : String(row?.artist_name || '').trim();
-    if (!artistName) continue;
+    if (!key || !artistName) continue;
     metadata.set(key, {
       artist_name: artistName,
       fandom_type: correctedSbuddies ? 'fandom' : row.relation_type === 'official' ? 'official' : 'fandom',
-      stationhead_channel_name: STATIONHEAD_CHANNEL_BY_ARTIST.get(artistName) || null,
+      stationhead_channel_name: STATIONHEAD_CHANNEL_BY_HOST.get(key) || null,
     });
   }
   return (rows || []).map((row) => {
@@ -73,7 +73,7 @@ function decorateRows(rows, fandomRows) {
       decorated.artist_name = null;
       decorated.fandom_type = null;
       decorated.fandom_label = null;
-      decorated.stationhead_channel_name = null;
+      decorated.stationhead_channel_name = STATIONHEAD_CHANNEL_BY_HOST.get(hostKey(row.host_name)) || null;
     }
     return decorated;
   });

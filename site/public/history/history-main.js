@@ -13,7 +13,7 @@ async function importModeRuntime(mode) {
   const key = runtimeKey(mode);
   if (!key) return;
   if (key === 'summary') {
-    await import('/history/history-period-chart.js?v=20260923.4');
+    await import('/history/history-period-chart.js?v=20260923.5');
     return;
   }
   if (key === 'ranking') {

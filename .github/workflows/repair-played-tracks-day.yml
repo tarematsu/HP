@@ -1,0 +1,64 @@
+name: Repair played tracks day
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-played-tracks-day.yml'
+      - 'worker/scripts/repair-track-history-day-actions.mjs'
+      - 'worker/src/pages-track-history-r2-shards.js'
+      - 'site/functions/lib/track-history-restored-handler.js'
+      - 'site/functions/lib/track-history-merge.js'
+      - 'site/functions/lib/period-completeness.js'
+      - 'site/functions/lib/track-likes.js'
+  workflow_dispatch:
+    inputs:
+      day:
+        description: UTC day to rebuild (YYYY-MM-DD)
+        required: false
+        default: '2026-09-22'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repair-played-tracks-day
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      TRACK_HISTORY_REPAIR_DAY: ${{ inputs.day || '2026-09-22' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Rebuild requested Track History day
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/repair-track-history-day-actions.mjs 2>&1 | tee repair-track-history-day.log
+      - name: Upload repair failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repair-track-history-day-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/repair-track-history-day.log
+          if-no-files-found: error
+          retention-days: 7

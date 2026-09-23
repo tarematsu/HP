@@ -1,14 +1,16 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'likes', 'unofficial']);
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'played-tracks', 'likes', 'unofficial']);
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
+const playedTracksView = document.getElementById('playedTracksView');
 const likesView = document.getElementById('likesView');
 const unofficialView = document.getElementById('unofficialView');
 const tabs = document.getElementById('modeTabs');
 const skipLink = document.querySelector('.skip-link');
 let historyRuntimePromise = null;
 let rankingStatusRuntimePromise = null;
+let playedTracksRuntimePromise = null;
 let likesRuntimePromise = null;
 let historyRuntimeMode = null;
 let activeMode = 'current';
@@ -37,6 +39,7 @@ function updateLocation(mode, { replace = false } = {}) {
 function showOnly(view) {
   if (currentView) currentView.hidden = view !== currentView;
   if (historyView) historyView.hidden = view !== historyView;
+  if (playedTracksView) playedTracksView.hidden = view !== playedTracksView;
   if (likesView) likesView.hidden = view !== likesView;
   if (unofficialView) unofficialView.hidden = view !== unofficialView;
 }
@@ -67,6 +70,16 @@ async function loadHistoryRuntime() {
     });
   }
   return historyRuntimePromise;
+}
+
+async function loadPlayedTracksRuntime() {
+  if (!playedTracksRuntimePromise) {
+    playedTracksRuntimePromise = import('/played-tracks.js?v=20260923.1').catch((error) => {
+      playedTracksRuntimePromise = null;
+      throw error;
+    });
+  }
+  return playedTracksRuntimePromise;
 }
 
 async function loadLikesRuntime() {
@@ -116,6 +129,27 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
   }
 }
 
+async function showPlayedTracks({ updateUrl = true, replaceUrl = false } = {}) {
+  activeMode = 'played-tracks';
+  showOnly(playedTracksView);
+  updateTabs('played-tracks');
+  if (updateUrl) updateLocation('played-tracks', { replace: replaceUrl });
+
+  try {
+    await loadPlayedTracksRuntime();
+  } catch (error) {
+    if (activeMode !== 'played-tracks') return;
+    console.error('played tracks runtime failed to start', error);
+    const notice = document.getElementById('playedTracksNotice');
+    if (notice) {
+      notice.textContent = '再生曲データの初期化に失敗しました。再読み込みしてください。';
+      notice.classList.add('error');
+    }
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
+  }
+}
+
 async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
   activeMode = 'likes';
   showOnly(likesView);
@@ -152,6 +186,7 @@ function modeFromLocation() {
 
 function showMode(mode, options = {}) {
   if (mode === 'current') showCurrent(options);
+  else if (mode === 'played-tracks') void showPlayedTracks(options);
   else if (mode === 'likes') void showLikes(options);
   else if (mode === 'unofficial') showUnofficial(options);
   else void showHistory(mode, options);
@@ -170,6 +205,10 @@ tabs?.addEventListener('click', (event) => {
 
   if (button.dataset.view === 'current') {
     showCurrent();
+    return;
+  }
+  if (button.dataset.view === 'played-tracks') {
+    void showPlayedTracks();
     return;
   }
   if (button.dataset.view === 'likes') {

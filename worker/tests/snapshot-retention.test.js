@@ -9,6 +9,8 @@ import {
   snapshotRetentionEnabled,
 } from '../src/snapshot-retention.js';
 
+const DAY_MS = 24 * 60 * 60_000;
+const MINUTE_MS = 60_000;
 const RETENTION_INDEXES = [
   'idx_sh_channel_snapshots_observed_id',
   'idx_sh_queue_snapshots_time',
@@ -20,31 +22,61 @@ const RETENTION_INDEXES = [
   'idx_sh_ingest_conflicts_observed',
 ];
 
-class FakeDb {
-  constructor(lastCleanupAt = 0, deleteChanges = [3, 2], indexNames = RETENTION_INDEXES) {
+class FakeBuddiesDb {
+  constructor({
+    lastCleanupAt = 0,
+    snapshots = [],
+    auxiliaryDeleteChanges = [],
+    indexNames = RETENTION_INDEXES,
+  } = {}) {
     this.lastCleanupAt = lastCleanupAt;
-    this.deleteChanges = [...deleteChanges];
+    this.snapshots = snapshots.map((row) => ({ ...row }));
+    this.auxiliaryDeleteChanges = [...auxiliaryDeleteChanges];
     this.indexNames = [...indexNames];
     this.calls = [];
     this.batchCalls = [];
   }
 
+  statement(sql, values = []) {
+    return {
+      first: async () => (sql.includes('last_cleanup_at') ? { last_cleanup_at: this.lastCleanupAt } : null),
+      all: async () => {
+        if (sql.includes('sqlite_schema')) {
+          return { results: this.indexNames.map((name) => ({ name })) };
+        }
+        if (sql.includes('SELECT id,channel_id,observed_at') && sql.includes('FROM sh_channel_snapshots')) {
+          const [cutoff, limit] = values;
+          return {
+            results: this.snapshots
+              .filter((row) => row.observed_at < cutoff)
+              .sort((left, right) => left.observed_at - right.observed_at || left.id - right.id)
+              .slice(0, limit),
+          };
+        }
+        return { results: [] };
+      },
+      run: async () => {
+        if (sql.startsWith('DELETE FROM sh_channel_snapshots WHERE id IN (')) {
+          const ids = new Set((sql.match(/\(([^)]+)\)/)?.[1] || '')
+            .split(',').map((value) => Number(value)).filter(Number.isFinite));
+          const before = this.snapshots.length;
+          this.snapshots = this.snapshots.filter((row) => !ids.has(row.id));
+          return { meta: { changes: before - this.snapshots.length } };
+        }
+        if (sql.startsWith('DELETE FROM')) {
+          return { meta: { changes: this.auxiliaryDeleteChanges.shift() ?? 0 } };
+        }
+        return { meta: { changes: 1 } };
+      },
+      values,
+    };
+  }
+
   prepare(sql) {
     this.calls.push(sql);
     return {
-      bind: (...values) => ({
-        first: async () => (sql.includes('last_cleanup_at') ? { last_cleanup_at: this.lastCleanupAt } : null),
-        all: async () => ({
-          results: sql.includes('sqlite_schema')
-            ? this.indexNames.map((name) => ({ name }))
-            : [],
-        }),
-        run: async () => {
-          if (sql.startsWith('DELETE FROM')) return { meta: { changes: this.deleteChanges.shift() ?? 0 } };
-          return { meta: { changes: 1 } };
-        },
-        values,
-      }),
+      bind: (...values) => this.statement(sql, values),
+      run: async () => this.statement(sql).run(),
     };
   }
 
@@ -54,6 +86,28 @@ class FakeDb {
     for (const statement of statements) results.push(await statement.run());
     return results;
   }
+}
+
+class FakeMinuteDb {
+  constructor(facts = []) {
+    this.facts = facts;
+    this.calls = [];
+  }
+
+  prepare(sql) {
+    this.calls.push(sql);
+    return {
+      bind: (start, end) => ({
+        all: async () => ({
+          results: this.facts.filter((row) => row.minute_at >= start && row.minute_at < end),
+        }),
+      }),
+    };
+  }
+}
+
+function minute(value) {
+  return Math.floor(value / MINUTE_MS) * MINUTE_MS;
 }
 
 test('snapshotRetentionEnabled defaults to true and honors explicit disable', () => {
@@ -66,40 +120,89 @@ test('shouldRunSnapshotRetention preserves the interval calculation', () => {
   assert.equal(shouldRunSnapshotRetention(3_500_000, 3_600_000, {}), false);
 });
 
-test('retention keeps every minute rebuild source for at least thirty days', async () => {
+test('retention deletes channel snapshots only after the matching minute fact exists', async () => {
   const now = 4_000_000_000;
-  const db = new FakeDb();
+  const cutoff = now - REBUILD_SOURCE_RETENTION_MS;
+  const materializedAt = cutoff - 10 * MINUTE_MS;
+  const protectedAt = cutoff - 9 * MINUTE_MS;
+  const recentAt = cutoff + MINUTE_MS;
+  const db = new FakeBuddiesDb({
+    snapshots: [
+      { id: 1, channel_id: 318, observed_at: materializedAt },
+      { id: 2, channel_id: 318, observed_at: protectedAt },
+      { id: 3, channel_id: 318, observed_at: recentAt },
+    ],
+    auxiliaryDeleteChanges: [2, 0, 0, 0, 0, 0, 0],
+  });
+  const minuteDb = new FakeMinuteDb([
+    { channel_id: 318, minute_at: minute(materializedAt) },
+  ]);
+
   const result = await pruneOldSnapshots({
     BUDDIES_DB: db,
-    DB: new Proxy({}, { get() { throw new Error('primary fallback must not be touched'); } }),
-    SNAPSHOT_RETENTION_MS: 86_400_000,
+    MINUTE_DB: minuteDb,
+    SNAPSHOT_RETENTION_MS: DAY_MS,
     SNAPSHOT_RETENTION_BATCH_SIZE: 1000,
+    SNAPSHOT_RETENTION_MAX_BATCHES: 1,
   }, now);
 
-  assert.equal(REBUILD_SOURCE_RETENTION_MS, 30 * 24 * 60 * 60_000);
-  assert.deepEqual(result, {
-    skipped: false,
-    cutoff: now - REBUILD_SOURCE_RETENTION_MS,
-    deleted: {
-      sh_channel_snapshots: 3,
-      sh_queue_snapshots: 2,
-      sh_comment_minute_counts: 0,
-      sh_queue_items: 0,
-      sh_track_like_observations: 0,
-      sh_track_metadata: 0,
-      sh_ingest_claims: 0,
-      sh_ingest_conflicts: 0,
-    },
+  assert.equal(REBUILD_SOURCE_RETENTION_MS, 30 * DAY_MS);
+  assert.equal(result.cutoff, cutoff);
+  assert.equal(result.deleted.sh_channel_snapshots, 1);
+  assert.equal(result.deleted.sh_queue_snapshots, 2);
+  assert.deepEqual(result.channel_snapshots, {
+    scanned: 2,
+    protected_unmaterialized: 1,
   });
-  assert.deepEqual(db.batchCalls, [8]);
-  assert.equal(db.calls.some((sql) => sql.startsWith('DELETE FROM sh_comment_minute_counts')
-    && sql.includes('bucket_start<?')), true);
-  assert.equal(db.calls.filter((sql) => sql.startsWith('DELETE FROM')).length, 8);
-  assert.equal(db.calls.filter((sql) => sql.includes('INSERT INTO sh_data_maintenance_state')).length, 1);
+  assert.deepEqual(db.snapshots.map((row) => row.id), [2, 3]);
+  assert.equal(minuteDb.calls.length, 1);
+  assert.deepEqual(db.batchCalls, [7]);
+});
+
+test('retention keeps old channel snapshots when minute facts are unavailable', async () => {
+  const now = 4_000_000_000;
+  const cutoff = now - REBUILD_SOURCE_RETENTION_MS;
+  const db = new FakeBuddiesDb({
+    snapshots: [{ id: 1, channel_id: 318, observed_at: cutoff - MINUTE_MS }],
+  });
+
+  const result = await pruneOldSnapshots({
+    BUDDIES_DB: db,
+    SNAPSHOT_RETENTION_BATCH_SIZE: 100,
+    SNAPSHOT_RETENTION_MAX_BATCHES: 1,
+  }, now);
+
+  assert.equal(result.deleted.sh_channel_snapshots, 0);
+  assert.equal(result.channel_snapshots.protected_unmaterialized, 1);
+  assert.deepEqual(db.snapshots.map((row) => row.id), [1]);
+});
+
+test('retention can remove corrected old source snapshots without requiring source-record equality', async () => {
+  const now = 4_000_000_000;
+  const cutoff = now - REBUILD_SOURCE_RETENTION_MS;
+  const observedAt = cutoff - MINUTE_MS;
+  const db = new FakeBuddiesDb({
+    snapshots: [{ id: 99, channel_id: 318, observed_at: observedAt }],
+  });
+  const minuteDb = new FakeMinuteDb([
+    { channel_id: 318, minute_at: minute(observedAt), source_record_id: 'manual-correction' },
+  ]);
+
+  const result = await pruneOldSnapshots({
+    BUDDIES_DB: db,
+    MINUTE_DB: minuteDb,
+    SNAPSHOT_RETENTION_BATCH_SIZE: 100,
+    SNAPSHOT_RETENTION_MAX_BATCHES: 1,
+  }, now);
+
+  assert.equal(result.deleted.sh_channel_snapshots, 1);
+  assert.deepEqual(db.snapshots, []);
 });
 
 test('retention refuses to scan when a required timestamp index is missing', async () => {
-  const db = new FakeDb(0, [], RETENTION_INDEXES.filter((name) => name !== 'idx_sh_queue_items_observed'));
+  const db = new FakeBuddiesDb({
+    indexNames: RETENTION_INDEXES.filter((name) => name !== 'idx_sh_queue_items_observed'),
+  });
   assert.deepEqual(
     await pruneOldSnapshots({ BUDDIES_DB: db }, 4_000_000_000),
     {
@@ -112,20 +215,8 @@ test('retention refuses to scan when a required timestamp index is missing', asy
   assert.deepEqual(db.batchCalls, []);
 });
 
-test('retention continues only tables that fill the previous batch', async () => {
-  const db = new FakeDb(0, [100, 0, 0, 0, 0, 0, 0, 0, 100, 50]);
-  const result = await pruneOldSnapshots({
-    BUDDIES_DB: db,
-    SNAPSHOT_RETENTION_BATCH_SIZE: 100,
-    SNAPSHOT_RETENTION_MAX_BATCHES: 5,
-  }, 4_000_000_000);
-
-  assert.equal(result.deleted.sh_channel_snapshots, 250);
-  assert.deepEqual(db.batchCalls, [8, 1, 1]);
-});
-
 test('retention observes the cleanup interval', async () => {
-  const db = new FakeDb(97_000_000);
+  const db = new FakeBuddiesDb({ lastCleanupAt: 97_000_000 });
   assert.deepEqual(
     await pruneOldSnapshots({ BUDDIES_DB: db }, 100_000_000),
     { skipped: true, reason: 'not-due' },

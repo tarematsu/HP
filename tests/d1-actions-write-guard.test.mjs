@@ -77,7 +77,7 @@ test('unavailable write telemetry fails closed without failing the workflow step
   });
 });
 
-test('read-model workflow gates Actions generation while KV and R2 keep serving', async () => {
+test('history read-model workflow gates D1-heavy generation while existing R2 stays active', async () => {
   const workflow = await readFile(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
   assert.match(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'/);
   assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'/);
@@ -89,6 +89,7 @@ test('read-model workflow gates Actions generation while KV and R2 keep serving'
   assert.match(workflow, /outputs\.reason/);
   assert.match(workflow, /telemetry-unavailable/);
   assert.match(workflow, /if: steps\.d1-write-budget\.outputs\.read_allowed == 'true'/);
-  assert.match(workflow, /Existing KV\/R2 responses remain active/);
+  assert.match(workflow, /Existing R2 responses remain active/);
+  assert.match(workflow, /PAGES_READ_MODEL_REUSE_ONLY: 'true'/);
   assert.doesNotMatch(workflow, /worker.*retry|retry.*worker/i);
 });

@@ -8,6 +8,10 @@ import {
   loadSummaryDailyCoverage,
   currentPeriodKey,
 } from './period-completeness.js';
+import {
+  isKnownMissingPeriod,
+  materializeKnownMissingPeriods,
+} from './known-history-gap.js';
 import { onRequestGet as publicHistory } from '../api/history.js';
 
 const JSON_HEADERS = {
@@ -95,7 +99,7 @@ async function persistClosedPeriodTrackCounts(db, table, rows, trackCounts, mode
   const statements = [];
   for (const row of rows) {
     const key = String(row?.period_key || '');
-    if (!key || key >= currentKey || finiteNumber(row?.distinct_tracks) != null) continue;
+    if (!key || key >= currentKey || isKnownMissingPeriod(mode, key) || finiteNumber(row?.distinct_tracks) != null) continue;
     const count = finiteNumber(trackCounts.get(key));
     if (count == null) continue;
     statements.push(db.prepare(`UPDATE ${table}
@@ -142,10 +146,12 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
 
   // Historical track totals are canonical summary data. Calculate them only
   // when a closed period has not been populated yet, persist the result to
-  // OTHER_DB, and read the stored value on subsequent materializations. The
-  // current weekly/monthly period remains live because it is still changing.
+  // OTHER_DB, and read the stored value on subsequent materializations. Known
+  // missing periods are display-only read-model rows and must never trigger D1
+  // writes. The current weekly/monthly period remains live because it changes.
   const shouldLoadTrackCounts = Boolean(env?.MINUTE_DB?.prepare) && rows.some((row) => {
     const key = String(row?.period_key || '');
+    if (isKnownMissingPeriod(mode, key)) return false;
     return key === currentKey || (key < currentKey && finiteNumber(row?.distinct_tracks) == null);
   });
   const trackCounts = shouldLoadTrackCounts
@@ -165,7 +171,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     return row;
   });
   return {
-    rows: enrichedRows,
+    rows: materializeKnownMissingPeriods(enrichedRows, mode, from, to, now),
     excluded_stream_growth_count: completed.excludedCount,
     boundary_evidence_count: 0,
     live_overlay_count: 0,
