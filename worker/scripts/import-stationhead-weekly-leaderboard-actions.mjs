@@ -79,6 +79,7 @@ function normalizeCandidateRow(rank, nameValue, streamsValue, daysValue = null) 
     days: days != null && days >= 0 && days <= 366 ? days : null,
   };
 }
+
 function uniqueSortedRows(rows) {
   const byRank = new Map();
   const channels = new Set();
@@ -293,9 +294,25 @@ function sameDigestRows(existingRows, digest, expectedCount) {
   return existingRows.every((row) => parsedRawJson(row.raw_json)?.source_digest === digest);
 }
 
+function hasCompleteTop100(rows) {
+  if (!Array.isArray(rows) || rows.length !== MAX_ROWS) return false;
+  return rows.every((row, index) => row?.rank === index + 1);
+}
+
 export async function importLeaderboardArtifact(artifact, db, now = Date.now()) {
   const extracted = extractLeaderboardFromArtifact(artifact);
   if (extracted.status !== 'ready') return extracted;
+  if (!hasCompleteTop100(extracted.rows)) {
+    return {
+      status: 'incomplete',
+      reason: 'expected-complete-top-100',
+      ranking_date: extracted.ranking_date,
+      row_count: extracted.rows.length,
+      digest: extracted.digest,
+      parser: extracted.parser,
+    };
+  }
+
   const existing = await db.prepare(`SELECT raw_json
 FROM sh_channel_rankings
 WHERE ranking_date=? AND ranking_type=?
