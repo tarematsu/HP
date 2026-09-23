@@ -71,15 +71,16 @@ test('stale playback-only rendering is released from exact onboarding labels bef
   assert.doesNotMatch(release, /getBoundingClientRect|getComputedStyle/);
 });
 
-test('recoverable onboarding does not depend on semantic button or heading markup', () => {
+test('recoverable onboarding covers semantic, heading and non-semantic Stationhead markup', () => {
   assert.match(onboarding, /const onboardingCandidateSelector =/);
-  assert.match(onboarding, /div,span,p/);
+  assert.match(onboarding, /h1,h2,h3,\[role='heading'\],div,span,p/);
   assert.match(onboarding, /connectSurfaceLabelPattern/);
   assert.match(onboarding, /connectSurfaceActionPattern/);
   assert.match(onboarding, /splitConnectSurfaceVisible/);
-  assert.doesNotMatch(onboarding, /joinPartyHeadingPattern|headingSelector|role=.?heading/);
+  assert.doesNotMatch(onboarding, /joinPartyHeadingPattern/);
 
-  assert.match(locator, /const candidateSelector = semanticSelector \+ ',div,span,p'/);
+  assert.match(locator, /const candidateSelector =/);
+  assert.match(locator, /h1,h2,h3,\[role='heading'\],div,span,p/);
   assert.match(locator, /const clickableTargetFor = element =>/);
   assert.match(locator, /style\.cursor === 'pointer'/);
   assert.match(locator, /const actionablePointForPattern = pattern =>/);
