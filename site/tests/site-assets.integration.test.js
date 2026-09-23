@@ -47,16 +47,19 @@ test('dashboard HTML keeps accessibility, privacy and all public sections', asyn
   assert.doesNotMatch(html, /href="\/history/);
 });
 
-test('dashboard renders audience and comment velocity from one response', async () => {
+test('dashboard current page renders online history without comment velocity', async () => {
   const html = await text('public/index.html');
   const client = await text('public/dashboard-client.js');
-  const chart = await text('public/dashboard-current-enhancements.js');
-  assert.match(html, /オンライン・コメント勢い/);
+  const chart = await text('public/dashboard-chart-comparison.js');
+  const detail = await text('public/dashboard-chart-detail.js');
+  assert.match(html, /<h2>オンライン数<\/h2>/);
+  assert.doesNotMatch(html, /コメント勢い/);
   assert.match(client, /const DASHBOARD_URL = '\/api\/dashboard'/);
   assert.match(client, /payload\.queue/);
-  assert.match(chart, /payload\.history/);
+  assert.match(chart, /payload\?\.history/);
   assert.match(chart, /online_member_count/);
-  assert.match(chart, /comment_velocity/);
+  assert.doesNotMatch(chart, /comment_velocity|commentVelocity|コメント\/2分/);
+  assert.doesNotMatch(detail, /comment_velocity|commentVelocity|コメント勢い/);
 });
 
 test('dashboard displays completed UTC-day changes from the canonical response', async () => {
