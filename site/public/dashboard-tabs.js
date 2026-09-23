@@ -50,7 +50,7 @@ function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
 
 async function loadRankingStatusRuntime() {
   if (!rankingStatusRuntimePromise) {
-    rankingStatusRuntimePromise = import('/history/history-ranking-table-status.js?v=20260923.1').catch((error) => {
+    rankingStatusRuntimePromise = import('/history/history-ranking-table-status.js?v=20260923.2').catch((error) => {
       rankingStatusRuntimePromise = null;
       throw error;
     });
