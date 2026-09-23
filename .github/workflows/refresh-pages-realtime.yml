@@ -1,8 +1,6 @@
 name: Refresh pages realtime read model
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
