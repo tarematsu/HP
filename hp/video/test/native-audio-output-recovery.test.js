@@ -8,6 +8,7 @@ const source = name => readFileSync(
 );
 
 const coordinator = source('audio_health_scan_coordinator.h');
+const profilePolicy = source('sh_playback_resource_policy_fix.h');
 const stationheadEvents = source('sh_webview_event_policy.h');
 const stationheadLoss = source('sh_audio_loss.cpp');
 const stationheadPolicy = source('sh_audio_loss_policy.h');
@@ -36,18 +37,22 @@ test('Stationhead has no independent event-driven pause-play repair loop', () =>
   assert.match(stationheadLoss, /SetManagedPlaybackFallback/);
 });
 
-test('shared audio-health coordinator keeps Stationhead on a true one-minute cycle', () => {
-  assert.match(coordinator, /kAudioHealthScanCycleMs = 60ULL \* 1000ULL/);
-  assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 10'000ULL/);
+test('shared audio-health coordinator spaces six Stationhead profiles one minute apart', () => {
+  assert.match(coordinator, /kAudioHealthScanCycleMs = 6ULL \* 60ULL \* 1000ULL/);
+  assert.match(coordinator, /kAudioHealthScanSlotSpacingMs = 60ULL \* 1000ULL/);
+  assert.match(coordinator, /kAudioHealthScanSlotCount = 6/);
+  assert.match(coordinator, /AudioHealthScanSlotDue/);
+  assert.match(coordinator, /TryClaimAudioHealthScanSlot/);
   assert.match(coordinator, /gAudioHealthScanInProgress/);
-  assert.match(coordinator, /TryClaimAudioHealthScan/);
   assert.match(coordinator, /kAudioHealthScanMinimumGapMs = 4ULL \* 1000ULL/);
   assert.match(coordinator, /ReleaseAudioHealthScan/);
+  assert.match(profilePolicy, /TryClaimAudioHealthScan\(now\)[\s\S]*TryClaimAudioHealthScanSlot/);
+  assert.match(profilePolicy, /kAudioHealthScanRetryMs[\s\S]*StationheadProfileAudioHealthRetryMs/);
   assert.match(stationheadRecovery,
     /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
 });
 
-test('Stationhead one-minute health path observes audio without performing playback repair', () => {
+test('Stationhead one-minute scheduler observes audio only in the profile slot', () => {
   assert.match(stationheadRecovery, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
   assert.match(stationheadRecovery, /PollPeriodicAudioHealth/);
   assert.match(stationheadRecovery, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
