@@ -48,19 +48,17 @@ def configured_d1_databases() -> list[dict[str, Any]]:
                 configured_name = str(row.get("database_name") or "").strip()
                 if configured_name:
                     item["configuredName"] = configured_name
-    rows = []
-    for item in databases.values():
-        rows.append({
-            **item,
-            "bindings": sorted(item["bindings"]),
-        })
+    rows = [
+        {**item, "bindings": sorted(item["bindings"])}
+        for item in databases.values()
+    ]
     return sorted(rows, key=lambda row: (str(row.get("configuredName") or ""), row["databaseId"]))
 
 
 def _request_database(database_id: str) -> dict[str, Any]:
-    fields = urllib.parse.quote("uuid,name,file_size")
+    query = urllib.parse.urlencode({"fields": "uuid,name,file_size"})
     request = urllib.request.Request(
-        f"{API}/accounts/{ACCOUNT}/d1/database/{database_id}?fields={fields}",
+        f"{API}/accounts/{ACCOUNT}/d1/database/{database_id}?{query}",
         method="GET",
         headers={
             "Authorization": f"Bearer {TOKEN}",
@@ -89,7 +87,7 @@ def collect_d1_storage(
     request_database: Callable[[str], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     request = request_database or _request_database
-    rows = []
+    rows: list[dict[str, Any]] = []
     total_bytes = 0
     available = 0
     for database in configured:
@@ -116,9 +114,11 @@ def collect_d1_storage(
                 "fileSize": None,
                 "error": str(error)[:500],
             })
+    database_count = len(rows)
     return {
-        "databaseCount": len(rows),
+        "databaseCount": database_count,
         "availableCount": available,
+        "complete": database_count > 0 and available == database_count,
         "totalBytes": total_bytes,
         "databases": rows,
     }
@@ -136,6 +136,23 @@ def format_bytes(value: int | None) -> str:
     return f"{value} B"
 
 
+def _total_line(storage: dict[str, Any]) -> str:
+    database_count = int(storage.get("databaseCount") or 0)
+    available = int(storage.get("availableCount") or 0)
+    total_bytes = int(storage.get("totalBytes") or 0)
+    if storage.get("complete"):
+        return (
+            f"- Current configured D1 total: **{format_bytes(total_bytes)}** "
+            f"(`{total_bytes:,}` bytes)"
+        )
+    if available > 0:
+        return (
+            f"- Available-size subtotal: **{format_bytes(total_bytes)}** (`{total_bytes:,}` bytes); "
+            f"full configured D1 total: **unavailable** ({available}/{database_count} sizes fetched)"
+        )
+    return "- Current configured D1 total: **unavailable**"
+
+
 def render_d1_storage(storage: dict[str, Any]) -> str:
     rows = storage.get("databases") or []
     lines = [
@@ -143,7 +160,7 @@ def render_d1_storage(storage: dict[str, Any]) -> str:
         "",
         "- Source: Cloudflare D1 Database API `file_size` (no SQL query executed)",
         f"- Configured databases: `{storage.get('databaseCount', 0)}` · size available: `{storage.get('availableCount', 0)}`",
-        f"- Current configured D1 total: **{format_bytes(int(storage.get('totalBytes') or 0))}** (`{int(storage.get('totalBytes') or 0):,}` bytes)",
+        _total_line(storage),
         "",
         "| Database | Binding(s) | Current size | Bytes |",
         "|---|---|---:|---:|",
@@ -156,8 +173,6 @@ def render_d1_storage(storage: dict[str, Any]) -> str:
             f"| `{row.get('name') or row.get('configuredName') or 'unknown'}` | {bindings} | "
             f"{format_bytes(size)} | {bytes_text} |"
         )
-        if row.get("error"):
-            lines.append(f"<!-- d1-storage-error {row.get('databaseId')}: {str(row['error']).replace('-->', '-- >')} -->")
     if not rows:
         lines.append("| - | - | unavailable | - |")
     return "\n".join(lines) + "\n"
@@ -168,6 +183,7 @@ def append_d1_storage_diagnostics() -> dict[str, Any]:
         storage = {
             "databaseCount": 0,
             "availableCount": 0,
+            "complete": False,
             "totalBytes": 0,
             "databases": [],
             "error": "Cloudflare token, account ID, or config globs unavailable",
@@ -211,13 +227,33 @@ def self_test() -> int:
         return {"uuid": "b", "name": "stationhead-minute", "file_size": 45_000_000}
 
     storage = collect_d1_storage(configured, fake_request)
-    assert storage["databaseCount"] == 2
-    assert storage["availableCount"] == 2
+    assert storage["complete"] is True
     assert storage["totalBytes"] == 168_000_000
     markdown = render_d1_storage(storage)
+    assert "Current configured D1 total: **168.00 MB**" in markdown
     assert "stationhead-buddies" in markdown
-    assert "123.00 MB" in markdown
-    assert "168.00 MB" in markdown
     assert "no SQL query executed" in markdown
+
+    def partial_request(database_id: str) -> dict[str, Any]:
+        if database_id == "a":
+            return {"uuid": "a", "name": "stationhead-buddies", "file_size": 123_000_000}
+        raise RuntimeError("simulated lookup failure")
+
+    partial = collect_d1_storage(configured, partial_request)
+    assert partial["complete"] is False
+    partial_markdown = render_d1_storage(partial)
+    assert "Available-size subtotal: **123.00 MB**" in partial_markdown
+    assert "full configured D1 total: **unavailable** (1/2 sizes fetched)" in partial_markdown
+    assert "Current configured D1 total: **123.00 MB**" not in partial_markdown
+
+    unavailable = render_d1_storage({
+        "databaseCount": 0,
+        "availableCount": 0,
+        "complete": False,
+        "totalBytes": 0,
+        "databases": [],
+    })
+    assert "Current configured D1 total: **unavailable**" in unavailable
+    assert "Current configured D1 total: **0 B**" not in unavailable
     print("D1 storage diagnostics self-test passed")
     return 0
