@@ -184,7 +184,7 @@ test('normal runner adds only overdue models to the cadence set', async () => {
   assert.deepEqual(result.published.map(({ key }) => key), ['dashboard', 'history:daily']);
 });
 
-test('materialized summaries exclude the current period from the R2 body', async () => {
+test('materialized summaries exclude the current period while keeping known gaps in the R2 body', async () => {
   let sql;
   let bindings;
   const result = await loadMaterializedSummary({
@@ -205,7 +205,11 @@ test('materialized summaries exclude the current period from the R2 body', async
 
   assert.match(sql, /period_key<\?/);
   assert.deepEqual(bindings, ['2024-05-31', '2026-07-20', '2026-07-20', 801]);
-  assert.deepEqual(result.rows, []);
+  assert.equal(result.rows.length, 160);
+  assert.equal(result.rows[0].period_key, '2026-01-14');
+  assert.equal(result.rows.at(-1).period_key, '2026-06-22');
+  assert.ok(result.rows.every((row) => row.known_missing === true));
+  assert.ok(result.rows.every((row) => row.period_key !== '2026-07-20'));
   assert.equal(result.storage_source, 'other.sh_daily_summary');
 });
 
