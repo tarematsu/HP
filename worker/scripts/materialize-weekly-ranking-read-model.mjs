@@ -46,11 +46,13 @@ function expandWeeklyDates(values) {
 function decorateRows(rows, fandomRows) {
   const metadata = new Map();
   for (const row of fandomRows || []) {
-    const artistName = String(row?.artist_name || '').trim();
+    const key = hostKey(row?.host_name);
+    const correctedSbuddies = key === 'sbuddies1819';
+    const artistName = correctedSbuddies ? 'SB19' : String(row?.artist_name || '').trim();
     if (!artistName) continue;
-    metadata.set(hostKey(row.host_name), {
+    metadata.set(key, {
       artist_name: artistName,
-      fandom_type: row.relation_type === 'official' ? 'official' : 'fandom',
+      fandom_type: correctedSbuddies ? 'fandom' : row.relation_type === 'official' ? 'official' : 'fandom',
       stationhead_channel_name: STATIONHEAD_CHANNEL_BY_ARTIST.get(artistName) || null,
     });
   }
