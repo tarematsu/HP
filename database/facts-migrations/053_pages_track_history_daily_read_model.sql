@@ -23,3 +23,66 @@ ON CONFLICT(play_date) DO UPDATE SET
   play_count=excluded.play_count,
   row_count=excluded.row_count,
   updated_at=excluded.updated_at;
+
+DROP TRIGGER IF EXISTS trg_pages_track_history_daily_insert;
+CREATE TRIGGER trg_pages_track_history_daily_insert
+AFTER INSERT ON sh_pages_track_history_read_model
+BEGIN
+  INSERT INTO sh_pages_track_history_daily_read_model(play_date,play_count,row_count,updated_at)
+  VALUES(
+    NEW.play_date,
+    CASE WHEN CAST(json_extract(NEW.row_json,'$.play_count') AS INTEGER)>0
+      THEN CAST(json_extract(NEW.row_json,'$.play_count') AS INTEGER) ELSE 1 END,
+    1,
+    NEW.updated_at
+  )
+  ON CONFLICT(play_date) DO UPDATE SET
+    play_count=sh_pages_track_history_daily_read_model.play_count+excluded.play_count,
+    row_count=sh_pages_track_history_daily_read_model.row_count+1,
+    updated_at=MAX(sh_pages_track_history_daily_read_model.updated_at,excluded.updated_at);
+END;
+
+DROP TRIGGER IF EXISTS trg_pages_track_history_daily_delete;
+CREATE TRIGGER trg_pages_track_history_daily_delete
+AFTER DELETE ON sh_pages_track_history_read_model
+BEGIN
+  UPDATE sh_pages_track_history_daily_read_model
+  SET
+    play_count=MAX(0,play_count-(CASE
+      WHEN CAST(json_extract(OLD.row_json,'$.play_count') AS INTEGER)>0
+        THEN CAST(json_extract(OLD.row_json,'$.play_count') AS INTEGER) ELSE 1 END)),
+    row_count=MAX(0,row_count-1),
+    updated_at=MAX(updated_at,OLD.updated_at)
+  WHERE play_date=OLD.play_date;
+  DELETE FROM sh_pages_track_history_daily_read_model
+  WHERE play_date=OLD.play_date AND row_count=0;
+END;
+
+DROP TRIGGER IF EXISTS trg_pages_track_history_daily_update;
+CREATE TRIGGER trg_pages_track_history_daily_update
+AFTER UPDATE OF play_date,row_json,updated_at ON sh_pages_track_history_read_model
+BEGIN
+  UPDATE sh_pages_track_history_daily_read_model
+  SET
+    play_count=MAX(0,play_count-(CASE
+      WHEN CAST(json_extract(OLD.row_json,'$.play_count') AS INTEGER)>0
+        THEN CAST(json_extract(OLD.row_json,'$.play_count') AS INTEGER) ELSE 1 END)),
+    row_count=MAX(0,row_count-1),
+    updated_at=MAX(updated_at,OLD.updated_at)
+  WHERE play_date=OLD.play_date;
+  DELETE FROM sh_pages_track_history_daily_read_model
+  WHERE play_date=OLD.play_date AND row_count=0;
+
+  INSERT INTO sh_pages_track_history_daily_read_model(play_date,play_count,row_count,updated_at)
+  VALUES(
+    NEW.play_date,
+    CASE WHEN CAST(json_extract(NEW.row_json,'$.play_count') AS INTEGER)>0
+      THEN CAST(json_extract(NEW.row_json,'$.play_count') AS INTEGER) ELSE 1 END,
+    1,
+    NEW.updated_at
+  )
+  ON CONFLICT(play_date) DO UPDATE SET
+    play_count=sh_pages_track_history_daily_read_model.play_count+excluded.play_count,
+    row_count=sh_pages_track_history_daily_read_model.row_count+1,
+    updated_at=MAX(sh_pages_track_history_daily_read_model.updated_at,excluded.updated_at);
+END;
