@@ -5,6 +5,7 @@ import test from 'node:test';
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const metricStyle = readFileSync(new URL('../public/dashboard-current-metric-style.js', import.meta.url), 'utf8');
 const metadataStability = readFileSync(new URL('../public/dashboard-queue-metadata-stability.js', import.meta.url), 'utf8');
+const officialCopy = readFileSync(new URL('../public/official-listening-party-copy.js', import.meta.url), 'utf8');
 
 test('online, members and total streams use one explicit current metric size', () => {
   assert.match(metrics, /dashboard-current-metric-style\.js\?v=20260923\.1/);
@@ -18,11 +19,21 @@ test('dashboard preserves known metadata only for the same stable track identity
   assert.ok(
     metrics.indexOf('dashboard-fetch-cache.js') < metrics.indexOf('dashboard-queue-metadata-stability.js'),
   );
-  assert.match(metadataStability, /open\.spotify\.com\\\/track\\\/\(\[A-Za-z0-9\]\+\)/);
+  assert.ok(metadataStability.includes('open\\.spotify\\.com\\/track\\/([A-Za-z0-9]+)'));
   assert.match(metadataStability, /const known = new Map\(\)/);
   assert.match(metadataStability, /usableText\(track\.title, TITLE_PLACEHOLDERS\) \|\| previous\.title/);
   assert.match(metadataStability, /usableText\(track\.artist, ARTIST_PLACEHOLDERS\) \|\| previous\.artist/);
   assert.match(metadataStability, /normalizedText\(track\.thumbnail_url\) \|\| previous\.thumbnail_url/);
   assert.match(metadataStability, /restoreKnownMetadata\(\)/);
   assert.doesNotMatch(metadataStability, /previousQueue\[index\]|known\.get\(index\)/);
+});
+
+test('2025 year-end listening party copy is overridden before the history renderer loads', () => {
+  assert.match(metrics, /official-listening-party-copy\.js\?v=20260923\.1/);
+  assert.ok(
+    metrics.indexOf('official-listening-party-copy.js') < metrics.indexOf('dashboard-tabs.js'),
+  );
+  assert.match(officialCopy, /YEAR_END_2025_CONTENT = '2025年にリリースした曲\(29曲\)'/);
+  assert.match(officialCopy, /eventName\.includes\('THANK YOU 2025'\)/);
+  assert.match(officialCopy, /row\.broadcast_content = YEAR_END_2025_CONTENT/);
 });
