@@ -7,6 +7,7 @@ on:
       - '.github/workflows/import-legacy-sheet-track-history.yml'
       - 'database/facts-migrations/053_pages_track_history_daily_read_model.sql'
       - 'database/facts-migrations/054_legacy_spreadsheet_track_history.sql'
+      - 'database/facts-migrations/055_legacy_spreadsheet_track_history_counts.sql'
   workflow_dispatch:
 
 permissions:
@@ -49,6 +50,11 @@ jobs:
           node node_modules/wrangler/bin/wrangler.js d1 execute "$FACTS_DATABASE_NAME"
           --remote --yes
           --file ../database/facts-migrations/054_legacy_spreadsheet_track_history.sql
+      - name: Reconcile legacy spreadsheet play counts
+        run: >-
+          node node_modules/wrangler/bin/wrangler.js d1 execute "$FACTS_DATABASE_NAME"
+          --remote --yes
+          --file ../database/facts-migrations/055_legacy_spreadsheet_track_history_counts.sql
       - name: Verify imported Track History
         shell: bash
         run: |
