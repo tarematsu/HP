@@ -19,7 +19,8 @@ test('compact featured ranking widths do not override the seven-column all-host 
 test('refresh keeps an already stable history chart visible until replacement paint completes', () => {
   assert.match(chartStability, /function hasStablePaint\(\)/);
   assert.match(chartStability, /if \(!hasStablePaint\(\)\) conceal\(\);/);
-  assert.match(chartStability, /nextMode && nextMode !== activeMode\(\)/);
+  assert.match(chartStability, /let paintedMode = ''/);
+  assert.match(chartStability, /nextMode && nextMode !== paintedMode/);
 });
 
 test('leaderboard display fixes are cache-busted through the dashboard runtime chain', () => {
