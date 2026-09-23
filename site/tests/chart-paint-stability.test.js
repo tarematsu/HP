@@ -19,7 +19,7 @@ test('dashboard has one response parser and one canvas renderer', () => {
   assert.match(dashboard, /dashboard-chart-stability\.js\?v=20260923\.4/);
   assert.match(dashboard, /dashboard-chart-comparison\.js\?v=20260923\.5/);
   assert.match(dashboard, /dashboard-chart-detail\.js\?v=20260923\.4/);
-  assert.match(dashboard, /dashboard-fetch-cache\.js\?v=20260923\.4/);
+  assert.match(dashboard, /dashboard-fetch-cache\.js\?v=20260923\.6/);
   assert.doesNotMatch(dashboard, /window\.fetch|response\.clone\(\)\.json|renderPayload|restoreDashboardCache/);
   assert.match(dashboardCache, /function dispatchPayload\(payload, source\)/);
   assert.match(dashboardCache, /detail: \{ payload, source \}/);
