@@ -28,7 +28,7 @@ test('media panel hides the built-in WebView error page while retrying', () => {
 test('internet disconnect shows a large centered native overlay on the video panel', () => {
   assert.match(
     panels,
-    /COREWEBVIEW2_WEB_ERROR_STATUS_INTERNET_DISCONNECTED/,
+    /COREWEBVIEW2_WEB_ERROR_STATUS_DISCONNECTED/,
   );
   assert.match(panels, /インターネット接続がありません/);
   assert.match(panels, /DT_CENTER \| DT_SINGLELINE \| DT_VCENTER/);
