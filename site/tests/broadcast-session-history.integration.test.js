@@ -3,12 +3,12 @@ import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 
 import {
+  BROADCAST_READ_MODEL_SQL,
   BROADCAST_SUMMARY_SQL,
   parseBroadcastSummaryRows,
 } from '../functions/api/history.js';
 
-test('broadcast history reads UTC timestamps from the compact official summary table', () => {
-  const db = new DatabaseSync(':memory:');
+function createSummaryTable(db) {
   db.exec(`CREATE TABLE sh_official_broadcast_summary (
     host_handle TEXT NOT NULL,
     event_name TEXT NOT NULL,
@@ -23,6 +23,11 @@ test('broadcast history reads UTC timestamps from the compact official summary t
     distinct_tracks INTEGER,
     PRIMARY KEY(host_handle,event_name)
   )`);
+}
+
+test('broadcast history reads UTC timestamps from the compact official summary table', () => {
+  const db = new DatabaseSync(':memory:');
+  createSummaryTable(db);
   db.prepare(`INSERT INTO sh_official_broadcast_summary VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
     'sakurazaka46jp', 'Event A', 1000, 2000, '2025-01-01 09:00:01',
     '2025-01-01 09:00:02', 2, 110, 120, 12, 2,
@@ -42,10 +47,75 @@ test('broadcast history reads UTC timestamps from the compact official summary t
     likes_max: 12,
     distinct_tracks: 2,
     host_handle: 'sakurazaka46jp',
+    source_url: null,
+    estimated_streams: 220,
   }]);
 });
 
-test('verified listening party metadata repairs track counts and supplies concise content', () => {
+test('official listening-party read model joins canonical series and the nearest host session', () => {
+  const db = new DatabaseSync(':memory:');
+  createSummaryTable(db);
+  db.exec(`
+    CREATE TABLE sh_official_broadcast_series (
+      host_handle TEXT,event_name TEXT,started_at INTEGER,points_json TEXT,
+      source_ref TEXT,refreshed_at INTEGER
+    );
+    CREATE TABLE sh_host_broadcast_sessions (
+      id INTEGER PRIMARY KEY,handle TEXT,started_at INTEGER,ended_at INTEGER,
+      average_listeners REAL,peak_listeners INTEGER,track_count INTEGER,comment_count INTEGER
+    );
+    CREATE TABLE sh_host_station_snapshots (
+      id INTEGER PRIMARY KEY,session_id INTEGER,listener_count INTEGER
+    );
+  `);
+  db.prepare(`INSERT INTO sh_official_broadcast_summary VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(
+    'sakurazaka46jp', 'Event A', 1_000_000, null, '2025-01-01 09:00:01',
+    null, 2, null, null, 12, null,
+  );
+  db.prepare(`INSERT INTO sh_official_broadcast_series VALUES(?,?,?,?,?,?)`).run(
+    'sakurazaka46jp', 'Event A', 1_000_000, '[[0,95,1],[1,150,1]]', 'test', 1,
+  );
+  db.prepare(`INSERT INTO sh_host_broadcast_sessions VALUES(?,?,?,?,?,?,?,?)`).run(
+    7, 'sakurazaka46jp', 1_000_600, 1_090_000, 111.5, 150, 4, 321,
+  );
+  db.prepare(`INSERT INTO sh_host_station_snapshots VALUES(?,?,?)`).run(1, 7, 98);
+  db.prepare(`INSERT INTO sh_host_station_snapshots VALUES(?,?,?)`).run(2, 7, 150);
+
+  const rows = db.prepare(BROADCAST_READ_MODEL_SQL).all(0, 2_000_000);
+  const parsed = parseBroadcastSummaryRows(rows);
+
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.rows[0].session_id, 7);
+  assert.equal(parsed.rows[0].ended_at, 1_090_000);
+  assert.equal(parsed.rows[0].listener_avg, 111.5);
+  assert.equal(parsed.rows[0].listener_min, 95);
+  assert.equal(parsed.rows[0].listener_max, 150);
+  assert.equal(parsed.rows[0].distinct_tracks, 4);
+  assert.equal(parsed.rows[0].comment_count, 321);
+  assert.equal(parsed.rows[0].estimated_streams, 446);
+});
+
+test('missing official listening-party metrics do not become a zero stream estimate', () => {
+  const parsed = parseBroadcastSummaryRows([
+    {
+      event_name: 'Event Missing',
+      listener_avg: null,
+      distinct_tracks: null,
+      has_data: 1,
+    },
+    {
+      event_name: 'Event Missing Tracks',
+      listener_avg: 100,
+      distinct_tracks: null,
+      has_data: 1,
+    },
+  ]);
+
+  assert.equal(parsed.rows[0].estimated_streams, null);
+  assert.equal(parsed.rows[1].estimated_streams, null);
+});
+
+test('verified listening party metadata repairs track counts and supplies content and official source', () => {
   const parsed = parseBroadcastSummaryRows([
     {
       event_name: '2024.07.23『YUI KOBAYASHI GRADUATION CONCERT』Stationhead Listening Party',
@@ -86,7 +156,9 @@ test('verified listening party metadata repairs track counts and supplies concis
   ]);
 
   assert.equal(parsed.rows[0].distinct_tracks, 20);
+  assert.equal(parsed.rows[0].estimated_streams, 20382);
   assert.equal(parsed.rows[0].broadcast_content, '小林由依卒業コンサート DAY2セットリスト');
+  assert.equal(parsed.rows[0].source_url, 'https://sakurazaka46.com/s/s46/news/detail/M01328');
   assert.equal(parsed.rows[1].distinct_tracks, 5);
   assert.equal(parsed.rows[1].broadcast_content, '13th Single「Unhappy birthday構文」Special Edition（トラブルで実再生5曲）');
   assert.equal(parsed.rows[2].distinct_tracks, 29);
@@ -95,12 +167,7 @@ test('verified listening party metadata repairs track counts and supplies concis
 
 test('an empty UTC range reports whether the compact summary is provisioned', () => {
   const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE sh_official_broadcast_summary (
-    host_handle TEXT NOT NULL,event_name TEXT NOT NULL,started_at INTEGER,
-    ended_at INTEGER,started_jst TEXT,ended_jst TEXT,sample_count INTEGER,
-    listener_avg REAL,listener_max INTEGER,likes_max INTEGER,distinct_tracks INTEGER,
-    PRIMARY KEY(host_handle,event_name)
-  )`);
+  createSummaryTable(db);
   const parsed = parseBroadcastSummaryRows(db.prepare(BROADCAST_SUMMARY_SQL).all(0, 100, 0, 100));
   assert.deepEqual(parsed.rows, []);
   assert.equal(parsed.setupRequired, true);

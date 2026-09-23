@@ -90,25 +90,29 @@ test('pending ROCK IN listening party stays visible without samples and keeps it
 });
 
 test('Pages labels official Stationhead events as official listening parties', () => {
-  const source = readFileSync(
+  const chart = readFileSync(
     new URL('../site/public/history/history-broadcasts.js', import.meta.url),
     'utf8',
   );
-  assert.match(source, /button\.textContent = '公式リスパ'/);
-  assert.match(source, /tableTitle\.textContent = '公式リスパ一覧'/);
-  assert.match(source, /公式リスパ 同接推移/);
-  assert.match(source, /CACHE_REVISION = '9'/);
-  assert.match(source, /API_REVISION = '3'/);
-  assert.match(source, /revision: API_REVISION/);
-  assert.match(source, /sakurazaka46jp:v1:r\$\{CACHE_REVISION\}:/);
-  assert.match(source, /DATE_PREFIX/);
-  assert.match(source, /OFFICIAL_EVENT_DATE_GAP/);
-  assert.match(source, /replace\(OFFICIAL_EVENT_DATE_GAP, '\$1'\)/);
-  assert.match(source, /history:data-loaded/);
-  assert.match(source, /getElementById\('more'\)\?\.addEventListener/);
-  assert.doesNotMatch(source, /MutationObserver/);
-  assert.match(source, /集計値のみ/);
-  assert.match(source, /データ未取得/);
+  const table = readFileSync(
+    new URL('../site/public/history/history-broadcast-table.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(chart, /button\.textContent = '公式リスパ'/);
+  assert.match(table, /tableTitle\.textContent = '公式リスパ一覧'/);
+  assert.match(chart, /公式リスパ 同接推移/);
+  assert.match(chart, /CACHE_REVISION = '9'/);
+  assert.match(chart, /API_REVISION = '3'/);
+  assert.match(chart, /revision: API_REVISION/);
+  assert.match(chart, /sakurazaka46jp:v1:r\$\{CACHE_REVISION\}:/);
+  assert.match(chart, /DATE_PREFIX/);
+  assert.match(chart, /OFFICIAL_EVENT_DATE_GAP/);
+  assert.match(chart, /replace\(OFFICIAL_EVENT_DATE_GAP, '\$1'\)/);
+  assert.match(table, /history:data-loaded/);
+  assert.doesNotMatch(chart, /getElementById\('more'\)|history:data-loaded|host-history|enhanceBroadcastTable/);
+  assert.doesNotMatch(chart, /MutationObserver/);
+  assert.match(chart, /集計値のみ/);
+  assert.match(chart, /データ未取得/);
 });
 
 test('official listening party chart hides the redundant status and renders elapsed-minute ticks', () => {
