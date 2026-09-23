@@ -12,7 +12,6 @@ const pageFixes = readFileSync(new URL('../public/history/history-page-fixes.js'
 const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
-const rankingMissing = readFileSync(new URL('../public/history/history-ranking-missing-gap.js', import.meta.url), 'utf8');
 
 test('dashboard payload parsing is owned by the fetch cache instead of the entry module', () => {
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache|renderPayload/);
@@ -22,7 +21,7 @@ test('dashboard payload parsing is owned by the fetch cache instead of the entry
 });
 
 test('inactive tab runtimes are loaded on demand and never idle-prefetched', () => {
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.8'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260923\.9'\)/);
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
   assert.match(tabs, /import\('\/history\/history-ranking-table-status\.js\?v=20260923\.2'\)/);
   assert.match(tabs, /if \(mode === 'ranking'\) await loadRankingStatusRuntime\(\)/);
@@ -31,6 +30,7 @@ test('inactive tab runtimes are loaded on demand and never idle-prefetched', () 
   assert.match(historyMain, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.\d+/);
   assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.\d+/);
+  assert.doesNotMatch(historyMain, /history-ranking-missing-gap/);
 });
 
 test('history payload is parsed once by the data client then shared with table and mode renderers', () => {
@@ -52,10 +52,10 @@ test('ranking presentation consumes the shared payload without another fetch wra
   assert.doesNotMatch(pageFixes, /window\.fetch|originalFetch|previousFetch|response\.clone\(\)\.json|needsMetadata/);
 });
 
-test('ranking and axis updates do not keep duplicate legacy observers', () => {
+test('ranking and axis updates do not keep duplicate legacy observers or canvas overlays', () => {
   assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
-  assert.doesNotMatch(rankingMissing, /window\.fetch|response\.clone\(\)\.json/);
-  assert.match(rankingMissing, /history:ranking-chart-drawn/);
+  assert.match(rankingChart, /function drawMissingBand\(/);
+  assert.match(rankingChart, /context\.fillRect\(left, area\.top/);
   assert.match(axisLabels, /history:data-loaded/);
   assert.match(axisLabels, /hashchange/);
   assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'|MutationObserver/);
