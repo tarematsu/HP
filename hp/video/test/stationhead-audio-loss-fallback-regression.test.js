@@ -17,7 +17,7 @@ const cmake = readFileSync(new URL('../../native/CMakeLists.txt', import.meta.ur
 
 test('audio loss timing boundaries remain fixed', () => {
   assert.match(policy, /kStationheadAudioLossArmStabilityMs = 5'000/);
-  assert.match(policy, /kStationheadAudioLossGraceMs = 59'000/);
+  assert.match(policy, /kStationheadAudioLossGraceMs = 120'000/);
   assert.match(policy, /kStationheadAudioLossDomSettleMs = 1'000/);
   assert.match(policy, /kStationheadFallbackMinimumDwellMs = 15'000/);
   assert.match(handleHeader,
@@ -50,12 +50,16 @@ test('authentication probe matches live Stationhead controls', () => {
   assert.match(audioLoss, /authentication UI probe failed; fallback remains blocked/);
 });
 
-test('operation surface is raised before fallback evaluation', () => {
+test('operation surface is raised only after the full two-minute silence grace', () => {
   for (const state of ['transition_wait', 'operation_wait', 'auth_wait', 'fallback',
     'returning_primary', 'playing']) {
     assert.match(audioLoss, new RegExp(`L"${state}"`));
   }
-  assert.match(audioLoss, /ShowAfterAudioStop\(\)/);
+  const stoppedAt = audioLoss.indexOf('const int64_t stoppedForMs');
+  const graceAt = audioLoss.indexOf(
+    'if (stoppedForMs < kStationheadAudioLossGraceMs) return;', stoppedAt);
+  const showAt = audioLoss.indexOf('ShowAfterAudioStop();', graceAt);
+  assert.ok(stoppedAt >= 0 && graceAt > stoppedAt && showAt > graceAt);
 });
 
 test('navigation time is excluded from recovery failure time', () => {
@@ -69,7 +73,6 @@ test('fallback recovery requires dwell and stable audio', () => {
   assert.match(audioLoss, /managedPrimaryReturnPending_/);
   assert.match(audioLoss, /kStationheadPrimaryRecoveryStabilityMs/);
   assert.match(appHeader, /#include "stationhead_fallback_revision_gate\.h"/);
-  assert.match(fallbackGate, /class StationheadFallbackRevisionGate/);
   assert.match(fallbackGate,
     /startedAt_\.ElapsedMilliseconds\(\) >=\s*kStationheadFallbackMinimumDwellMs/);
 });
