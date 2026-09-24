@@ -173,10 +173,10 @@
   }
 
   .played-tracks-chart-wrap {
-    min-height: 260px;
+    min-height: clamp(360px, 108vw, 420px);
   }
 
   #playedTracksChart {
-    height: 280px;
+    height: clamp(360px, 108vw, 420px);
   }
 }
