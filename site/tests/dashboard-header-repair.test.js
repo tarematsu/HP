@@ -30,9 +30,10 @@ test('mobile dashboard header has no vertical flex basis', () => {
   assert.doesNotMatch(headerCss, /flex:\s*1 1 (?:360|560)px/);
 });
 
-test('current metric panels resolve to one full-width column while keeping compact mobile text', () => {
+test('mobile current metrics stack vertically at full width', () => {
   assert.match(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) !important/);
-  assert.match(headerCss, /\.metric\.featured\s*\{[\s\S]*grid-column:\s*auto[\s\S]*display:\s*block/);
+  assert.doesNotMatch(finalFixes, /@media \(max-width: 400px\)[\s\S]*\.metrics\s*\{[\s\S]*repeat\(2,/);
+  assert.match(headerCss, /\.metric\.featured\s*\{[\s\S]*display:\s*block/);
   assert.match(headerCss, /\.metric strong,[\s\S]*\.metric\.featured strong\s*\{[\s\S]*font-size:\s*clamp\(\.94rem, 4\.3vw, 1\.42rem\)/);
   assert.match(headerCss, /\.metric > span\s*\{[\s\S]*font-size:\s*clamp\(\.58rem, 2\.4vw, \.68rem\)/);
 });
