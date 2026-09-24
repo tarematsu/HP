@@ -71,6 +71,32 @@ test('daily completeness fails rows explicitly marked incomplete by boundary val
   assert.ok(result.failures.some((failure) => failure.includes('missing_period_end')));
 });
 
+test('daily completeness accepts read-model placeholders in the declared missing period', () => {
+  const now = Date.parse('2026-06-24T06:00:00Z');
+  const result = auditPayloadCompleteness('history:daily', {
+    ok: true,
+    rows: [
+      { period_key: '2026-06-21', known_missing: true, synthetic_missing: true, sample_count: '-', reliable_sample_count: '-', period_complete: false },
+      { period_key: '2026-06-22', known_missing: true, synthetic_missing: true, sample_count: '-', reliable_sample_count: '-', period_complete: false },
+      { period_key: '2026-06-23', sample_count: 1440, reliable_sample_count: 1440, period_complete: true },
+    ],
+  }, { now, materializedAt: now });
+  assert.equal(result.failures.length, 0);
+  assert.ok(result.warnings.some((warning) => warning.includes('2026-06-21')));
+});
+
+test('daily completeness still rejects a missing placeholder outside the declared period', () => {
+  const now = Date.parse('2026-06-25T06:00:00Z');
+  const result = auditPayloadCompleteness('history:daily', {
+    ok: true,
+    rows: [
+      { period_key: '2026-06-23', known_missing: true, sample_count: '-', reliable_sample_count: '-', period_complete: true },
+      { period_key: '2026-06-24', sample_count: 1440, reliable_sample_count: 1440, period_complete: true },
+    ],
+  }, { now, materializedAt: now });
+  assert.ok(result.failures.some((failure) => failure.includes('invalid sample_count')));
+});
+
 test('host summary completeness fails on an empty recent-session model', () => {
   const result = auditPayloadCompleteness('host-history:summary', {
     ok: true,
