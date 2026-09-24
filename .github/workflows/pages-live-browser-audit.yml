@@ -167,6 +167,7 @@ jobs:
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         shell: bash
         run: |
+          set -euo pipefail
           node scripts/audit-pages-live.mjs \
             --url=https://skrzk.pages.dev \
             --attempts=3 \
