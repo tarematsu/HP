@@ -23,7 +23,6 @@ import {
   const MODES = Object.freeze({
     daily: { title: '日次集計', table: '日次集計一覧', chart: '同接・再生数の推移' },
     weekly: { title: '週次集計', table: '週次集計一覧', chart: '同接・再生数の推移' },
-    monthly: { title: '月次集計', table: '月次集計一覧', chart: '同接・再生数の推移' },
     ranking: { title: '週間リーダーボード', table: '週間リーダーボード', chart: '' },
     broadcasts: { title: '公式ストリーム比較', table: '公式ストリーム一覧', chart: '公式ステヘ 同接推移（開始0分比較）' },
   });
@@ -47,7 +46,6 @@ import {
 
   const state = {
     mode: 'weekly',
-    pastWeekMode: false,
     rows: [],
     tableRows: [],
     visibleRows: PAGE_SIZE,
@@ -64,10 +62,7 @@ import {
   };
   const numberText = (value) => finite(value) == null ? '—' : decimal.format(Number(value));
   const todayUtc = () => new Date().toISOString().slice(0, 10);
-
-  function dataMode() {
-    return state.mode === 'daily' && state.pastWeekMode ? 'weekly' : state.mode;
-  }
+  const dataMode = () => state.mode;
 
   migrateHistoryCache(sessionStorage);
 
@@ -256,10 +251,6 @@ import {
       if (selected) button.setAttribute('aria-current', 'page');
       else if (button.dataset.view !== 'current') button.removeAttribute('aria-current');
     });
-    const toggle = el('historyPastWeekToggle');
-    if (toggle) toggle.hidden = state.mode !== 'daily';
-    const checkbox = el('historyPastWeekMode');
-    if (checkbox) checkbox.checked = state.pastWeekMode;
     setText('guideTitle', config.title);
     setText('tableTitle', config.table);
     setText('chartTitle', config.chart);
@@ -378,27 +369,6 @@ import {
     void loadMode();
   }
 
-  async function setPastWeekMode(enabled) {
-    if (state.mode !== 'daily' || state.pastWeekMode === enabled) return;
-    state.controller?.abort();
-    const transitionToken = ++state.requestToken;
-    state.pastWeekMode = enabled;
-    resetData();
-    updateModeUi();
-    const mode = dataMode();
-    try {
-      await ensureModeRuntime(mode);
-    } catch (error) {
-      if (transitionToken === state.requestToken) {
-        console.error('past history week runtime failed to load', error);
-        setNotice('週表示の読み込みに失敗しました。', true);
-      }
-      return;
-    }
-    if (transitionToken !== state.requestToken || state.mode !== 'daily' || dataMode() !== mode) return;
-    void loadMode();
-  }
-
   function exportCsv() {
     const columns = columnsFor(dataMode());
     const lines = [
@@ -429,9 +399,6 @@ import {
       renderTable(false);
     });
     el('csv').addEventListener('click', exportCsv);
-    el('historyPastWeekMode')?.addEventListener('change', (event) => {
-      void setPastWeekMode(Boolean(event.currentTarget.checked));
-    });
     el('rankingScope').addEventListener('change', () => void loadMode());
     el('rankingHost').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
