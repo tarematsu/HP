@@ -23,6 +23,8 @@ test('dashboard starts on current and exposes every active mode in one tab panel
   }
   assert.doesNotMatch(page, /data-mode="monthly"|>月次/);
   assert.doesNotMatch(page, /data-mode="tracks"|id="trackControls"/);
+  assert.match(tabsClient, /const HISTORY_MODES = new Set\(\['daily', 'weekly', 'ranking', 'broadcasts'\]\)/);
+  assert.doesNotMatch(tabsClient, /'monthly'/);
 });
 
 test('archive and likes markup are integrated below the shared tab panel', () => {
@@ -33,8 +35,8 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260924\.5'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260924\.1'\)/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260925\.1'/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260924\.2'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
