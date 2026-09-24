@@ -10,7 +10,6 @@ const DAY_MS = 86400000;
 export const SUMMARY_TABLES = {
   daily: 'sh_daily_summary',
   weekly: 'sh_weekly_summary',
-  monthly: 'sh_monthly_summary',
 };
 
 const SUMMARY_COLUMNS = `period_key,period_start,period_end,sample_count,reliable_sample_count,
