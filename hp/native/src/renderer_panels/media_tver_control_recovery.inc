@@ -41,20 +41,11 @@ LR"JS(
   const videos = Array.from(document.querySelectorAll('video'));
   const video = videos.find(visible) || videos[0] || null;
 
-  // TVer requires an answered questionnaire before playback. Closing it
-  // returns to the poster and the next Play click opens it again. Keep the
-  // player below the dialog and let the viewer complete the form.
   const questionnaire = Array.from(document.querySelectorAll('[role="dialog"]'))
       .find(dialog => dialog.querySelector('form[id^="questionnaire-"]') ||
           /アンケート/.test(dialog.getAttribute('aria-label') || '') ||
           /アンケート/.test(dialog.textContent || ''));
   if (questionnaire) {
-    state.viewportPlayer?.removeAttribute?.('data-homepanel-tver-fill');
-    for (const ancestor of state.viewportAncestors || []) {
-      ancestor.removeAttribute?.('data-homepanel-tver-fill-ancestor');
-    }
-    state.viewportPlayer = null;
-    state.viewportAncestors = [];
     if (!state.mediaInitSent) {
       state.mediaInitSent = true;
       post('homepanel:tver-media-init');
@@ -151,16 +142,8 @@ LR"JS(
   }
 )JS" LR"JS(
 
-  // The episode poster's Play button is a sibling of the Video.js player.
-  // Start TVer's own playback flow before placing the player above the page.
   const posterPlay = document.getElementById?.('episode-play');
   if (visible(posterPlay)) {
-    state.viewportPlayer?.removeAttribute?.('data-homepanel-tver-fill');
-    for (const ancestor of state.viewportAncestors || []) {
-      ancestor.removeAttribute?.('data-homepanel-tver-fill-ancestor');
-    }
-    state.viewportPlayer = null;
-    state.viewportAncestors = [];
     if (!state.mediaInitSent) {
       state.mediaInitSent = true;
       post('homepanel:tver-media-init');
@@ -184,47 +167,6 @@ LR"JS(
   const player = video.closest(
       '[data-testid*="player" i],[class*="player" i],[id*="player" i]') ||
       video.parentElement || video;
-  // Fill the WebView even when Chromium rejects browser fullscreen while the
-  // native panel is behind another window. Keep the controls in the player.
-  if (document.createElement && (document.head || document.documentElement)) {
-    if (!document.getElementById('homepanel-tver-viewport-fill')) {
-      const style = document.createElement('style');
-      style.id = 'homepanel-tver-viewport-fill';
-      style.textContent = `
-        [data-homepanel-tver-fill-ancestor] {
-          transform:none !important; contain:none !important;
-          filter:none !important; overflow:visible !important;
-        }
-        [data-homepanel-tver-fill] {
-          position:fixed !important; inset:0 !important;
-          width:100vw !important; height:100vh !important;
-          max-width:none !important; max-height:none !important;
-          z-index:2147483000 !important; background:#000 !important;
-        }
-        [data-homepanel-tver-fill] video {
-          width:100% !important; height:100% !important;
-          object-fit:contain !important;
-        }
-      `;
-      (document.head || document.documentElement).appendChild(style);
-    }
-    const previous = state.viewportPlayer;
-    if (previous !== player) {
-      previous?.removeAttribute?.('data-homepanel-tver-fill');
-      for (const ancestor of state.viewportAncestors || []) {
-        ancestor.removeAttribute?.('data-homepanel-tver-fill-ancestor');
-      }
-      state.viewportPlayer = player;
-      state.viewportAncestors = [];
-      player.setAttribute?.('data-homepanel-tver-fill', '');
-      for (let ancestor = player.parentElement;
-           ancestor && ancestor !== document.body;
-           ancestor = ancestor.parentElement) {
-        ancestor.setAttribute?.('data-homepanel-tver-fill-ancestor', '');
-        state.viewportAncestors.push(ancestor);
-      }
-    }
-  }
   const fullscreen = () => Boolean(
       document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement);
@@ -291,14 +233,11 @@ LR"JS(
   const ad = () => {
     const length = duration();
     const shortMedia = length >= 5 && length <= 65;
-    // TVer can reuse the same video element and retain our 1.75x setting for
-    // a pre-roll. Playback rate is therefore not evidence of program media.
     return explicitAd() || shortMedia;
   };
 )JS" LR"JS(
 
   const actionLane = action => {
-    if (action === 'fullscreen') return 'fullscreen';
     if (action === 'skip-ad' || action.startsWith('survey-')) return 'ad';
     return 'control';
   };
@@ -396,8 +335,7 @@ LR"JS(
     function onClick(event) {
       const accepted = valid(element) &&
           (action !== 'skip-ad' || (visible(element) && ad())) &&
-          (action !== 'play' || (!ad() && video.paused && !video.ended)) &&
-          (action !== 'fullscreen' || !fullscreen());
+          (action !== 'play' || (!ad() && video.paused && !video.ended));
       if (!accepted) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -416,13 +354,38 @@ LR"JS(
     setTimeout(cleanup, 1400);
     return [point.x, point.y];
   };
+
+  const requestFullscreen = () => {
+    if (fullscreen()) {
+      state.fullscreenCornerTapAt = 0;
+      return null;
+    }
+    if (state.fullscreenCornerTapAt &&
+        now - state.fullscreenCornerTapAt < 1400) {
+      wake(1400);
+      return 'recovery';
+    }
+    const rect = video.getBoundingClientRect?.();
+    if (!rect || rect.width < 24 || rect.height < 24) {
+      recheck();
+      return 'recovery';
+    }
+    const x = Math.max(1, Math.min(innerWidth - 2, rect.right - 12));
+    const y = Math.max(1, Math.min(innerHeight - 2, rect.bottom - 12));
+    if (!Number.isFinite(x) || !Number.isFinite(y) ||
+        x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) {
+      recheck();
+      return 'recovery';
+    }
+    state.fullscreenCornerTapAt = now;
+    wake(1500);
+    return [x, y];
+  };
 )JS" LR"JS(
 
   const bindVideo = () => {
     if (state.video === video) return;
     if (state.video) {
-      // A replacement <video> can use the same source URL. Its ended event
-      // must not inherit the previous element's program confirmation.
       state.mediaKey = null;
       state.mediaInitSent = false;
       state.programPlayedSeconds = 0;
@@ -505,7 +468,7 @@ LR"JS(
     state.programStartedAt = 0;
     state.programPlayedSeconds = 0;
     state.programLastProgressTime = currentTime();
-    state.fullscreenKeyRequestedAt = 0;
+    state.fullscreenCornerTapAt = 0;
   }
 
   const adActive = ad();
@@ -514,7 +477,6 @@ LR"JS(
       state.programCandidateKey = key;
       state.programCandidateOrigin = currentTime();
     }
-    // A short pre-roll without an ad badge must never become the program.
     if (duration() > 65 && (currentTime() >=
         Number(state.programCandidateOrigin || 0) + 1)) {
       if (state.programKey !== key) {
@@ -545,34 +507,6 @@ LR"JS(
       if (action) return action;
     }
   }
-
-  const fullscreenControl = () => {
-    const pattern = /(全画面|フルスクリーン|fullscreen|full screen)/i;
-    const exitPattern = /(終了|解除|exit fullscreen)/i;
-    return controls().find(element => {
-      if (!valid(element)) return false;
-      const value = text(element);
-      return pattern.test(value) && !exitPattern.test(value);
-    }) || null;
-  };
-  const requestFullscreen = () => {
-    if (fullscreen()) {
-      state.fullscreenKeyRequestedAt = 0;
-      return null;
-    }
-    if (!state.fullscreenKeyRequestedAt ||
-        now - state.fullscreenKeyRequestedAt >= 4000) {
-      state.fullscreenKeyRequestedAt = now;
-      wake(1200);
-      post('homepanel:tver-fullscreen-key');
-      return 'recovery';
-    }
-    const action = arm(fullscreenControl(), 'fullscreen', 1200);
-    if (action) return action;
-    recheck();
-    return 'recovery';
-  };
-)JS" LR"JS(
 
   if (adActive) {
     const skipPattern = /(?:広告|CM).{0,14}スキップ|^スキップ$|skip\s+(?:this\s+)?ad/i;
@@ -609,7 +543,6 @@ LR"JS(
 
   if (!state.qualityApplied) {
     const candidates = controls().filter(valid);
-    // TVer may portal menu options outside the video's nearest player node.
     const portalOptions = state.qualityLastAttemptAt ? Array.from(
       document.querySelectorAll(
         '[role="menu"] [role="menuitem"], [role="menu"] [role="radio"], '
@@ -643,8 +576,6 @@ LR"JS(
     }
   }
 
-  // Browser fullscreen can be refused in a background WebView. Keep applying
-  // program settings and checking quality while fullscreen retries continue.
   if (!state.qualityApplied) recheck();
   if (!fullscreen()) return requestFullscreen();
 
