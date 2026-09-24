@@ -45,15 +45,15 @@ test('history tab transitions reset shared summary and pagination state', () => 
   assert.match(cleanup, /resetSharedHistorySummary\(mode\)/);
 });
 
-test('legacy compact table widths are explicitly superseded by the final mobile scroll layout', () => {
+test('final mobile layout restores horizontal scrolling for leaderboard and likes detail tables', () => {
   assert.match(entry, /history-table-cleanup\.js\?v=20260924\.1/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
   assert.match(cleanup, /#historyView \.table-wrap table\.compact-columns,[\s\S]*#likesView \.table-wrap table[\s\S]*width: 100% !important;[\s\S]*min-width: 100% !important;[\s\S]*table-layout: fixed !important;/);
   assert.match(finalLayout, /#historyView > \.data-panel \.table-wrap,[\s\S]*#likesView > \.data-panel \.table-wrap[\s\S]*overflow-x: auto !important/);
-  assert.match(finalLayout, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width: 760px !important[\s\S]*table-layout: auto !important/);
-  assert.match(finalLayout, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width: 980px !important[\s\S]*table-layout: auto !important/);
-  assert.match(finalLayout, /#rankingWeeklyPanel \.table-wrap > table[\s\S]*min-width: 560px !important/);
-  assert.match(finalLayout, /#likesView > \.data-panel \.table-wrap > table[\s\S]*min-width: 680px !important/);
+  assert.match(finalLayout, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*width: max-content !important[\s\S]*min-width: 760px !important[\s\S]*table-layout: auto !important/);
+  assert.match(finalLayout, /table\.all-host-ranking-table\.compact-columns[\s\S]*width: max-content !important[\s\S]*min-width: 980px !important[\s\S]*table-layout: auto !important/);
+  assert.match(finalLayout, /#rankingWeeklyPanel \.table-wrap > table[\s\S]*width: max-content !important[\s\S]*min-width: 560px !important/);
+  assert.match(finalLayout, /#likesView > \.data-panel \.table-wrap > table[\s\S]*width: max-content !important[\s\S]*min-width: 680px !important/);
 });
 
 test('featured leaderboard column proportions remain available underneath the scroll layout', () => {
