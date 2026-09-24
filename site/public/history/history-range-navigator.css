@@ -1,0 +1,54 @@
+.history-chart-navigator {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-chart-navigator > #chart {
+  min-width: 0;
+}
+
+.history-range-arrow {
+  display: grid;
+  width: 42px;
+  min-width: 42px;
+  height: 64px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 2rem;
+  font-weight: 650;
+  line-height: 1;
+  touch-action: manipulation;
+}
+
+.history-range-arrow:hover,
+.history-range-arrow:focus-visible {
+  border-color: var(--accent);
+  background: #fff;
+  outline: 3px solid rgba(217, 63, 121, .12);
+}
+
+.history-range-arrow:disabled {
+  cursor: default;
+  opacity: .3;
+}
+
+@media (max-width: 760px) {
+  .history-chart-navigator {
+    gap: 4px;
+  }
+
+  .history-range-arrow {
+    width: 36px;
+    min-width: 36px;
+    height: 56px;
+    border-radius: 10px;
+    font-size: 1.75rem;
+  }
+}
