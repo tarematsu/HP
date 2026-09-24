@@ -31,11 +31,6 @@ function edgeCache(dependencies) {
   return dependencies.cache || globalThis.caches?.default || null;
 }
 
-function edgeCacheKey(request, dependencies) {
-  if (dependencies.cacheKey) return dependencies.cacheKey(request);
-  return new Request(request.url, { method: 'GET' });
-}
-
 function materializedStaleMaximumAge(env, freshMaximumAge) {
   const configured = Number(env?.PAGES_RESPONSE_STALE_MAX_AGE_MS);
   const staleMaximumAge = Number.isFinite(configured) && configured >= 0
@@ -88,10 +83,10 @@ function freshMaterializedResponse(response, now, maximumAge) {
   });
 }
 
-async function loadEdgeCachedResponse(cache, key, now, maximumAge) {
+async function loadEdgeCachedResponse(cache, request, now, maximumAge) {
   if (!cache?.match) return null;
   try {
-    return freshMaterializedResponse(await cache.match(key), now, maximumAge);
+    return freshMaterializedResponse(await cache.match(request), now, maximumAge);
   } catch (error) {
     console.warn(JSON.stringify({
       event: 'pages_response_edge_cache_read_failed',
@@ -101,9 +96,9 @@ async function loadEdgeCachedResponse(cache, key, now, maximumAge) {
   }
 }
 
-function cacheResponse(cache, key, response, context) {
+function cacheResponse(cache, request, response, context) {
   if (!cache?.put || !response?.headers?.get('x-materialized-at')) return null;
-  const write = cache.put(key, response.clone()).catch((error) => {
+  const write = cache.put(request, response.clone()).catch((error) => {
     console.warn(JSON.stringify({
       event: 'pages_response_edge_cache_write_failed',
       error: String(error?.message || error).slice(0, 300),
@@ -132,7 +127,7 @@ export async function runPagesResponseFetch(
   const now = dependencies.now?.() ?? Date.now();
   const maximumAge = materializedResponseMaximumAge(modelKey, env);
   const cache = edgeCache(dependencies);
-  const cacheKey = edgeCacheKey(request, dependencies);
+  const cacheKey = dependencies.cacheKey ? dependencies.cacheKey(request) : request;
   try {
     const edgeMaximumAge = materializedEdgeCacheMaximumAge(env, maximumAge);
     const edgeResponse = await loadEdgeCachedResponse(cache, cacheKey, now, edgeMaximumAge);
