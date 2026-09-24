@@ -104,3 +104,16 @@ test('track history reads its Worker-owned key directly with one R2 get', async 
   assert.equal(response.headers.get('x-materialized-at'), String(NOW));
   assert.deepEqual(await response.json(), { source: 'worker' });
 });
+
+test('track ranking status reads the Actions object before the legacy Worker key', async () => {
+  const expected = pagesActionsR2ResponseKey('track-history-status');
+  const calls = [];
+  const response = await loadMaterializedR2Response({
+    async get(key) {
+      calls.push(key);
+      return key === expected ? actionsObject({ ok: true, ranking: [{ title: 'Song A' }] }) : null;
+    },
+  }, 'track-history-status', NOW, 60_000);
+  assert.deepEqual(calls, [expected]);
+  assert.deepEqual((await response.json()).ranking, [{ title: 'Song A' }]);
+});

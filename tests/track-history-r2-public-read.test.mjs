@@ -5,6 +5,7 @@ import test from 'node:test';
 import { TRACK_HISTORY_DAY_INDEX_KEY } from '../worker/src/pages-track-history-day-index.js';
 import { loadTrackHistoryR2ApiResponse } from '../worker/src/pages-track-history-r2-api.js';
 import { trackHistoryDayObjectKey } from '../worker/src/pages-track-history-r2-shards.js';
+import { pagesActionsR2ResponseKey } from '../worker/src/pages-response-r2.js';
 
 class FakeR2 {
   constructor(entries = {}) {
@@ -90,9 +91,37 @@ test('missing ranking model fails instead of reporting an empty ranking as succe
   assert.equal(response.status, 503);
   assert.equal((await response.json()).ok, false);
   assert.deepEqual(r2.gets, [
+    pagesActionsR2ResponseKey('track-history-status'),
     'pages-response/v1/track-history-status.json',
     'pages-response/v1/track-history.json',
   ]);
+});
+
+test('Likes reads ranking published by scheduled Actions without the full history object', async () => {
+  const calls = [];
+  const statusKey = pagesActionsR2ResponseKey('track-history-status');
+  const response = await loadTrackHistoryR2ApiResponse({
+    async get(key) {
+      calls.push(key);
+      return key === statusKey ? {
+        body: {},
+        async json() {
+          return {
+            version: 1, status: 200, updated_at: 1_000,
+            body: JSON.stringify({
+              ok: true,
+              ranking: [{ title: 'Song A', latest_like_count: 42 }],
+              ranking_summary: { track_count: 1, max_like_count: 42 },
+              generated_at: 1_000,
+            }),
+          };
+        },
+      } : null;
+    },
+  }, new Request('https://internal/api/track-history?ranking_only=1'), 1_000);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).ranking[0].title, 'Song A');
+  assert.deepEqual(calls, [statusKey]);
 });
 
 test('Pages middleware routes Track History to R2 and fail-closes instead of falling back to D1', () => {

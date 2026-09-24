@@ -257,7 +257,7 @@ async function persistRecoveredRanking(db, baseRows, enrichedRows) {
   }
 }
 
-export async function loadTrackRanking(db, { limit = 500 } = {}) {
+export async function loadTrackRanking(db, { limit = 500, persist = true } = {}) {
   const boundedLimit = Math.min(Math.max(Math.trunc(Number(limit) || 500), 20), 500);
   const [result, summary] = await Promise.all([
     db.prepare(TRACK_RANKING_SQL).bind(boundedLimit).all(),
@@ -266,7 +266,7 @@ export async function loadTrackRanking(db, { limit = 500 } = {}) {
   const baseRows = result.results || [];
   const metadata = await metadataRows(db, baseRows);
   const rows = enrichRanking(baseRows, metadata);
-  await persistRecoveredRanking(db, baseRows, rows);
+  if (persist) await persistRecoveredRanking(db, baseRows, rows);
   return {
     rows: rows.map((row, index) => ({ rank: index + 1, ...row })),
     summary: {

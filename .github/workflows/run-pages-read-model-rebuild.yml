@@ -12,6 +12,8 @@ on:
       - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
       - 'worker/scripts/run-pages-history-read-model-actions.mjs'
+      - 'worker/scripts/publish-track-ranking-status-actions.mjs'
+      - 'site/functions/lib/track-ranking.js'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/pages-response-**'
       - 'site/functions/api/history.js'
@@ -106,6 +108,9 @@ jobs:
         run: |
           set -o pipefail
           node scripts/run-pages-history-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
+      - name: Publish compact track ranking to R2
+        if: steps.d1-write-budget.outputs.read_allowed == 'true'
+        run: node scripts/publish-track-ranking-status-actions.mjs
       - name: Upload pages read-model log
         if: always()
         uses: actions/upload-artifact@v4
