@@ -47,6 +47,7 @@ import {
 
   const state = {
     mode: 'weekly',
+    pastWeekMode: false,
     rows: [],
     tableRows: [],
     visibleRows: PAGE_SIZE,
@@ -63,6 +64,10 @@ import {
   };
   const numberText = (value) => finite(value) == null ? '—' : decimal.format(Number(value));
   const todayUtc = () => new Date().toISOString().slice(0, 10);
+
+  function dataMode() {
+    return state.mode === 'daily' && state.pastWeekMode ? 'weekly' : state.mode;
+  }
 
   migrateHistoryCache(sessionStorage);
 
@@ -164,7 +169,7 @@ import {
 
   function renderTable(reset = false) {
     if (reset) state.visibleRows = PAGE_SIZE;
-    const columns = columnsFor(state.mode);
+    const columns = columnsFor(dataMode());
     const head = document.createElement('tr');
     for (const [, label] of columns) {
       const cell = document.createElement('th');
@@ -225,12 +230,13 @@ import {
 
   function updateSummary() {
     const rows = state.rows;
-    setText('periodLabel', state.mode === 'ranking' ? '順位行' : '期間数');
+    const mode = dataMode();
+    setText('periodLabel', mode === 'ranking' ? '順位行' : '期間数');
     setText('maxLabel', '平均同接');
     setText('streamLabel', '再生数増加');
     setText('memberLabel', 'メンバー増加');
     setText('periods', numberText(rows.length));
-    if (state.mode === 'ranking') {
+    if (mode === 'ranking') {
       setText('maxListener', '—');
       setText('streamGrowth', '—');
       setText('memberGrowth', '—');
@@ -242,13 +248,18 @@ import {
   }
 
   function updateModeUi() {
-    const config = MODES[state.mode];
+    const mode = dataMode();
+    const config = MODES[mode];
     document.querySelectorAll('#modeTabs button').forEach((button) => {
       const selected = button.dataset.mode === state.mode;
       button.classList.toggle('active', selected);
       if (selected) button.setAttribute('aria-current', 'page');
       else if (button.dataset.view !== 'current') button.removeAttribute('aria-current');
     });
+    const toggle = el('historyPastWeekToggle');
+    if (toggle) toggle.hidden = state.mode !== 'daily';
+    const checkbox = el('historyPastWeekMode');
+    if (checkbox) checkbox.checked = state.pastWeekMode;
     setText('guideTitle', config.title);
     setText('tableTitle', config.table);
     setText('chartTitle', config.chart);
@@ -273,7 +284,7 @@ import {
 
   function renderLoadedData() {
     updateSummary();
-    state.tableRows = tableOrder(state.rows, state.mode);
+    state.tableRows = tableOrder(state.rows, dataMode());
     renderTable(true);
     renderRankingWeekly(state.data?.weekly_metrics || []);
   }
@@ -294,19 +305,20 @@ import {
     state.controller?.abort();
     const controller = new AbortController();
     state.controller = controller;
-    const mode = state.mode;
+    const routeMode = state.mode;
+    const mode = dataMode();
     el('load').disabled = true;
     setNotice('読み込み中…');
 
     try {
-      if (mode === 'broadcasts') {
+      if (routeMode === 'broadcasts') {
         el('from').value = '2024-05-01';
         el('to').value = todayUtc();
       }
       const from = el('from').value;
       const to = el('to').value;
       const params = new URLSearchParams({ mode, from, to });
-      if (mode === 'ranking') {
+      if (routeMode === 'ranking') {
         params.set('scope', el('rankingScope').value);
         params.set('limit', '5000');
         const host = el('rankingHost').value.trim();
@@ -318,7 +330,7 @@ import {
         signal: controller.signal,
         force,
       });
-      if (token !== state.requestToken || state.mode !== mode) return;
+      if (token !== state.requestToken || state.mode !== routeMode || dataMode() !== mode) return;
 
       state.data = data;
       state.rows = Array.isArray(data.rows) ? data.rows : [];
@@ -352,8 +364,9 @@ import {
     resetData();
     updateModeUi();
     history.replaceState(null, '', `#${mode}`);
+    const runtimeMode = dataMode();
     try {
-      await ensureModeRuntime(mode);
+      await ensureModeRuntime(runtimeMode);
     } catch (error) {
       if (transitionToken === state.requestToken) {
         console.error('history mode runtime failed to load', error);
@@ -361,12 +374,33 @@ import {
       }
       return;
     }
-    if (transitionToken !== state.requestToken || state.mode !== mode) return;
+    if (transitionToken !== state.requestToken || state.mode !== mode || dataMode() !== runtimeMode) return;
+    void loadMode();
+  }
+
+  async function setPastWeekMode(enabled) {
+    if (state.mode !== 'daily' || state.pastWeekMode === enabled) return;
+    state.controller?.abort();
+    const transitionToken = ++state.requestToken;
+    state.pastWeekMode = enabled;
+    resetData();
+    updateModeUi();
+    const mode = dataMode();
+    try {
+      await ensureModeRuntime(mode);
+    } catch (error) {
+      if (transitionToken === state.requestToken) {
+        console.error('past history week runtime failed to load', error);
+        setNotice('週表示の読み込みに失敗しました。', true);
+      }
+      return;
+    }
+    if (transitionToken !== state.requestToken || state.mode !== 'daily' || dataMode() !== mode) return;
     void loadMode();
   }
 
   function exportCsv() {
-    const columns = columnsFor(state.mode);
+    const columns = columnsFor(dataMode());
     const lines = [
       columns.map(([, label]) => label),
       ...state.rows.map((row) => columns.map(([key]) => displayCell(key, row))),
@@ -374,7 +408,7 @@ import {
     const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `sh-${state.mode}-${todayUtc()}.csv`;
+    link.download = `sh-${dataMode()}-${todayUtc()}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
@@ -395,6 +429,9 @@ import {
       renderTable(false);
     });
     el('csv').addEventListener('click', exportCsv);
+    el('historyPastWeekMode')?.addEventListener('change', (event) => {
+      void setPastWeekMode(Boolean(event.currentTarget.checked));
+    });
     el('rankingScope').addEventListener('change', () => void loadMode());
     el('rankingHost').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -410,8 +447,9 @@ import {
     state.mode = MODES[requestedMode] ? requestedMode : 'weekly';
     updateModeUi();
     const startupToken = ++state.requestToken;
+    const runtimeMode = dataMode();
     try {
-      await ensureModeRuntime(state.mode);
+      await ensureModeRuntime(runtimeMode);
     } catch (error) {
       if (startupToken === state.requestToken) {
         console.error('history mode runtime failed to start', error);
@@ -419,7 +457,7 @@ import {
       }
       return;
     }
-    if (startupToken !== state.requestToken) return;
+    if (startupToken !== state.requestToken || dataMode() !== runtimeMode) return;
     void loadMode();
   }
 

@@ -4,6 +4,7 @@ import './dashboard-header.js?v=20260924.1';
 import './pages-terminology.js?v=20260924.3';
 import './unofficial-listening-parties.js?v=20260924.1';
 import './official-listening-party-copy.js?v=20260923.1';
+import './history/history-past-toggle-shell.js?v=20260924.1';
 import './first-week-comparison-shell.js?v=20260924.1';
 import './played-tracks-shell.js?v=20260924.3';
 import './dashboard-tabs.js?v=20260924.5';

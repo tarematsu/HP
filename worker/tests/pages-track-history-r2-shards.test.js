@@ -145,8 +145,8 @@ test('explicit maintenance keeps seven staging shards in R2 and writes a stable 
   const day = await loadTrackHistoryDayReadModel(r2, '2026-07-23');
   assert.equal(day.payload.rows.length, 1);
   assert.equal(day.payload.rows[0].play_count, 8);
-  assert.equal(r2.puts, 9);
-  assert.equal(r2.gets, 9);
+  assert.equal(r2.puts, 10);
+  assert.equal(r2.gets, 10);
   assert.equal(db.batches.length, 1);
   assert.equal(db.batches[0].length, 1);
   assert.equal(db.deletes.length, 1);

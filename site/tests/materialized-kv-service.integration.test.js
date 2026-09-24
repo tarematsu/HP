@@ -61,7 +61,7 @@ test('a cache miss serves compact materializations through the KV service before
   }
 });
 
-test('track-history bypasses the read-model service after scheduled materialization is disabled', async () => {
+test('track-history is served by the R2 read-model service without invoking the D1 route', async () => {
   const originalCaches = globalThis.caches;
   globalThis.caches = { default: memoryCache() };
   const waits = [];
@@ -72,9 +72,19 @@ test('track-history bypasses the read-model service after scheduled materializat
       request: new Request('https://skrzk.test/api/track-history?ranking_only=1'),
       env: {
         PAGES_READ_MODEL_SERVICE: {
-          fetch: async () => {
+          fetch: async (request) => {
             serviceCalls += 1;
-            return Response.json({ source: 'materialized' });
+            const url = new URL(request.url);
+            assert.equal(url.searchParams.get('key'), 'track-history');
+            assert.equal(url.searchParams.get('api'), '1');
+            assert.equal(url.searchParams.get('ranking_only'), '1');
+            return Response.json({ source: 'materialized' }, {
+              headers: {
+                'x-api-source': 'track-history-r2-read-model',
+                'x-materialized-at': String(Date.now()),
+                'x-materialized-cadence-seconds': '300',
+              },
+            });
           },
         },
       },
@@ -86,9 +96,10 @@ test('track-history bypasses the read-model service after scheduled materializat
     });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('x-edge-cache'), 'MISS');
-    assert.deepEqual(await response.json(), { source: 'current-ranking' });
-    assert.equal(serviceCalls, 0);
-    assert.equal(liveCalls, 1);
+    assert.equal(response.headers.get('x-api-source'), 'track-history-r2-read-model');
+    assert.deepEqual(await response.json(), { source: 'materialized' });
+    assert.equal(serviceCalls, 1);
+    assert.equal(liveCalls, 0);
     await Promise.all(waits);
   } finally {
     globalThis.caches = originalCaches;

@@ -1,0 +1,45 @@
+name: Sync Track History R2 days
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-track-history-r2-days.yml'
+      - 'worker/scripts/sync-track-history-r2-days-actions.mjs'
+      - 'worker/src/pages-track-history-day-index.js'
+      - 'worker/src/pages-track-history-r2-shards.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-track-history-r2-days
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      PAGES_RESPONSE_BUCKET: sh-pages-responses
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Publish Track History day read models to R2
+        run: node scripts/sync-track-history-r2-days-actions.mjs
