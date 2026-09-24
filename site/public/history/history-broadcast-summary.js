@@ -65,7 +65,7 @@ function render() {
     : null;
 
   setText('streamLabel', '最大同接');
-  setText('memberLabel', '平均時間');
+  setText('memberLabel', '平均所要時間');
   setText('streamGrowth', maximums.length ? integer.format(Math.max(...maximums)) : '—');
   setText('memberGrowth', averageDuration == null ? '—' : formatMinutes(averageDuration));
 }
