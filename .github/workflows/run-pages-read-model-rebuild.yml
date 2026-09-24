@@ -109,7 +109,14 @@ jobs:
           set -o pipefail
           node scripts/run-pages-history-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
       - name: Publish compact track ranking to R2
-        if: steps.d1-write-budget.outputs.read_allowed == 'true'
+        # This bounded 500-track read keeps Likes available while the expensive
+        # history rebuild is deferred. Skip if telemetry is unavailable or the
+        # D1 write budget is also exceeded.
+        if: >-
+          steps.d1-write-budget.outputs.read_allowed == 'true' ||
+          (steps.d1-write-budget.outputs.write_allowed == 'true' &&
+           (steps.d1-write-budget.outputs.reason == 'read-budget-exceeded' ||
+            steps.d1-write-budget.outputs.reason == 'projected-read-budget-exceeded'))
         run: node scripts/publish-track-ranking-status-actions.mjs
       - name: Upload pages read-model log
         if: always()
