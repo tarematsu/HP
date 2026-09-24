@@ -1,11 +1,15 @@
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
 const HISTORY_MODES = new Set([...SUMMARY_MODES, 'ranking', 'broadcasts']);
 const SUMMARY_REMOVED_LABELS = new Set(['最大いいね', '主なホスト', '有効記録数', '同接有効数']);
-const RANKING_REMOVED_LABELS = new Set(['前週順位', '前週比', 'ランキング種別', '順位データ出典', '品質']);
+const RANKING_REMOVED_LABELS = new Set(['前週順位', '前週比', 'ランキング種別', '順位データ出典', '品質', 'データ品質']);
 const RENAMED_LABELS = new Map([
   ['記録数', ['取得記録数', 'その期間に保存された全サンプル数']],
+  ['メンバー（開始）', ['メンバー数（開始）', '期間開始時点のメンバー数']],
+  ['メンバー（終了）', ['メンバー数（終了）', '期間終了時点のメンバー数']],
+  ['メンバー増加', ['メンバー増加数', '期間内のメンバー数の増加']],
+  ['曲数', ['楽曲数', '期間内に確認された楽曲数']],
 ]);
-const CACHE_MIGRATION_KEY = 'sh.history.display-cleanup.v5';
+const CACHE_MIGRATION_KEY = 'sh.history.display-cleanup.v6';
 const HISTORY_CACHE_PREFIX = 'sh.history.v3:';
 const MOBILE_TABLE_STYLE_ID = 'compact-mobile-table-widths';
 const rankingMetadataByRow = new Map();
@@ -139,8 +143,8 @@ function resetSharedHistorySummary(mode) {
   if (!HISTORY_MODES.has(mode)) return;
   setText('periodLabel', mode === 'ranking' ? '総週数' : '期間数');
   setText('maxLabel', mode === 'ranking' ? 'ランクイン週数' : '平均同接');
-  setText('streamLabel', mode === 'ranking' ? '圏外週数' : mode === 'broadcasts' ? '最大同接' : '再生数増加');
-  setText('memberLabel', mode === 'ranking' ? '対象ホスト' : mode === 'broadcasts' ? '平均時間' : 'メンバー増加');
+  setText('streamLabel', mode === 'ranking' ? '圏外・欠測週数' : mode === 'broadcasts' ? '最大同接' : '再生数増加');
+  setText('memberLabel', mode === 'ranking' ? '対象ホスト' : mode === 'broadcasts' ? '平均所要時間' : 'メンバー増加数');
   for (const id of ['periods', 'maxListener', 'streamGrowth', 'memberGrowth']) setText(id, '—');
   const notice = document.getElementById('notice');
   if (notice) {
@@ -173,7 +177,7 @@ function prepareTableForModeTransition(event) {
 function ensureRankingMetadataColumns(head, body) {
   const headers = [...head.querySelectorAll('th')];
   const labels = new Set(headers.map((cell) => cell.textContent.trim()));
-  if (labels.has('チャンネル') && labels.has('アーティスト名') && labels.has('公式')) return;
+  if (labels.has('チャンネル') && labels.has('アーティスト名') && labels.has('種別')) return;
   const hostIndex = headers.findIndex((cell) => cell.textContent.trim() === 'ホスト');
   if (hostIndex < 0) return;
 
@@ -185,7 +189,7 @@ function ensureRankingMetadataColumns(head, body) {
   artistHeader.textContent = 'アーティスト名';
   const relationHeader = document.createElement('th');
   relationHeader.scope = 'col';
-  relationHeader.textContent = '公式';
+  relationHeader.textContent = '種別';
   headers[hostIndex].after(channelHeader, artistHeader, relationHeader);
 
   for (const row of body.querySelectorAll('tr')) {
