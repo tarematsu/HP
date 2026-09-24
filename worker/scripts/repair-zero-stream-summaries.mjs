@@ -1,4 +1,4 @@
-import { DAY_MS, utcWeeklyRange, utcMonthlyRange } from '../../site/functions/lib/time-buckets.js';
+import { DAY_MS, utcWeeklyRange } from '../../site/functions/lib/time-buckets.js';
 
 // Legacy imports store the channel's cumulative streams in total_listens.
 // Live facts store streams in current_stream_count; total_listens is a different
@@ -35,7 +35,7 @@ export async function repairZeroStreamSummaries({ minuteDb, otherDb, now = Date.
   const candidates = await otherDb.prepare(`SELECT period_key,stream_start,stream_end,stream_growth,quality_flags
     FROM sh_daily_summary WHERE period_key<? AND (stream_start=0 OR stream_end=0)
     ORDER BY period_key LIMIT ?`).bind(today,dayLimit).all();
-  const report = { daily: [], weekly: [], monthly: [], source_rows: 0, deferred: [] };
+  const report = { daily: [], weekly: [], source_rows: 0, deferred: [] };
   for (const previous of candidates.results || []) {
     const start = Date.parse(`${previous.period_key}T00:00:00Z`);
     if (!Number.isFinite(start)) throw new Error('invalid daily period key');
@@ -106,31 +106,28 @@ export async function repairZeroStreamSummaries({ minuteDb, otherDb, now = Date.
     report.daily.push({ key: previous.period_key, before: [previous.stream_start,previous.stream_end,previous.stream_growth],
       after: [streamStart,streamEnd,streamGrowth], source_samples: selected.length, borrowed });
   }
-  // Recompute all existing parent stream fields from the small daily table.
+  // Recompute existing weekly stream fields from the small daily table.
   // This also retries an interrupted run after its daily writes have committed,
   // and repairs parent zeros even when the daily boundary was already valid.
   const daily = await otherDb.prepare(`SELECT period_key,stream_start,stream_end,quality_flags FROM sh_daily_summary ORDER BY period_key`).all();
-  for (const [mode,table,toRange] of [
-    ['weekly','sh_weekly_summary',utcWeeklyRange], ['monthly','sh_monthly_summary',utcMonthlyRange],
-  ]) {
-    const parents = await otherDb.prepare(`SELECT period_key,stream_start,stream_end,stream_growth,quality_flags FROM ${table}`).all();
-    for (const parent of parents.results || []) {
-      const range = toRange(mode==='monthly' ? `${parent.period_key}-01` : parent.period_key);
-      const rows = (daily.results || []).filter(row=>row.period_key>=range.startKey && row.period_key<range.endKey);
-      if (!rows.length) continue;
-      if (parent.stream_start!==0 && parent.stream_end!==0
-          && !rows.some(row=>String(row.quality_flags || '').includes(FLAG))) continue;
-      const streamStart = rows.map(row=>positive(row.stream_start)).find(value=>value!=null) ?? null;
-      const streamEnd = rows.map(row=>positive(row.stream_end)).findLast(value=>value!=null) ?? null;
-      const streamGrowth = growth(streamStart,streamEnd);
-      if (parent.stream_start===streamStart && parent.stream_end===streamEnd && parent.stream_growth===streamGrowth) continue;
-      await otherDb.prepare(`UPDATE ${table} SET stream_start=?,stream_end=?,stream_growth=?,quality_flags=?,updated_at=?
-        WHERE period_key=? AND stream_start IS ? AND stream_end IS ? AND stream_growth IS ?`)
-        .bind(streamStart,streamEnd,streamGrowth,flags(parent.quality_flags,false),now,parent.period_key,
-          parent.stream_start,parent.stream_end,parent.stream_growth).run();
-      report[mode].push({ key: parent.period_key, before: [parent.stream_start,parent.stream_end,parent.stream_growth],
-        after: [streamStart,streamEnd,streamGrowth] });
-    }
+  const parents = await otherDb.prepare(`SELECT period_key,stream_start,stream_end,stream_growth,quality_flags
+    FROM sh_weekly_summary`).all();
+  for (const parent of parents.results || []) {
+    const range = utcWeeklyRange(parent.period_key);
+    const rows = (daily.results || []).filter(row=>row.period_key>=range.startKey && row.period_key<range.endKey);
+    if (!rows.length) continue;
+    if (parent.stream_start!==0 && parent.stream_end!==0
+        && !rows.some(row=>String(row.quality_flags || '').includes(FLAG))) continue;
+    const streamStart = rows.map(row=>positive(row.stream_start)).find(value=>value!=null) ?? null;
+    const streamEnd = rows.map(row=>positive(row.stream_end)).findLast(value=>value!=null) ?? null;
+    const streamGrowth = growth(streamStart,streamEnd);
+    if (parent.stream_start===streamStart && parent.stream_end===streamEnd && parent.stream_growth===streamGrowth) continue;
+    await otherDb.prepare(`UPDATE sh_weekly_summary SET stream_start=?,stream_end=?,stream_growth=?,quality_flags=?,updated_at=?
+      WHERE period_key=? AND stream_start IS ? AND stream_end IS ? AND stream_growth IS ?`)
+      .bind(streamStart,streamEnd,streamGrowth,flags(parent.quality_flags,false),now,parent.period_key,
+        parent.stream_start,parent.stream_end,parent.stream_growth).run();
+    report.weekly.push({ key: parent.period_key, before: [parent.stream_start,parent.stream_end,parent.stream_growth],
+      after: [streamStart,streamEnd,streamGrowth] });
   }
   const remaining = await otherDb.prepare(`SELECT COUNT(*) AS count FROM sh_daily_summary
     WHERE period_key<? AND (stream_start=0 OR stream_end=0)`).bind(today).first();
