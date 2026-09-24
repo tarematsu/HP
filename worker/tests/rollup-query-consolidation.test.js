@@ -84,7 +84,7 @@ test('normal daily maintenance selects the dominant channel before context joins
   assert.doesNotMatch(rebuild, /rollupDaily\(minuteDb/);
 });
 
-test('weekly and monthly boundary SQL reuses the same two numbered parameters', () => {
+test('weekly boundary SQL reuses the same two numbered parameters', () => {
   const sql = section('const SUMMARY_BOUNDARIES_SQL', 'function finite');
   assertSharedRangeParameters(sql);
   assert.match(sql, /AS stream_start/);
@@ -129,4 +129,5 @@ test('maintenance prioritizes stored daily summaries with invalid sample counts'
   const maintenance = section('export async function runRollupMaintenance', 'export async function runRollupMaintenanceSafely');
   assert.match(maintenance, /invalidDailyPeriods\(otherDb, now\)/);
   assert.match(maintenance, /\[\.\.\.invalidPeriods, \.\.\.dirtyPeriods\]/);
+  assert.doesNotMatch(maintenance, /monthly|sh_monthly_summary|utcMonthlyRange/);
 });
