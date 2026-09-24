@@ -6,7 +6,7 @@ const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const dashboardDaily = readFileSync(new URL('../public/dashboard-daily-summaries.js', import.meta.url), 'utf8');
 const dashboardClient = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
-const dashboardChart = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
+const dashboardChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
@@ -22,7 +22,7 @@ test('main page renders current track likes from the dashboard response', () => 
   assert.match(dashboardClient, /`♡ \$\{integer\.format\(bites\)\}`/);
   assert.equal((dashboardClient.match(/\/api\/dashboard/g) || []).length, 1);
   assert.match(dashboardClient, /payload\.queue/);
-  assert.match(dashboardChart, /payload\.history/);
+  assert.match(dashboardChart, /dashboard:payload/);
 });
 
 test('main page labels member and stream deltas with their actual dates', () => {
@@ -46,7 +46,7 @@ test('like ranking is an integrated view backed by the materialized status paylo
   assert.match(trackEndpoint, /current_track_like_ranking/);
   assert.match(historyLikes, /ranking_only=1/);
   assert.match(historyLikes, /likesRankingList/);
-  assert.doesNotMatch(historyLikes, /week_play_count|今週再生/);
+  assert.doesNotMatch(historyLikes, /likesLoad|week_play_count|今週再生/);
 });
 
 test('archive removes the track playback tab and its aggregation runtime', () => {
