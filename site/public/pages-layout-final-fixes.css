@@ -239,9 +239,9 @@
     justify-self: stretch !important;
   }
 
-  /* Ranking/likes data tables should scroll horizontally instead of squeezing
-     every column into the viewport. These selectors intentionally outrank the
-     older runtime compact-width rules, including the all-host leaderboard. */
+  /* Ranking/likes data tables scroll horizontally on mobile instead of
+     compressing every column into a narrow viewport. The stronger selectors
+     deliberately supersede the older runtime compact-width declarations. */
   #historyView > .data-panel .table-wrap,
   #likesView > .data-panel .table-wrap {
     max-width: 100% !important;
