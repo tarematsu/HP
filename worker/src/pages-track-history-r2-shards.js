@@ -10,6 +10,7 @@ import {
   trackHistoryResponseSuffix,
 } from './pages-track-history-response.js';
 import { saveMaterializedR2Response } from './pages-response-r2.js';
+import { updateTrackHistoryDayIndex } from './pages-track-history-day-index.js';
 
 const DAY_MS = 86_400_000;
 const SHARD_MS = 3 * 60 * 60_000;
@@ -160,16 +161,18 @@ export async function saveTrackHistoryDayReadModel(r2, range, rows, metadata = {
       - Number(right?.first_played_at ?? right?.played_at ?? 0)
       || trackRowKey(left).localeCompare(trackRowKey(right))
   ));
+  const updatedAt = validTimestamp(metadata.updated_at) ?? Date.now();
   await r2.put(key, JSON.stringify({
     version: DAY_MODEL_VERSION,
     day,
-    updated_at: validTimestamp(metadata.updated_at) ?? Date.now(),
+    updated_at: updatedAt,
     rows: sortedRows,
     source_row_count: Math.max(0, Number(metadata.source_row_count || 0)),
     excluded_dates: Array.isArray(metadata.excluded_dates) ? metadata.excluded_dates : [],
   }), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
   });
+  await updateTrackHistoryDayIndex(r2, day, sortedRows.length > 0, updatedAt);
   return { key, day, rows: sortedRows.length };
 }
 

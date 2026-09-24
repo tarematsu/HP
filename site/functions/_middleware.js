@@ -9,15 +9,17 @@ import {
 
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
 const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 60;
-const MATERIALIZED_CACHE_NAMESPACE = '20260921-2';
+const MATERIALIZED_CACHE_NAMESPACE = '20260924-1';
+const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
 // Materialized Pages surfaces are storage-only on the public path. Falling back
 // to live D1 during an R2/service outage turns browser polling into unbounded
 // database work exactly when the system is degraded, so fail closed instead.
 const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set();
-const SERVICE_MATERIALIZED_MODEL_KEYS = new Set(
-  MATERIALIZED_API_VARIANTS.map(({ key }) => key),
-);
+const SERVICE_MATERIALIZED_MODEL_KEYS = new Set([
+  ...MATERIALIZED_API_VARIANTS.map(({ key }) => key),
+  TRACK_HISTORY_MODEL_KEY,
+]);
 
 function tagged(response, cacheState) {
   const clone = response.clone();
@@ -51,7 +53,7 @@ function materializedCacheRequest(request, modelKey) {
   });
 }
 
-async function serviceMaterializedResponse(context, modelKey) {
+async function serviceMaterializedResponse(context, modelKey, publicRequest) {
   const service = context.env?.PAGES_READ_MODEL_SERVICE;
   if (!SERVICE_MATERIALIZED_MODEL_KEYS.has(modelKey)) return null;
   if (typeof service?.fetch !== 'function') {
@@ -59,11 +61,20 @@ async function serviceMaterializedResponse(context, modelKey) {
   }
   const url = new URL('https://pages-read-model.internal/_internal/pages-response');
   url.searchParams.set('key', modelKey);
+  if (modelKey === TRACK_HISTORY_MODEL_KEY) {
+    url.searchParams.set('api', '1');
+    const publicUrl = new URL(publicRequest.url);
+    for (const [name, value] of publicUrl.searchParams.entries()) {
+      if (name === 'v' || name === 'key' || name === 'api') continue;
+      url.searchParams.append(name, value);
+    }
+  }
   const response = await service.fetch(new Request(url, {
     method: 'GET',
     headers: { accept: 'application/json' },
   }));
   if (!response?.ok) {
+    if (response && response.status >= 400 && response.status < 500) return response;
     throw new Error(`materialized ${modelKey} response returned HTTP ${response?.status || 503}`);
   }
   return response;
@@ -205,12 +216,18 @@ async function applyHistoryRange(origin, request, modelKey, range) {
   });
 }
 
+function materializedModelKeyForRequest(request) {
+  const url = new URL(request.url);
+  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  return pathname === '/api/track-history' ? TRACK_HISTORY_MODEL_KEY : materializedApiKey(url);
+}
+
 export async function onRequest(context) {
   const { request } = context;
   if (!edgeCacheableApiRequest(request)) return context.next();
 
   const now = Date.now();
-  const modelKey = materializedApiKey(new URL(request.url));
+  const modelKey = materializedModelKeyForRequest(request);
   const range = historyRange(request, modelKey);
   if (range.error) return historyRangeError(range.error);
 
@@ -223,7 +240,7 @@ export async function onRequest(context) {
   let usedMaterialized = false;
   if (SERVICE_MATERIALIZED_MODEL_KEYS.has(modelKey)) {
     try {
-      origin = await serviceMaterializedResponse(context, modelKey);
+      origin = await serviceMaterializedResponse(context, modelKey, request);
       usedMaterialized = true;
     } catch (error) {
       console.error(JSON.stringify({
