@@ -2,25 +2,27 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const tweaks = readFileSync(new URL('../public/pages-ui-tweaks.js', import.meta.url), 'utf8');
 const finalFixes = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
 
 test('Pages UI tweaks load before the dashboard runtime', () => {
-  assert.match(entry, /pages-ui-tweaks\.js\?v=20260921\.1/);
+  assert.match(entry, /pages-ui-tweaks\.js\?v=20260924\.1/);
 });
 
-test('current chart moves before now playing and drops its heading block', () => {
-  assert.match(tweaks, /primaryGrid\.before\(chartCard\)/);
-  assert.match(tweaks, /headingBlock\?\.querySelector\('h2'\)/);
-  assert.match(tweaks, /headingBlock\.remove\(\)/);
+test('current chart is statically before now playing without a redundant heading block', () => {
+  assert.ok(page.indexOf('class="card chart-card"') < page.indexOf('class="primary-grid"'));
+  const chartCard = page.slice(page.indexOf('class="card chart-card"'), page.indexOf('class="primary-grid"'));
+  assert.doesNotMatch(chartCard, /LAST 24 HOURS|オンライン数<\/h2>/);
+  assert.doesNotMatch(tweaks, /primaryGrid|chartCard|headingBlock|\.before\(|\.remove\(/);
 });
 
-test('likes update stays hidden while CSV moves to the song table header', () => {
-  assert.match(tweaks, /likesLoad\.replaceWith\(hook\)/);
-  assert.match(tweaks, /panel\.querySelector\('#likesTbody'\)/);
-  assert.match(tweaks, /likesTableHead\.append\(likesCsv\)/);
-  assert.match(tweaks, /if \(!likeActions\.childElementCount\) likeActions\.remove\(\)/);
+test('likes update control is removed and CSV is statically in the song table header', () => {
+  assert.doesNotMatch(page, /id="likesLoad"|class="like-actions"/);
+  const tablePanel = page.slice(page.indexOf('<h2>楽曲別一覧</h2>'));
+  assert.match(tablePanel, /id="likesCsv"/);
+  assert.doesNotMatch(tweaks, /likesLoad|likesCsv|likeActions|replaceWith|append\(/);
 });
 
 test('mobile likes ranking keeps the latest-like metric to the right of track metadata', () => {
