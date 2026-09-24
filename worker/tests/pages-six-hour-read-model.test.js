@@ -17,7 +17,6 @@ const ALL_VARIANTS = [
   'dashboard',
   'history:daily',
   'history:weekly',
-  'history:monthly',
   'history:broadcasts',
   'host-history:summary',
 ];
