@@ -32,9 +32,10 @@ test('mobile dashboard navigation stays on a four-column two-row grid', () => {
   assert.doesNotMatch(responsive, /repeat\(6,/);
 });
 
-test('daily weekly and monthly stream growth uses black average listener line and replay bars', () => {
-  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
-  assert.match(periodChart, /new Set\(\['daily', 'weekly', 'monthly'\]\)/);
+test('daily and weekly stream growth uses black average listener line and replay bars', () => {
+  assert.match(historyEntry, /history-period-chart\.js\?v=20260925\.\d+/);
+  assert.match(periodChart, /new Set\(\['daily', 'weekly'\]\)/);
+  assert.doesNotMatch(periodChart, /'monthly'/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(periodChart, /detail\.data/);
   assert.match(periodChart, /row\?\.stream_growth/);

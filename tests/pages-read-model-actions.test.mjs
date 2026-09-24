@@ -38,7 +38,6 @@ function allMaterializedVariants() {
     'dashboard',
     'history:daily',
     'history:weekly',
-    'history:monthly',
     'history:broadcasts',
     'host-history:summary',
   ];
@@ -49,7 +48,6 @@ function sixHourVariants() {
     'dashboard',
     'history:daily',
     'history:weekly',
-    'history:monthly',
     'history:broadcasts',
   ];
 }

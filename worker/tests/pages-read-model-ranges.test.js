@@ -19,7 +19,6 @@ const ALL_VARIANTS = [
   'dashboard',
   'history:daily',
   'history:weekly',
-  'history:monthly',
   'history:broadcasts',
   'host-history:summary',
 ];
@@ -113,15 +112,16 @@ test('incremental excluded-date updates replace only dates inside the refreshed 
   );
 });
 
-test('canonical materialized variants exclude playback history', () => {
+test('canonical materialized variants exclude playback history and monthly summaries', () => {
   const materialized = new Map(MATERIALIZED_API_VARIANTS.map((variant) => [variant.key, variant]));
   assert.deepEqual([...materialized.keys()], ALL_VARIANTS);
   assert.equal(materialized.has('track-history'), false);
+  assert.equal(materialized.has('history:monthly'), false);
   assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
+  assert.equal(materializedApiKey('https://pages.test/api/history?mode=monthly'), null);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
   assert.equal(materialized.get('history:daily').cadence_minutes, 360);
   assert.equal(materialized.get('history:weekly').cadence_minutes, 360);
-  assert.equal(materialized.get('history:monthly').cadence_minutes, 360);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 

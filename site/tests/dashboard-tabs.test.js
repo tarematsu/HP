@@ -58,7 +58,7 @@ test('inactive history and likes runtimes are not prefetched from the current ta
 
 test('history mode-specific runtimes are lazy-loaded only after history starts', () => {
   assert.match(historyEntry, /function ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
+  assert.match(historyEntry, /history-period-chart\.js\?v=20260925\.\d+/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.8/);
   assert.doesNotMatch(historyEntry, /history-ranking-missing-gap/);
   assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260924\.1/);

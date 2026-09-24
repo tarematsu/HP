@@ -6,7 +6,6 @@ import { onRequest } from '../functions/_middleware.js';
 const CASES = [
   ['history:daily', '/api/history?mode=daily'],
   ['history:weekly', '/api/history?mode=weekly'],
-  ['history:monthly', '/api/history?mode=monthly'],
   ['history:broadcasts', '/api/history?mode=broadcasts'],
   ['host-history:summary', '/api/host-history?mode=summary'],
 ];

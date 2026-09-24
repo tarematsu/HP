@@ -81,15 +81,12 @@ test('current daily history reads the incremental projection for the latest live
   const insertContext = db.prepare('INSERT INTO sh_minute_fact_context_v2 VALUES(?,?)');
   const start = Date.parse('2026-07-20T00:00:00Z');
   db.prepare('INSERT INTO sh_hosts VALUES(?,?)').run(1, 'buddies');
-  // Member start must be the previous UTC day's final recorded value.
   db.prepare('INSERT INTO sh_total_member_daily VALUES(?,?,?,?,?)')
     .run(1, start - 86_400_000, 0, start - 60_000, 790);
   insertFact.run(1, 1, start, start, 1, 10, 800, 100, null);
   insertFact.run(2, 1, start + 60_000, start + 60_000, 1, null, 801, 110, null);
   insertFact.run(3, 1, start + 120_000, start + 120_000, 1, 30, 802, 130, null);
-  // A historical repair received today must not enter today's projection.
   insertFact.run(4, 2, start - 86_400_000, start + 180_000, 2, 999, 999, 999, null);
-  // Another live channel in the same UTC day must not inflate channel 1's projection.
   insertFact.run(5, 2, start + 60_000, start + 60_000, 1, 777, 900, 777, null);
   insertContext.run(1, 1);
   insertContext.run(2, 1);
@@ -249,6 +246,6 @@ test('offline rollups reconcile missing Minute Facts before rebuilding summaries
   assert.match(rollupSource, /minute-facts-incomplete/);
   assert.match(rollupSource, /rebuildDailyWhenComplete/);
   assert.match(rollupSource, /daily-summaries-incomplete/);
-  assert.match(rollupSource, /weekly-summaries-incomplete/);
+  assert.match(rollupSource, /const weekly = await refreshWeekly\(/);
   assert.match(rollupSource, /rollupMinuteDaily\(minuteDb, otherDb, period, now, qualityFlags\)/);
 });

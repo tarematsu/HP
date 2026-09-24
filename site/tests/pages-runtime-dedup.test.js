@@ -21,13 +21,13 @@ test('dashboard payload parsing is owned by the fetch cache instead of the entry
 });
 
 test('inactive tab runtimes are loaded on demand and never idle-prefetched', () => {
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260924\.1'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260925\.\d+'\)/);
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260924\.2'\)/);
   assert.match(tabs, /import\('\/history\/history-ranking-table-status\.js\?v=20260923\.2'\)/);
   assert.match(tabs, /if \(mode === 'ranking'\) \{[\s\S]*await loadRankingStatusRuntime\(\)/);
   assert.doesNotMatch(tabs, /modulepreload|requestIdleCallback|scheduleRuntimePrefetch/);
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
-  assert.match(historyMain, /history-period-chart\.js\?v=20260923\.\d+/);
+  assert.match(historyMain, /history-period-chart\.js\?v=20260925\.\d+/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.\d+/);
   assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.\d+/);
   assert.doesNotMatch(historyMain, /history-ranking-missing-gap/);
