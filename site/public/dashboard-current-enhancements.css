@@ -7,10 +7,6 @@
   line-height: 1.35;
 }
 
-.goal-card {
-  display: none !important;
-}
-
 .metrics .delta,
 .metrics .online-24h,
 .metric-goal-compact {
