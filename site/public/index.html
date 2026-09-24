@@ -23,39 +23,51 @@
         <div class="channel-copy">
           <p class="kicker">STATIONHEAD LIVE MONITOR</p>
           <h1 id="channelName">Buddies</h1>
-          <p id="description" class="subtle">読み込み中...</p>
-          <p class="live-line"><span id="liveDot" class="live-dot" aria-hidden="true"></span><span id="liveState">状態を確認中</span><span aria-hidden="true">·</span><span id="updated">-</span></p>
+          <p id="updated" class="subtle">-</p>
         </div>
       </div>
-      <div class="dashboard-actions">
-        <a class="button primary app-launch" href="stationhead://station/3328626">アプリで開く</a>
-        <nav id="modeTabs" class="mode-tabs dashboard-tabs" aria-label="表示種類">
-          <button type="button" data-view="current" class="active" aria-current="page">現在</button>
-          <button type="button" data-view="history" data-mode="daily">日次</button>
-          <button type="button" data-view="history" data-mode="weekly">週次</button>
-          <button type="button" data-view="history" data-mode="monthly">月次</button>
-          <button type="button" data-view="history" data-mode="ranking">リーダーボード</button>
-          <button type="button" data-view="likes" data-mode="likes">いいね</button>
-          <button type="button" data-view="history" data-mode="broadcasts">公式リスパ</button>
-        </nav>
-      </div>
+      <nav id="modeTabs" class="mode-tabs dashboard-tabs" aria-label="表示種類">
+        <button type="button" data-view="current" class="active" aria-current="page">現在</button>
+        <button type="button" data-view="history" data-mode="daily">日次</button>
+        <button type="button" data-view="history" data-mode="weekly">週次</button>
+        <button type="button" data-view="history" data-mode="monthly">月次</button>
+        <button type="button" data-view="history" data-mode="ranking">リーダーボード</button>
+        <button type="button" data-view="likes" data-mode="likes">いいね</button>
+        <button type="button" data-view="history" data-mode="broadcasts">公式リスパ</button>
+      </nav>
     </header>
 
     <div id="currentView" class="dashboard-view">
       <section class="metrics" aria-label="現在の指標">
-        <article class="metric featured"><span>オンライン</span><div class="metric-value"><strong id="online">-</strong></div></article>
-        <article class="metric">
-          <span>総メンバー数</span>
-          <div class="metric-value"><strong id="members">-</strong></div>
-          <div id="membersYesterdayDelta" class="delta" hidden></div>
-          <div id="membersDayBeforeDelta" class="delta" hidden></div>
+        <article class="metric featured">
+          <span>オンライン</span>
+          <div class="metric-value"><strong id="online">-</strong></div>
+          <div id="onlineYesterdayAvg" class="delta" hidden></div>
         </article>
         <article class="metric">
           <span>累計再生数</span>
           <div class="metric-value"><strong id="totalStreams">-</strong></div>
           <div id="streamsYesterdayDelta" class="delta" hidden></div>
           <div id="streamsDayBeforeDelta" class="delta" hidden></div>
+          <div id="metricGoalCompact" class="metric-goal-compact">
+            <span class="metric-goal-row">目標 <b id="streamGoal">-</b> 予想 <strong id="goalEta">-</strong></span>
+          </div>
         </article>
+        <article class="metric">
+          <span>総メンバー数</span>
+          <div class="metric-value"><strong id="members">-</strong></div>
+          <div id="membersYesterdayDelta" class="delta" hidden></div>
+          <div id="membersDayBeforeDelta" class="delta" hidden></div>
+          <div id="membersThreeDaysAgoDelta" class="delta" hidden></div>
+        </article>
+      </section>
+
+      <section class="card chart-card">
+        <div class="section-head chart-head">
+          <div class="legend" aria-label="グラフ凡例"><span class="online-key">オンライン</span></div>
+        </div>
+        <canvas id="audienceChart" width="960" height="360" aria-label="過去24時間のオンライン人数"></canvas>
+        <div id="currentChartDetail" class="chart-detail" data-current-chart-detail></div>
       </section>
 
       <section class="primary-grid">
@@ -64,7 +76,7 @@
             <div><p class="kicker">NOW PLAYING</p><h2>再生中の曲</h2></div>
             <div id="host" class="host"></div>
           </div>
-          <a id="nowPlayingLink" class="now-playing" target="_blank" rel="noopener noreferrer" aria-disabled="true">
+          <a id="nowPlayingLink" class="now-playing" href="https://stationhead.com/c/buddies" target="_blank" rel="noopener noreferrer" aria-disabled="false">
             <span class="track-visual" aria-hidden="true">
               <span id="trackFallback" class="track-fallback">♪</span>
               <img id="trackImage" class="track-image" alt="" width="104" height="104" decoding="async" hidden>
@@ -72,7 +84,7 @@
             <div class="track-copy">
               <strong id="trackTitle">曲情報を取得中...</strong>
               <span id="trackArtist" class="subtle"></span>
-              <div class="time-row"><span id="trackTime">-</span><span id="trackBites" hidden></span><span id="spotifyHint" hidden>Spotifyで開く</span></div>
+              <div class="time-row"><span id="trackTime">-</span><span id="trackBites" hidden></span><span id="spotifyHint">Stationheadを開く</span></div>
               <div class="progress" aria-hidden="true"><i id="trackBar"></i></div>
             </div>
           </a>
@@ -85,32 +97,6 @@
           </div>
           <div id="queue" class="queue" aria-live="polite"></div>
         </article>
-      </section>
-
-      <section class="card goal-card">
-        <div class="section-head"><div><p class="kicker">STREAMING GOAL</p><h2>累計再生数の目標</h2></div></div>
-        <div class="goal-layout">
-          <div class="goal-progress">
-            <div class="goal-number"><strong id="streamCount">-</strong><span>/ <b id="streamGoal">-</b></span></div>
-            <div class="progress large" aria-hidden="true"><i id="goalBar"></i></div>
-            <div class="goal-foot"><strong id="goalPercent">-</strong><span id="goalRemaining">-</span></div>
-          </div>
-          <div class="prediction">
-            <span>予測到達時期</span>
-            <strong id="goalEta">計算中</strong>
-            <small id="goalRate">-</small>
-            <div id="goalMilestones" class="milestones"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="card chart-card">
-        <div class="section-head chart-head">
-          <div><p class="kicker">LAST 24 HOURS</p><h2>オンライン数</h2></div>
-          <div class="legend" aria-label="グラフ凡例"><span class="online-key">オンライン</span></div>
-        </div>
-        <canvas id="audienceChart" width="960" height="360" aria-label="過去24時間のオンライン人数"></canvas>
-        <div id="currentChartDetail" class="chart-detail" data-current-chart-detail>グラフをタッチすると、その時点の数値を表示します。</div>
       </section>
 
       <p id="statusMessage" class="status-message" role="status" hidden></p>
@@ -142,7 +128,7 @@
         <button id="load" class="button primary compact-load" type="button">更新</button>
       </section>
 
-      <p id="notice" class="notice" role="status">表示するタブを選択してください。</p>
+      <p id="notice" class="notice" role="status"></p>
 
       <section id="summaryCards" class="summary-cards" aria-label="集計概要">
         <article><span id="periodLabel">期間数</span><strong id="periods">-</strong></article>
@@ -158,7 +144,7 @@
         </div>
         <canvas id="chart" width="960" height="360" aria-label="履歴推移グラフ"></canvas>
         <div class="chart-axis"><span id="chartStartDate">-</span><span id="chartEndDate">-</span></div>
-        <div id="chartDetail" class="chart-detail" data-history-chart-detail>グラフをタッチすると、その時点の詳細を表示します。</div>
+        <div id="chartDetail" class="chart-detail" data-history-chart-detail></div>
         <p id="chartFoot" class="chart-foot"></p>
       </section>
 
@@ -178,11 +164,6 @@
     </section>
 
     <section id="likesView" class="dashboard-view likes-view" hidden>
-      <div class="like-actions">
-        <button id="likesLoad" class="button primary" type="button">更新</button>
-        <button id="likesCsv" class="button" type="button">CSV</button>
-      </div>
-
       <p id="likesNotice" class="notice" role="status">読み込み中…</p>
 
       <section class="summary-cards likes-summary" aria-label="いいね集計概要">
@@ -197,7 +178,10 @@
       </section>
 
       <section class="card data-panel">
-        <div class="section-head"><div><p class="kicker">DATA</p><h2>楽曲別一覧</h2></div></div>
+        <div class="section-head">
+          <div><p class="kicker">DATA</p><h2>楽曲別一覧</h2></div>
+          <button id="likesCsv" class="button" type="button">CSV</button>
+        </div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>順位</th><th>曲名</th><th>アーティスト</th><th>最新いいね数</th><th>最終取得</th></tr></thead>
@@ -207,6 +191,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/dashboard-metrics.js?v=20260924.2"></script>
+  <script type="module" src="/dashboard-metrics.js?v=20260924.3"></script>
 </body>
 </html>
