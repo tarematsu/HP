@@ -52,12 +52,13 @@ test('TVer quality discovery retries and is event-driven', () => {
   assert.doesNotMatch(runtime, /qualityProbeIntervalMs|qualityProbeLimit|setInterval\(/);
 });
 
-test('TVer fullscreen uses the same key-then-button sequence as YouTube', () => {
-  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
-  const control = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
-  assert.ok(key >= 0 && control > key);
+test('TVer fullscreen uses a bounded bottom-right video coordinate', () => {
+  assert.match(runtime, /video\.getBoundingClientRect/);
+  assert.match(runtime, /Math\.min\(innerWidth - 2, rect\.right - 12\)/);
+  assert.match(runtime, /Math\.min\(innerHeight - 2, rect\.bottom - 12\)/);
+  assert.match(runtime, /state\.fullscreenCornerTapAt/);
   assert.match(runtime, /document\.fullscreenElement/);
-  assert.match(runtime, /document\.elementFromPoint/);
+  assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
   assert.doesNotMatch(runtime, /fullscreenAttemptCount|__homePanelTverFullscreenRecovery/);
 });
 
