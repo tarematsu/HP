@@ -34,6 +34,13 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
   const candidateSelector =
     semanticSelector + ",h1,h2,h3,[role='heading'],div,span,p";
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const pseudoLabel = (element, pseudo) => {
+    try {
+      const value = getComputedStyle(element, pseudo).content;
+      return value && value !== 'none' && value !== 'normal' &&
+          /^["'].*["']$/.test(value) ? value.slice(1, -1) : '';
+    } catch (_) { return ''; }
+  };
   const labelsOf = element => [
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('data-testid'),
@@ -42,6 +49,8 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
     element?.getAttribute?.('value'),
     element?.innerText,
     element?.textContent,
+    pseudoLabel(element, '::before'),
+    pseudoLabel(element, '::after'),
   ].map(normalize).filter(Boolean);
   const matchesLabel = (element, pattern) =>
     labelsOf(element).some(label => pattern.test(label));
@@ -84,33 +93,42 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
 )JS");
 
   script.append(LR"JS(
-  const pointOf = element => {
-    if (!element || !rendered(element)) return null;
-    let rect = element.getBoundingClientRect();
-    let x = rect.left + rect.width / 2;
-    let y = rect.top + rect.height / 2;
-    if (!intersectsViewport(rect) || x < 0 || y < 0 ||
-        x >= innerWidth || y >= innerHeight) {
+  const pointOf = (target, label = target) => {
+    if (!target || !label || !rendered(target) || !visuallyRendered(label) ||
+        (target !== label && !target.contains(label))) return null;
+    const inside = rect => intersectsViewport(rect) &&
+        rect.right > 0 && rect.bottom > 0;
+    let rect = label.getBoundingClientRect();
+    if (!inside(rect)) {
       try {
-        element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
+        label.scrollIntoView({ block: 'center', inline: 'center', behavior: 'auto' });
       } catch (_) {
-        try { element.scrollIntoView(); } catch (_) {}
+        try { label.scrollIntoView(); } catch (_) {}
       }
-      rect = element.getBoundingClientRect();
-      x = rect.left + rect.width / 2;
-      y = rect.top + rect.height / 2;
+      rect = label.getBoundingClientRect();
     }
-    if (!intersectsViewport(rect) || x < 0 || y < 0 ||
-        x >= innerWidth || y >= innerHeight) return null;
-    const hit = document.elementFromPoint(x, y);
-    if (!hit || (hit !== element && !element.contains(hit))) return null;
-    return { x, y };
+    if (!inside(rect)) return null;
+    // A wide clickable parent may have its center over another control. Aim at
+    // the visible label first, then try points inside its clipped rectangle.
+    const left = Math.max(0, rect.left);
+    const right = Math.min(innerWidth, rect.right);
+    const top = Math.max(0, rect.top);
+    const bottom = Math.min(innerHeight, rect.bottom);
+    if (right <= left || bottom <= top) return null;
+    for (const [fx, fy] of [[0.5, 0.5], [0.25, 0.5], [0.75, 0.5],
+                            [0.5, 0.25], [0.5, 0.75]]) {
+      const x = left + (right - left) * fx;
+      const y = top + (bottom - top) * fy;
+      const hit = document.elementFromPoint(x, y);
+      if (hit && (hit === target || target.contains(hit))) return { x, y };
+    }
+    return null;
   };
 
   const actionablePointForPattern = pattern => {
     for (const element of document.querySelectorAll(candidateSelector)) {
       if (!visuallyRendered(element) || !matchesLabel(element, pattern)) continue;
-      const point = pointOf(clickableTargetFor(element));
+      const point = pointOf(clickableTargetFor(element), element);
       if (point) return point;
     }
     return null;
@@ -137,7 +155,7 @@ inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed() {
         for (const action of surface.querySelectorAll(candidateSelector)) {
           if (!visuallyRendered(action) ||
               !matchesLabel(action, connectSurfaceActionPattern)) continue;
-          const actionable = pointOf(clickableTargetFor(action));
+          const actionable = pointOf(clickableTargetFor(action), action);
           if (actionable) return actionable;
           if (!plainFallback && rendered(action)) {
             plainFallback = pointOf(action);
