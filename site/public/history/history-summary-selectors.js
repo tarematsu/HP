@@ -1,5 +1,5 @@
 (() => {
-  const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
+  const SUMMARY_MODES = new Set(['daily', 'weekly']);
   const baseSetMode = setMode;
 
   MODE_HELP.daily = ['日次集計', '日ごとの最大同接、再生数増加、メンバー増加を表示します。'];
