@@ -76,16 +76,6 @@ function materializeDependencies(env) {
     : DEFER_COLLECTED_METADATA;
 }
 
-export function compactMaterializeMessage(env, body) {
-  if (enabled(env?.COLLECTED_METADATA_PERSIST_ENABLED)) return body;
-  const metadata = body?.track_metadata;
-  if (!Array.isArray(metadata) || metadata.length === 0) return body;
-  // Track metadata is hydrated by the dedicated metadata/read-model pipeline.
-  // Keeping the duplicate presentation payload here only spends CPU rebuilding
-  // fields that the ingest Worker is explicitly configured not to persist.
-  return { ...body, track_metadata: [] };
-}
-
 function logIngestResult(result, fallbackEvent) {
   console.log(JSON.stringify({
     event: result?.event || fallbackEvent,
@@ -171,7 +161,7 @@ async function processIngestBatch(batch, env, ctx) {
         const stages = await loadRawStages();
         await stages.processRawMaterializeStage(
           env,
-          compactMaterializeMessage(env, body),
+          body,
           materializeDependencies(env),
         );
         break;
