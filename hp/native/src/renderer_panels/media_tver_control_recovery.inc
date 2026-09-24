@@ -40,10 +40,6 @@ LR"JS(
 
   const videos = Array.from(document.querySelectorAll('video'));
   const video = videos.find(visible) || videos[0] || null;
-  if (!video) {
-    recheck();
-    return 'recovery';
-  }
 
   // TVer requires an answered questionnaire before playback. Closing it
   // returns to the poster and the next Play click opens it again. Keep the
@@ -154,6 +150,36 @@ LR"JS(
     return 'recovery';
   }
 )JS" LR"JS(
+
+  // The episode poster's Play button is a sibling of the Video.js player.
+  // Start TVer's own playback flow before placing the player above the page.
+  const posterPlay = document.getElementById?.('episode-play');
+  if (visible(posterPlay)) {
+    state.viewportPlayer?.removeAttribute?.('data-homepanel-tver-fill');
+    for (const ancestor of state.viewportAncestors || []) {
+      ancestor.removeAttribute?.('data-homepanel-tver-fill-ancestor');
+    }
+    state.viewportPlayer = null;
+    state.viewportAncestors = [];
+    if (!state.mediaInitSent) {
+      state.mediaInitSent = true;
+      post('homepanel:tver-media-init');
+    }
+    const rect = posterPlay.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    if (x >= 0 && y >= 0 && x < innerWidth && y < innerHeight &&
+        (!state.posterLastClickAt || now - state.posterLastClickAt >= 2000)) {
+      state.posterLastClickAt = now;
+      return [x, y];
+    }
+    recheck();
+    return 'recovery';
+  }
+  if (!video) {
+    recheck();
+    return 'recovery';
+  }
 
   const player = video.closest(
       '[data-testid*="player" i],[class*="player" i],[id*="player" i]') ||
@@ -399,17 +425,29 @@ LR"JS(
       // must not inherit the previous element's program confirmation.
       state.mediaKey = null;
       state.mediaInitSent = false;
+      state.programPlayedSeconds = 0;
     }
     state.videoAbort?.abort();
     state.videoAbort = new AbortController();
     state.video = video;
     const handler = event => {
+      if (event.type === 'timeupdate') {
+        const at = currentTime();
+        const delta = at - Number(state.programLastProgressTime || 0);
+        if (mediaKey() === state.programKey && !video.paused && !ad() &&
+            delta > 0 && delta <= 5) {
+          state.programPlayedSeconds += delta;
+        }
+        state.programLastProgressTime = at;
+        return;
+      }
       if (event.type === 'ended') {
         const key = mediaKey();
         const length = duration();
         const at = currentTime();
         if (key && key === state.programKey && !ad() && length > 65 &&
             state.programStartedAt && Date.now() - state.programStartedAt >= 30000 &&
+            state.programPlayedSeconds >= 60 &&
             at >= Math.max(3, length - 10)) {
           state.programEndPending = true;
         }
@@ -418,7 +456,7 @@ LR"JS(
     };
     for (const name of [
       'playing','pause','waiting','stalled','ended','error',
-      'loadedmetadata','durationchange','emptied','ratechange'
+      'loadedmetadata','durationchange','emptied','ratechange','timeupdate'
     ]) {
       video.addEventListener(name, handler, {
         passive: true, signal: state.videoAbort.signal
@@ -465,6 +503,8 @@ LR"JS(
     state.programCandidateKey = '';
     state.programKey = '';
     state.programStartedAt = 0;
+    state.programPlayedSeconds = 0;
+    state.programLastProgressTime = currentTime();
     state.fullscreenKeyRequestedAt = 0;
   }
 
@@ -477,7 +517,11 @@ LR"JS(
     // A short pre-roll without an ad badge must never become the program.
     if (duration() > 65 && (currentTime() >=
         Number(state.programCandidateOrigin || 0) + 1)) {
-      if (state.programKey !== key) state.programStartedAt = now;
+      if (state.programKey !== key) {
+        state.programStartedAt = now;
+        state.programPlayedSeconds = 0;
+        state.programLastProgressTime = currentTime();
+      }
       state.programKey = key;
     }
   }

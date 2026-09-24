@@ -9,7 +9,7 @@ const script = native.match(/LR"JS\(([\s\S]*?)\)JS"\s*$/)?.[1]
   ?.replaceAll(')JS" LR"JS(', '');
 assert.ok(script, 'extract the JavaScript executed by the TVer WebView');
 
-function playerScenario(duration, controls = [], portalOptions = [], dialogs = []) {
+function playerScenario(duration, controls = [], portalOptions = [], dialogs = [], poster = null) {
   let clock = 1000;
   const messages = [];
   const stored = new Map();
@@ -25,6 +25,7 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
     addEventListener: (name, callback) => handlers.set(name, callback),
   };
   const document = {
+    getElementById: id => id === 'episode-play' ? poster : null,
     querySelectorAll: selector => selector === 'video' ? [video]
       : selector === '[role="dialog"]' ? dialogs
       : selector === 'button[type="submit"][form]' ? submitButtons
@@ -64,6 +65,7 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
     },
     run: () => vm.runInContext(script, context),
     ended: () => handlers.get('ended')?.({ type: 'ended' }),
+    timeupdate: () => handlers.get('timeupdate')?.({ type: 'timeupdate' }),
     advance: ms => { clock += ms; },
     replaceVideo: () => {
       handlers = new Map();
@@ -71,6 +73,30 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
     },
   };
 }
+
+test('the episode poster receives a trusted click before the player fills the viewport', () => {
+  const poster = {
+    isConnected: true, disabled: false, parentElement: null,
+    getAttribute: () => null,
+    getBoundingClientRect: () => ({ left: 200, top: 100, width: 100, height: 50 }),
+  };
+  const scene = playerScenario(1800, [], [], [], poster);
+  const removed = [];
+  scene.window.__homePanelTverRuntime = {
+    viewportPlayer: { removeAttribute: name => removed.push(name) },
+    viewportAncestors: [{ removeAttribute: name => removed.push(name) }],
+  };
+  assert.deepEqual(Array.from(scene.run()), [250, 125]);
+  assert.deepEqual(removed, [
+    'data-homepanel-tver-fill', 'data-homepanel-tver-fill-ancestor',
+  ]);
+  assert.deepEqual(scene.messages, ['homepanel:tver-media-init']);
+  scene.advance(1000);
+  assert.equal(scene.run(), 'recovery');
+  assert.equal(scene.messages.length, 1);
+  scene.advance(1200);
+  assert.deepEqual(Array.from(scene.run()), [250, 125]);
+});
 
 test('required questionnaire stays visible and playback waits for an answer', () => {
   const form = {
@@ -236,6 +262,25 @@ test('a long program cannot advance after ten seconds or a source replacement', 
   scene.video.currentSrc = 'next-source';
   scene.run();
   assert.equal(scene.window.__homePanelTverRuntime.programEndPending, false);
+});
+
+test('a thirty second startup cannot advance an episode after a premature ended event', () => {
+  const scene = playerScenario(1800);
+  scene.run();
+  scene.video.currentTime = 2;
+  scene.advance(1000);
+  scene.run();
+  for (let second = 3; second <= 30; second++) {
+    scene.video.currentTime = second;
+    scene.advance(1000);
+    scene.timeupdate();
+  }
+  scene.video.currentTime = 1800;
+  scene.advance(1000);
+  scene.ended();
+  scene.run();
+  assert.equal(scene.messages.includes('homepanel:tver-ended'), false);
+  assert.ok(scene.window.__homePanelTverRuntime.programPlayedSeconds < 60);
 });
 
 test('quality menu is retried past four attempts without claiming low quality', () => {

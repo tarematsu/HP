@@ -36,14 +36,17 @@ test('TVer uses one player-local observer plus media events', () => {
   assert.doesNotMatch(tverEpisode, /addEventListener\('timeupdate'/);
 });
 
-test('TVer completion uses event-time media facts instead of progress polling', () => {
+test('TVer completion requires observed media progress without a polling timer', () => {
   assert.match(tverEpisode, /event\.type === 'ended'/);
   assert.match(tverEpisode, /const length = duration\(\)/);
   assert.match(tverEpisode, /const at = currentTime\(\)/);
   assert.match(tverEpisode, /key === state\.programKey/);
   assert.match(tverEpisode, /at >= Math\.max\(3, length - 10\)/);
+  assert.match(tverEpisode, /state\.programPlayedSeconds >= 60/);
+  assert.match(tverEpisode, /event\.type === 'timeupdate'/);
+  assert.match(tverEpisode, /state\.programPlayedSeconds \+= delta/);
   assert.doesNotMatch(tverEpisode, /progressSteadyIntervalMs|progressNearEndIntervalMs|progressFinalIntervalMs/);
-  assert.doesNotMatch(tverEpisode, /progressTimer|timeupdate/);
+  assert.doesNotMatch(tverEpisode, /progressTimer/);
 });
 
 test('TVer healthy playback avoids page-wide ad scanning', () => {
