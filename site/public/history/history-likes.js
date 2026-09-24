@@ -194,7 +194,6 @@ import {
     state.controller?.abort();
     const controller = new AbortController();
     state.controller = controller;
-    el('likesLoad').disabled = true;
     setNotice('読み込み中…');
     const url = '/api/track-history?ranking_only=1&ranking_limit=500&metadata_revision=3';
     try {
@@ -211,10 +210,7 @@ import {
       render();
       setNotice(`取得失敗: ${error.message}`, true);
     } finally {
-      if (state.controller === controller) {
-        state.controller = null;
-        el('likesLoad').disabled = false;
-      }
+      if (state.controller === controller) state.controller = null;
     }
   }
 
@@ -235,7 +231,6 @@ import {
     URL.revokeObjectURL(link.href);
   }
 
-  el('likesLoad').addEventListener('click', () => load({ force: true }));
   el('likesCsv').addEventListener('click', exportCsv);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) state.controller?.abort();
