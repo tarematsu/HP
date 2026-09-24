@@ -57,7 +57,7 @@ function resetSharedChartPresentation() {
   const detail = document.getElementById('chartDetail');
   if (start) start.textContent = '—';
   if (end) end.textContent = '—';
-  if (detail) detail.textContent = 'グラフを読み込み中です。';
+  if (detail) detail.textContent = '';
   for (const id of ['chartYAxisLeft', 'chartYAxisRight', 'chartXAxisTitle']) clearAxisLabel(id);
   canvas.width = canvas.width;
   delete canvas.dataset.sakurazakaMaxMinute;
