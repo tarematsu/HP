@@ -5,7 +5,7 @@ import test from 'node:test';
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const theme = readFileSync(new URL('../public/monochrome.css', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
-const dashboardChart = readFileSync(new URL('../public/dashboard-current-enhancements.js', import.meta.url), 'utf8');
+const dashboardChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 
@@ -29,8 +29,7 @@ test('images are not desaturated by the monochrome theme', () => {
 
 test('canvas graph palette remains independent from monochrome UI overrides', () => {
   assert.doesNotMatch(theme, /:root\s*\{/);
-  assert.match(dashboardChart, /context\.strokeStyle = '#111'/);
-  assert.match(dashboardChart, /rgba\(22,139,115,\.32\)/);
+  assert.match(dashboardChart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\.5\)/);
   assert.match(periodChart, /getComputedStyle\(document\.documentElement\)/);
   assert.match(rankingChart, /getComputedStyle\(document\.documentElement\)/);
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
@@ -50,11 +49,11 @@ test('Pages layout removes decorative chrome while keeping data sections', () =>
   assert.match(theme, /\.table-wrap\s*\{[\s\S]*border-radius:\s*0/);
 });
 
-test('redundant chart helper copy is cleared at startup and after rerenders', () => {
+test('redundant chart helper copy is cleared only when active renderers re-add it', () => {
+  assert.doesNotMatch(page, /data-current-chart-detail>グラフをタッチ/);
+  assert.doesNotMatch(page, /data-history-chart-detail>グラフをタッチ/);
   assert.match(header, /CHART_HELPER_PREFIX = 'グラフをタッチ'/);
   assert.match(header, /clearChartHelperCopy/);
-  assert.match(header, /startsWith\(CHART_HELPER_PREFIX\)/);
   assert.match(header, /\['currentChartDetail', 'chartDetail'\]/);
   assert.match(header, /new MutationObserver\(\(\) => clearChartHelperCopy\(element\)\)/);
-  assert.match(header, /replaceChildren\(\)/);
 });
