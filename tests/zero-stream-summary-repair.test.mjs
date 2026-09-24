@@ -25,21 +25,25 @@ function fixture() {
   return {minute,other,day,fact,run,get};
 }
 
-test('normalizes legacy source zeros, borrows adjacent observations and rebuilds both parents',async()=>{
+test('normalizes legacy source zeros, borrows adjacent observations and rebuilds weekly only',async()=>{
   const f=fixture();
   f.day('2024-07-09',800,850); f.day('2024-07-10',0,0); f.day('2024-07-11',1000,1100);
   f.fact('2024-07-10',0,0); f.fact('2024-07-10',10,900); f.fact('2024-07-10',20,950); f.fact('2024-07-10',30,0);
-  for (const [table,key] of [['weekly','2024-07-08'],['monthly','2024-07']]) f.other.prepare(`INSERT INTO sh_${table}_summary(period_key,stream_start,stream_end,stream_growth) VALUES(?,0,1100,1100)`).run(key);
+  f.other.prepare('INSERT INTO sh_weekly_summary(period_key,stream_start,stream_end,stream_growth) VALUES(?,0,1100,1100)').run('2024-07-08');
+  f.other.prepare('INSERT INTO sh_monthly_summary(period_key,stream_start,stream_end,stream_growth) VALUES(?,0,1100,1100)').run('2024-07');
   const result=await f.run();
   assert.deepEqual([f.get('2024-07-10').stream_start,f.get('2024-07-10').stream_end,f.get('2024-07-10').stream_growth],[850,1000,150]);
   assert.equal(f.get('2024-07-10').listener_max,999);
   assert.match(f.get('2024-07-10').quality_flags,/stream_end_next_day_start/);
   assert.equal(f.minute.prepare('SELECT COUNT(*) AS n FROM sh_minute_facts WHERE reported_total_listens=0').get().n,0);
-  assert.equal(result.weekly.length,1); assert.equal(result.monthly.length,1);
+  assert.equal(result.weekly.length,1);
+  assert.equal('monthly' in result,false);
   assert.equal(f.other.prepare('SELECT stream_growth FROM sh_weekly_summary').get().stream_growth,300);
+  assert.equal(f.other.prepare('SELECT stream_growth FROM sh_monthly_summary').get().stream_growth,1100);
   assert.equal(result.remaining_days,0);
   const again=await f.run();
-  assert.equal(again.source_rows,0); assert.equal(again.daily.length+again.weekly.length+again.monthly.length,0);
+  assert.equal(again.source_rows,0); assert.equal(again.daily.length+again.weekly.length,0);
+  assert.equal('monthly' in again,false);
 });
 
 test('rejects reversed neighbor counters and uses same-day positive evidence',async()=>{
