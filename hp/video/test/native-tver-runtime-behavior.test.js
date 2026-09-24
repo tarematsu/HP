@@ -21,7 +21,9 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
     muted: false, volume: 1, paused: false, ended: false,
     closest: () => player, parentElement: player,
     getAttribute: () => null,
-    getBoundingClientRect: () => ({ width: 640, height: 360 }),
+    getBoundingClientRect: () => ({
+      left: 0, top: 0, right: 640, bottom: 360, width: 640, height: 360,
+    }),
     addEventListener: (name, callback) => handlers.set(name, callback),
   };
   const document = {
@@ -74,22 +76,16 @@ function playerScenario(duration, controls = [], portalOptions = [], dialogs = [
   };
 }
 
-test('the episode poster receives a trusted click before the player fills the viewport', () => {
+const fullscreenPoint = [628, 348];
+
+test('the episode poster receives a trusted click before fullscreen recovery', () => {
   const poster = {
     isConnected: true, disabled: false, parentElement: null,
     getAttribute: () => null,
     getBoundingClientRect: () => ({ left: 200, top: 100, width: 100, height: 50 }),
   };
   const scene = playerScenario(1800, [], [], [], poster);
-  const removed = [];
-  scene.window.__homePanelTverRuntime = {
-    viewportPlayer: { removeAttribute: name => removed.push(name) },
-    viewportAncestors: [{ removeAttribute: name => removed.push(name) }],
-  };
   assert.deepEqual(Array.from(scene.run()), [250, 125]);
-  assert.deepEqual(removed, [
-    'data-homepanel-tver-fill', 'data-homepanel-tver-fill-ancestor',
-  ]);
   assert.deepEqual(scene.messages, ['homepanel:tver-media-init']);
   scene.advance(1000);
   assert.equal(scene.run(), 'recovery');
@@ -108,23 +104,15 @@ test('required questionnaire stays visible and playback waits for an answer', ()
   };
   const scene = playerScenario(1800, [], [], [dialog]);
   scene.video.playbackRate = 1;
-  const removed = [];
-  scene.window.__homePanelTverRuntime = {
-    viewportPlayer: { removeAttribute: name => removed.push(name) },
-    viewportAncestors: [{ removeAttribute: name => removed.push(name) }],
-  };
   const action = scene.run();
   assert.equal(action, 'recovery');
   assert.equal(scene.video.playbackRate, 1);
   assert.deepEqual(scene.messages, ['homepanel:tver-media-init']);
-  assert.deepEqual(removed, [
-    'data-homepanel-tver-fill', 'data-homepanel-tver-fill-ancestor',
-  ]);
   scene.removeDialog(dialog);
-  scene.run();
+  assert.deepEqual(Array.from(scene.run()), fullscreenPoint);
   assert.equal(scene.video.playbackRate, 1.75);
   assert.equal(scene.messages.filter(value => value === 'homepanel:tver-media-init').length, 1);
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
 });
 
 test('saved questionnaire answers are filled and submitted before player controls', () => {
@@ -173,8 +161,8 @@ test('saved questionnaire answers are filled and submitted before player control
   assert.equal(selectedGender, '9');
   assert.deepEqual(Array.from(scene.run()), [150, 220]);
   scene.removeDialog(dialog);
-  scene.run();
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
+  assert.deepEqual(Array.from(scene.run()), fullscreenPoint);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
 });
 
 test('a manually submitted questionnaire supplies future automatic answers', () => {
@@ -219,8 +207,8 @@ test('a hidden ad skip control cannot suppress program setup or receive a click'
   scene.video.playbackRate = 1;
   const action = scene.run();
   assert.equal(scene.video.playbackRate, 1.75);
-  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), true);
-  assert.equal(Array.isArray(action), false);
+  assert.deepEqual(Array.from(action), fullscreenPoint);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
 });
 
 test('an ad skip control inside a transparent parent is not an active ad', () => {
@@ -239,12 +227,13 @@ test('an ad skip control inside a transparent parent is not an active ad', () =>
 test('program speed applies and fullscreen retries even when fullscreen is refused', () => {
   const scene = playerScenario(1800);
   scene.video.playbackRate = 1;
-  scene.run();
+  assert.deepEqual(Array.from(scene.run()), fullscreenPoint);
   assert.equal(scene.video.playbackRate, 1.75);
-  assert.equal(scene.messages.filter(value => value === 'homepanel:tver-fullscreen-key').length, 1);
+  const firstTapAt = scene.window.__homePanelTverRuntime.fullscreenCornerTapAt;
   scene.advance(5000);
-  scene.run();
-  assert.equal(scene.messages.filter(value => value === 'homepanel:tver-fullscreen-key').length, 2);
+  assert.deepEqual(Array.from(scene.run()), fullscreenPoint);
+  assert.ok(scene.window.__homePanelTverRuntime.fullscreenCornerTapAt > firstTapAt);
+  assert.equal(scene.messages.includes('homepanel:tver-fullscreen-key'), false);
   assert.equal(scene.window.__homePanelTverRuntime.qualityApplied, false);
 });
 
