@@ -1,4 +1,4 @@
-const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
+const SUMMARY_MODES = new Set(['daily', 'weekly']);
 const integer = new Intl.NumberFormat('ja-JP');
 
 let latestMode = '';
@@ -16,11 +16,7 @@ function finite(value) {
 
 function activeMode() {
   const active = document.querySelector('#modeTabs button.active[data-mode]');
-  const routeMode = String(active?.dataset?.mode || latestMode || '');
-  if (routeMode === 'daily' && document.getElementById('historyPastWeekMode')?.checked) {
-    return 'weekly';
-  }
-  return routeMode;
+  return String(active?.dataset?.mode || latestMode || '');
 }
 
 function cssColor(name, fallback) {
@@ -94,9 +90,8 @@ function drawMissingBands(context, rows, positions, area) {
   return painted;
 }
 
-function formatPeriodTick(periodKey, mode) {
+function formatPeriodTick(periodKey) {
   const text = String(periodKey || '');
-  if (mode === 'monthly' && /^\d{4}-\d{2}$/.test(text)) return text.replace('-', '/');
   const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
   return match ? `${match[1]}/${match[2]}/${match[3]}` : text;
 }
@@ -190,7 +185,7 @@ function draw() {
     context.moveTo(x, xAxisY);
     context.lineTo(x, xAxisY + 4);
     context.stroke();
-    context.fillText(formatPeriodTick(rows[rowIndex]?.period_key, mode), x, xAxisY + 7);
+    context.fillText(formatPeriodTick(rows[rowIndex]?.period_key), x, xAxisY + 7);
   }
   context.restore();
 
