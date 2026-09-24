@@ -44,7 +44,6 @@ test('materialized response freshness follows canonical generation cadences', ()
   for (const key of [
     'history:daily',
     'history:weekly',
-    'history:monthly',
     'history:broadcasts',
   ]) {
     assert.equal(materializedResponseCadenceSeconds(key), 360 * 60, key);
@@ -52,6 +51,7 @@ test('materialized response freshness follows canonical generation cadences', ()
   }
   assert.equal(materializedResponseCadenceSeconds('host-history:summary'), 1440 * 60);
   assert.equal(materializedResponseMaximumAge('host-history:summary'), 1445 * minute);
+  assert.equal(materializedApiKey('https://skrzk.test/api/history?mode=monthly'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/track-history'), null);
 });
 
