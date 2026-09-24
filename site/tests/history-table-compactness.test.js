@@ -37,16 +37,17 @@ test('ranking scope changes clear the previous ranking layout before reload', ()
   assert.match(cleanup, /getElementById\('rankingScope'\)\?\.addEventListener\('change', \(\) => resetHistoryTable\('ranking'\)\)/);
 });
 
-test('history tab transitions reset shared summary and pagination state', () => {
+test('history tab transitions reset shared summary and pagination state without loading copy', () => {
   assert.match(cleanup, /function resetSharedHistorySummary\(mode\)/);
   assert.match(cleanup, /for \(const id of \['periods', 'maxListener', 'streamGrowth', 'memberGrowth'\]\) setText\(id, '—'\)/);
-  assert.match(cleanup, /notice\.textContent = '読み込み中…'/);
+  assert.match(cleanup, /notice\.textContent = ''/);
+  assert.doesNotMatch(cleanup, /読み込み中/);
   assert.match(cleanup, /if \(more\) more\.hidden = true/);
   assert.match(cleanup, /resetSharedHistorySummary\(mode\)/);
 });
 
 test('final mobile layout restores horizontal scrolling for leaderboard and likes detail tables', () => {
-  assert.match(entry, /history-table-cleanup\.js\?v=20260924\.1/);
+  assert.match(entry, /history-table-cleanup\.js\?v=20260925\.1/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
   assert.match(cleanup, /#historyView \.table-wrap table\.compact-columns,[\s\S]*#likesView \.table-wrap table[\s\S]*width: 100% !important;[\s\S]*min-width: 100% !important;[\s\S]*table-layout: fixed !important;/);
   assert.match(finalLayout, /#historyView > \.data-panel \.table-wrap,[\s\S]*#likesView > \.data-panel \.table-wrap[\s\S]*overflow-x: auto !important/);
