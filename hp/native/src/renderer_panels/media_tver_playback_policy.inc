@@ -6,7 +6,7 @@ constexpr const wchar_t* kNativeMediaTverPlaybackWatchdogPolicyScript =
     kNativeMediaTverControlRecoveryScript;
 
 // Kept as a narrow post-trusted-action verifier. Fullscreen targeting itself is
-// owned by the unified runtime and its returned fullscreen control coordinate.
+// owned by the unified runtime and its returned bottom-right video coordinate.
 constexpr wchar_t kNativeMediaTverForceFullscreenAnyMediaScript[] =
 #include "media_tver_playback_policy_force_fullscreen.inc"
 ;
