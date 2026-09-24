@@ -35,7 +35,7 @@ function mountView() {
       <button id="firstWeekLoad" class="button" type="button">更新</button>
     </div>
 
-    <p id="firstWeekNotice" class="notice" role="status">初週比較データを読み込みます。</p>
+    <p id="firstWeekNotice" class="notice" role="status" hidden></p>
 
     <section class="card chart-panel first-week-chart-panel">
       <div class="section-head chart-head">
