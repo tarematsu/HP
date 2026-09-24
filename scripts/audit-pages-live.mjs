@@ -32,14 +32,6 @@ const MODES = [
     notice: '#notice',
   },
   {
-    name: 'monthly',
-    path: '/#monthly',
-    panel: '#historyView',
-    tab: '#modeTabs button[data-mode="monthly"]',
-    requiredText: '期間数',
-    notice: '#notice',
-  },
-  {
     name: 'ranking',
     path: '/#ranking',
     panel: '#historyView',
