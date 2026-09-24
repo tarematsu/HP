@@ -7,8 +7,6 @@ const runtime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const watchdog = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_playback_policy.inc', import.meta.url), 'utf8');
-const mediaSection = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const nativeQueue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 
@@ -35,16 +33,15 @@ test('TVer ad skip is chosen before ordinary program recovery', () => {
   assert.doesNotMatch(adBranch, /video\.playbackRate = 1\.75/);
 });
 
-test('TVer fullscreen mirrors YouTube key-first recovery with trusted button fallback', () => {
+test('TVer fullscreen uses a repeated trusted bottom-right video tap', () => {
   assert.match(runtime, /const requestFullscreen = \(\) =>/);
-  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
-  const fallback = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
-  assert.ok(key >= 0 && fallback > key);
+  assert.match(runtime, /video\.getBoundingClientRect/);
+  assert.match(runtime, /rect\.right - 12/);
+  assert.match(runtime, /rect\.bottom - 12/);
+  assert.match(runtime, /state\.fullscreenCornerTapAt/);
   assert.match(runtime, /document\.fullscreenElement/);
-  assert.match(runtime, /document\.elementFromPoint/);
-  assert.match(runtime, /全画面\|フルスクリーン\|fullscreen\|full screen/);
-  assert.match(mediaSection, /message == L"homepanel:tver-fullscreen-key"/);
-  assert.match(mediaSection, /NativeMediaDispatchFullscreenKey\(sender, true\)/);
+  assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
 });
 
 test('TVer low quality keeps retrying trusted clicks until confirmed', () => {
