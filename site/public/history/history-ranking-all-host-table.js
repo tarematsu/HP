@@ -5,7 +5,7 @@ const ALL_HOST_COLUMNS = [
   ['host_name', 'ホスト名'],
   ['stationhead_channel_name', 'チャンネル'],
   ['artist_name', 'アーティスト名'],
-  ['relation_label', '公式'],
+  ['relation_label', '種別'],
   ['ranked_weeks', 'ランクイン週数'],
   ['average_rank', '平均順位'],
   ['best_rank', '最高順位'],
