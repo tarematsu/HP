@@ -21,7 +21,7 @@ test('official listening party lines do not recycle colors across dates', () => 
 });
 
 test('official listening party table exposes final materialized listener, track, estimate, and comment metrics', () => {
-  for (const label of ['平均同接', '最小同接', '最大同接', '曲数', '推定再生数', 'コメント数']) {
+  for (const label of ['平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数', 'コメント数']) {
     assert.match(table, new RegExp(label));
   }
   for (const field of ['listener_avg', 'listener_min', 'listener_max', 'distinct_tracks', 'estimated_streams', 'comment_count']) {
