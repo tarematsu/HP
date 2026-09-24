@@ -19,6 +19,13 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
   const onboardingCandidateSelector =
     "button,[role='button'],a,input[type='button'],input[type='submit']," +
     "h1,h2,h3,[role='heading'],div,span,p,[tabindex],[aria-label],[data-testid]";
+  const onboardingPseudoLabel = (element, pseudo) => {
+    try {
+      const value = getComputedStyle(element, pseudo).content;
+      return value && value !== 'none' && value !== 'normal' &&
+          /^["'].*["']$/.test(value) ? value.slice(1, -1) : '';
+    } catch (_) { return ''; }
+  };
   const onboardingLabelsOf = element => [
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('data-testid'),
@@ -27,6 +34,8 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     element?.getAttribute?.('value'),
     element?.innerText,
     element?.textContent,
+    onboardingPseudoLabel(element, '::before'),
+    onboardingPseudoLabel(element, '::after'),
   ].map(normalize).filter(Boolean);
   const onboardingLabelMatches = (element, pattern) =>
     onboardingLabelsOf(element).some(label => pattern.test(label));
