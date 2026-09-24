@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-import { utcMonthlyRange, utcWeeklyRange } from '../../site/functions/lib/time-buckets.js';
+import { utcWeeklyRange } from '../../site/functions/lib/time-buckets.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const DAY_MS = 86_400_000;
@@ -58,34 +58,30 @@ function isCandidate(row) {
 }
 
 async function repairParentPeriodEnds(otherDb, dailyRepairs, now) {
-  const report = { weekly: [], monthly: [] };
-  for (const [mode, table, toRange] of [
-    ['weekly', 'sh_weekly_summary', utcWeeklyRange],
-    ['monthly', 'sh_monthly_summary', utcMonthlyRange],
-  ]) {
-    const parents = await otherDb.prepare(`SELECT period_key,stream_start,stream_end,stream_growth FROM ${table} ORDER BY period_key`).all();
-    for (const parent of parents.results || []) {
-      const range = toRange(mode === 'monthly' ? `${parent.period_key}-01` : parent.period_key);
-      const boundaryRepair = dailyRepairs.find((row) => nextDayKey(String(row.key)) === range.endKey);
-      if (!boundaryRepair) continue;
-      const previousDailyEnd = finite(boundaryRepair.before[1]);
-      const parentEnd = finite(parent.stream_end);
-      if (parentEnd !== previousDailyEnd) continue;
-      const streamEnd = finite(boundaryRepair.after[1]);
-      const streamStart = finite(parent.stream_start);
-      const streamGrowth = growth(streamStart, streamEnd);
-      if (parentEnd === streamEnd && finite(parent.stream_growth) === streamGrowth) continue;
-      const result = await otherDb.prepare(`UPDATE ${table} SET stream_end=?,stream_growth=?,updated_at=?
-        WHERE period_key=? AND stream_end IS ? AND stream_growth IS ?`)
-        .bind(streamEnd, streamGrowth, now, parent.period_key, parent.stream_end, parent.stream_growth).run();
-      if (Number(result?.meta?.changes ?? result?.changes ?? 0) < 1) continue;
-      report[mode].push({
-        key: parent.period_key,
-        before: [parent.stream_start, parent.stream_end, parent.stream_growth],
-        after: [streamStart, streamEnd, streamGrowth],
-        source_day: boundaryRepair.key,
-      });
-    }
+  const report = { weekly: [] };
+  const parents = await otherDb.prepare(`SELECT period_key,stream_start,stream_end,stream_growth
+    FROM sh_weekly_summary ORDER BY period_key`).all();
+  for (const parent of parents.results || []) {
+    const range = utcWeeklyRange(parent.period_key);
+    const boundaryRepair = dailyRepairs.find((row) => nextDayKey(String(row.key)) === range.endKey);
+    if (!boundaryRepair) continue;
+    const previousDailyEnd = finite(boundaryRepair.before[1]);
+    const parentEnd = finite(parent.stream_end);
+    if (parentEnd !== previousDailyEnd) continue;
+    const streamEnd = finite(boundaryRepair.after[1]);
+    const streamStart = finite(parent.stream_start);
+    const streamGrowth = growth(streamStart, streamEnd);
+    if (parentEnd === streamEnd && finite(parent.stream_growth) === streamGrowth) continue;
+    const result = await otherDb.prepare(`UPDATE sh_weekly_summary SET stream_end=?,stream_growth=?,updated_at=?
+      WHERE period_key=? AND stream_end IS ? AND stream_growth IS ?`)
+      .bind(streamEnd, streamGrowth, now, parent.period_key, parent.stream_end, parent.stream_growth).run();
+    if (Number(result?.meta?.changes ?? result?.changes ?? 0) < 1) continue;
+    report.weekly.push({
+      key: parent.period_key,
+      before: [parent.stream_start, parent.stream_end, parent.stream_growth],
+      after: [streamStart, streamEnd, streamGrowth],
+      source_day: boundaryRepair.key,
+    });
   }
   return report;
 }
@@ -126,7 +122,7 @@ export async function repairSingleSampleStreamSummaries({ otherDb, now = Date.no
     });
   }
 
-  if (!daily.length) return { ok: true, daily: [], weekly: [], monthly: [] };
+  if (!daily.length) return { ok: true, daily: [], weekly: [] };
   const parents = await repairParentPeriodEnds(otherDb, daily, now);
   return { ok: true, daily, ...parents };
 }
