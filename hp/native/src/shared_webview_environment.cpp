@@ -86,13 +86,13 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
                                        Completion completion) {
   if (!completion) return;
 
-  // All current playback surfaces intentionally share one UDF. Keep images
-  // enabled at the browser-environment level because Stationhead's Spotify
-  // authorization popup must use this same Environment/Profile and reCAPTCHA
-  // may require image resources. Stationhead playback still applies its own
-  // per-WebView image request blocking. Downloadable web fonts remain disabled
-  // globally to retain the low-cost shared renderer policy.
-  blockImages = false;
+  // The media panel has its own UDF, so it can suppress non-playback images
+  // and downloadable fonts without affecting Stationhead/Spotify auth flows.
+  // Other shared playback UDFs keep images available for login/reCAPTCHA.
+  const std::wstring folderName = userDataFolder.filename().wstring();
+  const bool mediaUdf =
+      _wcsicmp(folderName.c_str(), L"webview2-youtube-mv") == 0;
+  blockImages = mediaUdf;
   blockFonts = true;
 
   std::wstring requestedKey;

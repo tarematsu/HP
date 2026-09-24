@@ -18,8 +18,9 @@ const section = (source, start, end) => {
   return source.slice(startAt, endAt);
 };
 
-test('shared environment leaves image loading available for Spotify reCAPTCHA', () => {
-  assert.match(environment, /blockImages = false;/);
+test('shared environment leaves auth images enabled outside the media UDF', () => {
+  assert.match(environment, /L"webview2-youtube-mv"/);
+  assert.match(environment, /blockImages = mediaUdf;/);
   assert.match(environment, /blockFonts = true;/);
 });
 

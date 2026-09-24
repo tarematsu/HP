@@ -36,19 +36,18 @@ test('YouTube requests F before falling back to fullscreen button click', () => 
   assert.doesNotMatch(youtube, /const videoFullscreenPoint = media =>/);
 });
 
-test('TVer mirrors YouTube with trusted fullscreen request then labelled-button fallback', () => {
+test('TVer fullscreen uses only a trusted tap near the video bottom-right corner', () => {
   const request = tver.slice(
     tver.indexOf('const requestFullscreen = () =>'),
-    tver.indexOf('if (adActive) {'),
+    tver.indexOf('const bindVideo = () =>'),
   );
-  const key = request.indexOf("post('homepanel:tver-fullscreen-key')");
-  const fallback = request.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
-  assert.ok(key >= 0 && fallback > key);
-  assert.match(request, /fullscreenKeyRequestedAt/);
-  assert.match(request, /wake\(1200\)/);
-  assert.match(tver, /全画面\|フルスクリーン\|fullscreen\|full screen/);
-  assert.match(tver, /document\.elementFromPoint/);
-  assert.doesNotMatch(tver, /__homePanelTverFullscreenRecovery|fullscreenAttemptCount/);
+  assert.match(request, /video\.getBoundingClientRect/);
+  assert.match(request, /rect\.right - 12/);
+  assert.match(request, /rect\.bottom - 12/);
+  assert.match(request, /state\.fullscreenCornerTapAt/);
+  assert.match(request, /return \[x, y\]/);
+  assert.doesNotMatch(request, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.doesNotMatch(tver, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
 });
 
 test('TVer ads prioritize Skip and only use fullscreen recovery when Skip is unavailable', () => {
@@ -58,12 +57,11 @@ test('TVer ads prioritize Skip and only use fullscreen recovery when Skip is una
   assert.ok(ad >= 0 && skip > ad && fullscreen > skip);
 });
 
-test('fullscreen key messages stay source checked and TVer verification only rearms runtime', () => {
+test('fullscreen key messages remain YouTube-only in the active TVer runtime', () => {
   assert.match(wrapper, /homepanel:youtube-fullscreen-key/);
   assert.match(wrapper, /sourceContains\(L"youtube\.com\/watch"\)/);
-  assert.match(wrapper, /homepanel:tver-fullscreen-key/);
-  assert.match(wrapper, /sourceContains\(L"tver\.jp\/episodes\/"\)/);
+  assert.doesNotMatch(tver, /homepanel:tver-fullscreen-key/);
   assert.match(tverVerify, /homepanel:tver-wake/);
-  assert.match(tverVerify, /fullscreenKeyRequestedAt = 0/);
-  assert.doesNotMatch(tverVerify, /requestFullscreen|webkitRequestFullscreen|__homePanelTverFullscreenRecovery/);
+  assert.match(tverVerify, /fullscreenCornerTapAt = 0/);
+  assert.doesNotMatch(tverVerify, /requestFullscreen|webkitRequestFullscreen/);
 });
