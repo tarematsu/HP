@@ -10,32 +10,33 @@ const fullscreen = readFileSync(
   'utf8',
 );
 
-test('TVer viewport fill remains independent from browser fullscreen retries', () => {
-  assert.match(runtime, /data-homepanel-tver-fill/);
-  assert.match(runtime, /position:fixed !important/);
+test('TVer has no viewport-fill pseudo fullscreen', () => {
+  assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
+  assert.doesNotMatch(runtime, /position:fixed !important; inset:0 !important/);
   assert.match(runtime, /if \(!fullscreen\(\)\) return requestFullscreen\(\)/);
   assert.match(runtime, /document\.fullscreenElement/);
 });
 
-test('TVer fullscreen never falls back to a blind video-corner click', () => {
-  assert.match(runtime, /const fullscreenControl = \(\) =>/);
-  assert.match(runtime, /arm\(fullscreenControl\(\), 'fullscreen', 1200\)/);
-  assert.match(runtime, /document\.elementFromPoint\(point\.x, point\.y\)/);
-  assert.doesNotMatch(runtime, /videoFullscreenPoint|fullscreenPoint =/);
+test('TVer fullscreen deliberately taps the video bottom-right corner', () => {
+  assert.match(runtime, /const requestFullscreen = \(\) =>/);
+  assert.match(runtime, /video\.getBoundingClientRect/);
+  assert.match(runtime, /rect\.right - 12/);
+  assert.match(runtime, /rect\.bottom - 12/);
+  assert.match(runtime, /return \[x, y\]/);
+  assert.doesNotMatch(runtime, /fullscreenControl|homepanel:tver-fullscreen-key/);
 });
 
-test('TVer fullscreen uses YouTube-style key first and real control fallback', () => {
-  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
-  const control = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
-  assert.ok(key >= 0 && control > key);
-  assert.match(runtime, /state\.fullscreenKeyRequestedAt/);
-  assert.match(runtime, /wake\(1200\)/);
-  assert.doesNotMatch(runtime, /__homePanelTverFullscreenRecovery|fullscreenAttemptCount/);
+test('TVer corner tap retries until real browser fullscreen is observed', () => {
+  assert.match(runtime, /state\.fullscreenCornerTapAt/);
+  assert.match(runtime, /now - state\.fullscreenCornerTapAt < 1400/);
+  assert.match(runtime, /wake\(1500\)/);
+  assert.match(runtime, /document\.fullscreenElement/);
+  assert.doesNotMatch(runtime, /fullscreenKeyRequestedAt|fullscreenAttemptCount/);
 });
 
 test('TVer post-click fullscreen helper only verifies state and wakes recovery', () => {
   assert.match(fullscreen, /document\.fullscreenElement/);
-  assert.match(fullscreen, /state\.fullscreenKeyRequestedAt = 0/);
+  assert.match(fullscreen, /state\.fullscreenCornerTapAt = 0/);
   assert.match(fullscreen, /homepanel:tver-wake/);
   assert.doesNotMatch(fullscreen, /requestFullscreen|webkitRequestFullscreen|request\.call/);
 });
