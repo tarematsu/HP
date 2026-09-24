@@ -5,6 +5,7 @@ import test from 'node:test';
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const cleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 const styles = readFileSync(new URL('../public/history/history-lite.css', import.meta.url), 'utf8');
+const finalLayout = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
 
 test('leaderboard list hides comparison and ranking-type columns', () => {
   assert.match(cleanup, /RANKING_REMOVED_LABELS = new Set\(\[[^\]]*'前週比'[^\]]*'ランキング種別'/s);
@@ -44,10 +45,18 @@ test('history tab transitions reset shared summary and pagination state', () => 
   assert.match(cleanup, /resetSharedHistorySummary\(mode\)/);
 });
 
-test('compact leaderboard and likes tables fill the mobile viewport', () => {
+test('legacy compact table widths are explicitly superseded by the final mobile scroll layout', () => {
   assert.match(entry, /history-table-cleanup\.js\?v=20260924\.1/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
   assert.match(cleanup, /#historyView \.table-wrap table\.compact-columns,[\s\S]*#likesView \.table-wrap table[\s\S]*width: 100% !important;[\s\S]*min-width: 100% !important;[\s\S]*table-layout: fixed !important;/);
+  assert.match(finalLayout, /#historyView > \.data-panel \.table-wrap,[\s\S]*#likesView > \.data-panel \.table-wrap[\s\S]*overflow-x: auto !important/);
+  assert.match(finalLayout, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width: 760px !important[\s\S]*table-layout: auto !important/);
+  assert.match(finalLayout, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width: 980px !important[\s\S]*table-layout: auto !important/);
+  assert.match(finalLayout, /#rankingWeeklyPanel \.table-wrap > table[\s\S]*min-width: 560px !important/);
+  assert.match(finalLayout, /#likesView > \.data-panel \.table-wrap > table[\s\S]*min-width: 680px !important/);
+});
+
+test('featured leaderboard column proportions remain available underneath the scroll layout', () => {
   for (const [column, width] of [[1, 22], [2, 19], [3, 17], [4, 20], [5, 12], [6, 10]]) {
     assert.match(cleanup, new RegExp(`table\\.compact-columns:not\\(\\.all-host-ranking-table\\) th:nth-child\\(${column}\\)[\\s\\S]*width: ${width}% !important`));
   }
