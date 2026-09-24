@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-import { utcMonthlyRange, utcWeeklyRange } from '../../site/functions/lib/time-buckets.js';
+import { utcWeeklyRange } from '../../site/functions/lib/time-buckets.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const DAY_MS = 86_400_000;
@@ -98,49 +98,42 @@ async function loadDailyRows(otherDb, fromKey, toKey) {
 }
 
 async function repairParentPeriods(otherDb, repairedDays, now) {
-  const report = { weekly: [], monthly: [] };
-  const modes = [
-    ['weekly', 'sh_weekly_summary', utcWeeklyRange],
-    ['monthly', 'sh_monthly_summary', utcMonthlyRange],
-  ];
-
-  for (const [mode, table, toRange] of modes) {
-    const ranges = new Map();
-    for (const key of repairedDays) {
-      const range = toRange(key);
-      ranges.set(range.key, range);
-    }
-    for (const range of ranges.values()) {
-      const [first, last, parent] = await Promise.all([
-        otherDb.prepare(`SELECT period_key,stream_start FROM sh_daily_summary
-          WHERE period_key>=? AND period_key<? AND stream_start IS NOT NULL
-          ORDER BY period_key ASC LIMIT 1`).bind(range.startKey, range.endKey).first(),
-        otherDb.prepare(`SELECT period_key,stream_end FROM sh_daily_summary
-          WHERE period_key>=? AND period_key<? AND stream_end IS NOT NULL
-          ORDER BY period_key DESC LIMIT 1`).bind(range.startKey, range.endKey).first(),
-        otherDb.prepare(`SELECT stream_start,stream_end,stream_growth,quality_flags FROM ${table}
-          WHERE period_key=? LIMIT 1`).bind(range.key).first(),
-      ]);
-      if (!parent || !first || !last) continue;
-      const streamStart = finite(first.stream_start);
-      const streamEnd = finite(last.stream_end);
-      const streamGrowth = growth(streamStart, streamEnd);
-      if (streamStart == null || streamEnd == null || streamGrowth == null) continue;
-      const qualityFlags = addFlag(parent.quality_flags);
-      if (finite(parent.stream_start) === streamStart
-          && finite(parent.stream_end) === streamEnd
-          && finite(parent.stream_growth) === streamGrowth
-          && parent.quality_flags === qualityFlags) continue;
-      await otherDb.prepare(`UPDATE ${table}
-        SET stream_start=?,stream_end=?,stream_growth=?,quality_flags=?,updated_at=?
-        WHERE period_key=?`).bind(streamStart, streamEnd, streamGrowth, qualityFlags, now, range.key).run();
-      report[mode].push({
-        key: range.key,
-        before: [parent.stream_start, parent.stream_end, parent.stream_growth],
-        after: [streamStart, streamEnd, streamGrowth],
-        source_days: [first.period_key, last.period_key],
-      });
-    }
+  const report = { weekly: [] };
+  const ranges = new Map();
+  for (const key of repairedDays) {
+    const range = utcWeeklyRange(key);
+    ranges.set(range.key, range);
+  }
+  for (const range of ranges.values()) {
+    const [first, last, parent] = await Promise.all([
+      otherDb.prepare(`SELECT period_key,stream_start FROM sh_daily_summary
+        WHERE period_key>=? AND period_key<? AND stream_start IS NOT NULL
+        ORDER BY period_key ASC LIMIT 1`).bind(range.startKey, range.endKey).first(),
+      otherDb.prepare(`SELECT period_key,stream_end FROM sh_daily_summary
+        WHERE period_key>=? AND period_key<? AND stream_end IS NOT NULL
+        ORDER BY period_key DESC LIMIT 1`).bind(range.startKey, range.endKey).first(),
+      otherDb.prepare(`SELECT stream_start,stream_end,stream_growth,quality_flags FROM sh_weekly_summary
+        WHERE period_key=? LIMIT 1`).bind(range.key).first(),
+    ]);
+    if (!parent || !first || !last) continue;
+    const streamStart = finite(first.stream_start);
+    const streamEnd = finite(last.stream_end);
+    const streamGrowth = growth(streamStart, streamEnd);
+    if (streamStart == null || streamEnd == null || streamGrowth == null) continue;
+    const qualityFlags = addFlag(parent.quality_flags);
+    if (finite(parent.stream_start) === streamStart
+        && finite(parent.stream_end) === streamEnd
+        && finite(parent.stream_growth) === streamGrowth
+        && parent.quality_flags === qualityFlags) continue;
+    await otherDb.prepare(`UPDATE sh_weekly_summary
+      SET stream_start=?,stream_end=?,stream_growth=?,quality_flags=?,updated_at=?
+      WHERE period_key=?`).bind(streamStart, streamEnd, streamGrowth, qualityFlags, now, range.key).run();
+    report.weekly.push({
+      key: range.key,
+      before: [parent.stream_start, parent.stream_end, parent.stream_growth],
+      after: [streamStart, streamEnd, streamGrowth],
+      source_days: [first.period_key, last.period_key],
+    });
   }
   return report;
 }
@@ -204,7 +197,7 @@ export async function repairHistoricalStreamBoundaries({
 
   const parents = repairedDayKeys.size
     ? await repairParentPeriods(otherDb, [...repairedDayKeys], now)
-    : { weekly: [], monthly: [] };
+    : { weekly: [] };
   return { ok: true, daily, skipped, ...parents };
 }
 
