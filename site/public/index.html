@@ -36,7 +36,7 @@
           <button type="button" data-view="history" data-mode="monthly">月次</button>
           <button type="button" data-view="history" data-mode="ranking">リーダーボード</button>
           <button type="button" data-view="likes" data-mode="likes">いいね</button>
-          <button type="button" data-view="history" data-mode="broadcasts">公式ストリーム</button>
+          <button type="button" data-view="history" data-mode="broadcasts">公式リスパ</button>
         </nav>
       </div>
     </header>
@@ -51,7 +51,7 @@
           <div id="membersDayBeforeDelta" class="delta" hidden></div>
         </article>
         <article class="metric">
-          <span>総再生数</span>
+          <span>累計再生数</span>
           <div class="metric-value"><strong id="totalStreams">-</strong></div>
           <div id="streamsYesterdayDelta" class="delta" hidden></div>
           <div id="streamsDayBeforeDelta" class="delta" hidden></div>
@@ -148,7 +148,7 @@
         <article><span id="periodLabel">期間数</span><strong id="periods">-</strong></article>
         <article><span id="maxLabel">平均同接</span><strong id="maxListener">-</strong></article>
         <article><span id="streamLabel">再生数増加</span><strong id="streamGrowth">-</strong></article>
-        <article><span id="memberLabel">メンバー増加</span><strong id="memberGrowth">-</strong></article>
+        <article><span id="memberLabel">メンバー増加数</span><strong id="memberGrowth">-</strong></article>
       </section>
 
       <section id="chartPanel" class="card chart-panel">
@@ -186,9 +186,9 @@
       <p id="likesNotice" class="notice" role="status">読み込み中…</p>
 
       <section class="summary-cards likes-summary" aria-label="いいね集計概要">
-        <article><span>対象曲数</span><strong id="likesTrackCount">-</strong></article>
-        <article><span>最高いいね</span><strong id="likesMaxLikes">-</strong></article>
-        <article><span>最終更新</span><strong id="likesLatestAt" class="summary-date">-</strong></article>
+        <article><span>対象楽曲数</span><strong id="likesTrackCount">-</strong></article>
+        <article><span>最大いいね数</span><strong id="likesMaxLikes">-</strong></article>
+        <article><span>最終取得</span><strong id="likesLatestAt" class="summary-date">-</strong></article>
       </section>
 
       <section class="card data-panel">
@@ -197,16 +197,16 @@
       </section>
 
       <section class="card data-panel">
-        <div class="section-head"><div><p class="kicker">DATA</p><h2>曲別一覧</h2></div></div>
+        <div class="section-head"><div><p class="kicker">DATA</p><h2>楽曲別一覧</h2></div></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>順位</th><th>曲名</th><th>アーティスト</th><th>最新いいね</th><th>最終観測</th></tr></thead>
+            <thead><tr><th>順位</th><th>曲名</th><th>アーティスト</th><th>最新いいね数</th><th>最終取得</th></tr></thead>
             <tbody id="likesTbody"></tbody>
           </table>
         </div>
       </section>
     </section>
   </main>
-  <script type="module" src="/dashboard-metrics.js?v=20260923.13"></script>
+  <script type="module" src="/dashboard-metrics.js?v=20260924.2"></script>
 </body>
 </html>

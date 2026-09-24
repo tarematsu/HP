@@ -122,7 +122,7 @@ test('ranking table cleanup inserts channel, artist, and relation immediately af
   const source = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
   assert.match(source, /channelHeader\.textContent = 'チャンネル'/);
   assert.match(source, /artistHeader\.textContent = 'アーティスト名'/);
-  assert.match(source, /relationHeader\.textContent = '公式'/);
+  assert.match(source, /relationHeader\.textContent = '種別'/);
   assert.match(source, /headers\[hostIndex\]\.after\(channelHeader, artistHeader, relationHeader\)/);
   assert.match(source, /hostCell\.after\(channelCell, artistCell, relationCell\)/);
   assert.doesNotMatch(source, /fandomHeader\.textContent = 'ファンダム'/);

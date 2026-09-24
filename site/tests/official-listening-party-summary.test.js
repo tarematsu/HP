@@ -7,7 +7,7 @@ const main = readFileSync(new URL('../public/history/history-main.js', import.me
 
 test('official listening party summary shows maximum concurrency and average duration', () => {
   assert.match(summary, /setText\('streamLabel', '最大同接'\)/);
-  assert.match(summary, /setText\('memberLabel', '平均時間'\)/);
+  assert.match(summary, /setText\('memberLabel', '平均所要時間'\)/);
   assert.match(summary, /Math\.max\(\.\.\.maximums\)/);
   assert.match(summary, /\(endedAt - startedAt\) \/ 60_000/);
   assert.match(summary, /durations\.reduce\(\(sum, value\) => sum \+ value, 0\) \/ durations\.length/);

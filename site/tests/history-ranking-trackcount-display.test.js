@@ -11,7 +11,7 @@ const current = readFileSync(new URL('../functions/api/history-current.js', impo
 
 test('ranking chart keeps featured comparison and supports one selected all-host series', () => {
   assert.match(entry, /history-ranking-chart\.js\?v=20260923\.8/);
-  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260923\.3/);
+  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260924\.1/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
   assert.match(entry, /runtimeKey\(mode\)/);
   assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
@@ -27,13 +27,13 @@ test('ranking chart keeps featured comparison and supports one selected all-host
   assert.doesNotMatch(rankingChart, /previousFetch|browser\.fetch|response\.clone\(\)\.json/);
 });
 
-test('all-host table exposes channel, artist, and relation after host name and supports tap selection', () => {
-  for (const label of ['順位', 'ホスト名', 'チャンネル', 'アーティスト名', '公式', 'ランクイン週数', '平均順位', '最高順位', '最低順位']) {
+test('all-host table exposes channel, artist, and relation type after host name and supports tap selection', () => {
+  for (const label of ['順位', 'ホスト名', 'チャンネル', 'アーティスト名', '種別', 'ランクイン週数', '平均順位', '最高順位', '最低順位']) {
     assert.match(rankingAllHosts, new RegExp(label));
   }
   assert.match(rankingAllHosts, /\['stationhead_channel_name', 'チャンネル'\]/);
   assert.match(rankingAllHosts, /\['artist_name', 'アーティスト名'\]/);
-  assert.match(rankingAllHosts, /\['relation_label', '公式'\]/);
+  assert.match(rankingAllHosts, /\['relation_label', '種別'\]/);
   assert.doesNotMatch(rankingAllHosts, /\['fandom_label', 'ファンダム'\]/);
   assert.match(rankingAllHosts, /data\.host_rankings/);
   assert.match(rankingAllHosts, /button\.dataset\.rankingHost/);
@@ -69,11 +69,12 @@ test('ranking chart fills missing weeks and paints the missing band in the same 
   assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
 });
 
-test('summary tables remove maximum likes and primary host while retaining track count', () => {
+test('summary tables remove auxiliary columns while renaming track count to 楽曲数', () => {
   assert.match(entry, /history-table-cleanup\.js/);
   assert.match(tableCleanup, /最大いいね/);
   assert.match(tableCleanup, /主なホスト/);
-  assert.doesNotMatch(tableCleanup, /曲数/);
+  assert.match(tableCleanup, /\['曲数', \['楽曲数'/);
+  assert.doesNotMatch(tableCleanup, /SUMMARY_REMOVED_LABELS = new Set\([^\n]*曲数/);
 });
 
 test('history read models count total broadcasts including repeated tracks', () => {

@@ -1,11 +1,12 @@
 import './history/history-global-fixes.js';
 import './pages-ui-tweaks.js?v=20260921.1';
 import './dashboard-header.js?v=20260923.4';
-import './unofficial-listening-parties.js?v=20260923.2';
+import './pages-terminology.js?v=20260924.2';
+import './unofficial-listening-parties.js?v=20260924.1';
 import './official-listening-party-copy.js?v=20260923.1';
 import './first-week-comparison-shell.js?v=20260924.1';
 import './played-tracks-shell.js?v=20260924.3';
-import './dashboard-tabs.js?v=20260924.2';
+import './dashboard-tabs.js?v=20260924.4';
 import './dashboard-current-layout.js?v=20260923.4';
 import './dashboard-current-metric-style.js?v=20260923.1';
 import './dashboard-chart-stability.js?v=20260923.4';

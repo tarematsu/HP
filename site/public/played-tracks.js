@@ -162,7 +162,7 @@ function renderTable() {
   const totalRow = document.createElement('tr');
   totalRow.className = 'played-tracks-total-row';
   const totalLabel = document.createElement('td');
-  totalLabel.textContent = '総数';
+  totalLabel.textContent = '総再生回数';
   const totalCount = document.createElement('td');
   totalCount.className = 'played-tracks-number';
   totalCount.textContent = integer.format(state.total);
@@ -206,7 +206,7 @@ function drawPie() {
     context.font = '14px system-ui, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillText('再生曲データがありません', rect.width / 2, rect.height / 2);
+    context.fillText('再生履歴データがありません', rect.width / 2, rect.height / 2);
     return;
   }
 
@@ -382,19 +382,19 @@ async function loadSelectedPeriod({ force = false } = {}) {
     state.total = 0;
     state.loadedRangeKey = '';
     render();
-    setNotice('再生曲データがありません。');
+    setNotice('再生履歴データがありません。');
     return;
   }
   const rangeKey = `${from}:${to}`;
   if (!force && state.loadedRangeKey === rangeKey) return;
 
-  setNotice(`${selectedDescription()} の再生曲を読み込み中…`);
+  setNotice(`${selectedDescription()} の再生履歴を読み込み中…`);
   const payload = await fetchJson(`/api/track-history?from=${from}&to=${to}&limit=10000&ranking=0`, { force });
   state.rows = normalizedRows(payload.rows, from, to);
   state.total = state.rows.reduce((sum, row) => sum + row.play_count, 0);
   state.loadedRangeKey = rangeKey;
   render();
-  setNotice(state.total > 0 ? '' : `${selectedDescription()} の再生曲データはありません。`);
+  setNotice(state.total > 0 ? '' : `${selectedDescription()} の再生履歴データはありません。`);
 }
 
 async function selectPeriod(period) {
@@ -429,13 +429,13 @@ export async function loadPlayedTracks({ force = false, refreshPeriods = false }
 
   try {
     if (!state.periodsLoaded || refreshPeriods) {
-      setNotice('再生曲の日付一覧を読み込み中…');
+      setNotice('再生履歴の日付一覧を読み込み中…');
       await loadPeriodIndex({ force: force || refreshPeriods });
     }
     await loadSelectedPeriod({ force });
   } catch (error) {
     console.error('played tracks failed to load', error);
-    setNotice('再生曲データの取得に失敗しました。', true);
+    setNotice('再生履歴データの取得に失敗しました。', true);
   } finally {
     state.loading = false;
   }

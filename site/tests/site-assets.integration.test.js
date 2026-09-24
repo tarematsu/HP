@@ -69,7 +69,7 @@ test('dashboard displays completed UTC-day changes from the canonical response',
   const endpoint = await text('functions/api/dashboard.js');
   const loader = await text('functions/lib/dashboard-daily-summaries.js');
   assert.match(html, />総メンバー数</);
-  assert.match(html, />総再生数</);
+  assert.match(html, />累計再生数</);
   assert.match(entry, /dashboard-daily-summaries\.js\?v=20260923\.4/);
   assert.match(renderer, /renderDashboardDailySummaries/);
   assert.match(renderer, /dashboard:payload/);

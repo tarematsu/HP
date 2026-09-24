@@ -1,6 +1,6 @@
 const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
 const LABELS = Object.freeze({
-  streamLabel: '平均再生数',
+  streamLabel: '平均再生増加数',
   memberLabel: '平均メンバー増加数',
 });
 

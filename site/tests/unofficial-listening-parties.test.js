@@ -12,8 +12,8 @@ test('unofficial listening party tab is mounted immediately after the official t
   assert.match(viewSource, /button\.textContent = '非公式リスパ'/);
 });
 
-test('unofficial listening party view is table-only with the requested columns', () => {
-  assert.match(viewSource, /<th>日付<\/th><th>時間<\/th><th>名前<\/th><th>場所<\/th><th>出典<\/th>/);
+test('unofficial listening party view is table-only with clear event columns', () => {
+  assert.match(viewSource, /<th>日付<\/th><th>開始時刻<\/th><th>イベント名<\/th><th>開催チャンネル<\/th><th>出典<\/th>/);
   assert.doesNotMatch(viewSource, /長さ|duration|最大同接/);
   assert.doesNotMatch(viewSource, /<canvas\b/);
   assert.doesNotMatch(viewSource, /chart-panel/);

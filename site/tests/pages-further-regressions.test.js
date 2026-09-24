@@ -122,7 +122,7 @@ test('active Pages archive runtimes are UTC-only except the official-party today
   assert.match(dashboard, /timeZone: 'UTC'/);
   assert.match(dashboard, /最終取得 \$\{safeDate\(latest\.observed_at\)\} UTC/);
   assert.match(mainPage, /id="likesView"/);
-  assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260923\.4'\)/);
+  assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260924\.1'\)/);
   assert.doesNotMatch(mainPage, /href="\/history/);
   assert.doesNotMatch(utcArchiveSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });

@@ -19,7 +19,7 @@ test('official listening party uses live refresh only while collection is active
   assert.match(summary, /SERIES_CACHE_PREFIX = 'sakurazaka46jp:v1:'/);
   assert.match(summary, /document\.getElementById\('load'\)\?\.click\(\)/);
   assert.doesNotMatch(summary, /scheduleLiveRefresh\(0\);\s*$/m);
-  assert.match(historyEntry, /history-broadcast-summary\.js\?v=20260923\.\d+/);
+  assert.match(historyEntry, /history-broadcast-summary\.js\?v=20260924\.1/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.\d+/);
 });
 

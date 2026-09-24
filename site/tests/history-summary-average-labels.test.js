@@ -9,14 +9,14 @@ const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.me
 
 test('daily weekly and monthly summary cards use average growth labels', () => {
   assert.match(labels, /new Set\(\['daily', 'weekly', 'monthly'\]\)/);
-  assert.match(labels, /streamLabel: '平均再生数'/);
+  assert.match(labels, /streamLabel: '平均再生増加数'/);
   assert.match(labels, /memberLabel: '平均メンバー増加数'/);
   assert.match(labels, /history:data-loaded/);
   assert.match(labels, /MutationObserver/);
 });
 
 test('average-label runtime is loaded with the current shared dashboard deployment version', () => {
-  assert.match(main, /history-summary-average-labels\.js\?v=20260923\.1/);
-  assert.match(tabs, /history-main\.js\?v=20260923\.11/);
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260924\.2/);
+  assert.match(main, /history-summary-average-labels\.js\?v=20260924\.1/);
+  assert.match(tabs, /history-main\.js\?v=20260924\.1/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260924\.4/);
 });

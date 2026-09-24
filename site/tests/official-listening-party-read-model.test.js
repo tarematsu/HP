@@ -23,9 +23,11 @@ test('official listening-party table renders final fields directly without hidde
   for (const field of ['listener_avg', 'listener_min', 'listener_max', 'distinct_tracks', 'estimated_streams', 'comment_count', 'source_url']) {
     assert.match(table, new RegExp(field));
   }
-  for (const label of ['平均同接', '最小同接', '最大同接', '曲数', '推定再生数', 'コメント数', '放送内容', '名前', '出典']) {
+  for (const label of ['平均同接', '最小同接', '最大同接', '楽曲数', '推定再生数', 'コメント数', '放送内容', 'イベント名', '出典']) {
     assert.match(table, new RegExp(label));
   }
+  assert.match(table, /時間帯/);
+  assert.match(table, /所要時間/);
   assert.doesNotMatch(table, /TECHNICAL_HEADERS|OFFICIAL_NEWS|開始日時（UTC）/);
   assert.doesNotMatch(table, /setTimeout\(\(\) => render|more'\)\?\.addEventListener/);
 });
@@ -38,5 +40,5 @@ test('official listening-party chart no longer fetches or mutates table enrichme
 
 test('broadcast runtime URLs remain stable while the response contract is consolidated', () => {
   assert.match(historyMain, /history-broadcasts\.js\?v=20260923\.3/);
-  assert.match(historyMain, /history-broadcast-table\.js\?v=20260923\.5/);
+  assert.match(historyMain, /history-broadcast-table\.js\?v=20260924\.1/);
 });
