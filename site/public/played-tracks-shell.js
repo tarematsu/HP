@@ -14,7 +14,7 @@ function mountTab() {
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.view = 'played-tracks';
-  button.textContent = '再生曲';
+  button.textContent = '再生履歴';
   likes.insertAdjacentElement('beforebegin', button);
 }
 
@@ -32,18 +32,17 @@ function mountView() {
         <input id="playedTracksWeekMode" type="checkbox">
         <span>週表示</span>
       </label>
-      <button id="playedTracksLoad" class="button" type="button">更新</button>
     </div>
 
-    <div class="played-tracks-period-scroller" id="playedTracksPeriodScroller" aria-label="再生曲の表示期間">
+    <div class="played-tracks-period-scroller" id="playedTracksPeriodScroller" aria-label="再生履歴の表示期間">
       <div class="played-tracks-period-strip" id="playedTracksPeriodStrip" role="list"></div>
     </div>
 
-    <p id="playedTracksNotice" class="notice" role="status">最新の再生曲データを読み込みます。</p>
+    <p id="playedTracksNotice" class="notice" role="status" hidden></p>
 
-    <section class="summary-cards played-tracks-summary" aria-label="再生曲集計概要">
-      <article><span>のべ再生曲数</span><strong id="playedTracksTotal">-</strong></article>
-      <article><span>曲数</span><strong id="playedTracksUnique">-</strong></article>
+    <section class="summary-cards played-tracks-summary" aria-label="再生履歴集計概要">
+      <article><span>総再生回数</span><strong id="playedTracksTotal">-</strong></article>
+      <article><span>楽曲数</span><strong id="playedTracksUnique">-</strong></article>
     </section>
 
     <section class="card chart-panel">
@@ -54,7 +53,7 @@ function mountView() {
     </section>
 
     <section class="card data-panel">
-      <div class="section-head"><div><p class="kicker">DATA</p><h2>再生曲一覧</h2></div></div>
+      <div class="section-head"><div><p class="kicker">DATA</p><h2>楽曲別再生一覧</h2></div></div>
       <div class="table-wrap">
         <table class="played-tracks-table">
           <thead><tr><th>曲名</th><th>回数</th><th>割合</th></tr></thead>
