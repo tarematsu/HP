@@ -32,19 +32,19 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260924\.5'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260924\.1'\)/);
-  assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260924\.2'\)/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260925\.1'/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260925\.1'\)/);
+  assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
   assert.match(historyEntry, /VALID_MODES/);
 });
 
 test('first-week comparison routing is preserved alongside the existing lazy views', () => {
-  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260924\.1/);
+  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260925\.1/);
   assert.match(tabsClient, /'first-week'/);
   assert.match(tabsClient, /const firstWeekView = document\.getElementById\('firstWeekView'\)/);
-  assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260924\.1'\)/);
+  assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showFirstWeek/);
 });
 

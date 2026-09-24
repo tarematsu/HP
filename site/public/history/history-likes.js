@@ -194,7 +194,7 @@ import {
     state.controller?.abort();
     const controller = new AbortController();
     state.controller = controller;
-    setNotice('読み込み中…');
+    setNotice('');
     const url = '/api/track-history?ranking_only=1&ranking_limit=500';
     try {
       const result = await fetchJson(url, controller.signal, force);

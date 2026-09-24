@@ -285,8 +285,8 @@ async function load({ force = false } = {}) {
   loading = true;
   if (loadButton) loadButton.disabled = true;
   if (notice) {
-    notice.hidden = false;
-    notice.textContent = '初週比較データを読み込んでいます…';
+    notice.hidden = true;
+    notice.textContent = '';
     notice.classList.remove('error');
   }
 

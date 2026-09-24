@@ -40,7 +40,7 @@ test('embedded history defaults invalid hashes to weekly and lazy-loads mode run
   assert.doesNotMatch(historyEntry, /'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
   assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-lite\.js\?v=20260923\.3/);
+  assert.match(historyEntry, /history-lite\.js\?v=20260925\.1/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
   for (const mode of ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
 });

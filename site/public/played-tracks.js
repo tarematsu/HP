@@ -388,7 +388,7 @@ async function loadSelectedPeriod({ force = false } = {}) {
   const rangeKey = `${from}:${to}`;
   if (!force && state.loadedRangeKey === rangeKey) return;
 
-  setNotice(`${selectedDescription()} の再生履歴を読み込み中…`);
+  setNotice('');
   const payload = await fetchJson(`/api/track-history?from=${from}&to=${to}&limit=10000&ranking=0`, { force });
   state.rows = normalizedRows(payload.rows, from, to);
   state.total = state.rows.reduce((sum, row) => sum + row.play_count, 0);
@@ -429,7 +429,7 @@ export async function loadPlayedTracks({ force = false, refreshPeriods = false }
 
   try {
     if (!state.periodsLoaded || refreshPeriods) {
-      setNotice('再生履歴の日付一覧を読み込み中…');
+      setNotice('');
       await loadPeriodIndex({ force: force || refreshPeriods });
     }
     await loadSelectedPeriod({ force });

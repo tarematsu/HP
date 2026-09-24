@@ -148,7 +148,7 @@ function resetSharedHistorySummary(mode) {
   for (const id of ['periods', 'maxListener', 'streamGrowth', 'memberGrowth']) setText(id, '—');
   const notice = document.getElementById('notice');
   if (notice) {
-    notice.textContent = '読み込み中…';
+    notice.textContent = '';
     notice.classList.remove('error');
   }
   const more = document.getElementById('more');
