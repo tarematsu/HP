@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { snapshotPersistenceDue } from '../src/collector-ingest.js';
-import { compactMaterializeMessage } from '../src/ingest-channel-optimized-entry.js';
+import { materializeDependencies } from '../src/ingest-channel-optimized-entry.js';
 import {
   activeDeriveEnv,
   LIVE_DERIVE_QUEUE_NAME,
@@ -75,17 +75,10 @@ test('ingest persists operational snapshots once per hourly slot', () => {
   assert.equal(collector.vars.SNAPSHOT_PERSIST_INTERVAL_MS, 60 * MINUTE);
 });
 
-test('ingest drops duplicate collected metadata when the dedicated pipeline owns hydration', () => {
-  const body = {
-    message_type: 'stationhead-raw-materialize',
-    track_metadata: [{ spotify_id: 'track-1', title: 'title' }],
-    queue: { tracks: [{ spotify_id: 'track-1' }] },
-  };
-  const compact = compactMaterializeMessage({ COLLECTED_METADATA_PERSIST_ENABLED: false }, body);
-  assert.notEqual(compact, body);
-  assert.deepEqual(compact.track_metadata, []);
-  assert.equal(compact.queue, body.queue);
-  assert.equal(compactMaterializeMessage({ COLLECTED_METADATA_PERSIST_ENABLED: true }, body), body);
+test('ingest defers collected metadata writes without dropping presentation metadata', async () => {
+  const deferred = materializeDependencies({ COLLECTED_METADATA_PERSIST_ENABLED: false });
+  assert.equal(await deferred.collectedMetadataDue(), false);
+  assert.equal(materializeDependencies({ COLLECTED_METADATA_PERSIST_ENABLED: true }).collectedMetadataDue, undefined);
 });
 
 test('live derive stays at one track while rebuild keeps the configured batch', async () => {
