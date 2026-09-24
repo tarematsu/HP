@@ -1,6 +1,7 @@
 function cachePolicy(url) {
   if (url.pathname === '/api/dashboard') return { ttl: 60, browser: 30 };
   if (url.pathname === '/api/sakurazaka46jp') return { ttl: 3600, browser: 300 };
+  if (url.pathname === '/api/first-week-comparison') return { ttl: 3600, browser: 300 };
   if (url.pathname === '/api/history') {
     const mode = url.searchParams.get('mode') || 'weekly';
     if (mode === 'broadcasts') return { ttl: 900, browser: 120 };

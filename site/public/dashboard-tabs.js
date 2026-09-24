@@ -1,8 +1,9 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'played-tracks', 'likes', 'unofficial']);
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'likes', 'unofficial']);
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
+const firstWeekView = document.getElementById('firstWeekView');
 const playedTracksView = document.getElementById('playedTracksView');
 const likesView = document.getElementById('likesView');
 const unofficialView = document.getElementById('unofficialView');
@@ -10,6 +11,7 @@ const tabs = document.getElementById('modeTabs');
 const skipLink = document.querySelector('.skip-link');
 let historyRuntimePromise = null;
 let rankingStatusRuntimePromise = null;
+let firstWeekRuntimePromise = null;
 let playedTracksRuntimePromise = null;
 let likesRuntimePromise = null;
 let historyRuntimeMode = null;
@@ -39,6 +41,7 @@ function updateLocation(mode, { replace = false } = {}) {
 function showOnly(view) {
   if (currentView) currentView.hidden = view !== currentView;
   if (historyView) historyView.hidden = view !== historyView;
+  if (firstWeekView) firstWeekView.hidden = view !== firstWeekView;
   if (playedTracksView) playedTracksView.hidden = view !== playedTracksView;
   if (likesView) likesView.hidden = view !== likesView;
   if (unofficialView) unofficialView.hidden = view !== unofficialView;
@@ -70,6 +73,16 @@ async function loadHistoryRuntime() {
     });
   }
   return historyRuntimePromise;
+}
+
+async function loadFirstWeekRuntime() {
+  if (!firstWeekRuntimePromise) {
+    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260924.1').catch((error) => {
+      firstWeekRuntimePromise = null;
+      throw error;
+    });
+  }
+  return firstWeekRuntimePromise;
 }
 
 async function loadPlayedTracksRuntime() {
@@ -122,6 +135,29 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
     const notice = document.getElementById('notice');
     if (notice) {
       notice.textContent = '過去データの初期化に失敗しました。再読み込みしてください。';
+      notice.classList.add('error');
+    }
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
+  }
+}
+
+async function showFirstWeek({ updateUrl = true, replaceUrl = false } = {}) {
+  activeMode = 'first-week';
+  showOnly(firstWeekView);
+  updateTabs('first-week');
+  if (updateUrl) updateLocation('first-week', { replace: replaceUrl });
+
+  try {
+    const runtime = await loadFirstWeekRuntime();
+    if (activeMode !== 'first-week') return;
+    await runtime.loadFirstWeekComparisonView?.();
+  } catch (error) {
+    if (activeMode !== 'first-week') return;
+    console.error('first-week runtime failed to start', error);
+    const notice = document.getElementById('firstWeekNotice');
+    if (notice) {
+      notice.textContent = '初週比較データの初期化に失敗しました。再読み込みしてください。';
       notice.classList.add('error');
     }
   } finally {
@@ -187,6 +223,7 @@ function modeFromLocation() {
 
 function showMode(mode, options = {}) {
   if (mode === 'current') showCurrent(options);
+  else if (mode === 'first-week') void showFirstWeek(options);
   else if (mode === 'played-tracks') void showPlayedTracks(options);
   else if (mode === 'likes') void showLikes(options);
   else if (mode === 'unofficial') showUnofficial(options);
@@ -206,6 +243,10 @@ tabs?.addEventListener('click', (event) => {
 
   if (button.dataset.view === 'current') {
     showCurrent();
+    return;
+  }
+  if (button.dataset.view === 'first-week') {
+    void showFirstWeek();
     return;
   }
   if (button.dataset.view === 'played-tracks') {
