@@ -4,6 +4,7 @@ import test from 'node:test';
 import { advanceTrackHistoryR2Publication } from '../src/pages-track-history-publication.js';
 import { createTrackHistoryPublication } from '../src/pages-track-history-response.js';
 import { runSplitTrackHistoryCycleStep } from '../src/pages-track-history-split-cycle.js';
+import { loadTrackHistoryR2ApiResponse } from '../src/pages-track-history-r2-api.js';
 
 const DAY = 86_400_000;
 const START = Date.UTC(2026, 6, 22);
@@ -96,6 +97,7 @@ test('inline Actions cycle routes r2-days state without legacy D1 advancement or
     PAGES_RESPONSE_R2: {},
   }, START + DAY, {
     loadStage: async () => stage,
+    async publishStatus() { calls.push('status'); },
     async advanceR2Publication() {
       calls.push('r2');
       return {
@@ -112,8 +114,58 @@ test('inline Actions cycle routes r2-days state without legacy D1 advancement or
     async saveStage() { calls.push('save'); },
   });
 
-  assert.deepEqual(calls, ['r2', 'save']);
+  assert.deepEqual(calls, ['status', 'save', 'r2', 'save']);
+  assert.equal(stage.publication.status_published, true);
   assert.equal(result.publication.published, true);
   assert.equal(result.publication.storage, 'r2');
   assert.equal(stage.published, true);
+});
+
+test('ranking status is readable while full R2 history is still publishing', async () => {
+  const objects = new Map();
+  const r2 = {
+    async put(key, body, options) {
+      objects.set(key, { body, customMetadata: options.customMetadata });
+    },
+    async get(key) { return objects.get(key) || null; },
+  };
+  const stage = {
+    generation: START,
+    published: false,
+    refresh_mode: 'incremental',
+    tasks: [],
+    completed: {},
+  };
+  let saves = 0;
+  const dependencies = {
+    loadStage: async () => stage,
+    finalizeStatus: async () => ({
+      generated_at: START + DAY,
+      ranking: [{ title: 'Song A', like_count: 42 }],
+      ranking_summary: { track_count: 1 },
+    }),
+    initializePublication: async (_db, value) => value,
+    advanceR2Publication: async (_db, _r2, value) => ({
+      action: 'r2-days',
+      published: false,
+      publication: value,
+    }),
+    saveStage: async () => { saves += 1; },
+  };
+  const env = { BUDDIES_DB: {}, MINUTE_DB: {}, PAGES_RESPONSE_R2: r2 };
+  await runSplitTrackHistoryCycleStep(env, START + DAY, dependencies);
+  assert.equal(stage.publication.status_published, true);
+  assert.equal(saves, 3);
+
+  const response = await loadTrackHistoryR2ApiResponse(
+    r2,
+    new Request('https://internal/api/track-history?ranking_only=1'),
+    START + DAY,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).ranking, [{ title: 'Song A', like_count: 42 }]);
+  assert.equal(objects.has('pages-response/v1/track-history.json'), false);
+
+  await runSplitTrackHistoryCycleStep(env, START + DAY + 60_000, dependencies);
+  assert.equal(saves, 4, 'checkpointed status is not republished on every step');
 });

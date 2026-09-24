@@ -58,9 +58,15 @@ function rankingFromPayload(payload, limit) {
 
 async function loadStatusPayload(r2, now, maximumAgeMs, dependencies) {
   const loadResponse = dependencies.loadStatusResponse || loadMaterializedR2Response;
-  const response = await loadResponse(r2, TRACK_HISTORY_MODEL_KEY, now, maximumAgeMs);
-  if (!response?.ok) return {};
-  return response.json().catch(() => ({}));
+  // The compact status is available as soon as the cycle finalizes ranking,
+  // while the full history can still be backfilling its day objects.
+  for (const key of ['track-history-status', TRACK_HISTORY_MODEL_KEY]) {
+    const response = await loadResponse(r2, key, now, maximumAgeMs);
+    if (!response?.ok) continue;
+    const payload = await response.json().catch(() => null);
+    if (payload?.ok && Array.isArray(payload.ranking)) return payload;
+  }
+  return null;
 }
 
 function validateParams(url) {
@@ -89,6 +95,7 @@ export async function loadTrackHistoryR2ApiResponse(
   const rankingLimit = boundedInteger(url.searchParams.get('ranking_limit'), 200, 20, 500);
   if (url.searchParams.get('ranking_only') === '1') {
     const payload = await loadStatusPayload(r2, now, maximumAgeMs, dependencies);
+    if (!payload) return json({ ok: false, error: 'track-history ranking read model unavailable' }, 503, now);
     const ranking = rankingFromPayload(payload, rankingLimit);
     return json({
       ok: true,
