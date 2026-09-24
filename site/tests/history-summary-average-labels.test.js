@@ -7,8 +7,9 @@ const labels = readFileSync(new URL('../public/history/history-summary-average-l
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
-test('daily weekly and monthly summary cards use average growth labels', () => {
-  assert.match(labels, /new Set\(\['daily', 'weekly', 'monthly'\]\)/);
+test('daily and weekly summary cards use average growth labels', () => {
+  assert.match(labels, /new Set\(\['daily', 'weekly'\]\)/);
+  assert.doesNotMatch(labels, /monthly/);
   assert.match(labels, /streamLabel: '平均再生増加数'/);
   assert.match(labels, /memberLabel: '平均メンバー増加数'/);
   assert.match(labels, /history:data-loaded/);
@@ -16,7 +17,7 @@ test('daily weekly and monthly summary cards use average growth labels', () => {
 });
 
 test('average-label runtime is loaded with the current shared dashboard deployment version', () => {
-  assert.match(main, /history-summary-average-labels\.js\?v=20260924\.1/);
-  assert.match(tabs, /history-main\.js\?v=20260924\.1/);
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260924\.5/);
+  assert.match(main, /history-summary-average-labels\.js\?v=20260925\.1/);
+  assert.match(tabs, /history-main\.js\?v=20260925\.1/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260925\.1/);
 });
