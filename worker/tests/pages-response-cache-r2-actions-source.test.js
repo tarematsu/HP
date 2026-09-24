@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { loadMaterializedR2Response } from '../src/pages-response-r2.js';
+
+test('Actions R2 response identifies its source', async () => {
+  const now = Date.now();
+  const response = await loadMaterializedR2Response({ get: async () => ({
+    body: true,
+    json: async () => ({ version: 1, updated_at: now, status: 200, headers: {}, body: '{}' }),
+  }) }, 'history:daily', now, 60000);
+  assert.equal(response.headers.get('x-api-source'), 'actions-r2');
+});
