@@ -21,21 +21,22 @@ test('current and likes views use explicit user-facing metric names', () => {
   assert.match(html, />楽曲別一覧</);
   assert.match(html, />最新いいね数</);
   assert.match(html, /data-mode="broadcasts">公式リスパ/);
-  assert.match(metrics, /pages-terminology\.js\?v=20260924\.1/);
+  assert.match(metrics, /pages-terminology\.js\?v=20260924\.2/);
   for (const label of ['累計再生数', '対象楽曲数', '最大いいね数', '最終取得', '楽曲別一覧', '最新いいね数', '公式リスパ']) {
     assert.match(terminology, new RegExp(label));
   }
 });
 
-test('history terminology distinguishes totals, growth, tracks, and missing weeks', () => {
+test('history terminology distinguishes totals, growth, tracks, missing weeks, and data quality', () => {
   assert.match(summaryLabels, /平均再生増加数/);
   assert.match(summaryLabels, /平均メンバー増加数/);
   for (const label of ['メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数', '楽曲数', '圏外・欠測週数', '平均所要時間']) {
-    assert.match(tableCleanup, new RegExp(label.replace(/[（）]/g, (value) => `\\${value}`)));
+    assert.match(tableCleanup, new RegExp(label));
   }
   assert.match(pageFixes, /圏外・欠測週数/);
   assert.match(pageFixes, /圏外・欠測数/);
   assert.match(ranking, /\['relation_label', '種別'\]/);
+  assert.match(terminology, /\['品質', 'データ品質'\]/);
 });
 
 test('official and unofficial listening-party tables use event-specific column names', () => {
