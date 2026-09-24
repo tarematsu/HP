@@ -1,35 +1,3 @@
-const currentView = document.getElementById('currentView');
-const chartCard = currentView?.querySelector('.chart-card');
-const primaryGrid = currentView?.querySelector('.primary-grid');
-
-if (chartCard && primaryGrid) {
-  const headingBlock = chartCard.querySelector('.chart-head > div:first-child');
-  if (headingBlock?.querySelector('h2')) headingBlock.remove();
-  primaryGrid.before(chartCard);
-}
-
-const likesView = document.getElementById('likesView');
-const likeActions = likesView?.querySelector('.like-actions');
-if (likesView && likeActions) {
-  const likesLoad = document.getElementById('likesLoad');
-  const likesCsv = document.getElementById('likesCsv');
-
-  if (likesLoad) {
-    const hook = document.createElement('span');
-    hook.id = 'likesLoad';
-    hook.hidden = true;
-    hook.setAttribute('aria-hidden', 'true');
-    likesLoad.replaceWith(hook);
-  }
-
-  const likesTablePanel = [...likesView.querySelectorAll('.data-panel')]
-    .find((panel) => panel.querySelector('#likesTbody'));
-  const likesTableHead = likesTablePanel?.querySelector('.section-head');
-  if (likesCsv && likesTableHead) likesTableHead.append(likesCsv);
-
-  if (!likeActions.childElementCount) likeActions.remove();
-}
-
 const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
 
 function normalizeOfficialEventText(root) {
