@@ -119,7 +119,7 @@ function persistedHeaders(response) {
   return headers;
 }
 
-function uploadEnvelope(modelKey, envelope) {
+export function uploadEnvelope(modelKey, envelope) {
   const directory = mkdtempSync(join(workerRoot, '.pages-response-actions-'));
   try {
     const path = join(directory, `${encodeURIComponent(modelKey)}.json`);
