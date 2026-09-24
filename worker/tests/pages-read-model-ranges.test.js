@@ -113,11 +113,11 @@ test('incremental excluded-date updates replace only dates inside the refreshed 
   );
 });
 
-test('canonical Actions variants exclude playback history while the public route uses its dedicated R2 service', () => {
+test('canonical materialized variants exclude playback history', () => {
   const materialized = new Map(MATERIALIZED_API_VARIANTS.map((variant) => [variant.key, variant]));
   assert.deepEqual([...materialized.keys()], ALL_VARIANTS);
   assert.equal(materialized.has('track-history'), false);
-  assert.equal(materializedApiKey('https://pages.test/api/track-history'), 'track-history');
+  assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
   assert.equal(materialized.get('history:daily').cadence_minutes, 360);
   assert.equal(materialized.get('history:weekly').cadence_minutes, 360);
