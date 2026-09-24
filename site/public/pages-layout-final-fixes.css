@@ -13,6 +13,11 @@
   min-width: 0 !important;
 }
 
+/* Current headline metrics always use one full-width column. */
+#currentView > .metrics {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
 #historyView > .summary-cards,
 #likesView > .summary-cards {
   margin-top: 10px !important;
@@ -234,6 +239,41 @@
     justify-self: stretch !important;
   }
 
+  /* Ranking/likes data tables scroll horizontally on mobile instead of
+     compressing every column into a narrow viewport. The stronger selectors
+     deliberately supersede the older runtime compact-width declarations. */
+  #historyView > .data-panel .table-wrap,
+  #likesView > .data-panel .table-wrap {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #historyView > .data-panel .table-wrap > table.compact-columns:not(.all-host-ranking-table) {
+    width: max-content !important;
+    min-width: 760px !important;
+    table-layout: auto !important;
+  }
+
+  #historyView > .data-panel .table-wrap > table.all-host-ranking-table.compact-columns {
+    width: max-content !important;
+    min-width: 980px !important;
+    table-layout: auto !important;
+  }
+
+  #historyView #rankingWeeklyPanel .table-wrap > table {
+    width: max-content !important;
+    min-width: 560px !important;
+    table-layout: auto !important;
+  }
+
+  #likesView > .data-panel .table-wrap > table {
+    width: max-content !important;
+    min-width: 680px !important;
+    table-layout: auto !important;
+  }
+
   .table-wrap th {
     height: 29px !important;
   }
@@ -273,14 +313,6 @@
 
   #channelName {
     overflow-wrap: anywhere !important;
-  }
-
-  .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .metrics .metric.featured {
-    grid-column: 1 / -1 !important;
   }
 
   #historyView .summary-cards {
