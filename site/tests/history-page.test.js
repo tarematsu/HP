@@ -18,26 +18,23 @@ const rankingLibrary = readFileSync(new URL('../functions/lib/track-ranking.js',
 const sakurazakaApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
 const middleware = readFileSync(new URL('../functions/_middleware.js', import.meta.url), 'utf8');
 
-const ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
+const ARCHIVE_MODES = ['daily', 'weekly', 'ranking', 'broadcasts'];
 
 test('main dashboard exposes archive modes and likes without separate pages', () => {
   for (const mode of ARCHIVE_MODES) {
     assert.match(mainPage, new RegExp(`data-view="history" data-mode="${mode}"`));
   }
   assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
+  assert.doesNotMatch(mainPage, /data-mode="monthly"|>月次</);
   assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
 });
 
-test('monthly tab appears before leaderboard in the shared panel', () => {
-  assert.ok(mainPage.indexOf('data-mode="monthly"') < mainPage.indexOf('data-mode="ranking"'));
-});
-
-test('embedded history defaults invalid hashes to weekly and lazy-loads mode runtimes', () => {
-  assert.match(historyEntry, /const SUMMARY_MODES = new Set\(\['daily', 'weekly', 'monthly'\]\)/);
+test('embedded history supports daily and weekly summaries without monthly mode', () => {
+  assert.match(historyEntry, /const SUMMARY_MODES = new Set\(\['daily', 'weekly'\]\)/);
   assert.match(historyEntry, /const VALID_MODES = new Set\(\[\.\.\.SUMMARY_MODES, 'ranking', 'broadcasts'\]\)/);
-  assert.doesNotMatch(historyEntry, /'tracks'/);
+  assert.doesNotMatch(historyEntry, /'monthly'|'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
   assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
   assert.match(historyEntry, /history-lite\.js\?v=20260923\.3/);
