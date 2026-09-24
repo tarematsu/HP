@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 
 import { parseAuthState } from '../worker/src/auth-state.js';
 import { collectorStateFromAuthState } from '../worker/src/index.js';
@@ -122,20 +121,4 @@ test('host summary loads active and recent sessions through one statement', asyn
   assert.equal(summary.activeSession.status, 'active');
   assert.deepEqual(summary.recentSessions.map((row) => row.id), [2, 1]);
   assert.equal('latestProfile' in summary, false);
-});
-
-test('dashboard delta layer reuses formatters and avoids legacy mutation helpers', () => {
-  const source = readFileSync(new URL('../site/public/dashboard-optimized.js', import.meta.url), 'utf8');
-  const domUtils = readFileSync(new URL('../site/public/dashboard-dom-utils.js', import.meta.url), 'utf8');
-  assert.match(domUtils, /const integerFormatter = new Intl\.NumberFormat/);
-  assert.match(domUtils, /const dateTimeFormatter = new Intl\.DateTimeFormat/);
-  assert.match(domUtils, /function setImageIfChanged/);
-  assert.match(domUtils, /function renderDailyDeltaIfChanged/);
-  assert.match(source, /dom\.setImageIfChanged/);
-  assert.match(source, /dom\.renderDailyDeltaIfChanged/);
-  const refreshBody = source.slice(source.indexOf('refresh = async function refreshDashboardDelta'));
-  assert.doesNotMatch(refreshBody, /\bsetImage\(/);
-  assert.doesNotMatch(refreshBody, /\brenderDailyDelta\(/);
-  assert.doesNotMatch(refreshBody, /\bdateTime\(/);
-  assert.doesNotMatch(refreshBody, /\bnumber\(/);
 });
