@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 6;
+export const API_CONTRACT_VERSION = 7;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -14,6 +14,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/track-history', methods: ['GET'], description: 'Stored track history and current like ranking' },
     { path: '/api/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka official broadcast listener series' },
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
+    { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },
   ]),
 });
 
@@ -73,6 +74,7 @@ export function edgeCacheableApiRequest(request) {
 export function apiCacheTtlSeconds(request) {
   const pathname = request?.url ? normalizedPathname(new URL(request.url).pathname) : '';
   if (pathname === '/api/history-current') return 30;
+  if (pathname === '/api/first-week-comparison') return 3600;
   return API_EDGE_TTL_SECONDS;
 }
 
