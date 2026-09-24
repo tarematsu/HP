@@ -16,7 +16,11 @@ function finite(value) {
 
 function activeMode() {
   const active = document.querySelector('#modeTabs button.active[data-mode]');
-  return String(active?.dataset?.mode || latestMode || '');
+  const routeMode = String(active?.dataset?.mode || latestMode || '');
+  if (routeMode === 'daily' && document.getElementById('historyPastWeekMode')?.checked) {
+    return 'weekly';
+  }
+  return routeMode;
 }
 
 function cssColor(name, fallback) {
