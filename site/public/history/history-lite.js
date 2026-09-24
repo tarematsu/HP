@@ -308,7 +308,7 @@ import {
     const routeMode = state.mode;
     const mode = dataMode();
     el('load').disabled = true;
-    setNotice('読み込み中…');
+    setNotice('');
 
     try {
       if (routeMode === 'broadcasts') {
