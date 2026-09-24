@@ -9,13 +9,13 @@ function ensureStylesheet() {
 
 function mountTab() {
   const tabs = document.getElementById('modeTabs');
-  const monthly = tabs?.querySelector('[data-mode="monthly"]');
-  if (!tabs || !monthly || tabs.querySelector('[data-view="first-week"]')) return;
+  const weekly = tabs?.querySelector('[data-mode="weekly"]');
+  if (!tabs || !weekly || tabs.querySelector('[data-view="first-week"]')) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.view = 'first-week';
   button.textContent = '初週比較';
-  monthly.insertAdjacentElement('afterend', button);
+  weekly.insertAdjacentElement('afterend', button);
 }
 
 function mountView() {
