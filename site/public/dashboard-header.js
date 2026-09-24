@@ -38,7 +38,7 @@ if (!document.querySelector(`link[href="${layoutUnificationHref}"]`)) {
   document.head.append(layoutUnification);
 }
 
-const layoutFinalFixesHref = '/pages-layout-final-fixes.css?v=20260924.4';
+const layoutFinalFixesHref = '/pages-layout-final-fixes.css?v=20260925.1';
 if (!document.querySelector(`link[href="${layoutFinalFixesHref}"]`)) {
   const layoutFinalFixes = document.createElement('link');
   layoutFinalFixes.rel = 'stylesheet';
