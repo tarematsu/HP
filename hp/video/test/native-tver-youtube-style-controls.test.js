@@ -16,13 +16,15 @@ test('TVer uses one YouTube-style control recovery runtime', () => {
   assert.doesNotMatch(watchdog, /media_tver_playback_policy_(?:guard|main1|main2)\.inc/);
 });
 
-test('TVer fullscreen mirrors YouTube key-first then trusted-button fallback', () => {
-  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
-  const click = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
-  assert.ok(key >= 0 && click > key);
+test('TVer fullscreen uses a direct trusted video-corner tap', () => {
+  assert.match(runtime, /const requestFullscreen = \(\) =>/);
+  assert.match(runtime, /video\.getBoundingClientRect/);
+  assert.match(runtime, /rect\.right - 12/);
+  assert.match(runtime, /rect\.bottom - 12/);
+  assert.match(runtime, /state\.fullscreenCornerTapAt/);
   assert.match(runtime, /document\.fullscreenElement/);
-  assert.match(runtime, /全画面\|フルスクリーン\|fullscreen\|full screen/);
-  assert.match(runtime, /document\.elementFromPoint/);
+  assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
 });
 
 test('TVer ad skip is event-driven and uses the shared trusted-click target path', () => {
