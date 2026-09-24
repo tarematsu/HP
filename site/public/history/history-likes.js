@@ -145,7 +145,7 @@ import {
       content.append(heading, artist);
       const metrics = document.createElement('div');
       metrics.className = 'like-rank-metrics';
-      metrics.append(metric('最新いいね', fmt(row.latest_like_count)));
+      metrics.append(metric('最新いいね数', fmt(row.latest_like_count)));
       item.append(rank, rankingThumbnail(row), content, metrics);
       fragment.appendChild(item);
     });
@@ -219,7 +219,7 @@ import {
   }
 
   function exportCsv() {
-    const header = ['順位', '曲名', 'アーティスト', '最新いいね', '最終観測'];
+    const header = ['順位', '曲名', 'アーティスト', '最新いいね数', '最終取得'];
     const lines = [header, ...eligibleRankingRows().map((row, index) => [
       index + 1,
       trackName(row),
