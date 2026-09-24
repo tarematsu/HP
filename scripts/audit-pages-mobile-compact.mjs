@@ -6,7 +6,6 @@ const MODES = [
   { name: 'current', path: '/', panel: '#currentView', tab: '#modeTabs button[data-view="current"]', requiredText: '再生中の曲' },
   { name: 'daily', path: '/#daily', panel: '#historyView', tab: '#modeTabs button[data-mode="daily"]', requiredText: '期間数' },
   { name: 'weekly', path: '/#weekly', panel: '#historyView', tab: '#modeTabs button[data-mode="weekly"]', requiredText: '期間数' },
-  { name: 'monthly', path: '/#monthly', panel: '#historyView', tab: '#modeTabs button[data-mode="monthly"]', requiredText: '期間数' },
   { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#modeTabs button[data-mode="ranking"]', requiredText: '週間リーダーボード' },
   { name: 'first-week', path: '/#first-week', panel: '#firstWeekView', tab: '#modeTabs button[data-view="first-week"]', requiredText: '比較対象' },
   { name: 'played-tracks', path: '/#played-tracks', panel: '#playedTracksView', tab: '#modeTabs button[data-view="played-tracks"]', requiredText: '楽曲別再生一覧' },
