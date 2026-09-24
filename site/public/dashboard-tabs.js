@@ -66,7 +66,7 @@ async function loadRankingStatusRuntime() {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260924.1').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260925.1').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -77,7 +77,7 @@ async function loadHistoryRuntime() {
 
 async function loadFirstWeekRuntime() {
   if (!firstWeekRuntimePromise) {
-    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260924.1').catch((error) => {
+    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260925.1').catch((error) => {
       firstWeekRuntimePromise = null;
       throw error;
     });
@@ -87,7 +87,7 @@ async function loadFirstWeekRuntime() {
 
 async function loadPlayedTracksRuntime() {
   if (!playedTracksRuntimePromise) {
-    playedTracksRuntimePromise = import('/played-tracks.js?v=20260924.3').catch((error) => {
+    playedTracksRuntimePromise = import('/played-tracks.js?v=20260925.1').catch((error) => {
       playedTracksRuntimePromise = null;
       throw error;
     });
@@ -97,7 +97,7 @@ async function loadPlayedTracksRuntime() {
 
 async function loadLikesRuntime() {
   if (!likesRuntimePromise) {
-    likesRuntimePromise = import('/history/history-likes.js?v=20260924.2').catch((error) => {
+    likesRuntimePromise = import('/history/history-likes.js?v=20260925.1').catch((error) => {
       likesRuntimePromise = null;
       throw error;
     });
