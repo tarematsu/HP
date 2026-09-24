@@ -2,7 +2,6 @@ import {
   DAY_MS,
   previousUtcDay,
   utcDayStart,
-  utcMonthlyRange,
   utcWeeklyRange,
 } from '../../site/functions/lib/time-buckets.js';
 import { minuteFactReconcileCandidates, reconcileMinuteFactsForDay } from './minute-facts-day-reconcile.js';
@@ -269,29 +268,21 @@ async function repairSummaryKeys(stateDb, sourceDb, otherDb, stateId, keys, now)
   }
 
   const weeks = new Map();
-  const months = new Map();
   for (const key of repairedDays) {
     const week = utcWeeklyRange(key);
-    const month = utcMonthlyRange(key);
     weeks.set(week.key, week);
-    months.set(month.key, month);
   }
 
   const repairedWeeks = [];
   for (const [key, range] of weeks) {
     if (await rollupFromDaily(otherDb, 'sh_weekly_summary', range, now)) repairedWeeks.push(key);
   }
-  const repairedMonths = [];
-  for (const [key, range] of months) {
-    if (await rollupFromDaily(otherDb, 'sh_monthly_summary', range, now)) repairedMonths.push(key);
-  }
-  if (repairedWeeks.length !== weeks.size || repairedMonths.length !== months.size) {
+  if (repairedWeeks.length !== weeks.size) {
     return {
       skipped: true,
       reason: 'repair-summary-write-incomplete',
       repairedDays,
       repairedWeeks,
-      repairedMonths,
     };
   }
 
@@ -300,7 +291,7 @@ async function repairSummaryKeys(stateDb, sourceDb, otherDb, stateId, keys, now)
     ) VALUES(?,?,0,0,?) ON CONFLICT(id) DO UPDATE SET
       last_rollup_key=excluded.last_rollup_key,updated_at=excluded.updated_at`)
     .bind(stateId, keys.at(-1), now).run();
-  return { skipped: false, repairedDays, repairedWeeks, repairedMonths };
+  return { skipped: false, repairedDays, repairedWeeks };
 }
 
 async function repairContaminatedSummaries(stateDb, sourceDb, otherDb, now) {
@@ -495,35 +486,6 @@ async function refreshWeekly(otherDb, range, now, force = false) {
   return { skipped: !written, rebuilt: Boolean(existing && written), generated: Boolean(!existing && written), reason: written ? null : 'daily-summaries-empty', periodKey: range.key, generation };
 }
 
-async function completeWeeklyCoverage(otherDb, monthRange) {
-  const firstWeek = utcWeeklyRange(dayKey(monthRange.start));
-  const lastWeek = utcWeeklyRange(dayKey(monthRange.end - 1));
-  const expected = Math.round((lastWeek.start - firstWeek.start) / (7 * DAY_MS)) + 1;
-  const row = await otherDb.prepare(`SELECT COUNT(*) AS count FROM sh_weekly_summary
-    WHERE period_start>=? AND period_start<=?`)
-    .bind(firstWeek.start, lastWeek.start).first();
-  return Number(row?.count || 0) === expected;
-}
-
-async function refreshMonthly(otherDb, range, now, force = false) {
-  const existing = await loadSummary(otherDb, 'sh_monthly_summary', range.key);
-  if (!(await completeWeeklyCoverage(otherDb, range))) {
-    return { skipped: true, reason: 'weekly-summaries-incomplete', periodKey: range.key };
-  }
-  const dailyRows = await loadRangeGenerations(otherDb, range);
-  const expectedDays = Math.round((range.end - range.start) / DAY_MS);
-  if (dailyRows.length !== expectedDays) {
-    return { skipped: true, reason: 'daily-summaries-incomplete', periodKey: range.key };
-  }
-  const generation = rangeGeneration(dailyRows);
-  if (existing && !force && taggedGeneration(existing, 'daily_generation') === generation) {
-    return { skipped: true, reason: 'already-current', periodKey: range.key, generation };
-  }
-  const qualityFlags = JSON.stringify(['monthly_reconciled', 'daily_generation:' + generation]);
-  const written = await rollupFromDaily(otherDb, 'sh_monthly_summary', range, now, qualityFlags);
-  return { skipped: !written, rebuilt: Boolean(existing && written), generated: Boolean(!existing && written), reason: written ? null : 'daily-summaries-empty', periodKey: range.key, generation };
-}
-
 // Maintenance state remains in Buddies DB. Current daily summaries are built
 // directly from MINUTE_DB's canonical minute facts; UTC rollups are stored in
 // OTHER_DB because only monitoring and Pages read them.
@@ -557,14 +519,7 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
       now,
       daily.rebuilt === true || daily.generated === true,
     );
-    const monthRange = utcMonthlyRange(period.key);
-    const monthly = await refreshMonthly(
-      otherDb,
-      monthRange,
-      now,
-      daily.rebuilt === true || daily.generated === true || weekly.rebuilt === true,
-    );
-    results.push({ periodKey: period.key, reconciliation, daily, weekly, monthly });
+    results.push({ periodKey: period.key, reconciliation, daily, weekly });
   }
   return {
     skipped: results.every((result) => result.skipped || result.daily?.skipped),
