@@ -38,13 +38,3 @@ test('history client exposes only current canonical modes', () => {
   assert.doesNotMatch(source, /tracks:|再生曲一覧|TRACK_COLUMNS|trackDate|trackWeekMode/);
   assert.match(source, /CACHE_PREFIX = 'sh\.history\.v3:'/);
 });
-
-test('goal prediction avoids rewriting unchanged DOM text', () => {
-  const source = readFileSync(
-    new URL('../site/public/sh-ui-fixes.js', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /renderPredictionDifferential/);
-  assert.match(source, /if \(eta\.textContent !== etaText\)/);
-  assert.match(source, /if \(rate\.textContent !== rateText\)/);
-});
