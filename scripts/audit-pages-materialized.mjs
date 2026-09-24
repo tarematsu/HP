@@ -11,6 +11,7 @@ import {
   KNOWN_DAILY_STREAM_GAPS,
   parseQualityFlags,
 } from '../site/functions/lib/period-completeness.js';
+import { isKnownMissingPeriod } from '../site/functions/lib/known-history-gap.js';
 
 const MATERIALIZED_SOURCES = new Set(['actions-r2', 'worker-r2', 'worker-kv', 'edge-cache']);
 const DAY_MS = 86_400_000;
@@ -166,12 +167,13 @@ function auditSummaryRows(payload, mode, options = {}) {
     keys.push(key);
 
     const current = key === currentPeriodKey(mode, options.materializedAt ?? options.now ?? Date.now());
+    const declaredMissing = row?.known_missing === true && isKnownMissingPeriod(mode, key);
     if (row?.period_complete === false) {
       incompleteCount += 1;
       const reasons = Array.isArray(row?.exclusion_reasons)
         ? row.exclusion_reasons.join(',')
         : parseQualityFlags(row?.quality_flags).join(',');
-      if ((mode === 'daily' && KNOWN_DAILY_STREAM_GAPS.has(key)) || current || mode !== 'daily') {
+      if (declaredMissing || (mode === 'daily' && KNOWN_DAILY_STREAM_GAPS.has(key)) || current || mode !== 'daily') {
         warnings.push(`${key} is incomplete${reasons ? ` (${reasons})` : ''}`);
       } else {
         failures.push(`${key} is incomplete${reasons ? ` (${reasons})` : ''}`);
@@ -179,6 +181,12 @@ function auditSummaryRows(payload, mode, options = {}) {
     }
 
     if (mode === 'daily') {
+      if (declaredMissing) {
+        if (row.sample_count !== '-' || row.reliable_sample_count !== '-') {
+          failures.push(`${key} has inconsistent known-missing sample counts`);
+        }
+        continue;
+      }
       const sampleCount = Number(row?.sample_count);
       const reliableSampleCount = Number(row?.reliable_sample_count);
       if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > DAILY_EXPECTED_SAMPLE_COUNT) {
