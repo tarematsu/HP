@@ -64,10 +64,29 @@ test('captions off uses trusted input when the UI toggle is active', () => {
   assert.doesNotMatch(runtime, /captions\.click\(\)/);
 });
 
+test('trusted controls revalidate their CSS point when input actually arrives', () => {
+  assert.match(runtime, /const guardedEventTypes = \['pointerdown', 'mousedown', 'mouseup', 'click'\]/);
+  assert.match(runtime, /const guardClick = event =>/);
+  assert.match(runtime, /hitOwnControl\(point\)/);
+  assert.match(runtime, /document\.addEventListener\(type, guardClick, true\)/);
+  assert.match(runtime, /document\.removeEventListener\(type, guardClick, true\)/);
+  assert.match(runtime, /const accepted = valid\(element\) && hitOwnControl\(point\)/);
+});
+
+test('paused playback tries direct play before any toggle click', () => {
+  const paused = runtime.indexOf('if (video?.paused && !video.ended)');
+  const directPlay = runtime.indexOf('video.play()?.catch', paused);
+  const grace = runtime.indexOf('directPlayAge < 1200', directPlay);
+  const toggle = runtime.indexOf("arm(player.querySelector('.ytp-play-button'), 'play', 1500)", grace);
+  assert.ok(paused >= 0 && directPlay > paused);
+  assert.ok(grace > directPlay && toggle > grace);
+  assert.match(runtime, /directPlayRequestedAt: 0/);
+  assert.match(runtime, /state\.directPlayRequestedAt = now/);
+  assert.match(runtime, /wake\(1200\)/);
+});
+
 test('paused and stalled content share one recovery path', () => {
   assert.match(runtime, /video\?\.paused && !video\.ended/);
-  assert.match(runtime, /video\.play\(\)\?\.catch/);
-  assert.match(runtime, /arm\(player\.querySelector\('\.ytp-play-button'\), 'play', 1500\)/);
   assert.match(runtime, /state\.pausedSince >= 10 \* 1000/);
   assert.match(runtime, /state\.lastProgressAt >= 30 \* 1000/);
   assert.match(runtime, /player\.querySelector\('\.ytp-next-button\[href\]'\)/);
