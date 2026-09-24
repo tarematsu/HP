@@ -18,5 +18,5 @@ test('daily weekly and monthly summary cards use average growth labels', () => {
 test('average-label runtime is loaded with the current shared dashboard deployment version', () => {
   assert.match(main, /history-summary-average-labels\.js\?v=20260924\.1/);
   assert.match(tabs, /history-main\.js\?v=20260924\.1/);
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260924\.4/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260924\.5/);
 });
