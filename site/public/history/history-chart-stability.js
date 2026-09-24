@@ -1,5 +1,5 @@
 const canvas = document.getElementById('chart');
-const STABLE_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking']);
+const STABLE_MODES = new Set(['daily', 'weekly', 'ranking']);
 let armed = false;
 let fallbackTimer = 0;
 let revealTimer = 0;
@@ -91,7 +91,7 @@ if (canvas) {
 
   window.addEventListener('history:period-chart-drawn', (event) => {
     const mode = String(event?.detail?.mode || activeMode());
-    if (!['daily', 'weekly', 'monthly'].includes(mode)) return;
+    if (!['daily', 'weekly'].includes(mode)) return;
     paintedMode = mode;
     reveal(0);
   });
