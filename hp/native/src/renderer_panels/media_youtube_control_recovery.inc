@@ -146,9 +146,25 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     lane.action = action;
     lane.actionAt = now;
     let timer = 0;
+    const guardedEventTypes = ['pointerdown', 'mousedown', 'mouseup', 'click'];
+    const guardClick = event => {
+      const eventX = Number(event.clientX);
+      const eventY = Number(event.clientY);
+      if (!Number.isFinite(eventX) || !Number.isFinite(eventY) ||
+          Math.abs(eventX - point.x) > 1 || Math.abs(eventY - point.y) > 1) {
+        return;
+      }
+      if (valid(element) && hitOwnControl(point)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setTimeout(cleanup, 0);
+    };
     const cleanup = () => {
       clearTimeout(timer);
       element.removeEventListener('click', onClick, true);
+      for (const type of guardedEventTypes) {
+        document.removeEventListener(type, guardClick, true);
+      }
       for (const entry of touched.reverse()) {
         if (!entry.node.isConnected) continue;
         if (entry.pointerValue) {
@@ -179,7 +195,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     };
     function onClick(event) {
       const video = player.querySelector('video');
-      const accepted = valid(element) &&
+      const accepted = valid(element) && hitOwnControl(point) &&
           (action !== 'skip-ad' || ad()) &&
           (action !== 'play' || (!ad() && video?.paused && !video.ended)) &&
           (action !== 'fullscreen' || !fullscreen());
@@ -190,6 +206,9 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
       setTimeout(cleanup, 0);
     }
 
+    for (const type of guardedEventTypes) {
+      document.addEventListener(type, guardClick, true);
+    }
     element.addEventListener('click', onClick, true);
     lane.cleanup = cleanup;
     timer = setTimeout(cleanup, 1400);
@@ -304,7 +323,8 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     Object.assign(state, {
       videoKey, qualityApplied: false, captionsApplied: false,
       fullscreenApplied: false, fullscreenKeyRequestedAt: 0,
-      pausedSince: 0, lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
+      pausedSince: 0, directPlayRequestedAt: 0,
+      lastCurrentTime: -1, lastProgressAt: now, nextRequestedAt: 0
     });
   }
 
@@ -411,7 +431,17 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   if (video?.ended) return advance();
   if (video?.paused && !video.ended) {
     if (!state.pausedSince) state.pausedSince = now;
-    try { video.play()?.catch?.(() => {}); } catch (_) {}
+    if (!state.directPlayRequestedAt) {
+      state.directPlayRequestedAt = now;
+      try { video.play()?.catch?.(() => {}); } catch (_) {}
+      wake(1200);
+      return 'recovery';
+    }
+    const directPlayAge = now - state.directPlayRequestedAt;
+    if (directPlayAge < 1200) {
+      wake(Math.max(80, 1200 - directPlayAge));
+      return 'recovery';
+    }
     const action = arm(player.querySelector('.ytp-play-button'), 'play', 1500);
     if (action) return action;
     if (now - state.pausedSince >= 10 * 1000) return advance();
@@ -421,6 +451,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 
   if (video) {
     state.pausedSince = 0;
+    state.directPlayRequestedAt = 0;
     if (now - state.lastProgressAt >= 30 * 1000) return advance();
   }
 
