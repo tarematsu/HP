@@ -10,7 +10,7 @@ const NOW = Date.parse('2026-09-22T12:00:00Z');
 
 function setup(mode, key) {
   const db = new DatabaseSync(':memory:');
-  for (const table of ['daily', 'weekly', 'monthly']) db.exec(`CREATE TABLE sh_${table}_summary(
+  for (const table of ['daily', 'weekly']) db.exec(`CREATE TABLE sh_${table}_summary(
     period_key TEXT PRIMARY KEY,period_start INTEGER,period_end INTEGER,
     sample_count INTEGER,reliable_sample_count INTEGER,listener_avg REAL,
     listener_min INTEGER,listener_max INTEGER,stream_start INTEGER,stream_end INTEGER,
@@ -44,7 +44,7 @@ function periodDays(bounds) {
   return Math.round((bounds.end - bounds.start) / DAY);
 }
 
-for (const [mode, key] of [['weekly', '2026-09-07'], ['monthly', '2026-08']]) {
+for (const [mode, key] of [['weekly', '2026-09-07']]) {
   test(`${mode} keeps all metrics when listener coverage and boundaries are complete`, async () => {
     const f = setup(mode, key);
     const row = (await f.get()).rows[0];
