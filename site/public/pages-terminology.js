@@ -38,9 +38,15 @@ function applyTerminology() {
     ['最終観測', '最終取得'],
   ]));
 
+  const historyView = document.getElementById('historyView');
+  replaceExact(historyView, 'th', new Map([
+    ['品質', 'データ品質'],
+  ]));
+
   const broadcastsTab = document.querySelector('#modeTabs [data-mode="broadcasts"]');
   if (broadcastsTab && broadcastsTab.textContent !== '公式リスパ') broadcastsTab.textContent = '公式リスパ';
 }
 
 applyTerminology();
+window.addEventListener('history:data-loaded', applyTerminology);
 window.addEventListener('history:runtime-ready', applyTerminology);
