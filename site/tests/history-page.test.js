@@ -25,7 +25,7 @@ test('main dashboard exposes archive modes and likes without separate pages', ()
     assert.match(mainPage, new RegExp(`data-view="history" data-mode="${mode}"`));
   }
   assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
-  assert.doesNotMatch(mainPage, /data-mode="monthly"|>月次</);
+  assert.doesNotMatch(mainPage, /data-mode="monthly"|>月次/);
   assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
@@ -37,9 +37,10 @@ test('embedded history supports daily and weekly summaries without monthly mode'
   assert.doesNotMatch(historyEntry, /'monthly'|'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
   assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-lite\.js\?v=20260923\.3/);
+  assert.match(historyEntry, /history-lite\.js\?v=20260925\.1/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
   for (const mode of ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
+  assert.doesNotMatch(historyClient, /monthly:|pastWeekMode|historyPastWeek/);
 });
 
 test('shared tabs use a fixed grid without horizontal scrolling', () => {
