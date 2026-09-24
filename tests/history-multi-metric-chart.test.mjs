@@ -11,10 +11,12 @@ const chart = readFileSync(
   'utf8',
 );
 
-test('daily weekly and monthly charts expose listener average extrema and stream growth', () => {
+test('daily and weekly charts expose listener average extrema and stream growth', () => {
   assert.match(historyClient, /daily: \{[^\n]+chart: '同接・再生数の推移'/);
   assert.match(historyClient, /weekly: \{[^\n]+chart: '同接・再生数の推移'/);
-  assert.match(historyClient, /monthly: \{[^\n]+chart: '同接・再生数の推移'/);
+  assert.doesNotMatch(historyClient, /monthly:/);
+  assert.match(chart, /const SUMMARY_MODES = new Set\(\['daily', 'weekly'\]\)/);
+  assert.doesNotMatch(chart, /monthly|historyPastWeek/);
   for (const key of ['listener_avg', 'listener_max', 'listener_min']) {
     assert.match(chart, new RegExp(`key: '${key}'`));
   }
@@ -39,10 +41,10 @@ test('stream growth uses a separate right-hand scale with bars and selected-peri
 });
 
 test('period charts draw at least four responsive x-axis dates with years', () => {
-  assert.match(chart, /function formatPeriodTick\(periodKey, mode\)/);
-  assert.match(chart, /mode === 'monthly'/);
+  assert.match(chart, /function formatPeriodTick\(periodKey\)/);
+  assert.doesNotMatch(chart, /mode === 'monthly'/);
   assert.match(chart, /`\$\{match\[1\]\}\/\$\{match\[2\]\}\/\$\{match\[3\]\}`/);
   assert.match(chart, /Math\.max\(4, Math\.floor\(plotWidth \/ 140\)\)/);
   assert.match(chart, /xAxisTickIndices\(rows\.length, area\.width\)/);
-  assert.match(chart, /fillText\(formatPeriodTick\(rows\[rowIndex\]\?\.period_key, mode\)/);
+  assert.match(chart, /fillText\(formatPeriodTick\(rows\[rowIndex\]\?\.period_key\)/);
 });
