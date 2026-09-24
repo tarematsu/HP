@@ -37,9 +37,10 @@ test('dashboard HTML keeps accessibility, privacy and all public sections', asyn
     'channelName', 'channelFallback', 'trackFallback', 'updated', 'online', 'members',
     'totalStreams', 'membersYesterdayDelta', 'membersDayBeforeDelta',
     'streamsYesterdayDelta', 'streamsDayBeforeDelta', 'nowPlayingLink', 'queue',
-    'streamCount', 'goalMilestones', 'audienceChart', 'historyView', 'likesView',
+    'metricGoalCompact', 'streamGoal', 'goalEta', 'audienceChart', 'historyView', 'likesView',
     'likesRankingList', 'likesTbody',
   ]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.doesNotMatch(html, /id="streamCount"|id="goalMilestones"|goal-card/);
   assert.match(html, /data-view="current" class="active" aria-current="page">現在/);
   assert.match(html, /data-view="history" data-mode="daily">日次/);
   assert.match(html, /data-view="likes" data-mode="likes">いいね/);
@@ -52,8 +53,9 @@ test('dashboard current page renders online history without comment velocity', a
   const client = await text('public/dashboard-client.js');
   const chart = await text('public/dashboard-chart-comparison.js');
   const detail = await text('public/dashboard-chart-detail.js');
-  assert.match(html, /<h2>オンライン数<\/h2>/);
-  assert.doesNotMatch(html, /コメント勢い/);
+  assert.match(html, /id="audienceChart"/);
+  assert.match(html, /class="online-key">オンライン<\/span>/);
+  assert.doesNotMatch(html, /<h2>オンライン数<\/h2>|コメント勢い/);
   assert.match(client, /const DASHBOARD_URL = '\/api\/dashboard'/);
   assert.match(client, /payload\.queue/);
   assert.match(chart, /payload\?\.history/);
