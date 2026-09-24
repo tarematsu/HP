@@ -44,7 +44,7 @@ function mountView() {
       <div class="table-wrap">
         <table class="unofficial-listening-table">
           <thead>
-            <tr><th>日付</th><th>時間</th><th>名前</th><th>場所</th><th>出典</th></tr>
+            <tr><th>日付</th><th>開始時刻</th><th>イベント名</th><th>開催チャンネル</th><th>出典</th></tr>
           </thead>
           <tbody id="unofficialListeningTbody"></tbody>
         </table>
