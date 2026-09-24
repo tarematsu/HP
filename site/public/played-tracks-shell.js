@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-played-tracks-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/played-tracks.css?v=20260924.1';
+  link.href = '/played-tracks.css?v=20260924.2';
   link.dataset.playedTracksStyles = '1';
   document.head.append(link);
 }

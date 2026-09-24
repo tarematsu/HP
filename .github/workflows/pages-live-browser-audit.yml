@@ -7,6 +7,7 @@ on:
       - 'worker/scripts/run-pages-read-model-actions.mjs'
       - 'worker/scripts/repair-pages-summary-gaps.mjs'
       - 'scripts/audit-pages-live.mjs'
+      - 'scripts/audit-pages-mobile-compact.mjs'
       - 'scripts/audit-pages-materialized.mjs'
       - 'scripts/audit-pages-materialized-production.mjs'
       - 'scripts/audit-sakurazaka46jp-status.mjs'
@@ -158,15 +159,23 @@ jobs:
             --attempts=2 \
             --retry-delay-ms=5000 \
             --out=.pages-preview-audit/full
+          node scripts/audit-pages-mobile-compact.mjs \
+            --url="$PAGES_AUDIT_URL" \
+            --out=.pages-preview-audit/mobile-compact
 
       - name: Access production Pages in Chromium
         continue-on-error: ${{ github.event_name == 'pull_request' }}
-        run: >-
-          node scripts/audit-pages-live.mjs
-          --url=https://skrzk.pages.dev
-          --attempts=3
-          --retry-delay-ms=10000
-          --out=.pages-production-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/audit-pages-live.mjs \
+            --url=https://skrzk.pages.dev \
+            --attempts=3 \
+            --retry-delay-ms=10000 \
+            --out=.pages-production-audit
+          node scripts/audit-pages-mobile-compact.mjs \
+            --url=https://skrzk.pages.dev \
+            --out=.pages-production-audit/mobile-compact
 
       - name: Verify Sakurazaka minute collection page
         if: github.event_name != 'pull_request'
