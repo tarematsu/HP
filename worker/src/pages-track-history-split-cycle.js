@@ -14,7 +14,7 @@ import {
   createTrackHistoryPublication,
   TRACK_HISTORY_MODEL_KEY,
 } from './pages-track-history-response.js';
-import { promoteMaterializedD1ResponseToR2 } from './pages-response-r2.js';
+import { promoteMaterializedD1ResponseToR2, saveMaterializedR2Response } from './pages-response-r2.js';
 import {
   finalizeTrackHistoryStatus,
   loadTrackHistoryStage,
@@ -83,21 +83,47 @@ function publicationCompleteResult(timestamp, stage, reason = 'track-history-cyc
 }
 
 async function ensurePublication(env, stage, timestamp, dependencies) {
-  if (stage.publication) return stage.publication;
-  const finalize = dependencies.finalizeStatus || finalizeTrackHistoryStatus;
-  const create = dependencies.createPublication || createTrackHistoryPublication;
-  const initialize = dependencies.initializePublication || initializeTrackHistoryPublication;
-  const status = await finalize(env, stage, timestamp, dependencies);
-  stage.publication = await initialize(
-    env.MINUTE_DB,
-    create(stage, status, timestamp, env),
-    dependencies,
-  );
-  stage.published = false;
-  stage.published_at = null;
-  stage.updated_at = timestamp;
-  const save = dependencies.saveStage || saveTrackHistoryStage;
-  await save(env.MINUTE_DB, stage, timestamp);
+  if (!stage.publication) {
+    const finalize = dependencies.finalizeStatus || finalizeTrackHistoryStatus;
+    const create = dependencies.createPublication || createTrackHistoryPublication;
+    const initialize = dependencies.initializePublication || initializeTrackHistoryPublication;
+    const status = await finalize(env, stage, timestamp, dependencies);
+    stage.publication = await initialize(
+      env.MINUTE_DB,
+      create(stage, status, timestamp, env),
+      dependencies,
+    );
+    stage.published = false;
+    stage.published_at = null;
+    stage.updated_at = timestamp;
+    const save = dependencies.saveStage || saveTrackHistoryStage;
+    await save(env.MINUTE_DB, stage, timestamp);
+  }
+  if (env?.PAGES_RESPONSE_R2 && !stage.publication.status_published) {
+    const publication = stage.publication;
+    const publish = dependencies.publishStatus || saveMaterializedR2Response;
+    await publish(
+      env.PAGES_RESPONSE_R2,
+      'track-history-status',
+      JSON.stringify({
+        ok: true,
+        ranking: publication.ranking || [],
+        ranking_summary: publication.ranking_summary || {},
+        ranking_scope: 'all-time-latest-counter',
+        source_row_count: publication.source_row_count || 0,
+        excluded_play_count_dates: publication.excluded_play_count_dates || [],
+        generated_at: publication.generated_at,
+      }),
+      200,
+      { 'content-type': 'application/json; charset=utf-8' },
+      timestamp,
+      materializedResponseCadenceSeconds(TRACK_HISTORY_MODEL_KEY),
+    );
+    publication.status_published = true;
+    stage.updated_at = timestamp;
+    const save = dependencies.saveStage || saveTrackHistoryStage;
+    await save(env.MINUTE_DB, stage, timestamp);
+  }
   return stage.publication;
 }
 
