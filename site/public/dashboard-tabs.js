@@ -1,4 +1,4 @@
-const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
+const HISTORY_MODES = new Set(['daily', 'weekly', 'ranking', 'broadcasts']);
 const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'likes', 'unofficial']);
 
 const currentView = document.getElementById('currentView');
@@ -66,7 +66,7 @@ async function loadRankingStatusRuntime() {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260924.1').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260925.1').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -134,7 +134,7 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
     console.error('history runtime failed to start', error);
     const notice = document.getElementById('notice');
     if (notice) {
-      notice.textContent = '過去データの初期化に失敗しました。再読み込みしてください。';
+      notice.textContent = '履歴データの初期化に失敗しました。再読み込みしてください。';
       notice.classList.add('error');
     }
   } finally {
