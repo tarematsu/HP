@@ -80,6 +80,21 @@ test('Track History range reads the index and selected R2 day objects without D1
   ]);
 });
 
+test('missing ranking model fails instead of reporting an empty ranking as success', async () => {
+  const r2 = fakeR2();
+  const response = await loadTrackHistoryR2ApiResponse(
+    r2,
+    new Request('https://internal/api/track-history?ranking_only=1'),
+    1_000,
+  );
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).ok, false);
+  assert.deepEqual(r2.gets, [
+    'pages-response/v1/track-history-status.json',
+    'pages-response/v1/track-history.json',
+  ]);
+});
+
 test('Pages middleware routes Track History to R2 and fail-closes instead of falling back to D1', () => {
   const source = readFileSync(new URL('../site/functions/_middleware.js', import.meta.url), 'utf8');
   assert.match(source, /TRACK_HISTORY_MODEL_KEY = 'track-history'/);
