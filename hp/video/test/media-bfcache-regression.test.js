@@ -30,8 +30,10 @@ test('YouTube/TVer shared media environment disables back-forward cache', () => 
   assert.match(mediaHost, /webview_->Navigate\(url\.c_str\(\)\)/);
 });
 
-test('shared UDF keeps auth images enabled while disabling downloadable web fonts', () => {
-  assert.match(environmentSource, /blockImages = false;/);
+test('media UDF blocks images while auth UDFs keep images and all shared UDFs block web fonts', () => {
+  assert.match(environmentSource, /folderName = userDataFolder\.filename\(\)\.wstring\(\)/);
+  assert.match(environmentSource, /L"webview2-youtube-mv"/);
+  assert.match(environmentSource, /blockImages = mediaUdf;/);
   assert.match(environmentSource, /blockFonts = true;/);
   assert.match(environmentSource, /imagesEnabled=false,loadsImagesAutomatically=false/);
   assert.match(environmentSource, /downloadableBinaryFontsEnabled=false/);
