@@ -27,14 +27,15 @@ test('paused TVer playback recovery never toggles the video surface', () => {
   assert.doesNotMatch(runtime, /__homePanelTverResumeBlocked/);
 });
 
-test('TVer fullscreen recovery is key-first and then targets a labelled real control', () => {
-  const key = runtime.indexOf("post('homepanel:tver-fullscreen-key')");
-  const control = runtime.indexOf("arm(fullscreenControl(), 'fullscreen', 1200)");
-  assert.ok(key >= 0 && control > key);
-  assert.match(runtime, /const fullscreenControl = \(\) =>/);
-  assert.match(runtime, /全画面\|フルスクリーン\|fullscreen\|full screen/);
-  assert.match(runtime, /document\.elementFromPoint/);
-  assert.doesNotMatch(runtime, /__homePanelTverFullscreenRecovery|fullscreenAttemptCount/);
+test('TVer fullscreen recovery targets the bottom-right video coordinate directly', () => {
+  assert.match(runtime, /const requestFullscreen = \(\) =>/);
+  assert.match(runtime, /video\.getBoundingClientRect/);
+  assert.match(runtime, /rect\.right - 12/);
+  assert.match(runtime, /rect\.bottom - 12/);
+  assert.match(runtime, /state\.fullscreenCornerTapAt/);
+  assert.match(runtime, /return \[x, y\]/);
+  assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.doesNotMatch(runtime, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
 });
 
 test('TVer routing keys live directly in the shared media base', () => {
