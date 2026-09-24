@@ -8,7 +8,6 @@ import { repairZeroStreamSummaries } from './repair-zero-stream-summaries.mjs';
 const DAY_MS = 86_400_000;
 const DEFAULT_DAILY_LOOKBACK_DAYS = 45;
 const DEFAULT_WEEKLY_LOOKBACK_DAYS = 300;
-const DEFAULT_MONTHLY_LOOKBACK_MONTHS = 12;
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 
@@ -132,27 +131,6 @@ function completedWeeklyRanges(now, lookbackDays) {
   return ranges;
 }
 
-function monthKey(date) {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
-function addMonths(date, amount) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + amount, 1));
-}
-
-function completedMonthlyRanges(now, lookbackMonths) {
-  const current = new Date(now);
-  const currentMonth = new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1));
-  const count = Math.max(1, Math.trunc(Number(lookbackMonths) || DEFAULT_MONTHLY_LOOKBACK_MONTHS));
-  const ranges = [];
-  for (let offset = count; offset >= 1; offset -= 1) {
-    const start = addMonths(currentMonth, -offset);
-    const end = addMonths(start, 1);
-    ranges.push({ key: monthKey(start), startKey: `${monthKey(start)}-01`, endKey: `${monthKey(end)}-01` });
-  }
-  return ranges;
-}
-
 async function existingKeys(db, table, from, to) {
   const result = await db.prepare(`SELECT period_key FROM ${table} WHERE period_key>=? AND period_key<? ORDER BY period_key ASC`)
     .bind(from, to).all();
@@ -236,7 +214,6 @@ export async function repairPagesSummaryGaps({
   now = Date.now(),
   dailyLookbackDays = DEFAULT_DAILY_LOOKBACK_DAYS,
   weeklyLookbackDays = DEFAULT_WEEKLY_LOOKBACK_DAYS,
-  monthlyLookbackMonths = DEFAULT_MONTHLY_LOOKBACK_MONTHS,
 } = {}) {
   if (!minuteDb || !otherDb) throw new Error('minuteDb and otherDb are required');
   const daily = await repairDaily(minuteDb, otherDb, now, dailyLookbackDays);
@@ -246,13 +223,7 @@ export async function repairPagesSummaryGaps({
     completedWeeklyRanges(now, weeklyLookbackDays),
     now,
   );
-  const monthly = await repairAggregateMode(
-    otherDb,
-    'sh_monthly_summary',
-    completedMonthlyRanges(now, monthlyLookbackMonths),
-    now,
-  );
-  return { ok: true, daily, weekly, monthly };
+  return { ok: true, daily, weekly };
 }
 
 async function main() {
