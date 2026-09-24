@@ -45,7 +45,7 @@ test('history tab transitions reset shared summary and pagination state', () => 
 });
 
 test('compact leaderboard and likes tables fill the mobile viewport', () => {
-  assert.match(entry, /history-table-cleanup\.js\?v=20260923\.7/);
+  assert.match(entry, /history-table-cleanup\.js\?v=20260924\.1/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
   assert.match(cleanup, /#historyView \.table-wrap table\.compact-columns,[\s\S]*#likesView \.table-wrap table[\s\S]*width: 100% !important;[\s\S]*min-width: 100% !important;[\s\S]*table-layout: fixed !important;/);
   for (const [column, width] of [[1, 22], [2, 19], [3, 17], [4, 20], [5, 12], [6, 10]]) {
