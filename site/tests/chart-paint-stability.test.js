@@ -41,9 +41,9 @@ test('dashboard first paint stays hidden until the comparison renderer settles',
 
 test('history has one specialized canvas renderer per mode and hides paint until it settles', () => {
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
-  assert.match(historyMain, /history-period-chart\.js\?v=20260923\.\d+/);
+  assert.match(historyMain, /history-period-chart\.js\?v=20260925\.1/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260923\.8/);
-  assert.match(historyMain, /history-chart-stability\.js\?v=20260923\.5/);
+  assert.match(historyMain, /history-chart-stability\.js\?v=20260925\.1/);
   assert.doesNotMatch(historyMain, /history-ranking-missing-gap/);
   assert.match(historyLite, /history:data-loaded/);
   assert.doesNotMatch(historyLite, /function drawSummaryChart|function prepareCanvas|getContext\('2d'\)/);
