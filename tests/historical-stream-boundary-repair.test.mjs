@@ -70,7 +70,7 @@ test('linearly interpolates missing UTC midnight boundaries from the adjacent ob
   assert.equal(result.daily[0].start_evidence.gap_ms, 20 * 60_000);
 });
 
-test('recomputes weekly and monthly stream boundaries that depend on a repaired day', async () => {
+test('recomputes weekly stream boundaries and leaves stored monthly summaries untouched', async () => {
   const f = fixture();
   f.day('2024-06-01', ts('2024-06-01T00:00:00Z'), ts('2024-06-01T23:50:00Z'), 50, 80);
   f.day('2024-06-24', ts('2024-06-24T00:00:00Z'), ts('2024-06-24T23:50:00Z'), 100, 130);
@@ -93,11 +93,11 @@ test('recomputes weekly and monthly stream boundaries that depend on a repaired 
   const weekly = f.db.prepare("SELECT stream_start,stream_end,stream_growth,quality_flags FROM sh_weekly_summary WHERE period_key='2024-06-24'").get();
   const monthly = f.db.prepare("SELECT stream_start,stream_end,stream_growth,quality_flags FROM sh_monthly_summary WHERE period_key='2024-06'").get();
   assert.deepEqual([weekly.stream_start, weekly.stream_end, weekly.stream_growth], [100, 320, 220]);
-  assert.deepEqual([monthly.stream_start, monthly.stream_end, monthly.stream_growth], [50, 320, 270]);
+  assert.deepEqual([monthly.stream_start, monthly.stream_end, monthly.stream_growth], [50, 300, 250]);
   assert.match(weekly.quality_flags, /stream_boundary_interpolated_v1/);
-  assert.match(monthly.quality_flags, /stream_boundary_interpolated_v1/);
+  assert.doesNotMatch(monthly.quality_flags, /stream_boundary_interpolated_v1/);
   assert.deepEqual(result.weekly.map((row) => row.key), ['2024-06-24']);
-  assert.deepEqual(result.monthly.map((row) => row.key), ['2024-06']);
+  assert.equal('monthly' in result, false);
 });
 
 test('refuses interpolation across counter decreases or overly wide observation gaps', async () => {
