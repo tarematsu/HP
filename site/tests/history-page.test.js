@@ -138,6 +138,7 @@ test('integrated likes view reads materialized current ranking without playback 
   assert.match(mainPage, /最新いいね/);
   assert.doesNotMatch(mainPage, /今週再生|再生曲/);
   assert.match(likesClient, /\/api\/track-history\?ranking_only=1&ranking_limit=500/);
+  assert.doesNotMatch(likesClient, /metadata_revision=/);
   assert.match(likesClient, /result\.data\.ranking/);
   assert.match(likesClient, /result\.data\.ranking_summary/);
   assert.doesNotMatch(likesClient, /likesLoad/);
