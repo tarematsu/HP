@@ -239,6 +239,41 @@
     justify-self: stretch !important;
   }
 
+  /* Ranking/likes data tables should scroll horizontally instead of squeezing
+     every column into the viewport. These selectors intentionally outrank the
+     older runtime compact-width rules, including the all-host leaderboard. */
+  #historyView > .data-panel .table-wrap,
+  #likesView > .data-panel .table-wrap {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #historyView > .data-panel .table-wrap > table.compact-columns:not(.all-host-ranking-table) {
+    width: max-content !important;
+    min-width: 760px !important;
+    table-layout: auto !important;
+  }
+
+  #historyView > .data-panel .table-wrap > table.all-host-ranking-table.compact-columns {
+    width: max-content !important;
+    min-width: 980px !important;
+    table-layout: auto !important;
+  }
+
+  #historyView #rankingWeeklyPanel .table-wrap > table {
+    width: max-content !important;
+    min-width: 560px !important;
+    table-layout: auto !important;
+  }
+
+  #likesView > .data-panel .table-wrap > table {
+    width: max-content !important;
+    min-width: 680px !important;
+    table-layout: auto !important;
+  }
+
   .table-wrap th {
     height: 29px !important;
   }
