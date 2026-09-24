@@ -20,7 +20,6 @@ const NOW = Date.UTC(2026, 6, 28, 0, 4);
 const HISTORY_KEYS = [
   'history:daily',
   'history:weekly',
-  'history:monthly',
   'history:broadcasts',
   'host-history:summary',
 ];
@@ -48,7 +47,7 @@ test('D1 budget deferral only reuses history and never refreshes dashboard', () 
   assert.doesNotMatch(workflow, /Rebuild track history|track-history generation/);
 });
 
-test('budget fallback keeps every history model reuse-only and excludes dashboard', async () => {
+test('budget fallback keeps every active history model reuse-only and excludes dashboard', async () => {
   assert.deepEqual(HISTORY_READ_MODEL_VARIANTS.map(({ key }) => key), HISTORY_KEYS);
   const published = [];
   const reuseOnly = [];
@@ -69,6 +68,7 @@ test('budget fallback keeps every history model reuse-only and excludes dashboar
   assert.deepEqual(published, HISTORY_KEYS);
   assert.deepEqual(reuseOnly, HISTORY_KEYS);
   assert.equal(published.includes('dashboard'), false);
+  assert.equal(published.includes('history:monthly'), false);
   assert.equal(result.track_history_steps, 0);
   assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
   assert.deepEqual(result.published.map(({ key }) => key), HISTORY_KEYS);
