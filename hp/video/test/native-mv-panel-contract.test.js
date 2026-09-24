@@ -151,14 +151,17 @@ test('TVer media initialization performs one pointer wake without burst polling'
   );
 });
 
-test('TVer ads prioritize Skip and retain fullscreen recovery as a fallback', () => {
+test('TVer ads prioritize Skip and use bottom-right fullscreen recovery as a fallback', () => {
   const adStart = tverEpisode.indexOf('if (adActive) {');
   const skip = tverEpisode.indexOf("arm(skip, 'skip-ad', 600)", adStart);
   const fullscreen = tverEpisode.indexOf('if (!fullscreen()) return requestFullscreen();', skip);
   assert.ok(adStart >= 0 && skip > adStart && fullscreen > skip);
-  assert.match(tverEpisode, /post\('homepanel:tver-fullscreen-key'\)/);
-  assert.match(tverEpisode, /arm\(fullscreenControl\(\), 'fullscreen', 1200\)/);
-  assert.doesNotMatch(tverEpisode, /__homePanelTverFullscreenRecovery|fullscreenAttemptCount/);
+  assert.match(tverEpisode, /video\.getBoundingClientRect/);
+  assert.match(tverEpisode, /rect\.right - 12/);
+  assert.match(tverEpisode, /rect\.bottom - 12/);
+  assert.match(tverEpisode, /state\.fullscreenCornerTapAt/);
+  assert.doesNotMatch(tverEpisode, /homepanel:tver-fullscreen-key|fullscreenControl/);
+  assert.doesNotMatch(tverEpisode, /data-homepanel-tver-fill|homepanel-tver-viewport-fill/);
   const branch = tverEpisode.slice(adStart, fullscreen);
   assert.doesNotMatch(branch, /video\.play\(|video\.volume = 1\.0|playbackRate = 1\.75/);
 });
@@ -176,7 +179,7 @@ test('TVer completion reuses the existing controller through the host navigation
   assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
 });
 
-test('media WebView keeps authentication images enabled while shared downloadable fonts remain reduced', () => {
+test('media UDF blocks images and downloadable fonts while auth UDFs keep images enabled', () => {
   assert.match(
     mediaHost,
     /SharedWebViewEnvironment::Instance\(\)\.Acquire\(\s*userDataFolder_, false, false,/,
@@ -185,7 +188,9 @@ test('media WebView keeps authentication images enabled while shared downloadabl
   assert.doesNotMatch(mediaHost, /webResourceRequestedToken_/);
   assert.doesNotMatch(mediaHost, /add_WebResourceRequested|AddWebResourceRequestedFilter/);
 
-  assert.match(webviewEnvironment, /blockImages = false;/);
+  assert.match(webviewEnvironment, /folderName = userDataFolder\.filename\(\)\.wstring\(\)/);
+  assert.match(webviewEnvironment, /L"webview2-youtube-mv"/);
+  assert.match(webviewEnvironment, /blockImages = mediaUdf;/);
   assert.match(webviewEnvironment, /blockFonts = true;/);
   assert.match(webviewEnvironment, /imagesEnabled=false,loadsImagesAutomatically=false/);
   assert.match(webviewEnvironment, /downloadableBinaryFontsEnabled=false/);
