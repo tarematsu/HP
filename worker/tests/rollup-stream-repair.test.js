@@ -33,14 +33,12 @@ test('daily reconciliation repairs listener-count drift and bumps rebuild genera
   assert.match(reconcile, /\|\| listenerMismatch/);
 });
 
-test('daily rebuild refreshes dependent weekly and monthly summaries', () => {
+test('daily rebuild refreshes dependent weekly summaries only', () => {
   assert.match(source, /completeDailyRange/);
   assert.match(source, /daily-summaries-incomplete/);
-  assert.match(source, /completeWeeklyCoverage/);
-  assert.match(source, /weekly-summaries-incomplete/);
   assert.match(source, /daily\.rebuilt === true \|\| daily\.generated === true/);
-  assert.match(source, /weekly\.rebuilt === true/);
   assert.match(source, /minuteFactReconcileCandidates\(now\)/);
+  assert.doesNotMatch(source, /utcMonthlyRange|refreshMonthly|sh_monthly_summary|weekly-summaries-incomplete/);
 });
 
 test('minute rollup compatibility view forces the observed-time index', () => {
