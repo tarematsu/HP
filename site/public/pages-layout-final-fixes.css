@@ -13,6 +13,11 @@
   min-width: 0 !important;
 }
 
+/* Current headline metrics always use one full-width column. */
+#currentView > .metrics {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
 #historyView > .summary-cards,
 #likesView > .summary-cards {
   margin-top: 10px !important;
@@ -273,14 +278,6 @@
 
   #channelName {
     overflow-wrap: anywhere !important;
-  }
-
-  .metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-  }
-
-  .metrics .metric.featured {
-    grid-column: 1 / -1 !important;
   }
 
   #historyView .summary-cards {
