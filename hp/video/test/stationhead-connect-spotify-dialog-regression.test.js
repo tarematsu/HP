@@ -58,9 +58,9 @@ test('native trusted locator prefers actionable controls then split dialog then 
 
 test('trusted locator hits the label inside a wide clickable surface', () => {
   const policy = source('sh_recoverable_action_policy.h');
-  const pattern = policy.match(/kStationheadRecoverableActionPattern = LR"JS\\((.*?)\\)JS"/s)?.[1];
+  const pattern = policy.match(/kStationheadRecoverableActionPattern = LR"JS\((.*?)\)JS"/s)?.[1];
   assert.ok(pattern);
-  const script = [...locator.matchAll(/LR"JS\\(([\\s\\S]*?)\\)JS"/g)]
+  const script = [...locator.matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
     .map(match => match[1]).join('')
     .replace('{{RECOVERABLE_ACTION_PATTERN}}', pattern);
 
@@ -104,3 +104,4 @@ test('trusted locator hits the label inside a wide clickable surface', () => {
     assert.deepEqual({ x: point?.x, y: point?.y }, { x: 100, y: 75 });
   }
 });
+
