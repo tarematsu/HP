@@ -214,6 +214,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     timer = setTimeout(cleanup, 1400);
     return [point.x, point.y];
   };
+)JS" LR"JS(
 
   const dismissMessageDialog = () => {
     const popup = document.querySelector('ytd-popup-container');
