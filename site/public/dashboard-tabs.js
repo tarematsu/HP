@@ -63,7 +63,7 @@ async function loadRankingStatusRuntime() {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260923.11').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260924.1').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -84,7 +84,7 @@ async function loadPlayedTracksRuntime() {
 
 async function loadLikesRuntime() {
   if (!likesRuntimePromise) {
-    likesRuntimePromise = import('/history/history-likes.js?v=20260923.4').catch((error) => {
+    likesRuntimePromise = import('/history/history-likes.js?v=20260924.1').catch((error) => {
       likesRuntimePromise = null;
       throw error;
     });
@@ -142,7 +142,7 @@ async function showPlayedTracks({ updateUrl = true, replaceUrl = false } = {}) {
     console.error('played tracks runtime failed to start', error);
     const notice = document.getElementById('playedTracksNotice');
     if (notice) {
-      notice.textContent = '再生曲データの初期化に失敗しました。再読み込みしてください。';
+      notice.textContent = '再生履歴データの初期化に失敗しました。再読み込みしてください。';
       notice.classList.add('error');
       notice.hidden = false;
     }
