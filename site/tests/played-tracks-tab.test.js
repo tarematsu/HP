@@ -35,8 +35,10 @@ test('played tracks removes manual refresh, hides successful aggregate status, a
   assert.match(shell, /総再生回数/);
   assert.match(shell, /楽曲数/);
   assert.match(shell, /楽曲別再生一覧/);
+  assert.match(runtime, /totalLabel\.textContent = '総再生回数'/);
+  assert.match(runtime, /再生履歴データ/);
   assert.doesNotMatch(shell, /延べ再生曲数|のべ再生曲数|<h2>再生曲一覧<\/h2>/);
-  assert.doesNotMatch(runtime, /曲を集計/);
+  assert.doesNotMatch(runtime, /再生曲データ|再生曲の日付一覧|曲を集計/);
   assert.match(runtime, /setNotice\(state\.total > 0 \? '' :/);
 });
 
@@ -65,7 +67,7 @@ test('track history exposes a lightweight date index from the daily read model',
 test('played tracks runtime is lazy while its shell loads before dashboard tabs', () => {
   assert.match(metrics, /played-tracks-shell\.js\?v=20260924\.3/);
   assert.ok(metrics.indexOf('played-tracks-shell.js') < metrics.indexOf('dashboard-tabs.js'));
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260924\.3/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260924\.4/);
   assert.match(tabs, /'played-tracks'/);
-  assert.match(tabs, /import\('\/played-tracks\.js\?v=20260924\.2'\)/);
+  assert.match(tabs, /import\('\/played-tracks\.js\?v=20260924\.3'\)/);
 });
