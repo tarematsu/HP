@@ -15,7 +15,7 @@ const rankingChart = readFileSync(new URL('../public/history/history-ranking-cha
 
 test('dashboard has one response parser and one canvas renderer', () => {
   assert.doesNotMatch(dashboard, /dashboard-current-enhancements\.js/);
-  assert.match(dashboard, /dashboard-current-layout\.js\?v=20260923\.4/);
+  assert.match(dashboard, /dashboard-current-layout\.js\?v=20260924\.1/);
   assert.match(dashboard, /dashboard-chart-stability\.js\?v=20260923\.4/);
   assert.match(dashboard, /dashboard-chart-comparison\.js\?v=20260923\.6/);
   assert.match(dashboard, /dashboard-chart-detail\.js\?v=20260923\.5/);
