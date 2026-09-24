@@ -5,6 +5,7 @@ import {
   processRawMaterializeStage,
   RAW_MATERIALIZE_MESSAGE,
 } from '../src/raw-collection-preparation.js';
+import { materializeDependencies } from '../src/ingest-channel-optimized-entry.js';
 
 test('materialization hydrates the full queue before presentation_tracks is derived', async () => {
   const sent = [];
@@ -81,7 +82,7 @@ test('materialization hydrates the full queue before presentation_tracks is deri
         },
       };
     },
-    collectedMetadataDue: async () => false,
+    ...materializeDependencies({ COLLECTED_METADATA_PERSIST_ENABLED: false }),
     send: async (message) => sent.push(message),
   });
 
