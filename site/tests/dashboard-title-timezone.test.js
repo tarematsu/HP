@@ -37,9 +37,8 @@ test('header shows the dashboard materialization time in JST without seconds', (
   assert.match(fetchCache, /dashboard:materialized-at/);
   assert.doesNotMatch(historyData, /history:materialized-at|x-materialized-at/);
 
-  // Dashboard/history data timestamps and date-range boundaries remain UTC.
-  assert.match(dashboard, /timeZone: 'UTC'/);
-  assert.match(dashboard, /UTC/);
+  // Current dashboard no longer formats acquisition timestamps; archive ranges remain explicitly UTC.
+  assert.doesNotMatch(dashboard, /timeZone:\s*'UTC'|最終取得 .* UTC/);
   assert.match(history, /timeZone: 'UTC'/);
   assert.match(history, /const todayUtc = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
 });

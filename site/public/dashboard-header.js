@@ -22,7 +22,7 @@ if (!document.querySelector(`link[href="${periodDisplayFixesHref}"]`)) {
   document.head.append(periodDisplayFixes);
 }
 
-const currentEnhancementsHref = '/dashboard-current-enhancements.css?v=20260921.4';
+const currentEnhancementsHref = '/dashboard-current-enhancements.css?v=20260924.1';
 if (!document.querySelector(`link[href="${currentEnhancementsHref}"]`)) {
   const currentEnhancements = document.createElement('link');
   currentEnhancements.rel = 'stylesheet';
@@ -75,10 +75,7 @@ const DASHBOARD_TITLE = '#櫻坂46_ステへ統計';
 document.title = DASHBOARD_TITLE;
 const DASHBOARD_TITLE_SEARCH_URL = `https://x.com/search?q=${encodeURIComponent(DASHBOARD_TITLE)}&src=typed_query`;
 const channelName = document.getElementById('channelName');
-function renderDashboardTitle() {
-  if (!channelName) return;
-  const existing = channelName.querySelector('a[data-dashboard-title-link]');
-  if (existing && channelName.childNodes.length === 1 && existing.textContent === DASHBOARD_TITLE) return;
+if (channelName) {
   const link = document.createElement('a');
   link.dataset.dashboardTitleLink = 'true';
   link.href = DASHBOARD_TITLE_SEARCH_URL;
@@ -88,14 +85,6 @@ function renderDashboardTitle() {
   link.style.color = 'inherit';
   link.style.textDecoration = 'none';
   channelName.replaceChildren(link);
-}
-renderDashboardTitle();
-if (channelName) {
-  new MutationObserver(renderDashboardTitle).observe(channelName, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
 }
 
 const JST_TIME = new Intl.DateTimeFormat('ja-JP', {
@@ -125,20 +114,16 @@ function cacheDashboardMaterializedAt(value) {
 }
 
 let dashboardMaterializedAt = cachedDashboardMaterializedAt();
-let renderingUpdatedLabel = false;
-
-const description = document.getElementById('description');
 const updated = document.getElementById('updated');
+
 function renderUpdatedLabel() {
-  if (!updated || renderingUpdatedLabel) return;
+  if (!updated) return;
   const refreshText = dashboardMaterializedAt == null ? '—' : JST_TIME.format(new Date(dashboardMaterializedAt));
   const next = `更新 ${refreshText}`;
   if (next === updated.textContent) return;
-  renderingUpdatedLabel = true;
   updated.textContent = next;
   updated.title = `更新 ${refreshText} JST`;
   updated.setAttribute('aria-label', updated.title);
-  renderingUpdatedLabel = false;
 }
 
 function setDashboardMaterializedAt(value) {
@@ -149,30 +134,10 @@ function setDashboardMaterializedAt(value) {
   renderUpdatedLabel();
 }
 
-if (updated) {
-  updated.className = 'subtle';
-  if (description) description.replaceWith(updated);
-  renderUpdatedLabel();
-  new MutationObserver(renderUpdatedLabel).observe(updated, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
-  window.addEventListener('dashboard:materialized-at', (event) => {
-    setDashboardMaterializedAt(event?.detail?.updatedAt);
-  });
-}
-description?.remove();
-
-document.querySelector('.live-line')?.remove();
-document.querySelector('.app-launch')?.remove();
-
-const actions = document.querySelector('.dashboard-actions');
-const tabs = document.getElementById('modeTabs');
-if (actions && tabs) actions.replaceWith(tabs);
-
-const broadcastsTab = document.querySelector('#modeTabs [data-mode="broadcasts"]');
-if (broadcastsTab) broadcastsTab.textContent = '公式リスパ';
+renderUpdatedLabel();
+window.addEventListener('dashboard:materialized-at', (event) => {
+  setDashboardMaterializedAt(event?.detail?.updatedAt);
+});
 
 const CHART_HELPER_PREFIX = 'グラフをタッチ';
 function clearChartHelperCopy(element) {
@@ -183,12 +148,9 @@ function clearChartHelperCopy(element) {
 for (const id of ['currentChartDetail', 'chartDetail']) {
   const element = document.getElementById(id);
   if (!element) continue;
-  clearChartHelperCopy(element);
   new MutationObserver(() => clearChartHelperCopy(element)).observe(element, {
     childList: true,
     subtree: true,
     characterData: true,
   });
 }
-
-document.getElementById('notice')?.replaceChildren();

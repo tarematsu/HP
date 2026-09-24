@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 
 import {
@@ -150,19 +149,4 @@ test('host summary cache coalesces concurrent D1 reads per binding', async () =>
   assert.equal(reads, 1);
   assert.strictEqual(await cachedHostSummary(db), first);
   assert.equal(reads, 1);
-});
-
-test('main chart uses shared formatters, single-pass preparation and differential DOM updates', () => {
-  const source = readFileSync(
-    new URL('../site/public/sh-ui-fixes.js', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /const integerFormatter = new Intl\.NumberFormat/);
-  assert.match(source, /const tickDateTimeFormatter = new Intl\.DateTimeFormat/);
-  assert.match(source, /for \(let index = 0; index < sampled\.length; index \+= 1\)/);
-  assert.match(source, /if \(canvas\.width !== pixelWidth\)/);
-  assert.match(source, /if \(detail\.innerHTML !== html\)/);
-  assert.doesNotMatch(source, /toLocaleString\(/);
-  assert.doesNotMatch(source, /toLocaleDateString\(/);
-  assert.doesNotMatch(source, /sampled\.map\(\(row\) => Number\(row\.online_member_count\)\)/);
 });

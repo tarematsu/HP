@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', import.meta.url), 'utf8');
@@ -10,17 +11,18 @@ const chart = readFileSync(new URL('../public/dashboard-chart-comparison.js', im
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 
-test('current metrics are ordered online, total streams and total members without a duplicate chart or fetch renderer', () => {
-  assert.match(metrics, /dashboard-current-layout\.js\?v=20260923\.4/);
+test('current metrics are statically ordered online, total streams and total members without a duplicate chart or fetch renderer', () => {
+  assert.match(metrics, /dashboard-current-layout\.js\?v=20260924\.1/);
   assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260923\.6/);
   assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260923\.4/);
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
-  assert.match(metrics, /dashboard-client\.js\?v=20260923\.4/);
-  assert.match(header, /dashboard-current-enhancements\.css\?v=20260921\.4/);
+  assert.match(metrics, /dashboard-client\.js\?v=20260924\.1/);
+  assert.match(header, /dashboard-current-enhancements\.css\?v=20260924\.1/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);
-  assert.match(layout, /\[onlinePanel, streamsPanel, membersPanel\]/);
-  assert.doesNotMatch(layout, /audienceChart|getContext\('2d'\)|drawEnhancedChart/);
+  assert.ok(html.indexOf('id="online"') < html.indexOf('id="totalStreams"'));
+  assert.ok(html.indexOf('id="totalStreams"') < html.indexOf('id="members"'));
+  assert.doesNotMatch(layout, /append\(|insertAdjacent|MutationObserver|goal-card|audienceChart|getContext\('2d'\)|drawEnhancedChart/);
 });
 
 test('mobile dashboard tabs and metrics stay compact', () => {
@@ -45,11 +47,14 @@ test('current chart draws online axes and JST labels from one renderer', () => {
   assert.doesNotMatch(chart, /strokeRect\(/);
 });
 
-test('stream goal is moved into the metric and ETA is display-only JST', () => {
-  assert.match(layout, /metricGoalCompact/);
+test('stream goal is static inside the metric and ETA is display-only JST', () => {
+  assert.match(html, /id="metricGoalCompact"/);
+  assert.match(html, /id="streamGoal"/);
+  assert.match(html, /id="goalEta"/);
+  assert.doesNotMatch(html, /goal-card|id="streamCount"|id="goalBar"|id="goalPercent"|id="goalRemaining"|id="goalRate"|id="goalMilestones"/);
   assert.match(layout, /jstGoalDateTime = new Intl\.DateTimeFormat[\s\S]*timeZone: 'Asia\/Tokyo'/);
   assert.match(layout, /jstGoalDateTime\.format/);
-  assert.match(css, /\.goal-card\s*\{[\s\S]*display:\s*none !important/);
+  assert.doesNotMatch(css, /\.goal-card/);
 });
 
 test('dashboard deltas are green and refresh label is not ellipsized', () => {

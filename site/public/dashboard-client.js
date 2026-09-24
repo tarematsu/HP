@@ -1,14 +1,6 @@
 const DASHBOARD_URL = '/api/dashboard';
 const CACHE_KEY = 'sh.dashboard.v3';
 const integer = new Intl.NumberFormat('ja-JP');
-const dateTime = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'UTC',
-  month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
-});
-const etaTime = new Intl.DateTimeFormat('ja-JP', {
-  timeZone: 'UTC',
-  month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit',
-});
 
 const state = {
   payload: null,
@@ -25,10 +17,6 @@ const finite = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 const number = (value) => finite(value) == null ? '—' : integer.format(Number(value));
-const safeDate = (value, formatter = dateTime) => {
-  const timestamp = finite(value);
-  return timestamp && timestamp > 0 ? formatter.format(new Date(timestamp)) : '—';
-};
 
 function setText(id, value) {
   const node = byId(id);
@@ -94,16 +82,10 @@ function spotifyUrl(track) {
   }
 }
 
-function renderHeader(payload) {
+function renderCurrentMetrics(payload) {
   const latest = payload?.latest || {};
-  setText('channelName', latest.channel_name || 'Buddies');
-  setText('description', latest.description || latest.artist_name || '');
-  setText('updated', `最終取得 ${safeDate(latest.observed_at)} UTC`);
   setImage('channelImage', latest.channel_image || latest.logo_image, 76);
   if (latest.accent_color) document.documentElement.style.setProperty('--accent', latest.accent_color);
-  const broadcasting = latest.is_broadcasting !== 0 && latest.is_broadcasting !== false;
-  setText('liveState', broadcasting ? '配信中' : '配信停止中');
-  byId('liveDot')?.classList.toggle('on', broadcasting);
   setText('online', number(latest.online_member_count));
   setText('members', number(latest.total_member_count));
   setText('totalStreams', number(latest.current_stream_count ?? latest.total_stream_count));
@@ -226,13 +208,10 @@ function renderNowPlaying(force = false) {
   }
   state.playbackIndex = view.index;
   renderHost();
-  const link = byId('nowPlayingLink');
   if (!track) {
     setText('trackTitle', 'キュー情報がありません');
     setText('trackArtist', '');
     setImage('trackImage', '');
-    link?.removeAttribute('href');
-    link?.setAttribute('aria-disabled', 'true');
     updatePlaybackProgress(view);
     renderQueue();
     return;
@@ -240,16 +219,6 @@ function renderNowPlaying(force = false) {
   setText('trackTitle', track.title || track.display_title || track.spotify_id || '曲名不明');
   setText('trackArtist', inferredArtist(track));
   setImage('trackImage', track.thumbnail_url, 200);
-  const url = spotifyUrl(track);
-  if (url) {
-    link.href = url;
-    link.setAttribute('aria-disabled', 'false');
-    byId('spotifyHint').hidden = false;
-  } else {
-    link.removeAttribute('href');
-    link.setAttribute('aria-disabled', 'true');
-    byId('spotifyHint').hidden = true;
-  }
   const bites = finite(track.bite_count);
   const biteNode = byId('trackBites');
   if (biteNode) {
@@ -258,27 +227,6 @@ function renderNowPlaying(force = false) {
   }
   updatePlaybackProgress(view);
   renderQueue();
-}
-
-function renderGoal(payload) {
-  const latest = payload?.latest || {};
-  const current = finite(latest.current_stream_count);
-  const goal = finite(latest.stream_goal) || 0;
-  const percent = goal > 0 && current != null ? Math.min(100, current / goal * 100) : 0;
-  setText('streamCount', number(current));
-  setText('streamGoal', number(goal));
-  setText('goalPercent', `${percent.toFixed(2)}%`);
-  setText('goalRemaining', goal > 0 && current != null ? `残り ${number(Math.max(0, goal - current))}` : '—');
-  const bar = byId('goalBar');
-  if (bar) bar.style.width = `${percent}%`;
-  const prediction = payload?.goal_prediction;
-  if (prediction?.eta && finite(prediction.rate_per_hour) > 0) {
-    setText('goalEta', `${safeDate(prediction.eta, etaTime)} UTC`);
-    setText('goalRate', `平均 +${number(Math.round(prediction.rate_per_hour))} /時`);
-  } else {
-    setText('goalEta', current != null && goal > 0 && current >= goal ? '目標達成済み' : '予測データ不足');
-    setText('goalRate', '—');
-  }
 }
 
 function saveCache() {
@@ -291,8 +239,7 @@ function applyPayload(payload, save = true) {
   state.payload = payload;
   state.queue = Array.isArray(payload.queue) ? payload.queue : [];
   state.playbackIndex = -1;
-  renderHeader(payload);
-  renderGoal(payload);
+  renderCurrentMetrics(payload);
   renderNowPlaying(true);
   if (save) saveCache();
 }

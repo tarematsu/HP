@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const cleanup = readFileSync(new URL('../public/screenshot-audit-cleanup.css', import.meta.url), 'utf8');
 
-test('screenshot audit cleanup loads with the dashboard and fixes the shared listening-party label', () => {
+test('screenshot audit cleanup loads with the dashboard while the listening-party label is static', () => {
   assert.match(header, /screenshot-audit-cleanup\.css\?v=20260919\.3/);
-  assert.match(header, /\[data-mode="broadcasts"\]/);
-  assert.match(header, /textContent = '公式リスパ'/);
+  assert.match(page, /data-mode="broadcasts">公式リスパ/);
+  assert.doesNotMatch(header, /\[data-mode="broadcasts"\]|textContent = '公式リスパ'/);
 });
 
 test('duplicate and verbose data surfaces are compacted without hiding primary tables', () => {

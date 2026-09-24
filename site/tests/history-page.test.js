@@ -25,7 +25,7 @@ test('main dashboard exposes archive modes and likes without separate pages', ()
     assert.match(mainPage, new RegExp(`data-view="history" data-mode="${mode}"`));
   }
   assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
-  assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲</);
+  assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
 });
@@ -140,7 +140,7 @@ test('integrated likes view reads materialized current ranking without playback 
   assert.match(likesClient, /\/api\/track-history\?ranking_only=1&ranking_limit=500/);
   assert.match(likesClient, /result\.data\.ranking/);
   assert.match(likesClient, /result\.data\.ranking_summary/);
-  assert.match(likesClient, /el\('likesLoad'\)/);
+  assert.doesNotMatch(likesClient, /likesLoad/);
   assert.doesNotMatch(likesClient, /week_play_count|play_count_excluded|currentUtcWeekRange/);
   assert.match(trackHistoryApi, /ranking_only/);
   assert.match(trackHistoryApi, /track-history-status/);

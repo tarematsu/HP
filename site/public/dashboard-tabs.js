@@ -97,7 +97,7 @@ async function loadPlayedTracksRuntime() {
 
 async function loadLikesRuntime() {
   if (!likesRuntimePromise) {
-    likesRuntimePromise = import('/history/history-likes.js?v=20260924.1').catch((error) => {
+    likesRuntimePromise = import('/history/history-likes.js?v=20260924.2').catch((error) => {
       likesRuntimePromise = null;
       throw error;
     });

@@ -28,12 +28,13 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
   for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
     assert.match(page, new RegExp(`id="${id}"`));
   }
-  for (const id of ['likesLoad', 'likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
+  for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
     assert.match(page, new RegExp(`id="${id}"`));
   }
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260924\.4'/);
+  assert.doesNotMatch(page, /id="likesLoad"/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260924\.5'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260924\.1'\)/);
-  assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260924\.1'\)/);
+  assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260924\.2'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
   assert.match(historyEntry, /VALID_MODES/);

@@ -2,23 +2,24 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const headerRepair = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const headerCss = readFileSync(new URL('../public/dashboard-fixes.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
-test('dashboard header repair runs before tabs and dashboard client startup', () => {
+test('dashboard header starts in its final DOM shape before tabs and dashboard client startup', () => {
   const headerImport = dashboardEntry.match(/import '\.\/dashboard-header\.js\?v=[^']+'/)?.[0];
   const tabsImport = dashboardEntry.match(/import '\.\/dashboard-tabs\.js\?v=[^']+'/)?.[0];
   assert.ok(headerImport, 'dashboard-header.js must have an explicit deployment version');
   assert.ok(tabsImport, 'dashboard-tabs.js must have an explicit deployment version');
   assert.ok(dashboardEntry.indexOf(headerImport) < dashboardEntry.indexOf(tabsImport));
   assert.match(headerRepair, /dashboard-fixes\.css\?v=[^']+/);
-  assert.match(headerRepair, /description\.replaceWith\(updated\)/);
-  assert.match(headerRepair, /querySelector\('\.live-line'\)\?\.remove\(\)/);
-  assert.match(headerRepair, /querySelector\('\.app-launch'\)\?\.remove\(\)/);
-  assert.match(headerRepair, /actions\.replaceWith\(tabs\)/);
+  assert.match(page, /<p id="updated" class="subtle">-<\/p>/);
+  assert.match(page, /<nav id="modeTabs" class="mode-tabs dashboard-tabs"/);
+  assert.doesNotMatch(page, /id="description"|class="live-line"|class="app-launch"|class="dashboard-actions"/);
+  assert.doesNotMatch(headerRepair, /description\.replaceWith|querySelector\('\.live-line'\)|querySelector\('\.app-launch'\)|actions\.replaceWith/);
 });
 
 test('mobile dashboard header has no vertical flex basis', () => {
