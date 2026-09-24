@@ -6,11 +6,11 @@ const entry = readFileSync(new URL('../public/history/history-main.js', import.m
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 
-test('official listening party table uses final read-model columns with source at the right edge', () => {
-  assert.match(entry, /history-broadcast-table\.js\?v=20260923\.5/);
+test('official listening party table uses clear read-model column labels with source at the right edge', () => {
+  assert.match(entry, /history-broadcast-table\.js\?v=20260924\.1/);
   for (const label of [
-    '日付', '時間', '長さ', '平均同接', '最小同接', '最大同接',
-    '曲数', '推定再生数', 'コメント数', '放送内容', '名前', '出典',
+    '日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接',
+    '楽曲数', '推定再生数', 'コメント数', '放送内容', 'イベント名', '出典',
   ]) {
     assert.match(table, new RegExp(label));
   }
@@ -38,7 +38,7 @@ test('official listening party table has no hidden compatibility columns or enri
   assert.match(table, /dataset\.officialPartyReadModel = 'complete'/);
 });
 
-test('official listening party table left-aligns broadcast content, name and source', () => {
+test('official listening party table left-aligns broadcast content, event name and source', () => {
   for (const column of [10, 11, 12]) {
     assert.match(table, new RegExp(`official-party-table th:nth-child\\(${column}\\)`));
     assert.match(table, new RegExp(`official-party-table td:nth-child\\(${column}\\)`));
