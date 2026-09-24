@@ -9,7 +9,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/dashboard', methods: ['GET'], description: 'Current state, queue, recent history, and completed daily changes' },
   ]),
   history: Object.freeze([
-    { path: '/api/history', methods: ['GET'], description: 'Daily, weekly, monthly, ranking, and broadcast history modes' },
+    { path: '/api/history', methods: ['GET'], description: 'Daily, weekly, ranking, and broadcast history modes' },
     { path: '/api/history-current', methods: ['GET'], description: 'Current UTC daily summary from the incremental minute projection' },
     { path: '/api/track-history', methods: ['GET'], description: 'Stored track history and current like ranking' },
     { path: '/api/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka official broadcast listener series' },
@@ -28,7 +28,6 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 5 }),
   Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 360 }),
   Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 360 }),
-  Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 360 }),
   Object.freeze({ key: 'history:broadcasts', url: '/api/history?mode=broadcasts', cadence_minutes: 360 }),
   Object.freeze({ key: 'host-history:summary', url: '/api/host-history?mode=summary', cadence_minutes: 1440 }),
 ]);
@@ -55,7 +54,7 @@ export function materializedApiKey(input) {
       && onlyParameters(url, ['since', 'queue_revision', 'history'])) return 'dashboard';
   if (pathname === '/api/history' && onlyParameters(url, ['mode', 'from', 'to'])) {
     const mode = String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase();
-    return ['daily', 'weekly', 'monthly', 'broadcasts'].includes(mode) ? `history:${mode}` : null;
+    return ['daily', 'weekly', 'broadcasts'].includes(mode) ? `history:${mode}` : null;
   }
   if (pathname === '/api/host-history' && onlyParameters(url, ['mode'])) {
     const mode = String(url.searchParams.get('mode') || 'summary').trim().toLowerCase();
