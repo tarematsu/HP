@@ -1,4 +1,4 @@
-const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
+const SUMMARY_MODES = new Set(['daily', 'weekly']);
 const VALID_MODES = new Set([...SUMMARY_MODES, 'ranking', 'broadcasts']);
 const requestedMode = location.hash.slice(1);
 const runtimePromises = new Map();
