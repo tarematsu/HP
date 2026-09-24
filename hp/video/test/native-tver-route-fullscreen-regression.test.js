@@ -7,6 +7,8 @@ const runtime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
 const mediaSection = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
+const trustedInput = readFileSync(
+  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url), 'utf8');
 
 test('TVer real fullscreen remains authoritative and uses a trusted corner tap', () => {
   assert.doesNotMatch(runtime, /__homePanelTverEnsureViewportFullscreen|viewportFullscreen/);
@@ -17,7 +19,7 @@ test('TVer real fullscreen remains authoritative and uses a trusted corner tap',
   assert.match(runtime, /rect\.bottom - 12/);
   assert.match(runtime, /return \[x, y\]/);
   assert.doesNotMatch(runtime, /homepanel:tver-fullscreen-key|fullscreenControl/);
-  assert.match(mediaSection, /Input\.dispatchMouseEvent/);
+  assert.match(trustedInput, /Input\.dispatchMouseEvent/);
 });
 
 test('TVer page and WebView cannot route themselves to another episode', () => {
