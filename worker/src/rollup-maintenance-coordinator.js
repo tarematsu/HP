@@ -21,6 +21,35 @@ function leaseOwner(now) {
   return `rollup:${now}:${suffix}`;
 }
 
+function noopMonthlySummaryStatement() {
+  const statement = {
+    bind() { return statement; },
+    async run() { return { success: true, meta: { changes: 0 } }; },
+    async all() { return { success: true, results: [], meta: {} }; },
+    async first() { return null; },
+    async raw() { return []; },
+  };
+  return statement;
+}
+
+function withoutMonthlySummaryWrites(db) {
+  return new Proxy(db, {
+    get(target, property, receiver) {
+      if (property === 'prepare') {
+        return (sql) => {
+          const text = String(sql || '');
+          if (/\bsh_monthly_summary\b/i.test(text) && !/^\s*SELECT\b/i.test(text)) {
+            return noopMonthlySummaryStatement();
+          }
+          return target.prepare(sql);
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 export function shouldThrottleRollupMaintenance(state, now, intervalMs = DEFAULT_RUN_INTERVAL_MS) {
   if (!state || state.status !== 'idle' || state.last_error) return false;
   const lastFinishedAt = integer(state.updated_at);
@@ -163,7 +192,6 @@ async function persistRunResults(db, result, now) {
   for (const period of result?.periods || []) {
     await persistDayResult(db, period, now);
     await persistAggregateResult(db, 'week', period.weekly, now);
-    await persistAggregateResult(db, 'month', period.monthly, now);
   }
 }
 
@@ -187,7 +215,8 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
     return { skipped: true, reason: 'rollup-maintenance-lease-held' };
   }
   try {
-    const result = await runBaseRollupMaintenance(db, otherDb, minuteDb, now);
+    const result = await runBaseRollupMaintenance(db, withoutMonthlySummaryWrites(otherDb), minuteDb, now);
+    for (const period of result?.periods || []) delete period.monthly;
     await persistRunResults(db, result, now);
     await releaseRunLease(db, owner, now);
     return { ...result, coordinator: { leaseOwner: owner, persisted: true } };
