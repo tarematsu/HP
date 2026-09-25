@@ -34,6 +34,7 @@ StationheadPlayer::~StationheadPlayer() { Stop(); }
 void StationheadPlayer::Start() {
   shuttingDown_ = false;
   usingFallback_ = false;
+  scheduledUrl_.clear();
   trackBoundaryPlaybackRecoveryPending_ = false;
   trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
   trackBoundaryPlaybackRecoveryDeadline_ = 0;
@@ -346,7 +347,7 @@ void StationheadPlayer::TryStartInitialNavigation() {
 
 std::wstring StationheadPlayer::CurrentStationheadUrl() const {
   if (usingFallback_ && !config_.fallbackUrl.empty()) return config_.fallbackUrl;
-  return config_.url;
+  return std::wstring(StationheadScheduledUrl(UnixMillis() - routeDelayMs_));
 }
 
 void StationheadPlayer::SetPlaybackFallback(bool active, const std::wstring& reason) {
@@ -380,6 +381,7 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
   SetStartupBounds();
   ResetNavigationRouteState();
   usingFallback_ = fallbackActive;
+  scheduledUrl_ = url;
   resourceBlockingArmed_ = false;
   loginRequired_ = false;
   {
@@ -620,7 +622,9 @@ void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
 
 void StationheadPlayer::Tick(int64_t nowMs) {
   if (shuttingDown_) return;
-  if (nowMs < nextTickAt_ && !(recreating_.load(std::memory_order_relaxed) && nowMs >= recreateAt_)) {
+  if (nowMs < nextTickAt_ &&
+      scheduledUrl_ == StationheadScheduledUrl(nowMs - routeDelayMs_) &&
+      !(recreating_.load(std::memory_order_relaxed) && nowMs >= recreateAt_)) {
     return;
   }
   nextTickAt_ = nowMs + 60'000;
@@ -671,6 +675,13 @@ void StationheadPlayer::Tick(int64_t nowMs) {
       nextTickAt_ = nowMs + 1'000;
       return;
     }
+  }
+  const std::wstring scheduledUrl(StationheadScheduledUrl(nowMs - routeDelayMs_));
+  if (scheduledUrl_ != scheduledUrl && !spotifyAuthorization_ &&
+      !navigationInFlight_.load(std::memory_order_acquire)) {
+    NavigateStationheadUrl(nowMs, scheduledUrl, L"JST scheduled room change", false);
+    nextTickAt_ = nowMs + 1'000;
+    return;
   }
   if (spotifyAuthorization_ && authControllerStartedAt_ > 0 &&
       nowMs - authControllerStartedAt_ >= kStationheadAuthControllerTimeoutMs) {

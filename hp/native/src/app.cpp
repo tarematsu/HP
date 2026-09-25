@@ -123,6 +123,7 @@ void App::StartServices() {
     auto player = std::make_unique<StationheadPlayer>(
         window_, config_.stationhead, stationheadUserData, *logger_);
     player->ReuseWebViewProfile(kStationheadPeerProfiles[i]);
+    player->SetRouteDelayMinutes(static_cast<int>(i));
     stationheadPeers_[i] = std::move(player);
     stationheadPeers_[i]->SetAudioMuted(true);
     stationheadPeers_[i]->SetForegroundAllowed(false);
@@ -131,6 +132,7 @@ void App::StartServices() {
   auto stationheadPlayer = std::make_unique<StationheadPlayer>(
       window_, config_.stationhead, stationheadUserData, *logger_);
   stationheadPlayer->ReuseWebViewProfile(kStationheadOzekiProfile);
+  stationheadPlayer->SetRouteDelayMinutes(5);
   stationhead_ = std::move(stationheadPlayer);
   stationhead_->SetAudioMuted(stationheadAudioMuted_);
   stationhead_->SetForegroundAllowed(false);
