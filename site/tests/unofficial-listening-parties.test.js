@@ -13,7 +13,8 @@ test('unofficial listening party tab is mounted immediately after the official t
 });
 
 test('unofficial listening party view is table-only with clear event columns', () => {
-  assert.match(viewSource, /<th>日付<\/th><th>開始時刻<\/th><th>イベント名<\/th><th>開催チャンネル<\/th><th>出典<\/th>/);
+  assert.match(viewSource, /<th>日付<\/th><th>開始時刻<\/th><th>種別<\/th><th>イベント名<\/th><th>開催チャンネル<\/th><th>出典<\/th>/);
+  assert.match(viewSource, /\[event\.date, event\.time, event\.type, event\.name, event\.place\]/);
   assert.doesNotMatch(viewSource, /長さ|duration|最大同接/);
   assert.doesNotMatch(viewSource, /<canvas\b/);
   assert.doesNotMatch(viewSource, /chart-panel/);
@@ -31,6 +32,17 @@ test('historical unofficial listening party rows use formal hosting channel name
   assert.match(viewSource, /date: '2024\/12\/29'.+place: 'WithUチャンネル'/);
   assert.match(viewSource, /date: '2024\/12\/30'.+place: 'Ohisama CH\.'/);
   assert.doesNotMatch(viewSource, /BUDDIESチャンネル|Buddiesチャンネル|Ohisamaチャンネル|imp714p/);
+});
+
+test('every historical row is explicitly classified as collaboration or solo', () => {
+  const rows = [...viewSource.matchAll(/^  \{ date: '[^']+'.+?\},$/gm)].map(([row]) => row);
+  assert.equal(rows.length, 41);
+  assert.equal(rows.filter((row) => row.includes("type: 'コラボ'")).length, 22);
+  assert.equal(rows.filter((row) => row.includes("type: '単独'")).length, 19);
+  assert.match(viewSource, /date: '2024\/07\/03'.+type: '単独'/);
+  assert.match(viewSource, /date: '2024\/08\/02'.+type: 'コラボ'/);
+  assert.match(viewSource, /date: '2025\/07\/20'.+type: 'コラボ'/);
+  assert.match(viewSource, /date: '2025\/04\/18'.+type: '単独'/);
 });
 
 test('expanded history includes the three-Sakamichi joint event and Keyaki Derby', () => {
