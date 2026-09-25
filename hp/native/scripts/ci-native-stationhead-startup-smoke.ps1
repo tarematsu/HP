@@ -317,7 +317,7 @@ public static class HomePanelStationheadObserveNative
 $required = [ordered]@{
   primaryWebViewConfigured = "Stationhead A registering required startup scripts"
   primaryStartupScriptRegistered = "Stationhead A startup script registration completed"
-  primaryStationheadUrlNavigated = "Stationhead A navigation (startup): https://www.stationhead.com/c/ohisama"
+  primaryStationheadUrlNavigated = "Stationhead A navigation (startup): https://www.stationhead.com/"
   primaryStartListeningClickRequested = "Stationhead A auto-clicking Start Listening at"
 }
 $observed = [ordered]@{}
@@ -385,7 +385,11 @@ try {
     if (Test-Path -LiteralPath $logPath) {
       $log = [string](Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue)
       foreach ($name in $required.Keys) {
-        if (-not $observed[$name] -and $log.Contains($required[$name])) {
+        $matched = $log.Contains($required[$name])
+        if ($name -eq 'primaryStationheadUrlNavigated') {
+          $matched = $log -match 'Stationhead A navigation \(startup\): https://www\.stationhead\.com/(sakuramankai|c/unity|c/ohisama)(\s|$)'
+        }
+        if (-not $observed[$name] -and $matched) {
           $elapsedMs = [int][Math]::Round(([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
           $observed[$name] = $true
           $observedAtMs[$name] = $elapsedMs
