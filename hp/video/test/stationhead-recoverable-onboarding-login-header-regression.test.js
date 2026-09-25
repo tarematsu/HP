@@ -25,7 +25,7 @@ test('recoverable onboarding ignores standalone login header while preserving ha
 
   // Reconnect Music / Continue must not be suppressed merely because the page
   // also exposes the ordinary unauthenticated Log in header control.
-  assert.match(publish, /if \(blockingLogin\(true\)\) return false;/);
+  assert.match(publish, /if \(blockingLogin\(true, true\)\) return false;/);
   assert.doesNotMatch(publish, /blockingLogin\(accountVisible\(\)\)/);
   assert.doesNotMatch(publish, /blockingLogin\(authenticated\)/);
 
