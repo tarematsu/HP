@@ -11,7 +11,7 @@ const EVENTS = [
   { date: '2024/12/29', time: '20:30', name: '櫻坂46 × NiziU Collab Listening Party', place: 'WithUチャンネル', source: 'https://x.com/skr_Stationhead/status/1872235924760735993' },
   { date: '2024/12/30', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY1', place: 'Ohisama CH.', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
   { date: '2025/01/03', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
-  { date: '2025/02/28', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY1', place: 'SUGA GLOBAL UNION', source: 'https://x.com/skr_Stationhead/status/1895453963149078550' },
+  { date: '2025/02/28', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY1', place: 'sugaglobalunion', source: 'https://x.com/skr_Stationhead/status/1895453963149078550' },
   { date: '2025/03/01', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1895453963149078550' },
   { date: '2025/05/05', time: '22:00', name: 'WHITE SCORPION × 櫻坂46 Stationheadコラボリスニングパーティー DAY1', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1917911905609633908' },
   { date: '2025/05/10', time: '22:00', name: 'WHITE SCORPION × 櫻坂46 Stationheadコラボリスニングパーティー DAY2', place: 'scopist1ch', source: 'https://x.com/skr_Stationhead/status/1917911905609633908' },
