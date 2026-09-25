@@ -21,7 +21,7 @@ test('unofficial listening party view is table-only with clear event columns', (
 
 test('historical unofficial listening party rows use formal hosting channel names', () => {
   const rows = [...viewSource.matchAll(/\{ date: '[^']+'.+?\},/g)];
-  assert.equal(rows.length, 22);
+  assert.equal(rows.length, 25);
   assert.equal((viewSource.match(/place: ''/g) || []).length, 0);
   assert.match(viewSource, /date: '2024\/08\/02'.+place: 'BUDDIES STATIONHEAD'/);
   assert.match(viewSource, /date: '2024\/09\/07'.+place: 'LOCKEY Stationhead'/);
@@ -50,8 +50,14 @@ test('verified 2025 collaborations include the December 5 U:nity party', () => {
   assert.match(viewSource, /date: '2025\/12\/05', time: '21:00', name: 'Buddies × U:nity Stationhead コラボリスニングパーティー', place: 'BUDDIES STATIONHEAD'/);
 });
 
+test('fan-hosted solo broadcasts include live setlists and a release listening session', () => {
+  assert.match(viewSource, /date: '2024\/07\/03', time: '23:30', name: '東京ドーム公演セトリ再現 Streaming Party', place: 'BUDDIES STATIONHEAD'/);
+  assert.match(viewSource, /date: '2024\/08\/08', time: '未確認', name: '「自業自得」ミニライブ配信セトリ放送', place: 'BUDDIES STATIONHEAD'/);
+  assert.match(viewSource, /date: '2025\/04\/18', time: '00:00', name: '「Addiction」配信記念リスニング', place: 'BUDDIES STATIONHEAD'/);
+});
+
 test('all historical rows use X announcements and the unified X label', () => {
-  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 22);
+  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 25);
   assert.doesNotMatch(viewSource, /note\.com|sourceLabel|告知記事/);
   assert.match(viewSource, /sourceLink\.textContent = 'X告知'/);
   assert.match(viewSource, /sourceLink\.target = '_blank'/);
