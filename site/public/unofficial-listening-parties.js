@@ -20,6 +20,7 @@ const EVENTS = [
   { date: '2025/07/20', time: '21:00', name: '#坂道Stationhead DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/HNZ_Stationhead/status/1942191880726528064' },
   { date: '2025/07/21', time: '22:00', name: '#坂道Stationhead DAY3', place: 'Ohisama CH.', source: 'https://x.com/HNZ_Stationhead/status/1942191880726528064' },
   { date: '2025/12/05', time: '21:00', name: 'Buddies × U:nity Stationhead コラボリスニングパーティー', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/saku_saka46/status/1995810178009366546' },
+  { date: '2026/01/23', time: '22:00', name: '日向坂46 × 櫻坂46 #ケヤキダービー', place: 'Ohisama CH.', source: 'https://x.com/ohisama_discord/status/1999465286874071088' },
 ];
 
 function mountTab() {
