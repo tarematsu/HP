@@ -21,7 +21,7 @@ test('unofficial listening party view is table-only with clear event columns', (
 
 test('historical unofficial listening party rows use formal hosting channel names', () => {
   const rows = [...viewSource.matchAll(/\{ date: '[^']+'.+?\},/g)];
-  assert.equal(rows.length, 21);
+  assert.equal(rows.length, 22);
   assert.equal((viewSource.match(/place: ''/g) || []).length, 0);
   assert.match(viewSource, /date: '2024\/08\/02'.+place: 'BUDDIES STATIONHEAD'/);
   assert.match(viewSource, /date: '2024\/09\/07'.+place: 'LOCKEY Stationhead'/);
@@ -33,11 +33,12 @@ test('historical unofficial listening party rows use formal hosting channel name
   assert.doesNotMatch(viewSource, /BUDDIESチャンネル|Buddiesチャンネル|Ohisamaチャンネル|imp714p/);
 });
 
-test('expanded history adds only the verified three-Sakamichi joint event', () => {
+test('expanded history includes the three-Sakamichi joint event and Keyaki Derby', () => {
   assert.match(viewSource, /date: '2025\/07\/19', time: '23:00', name: '#坂道Stationhead DAY1', place: "乃木坂46fan's Stationhead"/);
   assert.match(viewSource, /date: '2025\/07\/20', time: '21:00', name: '#坂道Stationhead DAY2', place: 'BUDDIES STATIONHEAD'/);
   assert.match(viewSource, /date: '2025\/07\/21', time: '22:00', name: '#坂道Stationhead DAY3', place: 'Ohisama CH\.'/);
-  assert.doesNotMatch(viewSource, /妄想W-KEYAKI FES\.2026|ケヤキダービー/);
+  assert.match(viewSource, /date: '2026\/01\/23', time: '22:00', name: '日向坂46 × 櫻坂46 #ケヤキダービー', place: 'Ohisama CH\.'/);
+  assert.doesNotMatch(viewSource, /妄想W-KEYAKI FES\.2026/);
 });
 
 test('verified 2025 collaborations include the December 5 U:nity party', () => {
@@ -50,7 +51,7 @@ test('verified 2025 collaborations include the December 5 U:nity party', () => {
 });
 
 test('all historical rows use X announcements and the unified X label', () => {
-  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 21);
+  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 22);
   assert.doesNotMatch(viewSource, /note\.com|sourceLabel|告知記事/);
   assert.match(viewSource, /sourceLink\.textContent = 'X告知'/);
   assert.match(viewSource, /sourceLink\.target = '_blank'/);
