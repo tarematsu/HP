@@ -107,7 +107,7 @@ test('Start Listening and equivalent playback actions prefer clickable ancestors
 test('Connect/Reconnect Music remains auto-clickable instead of becoming login-required', () => {
   assert.doesNotMatch(interaction, /serviceConnectPattern/);
   assert.doesNotMatch(interaction, /for \(const heading of document\.querySelectorAll\("h1,h2,h3,\[role='heading'\]"\)\)/);
-  assert.match(interaction, /Connect\/Reconnect Music and Connect Spotify are recoverable onboarding/);
+  assert.match(interaction, /if \\(recoverableAction\\) return false;/);
   assert.match(locator, /\(\?:re\)\?connect/);
   assert.match(locator, /spotify/);
 });
