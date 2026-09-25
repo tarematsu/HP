@@ -33,7 +33,7 @@ test('recoverable onboarding ignores standalone login header while preserving ha
   // out of the auto-click path even when called with authenticated=true.
   const blocker = section(
     interaction,
-    'const blockingLogin = authenticated => {',
+    'const blockingLogin = (authenticated, recoverableAction = false) => {',
     'const cancelAuthReady = () => {',
   );
   assert.match(blocker, /if \(loginRoute\(\)\) return true;/);
