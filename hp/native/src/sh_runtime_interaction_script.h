@@ -113,6 +113,13 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     // those controls or their modal headings as a blocking login state.
     for (const element of document.querySelectorAll(controlSelector)) {
       if (!visible(element)) continue;
+      // Stationhead's Connect Spotify and Continue with Spotify links can point
+      // to /api/spotify/login inside a dialog. Their exact action labels are
+      // allowlisted by the onboarding detector and trusted native locator.
+      // Treat the destination as OAuth navigation, not as a blocking prompt.
+      if (onboardingLabelMatches(element, recoverableOnboardingPattern)) {
+        continue;
+      }
       const label = labelOf(element);
       const href = String(element.getAttribute?.('href') || '').toLowerCase();
       if (!loginPattern.test(label) &&
