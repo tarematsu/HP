@@ -54,7 +54,7 @@ test('allowlisted onboarding is signaled before first playback and despite stale
   assert.match(publish, /releasePlaybackOnlyForOnboarding\(\);/);
   assert.doesNotMatch(publish, /!playbackEstablished|\bplaying\(\)/);
   assert.doesNotMatch(publish, /const authenticated = accountVisible\(\);/);
-  assert.match(publish, /if \\(blockingLogin\\(true, true\\)\\) return false;/);
+  assert.match(publish, /if \(blockingLogin\(true, true\)\) return false;/);
 });
 
 test('stale playback-only rendering is released from exact onboarding labels before geometry checks', () => {
