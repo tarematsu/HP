@@ -95,6 +95,16 @@ test('Spotify popup authorization survives playback recreation', () => {
   assert.match(close, /status_\.spotifyAuthorization = false/);
 });
 
+test('repeated room clicks do not replace an active Spotify authorization popup', () => {
+  const popup = section(webview, 'const HRESULT newWindowResult = webview_->add_NewWindowRequested(',
+    'if (FAILED(newWindowResult))');
+  const activeGuard = popup.indexOf('if (spotifyAuthorization_) {');
+  const deferral = popup.indexOf('args->GetDeferral(&deferral)');
+  const close = popup.indexOf('CloseAuthWebView();');
+  assert.ok(activeGuard >= 0 && deferral > activeGuard && close > deferral);
+  assert.match(popup.slice(activeGuard, deferral), /args->put_Handled\\(TRUE\\);[\\s\\S]*return S_OK;/);
+});
+
 test('completed auth is finalized inside the single handle', () => {
   const release = section(handles, 'void StationheadHandleBase::ReleaseCompletedAuth()',
     'uint32_t StationheadHandleBase::ConsumeChangeFlags()');
