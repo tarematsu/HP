@@ -252,6 +252,14 @@ void StationheadPlayer::ConfigureWebView() {
           [this, alive](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
 
+            // The room can keep publishing its Connect Spotify prompt while
+            // an OAuth popup is already open. A second request must not close
+            // the active auth WebView and restart the user's authorization.
+            if (spotifyAuthorization_) {
+              args->put_Handled(TRUE);
+              return S_OK;
+            }
+
             if (!environment_ || !EnsureAuthHostWindow()) {
               args->put_Handled(FALSE);
               log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
