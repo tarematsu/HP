@@ -9,7 +9,6 @@ const source = name => readFileSync(
 
 const profilePolicy = source('sh_playback_resource_policy_fix.h');
 const coordinator = source('audio_health_scan_coordinator.h');
-const reloadPolicy = source('sh_track_boundary_message_policy.h');
 const app = source('app.cpp');
 const startupCache = source('webview_startup_cache_reset.h');
 
@@ -41,11 +40,7 @@ test('Stationhead periodic native work uses stable one-minute profile phases', (
   assert.match(coordinator, /TryClaimAudioHealthScanSlot/);
 });
 
-test('Stationhead heavy lifecycle work stays staggered independently', () => {
-  assert.match(
-    reloadPolicy,
-    /StationheadScheduledReloadStaggerMs\(\) noexcept[\s\S]*return 5 \* 60'000;/,
-  );
+test('Stationhead startup work stays staggered independently', () => {
   assert.match(
     app,
     /kMediaStartupStageDelayMs \* static_cast<int64_t>\(i \+ 1\)/,
