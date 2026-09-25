@@ -35,7 +35,7 @@ test('recoverable Stationhead onboarding clears stale login state and signals na
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  const blockingAt = publish.indexOf('blockingLogin(true)');
+  const blockingAt = publish.indexOf('blockingLogin(true, true)');
   const readyAt = publish.indexOf("type: 'stationhead-auth-ready'");
   const clickAt = publish.indexOf("postText('start-visible')");
   assert.ok(blockingAt >= 0 && readyAt > blockingAt && clickAt > readyAt);
