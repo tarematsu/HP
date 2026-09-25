@@ -41,7 +41,7 @@ test('expanded history adds only the verified three-Sakamichi joint event', () =
 });
 
 test('verified 2025 collaborations include the December 5 U:nity party', () => {
-  assert.match(viewSource, /date: '2025\/02\/28', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY1', place: 'SUGA GLOBAL UNION'/);
+  assert.match(viewSource, /date: '2025\/02\/28', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY1', place: 'sugaglobalunion'/);
   assert.match(viewSource, /date: '2025\/03\/01', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY2', place: 'BUDDIES STATIONHEAD'/);
   assert.match(viewSource, /date: '2025\/05\/05', time: '22:00', name: 'WHITE SCORPION × 櫻坂46.+DAY1', place: 'BUDDIES STATIONHEAD'/);
   assert.match(viewSource, /date: '2025\/05\/10', time: '22:00', name: 'WHITE SCORPION × 櫻坂46.+DAY2', place: 'scopist1ch'/);
