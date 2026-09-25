@@ -39,7 +39,7 @@ test('legacy login-settlement registration is inert', () => {
 
 test('interaction runtime owns login-required and stable auth-ready edges', () => {
   assert.match(interaction, /const accountVisible = \(\) =>/);
-  assert.match(interaction, /const blockingLogin = (authenticated, recoverableAction = false) =>/);
+  assert.match(interaction, /const blockingLogin = \\(authenticated, recoverableAction = false\\) =>/);
   assert.match(interaction, /postText\('login-required'\)/);
   assert.match(interaction, /post\(\{ type: 'stationhead-auth-ready', source: 'compact-runtime' \}\)/);
   assert.match(interaction, /authReadyTimer = nativeTimeout[\s\S]*3000/);
