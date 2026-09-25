@@ -19,7 +19,8 @@ function section(text, start, end) {
 }
 
 test('primary room and fallback URLs remain configured', () => {
-  assert.match(config, /url = L"https:\/\/www\.stationhead\.com\/sakuramankai"/);
+  assert.match(config, /url = L"https:\/\/www\.stationhead\.com\/c\/ohisama"/);
+  assert.match(cloudConfig, /kCanonicalPrimaryStationheadUrl\[\] =[\s\S]*L"https:\/\/www\.stationhead\.com\/c\/ohisama"/);
   assert.match(config, /fallbackUrl = L"https:\/\/www\.stationhead\.com\/buddy46"/);
   assert.match(cloudConfig, /kCanonicalPrimaryStationheadUrl/);
   assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl/);

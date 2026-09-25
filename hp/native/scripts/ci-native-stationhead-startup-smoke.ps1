@@ -317,7 +317,7 @@ public static class HomePanelStationheadObserveNative
 $required = [ordered]@{
   primaryWebViewConfigured = "Stationhead A registering required startup scripts"
   primaryStartupScriptRegistered = "Stationhead A startup script registration completed"
-  primaryStationheadUrlNavigated = "Stationhead A navigation (startup): https://www.stationhead.com/sakuramankai"
+  primaryStationheadUrlNavigated = "Stationhead A navigation (startup): https://www.stationhead.com/c/ohisama"
   primaryStartListeningClickRequested = "Stationhead A auto-clicking Start Listening at"
 }
 $observed = [ordered]@{}

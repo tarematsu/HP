@@ -6,7 +6,7 @@ namespace hp {
 namespace {
 using winrt::Windows::Data::Json::JsonObject;
 constexpr wchar_t kCanonicalPrimaryStationheadUrl[] =
-    L"https://www.stationhead.com/sakuramankai";
+    L"https://www.stationhead.com/c/ohisama";
 constexpr wchar_t kCanonicalFallbackStationheadUrl[] =
     L"https://www.stationhead.com/buddy46";
 
@@ -57,7 +57,7 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     config.temperatureOffset = Decimal(co2, L"temperatureOffset", config.temperatureOffset, -20.0, 20.0);
 
     const auto station = Object(root, L"stationhead");
-    // Keep the single Stationhead player on sakuramankai during normal
+    // Keep the single Stationhead player on ohisama during normal
     // operation. buddy46 is reserved for the existing managed fallback path.
     config.stationhead.url = kCanonicalPrimaryStationheadUrl;
     config.stationhead.fallbackUrl = kCanonicalFallbackStationheadUrl;
