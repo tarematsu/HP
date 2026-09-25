@@ -43,9 +43,13 @@ static_assert(StationheadScheduledUrl((2 * 60 + 44) * kMinuteMs) ==
               L"https://www.stationhead.com/sakuramankai");
 static_assert(StationheadScheduledUrl((2 * 60 + 45) * kMinuteMs) ==
               L"https://www.stationhead.com/c/unity");
+static_assert(StationheadNextRouteChangeAt((2 * 60 + 45) * kMinuteMs) ==
+              (3 * 60 + 15) * kMinuteMs);
 static_assert(StationheadScheduledUrl((3 * 60 + 15) * kMinuteMs) ==
               L"https://www.stationhead.com/sakuramankai");
 static_assert(StationheadScheduledUrl((14 * 60 + 45) * kMinuteMs) ==
+              L"https://www.stationhead.com/c/ohisama");
+static_assert(StationheadScheduledUrl(15 * 60 * kMinuteMs) ==
               L"https://www.stationhead.com/c/ohisama");
 static_assert(StationheadScheduledUrl((15 * 60 + 15) * kMinuteMs) ==
               L"https://www.stationhead.com/sakuramankai");

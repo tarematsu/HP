@@ -31,7 +31,8 @@ class StationheadPlayer {
   }
   [[nodiscard]] int64_t NextWakeAt() const noexcept {
     if (nextTickAt_ <= 0) return nextTickAt_;
-    return std::min(nextTickAt_,
+    const int64_t nextWakeAt = nextTickAt_;
+    return std::min(nextWakeAt,
                     StationheadNextRouteChangeAt(UnixMillis() - routeDelayMs_) + routeDelayMs_);
   }
   void RequestImmediateTick() noexcept { nextTickAt_ = 0; }
