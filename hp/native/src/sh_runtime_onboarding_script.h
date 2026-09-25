@@ -130,10 +130,10 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     // An exact recoverable action is visible. Keep login routes and credential
     // inputs as hard guards while ignoring unrelated Log in links in the dialog.
     if (blockingLogin(true, true)) return false;
+    // The prompt is evidence that an action is available, not that the account
+    // is authenticated. Preserve the native login latch until the real auth
+    // completion signal; resetting it here also retriggers stats requests.
     cancelAuthReady();
-    lastBlocking = false;
-    window.__homepanelStationheadBlockingLoginVisible = false;
-    post({ type: 'stationhead-auth-ready', source: 'recoverable-onboarding' });
     postText('start-visible');
     return true;
   };

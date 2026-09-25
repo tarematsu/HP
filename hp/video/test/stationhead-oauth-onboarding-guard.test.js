@@ -71,6 +71,14 @@ test('OAuth login destination on Connect Spotify is signaled for trusted click',
     .includes('stationhead-start-visible'));
 });
 
+test('visible Connect Spotify does not claim authentication on repeated probes', () => {
+  const messages = runPrompt('Connect Spotify');
+  assert.ok(messages.includes('stationhead-start-visible'));
+  assert.ok(!messages.some(message =>
+    message && typeof message === 'object' &&
+    message.type === 'stationhead-auth-ready'));
+});
+
 test('login controls and credential inputs still block trusted click', () => {
   assert.ok(!runPrompt('Log in').includes('stationhead-start-visible'));
   assert.ok(!runPrompt('Connect Spotify', { credential: true })

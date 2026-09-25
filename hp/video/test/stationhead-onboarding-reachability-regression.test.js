@@ -22,7 +22,7 @@ function section(text, start, end) {
   return text.slice(startAt, endAt);
 }
 
-test('recoverable Stationhead onboarding clears stale login state and signals native click', () => {
+test('recoverable Stationhead onboarding signals native click without claiming authentication', () => {
   assert.match(onboarding, /const recoverableOnboardingPattern = \{\{RECOVERABLE_ACTION_PATTERN\}\}/);
   assert.match(recoverablePolicy, /\(\?:re\)\?connect/);
   assert.match(recoverablePolicy, /spotify/);
@@ -36,11 +36,10 @@ test('recoverable Stationhead onboarding clears stale login state and signals na
     ')JS";',
   );
   const blockingAt = publish.indexOf('blockingLogin(true, true)');
-  const readyAt = publish.indexOf("type: 'stationhead-auth-ready'");
   const clickAt = publish.indexOf("postText('start-visible')");
-  assert.ok(blockingAt >= 0 && readyAt > blockingAt && clickAt > readyAt);
-  assert.match(publish, /window\.__homepanelStationheadBlockingLoginVisible = false/);
-  assert.match(publish, /source: 'recoverable-onboarding'/);
+  assert.ok(blockingAt >= 0 && clickAt > blockingAt);
+  assert.doesNotMatch(publish, /stationhead-auth-ready|lastBlocking = false|homepanelStationheadBlockingLoginVisible = false/);
+  assert.match(interaction, /source: 'compact-runtime'/);
   assert.match(interaction, /if \(publishRecoverableOnboarding\(\)\) return;/);
 });
 
