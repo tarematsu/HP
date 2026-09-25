@@ -127,11 +127,9 @@ inline std::wstring_view StationheadRuntimeOnboardingFragment() noexcept {
     // shared policy. There is intentionally no one-shot or sequence latch.
     if (!recoverableOnboardingVisible()) return false;
 
-    // Once an explicit recoverable onboarding control is visible, do not let an
-    // unrelated standalone `Log in` header button suppress the click. Passing
-    // `true` keeps blockingLogin's hard guards for login routes, credential
-    // inputs, and login controls inside a visible modal/shell.
-    if (blockingLogin(true)) return false;
+    // An exact recoverable action is visible. Keep login routes and credential
+    // inputs as hard guards while ignoring unrelated Log in links in the dialog.
+    if (blockingLogin(true, true)) return false;
     cancelAuthReady();
     lastBlocking = false;
     window.__homepanelStationheadBlockingLoginVisible = false;

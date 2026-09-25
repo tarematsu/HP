@@ -35,7 +35,7 @@ test('recoverable Stationhead onboarding clears stale login state and signals na
     'const publishRecoverableOnboarding = () => {',
     ')JS";',
   );
-  const blockingAt = publish.indexOf('blockingLogin(true)');
+  const blockingAt = publish.indexOf('blockingLogin(true, true)');
   const readyAt = publish.indexOf("type: 'stationhead-auth-ready'");
   const clickAt = publish.indexOf("postText('start-visible')");
   assert.ok(blockingAt >= 0 && readyAt > blockingAt && clickAt > readyAt);
@@ -54,7 +54,7 @@ test('allowlisted onboarding is signaled before first playback and despite stale
   assert.match(publish, /releasePlaybackOnlyForOnboarding\(\);/);
   assert.doesNotMatch(publish, /!playbackEstablished|\bplaying\(\)/);
   assert.doesNotMatch(publish, /const authenticated = accountVisible\(\);/);
-  assert.match(publish, /if \(blockingLogin\(true\)\) return false;/);
+  assert.match(publish, /if \(blockingLogin\(true, true\)\) return false;/);
 });
 
 test('stale playback-only rendering is released from exact onboarding labels before geometry checks', () => {

@@ -103,14 +103,15 @@ inline std::wstring_view StationheadRuntimeInteractionFragment() noexcept {
     }
     return false;
   };
-  const blockingLogin = authenticated => {
+  const blockingLogin = (authenticated, recoverableAction = false) => {
     if (loginRoute()) return true;
     for (const input of document.querySelectorAll(credentialSelector)) {
       if (visible(input)) return true;
     }
-    // Connect/Reconnect Music and Connect Spotify are recoverable onboarding
-    // actions handled by the native trusted-click locator. Do not classify
-    // those controls or their modal headings as a blocking login state.
+    // An explicit recoverable action has already been found. A separate Log in
+    // link in the same dialog must not suppress it; login routes and visible
+    // credential fields above remain hard stops.
+    if (recoverableAction) return false;
     for (const element of document.querySelectorAll(controlSelector)) {
       if (!visible(element)) continue;
       const label = labelOf(element);
