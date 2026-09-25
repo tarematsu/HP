@@ -25,35 +25,13 @@ test('primary room and fallback URLs remain configured', () => {
   assert.match(cloudConfig, /kCanonicalFallbackStationheadUrl/);
 });
 
-test('Stationhead reload cadence is anchored to app startup and staggered by profile', () => {
-  assert.match(policy, /StationheadScheduledReloadIntervalMs\(\) noexcept[\s\S]*return 50 \* 60'000;/);
-  assert.match(policy, /StationheadScheduledReloadStaggerMs\(\) noexcept[\s\S]*return 5 \* 60'000;/);
-  assert.match(policy, /StationheadScheduledReloadFirstBaseMs\(\) noexcept[\s\S]*return 20 \* 60'000;/);
-  assert.match(policy, /kPrefix\[\] = L"spotify-v2-"/);
-  assert.match(policy, /suffix >= L'1' && suffix <= L'6'/);
-  assert.match(policy, /stationhead_scheduled_reload[\s\S]*appStartTick/);
-  assert.match(policy, /StationheadScheduledReloadFirstDelayMs\(profileName_\)/);
-  assert.match(policy, /scheduledReloadNextTick_[\s\S]*appStartTick/);
-  assert.match(policy, /AdvanceScheduledReloadAfter\(nowTick\)/);
-  assert.match(policy, /NavigateCurrentUrl\(nowMs, L"scheduled Stationhead 50-minute reload"\)/);
-});
-
-test('scheduled reload participates in wake scheduling and waits for safe navigation state', () => {
+test('Stationhead has no scheduled reload or scheduled wake', () => {
   const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
-  assert.match(wake, /scheduledReloadNextTick_/);
-  assert.match(wake, /scheduledReloadRetryTick_/);
-  assert.match(wake, /StationheadScheduledReloadProjectedWallDeadline/);
-
-  const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
-  assert.match(injected, /void PollScheduledReload\(int64_t nowMs\)/);
-  assert.match(injected, /spotifyAuthorization_ \|\| loginRequired_ \|\| navigationActive/);
-  assert.match(injected, /creating_\.load\(std::memory_order_relaxed\)/);
-  assert.match(injected, /recreating_\.load\(std::memory_order_relaxed\)/);
-  assert.match(injected, /recoveryActive/);
-  assert.match(injected, /kRetryDelayMs = 15'000/);
+  assert.doesNotMatch(policy, /StationheadScheduledReload|scheduledReload|stationhead_scheduled_reload/);
+  assert.doesNotMatch(wake, /Reload/);
 });
 
-test('one-minute native audio health remains active beside scheduled reloads', () => {
+test('one-minute native audio health and loss recovery remain active', () => {
   assert.match(policy, /StationheadAudioHealthCheckIntervalMs\(\) noexcept[\s\S]*return 1 \* 60'000;/);
   assert.match(audioLossPolicy, /kStationheadAudioLossGraceMs = 120'000/);
   const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
@@ -64,8 +42,8 @@ test('one-minute native audio health remains active beside scheduled reloads', (
   assert.match(policy, /AudioHealthScanDelayMs\(GetTickCount64\(\), 0\)/);
   assert.match(policy, /TryClaimAudioHealthScan\(scanTick\)/);
   assert.match(policy, /const int64_t nowMs = UnixMillis\(\)/);
-  assert.match(policy, /PollScheduledReload\(nowMs\)/);
   assert.match(policy, /PollPeriodicAudioHealth\(nowMs\)/);
+  assert.match(policy, /NavigateCurrentUrl\(nowMs, L"audio-loss recovery reload"\)/);
 });
 
 test('page-side track-boundary polling stays removed', () => {
