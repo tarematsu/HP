@@ -1,5 +1,7 @@
 const EVENTS = [
+  { date: '2024/07/03', time: '23:30', name: '東京ドーム公演セトリ再現 Streaming Party', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1808478827800330611' },
   { date: '2024/08/02', time: '22:30', name: '櫻坂46 × INI Streaming Party - ロッキン前夜祭コラボパーティー', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1818995243200758205' },
+  { date: '2024/08/08', time: '未確認', name: '「自業自得」ミニライブ配信セトリ放送', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1821514444176056451' },
   { date: '2024/09/06', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY1', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1831301387424342514' },
   { date: '2024/09/07', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY2', place: 'LOCKEY Stationhead', source: 'https://x.com/skr_Stationhead/status/1831301387424342514' },
   { date: '2024/09/15', time: '20:30', name: '櫻坂46 × JO1 ロッキン出演&9thリリース記念コラボパーティー', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1834834469531902262' },
@@ -13,6 +15,7 @@ const EVENTS = [
   { date: '2025/01/03', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
   { date: '2025/02/28', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY1', place: 'sugaglobalunion', source: 'https://x.com/skr_Stationhead/status/1895453963149078550' },
   { date: '2025/03/01', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY2', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1895453963149078550' },
+  { date: '2025/04/18', time: '00:00', name: '「Addiction」配信記念リスニング', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1912841803033649541' },
   { date: '2025/05/05', time: '22:00', name: 'WHITE SCORPION × 櫻坂46 Stationheadコラボリスニングパーティー DAY1', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1917911905609633908' },
   { date: '2025/05/10', time: '22:00', name: 'WHITE SCORPION × 櫻坂46 Stationheadコラボリスニングパーティー DAY2', place: 'scopist1ch', source: 'https://x.com/skr_Stationhead/status/1917911905609633908' },
   { date: '2025/05/24', time: '22:00', name: 'MONSTA X × 櫻坂46 Stationheadコラボリスニングパーティー', place: 'BUDDIES STATIONHEAD', source: 'https://x.com/skr_Stationhead/status/1926293459385675980' },
