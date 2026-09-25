@@ -21,7 +21,7 @@ test('unofficial listening party view is table-only with clear event columns', (
 
 test('historical unofficial listening party rows use formal hosting channel names', () => {
   const rows = [...viewSource.matchAll(/\{ date: '[^']+'.+?\},/g)];
-  assert.equal(rows.length, 15);
+  assert.equal(rows.length, 19);
   assert.equal((viewSource.match(/place: ''/g) || []).length, 0);
   assert.match(viewSource, /date: '2024\/08\/02'.+place: 'BUDDIES STATIONHEAD'/);
   assert.match(viewSource, /date: '2024\/09\/07'.+place: 'LOCKEY Stationhead'/);
@@ -40,8 +40,15 @@ test('expanded history adds only the verified three-Sakamichi joint event', () =
   assert.doesNotMatch(viewSource, /妄想W-KEYAKI FES\.2026|ケヤキダービー/);
 });
 
+test('verified 2025 collaborations include the December 5 U:nity party', () => {
+  assert.match(viewSource, /date: '2025\/05\/05', time: '22:00', name: 'WHITE SCORPION × 櫻坂46.+DAY1', place: 'BUDDIES STATIONHEAD'/);
+  assert.match(viewSource, /date: '2025\/05\/10', time: '22:00', name: 'WHITE SCORPION × 櫻坂46.+DAY2', place: 'scopist1ch'/);
+  assert.match(viewSource, /date: '2025\/05\/24', time: '22:00', name: 'MONSTA X × 櫻坂46.+', place: 'BUDDIES STATIONHEAD'/);
+  assert.match(viewSource, /date: '2025\/12\/05', time: '21:00', name: 'Buddies × U:nity Stationhead コラボリスニングパーティー', place: 'BUDDIES STATIONHEAD'/);
+});
+
 test('all historical rows use X announcements and the unified X label', () => {
-  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 15);
+  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 19);
   assert.doesNotMatch(viewSource, /note\.com|sourceLabel|告知記事/);
   assert.match(viewSource, /sourceLink\.textContent = 'X告知'/);
   assert.match(viewSource, /sourceLink\.target = '_blank'/);
