@@ -1,9 +1,3 @@
-@media (min-width: 761px) {
-  #modeTabs.mode-tabs.dashboard-tabs {
-    grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
-  }
-}
-
 .first-week-toolbar {
   display: flex;
   align-items: center;
