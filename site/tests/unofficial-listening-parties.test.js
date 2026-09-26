@@ -24,18 +24,21 @@ test('unofficial listening party list is appended below the shared official view
   assert.doesNotMatch(viewSource, /chart-panel/);
 });
 
-test('unofficial list is visible only while Listening Party is active', () => {
+test('unofficial list is visible only while Listening Party is active and the tab label stays unified', () => {
   assert.match(viewSource, /querySelector\('#modeTabs \[data-mode="broadcasts"\]'\)/);
+  assert.match(viewSource, /TAB_LABEL = 'Listening Party'/);
+  assert.match(viewSource, /tab\.textContent !== TAB_LABEL/);
   assert.match(viewSource, /panel\.hidden = !tab\.classList\.contains\('active'\)/);
-  assert.match(viewSource, /new MutationObserver\(syncVisibility\)/);
+  assert.match(viewSource, /new MutationObserver\(syncTab\)/);
   assert.match(viewSource, /attributeFilter: \['class', 'aria-current'\]/);
+  assert.match(viewSource, /childList: true/);
 });
 
 test('legacy unofficial tab and route are normalized into Listening Party', () => {
   assert.match(viewSource, /querySelector\('#modeTabs \[data-view="unofficial"\]'\)\?\.remove\(\)/);
   assert.match(viewSource, /getElementById\('unofficialView'\)\?\.remove\(\)/);
   assert.match(viewSource, /location\.hash !== '#unofficial'/);
-  assert.match(viewSource, /listeningPartyTab\(\)\?\.click\(\)/);
+  assert.match(viewSource, /history\.replaceState\(null, '', `\$\{location\.pathname\}\$\{location\.search\}#broadcasts`\)/);
 });
 
 test('historical unofficial listening party rows use formal hosting channel names', () => {
