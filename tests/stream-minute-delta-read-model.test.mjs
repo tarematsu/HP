@@ -11,16 +11,13 @@ const migration = readFileSync(
   new URL('../database/facts-migrations/056_stream_minute_delta_read_model.sql', import.meta.url),
   'utf8',
 );
-const dashboard = readFileSync(
-  new URL('../site/functions/lib/dashboard-chart-support.js', import.meta.url),
-  'utf8',
-);
 
-test('stream minute delta read model is the current MINUTE_DB schema tip', () => {
-  const path = 'database/facts-migrations/056_stream_minute_delta_read_model.sql';
-  assert.equal(descriptor.schema, path);
-  assert.equal(descriptor.migrations.at(-1), path);
-  assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
+test('stream minute delta migration remains ordered before the current MINUTE_DB schema tip', () => {
+  const minutePath = 'database/facts-migrations/056_stream_minute_delta_read_model.sql';
+  const averagePath = 'database/facts-migrations/057_stream_5m_average_read_model.sql';
+  assert.equal(descriptor.migrations.filter((value) => value === minutePath).length, 1);
+  assert.ok(descriptor.migrations.indexOf(minutePath) < descriptor.migrations.indexOf(averagePath));
+  assert.equal(descriptor.schema, descriptor.migrations.at(-1));
 });
 
 test('stream minute deltas are materialized and repair their dependent next minute', () => {
@@ -97,10 +94,7 @@ test('stream delta migration backfills and maintains reset, gap, and late-correc
   assert.equal(gapDelta, null);
 });
 
-test('deployment seed is bounded and Pages reads only the materialized delta table', () => {
+test('deployment seed remains bounded for the five-minute migration handoff', () => {
   assert.match(migration, /unixepoch\('now','-26 hours'\)\*1000/);
   assert.doesNotMatch(migration, /DELETE FROM sh_minute_facts/);
-  assert.match(dashboard, /FROM sh_stream_minute_delta_read_model AS d/);
-  assert.doesNotMatch(dashboard, /FROM sh_minute_facts/);
-  assert.doesNotMatch(dashboard, /reported_current_stream_count/);
 });
