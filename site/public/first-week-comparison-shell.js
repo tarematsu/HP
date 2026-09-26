@@ -2,20 +2,20 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-first-week-comparison-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/first-week-comparison.css?v=20260924.1';
+  link.href = '/first-week-comparison.css?v=20260926.1';
   link.dataset.firstWeekComparisonStyles = '1';
   document.head.append(link);
 }
 
 function mountTab() {
   const tabs = document.getElementById('modeTabs');
-  const monthly = tabs?.querySelector('[data-mode="monthly"]');
-  if (!tabs || !monthly || tabs.querySelector('[data-view="first-week"]')) return;
+  const daily = tabs?.querySelector('[data-mode="daily"]');
+  if (!tabs || !daily || tabs.querySelector('[data-view="first-week"]')) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.view = 'first-week';
   button.textContent = '初週比較';
-  monthly.insertAdjacentElement('afterend', button);
+  daily.insertAdjacentElement('afterend', button);
 }
 
 function mountView() {
