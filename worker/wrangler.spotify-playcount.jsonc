@@ -17,9 +17,7 @@
   },
   "vars": {
     "SPOTIFY_PLAYCOUNT_ENABLED": true,
-    "SPOTIFY_MARKET": "JP",
-    "SPOTIFY_ALBUM_TRACKS_QUERY_HASH": "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10",
-    "SPOTIFY_PARTNER_ENDPOINT": "https://api-partner.spotify.com/pathfinder/v1/query"
+    "SPOTIFY_MARKET": "JP"
   },
   "triggers": {
     "crons": ["5 21 * * *"]
