@@ -4,6 +4,8 @@ import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 
 function escapeRegExp(value) {
@@ -25,10 +27,12 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     entry: assetVersion(html, 'dashboard-metrics.js'),
     header: assetVersion(entry, 'dashboard-header.js'),
     tabs: assetVersion(entry, 'dashboard-tabs.js'),
+    historyMain: assetVersion(tabs, 'history/history-main.js'),
+    legacyListeningPartyRoute: assetVersion(entry, 'legacy-listening-party-route.js'),
     fetchCache: assetVersion(entry, 'dashboard-fetch-cache.js'),
     metricStyle: assetVersion(entry, 'dashboard-current-metric-style.js'),
-    unofficialListeningParties: assetVersion(entry, 'unofficial-listening-parties.js'),
-    officialListeningPartyCopy: assetVersion(entry, 'official-listening-party-copy.js'),
+    unofficialListeningParties: assetVersion(historyEntry, 'unofficial-listening-parties.js'),
+    officialListeningPartyCopy: assetVersion(historyEntry, 'official-listening-party-copy.js'),
     dailySummaries: assetVersion(entry, 'dashboard-daily-summaries.js'),
     comparison: assetVersion(entry, 'dashboard-chart-comparison.js'),
     chartDetail: assetVersion(entry, 'dashboard-chart-detail.js'),
@@ -36,7 +40,9 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
-  assert.equal(versions.entry, '20260926.2');
+  assert.equal(versions.entry, '20260926.3');
+  assert.equal(versions.tabs, '20260926.1');
+  assert.equal(versions.historyMain, '20260926.1');
   assert.equal(versions.unofficialListeningParties, '20260926.1');
   assert.equal(versions.comparison, '20260923.6');
   assert.equal(versions.chartDetail, '20260923.5');
