@@ -33,8 +33,8 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260927\.2'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260927\.1'\)/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260927\.3'/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260927\.2'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
@@ -42,10 +42,10 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
 });
 
 test('first-week comparison routing is preserved alongside the existing lazy views', () => {
-  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260927\.1/);
+  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260927\.2/);
   assert.match(tabsClient, /'first-week'/);
   assert.match(tabsClient, /const firstWeekView = document\.getElementById\('firstWeekView'\)/);
-  assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260926\.2'\)/);
+  assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260927\.1'\)/);
   assert.match(tabsClient, /showFirstWeek/);
 });
 
@@ -67,7 +67,7 @@ test('history mode-specific runtimes are lazy-loaded only after history starts',
   assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260924\.1/);
   assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
   assert.match(tabsClient, /if \(mode === 'ranking'\)[\s\S]*await loadRankingStatusRuntime\(\)/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.\d+/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
   assert.doesNotMatch(tabsClient, /history-period-chart|history-ranking-chart|history-broadcasts/);
 });
 
