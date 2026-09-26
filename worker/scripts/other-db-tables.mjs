@@ -32,6 +32,15 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_channel_rankings',
   'sh_weekly_ranking_read_model',
   'sh_weekly_ranking_read_model_chunks',
+  'sh_spotify_artists',
+  'sh_spotify_releases',
+  'sh_spotify_release_targets',
+  'sh_spotify_tracks',
+  'sh_spotify_track_targets',
+  'sh_spotify_playcount_current',
+  'sh_spotify_playcount_daily',
+  'sh_spotify_collection_runs',
+  'sh_spotify_collection_album_runs',
 ]);
 
 export const OTHER_RETIRED_OBJECTS = Object.freeze([
