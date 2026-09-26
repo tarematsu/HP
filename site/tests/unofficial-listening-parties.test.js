@@ -124,6 +124,6 @@ test('unofficial data stays out of initial entry and loads only through the broa
   assert.ok(metricsSource.indexOf('legacy-listening-party-route.js') < metricsSource.indexOf('dashboard-tabs.js'));
   assert.match(historyEntry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
   assert.match(historyEntry, /unofficial-listening-parties\.js\?v=20260927\.1/);
-  assert.match(metricsSource, /dashboard-tabs\.js\?v=20260927\.2/);
-  assert.match(pageSource, /dashboard-metrics\.js\?v=20260927\.5/);
+  assert.match(metricsSource, /dashboard-tabs\.js\?v=20260927\.3/);
+  assert.match(pageSource, /dashboard-metrics\.js\?v=20260927\.6/);
 });
