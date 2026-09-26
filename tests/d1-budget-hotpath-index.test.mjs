@@ -67,7 +67,7 @@ const repairCandidateMigration = readFileSync(
   'utf8',
 );
 const retireRepairIndexMigration = readFileSync(
-  new URL('../database/facts-migrations/043_retire_minute_fact_repair_work.sql', import.meta.url),
+  new URL('../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
   'utf8',
 );
 const retireRepairWorkMigration = readFileSync(
@@ -130,7 +130,7 @@ const expectedMigrations = [
   'database/facts-migrations/040_sparse_live_metric_values.sql',
   'database/facts-migrations/041_restore_complete_live_metrics.sql',
   'database/facts-migrations/042_minute_fact_repair_candidate_index.sql',
-  'database/facts-migrations/043_retire_minute_fact_repair_work.sql',
+  'database/facts-migrations/043_retire_repair_candidate_index.sql',
   'database/facts-migrations/044_retire_minute_fact_repair_work.sql',
   'database/facts-migrations/045_reconcile_minute_fact_job_backlog.sql',
   'database/facts-migrations/046_track_minute_fact_pending_age.sql',
