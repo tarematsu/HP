@@ -77,7 +77,7 @@ async function loadHistoryRuntime() {
 
 async function loadFirstWeekRuntime() {
   if (!firstWeekRuntimePromise) {
-    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260925.1').catch((error) => {
+    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260926.2').catch((error) => {
       firstWeekRuntimePromise = null;
       throw error;
     });
