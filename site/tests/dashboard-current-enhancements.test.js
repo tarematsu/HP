@@ -14,7 +14,8 @@ const tableCleanup = readFileSync(new URL('../public/history/history-table-clean
 
 test('current metrics are statically ordered online, total streams and total members without a duplicate chart or fetch renderer', () => {
   assert.match(metrics, /dashboard-current-layout\.js\?v=20260924\.1/);
-  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260923\.6/);
+  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260927\.1/);
+  assert.match(metrics, /dashboard-chart-detail\.js\?v=20260927\.1/);
   assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260923\.4/);
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
   assert.match(metrics, /dashboard-client\.js\?v=20260924\.1/);
@@ -36,8 +37,11 @@ test('mobile dashboard tabs stay compact while current metrics stay in one horiz
   assert.match(css, /white-space:\s*nowrap !important/);
 });
 
-test('current chart draws online axes and JST labels from one renderer', () => {
+test('current chart draws online axes, one-minute stream bars and JST labels from one renderer', () => {
   assert.match(chart, /オンライン数\(人\)/);
+  assert.match(chart, /再生数増加\/分/);
+  assert.match(chart, /stream_minute_history/);
+  assert.match(chart, /drawStreamBars/);
   assert.doesNotMatch(chart, /コメント\/2分|comment_velocity|commentVelocity|rgba\(22,139,115/);
   assert.match(chart, /時刻 \(JST\)/);
   assert.match(chart, /timeZone: 'Asia\/Tokyo'/);
