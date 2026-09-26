@@ -8,7 +8,7 @@ by Nogizaka46, Sakurazaka46, and Hinatazaka46.
 - Worker: `sh-spotify-playcount-collector`
 - Cron: every hour at minute 00
 - First daily check: 05:00 JST
-- Retry: every following hour until Spotify playcounts have advanced from the previous day
+- Retry: 06:00, 07:00, 08:00, ... until Spotify playcounts have advanced from the previous day
 - Catalog: Spotify public artist discography pages
 - Track/playcount source: Spotify public album-page `initialState`
 - Storage: `OTHER_DB` (`stationhead-other`)
