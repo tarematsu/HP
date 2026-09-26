@@ -48,7 +48,7 @@ if (initialMode !== requestedMode) history.replaceState(null, '', '/#weekly');
 
 await import('/pages-ui-tweaks.js?v=20260924.1');
 await import('/pages-terminology.js?v=20260924.3');
-await import('/history/history-past-toggle-shell.js?v=20260926.1');
+await import('/history/history-past-toggle-shell.js?v=20260927.1');
 await import('/history/history-page-fixes.js?v=20260924.1');
 await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260925.1');
