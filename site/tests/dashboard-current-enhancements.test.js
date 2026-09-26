@@ -19,7 +19,7 @@ test('current metrics are statically ordered online, total streams and total mem
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
   assert.match(metrics, /dashboard-client\.js\?v=20260924\.1/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260924\.1/);
-  assert.match(header, /pages-layout-final-fixes\.css\?v=20260926\.1/);
+  assert.match(header, /pages-layout-final-fixes\.css\?v=20260927\.1/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);
   assert.ok(html.indexOf('id="online"') < html.indexOf('id="totalStreams"'));
