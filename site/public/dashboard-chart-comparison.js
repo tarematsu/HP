@@ -72,15 +72,12 @@ function ensureLegend(hasPrevious, hasStreamAverages) {
     legend.append(previous);
   }
 
-  let stream = legend.querySelector('.stream-delta-key');
-  if (!hasStreamAverages) stream?.remove();
-  else if (!stream) {
-    stream = document.createElement('span');
-    stream.className = 'stream-delta-key';
-    stream.textContent = '再生数増加/分（5分平均）';
+  const stream = legend.querySelector('.stream-growth-key');
+  if (stream) {
+    stream.hidden = !hasStreamAverages;
     stream.style.color = STREAM_BAR_COLOR;
-    legend.append(stream);
   }
+  legend.querySelector('.stream-delta-key')?.remove();
 }
 
 function labelBox(context, text, x, y, align, width, height) {
