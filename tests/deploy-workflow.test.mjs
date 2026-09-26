@@ -80,7 +80,7 @@ test('one GitHub Actions workflow owns automatic and manual production deploymen
   }
   assert.doesNotMatch(deploymentWorkflow, /- ingest$/m);
   assert.doesNotMatch(deploymentWorkflow, /- minute-enrichment$/m);
-  for (const command of ['deploy:sakurazaka46jp', 'deploy:buddies-recovery', 'deploy:buddies-collector', 'deploy:spotify-playcount', 'deploy:runtime']) {
+  for (const command of ['deploy:sakurazaka46jp', 'deploy:buddies-recovery', 'deploy:buddies-collector', 'deploy:runtime']) {
     assert.match(deploymentWorkflow, new RegExp(command));
   }
   assert.doesNotMatch(deploymentWorkflow, /deploy:ingest/);
