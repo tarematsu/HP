@@ -16,8 +16,7 @@
     }
   },
   "vars": {
-    "SPOTIFY_PLAYCOUNT_ENABLED": true,
-    "SPOTIFY_MARKET": "JP"
+    "SPOTIFY_PLAYCOUNT_ENABLED": true
   },
   "triggers": {
     "crons": ["5 21 * * *"]
