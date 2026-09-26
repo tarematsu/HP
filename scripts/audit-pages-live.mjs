@@ -76,17 +76,10 @@ const MODES = [
     path: '/#broadcasts',
     panel: '#historyView',
     tab: '#modeTabs button[data-mode="broadcasts"]',
-    requiredText: '公式リスパ一覧',
+    requiredText: '非公式リスパ一覧',
     notice: '#notice',
     legendSelector: '#chartLegend span',
     minLegendItems: 6,
-  },
-  {
-    name: 'unofficial',
-    path: '/#unofficial',
-    panel: '#unofficialView',
-    tab: '#modeTabs button[data-view="unofficial"]',
-    requiredText: '非公式リスパ一覧',
   },
 ];
 
@@ -94,7 +87,7 @@ const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 1000, modes: MODES.map(({ name }) => name) },
   { name: 'tablet', width: 820, height: 1180, modes: ['current', 'weekly', 'likes'] },
   { name: 'mobile', width: 390, height: 844, modes: MODES.map(({ name }) => name) },
-  { name: 'mobile-compact', width: 320, height: 720, modes: ['current', 'weekly', 'likes', 'first-week', 'played-tracks', 'unofficial'] },
+  { name: 'mobile-compact', width: 320, height: 720, modes: ['current', 'weekly', 'likes', 'first-week', 'played-tracks', 'broadcasts'] },
 ];
 
 function parseArgs(argv) {
@@ -261,7 +254,7 @@ async function auditRoute(browser, target, route, viewport, outDir) {
       const rect = element.getBoundingClientRect();
       return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
     };
-    const panels = ['#currentView', '#historyView', '#firstWeekView', '#playedTracksView', '#likesView', '#unofficialView']
+    const panels = ['#currentView', '#historyView', '#firstWeekView', '#playedTracksView', '#likesView']
       .filter((selector) => visible(document.querySelector(selector)));
     const root = document.documentElement;
     const body = document.body;
