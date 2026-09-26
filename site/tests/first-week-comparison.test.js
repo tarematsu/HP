@@ -109,8 +109,9 @@ test('dashboard mounts and routes the first-week tab before the lazy runtime sta
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
 
   assert.ok(entry.indexOf('first-week-comparison-shell.js') < entry.indexOf('dashboard-tabs.js'));
-  assert.match(entry, /first-week-comparison-shell\.js\?v=20260926\.2/);
-  assert.match(entry, /dashboard-tabs\.js\?v=20260926\.2/);
+  assert.match(entry, /first-week-comparison-shell\.js\?v=20260927\.1/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20260927\.1/);
+  assert.match(shell, /first-week-comparison\.css\?v=20260927\.1/);
   assert.match(shell, /dataset\.view = 'first-week'/);
   assert.match(shell, /textContent = '初週比較'/);
   assert.match(shell, /querySelector\('\[data-mode="daily"\]'\)/);
@@ -121,6 +122,7 @@ test('dashboard mounts and routes the first-week tab before the lazy runtime sta
   assert.match(runtime, /first-week-comparison\?v=20260926\.2/);
   assert.doesNotMatch(runtime, /firstWeekLoad|loadButton/);
   assert.doesNotMatch(css, /#firstWeekLoad/);
-  assert.match(css, /repeat\(8, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(css, /#modeTabs\.mode-tabs\.dashboard-tabs/);
+  assert.doesNotMatch(css, /repeat\(8, minmax\(0, 1fr\)\)/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
