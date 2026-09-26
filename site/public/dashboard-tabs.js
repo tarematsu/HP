@@ -1,12 +1,11 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'likes', 'unofficial']);
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'likes']);
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
 const firstWeekView = document.getElementById('firstWeekView');
 const playedTracksView = document.getElementById('playedTracksView');
 const likesView = document.getElementById('likesView');
-const unofficialView = document.getElementById('unofficialView');
 const tabs = document.getElementById('modeTabs');
 const skipLink = document.querySelector('.skip-link');
 let historyRuntimePromise = null;
@@ -44,7 +43,6 @@ function showOnly(view) {
   if (firstWeekView) firstWeekView.hidden = view !== firstWeekView;
   if (playedTracksView) playedTracksView.hidden = view !== playedTracksView;
   if (likesView) likesView.hidden = view !== likesView;
-  if (unofficialView) unofficialView.hidden = view !== unofficialView;
 }
 
 function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
@@ -208,14 +206,6 @@ async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
   }
 }
 
-function showUnofficial({ updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = 'unofficial';
-  showOnly(unofficialView);
-  updateTabs('unofficial');
-  if (updateUrl) updateLocation('unofficial', { replace: replaceUrl });
-  releaseUnexpectedSkipLinkFocus();
-}
-
 function modeFromLocation() {
   const mode = location.hash.slice(1);
   return VIEW_MODES.has(mode) ? mode : 'current';
@@ -226,7 +216,6 @@ function showMode(mode, options = {}) {
   else if (mode === 'first-week') void showFirstWeek(options);
   else if (mode === 'played-tracks') void showPlayedTracks(options);
   else if (mode === 'likes') void showLikes(options);
-  else if (mode === 'unofficial') showUnofficial(options);
   else void showHistory(mode, options);
 }
 
@@ -255,10 +244,6 @@ tabs?.addEventListener('click', (event) => {
   }
   if (button.dataset.view === 'likes') {
     void showLikes();
-    return;
-  }
-  if (button.dataset.view === 'unofficial') {
-    showUnofficial();
     return;
   }
   if (button.dataset.mode) {
