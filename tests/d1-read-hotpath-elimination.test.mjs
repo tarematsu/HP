@@ -49,9 +49,10 @@ test('current daily history reads a one-row projection rather than minute facts'
   assert.match(currentProjectionMigration, /CREATE TABLE IF NOT EXISTS sh_current_daily_summary/);
   assert.match(currentProjectionMigration, /AFTER INSERT ON sh_minute_facts/);
   assert.match(currentProjectionMigration, /AFTER UPDATE OF listener_count,reported_current_stream_count,total_member_count/);
+  assert.equal(factsDescriptor.schema, factsDescriptor.migrations.at(-1));
   assert.equal(
-    factsDescriptor.schema,
-    'database/facts-migrations/052_current_daily_summary_projection.sql',
+    factsDescriptor.migrations.includes('database/facts-migrations/052_current_daily_summary_projection.sql'),
+    true,
   );
 });
 
