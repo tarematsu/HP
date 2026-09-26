@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 8;
+export const API_CONTRACT_VERSION = 7;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -12,7 +12,6 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/history', methods: ['GET'], description: 'Daily, weekly, monthly, ranking, and broadcast history modes' },
     { path: '/api/history-current', methods: ['GET'], description: 'Current UTC daily summary from the incremental minute projection' },
     { path: '/api/track-history', methods: ['GET'], description: 'Stored track history and current like ranking' },
-    { path: '/api/played-track-streams', methods: ['GET'], description: 'Per-track listener-weight estimates for daily stream composition' },
     { path: '/api/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka official broadcast listener series' },
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
     { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },

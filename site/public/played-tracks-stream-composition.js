@@ -1,6 +1,6 @@
 const START = '2026-09-10';
-const API_CHUNK_DAYS = 35;
 const nf = new Intl.NumberFormat('ja-JP');
+const percent = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 const state = { days: [], tracks: [], selected: -1, loaded: false };
 const $ = (id) => document.getElementById(id);
 
@@ -8,20 +8,6 @@ function num(value) {
   if (value == null || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
-}
-
-function parseDate(value) {
-  const text = String(value || '');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
-  const date = new Date(`${text}T00:00:00Z`);
-  return Number.isFinite(date.getTime()) ? date : null;
-}
-
-function addDays(value, days) {
-  const date = parseDate(value);
-  if (!date) return '';
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
 }
 
 function identity(row) {
@@ -48,50 +34,45 @@ async function getJson(url) {
   return data;
 }
 
-async function loadListenerRows(to) {
-  const rows = [];
-  let from = START;
-  while (from && from <= to) {
-    const candidateTo = addDays(from, API_CHUNK_DAYS - 1);
-    const chunkTo = candidateTo && candidateTo < to ? candidateTo : to;
-    const payload = await getJson(`/api/played-track-streams?from=${from}&to=${chunkTo}`);
-    rows.push(...(Array.isArray(payload.rows) ? payload.rows : []));
-    from = addDays(chunkTo, 1);
-  }
-  return rows;
-}
-
 function allocate(totalValue, rows) {
   const total = Math.max(0, Math.round(Number(totalValue) || 0));
-  const weight = rows.reduce((sum, row) => sum + row.weight, 0);
-  if (!weight) return [];
+  const totalPlays = rows.reduce((sum, row) => sum + row.play_count, 0);
+  if (!totalPlays) return [];
   const result = rows.map((row) => {
-    const exact = total * row.weight / weight;
-    return { ...row, value: Math.floor(exact), fraction: exact % 1 };
+    const exact = total * row.play_count / totalPlays;
+    return {
+      ...row,
+      value: Math.floor(exact),
+      fraction: exact % 1,
+      share: row.play_count / totalPlays,
+    };
   });
   let remainder = total - result.reduce((sum, row) => sum + row.value, 0);
-  const order = [...result].sort((a, b) => b.fraction - a.fraction || b.weight - a.weight);
+  const order = [...result].sort((a, b) => b.fraction - a.fraction || b.play_count - a.play_count);
   for (let i = 0; remainder > 0 && order.length; i = (i + 1) % order.length) {
     order[i].value += 1;
     remainder -= 1;
   }
-  return result.sort((a, b) => b.value - a.value);
+  return result.sort((a, b) => b.value - a.value || b.play_count - a.play_count);
 }
 
-function build(listenerRows, dailyRows) {
-  const weights = new Map();
-  for (const row of listenerRows || []) {
+function build(trackRows, dailyRows) {
+  const playsByDay = new Map();
+  for (const row of trackRows || []) {
     const day = String(row.play_date || '');
-    const average = num(row.listener_avg);
-    const plays = Math.max(0, Number(row.play_count) || 0);
-    const weight = num(row.listener_weight) ?? (average == null ? 0 : average * plays);
-    if (!day || !plays || !(weight > 0)) continue;
+    const playCount = Math.max(0, Number(row.play_count) || 0);
+    if (day < START || !playCount) continue;
     const key = identity(row);
-    if (!weights.has(day)) weights.set(day, new Map());
-    const map = weights.get(day);
+    if (!playsByDay.has(day)) playsByDay.set(day, new Map());
+    const map = playsByDay.get(day);
     const old = map.get(key);
-    if (old) old.weight += weight;
-    else map.set(key, { key, title: label(row), artist: String(row.artist || ''), weight });
+    if (old) old.play_count += playCount;
+    else map.set(key, {
+      key,
+      title: label(row),
+      artist: String(row.artist || ''),
+      play_count: playCount,
+    });
   }
 
   const trackTotals = new Map();
@@ -99,15 +80,18 @@ function build(listenerRows, dailyRows) {
   for (const row of dailyRows || []) {
     const day = String(row.period_key || '');
     const total = num(row.stream_growth);
-    const map = weights.get(day);
+    const map = playsByDay.get(day);
     if (day < START || row.known_missing === true || total == null || total < 0 || !map?.size) continue;
-    const tracks = allocate(total, [...map.values()]);
+    const sourceTracks = [...map.values()];
+    const totalPlays = sourceTracks.reduce((sum, track) => sum + track.play_count, 0);
+    if (!totalPlays) continue;
+    const tracks = allocate(total, sourceTracks);
     for (const track of tracks) {
       const old = trackTotals.get(track.key) || { ...track, total: 0 };
       old.total += track.value;
       trackTotals.set(track.key, old);
     }
-    days.push({ day, total: Math.round(total), tracks });
+    days.push({ day, total: Math.round(total), totalPlays, tracks });
   }
   const tracks = [...trackTotals.values()].sort((a, b) => b.total - a.total);
   tracks.forEach((track, index) => { track.color = color(index); });
@@ -131,7 +115,11 @@ function renderDetail() {
   const node = $('playedTracksStreamDetail');
   const day = state.days[state.selected];
   if (!node || !day) return;
-  node.textContent = `${day.day}　総再生数 ${nf.format(day.total)}　${day.tracks.filter((t) => t.value > 0).map((t) => `${t.title} ${nf.format(t.value)}`).join(' / ')}`;
+  const tracks = day.tracks
+    .filter((track) => track.value > 0)
+    .map((track) => `${track.title} ${nf.format(track.value)}（${nf.format(track.play_count)}回・${percent.format(track.share * 100)}%）`)
+    .join(' / ');
+  node.textContent = `${day.day}　総再生数 ${nf.format(day.total)}　再生履歴 ${nf.format(day.totalPlays)}回　${tracks}`;
 }
 
 function draw() {
@@ -201,18 +189,19 @@ export async function loadPlayedTrackStreamComposition() {
   const notice = $('playedTracksStreamNotice');
   try {
     const to = new Date().toISOString().slice(0, 10);
-    const [listenerRows, daily] = await Promise.all([
-      loadListenerRows(to),
+    const [trackHistory, daily] = await Promise.all([
+      getJson(`/api/track-history?from=${START}&to=${to}&limit=20000&ranking=0`),
       getJson(`/api/history?mode=daily&from=${START}&to=${to}`),
     ]);
-    const model = build(listenerRows, daily.rows);
+    if (trackHistory.truncated) throw new Error('track history response truncated');
+    const model = build(trackHistory.rows, daily.rows);
     state.days = model.days;
     state.tracks = model.tracks;
     state.selected = state.days.length - 1;
     state.loaded = true;
     renderLegend(); renderDetail(); draw();
     if (notice) {
-      notice.textContent = state.days.length ? '' : '推定に必要な再生数または同接データがありません。';
+      notice.textContent = state.days.length ? '' : '推定に必要な日別総再生数または再生履歴がありません。';
       notice.hidden = Boolean(state.days.length);
     }
     requestAnimationFrame(() => { const s = $('playedTracksStreamScroller'); if (s) s.scrollLeft = s.scrollWidth; });

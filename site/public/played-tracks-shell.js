@@ -53,7 +53,7 @@ function mountView() {
         <canvas id="playedTracksStreamChart" width="960" height="360" aria-label="日別推定再生数の曲別積み上げ縦棒グラフ"></canvas>
       </div>
       <div id="playedTracksStreamDetail" class="chart-detail"></div>
-      <p class="chart-foot">2026/9/10以降。各日の総再生数を、各曲の平均同接×再生回数の比率で按分した推定値です。</p>
+      <p class="chart-foot">2026/9/10以降。各日の総再生数を、その日の再生履歴における曲別再生回数の比率で按分した推定値です。</p>
     </section>
 
     <section class="card chart-panel">
