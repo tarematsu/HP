@@ -8,15 +8,20 @@ by Nogizaka46, Sakurazaka46, and Hinatazaka46.
 - Worker: `sh-spotify-playcount-collector`
 - Schedule: 21:05 UTC / 06:05 JST
 - Catalog: Spotify Web API artist albums (`album`, `single`, `appears_on`)
-- Playcount: Spotify Web Player internal `queryAlbumTracks`
+- Playcount: Spotify public album page `initialState`
 - Storage: `OTHER_DB` (`stationhead-other`)
 - Fan-out: `stationhead-spotify-playcount` Queue, one message per album
 
 Catalog discovery and playcount retrieval are intentionally separate. The
-catalog path uses the supported Web API. Playcount is not exposed by the public
-Web API, so the collector uses the Web Player's internal persisted GraphQL
-query. That endpoint, anonymous-token bootstrap, response shape, and persisted
-query hash are not public Spotify APIs and may change without notice.
+catalog path uses the supported Web API. Exact playcount is not exposed by the
+public Web API, so the collector reads the base64-encoded `initialState` data
+that Spotify currently embeds in its public album pages. This avoids carrying
+or synthesizing Web Player access/client tokens in the Worker.
+
+The album-page structure is not a supported Spotify developer API and can
+change without notice. An album that yields no target tracks is treated as a
+collection failure, retried by Queue, and recorded in the collection-run tables
+instead of being accepted as an empty successful snapshot.
 
 ## Required secrets
 
@@ -28,24 +33,17 @@ npx wrangler secret put SPOTIFY_CLIENT_SECRET --config wrangler.spotify-playcoun
 ```
 
 The client ID and secret are only used for catalog discovery through Spotify's
-Client Credentials flow. They are not stored in D1.
+Client Credentials flow. They are not used for playcount collection and are not
+stored in D1.
 
-## Web Player compatibility boundary
+## Compatibility boundary
 
-The following bindings are intentionally configurable so Web Player changes do
-not require a data migration:
+If Spotify changes its public album-page bootstrap format, update
+`decodeSpotifyInitialState()`, `albumFromInitialState()`, or
+`normalizeAlbumTracks()` in `worker/src/spotify-playcount-collector.js`.
 
-- `SPOTIFY_ALBUM_TRACKS_QUERY_HASH`
-- `SPOTIFY_PARTNER_ENDPOINT`
-- `SPOTIFY_WEB_TOKEN_URL`
-- `SPOTIFY_WEB_ACCESS_TOKEN` (temporary diagnostic override)
-- `SPOTIFY_WEB_CLIENT_TOKEN` (optional when the partner endpoint requires it)
-
-Do not commit token values. Use Wrangler secrets for token overrides.
-
-If the internal response schema changes, update `normalizeAlbumTracks()` in
-`worker/src/spotify-playcount-collector.js`. Both the older `data.album` and
-newer `data.albumUnion` shapes are accepted.
+`SPOTIFY_PUBLIC_ALBUM_BASE` is available as an optional diagnostic override.
+Do not use it to proxy production data through an untrusted service.
 
 ## Data semantics
 
