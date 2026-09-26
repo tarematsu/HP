@@ -99,7 +99,7 @@ test('current and history chart details are owned by their respective renderers'
   assert.match(page, /id="currentChartDetail"[^>]*data-current-chart-detail/);
   assert.match(page, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((page.match(/id="chartDetail"/g) || []).length, 1);
-  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260927\.1/);
+  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260927\.2/);
   assert.match(currentChartDetail, /document\.getElementById\('currentChartDetail'\)/);
   assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
 });
