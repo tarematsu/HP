@@ -42,7 +42,7 @@ test('dashboard HTML keeps accessibility, privacy and all public sections', asyn
   ]) assert.match(html, new RegExp(`id="${id}"`));
   assert.doesNotMatch(html, /id="streamCount"|id="goalMilestones"|goal-card/);
   assert.match(html, /data-view="current" class="active" aria-current="page">現在/);
-  assert.match(html, /data-view="history" data-mode="daily">日次/);
+  assert.match(html, /data-view="history" data-mode="daily">過去/);
   assert.match(html, /data-view="likes" data-mode="likes">いいね/);
   assert.match(html, /rel="noopener noreferrer"/);
   assert.doesNotMatch(html, /href="\/history/);
