@@ -1,5 +1,6 @@
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
+const FIVE_MINUTE_MS = 5 * MINUTE_MS;
 const EXTREMA_POINT_COLOR = '#888';
 const STREAM_BAR_COLOR = '#168b73';
 const integer = new Intl.NumberFormat('ja-JP');
@@ -46,19 +47,19 @@ function normalizePrevious(rows, minTime, maxTime) {
   return points.sort((a, b) => a.observed_at - b.observed_at);
 }
 
-function normalizeStreamDeltas(rows, minTime, maxTime) {
+function normalizeStreamAverages(rows, minTime, maxTime) {
   const byTime = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     const observedAt = finite(row?.observed_at);
     const streamDelta = finite(row?.stream_delta);
     if (observedAt == null || streamDelta == null || streamDelta < 0) continue;
-    if (observedAt < minTime || observedAt > maxTime + MINUTE_MS) continue;
+    if (observedAt < minTime || observedAt > maxTime + FIVE_MINUTE_MS) continue;
     byTime.set(observedAt, { observed_at: observedAt, stream_delta: streamDelta });
   }
   return [...byTime.values()].sort((a, b) => a.observed_at - b.observed_at);
 }
 
-function ensureLegend(hasPrevious, hasStreamDeltas) {
+function ensureLegend(hasPrevious, hasStreamAverages) {
   const legend = document.querySelector('#currentView .legend');
   if (!legend) return;
   let previous = legend.querySelector('.previous-online-key');
@@ -72,11 +73,11 @@ function ensureLegend(hasPrevious, hasStreamDeltas) {
   }
 
   let stream = legend.querySelector('.stream-delta-key');
-  if (!hasStreamDeltas) stream?.remove();
+  if (!hasStreamAverages) stream?.remove();
   else if (!stream) {
     stream = document.createElement('span');
     stream.className = 'stream-delta-key';
-    stream.textContent = '再生数増加/分';
+    stream.textContent = '再生数増加/分（5分平均）';
     stream.style.color = STREAM_BAR_COLOR;
     legend.append(stream);
   }
@@ -132,8 +133,8 @@ function roundedStreamMax(value) {
 
 function drawStreamBars(context, rows, xFor, yFor, baseline, plotWidth) {
   if (!rows.length) return;
-  const minuteWidth = plotWidth * MINUTE_MS / DAY_MS;
-  const barWidth = Math.max(.5, Math.min(2, minuteWidth * .82));
+  const bucketWidth = plotWidth * FIVE_MINUTE_MS / DAY_MS;
+  const barWidth = Math.max(1, Math.min(6, bucketWidth * .82));
   context.fillStyle = STREAM_BAR_COLOR;
   context.globalAlpha = .82;
   for (const row of rows) {
@@ -163,8 +164,8 @@ function drawComparison(payload) {
   const minTime = current[0].observed_at;
   const maxTime = current.at(-1).observed_at;
   const previous = normalizePrevious(payload?.previous_day_history, minTime, maxTime);
-  const streamDeltas = normalizeStreamDeltas(payload?.stream_minute_history, minTime, maxTime);
-  ensureLegend(previous.length > 0, streamDeltas.length > 0);
+  const streamAverages = normalizeStreamAverages(payload?.stream_5m_history, minTime, maxTime);
+  ensureLegend(previous.length > 0, streamAverages.length > 0);
 
   const height = width < 520 ? 360 : Math.max(390, Math.min(470, Math.round(width * .54)));
   const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
@@ -220,8 +221,8 @@ function drawComparison(payload) {
   drawSeries(context, previous, xFor, yOnline, '#969ca6', 2);
   drawSeries(context, current, xFor, yOnline, '#111', 2.5);
 
-  const streamRawMax = streamDeltas.length
-    ? Math.max(...streamDeltas.map((row) => row.stream_delta))
+  const streamRawMax = streamAverages.length
+    ? Math.max(...streamAverages.map((row) => row.stream_delta))
     : 0;
   const streamMax = roundedStreamMax(streamRawMax);
   const yStream = (value) => streamBottom - Math.max(0, Number(value)) * streamPlotHeight / streamMax;
@@ -238,7 +239,7 @@ function drawComparison(payload) {
     context.textBaseline = 'middle';
     context.fillText(integer.format(Math.round(streamMax * (1 - ratio))), padding.left - 6, y);
   }
-  drawStreamBars(context, streamDeltas, xFor, yStream, streamBottom, plotWidth);
+  drawStreamBars(context, streamAverages, xFor, yStream, streamBottom, plotWidth);
 
   context.fillStyle = '#667287';
   context.textAlign = 'center';
@@ -254,7 +255,7 @@ function drawComparison(payload) {
   context.fillStyle = '#667287';
   context.textAlign = 'left';
   context.fillText('オンライン数(人)', 4, 12);
-  context.fillText('再生数増加/分', 4, streamTop - 8);
+  context.fillText('再生数増加/分（5分平均）', 4, streamTop - 8);
   context.textAlign = 'center';
   context.fillText('時刻 (JST)', width / 2, height - 2);
 
