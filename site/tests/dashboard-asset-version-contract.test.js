@@ -41,7 +41,7 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
   };
 
   assert.equal(versions.entry, '20260926.3');
-  assert.equal(versions.tabs, '20260926.1');
+  assert.equal(versions.tabs, '20260926.3');
   assert.equal(versions.historyMain, '20260926.1');
   assert.equal(versions.unofficialListeningParties, '20260926.1');
   assert.equal(versions.comparison, '20260923.6');
