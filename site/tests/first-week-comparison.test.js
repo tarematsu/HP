@@ -35,11 +35,17 @@ test('known 2026 collection gap suppresses affected title tracks instead of inve
   assert.equal(releaseOverlapsKnownGap(byTitle('愛MUST BE')), false);
 });
 
-test('five-minute series query seeks the minute index and uses canonical stream semantics', () => {
+test('five-minute series query seeks the minute index and selects listener and stream samples independently', () => {
   assert.match(FIRST_WEEK_SERIES_SQL, /INDEXED BY idx_sh_minute_facts_time/);
   assert.match(FIRST_WEEK_SERIES_SQL, /source_code IN \(3,4\)/);
   assert.match(FIRST_WEEK_SERIES_SQL, /current_stream_count IS NOT total_listens/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /bucket_index\*5 AS elapsed_minutes/);
+  assert.match(FIRST_WEEK_SERIES_SQL, /listener_ranked AS/);
+  assert.match(FIRST_WEEK_SERIES_SQL, /stream_ranked AS/);
+  assert.match(FIRST_WEEK_SERIES_SQL, /WHERE listener_count IS NOT NULL/);
+  assert.match(FIRST_WEEK_SERIES_SQL, /WHERE stream_count IS NOT NULL/);
+  assert.match(FIRST_WEEK_SERIES_SQL, /LEFT JOIN listener_ranked/);
+  assert.match(FIRST_WEEK_SERIES_SQL, /LEFT JOIN stream_ranked/);
+  assert.match(FIRST_WEEK_SERIES_SQL, /buckets\.bucket_index\*5 AS elapsed_minutes/);
 });
 
 test('stream growth is rebased to the first observed point without masking counter regressions as growth', () => {
@@ -99,14 +105,22 @@ test('dashboard mounts and routes the first-week tab before the lazy runtime sta
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
 
   assert.ok(entry.indexOf('first-week-comparison-shell.js') < entry.indexOf('dashboard-tabs.js'));
+  assert.match(entry, /first-week-comparison-shell\.js\?v=20260926\.2/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20260926\.2/);
   assert.match(shell, /dataset\.view = 'first-week'/);
   assert.match(shell, /textContent = '初週比較'/);
   assert.match(shell, /querySelector\('\[data-mode="daily"\]'\)/);
+  assert.doesNotMatch(shell, /firstWeekLoad|>更新</);
   assert.match(tabs, /'first-week'/);
-  assert.match(tabs, /first-week-comparison\.js\?v=20260925\.1/);
+  assert.match(tabs, /first-week-comparison\.js\?v=20260926\.2/);
+  assert.match(runtime, /sh\.first-week-comparison\.v2/);
+  assert.match(runtime, /first-week-comparison\?v=20260926\.2/);
+  assert.doesNotMatch(runtime, /firstWeekLoad|loadButton/);
+  assert.doesNotMatch(css, /#firstWeekLoad/);
   assert.match(css, /repeat\(8, minmax\(0, 1fr\)\)/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
