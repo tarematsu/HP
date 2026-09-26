@@ -126,12 +126,12 @@ test('official listening party chart hides the redundant status and renders elap
   assert.match(source, /経過時間（分）/);
 });
 
-test('live screenshot audit retains the historical six-series floor', () => {
+test('live screenshot audit retains the historical six-series floor in the unified view', () => {
   const source = readFileSync(
     new URL('../scripts/audit-pages-live.mjs', import.meta.url),
     'utf8',
   );
-  assert.match(source, /requiredText: '公式リスパ一覧'/);
+  assert.match(source, /requiredText: '非公式リスパ一覧'/);
   assert.match(source, /legendSelector: '#chartLegend span'/);
   assert.match(source, /minLegendItems: 6/);
 });
