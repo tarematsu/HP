@@ -73,7 +73,7 @@ test('history runtime is embedded, lazy, and has one chart owner per mode', () =
 
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(html, /id="historyView"/);
-  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260925\.1'\)/);
+  assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260926\.1'\)/);
   assert.doesNotMatch(html, /href="\/history/);
   assert.match(entry, /function ensureHistoryModeRuntime/);
   assert.match(entry, /history-period-chart\.js/);
