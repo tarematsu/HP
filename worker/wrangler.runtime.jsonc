@@ -47,7 +47,6 @@
     "MINUTE_FACT_STALLED_RECOVERY_LIMIT": 1000,
     "MINUTE_FACT_AUTO_REQUEUE_DEAD": true,
     "PUBLIC_HEALTH_CACHE_MS": 60000,
-    "PAGES_RESPONSE_EDGE_CACHE_MAX_AGE_MS": 300000,
     "REQUEST_TIMEOUT_MS": 8000
   },
   "kv_namespaces": [
@@ -57,9 +56,7 @@
     { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }
   ],
   "durable_objects": {
-    "bindings": [
-      { "name": "MINUTE_LIVE_JOB_COORDINATOR", "class_name": "MinuteLiveJobCoordinator" }
-    ]
+    "bindings": [{ "name": "MINUTE_LIVE_JOB_COORDINATOR", "class_name": "MinuteLiveJobCoordinator" }]
   },
   "migrations": [
     { "tag": "runtime-coordinator-v1", "new_sqlite_classes": ["RuntimeCoordinator"] },
