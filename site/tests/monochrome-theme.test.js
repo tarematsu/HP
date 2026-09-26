@@ -8,6 +8,9 @@ const header = readFileSync(new URL('../public/dashboard-header.js', import.meta
 const dashboardChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
+const broadcastChart = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+const firstWeekShell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
+const firstWeekChart = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
 
 test('dashboard loads the monochrome UI theme before first paint', () => {
   const appLite = page.match(/\/app-lite\.css\?v=[^"']+/)?.[0];
@@ -49,11 +52,11 @@ test('Pages layout removes decorative chrome while keeping data sections', () =>
   assert.match(theme, /\.table-wrap\s*\{[\s\S]*border-radius:\s*0/);
 });
 
-test('redundant chart helper copy is cleared only when active renderers re-add it', () => {
-  assert.doesNotMatch(page, /data-current-chart-detail>グラフをタッチ/);
-  assert.doesNotMatch(page, /data-history-chart-detail>グラフをタッチ/);
-  assert.match(header, /CHART_HELPER_PREFIX = 'グラフをタッチ'/);
-  assert.match(header, /clearChartHelperCopy/);
-  assert.match(header, /\['currentChartDetail', 'chartDetail'\]/);
-  assert.match(header, /new MutationObserver\(\(\) => clearChartHelperCopy\(element\)\)/);
+test('chart helper copy is removed from source instead of hidden after render', () => {
+  for (const source of [page, header, broadcastChart, firstWeekShell, firstWeekChart]) {
+    assert.doesNotMatch(source, /グラフをタッチ/);
+  }
+  assert.doesNotMatch(header, /CHART_HELPER_PREFIX|clearChartHelperCopy/);
+  assert.match(broadcastChart, /if \(minute == null\) \{\s*detail\.replaceChildren\(\)/);
+  assert.match(firstWeekChart, /if \(selectedMinute == null\) \{\s*detail\.replaceChildren\(\)/);
 });
