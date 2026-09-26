@@ -78,11 +78,14 @@ CREATE INDEX IF NOT EXISTS idx_sh_spotify_playcount_daily_track
 CREATE TABLE IF NOT EXISTS sh_spotify_collection_runs (
   snapshot_date TEXT PRIMARY KEY,
   status TEXT NOT NULL,
+  attempt_no INTEGER NOT NULL DEFAULT 0,
+  run_token TEXT NOT NULL DEFAULT '',
   albums_queued INTEGER NOT NULL DEFAULT 0,
   albums_completed INTEGER NOT NULL DEFAULT 0,
   tracks_collected INTEGER NOT NULL DEFAULT 0,
   errors INTEGER NOT NULL DEFAULT 0,
   started_at INTEGER NOT NULL,
+  attempt_started_at INTEGER NOT NULL,
   completed_at INTEGER,
   updated_at INTEGER NOT NULL,
   last_error TEXT
@@ -90,6 +93,7 @@ CREATE TABLE IF NOT EXISTS sh_spotify_collection_runs (
 
 CREATE TABLE IF NOT EXISTS sh_spotify_collection_album_runs (
   snapshot_date TEXT NOT NULL,
+  run_token TEXT NOT NULL,
   album_id TEXT NOT NULL,
   status TEXT NOT NULL,
   track_count INTEGER NOT NULL DEFAULT 0,
@@ -100,4 +104,17 @@ CREATE TABLE IF NOT EXISTS sh_spotify_collection_album_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sh_spotify_album_runs_status
-  ON sh_spotify_collection_album_runs (snapshot_date, status, album_id);
+  ON sh_spotify_collection_album_runs (snapshot_date, run_token, status, album_id);
+
+CREATE TABLE IF NOT EXISTS sh_spotify_playcount_candidates (
+  snapshot_date TEXT NOT NULL,
+  run_token TEXT NOT NULL,
+  track_id TEXT NOT NULL,
+  album_id TEXT NOT NULL,
+  playcount INTEGER NOT NULL CHECK (playcount >= 0),
+  collected_at INTEGER NOT NULL,
+  PRIMARY KEY (snapshot_date, track_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sh_spotify_candidates_run
+  ON sh_spotify_playcount_candidates (snapshot_date, run_token, track_id);
