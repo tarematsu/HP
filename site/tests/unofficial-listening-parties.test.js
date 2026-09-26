@@ -113,7 +113,7 @@ test('all historical rows use X announcements and the unified X label', () => {
   assert.match(viewSource, /1866105637178142945/);
   assert.match(viewSource, /1869336911619494103/);
   assert.match(viewSource, /1872235924760735993/);
-  assert.match(viewSource, /1872628541235568396/);
+  assert.match(viewSource, /1872628541235568054/);
   assert.match(viewSource, /1942191880726528064/);
 });
 
