@@ -41,11 +41,11 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
-  assert.equal(versions.entry, '20260927.5');
-  assert.equal(versions.header, '20260927.1');
-  assert.equal(versions.tabs, '20260927.2');
-  assert.equal(versions.firstWeekShell, '20260927.1');
-  assert.equal(versions.historyMain, '20260927.1');
+  assert.equal(versions.entry, '20260927.6');
+  assert.equal(versions.header, '20260927.2');
+  assert.equal(versions.tabs, '20260927.3');
+  assert.equal(versions.firstWeekShell, '20260927.2');
+  assert.equal(versions.historyMain, '20260927.2');
   assert.equal(versions.unofficialListeningParties, '20260927.1');
   assert.equal(versions.comparison, '20260927.2');
   assert.equal(versions.chartDetail, '20260927.2');
