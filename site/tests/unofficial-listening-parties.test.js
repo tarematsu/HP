@@ -119,5 +119,6 @@ test('unofficial data loads before dashboard tab setup with a fresh deployment v
   const tabsImport = metricsSource.indexOf("import './dashboard-tabs.js");
   assert.ok(unofficialImport >= 0 && tabsImport > unofficialImport);
   assert.match(metricsSource, /unofficial-listening-parties\.js\?v=20260927\.1/);
-  assert.match(pageSource, /dashboard-metrics\.js\?v=20260927\.2/);
+  assert.match(metricsSource, /dashboard-tabs\.js\?v=20260927\.1/);
+  assert.match(pageSource, /dashboard-metrics\.js\?v=20260927\.3/);
 });
