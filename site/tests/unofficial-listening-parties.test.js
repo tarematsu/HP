@@ -7,7 +7,7 @@ const pageSource = await readFile(new URL('../public/index.html', import.meta.ur
 const metricsSource = await readFile(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
 test('official and unofficial listening parties share one top-level tab', () => {
-  assert.match(pageSource, /data-mode="broadcasts">Listening Party<\/button>/);
+  assert.match(pageSource, /data-mode="broadcasts">リスニングパーティ<\/button>/);
   assert.doesNotMatch(pageSource, /data-view="unofficial"/);
   assert.doesNotMatch(viewSource, /button\.dataset\.view = 'unofficial'|button\.textContent = '非公式リスパ'/);
 });
@@ -24,9 +24,9 @@ test('unofficial listening party list is appended below the shared official view
   assert.doesNotMatch(viewSource, /chart-panel/);
 });
 
-test('unofficial list is visible only while Listening Party is active and the tab label stays unified', () => {
+test('unofficial list is visible only while the listening-party tab is active and the tab label stays unified', () => {
   assert.match(viewSource, /querySelector\('#modeTabs \[data-mode="broadcasts"\]'\)/);
-  assert.match(viewSource, /TAB_LABEL = 'Listening Party'/);
+  assert.match(viewSource, /TAB_LABEL = 'リスニングパーティ'/);
   assert.match(viewSource, /tab\.textContent !== TAB_LABEL/);
   assert.match(viewSource, /panel\.hidden = !tab\.classList\.contains\('active'\)/);
   assert.match(viewSource, /new MutationObserver\(syncTab\)/);
@@ -34,7 +34,7 @@ test('unofficial list is visible only while Listening Party is active and the ta
   assert.match(viewSource, /childList: true/);
 });
 
-test('legacy unofficial tab and route are normalized into Listening Party', () => {
+test('legacy unofficial tab and route are normalized into the listening-party view', () => {
   assert.match(viewSource, /querySelector\('#modeTabs \[data-view="unofficial"\]'\)\?\.remove\(\)/);
   assert.match(viewSource, /getElementById\('unofficialView'\)\?\.remove\(\)/);
   assert.match(viewSource, /location\.hash !== '#unofficial'/);
@@ -117,6 +117,6 @@ test('unofficial data loads before dashboard tab setup with a fresh deployment v
   const unofficialImport = metricsSource.indexOf("import './unofficial-listening-parties.js");
   const tabsImport = metricsSource.indexOf("import './dashboard-tabs.js");
   assert.ok(unofficialImport >= 0 && tabsImport > unofficialImport);
-  assert.match(metricsSource, /unofficial-listening-parties\.js\?v=20260926\.1/);
-  assert.match(pageSource, /dashboard-metrics\.js\?v=20260926\.2/);
+  assert.match(metricsSource, /unofficial-listening-parties\.js\?v=20260926\.2/);
+  assert.match(pageSource, /dashboard-metrics\.js\?v=20260926\.3/);
 });
