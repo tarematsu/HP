@@ -18,20 +18,24 @@ const rankingLibrary = readFileSync(new URL('../functions/lib/track-ranking.js',
 const sakurazakaApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
 const middleware = readFileSync(new URL('../functions/_middleware.js', import.meta.url), 'utf8');
 
-const ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
+const NAV_ARCHIVE_MODES = ['daily', 'ranking', 'broadcasts'];
+const INTERNAL_ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
 
-test('main dashboard exposes archive modes and likes without separate pages', () => {
-  for (const mode of ARCHIVE_MODES) {
+test('main dashboard exposes only active archive tabs and likes without separate pages', () => {
+  for (const mode of NAV_ARCHIVE_MODES) {
     assert.match(mainPage, new RegExp(`data-view="history" data-mode="${mode}"`));
   }
+  assert.doesNotMatch(mainPage, /data-view="history" data-mode="(?:weekly|monthly)"/);
   assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
   assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲/);
   assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
   assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
 });
 
-test('monthly tab appears before leaderboard in the shared panel', () => {
-  assert.ok(mainPage.indexOf('data-mode="monthly"') < mainPage.indexOf('data-mode="ranking"'));
+test('weekly and monthly summary modes remain internal after their top tabs are removed', () => {
+  assert.doesNotMatch(mainPage, /data-mode="weekly"|data-mode="monthly"/);
+  assert.match(historyClient, /weekly: \{/);
+  assert.match(historyClient, /monthly: \{/);
 });
 
 test('embedded history defaults invalid hashes to weekly and lazy-loads mode runtimes', () => {
@@ -42,7 +46,7 @@ test('embedded history defaults invalid hashes to weekly and lazy-loads mode run
   assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
   assert.match(historyEntry, /history-lite\.js\?v=20260925\.1/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
-  for (const mode of ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
+  for (const mode of INTERNAL_ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
 });
 
 test('shared tabs use a fixed grid without horizontal scrolling', () => {

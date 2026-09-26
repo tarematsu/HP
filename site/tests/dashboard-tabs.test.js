@@ -12,15 +12,16 @@ const redirects = readFileSync(new URL('../public/_redirects', import.meta.url),
 const historyPageUrl = new URL('../public/history/index.html', import.meta.url);
 const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.url);
 
-test('dashboard starts on current and exposes every mode in one tab panel', () => {
+test('dashboard starts on current and exposes visible modes in one tab panel', () => {
   assert.ok(page.indexOf('data-view="current"') < page.indexOf('data-mode="daily"'));
   assert.match(page, /data-view="current" class="active" aria-current="page">現在/);
   assert.match(page, /id="currentView" class="dashboard-view"/);
   assert.match(page, /id="historyView" class="dashboard-view history-view" hidden/);
   assert.match(page, /id="likesView" class="dashboard-view likes-view" hidden/);
-  for (const mode of ['daily', 'weekly', 'monthly', 'ranking', 'likes', 'broadcasts']) {
+  for (const mode of ['daily', 'ranking', 'likes', 'broadcasts']) {
     assert.match(page, new RegExp(`data-mode="${mode}"`));
   }
+  assert.doesNotMatch(page, /data-mode="weekly"|data-mode="monthly"/);
   assert.doesNotMatch(page, /data-mode="tracks"|id="trackControls"/);
 });
 
@@ -41,7 +42,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
 });
 
 test('first-week comparison routing is preserved alongside the existing lazy views', () => {
-  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260925\.1/);
+  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260926\.1/);
   assert.match(tabsClient, /'first-week'/);
   assert.match(tabsClient, /const firstWeekView = document\.getElementById\('firstWeekView'\)/);
   assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260925\.1'\)/);
