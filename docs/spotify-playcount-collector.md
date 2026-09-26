@@ -7,43 +7,40 @@ by Nogizaka46, Sakurazaka46, and Hinatazaka46.
 
 - Worker: `sh-spotify-playcount-collector`
 - Schedule: 21:05 UTC / 06:05 JST
-- Catalog: Spotify Web API artist albums (`album`, `single`, `appears_on`)
-- Playcount: Spotify public album page `initialState`
+- Catalog: Spotify public artist discography pages
+- Track/playcount source: Spotify public album-page `initialState`
 - Storage: `OTHER_DB` (`stationhead-other`)
 - Fan-out: `stationhead-spotify-playcount` Queue, one message per album
 
-Catalog discovery and playcount retrieval are intentionally separate. The
-catalog path uses the supported Web API. Exact playcount is not exposed by the
-public Web API, so the collector reads the base64-encoded `initialState` data
-that Spotify currently embeds in its public album pages. This avoids carrying
-or synthesizing Web Player access/client tokens in the Worker.
+The collector does not use Spotify Web API credentials. Each target artist is
+identified by its stable Spotify artist ID. Once per day, the Worker fetches
+`open.spotify.com/artist/{artist_id}/discography/all`, extracts album IDs from
+the rendered page and its embedded `initialState`, and refreshes the active
+release catalog in D1.
 
-The album-page structure is not a supported Spotify developer API and can
-change without notice. An album that yields no target tracks is treated as a
-collection failure, retried by Queue, and recorded in the collection-run tables
-instead of being accepted as an empty successful snapshot.
-
-## Required secrets
-
-Configure these Worker secrets before enabling the scheduled collector:
-
-```sh
-npx wrangler secret put SPOTIFY_CLIENT_ID --config wrangler.spotify-playcount.jsonc
-npx wrangler secret put SPOTIFY_CLIENT_SECRET --config wrangler.spotify-playcount.jsonc
-```
-
-The client ID and secret are only used for catalog discovery through Spotify's
-Client Credentials flow. They are not used for playcount collection and are not
-stored in D1.
+Each active album is then fetched through its public Spotify album page. Track
+IDs, names, cumulative playcounts, durations, and artist relationships are read
+from the page's base64-encoded `initialState` data. No Spotify login, OAuth
+client, access token, client token, or persisted GraphQL query is required.
 
 ## Compatibility boundary
 
-If Spotify changes its public album-page bootstrap format, update
-`decodeSpotifyInitialState()`, `albumFromInitialState()`, or
-`normalizeAlbumTracks()` in `worker/src/spotify-playcount-collector.js`.
+Spotify's public page bootstrap format is not a supported developer API and can
+change without notice. Relevant parsing is isolated in:
 
-`SPOTIFY_PUBLIC_ALBUM_BASE` is available as an optional diagnostic override.
-Do not use it to proxy production data through an untrusted service.
+- `albumIdsFromDiscographyHtml()` for release discovery
+- `decodeSpotifyInitialState()` for page bootstrap decoding
+- `albumFromInitialState()` for album selection
+- `normalizeAlbumTracks()` for track/playcount normalization
+
+If a discography yields no releases, the daily run fails instead of replacing
+the known catalog with an empty set. If an album credited to a target artist
+yields no target playcount tracks, that Queue item is retried and the failure is
+recorded. Album links that turn out not to be credited to the target artist are
+deactivated instead of being retried forever.
+
+`SPOTIFY_PUBLIC_ARTIST_BASE` and `SPOTIFY_PUBLIC_ALBUM_BASE` are optional
+diagnostic overrides. Production should normally use Spotify directly.
 
 ## Data semantics
 
