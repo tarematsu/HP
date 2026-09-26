@@ -5,6 +5,8 @@ import { readFile } from 'node:fs/promises';
 const viewSource = await readFile(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
 const pageSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const metricsSource = await readFile(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const historyEntry = await readFile(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
+const legacyRoute = await readFile(new URL('../public/legacy-listening-party-route.js', import.meta.url), 'utf8');
 
 test('official and unofficial listening parties share one top-level tab', () => {
   assert.match(pageSource, /data-mode="broadcasts">Listening Party<\/button>/);
@@ -39,6 +41,8 @@ test('legacy unofficial tab and route are normalized into Listening Party', () =
   assert.match(viewSource, /getElementById\('unofficialView'\)\?\.remove\(\)/);
   assert.match(viewSource, /location\.hash !== '#unofficial'/);
   assert.match(viewSource, /history\.replaceState\(null, '', `\$\{location\.pathname\}\$\{location\.search\}#broadcasts`\)/);
+  assert.match(legacyRoute, /location\.hash === '#unofficial'/);
+  assert.match(legacyRoute, /#broadcasts/);
 });
 
 test('historical unofficial listening party rows use formal hosting channel names', () => {
@@ -109,14 +113,16 @@ test('all historical rows use X announcements and the unified X label', () => {
   assert.match(viewSource, /1866105637178142945/);
   assert.match(viewSource, /1869336911619494103/);
   assert.match(viewSource, /1872235924760735993/);
-  assert.match(viewSource, /1872628541235560835/);
+  assert.match(viewSource, /1872628541235568396/);
   assert.match(viewSource, /1942191880726528064/);
 });
 
-test('unofficial data loads before dashboard tab setup with a fresh deployment version', () => {
-  const unofficialImport = metricsSource.indexOf("import './unofficial-listening-parties.js");
-  const tabsImport = metricsSource.indexOf("import './dashboard-tabs.js");
-  assert.ok(unofficialImport >= 0 && tabsImport > unofficialImport);
-  assert.match(metricsSource, /unofficial-listening-parties\.js\?v=20260926\.1/);
-  assert.match(pageSource, /dashboard-metrics\.js\?v=20260926\.2/);
+test('unofficial data loads only with Listening Party while legacy routing stays lightweight', () => {
+  assert.doesNotMatch(metricsSource, /import '.\/unofficial-listening-parties\.js/);
+  assert.match(metricsSource, /legacy-listening-party-route\.js\?v=20260926\.1/);
+  assert.ok(
+    metricsSource.indexOf('legacy-listening-party-route.js') < metricsSource.indexOf('dashboard-tabs.js'),
+  );
+  assert.match(historyEntry, /unofficial-listening-parties\.js\?v=20260926\.1/);
+  assert.match(pageSource, /dashboard-metrics\.js\?v=20260926\.3/);
 });
