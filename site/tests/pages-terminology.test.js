@@ -15,7 +15,7 @@ const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 
 test('current and likes views use explicit user-facing metric names in static markup', () => {
-  for (const label of ['累計再生数', '対象楽曲数', '最大いいね数', '最終取得', '楽曲別一覧', '最新いいね数', 'Listening Party']) {
+  for (const label of ['累計再生数', '対象楽曲数', '最大いいね数', '最終取得', '楽曲別一覧', '最新いいね数', 'リスパ']) {
     assert.match(html, new RegExp(label));
   }
   assert.match(historyEntry, /pages-terminology\.js\?v=20260924\.3/);
