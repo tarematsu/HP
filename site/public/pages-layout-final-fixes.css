@@ -13,9 +13,9 @@
   min-width: 0 !important;
 }
 
-/* Current headline metrics always use one full-width column. */
+/* Keep the three current headline metrics on one row at every viewport width. */
 #currentView > .metrics {
-  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 }
 
 #historyView > .summary-cards,
