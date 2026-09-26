@@ -3,7 +3,7 @@ import './history/history-global-fixes.js';
 import './dashboard-header.js?v=20260927.1';
 import './first-week-comparison-shell.js?v=20260926.2';
 import './played-tracks-shell.js?v=20260924.3';
-import './dashboard-tabs.js?v=20260926.3';
+import './dashboard-tabs.js?v=20260927.1';
 import './dashboard-current-layout.js?v=20260924.1';
 import './dashboard-current-metric-style.js?v=20260923.1';
 import './dashboard-chart-stability.js?v=20260923.4';
