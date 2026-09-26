@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  DEFAULT_ALBUM_TRACKS_QUERY_HASH,
   SPOTIFY_TARGET_ARTISTS,
-  albumTracksRequestUrl,
+  albumFromInitialState,
+  decodeSpotifyInitialState,
   jstDateKey,
   normalizeAlbumTracks,
 } from '../src/spotify-playcount-collector.js';
@@ -29,19 +29,22 @@ test('collector targets all three Sakamichi groups', () => {
   );
 });
 
-test('album GraphQL request uses the configured persisted query', () => {
-  const url = new URL(albumTracksRequestUrl('album-123'));
-  assert.equal(url.origin, 'https://api-partner.spotify.com');
-  assert.equal(url.searchParams.get('operationName'), 'queryAlbumTracks');
-  assert.deepEqual(JSON.parse(url.searchParams.get('variables')), {
+test('public album page initialState is decoded and album entity is selected', () => {
+  const album = {
     uri: 'spotify:album:album-123',
-    offset: 0,
-    limit: 300,
-  });
-  assert.equal(
-    JSON.parse(url.searchParams.get('extensions')).persistedQuery.sha256Hash,
-    DEFAULT_ALBUM_TRACKS_QUERY_HASH,
-  );
+    name: 'Test album',
+    tracks: { items: [] },
+  };
+  const state = {
+    entities: {
+      items: {
+        'spotify:album:album-123': album,
+      },
+    },
+  };
+  const encoded = Buffer.from(JSON.stringify(state), 'utf8').toString('base64');
+  const html = `<html><script id="initialState" type="text/plain">${encoded}</script></html>`;
+  assert.deepEqual(albumFromInitialState(decodeSpotifyInitialState(html), 'album-123'), album);
 });
 
 test('album normalizer keeps only tracks credited to a target group', () => {
@@ -115,24 +118,25 @@ test('album normalizer keeps only tracks credited to a target group', () => {
   ]);
 });
 
-test('normalizer accepts albumUnion response shape used by newer Web Player queries', () => {
+test('normalizer falls back to album artists when track rows omit artists', () => {
   const tracks = normalizeAlbumTracks({
-    data: {
-      albumUnion: {
-        tracks: {
-          items: [{
-            track: {
-              id: 'track-v2',
-              name: 'V2 track',
-              playcount: '42',
-              artists: { items: [{ id: 'target-v2', name: '日向坂46' }] },
-            },
-          }],
+    uri: 'spotify:album:album-public',
+    artists: {
+      items: [{ uri: 'spotify:artist:target-v2', profile: { name: '日向坂46' } }],
+    },
+    tracks: {
+      items: [{
+        track: {
+          uri: 'spotify:track:track-v2',
+          name: 'Public page track',
+          playcount: '42',
+          duration: { totalMilliseconds: 180000 },
         },
-      },
+      }],
     },
   }, [{ artist_key: 'hinatazaka46', spotify_artist_id: 'target-v2' }]);
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0].track_id, 'track-v2');
   assert.equal(tracks[0].playcount, 42);
+  assert.deepEqual(tracks[0].target_keys, ['hinatazaka46']);
 });
