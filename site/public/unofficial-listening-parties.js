@@ -43,7 +43,7 @@ const EVENTS = [
 ];
 
 const PANEL_ID = 'unofficialListeningPanel';
-const TAB_LABEL = 'Listening Party';
+const TAB_LABEL = 'リスパ';
 
 function removeLegacyUi() {
   document.querySelector('#modeTabs [data-view="unofficial"]')?.remove();

@@ -6,20 +6,20 @@ const header = readFileSync(new URL('../public/dashboard-header.js', import.meta
 const css = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
 
 test('final screenshot-audit overrides load after cross-view unification', () => {
-  assert.match(header, /pages-layout-final-fixes\.css\?v=20260926\.1/);
+  assert.match(header, /pages-layout-final-fixes\.css\?v=20260927\.1/);
   assert.ok(
     header.indexOf('layoutUnificationHref') < header.indexOf('layoutFinalFixesHref'),
     'final layout fixes must load last',
   );
 });
 
-test('dashboard tabs use two rows of five on phones and one row on wider screens', () => {
-  assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(9, minmax\(0, 1fr\)\) !important/);
+test('dashboard tabs use one row of seven at every viewport width', () => {
+  assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\) !important/);
   assert.match(css, /grid-template-rows:\s*34px !important/);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(5, minmax\(0, 1fr\)\) !important/);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*repeat\(2, minmax\(44px, auto\)\) !important/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\) !important/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*minmax\(44px, auto\) !important/);
+  assert.doesNotMatch(css, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*repeat\(2,/);
   assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs > button:last-child\s*\{[\s\S]*min-height:\s*44px !important/);
-  assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs > button:last-child\s*\{[\s\S]*white-space:\s*normal !important/);
 });
 
 test('legacy span-two mobile tab placement is cancelled', () => {

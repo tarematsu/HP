@@ -23,9 +23,9 @@ function parsedQueueJson(value) {
 
 function arrayFromParsedQueue(parsed) {
   if (Array.isArray(parsed)) return parsed;
+  if (Array.isArray(parsed?.tracks)) return parsed.tracks;
   if (Array.isArray(parsed?.presentation_tracks)) return parsed.presentation_tracks;
   if (Array.isArray(parsed?.queue)) return parsed.queue;
-  if (Array.isArray(parsed?.tracks)) return parsed.tracks;
   if (Array.isArray(parsed?.queue_tracks)) return parsed.queue_tracks;
   return [];
 }
