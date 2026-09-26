@@ -100,20 +100,40 @@ export const FIRST_WEEK_SERIES_SQL = `WITH window_rows AS MATERIALIZED (
     END AS stream_count
   FROM window_rows
   WHERE channel_id=(SELECT channel_id FROM selected_channel)
-), ranked AS (
-  SELECT normalized.*,
+), buckets AS MATERIALIZED (
+  SELECT DISTINCT bucket_index FROM normalized
+), listener_ranked AS (
+  SELECT
+    bucket_index,observed_at,listener_count,
     ROW_NUMBER() OVER (
       PARTITION BY bucket_index
       ORDER BY minute_at DESC,id DESC
-    ) AS bucket_rank
+    ) AS metric_rank
   FROM normalized
+  WHERE listener_count IS NOT NULL
+), stream_ranked AS (
+  SELECT
+    bucket_index,observed_at,stream_count,
+    ROW_NUMBER() OVER (
+      PARTITION BY bucket_index
+      ORDER BY minute_at DESC,id DESC
+    ) AS metric_rank
+  FROM normalized
+  WHERE stream_count IS NOT NULL
 )
 SELECT
-  bucket_index*5 AS elapsed_minutes,
-  observed_at,listener_count,stream_count
-FROM ranked
-WHERE bucket_rank=1
-ORDER BY bucket_index ASC`;
+  buckets.bucket_index*5 AS elapsed_minutes,
+  COALESCE(listener_ranked.observed_at,stream_ranked.observed_at) AS observed_at,
+  listener_ranked.listener_count,
+  stream_ranked.stream_count
+FROM buckets
+LEFT JOIN listener_ranked
+  ON listener_ranked.bucket_index=buckets.bucket_index
+  AND listener_ranked.metric_rank=1
+LEFT JOIN stream_ranked
+  ON stream_ranked.bucket_index=buckets.bucket_index
+  AND stream_ranked.metric_rank=1
+ORDER BY buckets.bucket_index ASC`;
 
 function finite(value) {
   if (value == null || value === '') return null;
