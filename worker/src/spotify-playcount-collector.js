@@ -16,15 +16,12 @@ export const SPOTIFY_TARGET_ARTISTS = Object.freeze([
   }),
 ]);
 
-export const DEFAULT_ALBUM_TRACKS_QUERY_HASH =
-  'b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10';
-
 const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
-const SPOTIFY_WEB_TOKEN_URL =
-  'https://open.spotify.com/get_access_token?reason=transport&productType=web_player';
-const DEFAULT_SPOTIFY_GRAPHQL_URL = 'https://api-partner.spotify.com/pathfinder/v1/query';
-const MAX_CATALOG_PAGES = 20;
+const SPOTIFY_PUBLIC_ALBUM_BASE = 'https://open.spotify.com/album/';
+const PUBLIC_PAGE_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36';
+const MAX_CATALOG_PAGES = 50;
 const D1_BATCH_SIZE = 75;
 const QUEUE_BATCH_SIZE = 100;
 
@@ -58,37 +55,20 @@ export function jstDateKey(timestamp = Date.now()) {
   return new Date(value + (9 * 60 * 60 * 1000)).toISOString().slice(0, 10);
 }
 
-export function albumTracksRequestUrl(
-  albumId,
-  queryHash = DEFAULT_ALBUM_TRACKS_QUERY_HASH,
-  endpoint = DEFAULT_SPOTIFY_GRAPHQL_URL,
-) {
-  const id = safeText(albumId);
-  const hash = safeText(queryHash);
-  if (!id) throw new TypeError('albumId is required');
-  if (!hash) throw new TypeError('queryHash is required');
-  const url = new URL(endpoint);
-  url.searchParams.set('operationName', 'queryAlbumTracks');
-  url.searchParams.set('variables', JSON.stringify({
-    uri: `spotify:album:${id}`,
-    offset: 0,
-    limit: 300,
-  }));
-  url.searchParams.set('extensions', JSON.stringify({
-    persistedQuery: {
-      version: 1,
-      sha256Hash: hash,
-    },
-  }));
-  return url.toString();
-}
-
 async function responseJson(response, label) {
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
     throw new Error(`${label} failed: HTTP ${response.status}${detail ? ` ${detail.slice(0, 240)}` : ''}`);
   }
   return response.json();
+}
+
+async function responseText(response, label) {
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`${label} failed: HTTP ${response.status}${detail ? ` ${detail.slice(0, 240)}` : ''}`);
+  }
+  return response.text();
 }
 
 async function spotifyOfficialAccessToken(env, fetchImpl = fetch) {
@@ -111,29 +91,14 @@ async function spotifyOfficialAccessToken(env, fetchImpl = fetch) {
   return token;
 }
 
-async function spotifyWebAccessToken(env, fetchImpl = fetch) {
-  const configured = safeText(env?.SPOTIFY_WEB_ACCESS_TOKEN);
-  if (configured) return configured;
-  const tokenUrl = safeText(env?.SPOTIFY_WEB_TOKEN_URL, SPOTIFY_WEB_TOKEN_URL);
-  const response = await fetchImpl(tokenUrl, {
-    headers: {
-      accept: 'application/json',
-      'user-agent': 'Mozilla/5.0 SpotifyWebPlayer/1.0',
-    },
-  });
-  const payload = await responseJson(response, 'Spotify Web Player token');
-  const token = safeText(payload?.accessToken || payload?.access_token);
-  if (!token) throw new Error('Spotify Web Player token response did not include access token');
-  return token;
-}
-
 async function listArtistReleases(artist, token, env, fetchImpl = fetch) {
   const market = safeText(env?.SPOTIFY_MARKET, 'JP').toUpperCase();
   const releases = new Map();
   const first = new URL(`${SPOTIFY_API_BASE}/artists/${artist.spotify_artist_id}/albums`);
   first.searchParams.set('include_groups', 'album,single,appears_on');
   first.searchParams.set('market', market);
-  first.searchParams.set('limit', '50');
+  // Spotify lowered this endpoint's maximum page size to 10 in 2026.
+  first.searchParams.set('limit', '10');
 
   let next = first.toString();
   for (let page = 0; next && page < MAX_CATALOG_PAGES; page += 1) {
@@ -168,6 +133,7 @@ async function listArtistReleases(artist, token, env, fetchImpl = fetch) {
     next = nextUrl.toString();
   }
   if (next) throw new Error(`Spotify catalog pagination exceeded ${MAX_CATALOG_PAGES} pages`);
+  if (!releases.size) throw new Error(`Spotify catalog returned no releases for ${artist.artist_key}`);
   return [...releases.values()];
 }
 
@@ -277,10 +243,11 @@ async function queueActiveReleases(env, snapshotDate) {
     GROUP BY r.album_id
     ORDER BY r.release_date,r.album_id`).all();
   const bodies = resultsOf(query).map((row) => queueMessage(snapshotDate, row)).filter(Boolean);
+  if (!bodies.length) throw new Error('Spotify catalog contains no active releases to collect');
   await db.prepare(`UPDATE sh_spotify_collection_runs
-    SET albums_queued=?,status=?,updated_at=?
+    SET albums_queued=?,status='queued',updated_at=?
     WHERE snapshot_date=?`)
-    .bind(bodies.length, bodies.length ? 'queued' : 'complete', Date.now(), snapshotDate)
+    .bind(bodies.length, Date.now(), snapshotDate)
     .run();
   await sendQueueBatch(queue, bodies);
   return bodies.length;
@@ -361,11 +328,41 @@ function trackId(rawTrack) {
   return uri.startsWith('spotify:track:') ? uri.slice('spotify:track:'.length) : '';
 }
 
+function decodeBase64Utf8(value) {
+  const binary = atob(String(value || '').trim());
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+export function decodeSpotifyInitialState(html) {
+  const match = String(html || '').match(
+    /<script\b[^>]*\bid=["']initialState["'][^>]*>([^<]+)<\/script>/i,
+  );
+  if (!match) throw new Error('Spotify initialState was not found in album page');
+  let state;
+  try {
+    state = JSON.parse(decodeBase64Utf8(match[1]));
+  } catch (error) {
+    throw new Error(`Spotify initialState decode failed: ${truncateError(error, 300)}`);
+  }
+  return state;
+}
+
+export function albumFromInitialState(state, albumId) {
+  const key = `spotify:album:${safeText(albumId)}`;
+  const album = state?.entities?.items?.[key];
+  if (!album || typeof album !== 'object') {
+    throw new Error(`Spotify album ${albumId} was not found in initialState`);
+  }
+  return album;
+}
+
 export function normalizeAlbumTracks(payload, targets) {
   const targetBySpotifyId = new Map(
     (targets || []).map((target) => [safeText(target?.spotify_artist_id), target]).filter(([id]) => id),
   );
-  const album = payload?.data?.albumUnion || payload?.data?.album;
+  const album = payload?.data?.albumUnion || payload?.data?.album || payload;
+  const albumArtists = artistIds(album?.artists?.items || album?.artists);
   const items = Array.isArray(album?.tracks?.items) ? album.tracks.items : [];
   const normalized = [];
   for (const item of items) {
@@ -373,23 +370,23 @@ export function normalizeAlbumTracks(payload, targets) {
     const id = trackId(rawTrack);
     const playcount = integer(rawTrack?.playcount);
     if (!id || playcount == null || playcount < 0) continue;
-    const artists = artistIds(rawTrack?.artists?.items || rawTrack?.artists);
+    let artists = artistIds(rawTrack?.artists?.items || rawTrack?.artists);
+    if (!artists.length) artists = albumArtists;
     const matchedTargets = artists
       .map(({ id: artistId }) => targetBySpotifyId.get(artistId))
       .filter(Boolean);
     if (!matchedTargets.length) continue;
-    const durationMs = integer(
-      rawTrack?.duration?.totalMilliseconds
-      ?? rawTrack?.duration_ms
-      ?? rawTrack?.durationMs,
-    );
     normalized.push({
       track_id: id,
       name: safeText(rawTrack?.name),
       playcount,
       disc_number: integer(rawTrack?.discNumber ?? rawTrack?.disc_number),
       track_number: integer(rawTrack?.trackNumber ?? rawTrack?.track_number),
-      duration_ms: durationMs,
+      duration_ms: integer(
+        rawTrack?.duration?.totalMilliseconds
+        ?? rawTrack?.duration_ms
+        ?? rawTrack?.durationMs,
+      ),
       artists_json: JSON.stringify(artists),
       target_keys: [...new Set(matchedTargets.map((target) => target.artist_key))],
     });
@@ -397,27 +394,17 @@ export function normalizeAlbumTracks(payload, targets) {
   return normalized;
 }
 
-async function albumPlaycountPayload(albumId, token, env, fetchImpl = fetch) {
-  const queryHash = safeText(
-    env?.SPOTIFY_ALBUM_TRACKS_QUERY_HASH,
-    DEFAULT_ALBUM_TRACKS_QUERY_HASH,
-  );
-  const endpoint = safeText(env?.SPOTIFY_PARTNER_ENDPOINT, DEFAULT_SPOTIFY_GRAPHQL_URL);
-  const headers = {
-    accept: 'application/json',
-    authorization: `Bearer ${token}`,
-    'app-platform': 'WebPlayer',
-    'spotify-app-version': safeText(env?.SPOTIFY_WEB_APP_VERSION, '1.2.75.0'),
-    'user-agent': 'Mozilla/5.0 SpotifyWebPlayer/1.0',
-  };
-  const clientToken = safeText(env?.SPOTIFY_WEB_CLIENT_TOKEN);
-  if (clientToken) headers['client-token'] = clientToken;
-  const response = await fetchImpl(albumTracksRequestUrl(albumId, queryHash, endpoint), { headers });
-  const payload = await responseJson(response, `Spotify album playcount ${albumId}`);
-  if (Array.isArray(payload?.errors) && payload.errors.length) {
-    throw new Error(`Spotify GraphQL returned errors for ${albumId}: ${JSON.stringify(payload.errors).slice(0, 500)}`);
-  }
-  return payload;
+async function albumPlaycountPayload(albumId, env, fetchImpl = fetch) {
+  const base = safeText(env?.SPOTIFY_PUBLIC_ALBUM_BASE, SPOTIFY_PUBLIC_ALBUM_BASE);
+  const response = await fetchImpl(`${base}${encodeURIComponent(albumId)}`, {
+    headers: {
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'accept-language': 'ja-JP,ja;q=0.9,en;q=0.7',
+      'user-agent': PUBLIC_PAGE_USER_AGENT,
+    },
+  });
+  const html = await responseText(response, `Spotify album page ${albumId}`);
+  return albumFromInitialState(decodeSpotifyInitialState(html), albumId);
 }
 
 async function previousPlaycounts(db, trackIds) {
@@ -438,12 +425,11 @@ async function persistAlbumTracks(db, message, tracks, collectedAt) {
           track_id,album_id,name,disc_number,track_number,duration_ms,artists_json,updated_at
         ) VALUES (?,?,?,?,?,?,?,?)
         ON CONFLICT(track_id) DO UPDATE SET
-          album_id=excluded.album_id,
           name=excluded.name,
-          disc_number=excluded.disc_number,
-          track_number=excluded.track_number,
-          duration_ms=excluded.duration_ms,
-          artists_json=excluded.artists_json,
+          disc_number=COALESCE(excluded.disc_number,sh_spotify_tracks.disc_number),
+          track_number=COALESCE(excluded.track_number,sh_spotify_tracks.track_number),
+          duration_ms=COALESCE(excluded.duration_ms,sh_spotify_tracks.duration_ms),
+          artists_json=CASE WHEN excluded.artists_json!='[]' THEN excluded.artists_json ELSE sh_spotify_tracks.artists_json END,
           updated_at=excluded.updated_at`)
         .bind(
           track.track_id,
@@ -491,11 +477,14 @@ async function persistAlbumTracks(db, message, tracks, collectedAt) {
   await batchStatements(db, writes);
 }
 
-async function collectAlbum(env, message, token, dependencies = {}) {
+async function collectAlbum(env, message, dependencies = {}) {
   const db = env?.OTHER_DB;
   const fetchImpl = dependencies.fetch || fetch;
-  const payload = await albumPlaycountPayload(message.album_id, token, env, fetchImpl);
+  const payload = await albumPlaycountPayload(message.album_id, env, fetchImpl);
   const tracks = normalizeAlbumTracks(payload, message.targets);
+  if (!tracks.length) {
+    throw new Error(`Spotify album ${message.album_id} returned no target playcount tracks`);
+  }
   const collectedAt = Date.now();
   await persistAlbumTracks(db, message, tracks, collectedAt);
   return tracks.length;
@@ -607,9 +596,7 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
   const db = env?.OTHER_DB;
   if (!db?.prepare || !db?.batch) throw new Error('OTHER_DB binding is required');
   const messages = batch?.messages || [];
-  if (!messages.length) return { processed: 0 };
-  const fetchImpl = dependencies.fetch || fetch;
-  const token = await spotifyWebAccessToken(env, fetchImpl);
+  if (!messages.length) return { processed: 0, failed: 0 };
   let processed = 0;
   let failed = 0;
 
@@ -620,7 +607,7 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
       continue;
     }
     try {
-      const trackCount = await collectAlbum(env, message, token, dependencies);
+      const trackCount = await collectAlbum(env, message, dependencies);
       await completeAlbum(db, message, trackCount);
       queueMessageEntry.ack?.();
       processed += 1;
