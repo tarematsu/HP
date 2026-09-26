@@ -55,7 +55,7 @@ test('legacy spreadsheet rows are protected from later ordinary track-history cl
 });
 
 test('legacy Track History is imported by a dedicated one-time workflow, not the normal migration tip', () => {
-  assert.equal(descriptor.schema, 'database/facts-migrations/052_current_daily_summary_projection.sql');
+  assert.equal(descriptor.schema, descriptor.migrations.at(-1));
   assert.equal(descriptor.migrations.includes('database/facts-migrations/054_legacy_spreadsheet_track_history.sql'), false);
   assert.equal(descriptor.migrations.includes('database/facts-migrations/055_legacy_spreadsheet_track_history_counts.sql'), false);
   assert.match(workflow, /workflow_dispatch:/);
