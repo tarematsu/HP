@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-first-week-comparison-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/first-week-comparison.css?v=20260926.1';
+  link.href = '/first-week-comparison.css?v=20260926.2';
   link.dataset.firstWeekComparisonStyles = '1';
   document.head.append(link);
 }
@@ -32,7 +32,6 @@ function mountView() {
         <button type="button" data-first-week-metric="listener" class="active">同接</button>
         <button type="button" data-first-week-metric="streams">再生数増加</button>
       </div>
-      <button id="firstWeekLoad" class="button" type="button">更新</button>
     </div>
 
     <p id="firstWeekNotice" class="notice" role="status" hidden></p>
