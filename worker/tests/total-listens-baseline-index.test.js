@@ -38,9 +38,10 @@ function recordingDb() {
 }
 
 test('facts descriptor advances past the retired repair work', () => {
+  assert.equal(descriptor.schema, descriptor.migrations.at(-1));
   assert.equal(
-    descriptor.schema,
-    'database/facts-migrations/052_current_daily_summary_projection.sql',
+    descriptor.migrations.includes('database/facts-migrations/052_current_daily_summary_projection.sql'),
+    true,
   );
 });
 
