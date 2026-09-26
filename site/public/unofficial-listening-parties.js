@@ -11,7 +11,7 @@ const EVENTS = [
   { date: '2024/09/11', time: '23:00', name: '新参者 千秋楽公演（夜）セトリ放送', place: 'BUDDIES STATIONHEAD', type: '単独', source: 'https://x.com/skr_Stationhead/status/1833811037121855940' },
   { date: '2024/09/15', time: '20:30', name: '櫻坂46 × JO1 ロッキン出演&9thリリース記念コラボパーティー', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1834834469531902262' },
   { date: '2024/09/19', time: '23:00', name: '櫻坂46メンバーが選ぶ「秋に聴きたい楽曲」放送', place: 'BUDDIES STATIONHEAD', type: '単独', source: 'https://x.com/skr_Stationhead/status/1836725210780954749' },
-  { date: '2024/09/21', time: '23:00', name: 'ROCK IN JAPAN FESTIVAL 2024 in ひたちなか セトリ放送', place: 'BUDDIES STATIONHEAD', type: '単独', source: 'https://x.com/skr_Stationhead/status/1837477170719187106' },
+  { date: '2024/09/21', time: '23:00', name: 'ROCK IN JAPAN FESTIVAL 2024 in ひたちなか セトリ放送', place: 'BUDDIES STATIONHEAD', type: '単独', source: 'https://x.com/skr_Stationhead/status/1837477170719186106' },
   { date: '2024/10/25', time: '23:50', name: '櫻坂46 × INI Streaming Party 第1夜', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/saku_saka46/status/1849435676288196988' },
   { date: '2024/11/01', time: '23:00', name: '櫻坂46 × INI Streaming Party 第2夜', place: 'MINIチャンネル', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1851972681962525075' },
   { date: '2024/11/21', time: '22:00', name: '1st YEAR ANNIVERSARY LIVE DAY2 セトリ放送', place: 'BUDDIES STATIONHEAD', type: '単独', source: 'https://x.com/skr_Stationhead/status/1859235313698414872' },
@@ -42,41 +42,29 @@ const EVENTS = [
   { date: '2026/01/23', time: '22:00', name: '日向坂46 × 櫻坂46 #ケヤキダービー', place: 'Ohisama CH.', type: 'コラボ', source: 'https://x.com/ohisama_discord/status/1999465286874071088' },
 ];
 
-function mountTab() {
-  const tabs = document.getElementById('modeTabs');
-  const official = tabs?.querySelector('[data-mode="broadcasts"]');
-  if (!tabs || !official || tabs.querySelector('[data-view="unofficial"]')) return;
-
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.dataset.view = 'unofficial';
-  button.textContent = '非公式リスパ';
-  official.insertAdjacentElement('afterend', button);
-}
+const PANEL_ID = 'unofficialListeningPanel';
 
 function mountView() {
-  const main = document.getElementById('content');
-  if (!main || document.getElementById('unofficialView')) return;
+  const history = document.getElementById('historyView');
+  if (!history || document.getElementById(PANEL_ID)) return;
 
   const section = document.createElement('section');
-  section.id = 'unofficialView';
-  section.className = 'dashboard-view unofficial-view';
+  section.id = PANEL_ID;
+  section.className = 'card data-panel unofficial-listening-panel';
   section.hidden = true;
   section.innerHTML = `
-    <section class="card data-panel">
-      <div class="section-head">
-        <div><p class="kicker">DATA</p><h2>非公式リスパ一覧</h2></div>
-      </div>
-      <div class="table-wrap">
-        <table class="unofficial-listening-table">
-          <thead>
-            <tr><th>日付</th><th>開始時刻</th><th>種別</th><th>イベント名</th><th>開催チャンネル</th><th>出典</th></tr>
-          </thead>
-          <tbody id="unofficialListeningTbody"></tbody>
-        </table>
-      </div>
-    </section>`;
-  main.append(section);
+    <div class="section-head">
+      <div><p class="kicker">DATA</p><h2>非公式リスパ一覧</h2></div>
+    </div>
+    <div class="table-wrap">
+      <table class="unofficial-listening-table">
+        <thead>
+          <tr><th>日付</th><th>開始時刻</th><th>種別</th><th>イベント名</th><th>開催チャンネル</th><th>出典</th></tr>
+        </thead>
+        <tbody id="unofficialListeningTbody"></tbody>
+      </table>
+    </div>`;
+  history.append(section);
 
   const tbody = section.querySelector('#unofficialListeningTbody');
   for (const event of EVENTS) {
@@ -99,7 +87,26 @@ function mountView() {
   }
 }
 
-mountTab();
+function syncVisibility() {
+  const panel = document.getElementById(PANEL_ID);
+  const listeningPartyTab = document.querySelector('#modeTabs [data-mode="broadcasts"]');
+  if (!panel || !listeningPartyTab) return;
+  panel.hidden = !listeningPartyTab.classList.contains('active');
+}
+
+function observeListeningPartyTab() {
+  const listeningPartyTab = document.querySelector('#modeTabs [data-mode="broadcasts"]');
+  if (!listeningPartyTab) return;
+  new MutationObserver(syncVisibility).observe(listeningPartyTab, {
+    attributes: true,
+    attributeFilter: ['class', 'aria-current'],
+  });
+}
+
 mountView();
+observeListeningPartyTab();
+syncVisibility();
+window.addEventListener('hashchange', syncVisibility);
+window.addEventListener('popstate', syncVisibility);
 
 export { EVENTS };
