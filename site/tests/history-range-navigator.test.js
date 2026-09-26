@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+const pageSource = readFileSync(
+  new URL('../public/index.html', import.meta.url),
+  'utf8',
+);
 const navigatorSource = readFileSync(
   new URL('../public/history/history-range-navigator.js', import.meta.url),
   'utf8',
@@ -11,13 +15,18 @@ const historyEntry = readFileSync(
   'utf8',
 );
 
-test('history range controls expose only the four simplified period choices', () => {
-  assert.match(navigatorSource, /label: '1ヶ月', months: 1/);
-  assert.match(navigatorSource, /label: '半年', months: 6/);
-  assert.match(navigatorSource, /label: '1年', months: 12/);
-  assert.match(navigatorSource, /label: '全期間', months: null/);
-  assert.match(navigatorSource, /dateRange\.hidden = true/);
-  assert.match(navigatorSource, /loadButton\.hidden = true/);
+test('history range controls render their final UI without flashing legacy date controls', () => {
+  assert.match(pageSource, />1ヶ月<\/button>/);
+  assert.match(pageSource, />半年<\/button>/);
+  assert.match(pageSource, />1年<\/button>/);
+  assert.match(pageSource, />全期間<\/button>/);
+  assert.match(pageSource, /id="from" type="hidden"/);
+  assert.match(pageSource, /id="to" type="hidden"/);
+  assert.match(pageSource, /id="load" type="button" hidden/);
+  assert.doesNotMatch(pageSource, /class="date-range"/);
+  assert.doesNotMatch(pageSource, /type="date"/);
+  assert.doesNotMatch(pageSource, />更新<\/button>/);
+  assert.doesNotMatch(navigatorSource, /dateRange\.hidden|loadButton\.hidden|button\.textContent = period\.label/);
 });
 
 test('history range arrows move by half of the current visible span and clamp to data bounds', () => {
