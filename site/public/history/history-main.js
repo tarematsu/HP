@@ -22,7 +22,7 @@ async function importModeRuntime(mode) {
     return;
   }
   await import('/official-listening-party-copy.js?v=20260923.1');
-  await import('/unofficial-listening-parties.js?v=20260926.1');
+  await import('/unofficial-listening-parties.js?v=20260927.1');
   await import('/history/history-broadcast-summary.js?v=20260924.1');
   await import('/history/history-broadcasts.js?v=20260923.3');
   await import('/history/history-broadcast-table.js?v=20260924.1');
