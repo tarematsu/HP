@@ -66,7 +66,7 @@ async function loadRankingStatusRuntime() {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260925.1').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260927.1').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;

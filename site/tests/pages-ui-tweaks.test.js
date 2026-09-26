@@ -4,11 +4,13 @@ import test from 'node:test';
 
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const tweaks = readFileSync(new URL('../public/pages-ui-tweaks.js', import.meta.url), 'utf8');
 const finalFixes = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
 
-test('Pages UI tweaks load before the dashboard runtime', () => {
-  assert.match(entry, /pages-ui-tweaks\.js\?v=20260924\.1/);
+test('Pages UI tweaks load with the history runtime instead of the current dashboard', () => {
+  assert.match(historyEntry, /pages-ui-tweaks\.js\?v=20260924\.1/);
+  assert.doesNotMatch(entry, /pages-ui-tweaks\.js/);
 });
 
 test('current chart is statically before now playing without a redundant heading block', () => {

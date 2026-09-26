@@ -21,6 +21,8 @@ async function importModeRuntime(mode) {
     await import('/history/history-ranking-all-host-table.js?v=20260924.1');
     return;
   }
+  await import('/official-listening-party-copy.js?v=20260923.1');
+  await import('/unofficial-listening-parties.js?v=20260927.1');
   await import('/history/history-broadcast-summary.js?v=20260924.1');
   await import('/history/history-broadcasts.js?v=20260923.3');
   await import('/history/history-broadcast-table.js?v=20260924.1');
@@ -44,6 +46,9 @@ window.__ensureHistoryModeRuntime = ensureHistoryModeRuntime;
 const initialMode = VALID_MODES.has(requestedMode) ? requestedMode : 'weekly';
 if (initialMode !== requestedMode) history.replaceState(null, '', '/#weekly');
 
+await import('/pages-ui-tweaks.js?v=20260924.1');
+await import('/pages-terminology.js?v=20260924.3');
+await import('/history/history-past-toggle-shell.js?v=20260927.1');
 await import('/history/history-page-fixes.js?v=20260924.1');
 await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260925.1');
