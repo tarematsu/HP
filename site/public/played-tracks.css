@@ -103,6 +103,51 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.played-tracks-stream-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 2px 0 8px;
+  color: var(--muted);
+  font-size: .72rem;
+}
+
+.played-tracks-stream-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.played-tracks-stream-legend-item i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 2px;
+}
+
+.played-tracks-stream-scroller {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+#playedTracksStreamChart {
+  display: block;
+  width: 100%;
+  min-width: 100%;
+  height: 360px;
+}
+
+#playedTracksStreamDetail {
+  margin-top: 7px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .played-tracks-chart-wrap {
   display: grid;
   place-items: center;
@@ -170,6 +215,16 @@
 
   .played-tracks-period-strip {
     padding-inline: calc(50vw - 38px);
+  }
+
+  .played-tracks-stream-legend {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+
+  #playedTracksStreamChart {
+    height: 340px;
   }
 
   .played-tracks-chart-wrap {
