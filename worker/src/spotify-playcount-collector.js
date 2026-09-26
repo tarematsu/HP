@@ -283,7 +283,7 @@ async function selectScheduledSnapshot(db, scheduledTime) {
 
   const older = await oldestIncompleteRun(db, today);
   if (older) {
-    if (!shouldRetryRun(older, scheduledTime)) return { skip: 'in-flight', snapshotDate: older.snapshot_date };
+    if (!shouldRetryRun(older, scheduledTime)) return { skip: 'in-flight' };
     return { snapshotDate: older.snapshot_date };
   }
 
@@ -292,7 +292,7 @@ async function selectScheduledSnapshot(db, scheduledTime) {
   }
 
   if (!shouldRetryRun(todayRun, scheduledTime)) {
-    return { skip: 'in-flight', snapshotDate: today };
+    return { skip: 'in-flight' };
   }
   return { snapshotDate: today };
 }
