@@ -140,6 +140,7 @@ const expectedMigrations = [
   'database/facts-migrations/050_reduce_minute_job_write_amplification.sql',
   'database/facts-migrations/051_canonical_rollup_minute_range.sql',
   'database/facts-migrations/052_current_daily_summary_projection.sql',
+  'database/facts-migrations/056_stream_minute_delta_read_model.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
