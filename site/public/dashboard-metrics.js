@@ -7,8 +7,8 @@ import './dashboard-tabs.js?v=20260927.1';
 import './dashboard-current-layout.js?v=20260924.1';
 import './dashboard-current-metric-style.js?v=20260923.1';
 import './dashboard-chart-stability.js?v=20260923.4';
-import './dashboard-chart-comparison.js?v=20260923.6';
-import './dashboard-chart-detail.js?v=20260923.5';
+import './dashboard-chart-comparison.js?v=20260927.1';
+import './dashboard-chart-detail.js?v=20260927.1';
 import './dashboard-daily-summaries.js?v=20260923.4';
 import './dashboard-fetch-cache.js?v=20260923.4';
 
