@@ -25,4 +25,5 @@ test('Spotify collector is isolated from the realtime runtime Worker', () => {
   assert.equal(value.queues.consumers[0].max_batch_size, 5);
   assert.equal(value.queues.consumers[0].max_concurrency, 2);
   assert.equal(value.queues.consumers[0].max_retries <= 4, true);
+  assert.deepEqual(value.vars, { SPOTIFY_PLAYCOUNT_ENABLED: true });
 });
