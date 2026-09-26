@@ -3,7 +3,6 @@
 CREATE TABLE IF NOT EXISTS sh_stream_minute_delta_read_model (
   channel_id INTEGER NOT NULL,
   minute_at INTEGER NOT NULL,
-  observed_at INTEGER NOT NULL,
   stream_delta INTEGER,
   PRIMARY KEY(channel_id, minute_at)
 ) WITHOUT ROWID;
@@ -21,7 +20,6 @@ WITH latest_channel AS (
   SELECT
     f.channel_id,
     f.minute_at,
-    f.observed_at,
     f.reported_current_stream_count AS stream_count,
     LAG(f.minute_at) OVER (
       PARTITION BY f.channel_id ORDER BY f.minute_at
@@ -35,12 +33,11 @@ WITH latest_channel AS (
     AND f.minute_at>=unixepoch('now','-26 hours')*1000
 )
 INSERT INTO sh_stream_minute_delta_read_model(
-  channel_id,minute_at,observed_at,stream_delta
+  channel_id,minute_at,stream_delta
 )
 SELECT
   channel_id,
   minute_at,
-  observed_at,
   CASE
     WHEN minute_at-previous_minute_at=60000
       AND stream_count IS NOT NULL
@@ -52,10 +49,8 @@ SELECT
 FROM windowed
 WHERE TRUE
 ON CONFLICT(channel_id,minute_at) DO UPDATE SET
-  observed_at=excluded.observed_at,
   stream_delta=excluded.stream_delta
-WHERE excluded.observed_at IS NOT sh_stream_minute_delta_read_model.observed_at
-   OR excluded.stream_delta IS NOT sh_stream_minute_delta_read_model.stream_delta;
+WHERE excluded.stream_delta IS NOT sh_stream_minute_delta_read_model.stream_delta;
 
 -- New canonical facts normally add one read-model row. Recomputing the following
 -- minute as well makes late/out-of-order facts repair the dependent delta.
@@ -64,12 +59,11 @@ AFTER INSERT ON sh_minute_facts
 WHEN NEW.source_code=1
 BEGIN
   INSERT INTO sh_stream_minute_delta_read_model(
-    channel_id,minute_at,observed_at,stream_delta
+    channel_id,minute_at,stream_delta
   )
   SELECT
     f.channel_id,
     f.minute_at,
-    f.observed_at,
     CASE
       WHEN p.minute_at IS NOT NULL
         AND f.minute_at-p.minute_at=60000
@@ -88,14 +82,12 @@ BEGIN
     AND f.channel_id=NEW.channel_id
     AND f.minute_at IN (NEW.minute_at,NEW.minute_at+60000)
   ON CONFLICT(channel_id,minute_at) DO UPDATE SET
-    observed_at=excluded.observed_at,
     stream_delta=excluded.stream_delta
-  WHERE excluded.observed_at IS NOT sh_stream_minute_delta_read_model.observed_at
-     OR excluded.stream_delta IS NOT sh_stream_minute_delta_read_model.stream_delta;
+  WHERE excluded.stream_delta IS NOT sh_stream_minute_delta_read_model.stream_delta;
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_sh_stream_minute_delta_after_update
-AFTER UPDATE OF source_code,reported_current_stream_count,observed_at ON sh_minute_facts
+AFTER UPDATE OF source_code,reported_current_stream_count ON sh_minute_facts
 WHEN OLD.source_code=1 OR NEW.source_code=1
 BEGIN
   -- If a winner changes away from the live source, remove its own derived row.
@@ -113,12 +105,11 @@ BEGIN
     );
 
   INSERT INTO sh_stream_minute_delta_read_model(
-    channel_id,minute_at,observed_at,stream_delta
+    channel_id,minute_at,stream_delta
   )
   SELECT
     f.channel_id,
     f.minute_at,
-    f.observed_at,
     CASE
       WHEN p.minute_at IS NOT NULL
         AND f.minute_at-p.minute_at=60000
@@ -137,8 +128,6 @@ BEGIN
     AND f.channel_id=NEW.channel_id
     AND f.minute_at IN (NEW.minute_at,NEW.minute_at+60000)
   ON CONFLICT(channel_id,minute_at) DO UPDATE SET
-    observed_at=excluded.observed_at,
     stream_delta=excluded.stream_delta
-  WHERE excluded.observed_at IS NOT sh_stream_minute_delta_read_model.observed_at
-     OR excluded.stream_delta IS NOT sh_stream_minute_delta_read_model.stream_delta;
+  WHERE excluded.stream_delta IS NOT sh_stream_minute_delta_read_model.stream_delta;
 END;
