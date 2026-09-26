@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const terminology = readFileSync(new URL('../public/pages-terminology.js', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 const pageFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
@@ -17,7 +18,8 @@ test('current and likes views use explicit user-facing metric names in static ma
   for (const label of ['累計再生数', '対象楽曲数', '最大いいね数', '最終取得', '楽曲別一覧', '最新いいね数', 'Listening Party']) {
     assert.match(html, new RegExp(label));
   }
-  assert.match(metrics, /pages-terminology\.js\?v=20260924\.3/);
+  assert.match(historyEntry, /pages-terminology\.js\?v=20260924\.3/);
+  assert.doesNotMatch(metrics, /pages-terminology\.js/);
   assert.doesNotMatch(terminology, /累計再生数|対象楽曲数|最大いいね数|楽曲別一覧|公式リスパ/);
 });
 
