@@ -138,19 +138,3 @@ renderUpdatedLabel();
 window.addEventListener('dashboard:materialized-at', (event) => {
   setDashboardMaterializedAt(event?.detail?.updatedAt);
 });
-
-const CHART_HELPER_PREFIX = 'グラフをタッチ';
-function clearChartHelperCopy(element) {
-  if (!element) return;
-  if (element.textContent.trim().startsWith(CHART_HELPER_PREFIX)) element.replaceChildren();
-}
-
-for (const id of ['currentChartDetail', 'chartDetail']) {
-  const element = document.getElementById(id);
-  if (!element) continue;
-  new MutationObserver(() => clearChartHelperCopy(element)).observe(element, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
-}

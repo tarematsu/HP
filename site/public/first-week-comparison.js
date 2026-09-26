@@ -107,7 +107,7 @@ function nearestPoint(points, targetMinute) {
 function renderDetail() {
   if (!detail) return;
   if (selectedMinute == null) {
-    detail.textContent = 'グラフをタッチすると、同じ経過時点の数値を比較できます。';
+    detail.replaceChildren();
     return;
   }
 
@@ -168,8 +168,8 @@ function draw() {
   context.clearRect(0, 0, width, height);
 
   if (title) title.textContent = metric === 'streams'
-    ? '先行配信後のチャンネル再生数増加'
-    : '先行配信後の同接推移';
+    ? 'ストリーミング配信後のチャンネル再生数増加'
+    : 'ストリーミング配信後の同接推移';
 
   const available = series.filter((item) => item.points.some((point) => pointValue(point) != null));
   if (!available.length) {

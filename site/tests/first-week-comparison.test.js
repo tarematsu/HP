@@ -109,15 +109,15 @@ test('dashboard mounts and routes the first-week tab before the lazy runtime sta
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
 
   assert.ok(entry.indexOf('first-week-comparison-shell.js') < entry.indexOf('dashboard-tabs.js'));
-  assert.match(entry, /first-week-comparison-shell\.js\?v=20260927\.1/);
-  assert.match(entry, /dashboard-tabs\.js\?v=20260927\.2/);
+  assert.match(entry, /first-week-comparison-shell\.js\?v=20260927\.2/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20260927\.3/);
   assert.match(shell, /first-week-comparison\.css\?v=20260927\.1/);
   assert.match(shell, /dataset\.view = 'first-week'/);
   assert.match(shell, /textContent = '初週比較'/);
   assert.match(shell, /querySelector\('\[data-mode="daily"\]'\)/);
   assert.doesNotMatch(shell, /firstWeekLoad|>更新</);
   assert.match(tabs, /'first-week'/);
-  assert.match(tabs, /first-week-comparison\.js\?v=20260926\.2/);
+  assert.match(tabs, /first-week-comparison\.js\?v=20260927\.1/);
   assert.match(runtime, /sh\.first-week-comparison\.v2/);
   assert.match(runtime, /first-week-comparison\?v=20260926\.2/);
   assert.doesNotMatch(runtime, /firstWeekLoad|loadButton/);
@@ -125,4 +125,15 @@ test('dashboard mounts and routes the first-week tab before the lazy runtime sta
   assert.doesNotMatch(css, /#modeTabs\.mode-tabs\.dashboard-tabs/);
   assert.doesNotMatch(css, /repeat\(8, minmax\(0, 1fr\)\)/);
   assert.match(css, /@media \(max-width: 760px\)/);
+});
+
+test('first-week copy uses streaming-release wording and contains no idle chart helper sentence', () => {
+  const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(shell, /先行配信|グラフをタッチ/);
+  assert.doesNotMatch(runtime, /先行配信|グラフをタッチ/);
+  assert.match(shell, /ストリーミング配信後の同接推移/);
+  assert.match(shell, /ストリーミング配信日/);
+  assert.match(runtime, /ストリーミング配信後のチャンネル再生数増加/);
+  assert.match(runtime, /detail\.replaceChildren\(\)/);
 });

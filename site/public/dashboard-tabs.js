@@ -64,7 +64,7 @@ async function loadRankingStatusRuntime() {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260927.1').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260927.2').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -75,7 +75,7 @@ async function loadHistoryRuntime() {
 
 async function loadFirstWeekRuntime() {
   if (!firstWeekRuntimePromise) {
-    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260926.2').catch((error) => {
+    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260927.1').catch((error) => {
       firstWeekRuntimePromise = null;
       throw error;
     });

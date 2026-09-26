@@ -70,7 +70,7 @@ test('history keeps one visible chart and delegates rendering to mode-specific r
   assert.match(historyClient, /history:data-loaded/);
   assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.\d+/);
-  assert.match(historyEntry, /history-broadcasts\.js\?v=20260923\.3/);
+  assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(rankingChart, /history:data-loaded/);
   assert.match(broadcastClient, /function draw\(\)/);
