@@ -1,6 +1,6 @@
 @media (min-width: 761px) {
   #modeTabs.mode-tabs.dashboard-tabs {
-    grid-template-columns: repeat(10, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
   }
 }
 
@@ -37,7 +37,7 @@
 
 .first-week-metric-toggle button.active {
   background: var(--card, #fff);
-  box-shadow: 0 1px 4px rgba(20, 31, 48, .12);
+  box-shadow: 0 1px 4px rgba(20, 31, 48,.12);
 }
 
 .first-week-chart-panel,
