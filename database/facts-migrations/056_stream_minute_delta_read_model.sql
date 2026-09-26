@@ -88,7 +88,11 @@ END;
 
 CREATE TRIGGER IF NOT EXISTS trg_sh_stream_minute_delta_after_update
 AFTER UPDATE OF source_code,reported_current_stream_count ON sh_minute_facts
-WHEN OLD.source_code=1 OR NEW.source_code=1
+WHEN (OLD.source_code=1 OR NEW.source_code=1)
+  AND (
+    OLD.source_code IS NOT NEW.source_code
+    OR OLD.reported_current_stream_count IS NOT NEW.reported_current_stream_count
+  )
 BEGIN
   -- If a winner changes away from the live source, remove its own derived row.
   -- The following minute is retained and recomputed below as NULL if its exact
