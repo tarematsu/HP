@@ -1,5 +1,7 @@
 const DAY_MS = 86_400_000;
+const MINUTE_MS = 60_000;
 const EXTREMA_POINT_COLOR = '#888';
+const STREAM_BAR_COLOR = '#168b73';
 const integer = new Intl.NumberFormat('ja-JP');
 const jstExtremaTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -44,20 +46,39 @@ function normalizePrevious(rows, minTime, maxTime) {
   return points.sort((a, b) => a.observed_at - b.observed_at);
 }
 
-function ensureLegend(hasPrevious) {
+function normalizeStreamDeltas(rows, minTime, maxTime) {
+  const byTime = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const observedAt = finite(row?.observed_at);
+    const streamDelta = finite(row?.stream_delta);
+    if (observedAt == null || streamDelta == null || streamDelta < 0) continue;
+    if (observedAt < minTime || observedAt > maxTime + MINUTE_MS) continue;
+    byTime.set(observedAt, { observed_at: observedAt, stream_delta: streamDelta });
+  }
+  return [...byTime.values()].sort((a, b) => a.observed_at - b.observed_at);
+}
+
+function ensureLegend(hasPrevious, hasStreamDeltas) {
   const legend = document.querySelector('#currentView .legend');
   if (!legend) return;
   let previous = legend.querySelector('.previous-online-key');
-  if (!hasPrevious) {
-    previous?.remove();
-    return;
-  }
-  if (!previous) {
+  if (!hasPrevious) previous?.remove();
+  else if (!previous) {
     previous = document.createElement('span');
     previous.className = 'previous-online-key';
     previous.textContent = '24時間前';
     previous.style.color = '#969ca6';
     legend.append(previous);
+  }
+
+  let stream = legend.querySelector('.stream-delta-key');
+  if (!hasStreamDeltas) stream?.remove();
+  else if (!stream) {
+    stream = document.createElement('span');
+    stream.className = 'stream-delta-key';
+    stream.textContent = '再生数増加/分';
+    stream.style.color = STREAM_BAR_COLOR;
+    legend.append(stream);
   }
 }
 
@@ -103,6 +124,28 @@ function drawSeries(context, rows, xFor, yFor, color, width) {
   context.stroke();
 }
 
+function roundedStreamMax(value) {
+  if (!Number.isFinite(value) || value <= 0) return 1;
+  const step = value <= 20 ? 5 : value <= 100 ? 10 : value <= 500 ? 50 : 100;
+  return Math.max(step, Math.ceil(value / step) * step);
+}
+
+function drawStreamBars(context, rows, xFor, yFor, baseline, plotWidth) {
+  if (!rows.length) return;
+  const minuteWidth = plotWidth * MINUTE_MS / DAY_MS;
+  const barWidth = Math.max(.5, Math.min(2, minuteWidth * .82));
+  context.fillStyle = STREAM_BAR_COLOR;
+  context.globalAlpha = .82;
+  for (const row of rows) {
+    const x = xFor(row.observed_at);
+    const y = yFor(row.stream_delta);
+    const barHeight = Math.max(row.stream_delta > 0 ? .75 : 0, baseline - y);
+    if (barHeight <= 0) continue;
+    context.fillRect(x - barWidth / 2, baseline - barHeight, barWidth, barHeight);
+  }
+  context.globalAlpha = 1;
+}
+
 function canvasWidth(canvas) {
   if (!canvas) return 0;
   const width = Math.round(canvas.getBoundingClientRect().width);
@@ -120,9 +163,10 @@ function drawComparison(payload) {
   const minTime = current[0].observed_at;
   const maxTime = current.at(-1).observed_at;
   const previous = normalizePrevious(payload?.previous_day_history, minTime, maxTime);
-  ensureLegend(previous.length > 0);
+  const streamDeltas = normalizeStreamDeltas(payload?.stream_minute_history, minTime, maxTime);
+  ensureLegend(previous.length > 0, streamDeltas.length > 0);
 
-  const height = width < 520 ? 270 : Math.max(280, Math.min(370, Math.round(width * .42)));
+  const height = width < 520 ? 360 : Math.max(390, Math.min(470, Math.round(width * .54)));
   const pixelRatio = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(width * pixelRatio);
   canvas.height = Math.round(height * pixelRatio);
@@ -134,7 +178,13 @@ function drawComparison(payload) {
 
   const padding = { left: 50, right: 24, top: 28, bottom: 42 };
   const plotWidth = Math.max(1, width - padding.left - padding.right);
-  const plotHeight = Math.max(1, height - padding.top - padding.bottom);
+  const availableHeight = Math.max(1, height - padding.top - padding.bottom);
+  const sectionGap = 32;
+  const streamPlotHeight = Math.max(74, Math.round(availableHeight * .24));
+  const onlinePlotHeight = Math.max(120, availableHeight - streamPlotHeight - sectionGap);
+  const onlineBottom = padding.top + onlinePlotHeight;
+  const streamTop = onlineBottom + sectionGap;
+  const streamBottom = streamTop + streamPlotHeight;
   const timeSpan = Math.max(1, maxTime - minTime);
   const xFor = (time) => padding.left + plotWidth * (time - minTime) / timeSpan;
 
@@ -149,13 +199,13 @@ function drawComparison(payload) {
   const onlineMin = Math.max(0, onlineRawMin - onlinePadding);
   const onlineMax = onlineRawMax + onlinePadding;
   const onlineRange = Math.max(1, onlineMax - onlineMin);
-  const yOnline = (value) => padding.top + plotHeight - (Number(value) - onlineMin) * plotHeight / onlineRange;
+  const yOnline = (value) => onlineBottom - (Number(value) - onlineMin) * onlinePlotHeight / onlineRange;
 
   context.font = '10px system-ui';
   context.lineWidth = 1;
   for (let index = 0; index <= 4; index += 1) {
     const ratio = index / 4;
-    const y = padding.top + plotHeight * ratio;
+    const y = padding.top + onlinePlotHeight * ratio;
     context.strokeStyle = 'rgba(31,45,68,.12)';
     context.beginPath();
     context.moveTo(padding.left, y);
@@ -169,6 +219,26 @@ function drawComparison(payload) {
 
   drawSeries(context, previous, xFor, yOnline, '#969ca6', 2);
   drawSeries(context, current, xFor, yOnline, '#111', 2.5);
+
+  const streamRawMax = streamDeltas.length
+    ? Math.max(...streamDeltas.map((row) => row.stream_delta))
+    : 0;
+  const streamMax = roundedStreamMax(streamRawMax);
+  const yStream = (value) => streamBottom - Math.max(0, Number(value)) * streamPlotHeight / streamMax;
+  for (let index = 0; index <= 2; index += 1) {
+    const ratio = index / 2;
+    const y = streamTop + streamPlotHeight * ratio;
+    context.strokeStyle = 'rgba(31,45,68,.10)';
+    context.beginPath();
+    context.moveTo(padding.left, y);
+    context.lineTo(width - padding.right, y);
+    context.stroke();
+    context.fillStyle = '#667287';
+    context.textAlign = 'right';
+    context.textBaseline = 'middle';
+    context.fillText(integer.format(Math.round(streamMax * (1 - ratio))), padding.left - 6, y);
+  }
+  drawStreamBars(context, streamDeltas, xFor, yStream, streamBottom, plotWidth);
 
   context.fillStyle = '#667287';
   context.textAlign = 'center';
@@ -184,6 +254,7 @@ function drawComparison(payload) {
   context.fillStyle = '#667287';
   context.textAlign = 'left';
   context.fillText('オンライン数(人)', 4, 12);
+  context.fillText('再生数増加/分', 4, streamTop - 8);
   context.textAlign = 'center';
   context.fillText('時刻 (JST)', width / 2, height - 2);
 
