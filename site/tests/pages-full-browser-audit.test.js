@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const audit = readFileSync(new URL('../../scripts/audit-pages-live.mjs', import.meta.url), 'utf8');
 
-test('production browser audit covers every dashboard mode', () => {
+test('production browser audit covers every dashboard route', () => {
   for (const mode of ['current', 'daily', 'weekly', 'monthly', 'ranking', 'first-week', 'played-tracks', 'likes', 'broadcasts', 'unofficial']) {
     assert.match(audit, new RegExp(`name: '${mode}'`));
   }
