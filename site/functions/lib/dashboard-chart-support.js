@@ -1,97 +1,59 @@
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
 
-export const PREVIOUS_DAY_HISTORY_SQL = `WITH latest_channel AS (
-  SELECT channel_id
-  FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
-  WHERE source_code=1
-  ORDER BY minute_at DESC,id DESC
-  LIMIT 1
-)
-SELECT r.observed_at,r.online_member_count
+export const PREVIOUS_DAY_HISTORY_SQL = `SELECT r.observed_at,r.online_member_count
 FROM sh_dashboard_history_5m AS r
-WHERE r.channel_id=(SELECT channel_id FROM latest_channel)
+WHERE r.channel_id=?
   AND r.bucket_at>=? AND r.bucket_at<?
 ORDER BY r.observed_at ASC
 LIMIT 300`;
 
-export const STREAM_MINUTE_HISTORY_SQL = `WITH latest_channel AS (
-  SELECT channel_id
-  FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
-  WHERE source_code=1
-  ORDER BY minute_at DESC,id DESC
-  LIMIT 1
-)
-SELECT f.minute_at AS observed_at,f.reported_current_stream_count AS stream_count
-FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc
-WHERE f.source_code=1
-  AND f.channel_id=(SELECT channel_id FROM latest_channel)
-  AND f.minute_at>=? AND f.minute_at<?
-  AND f.reported_current_stream_count IS NOT NULL
-ORDER BY f.minute_at DESC,f.id DESC
-LIMIT 1600`;
+export const STREAM_MINUTE_HISTORY_SQL = `SELECT
+  d.minute_at AS observed_at,
+  d.stream_delta
+FROM sh_stream_minute_delta_read_model AS d
+WHERE d.channel_id=?
+  AND d.minute_at>=? AND d.minute_at<?
+  AND d.stream_delta IS NOT NULL
+ORDER BY d.minute_at ASC
+LIMIT 1500`;
 
-async function previousDayHistory(db, now) {
-  if (!db) return [];
+function validChannelId(value) {
+  const channelId = Number(value);
+  return Number.isFinite(channelId) && channelId > 0 ? channelId : null;
+}
+
+async function previousDayHistory(db, channelId, now) {
+  const numericChannelId = validChannelId(channelId);
+  if (!db || numericChannelId == null) return [];
   const start = now - 2 * DAY_MS;
   const end = now - DAY_MS;
-  const result = await db.prepare(PREVIOUS_DAY_HISTORY_SQL).bind(start, end).all();
+  const result = await db.prepare(PREVIOUS_DAY_HISTORY_SQL)
+    .bind(numericChannelId, start, end)
+    .all();
   return result?.results || [];
 }
 
-function finite(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
-
-function minuteStreamDeltas(rows, now) {
-  const cutoff = now - DAY_MS;
-  const byMinute = new Map();
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const observedAt = finite(row?.observed_at);
-    const streamCount = finite(row?.stream_count);
-    if (observedAt == null || streamCount == null || byMinute.has(observedAt)) continue;
-    byMinute.set(observedAt, { observed_at: observedAt, stream_count: streamCount });
-  }
-  const points = [...byMinute.values()].sort((a, b) => a.observed_at - b.observed_at);
-  const deltas = [];
-  let previous = null;
-  for (const point of points) {
-    if (previous) {
-      const gap = point.observed_at - previous.observed_at;
-      const delta = point.stream_count - previous.stream_count;
-      if (
-        point.observed_at >= cutoff
-        && point.observed_at <= now + MINUTE_MS
-        && gap >= MINUTE_MS / 2
-        && gap <= MINUTE_MS * 1.5
-        && delta >= 0
-      ) {
-        deltas.push({ observed_at: point.observed_at, stream_delta: delta });
-      }
-    }
-    previous = point;
-  }
-  return deltas;
-}
-
-async function streamMinuteHistory(db, now) {
-  if (!db) return [];
-  const start = now - DAY_MS - 2 * MINUTE_MS;
+async function streamMinuteHistory(db, channelId, now) {
+  const numericChannelId = validChannelId(channelId);
+  if (!db || numericChannelId == null) return [];
+  const start = now - DAY_MS;
   const end = now + MINUTE_MS;
-  const result = await db.prepare(STREAM_MINUTE_HISTORY_SQL).bind(start, end).all();
-  return minuteStreamDeltas(result?.results || [], now);
+  const result = await db.prepare(STREAM_MINUTE_HISTORY_SQL)
+    .bind(numericChannelId, start, end)
+    .all();
+  return result?.results || [];
 }
 
 export async function augmentDashboardChartData(env, payload, now = Date.now()) {
   if (!payload?.ok) return payload;
+  const channelId = payload?.latest?.channel_id ?? payload?.channel_id;
   const [previousRows, streamRows] = await Promise.all([
-    previousDayHistory(env?.MINUTE_DB, now).catch((error) => {
+    previousDayHistory(env?.MINUTE_DB, channelId, now).catch((error) => {
       console.error(error);
       return [];
     }),
-    streamMinuteHistory(env?.MINUTE_DB, now).catch((error) => {
+    streamMinuteHistory(env?.MINUTE_DB, channelId, now).catch((error) => {
       console.error(error);
       return [];
     }),
