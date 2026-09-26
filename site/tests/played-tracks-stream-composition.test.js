@@ -19,6 +19,8 @@ test('played tracks view owns the estimated stream composition chart', () => {
 
 test('stream composition uses daily stream totals and listener-weighted tracks from September 10', () => {
   assert.match(runtime, /const START = '2026-09-10'/);
+  assert.match(runtime, /const API_CHUNK_DAYS = 35/);
+  assert.match(runtime, /loadListenerRows\(to\)/);
   assert.match(runtime, /\/api\/played-track-streams\?from=/);
   assert.match(runtime, /\/api\/history\?mode=daily/);
   assert.match(runtime, /listener_weight/);
