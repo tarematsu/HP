@@ -5,10 +5,9 @@ const detail = document.getElementById('firstWeekChartDetail');
 const notice = document.getElementById('firstWeekNotice');
 const title = document.getElementById('firstWeekChartTitle');
 const tbody = document.getElementById('firstWeekTbody');
-const loadButton = document.getElementById('firstWeekLoad');
 const metricButtons = [...document.querySelectorAll('[data-first-week-metric]')];
 
-const CACHE_KEY = 'sh.first-week-comparison.v1';
+const CACHE_KEY = 'sh.first-week-comparison.v2';
 const CACHE_MS = 60 * 60_000;
 const DURATION_MINUTES = 7 * 24 * 60;
 const SERIES_COLORS = [
@@ -280,10 +279,9 @@ function writeCache(data) {
   } catch {}
 }
 
-async function load({ force = false } = {}) {
+async function load() {
   if (!active() || loading) return;
   loading = true;
-  if (loadButton) loadButton.disabled = true;
   if (notice) {
     notice.hidden = true;
     notice.textContent = '';
@@ -291,9 +289,9 @@ async function load({ force = false } = {}) {
   }
 
   try {
-    let data = force ? null : readCache();
+    let data = readCache();
     if (!data) {
-      const response = await fetch('/api/first-week-comparison?v=20260924.1', {
+      const response = await fetch('/api/first-week-comparison?v=20260926.2', {
         headers: { accept: 'application/json' },
       });
       data = await response.json();
@@ -322,7 +320,6 @@ async function load({ force = false } = {}) {
     }
   } finally {
     loading = false;
-    if (loadButton) loadButton.disabled = false;
   }
 }
 
@@ -346,7 +343,6 @@ metricButtons.forEach((button) => {
   });
 });
 
-loadButton?.addEventListener('click', () => void load({ force: true }));
 canvas?.addEventListener('click', handlePointer);
 canvas?.addEventListener('touchstart', handlePointer, { passive: true });
 window.addEventListener('resize', () => {

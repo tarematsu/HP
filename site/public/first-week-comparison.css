@@ -127,10 +127,6 @@
     font-size: 10px;
   }
 
-  #firstWeekLoad {
-    min-height: 36px;
-  }
-
   .first-week-chart-panel,
   .first-week-data-panel {
     margin-top: 8px;
