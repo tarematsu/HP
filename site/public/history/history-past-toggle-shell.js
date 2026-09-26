@@ -7,11 +7,6 @@ function ensureStylesheet() {
   document.head.append(link);
 }
 
-function renameDailyTab() {
-  const button = document.querySelector('#modeTabs button[data-mode="daily"]');
-  if (button) button.textContent = '過去';
-}
-
 function mountPastWeekToggle() {
   const rangePresets = document.getElementById('rangePresets');
   if (!rangePresets || document.getElementById('historyPastWeekToggle')) return;
@@ -28,5 +23,4 @@ function mountPastWeekToggle() {
 }
 
 ensureStylesheet();
-renameDailyTab();
 mountPastWeekToggle();
