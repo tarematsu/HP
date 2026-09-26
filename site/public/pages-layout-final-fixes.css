@@ -93,10 +93,10 @@
   height: 32px !important;
 }
 
-/* Keep all dashboard tabs on one row once there is tablet/desktop width. */
+/* Keep all seven dashboard tabs on one row at every viewport width. */
 #modeTabs.mode-tabs.dashboard-tabs {
   display: grid !important;
-  grid-template-columns: repeat(9, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
   grid-template-rows: 34px !important;
   grid-auto-flow: row !important;
 }
@@ -180,8 +180,8 @@
 
 @media (max-width: 760px) {
   #modeTabs.mode-tabs.dashboard-tabs {
-    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-    grid-template-rows: repeat(2, minmax(44px, auto)) !important;
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    grid-template-rows: minmax(44px, auto) !important;
   }
 
   #modeTabs.mode-tabs.dashboard-tabs > button,
