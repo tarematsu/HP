@@ -3,21 +3,32 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const viewSource = await readFile(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
-const tabsSource = await readFile(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const pageSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const metricsSource = await readFile(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
-test('unofficial listening party tab is mounted immediately after the official tab', () => {
-  assert.match(viewSource, /querySelector\('\[data-mode="broadcasts"\]'\)/);
-  assert.match(viewSource, /insertAdjacentElement\('afterend', button\)/);
-  assert.match(viewSource, /button\.textContent = '非公式リスパ'/);
+test('official and unofficial listening parties share one top-level tab', () => {
+  assert.match(pageSource, /data-mode="broadcasts">Listening Party<\/button>/);
+  assert.doesNotMatch(pageSource, /data-view="unofficial"/);
+  assert.doesNotMatch(viewSource, /button\.dataset\.view = 'unofficial'|button\.textContent = '非公式リスパ'/);
 });
 
-test('unofficial listening party view is table-only with clear event columns', () => {
+test('unofficial listening party list is appended below the shared official view', () => {
+  assert.match(viewSource, /getElementById\('historyView'\)/);
+  assert.match(viewSource, /section\.id = PANEL_ID/);
+  assert.match(viewSource, /history\.append\(section\)/);
+  assert.match(viewSource, /<h2>非公式リスパ一覧<\/h2>/);
   assert.match(viewSource, /<th>日付<\/th><th>開始時刻<\/th><th>種別<\/th><th>イベント名<\/th><th>開催チャンネル<\/th><th>出典<\/th>/);
   assert.match(viewSource, /\[event\.date, event\.time, event\.type, event\.name, event\.place\]/);
   assert.doesNotMatch(viewSource, /長さ|duration|最大同接/);
   assert.doesNotMatch(viewSource, /<canvas\b/);
   assert.doesNotMatch(viewSource, /chart-panel/);
+});
+
+test('unofficial list is visible only while Listening Party is active', () => {
+  assert.match(viewSource, /querySelector\('#modeTabs \[data-mode="broadcasts"\]'\)/);
+  assert.match(viewSource, /panel\.hidden = !listeningPartyTab\.classList\.contains\('active'\)/);
+  assert.match(viewSource, /new MutationObserver\(syncVisibility\)/);
+  assert.match(viewSource, /attributeFilter: \['class', 'aria-current'\]/);
 });
 
 test('historical unofficial listening party rows use formal hosting channel names', () => {
@@ -92,11 +103,7 @@ test('all historical rows use X announcements and the unified X label', () => {
   assert.match(viewSource, /1942191880726528064/);
 });
 
-test('dashboard routing recognizes the unofficial view and loads it before tab setup', () => {
-  assert.match(tabsSource, /VIEW_MODES = new Set\(\['current', \.\.\.HISTORY_MODES, 'first-week', 'played-tracks', 'likes', 'unofficial'\]\)/);
-  assert.match(tabsSource, /button\.dataset\.view === 'unofficial'/);
-  assert.match(tabsSource, /showUnofficial\(\)/);
-
+test('unofficial data loads before dashboard tab setup so the shared panel is ready', () => {
   const unofficialImport = metricsSource.indexOf("import './unofficial-listening-parties.js");
   const tabsImport = metricsSource.indexOf("import './dashboard-tabs.js");
   assert.ok(unofficialImport >= 0 && tabsImport > unofficialImport);
