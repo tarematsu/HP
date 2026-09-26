@@ -16,12 +16,10 @@ export const SPOTIFY_TARGET_ARTISTS = Object.freeze([
   }),
 ]);
 
-const SPOTIFY_TOKEN_URL = 'https://accounts.spotify.com/api/token';
-const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
+const SPOTIFY_PUBLIC_ARTIST_BASE = 'https://open.spotify.com/artist/';
 const SPOTIFY_PUBLIC_ALBUM_BASE = 'https://open.spotify.com/album/';
 const PUBLIC_PAGE_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36';
-const MAX_CATALOG_PAGES = 50;
 const D1_BATCH_SIZE = 75;
 const QUEUE_BATCH_SIZE = 100;
 
@@ -55,14 +53,6 @@ export function jstDateKey(timestamp = Date.now()) {
   return new Date(value + (9 * 60 * 60 * 1000)).toISOString().slice(0, 10);
 }
 
-async function responseJson(response, label) {
-  if (!response.ok) {
-    const detail = await response.text().catch(() => '');
-    throw new Error(`${label} failed: HTTP ${response.status}${detail ? ` ${detail.slice(0, 240)}` : ''}`);
-  }
-  return response.json();
-}
-
 async function responseText(response, label) {
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
@@ -71,70 +61,79 @@ async function responseText(response, label) {
   return response.text();
 }
 
-async function spotifyOfficialAccessToken(env, fetchImpl = fetch) {
-  const clientId = safeText(env?.SPOTIFY_CLIENT_ID);
-  const clientSecret = safeText(env?.SPOTIFY_CLIENT_SECRET);
-  if (!clientId || !clientSecret) {
-    throw new Error('SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be configured');
-  }
-  const response = await fetchImpl(SPOTIFY_TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
-      'content-type': 'application/x-www-form-urlencoded',
-    },
-    body: 'grant_type=client_credentials',
-  });
-  const payload = await responseJson(response, 'Spotify client credentials');
-  const token = safeText(payload?.access_token);
-  if (!token) throw new Error('Spotify client credentials response did not include access_token');
-  return token;
+function decodeBase64Utf8(value) {
+  const binary = atob(String(value || '').trim());
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
 }
 
-async function listArtistReleases(artist, token, env, fetchImpl = fetch) {
-  const market = safeText(env?.SPOTIFY_MARKET, 'JP').toUpperCase();
-  const releases = new Map();
-  const first = new URL(`${SPOTIFY_API_BASE}/artists/${artist.spotify_artist_id}/albums`);
-  first.searchParams.set('include_groups', 'album,single,appears_on');
-  first.searchParams.set('market', market);
-  // Spotify lowered this endpoint's maximum page size to 10 in 2026.
-  first.searchParams.set('limit', '10');
-
-  let next = first.toString();
-  for (let page = 0; next && page < MAX_CATALOG_PAGES; page += 1) {
-    const response = await fetchImpl(next, {
-      headers: {
-        accept: 'application/json',
-        authorization: `Bearer ${token}`,
-      },
-    });
-    const payload = await responseJson(response, `Spotify releases for ${artist.artist_key}`);
-    for (const release of payload?.items || []) {
-      const albumId = safeText(release?.id);
-      if (!albumId) continue;
-      releases.set(albumId, {
-        album_id: albumId,
-        name: safeText(release?.name),
-        album_type: safeText(release?.album_type),
-        release_date: safeText(release?.release_date),
-        release_date_precision: safeText(release?.release_date_precision),
-        total_tracks: integer(release?.total_tracks),
-      });
-    }
-    const candidate = safeText(payload?.next);
-    if (!candidate) {
-      next = '';
-      continue;
-    }
-    const nextUrl = new URL(candidate);
-    if (nextUrl.origin !== 'https://api.spotify.com') {
-      throw new Error(`unexpected Spotify pagination origin: ${nextUrl.origin}`);
-    }
-    next = nextUrl.toString();
+export function decodeSpotifyInitialState(html) {
+  const match = String(html || '').match(
+    /<script\b[^>]*\bid=["']initialState["'][^>]*>([^<]+)<\/script>/i,
+  );
+  if (!match) throw new Error('Spotify initialState was not found in page');
+  try {
+    return JSON.parse(decodeBase64Utf8(match[1]));
+  } catch (error) {
+    throw new Error(`Spotify initialState decode failed: ${truncateError(error, 300)}`);
   }
-  if (next) throw new Error(`Spotify catalog pagination exceeded ${MAX_CATALOG_PAGES} pages`);
-  if (!releases.size) throw new Error(`Spotify catalog returned no releases for ${artist.artist_key}`);
-  return [...releases.values()];
+}
+
+function addAlbumIdsFromText(value, output) {
+  const text = String(value || '');
+  for (const pattern of [
+    /spotify:album:([A-Za-z0-9]{16,32})/g,
+    /(?:\/|\\\/)album(?:\/|\\\/)([A-Za-z0-9]{16,32})/g,
+  ]) {
+    for (const match of text.matchAll(pattern)) output.add(match[1]);
+  }
+}
+
+function addAlbumIdsFromValue(value, output) {
+  if (value == null) return;
+  if (typeof value === 'string') {
+    addAlbumIdsFromText(value, output);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) addAlbumIdsFromValue(item, output);
+    return;
+  }
+  if (typeof value === 'object') {
+    for (const item of Object.values(value)) addAlbumIdsFromValue(item, output);
+  }
+}
+
+export function albumIdsFromDiscographyHtml(html) {
+  const ids = new Set();
+  addAlbumIdsFromText(html, ids);
+  try {
+    addAlbumIdsFromValue(decodeSpotifyInitialState(html), ids);
+  } catch {
+    // Some Spotify responses expose release links in rendered HTML without initialState.
+  }
+  return [...ids];
+}
+
+function publicArtistDiscographyUrl(artistId, env) {
+  const base = safeText(env?.SPOTIFY_PUBLIC_ARTIST_BASE, SPOTIFY_PUBLIC_ARTIST_BASE);
+  return `${base}${encodeURIComponent(artistId)}/discography/all`;
+}
+
+async function discoverArtistReleases(artist, env, fetchImpl = fetch) {
+  const response = await fetchImpl(publicArtistDiscographyUrl(artist.spotify_artist_id, env), {
+    headers: {
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'accept-language': 'ja-JP,ja;q=0.9,en;q=0.7',
+      'user-agent': PUBLIC_PAGE_USER_AGENT,
+    },
+  });
+  const html = await responseText(response, `Spotify discography for ${artist.artist_key}`);
+  const albumIds = albumIdsFromDiscographyHtml(html);
+  if (!albumIds.length) {
+    throw new Error(`Spotify discography returned no releases for ${artist.artist_key}`);
+  }
+  return albumIds.map((albumId) => ({ album_id: albumId }));
 }
 
 async function batchStatements(db, statements, size = D1_BATCH_SIZE) {
@@ -150,23 +149,10 @@ async function refreshArtistCatalog(db, artist, releases, seenAt) {
     writes.push(
       db.prepare(`INSERT INTO sh_spotify_releases (
         album_id,name,album_type,release_date,release_date_precision,total_tracks,last_seen_at
-      ) VALUES (?,?,?,?,?,?,?)
+      ) VALUES (?,'','','','',NULL,?)
       ON CONFLICT(album_id) DO UPDATE SET
-        name=excluded.name,
-        album_type=excluded.album_type,
-        release_date=excluded.release_date,
-        release_date_precision=excluded.release_date_precision,
-        total_tracks=excluded.total_tracks,
         last_seen_at=excluded.last_seen_at`)
-        .bind(
-          release.album_id,
-          release.name,
-          release.album_type,
-          release.release_date,
-          release.release_date_precision,
-          release.total_tracks,
-          seenAt,
-        ),
+        .bind(release.album_id, seenAt),
       db.prepare(`INSERT INTO sh_spotify_release_targets (
         album_id,artist_key,is_active,last_seen_at
       ) VALUES (?,?,1,?)
@@ -188,11 +174,10 @@ async function refreshCatalog(env, dependencies = {}) {
   const db = env?.OTHER_DB;
   if (!db?.prepare || !db?.batch) throw new Error('OTHER_DB binding is required');
   const fetchImpl = dependencies.fetch || fetch;
-  const token = await spotifyOfficialAccessToken(env, fetchImpl);
   const seenAt = Date.now();
   let releasesSeen = 0;
   for (const artist of SPOTIFY_TARGET_ARTISTS) {
-    const releases = await listArtistReleases(artist, token, env, fetchImpl);
+    const releases = await discoverArtistReleases(artist, env, fetchImpl);
     await refreshArtistCatalog(db, artist, releases, seenAt);
     releasesSeen += releases.length;
   }
@@ -241,7 +226,7 @@ async function queueActiveReleases(env, snapshotDate) {
     INNER JOIN sh_spotify_release_targets t ON t.album_id=r.album_id
     WHERE t.is_active=1
     GROUP BY r.album_id
-    ORDER BY r.release_date,r.album_id`).all();
+    ORDER BY r.album_id`).all();
   const bodies = resultsOf(query).map((row) => queueMessage(snapshotDate, row)).filter(Boolean);
   if (!bodies.length) throw new Error('Spotify catalog contains no active releases to collect');
   await db.prepare(`UPDATE sh_spotify_collection_runs
@@ -328,26 +313,6 @@ function trackId(rawTrack) {
   return uri.startsWith('spotify:track:') ? uri.slice('spotify:track:'.length) : '';
 }
 
-function decodeBase64Utf8(value) {
-  const binary = atob(String(value || '').trim());
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
-export function decodeSpotifyInitialState(html) {
-  const match = String(html || '').match(
-    /<script\b[^>]*\bid=["']initialState["'][^>]*>([^<]+)<\/script>/i,
-  );
-  if (!match) throw new Error('Spotify initialState was not found in album page');
-  let state;
-  try {
-    state = JSON.parse(decodeBase64Utf8(match[1]));
-  } catch (error) {
-    throw new Error(`Spotify initialState decode failed: ${truncateError(error, 300)}`);
-  }
-  return state;
-}
-
 export function albumFromInitialState(state, albumId) {
   const key = `spotify:album:${safeText(albumId)}`;
   const album = state?.entities?.items?.[key];
@@ -394,6 +359,12 @@ export function normalizeAlbumTracks(payload, targets) {
   return normalized;
 }
 
+function albumCreditsAnyTarget(album, targets) {
+  const targetIds = new Set((targets || []).map((target) => safeText(target?.spotify_artist_id)).filter(Boolean));
+  const artists = artistIds(album?.artists?.items || album?.artists);
+  return artists.some(({ id }) => targetIds.has(id));
+}
+
 async function albumPlaycountPayload(albumId, env, fetchImpl = fetch) {
   const base = safeText(env?.SPOTIFY_PUBLIC_ALBUM_BASE, SPOTIFY_PUBLIC_ALBUM_BASE);
   const response = await fetchImpl(`${base}${encodeURIComponent(albumId)}`, {
@@ -414,6 +385,18 @@ async function previousPlaycounts(db, trackIds) {
     `SELECT track_id,playcount FROM sh_spotify_playcount_current WHERE track_id IN (${placeholders})`,
   ).bind(...trackIds).all();
   return new Map(resultsOf(result).map((row) => [String(row.track_id), integer(row.playcount)]));
+}
+
+async function persistAlbumMetadata(db, message, album, collectedAt) {
+  const name = safeText(album?.name);
+  const totalTracks = integer(album?.tracks?.totalCount);
+  await db.prepare(`UPDATE sh_spotify_releases SET
+      name=CASE WHEN ?!='' THEN ? ELSE name END,
+      total_tracks=COALESCE(?,total_tracks),
+      last_seen_at=MAX(last_seen_at,?)
+    WHERE album_id=?`)
+    .bind(name, name, totalTracks, collectedAt, message.album_id)
+    .run();
 }
 
 async function persistAlbumTracks(db, message, tracks, collectedAt) {
@@ -480,14 +463,29 @@ async function persistAlbumTracks(db, message, tracks, collectedAt) {
 async function collectAlbum(env, message, dependencies = {}) {
   const db = env?.OTHER_DB;
   const fetchImpl = dependencies.fetch || fetch;
-  const payload = await albumPlaycountPayload(message.album_id, env, fetchImpl);
-  const tracks = normalizeAlbumTracks(payload, message.targets);
+  const album = await albumPlaycountPayload(message.album_id, env, fetchImpl);
+  const tracks = normalizeAlbumTracks(album, message.targets);
   if (!tracks.length) {
+    if (!albumCreditsAnyTarget(album, message.targets)) {
+      return { trackCount: 0, unrelated: true };
+    }
     throw new Error(`Spotify album ${message.album_id} returned no target playcount tracks`);
   }
   const collectedAt = Date.now();
+  await persistAlbumMetadata(db, message, album, collectedAt);
   await persistAlbumTracks(db, message, tracks, collectedAt);
-  return tracks.length;
+  return { trackCount: tracks.length, unrelated: false };
+}
+
+async function deactivateUnrelatedRelease(db, message) {
+  const targetKeys = (message.targets || []).map((target) => safeText(target?.artist_key)).filter(Boolean);
+  if (!targetKeys.length) return;
+  const placeholders = targetKeys.map(() => '?').join(',');
+  await db.prepare(`UPDATE sh_spotify_release_targets
+    SET is_active=0
+    WHERE album_id=? AND artist_key IN (${placeholders})`)
+    .bind(message.album_id, ...targetKeys)
+    .run();
 }
 
 async function completeAlbum(db, message, trackCount) {
@@ -607,8 +605,9 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
       continue;
     }
     try {
-      const trackCount = await collectAlbum(env, message, dependencies);
-      await completeAlbum(db, message, trackCount);
+      const result = await collectAlbum(env, message, dependencies);
+      if (result.unrelated) await deactivateUnrelatedRelease(db, message);
+      await completeAlbum(db, message, result.trackCount);
       queueMessageEntry.ack?.();
       processed += 1;
     } catch (error) {
