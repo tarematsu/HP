@@ -26,7 +26,9 @@ test('online chart overlays the previous 24-hour series in gray on the current t
 test('current chart adds five-minute average stream increase bars below the online series', async () => {
   const source = await text('public/dashboard-chart-comparison.js');
   assert.match(source, /payload\?\.stream_5m_history/);
-  assert.match(source, /stream\.textContent = '再生数増加\/分（5分平均）'/);
+  assert.match(source, /legend\.querySelector\('\.stream-growth-key'\)/);
+  assert.match(source, /stream\.hidden = !hasStreamAverages/);
+  assert.doesNotMatch(source, /className = 'stream-delta-key'/);
   assert.match(source, /const FIVE_MINUTE_MS = 5 \* MINUTE_MS/);
   assert.match(source, /const bucketWidth = plotWidth \* FIVE_MINUTE_MS \/ DAY_MS/);
   assert.match(source, /const STREAM_BAR_COLOR = '#168b73'/);
