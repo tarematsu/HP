@@ -46,24 +46,12 @@ test('legacy production entry exposes no HTTP control or health endpoints', asyn
 });
 
 test('collector, recovery, and runtime Wrangler configurations own disjoint pipeline stages', () => {
-  const collector = JSON.parse(readFileSync(
-    new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
-    'utf8',
-  ));
-  const recovery = JSON.parse(readFileSync(
-    new URL('../wrangler.buddies-recovery.jsonc', import.meta.url),
-    'utf8',
-  ));
+  const collector = JSON.parse(readFileSync(new URL('../wrangler.buddies-collector.jsonc', import.meta.url), 'utf8'));
+  const recovery = JSON.parse(readFileSync(new URL('../wrangler.buddies-recovery.jsonc', import.meta.url), 'utf8'));
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const source = readFileSync(new URL('../src/raw-collector-entry.js', import.meta.url), 'utf8');
-  const preparedCollector = readFileSync(
-    new URL('../src/prepared-collector-runner.js', import.meta.url),
-    'utf8',
-  );
-  const minuteProduction = readFileSync(
-    new URL('../src/minute-production-entry.js', import.meta.url),
-    'utf8',
-  );
+  const preparedCollector = readFileSync(new URL('../src/prepared-collector-runner.js', import.meta.url), 'utf8');
+  const minuteProduction = readFileSync(new URL('../src/minute-production-entry.js', import.meta.url), 'utf8');
 
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
   assert.equal(recovery.main, 'src/buddies-recovery-entry.js');
@@ -81,21 +69,12 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(collector.d1_databases[1].database_name, 'stationhead-minute');
 
   assert.deepEqual(collector.queues?.producers.map(({ binding }) => binding), [
-    'RAW_COLLECTION_QUEUE',
-    'PERSIST_QUEUE',
-    'INGEST_FINALIZE_QUEUE',
-    'COMMENTS_QUEUE',
-    'MINUTE_FACT_QUEUE',
-    'MINUTE_LIVE_DERIVE_QUEUE',
-    'MINUTE_ENRICHMENT_QUEUE',
-    'TRACK_METADATA_QUEUE',
-    'READ_MODEL_QUEUE',
+    'RAW_COLLECTION_QUEUE', 'PERSIST_QUEUE', 'INGEST_FINALIZE_QUEUE', 'COMMENTS_QUEUE',
+    'MINUTE_FACT_QUEUE', 'MINUTE_LIVE_DERIVE_QUEUE', 'MINUTE_ENRICHMENT_QUEUE',
+    'TRACK_METADATA_QUEUE', 'READ_MODEL_QUEUE',
   ]);
   assert.deepEqual(runtime.queues?.producers.map(({ binding }) => binding), [
-    'MINUTE_FACT_QUEUE',
-    'MINUTE_LIVE_DERIVE_QUEUE',
-    'MINUTE_ENRICHMENT_QUEUE',
-    'TRACK_METADATA_QUEUE',
+    'MINUTE_FACT_QUEUE', 'MINUTE_LIVE_DERIVE_QUEUE', 'MINUTE_ENRICHMENT_QUEUE', 'TRACK_METADATA_QUEUE',
   ]);
   assert.equal(collector.queues.consumers.length, 0);
   assert.equal(recovery.queues.consumers.length, 4);
@@ -105,9 +84,7 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-minute-rebuild'), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-host-monitor'), false);
-  assert.equal(runtime.queues.consumers.find(
-    ({ queue }) => queue === 'stationhead-minute-derive',
-  ).max_concurrency, 1);
+  assert.equal(runtime.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-derive').max_concurrency, 1);
   assert.equal(collector.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, true);
   assert.equal(collector.vars.COLLECTOR_MINUTE_FACT_INLINE_ENABLED, true);
   assert.equal(recovery.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, false);
@@ -124,7 +101,8 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.match(source, /extractQueue/);
   assert.doesNotMatch(source, /response\.json|readModelPresentation|handoffMinuteFactJob/);
 
-  const names = Object.keys(runtime.vars || {});
+  assert.equal(runtime.vars.PAGES_RESPONSE_EDGE_CACHE_MAX_AGE_MS, 300000);
+  const names = Object.keys(runtime.vars || {}).filter((name) => name !== 'PAGES_RESPONSE_EDGE_CACHE_MAX_AGE_MS');
   for (const prefix of [
     'BUDDY_PLAYBACK_', 'HOST_', 'SOLO_', 'OFFICIAL_NEWS_', 'PAGES_',
     'SNAPSHOT_RETENTION_', 'STREAM_GOAL_', 'REBUILD_', 'GAP_SCAN_',

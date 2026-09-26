@@ -8,12 +8,7 @@
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1.0,
-    "logs": {
-      "enabled": true,
-      "head_sampling_rate": 1.0,
-      "persist": true,
-      "invocation_logs": true
-    }
+    "logs": { "enabled": true, "head_sampling_rate": 1.0, "persist": true, "invocation_logs": true }
   },
   "vars": {
     "CHANNEL_ALIAS": "buddies",
@@ -47,19 +42,12 @@
     "MINUTE_FACT_STALLED_RECOVERY_LIMIT": 1000,
     "MINUTE_FACT_AUTO_REQUEUE_DEAD": true,
     "PUBLIC_HEALTH_CACHE_MS": 60000,
+    "PAGES_RESPONSE_EDGE_CACHE_MAX_AGE_MS": 300000,
     "REQUEST_TIMEOUT_MS": 8000
   },
-  "kv_namespaces": [
-    { "binding": "PAGES_RESPONSE_KV", "id": "00000000000000000000000000000000" }
-  ],
-  "r2_buckets": [
-    { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }
-  ],
-  "durable_objects": {
-    "bindings": [
-      { "name": "MINUTE_LIVE_JOB_COORDINATOR", "class_name": "MinuteLiveJobCoordinator" }
-    ]
-  },
+  "kv_namespaces": [{ "binding": "PAGES_RESPONSE_KV", "id": "00000000000000000000000000000000" }],
+  "r2_buckets": [{ "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }],
+  "durable_objects": { "bindings": [{ "name": "MINUTE_LIVE_JOB_COORDINATOR", "class_name": "MinuteLiveJobCoordinator" }] },
   "migrations": [
     { "tag": "runtime-coordinator-v1", "new_sqlite_classes": ["RuntimeCoordinator"] },
     { "tag": "runtime-coordinator-v2-retired", "deleted_classes": ["RuntimeCoordinator"] },
