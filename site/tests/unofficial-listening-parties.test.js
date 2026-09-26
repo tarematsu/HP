@@ -26,9 +26,16 @@ test('unofficial listening party list is appended below the shared official view
 
 test('unofficial list is visible only while Listening Party is active', () => {
   assert.match(viewSource, /querySelector\('#modeTabs \[data-mode="broadcasts"\]'\)/);
-  assert.match(viewSource, /panel\.hidden = !listeningPartyTab\.classList\.contains\('active'\)/);
+  assert.match(viewSource, /panel\.hidden = !tab\.classList\.contains\('active'\)/);
   assert.match(viewSource, /new MutationObserver\(syncVisibility\)/);
   assert.match(viewSource, /attributeFilter: \['class', 'aria-current'\]/);
+});
+
+test('legacy unofficial tab and route are normalized into Listening Party', () => {
+  assert.match(viewSource, /querySelector\('#modeTabs \[data-view="unofficial"\]'\)\?\.remove\(\)/);
+  assert.match(viewSource, /getElementById\('unofficialView'\)\?\.remove\(\)/);
+  assert.match(viewSource, /location\.hash !== '#unofficial'/);
+  assert.match(viewSource, /listeningPartyTab\(\)\?\.click\(\)/);
 });
 
 test('historical unofficial listening party rows use formal hosting channel names', () => {
@@ -103,8 +110,10 @@ test('all historical rows use X announcements and the unified X label', () => {
   assert.match(viewSource, /1942191880726528064/);
 });
 
-test('unofficial data loads before dashboard tab setup so the shared panel is ready', () => {
+test('unofficial data loads before dashboard tab setup with a fresh deployment version', () => {
   const unofficialImport = metricsSource.indexOf("import './unofficial-listening-parties.js");
   const tabsImport = metricsSource.indexOf("import './dashboard-tabs.js");
   assert.ok(unofficialImport >= 0 && tabsImport > unofficialImport);
+  assert.match(metricsSource, /unofficial-listening-parties\.js\?v=20260926\.1/);
+  assert.match(pageSource, /dashboard-metrics\.js\?v=20260926\.2/);
 });
