@@ -1,19 +1,6 @@
-name: Stationhead live JavaScript audit
+name: Stationhead live JavaScript audit (manual)
 
 on:
-  pull_request:
-    paths:
-      - 'scripts/measure-stationhead-start-listening.mjs'
-      - 'scripts/audit-stationhead-login.mjs'
-      - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
-      - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
-      - 'hp/native/src/sh_playback_resource_policy_fix.h'
-      - 'hp/native/src/sh_track_boundary_message_policy.h'
-      - 'hp/native/src/sh_track_boundary_script.h'
-      - 'hp/native/src/sh_july19_stats_policy_fix.h'
-      - 'hp/video/test/stationhead-live-ui-audit-regression.test.js'
-      - 'hp/video/test/stationhead-playback-resource-fail-open-regression.test.js'
-      - '.github/workflows/sh-live-js-audit.yml'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +8,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: sh-live-js-audit-${{ github.event.pull_request.number || github.ref }}
+  group: sh-live-js-audit-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -35,7 +22,7 @@ jobs:
       - name: Checkout audit revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
