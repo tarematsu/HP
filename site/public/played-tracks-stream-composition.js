@@ -1,4 +1,5 @@
 const START = '2026-09-10';
+const API_CHUNK_DAYS = 35;
 const nf = new Intl.NumberFormat('ja-JP');
 const state = { days: [], tracks: [], selected: -1, loaded: false };
 const $ = (id) => document.getElementById(id);
@@ -9,11 +10,27 @@ function num(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseDate(value) {
+  const text = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const date = new Date(`${text}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function addDays(value, days) {
+  const date = parseDate(value);
+  if (!date) return '';
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function identity(row) {
   if (row.spotify_id) return `spotify:${row.spotify_id}`;
   if (row.isrc) return `isrc:${row.isrc}`;
   if (row.stationhead_track_id != null) return `stationhead:${row.stationhead_track_id}`;
-  return `title:${String(row.title || '曲名不明').normalize('NFKC').toLowerCase()}`;
+  const title = String(row.title || '曲名不明').normalize('NFKC').toLowerCase();
+  const artist = String(row.artist || '').normalize('NFKC').toLowerCase();
+  return `title:${title}\u0000${artist}`;
 }
 
 function label(row) {
@@ -29,6 +46,19 @@ async function getJson(url) {
   const data = await response.json();
   if (!response.ok || data?.ok !== true) throw new Error(data?.error || `HTTP ${response.status}`);
   return data;
+}
+
+async function loadListenerRows(to) {
+  const rows = [];
+  let from = START;
+  while (from && from <= to) {
+    const candidateTo = addDays(from, API_CHUNK_DAYS - 1);
+    const chunkTo = candidateTo && candidateTo < to ? candidateTo : to;
+    const payload = await getJson(`/api/played-track-streams?from=${from}&to=${chunkTo}`);
+    rows.push(...(Array.isArray(payload.rows) ? payload.rows : []));
+    from = addDays(chunkTo, 1);
+  }
+  return rows;
 }
 
 function allocate(totalValue, rows) {
@@ -171,11 +201,11 @@ export async function loadPlayedTrackStreamComposition() {
   const notice = $('playedTracksStreamNotice');
   try {
     const to = new Date().toISOString().slice(0, 10);
-    const [listeners, daily] = await Promise.all([
-      getJson(`/api/played-track-streams?from=${START}&to=${to}`),
+    const [listenerRows, daily] = await Promise.all([
+      loadListenerRows(to),
       getJson(`/api/history?mode=daily&from=${START}&to=${to}`),
     ]);
-    const model = build(listeners.rows, daily.rows);
+    const model = build(listenerRows, daily.rows);
     state.days = model.days;
     state.tracks = model.tracks;
     state.selected = state.days.length - 1;
