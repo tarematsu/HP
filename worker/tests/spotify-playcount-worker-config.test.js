@@ -12,7 +12,7 @@ test('Spotify collector is isolated from the realtime runtime Worker', () => {
   const value = config();
   assert.equal(value.name, 'sh-spotify-playcount-collector');
   assert.equal(value.main, 'src/spotify-playcount-entry.js');
-  assert.deepEqual(value.triggers.crons, ['5 21 * * *']);
+  assert.deepEqual(value.triggers.crons, ['0 * * * *']);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['OTHER_DB']);
   assert.deepEqual(value.queues.producers, [
     {
