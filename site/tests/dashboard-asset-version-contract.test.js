@@ -27,6 +27,7 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     entry: assetVersion(html, 'dashboard-metrics.js'),
     header: assetVersion(entry, 'dashboard-header.js'),
     tabs: assetVersion(entry, 'dashboard-tabs.js'),
+    firstWeekShell: assetVersion(entry, 'first-week-comparison-shell.js'),
     historyMain: assetVersion(tabs, 'history/history-main.js'),
     legacyListeningPartyRoute: assetVersion(entry, 'legacy-listening-party-route.js'),
     fetchCache: assetVersion(entry, 'dashboard-fetch-cache.js'),
@@ -40,9 +41,10 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
-  assert.equal(versions.entry, '20260927.3');
+  assert.equal(versions.entry, '20260927.4');
   assert.equal(versions.header, '20260927.1');
-  assert.equal(versions.tabs, '20260927.1');
+  assert.equal(versions.tabs, '20260927.2');
+  assert.equal(versions.firstWeekShell, '20260927.1');
   assert.equal(versions.historyMain, '20260927.1');
   assert.equal(versions.unofficialListeningParties, '20260927.1');
   assert.equal(versions.comparison, '20260927.1');
