@@ -12,16 +12,17 @@ by Nogizaka46, Sakurazaka46, and Hinatazaka46.
 - Storage: `OTHER_DB` (`stationhead-other`)
 - Fan-out: `stationhead-spotify-playcount` Queue, one message per album
 
-The collector does not use Spotify Web API credentials. Each target artist is
-identified by its stable Spotify artist ID. Once per day, the Worker fetches
+The collector does not use the Spotify Web API. Each target artist is identified
+by its stable Spotify artist ID. Once per day, the Worker fetches
 `open.spotify.com/artist/{artist_id}/discography/all`, extracts album IDs from
 the rendered page and its embedded `initialState`, and refreshes the active
 release catalog in D1.
 
 Each active album is then fetched through its public Spotify album page. Track
 IDs, names, cumulative playcounts, durations, and artist relationships are read
-from the page's base64-encoded `initialState` data. No Spotify login, OAuth
-client, access token, client token, or persisted GraphQL query is required.
+from the page's base64-encoded `initialState` data. No Spotify login, developer
+application, client ID, client secret, OAuth access token, client token, or
+persisted GraphQL query is required.
 
 ## Compatibility boundary
 
