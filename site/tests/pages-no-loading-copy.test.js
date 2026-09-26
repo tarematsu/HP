@@ -31,12 +31,12 @@ test('silent loading changes are cache busted through the Pages entry chain', ()
   assert.match(historyEntry, /history-lite\.js\?v=20260925\.1/);
   assert.match(historyEntry, /unofficial-listening-parties\.js\?v=20260926\.1/);
   assert.match(tabs, /history-main\.js\?v=20260926\.1/);
-  assert.match(tabs, /first-week-comparison\.js\?v=20260925\.1/);
+  assert.match(tabs, /first-week-comparison\.js\?v=20260926\.2/);
   assert.match(tabs, /played-tracks\.js\?v=20260925\.1/);
   assert.match(tabs, /history-likes\.js\?v=20260925\.1/);
-  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260926\.1/);
+  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260926\.2/);
   assert.match(dashboardEntry, /legacy-listening-party-route\.js\?v=20260926\.1/);
   assert.doesNotMatch(dashboardEntry, /import '.\/unofficial-listening-parties\.js/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260926\.1/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260926\.3/);
   assert.match(html, /dashboard-metrics\.js\?v=20260926\.3/);
 });
