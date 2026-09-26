@@ -11,8 +11,7 @@ const MODES = [
   { name: 'first-week', path: '/#first-week', panel: '#firstWeekView', tab: '#modeTabs button[data-view="first-week"]', requiredText: '比較対象' },
   { name: 'played-tracks', path: '/#played-tracks', panel: '#playedTracksView', tab: '#modeTabs button[data-view="played-tracks"]', requiredText: '楽曲別再生一覧' },
   { name: 'likes', path: '/#likes', panel: '#likesView', tab: '#modeTabs button[data-mode="likes"]', requiredText: '最新いいねランキング' },
-  { name: 'broadcasts', path: '/#broadcasts', panel: '#historyView', tab: '#modeTabs button[data-mode="broadcasts"]', requiredText: '公式リスパ一覧' },
-  { name: 'unofficial', path: '/#unofficial', panel: '#unofficialView', tab: '#modeTabs button[data-view="unofficial"]', requiredText: '非公式リスパ一覧' },
+  { name: 'broadcasts', path: '/#broadcasts', panel: '#historyView', tab: '#modeTabs button[data-mode="broadcasts"]', requiredText: '非公式リスパ一覧' },
 ];
 
 function parseArgs(argv) {

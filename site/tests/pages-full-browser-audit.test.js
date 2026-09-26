@@ -5,7 +5,7 @@ import test from 'node:test';
 const audit = readFileSync(new URL('../../scripts/audit-pages-live.mjs', import.meta.url), 'utf8');
 
 test('production browser audit covers every dashboard route', () => {
-  for (const mode of ['current', 'daily', 'weekly', 'monthly', 'ranking', 'first-week', 'played-tracks', 'likes', 'broadcasts', 'unofficial']) {
+  for (const mode of ['current', 'daily', 'weekly', 'monthly', 'ranking', 'first-week', 'played-tracks', 'likes', 'broadcasts']) {
     assert.match(audit, new RegExp(`name: '${mode}'`));
   }
   assert.match(audit, /path: '\/#daily'/);
@@ -16,7 +16,8 @@ test('production browser audit covers every dashboard route', () => {
   assert.match(audit, /path: '\/#broadcasts'/);
   assert.match(audit, /path: '\/#first-week'/);
   assert.match(audit, /path: '\/#played-tracks'/);
-  assert.match(audit, /path: '\/#unofficial'/);
+  assert.doesNotMatch(audit, /path: '\/#unofficial'/);
+  assert.match(audit, /requiredText: '非公式リスパ一覧'/);
 });
 
 test('production browser audit captures desktop tablet and mobile layouts', () => {

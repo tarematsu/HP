@@ -8,8 +8,8 @@ const cleanup = readFileSync(new URL('../public/screenshot-audit-cleanup.css', i
 
 test('screenshot audit cleanup loads with the dashboard while the listening-party label is static', () => {
   assert.match(header, /screenshot-audit-cleanup\.css\?v=20260919\.3/);
-  assert.match(page, /data-mode="broadcasts">公式リスパ/);
-  assert.doesNotMatch(header, /\[data-mode="broadcasts"\]|textContent = '公式リスパ'/);
+  assert.match(page, /data-mode="broadcasts">Listening Party/);
+  assert.doesNotMatch(header, /\[data-mode="broadcasts"\]|textContent = 'Listening Party'/);
 });
 
 test('duplicate and verbose data surfaces are compacted without hiding primary tables', () => {
