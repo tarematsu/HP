@@ -27,12 +27,12 @@ test('current metrics are statically ordered online, total streams and total mem
   assert.doesNotMatch(layout, /append\(|insertAdjacent|MutationObserver|goal-card|audienceChart|getContext\('2d'\)|drawEnhancedChart/);
 });
 
-test('mobile dashboard tabs stay compact while current metrics use one full-width column', () => {
+test('mobile dashboard tabs stay compact while current metrics stay in one horizontal row', () => {
   assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs/);
   assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\) !important/);
   assert.match(css, /grid-template-rows:\s*repeat\(2, minmax\(32px, auto\)\) !important/);
-  assert.match(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) !important/);
-  assert.doesNotMatch(finalFixes, /@media \(max-width: 400px\)[\s\S]*\.metrics\s*\{[\s\S]*repeat\(2,/);
+  assert.match(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\) !important/);
+  assert.doesNotMatch(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) !important/);
   assert.match(css, /white-space:\s*nowrap !important/);
 });
 
