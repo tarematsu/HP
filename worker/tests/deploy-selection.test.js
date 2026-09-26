@@ -138,8 +138,8 @@ test('tests and unrelated verification scripts do not deploy Workers', () => {
   assert.deepEqual(result.commands, []);
 });
 
-test('shared package and unresolved Worker source changes select all Workers', () => {
-  assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 5);
+test('shared package only redeploys importers while unresolved Worker source remains fail-safe', () => {
+  assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 4);
   assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 5);
 });
 
