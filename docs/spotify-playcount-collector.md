@@ -81,4 +81,5 @@ is lower than the preceding value.
 
 Only the first successful post-update snapshot is finalized for a date. Earlier
 05:00/06:00/etc. stale candidates are discarded when the next hourly attempt
-starts.
+starts. Once finalized, that date is never recollected by later hourly Cron
+invocations.
