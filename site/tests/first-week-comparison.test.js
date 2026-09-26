@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  FIRST_WEEK_READ_MODEL_SQL,
   FIRST_WEEK_RELEASES,
-  FIRST_WEEK_SERIES_SQL,
   loadFirstWeekComparison,
   normalizeFirstWeekRows,
   releaseOverlapsKnownGap,
@@ -13,6 +13,10 @@ import {
 import { onRequestGet } from '../functions/api/first-week-comparison.js';
 
 const byTitle = (title) => FIRST_WEEK_RELEASES.find((item) => item.title === title);
+const readModelMigration = readFileSync(
+  new URL('../../database/facts-migrations/058_first_week_comparison_read_model.sql', import.meta.url),
+  'utf8',
+);
 
 test('title-track prerelease windows start at JST midnight and cover 10th through 16th', () => {
   assert.equal(FIRST_WEEK_RELEASES.length, 8);
@@ -35,17 +39,14 @@ test('known 2026 collection gap suppresses affected title tracks instead of inve
   assert.equal(releaseOverlapsKnownGap(byTitle('愛MUST BE')), false);
 });
 
-test('five-minute series query seeks the minute index and selects listener and stream samples independently', () => {
-  assert.match(FIRST_WEEK_SERIES_SQL, /INDEXED BY idx_sh_minute_facts_time/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /source_code IN \(3,4\)/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /current_stream_count IS NOT total_listens/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /listener_ranked AS/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /stream_ranked AS/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /WHERE listener_count IS NOT NULL/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /WHERE stream_count IS NOT NULL/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /LEFT JOIN listener_ranked/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /LEFT JOIN stream_ranked/);
-  assert.match(FIRST_WEEK_SERIES_SQL, /buckets\.bucket_index\*5 AS elapsed_minutes/);
+test('public first-week reads use only the compact release read model', () => {
+  assert.match(FIRST_WEEK_READ_MODEL_SQL, /FROM sh_first_week_comparison_read_model/);
+  assert.doesNotMatch(FIRST_WEEK_READ_MODEL_SQL, /sh_minute_facts|GROUP BY|ROW_NUMBER|MATERIALIZED/);
+  assert.match(readModelMigration, /CREATE TABLE IF NOT EXISTS sh_first_week_comparison_read_model/);
+  assert.match(readModelMigration, /JOIN sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time/);
+  assert.match(readModelMigration, /json_group_array/);
+  assert.match(readModelMigration, /'2024-09-25'/);
+  assert.match(readModelMigration, /'2026-09-17'/);
 });
 
 test('stream growth is rebased to the first observed point without masking counter regressions as growth', () => {
@@ -58,38 +59,49 @@ test('stream growth is rebased to the first observed point without masking count
     [5, 105, 25],
     [10, 110, null],
   ]);
+  assert.deepEqual(normalizeFirstWeekRows([
+    [0, 100, 1_000],
+    [5, 105, 1_025],
+  ]), [
+    [0, 100, 0],
+    [5, 105, 25],
+  ]);
 });
 
-test('loader skips the known gap and batches only queryable release weeks', async () => {
+test('loader performs one compact read and preserves known-gap status', async () => {
   const prepared = [];
   const db = {
     prepare(sql) {
-      const statement = {
-        sql,
-        params: [],
-        bind(...params) {
-          this.params = params;
-          prepared.push(this);
-          return this;
+      prepared.push(sql);
+      return {
+        async all() {
+          return {
+            results: [
+              {
+                release_date_jst: '2024-09-25',
+                point_count: 2,
+                points_json: '[[0,866,1000],[5,870,1025]]',
+                updated_at: 1,
+              },
+              {
+                release_date_jst: '2026-09-17',
+                point_count: 0,
+                points_json: '[]',
+                updated_at: 1,
+              },
+            ],
+          };
         },
       };
-      return statement;
-    },
-    async batch(statements) {
-      assert.equal(statements.length, 5);
-      return statements.map((statement, index) => ({
-        results: index === 0
-          ? [{ elapsed_minutes: 0, listener_count: 866, stream_count: 1000 }]
-          : [],
-      }));
     },
   };
 
   const result = await loadFirstWeekComparison(db);
-  assert.equal(prepared.length, 5);
+  assert.equal(prepared.length, 1);
+  assert.equal(prepared[0], FIRST_WEEK_READ_MODEL_SQL);
   assert.equal(result.series.length, 8);
   assert.equal(result.series[0].status, 'available');
-  assert.equal(result.series[0].points[0][1], 866);
+  assert.deepEqual(result.series[0].points[1], [5, 870, 25]);
   assert.equal(byTitle('The growing up train').release_date_jst, '2026-02-12');
   assert.equal(result.series.find((item) => item.title === 'The growing up train').status, 'known_missing');
   assert.equal(result.series.find((item) => item.title === '愛MUST BE').status, 'no_data');
