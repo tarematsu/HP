@@ -145,7 +145,7 @@
     const detail = document.getElementById('chartDetail');
     if (!detail) return;
     if (minute == null) {
-      detail.innerHTML = '<span>グラフをタッチまたはクリックすると、開始後の同じ時点で全リスパを比較できます。</span>';
+      detail.replaceChildren();
       return;
     }
     const values = series.map((item, index) => ({
