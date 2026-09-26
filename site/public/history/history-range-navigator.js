@@ -4,10 +4,10 @@
   const DAY_MS = 86_400_000;
   const EARLIEST_DATE = '2024-05-01';
   const PERIODS = Object.freeze([
-    { key: 'month', label: '1ヶ月', months: 1 },
-    { key: 'half-year', label: '半年', months: 6 },
-    { key: 'year', label: '1年', months: 12 },
-    { key: 'all', label: '全期間', months: null },
+    { key: 'month', months: 1 },
+    { key: 'half-year', months: 6 },
+    { key: 'year', months: 12 },
+    { key: 'all', months: null },
   ]);
 
   const rangePresets = document.getElementById('rangePresets');
@@ -156,33 +156,19 @@
     next.addEventListener('click', () => shiftVisibleRange(1));
   }
 
-  function simplifyRangeControls() {
+  function initializeRangeControls() {
     rangePresets.setAttribute('aria-label', '表示期間');
     const buttons = [...rangePresets.querySelectorAll('button')];
     PERIODS.forEach((period, index) => {
       const button = buttons[index];
       if (!button) return;
-      button.textContent = period.label;
       button.dataset.historyPeriod = period.key;
       button.setAttribute('aria-pressed', period.key === 'all' ? 'true' : 'false');
     });
-
-    const dateRange = document.querySelector('.date-range');
-    if (dateRange) {
-      dateRange.hidden = true;
-      dateRange.setAttribute('aria-hidden', 'true');
-    }
-
-    const loadButton = document.getElementById('load');
-    if (loadButton) {
-      loadButton.hidden = true;
-      loadButton.setAttribute('aria-hidden', 'true');
-      loadButton.tabIndex = -1;
-    }
   }
 
   ensureStylesheet();
-  simplifyRangeControls();
+  initializeRangeControls();
   mountNavigator();
   setActivePeriod('all');
 
