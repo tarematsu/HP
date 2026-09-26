@@ -40,7 +40,7 @@ test('queue read model accepts both an array and an object envelope', () => {
   assert.equal(partiallyMaterialized.registeredItems, 22);
 });
 
-test('Pages prefers the full presentation queue without expanding persistence writes', () => {
+test('Pages prefers the materialized queue window while preserving total registration count', () => {
   const row = queueFromReadModel({
     station_id: 3,
     queue_id: 4,
@@ -51,8 +51,8 @@ test('Pages prefers the full presentation queue without expanding persistence wr
       total_track_count: 4,
       materialized_track_count: 2,
       tracks: [
-        { position: 0, title: 'A' },
-        { position: 1, title: 'B' },
+        { position: 0, title: 'A', thumbnail_url: 'https://example.test/a.jpg' },
+        { position: 1, title: 'B', thumbnail_url: 'https://example.test/b.jpg' },
       ],
       presentation_tracks: [
         { position: 0, title: 'A' },
@@ -62,8 +62,31 @@ test('Pages prefers the full presentation queue without expanding persistence wr
       ],
     }),
   });
-  assert.deepEqual(row.queue.map(({ title }) => title), ['A', 'B', 'C', 'D']);
+  assert.deepEqual(row.queue.map(({ title }) => title), ['A', 'B']);
+  assert.deepEqual(row.queue.map(({ thumbnail_url }) => thumbnail_url), [
+    'https://example.test/a.jpg',
+    'https://example.test/b.jpg',
+  ]);
   assert.equal(row.registeredItems, 4);
+});
+
+test('queue read model falls back to presentation tracks when materialized tracks are unavailable', () => {
+  const row = queueFromReadModel({
+    station_id: 3,
+    queue_id: 4,
+    start_time: 5,
+    observed_at: 6,
+    is_paused: 0,
+    queue_json: JSON.stringify({
+      total_track_count: 2,
+      presentation_tracks: [
+        { position: 0, title: 'A' },
+        { position: 1, title: 'B' },
+      ],
+    }),
+  });
+  assert.deepEqual(row.queue.map(({ title }) => title), ['A', 'B']);
+  assert.equal(row.registeredItems, 2);
 });
 
 test('queue read-model presentation fields survive playback normalization', () => {
