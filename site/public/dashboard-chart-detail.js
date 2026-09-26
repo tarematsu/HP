@@ -1,6 +1,8 @@
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
+const FIVE_MINUTE_MS = 5 * MINUTE_MS;
 const integer = new Intl.NumberFormat('ja-JP');
+const streamNumber = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
 const jstChartDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
   month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -14,6 +16,7 @@ const finite = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 const numberText = (value) => finite(value) == null ? '—' : integer.format(Number(value));
+const streamNumberText = (value) => finite(value) == null ? '—' : streamNumber.format(Number(value));
 
 function normalizeHistory(history) {
   const list = Array.isArray(history) ? history : [];
@@ -69,13 +72,13 @@ function selectPoint(event) {
   const pointer = Math.max(padding.left, Math.min(bounds.width - padding.right, event.clientX - bounds.left));
   const targetTime = minTime + span * (pointer - padding.left) / plotWidth;
   const onlineRow = nearestRow(rows, targetTime);
-  const streamRow = nearestRow(streamRows, targetTime, MINUTE_MS * 1.5);
+  const streamRow = nearestRow(streamRows, targetTime, FIVE_MINUTE_MS / 2);
   if (!onlineRow) return;
   const displayTime = streamRow?.observed_at ?? onlineRow.observed_at;
   const detail = document.getElementById('currentChartDetail');
   if (detail) {
     const streamText = streamRow
-      ? `　再生数増加 +${numberText(streamRow.stream_delta)}/分`
+      ? `　再生数増加 +${streamNumberText(streamRow.stream_delta)}/分（5分平均）`
       : '';
     detail.textContent = `${jstChartDateTime.format(new Date(displayTime))} JST　オンライン数 ${numberText(onlineRow.online_member_count)}人${streamText}`;
   }
@@ -85,6 +88,6 @@ window.addEventListener('dashboard:payload', (event) => {
   const payload = event?.detail?.payload;
   if (!payload?.ok) return;
   rows = normalizeHistory(payload.history);
-  streamRows = normalizeStreamHistory(payload.stream_minute_history);
+  streamRows = normalizeStreamHistory(payload.stream_5m_history);
 });
 document.getElementById('audienceChart')?.addEventListener('pointerup', selectPoint, true);
