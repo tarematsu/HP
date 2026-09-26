@@ -43,6 +43,7 @@ const EVENTS = [
 ];
 
 const PANEL_ID = 'unofficialListeningPanel';
+const TAB_LABEL = 'Listening Party';
 
 function removeLegacyUi() {
   document.querySelector('#modeTabs [data-view="unofficial"]')?.remove();
@@ -96,10 +97,11 @@ function listeningPartyTab() {
   return document.querySelector('#modeTabs [data-mode="broadcasts"]');
 }
 
-function syncVisibility() {
+function syncTab() {
   const panel = document.getElementById(PANEL_ID);
   const tab = listeningPartyTab();
   if (!panel || !tab) return;
+  if (tab.textContent !== TAB_LABEL) tab.textContent = TAB_LABEL;
   panel.hidden = !tab.classList.contains('active');
 }
 
@@ -107,27 +109,30 @@ function observeListeningPartyTab() {
   const tab = listeningPartyTab();
   if (!tab || tab.dataset.unofficialPanelObserver === '1') return;
   tab.dataset.unofficialPanelObserver = '1';
-  new MutationObserver(syncVisibility).observe(tab, {
+  new MutationObserver(syncTab).observe(tab, {
     attributes: true,
     attributeFilter: ['class', 'aria-current'],
+    childList: true,
+    characterData: true,
+    subtree: true,
   });
 }
 
 function normalizeLegacyRoute() {
   if (location.hash !== '#unofficial') return;
-  listeningPartyTab()?.click();
+  history.replaceState(null, '', `${location.pathname}${location.search}#broadcasts`);
 }
 
 removeLegacyUi();
 mountView();
 observeListeningPartyTab();
 normalizeLegacyRoute();
-syncVisibility();
+syncTab();
 window.addEventListener('hashchange', () => {
   removeLegacyUi();
   normalizeLegacyRoute();
-  syncVisibility();
+  syncTab();
 });
-window.addEventListener('popstate', syncVisibility);
+window.addEventListener('popstate', syncTab);
 
 export { EVENTS };
