@@ -33,8 +33,8 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260925\.1'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260925\.1'\)/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260926\.1'/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260926\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
