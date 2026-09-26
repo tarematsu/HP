@@ -17,7 +17,7 @@ test('dashboard header starts in its final DOM shape before tabs and dashboard c
   assert.ok(tabsImport, 'dashboard-tabs.js must have an explicit deployment version');
   assert.ok(dashboardEntry.indexOf(headerImport) < dashboardEntry.indexOf(tabsImport));
   assert.match(headerRepair, /dashboard-fixes\.css\?v=[^']+/);
-  assert.match(headerRepair, /pages-layout-final-fixes\.css\?v=20260925\.1/);
+  assert.match(headerRepair, /pages-layout-final-fixes\.css\?v=20260926\.1/);
   assert.match(page, /<p id="updated" class="subtle">-<\/p>/);
   assert.match(page, /<nav id="modeTabs" class="mode-tabs dashboard-tabs"/);
   assert.doesNotMatch(page, /id="description"|class="live-line"|class="app-launch"|class="dashboard-actions"/);
@@ -30,9 +30,10 @@ test('mobile dashboard header has no vertical flex basis', () => {
   assert.doesNotMatch(headerCss, /flex:\s*1 1 (?:360|560)px/);
 });
 
-test('mobile current metrics stack vertically at full width', () => {
-  assert.match(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) !important/);
-  assert.doesNotMatch(finalFixes, /@media \(max-width: 400px\)[\s\S]*\.metrics\s*\{[\s\S]*repeat\(2,/);
+test('current metrics stay in one horizontal row at every viewport width', () => {
+  assert.match(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\) !important/);
+  assert.doesNotMatch(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) !important/);
+  assert.doesNotMatch(finalFixes, /@media \(max-width: 400px\)[\s\S]*#currentView > \.metrics\s*\{/);
   assert.match(headerCss, /\.metric\.featured\s*\{[\s\S]*display:\s*block/);
   assert.match(headerCss, /\.metric strong,[\s\S]*\.metric\.featured strong\s*\{[\s\S]*font-size:\s*clamp\(\.94rem, 4\.3vw, 1\.42rem\)/);
   assert.match(headerCss, /\.metric > span\s*\{[\s\S]*font-size:\s*clamp\(\.58rem, 2\.4vw, \.68rem\)/);

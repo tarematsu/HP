@@ -6,7 +6,7 @@ const header = readFileSync(new URL('../public/dashboard-header.js', import.meta
 const css = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
 
 test('final screenshot-audit overrides load after cross-view unification', () => {
-  assert.match(header, /pages-layout-final-fixes\.css\?v=20260925\.1/);
+  assert.match(header, /pages-layout-final-fixes\.css\?v=20260926\.1/);
   assert.ok(
     header.indexOf('layoutUnificationHref') < header.indexOf('layoutFinalFixesHref'),
     'final layout fixes must load last',
