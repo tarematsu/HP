@@ -8,7 +8,7 @@ function config() {
   );
 }
 
-test('Spotify collector is isolated from the realtime runtime Worker', () => {
+test('Spotify collector is isolated and wakes hourly for the 05:00+ retry gate', () => {
   const value = config();
   assert.equal(value.name, 'sh-spotify-playcount-collector');
   assert.equal(value.main, 'src/spotify-playcount-entry.js');
