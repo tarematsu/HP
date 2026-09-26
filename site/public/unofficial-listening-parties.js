@@ -44,6 +44,11 @@ const EVENTS = [
 
 const PANEL_ID = 'unofficialListeningPanel';
 
+function removeLegacyUi() {
+  document.querySelector('#modeTabs [data-view="unofficial"]')?.remove();
+  document.getElementById('unofficialView')?.remove();
+}
+
 function mountView() {
   const history = document.getElementById('historyView');
   if (!history || document.getElementById(PANEL_ID)) return;
@@ -87,26 +92,42 @@ function mountView() {
   }
 }
 
+function listeningPartyTab() {
+  return document.querySelector('#modeTabs [data-mode="broadcasts"]');
+}
+
 function syncVisibility() {
   const panel = document.getElementById(PANEL_ID);
-  const listeningPartyTab = document.querySelector('#modeTabs [data-mode="broadcasts"]');
-  if (!panel || !listeningPartyTab) return;
-  panel.hidden = !listeningPartyTab.classList.contains('active');
+  const tab = listeningPartyTab();
+  if (!panel || !tab) return;
+  panel.hidden = !tab.classList.contains('active');
 }
 
 function observeListeningPartyTab() {
-  const listeningPartyTab = document.querySelector('#modeTabs [data-mode="broadcasts"]');
-  if (!listeningPartyTab) return;
-  new MutationObserver(syncVisibility).observe(listeningPartyTab, {
+  const tab = listeningPartyTab();
+  if (!tab || tab.dataset.unofficialPanelObserver === '1') return;
+  tab.dataset.unofficialPanelObserver = '1';
+  new MutationObserver(syncVisibility).observe(tab, {
     attributes: true,
     attributeFilter: ['class', 'aria-current'],
   });
 }
 
+function normalizeLegacyRoute() {
+  if (location.hash !== '#unofficial') return;
+  listeningPartyTab()?.click();
+}
+
+removeLegacyUi();
 mountView();
 observeListeningPartyTab();
+normalizeLegacyRoute();
 syncVisibility();
-window.addEventListener('hashchange', syncVisibility);
+window.addEventListener('hashchange', () => {
+  removeLegacyUi();
+  normalizeLegacyRoute();
+  syncVisibility();
+});
 window.addEventListener('popstate', syncVisibility);
 
 export { EVENTS };
