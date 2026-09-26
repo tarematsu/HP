@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   SPOTIFY_TARGET_ARTISTS,
   albumFromInitialState,
+  albumIdsFromDiscographyHtml,
   decodeSpotifyInitialState,
   jstDateKey,
   normalizeAlbumTracks,
@@ -26,6 +27,27 @@ test('collector targets all three Sakamichi groups', () => {
       ['sakurazaka46', '0Ti7MfCiVVQAK8zLSiqlto'],
       ['hinatazaka46', '0eQSoTI7sQENREQM8Klp2j'],
     ],
+  );
+});
+
+test('public discography page discovers album ids without Spotify Web API', () => {
+  const renderedId = '1234567890123456789012';
+  const stateId = 'abcdefghijklmnopqrstuv';
+  const state = {
+    nested: {
+      releases: [
+        { uri: `spotify:album:${stateId}` },
+      ],
+    },
+  };
+  const encoded = Buffer.from(JSON.stringify(state), 'utf8').toString('base64');
+  const html = [
+    `<a href="https://open.spotify.com/album/${renderedId}">release</a>`,
+    `<script id="initialState" type="text/plain">${encoded}</script>`,
+  ].join('');
+  assert.deepEqual(
+    new Set(albumIdsFromDiscographyHtml(html)),
+    new Set([renderedId, stateId]),
   );
 });
 
