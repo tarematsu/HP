@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-played-tracks-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/played-tracks.css?v=20260924.2';
+  link.href = '/played-tracks.css?v=20260927.1';
   link.dataset.playedTracksStyles = '1';
   document.head.append(link);
 }
@@ -45,6 +45,17 @@ function mountView() {
       <article><span>楽曲数</span><strong id="playedTracksUnique">-</strong></article>
     </section>
 
+    <section class="card chart-panel played-tracks-stream-panel">
+      <div class="section-head"><div><p class="kicker">ESTIMATED STREAMS</p><h2>日別推定再生数（曲別）</h2></div></div>
+      <p id="playedTracksStreamNotice" class="notice" role="status" hidden></p>
+      <div id="playedTracksStreamLegend" class="played-tracks-stream-legend" aria-label="楽曲凡例"></div>
+      <div id="playedTracksStreamScroller" class="played-tracks-stream-scroller">
+        <canvas id="playedTracksStreamChart" width="960" height="360" aria-label="日別推定再生数の曲別積み上げ縦棒グラフ"></canvas>
+      </div>
+      <div id="playedTracksStreamDetail" class="chart-detail"></div>
+      <p class="chart-foot">2026/9/10以降。各日の総再生数を、その日の再生履歴における曲別再生回数の比率で按分した推定値です。</p>
+    </section>
+
     <section class="card chart-panel">
       <div class="section-head"><div><p class="kicker">COMPOSITION</p><h2>曲別再生割合</h2></div></div>
       <div class="played-tracks-chart-wrap">
@@ -65,6 +76,29 @@ function mountView() {
   else main.append(section);
 }
 
+let streamCompositionPromise = null;
+async function loadStreamComposition() {
+  if (!streamCompositionPromise) {
+    streamCompositionPromise = import('/played-tracks-stream-composition.js?v=20260927.1').catch((error) => {
+      streamCompositionPromise = null;
+      throw error;
+    });
+  }
+  const runtime = await streamCompositionPromise;
+  await runtime.loadPlayedTrackStreamComposition?.();
+}
+
+function loadStreamCompositionForLocation() {
+  if (location.hash === '#played-tracks') void loadStreamComposition();
+}
+
 ensureStylesheet();
 mountTab();
 mountView();
+
+document.getElementById('modeTabs')?.addEventListener('click', (event) => {
+  const button = event.target.closest('button[data-view="played-tracks"]');
+  if (button) void loadStreamComposition();
+});
+window.addEventListener('hashchange', loadStreamCompositionForLocation);
+loadStreamCompositionForLocation();

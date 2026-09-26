@@ -65,7 +65,7 @@ test('track history exposes a lightweight date index from the daily read model',
 });
 
 test('played tracks runtime is lazy while its shell loads before dashboard tabs', () => {
-  assert.match(metrics, /played-tracks-shell\.js\?v=20260924\.3/);
+  assert.match(metrics, /played-tracks-shell\.js\?v=20260927\.1/);
   assert.ok(metrics.indexOf('played-tracks-shell.js') < metrics.indexOf('dashboard-tabs.js'));
   assert.match(metrics, /dashboard-tabs\.js\?v=20260927\.3/);
   assert.match(tabs, /'played-tracks'/);
