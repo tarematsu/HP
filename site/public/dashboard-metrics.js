@@ -1,6 +1,6 @@
 import './history/history-global-fixes.js';
 import './pages-ui-tweaks.js?v=20260924.1';
-import './dashboard-header.js?v=20260924.1';
+import './dashboard-header.js?v=20260926.1';
 import './pages-terminology.js?v=20260924.3';
 import './unofficial-listening-parties.js?v=20260926.1';
 import './official-listening-party-copy.js?v=20260923.1';
