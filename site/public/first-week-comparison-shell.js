@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-first-week-comparison-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/first-week-comparison.css?v=20260926.2';
+  link.href = '/first-week-comparison.css?v=20260927.1';
   link.dataset.firstWeekComparisonStyles = '1';
   document.head.append(link);
 }
