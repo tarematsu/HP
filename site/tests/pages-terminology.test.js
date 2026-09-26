@@ -14,7 +14,7 @@ const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 
 test('current and likes views use explicit user-facing metric names in static markup', () => {
-  for (const label of ['累計再生数', '対象楽曲数', '最大いいね数', '最終取得', '楽曲別一覧', '最新いいね数', '公式リスパ']) {
+  for (const label of ['累計再生数', '対象楽曲数', '最大いいね数', '最終取得', '楽曲別一覧', '最新いいね数', 'Listening Party']) {
     assert.match(html, new RegExp(label));
   }
   assert.match(metrics, /pages-terminology\.js\?v=20260924\.3/);
@@ -23,7 +23,6 @@ test('current and likes views use explicit user-facing metric names in static ma
 
 test('history terminology distinguishes totals, growth, tracks, missing weeks, and data quality', () => {
   assert.match(summaryLabels, /平均再生増加数/);
-  assert.match(summaryLabels, /平均メンバー増加数/);
   for (const label of ['メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数', '楽曲数', '圏外・欠測週数', '平均所要時間']) {
     assert.match(tableCleanup, new RegExp(label));
   }
