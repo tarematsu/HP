@@ -36,8 +36,8 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
-  assert.equal(versions.entry, '20260926.2');
-  assert.equal(versions.unofficialListeningParties, '20260926.1');
+  assert.equal(versions.entry, '20260926.3');
+  assert.equal(versions.unofficialListeningParties, '20260926.2');
   assert.equal(versions.comparison, '20260923.6');
   assert.equal(versions.chartDetail, '20260923.5');
   for (const [asset, version] of Object.entries(versions)) {
