@@ -1,0 +1,62 @@
+name: Spotify playcount debug
+
+on:
+  push:
+    branches:
+      - fix/spotify-playcount-collection
+    paths:
+      - '.github/workflows/spotify-playcount-debug.yml'
+      - 'worker/src/spotify-playcount-collector.js'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe Spotify public pages
+        working-directory: worker
+        run: |
+          node --input-type=module <<'NODE'
+          import {
+            SPOTIFY_TARGET_ARTISTS,
+            albumIdsFromDiscographyHtml,
+            decodeSpotifyInitialState,
+            albumFromInitialState,
+            normalizeAlbumTracks,
+          } from './src/spotify-playcount-collector.js';
+
+          const headers = {
+            accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'accept-language': 'ja-JP,ja;q=0.9,en;q=0.7',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36',
+          };
+
+          for (const artist of SPOTIFY_TARGET_ARTISTS) {
+            const url = `https://open.spotify.com/artist/${artist.spotify_artist_id}/discography/all`;
+            const response = await fetch(url, { headers, redirect: 'follow' });
+            const html = await response.text();
+            const ids = albumIdsFromDiscographyHtml(html);
+            console.log(JSON.stringify({ artist: artist.artist_key, status: response.status, finalUrl: response.url, bytes: html.length, contentType: response.headers.get('content-type'), albums: ids.length, firstAlbum: ids[0] || null }));
+            if (!response.ok) console.log(html.slice(0, 500));
+            if (ids.length) {
+              const albumResponse = await fetch(`https://open.spotify.com/album/${ids[0]}`, { headers, redirect: 'follow' });
+              const albumHtml = await albumResponse.text();
+              let trackCount = null;
+              let parseError = null;
+              try {
+                const album = albumFromInitialState(decodeSpotifyInitialState(albumHtml), ids[0]);
+                trackCount = normalizeAlbumTracks(album, [artist]).length;
+              } catch (error) {
+                parseError = String(error?.message || error);
+              }
+              console.log(JSON.stringify({ artist: artist.artist_key, albumStatus: albumResponse.status, albumBytes: albumHtml.length, normalizedTracks: trackCount, parseError }));
+            }
+          }
+          NODE
