@@ -20,9 +20,17 @@ const ALL_VARIANTS = [
   'history:monthly',
   'history:broadcasts',
   'host-history:summary',
+  'spotify-playcounts',
 ];
 
-const SIX_HOUR_VARIANTS = ALL_VARIANTS.slice(0, -1);
+const SIX_HOUR_VARIANTS = [
+  'dashboard',
+  'history:daily',
+  'history:weekly',
+  'history:monthly',
+  'history:broadcasts',
+  'spotify-playcounts',
+];
 
 test('Actions cadence uses six-hour summaries and daily host archive variants', () => {
   assert.deepEqual([...dueVariantKeys(BASE + 26 * MINUTE_MS)], ALL_VARIANTS);
