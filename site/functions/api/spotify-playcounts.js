@@ -26,12 +26,14 @@ export function spotifyArtist(value) {
 
 export function spotifyPlaycountSql() {
   return `WITH latest AS (
-    SELECT MAX(d.snapshot_date) AS snapshot_date
+    SELECT target.artist_key, MAX(d.snapshot_date) AS snapshot_date
     FROM sh_spotify_playcount_daily d
     INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
-    WHERE target.artist_key=?
+    WHERE target.artist_key IN ('nogizaka46','sakurazaka46','hinatazaka46')
+    GROUP BY target.artist_key
   )
   SELECT
+    latest.artist_key,
     d.snapshot_date,
     d.track_id,
     track.name,
@@ -40,11 +42,20 @@ export function spotifyPlaycountSql() {
     d.collected_at,
     COALESCE(d.is_carried_forward,0) AS is_carried_forward
   FROM latest
-  INNER JOIN sh_spotify_playcount_daily d ON d.snapshot_date=latest.snapshot_date
-  INNER JOIN sh_spotify_track_targets target
-    ON target.track_id=d.track_id AND target.artist_key=?
+  INNER JOIN sh_spotify_track_targets target ON target.artist_key=latest.artist_key
+  INNER JOIN sh_spotify_playcount_daily d
+    ON d.snapshot_date=latest.snapshot_date AND d.track_id=target.track_id
   INNER JOIN sh_spotify_tracks track ON track.track_id=d.track_id
-  ORDER BY d.playcount DESC, track.name COLLATE NOCASE ASC, d.track_id ASC`;
+  ORDER BY
+    CASE latest.artist_key
+      WHEN 'nogizaka46' THEN 1
+      WHEN 'sakurazaka46' THEN 2
+      WHEN 'hinatazaka46' THEN 3
+      ELSE 4
+    END,
+    d.playcount DESC,
+    track.name COLLATE NOCASE ASC,
+    d.track_id ASC`;
 }
 
 function integer(value) {
@@ -76,28 +87,45 @@ export function spotifyPayload(artist, rows = []) {
   };
 }
 
-export async function onRequestGet({ request, env }) {
+export function spotifyReadModel(rows = []) {
+  const rowsByArtist = new Map(Object.keys(ARTISTS).map((key) => [key, []]));
+  for (const row of rows) {
+    const artist = spotifyArtist(row?.artist_key);
+    if (artist) rowsByArtist.get(artist.key).push(row);
+  }
+
+  const groups = {};
+  const comparison = [];
+  for (const artist of Object.values(ARTISTS)) {
+    const payload = spotifyPayload(artist, rowsByArtist.get(artist.key));
+    groups[artist.key] = payload;
+    comparison.push({
+      artist,
+      snapshot_date: payload.snapshot_date,
+      carried_forward: payload.carried_forward,
+      track_count: payload.track_count,
+      total_delta: payload.total_delta,
+    });
+  }
+  return {
+    default_artist: DEFAULT_ARTIST_KEY,
+    groups,
+    comparison,
+  };
+}
+
+export async function onRequestGet({ env }) {
   if (!env?.OTHER_DB?.prepare) {
     return json({ ok: false, error: 'OTHER_DB binding missing' }, 503, {
       'cache-control': 'no-store',
     });
   }
 
-  const url = new URL(request.url);
-  const artist = spotifyArtist(url.searchParams.get('artist'));
-  if (!artist) {
-    return json({ ok: false, error: 'unknown artist' }, 400, {
-      'cache-control': 'no-store',
-    });
-  }
-
   try {
-    const result = await env.OTHER_DB.prepare(spotifyPlaycountSql())
-      .bind(artist.key, artist.key)
-      .all();
+    const result = await env.OTHER_DB.prepare(spotifyPlaycountSql()).all();
     return json({
       ok: true,
-      ...spotifyPayload(artist, Array.isArray(result?.results) ? result.results : []),
+      ...spotifyReadModel(Array.isArray(result?.results) ? result.results : []),
     });
   } catch (error) {
     console.error('spotify playcounts failed', error);
