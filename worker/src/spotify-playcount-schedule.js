@@ -19,24 +19,39 @@ async function refreshArtistCatalog(db, artist, releases, seenAt) {
   const existingResult = await db.prepare(`SELECT album_id,is_active
     FROM sh_spotify_release_targets WHERE artist_key=?`).bind(artist.artist_key).all();
   const existing = new Map(resultsOf(existingResult).map((row) => [String(row.album_id), Number(row.is_active || 0)]));
+  const seenIds = new Set(releases.map((release) => String(release.album_id)));
   const writes = [];
   let changed = 0;
+
+  for (const [albumId, state] of existing) {
+    if (state === 1 && !seenIds.has(albumId)) {
+      writes.push(db.prepare(`UPDATE sh_spotify_release_targets
+        SET is_active=0,last_seen_at=? WHERE album_id=? AND artist_key=? AND is_active=1`)
+        .bind(seenAt, albumId, artist.artist_key));
+      changed += 1;
+    }
+  }
+
   for (const release of releases) {
     const state = existing.get(release.album_id);
     if (state === 1) continue;
+    const releaseInsert = db.prepare(`INSERT INTO sh_spotify_releases (
+        album_id,name,album_type,release_date,release_date_precision,total_tracks,last_seen_at
+      ) VALUES (?,?,?,?,?,?,?) ON CONFLICT(album_id) DO NOTHING`)
+      .bind(release.album_id, release.name, release.album_type, release.release_date,
+        release.release_date_precision, release.total_tracks, seenAt);
     if (state === 0) {
-      writes.push(db.prepare(`UPDATE sh_spotify_release_targets
-        SET is_active=1,last_seen_at=? WHERE album_id=? AND artist_key=? AND is_active=0`)
-        .bind(seenAt, release.album_id, artist.artist_key));
+      writes.push(
+        releaseInsert,
+        db.prepare(`UPDATE sh_spotify_release_targets
+          SET is_active=1,last_seen_at=? WHERE album_id=? AND artist_key=? AND is_active=0`)
+          .bind(seenAt, release.album_id, artist.artist_key),
+      );
       changed += 1;
       continue;
     }
     writes.push(
-      db.prepare(`INSERT INTO sh_spotify_releases (
-          album_id,name,album_type,release_date,release_date_precision,total_tracks,last_seen_at
-        ) VALUES (?,?,?,?,?,?,?) ON CONFLICT(album_id) DO NOTHING`)
-        .bind(release.album_id, release.name, release.album_type, release.release_date,
-          release.release_date_precision, release.total_tracks, seenAt),
+      releaseInsert,
       db.prepare(`INSERT INTO sh_spotify_release_targets (album_id,artist_key,is_active,last_seen_at)
         VALUES (?,?,1,?) ON CONFLICT(album_id,artist_key) DO UPDATE SET is_active=1,last_seen_at=excluded.last_seen_at`)
         .bind(release.album_id, artist.artist_key, seenAt),
