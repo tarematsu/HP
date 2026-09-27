@@ -136,7 +136,7 @@ function applyMigration(migrationFile) {
   wrangler([
     'd1', 'execute', databaseName,
     '--remote', '--yes',
-    '--command', backfillSql,
+    `--command=${backfillSql}`,
   ]);
 }
 
