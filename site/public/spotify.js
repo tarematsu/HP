@@ -144,9 +144,9 @@ function renderTrendCharts(trend = {}) {
   if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
   const yRange = Math.max(1, yMax - yMin);
 
-  const width = 720;
-  const height = 190;
-  const margin = { left: 64, right: 18, top: 14, bottom: 34 };
+  const width = 960;
+  const height = 340;
+  const margin = { left: 72, right: 22, top: 18, bottom: 40 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const xForIndex = (index) => margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
@@ -156,77 +156,83 @@ function renderTrendCharts(trend = {}) {
     ? [0]
     : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
 
-  seriesList.forEach(({ artistKey, artistName, currentRank, points }, seriesIndex) => {
-    const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
+  const chart = document.createElement('section');
+  chart.className = 'spotify-trend-series spotify-trend-combined';
+
+  const legend = document.createElement('div');
+  legend.className = 'spotify-trend-legend';
+  legend.setAttribute('aria-label', 'アーティスト凡例と最新前回比');
+  seriesList.forEach(({ artistName, currentRank, points }, seriesIndex) => {
+    const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
     const latest = [...points].reverse().find((point) => deltaNumber(point?.total_delta) != null);
-
-    const series = document.createElement('section');
-    series.className = 'spotify-trend-series';
-    series.dataset.artist = artistKey;
-    series.style.setProperty('--spotify-trend-color', TREND_COLORS[seriesIndex % TREND_COLORS.length]);
-
-    const head = document.createElement('div');
-    head.className = 'spotify-trend-head';
+    const item = document.createElement('span');
+    item.className = 'spotify-trend-legend-item';
+    item.style.setProperty('--spotify-trend-color', color);
     const name = document.createElement('span');
     name.className = 'spotify-trend-name';
     name.textContent = currentRank == null ? artistName : `${currentRank}位 ${artistName}`;
     const latestValue = document.createElement('strong');
     latestValue.className = 'spotify-trend-latest';
     latestValue.textContent = formatDelta(latest?.total_delta);
-    head.append(name, latestValue);
+    item.append(name, latestValue);
+    legend.append(item);
+  });
 
-    const scroll = document.createElement('div');
-    scroll.className = 'spotify-trend-scroll';
-    const svg = svgElement('svg', {
-      viewBox: `0 0 ${width} ${height}`,
-      role: 'img',
-      'aria-label': `${artistName} Spotify前回比合計の推移`,
-      class: 'spotify-trend-svg',
+  const scroll = document.createElement('div');
+  scroll.className = 'spotify-trend-scroll';
+  const svg = svgElement('svg', {
+    viewBox: `0 0 ${width} ${height}`,
+    role: 'img',
+    'aria-label': '収集対象の女性アイドル全アーティスト Spotify前回比合計の推移',
+    class: 'spotify-trend-svg',
+  });
+
+  for (let tick = 0; tick <= 4; tick += 1) {
+    const value = yMax - yRange * tick / 4;
+    const y = yForValue(value);
+    const grid = svgElement('line', {
+      x1: margin.left,
+      y1: y,
+      x2: width - margin.right,
+      y2: y,
+      class: 'spotify-trend-grid',
     });
+    const label = svgElement('text', {
+      x: margin.left - 8,
+      y: y + 4,
+      'text-anchor': 'end',
+      class: 'spotify-trend-axis-label',
+    });
+    label.textContent = compactNumberFormat.format(Math.round(value));
+    svg.append(grid, label);
+  }
 
-    for (let tick = 0; tick <= 3; tick += 1) {
-      const value = yMax - yRange * tick / 3;
-      const y = yForValue(value);
-      const grid = svgElement('line', {
-        x1: margin.left,
-        y1: y,
-        x2: width - margin.right,
-        y2: y,
-        class: 'spotify-trend-grid',
-      });
-      const label = svgElement('text', {
-        x: margin.left - 8,
-        y: y + 4,
-        'text-anchor': 'end',
-        class: 'spotify-trend-axis-label',
-      });
-      label.textContent = compactNumberFormat.format(Math.round(value));
-      svg.append(grid, label);
-    }
+  if (yMin < 0 && yMax > 0) {
+    const zeroY = yForValue(0);
+    svg.append(svgElement('line', {
+      x1: margin.left,
+      y1: zeroY,
+      x2: width - margin.right,
+      y2: zeroY,
+      class: 'spotify-trend-axis',
+    }));
+  }
 
-    if (yMin < 0 && yMax > 0) {
-      const zeroY = yForValue(0);
-      svg.append(svgElement('line', {
-        x1: margin.left,
-        y1: zeroY,
-        x2: width - margin.right,
-        y2: zeroY,
-        class: 'spotify-trend-axis',
-      }));
-    }
+  for (const index of xTicks) {
+    const x = xForIndex(index);
+    const label = svgElement('text', {
+      x,
+      y: height - 12,
+      'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
+      class: 'spotify-trend-axis-label',
+    });
+    label.textContent = formatTrendDate(dates[index]);
+    svg.append(label);
+  }
 
-    for (const index of xTicks) {
-      const x = xForIndex(index);
-      const label = svgElement('text', {
-        x,
-        y: height - 10,
-        'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
-        class: 'spotify-trend-axis-label',
-      });
-      label.textContent = formatTrendDate(dates[index]);
-      svg.append(label);
-    }
-
+  seriesList.forEach(({ artistName, points }, seriesIndex) => {
+    const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
+    const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
     let pathData = '';
     let drawing = false;
     for (const date of dates) {
@@ -242,10 +248,15 @@ function renderTrendCharts(trend = {}) {
       drawing = true;
     }
     if (pathData) {
-      svg.append(svgElement('path', {
+      const path = svgElement('path', {
         d: pathData.trim(),
         class: 'spotify-trend-line',
-      }));
+      });
+      path.style.setProperty('--spotify-trend-color', color);
+      const title = svgElement('title');
+      title.textContent = artistName;
+      path.append(title);
+      svg.append(path);
     }
 
     for (const point of points) {
@@ -256,19 +267,20 @@ function renderTrendCharts(trend = {}) {
       const circle = svgElement('circle', {
         cx: xForIndex(index),
         cy: yForValue(value),
-        r: 3.5,
+        r: 2.4,
         class: 'spotify-trend-point',
       });
+      circle.style.setProperty('--spotify-trend-color', color);
       const title = svgElement('title');
-      title.textContent = `${formatDate(point.snapshot_date)} ${formatDelta(value)}`;
+      title.textContent = `${artistName} ${formatDate(point.snapshot_date)} ${formatDelta(value)}`;
       circle.append(title);
       svg.append(circle);
     }
-
-    scroll.append(svg);
-    series.append(head, scroll);
-    container.append(series);
   });
+
+  scroll.append(svg);
+  chart.append(legend, scroll);
+  container.append(chart);
 }
 
 function render(payload, trend) {
