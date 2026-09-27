@@ -57,29 +57,14 @@ try {
     pending.push(task);
   });
 
+  await page.goto(`https://www.stationhead.com/${target}`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+  report.steps.push('opened public profile without clicking');
+  await page.waitForTimeout(3000);
+  report.target_visible = await page.getByRole('img', { name: target }).isVisible().catch(() => false);
   await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-  report.steps.push('opened Buddies');
-  const start = page.getByRole('button', { name: 'Start listening' });
-  if (await start.isVisible().catch(() => false)) {
-    await start.click();
-    report.steps.push('opened live channel');
-  }
-  const close = page.getByRole('dialog').getByRole('button', { name: 'Close' });
-  if (await close.isVisible().catch(() => false)) await close.click();
-  const listeners = page.getByRole('button', { name: /^\d+$/ }).first();
-  await listeners.waitFor({ state: 'visible', timeout: 20_000 });
-  await listeners.click();
-  report.steps.push('opened listener list');
-  const filter = page.getByRole('searchbox', { name: 'Filter listeners by name' });
-  await filter.fill(target);
-  report.steps.push('filtered listener list');
-  const account = page.getByRole('dialog').getByRole('button', { name: /tokyosnow/i });
-  await account.first().waitFor({ state: 'visible', timeout: 10_000 });
-  await account.first().click();
-  report.steps.push('opened target profile');
+  report.steps.push('opened Buddies landing page without clicking');
   await page.waitForTimeout(3000);
   await Promise.allSettled(pending);
-  report.target_visible = await page.getByRole('dialog').last().getByText(target, { exact: true }).isVisible().catch(() => false);
 } catch (error) {
   report.errors.push(`interaction: ${error.message}`);
 } finally {
