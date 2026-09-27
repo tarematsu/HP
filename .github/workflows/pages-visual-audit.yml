@@ -24,49 +24,16 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Resolve Cloudflare account context
-        if: github.event_name == 'pull_request'
-        uses: ./.github/actions/cloudflare-context
-        with:
-          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
-
-      - name: Install Pages dependencies
-        if: github.event_name == 'pull_request'
-        working-directory: site
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      - name: Deploy visual-audit preview
-        if: github.event_name == 'pull_request'
-        id: preview
-        shell: bash
-        working-directory: site
-        env:
-          PREVIEW_BRANCH: visual-audit-pr-${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          npx wrangler pages deploy public \
-            --project-name skrzk \
-            --branch "$PREVIEW_BRANCH" \
-            2>&1 | tee pages-visual-audit-deploy.log
-          preview_url="$(grep -Eo 'https://[[:alnum:]-]+\.skrzk\.pages\.dev' pages-visual-audit-deploy.log | head -n 1 || true)"
-          if [[ -z "$preview_url" ]]; then
-            echo 'Could not resolve Pages preview URL.' >&2
-            exit 1
-          fi
-          echo "url=$preview_url" >> "$GITHUB_OUTPUT"
-
       - name: Install Playwright
         run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Capture every tab at four viewport sizes
-        env:
-          TARGET_URL: ${{ github.event_name == 'pull_request' && steps.preview.outputs.url || 'https://skrzk.pages.dev' }}
+      - name: Capture production Pages at every tab and viewport size
         run: >-
           node scripts/capture-pages-visual-audit.mjs
-          --url="$TARGET_URL"
+          --url=https://skrzk.pages.dev
           --out=.pages-visual-audit
 
       - name: Upload visual audit screenshots
@@ -74,9 +41,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pages-visual-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            .pages-visual-audit/
-            site/pages-visual-audit-deploy.log
+          path: .pages-visual-audit/
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
