@@ -11,8 +11,8 @@ const tverQueue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const tverRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
-const documentStart = readExpandedNativeSource(
-  '../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url);
+const xRuntime = readFileSync(
+  new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
 
 test('YouTube stays 60 minutes while the TVer hour hands its last 5 minutes to X', () => {
   assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
@@ -32,11 +32,11 @@ test('TVer recovery cannot pull the shared WebView back from the X subphase', ()
 });
 
 test('X uses Following and likes a random 5 to 10 latest unliked posts', () => {
-  assert.match(documentStart, /\^\(\?:Following\|フォロー中\)\$/);
-  assert.match(documentStart, /5 \+ Math\.floor\(Math\.random\(\) \* 6\)/);
-  assert.match(documentStart, /article\[data-testid="tweet"\]/);
-  assert.match(documentStart, /\[data-testid="like"\]/);
-  assert.match(documentStart, /button\.click\(\)/);
-  assert.match(documentStart, /Promoted\|プロモーション\|広告/);
-  assert.doesNotMatch(documentStart, /data-testid="unlike"|data-testid="retweet"|data-testid="follow"/);
+  assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
+  assert.match(xRuntime, /5 \+ Math\.floor\(Math\.random\(\) \* 6\)/);
+  assert.match(xRuntime, /article\[data-testid="tweet"\]/);
+  assert.match(xRuntime, /\[data-testid="like"\]/);
+  assert.match(xRuntime, /button\.click\(\)/);
+  assert.match(xRuntime, /Promoted\|プロモーション\|広告/);
+  assert.doesNotMatch(xRuntime, /data-testid="unlike"|data-testid="retweet"|data-testid="follow"/);
 });
