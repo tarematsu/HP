@@ -1,8 +1,31 @@
-export const SPOTIFY_TARGET_ARTISTS = Object.freeze([
-  Object.freeze({ artist_key: 'nogizaka46', artist_name: '乃木坂46', spotify_artist_id: '08lN7bm4Etec8ETFxaTUmq' }),
-  Object.freeze({ artist_key: 'sakurazaka46', artist_name: '櫻坂46', spotify_artist_id: '0Ti7MfCiVVQAK8zLSiqlto' }),
-  Object.freeze({ artist_key: 'hinatazaka46', artist_name: '日向坂46', spotify_artist_id: '0eQSoTI7sQENREQM8Klp2j' }),
+export const SPOTIFY_TOP20_RANKING_DATE = '2026-09-23';
+
+export const SPOTIFY_CURRENT_TOP20_ARTISTS = Object.freeze([
+  Object.freeze({ rank: 1, artist_key: 'equal-love', artist_name: '＝LOVE', spotify_artist_id: '1j2WhcTW00Zd2SjFYsJVc6' }),
+  Object.freeze({ rank: 2, artist_key: 'akb48', artist_name: 'AKB48', spotify_artist_id: '01wau5CL3Z1vfJJWkzBkqg' }),
+  Object.freeze({ rank: 3, artist_key: 'cutie-street', artist_name: 'CUTIE STREET', spotify_artist_id: '3PLCOySHJ9zwED5yZvDtPZ' }),
+  Object.freeze({ rank: 4, artist_key: 'fruits-zipper', artist_name: 'FRUITS ZIPPER', spotify_artist_id: '4v5IVXt3oH0iNuxW9O36BV' }),
+  Object.freeze({ rank: 5, artist_key: 'nogizaka46', artist_name: '乃木坂46', spotify_artist_id: '08lN7bm4Etec8ETFxaTUmq' }),
+  Object.freeze({ rank: 6, artist_key: 'candy-tune', artist_name: 'CANDY TUNE', spotify_artist_id: '4Yq4M6kdQTjkPBOp7aPJrA' }),
+  Object.freeze({ rank: 7, artist_key: 'ilife', artist_name: 'iLiFE!', spotify_artist_id: '539GTPlYhFLCL6eh4jnbYy' }),
+  Object.freeze({ rank: 8, artist_key: 'niziu', artist_name: 'NiziU', spotify_artist_id: '3z8diLlUCkN1j9N9ZdnfBJ' }),
+  Object.freeze({ rank: 9, artist_key: 'momoiro-clover-z', artist_name: 'ももいろクローバーZ', spotify_artist_id: '3Zl0EsuYV23OgNw6WqGelN' }),
+  Object.freeze({ rank: 10, artist_key: 'phantom-siita', artist_name: 'ファントムシータ', spotify_artist_id: '6JO3HrRYUfSMbe71R7RUF2' }),
+  Object.freeze({ rank: 11, artist_key: 'morning-musume', artist_name: 'モーニング娘。', spotify_artist_id: '4cDFYGC0CtsN86zvpCXsi4' }),
+  Object.freeze({ rank: 12, artist_key: 'mei', artist_name: 'ME:I', spotify_artist_id: '0wsE3L0l083t6bxC8jJefC' }),
+  Object.freeze({ rank: 13, artist_key: 'cho-tokimeki-sendenbu', artist_name: '超ときめき♡宣伝部', spotify_artist_id: '02hwDSWEF0JdOgdIBw1gRT' }),
+  Object.freeze({ rank: 14, artist_key: 'not-equal-me', artist_name: '≠ME', spotify_artist_id: '3e3ubSlRDBFxokscDrbvpF' }),
+  Object.freeze({ rank: 15, artist_key: 'juice-juice', artist_name: 'Juice=Juice', spotify_artist_id: '6ckfItpfxpSYKrZ0OIXUuh' }),
+  Object.freeze({ rank: 16, artist_key: 'sakurazaka46', artist_name: '櫻坂46', spotify_artist_id: '0Ti7MfCiVVQAK8zLSiqlto' }),
+  Object.freeze({ rank: 17, artist_key: 'piki', artist_name: 'PiKi', spotify_artist_id: '0k24bjTbB2IUhV74mvSv4T' }),
+  Object.freeze({ rank: 18, artist_key: 'hinatazaka46', artist_name: '日向坂46', spotify_artist_id: '0eQSoTI7sQENREQM8Klp2j' }),
+  Object.freeze({ rank: 19, artist_key: 'kyururin-tte-shitemite', artist_name: 'きゅるりんってしてみて', spotify_artist_id: '1tIFdPigPQapjr9pOEDP7d' }),
+  Object.freeze({ rank: 20, artist_key: 'sweet-steady', artist_name: 'SWEET STEADY', spotify_artist_id: '1UyIqMBjk0DMexWtQF2X1i' }),
 ]);
+
+// Backwards-compatible export for callers/tests that inspect the current Top 20 seed.
+export const SPOTIFY_TARGET_ARTISTS = SPOTIFY_CURRENT_TOP20_ARTISTS;
+export const SPOTIFY_SESSION_SEED_ARTIST_ID = '0Ti7MfCiVVQAK8zLSiqlto';
 
 export const FIRST_CHECK_HOUR_JST = 5;
 export const STUCK_ATTEMPT_MS = 50 * 60 * 1000;
