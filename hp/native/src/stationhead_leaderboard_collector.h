@@ -18,6 +18,10 @@ class StationheadLeaderboardCollector {
   void Stop();
   void Tick(int64_t nowMs);
   [[nodiscard]] int64_t NextWakeAt() const noexcept {
+    if (!started_) {
+      spotifyArtistChartCollector_.Stop();
+      return nextWakeAt_;
+    }
     int64_t spotifyWake = 0;
     try {
       const int64_t now = UnixMillis();
