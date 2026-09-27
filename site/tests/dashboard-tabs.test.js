@@ -33,7 +33,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260927\.3'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260927\.4'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260927\.2'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
@@ -47,6 +47,17 @@ test('first-week comparison routing is preserved alongside the existing lazy vie
   assert.match(tabsClient, /const firstWeekView = document\.getElementById\('firstWeekView'\)/);
   assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260927\.1'\)/);
   assert.match(tabsClient, /showFirstWeek/);
+});
+
+test('Spotify routing is owned by the central dashboard router', () => {
+  assert.match(dashboardEntry, /spotify-shell\.js\?v=20260927\.1/);
+  assert.doesNotMatch(dashboardEntry, /spotify-tab-router/);
+  assert.match(tabsClient, /VIEW_MODES[\s\S]*'spotify'/);
+  assert.match(tabsClient, /const spotifyView = document\.getElementById\('spotifyView'\)/);
+  assert.match(tabsClient, /import\('\/spotify\.js\?v=20260927\.2'\)/);
+  assert.match(tabsClient, /showSpotify/);
+  assert.match(tabsClient, /else if \(mode === 'spotify'\) void showSpotify/);
+  assert.match(tabsClient, /button\.dataset\.view === 'spotify'/);
 });
 
 test('obsolete unofficial view is not a central dashboard route', () => {
@@ -76,6 +87,7 @@ test('late async history runtimes cannot reactivate a tab the user already left'
   assert.match(tabsClient, /if \(mode === 'ranking'\) \{[\s\S]*await loadRankingStatusRuntime\(\);[\s\S]*if \(activeMode !== mode\) return;/);
   assert.match(tabsClient, /catch \(error\) \{\s*if \(activeMode !== mode\) return;/);
   assert.match(tabsClient, /showLikes[\s\S]*catch \(error\) \{\s*if \(activeMode !== 'likes'\) return;/);
+  assert.match(tabsClient, /showSpotify[\s\S]*if \(activeMode !== 'spotify'\) return;/);
 });
 
 test('history and likes startup release unintended skip-link focus', () => {
@@ -85,6 +97,7 @@ test('history and likes startup release unintended skip-link focus', () => {
   assert.match(tabsClient, /classList\.remove\('keyboard-navigation'\)/);
   assert.match(tabsClient, /showHistory[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
   assert.match(tabsClient, /showLikes[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
+  assert.match(tabsClient, /showSpotify[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
 });
 
 test('tab selection stays on the root document and never navigates to history pages', () => {
