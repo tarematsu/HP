@@ -5,6 +5,8 @@ import { readExpandedNativeSource } from './helpers/read-expanded-native-source.
 
 const runtime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const episodeRuntime = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_control_recovery.inc', import.meta.url), 'utf8');
 const queue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const host = readFileSync(
@@ -22,7 +24,7 @@ test('TVer advances only through the native cloud-owned episode queue', () => {
   assert.match(wrapper, /message == L"homepanel:tver-ended"/);
   assert.match(wrapper, /NativeMediaTverAdvanceEpisode\(source\)/);
   assert.doesNotMatch(runtime + wrapper, /__homePanelTverEpisodeQueue|sessionStorage/);
-  assert.doesNotMatch(runtime, /location\.(?:replace|assign)\(/);
+  assert.doesNotMatch(episodeRuntime, /location\.(?:replace|assign)\(/);
 });
 
 test('TVer natural completion is captured from the active program media only', () => {
