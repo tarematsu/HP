@@ -15,10 +15,15 @@ import {
   fetchAnonymousSession,
   normalizeAlbumTracks,
 } from './spotify-playcount-source.js';
+import {
+  bootstrapSpotifyTrackAliases,
+  resolveCanonicalSpotifyTracks,
+} from './spotify-track-identity.js';
 
 async function persistCandidateTracks(db, message, tracks, collectedAt) {
+  const resolvedTracks = await resolveCanonicalSpotifyTracks(db, tracks, collectedAt);
   const writes = [];
-  for (const track of tracks) {
+  for (const track of resolvedTracks) {
     writes.push(
       db.prepare(`INSERT OR IGNORE INTO sh_spotify_tracks (
           track_id,album_id,name,disc_number,track_number,duration_ms,artists_json,updated_at
@@ -183,7 +188,7 @@ async function finalizeAttempt(db, message) {
 
   const previousDate = previousDateKey(message.snapshot_date);
   const previous = resultsOf(await db.prepare(`SELECT track_id,playcount
-    FROM sh_spotify_playcount_daily WHERE snapshot_date=? ORDER BY track_id`)
+    FROM sh_spotify_playcount_daily_canonical WHERE snapshot_date=? ORDER BY track_id`)
     .bind(previousDate).all());
   if (previous.length) {
     const candidateIds = new Set(candidates.map((row) => String(row.track_id)));
@@ -235,13 +240,19 @@ async function finalizeAttempt(db, message) {
         CASE WHEN p.playcount IS NULL THEN NULL ELSE c.playcount-p.playcount END,
         c.collected_at,0
       FROM sh_spotify_playcount_candidates c
-      LEFT JOIN sh_spotify_playcount_daily p
+      LEFT JOIN sh_spotify_playcount_daily_canonical p
         ON p.snapshot_date=? AND p.track_id=c.track_id
       WHERE c.snapshot_date=? AND c.run_token=?
       ON CONFLICT(snapshot_date,track_id) DO UPDATE SET
         playcount=excluded.playcount,delta=excluded.delta,
         collected_at=excluded.collected_at,is_carried_forward=0`)
       .bind(message.snapshot_date, previousDate, message.snapshot_date, message.run_token),
+    db.prepare(`DELETE FROM sh_spotify_playcount_daily
+      WHERE snapshot_date=? AND track_id IN (
+        SELECT source_track_id FROM sh_spotify_track_aliases
+        WHERE source_track_id<>canonical_track_id
+      )`)
+      .bind(message.snapshot_date),
     db.prepare(`INSERT INTO sh_spotify_playcount_current (
         track_id,playcount,snapshot_date,collected_at
       )
@@ -252,6 +263,11 @@ async function finalizeAttempt(db, message) {
         playcount=excluded.playcount,snapshot_date=excluded.snapshot_date,collected_at=excluded.collected_at
       WHERE excluded.snapshot_date>=sh_spotify_playcount_current.snapshot_date`)
       .bind(message.snapshot_date, message.snapshot_date, message.run_token),
+    db.prepare(`DELETE FROM sh_spotify_playcount_current
+      WHERE track_id IN (
+        SELECT source_track_id FROM sh_spotify_track_aliases
+        WHERE source_track_id<>canonical_track_id
+      )`),
     db.prepare(`UPDATE sh_spotify_collection_runs
       SET status='complete',tracks_collected=?,errors=0,completed_at=?,updated_at=?,last_error=NULL
       WHERE snapshot_date=? AND run_token=? AND status='finalizing'`)
@@ -348,6 +364,8 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
     }
   }
   if (!active.length) return { processed: 0, failed: 0, ignored };
+
+  await bootstrapSpotifyTrackAliases(db, Date.now());
 
   let session;
   try {
