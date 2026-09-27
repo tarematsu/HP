@@ -1,0 +1,86 @@
+.spotify-view {
+  display: grid;
+  gap: 16px;
+}
+
+.spotify-view[hidden] {
+  display: none !important;
+}
+
+.spotify-artist-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.spotify-artist-switch button {
+  min-height: 44px;
+  border: 1px solid var(--line, #d8d8d8);
+  border-radius: 10px;
+  background: var(--card, #fff);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.spotify-artist-switch button.active {
+  background: #111;
+  color: #fff;
+  border-color: #111;
+}
+
+.spotify-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.spotify-table th:nth-child(1),
+.spotify-table td:nth-child(1) {
+  width: 64px;
+  text-align: center;
+}
+
+.spotify-table th:nth-child(3),
+.spotify-table td:nth-child(3),
+.spotify-table th:nth-child(4),
+.spotify-table td:nth-child(4) {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.spotify-table td:nth-child(2) {
+  min-width: 180px;
+  font-weight: 650;
+}
+
+.spotify-number {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .spotify-view {
+    gap: 12px;
+  }
+
+  .spotify-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .spotify-summary article {
+    min-width: 0;
+  }
+
+  .spotify-summary strong {
+    font-size: clamp(1rem, 4.5vw, 1.35rem);
+  }
+
+  .spotify-data-panel .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .spotify-table {
+    min-width: 620px;
+  }
+}
