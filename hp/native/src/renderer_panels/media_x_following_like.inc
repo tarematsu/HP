@@ -9,6 +9,10 @@ LR"JS(
   state.started = true;
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const post = message => {
+    try { window.chrome?.webview?.postMessage(message); }
+    catch (_) {}
+  };
   const text = element => (element?.innerText || element?.textContent || '')
       .replace(/\s+/g, ' ').trim();
   const visible = element => {
@@ -43,10 +47,12 @@ LR"JS(
       let tab = followingTab();
       while (!tab) {
         state.result = 'waiting-login';
+        post('homepanel:x-waiting-login');
         await sleep(1000);
         tab = followingTab();
       }
       state.result = 'authenticated';
+      post('homepanel:x-authenticated');
 
       if (tab.getAttribute('aria-selected') !== 'true') {
         tab.click();
