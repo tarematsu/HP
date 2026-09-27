@@ -45,19 +45,16 @@ function allMaterializedVariants() {
   ];
 }
 
-function sixHourVariants() {
+function twelveHourVariants() {
   return [
     'dashboard',
     'history:daily',
-    'history:weekly',
-    'history:monthly',
-    'history:broadcasts',
     'spotify-playcounts',
   ];
 }
 
 test('pages read models run independently before runtime maintenance', () => {
-  assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
+  assert.match(workflow, /cron: '26 0,6,12,18 \* \* \*'/);
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /group: pages-read-model-rebuild/);
@@ -110,12 +107,13 @@ test('dashboard materialized lifetime covers the five-minute publication interva
   assert.equal(materializedResponseMaximumAge('dashboard'), 15 * MINUTE);
 });
 
-test('contract cadence follows the actual :26/:56 workflow slots', () => {
+test('contract cadence follows the requested generation intervals', () => {
   assert.deepEqual([...dueVariantKeys(DAY + 26 * MINUTE)], allMaterializedVariants());
   assert.deepEqual([...dueVariantKeys(DAY + 55 * MINUTE)], allMaterializedVariants());
   assert.deepEqual([...dueVariantKeys(DAY + 56 * MINUTE)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(DAY + 86 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(DAY + 386 * MINUTE)], sixHourVariants());
+  assert.deepEqual([...dueVariantKeys(DAY + 386 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(DAY + 746 * MINUTE)], twelveHourVariants());
   assert.deepEqual([...dueVariantKeys(DAY + 1466 * MINUTE)], allMaterializedVariants());
   assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
 });
@@ -147,7 +145,7 @@ test('overdue historical models are retried without making every model due', asy
     { key: 'host-history:summary' },
   ];
   const updatedAt = new Map([
-    ['history:daily', DAY - 7 * 60 * MINUTE],
+    ['history:daily', DAY - 13 * 60 * MINUTE],
     ['history:weekly', DAY - 60 * MINUTE],
     ['host-history:summary', DAY - 25 * 60 * MINUTE],
   ]);
@@ -173,7 +171,7 @@ test('normal runner adds only overdue models to the cadence set', async () => {
     env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
     loadExistingEnvelope: async (key) => ({
       updated_at: key === 'history:daily'
-        ? DAY - 7 * 60 * MINUTE
+        ? DAY - 13 * 60 * MINUTE
         : DAY + 55 * MINUTE,
     }),
     materializeVariant: async (variant) => {
@@ -282,7 +280,7 @@ test('unchanged historical input reuses the existing body without rerendering', 
     status: 200,
     headers: { 'content-type': 'application/json; charset=utf-8' },
     updated_at: DAY - MINUTE,
-    cadence_seconds: 21600,
+    cadence_seconds: 43200,
     source_revision: 'summary:daily:row_count=10:max_updated_at=123',
     renderer_revision: 'renderer-1',
     body: '{"ok":true,"rows":[]}',
