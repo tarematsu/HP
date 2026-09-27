@@ -1,0 +1,488 @@
+#include "spotify_artist_chart_collector.h"
+
+#include "shared_webview_environment.h"
+#include "spotify_artist_chart_capture_spool.h"
+#include <winrt/Windows.Data.Json.h>
+#include <ctime>
+
+namespace hp {
+namespace {
+constexpr wchar_t kChartPageUrl[] =
+    L"https://charts.spotify.com/charts/view/artist-jp-daily/latest";
+constexpr wchar_t kChartApiPrefix[] =
+    L"https://charts-spotify-com-service.spotify.com/auth/v0/charts/artist-jp-daily/";
+constexpr int64_t kJstOffsetMs = 9 * 60 * 60'000LL;
+constexpr int64_t kDayMs = 24 * 60 * 60'000LL;
+constexpr int64_t kDailyCaptureOffsetMs = (7 * 60 + 20) * 60'000LL;
+constexpr int64_t kRetryIntervalMs = 60 * 60'000LL;
+constexpr int64_t kCaptureTimeoutMs = 90'000;
+constexpr size_t kMaxResponseBytes = 512 * 1024;
+
+bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
+  return alive && alive->load(std::memory_order_acquire);
+}
+
+std::wstring HResultHex(HRESULT value) {
+  std::wostringstream output;
+  output << L"0x" << std::hex << std::setw(8) << std::setfill(L'0')
+         << static_cast<unsigned long>(value);
+  return output.str();
+}
+
+int64_t JstDayStartUtc(int64_t nowMs) noexcept {
+  const int64_t local = nowMs + kJstOffsetMs;
+  return (local / kDayMs) * kDayMs - kJstOffsetMs;
+}
+
+int64_t InitialCaptureAt(int64_t nowMs) noexcept {
+  const int64_t target = JstDayStartUtc(nowMs) + kDailyCaptureOffsetMs;
+  return nowMs < target ? target : nowMs + 30'000;
+}
+
+int64_t NextDailyCaptureAt(int64_t nowMs) noexcept {
+  return JstDayStartUtc(nowMs) + kDayMs + kDailyCaptureOffsetMs;
+}
+
+std::string JstPreviousDateKey(int64_t nowMs) {
+  const std::time_t seconds = static_cast<std::time_t>(
+      (nowMs + kJstOffsetMs - kDayMs) / 1000);
+  std::tm value{};
+  gmtime_s(&value, &seconds);
+  char buffer[16]{};
+  std::strftime(buffer, sizeof(buffer), "%Y-%m-%d", &value);
+  return buffer;
+}
+
+std::string FindIsoDate(std::string_view value) {
+  for (size_t i = 0; i + 10 <= value.size(); ++i) {
+    const auto digit = [&](size_t offset) {
+      const char ch = value[i + offset];
+      return ch >= '0' && ch <= '9';
+    };
+    if (digit(0) && digit(1) && digit(2) && digit(3) &&
+        value[i + 4] == '-' && digit(5) && digit(6) &&
+        value[i + 7] == '-' && digit(8) && digit(9)) {
+      return std::string(value.substr(i, 10));
+    }
+  }
+  return {};
+}
+
+std::string ReadStreamUtf8(IStream* stream) {
+  if (!stream) return {};
+  std::string output;
+  output.reserve(64 * 1024);
+  char buffer[16 * 1024];
+  while (output.size() <= kMaxResponseBytes) {
+    ULONG read = 0;
+    const HRESULT result = stream->Read(buffer, static_cast<ULONG>(sizeof(buffer)), &read);
+    if (FAILED(result)) return {};
+    if (read == 0) break;
+    if (output.size() + read > kMaxResponseBytes) return {};
+    output.append(buffer, buffer + read);
+  }
+  return output;
+}
+
+std::optional<double> JsonNumber(
+    const winrt::Windows::Data::Json::JsonObject& object, const wchar_t* key) {
+  using winrt::Windows::Data::Json::JsonValueType;
+  if (!object.HasKey(key)) return std::nullopt;
+  const auto value = object.GetNamedValue(key);
+  if (!value || value.ValueType() != JsonValueType::Number) return std::nullopt;
+  return value.GetNumber();
+}
+
+std::wstring JsonString(
+    const winrt::Windows::Data::Json::JsonObject& object, const wchar_t* key) {
+  using winrt::Windows::Data::Json::JsonValueType;
+  if (!object.HasKey(key)) return {};
+  const auto value = object.GetNamedValue(key);
+  if (!value || value.ValueType() != JsonValueType::String) return {};
+  return value.GetString().c_str();
+}
+
+bool TryJsonObject(
+    const winrt::Windows::Data::Json::JsonObject& source,
+    const wchar_t* key,
+    winrt::Windows::Data::Json::JsonObject& output) {
+  using winrt::Windows::Data::Json::JsonValueType;
+  if (!source.HasKey(key)) return false;
+  const auto value = source.GetNamedValue(key);
+  if (!value || value.ValueType() != JsonValueType::Object) return false;
+  output = value.GetObject();
+  return true;
+}
+
+std::wstring ArtistIdFromUri(std::wstring_view uri) {
+  constexpr std::wstring_view prefix = L"spotify:artist:";
+  const size_t spotify = uri.find(prefix);
+  if (spotify != std::wstring_view::npos) {
+    return std::wstring(uri.substr(spotify + prefix.size()));
+  }
+  constexpr std::wstring_view path = L"/artist/";
+  const size_t web = uri.find(path);
+  if (web == std::wstring_view::npos) return {};
+  std::wstring id(uri.substr(web + path.size()));
+  const size_t separator = id.find_first_of(L"/?#");
+  if (separator != std::wstring::npos) id.resize(separator);
+  return id;
+}
+
+bool NormalizeChartResponse(std::string_view body, int64_t observedAt,
+                            std::wstring* serialized) {
+  using namespace winrt::Windows::Data::Json;
+  if (!serialized || body.empty()) return false;
+
+  JsonObject root;
+  try {
+    root = JsonObject::Parse(Utf8ToWide(std::string(body)));
+  } catch (...) {
+    return false;
+  }
+  if (!root.HasKey(L"entries") ||
+      root.GetNamedValue(L"entries").ValueType() != JsonValueType::Array) {
+    return false;
+  }
+
+  JsonArray normalized;
+  const JsonArray entries = root.GetNamedArray(L"entries");
+  for (uint32_t index = 0; index < entries.Size() && normalized.Size() < 200; ++index) {
+    const auto raw = entries.GetAt(index);
+    if (!raw || raw.ValueType() != JsonValueType::Object) continue;
+    const JsonObject entry = raw.GetObject();
+
+    JsonObject chart;
+    if (!TryJsonObject(entry, L"chartEntryData", chart)) continue;
+    const auto rankValue = JsonNumber(chart, L"currentRank");
+    if (!rankValue || *rankValue < 1 || *rankValue > 200 ||
+        std::trunc(*rankValue) != *rankValue) {
+      continue;
+    }
+
+    JsonObject metadata;
+    if (!TryJsonObject(entry, L"artistMetadata", metadata) &&
+        !TryJsonObject(entry, L"metadata", metadata) &&
+        !TryJsonObject(entry, L"trackMetadata", metadata)) {
+      continue;
+    }
+    std::wstring artistName = JsonString(metadata, L"artistName");
+    if (artistName.empty()) artistName = JsonString(metadata, L"name");
+    if (artistName.empty()) artistName = JsonString(metadata, L"displayName");
+    if (artistName.empty()) continue;
+    if (artistName.size() > 240) artistName.resize(240);
+
+    std::wstring artistUri = JsonString(metadata, L"artistUri");
+    if (artistUri.empty()) artistUri = JsonString(metadata, L"uri");
+    std::wstring artistId = ArtistIdFromUri(artistUri);
+    if (artistId.size() > 80) artistId.resize(80);
+
+    JsonObject row;
+    row.Insert(L"rank", JsonValue::CreateNumberValue(*rankValue));
+    row.Insert(L"artist_name", JsonValue::CreateStringValue(artistName));
+    if (!artistId.empty()) {
+      row.Insert(L"artist_id", JsonValue::CreateStringValue(artistId));
+    }
+    const auto previous = JsonNumber(chart, L"previousRank");
+    if (previous && *previous >= 1 && *previous <= 200) {
+      row.Insert(L"previous_rank", JsonValue::CreateNumberValue(*previous));
+    }
+    const auto peak = JsonNumber(chart, L"peakRank");
+    if (peak && *peak >= 1 && *peak <= 200) {
+      row.Insert(L"peak_rank", JsonValue::CreateNumberValue(*peak));
+    }
+    auto streak = JsonNumber(chart, L"consecutiveAppearancesOnChart");
+    if (!streak) streak = JsonNumber(chart, L"appearancesOnChart");
+    if (streak && *streak >= 0) {
+      row.Insert(L"streak", JsonValue::CreateNumberValue(*streak));
+    }
+    normalized.Append(row);
+  }
+
+  if (normalized.Size() < 50) return false;
+  const std::string chartDate = FindIsoDate(body);
+  if (chartDate.empty() || chartDate < JstPreviousDateKey(observedAt)) return false;
+
+  JsonObject capture;
+  capture.Insert(L"schema", JsonValue::CreateNumberValue(1));
+  capture.Insert(L"observed_at", JsonValue::CreateNumberValue(
+      static_cast<double>(observedAt)));
+  capture.Insert(L"source", JsonValue::CreateStringValue(L"spotify-charts-webview"));
+  capture.Insert(L"chart_id", JsonValue::CreateStringValue(L"artist-jp-daily"));
+  capture.Insert(L"chart_date", JsonValue::CreateStringValue(Utf8ToWide(chartDate)));
+  capture.Insert(L"entry_count", JsonValue::CreateNumberValue(normalized.Size()));
+  capture.Insert(L"entries", normalized);
+  *serialized = capture.Stringify().c_str();
+  return true;
+}
+
+}  // namespace
+
+SpotifyArtistChartCollector::SpotifyArtistChartCollector(
+    HWND window, fs::path userDataFolder, std::wstring profileName, Logger& log)
+    : window_(window), userDataFolder_(std::move(userDataFolder)),
+      profileName_(std::move(profileName)), log_(log) {}
+
+SpotifyArtistChartCollector::~SpotifyArtistChartCollector() { Stop(); }
+
+void SpotifyArtistChartCollector::Start(int64_t nowMs) {
+  if (started_) return;
+  alive_ = std::make_shared<std::atomic<bool>>(true);
+  started_ = true;
+  creating_ = false;
+  captureInFlight_ = false;
+  contentInFlight_ = false;
+  nextCaptureAt_ = InitialCaptureAt(nowMs);
+  timeoutAt_ = 0;
+  UpdateNextWake();
+  log_.Info(L"Spotify Japan daily artist chart collector scheduled for 07:20 JST");
+}
+
+void SpotifyArtistChartCollector::Stop() {
+  if (alive_) alive_->store(false, std::memory_order_release);
+  started_ = false;
+  creating_ = false;
+  captureInFlight_ = false;
+  contentInFlight_ = false;
+  ++generation_;
+  CloseController();
+  environment_.Reset();
+  nextCaptureAt_ = 0;
+  timeoutAt_ = 0;
+  nextWakeAt_ = 0;
+}
+
+void SpotifyArtistChartCollector::Tick(int64_t nowMs) {
+  if (!started_) return;
+  if ((creating_ || captureInFlight_) && timeoutAt_ > 0 && nowMs >= timeoutAt_) {
+    FailCapture(nowMs, L"capture-timeout");
+    return;
+  }
+  if (!creating_ && !captureInFlight_ && nextCaptureAt_ > 0 && nowMs >= nextCaptureAt_) {
+    BeginCapture(nowMs);
+    return;
+  }
+  UpdateNextWake();
+}
+
+void SpotifyArtistChartCollector::BeginCapture(int64_t nowMs) {
+  if (!started_ || creating_ || captureInFlight_) return;
+  nextCaptureAt_ = 0;
+  timeoutAt_ = nowMs + kCaptureTimeoutMs;
+  captureInFlight_ = true;
+  contentInFlight_ = false;
+
+  ++generation_;
+  CloseController();
+  environment_.Reset();
+  creating_ = true;
+  const uint64_t generation = generation_;
+  const auto alive = alive_;
+  UpdateNextWake();
+
+  SharedWebViewEnvironment::Instance().Acquire(
+      userDataFolder_,
+      [this, alive, generation](HRESULT result,
+                                ICoreWebView2Environment* environment) {
+        if (!CallbackAlive(alive) || !started_ || generation != generation_) return;
+        if (FAILED(result) || !environment) {
+          FailCapture(UnixMillis(), L"environment-create-failed:" + HResultHex(result));
+          return;
+        }
+        environment_ = environment;
+        CreateController(generation);
+      });
+}
+
+HRESULT SpotifyArtistChartCollector::CreateProfileController(
+    ICoreWebView2CreateCoreWebView2ControllerCompletedHandler* handler) const noexcept {
+  if (!environment_ || !window_ || !handler || profileName_.empty()) return E_INVALIDARG;
+  ComPtr<ICoreWebView2Environment10> environment10;
+  HRESULT result = environment_.As(&environment10);
+  if (FAILED(result) || !environment10) return E_NOINTERFACE;
+  ComPtr<ICoreWebView2ControllerOptions> options;
+  result = environment10->CreateCoreWebView2ControllerOptions(&options);
+  if (FAILED(result) || !options) return FAILED(result) ? result : E_FAIL;
+  if (FAILED(result = options->put_ProfileName(profileName_.c_str()))) return result;
+  if (FAILED(result = options->put_IsInPrivateModeEnabled(FALSE))) return result;
+  return environment10->CreateCoreWebView2ControllerWithOptions(window_, options.Get(), handler);
+}
+
+void SpotifyArtistChartCollector::CreateController(uint64_t generation) {
+  if (!started_ || generation != generation_ || !environment_) return;
+  const auto alive = alive_;
+  const HRESULT started = CreateProfileController(
+      Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+          [this, alive, generation](HRESULT result,
+                                    ICoreWebView2Controller* controller) -> HRESULT {
+            if (!CallbackAlive(alive) || !started_ || generation != generation_) {
+              if (controller) controller->Close();
+              return S_OK;
+            }
+            creating_ = false;
+            if (FAILED(result) || !controller) {
+              FailCapture(UnixMillis(), L"controller-create-failed:" + HResultHex(result));
+              return S_OK;
+            }
+            controller_ = controller;
+            ConfigureAndNavigate(generation);
+            return S_OK;
+          }).Get());
+  if (FAILED(started)) {
+    creating_ = false;
+    FailCapture(UnixMillis(), L"controller-create-start-failed:" + HResultHex(started));
+  }
+}
+
+void SpotifyArtistChartCollector::ConfigureAndNavigate(uint64_t generation) {
+  if (!started_ || generation != generation_ || !controller_) return;
+  RECT bounds{0, 0, 1, 1};
+  controller_->put_Bounds(bounds);
+  controller_->put_IsVisible(TRUE);
+  if (FAILED(controller_->get_CoreWebView2(&webview_)) || !webview_) {
+    FailCapture(UnixMillis(), L"webview-unavailable");
+    return;
+  }
+
+  const auto alive = alive_;
+  if (FAILED(webview_->add_NavigationCompleted(
+      Callback<ICoreWebView2NavigationCompletedEventHandler>(
+          [this, alive, generation](ICoreWebView2*,
+                                    ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+            if (!CallbackAlive(alive) || !started_ || generation != generation_ || !args) return S_OK;
+            BOOL success = FALSE;
+            if (FAILED(args->get_IsSuccess(&success)) || success == FALSE) {
+              FailCapture(UnixMillis(), L"navigation-failed");
+            }
+            return S_OK;
+          }).Get(), &navigationToken_))) {
+    FailCapture(UnixMillis(), L"navigation-handler-failed");
+    return;
+  }
+
+  ComPtr<ICoreWebView2_2> webview2;
+  if (FAILED(webview_.As(&webview2)) || !webview2) {
+    FailCapture(UnixMillis(), L"web-resource-response-api-unavailable");
+    return;
+  }
+  const HRESULT responseHandler = webview2->add_WebResourceResponseReceived(
+      Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
+          [this, alive, generation](ICoreWebView2*,
+                                    ICoreWebView2WebResourceResponseReceivedEventArgs* args) -> HRESULT {
+            if (!CallbackAlive(alive) || !started_ || generation != generation_ ||
+                !captureInFlight_ || !args) return S_OK;
+
+            ComPtr<ICoreWebView2WebResourceRequest> request;
+            if (FAILED(args->get_Request(&request)) || !request) return S_OK;
+            LPWSTR rawUri = nullptr;
+            if (FAILED(request->get_Uri(&rawUri)) || !rawUri) return S_OK;
+            const std::wstring uri(rawUri);
+            CoTaskMemFree(rawUri);
+            if (!std::wstring_view(uri).starts_with(kChartApiPrefix)) return S_OK;
+
+            ComPtr<ICoreWebView2WebResourceResponseView> response;
+            if (FAILED(args->get_Response(&response)) || !response) return S_OK;
+            int status = 0;
+            response->get_StatusCode(&status);
+            if (status == 401 || status == 403) {
+              FailCapture(UnixMillis(), L"spotify-charts-auth-required");
+              return S_OK;
+            }
+            if (status != 200 || contentInFlight_) return S_OK;
+            contentInFlight_ = true;
+            const ComPtr<ICoreWebView2WebResourceResponseView> heldResponse = response;
+            const HRESULT contentStarted = response->GetContent(
+                Callback<ICoreWebView2WebResourceResponseViewGetContentCompletedHandler>(
+                    [this, alive, generation, heldResponse](HRESULT result, IStream* content) -> HRESULT {
+                      if (!CallbackAlive(alive) || !started_ || generation != generation_) return S_OK;
+                      contentInFlight_ = false;
+                      if (FAILED(result) || !content) {
+                        FailCapture(UnixMillis(), L"chart-response-content-failed");
+                        return S_OK;
+                      }
+                      const std::string body = ReadStreamUtf8(content);
+                      std::wstring normalized;
+                      const int64_t now = UnixMillis();
+                      if (!NormalizeChartResponse(body, now, &normalized)) {
+                        FailCapture(now, L"chart-response-invalid-or-stale");
+                        return S_OK;
+                      }
+                      if (!spotify_artist_chart_capture_spool::Append(normalized)) {
+                        FailCapture(now, L"chart-spool-write-failed");
+                        return S_OK;
+                      }
+                      CompleteCapture(now);
+                      return S_OK;
+                    }).Get());
+            if (FAILED(contentStarted)) {
+              contentInFlight_ = false;
+              FailCapture(UnixMillis(), L"chart-response-content-start-failed");
+            }
+            return S_OK;
+          }).Get(), &responseToken_);
+  if (FAILED(responseHandler)) {
+    FailCapture(UnixMillis(), L"response-handler-failed:" + HResultHex(responseHandler));
+    return;
+  }
+  responseHandlerRegistered_ = true;
+
+  const HRESULT navigate = webview_->Navigate(kChartPageUrl);
+  if (FAILED(navigate)) {
+    FailCapture(UnixMillis(), L"navigate-failed:" + HResultHex(navigate));
+  }
+}
+
+void SpotifyArtistChartCollector::CompleteCapture(int64_t nowMs) {
+  if (!started_) return;
+  captureInFlight_ = false;
+  contentInFlight_ = false;
+  timeoutAt_ = 0;
+  nextCaptureAt_ = NextDailyCaptureAt(nowMs);
+  CloseController();
+  environment_.Reset();
+  UpdateNextWake();
+  log_.Info(L"Spotify Japan daily artist chart captured and queued for R2 upload");
+}
+
+void SpotifyArtistChartCollector::FailCapture(int64_t nowMs, std::wstring_view reason) {
+  if (!started_) return;
+  captureInFlight_ = false;
+  contentInFlight_ = false;
+  creating_ = false;
+  timeoutAt_ = 0;
+  nextCaptureAt_ = nowMs + kRetryIntervalMs;
+  CloseController();
+  environment_.Reset();
+  UpdateNextWake();
+  log_.Warn(L"Spotify Japan daily artist chart capture failed: " + std::wstring(reason));
+}
+
+void SpotifyArtistChartCollector::CloseController() noexcept {
+  if (webview_) {
+    if (navigationToken_.value != 0) webview_->remove_NavigationCompleted(navigationToken_);
+    if (responseHandlerRegistered_) {
+      ComPtr<ICoreWebView2_2> webview2;
+      if (SUCCEEDED(webview_.As(&webview2)) && webview2) {
+        webview2->remove_WebResourceResponseReceived(responseToken_);
+      }
+    }
+  }
+  navigationToken_ = {};
+  responseToken_ = {};
+  responseHandlerRegistered_ = false;
+  webview_.Reset();
+  if (controller_) controller_->Close();
+  controller_.Reset();
+}
+
+void SpotifyArtistChartCollector::UpdateNextWake() noexcept {
+  int64_t next = 0;
+  const auto include = [&](int64_t value) {
+    if (value > 0 && (next == 0 || value < next)) next = value;
+  };
+  include(nextCaptureAt_);
+  include(timeoutAt_);
+  nextWakeAt_ = next;
+}
+
+}  // namespace hp
