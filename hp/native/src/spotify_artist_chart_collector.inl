@@ -18,6 +18,7 @@ inline constexpr int64_t kDailyCaptureOffsetMs = (7 * 60 + 20) * 60'000LL;
 inline constexpr int64_t kRetryIntervalMs = 60 * 60'000LL;
 inline constexpr int64_t kCaptureTimeoutMs = 90'000;
 inline constexpr size_t kMaxResponseBytes = 512 * 1024;
+inline constexpr size_t kReadBufferBytes = 16 * 1024;
 
 inline bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
   return alive && alive->load(std::memory_order_acquire);
@@ -110,14 +111,15 @@ inline std::string ReadStreamUtf8(IStream* stream) {
   if (!stream) return {};
   std::string output;
   output.reserve(64 * 1024);
-  char buffer[16 * 1024];
+  std::vector<char> buffer(kReadBufferBytes);
   while (output.size() <= kMaxResponseBytes) {
     ULONG read = 0;
-    const HRESULT result = stream->Read(buffer, static_cast<ULONG>(sizeof(buffer)), &read);
+    const HRESULT result = stream->Read(
+        buffer.data(), static_cast<ULONG>(buffer.size()), &read);
     if (FAILED(result)) return {};
     if (read == 0) break;
     if (output.size() + read > kMaxResponseBytes) return {};
-    output.append(buffer, buffer + read);
+    output.append(buffer.data(), static_cast<size_t>(read));
   }
   return output;
 }
