@@ -42,15 +42,18 @@ test('GET /api catalog is generated from the canonical contract only', () => {
 
 test('materialized response freshness follows canonical generation cadences', () => {
   const minute = 60_000;
+  assert.equal(materializedResponseCadenceSeconds('history:daily'), 720 * 60);
+  assert.equal(materializedResponseMaximumAge('history:daily'), 725 * minute);
   for (const key of [
-    'history:daily',
     'history:weekly',
     'history:monthly',
     'history:broadcasts',
   ]) {
-    assert.equal(materializedResponseCadenceSeconds(key), 360 * 60, key);
-    assert.equal(materializedResponseMaximumAge(key), 365 * minute, key);
+    assert.equal(materializedResponseCadenceSeconds(key), 1440 * 60, key);
+    assert.equal(materializedResponseMaximumAge(key), 1445 * minute, key);
   }
+  assert.equal(materializedResponseCadenceSeconds('spotify-playcounts'), 720 * 60);
+  assert.equal(materializedResponseMaximumAge('spotify-playcounts'), 725 * minute);
   assert.equal(materializedResponseCadenceSeconds('host-history:summary'), 1440 * 60);
   assert.equal(materializedResponseMaximumAge('host-history:summary'), 1445 * minute);
   assert.equal(materializedApiKey('https://skrzk.test/api/track-history'), null);
