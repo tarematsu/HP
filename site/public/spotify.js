@@ -1,8 +1,5 @@
-const ARTISTS = Object.freeze({
-  nogizaka46: '乃木坂46',
-  sakurazaka46: '櫻坂46',
-  hinatazaka46: '日向坂46',
-});
+const SAKURAZAKA_KEY = 'sakurazaka46';
+const SAKURAZAKA_NAME = '櫻坂46';
 const TREND_COLORS = Object.freeze([
   '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
   '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#fc8d62',
@@ -11,13 +8,11 @@ const TREND_COLORS = Object.freeze([
 ]);
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-const DEFAULT_ARTIST = 'sakurazaka46';
 const numberFormat = new Intl.NumberFormat('ja-JP');
 const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
   notation: 'compact',
   maximumFractionDigits: 1,
 });
-let activeArtist = DEFAULT_ARTIST;
 let requestSequence = 0;
 let readModelPromise = null;
 
@@ -55,14 +50,6 @@ function formatDelta(value) {
   const number = deltaNumber(value);
   if (number == null) return '-';
   return number > 0 ? `+${numberFormat.format(number)}` : numberFormat.format(number);
-}
-
-function updateArtistButtons() {
-  document.querySelectorAll('[data-spotify-artist]').forEach((button) => {
-    const selected = button.dataset.spotifyArtist === activeArtist;
-    button.classList.toggle('active', selected);
-    button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-  });
 }
 
 function renderRows(payload) {
@@ -103,7 +90,7 @@ function normalizeTrendSeries(trend = {}) {
     const metadata = points.find((point) => point?.artist_name || point?.current_rank != null) || {};
     return {
       artistKey,
-      artistName: String(metadata.artist_name || ARTISTS[artistKey] || artistKey),
+      artistName: String(metadata.artist_name || artistKey),
       currentRank: deltaNumber(metadata.current_rank),
       points,
     };
@@ -284,9 +271,6 @@ function renderTrendCharts(trend = {}) {
 }
 
 function render(payload, trend) {
-  const artistName = payload?.artist?.name || ARTISTS[activeArtist];
-  const title = element('spotifyTableTitle');
-  if (title) title.textContent = `${artistName} 再生数一覧`;
   const date = element('spotifySnapshotDate');
   if (date) date.textContent = formatDate(payload?.snapshot_date);
   const count = element('spotifyTrackCount');
@@ -297,7 +281,7 @@ function render(payload, trend) {
   renderRows(payload || {});
 
   if (!payload?.track_count) {
-    setNotice(`${artistName}のSpotify再生数はまだ収集されていません。`);
+    setNotice(`${SAKURAZAKA_NAME}のSpotify再生数はまだ収集されていません。`);
   } else if (payload.carried_forward) {
     setNotice(`${formatDate(payload.snapshot_date)} はSpotify公開値の更新が確認できなかったため、直近の累計値を引き継いでいます。`);
   } else {
@@ -324,28 +308,17 @@ async function fetchReadModel({ refresh = false } = {}) {
   return readModelPromise;
 }
 
-export async function loadSpotifyView({ artist = activeArtist, refresh = false } = {}) {
-  const requested = ARTISTS[artist] ? artist : DEFAULT_ARTIST;
+export async function loadSpotifyView({ refresh = false } = {}) {
   const sequence = ++requestSequence;
-  activeArtist = requested;
-  updateArtistButtons();
   try {
     setNotice('');
     const model = await fetchReadModel({ refresh });
-    if (sequence !== requestSequence || activeArtist !== requested) return;
-    const payload = model?.groups?.[requested];
-    if (!payload) throw new Error(`${ARTISTS[requested]}のリードモデルがありません`);
+    if (sequence !== requestSequence) return;
+    const payload = model?.groups?.[SAKURAZAKA_KEY];
+    if (!payload) throw new Error(`${SAKURAZAKA_NAME}のリードモデルがありません`);
     render(payload, model?.trend || {});
   } catch (error) {
-    if (sequence !== requestSequence || activeArtist !== requested) return;
+    if (sequence !== requestSequence) return;
     setNotice(`Spotify再生数の取得に失敗しました: ${error.message}`, true);
   }
 }
-
-document.getElementById('spotifyView')?.addEventListener('click', (event) => {
-  const button = event.target.closest('button[data-spotify-artist]');
-  if (!button) return;
-  const artist = button.dataset.spotifyArtist;
-  if (!ARTISTS[artist] || artist === activeArtist) return;
-  void loadSpotifyView({ artist });
-});
