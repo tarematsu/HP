@@ -2,6 +2,10 @@ name: Stationhead user streams probe
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stationhead-user-streams-probe.yml'
 
 permissions:
   contents: read
