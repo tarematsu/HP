@@ -15,7 +15,10 @@ import {
   fetchAnonymousSession,
   normalizeAlbumTracks,
 } from './spotify-playcount-source.js';
-import { resolveCanonicalSpotifyTracks } from './spotify-track-identity.js';
+import {
+  bootstrapSpotifyTrackAliases,
+  resolveCanonicalSpotifyTracks,
+} from './spotify-track-identity.js';
 
 async function persistCandidateTracks(db, message, tracks, collectedAt) {
   const resolvedTracks = await resolveCanonicalSpotifyTracks(db, tracks, collectedAt);
@@ -244,6 +247,12 @@ async function finalizeAttempt(db, message) {
         playcount=excluded.playcount,delta=excluded.delta,
         collected_at=excluded.collected_at,is_carried_forward=0`)
       .bind(message.snapshot_date, previousDate, message.snapshot_date, message.run_token),
+    db.prepare(`DELETE FROM sh_spotify_playcount_daily
+      WHERE snapshot_date=? AND track_id IN (
+        SELECT source_track_id FROM sh_spotify_track_aliases
+        WHERE source_track_id<>canonical_track_id
+      )`)
+      .bind(message.snapshot_date),
     db.prepare(`INSERT INTO sh_spotify_playcount_current (
         track_id,playcount,snapshot_date,collected_at
       )
@@ -355,6 +364,8 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
     }
   }
   if (!active.length) return { processed: 0, failed: 0, ignored };
+
+  await bootstrapSpotifyTrackAliases(db, Date.now());
 
   let session;
   try {
