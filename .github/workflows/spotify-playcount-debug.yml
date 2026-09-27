@@ -20,83 +20,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Probe Spotify Pathfinder
+      - name: Verify full Spotify discography query
         working-directory: worker
         run: |
           node --input-type=module <<'NODE'
           import { SPOTIFY_TARGET_ARTISTS } from './src/spotify-playcount-collector.js';
-
           const artist = SPOTIFY_TARGET_ARTISTS.find((entry) => entry.artist_key === 'sakurazaka46');
-          const albumId = '5i6dKEtZzYKYnigumydAgo';
           const headers = {
             accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'accept-language': 'ja-JP,ja;q=0.9,en;q=0.7',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36',
           };
-
-          const embedResponse = await fetch(`https://open.spotify.com/embed/artist/${artist.spotify_artist_id}`, { headers });
-          const embedHtml = await embedResponse.text();
-          const nextMatch = embedHtml.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
-          if (!nextMatch) throw new Error('embed __NEXT_DATA__ missing');
-          const next = JSON.parse(nextMatch[1]);
-          const token = next.props?.pageProps?.state?.settings?.session?.accessToken;
-          if (!token) throw new Error('anonymous embed token missing');
-
-          async function pathfinder(operationName, variables, hash) {
-            const url = new URL('https://api-partner.spotify.com/pathfinder/v1/query');
-            url.searchParams.set('operationName', operationName);
-            url.searchParams.set('variables', JSON.stringify(variables));
-            url.searchParams.set('extensions', JSON.stringify({ persistedQuery: { version: 1, sha256Hash: hash } }));
-            const response = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } });
-            const body = await response.text();
-            let data = null;
-            try { data = JSON.parse(body); } catch {}
-            return { status: response.status, data, body: body.slice(0, 1000) };
-          }
-
-          const album = await pathfinder(
-            'queryAlbumTracks',
-            { uri: `spotify:album:${albumId}`, offset: 0, limit: 300 },
-            '3ea563e1d68f486d8df30f69de9dcedae74c77e684b889ba7408c589d30f7f2e',
-          );
-          const albumItems = album.data?.data?.album?.tracks?.items || [];
-          console.log('ALBUM_RESULT=' + JSON.stringify({
-            status: album.status,
-            errors: album.data?.errors?.map((e) => e.message) || [],
-            itemCount: albumItems.length,
-            first: albumItems[0]?.track ? {
-              id: albumItems[0].track.id,
-              name: albumItems[0].track.name,
-              playcount: albumItems[0].track.playcount,
-            } : null,
-            bodyPrefix: albumItems.length ? undefined : album.body,
-          }));
-
-          const artistHashes = [
-            '1ac33ddab5d39a3a9c27802774e6d78b9405cc188c6f75aed007df2a32737c72',
-            '79a4a9d7c3a3781d801e62b62ef11c7ee56fce2626772eb26cd20c69f84b3f49',
-            'd66221ea13998b2f81883c5187d174c8646e4041d67f5b1e103bc262d447e3a0',
-            '433e28d1e949372d3ca3aa6c47975cff428b5dc37b12f5325d9213accadf770a',
-          ];
-          for (const hash of artistHashes) {
-            const result = await pathfinder(
-              'queryArtistOverview',
-              { uri: `spotify:artist:${artist.spotify_artist_id}`, locale: 'intl-ja', includePrerelease: true },
-              hash,
-            );
-            const a = result.data?.data?.artist;
-            const groups = a?.discography || {};
-            const summarize = (group) => ({ total: group?.totalCount ?? null, items: group?.items?.length ?? null, firstUri: group?.items?.[0]?.releases?.items?.[0]?.uri || group?.items?.[0]?.uri || null });
-            console.log('ARTIST_RESULT=' + JSON.stringify({
-              hash: hash.slice(0, 12),
-              status: result.status,
-              errors: result.data?.errors?.map((e) => e.message) || [],
-              artistId: a?.id || null,
-              discographyKeys: Object.keys(groups),
-              albums: summarize(groups.albums),
-              singles: summarize(groups.singles),
-              compilations: summarize(groups.compilations),
-              bodyPrefix: a ? undefined : result.body,
-            }));
-          }
+          const embed = await fetch(`https://open.spotify.com/embed/artist/${artist.spotify_artist_id}`, { headers });
+          const html = await embed.text();
+          const match = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+          if (!match) throw new Error('__NEXT_DATA__ missing');
+          const token = JSON.parse(match[1]).props?.pageProps?.state?.settings?.session?.accessToken;
+          if (!token) throw new Error('anonymous token missing');
+          const url = new URL('https://api-partner.spotify.com/pathfinder/v1/query');
+          url.searchParams.set('operationName', 'queryArtistDiscographyAll');
+          url.searchParams.set('variables', JSON.stringify({ uri: `spotify:artist:${artist.spotify_artist_id}`, offset: 0, limit: 100 }));
+          url.searchParams.set('extensions', JSON.stringify({ persistedQuery: { version: 1, sha256Hash: '9380995a9d4663cbcb5113fef3c6aabf70ae6d407ba61793fd01e2a1dd6929b0' } }));
+          const response = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } });
+          const body = await response.json();
+          const all = body?.data?.artistUnion?.discography?.all;
+          const releases = (all?.items || []).flatMap((group) => group?.releases?.items || []);
+          const unique = [...new Map(releases.map((release) => [release.id || release.uri, release])).values()];
+          const types = unique.reduce((acc, release) => { const key = release.type || 'UNKNOWN'; acc[key] = (acc[key] || 0) + 1; return acc; }, {});
+          console.log(JSON.stringify({ status: response.status, errors: body?.errors?.map((e) => e.message) || [], totalCount: all?.totalCount ?? null, groups: all?.items?.length ?? 0, releases: releases.length, unique: unique.length, types, first: unique[0] ? { id: unique[0].id, uri: unique[0].uri, name: unique[0].name, type: unique[0].type, tracks: unique[0].tracks?.totalCount } : null }));
+          if (!response.ok || unique.length < 20) process.exit(1);
           NODE
