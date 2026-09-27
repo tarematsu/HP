@@ -132,19 +132,22 @@ function normalizedBatch(value: unknown, now: number): SpotifyArtistChartCapture
   return [...byDate.values()].sort((left, right) => left.chart_date.localeCompare(right.chart_date));
 }
 
-async function currentLatest(env: Env): Promise<{ chart_date: string; observed_at: number } | null> {
+type StoredGeneration = { chart_date: string; observed_at: number };
+
+async function storedGeneration(env: Env, key: string): Promise<StoredGeneration | null> {
   if (!env.DATA_BUCKET) return null;
-  const object = await env.DATA_BUCKET.get(LATEST_KEY);
+  const object = await env.DATA_BUCKET.head(key);
   if (!object) return null;
-  try {
-    const parsed = JSON.parse(await object.text()) as Record<string, unknown>;
-    const chartDate = String(parsed.chart_date ?? "");
-    const observedAt = Number(parsed.observed_at ?? 0);
-    if (!DATE_KEY.test(chartDate) || !Number.isSafeInteger(observedAt)) return null;
-    return { chart_date: chartDate, observed_at: observedAt };
-  } catch {
-    return null;
-  }
+  const chartDate = String(object.customMetadata?.chartDate ?? "");
+  const observedAt = Number(object.customMetadata?.observedAt ?? "");
+  if (!DATE_KEY.test(chartDate) || !Number.isSafeInteger(observedAt)) return null;
+  return { chart_date: chartDate, observed_at: observedAt };
+}
+
+function isNewerOrEqual(capture: SpotifyArtistChartCapture, previous: StoredGeneration | null): boolean {
+  return !previous
+    || capture.chart_date > previous.chart_date
+    || (capture.chart_date === previous.chart_date && capture.observed_at >= previous.observed_at);
 }
 
 function storedDocument(capture: SpotifyArtistChartCapture, receivedAt: number): string {
@@ -157,6 +160,17 @@ function storedDocument(capture: SpotifyArtistChartCapture, receivedAt: number):
     entry_count: capture.entries.length,
     entries: capture.entries,
   });
+}
+
+function metadata(capture: SpotifyArtistChartCapture): R2PutOptions {
+  return {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+    customMetadata: {
+      chartId: CHART_ID,
+      chartDate: capture.chart_date,
+      observedAt: String(capture.observed_at),
+    },
+  };
 }
 
 export async function applySpotifyArtistChartInput(
@@ -172,31 +186,27 @@ export async function applySpotifyArtistChartInput(
     return { status: 400, body: { error: "invalid Spotify artist chart capture" } };
   }
 
-  const metadata = (chartDate: string) => ({
-    httpMetadata: { contentType: "application/json; charset=utf-8" },
-    customMetadata: { chartId: CHART_ID, chartDate },
-  });
-
   let stored = false;
   for (const capture of captures) {
+    const dateKey = `${PREFIX}${capture.chart_date}.json`;
+    const previousDate = await storedGeneration(env, dateKey);
+    if (!isNewerOrEqual(capture, previousDate)) continue;
     await env.DATA_BUCKET.put(
-      `${PREFIX}${capture.chart_date}.json`,
+      dateKey,
       storedDocument(capture, receivedAt),
-      metadata(capture.chart_date),
+      metadata(capture),
     );
     stored = true;
   }
 
   const newest = captures[captures.length - 1];
-  const previous = await currentLatest(env);
-  const canAdvanceLatest = !previous
-    || newest.chart_date > previous.chart_date
-    || (newest.chart_date === previous.chart_date && newest.observed_at >= previous.observed_at);
+  const previousLatest = await storedGeneration(env, LATEST_KEY);
+  const canAdvanceLatest = isNewerOrEqual(newest, previousLatest);
   if (canAdvanceLatest) {
     await env.DATA_BUCKET.put(
       LATEST_KEY,
       storedDocument(newest, receivedAt),
-      metadata(newest.chart_date),
+      metadata(newest),
     );
     stored = true;
   }
