@@ -17,7 +17,7 @@ test('runtime rollups precede Pages publication without a reciprocal workflow cy
   const repair = read('.github/workflows/repair-pages-summaries.yml');
 
   assert.equal(cron(runtime), '11,41 * * * *');
-  assert.equal(cron(pages), '26,56 * * * *');
+  assert.equal(cron(pages), '26 0,6,12,18 * * *');
   assert.equal(cron(repair), '23 4 * * *');
   assert.match(runtime, /^\s*workflows: \["Deploy production"\]\s*$/m);
   assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
