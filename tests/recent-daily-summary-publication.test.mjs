@@ -147,6 +147,51 @@ test('missing recent days are copied from the incremental projection without ove
   assert.equal(other.prepare(`SELECT stream_growth FROM sh_daily_summary WHERE period_key='2026-09-24'`).get().stream_growth, 999);
 });
 
+test('existing recent days repair only missing member boundaries', async () => {
+  const minute = createMinuteDb();
+  const other = createOtherDb();
+  const now = Date.UTC(2026, 8, 25, 3, 0);
+  const sep23 = Date.UTC(2026, 8, 23);
+  const sep24 = Date.UTC(2026, 8, 24);
+
+  other.prepare(`INSERT INTO sh_daily_summary(
+    period_key,listener_avg,stream_growth,member_end,quality_flags,updated_at
+  ) VALUES('2026-09-22',222,666,98,'["existing"]',1)`).run();
+  other.prepare(`INSERT INTO sh_daily_summary(
+    period_key,listener_avg,stream_growth,member_start,member_end,member_growth,quality_flags,updated_at
+  ) VALUES('2026-09-23',321,777,98,NULL,NULL,'["existing"]',1)`).run();
+  other.prepare(`INSERT INTO sh_daily_summary(
+    period_key,listener_avg,stream_growth,member_start,member_end,member_growth,quality_flags,updated_at
+  ) VALUES('2026-09-24',432,888,NULL,103,NULL,'["existing"]',1)`).run();
+
+  insertProjection(minute, sep23, { memberEnd: 100, streamStart: 3000, streamEnd: 3010 });
+  insertProjection(minute, sep24, { memberEnd: 102, streamStart: 3010, streamEnd: 3020 });
+
+  const result = await publishRecentDailySummaries(d1(minute), d1(other), now, 2);
+  assert.deepEqual(result.published, ['2026-09-23', '2026-09-24']);
+  assert.deepEqual(result.unavailable, []);
+  assert.deepEqual(result.invalid, []);
+
+  const rows = other.prepare(`SELECT period_key,listener_avg,stream_growth,member_start,member_end,member_growth,quality_flags
+    FROM sh_daily_summary WHERE period_key>='2026-09-23' ORDER BY period_key`).all();
+  assert.equal(rows.length, 2);
+  assert.equal(Number(rows[0].listener_avg), 321);
+  assert.equal(Number(rows[0].stream_growth), 777);
+  assert.equal(Number(rows[0].member_start), 98);
+  assert.equal(Number(rows[0].member_end), 100);
+  assert.equal(Number(rows[0].member_growth), 2);
+  assert.equal(rows[0].quality_flags, '["existing"]');
+  assert.equal(Number(rows[1].listener_avg), 432);
+  assert.equal(Number(rows[1].stream_growth), 888);
+  assert.equal(Number(rows[1].member_start), 100);
+  assert.equal(Number(rows[1].member_end), 103);
+  assert.equal(Number(rows[1].member_growth), 3);
+  assert.equal(rows[1].quality_flags, '["existing"]');
+
+  const second = await publishRecentDailySummaries(d1(minute), d1(other), now, 2);
+  assert.deepEqual(second.published, []);
+});
+
 test('invalid projection counts are refused instead of publishing a corrupt daily row', async () => {
   const minute = createMinuteDb();
   const other = createOtherDb();
