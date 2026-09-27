@@ -1,7 +1,8 @@
 import {
   FIRST_CHECK_HOUR_JST,
   QUEUE_BATCH_SIZE,
-  SPOTIFY_TARGET_ARTISTS,
+  SPOTIFY_CURRENT_TOP20_ARTISTS,
+  SPOTIFY_TOP20_RANKING_DATE,
   enabled,
   integer,
   jstDateKey,
@@ -14,6 +15,30 @@ import {
   batchStatements,
 } from './spotify-playcount-common.js';
 import { discoverArtistReleases, fetchAnonymousSession } from './spotify-playcount-source.js';
+
+async function syncCurrentTop20(db) {
+  const writes = [];
+  for (const artist of SPOTIFY_CURRENT_TOP20_ARTISTS) {
+    writes.push(
+      db.prepare(`INSERT INTO sh_spotify_artists (artist_key,spotify_artist_id,artist_name)
+        VALUES (?,?,?) ON CONFLICT(artist_key) DO UPDATE SET
+          spotify_artist_id=excluded.spotify_artist_id,artist_name=excluded.artist_name`)
+        .bind(artist.artist_key, artist.spotify_artist_id, artist.artist_name),
+      db.prepare(`INSERT INTO sh_spotify_top20_history (ranking_date,artist_key,rank)
+        VALUES (?,?,?) ON CONFLICT(ranking_date,artist_key) DO UPDATE SET rank=excluded.rank`)
+        .bind(SPOTIFY_TOP20_RANKING_DATE, artist.artist_key, artist.rank),
+    );
+  }
+  await batchStatements(db, writes);
+
+  const result = await db.prepare(`SELECT artist_key,spotify_artist_id,artist_name
+    FROM sh_spotify_artists ORDER BY artist_key`).all();
+  return resultsOf(result).map((row) => ({
+    artist_key: String(row.artist_key),
+    spotify_artist_id: String(row.spotify_artist_id),
+    artist_name: String(row.artist_name),
+  }));
+}
 
 async function refreshArtistCatalog(db, artist, releases, seenAt) {
   const existingResult = await db.prepare(`SELECT album_id,is_active
@@ -51,14 +76,14 @@ async function refreshArtistCatalog(db, artist, releases, seenAt) {
   return changed;
 }
 
-async function refreshCatalog(env, dependencies) {
+async function refreshCatalog(env, dependencies, collectionArtists) {
   const db = env.OTHER_DB;
   const fetchImpl = dependencies.fetch || fetch;
   const session = dependencies.session || await fetchAnonymousSession(env, fetchImpl);
   const seenAt = Date.now();
   let releasesSeen = 0;
   let releasesChanged = 0;
-  for (const artist of SPOTIFY_TARGET_ARTISTS) {
+  for (const artist of collectionArtists) {
     const releases = await discoverArtistReleases(artist, env, session, fetchImpl);
     releasesSeen += releases.length;
     releasesChanged += await refreshArtistCatalog(db, artist, releases, seenAt);
@@ -66,8 +91,8 @@ async function refreshCatalog(env, dependencies) {
   return { releasesSeen, releasesChanged };
 }
 
-function queueMessage(snapshotDate, runToken, row) {
-  const targetByKey = new Map(SPOTIFY_TARGET_ARTISTS.map((artist) => [artist.artist_key, artist]));
+function queueMessage(snapshotDate, runToken, row, collectionArtists) {
+  const targetByKey = new Map(collectionArtists.map((artist) => [artist.artist_key, artist]));
   const targets = String(row?.target_keys || '').split(',')
     .map((value) => targetByKey.get(value.trim())).filter(Boolean)
     .map(({ artist_key, spotify_artist_id }) => ({ artist_key, spotify_artist_id }));
@@ -90,14 +115,15 @@ async function sendQueueBatch(queue, bodies) {
   }
 }
 
-async function queueActiveReleases(env, snapshotDate, runToken) {
+async function queueActiveReleases(env, snapshotDate, runToken, collectionArtists) {
   const queue = env.SPOTIFY_PLAYCOUNT_QUEUE;
   if (!queue?.send && !queue?.sendBatch) throw new Error('SPOTIFY_PLAYCOUNT_QUEUE binding is required');
   const query = await env.OTHER_DB.prepare(`SELECT r.album_id,GROUP_CONCAT(t.artist_key, ',') AS target_keys
     FROM sh_spotify_releases r
     INNER JOIN sh_spotify_release_targets t ON t.album_id=r.album_id
     WHERE t.is_active=1 GROUP BY r.album_id ORDER BY r.album_id`).all();
-  const bodies = resultsOf(query).map((row) => queueMessage(snapshotDate, runToken, row)).filter(Boolean);
+  const bodies = resultsOf(query)
+    .map((row) => queueMessage(snapshotDate, runToken, row, collectionArtists)).filter(Boolean);
   if (!bodies.length) throw new Error('Spotify catalog contains no active releases to collect');
   await env.OTHER_DB.prepare(`UPDATE sh_spotify_collection_runs
     SET albums_queued=?,status='queued',updated_at=? WHERE snapshot_date=? AND run_token=?`)
@@ -153,11 +179,19 @@ export async function runSpotifyPlaycountScheduled(controller, env, dependencies
   }
   const db = env?.OTHER_DB;
   if (!db?.prepare || !db?.batch) throw new Error('OTHER_DB binding is required');
+
+  // sh_spotify_artists is an additive roster: Top 20 entrants are inserted/updated but never removed.
+  // Therefore an artist keeps being collected after falling out of the current Top 20.
+  const collectionArtists = await syncCurrentTop20(db);
+  if (!collectionArtists.length) throw new Error('Spotify collection roster is empty');
+
   const raw = Number(controller?.scheduledTime);
   const scheduledTime = Number.isFinite(raw) ? raw : Date.now();
   const selection = await selectScheduledSnapshot(db, scheduledTime);
   if (!selection.snapshotDate) {
-    logEvent('spotify_playcount_scheduled', { skipped: true, reason: selection.skip });
+    logEvent('spotify_playcount_scheduled', {
+      skipped: true, reason: selection.skip, collection_artists: collectionArtists.length,
+    });
     return { skipped: true, reason: selection.skip };
   }
   const snapshotDate = selection.snapshotDate;
@@ -171,10 +205,11 @@ export async function runSpotifyPlaycountScheduled(controller, env, dependencies
       || Number(existing.albums_queued || 0) === 0
       || Number(existing.errors || 0) > 0
       || ['error', 'incomplete'].includes(String(existing.status || ''));
-    if (refreshNeeded) catalog = await refreshCatalog(env, dependencies);
-    const albumsQueued = await queueActiveReleases(env, snapshotDate, runToken);
+    if (refreshNeeded) catalog = await refreshCatalog(env, dependencies, collectionArtists);
+    const albumsQueued = await queueActiveReleases(env, snapshotDate, runToken, collectionArtists);
     const result = {
       ok: true, snapshot_date: snapshotDate, attempt_no: attemptNo,
+      collection_artists: collectionArtists.length,
       releases_seen: catalog.releasesSeen, releases_changed: catalog.releasesChanged,
       albums_queued: albumsQueued,
     };
