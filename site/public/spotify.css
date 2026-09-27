@@ -34,6 +34,57 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.spotify-comparison-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.spotify-comparison-chart {
+  display: grid;
+  gap: 12px;
+}
+
+.spotify-comparison-row {
+  display: grid;
+  grid-template-columns: minmax(76px, 112px) minmax(80px, 1fr) minmax(88px, auto);
+  align-items: center;
+  gap: 12px;
+}
+
+.spotify-comparison-name,
+.spotify-comparison-value {
+  white-space: nowrap;
+}
+
+.spotify-comparison-name {
+  font-weight: 650;
+}
+
+.spotify-comparison-row.is-active .spotify-comparison-name,
+.spotify-comparison-row.is-active .spotify-comparison-value {
+  font-weight: 800;
+}
+
+.spotify-comparison-track {
+  height: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line, #e2e2e2);
+}
+
+.spotify-comparison-bar {
+  width: var(--spotify-comparison-width, 0%);
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0.72;
+}
+
+.spotify-comparison-value {
+  text-align: right;
+}
+
 .spotify-table th:nth-child(1),
 .spotify-table td:nth-child(1) {
   width: 64px;
@@ -73,6 +124,15 @@
 
   .spotify-summary strong {
     font-size: clamp(1rem, 4.5vw, 1.35rem);
+  }
+
+  .spotify-comparison-row {
+    grid-template-columns: 76px minmax(60px, 1fr) minmax(80px, auto);
+    gap: 8px;
+  }
+
+  .spotify-comparison-track {
+    height: 12px;
   }
 
   .spotify-data-panel .table-wrap {
