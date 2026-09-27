@@ -45,9 +45,19 @@ function row(artistKey, trackId, playcount, delta, snapshotDate = '2026-09-27') 
   };
 }
 
-function trendRow(artistKey, snapshotDate, totalDelta, trackCount = 1, carriedForward = 0) {
+function trendRow(
+  artistKey,
+  snapshotDate,
+  totalDelta,
+  trackCount = 1,
+  carriedForward = 0,
+  artistName = artistKey,
+  currentRank = null,
+) {
   return {
     artist_key: artistKey,
+    artist_name: artistName,
+    current_rank: currentRank,
     snapshot_date: snapshotDate,
     total_delta: totalDelta,
     track_count: trackCount,
@@ -55,42 +65,49 @@ function trendRow(artistKey, snapshotDate, totalDelta, trackCount = 1, carriedFo
   };
 }
 
-test('Spotify artist helpers support all three groups', () => {
+test('Spotify artist helpers keep the three table groups', () => {
   assert.deepEqual(spotifyArtist(), { key: 'sakurazaka46', name: '櫻坂46' });
   assert.deepEqual(spotifyArtist('nogizaka46'), { key: 'nogizaka46', name: '乃木坂46' });
   assert.deepEqual(spotifyArtist('hinatazaka46'), { key: 'hinatazaka46', name: '日向坂46' });
   assert.equal(spotifyArtist('unknown'), null);
 });
 
-test('Spotify read model contains latest rows and multi-day trend for all three groups', () => {
+test('Spotify read model keeps three table groups and expands trend to tracked female idols', () => {
   const model = spotifyReadModel([
     row('nogizaka46', 'n1', 1000, 100),
     row('nogizaka46', 'n2', 900, 90),
     row('sakurazaka46', 's1', 1200, 120),
     row('hinatazaka46', 'h1', 800, 80),
   ], [
-    trendRow('nogizaka46', '2026-09-26', 180, 2),
-    trendRow('nogizaka46', '2026-09-27', 190, 2),
-    trendRow('sakurazaka46', '2026-09-26', 110),
-    trendRow('sakurazaka46', '2026-09-27', 120),
-    trendRow('hinatazaka46', '2026-09-26', 70),
-    trendRow('hinatazaka46', '2026-09-27', 80),
+    trendRow('equal-love', '2026-09-26', 210, 2, 0, '＝LOVE', 1),
+    trendRow('equal-love', '2026-09-27', 220, 2, 0, '＝LOVE', 1),
+    trendRow('nogizaka46', '2026-09-26', 180, 2, 0, '乃木坂46', 5),
+    trendRow('nogizaka46', '2026-09-27', 190, 2, 0, '乃木坂46', 5),
+    trendRow('sakurazaka46', '2026-09-26', 110, 1, 0, '櫻坂46', 16),
+    trendRow('sakurazaka46', '2026-09-27', 120, 1, 0, '櫻坂46', 16),
+    trendRow('hinatazaka46', '2026-09-26', 70, 1, 0, '日向坂46', 18),
+    trendRow('hinatazaka46', '2026-09-27', 80, 1, 0, '日向坂46', 18),
   ]);
   assert.equal(model.default_artist, 'sakurazaka46');
   assert.equal(model.groups.nogizaka46.track_count, 2);
   assert.equal(model.groups.nogizaka46.total_delta, 190);
   assert.deepEqual(
-    model.trend.nogizaka46.map((item) => [item.snapshot_date, item.total_delta]),
-    [['2026-09-26', 180], ['2026-09-27', 190]],
+    model.trend['equal-love'].map((item) => [item.snapshot_date, item.total_delta]),
+    [['2026-09-26', 210], ['2026-09-27', 220]],
   );
+  assert.equal(model.trend['equal-love'][0].artist_name, '＝LOVE');
+  assert.equal(model.trend['equal-love'][0].current_rank, 1);
   assert.equal(model.trend.sakurazaka46.at(-1).total_delta, 120);
-  assert.equal(model.trend.hinatazaka46.at(-1).total_delta, 80);
 });
 
-test('Spotify trend SQL keeps the R2 model bounded to the latest 90 days', () => {
-  assert.match(spotifyTrendSql(), /-89 days/);
-  assert.match(spotifyTrendSql(), /GROUP BY target\.artist_key, d\.snapshot_date/);
-  assert.match(spotifyTrendSql(), /SUM\(d\.delta\)/);
+test('Spotify trend SQL covers the additive tracked-idol roster for the latest 90 days', () => {
+  const sql = spotifyTrendSql();
+  assert.match(sql, /-89 days/);
+  assert.match(sql, /INNER JOIN sh_spotify_artists artist/);
+  assert.match(sql, /sh_spotify_top20_history/);
+  assert.match(sql, /GROUP BY target\.artist_key, artist\.artist_name, current_rank\.rank, d\.snapshot_date/);
+  assert.match(sql, /SUM\(d\.delta\)/);
+  assert.doesNotMatch(sql, /target\.artist_key IN \('nogizaka46','sakurazaka46','hinatazaka46'\)/);
 });
 
 test('Spotify API builds one complete read model for R2 publication', async () => {
@@ -103,12 +120,13 @@ test('Spotify API builds one complete read model for R2 publication', async () =
           row('hinatazaka46', 'h1', 300, 15),
         ],
         trendRows: [
-          trendRow('nogizaka46', '2026-09-26', 4),
-          trendRow('nogizaka46', '2026-09-27', 5),
-          trendRow('sakurazaka46', '2026-09-26', 8),
-          trendRow('sakurazaka46', '2026-09-27', 10),
-          trendRow('hinatazaka46', '2026-09-26', 12),
-          trendRow('hinatazaka46', '2026-09-27', 15),
+          trendRow('equal-love', '2026-09-27', 25, 1, 0, '＝LOVE', 1),
+          trendRow('nogizaka46', '2026-09-26', 4, 1, 0, '乃木坂46', 5),
+          trendRow('nogizaka46', '2026-09-27', 5, 1, 0, '乃木坂46', 5),
+          trendRow('sakurazaka46', '2026-09-26', 8, 1, 0, '櫻坂46', 16),
+          trendRow('sakurazaka46', '2026-09-27', 10, 1, 0, '櫻坂46', 16),
+          trendRow('hinatazaka46', '2026-09-26', 12, 1, 0, '日向坂46', 18),
+          trendRow('hinatazaka46', '2026-09-27', 15, 1, 0, '日向坂46', 18),
         ],
       }),
     },
@@ -118,6 +136,7 @@ test('Spotify API builds one complete read model for R2 publication', async () =
   assert.equal(payload.ok, true);
   assert.equal(payload.groups.sakurazaka46.tracks[0].playcount, 200);
   assert.equal(payload.trend.nogizaka46.length, 2);
+  assert.equal(payload.trend['equal-love'][0].artist_name, '＝LOVE');
   assert.equal(payload.trend.sakurazaka46.at(-1).total_delta, 10);
 });
 
@@ -137,10 +156,9 @@ test('Spotify API reports missing D1 only on the read-model producer path', asyn
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab mounts three trend charts and fetches the single read model', () => {
+test('Spotify tab renders tracked female-idol trend charts from the single read model', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
-  const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
@@ -150,15 +168,17 @@ test('Spotify tab mounts three trend charts and fetches the single read model', 
   assert.match(shell, /data-spotify-artist="hinatazaka46"/);
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /女性アイドルSpotify再生数推移/);
-  assert.doesNotMatch(shell, /三坂 前回比合計/);
-  assert.match(runtime, /const TREND_ORDER = Object\.freeze\(\['sakurazaka46', 'nogizaka46', 'hinatazaka46'\]\)/);
+  assert.match(shell, /FEMALE IDOLS/);
+  assert.match(shell, /収集対象の女性アイドルの日別前回比合計推移/);
+  assert.doesNotMatch(runtime, /TREND_ORDER/);
+  assert.match(runtime, /Object\.entries\(trend \|\| \{\}\)/);
+  assert.match(runtime, /currentRank/);
+  assert.match(runtime, /TREND_COLORS/);
+  assert.match(runtime, /series\.style\.setProperty\('--spotify-trend-color'/);
   assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
   assert.doesNotMatch(runtime, /spotify-playcounts\?artist=/);
   assert.match(runtime, /model\?\.trend/);
   assert.match(runtime, /model\?\.groups\?\.\[requested\]/);
-  assert.match(styles, /sakurazaka46[\s\S]*#f3a6c8/);
-  assert.match(styles, /nogizaka46[\s\S]*#8264b0/);
-  assert.match(styles, /hinatazaka46[\s\S]*#9ecff3/);
   assert.match(tabs, /VIEW_MODES[\s\S]*'spotify'/);
   assert.match(tabs, /const spotifyView = document\.getElementById\('spotifyView'\)/);
   assert.match(tabs, /async function showSpotify/);
