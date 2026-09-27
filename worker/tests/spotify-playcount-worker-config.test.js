@@ -27,3 +27,16 @@ test('Spotify collector is isolated and wakes hourly for the 05:00+ retry gate',
   assert.equal(value.queues.consumers[0].max_retries <= 4, true);
   assert.deepEqual(value.vars, { SPOTIFY_PLAYCOUNT_ENABLED: true });
 });
+
+test('a stale day is carried forward at the next 05:00 instead of blocking newer dates', () => {
+  const entry = readFileSync(new URL('../src/spotify-playcount-entry.js', import.meta.url), 'utf8');
+  const migration = readFileSync(
+    new URL('../../database/other-migrations/041_spotify_playcount_daily.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(entry, /jstHour\(scheduledTime\) !== 5/);
+  assert.match(entry, /status='stale'/);
+  assert.match(entry, /is_carried_forward/);
+  assert.match(entry, /status='complete'/);
+  assert.match(migration, /is_carried_forward INTEGER NOT NULL DEFAULT 0/);
+});
