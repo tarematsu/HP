@@ -14,10 +14,10 @@ test('final screenshot-audit overrides load after cross-view unification', () =>
   );
 });
 
-test('dashboard tabs use one row of seven at every viewport width', () => {
-  assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\) !important/);
+test('dashboard tabs use one row of eight at every viewport width', () => {
+  assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(8, minmax\(0, 1fr\)\) !important/);
   assert.match(css, /grid-template-rows:\s*34px !important/);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\) !important/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*#modeTabs\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(8, minmax\(0, 1fr\)\) !important/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*minmax\(44px, auto\) !important/);
   assert.doesNotMatch(css, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*repeat\(2,/);
   assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs > button:last-child\s*\{[\s\S]*min-height:\s*44px !important/);
@@ -25,7 +25,7 @@ test('dashboard tabs use one row of seven at every viewport width', () => {
 
 test('feature-specific styles cannot override the shared dashboard tab grid', () => {
   assert.doesNotMatch(firstWeekCss, /#modeTabs\.mode-tabs\.dashboard-tabs/);
-  assert.doesNotMatch(firstWeekCss, /grid-template-columns:\s*repeat\(8,/);
+  assert.doesNotMatch(firstWeekCss, /grid-template-columns:\s*repeat\(9,/);
 });
 
 test('legacy span-two mobile tab placement is cancelled', () => {
