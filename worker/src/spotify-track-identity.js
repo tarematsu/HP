@@ -45,7 +45,8 @@ export function spotifySongKey(track) {
   const sourceTrackId = String(track?.track_id || '').trim();
   const name = normalizedText(track?.name);
   const artistIds = normalizedArtistIds(track?.artists_json);
-  const durationMs = Number(track?.duration_ms);
+  const rawDurationMs = track?.duration_ms;
+  const durationMs = rawDurationMs == null || rawDurationMs === '' ? Number.NaN : Number(rawDurationMs);
   if (!name || !artistIds.length || !Number.isFinite(durationMs) || durationMs < 0) {
     return `track:v1:${sourceTrackId}`;
   }
@@ -110,4 +111,17 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
     source_track_id: String(track.track_id),
     track_id: canonicalByKey.get(songKey),
   }));
+}
+
+export async function bootstrapSpotifyTrackAliases(db, seenAt) {
+  const result = await db.prepare(`SELECT
+      track.track_id,track.name,track.duration_ms,track.artists_json
+    FROM sh_spotify_tracks track
+    LEFT JOIN sh_spotify_track_aliases alias ON alias.source_track_id=track.track_id
+    WHERE alias.source_track_id IS NULL
+    ORDER BY track.track_id`).all();
+  const tracks = rowsOf(result);
+  if (!tracks.length) return 0;
+  await resolveCanonicalSpotifyTracks(db, tracks, seenAt);
+  return tracks.length;
 }
