@@ -12,7 +12,7 @@ test('current comparable female-idol Spotify roster contains exactly ranks 1-20'
   assert.equal(SPOTIFY_CURRENT_TOP20_ARTISTS.length, 20);
   assert.deepEqual(SPOTIFY_CURRENT_TOP20_ARTISTS.map(({ rank }) => rank),
     Array.from({ length: 20 }, (_, index) => index + 1));
-  assert.equal(new Set(SPOTIFY_CURRENT_TOP20_ARTISTS.map(({ artist_key }) => artist.artist_key)).size, 20);
+  assert.equal(new Set(SPOTIFY_CURRENT_TOP20_ARTISTS.map(({ artist_key }) => artist_key)).size, 20);
   assert.equal(new Set(SPOTIFY_CURRENT_TOP20_ARTISTS.map(({ spotify_artist_id }) => spotify_artist_id)).size, 20);
 });
 
