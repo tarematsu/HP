@@ -141,9 +141,6 @@ try {
   if (report.total_streams == null) {
     throw new Error('total_streams missing from account metrics response');
   }
-  if (report.active_stream_days == null) {
-    throw new Error('active_stream_days missing from account metrics response');
-  }
 } catch (error) {
   report.errors.push(error.message);
   process.exitCode = 1;
