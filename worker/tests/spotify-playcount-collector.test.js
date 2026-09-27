@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   SPOTIFY_TARGET_ARTISTS,
+  countPlaycountRegressions,
   hasPlaycountAdvance,
   jstDateKey,
   jstHour,
@@ -224,11 +225,39 @@ test('advance detection ignores new tracks and requires an existing track to inc
   ]), true);
 });
 
+test('regression detection rejects cumulative counters that move backwards', () => {
+  const previous = [
+    { track_id: 'a', playcount: 100 },
+    { track_id: 'b', playcount: 200 },
+  ];
+  assert.equal(countPlaycountRegressions(previous, [
+    { track_id: 'a', playcount: 100 },
+    { track_id: 'b', playcount: 199 },
+  ]), 1);
+  assert.equal(countPlaycountRegressions(previous, [
+    { track_id: 'a', playcount: 101 },
+    { track_id: 'b', playcount: 200 },
+  ]), 0);
+});
+
+test('staging and finalization are guarded against late or duplicate queue deliveries', () => {
+  const common = readFileSync(new URL('../src/spotify-playcount-common.js', import.meta.url), 'utf8');
+  const consumer = readFileSync(new URL('../src/spotify-playcount-consumer.js', import.meta.url), 'utf8');
+  const schedule = readFileSync(new URL('../src/spotify-playcount-schedule.js', import.meta.url), 'utf8');
+  assert.match(common, /\['catalog', 'queued'\]\.includes/);
+  assert.match(consumer, /MAX\(sh_spotify_playcount_candidates\.playcount,excluded\.playcount\)/);
+  assert.match(consumer, /status='finalizing'/);
+  assert.match(consumer, /DELETE FROM sh_spotify_playcount_candidates/);
+  assert.match(consumer, /DELETE FROM sh_spotify_collection_album_runs/);
+  assert.match(schedule, /SET is_active=0,last_seen_at=\?/);
+});
+
 test('stale and incomplete runs are retryable while fresh queued work is not duplicated', () => {
   const now = Date.UTC(2026, 8, 27, 0, 0, 0);
   assert.equal(shouldRetryRun({ status: 'stale', updated_at: now - 1 }), true);
   assert.equal(shouldRetryRun({ status: 'incomplete', updated_at: now - 1 }), true);
   assert.equal(shouldRetryRun({ status: 'queued', updated_at: now - 10 * 60 * 1000 }, now), false);
   assert.equal(shouldRetryRun({ status: 'queued', updated_at: now - 60 * 60 * 1000 }, now), true);
+  assert.equal(shouldRetryRun({ status: 'finalizing', updated_at: now - 60 * 60 * 1000 }, now), true);
   assert.equal(shouldRetryRun({ status: 'complete', updated_at: now - 60 * 60 * 1000 }, now), false);
 });
