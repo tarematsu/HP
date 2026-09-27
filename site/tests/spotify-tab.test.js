@@ -156,9 +156,10 @@ test('Spotify API reports missing D1 only on the read-model producer path', asyn
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab renders tracked female-idol trend charts from the single read model', () => {
+test('Spotify tab renders every tracked female idol in one shared trend graph', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
+  const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
@@ -169,12 +170,21 @@ test('Spotify tab renders tracked female-idol trend charts from the single read 
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /女性アイドルSpotify再生数推移/);
   assert.match(shell, /FEMALE IDOLS/);
-  assert.match(shell, /収集対象の女性アイドルの日別前回比合計推移/);
+  assert.match(shell, /全アーティストの日別前回比合計を重ねたグラフ/);
+  assert.match(shell, /spotify\.css\?v=20260928\.3/);
   assert.doesNotMatch(runtime, /TREND_ORDER/);
   assert.match(runtime, /Object\.entries\(trend \|\| \{\}\)/);
   assert.match(runtime, /currentRank/);
   assert.match(runtime, /TREND_COLORS/);
-  assert.match(runtime, /series\.style\.setProperty\('--spotify-trend-color'/);
+  assert.match(runtime, /spotify-trend-combined/);
+  assert.match(runtime, /spotify-trend-legend/);
+  assert.match(runtime, /chart\.append\(legend, scroll\)/);
+  assert.match(runtime, /container\.append\(chart\)/);
+  assert.match(runtime, /path\.style\.setProperty\('--spotify-trend-color'/);
+  assert.match(runtime, /circle\.style\.setProperty\('--spotify-trend-color'/);
+  assert.doesNotMatch(runtime, /container\.append\(series\)/);
+  assert.match(styles, /\.spotify-trend-legend/);
+  assert.match(styles, /aspect-ratio: 960 \/ 340/);
   assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
   assert.doesNotMatch(runtime, /spotify-playcounts\?artist=/);
   assert.match(runtime, /model\?\.trend/);
@@ -182,10 +192,10 @@ test('Spotify tab renders tracked female-idol trend charts from the single read 
   assert.match(tabs, /VIEW_MODES[\s\S]*'spotify'/);
   assert.match(tabs, /const spotifyView = document\.getElementById\('spotifyView'\)/);
   assert.match(tabs, /async function showSpotify/);
-  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.2'\)/);
+  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.3'\)/);
   assert.match(tabs, /else if \(mode === 'spotify'\) void showSpotify/);
   assert.match(tabs, /button\.dataset\.view === 'spotify'/);
-  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.2/);
-  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.1/);
+  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.3/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.2/);
   assert.doesNotMatch(dashboard, /spotify-tab-router/);
 });
