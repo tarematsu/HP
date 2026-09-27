@@ -9,13 +9,19 @@ import {
 
 const NOW = Date.UTC(2026, 6, 24, 0, 30, 0);
 
-test('production runtime and scheduled Actions omit track-history generation', () => {
+test('production runtime and the general Pages runner omit the expensive track-history cycle', () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const runner = readFileSync(new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
+  const dailyWorkflow = readFileSync(
+    new URL('../../.github/workflows/repair-played-tracks-day.yml', import.meta.url),
+    'utf8',
+  );
   assert.equal(Object.hasOwn(config.vars, 'PAGES_TRACK_HISTORY_CYCLE_ENABLED'), false);
   assert.equal(config.triggers, undefined);
   assert.match(runner, /track-history-read-model-disabled/);
   assert.doesNotMatch(runner, /PAGES_TRACK_HISTORY_CYCLE_ENABLED: true|runSplitTrackHistoryCycleStep/);
+  assert.match(dailyWorkflow, /cron: '46 0 \* \* \*'/);
+  assert.match(dailyWorkflow, /repair-track-history-day-actions\.mjs/);
 });
 
 test('explicit maintenance primitive remains enabled when the flag is absent and accepts true values', () => {
