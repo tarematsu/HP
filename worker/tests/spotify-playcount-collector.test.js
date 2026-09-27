@@ -13,38 +13,11 @@ import {
   shouldRetryRun,
 } from '../src/spotify-playcount-collector.js';
 
-test('daily snapshot date and hour are keyed in JST', () => {
-  assert.equal(jstDateKey(Date.UTC(2026, 8, 26, 20, 0, 0)), '2026-09-27');
-  assert.equal(jstHour(Date.UTC(2026, 8, 26, 20, 0, 0)), 5);
+test('daily snapshot date is keyed in JST', () => {
+  assert.equal(jstDateKey(Date.UTC(2026, 8, 26, 21, 5, 0)), '2026-09-27');
   assert.equal(jstDateKey(Date.UTC(2026, 8, 26, 14, 59, 59)), '2026-09-26');
-  assert.equal(jstHour(Date.UTC(2026, 8, 26, 19, 0, 0)), 4);
-});
-
-test('stale or failed collection retries on the next hourly trigger', () => {
-  const now = Date.UTC(2026, 8, 26, 22, 0, 0);
-  assert.equal(shouldRetryRun({ status: 'stale', updated_at: now - 1 }), true);
-  assert.equal(shouldRetryRun({ status: 'incomplete', updated_at: now - 1 }), true);
-  assert.equal(shouldRetryRun({ status: 'error', updated_at: now - 1 }), true);
-  assert.equal(shouldRetryRun({ status: 'complete', updated_at: now - 3_600_000 }), false);
-  assert.equal(shouldRetryRun({ status: 'queued', updated_at: now - 10 * 60_000 }, now), false);
-  assert.equal(shouldRetryRun({ status: 'queued', updated_at: now - 51 * 60_000 }, now), true);
-});
-
-test('update detection requires an existing track to advance', () => {
-  const previous = [
-    { track_id: 'a', playcount: 100 },
-    { track_id: 'b', playcount: 200 },
-  ];
-  assert.equal(hasPlaycountAdvance(previous, [
-    { track_id: 'a', playcount: 100 },
-    { track_id: 'b', playcount: 200 },
-    { track_id: 'new', playcount: 999 },
-  ]), false);
-  assert.equal(hasPlaycountAdvance(previous, [
-    { track_id: 'a', playcount: 101 },
-    { track_id: 'b', playcount: 200 },
-  ]), true);
-  assert.equal(hasPlaycountAdvance([], [{ track_id: 'a', playcount: 1 }]), true);
+  assert.equal(jstDateKey(Date.UTC(2026, 8, 26, 15, 0, 0)), '2026-09-27');
+  assert.equal(jstHour(Date.UTC(2026, 8, 26, 20, 0, 0)), 5);
 });
 
 test('collector targets all three Sakamichi groups', () => {
@@ -192,4 +165,29 @@ test('normalizer falls back to album artists when track rows omit artists', () =
   assert.equal(tracks[0].track_id, 'track-v2');
   assert.equal(tracks[0].playcount, 42);
   assert.deepEqual(tracks[0].target_keys, ['hinatazaka46']);
+});
+
+test('advance detection ignores new tracks and requires an existing track to increase', () => {
+  const previous = [
+    { track_id: 'a', playcount: 100 },
+    { track_id: 'b', playcount: 200 },
+  ];
+  assert.equal(hasPlaycountAdvance(previous, [
+    { track_id: 'a', playcount: 100 },
+    { track_id: 'b', playcount: 200 },
+    { track_id: 'new', playcount: 999 },
+  ]), false);
+  assert.equal(hasPlaycountAdvance(previous, [
+    { track_id: 'a', playcount: 101 },
+    { track_id: 'b', playcount: 200 },
+  ]), true);
+});
+
+test('stale and incomplete runs are retryable while fresh queued work is not duplicated', () => {
+  const now = Date.UTC(2026, 8, 27, 0, 0, 0);
+  assert.equal(shouldRetryRun({ status: 'stale', updated_at: now - 1 }), true);
+  assert.equal(shouldRetryRun({ status: 'incomplete', updated_at: now - 1 }), true);
+  assert.equal(shouldRetryRun({ status: 'queued', updated_at: now - 10 * 60 * 1000 }, now), false);
+  assert.equal(shouldRetryRun({ status: 'queued', updated_at: now - 60 * 60 * 1000 }, now), true);
+  assert.equal(shouldRetryRun({ status: 'complete', updated_at: now - 60 * 60 * 1000 }, now), false);
 });
