@@ -68,6 +68,7 @@ describe("Spotify Japan daily artist chart capture", () => {
     expect(result.body).toMatchObject({
       accepted: 1,
       stored: true,
+      deduplicated: 0,
       reported: true,
       chartDate: "2026-09-27",
       latestUpdated: true,
@@ -78,13 +79,40 @@ describe("Spotify Japan daily artist chart capture", () => {
     expect(harness.bodies.has(dated)).toBe(true);
     expect(harness.bodies.has(latest)).toBe(true);
     const stored = JSON.parse(harness.bodies.get(latest) ?? "{}") as Record<string, unknown>;
-    expect(stored).toMatchObject({ version: 1, chart_id: "artist-jp-daily", entry_count: 100 });
+    expect(stored).toMatchObject({
+      version: 1,
+      chart_id: "artist-jp-daily",
+      chart_date: "2026-09-27",
+      entry_count: 100,
+    });
     expect(JSON.stringify(stored)).not.toMatch(/authorization|bearer|cookie|token/i);
     expect(harness.metadata.get(latest)).toMatchObject({
       chartId: "artist-jp-daily",
       chartDate: "2026-09-27",
       observedAt: String(NOW - 60_000),
     });
+    expect(harness.metadata.get(latest)?.contentDigest).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("does not rewrite the same chart date when hourly polling returns identical content", async () => {
+    const harness = bucketHarness();
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const env = { DB: {} as D1Database, DATA_BUCKET: harness.bucket } as Env;
+
+    await applySpotifyArtistChartInput([capture()], env);
+    harness.put.mockClear();
+    const result = await applySpotifyArtistChartInput([
+      capture({ observed_at: NOW - 10_000 }),
+    ], env);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({
+      stored: false,
+      deduplicated: 1,
+      latestUpdated: false,
+      chartDate: "2026-09-27",
+    });
+    expect(harness.put).not.toHaveBeenCalled();
   });
 
   it("does not let an older retry overwrite a newer dated snapshot or latest", async () => {
@@ -121,6 +149,24 @@ describe("Spotify Japan daily artist chart capture", () => {
       harness.bodies.get("spotify/charts/artist-jp-daily/latest.json") ?? "{}",
     ) as Record<string, unknown>;
     expect(latest.chart_date).toBe("2026-09-27");
+  });
+
+  it("updates the same date if Spotify changes the ranking content", async () => {
+    const harness = bucketHarness();
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+    const env = { DB: {} as D1Database, DATA_BUCKET: harness.bucket } as Env;
+
+    await applySpotifyArtistChartInput([capture()], env);
+    harness.put.mockClear();
+    const changedEntries = entries();
+    changedEntries[0] = { ...changedEntries[0], artist_name: "Corrected Artist" };
+    const result = await applySpotifyArtistChartInput([
+      capture({ observed_at: NOW - 10_000, entries: changedEntries }),
+    ], env);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ stored: true, deduplicated: 0, latestUpdated: true });
+    expect(harness.put).toHaveBeenCalledTimes(2);
   });
 
   it("rejects malformed rankings before writing R2", async () => {
