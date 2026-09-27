@@ -9,10 +9,6 @@ LR"JS(
   state.started = true;
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const post = message => {
-    try { window.chrome?.webview?.postMessage(message); }
-    catch (_) {}
-  };
   const text = element => (element?.innerText || element?.textContent || '')
       .replace(/\s+/g, ' ').trim();
   const visible = element => {
@@ -44,16 +40,14 @@ LR"JS(
 
       // Login is intentionally user-owned. Until X exposes the authenticated
       // Following tab, only observe the DOM: no clicks, scrolling or likes.
-      // The native phase clock is held by the waiting-login message below.
+      // The native 5-minute X window keeps running while login is pending.
       let tab = followingTab();
       while (!tab) {
         state.result = 'waiting-login';
-        post('homepanel:x-waiting-login');
         await sleep(1000);
         tab = followingTab();
       }
       state.result = 'authenticated';
-      post('homepanel:x-authenticated');
 
       if (tab.getAttribute('aria-selected') !== 'true') {
         tab.click();
