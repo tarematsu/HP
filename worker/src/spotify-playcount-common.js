@@ -90,6 +90,8 @@ export async function batchStatements(db, statements, size = D1_BATCH_SIZE) {
   }
 }
 
+// Keep this query limited to the original collection-run columns so already-running
+// album queue work remains compatible during a migration/deploy overlap.
 export async function readRun(db, snapshotDate) {
   return db.prepare(`SELECT
       snapshot_date,status,attempt_no,run_token,albums_queued,albums_completed,
