@@ -9,23 +9,31 @@ by Nogizaka46, Sakurazaka46, and Hinatazaka46.
 - Cron: every hour at minute 00
 - First daily check: 05:00 JST
 - Retry: 06:00, 07:00, 08:00, ... until Spotify playcounts have advanced from the previous day
-- Catalog: Spotify public artist discography pages
-- Track/playcount source: Spotify public album-page `initialState`
+- Session bootstrap: public Spotify artist embed page
+- Catalog: Spotify web-player Pathfinder `queryArtistDiscographyAll`
+- Track/playcount source: Spotify web-player Pathfinder `queryAlbumTracks`
 - Storage: `OTHER_DB` (`stationhead-other`)
 - Fan-out: `stationhead-spotify-playcount` Queue, one message per album
 
-The collector does not use the Spotify Web API. Each target artist is identified
-by its stable Spotify artist ID. On the first attempt for a snapshot date, the
-Worker fetches `open.spotify.com/artist/{artist_id}/discography/all`, extracts
-album IDs from the rendered page and its embedded `initialState`, and refreshes
-the known release catalog in D1. Releases already discovered are retained even
-when a later public discography response omits them.
+The collector does not require a Spotify developer application, client secret,
+stored account credentials, or user OAuth. It opens the public
+`open.spotify.com/embed/artist/{artist_id}` page and reads the ephemeral anonymous
+web-player session from its `__NEXT_DATA__` bootstrap. The anonymous access token
+is held only in memory for the current invocation and is never persisted or
+logged.
 
-Each active album is then fetched through its public Spotify album page. Track
-IDs, names, cumulative playcounts, durations, and artist relationships are read
-from the page's base64-encoded `initialState` data. No Spotify login, developer
-application, client ID, client secret, OAuth access token, client token, or
-persisted GraphQL query is required.
+Spotify no longer includes the release catalog or cumulative playcounts in the
+ordinary `open.spotify.com` server-rendered HTML used by the original collector.
+The collector therefore follows the current public web player's own anonymous
+Pathfinder requests. `queryArtistDiscographyAll` discovers all release IDs for
+each target artist and `queryAlbumTracks` returns the album track rows including
+cumulative playcounts. The collector does not call `api.spotify.com/v1`.
+
+The first attempt for a snapshot date refreshes the release catalog. Known active
+release-target pairs are left untouched so the daily catalog refresh does not
+rewrite unchanged D1 rows. Queue retries reuse the catalog. Track metadata is
+also inserted only when a track is first seen; the per-attempt candidate table
+contains the cumulative counters needed for update detection and finalization.
 
 ## Update detection and hourly retry
 
@@ -71,27 +79,30 @@ collection errors are not converted to carried-forward days; rollover applies
 only to a successfully collected but unchanged (`stale`) snapshot.
 
 Each attempt has a new `run_token`. Queue messages from superseded attempts are
-acknowledged and ignored, preventing a late Queue delivery from contaminating a
-newer hourly attempt.
+acknowledged and ignored. Candidate writes also verify the active run token in
+D1, preventing a late Queue delivery from contaminating a newer hourly attempt.
 
 ## Compatibility boundary
 
-Spotify's public page bootstrap format is not a supported developer API and can
-change without notice. Relevant parsing is isolated in:
+Pathfinder is an internal interface used by Spotify's web player rather than a
+stable public developer API. Spotify can change the persisted operations or
+anonymous-session bootstrap without notice. The compatibility boundary is kept
+in `spotify-playcount-source.js`:
 
-- `albumIdsFromDiscographyHtml()` for release discovery
-- `decodeSpotifyInitialState()` for page bootstrap decoding
-- `albumFromInitialState()` for album selection
-- `normalizeAlbumTracks()` for track/playcount normalization
+- `parseSpotifyEmbedSession()` reads the anonymous session from the public embed
+  page.
+- `releasesFromArtistDiscography()` normalizes `queryArtistDiscographyAll`.
+- `normalizeAlbumTracks()` normalizes `queryAlbumTracks` and filters tracks to
+  the target groups.
 
-If a discography yields no releases, the run fails instead of replacing the
-known catalog with an empty set. If an album credited to a target artist yields
-no target playcount tracks, that Queue item is retried and the failure is
-recorded. Album links confirmed not to be credited to the target artist are
-deactivated instead of being retried forever.
+The persisted operation hashes are isolated next to those source functions and
+covered by tests. A missing session, GraphQL error, empty discography, or album
+without target playcount rows fails the attempt instead of silently finalizing
+partial data. Structured Worker logs include collection stage, snapshot date,
+and album ID where relevant, but never the anonymous access token.
 
-`SPOTIFY_PUBLIC_ARTIST_BASE` and `SPOTIFY_PUBLIC_ALBUM_BASE` are optional
-diagnostic overrides. Production should normally use Spotify directly.
+`SPOTIFY_EMBED_ARTIST_BASE` and `SPOTIFY_PATHFINDER_URL` are optional diagnostic
+overrides. Production normally uses Spotify directly.
 
 ## Data semantics
 
