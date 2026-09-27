@@ -25,12 +25,9 @@ const ALL_VARIANTS = [
   'spotify-playcounts',
 ];
 
-const SIX_HOUR_VARIANTS = [
+const TWELVE_HOUR_VARIANTS = [
   'dashboard',
   'history:daily',
-  'history:weekly',
-  'history:monthly',
-  'history:broadcasts',
   'spotify-playcounts',
 ];
 
@@ -127,10 +124,11 @@ test('canonical materialized variants exclude playback history', () => {
   assert.equal(materialized.has('track-history'), false);
   assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
-  assert.equal(materialized.get('history:daily').cadence_minutes, 360);
-  assert.equal(materialized.get('history:weekly').cadence_minutes, 360);
-  assert.equal(materialized.get('history:monthly').cadence_minutes, 360);
-  assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 360);
+  assert.equal(materialized.get('history:daily').cadence_minutes, 720);
+  assert.equal(materialized.get('history:weekly').cadence_minutes, 1440);
+  assert.equal(materialized.get('history:monthly').cadence_minutes, 1440);
+  assert.equal(materialized.get('history:broadcasts').cadence_minutes, 1440);
+  assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 720);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 
@@ -140,5 +138,7 @@ test('Actions cadence follows the materialized API contract', () => {
   assert.deepEqual([...dueVariantKeys(cycle + 55 * MINUTE_MS)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycle + 56 * MINUTE_MS)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycle + 86 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 386 * MINUTE_MS)], SIX_HOUR_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 386 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycle + 746 * MINUTE_MS)], TWELVE_HOUR_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 1466 * MINUTE_MS)], ALL_VARIANTS);
 });
