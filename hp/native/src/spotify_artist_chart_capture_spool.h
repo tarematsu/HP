@@ -1,12 +1,10 @@
 #pragma once
 
 #include "common.h"
+#include "stationhead_leaderboard_capture_spool.h"
 #include <fstream>
 
 namespace hp {
-
-inline constexpr UINT kSpotifyArtistChartCaptureWakeMessage = WM_APP + 32;
-
 namespace spotify_artist_chart_capture_spool {
 
 inline constexpr size_t kMaxCaptureRecordBytes = 96 * 1024;
@@ -100,7 +98,7 @@ inline bool Append(std::wstring_view payload) {
     if (!WriteLinesLocked(lines)) return false;
   }
   if (HWND window = FindWindowW(L"HomePanelNativeWindow", nullptr)) {
-    PostMessageW(window, kSpotifyArtistChartCaptureWakeMessage, 0, 0);
+    PostMessageW(window, kStationheadLeaderboardCaptureWakeMessage, 0, 0);
   }
   return true;
 }
