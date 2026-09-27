@@ -31,9 +31,11 @@ cumulative playcounts. The collector does not call `api.spotify.com/v1`.
 
 The first attempt for a snapshot date refreshes the release catalog. Known active
 release-target pairs are left untouched so the daily catalog refresh does not
-rewrite unchanged D1 rows. Queue retries reuse the catalog. Track metadata is
-also inserted only when a track is first seen; the per-attempt candidate table
-contains the cumulative counters needed for update detection and finalization.
+rewrite unchanged D1 rows. Normal stale retries reuse the catalog; retries after
+collection errors or incomplete snapshots refresh it again so newly corrected
+catalog data can self-heal a failed attempt. Track metadata is inserted only when
+a track is first seen; the per-attempt candidate table contains the cumulative
+counters needed for update detection and finalization.
 
 ## Update detection and hourly retry
 
@@ -47,10 +49,25 @@ only when at least one track that already existed in the previous snapshot has a
 larger cumulative playcount. A newly discovered track by itself does not mark
 the catalog as updated.
 
+A candidate must contain every track from the previous finalized day and no
+existing track may have a lower cumulative count. Missing tracks or backwards
+counters mark the attempt `incomplete` and cause an hourly retry instead of
+publishing a partial or non-monotonic snapshot. When the same Spotify track ID is
+seen through multiple releases in one attempt, staging keeps the highest observed
+cumulative value so a stale duplicate album response cannot overwrite a fresher
+one.
+
 If no existing track has advanced, the run is marked `stale`. The hourly Cron
 starts a fresh attempt at 06:00, then 07:00, and so on until an updated snapshot
 is observed. Once the snapshot is finalized, later hourly Cron invocations skip
 that date.
+
+Finalization is claimed by a single Queue delivery using the run status
+`finalizing`. Late or duplicate Queue deliveries are accepted only while the run
+is `catalog` or `queued`; after a run becomes `stale`, `incomplete`, `finalizing`,
+or `complete`, superseded messages cannot mutate candidates or album progress.
+After a successful finalization, per-attempt candidate and album-progress rows are
+deleted; `sh_spotify_collection_runs` retains the summary state.
 
 ## Whole-day no-update rollover
 
@@ -72,15 +89,14 @@ therefore cover more than one calendar day; downstream reporting should inspect
 `is_carried_forward` on preceding dates rather than treating the later delta as
 a precisely isolated one-day total.
 
-A candidate snapshot must also contain every track present in the previous day's
-snapshot. If tracks are missing, the attempt is marked `incomplete` and retried
-on the next hour rather than finalizing partial data. `incomplete` and actual
-collection errors are not converted to carried-forward days; rollover applies
-only to a successfully collected but unchanged (`stale`) snapshot.
+`incomplete` and actual collection errors are not converted to carried-forward
+days; rollover applies only to a successfully collected but unchanged (`stale`)
+snapshot.
 
 Each attempt has a new `run_token`. Queue messages from superseded attempts are
-acknowledged and ignored. Candidate writes also verify the active run token in
-D1, preventing a late Queue delivery from contaminating a newer hourly attempt.
+acknowledged and ignored. Candidate and album-progress writes also verify the
+active run token and active run status in D1, preventing a late Queue delivery
+from contaminating a newer hourly attempt.
 
 ## Compatibility boundary
 
@@ -96,10 +112,14 @@ in `spotify-playcount-source.js`:
   the target groups.
 
 The persisted operation hashes are isolated next to those source functions and
-covered by tests. A missing session, GraphQL error, empty discography, or album
-without target playcount rows fails the attempt instead of silently finalizing
-partial data. Structured Worker logs include collection stage, snapshot date,
-and album ID where relevant, but never the anonymous access token.
+covered by tests. A missing session, GraphQL error, empty discography, missing
+track counters, incomplete artist credits, or non-monotonic cumulative snapshot
+fails the attempt instead of silently finalizing partial data. A legacy release
+target is deactivated only when all returned album tracks expose artist credits
+and none of those credits matches the target artist, avoiding destructive cleanup
+when Spotify changes or omits response fields. Structured Worker logs include
+collection stage, snapshot date, and album ID where relevant, but never the
+anonymous access token.
 
 `SPOTIFY_EMBED_ARTIST_BASE` and `SPOTIFY_PATHFINDER_URL` are optional diagnostic
 overrides. Production normally uses Spotify directly.
@@ -107,8 +127,9 @@ overrides. Production normally uses Spotify directly.
 ## Data semantics
 
 `sh_spotify_playcount_daily.delta` is the difference between finalized cumulative
-playcount observations. It is `NULL` for a track's first observation, when a
-later cumulative value decreases, and on a carried-forward no-update date.
+playcount observations. It is `NULL` for a track's first observation and on a
+carried-forward no-update date. A lower cumulative count is not finalized; the
+attempt is retried as `incomplete`.
 
 `sh_spotify_playcount_daily.is_carried_forward=1` means Spotify did not publish a
 new cumulative value for that JST date before the next 05:00 boundary. That row
