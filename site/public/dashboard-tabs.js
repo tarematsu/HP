@@ -88,7 +88,7 @@ async function loadFirstWeekRuntime() {
 
 async function loadPlayedTracksRuntime() {
   if (!playedTracksRuntimePromise) {
-    playedTracksRuntimePromise = import('/played-tracks.js?v=20260925.1').catch((error) => {
+    playedTracksRuntimePromise = import('/played-tracks.js?v=20260927.2').catch((error) => {
       playedTracksRuntimePromise = null;
       throw error;
     });
