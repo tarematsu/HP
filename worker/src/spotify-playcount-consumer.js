@@ -66,6 +66,34 @@ async function persistCandidateTracks(db, message, tracks, collectedAt) {
   await batchStatements(db, writes);
 }
 
+function rawTrackArtistCoverage(rawItems, targets) {
+  const targetIds = new Set(
+    (targets || []).map((target) => safeText(target?.spotify_artist_id)).filter(Boolean),
+  );
+  let complete = Array.isArray(rawItems) && rawItems.length > 0;
+  let hasTargetCredit = false;
+  for (const item of rawItems || []) {
+    const rawTrack = item?.track || item;
+    const artists = rawTrack?.artists?.items;
+    if (!Array.isArray(artists) || !artists.length) {
+      complete = false;
+      continue;
+    }
+    let hasValidArtist = false;
+    for (const entry of artists) {
+      const artist = entry?.artist || entry;
+      const directId = safeText(artist?.id);
+      const uri = safeText(artist?.uri);
+      const artistId = directId || (uri.startsWith('spotify:artist:') ? uri.slice('spotify:artist:'.length) : '');
+      if (!artistId) continue;
+      hasValidArtist = true;
+      if (targetIds.has(artistId)) hasTargetCredit = true;
+    }
+    if (!hasValidArtist) complete = false;
+  }
+  return { complete, hasTargetCredit };
+}
+
 async function collectAlbum(env, message, session, dependencies) {
   const payload = await fetchAlbumPlaycountPayload(
     message.album_id, env, session, dependencies.fetch || fetch,
@@ -78,7 +106,10 @@ async function collectAlbum(env, message, session, dependencies) {
     : [];
   const tracks = normalizeAlbumTracks(payload, message.targets);
   if (!tracks.length) {
-    if (rawItems.length) return { trackCount: 0, stale: false, unrelated: true };
+    const coverage = rawTrackArtistCoverage(rawItems, message.targets);
+    if (coverage.complete && !coverage.hasTargetCredit) {
+      return { trackCount: 0, stale: false, unrelated: true };
+    }
     throw new Error(`Spotify album ${message.album_id} returned no target playcount tracks`);
   }
   await persistCandidateTracks(env.OTHER_DB, message, tracks, Date.now());
