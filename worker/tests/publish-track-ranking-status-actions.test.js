@@ -38,7 +38,7 @@ test('ranking publisher writes the Actions envelope without D1 mutations', async
   assert.equal(result.track_count, 1);
   assert.equal(saved.key, 'track-history-status');
   assert.equal(saved.envelope.updated_at, NOW);
-  assert.equal(saved.envelope.cadence_seconds, 1800);
+  assert.equal(saved.envelope.cadence_seconds, 6 * 60 * 60);
   const body = JSON.parse(saved.envelope.body);
   assert.equal(body.ranking[0].title, 'Song A');
   assert.equal(body.ranking_summary.track_count, 1);
