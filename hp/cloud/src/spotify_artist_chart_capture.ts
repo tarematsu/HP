@@ -9,6 +9,7 @@ const PREFIX = "spotify/charts/artist-jp-daily/";
 const LATEST_KEY = `${PREFIX}latest.json`;
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const ARTIST_ID = /^[A-Za-z0-9]{10,80}$/;
+const ENCODER = new TextEncoder();
 
 export interface SpotifyArtistChartEntry {
   rank: number;
@@ -132,7 +133,11 @@ function normalizedBatch(value: unknown, now: number): SpotifyArtistChartCapture
   return [...byDate.values()].sort((left, right) => left.chart_date.localeCompare(right.chart_date));
 }
 
-type StoredGeneration = { chart_date: string; observed_at: number };
+type StoredGeneration = {
+  chart_date: string;
+  observed_at: number;
+  content_digest?: string;
+};
 
 async function storedGeneration(env: Env, key: string): Promise<StoredGeneration | null> {
   if (!env.DATA_BUCKET) return null;
@@ -141,13 +146,39 @@ async function storedGeneration(env: Env, key: string): Promise<StoredGeneration
   const chartDate = String(object.customMetadata?.chartDate ?? "");
   const observedAt = Number(object.customMetadata?.observedAt ?? "");
   if (!DATE_KEY.test(chartDate) || !Number.isSafeInteger(observedAt)) return null;
-  return { chart_date: chartDate, observed_at: observedAt };
+  const contentDigest = String(object.customMetadata?.contentDigest ?? "").trim();
+  return {
+    chart_date: chartDate,
+    observed_at: observedAt,
+    ...(contentDigest ? { content_digest: contentDigest } : {}),
+  };
 }
 
 function isNewerOrEqual(capture: SpotifyArtistChartCapture, previous: StoredGeneration | null): boolean {
   return !previous
     || capture.chart_date > previous.chart_date
     || (capture.chart_date === previous.chart_date && capture.observed_at >= previous.observed_at);
+}
+
+async function captureContentDigest(capture: SpotifyArtistChartCapture): Promise<string> {
+  const canonical = JSON.stringify({
+    chart_id: CHART_ID,
+    chart_date: capture.chart_date,
+    entries: capture.entries,
+  });
+  const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", ENCODER.encode(canonical)));
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function shouldWrite(
+  capture: SpotifyArtistChartCapture,
+  contentDigest: string,
+  previous: StoredGeneration | null,
+): boolean {
+  if (!isNewerOrEqual(capture, previous)) return false;
+  return !previous
+    || previous.chart_date !== capture.chart_date
+    || previous.content_digest !== contentDigest;
 }
 
 function storedDocument(capture: SpotifyArtistChartCapture, receivedAt: number): string {
@@ -162,13 +193,14 @@ function storedDocument(capture: SpotifyArtistChartCapture, receivedAt: number):
   });
 }
 
-function metadata(capture: SpotifyArtistChartCapture): R2PutOptions {
+function metadata(capture: SpotifyArtistChartCapture, contentDigest: string): R2PutOptions {
   return {
     httpMetadata: { contentType: "application/json; charset=utf-8" },
     customMetadata: {
       chartId: CHART_ID,
       chartDate: capture.chart_date,
       observedAt: String(capture.observed_at),
+      contentDigest,
     },
   };
 }
@@ -187,26 +219,37 @@ export async function applySpotifyArtistChartInput(
   }
 
   let stored = false;
+  let deduplicated = 0;
+  const digests = new Map<string, string>();
   for (const capture of captures) {
+    const contentDigest = await captureContentDigest(capture);
+    digests.set(capture.chart_date, contentDigest);
     const dateKey = `${PREFIX}${capture.chart_date}.json`;
     const previousDate = await storedGeneration(env, dateKey);
-    if (!isNewerOrEqual(capture, previousDate)) continue;
+    if (!shouldWrite(capture, contentDigest, previousDate)) {
+      if (previousDate?.chart_date === capture.chart_date &&
+          previousDate.content_digest === contentDigest) {
+        deduplicated += 1;
+      }
+      continue;
+    }
     await env.DATA_BUCKET.put(
       dateKey,
       storedDocument(capture, receivedAt),
-      metadata(capture),
+      metadata(capture, contentDigest),
     );
     stored = true;
   }
 
   const newest = captures[captures.length - 1]!;
+  const newestDigest = digests.get(newest.chart_date) ?? await captureContentDigest(newest);
   const previousLatest = await storedGeneration(env, LATEST_KEY);
-  const canAdvanceLatest = isNewerOrEqual(newest, previousLatest);
+  const canAdvanceLatest = shouldWrite(newest, newestDigest, previousLatest);
   if (canAdvanceLatest) {
     await env.DATA_BUCKET.put(
       LATEST_KEY,
       storedDocument(newest, receivedAt),
-      metadata(newest),
+      metadata(newest, newestDigest),
     );
     stored = true;
   }
@@ -216,6 +259,7 @@ export async function applySpotifyArtistChartInput(
     body: {
       accepted: Array.isArray(value) ? value.length : captures.length,
       stored,
+      deduplicated,
       reported: true,
       chartDate: newest.chart_date,
       latestUpdated: canAdvanceLatest,
