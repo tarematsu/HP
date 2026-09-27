@@ -22,9 +22,17 @@ const ALL_VARIANTS = [
   'history:monthly',
   'history:broadcasts',
   'host-history:summary',
+  'spotify-playcounts',
 ];
 
-const SIX_HOUR_VARIANTS = ALL_VARIANTS.slice(0, -1);
+const SIX_HOUR_VARIANTS = [
+  'dashboard',
+  'history:daily',
+  'history:weekly',
+  'history:monthly',
+  'history:broadcasts',
+  'spotify-playcounts',
+];
 
 test('missing status performs a full 35-day refresh and one-day bounded backfill', () => {
   const now = Date.UTC(2026, 6, 16, 12);
@@ -122,6 +130,7 @@ test('canonical materialized variants exclude playback history', () => {
   assert.equal(materialized.get('history:daily').cadence_minutes, 360);
   assert.equal(materialized.get('history:weekly').cadence_minutes, 360);
   assert.equal(materialized.get('history:monthly').cadence_minutes, 360);
+  assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 360);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 

@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-spotify-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/spotify.css?v=20260927.1';
+  link.href = '/spotify.css?v=20260928.1';
   link.dataset.spotifyTabStyles = '1';
   document.head.append(link);
 }
@@ -39,6 +39,11 @@ function mountView() {
       <article><span>確定日</span><strong id="spotifySnapshotDate" class="summary-date">-</strong></article>
       <article><span>楽曲数</span><strong id="spotifyTrackCount">-</strong></article>
       <article><span>前回比合計</span><strong id="spotifyTotalDelta">-</strong></article>
+    </section>
+
+    <section class="card spotify-comparison-panel" aria-labelledby="spotifyComparisonTitle">
+      <div class="section-head"><div><p class="kicker">THREE GROUPS</p><h2 id="spotifyComparisonTitle">三坂 前回比合計</h2></div></div>
+      <div id="spotifyComparisonChart" class="spotify-comparison-chart" aria-label="乃木坂46・櫻坂46・日向坂46の前回比合計"></div>
     </section>
 
     <section class="card data-panel spotify-data-panel">

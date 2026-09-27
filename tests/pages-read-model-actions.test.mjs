@@ -41,6 +41,7 @@ function allMaterializedVariants() {
     'history:monthly',
     'history:broadcasts',
     'host-history:summary',
+    'spotify-playcounts',
   ];
 }
 
@@ -51,6 +52,7 @@ function sixHourVariants() {
     'history:weekly',
     'history:monthly',
     'history:broadcasts',
+    'spotify-playcounts',
   ];
 }
 

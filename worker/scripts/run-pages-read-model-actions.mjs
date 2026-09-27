@@ -45,6 +45,9 @@ const RENDERER_PATHS = Object.freeze({
   'host-history:summary': Object.freeze([
     'site/functions/api/host-history.js',
   ]),
+  'spotify-playcounts': Object.freeze([
+    'site/functions/api/spotify-playcounts.js',
+  ]),
 });
 
 function positiveInteger(value, fallback, minimum, maximum) {
@@ -103,6 +106,7 @@ async function responseHandler(modelKey) {
   if (modelKey === 'dashboard') return (await import('../../site/functions/api/dashboard.js')).onRequestGet;
   if (modelKey.startsWith('history:')) return (await import('../../site/functions/lib/materialized-history.js')).onRequestGet;
   if (modelKey === 'host-history:summary') return (await import('../../site/functions/api/host-history.js')).onRequestGet;
+  if (modelKey === 'spotify-playcounts') return (await import('../../site/functions/api/spotify-playcounts.js')).onRequestGet;
   throw new Error(`unsupported Actions read model: ${modelKey}`);
 }
 
@@ -246,6 +250,18 @@ export async function loadVariantSourceRevision(variant, env, now = Date.now()) 
       'host-summary',
       row,
       ['row_count', 'max_observed_at', 'max_ended_at', 'sum_revision'],
+    );
+  }
+
+  if (modelKey === 'spotify-playcounts') {
+    const row = await env.OTHER_DB.prepare(`SELECT COUNT(*) AS row_count,
+        COALESCE(MAX(snapshot_date),'') AS max_snapshot_date,
+        COALESCE(MAX(collected_at),0) AS max_collected_at
+      FROM sh_spotify_playcount_daily`).first();
+    return revisionValue(
+      'spotify-playcounts',
+      row,
+      ['row_count', 'max_snapshot_date', 'max_collected_at'],
     );
   }
   return null;
