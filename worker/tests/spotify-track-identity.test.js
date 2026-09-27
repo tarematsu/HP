@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { spotifySongKey } from '../src/spotify-track-identity.js';
+import {
+  bootstrapSpotifyTrackAliases,
+  resetSpotifyAliasBootstrapVerification,
+  spotifySongKey,
+} from '../src/spotify-track-identity.js';
 
 function track(overrides = {}) {
   return {
@@ -55,4 +59,27 @@ test('missing identity metadata falls back to the Spotify track id', () => {
     spotifySongKey(track({ track_id: 'fallback-id', duration_ms: null })),
     'track:v1:fallback-id',
   );
+});
+
+test('alias bootstrap avoids the full legacy anti-join once aliases exist', async () => {
+  resetSpotifyAliasBootstrapVerification();
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      statements.push(sql);
+      return {
+        async first() { return { source_track_id: 'existing-alias' }; },
+        async all() { throw new Error('full alias scan must not run'); },
+      };
+    },
+  };
+
+  assert.equal(await bootstrapSpotifyTrackAliases(db, Date.now()), 0);
+  assert.equal(statements.length, 1);
+  assert.match(statements[0], /FROM sh_spotify_track_aliases LIMIT 1/);
+  assert.doesNotMatch(statements[0], /LEFT JOIN sh_spotify_track_aliases/);
+
+  assert.equal(await bootstrapSpotifyTrackAliases(db, Date.now()), 0);
+  assert.equal(statements.length, 1);
+  resetSpotifyAliasBootstrapVerification();
 });
