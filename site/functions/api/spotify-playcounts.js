@@ -48,6 +48,7 @@ export function spotifyPlaycountSql() {
 }
 
 function integer(value) {
+  if (value == null || value === '') return null;
   const number = Number(value);
   return Number.isSafeInteger(number) ? number : null;
 }
