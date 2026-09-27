@@ -283,57 +283,86 @@ async function finalizeAttempt(db, message) {
   return { complete: true, tracks: candidates.length };
 }
 
+export async function updateAlbumProgress(db, message, outcome, now = Date.now()) {
+  if (outcome?.status === 'complete') {
+    const trackCount = Math.max(0, integer(outcome.trackCount) ?? 0);
+    await db.batch([
+      db.prepare(`UPDATE sh_spotify_collection_runs SET
+          albums_completed=albums_completed+CASE
+            WHEN EXISTS (
+              SELECT 1 FROM sh_spotify_collection_album_runs
+              WHERE snapshot_date=? AND album_id=? AND run_token=? AND status='complete'
+            ) THEN 0 ELSE 1 END,
+          errors=MAX(0,errors-CASE
+            WHEN EXISTS (
+              SELECT 1 FROM sh_spotify_collection_album_runs
+              WHERE snapshot_date=? AND album_id=? AND run_token=? AND status='error'
+            ) THEN 1 ELSE 0 END),
+          updated_at=?
+        WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')`)
+        .bind(
+          message.snapshot_date, message.album_id, message.run_token,
+          message.snapshot_date, message.album_id, message.run_token,
+          now, message.snapshot_date, message.run_token,
+        ),
+      db.prepare(`INSERT INTO sh_spotify_collection_album_runs (
+          snapshot_date,run_token,album_id,status,track_count,attempts,last_error,updated_at
+        ) SELECT ?,?,?,'complete',?,1,NULL,? WHERE EXISTS (
+          SELECT 1 FROM sh_spotify_collection_runs
+          WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
+        ) ON CONFLICT(snapshot_date,album_id) DO UPDATE SET
+          run_token=excluded.run_token,status='complete',track_count=excluded.track_count,
+          attempts=sh_spotify_collection_album_runs.attempts+1,last_error=NULL,updated_at=excluded.updated_at`)
+        .bind(
+          message.snapshot_date, message.run_token, message.album_id, trackCount, now,
+          message.snapshot_date, message.run_token,
+        ),
+    ]);
+    return;
+  }
+
+  if (outcome?.status !== 'error') throw new Error('Spotify album outcome must be complete or error');
+  const detail = truncateError(outcome.error);
+  await db.batch([
+    db.prepare(`UPDATE sh_spotify_collection_runs SET
+        errors=errors+CASE
+          WHEN EXISTS (
+            SELECT 1 FROM sh_spotify_collection_album_runs
+            WHERE snapshot_date=? AND album_id=? AND run_token=? AND status IN ('complete','error')
+          ) THEN 0 ELSE 1 END,
+        updated_at=?,last_error=?
+      WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')`)
+      .bind(
+        message.snapshot_date, message.album_id, message.run_token,
+        now, detail, message.snapshot_date, message.run_token,
+      ),
+    db.prepare(`INSERT INTO sh_spotify_collection_album_runs (
+        snapshot_date,run_token,album_id,status,track_count,attempts,last_error,updated_at
+      ) SELECT ?,?,?,'error',0,1,?,? WHERE EXISTS (
+        SELECT 1 FROM sh_spotify_collection_runs
+        WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
+      ) ON CONFLICT(snapshot_date,album_id) DO UPDATE SET
+        run_token=excluded.run_token,
+        status=CASE WHEN sh_spotify_collection_album_runs.run_token=excluded.run_token
+          AND sh_spotify_collection_album_runs.status='complete' THEN 'complete' ELSE 'error' END,
+        attempts=sh_spotify_collection_album_runs.attempts+1,
+        last_error=CASE WHEN sh_spotify_collection_album_runs.run_token=excluded.run_token
+          AND sh_spotify_collection_album_runs.status='complete' THEN NULL ELSE excluded.last_error END,
+        updated_at=excluded.updated_at`)
+      .bind(
+        message.snapshot_date, message.run_token, message.album_id, detail, now,
+        message.snapshot_date, message.run_token,
+      ),
+  ]);
+}
+
 async function completeAlbum(db, message, trackCount) {
-  const now = Date.now();
-  await db.prepare(`INSERT INTO sh_spotify_collection_album_runs (
-      snapshot_date,run_token,album_id,status,track_count,attempts,last_error,updated_at
-    ) SELECT ?,?,?,'complete',?,1,NULL,? WHERE EXISTS (
-      SELECT 1 FROM sh_spotify_collection_runs
-      WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
-    ) ON CONFLICT(snapshot_date,album_id) DO UPDATE SET
-      run_token=excluded.run_token,status='complete',track_count=excluded.track_count,
-      attempts=sh_spotify_collection_album_runs.attempts+1,last_error=NULL,updated_at=excluded.updated_at`)
-    .bind(
-      message.snapshot_date, message.run_token, message.album_id, trackCount, now,
-      message.snapshot_date, message.run_token,
-    ).run();
-  await db.prepare(`UPDATE sh_spotify_collection_runs SET
-      albums_completed=(SELECT COUNT(*) FROM sh_spotify_collection_album_runs
-        WHERE snapshot_date=? AND run_token=? AND status='complete'),
-      errors=(SELECT COUNT(*) FROM sh_spotify_collection_album_runs
-        WHERE snapshot_date=? AND run_token=? AND status='error'),updated_at=?
-    WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')`)
-    .bind(message.snapshot_date, message.run_token, message.snapshot_date, message.run_token,
-      now, message.snapshot_date, message.run_token).run();
+  await updateAlbumProgress(db, message, { status: 'complete', trackCount });
   return finalizeAttempt(db, message);
 }
 
 async function recordAlbumError(db, message, error) {
-  const now = Date.now();
-  const detail = truncateError(error);
-  await db.prepare(`INSERT INTO sh_spotify_collection_album_runs (
-      snapshot_date,run_token,album_id,status,track_count,attempts,last_error,updated_at
-    ) SELECT ?,?,?,'error',0,1,?,? WHERE EXISTS (
-      SELECT 1 FROM sh_spotify_collection_runs
-      WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')
-    ) ON CONFLICT(snapshot_date,album_id) DO UPDATE SET
-      run_token=excluded.run_token,
-      status=CASE WHEN sh_spotify_collection_album_runs.run_token=excluded.run_token
-        AND sh_spotify_collection_album_runs.status='complete' THEN 'complete' ELSE 'error' END,
-      attempts=sh_spotify_collection_album_runs.attempts+1,
-      last_error=CASE WHEN sh_spotify_collection_album_runs.run_token=excluded.run_token
-        AND sh_spotify_collection_album_runs.status='complete' THEN NULL ELSE excluded.last_error END,
-      updated_at=excluded.updated_at`)
-    .bind(
-      message.snapshot_date, message.run_token, message.album_id, detail, now,
-      message.snapshot_date, message.run_token,
-    ).run();
-  await db.prepare(`UPDATE sh_spotify_collection_runs SET
-      errors=(SELECT COUNT(*) FROM sh_spotify_collection_album_runs
-        WHERE snapshot_date=? AND run_token=? AND status='error'),updated_at=?,last_error=?
-    WHERE snapshot_date=? AND run_token=? AND status IN ('catalog','queued')`)
-    .bind(message.snapshot_date, message.run_token, now, detail,
-      message.snapshot_date, message.run_token).run();
+  await updateAlbumProgress(db, message, { status: 'error', error });
 }
 
 function validAlbumMessage(body) {
