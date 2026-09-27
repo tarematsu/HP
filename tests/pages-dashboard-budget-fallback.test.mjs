@@ -23,6 +23,7 @@ const HISTORY_KEYS = [
   'history:monthly',
   'history:broadcasts',
   'host-history:summary',
+  'spotify-playcounts',
 ];
 
 test('D1 budget deferral only reuses history and never refreshes dashboard', () => {
