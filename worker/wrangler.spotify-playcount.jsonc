@@ -1,0 +1,49 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sh-spotify-playcount-collector",
+  "main": "src/spotify-playcount-entry.js",
+  "compatibility_date": "2026-06-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1.0,
+      "persist": true,
+      "invocation_logs": true
+    }
+  },
+  "vars": {
+    "SPOTIFY_PLAYCOUNT_ENABLED": true
+  },
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "OTHER_DB",
+      "database_name": "stationhead-other",
+      "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11"
+    }
+  ],
+  "queues": {
+    "consumers": [
+      {
+        "queue": "stationhead-spotify-playcount",
+        "max_batch_size": 5,
+        "max_batch_timeout": 1,
+        "max_retries": 4,
+        "dead_letter_queue": "stationhead-spotify-playcount-dlq",
+        "max_concurrency": 2
+      }
+    ],
+    "producers": [
+      {
+        "binding": "SPOTIFY_PLAYCOUNT_QUEUE",
+        "queue": "stationhead-spotify-playcount"
+      }
+    ]
+  }
+}

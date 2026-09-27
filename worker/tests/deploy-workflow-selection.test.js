@@ -15,12 +15,14 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'sh-sakurazaka46jp',
     'sh-buddies-recovery',
     'sh-buddies-collector',
+    'sh-spotify-playcount-collector',
     'sh-runtime-orchestrator',
   ]);
   assert.deepEqual(result.commands, [
     'deploy:sakurazaka46jp',
     'deploy:buddies-recovery',
     'deploy:buddies-collector',
+    'deploy:spotify-playcount',
     'deploy:runtime',
   ]);
 });

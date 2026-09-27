@@ -7,8 +7,9 @@ const selector = fileURLToPath(new URL('../scripts/select-worker-deploys.mjs', i
 const SAKURAZAKA = 'sh-sakurazaka46jp';
 const RECOVERY = 'sh-buddies-recovery';
 const COLLECTOR = 'sh-buddies-collector';
+const SPOTIFY = 'sh-spotify-playcount-collector';
 const RUNTIME = 'sh-runtime-orchestrator';
-const ALL_WORKERS = [SAKURAZAKA, RECOVERY, COLLECTOR, RUNTIME];
+const ALL_WORKERS = [SAKURAZAKA, RECOVERY, COLLECTOR, SPOTIFY, RUNTIME];
 const BUDDIES_RUNTIME_WORKERS = [RECOVERY, COLLECTOR, RUNTIME];
 
 function select(paths = [], args = []) {
@@ -39,6 +40,8 @@ test('domain modules select every Worker whose bundle imports them', () => {
   assert.deepEqual(select(['worker/src/buddies-collector-entry.js']).workers, [COLLECTOR]);
   assert.deepEqual(select(['worker/src/buddies-recovery-entry.js']).workers, [RECOVERY]);
   assert.deepEqual(select(['worker/src/sakurazaka-raw-materializer.js']).workers, [SAKURAZAKA]);
+  assert.deepEqual(select(['worker/src/spotify-playcount-collector.js']).workers, [SPOTIFY]);
+  assert.deepEqual(select(['worker/src/spotify-playcount-entry.js']).workers, [SPOTIFY]);
 });
 
 test('Actions-only offline modules do not redeploy Workers', () => {
@@ -73,6 +76,12 @@ test('deployment support changes select the owning Worker', () => {
     commands: ['deploy:buddies-collector'],
     diagnostics: [],
   });
+  assert.deepEqual(select(['worker/scripts/deploy-spotify-playcount.mjs']), {
+    changed_paths: ['worker/scripts/deploy-spotify-playcount.mjs'],
+    workers: [SPOTIFY],
+    commands: ['deploy:spotify-playcount'],
+    diagnostics: [],
+  });
   assert.deepEqual(select(['worker/scripts/deploy-runtime.mjs']), {
     changed_paths: ['worker/scripts/deploy-runtime.mjs'],
     workers: [RUNTIME],
@@ -97,7 +106,7 @@ test('MINUTE_DB schema changes deploy the runtime that consumes the schema', () 
   }
 });
 
-test('shared deployment infrastructure selects all four Workers', () => {
+test('shared deployment infrastructure selects all active Workers', () => {
   for (const path of [
     'worker/package.json',
     'worker/package-lock.json',
@@ -108,7 +117,7 @@ test('shared deployment infrastructure selects all four Workers', () => {
     'worker/scripts/select-worker-deploys.mjs',
     'worker/scripts/wrangler-command.mjs',
   ]) {
-    assert.equal(select([path]).workers.length, 4, path);
+    assert.equal(select([path]).workers.length, 5, path);
   }
 });
 
@@ -116,6 +125,7 @@ test('Wrangler config changes map directly to their Worker', () => {
   assert.deepEqual(select(['worker/wrangler.sakurazaka46jp.jsonc']).workers, [SAKURAZAKA]);
   assert.deepEqual(select(['worker/wrangler.buddies-recovery.jsonc']).workers, [RECOVERY]);
   assert.deepEqual(select(['worker/wrangler.buddies-collector.jsonc']).workers, [COLLECTOR]);
+  assert.deepEqual(select(['worker/wrangler.spotify-playcount.jsonc']).workers, [SPOTIFY]);
   assert.deepEqual(select(['worker/wrangler.runtime.jsonc']).workers, [RUNTIME]);
 });
 
@@ -128,9 +138,9 @@ test('tests and unrelated verification scripts do not deploy Workers', () => {
   assert.deepEqual(result.commands, []);
 });
 
-test('shared package and unresolved Worker source changes select all Workers', () => {
+test('shared package only redeploys importers while unresolved Worker source remains fail-safe', () => {
   assert.equal(select(['packages/sh-shared/index.mjs']).workers.length, 4);
-  assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 4);
+  assert.equal(select(['worker/src/deleted-runtime-module.js']).workers.length, 5);
 });
 
 test('manual selection preserves dependency order', () => {
@@ -140,6 +150,7 @@ test('manual selection preserves dependency order', () => {
     'deploy:sakurazaka46jp',
     'deploy:buddies-recovery',
     'deploy:buddies-collector',
+    'deploy:spotify-playcount',
     'deploy:runtime',
   ]);
 });

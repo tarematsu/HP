@@ -192,7 +192,7 @@ test('the production Worker deployment provisions current Queue boundaries', () 
   assert.doesNotMatch(deploymentWorkflow, /stationhead-minute-rebuild stationhead-minute-rebuild-dlq/);
 });
 
-test('Worker package scripts contain only the four active deployment and bundle operations', () => {
+test('Worker package scripts contain only active deployment and bundle operations', () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(workerPackage.scripts).filter(([name]) => name.startsWith('deploy'))),
     {
@@ -200,6 +200,7 @@ test('Worker package scripts contain only the four active deployment and bundle 
       'deploy:buddies-recovery': 'node scripts/deploy-buddies-recovery.mjs',
       'deploy:buddies-collector': 'node scripts/deploy-buddies-collector.mjs',
       'deploy:sakurazaka46jp': 'node scripts/deploy-sakurazaka46jp.mjs',
+      'deploy:spotify-playcount': 'node scripts/deploy-spotify-playcount.mjs',
       'deploy:runtime': 'node scripts/deploy-runtime.mjs',
     },
   );
@@ -209,6 +210,7 @@ test('Worker package scripts contain only the four active deployment and bundle 
   assert.equal(workerPackage.scripts['check:buddies-recovery-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:buddies-collector-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:sakurazaka46jp-bundle'] !== undefined, true);
+  assert.equal(workerPackage.scripts['check:spotify-playcount-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:runtime-bundle'] !== undefined, true);
 
   for (const path of [
