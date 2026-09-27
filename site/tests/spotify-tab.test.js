@@ -113,7 +113,7 @@ test('Spotify API rejects unknown artists and missing D1 binding', async () => {
 test('Spotify tab mounts three group switches with Sakurazaka selected by default', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
-  const router = readFileSync(new URL('../public/spotify-tab-router.js', import.meta.url), 'utf8');
+  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
   assert.match(shell, /data-view = 'spotify'|dataset\.view = 'spotify'/);
@@ -122,7 +122,13 @@ test('Spotify tab mounts three group switches with Sakurazaka selected by defaul
   assert.match(shell, /data-spotify-artist="hinatazaka46"/);
   assert.match(runtime, /const DEFAULT_ARTIST = 'sakurazaka46'/);
   assert.match(runtime, /\/api\/spotify-playcounts\?artist=/);
-  assert.match(router, /location\.hash === '#spotify'/);
+  assert.match(tabs, /VIEW_MODES[\s\S]*'spotify'/);
+  assert.match(tabs, /const spotifyView = document\.getElementById\('spotifyView'\)/);
+  assert.match(tabs, /async function showSpotify/);
+  assert.match(tabs, /import\('\/spotify\.js\?v=20260927\.2'\)/);
+  assert.match(tabs, /else if \(mode === 'spotify'\) void showSpotify/);
+  assert.match(tabs, /button\.dataset\.view === 'spotify'/);
   assert.match(dashboard, /spotify-shell\.js/);
-  assert.match(dashboard, /spotify-tab-router\.js/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260927\.4/);
+  assert.doesNotMatch(dashboard, /spotify-tab-router/);
 });
