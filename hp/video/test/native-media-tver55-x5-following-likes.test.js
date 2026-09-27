@@ -7,6 +7,8 @@ const mediaBase = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 const hostWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
+const mediaWrapper = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const tverQueue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const tverRuntime = readExpandedNativeSource(
@@ -16,6 +18,7 @@ const xRuntime = readFileSync(
 
 test('YouTube stays 60 minutes while the TVer hour hands its last 5 minutes to X', () => {
   assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaXPhaseMs = 5U \* 60U \* 1000U/);
   assert.match(tverQueue, /kNativeMediaTverContentPhaseMs = 55ULL \* 60ULL \* 1000ULL/);
   assert.match(tverQueue, /ULONGLONG phaseStartedAt = 0/);
   assert.match(tverQueue, /NativeMediaTverXPhaseActive\(\)/);
@@ -35,12 +38,24 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.match(xRuntime, /let tab = followingTab\(\)/);
   assert.match(xRuntime, /while \(!tab\)/);
   assert.match(xRuntime, /state\.result = 'waiting-login'/);
+  assert.match(xRuntime, /post\('homepanel:x-waiting-login'\)/);
   assert.match(xRuntime, /await sleep\(1000\)/);
   assert.doesNotMatch(xRuntime, /attempt < \d+ && !tab/);
   const waitStart = xRuntime.indexOf('let tab = followingTab()');
   const authEnd = xRuntime.indexOf("state.result = 'authenticated'", waitStart);
   const waiting = xRuntime.slice(waitStart, authEnd);
   assert.doesNotMatch(waiting, /\.click\(|scrollTo\(|scrollBy\(/);
+});
+
+test('X phase clock stays stopped until login and then starts a fresh five minutes', () => {
+  assert.match(xRuntime, /post\('homepanel:x-authenticated'\)/);
+  assert.match(mediaWrapper, /message == L"homepanel:x-waiting-login"/);
+  assert.match(mediaWrapper, /KillTimer\(hostWindow, kNativeMediaPhaseTimer\)/);
+  assert.match(mediaWrapper, /message == L"homepanel:x-authenticated"/);
+  assert.match(
+    mediaWrapper,
+    /::SetTimer\(hostWindow, kNativeMediaPhaseTimer,\s*kNativeMediaXPhaseMs, nullptr\)/,
+  );
 });
 
 test('X uses Following and likes a random 5 to 10 latest unliked posts', () => {
