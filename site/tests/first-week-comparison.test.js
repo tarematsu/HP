@@ -122,7 +122,7 @@ test('dashboard mounts and routes the first-week tab before the lazy runtime sta
 
   assert.ok(entry.indexOf('first-week-comparison-shell.js') < entry.indexOf('dashboard-tabs.js'));
   assert.match(entry, /first-week-comparison-shell\.js\?v=20260927\.2/);
-  assert.match(entry, /dashboard-tabs\.js\?v=20260927\.4/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20260928\.1/);
   assert.match(shell, /first-week-comparison\.css\?v=20260927\.1/);
   assert.match(shell, /dataset\.view = 'first-week'/);
   assert.match(shell, /textContent = '初週比較'/);

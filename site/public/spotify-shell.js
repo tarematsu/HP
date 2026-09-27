@@ -42,8 +42,8 @@ function mountView() {
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTrendTitle">
-      <div class="section-head"><div><p class="kicker">THREE GROUPS</p><h2 id="spotifyTrendTitle">坂道Spotify 再生数推移</h2></div></div>
-      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="乃木坂46・櫻坂46・日向坂46の日別前回比合計推移"></div>
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">女性アイドルSpotify再生数推移</h2></div></div>
+      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドルの日別前回比合計推移"></div>
     </section>
 
     <section class="card data-panel spotify-data-panel">

@@ -59,8 +59,17 @@ export function spotifyPlaycountSql() {
 }
 
 export function spotifyTrendSql() {
-  return `SELECT
+  return `WITH latest_ranking_date AS (
+    SELECT MAX(ranking_date) AS ranking_date FROM sh_spotify_top20_history
+  ), current_rank AS (
+    SELECT h.artist_key,h.rank
+    FROM sh_spotify_top20_history h
+    INNER JOIN latest_ranking_date latest ON latest.ranking_date=h.ranking_date
+  )
+  SELECT
     target.artist_key,
+    artist.artist_name,
+    current_rank.rank AS current_rank,
     d.snapshot_date,
     COUNT(*) AS track_count,
     CASE WHEN COUNT(d.delta)=0 THEN NULL ELSE SUM(d.delta) END AS total_delta,
@@ -71,17 +80,15 @@ export function spotifyTrendSql() {
     END AS is_carried_forward
   FROM sh_spotify_playcount_daily d
   INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
-  WHERE target.artist_key IN ('nogizaka46','sakurazaka46','hinatazaka46')
-    AND d.snapshot_date >= date((SELECT MAX(snapshot_date) FROM sh_spotify_playcount_daily), '-89 days')
-  GROUP BY target.artist_key, d.snapshot_date
+  INNER JOIN sh_spotify_artists artist ON artist.artist_key=target.artist_key
+  LEFT JOIN current_rank ON current_rank.artist_key=target.artist_key
+  WHERE d.snapshot_date >= date((SELECT MAX(snapshot_date) FROM sh_spotify_playcount_daily), '-89 days')
+  GROUP BY target.artist_key, artist.artist_name, current_rank.rank, d.snapshot_date
   ORDER BY
-    d.snapshot_date ASC,
-    CASE target.artist_key
-      WHEN 'nogizaka46' THEN 1
-      WHEN 'sakurazaka46' THEN 2
-      WHEN 'hinatazaka46' THEN 3
-      ELSE 4
-    END`;
+    CASE WHEN current_rank.rank IS NULL THEN 1 ELSE 0 END,
+    current_rank.rank ASC,
+    artist.artist_name COLLATE NOCASE ASC,
+    d.snapshot_date ASC`;
 }
 
 function integer(value) {
@@ -114,14 +121,17 @@ export function spotifyPayload(artist, rows = []) {
 }
 
 export function spotifyTrend(rows = []) {
-  const trend = Object.fromEntries(Object.keys(ARTISTS).map((key) => [key, []]));
+  const trend = {};
   for (const row of rows) {
-    const artist = spotifyArtist(row?.artist_key);
-    if (!artist) continue;
+    const artistKey = String(row?.artist_key || '').trim();
+    if (!artistKey) continue;
     const snapshotDate = String(row?.snapshot_date || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) continue;
-    trend[artist.key].push({
+    if (!trend[artistKey]) trend[artistKey] = [];
+    trend[artistKey].push({
       snapshot_date: snapshotDate,
+      artist_name: String(row?.artist_name || '').trim() || ARTISTS[artistKey]?.name || artistKey,
+      current_rank: integer(row?.current_rank),
       total_delta: integer(row?.total_delta),
       track_count: Math.max(0, integer(row?.track_count) ?? 0),
       carried_forward: Number(row?.is_carried_forward) === 1,

@@ -3,7 +3,12 @@ const ARTISTS = Object.freeze({
   sakurazaka46: '櫻坂46',
   hinatazaka46: '日向坂46',
 });
-const TREND_ORDER = Object.freeze(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
+const TREND_COLORS = Object.freeze([
+  '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
+  '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#fc8d62',
+  '#66c2a5', '#e5c494', '#b3b3b3', '#1b9e77', '#d95f02',
+  '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d',
+]);
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const DEFAULT_ARTIST = 'sakurazaka46';
@@ -90,19 +95,35 @@ function svgElement(name, attributes = {}) {
   return node;
 }
 
+function normalizeTrendSeries(trend = {}) {
+  return Object.entries(trend || {}).map(([artistKey, rawPoints]) => {
+    const points = (Array.isArray(rawPoints) ? [...rawPoints] : [])
+      .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(String(point?.snapshot_date || '')))
+      .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
+    const metadata = points.find((point) => point?.artist_name || point?.current_rank != null) || {};
+    return {
+      artistKey,
+      artistName: String(metadata.artist_name || ARTISTS[artistKey] || artistKey),
+      currentRank: deltaNumber(metadata.current_rank),
+      points,
+    };
+  }).filter((series) => series.points.length)
+    .sort((a, b) => {
+      const aRank = a.currentRank ?? Number.MAX_SAFE_INTEGER;
+      const bRank = b.currentRank ?? Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.artistName.localeCompare(b.artistName, 'ja');
+    });
+}
+
 function renderTrendCharts(trend = {}) {
   const container = element('spotifyTrendCharts');
   if (!container) return;
   container.replaceChildren();
 
-  const normalized = Object.fromEntries(TREND_ORDER.map((artistKey) => [
-    artistKey,
-    (Array.isArray(trend?.[artistKey]) ? [...trend[artistKey]] : [])
-      .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(String(point?.snapshot_date || '')))
-      .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date))),
-  ]));
+  const seriesList = normalizeTrendSeries(trend);
   const dates = [...new Set(
-    Object.values(normalized).flatMap((points) => points.map((point) => String(point.snapshot_date))),
+    seriesList.flatMap((series) => series.points.map((point) => String(point.snapshot_date))),
   )].sort();
 
   if (!dates.length) {
@@ -113,8 +134,8 @@ function renderTrendCharts(trend = {}) {
     return;
   }
 
-  const values = Object.values(normalized)
-    .flatMap((points) => points.map((point) => deltaNumber(point?.total_delta)))
+  const values = seriesList
+    .flatMap((series) => series.points.map((point) => deltaNumber(point?.total_delta)))
     .filter((value) => value != null);
   let yMin = Math.min(0, ...values);
   let yMax = Math.max(0, ...values);
@@ -135,20 +156,20 @@ function renderTrendCharts(trend = {}) {
     ? [0]
     : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
 
-  for (const artistKey of TREND_ORDER) {
-    const points = normalized[artistKey];
+  seriesList.forEach(({ artistKey, artistName, currentRank, points }, seriesIndex) => {
     const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
     const latest = [...points].reverse().find((point) => deltaNumber(point?.total_delta) != null);
 
     const series = document.createElement('section');
     series.className = 'spotify-trend-series';
     series.dataset.artist = artistKey;
+    series.style.setProperty('--spotify-trend-color', TREND_COLORS[seriesIndex % TREND_COLORS.length]);
 
     const head = document.createElement('div');
     head.className = 'spotify-trend-head';
     const name = document.createElement('span');
     name.className = 'spotify-trend-name';
-    name.textContent = ARTISTS[artistKey];
+    name.textContent = currentRank == null ? artistName : `${currentRank}位 ${artistName}`;
     const latestValue = document.createElement('strong');
     latestValue.className = 'spotify-trend-latest';
     latestValue.textContent = formatDelta(latest?.total_delta);
@@ -159,7 +180,7 @@ function renderTrendCharts(trend = {}) {
     const svg = svgElement('svg', {
       viewBox: `0 0 ${width} ${height}`,
       role: 'img',
-      'aria-label': `${ARTISTS[artistKey]} Spotify前回比合計の推移`,
+      'aria-label': `${artistName} Spotify前回比合計の推移`,
       class: 'spotify-trend-svg',
     });
 
@@ -247,7 +268,7 @@ function renderTrendCharts(trend = {}) {
     scroll.append(svg);
     series.append(head, scroll);
     container.append(series);
-  }
+  });
 }
 
 function render(payload, trend) {
