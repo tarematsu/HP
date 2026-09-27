@@ -17,6 +17,8 @@ const databaseName = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const BINDING = 'OTHER_DB';
 const APPLE_MUSIC_COMPATIBILITY_TABLE = 'sh_host_queue_items';
 const LEGACY_TRACK_METADATA_TABLE = 'sh_track_metadata';
+const OFFICIAL_PARTY_SUMMARY_TABLE = 'sh_official_broadcast_summary';
+const OFFICIAL_PARTY_METRICS_MIGRATION = '039_official_party_materialized_metrics.sql';
 
 // Runtime writes the operational tables and Pages reads the public projections.
 // Provisioning updates only those two explicit owners.
@@ -89,9 +91,57 @@ function hasSchemaObject(name, type = null) {
   ));
 }
 
-function removeAppleMusicCompatibilityColumn() {
-  const columns = new Set(remoteRows(`PRAGMA table_info(${APPLE_MUSIC_COMPATIBILITY_TABLE})`)
+function tableColumns(tableName) {
+  return new Set(remoteRows(`PRAGMA table_info(${tableName})`)
     .map((row) => String(row?.name || '')));
+}
+
+function ensureOfficialPartyMetricColumns() {
+  const columns = tableColumns(OFFICIAL_PARTY_SUMMARY_TABLE);
+  const requiredColumns = [
+    ['listener_min', 'REAL'],
+    ['comment_count', 'INTEGER'],
+    ['session_id', 'INTEGER'],
+  ];
+  for (const [name, type] of requiredColumns) {
+    if (columns.has(name)) continue;
+    wrangler([
+      'd1', 'execute', databaseName,
+      '--remote', '--yes',
+      '--command', `ALTER TABLE ${OFFICIAL_PARTY_SUMMARY_TABLE} ADD COLUMN ${name} ${type}`,
+    ]);
+    columns.add(name);
+  }
+}
+
+function applyMigration(migrationFile) {
+  const migrationPath = resolve(migrationsDir, migrationFile);
+  if (migrationFile !== OFFICIAL_PARTY_METRICS_MIGRATION) {
+    wrangler([
+      'd1', 'execute', databaseName,
+      '--remote', '--yes',
+      '--file', migrationPath,
+    ]);
+    return;
+  }
+
+  // Migration 039 predates migration bookkeeping and contains non-idempotent
+  // ADD COLUMN statements. Production may already have one or more columns,
+  // so ensure only missing columns and then replay the idempotent backfill SQL.
+  ensureOfficialPartyMetricColumns();
+  const backfillSql = readFileSync(migrationPath, 'utf8')
+    .replace(/^ALTER TABLE sh_official_broadcast_summary ADD COLUMN listener_min REAL;\s*/u, '')
+    .replace(/^ALTER TABLE sh_official_broadcast_summary ADD COLUMN comment_count INTEGER;\s*/u, '')
+    .replace(/^ALTER TABLE sh_official_broadcast_summary ADD COLUMN session_id INTEGER;\s*/u, '');
+  wrangler([
+    'd1', 'execute', databaseName,
+    '--remote', '--yes',
+    '--command', backfillSql,
+  ]);
+}
+
+function removeAppleMusicCompatibilityColumn() {
+  const columns = tableColumns(APPLE_MUSIC_COMPATIBILITY_TABLE);
   if (!columns.has('apple_music_id')) return;
   wrangler([
     'd1', 'execute', databaseName,
@@ -166,13 +216,7 @@ const migrationFiles = readdirSync(migrationsDir)
   .filter((name) => name.endsWith('.sql'))
   .sort();
 const activeMigrationFiles = migrationFiles.filter((name) => !retiredMigrationFiles.has(name));
-for (const migrationFile of activeMigrationFiles) {
-  wrangler([
-    'd1', 'execute', databaseName,
-    '--remote', '--yes',
-    '--file', resolve(migrationsDir, migrationFile),
-  ]);
-}
+for (const migrationFile of activeMigrationFiles) applyMigration(migrationFile);
 removeAppleMusicCompatibilityColumn();
 consolidateLegacyTrackMetadata();
 verifySchema();

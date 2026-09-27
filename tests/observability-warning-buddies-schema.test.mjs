@@ -46,7 +46,8 @@ test('buddies provisioning applies the Apple Music column removal idempotently',
 });
 
 test('other provisioning also applies its Apple Music column removal idempotently', () => {
-  assert.match(otherProvisionSource, /PRAGMA table_info\(\$\{APPLE_MUSIC_COMPATIBILITY_TABLE\}\)/u);
+  assert.match(otherProvisionSource, /PRAGMA table_info\(\$\{tableName\}\)/u);
+  assert.match(otherProvisionSource, /tableColumns\(APPLE_MUSIC_COMPATIBILITY_TABLE\)/u);
   assert.match(otherProvisionSource, /columns\.has\('apple_music_id'\)/u);
   assert.match(otherProvisionSource, /removeAppleMusicCompatibilityColumn\(\);/u);
   assert.doesNotMatch(obsoleteCollectionMigration, /DROP COLUMN apple_music_id/u);
