@@ -29,6 +29,7 @@ function formatDate(value) {
 }
 
 function formatDelta(value) {
+  if (value == null || value === '') return '-';
   const number = Number(value);
   if (!Number.isSafeInteger(number)) return '-';
   return number > 0 ? `+${numberFormat.format(number)}` : numberFormat.format(number);
