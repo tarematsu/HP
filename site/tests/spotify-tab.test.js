@@ -149,7 +149,7 @@ test('Spotify tab mounts three trend charts and fetches the single read model', 
   assert.match(shell, /data-spotify-artist="sakurazaka46" class="active" aria-pressed="true"/);
   assert.match(shell, /data-spotify-artist="hinatazaka46"/);
   assert.match(shell, /id="spotifyTrendCharts"/);
-  assert.match(shell, /坂道Spotify 再生数推移/);
+  assert.match(shell, /女性アイドルSpotify再生数推移/);
   assert.doesNotMatch(shell, /三坂 前回比合計/);
   assert.match(runtime, /const TREND_ORDER = Object\.freeze\(\['sakurazaka46', 'nogizaka46', 'hinatazaka46'\]\)/);
   assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
