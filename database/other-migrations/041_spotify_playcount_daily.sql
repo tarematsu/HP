@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS sh_spotify_playcount_daily (
   playcount INTEGER NOT NULL CHECK (playcount >= 0),
   delta INTEGER,
   collected_at INTEGER NOT NULL,
+  is_carried_forward INTEGER NOT NULL DEFAULT 0 CHECK (is_carried_forward IN (0,1)),
   PRIMARY KEY (snapshot_date, track_id)
 );
 
