@@ -14,7 +14,6 @@ import {
   truncateError,
   batchStatements,
 } from './spotify-playcount-common.js';
-import { discoverArtistReleases, fetchAnonymousSession } from './spotify-playcount-source.js';
 
 async function syncCurrentTop20(db) {
   const writes = [];
@@ -30,9 +29,16 @@ async function syncCurrentTop20(db) {
     );
   }
   await batchStatements(db, writes);
+  return readCollectionArtists(db);
+}
 
-  const result = await db.prepare(`SELECT artist_key,spotify_artist_id,artist_name
-    FROM sh_spotify_artists ORDER BY artist_key`).all();
+export async function readCollectionArtists(db) {
+  const result = await db.prepare(`SELECT a.artist_key,a.spotify_artist_id,a.artist_name
+    FROM sh_spotify_artists a
+    WHERE EXISTS (
+      SELECT 1 FROM sh_spotify_top20_history h WHERE h.artist_key=a.artist_key
+    )
+    ORDER BY a.artist_key`).all();
   return resultsOf(result).map((row) => ({
     artist_key: String(row.artist_key),
     spotify_artist_id: String(row.spotify_artist_id),
@@ -40,7 +46,7 @@ async function syncCurrentTop20(db) {
   }));
 }
 
-async function refreshArtistCatalog(db, artist, releases, seenAt) {
+export async function refreshArtistCatalog(db, artist, releases, seenAt) {
   const existingResult = await db.prepare(`SELECT album_id,is_active
     FROM sh_spotify_release_targets WHERE artist_key=?`).bind(artist.artist_key).all();
   const existing = new Map(resultsOf(existingResult).map((row) => [String(row.album_id), Number(row.is_active || 0)]));
@@ -76,22 +82,7 @@ async function refreshArtistCatalog(db, artist, releases, seenAt) {
   return changed;
 }
 
-async function refreshCatalog(env, dependencies, collectionArtists) {
-  const db = env.OTHER_DB;
-  const fetchImpl = dependencies.fetch || fetch;
-  const session = dependencies.session || await fetchAnonymousSession(env, fetchImpl);
-  const seenAt = Date.now();
-  let releasesSeen = 0;
-  let releasesChanged = 0;
-  for (const artist of collectionArtists) {
-    const releases = await discoverArtistReleases(artist, env, session, fetchImpl);
-    releasesSeen += releases.length;
-    releasesChanged += await refreshArtistCatalog(db, artist, releases, seenAt);
-  }
-  return { releasesSeen, releasesChanged };
-}
-
-function queueMessage(snapshotDate, runToken, row, collectionArtists) {
+function albumQueueMessage(snapshotDate, runToken, row, collectionArtists) {
   const targetByKey = new Map(collectionArtists.map((artist) => [artist.artist_key, artist]));
   const targets = String(row?.target_keys || '').split(',')
     .map((value) => targetByKey.get(value.trim())).filter(Boolean)
@@ -104,7 +95,22 @@ function queueMessage(snapshotDate, runToken, row, collectionArtists) {
   };
 }
 
-async function sendQueueBatch(queue, bodies) {
+export function catalogQueueMessage(snapshotDate, runToken, artist, index, total) {
+  return {
+    message_type: 'spotify-playcount-catalog', message_version: 1,
+    snapshot_date: snapshotDate,
+    run_token: runToken,
+    catalog_index: index,
+    catalog_total: total,
+    artist: {
+      artist_key: artist.artist_key,
+      spotify_artist_id: artist.spotify_artist_id,
+      artist_name: artist.artist_name,
+    },
+  };
+}
+
+export async function sendQueueBatch(queue, bodies) {
   for (let offset = 0; offset < bodies.length; offset += QUEUE_BATCH_SIZE) {
     const chunk = bodies.slice(offset, offset + QUEUE_BATCH_SIZE);
     if (typeof queue.sendBatch === 'function') {
@@ -115,7 +121,13 @@ async function sendQueueBatch(queue, bodies) {
   }
 }
 
-async function queueActiveReleases(env, snapshotDate, runToken, collectionArtists) {
+export async function sendCatalogMessage(env, body) {
+  const queue = env.SPOTIFY_PLAYCOUNT_QUEUE;
+  if (!queue?.send && !queue?.sendBatch) throw new Error('SPOTIFY_PLAYCOUNT_QUEUE binding is required');
+  await sendQueueBatch(queue, [body]);
+}
+
+export async function queueActiveReleases(env, snapshotDate, runToken, collectionArtists) {
   const queue = env.SPOTIFY_PLAYCOUNT_QUEUE;
   if (!queue?.send && !queue?.sendBatch) throw new Error('SPOTIFY_PLAYCOUNT_QUEUE binding is required');
   const query = await env.OTHER_DB.prepare(`SELECT r.album_id,GROUP_CONCAT(t.artist_key, ',') AS target_keys
@@ -123,10 +135,11 @@ async function queueActiveReleases(env, snapshotDate, runToken, collectionArtist
     INNER JOIN sh_spotify_release_targets t ON t.album_id=r.album_id
     WHERE t.is_active=1 GROUP BY r.album_id ORDER BY r.album_id`).all();
   const bodies = resultsOf(query)
-    .map((row) => queueMessage(snapshotDate, runToken, row, collectionArtists)).filter(Boolean);
+    .map((row) => albumQueueMessage(snapshotDate, runToken, row, collectionArtists)).filter(Boolean);
   if (!bodies.length) throw new Error('Spotify catalog contains no active releases to collect');
   await env.OTHER_DB.prepare(`UPDATE sh_spotify_collection_runs
-    SET albums_queued=?,status='queued',updated_at=? WHERE snapshot_date=? AND run_token=?`)
+    SET albums_queued=?,albums_completed=0,status='queued',updated_at=?
+    WHERE snapshot_date=? AND run_token=? AND status='catalog'`)
     .bind(bodies.length, Date.now(), snapshotDate, runToken).run();
   await sendQueueBatch(queue, bodies);
   return bodies.length;
@@ -148,17 +161,18 @@ async function selectScheduledSnapshot(db, scheduledTime) {
   return shouldRetryRun(todayRun, scheduledTime) ? { snapshotDate: today } : { skip: 'in-flight' };
 }
 
-async function beginAttempt(db, snapshotDate, attemptNo, runToken, startedAt) {
+async function beginAttempt(db, snapshotDate, attemptNo, runToken, startedAt, catalogTotal) {
   await db.prepare(`INSERT INTO sh_spotify_collection_runs (
       snapshot_date,status,attempt_no,run_token,albums_queued,albums_completed,
-      tracks_collected,errors,started_at,attempt_started_at,completed_at,updated_at,last_error
-    ) VALUES (?,'catalog',?,?,0,0,0,0,?,?,NULL,?,NULL)
+      catalog_total,catalog_completed,tracks_collected,errors,started_at,
+      attempt_started_at,completed_at,updated_at,last_error
+    ) VALUES (?,'catalog',?,?,0,0,?,0,0,0,?,?,NULL,?,NULL)
     ON CONFLICT(snapshot_date) DO UPDATE SET
       status='catalog',attempt_no=excluded.attempt_no,run_token=excluded.run_token,
-      albums_queued=0,albums_completed=0,tracks_collected=0,errors=0,
-      attempt_started_at=excluded.attempt_started_at,completed_at=NULL,
-      updated_at=excluded.updated_at,last_error=NULL`)
-    .bind(snapshotDate, attemptNo, runToken, startedAt, startedAt, startedAt).run();
+      albums_queued=0,albums_completed=0,catalog_total=excluded.catalog_total,catalog_completed=0,
+      tracks_collected=0,errors=0,attempt_started_at=excluded.attempt_started_at,
+      completed_at=NULL,updated_at=excluded.updated_at,last_error=NULL`)
+    .bind(snapshotDate, attemptNo, runToken, catalogTotal, startedAt, startedAt, startedAt).run();
   await db.batch([
     db.prepare(`DELETE FROM sh_spotify_collection_album_runs WHERE snapshot_date=?`).bind(snapshotDate),
     db.prepare(`DELETE FROM sh_spotify_playcount_candidates WHERE snapshot_date=?`).bind(snapshotDate),
@@ -172,7 +186,7 @@ async function failRun(db, snapshotDate, runToken, error) {
     .bind(Date.now(), truncateError(error), snapshotDate, runToken).run();
 }
 
-export async function runSpotifyPlaycountScheduled(controller, env, dependencies = {}) {
+export async function runSpotifyPlaycountScheduled(controller, env) {
   if (!enabled(env?.SPOTIFY_PLAYCOUNT_ENABLED, true)) {
     logEvent('spotify_playcount_scheduled', { skipped: true, reason: 'disabled' });
     return { skipped: true, reason: 'disabled' };
@@ -180,37 +194,57 @@ export async function runSpotifyPlaycountScheduled(controller, env, dependencies
   const db = env?.OTHER_DB;
   if (!db?.prepare || !db?.batch) throw new Error('OTHER_DB binding is required');
 
-  // sh_spotify_artists is an additive roster: Top 20 entrants are inserted/updated but never removed.
-  // Therefore an artist keeps being collected after falling out of the current Top 20.
-  const collectionArtists = await syncCurrentTop20(db);
-  if (!collectionArtists.length) throw new Error('Spotify collection roster is empty');
-
   const raw = Number(controller?.scheduledTime);
   const scheduledTime = Number.isFinite(raw) ? raw : Date.now();
   const selection = await selectScheduledSnapshot(db, scheduledTime);
   if (!selection.snapshotDate) {
-    logEvent('spotify_playcount_scheduled', {
-      skipped: true, reason: selection.skip, collection_artists: collectionArtists.length,
-    });
+    logEvent('spotify_playcount_scheduled', { skipped: true, reason: selection.skip });
     return { skipped: true, reason: selection.skip };
   }
+
+  // Top 20 synchronization happens only for an actual collection attempt, not every hourly wake-up.
+  // The roster is additive but restricted to artists with Top 20 history.
+  const collectionArtists = await syncCurrentTop20(db);
+  if (!collectionArtists.length) throw new Error('Spotify collection roster is empty');
+
   const snapshotDate = selection.snapshotDate;
   const existing = await readRun(db, snapshotDate);
+  const refreshNeeded = !existing
+    || Number(existing.albums_queued || 0) === 0
+    || Number(existing.errors || 0) > 0
+    || ['error', 'incomplete'].includes(String(existing.status || ''));
   const attemptNo = Math.max(0, integer(existing?.attempt_no) ?? 0) + 1;
   const runToken = `${snapshotDate}:${scheduledTime}:${attemptNo}`;
-  await beginAttempt(db, snapshotDate, attemptNo, runToken, Date.now());
+  await beginAttempt(
+    db, snapshotDate, attemptNo, runToken, Date.now(),
+    refreshNeeded ? collectionArtists.length : 0,
+  );
+
   try {
-    let catalog = { releasesSeen: 0, releasesChanged: 0 };
-    const refreshNeeded = !existing
-      || Number(existing.albums_queued || 0) === 0
-      || Number(existing.errors || 0) > 0
-      || ['error', 'incomplete'].includes(String(existing.status || ''));
-    if (refreshNeeded) catalog = await refreshCatalog(env, dependencies, collectionArtists);
+    if (refreshNeeded) {
+      const first = catalogQueueMessage(
+        snapshotDate, runToken, collectionArtists[0], 0, collectionArtists.length,
+      );
+      await sendCatalogMessage(env, first);
+      const result = {
+        ok: true,
+        snapshot_date: snapshotDate,
+        attempt_no: attemptNo,
+        collection_artists: collectionArtists.length,
+        catalog_queued: 1,
+        albums_queued: 0,
+      };
+      logEvent('spotify_playcount_scheduled', result);
+      return result;
+    }
+
     const albumsQueued = await queueActiveReleases(env, snapshotDate, runToken, collectionArtists);
     const result = {
-      ok: true, snapshot_date: snapshotDate, attempt_no: attemptNo,
+      ok: true,
+      snapshot_date: snapshotDate,
+      attempt_no: attemptNo,
       collection_artists: collectionArtists.length,
-      releases_seen: catalog.releasesSeen, releases_changed: catalog.releasesChanged,
+      catalog_queued: 0,
       albums_queued: albumsQueued,
     };
     logEvent('spotify_playcount_scheduled', result);
