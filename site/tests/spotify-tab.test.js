@@ -122,6 +122,7 @@ test('Spotify tab mounts three group switches with Sakurazaka selected by defaul
   assert.match(shell, /data-spotify-artist="hinatazaka46"/);
   assert.match(runtime, /const DEFAULT_ARTIST = 'sakurazaka46'/);
   assert.match(runtime, /\/api\/spotify-playcounts\?artist=/);
+  assert.match(runtime, /if \(value == null \|\| value === ''\) return '-'/);
   assert.match(tabs, /VIEW_MODES[\s\S]*'spotify'/);
   assert.match(tabs, /const spotifyView = document\.getElementById\('spotifyView'\)/);
   assert.match(tabs, /async function showSpotify/);
