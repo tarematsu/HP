@@ -8,8 +8,8 @@ const runtime = readFileSync(new URL('../public/history/history-lite.js', import
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 
-test('daily history tab stays 日次 without weekly and monthly top tabs', () => {
-  assert.match(html, /data-mode="daily">日次<\/button>/);
+test('history tab stays 過去 without weekly and monthly top tabs', () => {
+  assert.match(html, /data-mode="daily">過去<\/button>/);
   assert.doesNotMatch(shell, /button\.textContent = '過去'|renameDailyTab/);
   assert.doesNotMatch(shell, /data-mode="weekly"|data-mode="monthly"/);
 });
