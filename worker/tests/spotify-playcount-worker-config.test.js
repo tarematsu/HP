@@ -45,6 +45,7 @@ test('catalog discovery is split into one artist per chained queue step before a
   const schedule = readFileSync(new URL('../src/spotify-playcount-schedule.js', import.meta.url), 'utf8');
   const catalog = readFileSync(new URL('../src/spotify-playcount-catalog-consumer.js', import.meta.url), 'utf8');
   const router = readFileSync(new URL('../src/spotify-playcount-queue-router.js', import.meta.url), 'utf8');
+  const common = readFileSync(new URL('../src/spotify-playcount-common.js', import.meta.url), 'utf8');
   const migration = readFileSync(
     new URL('../../database/other-migrations/044_spotify_catalog_progress.sql', import.meta.url),
     'utf8',
@@ -53,11 +54,13 @@ test('catalog discovery is split into one artist per chained queue step before a
   assert.match(schedule, /message_type: 'spotify-playcount-catalog'/);
   assert.match(schedule, /catalog_queued: 1/);
   assert.doesNotMatch(schedule, /for \(const artist of collectionArtists\) \{\s*const releases = await discoverArtistReleases/);
+  assert.match(catalog, /SELECT run_token,status,catalog_total,catalog_completed/);
   assert.match(catalog, /catalog_completed=catalog_completed\+1/);
   assert.match(catalog, /sendCatalogMessage/);
   assert.match(catalog, /queueActiveReleases/);
   assert.match(router, /spotify-playcount-catalog/);
   assert.match(router, /spotify-playcount-album/);
+  assert.doesNotMatch(common, /snapshot_date,status,attempt_no,run_token,albums_queued,albums_completed,\s*catalog_total/);
   assert.match(migration, /catalog_total/);
   assert.match(migration, /catalog_completed/);
 });
