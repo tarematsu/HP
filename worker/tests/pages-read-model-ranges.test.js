@@ -27,7 +27,6 @@ const ALL_VARIANTS = [
 
 const TWELVE_HOUR_VARIANTS = [
   'dashboard',
-  'history:daily',
   'spotify-playcounts',
 ];
 
@@ -124,7 +123,7 @@ test('canonical materialized variants exclude playback history', () => {
   assert.equal(materialized.has('track-history'), false);
   assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
-  assert.equal(materialized.get('history:daily').cadence_minutes, 720);
+  assert.equal(materialized.get('history:daily').cadence_minutes, 1440);
   assert.equal(materialized.get('history:weekly').cadence_minutes, 1440);
   assert.equal(materialized.get('history:monthly').cadence_minutes, 1440);
   assert.equal(materialized.get('history:broadcasts').cadence_minutes, 1440);
