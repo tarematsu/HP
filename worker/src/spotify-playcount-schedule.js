@@ -19,19 +19,8 @@ async function refreshArtistCatalog(db, artist, releases, seenAt) {
   const existingResult = await db.prepare(`SELECT album_id,is_active
     FROM sh_spotify_release_targets WHERE artist_key=?`).bind(artist.artist_key).all();
   const existing = new Map(resultsOf(existingResult).map((row) => [String(row.album_id), Number(row.is_active || 0)]));
-  const seenIds = new Set(releases.map((release) => String(release.album_id)));
   const writes = [];
   let changed = 0;
-
-  for (const [albumId, state] of existing) {
-    if (state === 1 && !seenIds.has(albumId)) {
-      writes.push(db.prepare(`UPDATE sh_spotify_release_targets
-        SET is_active=0,last_seen_at=? WHERE album_id=? AND artist_key=? AND is_active=1`)
-        .bind(seenAt, albumId, artist.artist_key));
-      changed += 1;
-    }
-  }
-
   for (const release of releases) {
     const state = existing.get(release.album_id);
     if (state === 1) continue;
@@ -178,7 +167,11 @@ export async function runSpotifyPlaycountScheduled(controller, env, dependencies
   await beginAttempt(db, snapshotDate, attemptNo, runToken, Date.now());
   try {
     let catalog = { releasesSeen: 0, releasesChanged: 0 };
-    if (!existing || Number(existing.albums_queued || 0) === 0) catalog = await refreshCatalog(env, dependencies);
+    const refreshNeeded = !existing
+      || Number(existing.albums_queued || 0) === 0
+      || Number(existing.errors || 0) > 0
+      || ['error', 'incomplete'].includes(String(existing.status || ''));
+    if (refreshNeeded) catalog = await refreshCatalog(env, dependencies);
     const albumsQueued = await queueActiveReleases(env, snapshotDate, runToken);
     const result = {
       ok: true, snapshot_date: snapshotDate, attempt_no: attemptNo,
