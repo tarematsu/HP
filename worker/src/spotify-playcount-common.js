@@ -93,7 +93,8 @@ export async function batchStatements(db, statements, size = D1_BATCH_SIZE) {
 export async function readRun(db, snapshotDate) {
   return db.prepare(`SELECT
       snapshot_date,status,attempt_no,run_token,albums_queued,albums_completed,
-      tracks_collected,errors,started_at,attempt_started_at,completed_at,updated_at,last_error
+      catalog_total,catalog_completed,tracks_collected,errors,
+      started_at,attempt_started_at,completed_at,updated_at,last_error
     FROM sh_spotify_collection_runs
     WHERE snapshot_date=?`)
     .bind(snapshotDate)
