@@ -12,7 +12,7 @@ test('current comparable female-idol Spotify roster contains exactly ranks 1-20'
   assert.equal(SPOTIFY_CURRENT_TOP20_ARTISTS.length, 20);
   assert.deepEqual(SPOTIFY_CURRENT_TOP20_ARTISTS.map(({ rank }) => rank),
     Array.from({ length: 20 }, (_, index) => index + 1));
-  assert.equal(new Set(SPOTIFY_CURRENT_TOP20_ARTISTS.map(({ artist_key }) => artist_key)).size, 20);
+  assert.equal(new Set(SPOTIFY_CURRENT_TOP20_ARTISTS.map(({ artist_key }) => artist.artist_key)).size, 20);
   assert.equal(new Set(SPOTIFY_CURRENT_TOP20_ARTISTS.map(({ spotify_artist_id }) => spotify_artist_id)).size, 20);
 });
 
@@ -23,10 +23,11 @@ test('initial Top 20 includes all three Sakamichi groups at the agreed filtered 
   assert.equal(byKey.get('hinatazaka46')?.rank, 18);
 });
 
-test('collection roster is additive after a Top 20 entry', () => {
+test('collection roster is additive after a Top 20 entry and excludes unrelated artists', () => {
   const schedule = readFileSync(new URL('../src/spotify-playcount-schedule.js', import.meta.url), 'utf8');
   assert.match(schedule, /INSERT INTO sh_spotify_artists/);
-  assert.match(schedule, /SELECT artist_key,spotify_artist_id,artist_name\s+FROM sh_spotify_artists/);
+  assert.match(schedule, /FROM sh_spotify_artists a/);
+  assert.match(schedule, /EXISTS \(\s*SELECT 1 FROM sh_spotify_top20_history h WHERE h\.artist_key=a\.artist_key/);
   assert.match(schedule, /INSERT INTO sh_spotify_top20_history/);
   assert.doesNotMatch(schedule, /DELETE FROM sh_spotify_artists/);
 });
