@@ -58,6 +58,32 @@ export function spotifyPlaycountSql() {
     d.track_id ASC`;
 }
 
+export function spotifyTrendSql() {
+  return `SELECT
+    target.artist_key,
+    d.snapshot_date,
+    COUNT(*) AS track_count,
+    CASE WHEN COUNT(d.delta)=0 THEN NULL ELSE SUM(d.delta) END AS total_delta,
+    CASE
+      WHEN COUNT(*)>0
+       AND SUM(CASE WHEN COALESCE(d.is_carried_forward,0)=1 THEN 1 ELSE 0 END)=COUNT(*)
+      THEN 1 ELSE 0
+    END AS is_carried_forward
+  FROM sh_spotify_playcount_daily d
+  INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
+  WHERE target.artist_key IN ('nogizaka46','sakurazaka46','hinatazaka46')
+    AND d.snapshot_date >= date((SELECT MAX(snapshot_date) FROM sh_spotify_playcount_daily), '-89 days')
+  GROUP BY target.artist_key, d.snapshot_date
+  ORDER BY
+    d.snapshot_date ASC,
+    CASE target.artist_key
+      WHEN 'nogizaka46' THEN 1
+      WHEN 'sakurazaka46' THEN 2
+      WHEN 'hinatazaka46' THEN 3
+      ELSE 4
+    END`;
+}
+
 function integer(value) {
   if (value == null || value === '') return null;
   const number = Number(value);
@@ -87,30 +113,38 @@ export function spotifyPayload(artist, rows = []) {
   };
 }
 
-export function spotifyReadModel(rows = []) {
-  const rowsByArtist = new Map(Object.keys(ARTISTS).map((key) => [key, []]));
+export function spotifyTrend(rows = []) {
+  const trend = Object.fromEntries(Object.keys(ARTISTS).map((key) => [key, []]));
   for (const row of rows) {
+    const artist = spotifyArtist(row?.artist_key);
+    if (!artist) continue;
+    const snapshotDate = String(row?.snapshot_date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(snapshotDate)) continue;
+    trend[artist.key].push({
+      snapshot_date: snapshotDate,
+      total_delta: integer(row?.total_delta),
+      track_count: Math.max(0, integer(row?.track_count) ?? 0),
+      carried_forward: Number(row?.is_carried_forward) === 1,
+    });
+  }
+  return trend;
+}
+
+export function spotifyReadModel(latestRows = [], trendRows = []) {
+  const rowsByArtist = new Map(Object.keys(ARTISTS).map((key) => [key, []]));
+  for (const row of latestRows) {
     const artist = spotifyArtist(row?.artist_key);
     if (artist) rowsByArtist.get(artist.key).push(row);
   }
 
   const groups = {};
-  const comparison = [];
   for (const artist of Object.values(ARTISTS)) {
-    const payload = spotifyPayload(artist, rowsByArtist.get(artist.key));
-    groups[artist.key] = payload;
-    comparison.push({
-      artist,
-      snapshot_date: payload.snapshot_date,
-      carried_forward: payload.carried_forward,
-      track_count: payload.track_count,
-      total_delta: payload.total_delta,
-    });
+    groups[artist.key] = spotifyPayload(artist, rowsByArtist.get(artist.key));
   }
   return {
     default_artist: DEFAULT_ARTIST_KEY,
     groups,
-    comparison,
+    trend: spotifyTrend(trendRows),
   };
 }
 
@@ -122,10 +156,14 @@ export async function onRequestGet({ env }) {
   }
 
   try {
-    const result = await env.OTHER_DB.prepare(spotifyPlaycountSql()).all();
+    const latestResult = await env.OTHER_DB.prepare(spotifyPlaycountSql()).all();
+    const trendResult = await env.OTHER_DB.prepare(spotifyTrendSql()).all();
     return json({
       ok: true,
-      ...spotifyReadModel(Array.isArray(result?.results) ? result.results : []),
+      ...spotifyReadModel(
+        Array.isArray(latestResult?.results) ? latestResult.results : [],
+        Array.isArray(trendResult?.results) ? trendResult.results : [],
+      ),
     });
   } catch (error) {
     console.error('spotify playcounts failed', error);
