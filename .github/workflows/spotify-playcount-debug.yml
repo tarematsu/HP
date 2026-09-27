@@ -27,9 +27,6 @@ jobs:
           import {
             SPOTIFY_TARGET_ARTISTS,
             albumIdsFromDiscographyHtml,
-            decodeSpotifyInitialState,
-            albumFromInitialState,
-            normalizeAlbumTracks,
           } from './src/spotify-playcount-collector.js';
 
           const headers = {
@@ -38,25 +35,32 @@ jobs:
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36',
           };
 
-          for (const artist of SPOTIFY_TARGET_ARTISTS) {
-            const url = `https://open.spotify.com/artist/${artist.spotify_artist_id}/discography/all`;
+          function summarize(html) {
+            const rawAlbumUris = [...html.matchAll(/spotify:album:([A-Za-z0-9]{16,32})/g)].map((m) => m[1]);
+            const hrefAlbums = [...html.matchAll(/\/album\/([A-Za-z0-9]{16,32})/g)].map((m) => m[1]);
+            return {
+              parsedAlbums: albumIdsFromDiscographyHtml(html).length,
+              rawAlbumUris: new Set(rawAlbumUris).size,
+              hrefAlbums: new Set(hrefAlbums).size,
+              initialState: /id=["']initialState["']/.test(html),
+              nextData: /id=["']__NEXT_DATA__["']/.test(html),
+            };
+          }
+
+          const artist = SPOTIFY_TARGET_ARTISTS.find((entry) => entry.artist_key === 'sakurazaka46');
+          const id = artist.spotify_artist_id;
+          const urls = [
+            `https://open.spotify.com/artist/${id}`,
+            `https://open.spotify.com/artist/${id}/discography/all`,
+            `https://open.spotify.com/artist/${id}/discography/album`,
+            `https://open.spotify.com/artist/${id}/discography/single`,
+            `https://open.spotify.com/embed/artist/${id}`,
+            `https://open.spotify.com/intl-ja/artist/${id}`,
+          ];
+
+          for (const url of urls) {
             const response = await fetch(url, { headers, redirect: 'follow' });
             const html = await response.text();
-            const ids = albumIdsFromDiscographyHtml(html);
-            console.log(JSON.stringify({ artist: artist.artist_key, status: response.status, finalUrl: response.url, bytes: html.length, contentType: response.headers.get('content-type'), albums: ids.length, firstAlbum: ids[0] || null }));
-            if (!response.ok) console.log(html.slice(0, 500));
-            if (ids.length) {
-              const albumResponse = await fetch(`https://open.spotify.com/album/${ids[0]}`, { headers, redirect: 'follow' });
-              const albumHtml = await albumResponse.text();
-              let trackCount = null;
-              let parseError = null;
-              try {
-                const album = albumFromInitialState(decodeSpotifyInitialState(albumHtml), ids[0]);
-                trackCount = normalizeAlbumTracks(album, [artist]).length;
-              } catch (error) {
-                parseError = String(error?.message || error);
-              }
-              console.log(JSON.stringify({ artist: artist.artist_key, albumStatus: albumResponse.status, albumBytes: albumHtml.length, normalizedTracks: trackCount, parseError }));
-            }
+            console.log(JSON.stringify({ url, status: response.status, finalUrl: response.url, bytes: html.length, contentType: response.headers.get('content-type'), ...summarize(html) }));
           }
           NODE
