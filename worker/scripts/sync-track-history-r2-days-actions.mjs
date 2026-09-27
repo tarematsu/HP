@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -47,6 +47,41 @@ function uploadJson(key, payload) {
   }
 }
 
+function loadJson(key) {
+  const directory = mkdtempSync(join(workerRoot, '.track-history-r2-read-'));
+  try {
+    const path = join(directory, 'payload.json');
+    try {
+      wrangler([
+        'r2', 'object', 'get', `${responseBucket}/${key}`,
+        '--remote', '--file', path,
+      ]);
+    } catch {
+      return null;
+    }
+    try {
+      return JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      return null;
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+function validDay(value) {
+  const text = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const timestamp = Date.parse(`${text}T00:00:00Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === text;
+}
+
+function normalizedDates(values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map(String)
+    .filter(validDay))].sort();
+}
+
 function parseRowJson(row, day) {
   try {
     const parsed = JSON.parse(String(row?.row_json || 'null'));
@@ -55,6 +90,74 @@ function parseRowJson(row, day) {
   } catch (error) {
     throw new Error(`invalid Track History JSON for ${day}: ${error.message}`);
   }
+}
+
+async function loadDayRows(db, day) {
+  const result = await db.prepare(`SELECT row_json,updated_at
+    FROM sh_pages_track_history_read_model
+    WHERE play_date=?
+    ORDER BY COALESCE(first_played_at,-1) ASC,row_key ASC`).bind(day).all();
+  return result.results || [];
+}
+
+function dayPayload(day, source, now) {
+  const rows = source.map((row) => parseRowJson(row, day));
+  const sourceRowCount = rows.reduce(
+    (sum, row) => sum + Math.max(0, Number(row?.play_count || 0)),
+    0,
+  );
+  const updatedAt = Math.max(
+    Number(now) || Date.now(),
+    ...source.map((row) => Number(row?.updated_at) || 0),
+  );
+  return {
+    version: 1,
+    day,
+    updated_at: updatedAt,
+    rows,
+    source_row_count: sourceRowCount,
+    excluded_dates: [],
+  };
+}
+
+export async function syncTrackHistoryR2Day({
+  db = remoteMinuteDatabase(),
+  day,
+  now = Date.now(),
+  upload = uploadJson,
+  load = loadJson,
+} = {}) {
+  if (!db?.prepare) throw new Error('MINUTE_DB adapter is missing');
+  if (!validDay(day)) throw new Error(`invalid Track History R2 sync day: ${day}`);
+
+  const source = await loadDayRows(db, day);
+  const payload = dayPayload(day, source, now);
+  upload(trackHistoryDayObjectKey(day), payload);
+
+  const existingIndex = await Promise.resolve(load(TRACK_HISTORY_DAY_INDEX_KEY));
+  const dates = new Set(normalizedDates(existingIndex?.dates));
+  if (payload.rows.length) dates.add(day);
+  else dates.delete(day);
+  const normalized = [...dates].sort();
+  const index = {
+    version: 1,
+    updated_at: Math.max(
+      Number(existingIndex?.updated_at) || 0,
+      Number(payload.updated_at) || Number(now) || Date.now(),
+    ),
+    dates: normalized,
+    latest_date: normalized.at(-1) || null,
+  };
+  upload(TRACK_HISTORY_DAY_INDEX_KEY, index);
+
+  return {
+    ok: true,
+    day,
+    rows: payload.rows.length,
+    plays: payload.source_row_count,
+    latest_date: index.latest_date,
+    updated_at: index.updated_at,
+  };
 }
 
 export async function syncTrackHistoryR2Days({ db, now = Date.now(), upload = uploadJson } = {}) {
@@ -70,33 +173,14 @@ export async function syncTrackHistoryR2Days({ db, now = Date.now(), upload = up
 
   for (const dayRow of dayRows) {
     const day = String(dayRow?.play_date || '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-    const result = await db.prepare(`SELECT row_json,updated_at
-      FROM sh_pages_track_history_read_model
-      WHERE play_date=?
-      ORDER BY COALESCE(first_played_at,-1) ASC,row_key ASC`).bind(day).all();
-    const source = result.results || [];
+    if (!validDay(day)) continue;
+    const source = await loadDayRows(db, day);
     if (!source.length) continue;
-    const rows = source.map((row) => parseRowJson(row, day));
-    const sourceRowCount = rows.reduce(
-      (sum, row) => sum + Math.max(0, Number(row?.play_count || 0)),
-      0,
-    );
-    const updatedAt = Math.max(
-      Number(dayRow?.updated_at) || 0,
-      ...source.map((row) => Number(row?.updated_at) || 0),
-    );
-    upload(trackHistoryDayObjectKey(day), {
-      version: 1,
-      day,
-      updated_at: updatedAt || Number(now) || Date.now(),
-      rows,
-      source_row_count: sourceRowCount,
-      excluded_dates: [],
-    });
+    const payload = dayPayload(day, source, Math.max(Number(now) || 0, Number(dayRow?.updated_at) || 0));
+    upload(trackHistoryDayObjectKey(day), payload);
     dates.push(day);
-    rowCount += rows.length;
-    playCount += sourceRowCount;
+    rowCount += payload.rows.length;
+    playCount += payload.source_row_count;
   }
 
   const timestamp = Number(now) || Date.now();
