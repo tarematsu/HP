@@ -1,10 +1,5 @@
-const ARTISTS = Object.freeze({
-  nogizaka46: Object.freeze({ key: 'nogizaka46', name: '乃木坂46' }),
-  sakurazaka46: Object.freeze({ key: 'sakurazaka46', name: '櫻坂46' }),
-  hinatazaka46: Object.freeze({ key: 'hinatazaka46', name: '日向坂46' }),
-});
-
-const DEFAULT_ARTIST_KEY = 'sakurazaka46';
+const SAKURAZAKA = Object.freeze({ key: 'sakurazaka46', name: '櫻坂46' });
+const DEFAULT_ARTIST_KEY = SAKURAZAKA.key;
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
@@ -21,19 +16,18 @@ function json(data, status = 200, headers = {}) {
 
 export function spotifyArtist(value) {
   const key = String(value || DEFAULT_ARTIST_KEY).trim().toLowerCase();
-  return ARTISTS[key] || null;
+  return key === DEFAULT_ARTIST_KEY ? SAKURAZAKA : null;
 }
 
 export function spotifyPlaycountSql() {
   return `WITH latest AS (
-    SELECT target.artist_key, MAX(d.snapshot_date) AS snapshot_date
+    SELECT MAX(d.snapshot_date) AS snapshot_date
     FROM sh_spotify_playcount_daily d
     INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
-    WHERE target.artist_key IN ('nogizaka46','sakurazaka46','hinatazaka46')
-    GROUP BY target.artist_key
+    WHERE target.artist_key='sakurazaka46'
   )
   SELECT
-    latest.artist_key,
+    'sakurazaka46' AS artist_key,
     d.snapshot_date,
     d.track_id,
     track.name,
@@ -42,17 +36,11 @@ export function spotifyPlaycountSql() {
     d.collected_at,
     COALESCE(d.is_carried_forward,0) AS is_carried_forward
   FROM latest
-  INNER JOIN sh_spotify_track_targets target ON target.artist_key=latest.artist_key
+  INNER JOIN sh_spotify_track_targets target ON target.artist_key='sakurazaka46'
   INNER JOIN sh_spotify_playcount_daily d
     ON d.snapshot_date=latest.snapshot_date AND d.track_id=target.track_id
   INNER JOIN sh_spotify_tracks track ON track.track_id=d.track_id
   ORDER BY
-    CASE latest.artist_key
-      WHEN 'nogizaka46' THEN 1
-      WHEN 'sakurazaka46' THEN 2
-      WHEN 'hinatazaka46' THEN 3
-      ELSE 4
-    END,
     d.playcount DESC,
     track.name COLLATE NOCASE ASC,
     d.track_id ASC`;
@@ -71,13 +59,7 @@ export function spotifyTrendSql() {
     artist.artist_name,
     current_rank.rank AS current_rank,
     d.snapshot_date,
-    COUNT(*) AS track_count,
-    CASE WHEN COUNT(d.delta)=0 THEN NULL ELSE SUM(d.delta) END AS total_delta,
-    CASE
-      WHEN COUNT(*)>0
-       AND SUM(CASE WHEN COALESCE(d.is_carried_forward,0)=1 THEN 1 ELSE 0 END)=COUNT(*)
-      THEN 1 ELSE 0
-    END AS is_carried_forward
+    CASE WHEN COUNT(d.delta)=0 THEN NULL ELSE SUM(d.delta) END AS total_delta
   FROM sh_spotify_playcount_daily d
   INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
   INNER JOIN sh_spotify_artists artist ON artist.artist_key=target.artist_key
@@ -130,30 +112,21 @@ export function spotifyTrend(rows = []) {
     if (!trend[artistKey]) trend[artistKey] = [];
     trend[artistKey].push({
       snapshot_date: snapshotDate,
-      artist_name: String(row?.artist_name || '').trim() || ARTISTS[artistKey]?.name || artistKey,
+      artist_name: String(row?.artist_name || '').trim() || artistKey,
       current_rank: integer(row?.current_rank),
       total_delta: integer(row?.total_delta),
-      track_count: Math.max(0, integer(row?.track_count) ?? 0),
-      carried_forward: Number(row?.is_carried_forward) === 1,
     });
   }
   return trend;
 }
 
 export function spotifyReadModel(latestRows = [], trendRows = []) {
-  const rowsByArtist = new Map(Object.keys(ARTISTS).map((key) => [key, []]));
-  for (const row of latestRows) {
-    const artist = spotifyArtist(row?.artist_key);
-    if (artist) rowsByArtist.get(artist.key).push(row);
-  }
-
-  const groups = {};
-  for (const artist of Object.values(ARTISTS)) {
-    groups[artist.key] = spotifyPayload(artist, rowsByArtist.get(artist.key));
-  }
+  const sakurazakaRows = latestRows.filter((row) => String(row?.artist_key || '') === DEFAULT_ARTIST_KEY);
   return {
     default_artist: DEFAULT_ARTIST_KEY,
-    groups,
+    groups: {
+      [DEFAULT_ARTIST_KEY]: spotifyPayload(SAKURAZAKA, sakurazakaRows),
+    },
     trend: spotifyTrend(trendRows),
   };
 }
