@@ -1,0 +1,29 @@
+name: Stationhead user streams probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: Inspect Buddies listener responses
+        run: node .github/scripts/probe-stationhead-user-streams.mjs
+      - name: Upload redacted result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stationhead-user-streams-probe
+          path: stationhead-user-streams.json
+          if-no-files-found: warn
+          retention-days: 3
