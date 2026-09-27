@@ -35,7 +35,6 @@ const ALL_VARIANTS = [
 
 const TWELVE_HOUR_VARIANTS = [
   'dashboard',
-  'history:daily',
   'spotify-playcounts',
 ];
 
