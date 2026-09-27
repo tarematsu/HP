@@ -1,4 +1,5 @@
 import type { Env } from "./sources";
+import { applySpotifyArtistChartInput } from "./spotify_artist_chart_capture";
 import { applyStationheadLeaderboardProbeInput } from "./stationhead_leaderboard_probe";
 import {
   applyNativeLeaderboardProbeStatus,
@@ -14,6 +15,7 @@ export interface DeviceExchangeInput {
   telemetry?: unknown;
   leaderboardProbe?: unknown;
   leaderboardProbeStatus?: unknown;
+  spotifyArtistChart?: unknown;
 }
 
 export function validDeviceExchangeInput(value: unknown): DeviceExchangeInput | null {
@@ -135,6 +137,29 @@ async function applyLeaderboardProbeStatus(
   }
 }
 
+async function applySpotifyArtistChart(
+  env: Env,
+  value: unknown,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const result = await applySpotifyArtistChartInput(value, env);
+    if (result.status === 200) {
+      payload.spotifyArtistChart = result.body;
+      return;
+    }
+    payload.spotifyArtistChartError = { status: result.status, detail: result.body };
+  } catch (error) {
+    console.error("device-exchange-spotify-artist-chart-failed", {
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+    });
+    payload.spotifyArtistChartError = {
+      status: 503,
+      detail: { error: "Spotify artist chart temporarily unavailable" },
+    };
+  }
+}
+
 export async function buildDeviceExchangeResponse(
   input: DeviceExchangeInput,
   env: Env,
@@ -161,6 +186,9 @@ export async function buildDeviceExchangeResponse(
       leaderboardOutcome,
       exchangeSideEffects,
     );
+  }
+  if (input.spotifyArtistChart !== undefined) {
+    await applySpotifyArtistChart(env, input.spotifyArtistChart, exchangeSideEffects);
   }
 
   const payload = await buildPayload(versionsFromInput(input));

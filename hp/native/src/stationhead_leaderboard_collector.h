@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "logger.h"
+#include "spotify_artist_chart_collector.h"
 
 namespace hp {
 
@@ -16,9 +17,38 @@ class StationheadLeaderboardCollector {
   void Start(int64_t nowMs);
   void Stop();
   void Tick(int64_t nowMs);
-  [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextWakeAt_; }
+  [[nodiscard]] int64_t NextWakeAt() const noexcept {
+    if (!started_) {
+      spotifyArtistChartCollector_.Stop();
+      spotifyArtistChartNextCaptureAt_ = 0;
+      return nextWakeAt_;
+    }
+    int64_t spotifyWake = 0;
+    try {
+      const int64_t now = UnixMillis();
+      spotifyArtistChartCollector_.EnsureStarted(now);
+      if (spotifyArtistChartNextCaptureAt_ <= 0 ||
+          now >= spotifyArtistChartNextCaptureAt_) {
+        spotifyArtistChartCollector_.RequestCaptureNow(now);
+        spotifyArtistChartNextCaptureAt_ = now + kSpotifyArtistChartIntervalMs;
+      }
+      spotifyArtistChartCollector_.Tick(now);
+      spotifyWake = spotifyArtistChartCollector_.NextWakeAt();
+    } catch (...) {
+      spotifyArtistChartCollector_.Stop();
+    }
+    if (spotifyArtistChartNextCaptureAt_ > 0 &&
+        (spotifyWake <= 0 || spotifyArtistChartNextCaptureAt_ < spotifyWake)) {
+      spotifyWake = spotifyArtistChartNextCaptureAt_;
+    }
+    if (nextWakeAt_ <= 0) return spotifyWake;
+    if (spotifyWake <= 0) return nextWakeAt_;
+    return std::min(nextWakeAt_, spotifyWake);
+  }
 
  private:
+  static constexpr int64_t kSpotifyArtistChartIntervalMs = 60 * 60'000LL;
+
   void BeginCapture(int64_t nowMs);
   void CreateController(uint64_t generation);
   void ConfigureAndNavigate(uint64_t generation);
@@ -49,6 +79,8 @@ class StationheadLeaderboardCollector {
   bool started_ = false;
   bool creating_ = false;
   bool captureInFlight_ = false;
+  mutable SpotifyArtistChartCollector spotifyArtistChartCollector_;
+  mutable int64_t spotifyArtistChartNextCaptureAt_ = 0;
 };
 
 }  // namespace hp
