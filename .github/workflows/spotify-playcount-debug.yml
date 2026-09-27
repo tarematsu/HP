@@ -20,14 +20,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Probe Spotify SSR variants
+      - name: Probe known Spotify album and track SSR
         working-directory: worker
         run: |
           node --input-type=module <<'NODE'
-          import { SPOTIFY_TARGET_ARTISTS, albumIdsFromDiscographyHtml } from './src/spotify-playcount-collector.js';
-
-          const artist = SPOTIFY_TARGET_ARTISTS.find((entry) => entry.artist_key === 'sakurazaka46');
-          const id = artist.spotify_artist_id;
+          const albumId = '5i6dKEtZzYKYnigumydAgo';
+          const trackId = '1CCL2gp0Y9eJLrVgt0lOEq';
           const baseHeaders = {
             accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'accept-language': 'ja-JP,ja;q=0.9,en;q=0.7',
@@ -38,34 +36,18 @@ jobs:
             bingbot: 'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
           };
 
-          async function text(url, ua) {
+          async function inspect(kind, url, uaName, ua) {
             const response = await fetch(url, { headers: { ...baseHeaders, 'user-agent': ua }, redirect: 'follow' });
-            return { response, html: await response.text() };
-          }
-
-          for (const [name, ua] of Object.entries(uas)) {
-            const { response, html } = await text(`https://open.spotify.com/artist/${id}/discography/all`, ua);
-            console.log('DISCO=' + JSON.stringify({ ua: name, status: response.status, finalUrl: response.url, bytes: html.length, albums: albumIdsFromDiscographyHtml(html).length, albumUris: new Set([...html.matchAll(/spotify:album:([A-Za-z0-9]{16,32})/g)].map((m) => m[1])).size, albumHrefs: new Set([...html.matchAll(/\/album\/([A-Za-z0-9]{16,32})/g)].map((m) => m[1])).size, initialState: /id=["']initialState["']/.test(html), nextData: /id=["']__NEXT_DATA__["']/.test(html) }));
-          }
-
-          // Diagnostic-only: use the anonymous token already exposed by the public embed page
-          // to obtain one album id, then test whether ordinary/SEO album HTML includes playcounts.
-          const embed = await text(`https://open.spotify.com/embed/artist/${id}`, uas.chrome);
-          const nextMatch = embed.html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
-          if (!nextMatch) throw new Error('embed __NEXT_DATA__ missing');
-          const next = JSON.parse(nextMatch[1]);
-          const token = next.props?.pageProps?.state?.settings?.session?.accessToken;
-          if (!token) throw new Error('anonymous embed token missing');
-          const albumsResponse = await fetch(`https://api.spotify.com/v1/artists/${id}/albums?include_groups=album,single&market=JP&limit=10`, { headers: { authorization: `Bearer ${token}` } });
-          const albumsJson = await albumsResponse.json();
-          const albumId = albumsJson?.items?.[0]?.id;
-          console.log('API_DIAG=' + JSON.stringify({ status: albumsResponse.status, items: albumsJson?.items?.length ?? null, firstAlbum: albumId || null }));
-          if (!albumId) process.exit(0);
-
-          for (const [name, ua] of Object.entries(uas)) {
-            const { response, html } = await text(`https://open.spotify.com/album/${albumId}`, ua);
-            const playcountLiterals = [...html.matchAll(/"playcount"\s*:\s*"?(\d+)"?/g)].map((m) => m[1]);
+            const html = await response.text();
+            const playcountJson = [...html.matchAll(/"playcount"\s*:\s*"?(\d+)"?/g)].map((m) => m[1]);
+            const commaNumbers = [...html.matchAll(/>(\d{1,3}(?:,\d{3})+)</g)].map((m) => m[1]);
             const trackUris = [...new Set([...html.matchAll(/spotify:track:([A-Za-z0-9]{16,32})/g)].map((m) => m[1]))];
-            console.log('ALBUM=' + JSON.stringify({ ua: name, status: response.status, finalUrl: response.url, bytes: html.length, initialState: /id=["']initialState["']/.test(html), nextData: /id=["']__NEXT_DATA__["']/.test(html), playcountLiterals: playcountLiterals.length, trackUris: trackUris.length, firstPlaycount: playcountLiterals[0] || null }));
+            const albumUris = [...new Set([...html.matchAll(/spotify:album:([A-Za-z0-9]{16,32})/g)].map((m) => m[1]))];
+            console.log(kind + '=' + JSON.stringify({ ua: uaName, status: response.status, finalUrl: response.url, bytes: html.length, initialState: /id=["']initialState["']/.test(html), nextData: /id=["']__NEXT_DATA__["']/.test(html), playcountJson: playcountJson.length, firstPlaycountJson: playcountJson[0] || null, commaNumbers: commaNumbers.slice(0, 10), trackUris: trackUris.length, albumUris: albumUris.length, hasKikkake: html.includes('きっかけ'), hasKnownCount: html.includes('13,446,180') }));
+          }
+
+          for (const [uaName, ua] of Object.entries(uas)) {
+            await inspect('ALBUM', `https://open.spotify.com/intl-ja/album/${albumId}`, uaName, ua);
+            await inspect('TRACK', `https://open.spotify.com/intl-ja/track/${trackId}`, uaName, ua);
           }
           NODE
