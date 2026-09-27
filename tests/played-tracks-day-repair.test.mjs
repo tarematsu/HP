@@ -41,6 +41,9 @@ test('played-tracks refresh publishes only the changed day and updates the R2 da
   assert.match(sync, /WHERE play_date=\?/);
   assert.match(sync, /trackHistoryDayObjectKey\(day\)/);
   assert.match(sync, /TRACK_HISTORY_DAY_INDEX_KEY/);
+  assert.match(sync, /run a full sync before incremental refresh/);
+  assert.match(sync, /Number\(existingIndex\.version\) !== 1/);
+  assert.match(sync, /!Array\.isArray\(existingIndex\.dates\)/);
   assert.doesNotMatch(sync.slice(sync.indexOf('export async function syncTrackHistoryR2Day'), sync.indexOf('export async function syncTrackHistoryR2Days')), /GROUP BY play_date/);
 });
 
