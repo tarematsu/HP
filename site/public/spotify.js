@@ -3,9 +3,15 @@ const ARTISTS = Object.freeze({
   sakurazaka46: '櫻坂46',
   hinatazaka46: '日向坂46',
 });
+const TREND_ORDER = Object.freeze(['sakurazaka46', 'nogizaka46', 'hinatazaka46']);
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 const DEFAULT_ARTIST = 'sakurazaka46';
 const numberFormat = new Intl.NumberFormat('ja-JP');
+const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
 let activeArtist = DEFAULT_ARTIST;
 let requestSequence = 0;
 let readModelPromise = null;
@@ -26,6 +32,12 @@ function formatDate(value) {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return '-';
   return `${Number(match[1])}/${Number(match[2])}/${Number(match[3])}`;
+}
+
+function formatTrendDate(value) {
+  const match = String(value || '').match(/^\d{4}-(\d{2})-(\d{2})$/);
+  if (!match) return String(value || '');
+  return `${Number(match[1])}/${Number(match[2])}`;
 }
 
 function deltaNumber(value) {
@@ -70,46 +82,175 @@ function renderRows(payload) {
   }
 }
 
-function renderComparison(comparison = []) {
-  const chart = element('spotifyComparisonChart');
-  if (!chart) return;
-  chart.replaceChildren();
+function svgElement(name, attributes = {}) {
+  const node = document.createElementNS(SVG_NS, name);
+  for (const [key, value] of Object.entries(attributes)) {
+    node.setAttribute(key, String(value));
+  }
+  return node;
+}
 
-  const byArtist = new Map(comparison.map((item) => [item?.artist?.key, item]));
-  const values = Object.keys(ARTISTS)
-    .map((key) => deltaNumber(byArtist.get(key)?.total_delta))
+function renderTrendCharts(trend = {}) {
+  const container = element('spotifyTrendCharts');
+  if (!container) return;
+  container.replaceChildren();
+
+  const normalized = Object.fromEntries(TREND_ORDER.map((artistKey) => [
+    artistKey,
+    (Array.isArray(trend?.[artistKey]) ? [...trend[artistKey]] : [])
+      .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(String(point?.snapshot_date || '')))
+      .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date))),
+  ]));
+  const dates = [...new Set(
+    Object.values(normalized).flatMap((points) => points.map((point) => String(point.snapshot_date))),
+  )].sort();
+
+  if (!dates.length) {
+    const empty = document.createElement('p');
+    empty.className = 'spotify-trend-empty';
+    empty.textContent = 'Spotify再生数の推移データはまだありません。';
+    container.append(empty);
+    return;
+  }
+
+  const values = Object.values(normalized)
+    .flatMap((points) => points.map((point) => deltaNumber(point?.total_delta)))
     .filter((value) => value != null);
-  const maximum = Math.max(1, ...values.map((value) => Math.abs(value)));
+  let yMin = Math.min(0, ...values);
+  let yMax = Math.max(0, ...values);
+  if (yMin === yMax) yMax = yMin + 1;
+  if (yMin < 0) yMin = Math.floor(yMin * 1.08);
+  if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
+  const yRange = Math.max(1, yMax - yMin);
 
-  for (const [artistKey, artistName] of Object.entries(ARTISTS)) {
-    const item = byArtist.get(artistKey);
-    const value = deltaNumber(item?.total_delta);
-    const row = document.createElement('div');
-    row.className = 'spotify-comparison-row';
-    if (artistKey === activeArtist) row.classList.add('is-active');
+  const width = 720;
+  const height = 190;
+  const margin = { left: 64, right: 18, top: 14, bottom: 34 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const xForIndex = (index) => margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
+  const yForValue = (value) => margin.top + (yMax - value) / yRange * plotHeight;
+  const dateIndex = new Map(dates.map((date, index) => [date, index]));
+  const xTicks = [...new Set(dates.length <= 1
+    ? [0]
+    : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
 
+  for (const artistKey of TREND_ORDER) {
+    const points = normalized[artistKey];
+    const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
+    const latest = [...points].reverse().find((point) => deltaNumber(point?.total_delta) != null);
+
+    const series = document.createElement('section');
+    series.className = 'spotify-trend-series';
+    series.dataset.artist = artistKey;
+
+    const head = document.createElement('div');
+    head.className = 'spotify-trend-head';
     const name = document.createElement('span');
-    name.className = 'spotify-comparison-name';
-    name.textContent = artistName;
+    name.className = 'spotify-trend-name';
+    name.textContent = ARTISTS[artistKey];
+    const latestValue = document.createElement('strong');
+    latestValue.className = 'spotify-trend-latest';
+    latestValue.textContent = formatDelta(latest?.total_delta);
+    head.append(name, latestValue);
 
-    const track = document.createElement('div');
-    track.className = 'spotify-comparison-track';
-    const bar = document.createElement('div');
-    bar.className = 'spotify-comparison-bar';
-    const ratio = value == null ? 0 : Math.max(0, Math.min(100, Math.abs(value) / maximum * 100));
-    bar.style.setProperty('--spotify-comparison-width', `${ratio}%`);
-    track.append(bar);
+    const scroll = document.createElement('div');
+    scroll.className = 'spotify-trend-scroll';
+    const svg = svgElement('svg', {
+      viewBox: `0 0 ${width} ${height}`,
+      role: 'img',
+      'aria-label': `${ARTISTS[artistKey]} Spotify前回比合計の推移`,
+      class: 'spotify-trend-svg',
+    });
 
-    const total = document.createElement('strong');
-    total.className = 'spotify-comparison-value spotify-number';
-    total.textContent = formatDelta(value);
-    row.setAttribute('aria-label', `${artistName} 前回比合計 ${formatDelta(value)}`);
-    row.append(name, track, total);
-    chart.append(row);
+    for (let tick = 0; tick <= 3; tick += 1) {
+      const value = yMax - yRange * tick / 3;
+      const y = yForValue(value);
+      const grid = svgElement('line', {
+        x1: margin.left,
+        y1: y,
+        x2: width - margin.right,
+        y2: y,
+        class: 'spotify-trend-grid',
+      });
+      const label = svgElement('text', {
+        x: margin.left - 8,
+        y: y + 4,
+        'text-anchor': 'end',
+        class: 'spotify-trend-axis-label',
+      });
+      label.textContent = compactNumberFormat.format(Math.round(value));
+      svg.append(grid, label);
+    }
+
+    if (yMin < 0 && yMax > 0) {
+      const zeroY = yForValue(0);
+      svg.append(svgElement('line', {
+        x1: margin.left,
+        y1: zeroY,
+        x2: width - margin.right,
+        y2: zeroY,
+        class: 'spotify-trend-axis',
+      }));
+    }
+
+    for (const index of xTicks) {
+      const x = xForIndex(index);
+      const label = svgElement('text', {
+        x,
+        y: height - 10,
+        'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
+        class: 'spotify-trend-axis-label',
+      });
+      label.textContent = formatTrendDate(dates[index]);
+      svg.append(label);
+    }
+
+    let pathData = '';
+    let drawing = false;
+    for (const date of dates) {
+      const point = byDate.get(date);
+      const value = deltaNumber(point?.total_delta);
+      if (value == null) {
+        drawing = false;
+        continue;
+      }
+      const x = xForIndex(dateIndex.get(date));
+      const y = yForValue(value);
+      pathData += `${drawing ? ' L' : ' M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+      drawing = true;
+    }
+    if (pathData) {
+      svg.append(svgElement('path', {
+        d: pathData.trim(),
+        class: 'spotify-trend-line',
+      }));
+    }
+
+    for (const point of points) {
+      const value = deltaNumber(point?.total_delta);
+      if (value == null) continue;
+      const index = dateIndex.get(String(point.snapshot_date));
+      if (index == null) continue;
+      const circle = svgElement('circle', {
+        cx: xForIndex(index),
+        cy: yForValue(value),
+        r: 3.5,
+        class: 'spotify-trend-point',
+      });
+      const title = svgElement('title');
+      title.textContent = `${formatDate(point.snapshot_date)} ${formatDelta(value)}`;
+      circle.append(title);
+      svg.append(circle);
+    }
+
+    scroll.append(svg);
+    series.append(head, scroll);
+    container.append(series);
   }
 }
 
-function render(payload, comparison) {
+function render(payload, trend) {
   const artistName = payload?.artist?.name || ARTISTS[activeArtist];
   const title = element('spotifyTableTitle');
   if (title) title.textContent = `${artistName} 再生数一覧`;
@@ -119,7 +260,7 @@ function render(payload, comparison) {
   if (count) count.textContent = numberFormat.format(Number(payload?.track_count) || 0);
   const delta = element('spotifyTotalDelta');
   if (delta) delta.textContent = formatDelta(payload?.total_delta);
-  renderComparison(comparison);
+  renderTrendCharts(trend);
   renderRows(payload || {});
 
   if (!payload?.track_count) {
@@ -161,7 +302,7 @@ export async function loadSpotifyView({ artist = activeArtist, refresh = false }
     if (sequence !== requestSequence || activeArtist !== requested) return;
     const payload = model?.groups?.[requested];
     if (!payload) throw new Error(`${ARTISTS[requested]}のリードモデルがありません`);
-    render(payload, Array.isArray(model.comparison) ? model.comparison : []);
+    render(payload, model?.trend || {});
   } catch (error) {
     if (sequence !== requestSequence || activeArtist !== requested) return;
     setNotice(`Spotify再生数の取得に失敗しました: ${error.message}`, true);
