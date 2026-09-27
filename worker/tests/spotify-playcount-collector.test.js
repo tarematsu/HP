@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
   SPOTIFY_TARGET_ARTISTS,
-  albumFromInitialState,
-  albumIdsFromDiscographyHtml,
-  decodeSpotifyInitialState,
+  countPlaycountRegressions,
   hasPlaycountAdvance,
   jstDateKey,
   jstHour,
   normalizeAlbumTracks,
+  parseSpotifyEmbedSession,
+  releasesFromArtistDiscography,
   shouldRetryRun,
 } from '../src/spotify-playcount-collector.js';
 
@@ -22,10 +23,7 @@ test('daily snapshot date is keyed in JST', () => {
 
 test('collector targets all three Sakamichi groups', () => {
   assert.deepEqual(
-    SPOTIFY_TARGET_ARTISTS.map(({ artist_key, spotify_artist_id }) => [
-      artist_key,
-      spotify_artist_id,
-    ]),
+    SPOTIFY_TARGET_ARTISTS.map(({ artist_key, spotify_artist_id }) => [artist_key, spotify_artist_id]),
     [
       ['nogizaka46', '08lN7bm4Etec8ETFxaTUmq'],
       ['sakurazaka46', '0Ti7MfCiVVQAK8zLSiqlto'],
@@ -34,49 +32,101 @@ test('collector targets all three Sakamichi groups', () => {
   );
 });
 
-test('public discography page discovers album ids without Spotify Web API', () => {
-  const renderedId = '1234567890123456789012';
-  const stateId = 'abcdefghijklmnopqrstuv';
+test('public embed page exposes an ephemeral anonymous web session', () => {
   const state = {
-    nested: {
-      releases: [
-        { uri: `spotify:album:${stateId}` },
-      ],
-    },
-  };
-  const encoded = Buffer.from(JSON.stringify(state), 'utf8').toString('base64');
-  const html = [
-    `<a href="https://open.spotify.com/album/${renderedId}">release</a>`,
-    `<script id="initialState" type="text/plain">${encoded}</script>`,
-  ].join('');
-  assert.deepEqual(
-    new Set(albumIdsFromDiscographyHtml(html)),
-    new Set([renderedId, stateId]),
-  );
-});
-
-test('public album page initialState is decoded and album entity is selected', () => {
-  const album = {
-    uri: 'spotify:album:album-123',
-    name: 'Test album',
-    tracks: { items: [] },
-  };
-  const state = {
-    entities: {
-      items: {
-        'spotify:album:album-123': album,
+    props: {
+      pageProps: {
+        state: {
+          settings: {
+            session: {
+              accessToken: 'anonymous-token',
+              accessTokenExpirationTimestampMs: 1790481823269,
+              isAnonymous: true,
+            },
+          },
+        },
       },
     },
   };
-  const encoded = Buffer.from(JSON.stringify(state), 'utf8').toString('base64');
-  const html = `<html><script id="initialState" type="text/plain">${encoded}</script></html>`;
-  assert.deepEqual(albumFromInitialState(decodeSpotifyInitialState(html), 'album-123'), album);
+  const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(state)}</script>`;
+  assert.deepEqual(parseSpotifyEmbedSession(html), {
+    accessToken: 'anonymous-token',
+    accessTokenExpirationTimestampMs: 1790481823269,
+    isAnonymous: true,
+  });
+});
+
+test('Pathfinder full discography payload is normalized and deduplicated', () => {
+  const payload = {
+    data: {
+      artistUnion: {
+        discography: {
+          all: {
+            items: [
+              {
+                releases: {
+                  items: [
+                    {
+                      id: 'album-1',
+                      uri: 'spotify:album:album-1',
+                      name: 'Single A',
+                      type: 'SINGLE',
+                      date: { isoString: '2026-09-10T00:00:00Z', precision: 'DAY' },
+                      tracks: { totalCount: 1 },
+                    },
+                  ],
+                },
+              },
+              {
+                releases: {
+                  items: [
+                    {
+                      id: 'album-1',
+                      uri: 'spotify:album:album-1',
+                      name: 'Single A',
+                      type: 'SINGLE',
+                      date: { isoString: '2026-09-10T00:00:00Z', precision: 'DAY' },
+                      tracks: { totalCount: 1 },
+                    },
+                    {
+                      uri: 'spotify:album:album-2',
+                      name: 'Album B',
+                      type: 'ALBUM',
+                      date: { year: 2025, month: 12, day: 3, precision: 'DAY' },
+                      tracks: { totalCount: 12 },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      },
+    },
+  };
+
+  assert.deepEqual(releasesFromArtistDiscography(payload), [
+    {
+      album_id: 'album-1',
+      name: 'Single A',
+      album_type: 'single',
+      release_date: '2026-09-10',
+      release_date_precision: 'day',
+      total_tracks: 1,
+    },
+    {
+      album_id: 'album-2',
+      name: 'Album B',
+      album_type: 'album',
+      release_date: '2025-12-03',
+      release_date_precision: 'day',
+      total_tracks: 12,
+    },
+  ]);
 });
 
 test('album normalizer keeps only tracks credited to a target group', () => {
-  const targets = [
-    { artist_key: 'sakurazaka46', spotify_artist_id: 'target-artist' },
-  ];
+  const targets = [{ artist_key: 'sakurazaka46', spotify_artist_id: 'target-artist' }];
   const payload = {
     data: {
       album: {
@@ -84,7 +134,7 @@ test('album normalizer keeps only tracks credited to a target group', () => {
           items: [
             {
               track: {
-                uri: 'spotify:track:wanted',
+                id: 'wanted',
                 name: 'Wanted',
                 playcount: '123456',
                 discNumber: 1,
@@ -100,25 +150,17 @@ test('album normalizer keeps only tracks credited to a target group', () => {
             },
             {
               track: {
-                uri: 'spotify:track:not-target',
+                id: 'not-target',
                 name: 'Compilation track',
                 playcount: '999',
-                artists: {
-                  items: [
-                    { uri: 'spotify:artist:somebody-else', profile: { name: 'Other' } },
-                  ],
-                },
+                artists: { items: [{ uri: 'spotify:artist:other', profile: { name: 'Other' } }] },
               },
             },
             {
               track: {
-                uri: 'spotify:track:missing-count',
+                id: 'missing-count',
                 name: 'No count',
-                artists: {
-                  items: [
-                    { uri: 'spotify:artist:target-artist', profile: { name: '櫻坂46' } },
-                  ],
-                },
+                artists: { items: [{ uri: 'spotify:artist:target-artist', profile: { name: '櫻坂46' } }] },
               },
             },
           ],
@@ -146,25 +188,25 @@ test('album normalizer keeps only tracks credited to a target group', () => {
 
 test('normalizer falls back to album artists when track rows omit artists', () => {
   const tracks = normalizeAlbumTracks({
-    uri: 'spotify:album:album-public',
-    artists: {
-      items: [{ uri: 'spotify:artist:target-v2', profile: { name: '日向坂46' } }],
-    },
+    artists: { items: [{ uri: 'spotify:artist:target-v2', profile: { name: '日向坂46' } }] },
     tracks: {
-      items: [{
-        track: {
-          uri: 'spotify:track:track-v2',
-          name: 'Public page track',
-          playcount: '42',
-          duration: { totalMilliseconds: 180000 },
-        },
-      }],
+      items: [{ track: { uri: 'spotify:track:track-v2', name: 'Track', playcount: '42' } }],
     },
   }, [{ artist_key: 'hinatazaka46', spotify_artist_id: 'target-v2' }]);
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0].track_id, 'track-v2');
   assert.equal(tracks[0].playcount, 42);
   assert.deepEqual(tracks[0].target_keys, ['hinatazaka46']);
+});
+
+test('collector is pinned to the live-tested anonymous Pathfinder operations', () => {
+  const source = readFileSync(new URL('../src/spotify-playcount-source.js', import.meta.url), 'utf8');
+  assert.match(source, /api-partner\.spotify\.com\/pathfinder\/v1\/query/);
+  assert.match(source, /queryArtistDiscographyAll/);
+  assert.match(source, /9380995a9d4663cbcb5113fef3c6aabf70ae6d407ba61793fd01e2a1dd6929b0/);
+  assert.match(source, /queryAlbumTracks/);
+  assert.match(source, /3ea563e1d68f486d8df30f69de9dcedae74c77e684b889ba7408c589d30f7f2e/);
+  assert.doesNotMatch(source, /api\.spotify\.com\/v1/);
 });
 
 test('advance detection ignores new tracks and requires an existing track to increase', () => {
@@ -183,11 +225,41 @@ test('advance detection ignores new tracks and requires an existing track to inc
   ]), true);
 });
 
+test('regression detection rejects cumulative counters that move backwards', () => {
+  const previous = [
+    { track_id: 'a', playcount: 100 },
+    { track_id: 'b', playcount: 200 },
+  ];
+  assert.equal(countPlaycountRegressions(previous, [
+    { track_id: 'a', playcount: 100 },
+    { track_id: 'b', playcount: 199 },
+  ]), 1);
+  assert.equal(countPlaycountRegressions(previous, [
+    { track_id: 'a', playcount: 101 },
+    { track_id: 'b', playcount: 200 },
+  ]), 0);
+});
+
+test('staging and finalization are guarded against late or duplicate queue deliveries', () => {
+  const common = readFileSync(new URL('../src/spotify-playcount-common.js', import.meta.url), 'utf8');
+  const consumer = readFileSync(new URL('../src/spotify-playcount-consumer.js', import.meta.url), 'utf8');
+  const schedule = readFileSync(new URL('../src/spotify-playcount-schedule.js', import.meta.url), 'utf8');
+  assert.match(common, /\['catalog', 'queued'\]\.includes/);
+  assert.match(consumer, /MAX\(sh_spotify_playcount_candidates\.playcount,excluded\.playcount\)/);
+  assert.match(consumer, /status='finalizing'/);
+  assert.match(consumer, /DELETE FROM sh_spotify_playcount_candidates/);
+  assert.match(consumer, /DELETE FROM sh_spotify_collection_album_runs/);
+  assert.match(consumer, /SET is_active=0/);
+  assert.match(schedule, /Number\(existing\.errors \|\| 0\) > 0/);
+  assert.match(schedule, /\['error', 'incomplete'\]\.includes/);
+});
+
 test('stale and incomplete runs are retryable while fresh queued work is not duplicated', () => {
   const now = Date.UTC(2026, 8, 27, 0, 0, 0);
   assert.equal(shouldRetryRun({ status: 'stale', updated_at: now - 1 }), true);
   assert.equal(shouldRetryRun({ status: 'incomplete', updated_at: now - 1 }), true);
   assert.equal(shouldRetryRun({ status: 'queued', updated_at: now - 10 * 60 * 1000 }, now), false);
   assert.equal(shouldRetryRun({ status: 'queued', updated_at: now - 60 * 60 * 1000 }, now), true);
+  assert.equal(shouldRetryRun({ status: 'finalizing', updated_at: now - 60 * 60 * 1000 }, now), true);
   assert.equal(shouldRetryRun({ status: 'complete', updated_at: now - 60 * 60 * 1000 }, now), false);
 });
