@@ -64,14 +64,16 @@ function d1(sqlite) {
 }
 
 function runRow(sqlite) {
-  return sqlite.prepare(`SELECT albums_queued,albums_completed,errors,run_token,status
+  const row = sqlite.prepare(`SELECT albums_queued,albums_completed,errors,run_token,status
     FROM sh_spotify_collection_runs WHERE snapshot_date=?`).get('2026-09-28');
+  return row ? { ...row } : row;
 }
 
 function albumRow(sqlite, albumId) {
-  return sqlite.prepare(`SELECT run_token,status,track_count,attempts,last_error
+  const row = sqlite.prepare(`SELECT run_token,status,track_count,attempts,last_error
     FROM sh_spotify_collection_album_runs WHERE snapshot_date=? AND album_id=?`)
     .get('2026-09-28', albumId);
+  return row ? { ...row } : row;
 }
 
 test('album progress counters are idempotent across duplicate and recovered deliveries', async () => {
