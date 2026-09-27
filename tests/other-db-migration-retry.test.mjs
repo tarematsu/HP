@@ -12,5 +12,6 @@ test('OTHER_DB provisioning makes migration 039 retry-safe before later migratio
   assert.match(provisioner, /if \(columns\.has\(name\)\) continue/);
   assert.match(provisioner, /ensureOfficialPartyMetricColumns\(\)/);
   assert.match(provisioner, /replace\(\/\^ALTER TABLE sh_official_broadcast_summary ADD COLUMN listener_min REAL/);
+  assert.match(provisioner, /`--command=\$\{backfillSql\}`/);
   assert.match(provisioner, /for \(const migrationFile of activeMigrationFiles\) applyMigration\(migrationFile\)/);
 });
