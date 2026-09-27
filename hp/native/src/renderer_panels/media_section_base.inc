@@ -14,8 +14,6 @@ constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMediaYoutubePhaseMs = kNativeMediaPhaseMs;
 constexpr UINT kNativeMediaTverPhaseMs = kNativeMediaPhaseMs;
-// X occupies the final five minutes of the TVer hour; login wait does not pause it.
-constexpr UINT kNativeMediaXPhaseMs = 5U * 60U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
