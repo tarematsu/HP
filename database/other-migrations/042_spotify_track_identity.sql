@@ -18,3 +18,13 @@ CREATE TABLE IF NOT EXISTS sh_spotify_track_aliases (
 
 CREATE INDEX IF NOT EXISTS idx_sh_spotify_track_aliases_canonical
   ON sh_spotify_track_aliases (canonical_track_id, source_track_id);
+
+CREATE VIEW IF NOT EXISTS sh_spotify_playcount_daily_canonical AS
+SELECT
+  daily.snapshot_date,
+  COALESCE(alias.canonical_track_id, daily.track_id) AS track_id,
+  MAX(daily.playcount) AS playcount
+FROM sh_spotify_playcount_daily daily
+LEFT JOIN sh_spotify_track_aliases alias
+  ON alias.source_track_id=daily.track_id
+GROUP BY daily.snapshot_date, COALESCE(alias.canonical_track_id, daily.track_id);
