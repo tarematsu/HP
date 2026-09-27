@@ -15,6 +15,11 @@ class SpotifyArtistChartCollector {
   void Start(int64_t nowMs);
   void Stop();
   void Tick(int64_t nowMs);
+  void RequestCaptureNow(int64_t nowMs) noexcept {
+    if (!started_ || creating_ || captureInFlight_) return;
+    nextCaptureAt_ = nowMs;
+    UpdateNextWake();
+  }
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextWakeAt_; }
 
  private:
