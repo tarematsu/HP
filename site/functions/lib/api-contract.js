@@ -28,12 +28,12 @@ export const MATERIALIZED_RESPONSE_MAX_AGE_MS = 15 * 60_000;
 // rather than falling back to D1 when a materialized object is unavailable.
 export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 5 }),
-  Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 360 }),
-  Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 360 }),
-  Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 360 }),
-  Object.freeze({ key: 'history:broadcasts', url: '/api/history?mode=broadcasts', cadence_minutes: 360 }),
+  Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 720 }),
+  Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 1440 }),
+  Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 1440 }),
+  Object.freeze({ key: 'history:broadcasts', url: '/api/history?mode=broadcasts', cadence_minutes: 1440 }),
   Object.freeze({ key: 'host-history:summary', url: '/api/host-history?mode=summary', cadence_minutes: 1440 }),
-  Object.freeze({ key: 'spotify-playcounts', url: '/api/spotify-playcounts', cadence_minutes: 360 }),
+  Object.freeze({ key: 'spotify-playcounts', url: '/api/spotify-playcounts', cadence_minutes: 720 }),
 ]);
 
 const materializedVariantsByKey = new Map(MATERIALIZED_API_VARIANTS.map((variant) => [variant.key, variant]));
