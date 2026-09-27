@@ -2,6 +2,12 @@ name: Stationhead user streams probe
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/stationhead-total-streams-probe
+    paths:
+      - '.github/workflows/stationhead-user-streams-probe.yml'
+      - '.github/scripts/probe-stationhead-user-streams.mjs'
 
 permissions:
   contents: read
@@ -17,7 +23,7 @@ jobs:
           node-version: '22'
       - run: npm install --no-audit --no-fund
       - run: npx playwright install --with-deps chromium
-      - name: Inspect public profile without Start Listening
+      - name: Fetch Buddies total_streams without Start Listening
         run: node .github/scripts/probe-stationhead-user-streams.mjs
       - name: Upload redacted result
         if: always()
