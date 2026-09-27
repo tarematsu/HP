@@ -2,6 +2,7 @@
 
 #include "common.h"
 #include "logger.h"
+#include "spotify_artist_chart_collector.h"
 
 namespace hp {
 
@@ -16,7 +17,20 @@ class StationheadLeaderboardCollector {
   void Start(int64_t nowMs);
   void Stop();
   void Tick(int64_t nowMs);
-  [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextWakeAt_; }
+  [[nodiscard]] int64_t NextWakeAt() const noexcept {
+    int64_t spotifyWake = 0;
+    try {
+      const int64_t now = UnixMillis();
+      spotifyArtistChartCollector_.EnsureStarted(now);
+      spotifyArtistChartCollector_.Tick(now);
+      spotifyWake = spotifyArtistChartCollector_.NextWakeAt();
+    } catch (...) {
+      spotifyArtistChartCollector_.Stop();
+    }
+    if (nextWakeAt_ <= 0) return spotifyWake;
+    if (spotifyWake <= 0) return nextWakeAt_;
+    return std::min(nextWakeAt_, spotifyWake);
+  }
 
  private:
   void BeginCapture(int64_t nowMs);
@@ -49,6 +63,7 @@ class StationheadLeaderboardCollector {
   bool started_ = false;
   bool creating_ = false;
   bool captureInFlight_ = false;
+  mutable SpotifyArtistChartCollector spotifyArtistChartCollector_;
 };
 
 }  // namespace hp
