@@ -31,6 +31,18 @@ test('TVer recovery cannot pull the shared WebView back from the X subphase', ()
   assert.match(hostWindow, /KillTimer\(hwnd, timerId\)/);
 });
 
+test('X waits without interaction until the authenticated Following tab exists', () => {
+  assert.match(xRuntime, /let tab = followingTab\(\)/);
+  assert.match(xRuntime, /while \(!tab\)/);
+  assert.match(xRuntime, /state\.result = 'waiting-login'/);
+  assert.match(xRuntime, /await sleep\(1000\)/);
+  assert.doesNotMatch(xRuntime, /attempt < \d+ && !tab/);
+  const waitStart = xRuntime.indexOf('let tab = followingTab()');
+  const authEnd = xRuntime.indexOf("state.result = 'authenticated'", waitStart);
+  const waiting = xRuntime.slice(waitStart, authEnd);
+  assert.doesNotMatch(waiting, /\.click\(|scrollTo\(|scrollBy\(/);
+});
+
 test('X uses Following and likes a random 5 to 10 latest unliked posts', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
   assert.match(xRuntime, /5 \+ Math\.floor\(Math\.random\(\) \* 6\)/);
