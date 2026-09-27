@@ -25,6 +25,13 @@ function validCatalogMessage(body) {
   return safeText(body?.artist?.artist_key) && safeText(body?.artist?.spotify_artist_id);
 }
 
+async function readCatalogRun(db, snapshotDate) {
+  return db.prepare(`SELECT run_token,status,catalog_total,catalog_completed
+    FROM sh_spotify_collection_runs WHERE snapshot_date=?`)
+    .bind(snapshotDate)
+    .first();
+}
+
 async function recordCatalogError(db, message, error, fatal = false) {
   const statusSql = fatal ? ",status='error'" : '';
   await db.prepare(`UPDATE sh_spotify_collection_runs
@@ -50,7 +57,7 @@ async function advanceCatalog(db, message) {
 async function processCatalogMessage(entry, env, dependencies, session) {
   const message = entry.body;
   const db = env.OTHER_DB;
-  const run = await readRun(db, message.snapshot_date);
+  const run = await readCatalogRun(db, message.snapshot_date);
   if (!run || run.run_token !== message.run_token || run.status !== 'catalog') {
     entry.ack?.();
     return { ignored: true };
