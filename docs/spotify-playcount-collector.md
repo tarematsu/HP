@@ -42,12 +42,33 @@ the catalog as updated.
 If no existing track has advanced, the run is marked `stale`. The hourly Cron
 starts a fresh attempt at 06:00, then 07:00, and so on until an updated snapshot
 is observed. Once the snapshot is finalized, later hourly Cron invocations skip
-that date. If a date is still unresolved after midnight, hourly retries continue
-for that older date; a new date is not started ahead of it.
+that date.
+
+## Whole-day no-update rollover
+
+Spotify can occasionally leave the cumulative counters unchanged for an entire
+JST day. The collector must not keep that old date open forever because doing so
+would shift later updates onto the wrong date.
+
+At the next 05:00 JST, any prior date that is still `stale` is closed as a
+no-published-update day. The most recent finalized cumulative values are copied
+forward into `sh_spotify_playcount_daily` for that date with
+`is_carried_forward=1` and `delta=NULL`. The stale candidate rows are discarded,
+the run is marked complete, and collection for the new JST date may start
+immediately.
+
+This preserves the calendar sequence without pretending that Spotify published a
+new daily count. When Spotify later advances the counters, the observed increase
+is compared against the carried-forward cumulative baseline. The increase may
+therefore cover more than one calendar day; downstream reporting should inspect
+`is_carried_forward` on preceding dates rather than treating the later delta as
+a precisely isolated one-day total.
 
 A candidate snapshot must also contain every track present in the previous day's
 snapshot. If tracks are missing, the attempt is marked `incomplete` and retried
-on the next hour rather than finalizing partial data.
+on the next hour rather than finalizing partial data. `incomplete` and actual
+collection errors are not converted to carried-forward days; rollover applies
+only to a successfully collected but unchanged (`stale`) snapshot.
 
 Each attempt has a new `run_token`. Queue messages from superseded attempts are
 acknowledged and ignored, preventing a late Queue delivery from contaminating a
@@ -74,12 +95,16 @@ diagnostic overrides. Production should normally use Spotify directly.
 
 ## Data semantics
 
-`sh_spotify_playcount_daily.delta` is the difference between the finalized
-cumulative playcount for a JST date and the previous JST date. It is `NULL` for
-a track's first finalized observation and when a later observed cumulative count
-is lower than the preceding value.
+`sh_spotify_playcount_daily.delta` is the difference between finalized cumulative
+playcount observations. It is `NULL` for a track's first observation, when a
+later cumulative value decreases, and on a carried-forward no-update date.
+
+`sh_spotify_playcount_daily.is_carried_forward=1` means Spotify did not publish a
+new cumulative value for that JST date before the next 05:00 boundary. That row
+exists to keep the calendar continuous and must not be interpreted as evidence
+of zero actual streams.
 
 Only the first successful post-update snapshot is finalized for a date. Earlier
 05:00/06:00/etc. stale candidates are discarded when the next hourly attempt
-starts. Once finalized, that date is never recollected by later hourly Cron
-invocations.
+starts. Once finalized or carried forward, that date is not recollected by later
+hourly Cron invocations.
