@@ -20,47 +20,34 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Probe Spotify public pages
+      - name: Inspect Spotify embed payload
         working-directory: worker
         run: |
           node --input-type=module <<'NODE'
-          import {
-            SPOTIFY_TARGET_ARTISTS,
-            albumIdsFromDiscographyHtml,
-          } from './src/spotify-playcount-collector.js';
+          import { SPOTIFY_TARGET_ARTISTS } from './src/spotify-playcount-collector.js';
 
+          const artist = SPOTIFY_TARGET_ARTISTS.find((entry) => entry.artist_key === 'sakurazaka46');
           const headers = {
             accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'accept-language': 'ja-JP,ja;q=0.9,en;q=0.7',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/145.0.0.0 Safari/537.36',
           };
 
-          function summarize(html) {
-            const rawAlbumUris = [...html.matchAll(/spotify:album:([A-Za-z0-9]{16,32})/g)].map((m) => m[1]);
-            const hrefAlbums = [...html.matchAll(/\/album\/([A-Za-z0-9]{16,32})/g)].map((m) => m[1]);
-            return {
-              parsedAlbums: albumIdsFromDiscographyHtml(html).length,
-              rawAlbumUris: new Set(rawAlbumUris).size,
-              hrefAlbums: new Set(hrefAlbums).size,
-              initialState: /id=["']initialState["']/.test(html),
-              nextData: /id=["']__NEXT_DATA__["']/.test(html),
-            };
-          }
+          const url = `https://open.spotify.com/embed/artist/${artist.spotify_artist_id}`;
+          const response = await fetch(url, { headers, redirect: 'follow' });
+          const html = await response.text();
+          const match = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+          if (!match) throw new Error('__NEXT_DATA__ missing');
+          const data = JSON.parse(match[1]);
+          console.log('NEXT_KEYS=' + JSON.stringify(Object.keys(data)));
+          console.log('PROPS_KEYS=' + JSON.stringify(Object.keys(data.props || {})));
+          console.log('PAGE_PROPS_KEYS=' + JSON.stringify(Object.keys(data.props?.pageProps || {})));
+          const pageProps = data.props?.pageProps || {};
+          console.log('PAGE_PROPS=' + JSON.stringify(pageProps).slice(0, 12000));
 
-          const artist = SPOTIFY_TARGET_ARTISTS.find((entry) => entry.artist_key === 'sakurazaka46');
-          const id = artist.spotify_artist_id;
-          const urls = [
-            `https://open.spotify.com/artist/${id}`,
-            `https://open.spotify.com/artist/${id}/discography/all`,
-            `https://open.spotify.com/artist/${id}/discography/album`,
-            `https://open.spotify.com/artist/${id}/discography/single`,
-            `https://open.spotify.com/embed/artist/${id}`,
-            `https://open.spotify.com/intl-ja/artist/${id}`,
-          ];
-
-          for (const url of urls) {
-            const response = await fetch(url, { headers, redirect: 'follow' });
-            const html = await response.text();
-            console.log(JSON.stringify({ url, status: response.status, finalUrl: response.url, bytes: html.length, contentType: response.headers.get('content-type'), ...summarize(html) }));
-          }
+          const text = JSON.stringify(data);
+          const urls = [...new Set((text.match(/https?:\\?\/\\?\/[^"'\\s]+/g) || []).slice(0, 100))];
+          console.log('URLS=' + JSON.stringify(urls));
+          const spotifyUris = [...new Set((text.match(/spotify:(?:album|track|artist):[A-Za-z0-9]+/g) || []))];
+          console.log('SPOTIFY_URIS=' + JSON.stringify(spotifyUris.slice(0, 100)));
           NODE
