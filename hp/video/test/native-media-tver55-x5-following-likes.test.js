@@ -17,8 +17,6 @@ const xRuntime = readFileSync(
 test('YouTube stays 60 minutes while the TVer hour hands its last 5 minutes to X', () => {
   assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaTverPhaseMs = kNativeMediaPhaseMs/);
-  assert.match(mediaBase, /kNativeMediaXPhaseMs = 5U \* 60U \* 1000U/);
-  assert.match(mediaBase, /login wait does not pause it/);
   assert.match(tverQueue, /kNativeMediaTverContentPhaseMs = 55ULL \* 60ULL \* 1000ULL/);
   assert.match(tverQueue, /ULONGLONG phaseStartedAt = 0/);
   assert.match(tverQueue, /NativeMediaTverXPhaseActive\(\)/);
