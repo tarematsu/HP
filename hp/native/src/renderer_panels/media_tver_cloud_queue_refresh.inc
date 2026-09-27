@@ -3,6 +3,7 @@ namespace {
 constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
     30ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kNativeMediaTverContentPhaseMs = 55ULL * 60ULL * 1000ULL;
 
 struct NativeMediaTverCloudQueueRefreshResult {
   std::wstring generatedAt;
@@ -13,6 +14,7 @@ struct NativeMediaTverNativeQueueState {
   std::mutex mutex;
   uint64_t generation = 1;
   ULONGLONG lastAttemptAt = 0;
+  ULONGLONG phaseStartedAt = 0;
   bool phaseActive = false;
   bool inFlight = false;
   std::optional<NativeMediaTverCloudQueueRefreshResult> ready;
@@ -104,6 +106,8 @@ void NativeMediaTverResetQueuePhaseLocked(
   ++state.generation;
   if (state.generation == 0) ++state.generation;
   state.lastAttemptAt = 0;
+  ULONGLONG now = GetTickCount64();
+  state.phaseStartedAt = active ? (now == 0 ? 1 : now) : 0;
   state.phaseActive = active;
   state.inFlight = false;
   state.ready.reset();
@@ -197,6 +201,15 @@ void NativeMediaTverEndQueuePhase() noexcept {
   auto& state = NativeMediaTverNativeQueue();
   std::lock_guard lock(state.mutex);
   NativeMediaTverResetQueuePhaseLocked(state, false);
+}
+
+bool NativeMediaTverXPhaseActive() noexcept {
+  auto& state = NativeMediaTverNativeQueue();
+  std::lock_guard lock(state.mutex);
+  if (!state.phaseActive || state.phaseStartedAt == 0) return false;
+  ULONGLONG now = GetTickCount64();
+  if (now == 0 || now < state.phaseStartedAt) return false;
+  return now - state.phaseStartedAt >= kNativeMediaTverContentPhaseMs;
 }
 
 std::wstring NativeMediaTverCurrentEpisodeUrl(

@@ -1,5 +1,5 @@
-// Document-start YouTube presentation policy. Runtime interaction and ad-skip
-// wakeups are owned by media_youtube_control_recovery.inc.
+// Document-start media presentation policy. YouTube runtime interaction and
+// ad-skip wakeups are owned by media_youtube_control_recovery.inc.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
 (() => {
@@ -61,5 +61,7 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
   }
   return true;
 })()
-)JS";
+)JS"
+#include "media_x_following_like.inc"
+;
 }  // namespace

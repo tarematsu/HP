@@ -49,6 +49,12 @@ LRESULT CALLBACK NativeMediaPanelWndProc(
         return 0;
       case WM_TIMER: {
         const UINT_PTR timerId = static_cast<UINT_PTR>(wparam);
+        if ((timerId == kNativeMediaTverWatchdogTimer ||
+             timerId == kNativeMediaNavigationRetryTimer) &&
+            NativeMediaTverXPhaseActive()) {
+          KillTimer(hwnd, timerId);
+          return 0;
+        }
         if ((timerId == kNativeMediaYoutubeWatchdogTimer ||
              timerId == kNativeMediaTverWatchdogTimer) &&
             NativeMediaWatchdogExecutionTimedOut(hwnd, timerId)) {
