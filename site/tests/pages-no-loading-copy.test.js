@@ -40,6 +40,6 @@ test('silent loading changes are cache busted through the Pages entry chain', ()
   assert.match(dashboardEntry, /dashboard-chart-comparison\.js\?v=20260927\.2/);
   assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260927\.2/);
   assert.doesNotMatch(dashboardEntry, /import '.\/unofficial-listening-parties\.js/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260927\.4/);
-  assert.match(html, /dashboard-metrics\.js\?v=20260927\.7/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260928\.1/);
+  assert.match(html, /dashboard-metrics\.js\?v=20260928\.1/);
 });
