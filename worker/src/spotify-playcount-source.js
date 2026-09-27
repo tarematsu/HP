@@ -1,5 +1,5 @@
 import {
-  SPOTIFY_TARGET_ARTISTS,
+  SPOTIFY_SESSION_SEED_ARTIST_ID,
   integer,
   safeText,
   truncateError,
@@ -45,8 +45,7 @@ async function responseText(response, label) {
 
 export async function fetchAnonymousSession(env, fetchImpl = fetch) {
   const base = safeText(env?.SPOTIFY_EMBED_ARTIST_BASE, SPOTIFY_EMBED_ARTIST_BASE);
-  const seedArtistId = SPOTIFY_TARGET_ARTISTS[1].spotify_artist_id;
-  const response = await fetchImpl(`${base}${encodeURIComponent(seedArtistId)}`, {
+  const response = await fetchImpl(`${base}${encodeURIComponent(SPOTIFY_SESSION_SEED_ARTIST_ID)}`, {
     headers: {
       accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'accept-language': 'ja-JP,ja;q=0.9,en;q=0.7',
