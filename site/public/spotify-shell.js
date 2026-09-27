@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-spotify-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/spotify.css?v=20260928.2';
+  link.href = '/spotify.css?v=20260928.3';
   link.dataset.spotifyTabStyles = '1';
   document.head.append(link);
 }
@@ -27,15 +27,9 @@ function mountView() {
   section.className = 'dashboard-view spotify-view';
   section.hidden = true;
   section.innerHTML = `
-    <div class="spotify-artist-switch" role="group" aria-label="表示するグループ">
-      <button type="button" data-spotify-artist="nogizaka46">乃木坂</button>
-      <button type="button" data-spotify-artist="sakurazaka46" class="active" aria-pressed="true">櫻坂</button>
-      <button type="button" data-spotify-artist="hinatazaka46">日向坂</button>
-    </div>
-
     <p id="spotifyNotice" class="notice" role="status" hidden></p>
 
-    <section class="summary-cards spotify-summary" aria-label="Spotify再生数概要">
+    <section class="summary-cards spotify-summary" aria-label="櫻坂46 Spotify再生数概要">
       <article><span>確定日</span><strong id="spotifySnapshotDate" class="summary-date">-</strong></article>
       <article><span>楽曲数</span><strong id="spotifyTrackCount">-</strong></article>
       <article><span>前回比合計</span><strong id="spotifyTotalDelta">-</strong></article>
@@ -43,7 +37,7 @@ function mountView() {
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTrendTitle">
       <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">女性アイドルSpotify再生数推移</h2></div></div>
-      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドルの日別前回比合計推移"></div>
+      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドル全アーティストの日別前回比合計を重ねたグラフ"></div>
     </section>
 
     <section class="card data-panel spotify-data-panel">
