@@ -8,7 +8,7 @@ const DEFAULT_ARTIST = 'sakurazaka46';
 const numberFormat = new Intl.NumberFormat('ja-JP');
 let activeArtist = DEFAULT_ARTIST;
 let requestSequence = 0;
-const payloadCache = new Map();
+let readModelPromise = null;
 
 function element(id) {
   return document.getElementById(id);
@@ -28,10 +28,15 @@ function formatDate(value) {
   return `${Number(match[1])}/${Number(match[2])}/${Number(match[3])}`;
 }
 
-function formatDelta(value) {
-  if (value == null || value === '') return '-';
+function deltaNumber(value) {
+  if (value == null || value === '') return null;
   const number = Number(value);
-  if (!Number.isSafeInteger(number)) return '-';
+  return Number.isSafeInteger(number) ? number : null;
+}
+
+function formatDelta(value) {
+  const number = deltaNumber(value);
+  if (number == null) return '-';
   return number > 0 ? `+${numberFormat.format(number)}` : numberFormat.format(number);
 }
 
@@ -65,7 +70,46 @@ function renderRows(payload) {
   }
 }
 
-function render(payload) {
+function renderComparison(comparison = []) {
+  const chart = element('spotifyComparisonChart');
+  if (!chart) return;
+  chart.replaceChildren();
+
+  const byArtist = new Map(comparison.map((item) => [item?.artist?.key, item]));
+  const values = Object.keys(ARTISTS)
+    .map((key) => deltaNumber(byArtist.get(key)?.total_delta))
+    .filter((value) => value != null);
+  const maximum = Math.max(1, ...values.map((value) => Math.abs(value)));
+
+  for (const [artistKey, artistName] of Object.entries(ARTISTS)) {
+    const item = byArtist.get(artistKey);
+    const value = deltaNumber(item?.total_delta);
+    const row = document.createElement('div');
+    row.className = 'spotify-comparison-row';
+    if (artistKey === activeArtist) row.classList.add('is-active');
+
+    const name = document.createElement('span');
+    name.className = 'spotify-comparison-name';
+    name.textContent = artistName;
+
+    const track = document.createElement('div');
+    track.className = 'spotify-comparison-track';
+    const bar = document.createElement('div');
+    bar.className = 'spotify-comparison-bar';
+    const ratio = value == null ? 0 : Math.max(0, Math.min(100, Math.abs(value) / maximum * 100));
+    bar.style.setProperty('--spotify-comparison-width', `${ratio}%`);
+    track.append(bar);
+
+    const total = document.createElement('strong');
+    total.className = 'spotify-comparison-value spotify-number';
+    total.textContent = formatDelta(value);
+    row.setAttribute('aria-label', `${artistName} 前回比合計 ${formatDelta(value)}`);
+    row.append(name, track, total);
+    chart.append(row);
+  }
+}
+
+function render(payload, comparison) {
   const artistName = payload?.artist?.name || ARTISTS[activeArtist];
   const title = element('spotifyTableTitle');
   if (title) title.textContent = `${artistName} 再生数一覧`;
@@ -75,6 +119,7 @@ function render(payload) {
   if (count) count.textContent = numberFormat.format(Number(payload?.track_count) || 0);
   const delta = element('spotifyTotalDelta');
   if (delta) delta.textContent = formatDelta(payload?.total_delta);
+  renderComparison(comparison);
   renderRows(payload || {});
 
   if (!payload?.track_count) {
@@ -86,15 +131,23 @@ function render(payload) {
   }
 }
 
-async function fetchPayload(artistKey) {
-  if (payloadCache.has(artistKey)) return payloadCache.get(artistKey);
-  const response = await fetch(`/api/spotify-playcounts?artist=${encodeURIComponent(artistKey)}`);
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload.ok) {
-    throw new Error(payload.error || `HTTP ${response.status}`);
+async function fetchReadModel({ refresh = false } = {}) {
+  if (refresh) readModelPromise = null;
+  if (!readModelPromise) {
+    readModelPromise = fetch('/api/spotify-playcounts')
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        return payload;
+      })
+      .catch((error) => {
+        readModelPromise = null;
+        throw error;
+      });
   }
-  payloadCache.set(artistKey, payload);
-  return payload;
+  return readModelPromise;
 }
 
 export async function loadSpotifyView({ artist = activeArtist, refresh = false } = {}) {
@@ -102,12 +155,13 @@ export async function loadSpotifyView({ artist = activeArtist, refresh = false }
   const sequence = ++requestSequence;
   activeArtist = requested;
   updateArtistButtons();
-  if (refresh) payloadCache.delete(requested);
   try {
     setNotice('');
-    const payload = await fetchPayload(requested);
+    const model = await fetchReadModel({ refresh });
     if (sequence !== requestSequence || activeArtist !== requested) return;
-    render(payload);
+    const payload = model?.groups?.[requested];
+    if (!payload) throw new Error(`${ARTISTS[requested]}のリードモデルがありません`);
+    render(payload, Array.isArray(model.comparison) ? model.comparison : []);
   } catch (error) {
     if (sequence !== requestSequence || activeArtist !== requested) return;
     setNotice(`Spotify再生数の取得に失敗しました: ${error.message}`, true);
