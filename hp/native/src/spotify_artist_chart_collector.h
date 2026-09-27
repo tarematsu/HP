@@ -1,18 +1,17 @@
 #pragma once
 
 #include "common.h"
-#include "logger.h"
 
 namespace hp {
 
 class SpotifyArtistChartCollector {
  public:
-  SpotifyArtistChartCollector(HWND window, fs::path userDataFolder,
-                              std::wstring profileName, Logger& log);
+  SpotifyArtistChartCollector() = default;
   SpotifyArtistChartCollector(const SpotifyArtistChartCollector&) = delete;
   SpotifyArtistChartCollector& operator=(const SpotifyArtistChartCollector&) = delete;
   ~SpotifyArtistChartCollector();
 
+  void EnsureStarted(int64_t nowMs);
   void Start(int64_t nowMs);
   void Stop();
   void Tick(int64_t nowMs);
@@ -31,8 +30,7 @@ class SpotifyArtistChartCollector {
 
   HWND window_{};
   fs::path userDataFolder_;
-  std::wstring profileName_;
-  Logger& log_;
+  std::wstring profileName_{L"spotify-v2-6"};
   ComPtr<ICoreWebView2Environment> environment_;
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;
@@ -52,3 +50,5 @@ class SpotifyArtistChartCollector {
 };
 
 }  // namespace hp
+
+#include "spotify_artist_chart_collector.inl"
