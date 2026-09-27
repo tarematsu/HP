@@ -27,15 +27,9 @@ function mountView() {
   section.className = 'dashboard-view spotify-view';
   section.hidden = true;
   section.innerHTML = `
-    <div class="spotify-artist-switch" role="group" aria-label="表示するグループ">
-      <button type="button" data-spotify-artist="nogizaka46">乃木坂</button>
-      <button type="button" data-spotify-artist="sakurazaka46" class="active" aria-pressed="true">櫻坂</button>
-      <button type="button" data-spotify-artist="hinatazaka46">日向坂</button>
-    </div>
-
     <p id="spotifyNotice" class="notice" role="status" hidden></p>
 
-    <section class="summary-cards spotify-summary" aria-label="Spotify再生数概要">
+    <section class="summary-cards spotify-summary" aria-label="櫻坂46 Spotify再生数概要">
       <article><span>確定日</span><strong id="spotifySnapshotDate" class="summary-date">-</strong></article>
       <article><span>楽曲数</span><strong id="spotifyTrackCount">-</strong></article>
       <article><span>前回比合計</span><strong id="spotifyTotalDelta">-</strong></article>
