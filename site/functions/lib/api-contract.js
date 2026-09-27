@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 9;
+export const API_CONTRACT_VERSION = 8;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
