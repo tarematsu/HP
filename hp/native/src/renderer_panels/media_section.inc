@@ -318,16 +318,6 @@ void NativeMediaEnsureEventWakeBridge(
                        sourceContains(L"tver.jp/episodes/")) {
               PostMessageW(hostWindow, WM_TIMER,
                            kNativeMediaTverWatchdogTimer, 0);
-            } else if (message == L"homepanel:x-waiting-login" &&
-                       sourceContains(L"https://x.com/") &&
-                       NativeMediaTverXPhaseActive()) {
-              KillTimer(hostWindow, kNativeMediaPhaseTimer);
-            } else if (message == L"homepanel:x-authenticated" &&
-                       sourceContains(L"https://x.com/") &&
-                       NativeMediaTverXPhaseActive()) {
-              KillTimer(hostWindow, kNativeMediaPhaseTimer);
-              ::SetTimer(hostWindow, kNativeMediaPhaseTimer,
-                         kNativeMediaXPhaseMs, nullptr);
             }
             return S_OK;
           }).Get(),
