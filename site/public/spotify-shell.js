@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-spotify-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/spotify.css?v=20260928.2';
+  link.href = '/spotify.css?v=20260928.3';
   link.dataset.spotifyTabStyles = '1';
   document.head.append(link);
 }
@@ -43,7 +43,7 @@ function mountView() {
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTrendTitle">
       <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">女性アイドルSpotify再生数推移</h2></div></div>
-      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドルの日別前回比合計推移"></div>
+      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドル全アーティストの日別前回比合計を重ねたグラフ"></div>
     </section>
 
     <section class="card data-panel spotify-data-panel">
