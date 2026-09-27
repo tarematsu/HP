@@ -17,6 +17,7 @@ on:
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/pages-response-**'
       - 'site/functions/api/history.js'
+      - 'site/functions/api/spotify-playcounts.js'
       - 'site/functions/lib/api-contract.js'
       - 'site/functions/lib/materialized-history.js'
       - 'site/functions/lib/period-completeness.js'
