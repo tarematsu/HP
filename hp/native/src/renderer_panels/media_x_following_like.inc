@@ -44,6 +44,7 @@ LR"JS(
 
       // Login is intentionally user-owned. Until X exposes the authenticated
       // Following tab, only observe the DOM: no clicks, scrolling or likes.
+      // The native phase clock is held by the waiting-login message below.
       let tab = followingTab();
       while (!tab) {
         state.result = 'waiting-login';
