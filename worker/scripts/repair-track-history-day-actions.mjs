@@ -10,10 +10,10 @@ import { applyTrackPeriodCompleteness } from '../../site/functions/lib/period-co
 import { attachCompactTrackLikes } from '../../site/functions/lib/track-likes.js';
 import { materializedTrackHistorySql } from '../src/pages-track-history-r2-shards.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
+import { syncTrackHistoryR2Day } from './sync-track-history-r2-days-actions.mjs';
 
 const DAY_MS = 86_400_000;
 const TRACK_HISTORY_LIMIT = 40_000;
-const DEFAULT_REPAIR_DAY = '2026-09-22';
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
@@ -23,6 +23,13 @@ function validDay(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
   const timestamp = Date.parse(`${text}T00:00:00Z`);
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === text;
+}
+
+export function defaultRepairDay(now = Date.now()) {
+  const timestamp = Number(now);
+  if (!Number.isFinite(timestamp)) throw new Error('invalid Track History refresh time');
+  const currentDayStart = Math.floor(timestamp / DAY_MS) * DAY_MS;
+  return new Date(currentDayStart - DAY_MS).toISOString().slice(0, 10);
 }
 
 function remoteMinuteDatabase() {
@@ -107,13 +114,14 @@ async function persistDay(db, day, rows, generation) {
 
 export async function repairTrackHistoryDay({
   db,
-  day = DEFAULT_REPAIR_DAY,
+  day,
   now = Date.now(),
 } = {}) {
-  if (!validDay(day)) throw new Error(`invalid track-history repair day: ${day}`);
+  const targetDay = day || defaultRepairDay(now);
+  if (!validDay(targetDay)) throw new Error(`invalid track-history repair day: ${targetDay}`);
   if (!db?.prepare) throw new Error('MINUTE_DB adapter is missing');
 
-  const fromTs = Date.parse(`${day}T00:00:00Z`);
+  const fromTs = Date.parse(`${targetDay}T00:00:00Z`);
   const toTs = fromTs + DAY_MS;
   const generation = Number(now);
   if (!Number.isFinite(generation) || generation <= 0) throw new Error('invalid repair generation');
@@ -133,21 +141,21 @@ export async function repairTrackHistoryDay({
   const mergedRows = mergeTrackRows(groupedRows);
   const likedRows = attachCompactTrackLikes(mergedRows, likeRows);
   const completed = applyTrackPeriodCompleteness(likedRows, groupedRows, generation);
-  const rows = completed.rows.filter((row) => String(row?.play_date || '') === day);
+  const rows = completed.rows.filter((row) => String(row?.play_date || '') === targetDay);
   const totalPlays = rows.reduce((sum, row) => sum + Math.max(0, Number(row?.play_count || 0)), 0);
   if (!rows.length || totalPlays <= 0) {
-    throw new Error(`track-history repair produced no playable rows for ${day}`);
+    throw new Error(`track-history repair produced no playable rows for ${targetDay}`);
   }
 
-  await persistDay(db, day, rows, generation);
+  await persistDay(db, targetDay, rows, generation);
   const stored = await db.prepare(`SELECT COUNT(*) AS row_count,
       COALESCE(SUM(CAST(json_extract(row_json,'$.play_count') AS INTEGER)),0) AS total_plays
     FROM sh_pages_track_history_read_model
-    WHERE play_date=?`).bind(day).first();
+    WHERE play_date=?`).bind(targetDay).first();
 
   return {
     ok: true,
-    day,
+    day: targetDay,
     generation,
     grouped_rows: groupedRows.length,
     rows: rows.length,
@@ -158,11 +166,26 @@ export async function repairTrackHistoryDay({
   };
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
-if (invokedPath === fileURLToPath(import.meta.url)) {
-  const day = process.env.TRACK_HISTORY_REPAIR_DAY || DEFAULT_REPAIR_DAY;
-  const result = await repairTrackHistoryDay({ db: remoteMinuteDatabase(), day });
-  console.log(JSON.stringify(result));
+export async function refreshTrackHistoryDay({
+  db = remoteMinuteDatabase(),
+  day,
+  now = Date.now(),
+  sync = syncTrackHistoryR2Day,
+} = {}) {
+  const targetDay = day || defaultRepairDay(now);
+  const repaired = await repairTrackHistoryDay({ db, day: targetDay, now });
+  const published = await sync({ db, day: targetDay, now });
+  return {
+    ok: true,
+    day: targetDay,
+    repair: repaired,
+    r2: published,
+  };
 }
 
-export { DEFAULT_REPAIR_DAY };
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  const day = String(process.env.TRACK_HISTORY_REPAIR_DAY || '').trim() || undefined;
+  const result = await refreshTrackHistoryDay({ day });
+  console.log(JSON.stringify(result));
+}

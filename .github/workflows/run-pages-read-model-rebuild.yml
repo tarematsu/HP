@@ -2,7 +2,7 @@ name: Rebuild pages read models
 
 on:
   schedule:
-    - cron: '26,56 * * * *'
+    - cron: '26 0,6,12,18 * * *'
   push:
     branches: [main]
     paths:

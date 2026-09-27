@@ -41,7 +41,7 @@ export async function publishTrackRankingStatus({
     status: 200,
     headers: { 'content-type': 'application/json; charset=utf-8' },
     updated_at: now,
-    cadence_seconds: 1800,
+    cadence_seconds: 21600,
     body,
   });
   return {

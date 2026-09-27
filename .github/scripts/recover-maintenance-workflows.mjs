@@ -47,14 +47,6 @@ function shouldRefreshObservability(states) {
     && runtime.startedAtMs > observability.startedAtMs;
 }
 
-function pagesOlderThanRuntime(states) {
-  return states.pages?.state === 'fresh'
-    && states.runtime?.state === 'fresh'
-    && Number.isFinite(states.pages.startedAtMs)
-    && Number.isFinite(states.runtime.startedAtMs)
-    && states.pages.startedAtMs < states.runtime.startedAtMs;
-}
-
 async function githubRequest(url, { token, method = 'GET', body } = {}) {
   const response = await fetch(url, {
     method,
@@ -111,7 +103,7 @@ export async function recoverMaintenanceWorkflows({
   const dispatched = [];
 
   // Runtime rollups are the source for Pages history. Recover or finish Runtime
-  // first, then publish every Pages variant from the newer source state.
+  // first. Pages itself is refreshed only on its own cadence or when stale/missing.
   if (shouldRecover(states.runtime.state)) {
     await dispatchWorkflow(repository, WORKFLOWS.runtime, token, request);
     dispatched.push('runtime');
@@ -121,7 +113,7 @@ export async function recoverMaintenanceWorkflows({
     return { ok: true, dispatched, states, reason: `runtime-${states.runtime.state}` };
   }
 
-  if (shouldRecover(states.pages.state) || pagesOlderThanRuntime(states)) {
+  if (shouldRecover(states.pages.state)) {
     await dispatchWorkflow(
       repository,
       WORKFLOWS.pages,
@@ -134,7 +126,7 @@ export async function recoverMaintenanceWorkflows({
       ok: true,
       dispatched,
       states,
-      reason: pagesOlderThanRuntime(states) ? 'pages-refreshed-after-runtime' : 'pages-recovered',
+      reason: 'pages-recovered',
     };
   }
   if (states.pages.state !== 'fresh') {

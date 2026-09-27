@@ -23,21 +23,19 @@ const ALL_VARIANTS = [
   'spotify-playcounts',
 ];
 
-const SIX_HOUR_VARIANTS = [
+const TWELVE_HOUR_VARIANTS = [
   'dashboard',
   'history:daily',
-  'history:weekly',
-  'history:monthly',
-  'history:broadcasts',
   'spotify-playcounts',
 ];
 
-test('Actions cadence uses six-hour summaries and daily host archive variants', () => {
+test('Actions cadence uses twelve-hour daily/Spotify models and daily archives', () => {
   assert.deepEqual([...dueVariantKeys(BASE + 26 * MINUTE_MS)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(BASE + 55 * MINUTE_MS)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(BASE + 56 * MINUTE_MS)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(BASE + 86 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(BASE + 386 * MINUTE_MS)], SIX_HOUR_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(BASE + 386 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(BASE + 746 * MINUTE_MS)], TWELVE_HOUR_VARIANTS);
 });
 
 test('one Actions process publishes due variants without advancing track-history', async () => {

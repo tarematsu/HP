@@ -30,11 +30,11 @@ test('central health policy tolerates normal GitHub schedule delay before declar
   const pages = WORKFLOW_HEALTH_BY_KEY.pages;
   const runtime = WORKFLOW_HEALTH_BY_KEY.runtime;
 
-  assert.equal(pages.cadenceMinutes, 30);
-  assert.equal(pages.staleAfterMinutes, 75);
+  assert.equal(pages.cadenceMinutes, 360);
+  assert.equal(pages.staleAfterMinutes, 405);
   assert.equal(runtime.staleAfterMinutes, 75);
-  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(60)], { now: NOW }).health, 'healthy');
-  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(76)], { now: NOW }).health, 'stale');
+  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(390)], { now: NOW }).health, 'healthy');
+  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(406)], { now: NOW }).health, 'stale');
 });
 
 test('recovery thresholds are derived from health thresholds with watchdog headroom', () => {

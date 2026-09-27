@@ -36,7 +36,7 @@ test('Pages history materialization is owned by the bounded independent Actions 
   const historyRunner = source('../scripts/run-pages-history-read-model-actions.mjs');
   const responseStore = source('../src/pages-response-r2.js');
   assert.doesNotMatch(workflow, /workflow_run:/);
-  assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
+  assert.match(workflow, /cron: '26 0,6,12,18 \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);

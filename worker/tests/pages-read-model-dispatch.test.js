@@ -33,12 +33,9 @@ const ALL_VARIANTS = [
   'spotify-playcounts',
 ];
 
-const SIX_HOUR_VARIANTS = [
+const TWELVE_HOUR_VARIANTS = [
   'dashboard',
   'history:daily',
-  'history:weekly',
-  'history:monthly',
-  'history:broadcasts',
   'spotify-playcounts',
 ];
 
@@ -47,7 +44,8 @@ test('shared Actions cadence resolver still exposes contract-driven due keys', (
   assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycleStart + 56 * MINUTE)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycleStart + 86 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 386 * MINUTE)], SIX_HOUR_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 386 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 746 * MINUTE)], TWELVE_HOUR_VARIANTS);
   assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
 });
 
@@ -61,7 +59,7 @@ test('track-history read-model generation is absent from scheduled Actions', () 
 
 test('scheduled rebuild owns only history models and leaves dashboard to realtime dispatch', () => {
   assert.doesNotMatch(workflow, /workflow_run:/);
-  assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
+  assert.match(workflow, /cron: '26 0,6,12,18 \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
   assert.match(workflow, /Refresh reusable history models during D1 budget deferral/);

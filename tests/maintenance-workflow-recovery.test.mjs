@@ -83,7 +83,7 @@ test('recovery policy always leaves more than one watchdog interval before healt
 });
 
 test('stale Runtime is recovered before stale Pages', async () => {
-  const fixture = requestFor({ pages: 50, runtime: 80, metadata: 80, localMinute: 80 });
+  const fixture = requestFor({ pages: 380, runtime: 80, metadata: 80, localMinute: 80 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token',
     repository: 'tarematsu/HP',
@@ -103,7 +103,7 @@ test('active or failed Runtime blocks Pages recovery', async () => {
     { minutesAgo: 80, status: 'in_progress', conclusion: '' },
     { minutesAgo: 80, conclusion: 'failure' },
   ]) {
-    const fixture = requestFor({ pages: 80, runtime, metadata: 80, localMinute: 80 });
+    const fixture = requestFor({ pages: 380, runtime, metadata: 80, localMinute: 80 });
     const result = await recoverMaintenanceWorkflows({
       token: 'test-token',
       repository: 'tarematsu/HP',
@@ -117,7 +117,7 @@ test('active or failed Runtime blocks Pages recovery', async () => {
 });
 
 test('stale Pages is fully regenerated when Runtime is fresh', async () => {
-  const fixture = requestFor({ pages: 50, runtime: 10, metadata: 80, localMinute: 80 });
+  const fixture = requestFor({ pages: 380, runtime: 10, metadata: 80, localMinute: 80 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token',
     repository: 'tarematsu/HP',
@@ -132,7 +132,7 @@ test('stale Pages is fully regenerated when Runtime is fresh', async () => {
   assert.deepEqual(posts[0].options.body, { ref: 'main', inputs: { force_all: 'true' } });
 });
 
-test('Pages older than a fresh Runtime run is fully refreshed', async () => {
+test('Pages older than a fresh Runtime run waits for its scheduled cadence', async () => {
   const fixture = requestFor({ pages: 30, runtime: 5 });
   const result = await recoverMaintenanceWorkflows({
     token: 'test-token',
@@ -140,11 +140,10 @@ test('Pages older than a fresh Runtime run is fully refreshed', async () => {
     now,
     request: fixture.request,
   });
-  assert.deepEqual(result.dispatched, ['pages']);
-  assert.equal(result.reason, 'pages-refreshed-after-runtime');
+  assert.deepEqual(result.dispatched, []);
+  assert.equal(result.reason, 'maintenance-fresh-or-visible');
   const posts = fixture.calls.filter((call) => call.options.method === 'POST');
-  assert.equal(posts.length, 1);
-  assert.deepEqual(posts[0].options.body, { ref: 'main', inputs: { force_all: 'true' } });
+  assert.equal(posts.length, 0);
 });
 
 test('fresh Runtime and Pages independently recover stale metadata and local minute workflows', async () => {
@@ -225,7 +224,7 @@ test('maintenance workflows enforce Runtime then Pages publication order', () =>
   assert.match(runtimeWorkflow, /^\s*workflows: \["Deploy production"\]\s*$/m);
   assert.doesNotMatch(runtimeWorkflow, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
   assert.doesNotMatch(pagesWorkflow, /workflow_run:/);
-  assert.match(pagesWorkflow, /cron: '26,56 \* \* \* \*'/);
+  assert.match(pagesWorkflow, /cron: '26 0,6,12,18 \* \* \*'/);
   assert.doesNotMatch(pagesWorkflow, /github\.event_name == 'schedule'/);
   assert.doesNotMatch(pagesWorkflow, /repair-pages-summary-gaps\.mjs/);
   assert.match(summaryRepairWorkflow, /cron: '23 4 \* \* \*'/);
@@ -246,7 +245,7 @@ test('recovery watchdog is offset, budget-safe, and wired to shared policy', () 
 
   assert.match(script, /RECOVERY_WORKFLOWS/);
   assert.match(script, /force_all: 'true'/);
-  assert.match(script, /pagesOlderThanRuntime/);
+  assert.doesNotMatch(script, /pagesOlderThanRuntime/);
   assert.match(script, /runtime\.startedAtMs > observability\.startedAtMs/);
   assert.doesNotMatch(script, /45 \* 60_000|30 \* 60_000|75 \* 60_000/);
 });
