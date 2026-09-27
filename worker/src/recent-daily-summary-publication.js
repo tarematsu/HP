@@ -133,7 +133,7 @@ export async function publishRecentDailySummaries(
       unavailable.push(key);
       continue;
     }
-    if (!existingRow && !validCounts(row)) {
+    if (!validCounts(row)) {
       invalid.push(key);
       continue;
     }
