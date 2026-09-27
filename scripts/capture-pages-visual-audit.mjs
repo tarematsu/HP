@@ -27,9 +27,23 @@ function slug(value) {
 }
 
 async function settle(page) {
-  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {});
   await page.evaluate(() => document.fonts?.ready).catch(() => {});
-  await page.waitForTimeout(900);
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    await page.waitForTimeout(attempt === 0 ? 900 : 350);
+    const loading = await page.evaluate(() => {
+      const visible = (element) => {
+        if (!element || element.hidden) return false;
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      };
+      return [...document.querySelectorAll('body *')].some((element) => {
+        if (!visible(element)) return false;
+        return /^読み込み中(?:\.{3}|…)?$/.test((element.textContent || '').trim());
+      });
+    }).catch(() => false);
+    if (!loading) break;
+  }
 }
 
 async function revealPage(page) {
@@ -149,9 +163,8 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   });
 
   const response = await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 35_000 });
-  await settle(page);
   await page.locator('#modeTabs button').first().waitFor({ state: 'visible', timeout: 15_000 });
-  await page.waitForTimeout(500);
+  await settle(page);
 
   const tabs = await getTabSnapshot(page);
   if (!tabs.length) throw new Error('No navigation tabs were found');
