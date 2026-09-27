@@ -23,8 +23,12 @@ export const SPOTIFY_CURRENT_TOP20_ARTISTS = Object.freeze([
   Object.freeze({ rank: 20, artist_key: 'sweet-steady', artist_name: 'SWEET STEADY', spotify_artist_id: '1UyIqMBjk0DMexWtQF2X1i' }),
 ]);
 
-// Backwards-compatible export for callers/tests that inspect the current Top 20 seed.
-export const SPOTIFY_TARGET_ARTISTS = SPOTIFY_CURRENT_TOP20_ARTISTS;
+// Preserve the legacy three-group export for existing callers; collection scheduling uses
+// SPOTIFY_CURRENT_TOP20_ARTISTS plus the additive database roster instead.
+const LEGACY_SAKAMICHI_KEYS = new Set(['nogizaka46', 'sakurazaka46', 'hinatazaka46']);
+export const SPOTIFY_TARGET_ARTISTS = Object.freeze(
+  SPOTIFY_CURRENT_TOP20_ARTISTS.filter((artist) => LEGACY_SAKAMICHI_KEYS.has(artist.artist_key)),
+);
 export const SPOTIFY_SESSION_SEED_ARTIST_ID = '0Ti7MfCiVVQAK8zLSiqlto';
 
 export const FIRST_CHECK_HOUR_JST = 5;
