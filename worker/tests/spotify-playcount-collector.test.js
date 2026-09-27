@@ -249,7 +249,9 @@ test('staging and finalization are guarded against late or duplicate queue deliv
   assert.match(consumer, /status='finalizing'/);
   assert.match(consumer, /DELETE FROM sh_spotify_playcount_candidates/);
   assert.match(consumer, /DELETE FROM sh_spotify_collection_album_runs/);
-  assert.match(schedule, /SET is_active=0,last_seen_at=\?/);
+  assert.match(consumer, /SET is_active=0/);
+  assert.match(schedule, /Number\(existing\.errors \|\| 0\) > 0/);
+  assert.match(schedule, /\['error', 'incomplete'\]\.includes/);
 });
 
 test('stale and incomplete runs are retryable while fresh queued work is not duplicated', () => {
