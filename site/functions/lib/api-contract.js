@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 7;
+export const API_CONTRACT_VERSION = 8;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -15,6 +15,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka official broadcast listener series' },
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
     { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },
+    { path: '/api/spotify-playcounts', methods: ['GET'], description: 'Latest finalized Spotify cumulative playcounts by Sakamichi group' },
   ]),
 });
 
