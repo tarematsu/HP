@@ -13,5 +13,5 @@ export { runSpotifyPlaycountScheduled } from './spotify-playcount-schedule.js';
 export {
   countPlaycountRegressions,
   hasPlaycountAdvance,
-  processSpotifyPlaycountBatch,
 } from './spotify-playcount-consumer.js';
+export { processSpotifyPlaycountBatch } from './spotify-playcount-queue-router.js';
