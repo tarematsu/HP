@@ -326,4 +326,26 @@
   #likesView .summary-cards article:last-child {
     grid-column: 1 / -1 !important;
   }
+
+  /* Eight tabs must remain on one row, but 10px labels become three-line
+     fragments at 320-390px. Tighten the type enough to keep Japanese labels
+     to at most two lines and Latin labels intact. */
+  #modeTabs.mode-tabs.dashboard-tabs > button {
+    padding-inline: 1px !important;
+    font-size: 8.5px !important;
+    line-height: 1.15 !important;
+    letter-spacing: -.02em !important;
+  }
+
+  #modeTabs.mode-tabs.dashboard-tabs > button[data-view="spotify"] {
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+}
+
+@media (max-width: 340px) {
+  #modeTabs.mode-tabs.dashboard-tabs > button {
+    font-size: 8px !important;
+  }
 }

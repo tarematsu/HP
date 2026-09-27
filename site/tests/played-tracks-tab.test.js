@@ -49,12 +49,13 @@ test('weekly played tracks uses a Monday start and seven-day range', () => {
   assert.match(runtime, /normalizedRows\(payload\.rows, from, to\)/);
 });
 
-test('played tracks chart uses neon colors and labels only the top five tracks', () => {
+test('played tracks chart uses neon colors and limits labels further on narrow screens', () => {
   assert.match(runtime, /hsl\(\$\{hue\} 100% 60%\)/);
-  assert.match(runtime, /if \(index < 5\)/);
+  assert.match(runtime, /const labelLimit = rect\.width < 520 \? 3 : 5/);
+  assert.match(runtime, /if \(index < labelLimit\)/);
   assert.match(runtime, /const rawTitle = trackLabel\(label\.row\)/);
   assert.match(runtime, /integer\.format\(label\.row\.play_count\)/);
-  assert.match(runtime, /上位5曲は曲名と再生数を表示/);
+  assert.match(runtime, /上位\$\{labelLimit\}曲は曲名と再生数を表示/);
 });
 
 test('track history exposes a lightweight date index from the daily read model', () => {
@@ -69,5 +70,5 @@ test('played tracks runtime is lazy while its shell loads before dashboard tabs'
   assert.ok(metrics.indexOf('played-tracks-shell.js') < metrics.indexOf('dashboard-tabs.js'));
   assert.match(metrics, /dashboard-tabs\.js\?v=20260927\.4/);
   assert.match(tabs, /'played-tracks'/);
-  assert.match(tabs, /import\('\/played-tracks\.js\?v=20260925\.1'\)/);
+  assert.match(tabs, /import\('\/played-tracks\.js\?v=20260927\.2'\)/);
 });

@@ -214,6 +214,7 @@ function drawPie() {
   const centerX = rect.width / 2;
   const centerY = rect.height / 2;
   const topLabels = [];
+  const labelLimit = rect.width < 520 ? 3 : 5;
   let angle = -Math.PI / 2;
   state.rows.forEach((row, index) => {
     const next = angle + Math.PI * 2 * row.play_count / state.total;
@@ -227,7 +228,7 @@ function drawPie() {
     context.lineWidth = 1.5;
     context.stroke();
 
-    if (index < 5) {
+    if (index < labelLimit) {
       topLabels.push({
         row,
         index,
@@ -292,7 +293,10 @@ function render() {
   renderTable();
   drawPie();
   const canvas = byId('playedTracksChart');
-  if (canvas) canvas.setAttribute('aria-label', `${selectedDescription()} の曲別再生割合の円グラフ。上位5曲は曲名と再生数を表示`);
+  if (canvas) {
+    const labelLimit = canvas.getBoundingClientRect().width < 520 ? 3 : 5;
+    canvas.setAttribute('aria-label', `${selectedDescription()} の曲別再生割合の円グラフ。上位${labelLimit}曲は曲名と再生数を表示`);
+  }
 }
 
 function setNotice(message, error = false) {
