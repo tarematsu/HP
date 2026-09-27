@@ -132,17 +132,23 @@ export async function syncTrackHistoryR2Day({
 
   const source = await loadDayRows(db, day);
   const payload = dayPayload(day, source, now);
+  const existingIndex = await Promise.resolve(load(TRACK_HISTORY_DAY_INDEX_KEY));
+  if (!existingIndex
+      || Number(existingIndex.version) !== 1
+      || !Array.isArray(existingIndex.dates)) {
+    throw new Error('track-history R2 day index unavailable; run a full sync before incremental refresh');
+  }
+
   upload(trackHistoryDayObjectKey(day), payload);
 
-  const existingIndex = await Promise.resolve(load(TRACK_HISTORY_DAY_INDEX_KEY));
-  const dates = new Set(normalizedDates(existingIndex?.dates));
+  const dates = new Set(normalizedDates(existingIndex.dates));
   if (payload.rows.length) dates.add(day);
   else dates.delete(day);
   const normalized = [...dates].sort();
   const index = {
     version: 1,
     updated_at: Math.max(
-      Number(existingIndex?.updated_at) || 0,
+      Number(existingIndex.updated_at) || 0,
       Number(payload.updated_at) || Number(now) || Date.now(),
     ),
     dates: normalized,
