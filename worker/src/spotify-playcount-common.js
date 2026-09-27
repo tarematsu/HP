@@ -86,5 +86,6 @@ export async function activeRunMatches(db, message) {
     FROM sh_spotify_collection_runs WHERE snapshot_date=?`)
     .bind(message.snapshot_date)
     .first();
-  return row?.run_token === message.run_token && row?.status !== 'complete';
+  return row?.run_token === message.run_token
+    && ['catalog', 'queued'].includes(String(row?.status || ''));
 }
