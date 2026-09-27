@@ -1,4 +1,5 @@
 LR"JS(
+;
 (() => {
   if (!/^(?:www\.)?x\.com$/.test(location.hostname)) return false;
 
