@@ -64,17 +64,44 @@ inline std::string JstPreviousDateKey(int64_t nowMs) {
   return buffer;
 }
 
-inline std::string FindIsoDate(std::string_view value) {
-  for (size_t i = 0; i + 10 <= value.size(); ++i) {
-    const auto digit = [&](size_t offset) {
-      const char ch = value[i + offset];
-      return ch >= '0' && ch <= '9';
-    };
-    if (digit(0) && digit(1) && digit(2) && digit(3) &&
-        value[i + 4] == '-' && digit(5) && digit(6) &&
-        value[i + 7] == '-' && digit(8) && digit(9)) {
-      return std::string(value.substr(i, 10));
+inline bool IsIsoDateAt(std::string_view value, size_t offset) noexcept {
+  if (offset + 10 > value.size()) return false;
+  const auto digit = [&](size_t index) {
+    const char ch = value[offset + index];
+    return ch >= '0' && ch <= '9';
+  };
+  return digit(0) && digit(1) && digit(2) && digit(3) &&
+      value[offset + 4] == '-' && digit(5) && digit(6) &&
+      value[offset + 7] == '-' && digit(8) && digit(9);
+}
+
+inline std::string FindDateAfterJsonKey(std::string_view value, std::string_view key) {
+  size_t position = value.find(key);
+  while (position != std::string_view::npos) {
+    const size_t colon = value.find(':', position + key.size());
+    if (colon == std::string_view::npos) break;
+    const size_t quote = value.find('"', colon + 1);
+    if (quote != std::string_view::npos && IsIsoDateAt(value, quote + 1)) {
+      return std::string(value.substr(quote + 1, 10));
     }
+    position = value.find(key, position + key.size());
+  }
+  return {};
+}
+
+inline std::string FindChartDate(std::string_view value) {
+  for (const std::string_view key : {
+           std::string_view{"\"chartDate\""},
+           std::string_view{"\"displayDate\""},
+           std::string_view{"\"latestDate\""},
+           std::string_view{"\"date\""},
+       }) {
+    if (const std::string found = FindDateAfterJsonKey(value, key); !found.empty()) {
+      return found;
+    }
+  }
+  for (size_t offset = 0; offset + 10 <= value.size(); ++offset) {
+    if (IsIsoDateAt(value, offset)) return std::string(value.substr(offset, 10));
   }
   return {};
 }
@@ -184,8 +211,10 @@ inline bool NormalizeChartResponse(std::string_view body, int64_t observedAt,
 
     JsonObject row;
     row.Insert(L"rank", JsonValue::CreateNumberValue(*rankValue));
-    row.Insert(L"artist_name", JsonValue::CreateStringValue(artistName));
-    if (!artistId.empty()) row.Insert(L"artist_id", JsonValue::CreateStringValue(artistId));
+    row.Insert(L"artist_name", JsonValue::CreateStringValue(winrt::hstring(artistName)));
+    if (!artistId.empty()) {
+      row.Insert(L"artist_id", JsonValue::CreateStringValue(winrt::hstring(artistId)));
+    }
     const auto previous = JsonNumber(chart, L"previousRank");
     if (previous && *previous >= 1 && *previous <= 200) {
       row.Insert(L"previous_rank", JsonValue::CreateNumberValue(*previous));
@@ -196,12 +225,14 @@ inline bool NormalizeChartResponse(std::string_view body, int64_t observedAt,
     }
     auto streak = JsonNumber(chart, L"consecutiveAppearancesOnChart");
     if (!streak) streak = JsonNumber(chart, L"appearancesOnChart");
-    if (streak && *streak >= 0) row.Insert(L"streak", JsonValue::CreateNumberValue(*streak));
+    if (streak && *streak >= 0) {
+      row.Insert(L"streak", JsonValue::CreateNumberValue(*streak));
+    }
     normalized.Append(row);
   }
 
   if (normalized.Size() < 50) return false;
-  const std::string chartDate = FindIsoDate(body);
+  const std::string chartDate = FindChartDate(body);
   if (chartDate.empty() || chartDate < JstPreviousDateKey(observedAt)) return false;
 
   JsonObject capture;
@@ -209,7 +240,7 @@ inline bool NormalizeChartResponse(std::string_view body, int64_t observedAt,
   capture.Insert(L"observed_at", JsonValue::CreateNumberValue(static_cast<double>(observedAt)));
   capture.Insert(L"source", JsonValue::CreateStringValue(L"spotify-charts-webview"));
   capture.Insert(L"chart_id", JsonValue::CreateStringValue(L"artist-jp-daily"));
-  capture.Insert(L"chart_date", JsonValue::CreateStringValue(Utf8ToWide(chartDate)));
+  capture.Insert(L"chart_date", JsonValue::CreateStringValue(winrt::hstring(Utf8ToWide(chartDate))));
   capture.Insert(L"entry_count", JsonValue::CreateNumberValue(normalized.Size()));
   capture.Insert(L"entries", normalized);
   *serialized = capture.Stringify().c_str();
@@ -346,7 +377,7 @@ inline void SpotifyArtistChartCollector::ConfigureAndNavigate(uint64_t generatio
   if (!started_ || generation != generation_ || !controller_) return;
   RECT bounds{0, 0, 1, 1};
   controller_->put_Bounds(bounds);
-  controller_->put_IsVisible(TRUE);
+  controller_->put_IsVisible(FALSE);
   if (FAILED(controller_->get_CoreWebView2(&webview_)) || !webview_) {
     FailCapture(UnixMillis(), L"webview-unavailable");
     return;
@@ -399,6 +430,7 @@ inline void SpotifyArtistChartCollector::ConfigureAndNavigate(uint64_t generatio
             const HRESULT contentStarted = response->GetContent(
                 Callback<ICoreWebView2WebResourceResponseViewGetContentCompletedHandler>(
                     [this, alive, generation, heldResponse](HRESULT result, IStream* content) -> HRESULT {
+                      (void)heldResponse;
                       if (!CallbackAlive(alive) || !started_ || generation != generation_) return S_OK;
                       contentInFlight_ = false;
                       if (FAILED(result) || !content) {
