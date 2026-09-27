@@ -182,9 +182,10 @@ test('Spotify tab renders tracked female-idol trend charts from the single read 
   assert.match(tabs, /VIEW_MODES[\s\S]*'spotify'/);
   assert.match(tabs, /const spotifyView = document\.getElementById\('spotifyView'\)/);
   assert.match(tabs, /async function showSpotify/);
-  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.1'\)/);
+  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.2'\)/);
   assert.match(tabs, /else if \(mode === 'spotify'\) void showSpotify/);
   assert.match(tabs, /button\.dataset\.view === 'spotify'/);
-  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.1/);
+  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.2/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.1/);
   assert.doesNotMatch(dashboard, /spotify-tab-router/);
 });
