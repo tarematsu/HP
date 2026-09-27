@@ -34,55 +34,120 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.spotify-comparison-panel {
+.spotify-trend-panel {
   display: grid;
   gap: 14px;
 }
 
-.spotify-comparison-chart {
+.spotify-trend-charts {
   display: grid;
+  gap: 14px;
+}
+
+.spotify-trend-series {
+  --spotify-trend-color: #777;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line, #e2e2e2);
+}
+
+.spotify-trend-series:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.spotify-trend-series[data-artist="sakurazaka46"] {
+  --spotify-trend-color: #f3a6c8;
+}
+
+.spotify-trend-series[data-artist="nogizaka46"] {
+  --spotify-trend-color: #8264b0;
+}
+
+.spotify-trend-series[data-artist="hinatazaka46"] {
+  --spotify-trend-color: #9ecff3;
+}
+
+.spotify-trend-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 12px;
 }
 
-.spotify-comparison-row {
-  display: grid;
-  grid-template-columns: minmax(76px, 112px) minmax(80px, 1fr) minmax(88px, auto);
+.spotify-trend-name {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-}
-
-.spotify-comparison-name,
-.spotify-comparison-value {
-  white-space: nowrap;
-}
-
-.spotify-comparison-name {
-  font-weight: 650;
-}
-
-.spotify-comparison-row.is-active .spotify-comparison-name,
-.spotify-comparison-row.is-active .spotify-comparison-value {
+  gap: 8px;
   font-weight: 800;
 }
 
-.spotify-comparison-track {
-  height: 14px;
-  overflow: hidden;
+.spotify-trend-name::before {
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
-  background: var(--line, #e2e2e2);
+  background: var(--spotify-trend-color);
+  content: '';
+  flex: 0 0 auto;
 }
 
-.spotify-comparison-bar {
-  width: var(--spotify-comparison-width, 0%);
-  height: 100%;
-  min-width: 0;
-  border-radius: inherit;
-  background: currentColor;
-  opacity: 0.72;
+.spotify-trend-latest {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.spotify-comparison-value {
-  text-align: right;
+.spotify-trend-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.spotify-trend-svg {
+  display: block;
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+  aspect-ratio: 720 / 190;
+  overflow: visible;
+}
+
+.spotify-trend-grid,
+.spotify-trend-axis {
+  stroke: var(--line, #dedede);
+  vector-effect: non-scaling-stroke;
+}
+
+.spotify-trend-grid {
+  stroke-dasharray: 3 4;
+}
+
+.spotify-trend-axis-label {
+  fill: currentColor;
+  font-size: 11px;
+  opacity: 0.68;
+}
+
+.spotify-trend-line {
+  fill: none;
+  stroke: var(--spotify-trend-color);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.spotify-trend-point {
+  fill: var(--spotify-trend-color);
+  stroke: var(--card, #fff);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.spotify-trend-empty {
+  margin: 0;
+  color: var(--muted, #777);
 }
 
 .spotify-table th:nth-child(1),
@@ -126,13 +191,12 @@
     font-size: clamp(1rem, 4.5vw, 1.35rem);
   }
 
-  .spotify-comparison-row {
-    grid-template-columns: 76px minmax(60px, 1fr) minmax(80px, auto);
+  .spotify-trend-head {
     gap: 8px;
   }
 
-  .spotify-comparison-track {
-    height: 12px;
+  .spotify-trend-svg {
+    min-width: 520px;
   }
 
   .spotify-data-panel .table-wrap {
