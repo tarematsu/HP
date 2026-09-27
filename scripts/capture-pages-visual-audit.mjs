@@ -226,7 +226,13 @@ const report = {
 
 await writeFile(join(options.outDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report.summary));
-if (fatal) {
-  console.error(fatal);
+
+const issueCount = report.summary.failedViewCount
+  + report.summary.consoleErrorCount
+  + report.summary.pageErrorCount
+  + report.summary.requestFailureCount;
+if (fatal || issueCount > 0) {
+  if (fatal) console.error(fatal);
+  if (issueCount > 0) console.error(`Visual audit detected ${issueCount} issue(s).`);
   process.exitCode = 1;
 }
