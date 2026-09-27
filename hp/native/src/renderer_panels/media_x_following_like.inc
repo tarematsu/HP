@@ -38,15 +38,16 @@ LR"JS(
             'DOMContentLoaded', resolve, { once: true }));
       }
 
-      let tab = null;
-      for (let attempt = 0; attempt < 20 && !tab; attempt++) {
+      // Login is intentionally user-owned. Until X exposes the authenticated
+      // Following tab, only observe the DOM: no clicks, scrolling or likes.
+      let tab = followingTab();
+      while (!tab) {
+        state.result = 'waiting-login';
+        await sleep(1000);
         tab = followingTab();
-        if (!tab) await sleep(400);
       }
-      if (!tab) {
-        state.result = 'following-tab-not-found';
-        return;
-      }
+      state.result = 'authenticated';
+
       if (tab.getAttribute('aria-selected') !== 'true') {
         tab.click();
         await sleep(1600);
