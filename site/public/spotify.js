@@ -7,7 +7,7 @@ const ARTISTS = Object.freeze({
 const DEFAULT_ARTIST = 'sakurazaka46';
 const numberFormat = new Intl.NumberFormat('ja-JP');
 let activeArtist = DEFAULT_ARTIST;
-let loading = false;
+let requestSequence = 0;
 const payloadCache = new Map();
 
 function element(id) {
@@ -98,21 +98,18 @@ async function fetchPayload(artistKey) {
 
 export async function loadSpotifyView({ artist = activeArtist, refresh = false } = {}) {
   const requested = ARTISTS[artist] ? artist : DEFAULT_ARTIST;
+  const sequence = ++requestSequence;
   activeArtist = requested;
   updateArtistButtons();
   if (refresh) payloadCache.delete(requested);
-  if (loading) return;
-  loading = true;
   try {
     setNotice('');
     const payload = await fetchPayload(requested);
-    if (activeArtist !== requested) return;
+    if (sequence !== requestSequence || activeArtist !== requested) return;
     render(payload);
   } catch (error) {
-    if (activeArtist !== requested) return;
+    if (sequence !== requestSequence || activeArtist !== requested) return;
     setNotice(`Spotify再生数の取得に失敗しました: ${error.message}`, true);
-  } finally {
-    loading = false;
   }
 }
 
