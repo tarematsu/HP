@@ -1,5 +1,6 @@
 const QUERY_CHUNK_SIZE = 80;
 const WRITE_CHUNK_SIZE = 50;
+let aliasBootstrapVerified = false;
 
 function normalizedText(value) {
   return String(value ?? '')
@@ -113,7 +114,23 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
   }));
 }
 
+export function resetSpotifyAliasBootstrapVerification() {
+  aliasBootstrapVerified = false;
+}
+
 export async function bootstrapSpotifyTrackAliases(db, seenAt) {
+  if (aliasBootstrapVerified) return 0;
+
+  // Legacy rows needed a one-time alias backfill when canonical identities were introduced.
+  // New collection rows are canonicalized before sh_spotify_tracks is written, so once at
+  // least one alias exists the expensive anti-join must not run on every Queue batch.
+  const existingAlias = await db.prepare(`SELECT source_track_id
+    FROM sh_spotify_track_aliases LIMIT 1`).first();
+  if (existingAlias?.source_track_id) {
+    aliasBootstrapVerified = true;
+    return 0;
+  }
+
   const result = await db.prepare(`SELECT
       track.track_id,track.name,track.duration_ms,track.artists_json
     FROM sh_spotify_tracks track
@@ -121,7 +138,11 @@ export async function bootstrapSpotifyTrackAliases(db, seenAt) {
     WHERE alias.source_track_id IS NULL
     ORDER BY track.track_id`).all();
   const tracks = rowsOf(result);
-  if (!tracks.length) return 0;
+  if (!tracks.length) {
+    aliasBootstrapVerified = true;
+    return 0;
+  }
   await resolveCanonicalSpotifyTracks(db, tracks, seenAt);
+  aliasBootstrapVerified = true;
   return tracks.length;
 }
