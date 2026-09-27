@@ -199,7 +199,7 @@ export async function applySpotifyArtistChartInput(
     stored = true;
   }
 
-  const newest = captures[captures.length - 1];
+  const newest = captures[captures.length - 1]!;
   const previousLatest = await storedGeneration(env, LATEST_KEY);
   const canAdvanceLatest = isNewerOrEqual(newest, previousLatest);
   if (canAdvanceLatest) {
