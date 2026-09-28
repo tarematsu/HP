@@ -46,6 +46,32 @@ export function spotifyPlaycountSql() {
     d.track_id ASC`;
 }
 
+export function spotifyArtistDailyRefreshSql() {
+  return `WITH latest AS (
+      SELECT MAX(snapshot_date) AS snapshot_date FROM sh_spotify_playcount_daily
+    ), missing_dates AS (
+      SELECT run.snapshot_date
+      FROM sh_spotify_collection_runs run
+      WHERE run.status='complete'
+        AND run.snapshot_date >= date((SELECT snapshot_date FROM latest), '-89 days')
+        AND NOT EXISTS (
+          SELECT 1 FROM sh_spotify_artist_daily daily
+          WHERE daily.snapshot_date=run.snapshot_date
+        )
+    )
+    INSERT INTO sh_spotify_artist_daily(snapshot_date,artist_key,total_delta)
+    SELECT
+      d.snapshot_date,
+      target.artist_key,
+      CASE WHEN COUNT(d.delta)=0 THEN NULL ELSE SUM(d.delta) END
+    FROM missing_dates missing
+    INNER JOIN sh_spotify_playcount_daily d ON d.snapshot_date=missing.snapshot_date
+    INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
+    GROUP BY d.snapshot_date,target.artist_key
+    ON CONFLICT(snapshot_date,artist_key) DO UPDATE SET
+      total_delta=excluded.total_delta`;
+}
+
 export function spotifyTrendSql() {
   return `WITH latest_ranking_date AS (
     SELECT MAX(ranking_date) AS ranking_date FROM sh_spotify_top20_history
@@ -139,6 +165,7 @@ export async function onRequestGet({ env }) {
   }
 
   try {
+    await env.OTHER_DB.prepare(spotifyArtistDailyRefreshSql()).run();
     const latestResult = await env.OTHER_DB.prepare(spotifyPlaycountSql()).all();
     const trendResult = await env.OTHER_DB.prepare(spotifyTrendSql()).all();
     return json({
