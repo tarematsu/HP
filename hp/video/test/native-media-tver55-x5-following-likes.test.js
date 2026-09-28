@@ -65,6 +65,7 @@ test('X likes exclude reposts, ads and boosted posts', () => {
   assert.match(xRuntime, /isOrganic = article => !isPromoted\(article\) && !isRepost\(article\)/);
   assert.match(xRuntime, /window\.scrollBy\(\{ top: scrollDistance, behavior: 'smooth' \}\)/);
   assert.match(xRuntime, /const likeIntervalMs = 10 \* 1000/);
-  assert.match(xRuntime, /button\.click\(\)/);
+  assert.match(xRuntime, /bridge\.postMessage\(`homepanel:x-like:\$\{id\}:\$\{x\}:\$\{y\}`\)/);
+  assert.doesNotMatch(xRuntime, /button\.click\(\)/);
   assert.doesNotMatch(xRuntime, /homepanel:startup-x-until|homepanel=startup/);
 });

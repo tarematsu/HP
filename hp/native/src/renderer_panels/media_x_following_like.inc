@@ -26,6 +26,25 @@ LR"JS(
     return /(?:reposted|repost|retweeted|retweet|リポスト|リツイート)/i.test(value);
   };
   const isOrganic = article => !isPromoted(article) && !isRepost(article);
+  const articleId = article => {
+    const permalink = article?.querySelector('time')?.closest('a')
+        ?.getAttribute('href');
+    return permalink?.match(/\/status\/(\d+)/)?.[1] || '';
+  };
+  const articleForId = id => Array.from(
+      document.querySelectorAll('article[data-testid="tweet"]'))
+      .find(article => articleId(article) === id);
+  const requestTrustedLike = (id, button) => {
+    const bridge = globalThis.chrome?.webview;
+    if (!bridge || typeof bridge.postMessage !== 'function') return false;
+    const rect = button.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return false;
+    const x = Math.round(rect.left + rect.width / 2);
+    const y = Math.round(rect.top + rect.height / 2);
+    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return false;
+    bridge.postMessage(`homepanel:x-like:${id}:${x}:${y}`);
+    return true;
+  };
 
   const run = async () => {
     try {
@@ -72,21 +91,20 @@ LR"JS(
             if (!article.isConnected || !isOrganic(article)) continue;
             const rect = article.getBoundingClientRect();
             if (rect.bottom <= 0 || rect.top >= innerHeight) continue;
-            const permalink = article.querySelector('time')?.closest('a')
-                ?.getAttribute('href');
-            const id = permalink?.match(/\/status\/(\d+)/)?.[1];
+            const id = articleId(article);
             if (!id || attempted.has(id)) continue;
             const button = article.querySelector('[data-testid="like"]');
             if (!button || button.disabled ||
                 button.getAttribute('aria-disabled') === 'true' ||
                 article.querySelector('[data-testid="unlike"]')) continue;
-            // Never retry a failed post or catch up with a burst of clicks.
+            if (!requestTrustedLike(id, button)) continue;
+            // One trusted input request per interval. Never catch up with bursts.
             attempted.add(id);
             state.attemptedCount = attempted.size;
             nextLikeAt = performance.now() + likeIntervalMs;
-            button.click();
-            await sleep(1000);
-            if (article.querySelector('[data-testid="unlike"]')) state.likedCount++;
+            await sleep(1500);
+            if (articleForId(id)?.querySelector('[data-testid="unlike"]'))
+              state.likedCount++;
             break;
           }
         }
