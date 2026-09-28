@@ -19,6 +19,7 @@ import {
   bootstrapSpotifyTrackAliases,
   resolveCanonicalSpotifyTracks,
 } from './spotify-track-identity.js';
+import { spotifyArtistDailyRefreshStatements } from './spotify-playcount-summary.js';
 
 async function persistCandidateTracks(db, message, tracks, collectedAt) {
   const resolvedTracks = await resolveCanonicalSpotifyTracks(db, tracks, collectedAt);
@@ -253,6 +254,7 @@ async function finalizeAttempt(db, message) {
         WHERE source_track_id<>canonical_track_id
       )`)
       .bind(message.snapshot_date),
+    ...spotifyArtistDailyRefreshStatements(db, message.snapshot_date, now),
     db.prepare(`INSERT INTO sh_spotify_playcount_current (
         track_id,playcount,snapshot_date,collected_at
       )

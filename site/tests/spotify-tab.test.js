@@ -96,18 +96,19 @@ test('Spotify read model keeps only Sakurazaka track detail and all-idol trend t
   assert.equal(model.trend['equal-love'][0].current_rank, 1);
 });
 
-test('Spotify detail SQL reads only Sakurazaka while trend SQL covers every tracked idol', () => {
+test('Spotify detail SQL reads only Sakurazaka while trend SQL uses the bounded artist-day summary', () => {
   const detailSql = spotifyPlaycountSql();
   assert.match(detailSql, /target\.artist_key='sakurazaka46'/);
   assert.doesNotMatch(detailSql, /nogizaka46|hinatazaka46/);
 
   const trendSql = spotifyTrendSql();
   assert.match(trendSql, /-89 days/);
+  assert.match(trendSql, /FROM sh_spotify_artist_daily daily/);
+  assert.match(trendSql, /latest_summary_date/);
   assert.match(trendSql, /INNER JOIN sh_spotify_artists artist/);
   assert.match(trendSql, /sh_spotify_top20_history/);
-  assert.match(trendSql, /GROUP BY target\.artist_key, artist\.artist_name, current_rank\.rank, d\.snapshot_date/);
-  assert.match(trendSql, /SUM\(d\.delta\)/);
-  assert.doesNotMatch(trendSql, /track_count|is_carried_forward/);
+  assert.match(trendSql, /daily\.total_delta/);
+  assert.doesNotMatch(trendSql, /sh_spotify_playcount_daily|GROUP BY|SUM\(d\.delta\)/);
   assert.doesNotMatch(trendSql, /target\.artist_key IN/);
 });
 

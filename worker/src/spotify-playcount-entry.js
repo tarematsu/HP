@@ -4,6 +4,7 @@ import {
   processSpotifyPlaycountBatch,
   runSpotifyPlaycountScheduled,
 } from './spotify-playcount-collector.js';
+import { spotifyArtistDailyRefreshStatements } from './spotify-playcount-summary.js';
 
 async function carryForwardExpiredStaleDays(db, scheduledTime) {
   if (!db?.prepare || jstHour(scheduledTime) !== 5) return 0;
@@ -40,6 +41,10 @@ async function carryForwardExpiredStaleDays(db, scheduledTime) {
         is_carried_forward=1`)
       .bind(snapshotDate, now, baselineDate)
       .run();
+
+    for (const statement of spotifyArtistDailyRefreshStatements(db, snapshotDate, now)) {
+      await statement.run();
+    }
 
     await db.prepare(`UPDATE sh_spotify_collection_runs
       SET status='complete',
