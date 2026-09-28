@@ -31,23 +31,23 @@ function mountView() {
 
     <section class="summary-cards spotify-summary" aria-label="櫻坂46 Spotify再生数概要">
       <article><span>確定日</span><strong id="spotifySnapshotDate" class="summary-date">-</strong></article>
-      <article><span>楽曲数</span><strong id="spotifyTrackCount">-</strong></article>
-      <article><span>前回比合計</span><strong id="spotifyTotalDelta">-</strong></article>
+      <article><span>櫻坂46楽曲数</span><strong id="spotifyTrackCount">-</strong></article>
+      <article><span>櫻坂46前日比合計</span><strong id="spotifyTotalDelta">-</strong></article>
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTrendTitle">
-      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">Spotify 日次全曲 再生数推移</h2></div></div>
-      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドル全アーティストの日別前回比合計を重ねたグラフ"></div>
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">Spotify 全曲合計 再生数推移</h2></div></div>
+      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドル全アーティストの前日比全曲合計を重ねたグラフ"></div>
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTop10TrendTitle">
-      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10TrendTitle">Spotify 日次上位10曲 再生数推移</h2></div></div>
-      <div id="spotifyTop10TrendCharts" class="spotify-trend-charts" aria-label="各アーティストの前回比上位10曲の再生数合計を重ねたグラフ"></div>
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10TrendTitle">Spotify 上位10曲合計 再生数推移</h2></div></div>
+      <div id="spotifyTop10TrendCharts" class="spotify-trend-charts" aria-label="各アーティストの前日比上位10曲の再生数合計を重ねたグラフ"></div>
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTop10YearTrendTitle">
-      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10YearTrendTitle">Spotify 日次上位10曲(今年限定) 再生数推移</h2></div></div>
-      <div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲に限定した各アーティストの前回比上位10曲の再生数合計を重ねたグラフ"></div>
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10YearTrendTitle">Spotify 上位10曲合計(今年限定) 再生数推移</h2></div></div>
+      <div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲に限定した各アーティストの前日比上位10曲の再生数合計を重ねたグラフ"></div>
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyArtistRankTrendTitle">
@@ -65,7 +65,7 @@ function mountView() {
             <col class="col-number">
             <col class="col-delta">
           </colgroup>
-          <thead><tr><th>順位</th><th>曲名</th><th>累計再生数</th><th>前回比</th></tr></thead>
+          <thead><tr><th>順位</th><th>曲名</th><th>累計再生数</th><th>前日比</th></tr></thead>
           <tbody id="spotifyTbody"></tbody>
         </table>
       </div>
