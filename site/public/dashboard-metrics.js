@@ -4,7 +4,7 @@ import './dashboard-header.js?v=20260928.1';
 import './first-week-comparison-shell.js?v=20260928.1';
 import './played-tracks-shell.js?v=20260928.1';
 import './spotify-shell.js?v=20260929.1';
-import './dashboard-tabs.js?v=20260929.2';
+import './dashboard-tabs.js?v=20260929.1';
 import './dashboard-current-layout.js?v=20260924.1';
 import './dashboard-current-metric-style.js?v=20260923.1';
 
@@ -103,10 +103,17 @@ function initialModeIsCurrent() {
   return !mode || mode === 'current';
 }
 
+function startCurrentRuntimeFromLocation() {
+  if (initialModeIsCurrent()) void ensureCurrentRuntime();
+}
+
 installImageState('channelImage');
 installImageState('trackImage');
 
-if (initialModeIsCurrent()) void ensureCurrentRuntime();
-window.addEventListener('dashboard:current-activated', () => {
-  void ensureCurrentRuntime();
-});
+startCurrentRuntimeFromLocation();
+document.getElementById('modeTabs')?.addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (button?.dataset.view === 'current') void ensureCurrentRuntime();
+}, { capture: true });
+window.addEventListener('popstate', startCurrentRuntimeFromLocation);
+window.addEventListener('hashchange', startCurrentRuntimeFromLocation);
