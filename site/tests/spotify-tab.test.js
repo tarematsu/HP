@@ -164,7 +164,7 @@ test('Spotify API reports missing D1 only on the producer path', async () => {
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab renders daily, top-10, and current-year top-10 graphs', () => {
+test('Spotify tab renders playcount and Japan daily artist-rank graphs', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
@@ -175,21 +175,27 @@ test('Spotify tab renders daily, top-10, and current-year top-10 graphs', () => 
   assert.match(shell, /Spotify 日次全曲 再生数推移/);
   assert.match(shell, /Spotify 日次上位10曲 再生数推移/);
   assert.match(shell, /Spotify 日次上位10曲\(今年限定\) 再生数推移/);
+  assert.match(shell, /Spotify デイリートップアーティスト\(日本\) 順位推移/);
   assert.doesNotMatch(shell, / - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /id="spotifyTop10TrendCharts"/);
   assert.match(shell, /id="spotifyTop10YearTrendCharts"/);
+  assert.match(shell, /id="spotifyArtistRankTrendCharts"/);
 
   assert.match(runtime, /metricKey: 'total_delta'/);
   assert.match(runtime, /metricKey: 'top10_delta'/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
+  assert.match(runtime, /SPOTIFY_ARTIST_CHART_URL/);
+  assert.match(runtime, /homepanel-cloud\.tarematsu\.workers\.dev\/api\/spotify-artist-chart/);
+  assert.match(runtime, /renderArtistRankChart/);
+  assert.match(runtime, /latestValue\.textContent = latest \? `\$\{numberFormat\.format\(latest\.rank\)\}位` : '-'/);
   assert.match(runtime, /spotify-trend-scroll chart-fit/);
   assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
 
   assert.match(styles, /\.spotify-trend-legend/);
   assert.match(styles, /aspect-ratio: 960 \/ 340/);
   assert.match(sharedLayout, /\.chart-fit > :is\(svg, canvas\)[\s\S]*min-width:\s*0 !important/);
-  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.5'\)/);
-  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.5/);
-  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.5/);
+  assert.match(tabs, /import\('\/spotify\.js\?v=20260929\.1'\)/);
+  assert.match(dashboard, /spotify-shell\.js\?v=20260929\.1/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260929\.1/);
 });
