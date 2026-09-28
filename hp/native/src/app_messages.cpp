@@ -1,11 +1,59 @@
 #include "app.h"
 #include "app_startup_tick_fallback.h"
+#include "spotify_artist_chart_collector.h"
 #include "stationhead_leaderboard_capture_spool.h"
 #include "web_renderer.h"
 
 namespace hp {
 namespace {
 constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
+constexpr UINT_PTR kSpotifyArtistChartTimer = 41;
+constexpr UINT_PTR kSpotifyArtistChartWatchTimer = 42;
+constexpr UINT kSpotifyArtistChartInitialDelayMs = 4 * 60 * 1000;
+constexpr UINT kSpotifyArtistChartIntervalMs = 60 * 60 * 1000;
+constexpr UINT kSpotifyArtistChartWatchMs = 2000;
+constexpr int64_t kSpotifyArtistChartIdleThresholdMs = 5 * 60'000LL;
+
+SpotifyArtistChartCollector& SpotifyArtistChartCollectorInstance() {
+  static SpotifyArtistChartCollector collector;
+  return collector;
+}
+
+void ArmSpotifyArtistChartInitialTimer(HWND window) {
+  if (!window) return;
+  SetTimer(window, kSpotifyArtistChartTimer, kSpotifyArtistChartInitialDelayMs, nullptr);
+}
+
+void CaptureSpotifyArtistChartHourly(HWND window) {
+  if (!window) return;
+  KillTimer(window, kSpotifyArtistChartTimer);
+  SetTimer(window, kSpotifyArtistChartTimer, kSpotifyArtistChartIntervalMs, nullptr);
+
+  const int64_t now = UnixMillis();
+  auto& collector = SpotifyArtistChartCollectorInstance();
+  collector.EnsureStarted(now);
+  collector.RequestCaptureNow(now);
+  collector.Tick(now);
+  SetTimer(window, kSpotifyArtistChartWatchTimer, kSpotifyArtistChartWatchMs, nullptr);
+}
+
+void TickSpotifyArtistChartCapture(HWND window) {
+  const int64_t now = UnixMillis();
+  auto& collector = SpotifyArtistChartCollectorInstance();
+  collector.Tick(now);
+  const int64_t nextWake = collector.NextWakeAt();
+  if (nextWake <= 0 || nextWake - now > kSpotifyArtistChartIdleThresholdMs) {
+    KillTimer(window, kSpotifyArtistChartWatchTimer);
+  }
+}
+
+void StopSpotifyArtistChartCapture(HWND window) {
+  if (window) {
+    KillTimer(window, kSpotifyArtistChartTimer);
+    KillTimer(window, kSpotifyArtistChartWatchTimer);
+  }
+  SpotifyArtistChartCollectorInstance().Stop();
+}
 }
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -14,12 +62,16 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
     app = static_cast<App*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);
     if (app) app->window_ = window;
     SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
-    if (app) StartStartupUpdateFallback(window, app);
+    if (app) {
+      StartStartupUpdateFallback(window, app);
+      ArmSpotifyArtistChartInitialTimer(window);
+    }
   }
 
   const LRESULT result = app ? app->HandleMessage(message, wParam, lParam)
                              : DefWindowProcW(window, message, wParam, lParam);
   if (message == WM_NCDESTROY) {
+    StopSpotifyArtistChartCapture(window);
     StopStartupUpdateFallback();
     SetWindowLongPtrW(window, GWLP_USERDATA, 0);
     if (app) app->window_ = nullptr;
@@ -30,6 +82,14 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
+      if (wParam == kSpotifyArtistChartTimer) {
+        CaptureSpotifyArtistChartHourly(window_);
+        return 0;
+      }
+      if (wParam == kSpotifyArtistChartWatchTimer) {
+        TickSpotifyArtistChartCapture(window_);
+        return 0;
+      }
       if (wParam == 0) MarkStationheadPlacementDirty();
       Tick();
       return 0;
