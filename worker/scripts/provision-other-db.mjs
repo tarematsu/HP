@@ -19,6 +19,8 @@ const APPLE_MUSIC_COMPATIBILITY_TABLE = 'sh_host_queue_items';
 const LEGACY_TRACK_METADATA_TABLE = 'sh_track_metadata';
 const OFFICIAL_PARTY_SUMMARY_TABLE = 'sh_official_broadcast_summary';
 const OFFICIAL_PARTY_METRICS_MIGRATION = '039_official_party_materialized_metrics.sql';
+const SPOTIFY_COLLECTION_RUNS_TABLE = 'sh_spotify_collection_runs';
+const SPOTIFY_CATALOG_PROGRESS_MIGRATION = '044_spotify_catalog_progress.sql';
 
 // Runtime writes the operational tables and Pages reads the public projections.
 // Provisioning updates only those two explicit owners.
@@ -114,8 +116,32 @@ function ensureOfficialPartyMetricColumns() {
   }
 }
 
+function ensureSpotifyCatalogProgressColumns() {
+  const columns = tableColumns(SPOTIFY_COLLECTION_RUNS_TABLE);
+  const requiredColumns = [
+    ['catalog_total', 'INTEGER NOT NULL DEFAULT 0'],
+    ['catalog_completed', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [name, type] of requiredColumns) {
+    if (columns.has(name)) continue;
+    wrangler([
+      'd1', 'execute', databaseName,
+      '--remote', '--yes',
+      '--command', `ALTER TABLE ${SPOTIFY_COLLECTION_RUNS_TABLE} ADD COLUMN ${name} ${type}`,
+    ]);
+    columns.add(name);
+  }
+}
+
 function applyMigration(migrationFile) {
   const migrationPath = resolve(migrationsDir, migrationFile);
+  if (migrationFile === SPOTIFY_CATALOG_PROGRESS_MIGRATION) {
+    // Migration 044 only adds two columns and production may already contain
+    // either or both after an earlier successful deployment. Replay it by
+    // adding only missing columns instead of executing the raw ALTER statements.
+    ensureSpotifyCatalogProgressColumns();
+    return;
+  }
   if (migrationFile !== OFFICIAL_PARTY_METRICS_MIGRATION) {
     wrangler([
       'd1', 'execute', databaseName,
