@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const dashboard = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
+const dashboardDetails = readFileSync(new URL('../functions/api/dashboard-details.js', import.meta.url), 'utf8');
 const dailySummaries = readFileSync(new URL('../functions/lib/dashboard-daily-summaries.js', import.meta.url), 'utf8');
 const tracks = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const ranking = readFileSync(new URL('../functions/lib/track-ranking.js', import.meta.url), 'utf8');
@@ -16,11 +17,12 @@ const workers = readFileSync(new URL('../../worker/scripts/cloudflare-workers.mj
 
 // Pages remains read-only. Production Worker ownership is split across the
 // Sakurazaka monitor, buddies recovery, buddies collector, and runtime orchestrator.
-test('dashboard composes completed daily summaries through a focused loader', () => {
-  assert.match(dashboard, /loadDashboardDailySummaries/);
-  assert.match(dashboard, /daily_summaries/);
+test('dashboard details compose completed daily summaries through a focused loader', () => {
+  assert.match(dashboardDetails, /loadDashboardDailySummaries/);
+  assert.match(dashboardDetails, /daily_summaries/);
   assert.match(dailySummaries, /FROM sh_daily_summary/);
-  assert.doesNotMatch(dashboard, /FROM sh_daily_summary/);
+  assert.doesNotMatch(dashboardDetails, /FROM sh_daily_summary/);
+  assert.doesNotMatch(dashboard, /loadDashboardDailySummaries|daily_summaries/);
 });
 
 test('like ranking reads only the worker-materialized status payload', () => {
