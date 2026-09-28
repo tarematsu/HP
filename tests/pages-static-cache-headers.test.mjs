@@ -22,10 +22,10 @@ test('HTML entry points remain no-store', () => {
   }
 });
 
-test('versioned JavaScript and CSS stay immutable in the browser cache', () => {
+test('JavaScript and CSS use a longer bounded cache without trapping unversioned imports', () => {
   for (const pattern of ['/*.js', '/*.css']) {
     const block = blockFor(pattern);
-    assert.match(block, /Cache-Control:\s*public, max-age=31536000, immutable/i, pattern);
-    assert.doesNotMatch(block, /must-revalidate/i, pattern);
+    assert.match(block, /Cache-Control:\s*public, max-age=3600, stale-while-revalidate=86400/i, pattern);
+    assert.doesNotMatch(block, /immutable/i, pattern);
   }
 });
