@@ -195,7 +195,7 @@ test('Spotify tab renders playcount and Japan daily artist-rank graphs', () => {
   assert.match(styles, /\.spotify-trend-legend/);
   assert.match(styles, /aspect-ratio: 960 \/ 340/);
   assert.match(sharedLayout, /\.chart-fit > :is\(svg, canvas\)[\s\S]*min-width:\s*0 !important/);
-  assert.match(tabs, /import\('\/spotify\.js\?v=20260929\.1'\)/);
-  assert.match(dashboard, /spotify-shell\.js\?v=20260929\.1/);
-  assert.match(dashboard, /dashboard-tabs\.js\?v=20260929\.1/);
+  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.5'\)/);
+  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.5/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.5/);
 });
