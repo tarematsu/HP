@@ -82,31 +82,42 @@ LR"JS(
       }
 
       window.scrollTo(0, 0);
-      await sleep(900);
+      await sleep(1200);
 
       const target = 2 + Math.floor(Math.random() * 4);
       const seen = new Set();
       let liked = 0;
 
-      for (let pass = 0; pass < 18 && liked < target; pass++) {
+      for (let pass = 0; pass < 24 && liked < target; pass++) {
+        const scrollDistance = Math.max(
+            220,
+            Math.floor(innerHeight * (0.35 + Math.random() * 0.20)));
+        window.scrollBy({ top: scrollDistance, behavior: 'smooth' });
+        await sleep(1800 + Math.floor(Math.random() * 1400));
+
         const articles = Array.from(
             document.querySelectorAll('article[data-testid="tweet"]'));
+        let likedThisPass = false;
         for (const article of articles) {
-          if (liked >= target) break;
           const key = tweetKey(article);
           if (!key || seen.has(key)) continue;
-          seen.add(key);
-          if (promoted(article)) continue;
+          if (promoted(article)) {
+            seen.add(key);
+            continue;
+          }
 
           const button = article.querySelector('[data-testid="like"]');
           if (!visible(button)) continue;
+          seen.add(key);
           button.click();
           liked++;
-          await sleep(320 + Math.floor(Math.random() * 480));
+          likedThisPass = true;
+          await sleep(1400 + Math.floor(Math.random() * 1600));
+          break;
         }
-        if (liked >= target) break;
-        window.scrollBy(0, Math.max(360, Math.floor(innerHeight * 0.85)));
-        await sleep(850);
+        if (!likedThisPass) {
+          await sleep(900 + Math.floor(Math.random() * 900));
+        }
       }
 
       state.targetCount = target;
