@@ -22,6 +22,8 @@ LR"JS(
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const text = element => (element?.innerText || element?.textContent || '')
       .replace(/\s+/g, ' ').trim();
+  const timelineArticles = () => Array.from(
+      document.querySelectorAll('article[data-testid="tweet"]'));
   const followingTab = () => Array.from(document.querySelectorAll('[role="tab"]'))
       .find(tab => /^(?:Following|フォロー中)$/i.test(text(tab)));
   const promotedLabel = /^(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト|PR)$/i;
@@ -55,9 +57,7 @@ LR"JS(
     root.appendChild(style);
   };
   const markFilteredArticles = () => {
-    const articles = Array.from(
-        document.querySelectorAll('article[data-testid="tweet"]'));
-    for (const article of articles) {
+    for (const article of timelineArticles()) {
       const target = article.closest?.('[data-testid="cellInnerDiv"]') || article;
       if (isPromoted(article) || isRepost(article)) {
         target.setAttribute?.(filterAttribute, 'true');
@@ -71,8 +71,7 @@ LR"JS(
         ?.getAttribute('href');
     return permalink?.match(/\/status\/(\d+)/)?.[1] || '';
   };
-  const articleForId = id => Array.from(
-      document.querySelectorAll('article[data-testid="tweet"]'))
+  const articleForId = id => timelineArticles()
       .find(article => articleId(article) === id);
   const validLikeButton = article => {
     const button = article?.querySelector?.('[data-testid="like"]');
@@ -87,8 +86,7 @@ LR"JS(
   const findNextCandidate = attempted => {
     const preferredFloor = targetY() - targetTolerancePx;
     const candidates = [];
-    for (const article of Array.from(
-        document.querySelectorAll('article[data-testid="tweet"]'))) {
+    for (const article of timelineArticles()) {
       if (!article.isConnected || !isOrganic(article)) continue;
       const id = articleId(article);
       if (!id || attempted.has(id)) continue;
@@ -156,8 +154,14 @@ LR"JS(
         markFilteredArticles();
         if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
 
+        const articles = timelineArticles();
         const candidate = findNextCandidate(attempted);
         if (!candidate) {
+          if (articles.length === 0) {
+            state.result = 'waiting-posts';
+            await sleep(idleScrollDelayMs);
+            continue;
+          }
           state.result = 'seeking-like';
           window.scrollBy({ top: maxScrollStepPx, behavior: 'smooth' });
           await sleep(idleScrollDelayMs);
