@@ -31,7 +31,9 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     spotifyShell: assetVersion(entry, 'spotify-shell.js'),
     spotifyCss: assetVersion(spotifyShell, 'spotify.css'),
     firstWeekShell: assetVersion(entry, 'first-week-comparison-shell.js'),
+    playedTracksShell: assetVersion(entry, 'played-tracks-shell.js'),
     historyMain: assetVersion(tabs, 'history/history-main.js'),
+    pagesLayout: assetVersion(header, 'pages-layout.css'),
     legacyListeningPartyRoute: assetVersion(entry, 'legacy-listening-party-route.js'),
     fetchCache: assetVersion(entry, 'dashboard-fetch-cache.js'),
     metricStyle: assetVersion(entry, 'dashboard-current-metric-style.js'),
@@ -44,13 +46,15 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
-  assert.equal(versions.entry, '20260928.3');
-  assert.equal(versions.header, '20260927.2');
-  assert.equal(versions.tabs, '20260928.2');
-  assert.equal(versions.spotifyShell, '20260928.4');
-  assert.equal(versions.spotifyCss, '20260928.4');
-  assert.equal(versions.firstWeekShell, '20260927.2');
-  assert.equal(versions.historyMain, '20260927.2');
+  assert.equal(versions.entry, '20260928.4');
+  assert.equal(versions.header, '20260928.1');
+  assert.equal(versions.tabs, '20260928.4');
+  assert.equal(versions.spotifyShell, '20260928.5');
+  assert.equal(versions.spotifyCss, '20260928.5');
+  assert.equal(versions.firstWeekShell, '20260928.1');
+  assert.equal(versions.playedTracksShell, '20260928.1');
+  assert.equal(versions.historyMain, '20260928.1');
+  assert.equal(versions.pagesLayout, '20260928.1');
   assert.equal(versions.unofficialListeningParties, '20260927.1');
   assert.equal(versions.comparison, '20260927.2');
   assert.equal(versions.chartDetail, '20260927.2');
@@ -63,6 +67,7 @@ test('fixed entry URLs without a version cannot silently return stale layout cod
   assert.doesNotMatch(html, /(?:href|src)="\/(?:app-lite\.css|monochrome\.css|dashboard-metrics\.js)"/);
   assert.doesNotMatch(entry, /(?:from |import\()'\/(?:dashboard-client\.js)'/);
   assert.doesNotMatch(header, /stylesheetHref = '\/dashboard-fixes\.css'/);
+  assert.doesNotMatch(header, /pages-layout\.css['"]/);
   assert.doesNotMatch(entry, /spotify-shell\.js['"]/);
   assert.doesNotMatch(spotifyShell, /spotify\.css['"]/);
 });
