@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-spotify-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/spotify.css?v=20260928.4';
+  link.href = '/spotify.css?v=20260928.3';
   link.dataset.spotifyTabStyles = '1';
   document.head.append(link);
 }
