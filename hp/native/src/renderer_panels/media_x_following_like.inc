@@ -45,18 +45,42 @@ LR"JS(
         await sleep(1600);
       }
 
+      if (followingTab()?.getAttribute('aria-selected') !== 'true') {
+        state.result = 'following-unavailable';
+        return;
+      }
+
       window.scrollTo(0, 0);
       await sleep(1200);
-      let organicSeen = 0;
-      for (let pass = 0; pass < 12; pass++) {
+      const targetCount = 2 + Math.floor(Math.random() * 4);
+      const attempted = new Set();
+      state.targetCount = targetCount;
+      state.likedCount = 0;
+      for (let pass = 0; pass < 12 && attempted.size < targetCount; pass++) {
+        if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
         const articles = Array.from(
             document.querySelectorAll('article[data-testid="tweet"]'));
-        const candidate = articles.find(article => {
-          if (!isOrganic(article)) return false;
+        for (const article of articles) {
+          if (attempted.size >= targetCount) break;
+          if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
+          if (!article.isConnected || !isOrganic(article)) continue;
           const rect = article.getBoundingClientRect();
-          return rect.bottom > 0 && rect.top < innerHeight;
-        });
-        if (candidate) organicSeen++;
+          if (rect.bottom <= 0 || rect.top >= innerHeight) continue;
+          const permalink = article.querySelector('time')?.closest('a')
+              ?.getAttribute('href');
+          const id = permalink?.match(/\/status\/(\d+)/)?.[1];
+          if (!id || attempted.has(id)) continue;
+          const button = article.querySelector('[data-testid="like"]');
+          if (!button || button.disabled ||
+              button.getAttribute('aria-disabled') === 'true' ||
+              article.querySelector('[data-testid="unlike"]')) continue;
+          // Count attempts too: failed requests must not cause extra likes.
+          attempted.add(id);
+          button.click();
+          await sleep(1000);
+          if (article.querySelector('[data-testid="unlike"]')) state.likedCount++;
+        }
+        if (attempted.size >= targetCount) break;
 
         const scrollDistance = Math.max(
             220,
@@ -64,7 +88,7 @@ LR"JS(
         window.scrollBy({ top: scrollDistance, behavior: 'smooth' });
         await sleep(1800 + Math.floor(Math.random() * 1400));
       }
-      state.organicSeen = organicSeen;
+      state.attemptedCount = attempted.size;
       state.result = 'completed';
     } catch (_) {
       state.result = 'error';
