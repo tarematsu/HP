@@ -23,28 +23,22 @@ const runtime = JSON.parse(readFileSync(
 const cycleStart = Date.UTC(2026, 6, 18);
 const MINUTE = 60_000;
 
-const ALL_VARIANTS = [
+const SCHEDULED_DAILY_VARIANTS = [
   'dashboard',
   'history:daily',
   'history:weekly',
   'history:monthly',
   'history:broadcasts',
   'host-history:summary',
-  'spotify-playcounts',
 ];
 
-const TWELVE_HOUR_VARIANTS = [
-  'dashboard',
-  'spotify-playcounts',
-];
-
-test('shared Actions cadence resolver still exposes contract-driven due keys', () => {
-  assert.deepEqual([...dueVariantKeys(cycleStart + 26 * MINUTE)], ALL_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], ALL_VARIANTS);
+test('shared Actions cadence resolver excludes event-driven Spotify from due keys', () => {
+  assert.deepEqual([...dueVariantKeys(cycleStart + 26 * MINUTE)], SCHEDULED_DAILY_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], SCHEDULED_DAILY_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycleStart + 56 * MINUTE)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycleStart + 86 * MINUTE)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycleStart + 386 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 746 * MINUTE)], TWELVE_HOUR_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 746 * MINUTE)], ['dashboard']);
   assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
 });
 
@@ -56,7 +50,7 @@ test('track-history read-model generation is absent from scheduled Actions', () 
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history|track-history generation/);
 });
 
-test('scheduled rebuild owns only history models and leaves dashboard to realtime dispatch', () => {
+test('scheduled rebuild owns history models only; dashboard and Spotify use other dispatch paths', () => {
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /cron: '26 0,6,12,18 \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
@@ -66,7 +60,9 @@ test('scheduled rebuild owns only history models and leaves dashboard to realtim
   assert.match(workflow, /run-pages-history-read-model-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-dashboard-actions\.mjs/);
   assert.doesNotMatch(workflow, /node scripts\/refresh-pages-realtime-actions\.mjs/);
-  assert.match(historyRunner, /variant\.key !== 'dashboard'/);
+  assert.match(historyRunner, /variant\.key !== 'dashboard' && variant\.event_driven !== true/);
+  assert.match(historyRunner, /reuseOnlyKeys: variants\.map/);
+  assert.doesNotMatch(historyRunner, /SPOTIFY_MODEL_KEY/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.equal(runtime.triggers, undefined);
