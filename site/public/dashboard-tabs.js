@@ -98,7 +98,7 @@ async function loadPlayedTracksRuntime() {
 
 async function loadSpotifyRuntime() {
   if (!spotifyRuntimePromise) {
-    spotifyRuntimePromise = import('/spotify.js?v=20260928.5').catch((error) => {
+    spotifyRuntimePromise = import('/spotify.js?v=20260929.1').catch((error) => {
       spotifyRuntimePromise = null;
       throw error;
     });
@@ -170,6 +170,7 @@ async function showFirstWeek({ updateUrl = true, replaceUrl = false } = {}) {
     if (notice) {
       notice.textContent = '初週比較データの初期化に失敗しました。再読み込みしてください。';
       notice.classList.add('error');
+      notice.hidden = false;
     }
   } finally {
     releaseUnexpectedSkipLinkFocus();
