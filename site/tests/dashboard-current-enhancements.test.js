@@ -12,13 +12,14 @@ const css = readFileSync(new URL('../public/dashboard-current-enhancements.css',
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 
-test('current metrics are statically ordered online, total streams and total members without a duplicate chart or fetch renderer', () => {
+test('current metrics are statically ordered while current-only renderers load lazily without duplicates', () => {
   assert.match(metrics, /dashboard-current-layout\.js\?v=20260924\.1/);
-  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260927\.2/);
-  assert.match(metrics, /dashboard-chart-detail\.js\?v=20260927\.2/);
+  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260929\.1/);
+  assert.match(metrics, /dashboard-chart-detail\.js\?v=20260929\.1/);
   assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260923\.4/);
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
-  assert.match(metrics, /dashboard-client\.js\?v=20260924\.1/);
+  assert.match(metrics, /dashboard-client\.js\?v=20260929\.1/);
+  assert.match(metrics, /function ensureCurrentRuntime\(\)/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260924\.1/);
   assert.match(header, /pages-layout\.css\?v=20260928\.1/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
