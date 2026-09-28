@@ -25,9 +25,13 @@ const ALL_VARIANTS = [
   'spotify-playcounts',
 ];
 
-const TWELVE_HOUR_VARIANTS = [
+const SCHEDULED_DAILY_VARIANTS = [
   'dashboard',
-  'spotify-playcounts',
+  'history:daily',
+  'history:weekly',
+  'history:monthly',
+  'history:broadcasts',
+  'host-history:summary',
 ];
 
 test('missing status performs a full 35-day refresh and one-day bounded backfill', () => {
@@ -69,7 +73,7 @@ test('recent status limits incremental refresh to the latest completed day', () 
 test('legacy generated_at is accepted as the previous full refresh', () => {
   const now = Date.UTC(2026, 6, 16, 12, 31);
   const generatedAt = Date.UTC(2026, 6, 10, 10, 31);
-  const ranges = trackHistoryRefreshRanges(now, null, { generated_at: generatedAt });
+  const ranges = trackHistoryRefreshRanges(now, null, { full_reconciled_at: generatedAt });
   assert.equal(ranges.fullReconcile, false);
   assert.equal(ranges.previousFullAt, generatedAt);
 });
@@ -127,17 +131,18 @@ test('canonical materialized variants exclude playback history', () => {
   assert.equal(materialized.get('history:weekly').cadence_minutes, 1440);
   assert.equal(materialized.get('history:monthly').cadence_minutes, 1440);
   assert.equal(materialized.get('history:broadcasts').cadence_minutes, 1440);
-  assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 720);
+  assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 0);
+  assert.equal(materialized.get('spotify-playcounts').event_driven, true);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 
-test('Actions cadence follows the materialized API contract', () => {
+test('Actions cadence excludes the event-driven Spotify model', () => {
   const cycle = Date.UTC(2026, 6, 16, 0, 0);
-  assert.deepEqual([...dueVariantKeys(cycle + 26 * MINUTE_MS)], ALL_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycle + 55 * MINUTE_MS)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 26 * MINUTE_MS)], SCHEDULED_DAILY_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 55 * MINUTE_MS)], SCHEDULED_DAILY_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycle + 56 * MINUTE_MS)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycle + 86 * MINUTE_MS)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycle + 386 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 746 * MINUTE_MS)], TWELVE_HOUR_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycle + 1466 * MINUTE_MS)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 746 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycle + 1466 * MINUTE_MS)], SCHEDULED_DAILY_VARIANTS);
 });
