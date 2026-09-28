@@ -128,10 +128,11 @@ test('canonical materialized variants exclude playback history', () => {
   assert.equal(materialized.get('history:monthly').cadence_minutes, 1440);
   assert.equal(materialized.get('history:broadcasts').cadence_minutes, 1440);
   assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 720);
+  assert.equal(materialized.get('spotify-playcounts').event_driven, true);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 
-test('Actions cadence follows the materialized API contract', () => {
+test('generic cadence metadata remains compatible while scheduled runner excludes event-driven Spotify', () => {
   const cycle = Date.UTC(2026, 6, 16, 0, 0);
   assert.deepEqual([...dueVariantKeys(cycle + 26 * MINUTE_MS)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycle + 55 * MINUTE_MS)], ALL_VARIANTS);

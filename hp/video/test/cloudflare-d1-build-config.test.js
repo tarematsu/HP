@@ -24,11 +24,17 @@ test('dependency installation is controlled by the HomePanel workspace lockfile'
   assert.match(spotifyChartDatabase?.database_id, /^[0-9a-f-]{36}$/i);
 });
 
-test('unified cloud configuration owns the bounded Queue consumer', () => {
-  assert.deepEqual(cloudWrangler.queues?.producers, [{
-    binding: 'MANUAL_IMPORT_QUEUE',
-    queue: 'videoscraper-manual-imports'
-  }]);
+test('unified cloud configuration owns bounded queue consumers and Spotify refresh producer', () => {
+  assert.deepEqual(cloudWrangler.queues?.producers, [
+    {
+      binding: 'MANUAL_IMPORT_QUEUE',
+      queue: 'videoscraper-manual-imports'
+    },
+    {
+      binding: 'SPOTIFY_PLAYCOUNT_QUEUE',
+      queue: 'stationhead-spotify-playcount'
+    }
+  ]);
   assert.equal(cloudWrangler.queues?.consumers?.[0]?.max_batch_size, 1);
   assert.equal(cloudWrangler.queues?.consumers?.[0]?.max_concurrency, 1);
   assert.equal(cloudWrangler.queues?.consumers?.[0]?.dead_letter_queue, 'videoscraper-manual-imports-dlq');

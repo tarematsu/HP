@@ -108,6 +108,10 @@
       {
         "binding": "MANUAL_IMPORT_QUEUE",
         "queue": "videoscraper-manual-imports"
+      },
+      {
+        "binding": "SPOTIFY_PLAYCOUNT_QUEUE",
+        "queue": "stationhead-spotify-playcount"
       }
     ],
     "consumers": [

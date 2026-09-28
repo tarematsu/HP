@@ -1,5 +1,5 @@
 import type { Env } from "./sources";
-import { applySpotifyArtistChartInput } from "./spotify_artist_chart_capture";
+import { ingestSpotifyArtistChartInput } from "./spotify_artist_chart_ingest";
 import { applyStationheadLeaderboardProbeInput } from "./stationhead_leaderboard_probe";
 import {
   applyNativeLeaderboardProbeStatus,
@@ -143,7 +143,7 @@ async function applySpotifyArtistChart(
   payload: Record<string, unknown>,
 ): Promise<void> {
   try {
-    const result = await applySpotifyArtistChartInput(value, env);
+    const result = await ingestSpotifyArtistChartInput(value, env);
     if (result.status === 200) {
       payload.spotifyArtistChart = result.body;
       return;

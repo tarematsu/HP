@@ -8,8 +8,11 @@ const collectorHeader = read('../../native/src/spotify_artist_chart_collector.h'
 const collector = read('../../native/src/spotify_artist_chart_collector.inl');
 const spool = read('../../native/src/spotify_artist_chart_capture_spool.h');
 const leaderboardHeader = read('../../native/src/stationhead_leaderboard_collector.h');
+const appMessages = read('../../native/src/app_messages.cpp');
 const exchange = read('../../native/src/cloud_client_exchange.inc');
 const cloudCapture = read('../../cloud/src/spotify_artist_chart_capture.ts');
+const chartIngest = read('../../cloud/src/spotify_artist_chart_ingest.ts');
+const cloudConfig = read('../../cloud/wrangler.jsonc');
 const deviceExchange = read('../../cloud/src/device_exchange_payload.ts');
 
 test('Spotify Japan daily artist chart uses the authenticated Stationhead WebView2 profile without exporting credentials', () => {
@@ -24,14 +27,20 @@ test('Spotify Japan daily artist chart uses the authenticated Stationhead WebVie
   assert.match(collector, /capture\.Insert\(L"chart_date"/);
 });
 
-test('Spotify chart collector is detached from the Stationhead startup scheduler', () => {
-  assert.doesNotMatch(leaderboardHeader, /#include "spotify_artist_chart_collector\.h"/);
+test('native app requests the Japan daily artist chart every hour after Stationhead profile startup', () => {
+  assert.match(appMessages, /#include "spotify_artist_chart_collector\.h"/);
+  assert.match(appMessages, /kSpotifyArtistChartInitialDelayMs = 4 \* 60 \* 1000/);
+  assert.match(appMessages, /kSpotifyArtistChartIntervalMs = 60 \* 60 \* 1000/);
+  assert.match(appMessages, /SetTimer\(window, kSpotifyArtistChartTimer, kSpotifyArtistChartIntervalMs, nullptr\)/);
+  assert.match(appMessages, /collector\.EnsureStarted\(now\)/);
+  assert.match(appMessages, /collector\.RequestCaptureNow\(now\)/);
+  assert.match(appMessages, /collector\.Tick\(now\)/);
+  assert.match(appMessages, /kSpotifyArtistChartWatchTimer/);
+  assert.match(appMessages, /StopSpotifyArtistChartCapture\(window\)/);
   assert.doesNotMatch(leaderboardHeader, /spotifyArtistChartCollector_/);
-  assert.doesNotMatch(leaderboardHeader, /RequestCaptureNow|EnsureStarted/);
-  assert.match(leaderboardHeader, /NextWakeAt\(\) const noexcept \{ return nextWakeAt_; \}/);
 });
 
-test('Spotify chart collector remains self-contained for a later isolated runtime', () => {
+test('Spotify chart collector remains self-contained and uses a hidden WebView2 surface', () => {
   assert.match(collectorHeader, /void RequestCaptureNow\(int64_t nowMs\) noexcept/);
   assert.match(collectorHeader, /nextCaptureAt_ = nowMs/);
   assert.match(collector, /CreateCoreWebView2ControllerWithOptions/);
@@ -46,18 +55,19 @@ test('Spotify chart capture uses durable spool acknowledgement through device ex
   assert.match(exchange, /"spotifyArtistChart"/);
   assert.match(exchange, /spotify_artist_chart_capture_spool::Acknowledge/);
   assert.match(deviceExchange, /spotifyArtistChart\?: unknown/);
-  assert.match(deviceExchange, /applySpotifyArtistChartInput/);
+  assert.match(deviceExchange, /ingestSpotifyArtistChartInput/);
 });
 
-test('Cloud stores one date-keyed snapshot and skips identical hourly duplicates', () => {
+test('Cloud stores one snapshot per chart date and skips every hourly duplicate date', () => {
   assert.match(cloudCapture, /spotify\/charts\/artist-jp-daily\//);
   assert.match(cloudCapture, /latest\.json/);
-  assert.match(cloudCapture, /DATA_BUCKET\.head/);
-  assert.match(cloudCapture, /observedAt/);
-  assert.match(cloudCapture, /contentDigest/);
-  assert.match(cloudCapture, /captureContentDigest/);
-  assert.match(cloudCapture, /previous\.content_digest !== contentDigest/);
-  assert.match(cloudCapture, /chart_date > previous\.chart_date/);
-  assert.match(cloudCapture, /entry_count: capture\.entries\.length/);
+  assert.match(chartIngest, /DATA_BUCKET/);
+  assert.match(chartIngest, /bucket\.head\(`\$\{PREFIX\}\$\{chartDate\}\.json`\)/);
+  assert.match(chartIngest, /if \(existing\) deduplicated \+= 1/);
+  assert.match(chartIngest, /else fresh\.push\(record\)/);
+  assert.match(chartIngest, /if \(fresh\.length\)[\s\S]*applySpotifyArtistChartInput\(fresh, env\)/);
+  assert.match(chartIngest, /if \(d1Days > 0\)[\s\S]*requestReadModelRefresh/);
+  assert.match(chartIngest, /message_type: READ_MODEL_REFRESH_TYPE/);
+  assert.match(cloudConfig, /"binding": "SPOTIFY_PLAYCOUNT_QUEUE"/);
   assert.doesNotMatch(cloudCapture, /authorization|bearer|cookie/i);
 });
