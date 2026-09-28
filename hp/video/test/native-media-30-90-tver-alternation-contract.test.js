@@ -20,14 +20,12 @@ const tverQueue = readFileSync(
 const youtubeRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
-test('media cadence starts with X for 5 minutes, then keeps 60-minute YouTube and TVer phases', () => {
-  assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 5U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs = kNativeMediaPhaseMs/);
-  assert.match(mediaBase, /kNativeMediaTverPhaseMs = kNativeMediaPhaseMs/);
-  assert.match(mediaBase, /return kNativeMediaStartupXPhaseMs \+ kNativeMediaYoutubePhaseMs/);
-  assert.match(mediaBase, /NativeMediaPhaseIntervalMs\(phase_ == Phase::Tver\)/);
-  assert.match(mediaBase, /NativeMediaYoutubeNavigationUrl\(\)/);
+test('media cadence is YouTube 60 + X 1, then TVer 58 + X 1', () => {
+  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs = 61U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverPhaseMs = 59U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
+  assert.match(mediaBase, /phase_ == Phase::Tver \? kNativeMediaTverPhaseMs : kNativeMediaYoutubePhaseMs/);
+  assert.doesNotMatch(mediaBase, /kNativeMediaStartupXPhaseMs|homepanel=startup|NativeMediaStartupXDeadlineTick/);
   assert.doesNotMatch(mediaBase, /kNativeMediaTverWeekdayPhaseMs/);
   assert.doesNotMatch(mediaBase, /NativeMediaTverPhaseIntervalMs/);
   assert.doesNotMatch(mediaBase, /NetworkClockJstNow/);
