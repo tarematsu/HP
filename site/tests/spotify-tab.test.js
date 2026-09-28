@@ -170,7 +170,7 @@ test('Spotify tab has one all-idol trend graph and a fixed Sakurazaka detail tab
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /女性アイドルSpotify再生数推移/);
   assert.match(shell, /全アーティストの日別前回比合計を重ねたグラフ/);
-  assert.match(shell, /spotify\.css\?v=20260928\.3/);
+  assert.match(shell, /spotify\.css\?v=20260928\.4/);
 
   assert.match(runtime, /SAKURAZAKA_KEY = 'sakurazaka46'/);
   assert.doesNotMatch(runtime, /activeArtist|updateArtistButtons|data-spotify-artist/);
@@ -187,7 +187,11 @@ test('Spotify tab has one all-idol trend graph and a fixed Sakurazaka detail tab
   assert.doesNotMatch(styles, /spotify-artist-switch/);
   assert.match(styles, /\.spotify-trend-legend/);
   assert.match(styles, /aspect-ratio: 960 \/ 340/);
+  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.spotify-trend-scroll\s*\{[\s\S]*overflow-x:\s*hidden;/);
+  assert.match(styles, /@media \(max-width: 760px\)[\s\S]*\.spotify-trend-svg\s*\{[\s\S]*min-width:\s*0;/);
+  assert.match(styles, /#likesView > \.data-panel \.table-wrap,[\s\S]*#spotifyView > \.spotify-data-panel \.table-wrap[\s\S]*overflow-x:\s*hidden !important/);
+  assert.match(styles, /#likesView > \.data-panel \.table-wrap > table,[\s\S]*table\.spotify-table[\s\S]*table-layout:\s*fixed !important/);
   assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.3'\)/);
-  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.3/);
+  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.4/);
   assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.2/);
 });

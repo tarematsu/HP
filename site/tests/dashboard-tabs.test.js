@@ -50,7 +50,7 @@ test('first-week comparison routing is preserved alongside the existing lazy vie
 });
 
 test('Spotify routing is owned by the central dashboard router', () => {
-  assert.match(dashboardEntry, /spotify-shell\.js\?v=20260928\.3/);
+  assert.match(dashboardEntry, /spotify-shell\.js\?v=20260928\.4/);
   assert.doesNotMatch(dashboardEntry, /spotify-tab-router/);
   assert.match(tabsClient, /VIEW_MODES[\s\S]*'spotify'/);
   assert.match(tabsClient, /const spotifyView = document\.getElementById\('spotifyView'\)/);
