@@ -24,19 +24,16 @@ test('Spotify Japan daily artist chart uses the authenticated Stationhead WebVie
   assert.match(collector, /capture\.Insert\(L"chart_date"/);
 });
 
-test('Spotify chart collector polls once per hour through the existing leaderboard scheduler', () => {
-  assert.match(leaderboardHeader, /kSpotifyArtistChartIntervalMs = 60 \* 60'000LL/);
-  assert.match(leaderboardHeader, /spotifyArtistChartCollector_\.RequestCaptureNow\(now\)/);
-  assert.match(leaderboardHeader, /spotifyArtistChartNextCaptureAt_ = now \+ kSpotifyArtistChartIntervalMs/);
-  assert.match(collectorHeader, /void RequestCaptureNow\(int64_t nowMs\) noexcept/);
-  assert.match(collectorHeader, /nextCaptureAt_ = nowMs/);
+test('Spotify chart collector is detached from the Stationhead startup scheduler', () => {
+  assert.doesNotMatch(leaderboardHeader, /#include "spotify_artist_chart_collector\.h"/);
+  assert.doesNotMatch(leaderboardHeader, /spotifyArtistChartCollector_/);
+  assert.doesNotMatch(leaderboardHeader, /RequestCaptureNow|EnsureStarted/);
+  assert.match(leaderboardHeader, /NextWakeAt\(\) const noexcept \{ return nextWakeAt_; \}/);
 });
 
-test('Spotify chart collector is driven by the existing leaderboard scheduler but remains a separate WebView', () => {
-  assert.match(leaderboardHeader, /#include "spotify_artist_chart_collector\.h"/);
-  assert.match(leaderboardHeader, /mutable SpotifyArtistChartCollector spotifyArtistChartCollector_/);
-  assert.match(leaderboardHeader, /spotifyArtistChartCollector_\.EnsureStarted\(now\)/);
-  assert.match(leaderboardHeader, /spotifyArtistChartCollector_\.Tick\(now\)/);
+test('Spotify chart collector remains self-contained for a later isolated runtime', () => {
+  assert.match(collectorHeader, /void RequestCaptureNow\(int64_t nowMs\) noexcept/);
+  assert.match(collectorHeader, /nextCaptureAt_ = nowMs/);
   assert.match(collector, /CreateCoreWebView2ControllerWithOptions/);
   assert.match(collector, /RECT bounds\{0, 0, 1, 1\}/);
 });
