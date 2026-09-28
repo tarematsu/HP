@@ -26,7 +26,8 @@ export const MATERIALIZED_RESPONSE_MAX_AGE_MS = 15 * 60_000;
 // Bounded Pages read models are generated out of band and served from R2 on the
 // public path. The live handlers are producers only; public reads fail closed
 // rather than falling back to D1 when a materialized object is unavailable.
-// Event-driven variants are regenerated only when their source data changes.
+// Event-driven variants retain cadence metadata for generic tooling, but are
+// excluded from scheduled publication and regenerated only when source data changes.
 export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 5 }),
   Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 1440 }),
@@ -37,7 +38,7 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({
     key: 'spotify-playcounts',
     url: '/api/spotify-playcounts',
-    cadence_minutes: 0,
+    cadence_minutes: 720,
     event_driven: true,
   }),
 ]);
