@@ -4,13 +4,11 @@ import test from 'node:test';
 
 const audit = readFileSync(new URL('../../scripts/audit-pages-live.mjs', import.meta.url), 'utf8');
 
-test('production browser audit covers every dashboard route', () => {
-  for (const mode of ['current', 'daily', 'weekly', 'monthly', 'ranking', 'first-week', 'played-tracks', 'spotify', 'likes', 'broadcasts']) {
+test('production browser audit covers every current dashboard route', () => {
+  for (const mode of ['current', 'daily', 'ranking', 'first-week', 'played-tracks', 'spotify', 'likes', 'broadcasts']) {
     assert.match(audit, new RegExp(`name: '${mode}'`));
   }
   assert.match(audit, /path: '\/#daily'/);
-  assert.match(audit, /path: '\/#weekly'/);
-  assert.match(audit, /path: '\/#monthly'/);
   assert.match(audit, /path: '\/#ranking'/);
   assert.match(audit, /path: '\/#likes'/);
   assert.match(audit, /path: '\/#broadcasts'/);
@@ -18,6 +16,10 @@ test('production browser audit covers every dashboard route', () => {
   assert.match(audit, /path: '\/#played-tracks'/);
   assert.match(audit, /path: '\/#spotify'/);
   assert.match(audit, /panel: '#spotifyView'/);
+  assert.doesNotMatch(audit, /name: 'weekly'/);
+  assert.doesNotMatch(audit, /name: 'monthly'/);
+  assert.doesNotMatch(audit, /path: '\/#weekly'/);
+  assert.doesNotMatch(audit, /path: '\/#monthly'/);
   assert.doesNotMatch(audit, /path: '\/#unofficial'/);
   assert.match(audit, /requiredText: '非公式リスパ一覧'/);
 });
