@@ -41,6 +41,8 @@ export function spotifyPlaycountSql() {
     ON d.snapshot_date=latest.snapshot_date AND d.track_id=target.track_id
   INNER JOIN sh_spotify_tracks track ON track.track_id=d.track_id
   ORDER BY
+    CASE WHEN d.delta IS NULL THEN 1 ELSE 0 END,
+    d.delta DESC,
     d.playcount DESC,
     track.name COLLATE NOCASE ASC,
     d.track_id ASC`;
