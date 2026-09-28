@@ -14,6 +14,16 @@ const tverRuntime = readExpandedNativeSource(
 const xRuntime = readFileSync(
   new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
 
+test('startup shows X for 5 minutes before a full 60-minute YouTube phase', () => {
+  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 5U \* 60U \* 1000U/);
+  assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
+  assert.match(mediaBase, /return kNativeMediaStartupXPhaseMs \+ kNativeMediaYoutubePhaseMs/);
+  assert.match(mediaBase, /deadline > now[\s\S]*return kNativeMediaStartupXUrl/);
+  assert.match(xRuntime, /homepanel:startup-x-until:v1/);
+  assert.match(xRuntime, /Date\.now\(\) \+ 5 \* 60 \* 1000/);
+  assert.match(xRuntime, /location\.assign\(youtubeStart\)/);
+});
+
 test('YouTube stays 60 minutes while the TVer hour hands its last 5 minutes to X', () => {
   assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaTverPhaseMs = kNativeMediaPhaseMs/);
