@@ -27,11 +27,9 @@ LR"JS(
   const followingTab = () => Array.from(document.querySelectorAll('[role="tab"]'))
       .find(tab => /^(?:Following|フォロー中)$/i.test(text(tab)));
   const promotedLabel = /^(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト|PR)$/i;
-  const promotedText = /(?:^|\s)(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト)(?:\s|$)/i;
   const hasPromotedLabel = article => Array.from(article?.querySelectorAll?.('span') || [])
       .some(element => promotedLabel.test(text(element)));
-  const isPromoted = article => promotedText.test(text(article)) ||
-      hasPromotedLabel(article) ||
+  const isPromoted = article => hasPromotedLabel(article) ||
       Boolean(article.querySelector('[data-testid*="placement" i]'));
   const isRepost = article => {
     const socialContext = article.querySelector('[data-testid="socialContext"]');
@@ -47,9 +45,7 @@ LR"JS(
     style.id = filterStyleId;
     style.textContent = `
       [${filterAttribute}="true"],
-      article[data-testid="tweet"]:has([data-testid="socialContext"]),
       article[data-testid="tweet"]:has([data-testid*="placement" i]),
-      [data-testid="cellInnerDiv"]:has(article[data-testid="tweet"] [data-testid="socialContext"]),
       [data-testid="cellInnerDiv"]:has(article[data-testid="tweet"] [data-testid*="placement" i]) {
         display: none !important;
       }
