@@ -3,13 +3,15 @@ const JSON_HEADERS = {
   'cache-control': 'no-store',
 };
 
-const RECENT_LIMIT = 180;
+const ACTIVE_MAIN_LIMIT = 180;
+const IDLE_LIMIT = 1;
+const CHAT_LIMIT = 1;
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status,
   headers: JSON_HEADERS,
 });
 
-function recentMainSql() {
+function recentMainSql(limit) {
   return `SELECT m.observed_at,m.observed_minute,m.station_id,m.broadcast_id,m.broadcast_start_time,
       m.is_broadcasting,m.listener_count,m.guest_count,m.total_listens,m.status,m.chat_status,m.channel_id,m.channel_alias,
       json_valid(m.raw_json) AS raw_valid,length(m.raw_json) AS raw_bytes
@@ -19,10 +21,10 @@ function recentMainSql() {
       WHERE m.observed_at>=t.started_at AND m.observed_at<t.ends_at
     )
     ORDER BY m.observed_at DESC,m.id DESC
-    LIMIT ${RECENT_LIMIT}`;
+    LIMIT ${limit}`;
 }
 
-function recentChatSql() {
+function recentChatSql(limit) {
   return `SELECT c.observed_at,c.observed_minute,c.station_id,
       json_valid(c.raw_json) AS raw_valid,length(c.raw_json) AS raw_bytes
     FROM sh_sakurazaka46jp_chat AS c
@@ -31,7 +33,7 @@ function recentChatSql() {
       WHERE c.observed_at>=t.started_at AND c.observed_at<t.ends_at
     )
     ORDER BY c.observed_at DESC,c.id DESC
-    LIMIT ${RECENT_LIMIT}`;
+    LIMIT ${limit}`;
 }
 
 function activeAnnouncementSql() {
@@ -45,10 +47,11 @@ function activeAnnouncementSql() {
 export async function onRequestGet({ env }) {
   if (!env?.OTHER_DB?.prepare) return json({ ok: false, error: 'OTHER_DB unavailable' }, 503);
   try {
-    const [mainResult, chatResult, activeAnnouncement] = await Promise.all([
-      env.OTHER_DB.prepare(recentMainSql()).all(),
-      env.OTHER_DB.prepare(recentChatSql()).all(),
-      env.OTHER_DB.prepare(activeAnnouncementSql()).first(),
+    const activeAnnouncement = await env.OTHER_DB.prepare(activeAnnouncementSql()).first();
+    const mainLimit = activeAnnouncement ? ACTIVE_MAIN_LIMIT : IDLE_LIMIT;
+    const [mainResult, chatResult] = await Promise.all([
+      env.OTHER_DB.prepare(recentMainSql(mainLimit)).all(),
+      env.OTHER_DB.prepare(recentChatSql(CHAT_LIMIT)).all(),
     ]);
     const samples = mainResult.results || [];
     const chats = chatResult.results || [];
@@ -69,7 +72,8 @@ export async function onRequestGet({ env }) {
       chats,
       sample_count: samples.length,
       chat_sample_count: chats.length,
-      recent_limit: RECENT_LIMIT,
+      recent_limit: mainLimit,
+      chat_recent_limit: CHAT_LIMIT,
     });
   } catch (error) {
     const message = String(error?.message || error);
@@ -88,7 +92,8 @@ export async function onRequestGet({ env }) {
         chats: [],
         sample_count: 0,
         chat_sample_count: 0,
-        recent_limit: RECENT_LIMIT,
+        recent_limit: IDLE_LIMIT,
+        chat_recent_limit: CHAT_LIMIT,
       });
     }
     return json({ ok: false, error: message.slice(0, 500) }, 500);
