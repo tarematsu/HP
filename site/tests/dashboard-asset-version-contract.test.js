@@ -7,6 +7,7 @@ const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
+const spotifyShell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -27,6 +28,8 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     entry: assetVersion(html, 'dashboard-metrics.js'),
     header: assetVersion(entry, 'dashboard-header.js'),
     tabs: assetVersion(entry, 'dashboard-tabs.js'),
+    spotifyShell: assetVersion(entry, 'spotify-shell.js'),
+    spotifyCss: assetVersion(spotifyShell, 'spotify.css'),
     firstWeekShell: assetVersion(entry, 'first-week-comparison-shell.js'),
     historyMain: assetVersion(tabs, 'history/history-main.js'),
     legacyListeningPartyRoute: assetVersion(entry, 'legacy-listening-party-route.js'),
@@ -41,9 +44,11 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
-  assert.equal(versions.entry, '20260928.2');
+  assert.equal(versions.entry, '20260928.3');
   assert.equal(versions.header, '20260927.2');
   assert.equal(versions.tabs, '20260928.2');
+  assert.equal(versions.spotifyShell, '20260928.4');
+  assert.equal(versions.spotifyCss, '20260928.4');
   assert.equal(versions.firstWeekShell, '20260927.2');
   assert.equal(versions.historyMain, '20260927.2');
   assert.equal(versions.unofficialListeningParties, '20260927.1');
@@ -58,4 +63,6 @@ test('fixed entry URLs without a version cannot silently return stale layout cod
   assert.doesNotMatch(html, /(?:href|src)="\/(?:app-lite\.css|monochrome\.css|dashboard-metrics\.js)"/);
   assert.doesNotMatch(entry, /(?:from |import\()'\/(?:dashboard-client\.js)'/);
   assert.doesNotMatch(header, /stylesheetHref = '\/dashboard-fixes\.css'/);
+  assert.doesNotMatch(entry, /spotify-shell\.js['"]/);
+  assert.doesNotMatch(spotifyShell, /spotify\.css['"]/);
 });
