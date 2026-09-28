@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-first-week-comparison-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/first-week-comparison.css?v=20260927.1';
+  link.href = '/first-week-comparison.css?v=20260928.1';
   link.dataset.firstWeekComparisonStyles = '1';
   document.head.append(link);
 }
@@ -27,7 +27,7 @@ function mountView() {
   section.className = 'dashboard-view first-week-view';
   section.hidden = true;
   section.innerHTML = `
-    <div class="first-week-toolbar">
+    <div class="view-toolbar first-week-toolbar">
       <div class="first-week-metric-toggle" role="group" aria-label="比較指標">
         <button type="button" data-first-week-metric="listener" class="active">同接</button>
         <button type="button" data-first-week-metric="streams">再生数増加</button>
