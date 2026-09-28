@@ -239,6 +239,7 @@ function applyPayload(payload, save = true) {
   state.payload = payload;
   state.queue = Array.isArray(payload.queue) ? payload.queue : [];
   state.playbackIndex = -1;
+  window.__dashboardCurrentPayload = payload;
   renderCurrentMetrics(payload);
   renderNowPlaying(true);
   if (save) saveCache();
