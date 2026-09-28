@@ -162,12 +162,19 @@ export function spotifyTrend(rows = []) {
 
 export function spotifyReadModel(latestRows = [], trendRows = []) {
   const sakurazakaRows = latestRows.filter((row) => String(row?.artist_key || '') === DEFAULT_ARTIST_KEY);
+  const payload = spotifyPayload(SAKURAZAKA, sakurazakaRows);
+  const trend = spotifyTrend(trendRows);
+  const latestTrendPoint = (trend[DEFAULT_ARTIST_KEY] || [])
+    .find((point) => point.snapshot_date === payload.snapshot_date);
+  if (latestTrendPoint && payload.total_delta != null) {
+    latestTrendPoint.total_delta = payload.total_delta;
+  }
   return {
     default_artist: DEFAULT_ARTIST_KEY,
     groups: {
-      [DEFAULT_ARTIST_KEY]: spotifyPayload(SAKURAZAKA, sakurazakaRows),
+      [DEFAULT_ARTIST_KEY]: payload,
     },
-    trend: spotifyTrend(trendRows),
+    trend,
   };
 }
 
