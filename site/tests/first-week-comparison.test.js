@@ -83,7 +83,7 @@ test('dashboard mounts and routes the first-week tab before the lazy runtime sta
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
   assert.ok(entry.indexOf('first-week-comparison-shell.js') < entry.indexOf('dashboard-tabs.js'));
   assert.match(entry, /first-week-comparison-shell\.js\?v=20260928\.1/);
-  assert.match(entry, /dashboard-tabs\.js\?v=20260928\.4/);
+  assert.match(entry, /dashboard-tabs\.js\?v=20260928\.5/);
   assert.match(shell, /first-week-comparison\.css\?v=20260928\.1/);
   assert.match(shell, /view-toolbar first-week-toolbar/);
   assert.match(shell, /dataset\.view = 'first-week'/);
