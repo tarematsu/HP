@@ -62,7 +62,6 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
   return true;
 })()
 )JS"
-#include "media_youtube_x_transition.inc"
 #include "media_x_following_like.inc"
 ;
 }  // namespace
