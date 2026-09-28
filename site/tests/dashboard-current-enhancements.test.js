@@ -18,7 +18,7 @@ test('current metrics are statically ordered while current-only renderers load l
   assert.match(metrics, /dashboard-chart-detail\.js\?v=20260929\.1/);
   assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260923\.4/);
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
-  assert.match(metrics, /dashboard-client\.js\?v=20260929\.1/);
+  assert.match(metrics, /dashboard-client\.js\?v=20260929\.2/);
   assert.match(metrics, /function ensureCurrentRuntime\(\)/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260924\.1/);
   assert.match(header, /pages-layout\.css\?v=20260928\.1/);
