@@ -21,9 +21,11 @@ const youtubeRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
 test('media cadence is YouTube 60 + X 1, then TVer 58 + X 1', () => {
-  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs = 61U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaTverPhaseMs = 59U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs =[\s\S]*kNativeMediaYoutubeContentPhaseMs \+ kNativeMediaXPhaseMs/);
+  assert.match(mediaBase, /kNativeMediaTverPhaseMs =[\s\S]*kNativeMediaTverContentDurationMs \+ kNativeMediaXPhaseMs/);
   assert.match(mediaBase, /phase_ == Phase::Tver \? kNativeMediaTverPhaseMs : kNativeMediaYoutubePhaseMs/);
   assert.doesNotMatch(mediaBase, /kNativeMediaStartupXPhaseMs|homepanel=startup|NativeMediaStartupXDeadlineTick/);
   assert.doesNotMatch(mediaBase, /kNativeMediaTverWeekdayPhaseMs/);
