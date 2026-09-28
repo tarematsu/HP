@@ -24,22 +24,6 @@ const MODES = [
     notice: '#notice',
   },
   {
-    name: 'weekly',
-    path: '/#weekly',
-    panel: '#historyView',
-    tab: '#modeTabs button[data-mode="weekly"]',
-    requiredText: '期間数',
-    notice: '#notice',
-  },
-  {
-    name: 'monthly',
-    path: '/#monthly',
-    panel: '#historyView',
-    tab: '#modeTabs button[data-mode="monthly"]',
-    requiredText: '期間数',
-    notice: '#notice',
-  },
-  {
     name: 'ranking',
     path: '/#ranking',
     panel: '#historyView',
@@ -93,9 +77,9 @@ const MODES = [
 
 const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 1000, modes: MODES.map(({ name }) => name) },
-  { name: 'tablet', width: 820, height: 1180, modes: ['current', 'weekly', 'likes'] },
+  { name: 'tablet', width: 820, height: 1180, modes: ['current', 'daily', 'likes'] },
   { name: 'mobile', width: 390, height: 844, modes: MODES.map(({ name }) => name) },
-  { name: 'mobile-compact', width: 320, height: 720, modes: ['current', 'weekly', 'likes', 'first-week', 'played-tracks', 'spotify', 'broadcasts'] },
+  { name: 'mobile-compact', width: 320, height: 720, modes: ['current', 'daily', 'likes', 'first-week', 'played-tracks', 'spotify', 'broadcasts'] },
 ];
 
 function parseArgs(argv) {
