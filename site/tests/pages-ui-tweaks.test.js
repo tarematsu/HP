@@ -6,7 +6,7 @@ const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const tweaks = readFileSync(new URL('../public/pages-ui-tweaks.js', import.meta.url), 'utf8');
-const finalFixes = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
+const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 
 test('Pages UI tweaks load with the history runtime instead of the current dashboard', () => {
   assert.match(historyEntry, /pages-ui-tweaks\.js\?v=20260924\.1/);
@@ -27,10 +27,11 @@ test('likes update control is removed and CSV is statically in the song table he
   assert.doesNotMatch(tweaks, /likesLoad|likesCsv|likeActions|replaceWith|append\(/);
 });
 
-test('mobile likes ranking keeps the latest-like metric to the right of track metadata', () => {
-  assert.match(finalFixes, /grid-template-columns: 28px 38px minmax\(0, 1fr\) minmax\(60px, auto\) !important/);
-  assert.match(finalFixes, /#likesView \.like-rank-metrics \{[\s\S]*grid-column: 4 !important/);
-  assert.match(finalFixes, /#likesView \.like-rank-metrics span \{[\s\S]*text-align: right !important/);
+test('mobile ranking metric layout is shared instead of scoped to the likes tab', () => {
+  assert.match(sharedLayout, /grid-template-columns:\s*28px 38px minmax\(0, 1fr\) minmax\(60px, auto\) !important/);
+  assert.match(sharedLayout, /\.like-rank-metrics\s*\{[\s\S]*grid-column:\s*4 !important/);
+  assert.match(sharedLayout, /\.like-rank-metrics span\s*\{[\s\S]*text-align:\s*right !important/);
+  assert.doesNotMatch(sharedLayout, /#likesView \.like-rank/);
 });
 
 test('official listening-party labels remove the gap after a leading date after explicit renders', () => {

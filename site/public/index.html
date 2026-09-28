@@ -154,7 +154,7 @@
 
       <section id="rankingWeeklyPanel" class="card data-panel" hidden>
         <div class="section-head"><div><p class="kicker">BUDDIES WEEKLY METRICS</p><h2>Buddies週間実績</h2></div></div>
-        <div class="table-wrap"><table><thead id="rankingWeeklyThead"></thead><tbody id="rankingWeeklyTbody"></tbody></table></div>
+        <div class="table-wrap"><table class="weekly-ranking-table"><thead id="rankingWeeklyThead"></thead><tbody id="rankingWeeklyTbody"></tbody></table></div>
       </section>
     </section>
 
@@ -177,8 +177,15 @@
           <div><p class="kicker">DATA</p><h2>楽曲別一覧</h2></div>
           <button id="likesCsv" class="button" type="button">CSV</button>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap table-fit-mobile">
           <table>
+            <colgroup>
+              <col class="col-compact">
+              <col>
+              <col class="col-artist">
+              <col class="col-number">
+              <col class="col-date">
+            </colgroup>
             <thead><tr><th>順位</th><th>曲名</th><th>アーティスト</th><th>最新いいね数</th><th>最終取得</th></tr></thead>
             <tbody id="likesTbody"></tbody>
           </table>
@@ -186,6 +193,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/dashboard-metrics.js?v=20260928.3"></script>
+  <script type="module" src="/dashboard-metrics.js?v=20260928.4"></script>
 </body>
 </html>

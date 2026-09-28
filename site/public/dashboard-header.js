@@ -30,20 +30,12 @@ if (!document.querySelector(`link[href="${currentEnhancementsHref}"]`)) {
   document.head.append(currentEnhancements);
 }
 
-const layoutUnificationHref = '/pages-layout-unification.css?v=20260923.1';
-if (!document.querySelector(`link[href="${layoutUnificationHref}"]`)) {
-  const layoutUnification = document.createElement('link');
-  layoutUnification.rel = 'stylesheet';
-  layoutUnification.href = layoutUnificationHref;
-  document.head.append(layoutUnification);
-}
-
-const layoutFinalFixesHref = '/pages-layout-final-fixes.css?v=20260927.2';
-if (!document.querySelector(`link[href="${layoutFinalFixesHref}"]`)) {
-  const layoutFinalFixes = document.createElement('link');
-  layoutFinalFixes.rel = 'stylesheet';
-  layoutFinalFixes.href = layoutFinalFixesHref;
-  document.head.append(layoutFinalFixes);
+const pagesLayoutHref = '/pages-layout.css?v=20260928.1';
+if (!document.querySelector(`link[href="${pagesLayoutHref}"]`)) {
+  const pagesLayout = document.createElement('link');
+  pagesLayout.rel = 'stylesheet';
+  pagesLayout.href = pagesLayoutHref;
+  document.head.append(pagesLayout);
 }
 
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';

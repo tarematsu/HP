@@ -6,7 +6,7 @@ const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const headerRepair = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const headerCss = readFileSync(new URL('../public/dashboard-fixes.css', import.meta.url), 'utf8');
-const finalFixes = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
+const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
@@ -17,7 +17,8 @@ test('dashboard header starts in its final DOM shape before tabs and dashboard c
   assert.ok(tabsImport, 'dashboard-tabs.js must have an explicit deployment version');
   assert.ok(dashboardEntry.indexOf(headerImport) < dashboardEntry.indexOf(tabsImport));
   assert.match(headerRepair, /dashboard-fixes\.css\?v=[^']+/);
-  assert.match(headerRepair, /pages-layout-final-fixes\.css\?v=20260927\.2/);
+  assert.match(headerRepair, /pages-layout\.css\?v=20260928\.1/);
+  assert.doesNotMatch(headerRepair, /pages-layout-(?:unification|final-fixes)/);
   assert.match(page, /<p id="updated" class="subtle">-<\/p>/);
   assert.match(page, /<nav id="modeTabs" class="mode-tabs dashboard-tabs"/);
   assert.doesNotMatch(page, /id="description"|class="live-line"|class="app-launch"|class="dashboard-actions"/);
@@ -30,21 +31,19 @@ test('mobile dashboard header has no vertical flex basis', () => {
   assert.doesNotMatch(headerCss, /flex:\s*1 1 (?:360|560)px/);
 });
 
-test('current metrics stay in one horizontal row at every viewport width', () => {
-  assert.match(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\) !important/);
-  assert.doesNotMatch(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) !important/);
-  assert.doesNotMatch(finalFixes, /@media \(max-width: 400px\)[\s\S]*#currentView > \.metrics\s*\{/);
+test('current metrics stay in one horizontal row through the shared layout', () => {
+  assert.match(sharedLayout, /\.metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\) !important/);
+  assert.doesNotMatch(sharedLayout, /#currentView/);
   assert.match(headerCss, /\.metric\.featured\s*\{[\s\S]*display:\s*block/);
   assert.match(headerCss, /\.metric strong,[\s\S]*\.metric\.featured strong\s*\{[\s\S]*font-size:\s*clamp\(\.94rem, 4\.3vw, 1\.42rem\)/);
   assert.match(headerCss, /\.metric > span\s*\{[\s\S]*font-size:\s*clamp\(\.58rem, 2\.4vw, \.68rem\)/);
 });
 
-test('dashboard navigation and likes summary remain balanced across breakpoints', () => {
-  assert.match(headerCss, /\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/);
-  assert.match(headerCss, /@media \(max-width: 430px\)[\s\S]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/);
-  assert.match(headerCss, /button:last-child\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
-  assert.match(headerCss, /\.summary-cards\.likes-summary\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
-  assert.match(headerCss, /\.summary-cards\.likes-summary article:last-child\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
+test('navigation and summaries are finalized generically by the shared layout', () => {
+  assert.match(sharedLayout, /#modeTabs\.mode-tabs\.dashboard-tabs[\s\S]*grid-template-columns:\s*repeat\(8, minmax\(0, 1fr\)\) !important/);
+  assert.match(sharedLayout, /\.summary-cards:has\(> :nth-child\(3\):last-child\)[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(sharedLayout, /\.summary-cards:has\(> :nth-child\(4\):last-child\)[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(sharedLayout, /likes-summary\s*\{/);
 });
 
 test('hash navigation hides skip-link focus until a real Tab focuses the skip link', () => {

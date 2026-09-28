@@ -1,15 +1,3 @@
-.played-tracks-view {
-  margin-top: 0;
-}
-
-.played-tracks-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 7px 0 2px;
-}
-
 .played-tracks-week-toggle {
   display: inline-flex;
   align-items: center;
@@ -99,10 +87,6 @@
   color: inherit;
 }
 
-.played-tracks-summary {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .played-tracks-chart-wrap {
   display: grid;
   place-items: center;
@@ -164,10 +148,6 @@
 }
 
 @media (max-width: 760px) {
-  .played-tracks-toolbar {
-    align-items: center;
-  }
-
   .played-tracks-period-strip {
     padding-inline: calc(50vw - 38px);
   }

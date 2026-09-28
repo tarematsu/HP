@@ -9,7 +9,7 @@ const fetchCache = readFileSync(new URL('../public/dashboard-fetch-cache.js', im
 const layout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const chart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
-const finalFixes = readFileSync(new URL('../public/pages-layout-final-fixes.css', import.meta.url), 'utf8');
+const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 
 test('current metrics are statically ordered online, total streams and total members without a duplicate chart or fetch renderer', () => {
@@ -20,7 +20,7 @@ test('current metrics are statically ordered online, total streams and total mem
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
   assert.match(metrics, /dashboard-client\.js\?v=20260924\.1/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260924\.1/);
-  assert.match(header, /pages-layout-final-fixes\.css\?v=20260927\.2/);
+  assert.match(header, /pages-layout\.css\?v=20260928\.1/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
   assert.match(fetchCache, /dashboard:payload/);
   assert.ok(html.indexOf('id="online"') < html.indexOf('id="totalStreams"'));
@@ -28,13 +28,11 @@ test('current metrics are statically ordered online, total streams and total mem
   assert.doesNotMatch(layout, /append\(|insertAdjacent|MutationObserver|goal-card|audienceChart|getContext\('2d'\)|drawEnhancedChart/);
 });
 
-test('mobile dashboard tabs stay compact while current metrics stay in one horizontal row', () => {
-  assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs/);
-  assert.match(css, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\) !important/);
-  assert.match(css, /grid-template-rows:\s*repeat\(2, minmax\(32px, auto\)\) !important/);
-  assert.match(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\) !important/);
-  assert.doesNotMatch(finalFixes, /#currentView > \.metrics\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) !important/);
-  assert.match(css, /white-space:\s*nowrap !important/);
+test('shared mobile layout owns tab count and current metric columns', () => {
+  assert.match(sharedLayout, /#modeTabs\.mode-tabs\.dashboard-tabs[\s\S]*repeat\(8, minmax\(0, 1fr\)\) !important/);
+  assert.match(sharedLayout, /\.metrics\s*\{[\s\S]*repeat\(3, minmax\(0, 1fr\)\) !important/);
+  assert.doesNotMatch(sharedLayout, /#currentView/);
+  assert.match(sharedLayout, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*minmax\(44px, auto\) !important/);
 });
 
 test('current chart draws online axes, five-minute average stream bars and JST labels from one renderer', () => {

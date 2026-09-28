@@ -67,7 +67,7 @@ async function loadRankingStatusRuntime() {
 
 async function loadHistoryRuntime() {
   if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260927.2').catch((error) => {
+    historyRuntimePromise = import('/history/history-main.js?v=20260928.1').catch((error) => {
       historyRuntimePromise = null;
       historyRuntimeMode = null;
       throw error;
@@ -98,7 +98,7 @@ async function loadPlayedTracksRuntime() {
 
 async function loadSpotifyRuntime() {
   if (!spotifyRuntimePromise) {
-    spotifyRuntimePromise = import('/spotify.js?v=20260928.3').catch((error) => {
+    spotifyRuntimePromise = import('/spotify.js?v=20260928.4').catch((error) => {
       spotifyRuntimePromise = null;
       throw error;
     });

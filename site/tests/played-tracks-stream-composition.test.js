@@ -12,7 +12,7 @@ test('played tracks view does not load the retired estimated stream composition 
   assert.doesNotMatch(shell, /limit=20000/);
   assert.doesNotMatch(shell, /平均同接/);
   assert.doesNotMatch(shell, /data-view="stream|data-view="streams/);
-  assert.match(metrics, /played-tracks-shell\.js\?v=20260927\.1/);
+  assert.match(metrics, /played-tracks-shell\.js\?v=20260928\.1/);
   assert.equal(existsSync(new URL('../public/played-tracks-stream-composition.js', import.meta.url)), false);
 });
 

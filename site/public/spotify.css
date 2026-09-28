@@ -1,16 +1,3 @@
-.spotify-view {
-  display: grid;
-  gap: 16px;
-}
-
-.spotify-view[hidden] {
-  display: none !important;
-}
-
-.spotify-summary {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 .spotify-trend-panel {
   display: grid;
   gap: 14px;
@@ -46,7 +33,7 @@
   align-items: baseline;
   gap: 6px;
   min-width: 0;
-  font-size: 0.88rem;
+  font-size: .88rem;
 }
 
 .spotify-trend-name {
@@ -59,22 +46,16 @@
 .spotify-trend-name::before {
   width: 10px;
   height: 10px;
+  flex: 0 0 auto;
   border-radius: 999px;
   background: var(--spotify-trend-color);
   content: '';
-  flex: 0 0 auto;
 }
 
 .spotify-trend-latest {
-  white-space: nowrap;
+  font-size: .86em;
   font-variant-numeric: tabular-nums;
-  font-size: 0.86em;
-}
-
-.spotify-trend-scroll {
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
 }
 
 .spotify-trend-svg {
@@ -99,7 +80,7 @@
 .spotify-trend-axis-label {
   fill: currentColor;
   font-size: 11px;
-  opacity: 0.68;
+  opacity: .68;
 }
 
 .spotify-trend-line {
@@ -123,9 +104,8 @@
   color: var(--muted, #777);
 }
 
-.spotify-table th:nth-child(1),
-.spotify-table td:nth-child(1) {
-  width: 64px;
+.spotify-table th:first-child,
+.spotify-table td:first-child {
   text-align: center;
 }
 
@@ -139,7 +119,6 @@
 }
 
 .spotify-table td:nth-child(2) {
-  min-width: 180px;
   font-weight: 650;
 }
 
@@ -148,92 +127,11 @@
 }
 
 @media (max-width: 640px) {
-  .spotify-view {
-    gap: 12px;
-  }
-
-  .spotify-summary {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .spotify-summary article {
-    min-width: 0;
-  }
-
-  .spotify-summary strong {
-    font-size: clamp(1rem, 4.5vw, 1.35rem);
-  }
-
   .spotify-trend-legend {
     gap: 6px 10px;
   }
 
   .spotify-trend-legend-item {
-    font-size: 0.8rem;
+    font-size: .8rem;
   }
-
-  .spotify-data-panel .table-wrap {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .spotify-table {
-    min-width: 620px;
-  }
-}
-
-@media (max-width: 760px) {
-  .spotify-trend-scroll {
-    width: 100%;
-    min-width: 0;
-    overflow-x: hidden;
-  }
-
-  .spotify-trend-svg {
-    width: 100%;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  #likesView > .data-panel .table-wrap,
-  #spotifyView > .spotify-data-panel .table-wrap {
-    max-width: 100% !important;
-    overflow-x: hidden !important;
-  }
-
-  #likesView > .data-panel .table-wrap > table,
-  #spotifyView > .spotify-data-panel .table-wrap > table.spotify-table {
-    width: 100% !important;
-    min-width: 0 !important;
-    table-layout: fixed !important;
-  }
-
-  #likesView > .data-panel .table-wrap th,
-  #likesView > .data-panel .table-wrap td,
-  #spotifyView > .spotify-data-panel .table-wrap th,
-  #spotifyView > .spotify-data-panel .table-wrap td {
-    padding-inline: 3px !important;
-    white-space: normal !important;
-    overflow-wrap: anywhere !important;
-  }
-
-  #likesView > .data-panel .table-wrap th:nth-child(1),
-  #likesView > .data-panel .table-wrap td:nth-child(1) { width: 8% !important; text-align: center !important; }
-  #likesView > .data-panel .table-wrap th:nth-child(2),
-  #likesView > .data-panel .table-wrap td:nth-child(2) { width: 34% !important; }
-  #likesView > .data-panel .table-wrap th:nth-child(3),
-  #likesView > .data-panel .table-wrap td:nth-child(3) { width: 18% !important; }
-  #likesView > .data-panel .table-wrap th:nth-child(4),
-  #likesView > .data-panel .table-wrap td:nth-child(4) { width: 17% !important; text-align: right !important; }
-  #likesView > .data-panel .table-wrap th:nth-child(5),
-  #likesView > .data-panel .table-wrap td:nth-child(5) { width: 23% !important; }
-
-  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(1),
-  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(1) { width: 10% !important; text-align: center !important; }
-  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(2),
-  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(2) { width: 42% !important; min-width: 0 !important; }
-  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(3),
-  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(3) { width: 26% !important; text-align: right !important; }
-  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(4),
-  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(4) { width: 22% !important; text-align: right !important; }
 }

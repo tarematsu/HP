@@ -52,7 +52,7 @@ await import('/history/history-past-toggle-shell.js?v=20260927.1');
 await import('/history/history-page-fixes.js?v=20260924.1');
 await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260925.1');
-await import('/history/history-table-cleanup.js?v=20260925.1');
+await import('/history/history-table-cleanup.js?v=20260928.1');
 await ensureHistoryModeRuntime(initialMode);
 await import('/history/history-summary-average-labels.js?v=20260924.1');
 await import('/history/history-range-navigator.js?v=20260925.1');
