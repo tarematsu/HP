@@ -118,8 +118,24 @@ function dedupeTrackRows(rows = []) {
   return [...unique.values()];
 }
 
+function compareTrackRows(a, b) {
+  const aDelta = integer(a?.delta);
+  const bDelta = integer(b?.delta);
+  if (aDelta == null && bDelta != null) return 1;
+  if (aDelta != null && bDelta == null) return -1;
+  if (aDelta != null && bDelta != null && aDelta !== bDelta) return bDelta - aDelta;
+
+  const aPlaycount = Math.max(0, integer(a?.playcount) ?? 0);
+  const bPlaycount = Math.max(0, integer(b?.playcount) ?? 0);
+  if (aPlaycount !== bPlaycount) return bPlaycount - aPlaycount;
+
+  const byName = String(a?.name || '').localeCompare(String(b?.name || ''), 'ja', { sensitivity: 'base' });
+  if (byName !== 0) return byName;
+  return String(a?.track_id || '').localeCompare(String(b?.track_id || ''));
+}
+
 export function spotifyPayload(artist, rows = []) {
-  const uniqueRows = dedupeTrackRows(rows);
+  const uniqueRows = dedupeTrackRows(rows).sort(compareTrackRows);
   const tracks = uniqueRows.map((row, index) => ({
     rank: index + 1,
     track_id: String(row.track_id || ''),
