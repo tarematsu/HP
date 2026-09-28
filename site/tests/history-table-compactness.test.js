@@ -46,15 +46,19 @@ test('history tab transitions reset shared summary and pagination state without 
   assert.match(cleanup, /resetSharedHistorySummary\(mode\)/);
 });
 
-test('final mobile layout restores horizontal scrolling for leaderboard and likes detail tables', () => {
+test('final mobile layout keeps leaderboard scrolling but fits likes and Spotify detail tables', () => {
   assert.match(entry, /history-table-cleanup\.js\?v=20260925\.1/);
   assert.match(cleanup, /@media \(max-width: 760px\)/);
   assert.match(cleanup, /#historyView \.table-wrap table\.compact-columns,[\s\S]*#likesView \.table-wrap table[\s\S]*width: 100% !important;[\s\S]*min-width: 100% !important;[\s\S]*table-layout: fixed !important;/);
-  assert.match(finalLayout, /#historyView > \.data-panel \.table-wrap,[\s\S]*#likesView > \.data-panel \.table-wrap[\s\S]*overflow-x: auto !important/);
+  assert.match(finalLayout, /#historyView > \.data-panel \.table-wrap\s*\{[\s\S]*overflow-x: auto !important/);
   assert.match(finalLayout, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*width: max-content !important[\s\S]*min-width: 760px !important[\s\S]*table-layout: auto !important/);
   assert.match(finalLayout, /table\.all-host-ranking-table\.compact-columns[\s\S]*width: max-content !important[\s\S]*min-width: 980px !important[\s\S]*table-layout: auto !important/);
   assert.match(finalLayout, /#rankingWeeklyPanel \.table-wrap > table[\s\S]*width: max-content !important[\s\S]*min-width: 560px !important/);
-  assert.match(finalLayout, /#likesView > \.data-panel \.table-wrap > table[\s\S]*width: max-content !important[\s\S]*min-width: 680px !important/);
+  assert.match(finalLayout, /#likesView > \.data-panel \.table-wrap,[\s\S]*#spotifyView > \.spotify-data-panel \.table-wrap[\s\S]*overflow-x: hidden !important/);
+  assert.match(finalLayout, /#likesView > \.data-panel \.table-wrap > table,[\s\S]*#spotifyView > \.spotify-data-panel \.table-wrap > table\.spotify-table[\s\S]*width: 100% !important[\s\S]*min-width: 0 !important[\s\S]*table-layout: fixed !important/);
+  assert.match(finalLayout, /#likesView > \.data-panel \.table-wrap th:nth-child\(2\),[\s\S]*width: 34% !important/);
+  assert.match(finalLayout, /#spotifyView > \.spotify-data-panel \.spotify-table th:nth-child\(2\),[\s\S]*width: 42% !important/);
+  assert.doesNotMatch(finalLayout, /#likesView > \.data-panel \.table-wrap > table[\s\S]{0,120}min-width: 680px !important/);
 });
 
 test('featured leaderboard column proportions remain available underneath the scroll layout', () => {
