@@ -25,13 +25,9 @@ const ALL_VARIANTS = [
   'spotify-playcounts',
 ];
 
-const SCHEDULED_DAILY_VARIANTS = [
+const TWELVE_HOUR_VARIANTS = [
   'dashboard',
-  'history:daily',
-  'history:weekly',
-  'history:monthly',
-  'history:broadcasts',
-  'host-history:summary',
+  'spotify-playcounts',
 ];
 
 test('missing status performs a full 35-day refresh and one-day bounded backfill', () => {
@@ -131,18 +127,18 @@ test('canonical materialized variants exclude playback history', () => {
   assert.equal(materialized.get('history:weekly').cadence_minutes, 1440);
   assert.equal(materialized.get('history:monthly').cadence_minutes, 1440);
   assert.equal(materialized.get('history:broadcasts').cadence_minutes, 1440);
-  assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 0);
+  assert.equal(materialized.get('spotify-playcounts').cadence_minutes, 720);
   assert.equal(materialized.get('spotify-playcounts').event_driven, true);
   assert.equal(materialized.get('dashboard').cadence_minutes, 5);
 });
 
-test('Actions cadence excludes the event-driven Spotify model', () => {
+test('generic cadence metadata remains compatible while scheduled runner excludes event-driven Spotify', () => {
   const cycle = Date.UTC(2026, 6, 16, 0, 0);
-  assert.deepEqual([...dueVariantKeys(cycle + 26 * MINUTE_MS)], SCHEDULED_DAILY_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycle + 55 * MINUTE_MS)], SCHEDULED_DAILY_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 26 * MINUTE_MS)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 55 * MINUTE_MS)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycle + 56 * MINUTE_MS)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycle + 86 * MINUTE_MS)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycle + 386 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 746 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 1466 * MINUTE_MS)], SCHEDULED_DAILY_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 746 * MINUTE_MS)], TWELVE_HOUR_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 1466 * MINUTE_MS)], ALL_VARIANTS);
 });
