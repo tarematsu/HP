@@ -49,13 +49,10 @@ export function spotifySongKey(track) {
   const sourceTrackId = String(track?.track_id || '').trim();
   const name = normalizedText(track?.name);
   const artistIds = normalizedArtistIds(track?.artists_json);
-  const rawDurationMs = track?.duration_ms;
-  const durationMs = rawDurationMs == null || rawDurationMs === '' ? Number.NaN : Number(rawDurationMs);
-  if (!name || !artistIds.length || !Number.isFinite(durationMs) || durationMs < 0) {
-    return `track:v1:${sourceTrackId}`;
+  if (!name || !artistIds.length) {
+    return `track:v2:${sourceTrackId}`;
   }
-  const durationSecond = Math.round(durationMs / 1000);
-  return `song:v1:${name}\u001f${artistIds.join(',')}\u001f${durationSecond}`;
+  return `song:v2:${name}\u001f${artistIds.join(',')}`;
 }
 
 export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {

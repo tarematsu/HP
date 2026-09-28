@@ -81,8 +81,46 @@ function integer(value) {
   return Number.isSafeInteger(number) ? number : null;
 }
 
+function normalizedTrackName(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLocaleLowerCase('ja-JP')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function dedupeTrackRows(rows = []) {
+  const unique = new Map();
+  for (const row of rows) {
+    const key = normalizedTrackName(row?.name) || `track:${String(row?.track_id || '')}`;
+    const current = unique.get(key);
+    if (!current) {
+      unique.set(key, { ...row });
+      continue;
+    }
+
+    const currentPlaycount = Math.max(0, integer(current.playcount) ?? 0);
+    const nextPlaycount = Math.max(0, integer(row?.playcount) ?? 0);
+    if (nextPlaycount > currentPlaycount) {
+      current.track_id = row.track_id;
+      current.name = row.name;
+      current.playcount = row.playcount;
+    }
+
+    const currentDelta = integer(current.delta);
+    const nextDelta = integer(row?.delta);
+    if (currentDelta == null || (nextDelta != null && nextDelta > currentDelta)) {
+      current.delta = row.delta;
+    }
+    current.collected_at = Math.max(integer(current.collected_at) ?? 0, integer(row?.collected_at) ?? 0);
+    current.is_carried_forward = Number(current.is_carried_forward) === 1 && Number(row?.is_carried_forward) === 1 ? 1 : 0;
+  }
+  return [...unique.values()];
+}
+
 export function spotifyPayload(artist, rows = []) {
-  const tracks = rows.map((row, index) => ({
+  const uniqueRows = dedupeTrackRows(rows);
+  const tracks = uniqueRows.map((row, index) => ({
     rank: index + 1,
     track_id: String(row.track_id || ''),
     name: String(row.name || '').trim() || '曲名不明',
@@ -91,7 +129,7 @@ export function spotifyPayload(artist, rows = []) {
     is_carried_forward: Number(row.is_carried_forward) === 1,
     collected_at: integer(row.collected_at),
   }));
-  const snapshotDate = rows.length ? String(rows[0].snapshot_date || '') : null;
+  const snapshotDate = uniqueRows.length ? String(uniqueRows[0].snapshot_date || '') : null;
   const carriedForward = tracks.length > 0 && tracks.every((track) => track.is_carried_forward);
   const deltas = tracks.map((track) => track.delta).filter((value) => value != null);
   return {
@@ -124,12 +162,19 @@ export function spotifyTrend(rows = []) {
 
 export function spotifyReadModel(latestRows = [], trendRows = []) {
   const sakurazakaRows = latestRows.filter((row) => String(row?.artist_key || '') === DEFAULT_ARTIST_KEY);
+  const payload = spotifyPayload(SAKURAZAKA, sakurazakaRows);
+  const trend = spotifyTrend(trendRows);
+  const latestTrendPoint = (trend[DEFAULT_ARTIST_KEY] || [])
+    .find((point) => point.snapshot_date === payload.snapshot_date);
+  if (latestTrendPoint && payload.total_delta != null) {
+    latestTrendPoint.total_delta = payload.total_delta;
+  }
   return {
     default_artist: DEFAULT_ARTIST_KEY,
     groups: {
-      [DEFAULT_ARTIST_KEY]: spotifyPayload(SAKURAZAKA, sakurazakaRows),
+      [DEFAULT_ARTIST_KEY]: payload,
     },
-    trend: spotifyTrend(trendRows),
+    trend,
   };
 }
 
