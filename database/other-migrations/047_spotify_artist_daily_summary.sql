@@ -3,6 +3,8 @@ CREATE TABLE IF NOT EXISTS sh_spotify_artist_daily (
   artist_key TEXT NOT NULL,
   total_delta INTEGER,
   track_count INTEGER NOT NULL DEFAULT 0,
+  top10_delta INTEGER,
+  top10_year_delta INTEGER,
   updated_at INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (snapshot_date, artist_key)
 );
