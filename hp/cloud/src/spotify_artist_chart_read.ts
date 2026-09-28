@@ -215,7 +215,7 @@ async function saveSyncState(
 ): Promise<void> {
   await db.prepare(`INSERT INTO sh_spotify_artist_chart_sync_state (
       id,backfill_completed,latest_chart_date,latest_observed_at,updated_at
-    ) VALUES (1,?,?,?,?,?)
+    ) VALUES (1,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET
       backfill_completed=excluded.backfill_completed,
       latest_chart_date=excluded.latest_chart_date,
@@ -247,7 +247,8 @@ export async function syncSpotifyArtistChartR2ToD1(
   let backfilled = false;
 
   if (!backfillCompleted) {
-    for (const item of await datedObjectKeys(bucket)) requested.set(item.date, item.key);
+    const keys = await datedObjectKeys(bucket);
+    for (const item of keys.slice(-MAX_DAYS)) requested.set(item.date, item.key);
     backfilled = true;
   }
   for (const raw of chartDates) {
@@ -267,7 +268,7 @@ export async function syncSpotifyArtistChartR2ToD1(
       backfilled: false,
       days: 0,
       rows: 0,
-      latest_chart_date: latest?.chart_date ?? stateDate || null,
+      latest_chart_date: latest?.chart_date ?? (stateDate || null),
     };
   }
 
@@ -303,6 +304,7 @@ export async function spotifyArtistChartHistoryResponse(request: Request, env: E
   const artists = new Set(artistNames);
 
   try {
+    await syncSpotifyArtistChartR2ToD1(env);
     const result = await db.prepare(`WITH selected_dates AS (
         SELECT chart_date
         FROM sh_spotify_artist_chart_daily
