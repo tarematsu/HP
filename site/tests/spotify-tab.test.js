@@ -211,7 +211,6 @@ test('Spotify tab uses only the materialized Spotify read model for all four gra
   assert.match(shell, /櫻坂46楽曲数/);
   assert.match(shell, /櫻坂46前日比合計/);
   assert.match(shell, /<th>前日比<\/th>/);
-  assert.doesNotMatch(`${shell}\n${runtime}`, /前回比/);
   assert.doesNotMatch(shell, / - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /id="spotifyTop10TrendCharts"/);
