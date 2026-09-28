@@ -8,6 +8,16 @@
   <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
   <meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
   <title>Buddies Station Monitor</title>
+  <style id="dashboard-prepaint-guard">
+    html[data-dashboard-booting] #content { visibility: hidden; }
+  </style>
+  <script>
+    document.documentElement.setAttribute('data-dashboard-booting', '');
+    window.addEventListener('DOMContentLoaded', () => {
+      document.documentElement.removeAttribute('data-dashboard-booting');
+    }, { once: true });
+  </script>
+  <noscript><style>#content { visibility: visible !important; }</style></noscript>
   <link rel="stylesheet" href="/app-lite.css?v=20260923.4">
   <link rel="stylesheet" href="/monochrome.css?v=20260923.4">
 </head>

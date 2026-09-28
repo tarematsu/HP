@@ -25,6 +25,13 @@ test('dashboard starts on current and exposes visible modes in one tab panel', (
   assert.doesNotMatch(page, /data-mode="tracks"|id="trackControls"/);
 });
 
+test('dashboard hides the legacy static shell until module routing is ready', () => {
+  assert.match(page, /<style id="dashboard-prepaint-guard">[\s\S]*html\[data-dashboard-booting\] #content \{ visibility: hidden; \}/);
+  assert.match(page, /document\.documentElement\.setAttribute\('data-dashboard-booting', ''\)/);
+  assert.match(page, /window\.addEventListener\('DOMContentLoaded',[\s\S]*removeAttribute\('data-dashboard-booting'\)/);
+  assert.ok(page.indexOf('dashboard-prepaint-guard') < page.indexOf('app-lite.css'));
+});
+
 test('archive and likes markup are integrated below the shared tab panel', () => {
   for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
     assert.match(page, new RegExp(`id="${id}"`));
