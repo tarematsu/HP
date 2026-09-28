@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 8;
+export const API_CONTRACT_VERSION = 9;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -6,7 +6,8 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/sakurazaka46jp-status', methods: ['GET'], description: 'Latest Sakurazaka Stationhead per-minute raw collection status' },
   ]),
   dashboard: Object.freeze([
-    { path: '/api/dashboard', methods: ['GET'], description: 'Current state, queue, recent history, and completed daily changes' },
+    { path: '/api/dashboard', methods: ['GET'], description: 'Current state and queue optimized for first paint' },
+    { path: '/api/dashboard-details', methods: ['GET'], description: 'Deferred current history, chart comparison data, and completed daily summaries' },
   ]),
   history: Object.freeze([
     { path: '/api/history', methods: ['GET'], description: 'Daily, weekly, monthly, ranking, and broadcast history modes' },
