@@ -172,10 +172,6 @@
     font-size: 0.8rem;
   }
 
-  .spotify-trend-svg {
-    min-width: 720px;
-  }
-
   .spotify-data-panel .table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -184,4 +180,60 @@
   .spotify-table {
     min-width: 620px;
   }
+}
+
+@media (max-width: 760px) {
+  .spotify-trend-scroll {
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
+  .spotify-trend-svg {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #likesView > .data-panel .table-wrap,
+  #spotifyView > .spotify-data-panel .table-wrap {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  #likesView > .data-panel .table-wrap > table,
+  #spotifyView > .spotify-data-panel .table-wrap > table.spotify-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+  }
+
+  #likesView > .data-panel .table-wrap th,
+  #likesView > .data-panel .table-wrap td,
+  #spotifyView > .spotify-data-panel .table-wrap th,
+  #spotifyView > .spotify-data-panel .table-wrap td {
+    padding-inline: 3px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  #likesView > .data-panel .table-wrap th:nth-child(1),
+  #likesView > .data-panel .table-wrap td:nth-child(1) { width: 8% !important; text-align: center !important; }
+  #likesView > .data-panel .table-wrap th:nth-child(2),
+  #likesView > .data-panel .table-wrap td:nth-child(2) { width: 34% !important; }
+  #likesView > .data-panel .table-wrap th:nth-child(3),
+  #likesView > .data-panel .table-wrap td:nth-child(3) { width: 18% !important; }
+  #likesView > .data-panel .table-wrap th:nth-child(4),
+  #likesView > .data-panel .table-wrap td:nth-child(4) { width: 17% !important; text-align: right !important; }
+  #likesView > .data-panel .table-wrap th:nth-child(5),
+  #likesView > .data-panel .table-wrap td:nth-child(5) { width: 23% !important; }
+
+  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(1),
+  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(1) { width: 10% !important; text-align: center !important; }
+  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(2),
+  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(2) { width: 42% !important; min-width: 0 !important; }
+  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(3),
+  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(3) { width: 26% !important; text-align: right !important; }
+  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(4),
+  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(4) { width: 22% !important; text-align: right !important; }
 }
