@@ -73,7 +73,7 @@ test('recent status limits incremental refresh to the latest completed day', () 
 test('legacy generated_at is accepted as the previous full refresh', () => {
   const now = Date.UTC(2026, 6, 16, 12, 31);
   const generatedAt = Date.UTC(2026, 6, 10, 10, 31);
-  const ranges = trackHistoryRefreshRanges(now, null, { full_reconciled_at: generatedAt });
+  const ranges = trackHistoryRefreshRanges(now, null, { generated_at: generatedAt });
   assert.equal(ranges.fullReconcile, false);
   assert.equal(ranges.previousFullAt, generatedAt);
 });
