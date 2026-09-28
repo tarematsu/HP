@@ -63,7 +63,10 @@ test('X likes exclude reposts, ads, PR and boosted posts', () => {
   assert.match(xRuntime, /data-testid="socialContext"/);
   assert.match(xRuntime, /reposted\|repost\|retweeted\|retweet\|リポスト\|リツイート/);
   assert.match(xRuntime, /isOrganic = article => !isPromoted\(article\) && !isRepost\(article\)/);
-  assert.match(xRuntime, /window\.scrollBy\(\{ top: scrollDistance, behavior: 'smooth' \}\)/);
+  assert.match(xRuntime, /const maxScrollStepPx = 28/);
+  assert.match(xRuntime, /state\.result = 'approaching-like'/);
+  assert.match(xRuntime, /state\.result = 'paused-on-like'/);
+  assert.match(xRuntime, /window\.scrollBy\(\{ top: Math\.sign\(distance\) \* step, behavior: 'smooth' \}\)/);
   assert.match(xRuntime, /const likeIntervalMs = 10 \* 1000/);
   assert.match(xRuntime, /bridge\.postMessage\(`homepanel:x-like:\$\{id\}:\$\{x\}:\$\{y\}`\)/);
   assert.doesNotMatch(xRuntime, /button\.click\(\)/);
