@@ -11,9 +11,13 @@ constexpr UINT_PTR kNativeMediaNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
 constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
-constexpr UINT kNativeMediaYoutubePhaseMs = 61U * 60U * 1000U;
-constexpr UINT kNativeMediaTverPhaseMs = 59U * 60U * 1000U;
 constexpr UINT kNativeMediaXPhaseMs = 1U * 60U * 1000U;
+constexpr UINT kNativeMediaYoutubeContentPhaseMs = 60U * 60U * 1000U;
+constexpr UINT kNativeMediaTverContentDurationMs = 58U * 60U * 1000U;
+constexpr UINT kNativeMediaYoutubePhaseMs =
+    kNativeMediaYoutubeContentPhaseMs + kNativeMediaXPhaseMs;
+constexpr UINT kNativeMediaTverPhaseMs =
+    kNativeMediaTverContentDurationMs + kNativeMediaXPhaseMs;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
