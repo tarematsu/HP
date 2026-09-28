@@ -53,30 +53,34 @@ test('dashboard current page renders online history without comment velocity', a
   const client = await text('public/dashboard-client.js');
   const chart = await text('public/dashboard-chart-comparison.js');
   const detail = await text('public/dashboard-chart-detail.js');
+  const detailsClient = await text('public/dashboard-details-client.js');
   assert.match(html, /id="audienceChart"/);
   assert.match(html, /class="online-key">オンライン<\/span>/);
   assert.doesNotMatch(html, /<h2>オンライン数<\/h2>|コメント勢い/);
-  assert.match(client, /const DASHBOARD_URL = '\/api\/dashboard'/);
+  assert.match(client, /const DASHBOARD_URL = '\/api\/dashboard\?history=0'/);
   assert.match(client, /payload\.queue/);
+  assert.match(detailsClient, /\/api\/dashboard-details\?channel_id=/);
   assert.match(chart, /payload\?\.history/);
   assert.match(chart, /online_member_count/);
   assert.doesNotMatch(chart, /comment_velocity|commentVelocity|コメント\/2分/);
   assert.doesNotMatch(detail, /comment_velocity|commentVelocity|コメント勢い/);
 });
 
-test('dashboard displays completed UTC-day changes from the canonical response', async () => {
+test('dashboard displays completed UTC-day changes from the deferred details response', async () => {
   const html = await text('public/index.html');
   const entry = await text('public/dashboard-metrics.js');
   const renderer = await text('public/dashboard-daily-summaries.js');
-  const endpoint = await text('functions/api/dashboard.js');
+  const endpoint = await text('functions/api/dashboard-details.js');
+  const criticalEndpoint = await text('functions/api/dashboard.js');
   const loader = await text('functions/lib/dashboard-daily-summaries.js');
   assert.match(html, />総メンバー数</);
   assert.match(html, />累計再生数</);
-  assert.match(entry, /dashboard-daily-summaries\.js\?v=20260923\.4/);
+  assert.match(entry, /dashboard-daily-summaries\.js\?v=20260929\.1/);
   assert.match(renderer, /renderDashboardDailySummaries/);
   assert.match(renderer, /dashboard:payload/);
-  assert.match(renderer, /event\?\.detail\?\.payload\?\.daily_summaries/);
+  assert.match(renderer, /payload\?\.daily_summaries/);
   assert.match(endpoint, /daily_summaries/);
+  assert.doesNotMatch(criticalEndpoint, /daily_summaries|augmentDashboardChartData/);
   assert.match(loader, /FROM sh_daily_summary/);
   assert.match(renderer, /member_growth/);
   assert.match(renderer, /stream_growth/);
