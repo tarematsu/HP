@@ -15,12 +15,12 @@ function track(overrides = {}) {
   };
 }
 
-test('same song across different Spotify track ids resolves to one identity', () => {
+test('same song across different Spotify track ids and durations resolves to one identity', () => {
   const single = spotifySongKey(track({ track_id: 'single-id' }));
   const album = spotifySongKey(track({
     track_id: 'album-id',
     name: 'Ｓｔａｒｔ ｏｖｅｒ！',
-    duration_ms: 199399,
+    duration_ms: 202900,
     artists_json: JSON.stringify([
       { id: 'artist-a', name: '櫻坂46' },
       { id: 'artist-b', name: 'Guest' },
@@ -50,9 +50,20 @@ test('different credited artists remain distinct', () => {
   );
 });
 
-test('missing identity metadata falls back to the Spotify track id', () => {
+test('duration is not required when title and artist identity are available', () => {
   assert.equal(
-    spotifySongKey(track({ track_id: 'fallback-id', duration_ms: null })),
-    'track:v1:fallback-id',
+    spotifySongKey(track({ duration_ms: null })),
+    spotifySongKey(track({ track_id: 'other-id', duration_ms: 999999 })),
+  );
+});
+
+test('missing title or artist identity falls back to the Spotify track id', () => {
+  assert.equal(
+    spotifySongKey(track({ track_id: 'fallback-id', name: '' })),
+    'track:v2:fallback-id',
+  );
+  assert.equal(
+    spotifySongKey(track({ track_id: 'fallback-artists', artists_json: '[]' })),
+    'track:v2:fallback-artists',
   );
 });
