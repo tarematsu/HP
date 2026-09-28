@@ -11,26 +11,27 @@ const tverQueue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const tverRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
+const youtubeTransition = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_x_transition.inc', import.meta.url), 'utf8');
+const youtubePolicy = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url), 'utf8');
 const xRuntime = readFileSync(
   new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
 
-test('startup shows X for 5 minutes before a full 60-minute YouTube phase', () => {
-  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 5U \* 60U \* 1000U/);
-  assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
-  assert.match(mediaBase, /return kNativeMediaStartupXPhaseMs \+ kNativeMediaYoutubePhaseMs/);
-  assert.match(mediaBase, /deadline > now[\s\S]*return kNativeMediaStartupXUrl/);
-  assert.match(xRuntime, /homepanel:startup-x-until:v1/);
-  assert.match(xRuntime, /Date\.now\(\) \+ 5 \* 60 \* 1000/);
-  assert.match(xRuntime, /location\.assign\(youtubeStart\)/);
+test('YouTube hands its final minute to X after 60 minutes', () => {
+  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs = 61U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
+  assert.match(youtubePolicy, /#include "media_youtube_x_transition\.inc"/);
+  assert.match(youtubeTransition, /const phaseMs = 60 \* 60 \* 1000/);
+  assert.match(youtubeTransition, /location\.assign\('https:\/\/x\.com\/home'\)/);
 });
 
-test('YouTube stays 60 minutes while the TVer hour hands its last 5 minutes to X', () => {
-  assert.match(mediaBase, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaTverPhaseMs = kNativeMediaPhaseMs/);
-  assert.match(tverQueue, /kNativeMediaTverContentPhaseMs = 55ULL \* 60ULL \* 1000ULL/);
+test('TVer runs 58 minutes and hands its final minute to X', () => {
+  assert.match(mediaBase, /kNativeMediaTverPhaseMs = 59U \* 60U \* 1000U/);
+  assert.match(tverQueue, /kNativeMediaTverContentPhaseMs = 58ULL \* 60ULL \* 1000ULL/);
   assert.match(tverQueue, /ULONGLONG phaseStartedAt = 0/);
   assert.match(tverQueue, /NativeMediaTverXPhaseActive\(\)/);
-  assert.match(tverRuntime, /const phaseMs = 55 \* 60 \* 1000/);
+  assert.match(tverRuntime, /const phaseMs = 58 \* 60 \* 1000/);
   assert.match(tverRuntime, /location\.assign\('https:\/\/x\.com\/home'\)/);
 });
 
@@ -48,28 +49,16 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.match(xRuntime, /state\.result = 'waiting-login'/);
   assert.match(xRuntime, /await sleep\(1000\)/);
   assert.doesNotMatch(xRuntime, /attempt < \d+ && !tab/);
-  assert.doesNotMatch(xRuntime, /homepanel:x-waiting-login|homepanel:x-authenticated/);
   const waitStart = xRuntime.indexOf('let tab = followingTab()');
   const authEnd = xRuntime.indexOf("state.result = 'authenticated'", waitStart);
   const waiting = xRuntime.slice(waitStart, authEnd);
-  assert.doesNotMatch(waiting, /\.click\(|scrollTo\(|scrollBy\(/);
+  assert.doesNotMatch(waiting, /scrollTo\(|scrollBy\(/);
 });
 
-test('X slowly scrolls before each of 2 to 5 likes', () => {
+test('X observation window scrolls slowly without engagement actions', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
-  assert.match(xRuntime, /2 \+ Math\.floor\(Math\.random\(\) \* 4\)/);
   assert.match(xRuntime, /window\.scrollBy\(\{ top: scrollDistance, behavior: 'smooth' \}\)/);
   assert.match(xRuntime, /await sleep\(1800 \+ Math\.floor\(Math\.random\(\) \* 1400\)\)/);
-  assert.match(xRuntime, /await sleep\(1400 \+ Math\.floor\(Math\.random\(\) \* 1600\)\)/);
-  assert.match(xRuntime, /article\[data-testid="tweet"\]/);
-  assert.match(xRuntime, /\[data-testid="like"\]/);
-  assert.match(xRuntime, /button\.click\(\)/);
-  assert.match(xRuntime, /Promoted\|プロモーション\|広告/);
-  assert.doesNotMatch(xRuntime, /data-testid="unlike"|data-testid="retweet"|data-testid="follow"/);
-
-  const loopStart = xRuntime.indexOf('for (let pass = 0; pass < 24');
-  const scrollAt = xRuntime.indexOf("behavior: 'smooth'", loopStart);
-  const likeAt = xRuntime.indexOf('button.click()', loopStart);
-  const breakAt = xRuntime.indexOf('break;', likeAt);
-  assert.ok(loopStart >= 0 && scrollAt > loopStart && likeAt > scrollAt && breakAt > likeAt);
+  assert.doesNotMatch(xRuntime, /data-testid="like"|button\.click\(\)|targetCount|likedCount/);
+  assert.doesNotMatch(xRuntime, /homepanel:startup-x-until|homepanel=startup/);
 });
