@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 
-const source = readFileSync(new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8')
-  .replace(/^LR"JS\(/, '').replace(/\)JS"\s*$/, '');
+const rawSource = readFileSync(
+  new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
+const source = [...rawSource.matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
+  .map(([, chunk]) => chunk).join('');
 const mediaSection = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 
