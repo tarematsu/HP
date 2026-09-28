@@ -57,10 +57,14 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.doesNotMatch(waiting, /scrollTo\(|scrollBy\(/);
 });
 
-test('X observation window scrolls slowly without engagement actions', () => {
+test('X likes exclude reposts, ads and boosted posts', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
+  assert.match(xRuntime, /Promoted\|Sponsored\|広告\|プロモーション\|スポンサー\|Boosted\|ブースト/);
+  assert.match(xRuntime, /data-testid="socialContext"/);
+  assert.match(xRuntime, /reposted\|repost\|retweeted\|retweet\|リポスト\|リツイート/);
+  assert.match(xRuntime, /isOrganic = article => !isPromoted\(article\) && !isRepost\(article\)/);
   assert.match(xRuntime, /window\.scrollBy\(\{ top: scrollDistance, behavior: 'smooth' \}\)/);
   assert.match(xRuntime, /await sleep\(1800 \+ Math\.floor\(Math\.random\(\) \* 1400\)\)/);
-  assert.doesNotMatch(xRuntime, /data-testid="like"|button\.click\(\)|targetCount|likedCount/);
+  assert.match(xRuntime, /button\.click\(\)/);
   assert.doesNotMatch(xRuntime, /homepanel:startup-x-until|homepanel=startup/);
 });

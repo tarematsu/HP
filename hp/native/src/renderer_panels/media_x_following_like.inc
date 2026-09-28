@@ -13,6 +13,17 @@ LR"JS(
       .replace(/\s+/g, ' ').trim();
   const followingTab = () => Array.from(document.querySelectorAll('[role="tab"]'))
       .find(tab => /^(?:Following|フォロー中)$/i.test(text(tab)));
+  const isPromoted = article => {
+    const value = text(article);
+    return /(?:^|\s)(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト)(?:\s|$)/i.test(value) ||
+        Boolean(article.querySelector('[data-testid*="placement" i]'));
+  };
+  const isRepost = article => {
+    const socialContext = article.querySelector('[data-testid="socialContext"]');
+    const value = text(socialContext);
+    return /(?:reposted|repost|retweeted|retweet|リポスト|リツイート)/i.test(value);
+  };
+  const isOrganic = article => !isPromoted(article) && !isRepost(article);
 
   const run = async () => {
     try {
@@ -34,15 +45,50 @@ LR"JS(
         await sleep(1600);
       }
 
+      if (followingTab()?.getAttribute('aria-selected') !== 'true') {
+        state.result = 'following-unavailable';
+        return;
+      }
+
       window.scrollTo(0, 0);
       await sleep(1200);
-      for (let pass = 0; pass < 12; pass++) {
+      const targetCount = 2 + Math.floor(Math.random() * 4);
+      const attempted = new Set();
+      state.targetCount = targetCount;
+      state.likedCount = 0;
+      for (let pass = 0; pass < 12 && attempted.size < targetCount; pass++) {
+        if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
+        const articles = Array.from(
+            document.querySelectorAll('article[data-testid="tweet"]'));
+        for (const article of articles) {
+          if (attempted.size >= targetCount) break;
+          if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
+          if (!article.isConnected || !isOrganic(article)) continue;
+          const rect = article.getBoundingClientRect();
+          if (rect.bottom <= 0 || rect.top >= innerHeight) continue;
+          const permalink = article.querySelector('time')?.closest('a')
+              ?.getAttribute('href');
+          const id = permalink?.match(/\/status\/(\d+)/)?.[1];
+          if (!id || attempted.has(id)) continue;
+          const button = article.querySelector('[data-testid="like"]');
+          if (!button || button.disabled ||
+              button.getAttribute('aria-disabled') === 'true' ||
+              article.querySelector('[data-testid="unlike"]')) continue;
+          // Count attempts too: failed requests must not cause extra likes.
+          attempted.add(id);
+          button.click();
+          await sleep(1000);
+          if (article.querySelector('[data-testid="unlike"]')) state.likedCount++;
+        }
+        if (attempted.size >= targetCount) break;
+
         const scrollDistance = Math.max(
             220,
             Math.floor(innerHeight * (0.35 + Math.random() * 0.20)));
         window.scrollBy({ top: scrollDistance, behavior: 'smooth' });
         await sleep(1800 + Math.floor(Math.random() * 1400));
       }
+      state.attemptedCount = attempted.size;
       state.result = 'completed';
     } catch (_) {
       state.result = 'error';
