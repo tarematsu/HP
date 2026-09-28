@@ -28,7 +28,8 @@ LR"JS(
       .find(tab => /^(?:Following|フォロー中)$/i.test(text(tab)));
   const promotedLabel = /^(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト|PR)$/i;
   const hasPromotedLabel = article => Array.from(article?.querySelectorAll?.('span') || [])
-      .some(element => promotedLabel.test(text(element)));
+      .some(element => !element.closest?.('[data-testid="tweetText"]') &&
+          promotedLabel.test(text(element)));
   const isPromoted = article => hasPromotedLabel(article) ||
       Boolean(article.querySelector('[data-testid*="placement" i]'));
   const isRepost = article => {
