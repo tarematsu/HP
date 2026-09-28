@@ -20,7 +20,7 @@ LR"JS(
   };
   const isRepost = article => {
     const socialContext = article.querySelector('[data-testid="socialContext"]');
-    const value = text(socialContext || article);
+    const value = text(socialContext);
     return /(?:reposted|repost|retweeted|retweet|リポスト|リツイート)/i.test(value);
   };
   const isOrganic = article => !isPromoted(article) && !isRepost(article);
