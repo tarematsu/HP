@@ -6,8 +6,8 @@ LR"JS(
   const state = window.__homePanelTverRuntime ||
       (window.__homePanelTverRuntime = {});
   const storageKey = 'homepanel:tver-x-phase-start:v1';
-  const phaseMs = 55 * 60 * 1000;
-  const staleMs = 65 * 60 * 1000;
+  const phaseMs = 58 * 60 * 1000;
+  const staleMs = 60 * 60 * 1000;
   const now = Date.now();
   let startedAt = 0;
   try { startedAt = Number(localStorage.getItem(storageKey) || 0); }
