@@ -19,15 +19,17 @@ const xRuntime = readFileSync(
   new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
 
 test('YouTube hands its final minute to X after 60 minutes', () => {
-  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs = 61U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs =[\s\S]*kNativeMediaYoutubeContentPhaseMs \+ kNativeMediaXPhaseMs/);
   assert.match(youtubePolicy, /#include "media_youtube_x_transition\.inc"/);
   assert.match(youtubeTransition, /const phaseMs = 60 \* 60 \* 1000/);
   assert.match(youtubeTransition, /location\.assign\('https:\/\/x\.com\/home'\)/);
 });
 
 test('TVer runs 58 minutes and hands its final minute to X', () => {
-  assert.match(mediaBase, /kNativeMediaTverPhaseMs = 59U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \* 60U \* 1000U/);
+  assert.match(mediaBase, /kNativeMediaTverPhaseMs =[\s\S]*kNativeMediaTverContentDurationMs \+ kNativeMediaXPhaseMs/);
   assert.match(tverQueue, /kNativeMediaTverContentPhaseMs = 58ULL \* 60ULL \* 1000ULL/);
   assert.match(tverQueue, /ULONGLONG phaseStartedAt = 0/);
   assert.match(tverQueue, /NativeMediaTverXPhaseActive\(\)/);
