@@ -1,6 +1,5 @@
 const SAKURAZAKA_KEY = 'sakurazaka46';
 const SAKURAZAKA_NAME = '櫻坂46';
-const SPOTIFY_ARTIST_CHART_URL = 'https://homepanel-cloud.tarematsu.workers.dev/api/spotify-artist-chart';
 const TREND_COLORS = Object.freeze([
   '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
   '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#fc8d62',
@@ -16,7 +15,6 @@ const compactNumberFormat = new Intl.NumberFormat('ja-JP', {
 });
 let requestSequence = 0;
 let readModelPromise = null;
-let artistChartPromise = null;
 
 function element(id) {
   return document.getElementById(id);
@@ -42,23 +40,28 @@ function formatTrendDate(value) {
   return `${Number(match[1])}/${Number(match[2])}`;
 }
 
-function deltaNumber(value) {
+function integer(value) {
   if (value == null || value === '') return null;
   const number = Number(value);
   return Number.isSafeInteger(number) ? number : null;
 }
 
 function formatDelta(value) {
-  const number = deltaNumber(value);
+  const number = integer(value);
   if (number == null) return '-';
   return number > 0 ? `+${numberFormat.format(number)}` : numberFormat.format(number);
 }
 
-function renderRows(payload) {
+function svgElement(name, attributes = {}) {
+  const node = document.createElementNS(SVG_NS, name);
+  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
+  return node;
+}
+
+function renderRows(payload = {}) {
   const body = element('spotifyTbody');
   if (!body) return;
   body.replaceChildren();
-
   for (const track of payload.tracks || []) {
     const row = document.createElement('tr');
     const rank = document.createElement('td');
@@ -76,14 +79,6 @@ function renderRows(payload) {
   }
 }
 
-function svgElement(name, attributes = {}) {
-  const node = document.createElementNS(SVG_NS, name);
-  for (const [key, value] of Object.entries(attributes)) {
-    node.setAttribute(key, String(value));
-  }
-  return node;
-}
-
 function normalizeTrendSeries(trend = {}) {
   return Object.entries(trend || {}).map(([artistKey, rawPoints]) => {
     const points = (Array.isArray(rawPoints) ? [...rawPoints] : [])
@@ -93,7 +88,7 @@ function normalizeTrendSeries(trend = {}) {
     return {
       artistKey,
       artistName: String(metadata.artist_name || artistKey),
-      currentRank: deltaNumber(metadata.current_rank),
+      currentRank: integer(metadata.current_rank),
       points,
     };
   }).filter((series) => series.points.length)
@@ -105,23 +100,41 @@ function normalizeTrendSeries(trend = {}) {
     });
 }
 
-function renderTrendChart(trend = {}, {
-  containerId,
-  metricKey,
-  ariaLabel,
-}) {
+function xAxis(dates, margin, width) {
+  const plotWidth = width - margin.left - margin.right;
+  const dateIndex = new Map(dates.map((date, index) => [date, index]));
+  const xForIndex = (index) => margin.left + (dates.length <= 1
+    ? plotWidth / 2
+    : index / (dates.length - 1) * plotWidth);
+  const xTicks = [...new Set(dates.length <= 1
+    ? [0]
+    : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
+  return { dateIndex, xForIndex, xTicks };
+}
+
+function appendDateTicks(svg, dates, axis, height) {
+  for (const index of axis.xTicks) {
+    const label = svgElement('text', {
+      x: axis.xForIndex(index),
+      y: height - 12,
+      'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
+      class: 'spotify-trend-axis-label',
+    });
+    label.textContent = formatTrendDate(dates[index]);
+    svg.append(label);
+  }
+}
+
+function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel }) {
   const container = element(containerId);
   if (!container) return;
   container.replaceChildren();
 
   const seriesList = normalizeTrendSeries(trend);
-  const dates = [...new Set(
-    seriesList.flatMap((series) => series.points.map((point) => String(point.snapshot_date))),
-  )].sort();
-  const values = seriesList
-    .flatMap((series) => series.points.map((point) => deltaNumber(point?.[metricKey])))
-    .filter((value) => value != null);
-
+  const dates = [...new Set(seriesList.flatMap((series) =>
+    series.points.map((point) => String(point.snapshot_date))))].sort();
+  const values = seriesList.flatMap((series) =>
+    series.points.map((point) => integer(point?.[metricKey]))).filter((value) => value != null);
   if (!dates.length || !values.length) {
     const empty = document.createElement('p');
     empty.className = 'spotify-trend-empty';
@@ -136,28 +149,21 @@ function renderTrendChart(trend = {}, {
   if (yMin < 0) yMin = Math.floor(yMin * 1.08);
   if (yMax > 0) yMax = Math.ceil(yMax * 1.08);
   const yRange = Math.max(1, yMax - yMin);
-
   const width = 960;
   const height = 340;
   const margin = { left: 72, right: 22, top: 18, bottom: 40 };
-  const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
-  const xForIndex = (index) => margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
   const yForValue = (value) => margin.top + (yMax - value) / yRange * plotHeight;
-  const dateIndex = new Map(dates.map((date, index) => [date, index]));
-  const xTicks = [...new Set(dates.length <= 1
-    ? [0]
-    : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
+  const axis = xAxis(dates, margin, width);
 
   const chart = document.createElement('section');
   chart.className = 'spotify-trend-series spotify-trend-combined';
-
   const legend = document.createElement('div');
   legend.className = 'spotify-trend-legend';
   legend.setAttribute('aria-label', 'アーティスト凡例と最新再生数');
   seriesList.forEach(({ artistName, points }, seriesIndex) => {
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
-    const latest = [...points].reverse().find((point) => deltaNumber(point?.[metricKey]) != null);
+    const latest = [...points].reverse().find((point) => integer(point?.[metricKey]) != null);
     const item = document.createElement('span');
     item.className = 'spotify-trend-legend-item';
     item.style.setProperty('--spotify-trend-color', color);
@@ -179,17 +185,16 @@ function renderTrendChart(trend = {}, {
     'aria-label': ariaLabel,
     class: 'spotify-trend-svg',
   });
-
   for (let tick = 0; tick <= 4; tick += 1) {
     const value = yMax - yRange * tick / 4;
     const y = yForValue(value);
-    const grid = svgElement('line', {
+    svg.append(svgElement('line', {
       x1: margin.left,
       y1: y,
       x2: width - margin.right,
       y2: y,
       class: 'spotify-trend-grid',
-    });
+    }));
     const label = svgElement('text', {
       x: margin.left - 8,
       y: y + 4,
@@ -197,31 +202,9 @@ function renderTrendChart(trend = {}, {
       class: 'spotify-trend-axis-label',
     });
     label.textContent = compactNumberFormat.format(Math.round(value));
-    svg.append(grid, label);
-  }
-
-  if (yMin < 0 && yMax > 0) {
-    const zeroY = yForValue(0);
-    svg.append(svgElement('line', {
-      x1: margin.left,
-      y1: zeroY,
-      x2: width - margin.right,
-      y2: zeroY,
-      class: 'spotify-trend-axis',
-    }));
-  }
-
-  for (const index of xTicks) {
-    const x = xForIndex(index);
-    const label = svgElement('text', {
-      x,
-      y: height - 12,
-      'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
-      class: 'spotify-trend-axis-label',
-    });
-    label.textContent = formatTrendDate(dates[index]);
     svg.append(label);
   }
+  appendDateTicks(svg, dates, axis, height);
 
   seriesList.forEach(({ artistName, points }, seriesIndex) => {
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
@@ -229,36 +212,30 @@ function renderTrendChart(trend = {}, {
     let pathData = '';
     let drawing = false;
     for (const date of dates) {
-      const point = byDate.get(date);
-      const value = deltaNumber(point?.[metricKey]);
+      const value = integer(byDate.get(date)?.[metricKey]);
       if (value == null) {
         drawing = false;
         continue;
       }
-      const x = xForIndex(dateIndex.get(date));
+      const x = axis.xForIndex(axis.dateIndex.get(date));
       const y = yForValue(value);
       pathData += `${drawing ? ' L' : ' M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
       drawing = true;
     }
     if (pathData) {
-      const path = svgElement('path', {
-        d: pathData.trim(),
-        class: 'spotify-trend-line',
-      });
+      const path = svgElement('path', { d: pathData.trim(), class: 'spotify-trend-line' });
       path.style.setProperty('--spotify-trend-color', color);
       const title = svgElement('title');
       title.textContent = artistName;
       path.append(title);
       svg.append(path);
     }
-
     for (const point of points) {
-      const value = deltaNumber(point?.[metricKey]);
-      if (value == null) continue;
-      const index = dateIndex.get(String(point.snapshot_date));
-      if (index == null) continue;
+      const value = integer(point?.[metricKey]);
+      const index = axis.dateIndex.get(String(point.snapshot_date));
+      if (value == null || index == null) continue;
       const circle = svgElement('circle', {
-        cx: xForIndex(index),
+        cx: axis.xForIndex(index),
         cy: yForValue(value),
         r: 2.4,
         class: 'spotify-trend-point',
@@ -278,38 +255,37 @@ function renderTrendChart(trend = {}, {
 
 function normalizeArtistRankSeries(chart = {}, trend = {}) {
   const tracked = normalizeTrendSeries(trend);
-  const byName = new Map(tracked.map((series, colorIndex) => [series.artistName, {
+  const byKey = new Map(tracked.map((series, colorIndex) => [series.artistKey, {
+    artistKey: series.artistKey,
     artistName: series.artistName,
     colorIndex,
     points: [],
   }]));
-
+  const byName = new Map([...byKey.values()].map((series) => [series.artistName, series]));
   const days = (Array.isArray(chart?.days) ? [...chart.days] : [])
     .filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(String(day?.chart_date || '')))
     .sort((a, b) => String(a.chart_date).localeCompare(String(b.chart_date)));
   for (const day of days) {
     for (const entry of Array.isArray(day?.entries) ? day.entries : []) {
+      const artistKey = String(entry?.artist_key || '').trim();
       const artistName = String(entry?.artist_name || '').trim();
-      const series = byName.get(artistName);
-      const rank = deltaNumber(entry?.rank);
+      const series = byKey.get(artistKey) || byName.get(artistName);
+      const rank = integer(entry?.rank);
       if (!series || rank == null || rank < 1 || rank > 200) continue;
       series.points.push({ chart_date: String(day.chart_date), rank });
     }
   }
-  return [...byName.values()].filter((series) => series.points.length);
+  return [...byKey.values()].filter((series) => series.points.length);
 }
 
 function renderArtistRankChart(chart = {}, trend = {}) {
   const container = element('spotifyArtistRankTrendCharts');
   if (!container) return;
   container.replaceChildren();
-
   const seriesList = normalizeArtistRankSeries(chart, trend);
-  const dates = [...new Set(
-    seriesList.flatMap((series) => series.points.map((point) => point.chart_date)),
-  )].sort();
+  const dates = [...new Set(seriesList.flatMap((series) =>
+    series.points.map((point) => point.chart_date)))].sort();
   const ranks = seriesList.flatMap((series) => series.points.map((point) => point.rank));
-
   if (!dates.length || !ranks.length) {
     const empty = document.createElement('p');
     empty.className = 'spotify-trend-empty';
@@ -322,14 +298,9 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   const width = 960;
   const height = 340;
   const margin = { left: 72, right: 22, top: 18, bottom: 40 };
-  const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
-  const xForIndex = (index) => margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
   const yForRank = (rank) => margin.top + (rank - 1) / Math.max(1, maxRank - 1) * plotHeight;
-  const dateIndex = new Map(dates.map((date, index) => [date, index]));
-  const xTicks = [...new Set(dates.length <= 1
-    ? [0]
-    : [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
+  const axis = xAxis(dates, margin, width);
   const rankTicks = [...new Set([1, ...[0.25, 0.5, 0.75, 1]
     .map((ratio) => Math.max(1, Math.round(maxRank * ratio)))])].sort((a, b) => a - b);
 
@@ -362,16 +333,15 @@ function renderArtistRankChart(chart = {}, trend = {}) {
     'aria-label': 'Spotify日本デイリートップアーティストの順位推移。1位が上。',
     class: 'spotify-trend-svg',
   });
-
   for (const rank of rankTicks) {
     const y = yForRank(rank);
-    const grid = svgElement('line', {
+    svg.append(svgElement('line', {
       x1: margin.left,
       y1: y,
       x2: width - margin.right,
       y2: y,
       class: 'spotify-trend-grid',
-    });
+    }));
     const label = svgElement('text', {
       x: margin.left - 8,
       y: y + 4,
@@ -379,20 +349,9 @@ function renderArtistRankChart(chart = {}, trend = {}) {
       class: 'spotify-trend-axis-label',
     });
     label.textContent = `${numberFormat.format(rank)}位`;
-    svg.append(grid, label);
-  }
-
-  for (const index of xTicks) {
-    const x = xForIndex(index);
-    const label = svgElement('text', {
-      x,
-      y: height - 12,
-      'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
-      class: 'spotify-trend-axis-label',
-    });
-    label.textContent = formatTrendDate(dates[index]);
     svg.append(label);
   }
+  appendDateTicks(svg, dates, axis, height);
 
   for (const series of seriesList) {
     const color = TREND_COLORS[series.colorIndex % TREND_COLORS.length];
@@ -405,28 +364,24 @@ function renderArtistRankChart(chart = {}, trend = {}) {
         drawing = false;
         continue;
       }
-      const x = xForIndex(dateIndex.get(date));
+      const x = axis.xForIndex(axis.dateIndex.get(date));
       const y = yForRank(point.rank);
       pathData += `${drawing ? ' L' : ' M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
       drawing = true;
     }
     if (pathData) {
-      const path = svgElement('path', {
-        d: pathData.trim(),
-        class: 'spotify-trend-line',
-      });
+      const path = svgElement('path', { d: pathData.trim(), class: 'spotify-trend-line' });
       path.style.setProperty('--spotify-trend-color', color);
       const title = svgElement('title');
       title.textContent = series.artistName;
       path.append(title);
       svg.append(path);
     }
-
     for (const point of series.points) {
-      const index = dateIndex.get(point.chart_date);
+      const index = axis.dateIndex.get(point.chart_date);
       if (index == null) continue;
       const circle = svgElement('circle', {
-        cx: xForIndex(index),
+        cx: axis.xForIndex(index),
         cy: yForRank(point.rank),
         r: 2.4,
         class: 'spotify-trend-point',
@@ -485,9 +440,7 @@ async function fetchReadModel({ refresh = false } = {}) {
     readModelPromise = fetch('/api/spotify-playcounts')
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.error || `HTTP ${response.status}`);
-        }
+        if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
         return payload;
       })
       .catch((error) => {
@@ -498,30 +451,6 @@ async function fetchReadModel({ refresh = false } = {}) {
   return readModelPromise;
 }
 
-async function fetchArtistChart(trend, { refresh = false } = {}) {
-  if (refresh) artistChartPromise = null;
-  if (!artistChartPromise) {
-    const url = new URL(SPOTIFY_ARTIST_CHART_URL);
-    url.searchParams.set('days', '90');
-    for (const { artistName } of normalizeTrendSeries(trend)) {
-      url.searchParams.append('artist', artistName);
-    }
-    artistChartPromise = fetch(url)
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.error || `HTTP ${response.status}`);
-        }
-        return payload;
-      })
-      .catch((error) => {
-        artistChartPromise = null;
-        throw error;
-      });
-  }
-  return artistChartPromise;
-}
-
 export async function loadSpotifyView({ refresh = false } = {}) {
   const sequence = ++requestSequence;
   try {
@@ -530,14 +459,7 @@ export async function loadSpotifyView({ refresh = false } = {}) {
     if (sequence !== requestSequence) return;
     const payload = model?.groups?.[SAKURAZAKA_KEY];
     if (!payload) throw new Error(`${SAKURAZAKA_NAME}のリードモデルがありません`);
-    let artistChart = {};
-    try {
-      artistChart = await fetchArtistChart(model?.trend || {}, { refresh });
-    } catch (error) {
-      console.warn('Spotify artist chart history failed to load', error);
-    }
-    if (sequence !== requestSequence) return;
-    render(payload, model?.trend || {}, artistChart);
+    render(payload, model?.trend || {}, model?.artist_chart || {});
   } catch (error) {
     if (sequence !== requestSequence) return;
     setNotice(`Spotify再生数の取得に失敗しました: ${error.message}`, true);
