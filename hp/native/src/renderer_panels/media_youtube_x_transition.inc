@@ -1,13 +1,12 @@
 LR"JS(
 (() => {
-  if (location.hostname !== 'tver.jp' ||
-      !location.pathname.startsWith('/episodes/')) return false;
+  if (!/^(?:www\.)?youtube\.com$/.test(location.hostname)) return false;
 
-  const state = window.__homePanelTverRuntime ||
-      (window.__homePanelTverRuntime = {});
-  const storageKey = 'homepanel:tver-x-phase-start:v1';
-  const phaseMs = 58 * 60 * 1000;
-  const staleMs = 60 * 60 * 1000;
+  const state = window.__homePanelYoutubeXRuntime ||
+      (window.__homePanelYoutubeXRuntime = {});
+  const storageKey = 'homepanel:youtube-x-phase-start:v1';
+  const phaseMs = 60 * 60 * 1000;
+  const staleMs = 62 * 60 * 1000;
   const now = Date.now();
   let startedAt = 0;
   try { startedAt = Number(localStorage.getItem(storageKey) || 0); }
