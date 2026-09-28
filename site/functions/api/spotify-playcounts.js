@@ -53,24 +53,24 @@ export function spotifyTrendSql() {
     SELECT h.artist_key,h.rank
     FROM sh_spotify_top20_history h
     INNER JOIN latest_ranking_date latest ON latest.ranking_date=h.ranking_date
+  ), latest_summary_date AS (
+    SELECT MAX(snapshot_date) AS snapshot_date FROM sh_spotify_artist_daily
   )
   SELECT
-    target.artist_key,
+    daily.artist_key,
     artist.artist_name,
     current_rank.rank AS current_rank,
-    d.snapshot_date,
-    CASE WHEN COUNT(d.delta)=0 THEN NULL ELSE SUM(d.delta) END AS total_delta
-  FROM sh_spotify_playcount_daily d
-  INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
-  INNER JOIN sh_spotify_artists artist ON artist.artist_key=target.artist_key
-  LEFT JOIN current_rank ON current_rank.artist_key=target.artist_key
-  WHERE d.snapshot_date >= date((SELECT MAX(snapshot_date) FROM sh_spotify_playcount_daily), '-89 days')
-  GROUP BY target.artist_key, artist.artist_name, current_rank.rank, d.snapshot_date
+    daily.snapshot_date,
+    daily.total_delta
+  FROM sh_spotify_artist_daily daily
+  INNER JOIN sh_spotify_artists artist ON artist.artist_key=daily.artist_key
+  LEFT JOIN current_rank ON current_rank.artist_key=daily.artist_key
+  WHERE daily.snapshot_date >= date((SELECT snapshot_date FROM latest_summary_date), '-89 days')
   ORDER BY
     CASE WHEN current_rank.rank IS NULL THEN 1 ELSE 0 END,
     current_rank.rank ASC,
     artist.artist_name COLLATE NOCASE ASC,
-    d.snapshot_date ASC`;
+    daily.snapshot_date ASC`;
 }
 
 function integer(value) {
