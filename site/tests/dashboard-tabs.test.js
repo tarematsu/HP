@@ -33,7 +33,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260928\.5'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260929\.1'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
@@ -50,11 +50,11 @@ test('first-week comparison routing is preserved alongside the existing lazy vie
 });
 
 test('Spotify routing is owned by the central dashboard router', () => {
-  assert.match(dashboardEntry, /spotify-shell\.js\?v=20260928\.5/);
+  assert.match(dashboardEntry, /spotify-shell\.js\?v=20260929\.1/);
   assert.doesNotMatch(dashboardEntry, /spotify-tab-router/);
   assert.match(tabsClient, /VIEW_MODES[\s\S]*'spotify'/);
   assert.match(tabsClient, /const spotifyView = document\.getElementById\('spotifyView'\)/);
-  assert.match(tabsClient, /import\('\/spotify\.js\?v=20260928\.5'\)/);
+  assert.match(tabsClient, /import\('\/spotify\.js\?v=20260929\.1'\)/);
   assert.match(tabsClient, /showSpotify/);
   assert.match(tabsClient, /else if \(mode === 'spotify'\) void showSpotify/);
   assert.match(tabsClient, /button\.dataset\.view === 'spotify'/);
