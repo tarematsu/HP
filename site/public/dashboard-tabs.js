@@ -98,7 +98,7 @@ async function loadPlayedTracksRuntime() {
 
 async function loadSpotifyRuntime() {
   if (!spotifyRuntimePromise) {
-    spotifyRuntimePromise = import('/spotify.js?v=20260928.3').catch((error) => {
+    spotifyRuntimePromise = import('/spotify.js?v=20260928.4').catch((error) => {
       spotifyRuntimePromise = null;
       throw error;
     });
