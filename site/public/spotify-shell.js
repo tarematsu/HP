@@ -36,8 +36,23 @@ function mountView() {
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTrendTitle">
-      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">女性アイドルSpotify再生数推移</h2></div></div>
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">Spotify 日次全曲 再生数推移</h2></div></div>
       <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドル全アーティストの日別前回比合計を重ねたグラフ"></div>
+    </section>
+
+    <section class="card spotify-trend-panel" aria-labelledby="spotifyTop10TrendTitle">
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10TrendTitle">Spotify 日次上位10曲 再生数推移</h2></div></div>
+      <div id="spotifyTop10TrendCharts" class="spotify-trend-charts" aria-label="各アーティストの前回比上位10曲の再生数合計を重ねたグラフ"></div>
+    </section>
+
+    <section class="card spotify-trend-panel" aria-labelledby="spotifyTop10YearTrendTitle">
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10YearTrendTitle">Spotify 日次上位10曲(今年限定) 再生数推移</h2></div></div>
+      <div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲に限定した各アーティストの前回比上位10曲の再生数合計を重ねたグラフ"></div>
+    </section>
+
+    <section class="card spotify-trend-panel" aria-labelledby="spotifyArtistRankTrendTitle">
+      <div class="section-head"><div><p class="kicker">SPOTIFY CHARTS JAPAN</p><h2 id="spotifyArtistRankTrendTitle">Spotify デイリートップアーティスト(日本) 順位推移</h2></div></div>
+      <div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本デイリートップアーティストにおける収集対象アーティストの順位推移"></div>
     </section>
 
     <section class="card data-panel spotify-data-panel">

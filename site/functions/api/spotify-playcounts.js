@@ -63,7 +63,9 @@ export function spotifyTrendSql() {
     artist.artist_name,
     current_rank.rank AS current_rank,
     daily.snapshot_date,
-    daily.total_delta
+    daily.total_delta,
+    daily.top10_delta,
+    daily.top10_year_delta
   FROM sh_spotify_artist_daily daily
   INNER JOIN sh_spotify_artists artist ON artist.artist_key=daily.artist_key
   LEFT JOIN current_rank ON current_rank.artist_key=daily.artist_key
@@ -171,6 +173,8 @@ export function spotifyTrend(rows = []) {
       artist_name: String(row?.artist_name || '').trim() || artistKey,
       current_rank: integer(row?.current_rank),
       total_delta: integer(row?.total_delta),
+      top10_delta: integer(row?.top10_delta),
+      top10_year_delta: integer(row?.top10_year_delta),
     });
   }
   return trend;

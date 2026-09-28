@@ -1,5 +1,6 @@
 import homePanelWorker from './worker_core.ts';
 import { queueSchedulerWatchdog } from './scheduler_coordinator.ts';
+import { spotifyArtistChartHistoryResponse } from './spotify_artist_chart_read.ts';
 import { stationheadLeaderboardProbeStatusResponse } from './stationhead_leaderboard_probe_status.ts';
 import { requestFamily } from './unified_routes.js';
 import { shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
@@ -22,6 +23,7 @@ const TVER_FEED_PATH = '/v1/native/tver-feed';
 const YOUTUBE_START_PATH = '/v1/native/youtube-start';
 const TVER_FEED_HEALTH_PATH = '/api/health/tver-feed';
 const STATIONHEAD_LEADERBOARD_PROBE_HEALTH_PATH = '/api/health/stationhead-leaderboard-probe';
+const SPOTIFY_ARTIST_CHART_PATH = '/api/spotify-artist-chart';
 const RADAR_FRAME_KEY = 'radar/frames/representative/latest.png';
 const RADAR_STALE_AFTER_MS = 90 * 60 * 1000;
 
@@ -256,6 +258,16 @@ export default {
         });
       }
       return stationheadLeaderboardProbeStatusResponse(env);
+    }
+
+    if (pathname === SPOTIFY_ARTIST_CHART_PATH) {
+      if (request.method !== 'GET') {
+        return new Response(null, {
+          status: 405,
+          headers: { Allow: 'GET', 'Cache-Control': 'no-store' }
+        });
+      }
+      return spotifyArtistChartHistoryResponse(request, env);
     }
 
     if (pathname === '/api/health') {

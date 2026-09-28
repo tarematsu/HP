@@ -170,6 +170,7 @@ async function showFirstWeek({ updateUrl = true, replaceUrl = false } = {}) {
     if (notice) {
       notice.textContent = '初週比較データの初期化に失敗しました。再読み込みしてください。';
       notice.classList.add('error');
+      notice.hidden = false;
     }
   } finally {
     releaseUnexpectedSkipLinkFocus();
