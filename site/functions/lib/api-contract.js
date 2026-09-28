@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 8;
+export const API_CONTRACT_VERSION = 9;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -6,7 +6,8 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/sakurazaka46jp-status', methods: ['GET'], description: 'Latest Sakurazaka Stationhead per-minute raw collection status' },
   ]),
   dashboard: Object.freeze([
-    { path: '/api/dashboard', methods: ['GET'], description: 'Current state, queue, recent history, and completed daily changes' },
+    { path: '/api/dashboard', methods: ['GET'], description: 'Current state and queue optimized for first paint' },
+    { path: '/api/dashboard-details', methods: ['GET'], description: 'Deferred current history, chart comparison data, and completed daily summaries' },
   ]),
   history: Object.freeze([
     { path: '/api/history', methods: ['GET'], description: 'Daily, weekly, monthly, ranking, and broadcast history modes' },
@@ -29,7 +30,7 @@ export const MATERIALIZED_RESPONSE_MAX_AGE_MS = 15 * 60_000;
 // Event-driven variants retain cadence metadata for generic tooling, but are
 // excluded from scheduled publication and regenerated only when source data changes.
 export const MATERIALIZED_API_VARIANTS = Object.freeze([
-  Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 5 }),
+  Object.freeze({ key: 'dashboard', url: '/api/dashboard?history=0', cadence_minutes: 5 }),
   Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 1440 }),
   Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 1440 }),
   Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 1440 }),

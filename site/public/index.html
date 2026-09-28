@@ -13,9 +13,9 @@
   </style>
   <script>
     document.documentElement.setAttribute('data-dashboard-booting', '');
-    window.addEventListener('DOMContentLoaded', () => {
-      document.documentElement.removeAttribute('data-dashboard-booting');
-    }, { once: true });
+    const revealDashboard = () => document.documentElement.removeAttribute('data-dashboard-booting');
+    window.addEventListener('dashboard:route-ready', revealDashboard, { once: true });
+    window.addEventListener('DOMContentLoaded', () => setTimeout(revealDashboard, 1200), { once: true });
   </script>
   <noscript><style>#content { visibility: visible !important; }</style></noscript>
   <link rel="stylesheet" href="/app-lite.css?v=20260923.4">
@@ -39,7 +39,10 @@
       <nav id="modeTabs" class="mode-tabs dashboard-tabs" aria-label="表示種類">
         <button type="button" data-view="current" class="active" aria-current="page">現在</button>
         <button type="button" data-view="history" data-mode="daily">過去</button>
+        <button type="button" data-view="first-week">初週比較</button>
         <button type="button" data-view="history" data-mode="ranking">リーダーボード</button>
+        <button type="button" data-view="played-tracks">再生履歴</button>
+        <button type="button" data-view="spotify">Spotify</button>
         <button type="button" data-view="likes" data-mode="likes">いいね</button>
         <button type="button" data-view="history" data-mode="broadcasts">リスパ</button>
       </nav>
@@ -203,6 +206,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/dashboard-metrics.js?v=20260929.1"></script>
+  <script type="module" src="/dashboard-metrics.js?v=20260929.3"></script>
 </body>
 </html>

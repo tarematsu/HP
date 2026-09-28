@@ -28,10 +28,10 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     entry: assetVersion(html, 'dashboard-metrics.js'),
     header: assetVersion(entry, 'dashboard-header.js'),
     tabs: assetVersion(entry, 'dashboard-tabs.js'),
-    spotifyShell: assetVersion(entry, 'spotify-shell.js'),
+    spotifyShell: assetVersion(tabs, 'spotify-shell.js'),
     spotifyCss: assetVersion(spotifyShell, 'spotify.css'),
-    firstWeekShell: assetVersion(entry, 'first-week-comparison-shell.js'),
-    playedTracksShell: assetVersion(entry, 'played-tracks-shell.js'),
+    firstWeekShell: assetVersion(tabs, 'first-week-comparison-shell.js'),
+    playedTracksShell: assetVersion(tabs, 'played-tracks-shell.js'),
     historyMain: assetVersion(tabs, 'history/history-main.js'),
     pagesLayout: assetVersion(header, 'pages-layout.css'),
     legacyListeningPartyRoute: assetVersion(entry, 'legacy-listening-party-route.js'),
@@ -39,16 +39,18 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     metricStyle: assetVersion(entry, 'dashboard-current-metric-style.js'),
     unofficialListeningParties: assetVersion(historyEntry, 'unofficial-listening-parties.js'),
     officialListeningPartyCopy: assetVersion(historyEntry, 'official-listening-party-copy.js'),
+    chartStability: assetVersion(entry, 'dashboard-chart-stability.js'),
     dailySummaries: assetVersion(entry, 'dashboard-daily-summaries.js'),
+    detailsClient: assetVersion(entry, 'dashboard-details-client.js'),
     comparison: assetVersion(entry, 'dashboard-chart-comparison.js'),
     chartDetail: assetVersion(entry, 'dashboard-chart-detail.js'),
     client: assetVersion(entry, 'dashboard-client.js'),
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
-  assert.equal(versions.entry, '20260929.1');
+  assert.equal(versions.entry, '20260929.3');
   assert.equal(versions.header, '20260928.1');
-  assert.equal(versions.tabs, '20260929.1');
+  assert.equal(versions.tabs, '20260929.2');
   assert.equal(versions.spotifyShell, '20260929.1');
   assert.equal(versions.spotifyCss, '20260928.5');
   assert.equal(versions.firstWeekShell, '20260928.1');
@@ -56,8 +58,12 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
   assert.equal(versions.historyMain, '20260928.1');
   assert.equal(versions.pagesLayout, '20260928.1');
   assert.equal(versions.unofficialListeningParties, '20260927.1');
-  assert.equal(versions.comparison, '20260927.2');
-  assert.equal(versions.chartDetail, '20260927.2');
+  assert.equal(versions.chartStability, '20260929.1');
+  assert.equal(versions.comparison, '20260929.1');
+  assert.equal(versions.chartDetail, '20260929.1');
+  assert.equal(versions.dailySummaries, '20260929.1');
+  assert.equal(versions.detailsClient, '20260929.2');
+  assert.equal(versions.client, '20260929.2');
   for (const [asset, version] of Object.entries(versions)) {
     assert.match(version, /^\d{8}\.\d+$/, `${asset} has an invalid deployment version: ${version}`);
   }
@@ -68,6 +74,6 @@ test('fixed entry URLs without a version cannot silently return stale layout cod
   assert.doesNotMatch(entry, /(?:from |import\()'\/(?:dashboard-client\.js)'/);
   assert.doesNotMatch(header, /stylesheetHref = '\/dashboard-fixes\.css'/);
   assert.doesNotMatch(header, /pages-layout\.css['"]/);
-  assert.doesNotMatch(entry, /spotify-shell\.js['"]/);
+  assert.doesNotMatch(tabs, /spotify-shell\.js['"]/);
   assert.doesNotMatch(spotifyShell, /spotify\.css['"]/);
 });

@@ -12,7 +12,7 @@ const redirects = readFileSync(new URL('../public/_redirects', import.meta.url),
 const historyPageUrl = new URL('../public/history/index.html', import.meta.url);
 const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.url);
 
-test('dashboard starts on current and exposes visible modes in one tab panel', () => {
+test('dashboard starts on current and exposes every visible mode in the static tab panel', () => {
   assert.ok(page.indexOf('data-view="current"') < page.indexOf('data-mode="daily"'));
   assert.match(page, /data-view="current" class="active" aria-current="page">現在/);
   assert.match(page, /id="currentView" class="dashboard-view"/);
@@ -21,14 +21,18 @@ test('dashboard starts on current and exposes visible modes in one tab panel', (
   for (const mode of ['daily', 'ranking', 'likes', 'broadcasts']) {
     assert.match(page, new RegExp(`data-mode="${mode}"`));
   }
+  for (const view of ['first-week', 'played-tracks', 'spotify']) {
+    assert.match(page, new RegExp(`data-view="${view}"`));
+  }
   assert.doesNotMatch(page, /data-mode="weekly"|data-mode="monthly"/);
   assert.doesNotMatch(page, /data-mode="tracks"|id="trackControls"/);
 });
 
-test('dashboard hides the legacy static shell until module routing is ready', () => {
+test('dashboard hides the legacy static shell until the selected route shell is ready', () => {
   assert.match(page, /<style id="dashboard-prepaint-guard">[\s\S]*html\[data-dashboard-booting\] #content \{ visibility: hidden; \}/);
   assert.match(page, /document\.documentElement\.setAttribute\('data-dashboard-booting', ''\)/);
-  assert.match(page, /window\.addEventListener\('DOMContentLoaded',[\s\S]*removeAttribute\('data-dashboard-booting'\)/);
+  assert.match(page, /dashboard:route-ready/);
+  assert.match(tabsClient, /window\.dispatchEvent\(new Event\('dashboard:route-ready'\)\)/);
   assert.ok(page.indexOf('dashboard-prepaint-guard') < page.indexOf('app-lite.css'));
 });
 
@@ -40,7 +44,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260929\.1'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260929\.2'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
@@ -48,19 +52,21 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
   assert.match(historyEntry, /VALID_MODES/);
 });
 
-test('first-week comparison routing is preserved alongside the existing lazy views', () => {
-  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260928\.1/);
+test('first-week comparison shell and runtime are both lazy routes', () => {
+  assert.doesNotMatch(dashboardEntry, /^import .*first-week-comparison-shell/m);
+  assert.match(tabsClient, /import\('\/first-week-comparison-shell\.js\?v=20260928\.1'\)/);
   assert.match(tabsClient, /'first-week'/);
-  assert.match(tabsClient, /const firstWeekView = document\.getElementById\('firstWeekView'\)/);
+  assert.match(tabsClient, /document\.getElementById\('firstWeekView'\)/);
   assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260927\.1'\)/);
   assert.match(tabsClient, /showFirstWeek/);
 });
 
-test('Spotify routing is owned by the central dashboard router', () => {
-  assert.match(dashboardEntry, /spotify-shell\.js\?v=20260929\.1/);
+test('Spotify shell and runtime are owned by the central lazy router', () => {
+  assert.doesNotMatch(dashboardEntry, /^import .*spotify-shell/m);
+  assert.match(tabsClient, /import\('\/spotify-shell\.js\?v=20260929\.1'\)/);
   assert.doesNotMatch(dashboardEntry, /spotify-tab-router/);
   assert.match(tabsClient, /VIEW_MODES[\s\S]*'spotify'/);
-  assert.match(tabsClient, /const spotifyView = document\.getElementById\('spotifyView'\)/);
+  assert.match(tabsClient, /document\.getElementById\('spotifyView'\)/);
   assert.match(tabsClient, /import\('\/spotify\.js\?v=20260929\.1'\)/);
   assert.match(tabsClient, /showSpotify/);
   assert.match(tabsClient, /else if \(mode === 'spotify'\) void showSpotify/);
@@ -72,9 +78,9 @@ test('obsolete unofficial view is not a central dashboard route', () => {
   assert.doesNotMatch(page, /data-view="unofficial"|id="unofficialView"/);
 });
 
-test('inactive history and likes runtimes are not prefetched from the current tab', () => {
+test('inactive route runtimes are not prefetched from the current tab', () => {
   assert.doesNotMatch(tabsClient, /modulepreload|preloadModule|scheduleRuntimePrefetch|requestIdleCallback/);
-  assert.doesNotMatch(page, /modulepreload[^>]*(?:history-main|history-likes)/);
+  assert.doesNotMatch(page, /modulepreload[^>]*(?:history-main|history-likes|spotify|played-tracks|first-week)/);
 });
 
 test('history mode-specific runtimes are lazy-loaded only after history starts', () => {
@@ -119,7 +125,7 @@ test('current and history chart details are owned by their respective renderers'
   assert.match(page, /id="currentChartDetail"[^>]*data-current-chart-detail/);
   assert.match(page, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((page.match(/id="chartDetail"/g) || []).length, 1);
-  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260927\.2/);
+  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260929\.1/);
   assert.match(currentChartDetail, /document\.getElementById\('currentChartDetail'\)/);
   assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
 });

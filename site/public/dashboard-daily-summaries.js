@@ -61,6 +61,7 @@ function renderOnlineAverage(id, summary, fallback) {
 }
 
 export function renderDashboardDailySummaries(data) {
+  if (!data || typeof data !== 'object') return;
   const yesterdayLabel = formatPeriodLabel(data?.yesterday?.period_key, '昨日');
   const dayBeforeLabel = formatPeriodLabel(data?.day_before_yesterday?.period_key, '一昨日');
   const threeDaysAgoLabel = formatPeriodLabel(data?.three_days_ago?.period_key, '3日前');
@@ -83,6 +84,7 @@ if (typeof document !== 'undefined') {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('dashboard:payload', (event) => {
-    renderDashboardDailySummaries(event?.detail?.payload?.daily_summaries);
+    const data = event?.detail?.payload?.daily_summaries;
+    if (data) renderDashboardDailySummaries(data);
   });
 }

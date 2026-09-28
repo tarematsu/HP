@@ -1,20 +1,11 @@
 import './legacy-listening-party-route.js?v=20260926.1';
 import './history/history-global-fixes.js';
 import './dashboard-header.js?v=20260928.1';
-import './first-week-comparison-shell.js?v=20260928.1';
-import './played-tracks-shell.js?v=20260928.1';
-import './spotify-shell.js?v=20260929.1';
-import './dashboard-tabs.js?v=20260929.1';
-import './dashboard-current-layout.js?v=20260924.1';
-import './dashboard-current-metric-style.js?v=20260923.1';
-import './dashboard-chart-stability.js?v=20260923.4';
-import './dashboard-chart-comparison.js?v=20260927.2';
-import './dashboard-chart-detail.js?v=20260927.2';
-import './dashboard-daily-summaries.js?v=20260923.4';
-import './dashboard-fetch-cache.js?v=20260923.4';
+import './dashboard-tabs.js?v=20260929.2';
 
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
 const imageRetryTimers = new WeakMap();
+let currentRuntimePromise = null;
 
 function clearImageRetry(image) {
   const timer = imageRetryTimers.get(image);
@@ -75,14 +66,68 @@ function installImageState(id) {
   if (image.complete && image.naturalWidth > 0) loaded();
 }
 
-installImageState('channelImage');
-installImageState('trackImage');
-
-void import('/dashboard-client.js?v=20260924.1').catch((error) => {
+function showCurrentRuntimeError(error) {
   console.error('dashboard client failed to start', error);
   const status = document.getElementById('statusMessage');
   if (status) {
     status.textContent = '画面の初期化に失敗しました。再読み込みしてください。';
     status.hidden = false;
   }
-});
+}
+
+function replayCurrentPayload() {
+  const payload = window.__dashboardCurrentPayload;
+  if (!payload?.ok) return;
+  window.dispatchEvent(new CustomEvent('dashboard:payload', {
+    detail: { payload, source: 'runtime-replay' },
+  }));
+}
+
+function ensureCurrentRuntime() {
+  if (currentRuntimePromise) return currentRuntimePromise;
+  currentRuntimePromise = (async () => {
+    const baseUiPromise = Promise.all([
+      import('./dashboard-current-layout.js?v=20260924.1'),
+      import('./dashboard-current-metric-style.js?v=20260923.1'),
+    ]);
+
+    await import('./dashboard-fetch-cache.js?v=20260923.4');
+    const clientPromise = import('/dashboard-client.js?v=20260929.2');
+
+    await Promise.all([
+      baseUiPromise,
+      import('./dashboard-chart-stability.js?v=20260929.1'),
+      import('./dashboard-chart-comparison.js?v=20260929.1'),
+      import('./dashboard-chart-detail.js?v=20260929.1'),
+      import('./dashboard-daily-summaries.js?v=20260929.1'),
+    ]);
+    replayCurrentPayload();
+    await import('./dashboard-details-client.js?v=20260929.2');
+    await clientPromise;
+  })().catch((error) => {
+    currentRuntimePromise = null;
+    showCurrentRuntimeError(error);
+    throw error;
+  });
+  return currentRuntimePromise;
+}
+
+function locationIsCurrent() {
+  const mode = location.hash.slice(1);
+  return !mode || mode === 'current';
+}
+
+function startCurrentRuntimeFromLocation() {
+  if (locationIsCurrent()) void ensureCurrentRuntime();
+}
+
+installImageState('channelImage');
+installImageState('trackImage');
+startCurrentRuntimeFromLocation();
+
+document.getElementById('modeTabs')?.addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  if (button?.dataset.view === 'current') void ensureCurrentRuntime();
+}, { capture: true });
+window.addEventListener('popstate', startCurrentRuntimeFromLocation);
+window.addEventListener('hashchange', startCurrentRuntimeFromLocation);

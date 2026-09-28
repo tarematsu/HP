@@ -1,26 +1,34 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
 const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'spotify', 'likes']);
+const VIEW_IDS = ['currentView', 'historyView', 'firstWeekView', 'playedTracksView', 'spotifyView', 'likesView'];
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
-const firstWeekView = document.getElementById('firstWeekView');
-const playedTracksView = document.getElementById('playedTracksView');
-const spotifyView = document.getElementById('spotifyView');
 const likesView = document.getElementById('likesView');
 const tabs = document.getElementById('modeTabs');
 const skipLink = document.querySelector('.skip-link');
 let historyRuntimePromise = null;
 let rankingStatusRuntimePromise = null;
+let firstWeekShellPromise = null;
 let firstWeekRuntimePromise = null;
+let playedTracksShellPromise = null;
 let playedTracksRuntimePromise = null;
+let spotifyShellPromise = null;
 let spotifyRuntimePromise = null;
 let likesRuntimePromise = null;
 let historyRuntimeMode = null;
 let activeMode = 'current';
+let initialRouteReady = false;
 
 function releaseUnexpectedSkipLinkFocus() {
   if (document.activeElement === skipLink) skipLink?.blur();
   document.documentElement.classList.remove('keyboard-navigation');
+}
+
+function markRouteReady() {
+  if (initialRouteReady) return;
+  initialRouteReady = true;
+  window.dispatchEvent(new Event('dashboard:route-ready'));
 }
 
 function updateTabs(mode) {
@@ -40,12 +48,10 @@ function updateLocation(mode, { replace = false } = {}) {
 }
 
 function showOnly(view) {
-  if (currentView) currentView.hidden = view !== currentView;
-  if (historyView) historyView.hidden = view !== historyView;
-  if (firstWeekView) firstWeekView.hidden = view !== firstWeekView;
-  if (playedTracksView) playedTracksView.hidden = view !== playedTracksView;
-  if (spotifyView) spotifyView.hidden = view !== spotifyView;
-  if (likesView) likesView.hidden = view !== likesView;
+  for (const id of VIEW_IDS) {
+    const node = document.getElementById(id);
+    if (node) node.hidden = node !== view;
+  }
 }
 
 function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
@@ -53,6 +59,37 @@ function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
   showOnly(currentView);
   updateTabs('current');
   if (updateUrl) updateLocation('current', { replace: replaceUrl });
+  markRouteReady();
+}
+
+function ensureFirstWeekShell() {
+  if (!firstWeekShellPromise) {
+    firstWeekShellPromise = import('/first-week-comparison-shell.js?v=20260928.1').catch((error) => {
+      firstWeekShellPromise = null;
+      throw error;
+    });
+  }
+  return firstWeekShellPromise;
+}
+
+function ensurePlayedTracksShell() {
+  if (!playedTracksShellPromise) {
+    playedTracksShellPromise = import('/played-tracks-shell.js?v=20260928.1').catch((error) => {
+      playedTracksShellPromise = null;
+      throw error;
+    });
+  }
+  return playedTracksShellPromise;
+}
+
+function ensureSpotifyShell() {
+  if (!spotifyShellPromise) {
+    spotifyShellPromise = import('/spotify-shell.js?v=20260929.1').catch((error) => {
+      spotifyShellPromise = null;
+      throw error;
+    });
+  }
+  return spotifyShellPromise;
 }
 
 async function loadRankingStatusRuntime() {
@@ -126,6 +163,7 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
   showOnly(historyView);
   updateTabs(mode);
   if (updateUrl) updateLocation(mode, { replace: replaceUrl });
+  markRouteReady();
 
   try {
     if (mode === 'ranking') {
@@ -155,16 +193,22 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
 
 async function showFirstWeek({ updateUrl = true, replaceUrl = false } = {}) {
   activeMode = 'first-week';
-  showOnly(firstWeekView);
+  showOnly(null);
   updateTabs('first-week');
   if (updateUrl) updateLocation('first-week', { replace: replaceUrl });
 
   try {
+    await ensureFirstWeekShell();
+    if (activeMode !== 'first-week') return;
+    const view = document.getElementById('firstWeekView');
+    showOnly(view);
+    markRouteReady();
     const runtime = await loadFirstWeekRuntime();
     if (activeMode !== 'first-week') return;
     await runtime.loadFirstWeekComparisonView?.();
   } catch (error) {
     if (activeMode !== 'first-week') return;
+    markRouteReady();
     console.error('first-week runtime failed to start', error);
     const notice = document.getElementById('firstWeekNotice');
     if (notice) {
@@ -179,14 +223,20 @@ async function showFirstWeek({ updateUrl = true, replaceUrl = false } = {}) {
 
 async function showPlayedTracks({ updateUrl = true, replaceUrl = false } = {}) {
   activeMode = 'played-tracks';
-  showOnly(playedTracksView);
+  showOnly(null);
   updateTabs('played-tracks');
   if (updateUrl) updateLocation('played-tracks', { replace: replaceUrl });
 
   try {
+    await ensurePlayedTracksShell();
+    if (activeMode !== 'played-tracks') return;
+    const view = document.getElementById('playedTracksView');
+    showOnly(view);
+    markRouteReady();
     await loadPlayedTracksRuntime();
   } catch (error) {
     if (activeMode !== 'played-tracks') return;
+    markRouteReady();
     console.error('played tracks runtime failed to start', error);
     const notice = document.getElementById('playedTracksNotice');
     if (notice) {
@@ -201,16 +251,22 @@ async function showPlayedTracks({ updateUrl = true, replaceUrl = false } = {}) {
 
 async function showSpotify({ updateUrl = true, replaceUrl = false } = {}) {
   activeMode = 'spotify';
-  showOnly(spotifyView);
+  showOnly(null);
   updateTabs('spotify');
   if (updateUrl) updateLocation('spotify', { replace: replaceUrl });
 
   try {
+    await ensureSpotifyShell();
+    if (activeMode !== 'spotify') return;
+    const view = document.getElementById('spotifyView');
+    showOnly(view);
+    markRouteReady();
     const runtime = await loadSpotifyRuntime();
     if (activeMode !== 'spotify') return;
     await runtime.loadSpotifyView?.();
   } catch (error) {
     if (activeMode !== 'spotify') return;
+    markRouteReady();
     console.error('spotify runtime failed to start', error);
     const notice = document.getElementById('spotifyNotice');
     if (notice) {
@@ -228,6 +284,7 @@ async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
   showOnly(likesView);
   updateTabs('likes');
   if (updateUrl) updateLocation('likes', { replace: replaceUrl });
+  markRouteReady();
 
   try {
     await loadLikesRuntime();

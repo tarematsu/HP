@@ -1,4 +1,4 @@
-const DASHBOARD_URL = '/api/dashboard';
+const DASHBOARD_URL = '/api/dashboard?history=0';
 const CACHE_KEY = 'sh.dashboard.v3';
 const integer = new Intl.NumberFormat('ja-JP');
 
@@ -239,6 +239,7 @@ function applyPayload(payload, save = true) {
   state.payload = payload;
   state.queue = Array.isArray(payload.queue) ? payload.queue : [];
   state.playbackIndex = -1;
+  window.__dashboardCurrentPayload = payload;
   renderCurrentMetrics(payload);
   renderNowPlaying(true);
   if (save) saveCache();

@@ -75,15 +75,17 @@ test('API rejects missing minute database binding', async () => {
   assert.equal((await response.json()).error, 'MINUTE_DB binding missing');
 });
 
-test('dashboard mounts and routes the first-week tab before the lazy runtime starts', () => {
+test('dashboard keeps the first-week tab visible while deferring its shell and runtime', () => {
+  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
   const css = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
-  assert.ok(entry.indexOf('first-week-comparison-shell.js') < entry.indexOf('dashboard-tabs.js'));
-  assert.match(entry, /first-week-comparison-shell\.js\?v=20260928\.1/);
-  assert.match(entry, /dashboard-tabs\.js\?v=20260929\.1/);
+  assert.match(page, /data-view="first-week">初週比較/);
+  assert.doesNotMatch(entry, /^import .*first-week-comparison-shell/m);
+  assert.match(entry, /dashboard-tabs\.js\?v=20260929\.2/);
+  assert.match(tabs, /first-week-comparison-shell\.js\?v=20260928\.1/);
   assert.match(shell, /first-week-comparison\.css\?v=20260928\.1/);
   assert.match(shell, /view-toolbar first-week-toolbar/);
   assert.match(shell, /dataset\.view = 'first-week'/);
