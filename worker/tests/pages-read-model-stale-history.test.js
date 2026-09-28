@@ -9,7 +9,7 @@ function historyRequest() {
 
 test('expired completed history uses one bounded stale R2 read without KV or cache writes', async () => {
   const now = Date.UTC(2026, 7, 31, 23, 30);
-  const updatedAt = now - 24 * 60 * 60 * 1000;
+  const updatedAt = now - 25 * 60 * 60 * 1000;
   const maximumAges = [];
   let cacheWrites = 0;
   const response = await runPagesResponseFetch(
@@ -27,7 +27,7 @@ test('expired completed history uses one bounded stale R2 read without KV or cac
         maximumAges.push(maximumAge);
         const stale = Response.json({ ok: true, source: 'stale-r2' });
         stale.headers.set('x-materialized-at', String(updatedAt));
-        stale.headers.set('x-materialized-cadence-seconds', '21600');
+        stale.headers.set('x-materialized-cadence-seconds', '86400');
         return stale;
       },
       loadResponse: async () => {

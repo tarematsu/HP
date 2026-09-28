@@ -42,9 +42,8 @@ test('GET /api catalog is generated from the canonical contract only', () => {
 
 test('materialized response freshness follows canonical generation cadences', () => {
   const minute = 60_000;
-  assert.equal(materializedResponseCadenceSeconds('history:daily'), 720 * 60);
-  assert.equal(materializedResponseMaximumAge('history:daily'), 725 * minute);
   for (const key of [
+    'history:daily',
     'history:weekly',
     'history:monthly',
     'history:broadcasts',

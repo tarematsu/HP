@@ -48,7 +48,6 @@ function allMaterializedVariants() {
 function twelveHourVariants() {
   return [
     'dashboard',
-    'history:daily',
     'spotify-playcounts',
   ];
 }
@@ -145,7 +144,7 @@ test('overdue historical models are retried without making every model due', asy
     { key: 'host-history:summary' },
   ];
   const updatedAt = new Map([
-    ['history:daily', DAY - 13 * 60 * MINUTE],
+    ['history:daily', DAY - 25 * 60 * MINUTE],
     ['history:weekly', DAY - 60 * MINUTE],
     ['host-history:summary', DAY - 25 * 60 * MINUTE],
   ]);
@@ -171,7 +170,7 @@ test('normal runner adds only overdue models to the cadence set', async () => {
     env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
     loadExistingEnvelope: async (key) => ({
       updated_at: key === 'history:daily'
-        ? DAY - 13 * 60 * MINUTE
+        ? DAY - 25 * 60 * MINUTE
         : DAY + 55 * MINUTE,
     }),
     materializeVariant: async (variant) => {
