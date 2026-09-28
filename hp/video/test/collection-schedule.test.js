@@ -15,15 +15,21 @@ const cloudWrangler = JSON.parse(await readFile(
 ));
 const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
-test('unified cloud deployment owns hourly liveness and manual import queues', () => {
+test('unified cloud deployment owns hourly liveness and event queue producers', () => {
   assert.deepEqual(cloudWrangler.triggers?.crons, [LIVENESS_CRON]);
   assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
   assert.equal(LIVENESS_INTERVAL_SECONDS, 60 * 60);
   assert.equal(LIVENESS_CRON, '0 * * * *');
-  assert.deepEqual(cloudWrangler.queues?.producers, [{
-    binding: 'MANUAL_IMPORT_QUEUE',
-    queue: MANUAL_IMPORT_QUEUE_NAME
-  }]);
+  assert.deepEqual(cloudWrangler.queues?.producers, [
+    {
+      binding: 'MANUAL_IMPORT_QUEUE',
+      queue: MANUAL_IMPORT_QUEUE_NAME
+    },
+    {
+      binding: 'SPOTIFY_PLAYCOUNT_QUEUE',
+      queue: 'stationhead-spotify-playcount'
+    }
+  ]);
   assert.equal(cloudWrangler.queues?.consumers?.[0]?.queue, MANUAL_IMPORT_QUEUE_NAME);
   assert.equal(cloudWrangler.queues?.consumers?.[0]?.max_batch_size, 1);
   assert.equal(cloudWrangler.queues?.consumers?.[0]?.max_concurrency, 1);
