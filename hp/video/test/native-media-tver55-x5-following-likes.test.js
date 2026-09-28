@@ -55,9 +55,9 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.doesNotMatch(waiting, /\.click\(|scrollTo\(|scrollBy\(/);
 });
 
-test('X uses Following and likes a random 5 to 10 latest unliked posts', () => {
+test('X uses Following and likes a random 2 to 5 latest unliked posts', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
-  assert.match(xRuntime, /5 \+ Math\.floor\(Math\.random\(\) \* 6\)/);
+  assert.match(xRuntime, /2 \+ Math\.floor\(Math\.random\(\) \* 4\)/);
   assert.match(xRuntime, /article\[data-testid="tweet"\]/);
   assert.match(xRuntime, /\[data-testid="like"\]/);
   assert.match(xRuntime, /button\.click\(\)/);
