@@ -5,10 +5,10 @@ import { MATERIALIZED_API_VARIANTS } from '../../site/functions/lib/api-contract
 import { runPagesReadModelActions } from './run-pages-read-model-actions.mjs';
 
 export const HISTORY_READ_MODEL_VARIANTS = Object.freeze(
-  MATERIALIZED_API_VARIANTS.filter((variant) => variant.key !== 'dashboard'),
+  MATERIALIZED_API_VARIANTS.filter(
+    (variant) => variant.key !== 'dashboard' && variant.event_driven !== true,
+  ),
 );
-
-const SPOTIFY_MODEL_KEY = 'spotify-playcounts';
 
 function enabled(value) {
   return /^(?:1|true|yes|on)$/i.test(String(value || '').trim());
@@ -16,7 +16,7 @@ function enabled(value) {
 
 export async function runPagesHistoryReadModelActions(options = {}) {
   const variants = (options.variants || HISTORY_READ_MODEL_VARIANTS)
-    .filter((variant) => variant.key !== 'dashboard');
+    .filter((variant) => variant.key !== 'dashboard' && variant.event_driven !== true);
   const reuseOnly = options.reuseOnly
     ?? enabled(process.env.PAGES_READ_MODEL_REUSE_ONLY);
 
@@ -25,9 +25,7 @@ export async function runPagesHistoryReadModelActions(options = {}) {
     variants,
     ...(reuseOnly ? {
       dueKeys: variants.map((variant) => variant.key),
-      reuseOnlyKeys: variants
-        .filter((variant) => variant.key !== SPOTIFY_MODEL_KEY)
-        .map((variant) => variant.key),
+      reuseOnlyKeys: variants.map((variant) => variant.key),
     } : {}),
   });
 }
