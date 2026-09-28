@@ -1,4 +1,4 @@
-const DASHBOARD_URL = '/api/dashboard';
+const DASHBOARD_URL = '/api/dashboard?history=0';
 const CACHE_KEY = 'sh.dashboard.v3';
 const integer = new Intl.NumberFormat('ja-JP');
 
