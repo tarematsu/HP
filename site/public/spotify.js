@@ -410,17 +410,17 @@ function render(payload, trend, artistChart) {
   renderTrendChart(trend, {
     containerId: 'spotifyTrendCharts',
     metricKey: 'total_delta',
-    ariaLabel: '収集対象の女性アイドル全アーティスト Spotify日次再生数の推移',
+    ariaLabel: '収集対象の女性アイドル全アーティスト Spotify前日比全曲合計の再生数推移',
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10TrendCharts',
     metricKey: 'top10_delta',
-    ariaLabel: '収集対象の女性アイドル全アーティスト Spotify前回比上位10曲の再生数推移',
+    ariaLabel: '収集対象の女性アイドル全アーティスト Spotify前日比上位10曲合計の再生数推移',
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
     metricKey: 'top10_year_delta',
-    ariaLabel: '収集対象の女性アイドル全アーティスト 今年リリース曲に限定したSpotify前回比上位10曲の再生数推移',
+    ariaLabel: '収集対象の女性アイドル全アーティスト 今年リリース曲に限定したSpotify前日比上位10曲合計の再生数推移',
   });
   renderArtistRankChart(artistChart, trend);
   renderRows(payload || {});
