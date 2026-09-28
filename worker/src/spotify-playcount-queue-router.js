@@ -1,5 +1,10 @@
 import { processSpotifyCatalogBatch } from './spotify-playcount-catalog-consumer.js';
 import { processSpotifyPlaycountBatch as processSpotifyAlbumBatch } from './spotify-playcount-consumer.js';
+import {
+  processSpotifyReadModelRefreshBatch,
+  requestSpotifyReadModelRefresh,
+  SPOTIFY_READ_MODEL_REFRESH_TYPE,
+} from './spotify-pages-read-model.js';
 
 function batchWith(messages) {
   return { messages };
@@ -8,12 +13,14 @@ function batchWith(messages) {
 export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}) {
   const catalog = [];
   const albums = [];
+  const readModelRefresh = [];
   let ignored = 0;
 
   for (const entry of batch?.messages || []) {
     const type = entry?.body?.message_type;
     if (type === 'spotify-playcount-catalog') catalog.push(entry);
     else if (type === 'spotify-playcount-album') albums.push(entry);
+    else if (type === SPOTIFY_READ_MODEL_REFRESH_TYPE) readModelRefresh.push(entry);
     else {
       entry.ack?.();
       ignored += 1;
@@ -26,6 +33,10 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
   }
   if (albums.length) {
     results.push(await processSpotifyAlbumBatch(batchWith(albums), env, dependencies));
+    await requestSpotifyReadModelRefresh(env, 'playcount-album-batch');
+  }
+  if (readModelRefresh.length) {
+    results.push(await processSpotifyReadModelRefreshBatch(batchWith(readModelRefresh), env));
   }
 
   return results.reduce((total, result) => ({
