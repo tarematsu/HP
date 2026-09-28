@@ -83,10 +83,7 @@ async function refreshDetails(channelId) {
   return requestPromise;
 }
 
-window.addEventListener('dashboard:payload', (event) => {
-  const source = String(event?.detail?.source || '');
-  if (source.startsWith('details-')) return;
-  const payload = event?.detail?.payload;
+function handleBasePayload(payload) {
   if (!payload?.ok) return;
   basePayload = payload;
   const channelId = channelIdFrom(payload);
@@ -99,7 +96,15 @@ window.addEventListener('dashboard:payload', (event) => {
   restoreDetails(channelId);
   if (details?.ok) dispatchCombined('details-cache');
   void refreshDetails(channelId);
+}
+
+window.addEventListener('dashboard:payload', (event) => {
+  const source = String(event?.detail?.source || '');
+  if (source.startsWith('details-')) return;
+  handleBasePayload(event?.detail?.payload);
 });
+
+handleBasePayload(window.__dashboardCurrentPayload);
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !basePayload?.ok || !currentViewVisible()) return;
