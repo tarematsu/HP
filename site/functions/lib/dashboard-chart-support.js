@@ -6,7 +6,7 @@ export const PREVIOUS_DAY_HISTORY_SQL = `SELECT r.observed_at,r.online_member_co
 FROM sh_dashboard_history_5m AS r
 WHERE r.channel_id=?
   AND r.bucket_at>=? AND r.bucket_at<?
-ORDER BY r.observed_at ASC
+ORDER BY r.bucket_at ASC
 LIMIT 300`;
 
 export const STREAM_5M_HISTORY_SQL = `SELECT
