@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   onRequestGet,
   spotifyArtist,
+  spotifyArtistDailyRefreshSql,
   spotifyPlaycountSql,
   spotifyReadModel,
   spotifyTrendSql,
@@ -17,6 +18,13 @@ import {
 function mockDb({ latestRows = [], trendRows = [] }) {
   return {
     prepare(sql) {
+      if (sql === spotifyArtistDailyRefreshSql()) {
+        return {
+          async run() {
+            return { meta: { changes: 0 } };
+          },
+        };
+      }
       const rows = sql === spotifyPlaycountSql()
         ? latestRows
         : sql === spotifyTrendSql()
@@ -96,19 +104,28 @@ test('Spotify read model keeps only Sakurazaka track detail and all-idol trend t
   assert.equal(model.trend['equal-love'][0].current_rank, 1);
 });
 
-test('Spotify detail SQL reads only Sakurazaka while trend SQL covers every tracked idol', () => {
+test('Spotify detail SQL reads only Sakurazaka while trend SQL reads compact artist-day totals', () => {
   const detailSql = spotifyPlaycountSql();
   assert.match(detailSql, /target\.artist_key='sakurazaka46'/);
   assert.doesNotMatch(detailSql, /nogizaka46|hinatazaka46/);
 
+  const refreshSql = spotifyArtistDailyRefreshSql();
+  assert.match(refreshSql, /run\.status='complete'/);
+  assert.match(refreshSql, /-89 days/);
+  assert.match(refreshSql, /NOT EXISTS/);
+  assert.match(refreshSql, /INSERT INTO sh_spotify_artist_daily/);
+  assert.match(refreshSql, /SUM\(d\.delta\)/);
+  assert.match(refreshSql, /GROUP BY d\.snapshot_date,target\.artist_key/);
+
   const trendSql = spotifyTrendSql();
   assert.match(trendSql, /-89 days/);
+  assert.match(trendSql, /FROM sh_spotify_artist_daily daily/);
   assert.match(trendSql, /INNER JOIN sh_spotify_artists artist/);
   assert.match(trendSql, /sh_spotify_top20_history/);
-  assert.match(trendSql, /GROUP BY target\.artist_key, artist\.artist_name, current_rank\.rank, d\.snapshot_date/);
-  assert.match(trendSql, /SUM\(d\.delta\)/);
+  assert.doesNotMatch(trendSql, /sh_spotify_playcount_daily/);
+  assert.doesNotMatch(trendSql, /GROUP BY|SUM\(d\.delta\)/);
   assert.doesNotMatch(trendSql, /track_count|is_carried_forward/);
-  assert.doesNotMatch(trendSql, /target\.artist_key IN/);
+  assert.doesNotMatch(trendSql, /artist_key IN/);
 });
 
 test('Spotify API publishes Sakurazaka detail plus all-idol trend summary', async () => {
