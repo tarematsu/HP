@@ -254,14 +254,55 @@ export async function loadVariantSourceRevision(variant, env, now = Date.now()) 
   }
 
   if (modelKey === 'spotify-playcounts') {
-    const row = await env.OTHER_DB.prepare(`SELECT COUNT(*) AS row_count,
-        COALESCE(MAX(snapshot_date),'') AS max_snapshot_date,
-        COALESCE(MAX(collected_at),0) AS max_collected_at
-      FROM sh_spotify_playcount_daily`).first();
+    const row = await env.OTHER_DB.prepare(`WITH latest_complete AS (
+        SELECT snapshot_date,run_token,tracks_collected,completed_at,updated_at
+        FROM sh_spotify_collection_runs
+        WHERE status='complete'
+        ORDER BY snapshot_date DESC
+        LIMIT 1
+      ), latest_ranking_date AS (
+        SELECT ranking_date
+        FROM sh_spotify_top20_history
+        ORDER BY ranking_date DESC
+        LIMIT 1
+      ), latest_ranking_signature AS (
+        SELECT GROUP_CONCAT(artist_key || ':' || rank, '|') AS ranking_signature
+        FROM (
+          SELECT history.artist_key,history.rank
+          FROM sh_spotify_top20_history history
+          WHERE history.ranking_date=(SELECT ranking_date FROM latest_ranking_date)
+          ORDER BY history.artist_key
+        )
+      ), artist_signature AS (
+        SELECT GROUP_CONCAT(artist_key || ':' || artist_name, '|') AS artist_signature
+        FROM (
+          SELECT artist_key,artist_name
+          FROM sh_spotify_artists
+          ORDER BY artist_key
+        )
+      )
+      SELECT
+        COALESCE((SELECT snapshot_date FROM latest_complete),'') AS max_snapshot_date,
+        COALESCE((SELECT run_token FROM latest_complete),'') AS run_token,
+        COALESCE((SELECT tracks_collected FROM latest_complete),0) AS tracks_collected,
+        COALESCE((SELECT completed_at FROM latest_complete),0) AS completed_at,
+        COALESCE((SELECT updated_at FROM latest_complete),0) AS run_updated_at,
+        COALESCE((SELECT ranking_date FROM latest_ranking_date),'') AS ranking_date,
+        COALESCE((SELECT ranking_signature FROM latest_ranking_signature),'') AS ranking_signature,
+        COALESCE((SELECT artist_signature FROM artist_signature),'') AS artist_signature`).first();
     return revisionValue(
       'spotify-playcounts',
       row,
-      ['row_count', 'max_snapshot_date', 'max_collected_at'],
+      [
+        'max_snapshot_date',
+        'run_token',
+        'tracks_collected',
+        'completed_at',
+        'run_updated_at',
+        'ranking_date',
+        'ranking_signature',
+        'artist_signature',
+      ],
     );
   }
   return null;
