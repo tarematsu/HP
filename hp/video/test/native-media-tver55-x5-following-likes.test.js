@@ -55,12 +55,21 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.doesNotMatch(waiting, /\.click\(|scrollTo\(|scrollBy\(/);
 });
 
-test('X uses Following and likes a random 2 to 5 latest unliked posts', () => {
+test('X slowly scrolls before each of 2 to 5 likes', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
   assert.match(xRuntime, /2 \+ Math\.floor\(Math\.random\(\) \* 4\)/);
+  assert.match(xRuntime, /window\.scrollBy\(\{ top: scrollDistance, behavior: 'smooth' \}\)/);
+  assert.match(xRuntime, /await sleep\(1800 \+ Math\.floor\(Math\.random\(\) \* 1400\)\)/);
+  assert.match(xRuntime, /await sleep\(1400 \+ Math\.floor\(Math\.random\(\) \* 1600\)\)/);
   assert.match(xRuntime, /article\[data-testid="tweet"\]/);
   assert.match(xRuntime, /\[data-testid="like"\]/);
   assert.match(xRuntime, /button\.click\(\)/);
   assert.match(xRuntime, /Promoted\|プロモーション\|広告/);
   assert.doesNotMatch(xRuntime, /data-testid="unlike"|data-testid="retweet"|data-testid="follow"/);
+
+  const loopStart = xRuntime.indexOf('for (let pass = 0; pass < 24');
+  const scrollAt = xRuntime.indexOf("behavior: 'smooth'", loopStart);
+  const likeAt = xRuntime.indexOf('button.click()', loopStart);
+  const breakAt = xRuntime.indexOf('break;', likeAt);
+  assert.ok(loopStart >= 0 && scrollAt > loopStart && likeAt > scrollAt && breakAt > likeAt);
 });
