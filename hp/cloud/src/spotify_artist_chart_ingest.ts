@@ -76,7 +76,7 @@ export async function ingestSpotifyArtistChartInput(
   }
 
   if (result.status !== 200) return result;
-  const body = {
+  const body: Record<string, unknown> = {
     ...result.body,
     accepted: records.length,
     deduplicated: Number(result.body.deduplicated ?? 0) + deduplicated,
