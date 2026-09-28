@@ -33,8 +33,8 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260928\.2'/);
-  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260927\.2'\)/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260928\.4'/);
+  assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
   assert.match(tabsClient, /showOnly\(likesView\)/);
@@ -42,7 +42,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
 });
 
 test('first-week comparison routing is preserved alongside the existing lazy views', () => {
-  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260927\.2/);
+  assert.match(dashboardEntry, /first-week-comparison-shell\.js\?v=20260928\.1/);
   assert.match(tabsClient, /'first-week'/);
   assert.match(tabsClient, /const firstWeekView = document\.getElementById\('firstWeekView'\)/);
   assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260927\.1'\)/);
@@ -50,11 +50,11 @@ test('first-week comparison routing is preserved alongside the existing lazy vie
 });
 
 test('Spotify routing is owned by the central dashboard router', () => {
-  assert.match(dashboardEntry, /spotify-shell\.js\?v=20260928\.4/);
+  assert.match(dashboardEntry, /spotify-shell\.js\?v=20260928\.5/);
   assert.doesNotMatch(dashboardEntry, /spotify-tab-router/);
   assert.match(tabsClient, /VIEW_MODES[\s\S]*'spotify'/);
   assert.match(tabsClient, /const spotifyView = document\.getElementById\('spotifyView'\)/);
-  assert.match(tabsClient, /import\('\/spotify\.js\?v=20260928\.3'\)/);
+  assert.match(tabsClient, /import\('\/spotify\.js\?v=20260928\.4'\)/);
   assert.match(tabsClient, /showSpotify/);
   assert.match(tabsClient, /else if \(mode === 'spotify'\) void showSpotify/);
   assert.match(tabsClient, /button\.dataset\.view === 'spotify'/);
