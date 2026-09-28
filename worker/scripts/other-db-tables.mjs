@@ -44,6 +44,7 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_spotify_playcount_candidates',
   'sh_spotify_collection_runs',
   'sh_spotify_collection_album_runs',
+  'sh_spotify_maintenance_state',
 ]);
 
 export const OTHER_RETIRED_OBJECTS = Object.freeze([
