@@ -78,17 +78,23 @@ function showCurrentRuntimeError(error) {
 function ensureCurrentRuntime() {
   if (currentRuntimePromise) return currentRuntimePromise;
   currentRuntimePromise = (async () => {
-    await Promise.all([
+    const baseUiPromise = Promise.all([
       import('./dashboard-current-layout.js?v=20260924.1'),
       import('./dashboard-current-metric-style.js?v=20260923.1'),
+    ]);
+
+    await import('./dashboard-fetch-cache.js?v=20260923.4');
+    const clientPromise = import('/dashboard-client.js?v=20260929.2');
+
+    await Promise.all([
+      baseUiPromise,
       import('./dashboard-chart-stability.js?v=20260929.1'),
       import('./dashboard-chart-comparison.js?v=20260929.1'),
       import('./dashboard-chart-detail.js?v=20260929.1'),
       import('./dashboard-daily-summaries.js?v=20260929.1'),
-      import('./dashboard-details-client.js?v=20260929.1'),
     ]);
-    await import('./dashboard-fetch-cache.js?v=20260923.4');
-    await import('/dashboard-client.js?v=20260929.1');
+    await import('./dashboard-details-client.js?v=20260929.2');
+    await clientPromise;
   })().catch((error) => {
     currentRuntimePromise = null;
     showCurrentRuntimeError(error);
