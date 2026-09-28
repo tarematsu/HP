@@ -14,6 +14,7 @@ test('played tracks tab is mounted immediately before likes', () => {
   assert.match(shell, /button\.textContent = '再生履歴'/);
   assert.match(shell, /likes\.insertAdjacentElement\('beforebegin', button\)/);
   assert.match(shell, /section\.id = 'playedTracksView'/);
+  assert.match(shell, /view-toolbar played-tracks-toolbar/);
 });
 
 test('played tracks exposes horizontal day navigation and weekly mode', () => {
@@ -66,9 +67,9 @@ test('track history exposes a lightweight date index from the daily read model',
 });
 
 test('played tracks runtime is lazy while its shell loads before dashboard tabs', () => {
-  assert.match(metrics, /played-tracks-shell\.js\?v=20260927\.1/);
+  assert.match(metrics, /played-tracks-shell\.js\?v=20260928\.1/);
   assert.ok(metrics.indexOf('played-tracks-shell.js') < metrics.indexOf('dashboard-tabs.js'));
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260928\.2/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260928\.4/);
   assert.match(tabs, /'played-tracks'/);
   assert.match(tabs, /import\('\/played-tracks\.js\?v=20260927\.2'\)/);
 });
