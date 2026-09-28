@@ -103,8 +103,12 @@ function normalizeTrendSeries(trend = {}) {
     });
 }
 
-function renderTrendCharts(trend = {}) {
-  const container = element('spotifyTrendCharts');
+function renderTrendChart(trend = {}, {
+  containerId,
+  metricKey,
+  ariaLabel,
+}) {
+  const container = element(containerId);
   if (!container) return;
   container.replaceChildren();
 
@@ -112,8 +116,11 @@ function renderTrendCharts(trend = {}) {
   const dates = [...new Set(
     seriesList.flatMap((series) => series.points.map((point) => String(point.snapshot_date))),
   )].sort();
+  const values = seriesList
+    .flatMap((series) => series.points.map((point) => deltaNumber(point?.[metricKey])))
+    .filter((value) => value != null);
 
-  if (!dates.length) {
+  if (!dates.length || !values.length) {
     const empty = document.createElement('p');
     empty.className = 'spotify-trend-empty';
     empty.textContent = 'Spotify再生数の推移データはまだありません。';
@@ -121,9 +128,6 @@ function renderTrendCharts(trend = {}) {
     return;
   }
 
-  const values = seriesList
-    .flatMap((series) => series.points.map((point) => deltaNumber(point?.total_delta)))
-    .filter((value) => value != null);
   let yMin = Math.min(0, ...values);
   let yMax = Math.max(0, ...values);
   if (yMin === yMax) yMax = yMin + 1;
@@ -148,10 +152,10 @@ function renderTrendCharts(trend = {}) {
 
   const legend = document.createElement('div');
   legend.className = 'spotify-trend-legend';
-  legend.setAttribute('aria-label', 'アーティスト凡例と最新前回比');
+  legend.setAttribute('aria-label', 'アーティスト凡例と最新再生数');
   seriesList.forEach(({ artistName, points }, seriesIndex) => {
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
-    const latest = [...points].reverse().find((point) => deltaNumber(point?.total_delta) != null);
+    const latest = [...points].reverse().find((point) => deltaNumber(point?.[metricKey]) != null);
     const item = document.createElement('span');
     item.className = 'spotify-trend-legend-item';
     item.style.setProperty('--spotify-trend-color', color);
@@ -160,7 +164,7 @@ function renderTrendCharts(trend = {}) {
     name.textContent = artistName;
     const latestValue = document.createElement('strong');
     latestValue.className = 'spotify-trend-latest';
-    latestValue.textContent = formatDelta(latest?.total_delta);
+    latestValue.textContent = formatDelta(latest?.[metricKey]);
     item.append(name, latestValue);
     legend.append(item);
   });
@@ -170,7 +174,7 @@ function renderTrendCharts(trend = {}) {
   const svg = svgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
-    'aria-label': '収集対象の女性アイドル全アーティスト Spotify前回比合計の推移',
+    'aria-label': ariaLabel,
     class: 'spotify-trend-svg',
   });
 
@@ -224,7 +228,7 @@ function renderTrendCharts(trend = {}) {
     let drawing = false;
     for (const date of dates) {
       const point = byDate.get(date);
-      const value = deltaNumber(point?.total_delta);
+      const value = deltaNumber(point?.[metricKey]);
       if (value == null) {
         drawing = false;
         continue;
@@ -247,7 +251,7 @@ function renderTrendCharts(trend = {}) {
     }
 
     for (const point of points) {
-      const value = deltaNumber(point?.total_delta);
+      const value = deltaNumber(point?.[metricKey]);
       if (value == null) continue;
       const index = dateIndex.get(String(point.snapshot_date));
       if (index == null) continue;
@@ -277,7 +281,22 @@ function render(payload, trend) {
   if (count) count.textContent = numberFormat.format(Number(payload?.track_count) || 0);
   const delta = element('spotifyTotalDelta');
   if (delta) delta.textContent = formatDelta(payload?.total_delta);
-  renderTrendCharts(trend);
+
+  renderTrendChart(trend, {
+    containerId: 'spotifyTrendCharts',
+    metricKey: 'total_delta',
+    ariaLabel: '収集対象の女性アイドル全アーティスト Spotify日次再生数の推移',
+  });
+  renderTrendChart(trend, {
+    containerId: 'spotifyTop10TrendCharts',
+    metricKey: 'top10_delta',
+    ariaLabel: '収集対象の女性アイドル全アーティスト Spotify前回比上位10曲の再生数推移',
+  });
+  renderTrendChart(trend, {
+    containerId: 'spotifyTop10YearTrendCharts',
+    metricKey: 'top10_year_delta',
+    ariaLabel: '収集対象の女性アイドル全アーティスト 今年リリース曲に限定したSpotify前回比上位10曲の再生数推移',
+  });
   renderRows(payload || {});
 
   if (!payload?.track_count) {
