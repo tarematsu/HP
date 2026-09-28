@@ -30,7 +30,7 @@ export const MATERIALIZED_RESPONSE_MAX_AGE_MS = 15 * 60_000;
 // Event-driven variants retain cadence metadata for generic tooling, but are
 // excluded from scheduled publication and regenerated only when source data changes.
 export const MATERIALIZED_API_VARIANTS = Object.freeze([
-  Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 5 }),
+  Object.freeze({ key: 'dashboard', url: '/api/dashboard?history=0', cadence_minutes: 5 }),
   Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 1440 }),
   Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 1440 }),
   Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 1440 }),
