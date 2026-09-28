@@ -8,12 +8,18 @@ function config() {
   );
 }
 
-test('Spotify collector is isolated and wakes hourly for the 05:00+ retry gate', () => {
+test('Spotify collector is isolated, wakes hourly, and owns its event-driven Pages model', () => {
   const value = config();
   assert.equal(value.name, 'sh-spotify-playcount-collector');
   assert.equal(value.main, 'src/spotify-playcount-entry.js');
   assert.deepEqual(value.triggers.crons, ['0 * * * *']);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['OTHER_DB']);
+  assert.deepEqual(value.r2_buckets, [
+    {
+      binding: 'PAGES_RESPONSE_R2',
+      bucket_name: 'sh-pages-responses',
+    },
+  ]);
   assert.deepEqual(value.queues.producers, [
     {
       binding: 'SPOTIFY_PLAYCOUNT_QUEUE',
@@ -28,7 +34,7 @@ test('Spotify collector is isolated and wakes hourly for the 05:00+ retry gate',
   assert.deepEqual(value.vars, { SPOTIFY_PLAYCOUNT_ENABLED: true });
 });
 
-test('a stale day is carried forward at the next 05:00 instead of blocking newer dates', () => {
+test('a stale day is carried forward at the next 05:00 and requests one read-model refresh', () => {
   const entry = readFileSync(new URL('../src/spotify-playcount-entry.js', import.meta.url), 'utf8');
   const migration = readFileSync(
     new URL('../../database/other-migrations/041_spotify_playcount_daily.sql', import.meta.url),
@@ -38,6 +44,7 @@ test('a stale day is carried forward at the next 05:00 instead of blocking newer
   assert.match(entry, /status='stale'/);
   assert.match(entry, /is_carried_forward/);
   assert.match(entry, /status='complete'/);
+  assert.match(entry, /if \(carried > 0\)[\s\S]*requestSpotifyReadModelRefresh/);
   assert.match(migration, /is_carried_forward INTEGER NOT NULL DEFAULT 0/);
 });
 
@@ -60,6 +67,8 @@ test('catalog discovery is split into one artist per chained queue step before a
   assert.match(catalog, /queueActiveReleases/);
   assert.match(router, /spotify-playcount-catalog/);
   assert.match(router, /spotify-playcount-album/);
+  assert.match(router, /SPOTIFY_READ_MODEL_REFRESH_TYPE/);
+  assert.match(router, /requestSpotifyReadModelRefresh\(env, 'playcount-album-batch'\)/);
   assert.doesNotMatch(common, /snapshot_date,status,attempt_no,run_token,albums_queued,albums_completed,\s*catalog_total/);
   assert.match(migration, /catalog_total/);
   assert.match(migration, /catalog_completed/);
