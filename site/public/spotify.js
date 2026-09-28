@@ -149,7 +149,7 @@ function renderTrendCharts(trend = {}) {
   const legend = document.createElement('div');
   legend.className = 'spotify-trend-legend';
   legend.setAttribute('aria-label', 'アーティスト凡例と最新前回比');
-  seriesList.forEach(({ artistName, currentRank, points }, seriesIndex) => {
+  seriesList.forEach(({ artistName, points }, seriesIndex) => {
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
     const latest = [...points].reverse().find((point) => deltaNumber(point?.total_delta) != null);
     const item = document.createElement('span');
@@ -157,7 +157,7 @@ function renderTrendCharts(trend = {}) {
     item.style.setProperty('--spotify-trend-color', color);
     const name = document.createElement('span');
     name.className = 'spotify-trend-name';
-    name.textContent = currentRank == null ? artistName : `${currentRank}位 ${artistName}`;
+    name.textContent = artistName;
     const latestValue = document.createElement('strong');
     latestValue.className = 'spotify-trend-latest';
     latestValue.textContent = formatDelta(latest?.total_delta);
