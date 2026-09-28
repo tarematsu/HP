@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-played-tracks-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/played-tracks.css?v=20260927.1';
+  link.href = '/played-tracks.css?v=20260928.1';
   link.dataset.playedTracksStyles = '1';
   document.head.append(link);
 }
@@ -27,7 +27,7 @@ function mountView() {
   section.className = 'dashboard-view played-tracks-view';
   section.hidden = true;
   section.innerHTML = `
-    <div class="played-tracks-toolbar">
+    <div class="view-toolbar played-tracks-toolbar">
       <label class="played-tracks-week-toggle" for="playedTracksWeekMode">
         <input id="playedTracksWeekMode" type="checkbox">
         <span>週表示</span>
