@@ -81,6 +81,21 @@ test('Spotify read model keeps only Sakurazaka track detail and all-idol trend t
   assert.equal(model.trend['equal-love'][0].current_rank, 1);
 });
 
+test('Spotify detail merges duplicate editions with the same normalized song title', () => {
+  const first = row('sakurazaka46', 'single-id', 9_386_149, 3_991);
+  first.name = '自業自得';
+  const second = row('sakurazaka46', 'album-id', 9_386_149, 3_991);
+  second.name = ' 自業自得　';
+  const third = row('sakurazaka46', 'other-id', 8_781_230, 3_847);
+  third.name = '承認欲求';
+  const payload = spotifyReadModel([first, second, third], []).groups.sakurazaka46;
+
+  assert.equal(payload.track_count, 2);
+  assert.deepEqual(payload.tracks.map((track) => track.name), ['自業自得', '承認欲求']);
+  assert.equal(payload.total_delta, 3_991 + 3_847);
+  assert.deepEqual(payload.tracks.map((track) => track.rank), [1, 2]);
+});
+
 test('Spotify detail SQL reads only Sakurazaka while trend SQL uses the bounded artist-day summary', () => {
   const detailSql = spotifyPlaycountSql();
   assert.match(detailSql, /target\.artist_key='sakurazaka46'/);
@@ -157,6 +172,8 @@ test('Spotify tab has one all-idol trend graph and a fixed Sakurazaka detail tab
   assert.match(runtime, /spotify-trend-combined/);
   assert.match(runtime, /spotify-trend-legend/);
   assert.match(runtime, /spotify-trend-scroll chart-fit/);
+  assert.match(runtime, /name\.textContent = artistName/);
+  assert.doesNotMatch(runtime, /`\$\{currentRank\}位 \$\{artistName\}`/);
   assert.match(runtime, /chart\.append\(legend, scroll\)/);
   assert.match(runtime, /container\.append\(chart\)/);
   assert.match(runtime, /model\?\.groups\?\.\[SAKURAZAKA_KEY\]/);
@@ -170,7 +187,7 @@ test('Spotify tab has one all-idol trend graph and a fixed Sakurazaka detail tab
   assert.match(sharedLayout, /\.chart-fit > :is\(svg, canvas\)[\s\S]*min-width:\s*0 !important/);
   assert.match(sharedLayout, /\.table-wrap\.table-fit-mobile[\s\S]*overflow-x:\s*hidden !important/);
   assert.match(sharedLayout, /\.table-fit-mobile > table[\s\S]*table-layout:\s*fixed !important/);
-  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.4'\)/);
+  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.5'\)/);
   assert.match(dashboard, /spotify-shell\.js\?v=20260928\.5/);
-  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.4/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.5/);
 });
