@@ -2,10 +2,12 @@
 #include "../stationhead_status_strip_bridge.h"
 
 namespace {
+bool gNativeMediaPowerSaving = false;
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMediaYoutubeUrl[] =
     L"https://homepanel-cloud.tarematsu.workers.dev/v1/native/youtube-start";
 constexpr wchar_t kNativeMediaProfile[] = L"media-youtube";
+constexpr UINT_PTR kNativeMediaXStartTimer = 0x4D560008;
 constexpr UINT_PTR kNativeMediaPhaseTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMediaNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
@@ -35,7 +37,8 @@ void NativeMediaForgetWatchdogExecution(HWND hostWindow) noexcept;
 LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 
 #define kNativeMediaPhaseMs \
-  (phase_ == Phase::Tver ? kNativeMediaTverPhaseMs : kNativeMediaYoutubePhaseMs)
+  (gNativeMediaPowerSaving ? kNativeMediaYoutubeContentPhaseMs : \
+   (phase_ == Phase::Tver ? kNativeMediaTverPhaseMs : kNativeMediaYoutubePhaseMs))
 #define kNativeMediaTverForceFullscreenAdSafeScript \
   kNativeMediaTverForceFullscreenAnyMediaScript
 #include "media_host.inc"

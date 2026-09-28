@@ -4,7 +4,6 @@ namespace {
 bool NativeMediaTverXPhaseActive() noexcept;
 
 constexpr wchar_t kNativeMediaTverControlRecoveryScript[] =
-#include "media_tver_x_transition.inc"
 #include "media_tver_control_recovery.inc"
 ;
 }  // namespace

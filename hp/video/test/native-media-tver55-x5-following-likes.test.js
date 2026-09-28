@@ -11,8 +11,8 @@ const tverQueue = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const tverRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_tver_episode_loop_policy.inc', import.meta.url);
-const youtubeTransition = readFileSync(
-  new URL('../../native/src/renderer_panels/media_youtube_x_transition.inc', import.meta.url), 'utf8');
+const host = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 const youtubePolicy = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url), 'utf8');
 const xRuntime = readFileSync(
@@ -22,9 +22,9 @@ test('YouTube hands its final minute to X after 60 minutes', () => {
   assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubePhaseMs =[\s\S]*kNativeMediaYoutubeContentPhaseMs \+ kNativeMediaXPhaseMs/);
-  assert.match(youtubePolicy, /#include "media_youtube_x_transition\.inc"/);
-  assert.match(youtubeTransition, /const phaseMs = 60 \* 60 \* 1000/);
-  assert.match(youtubeTransition, /location\.assign\('https:\/\/x\.com\/home'\)/);
+  assert.doesNotMatch(youtubePolicy, /media_youtube_x_transition/);
+  assert.match(host, /ArmTimer\(kNativeMediaXStartTimer, xRemaining\)/);
+  assert.match(host, /Navigate\(L"https:\/\/x\.com\/home"\)/);
 });
 
 test('TVer runs 58 minutes and hands its final minute to X', () => {
@@ -33,8 +33,8 @@ test('TVer runs 58 minutes and hands its final minute to X', () => {
   assert.match(tverQueue, /kNativeMediaTverContentPhaseMs = 58ULL \* 60ULL \* 1000ULL/);
   assert.match(tverQueue, /ULONGLONG phaseStartedAt = 0/);
   assert.match(tverQueue, /NativeMediaTverXPhaseActive\(\)/);
-  assert.match(tverRuntime, /const phaseMs = 58 \* 60 \* 1000/);
-  assert.match(tverRuntime, /location\.assign\('https:\/\/x\.com\/home'\)/);
+  assert.doesNotMatch(tverRuntime, /homepanel:tver-x-phase-start/);
+  assert.match(host, /phase_ == Phase::Tver[\s\S]*kNativeMediaTverContentDurationMs/);
 });
 
 test('TVer recovery cannot pull the shared WebView back from the X subphase', () => {
