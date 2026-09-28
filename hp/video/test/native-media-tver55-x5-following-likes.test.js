@@ -73,12 +73,14 @@ test('X likes exclude reposts, ads, PR and boosted posts', () => {
   assert.doesNotMatch(xRuntime, /homepanel:startup-x-until|homepanel=startup/);
 });
 
-test('X timeline CSS hides repost and promoted cells', () => {
+test('X timeline CSS only hides classified repost/promotion rows and placement ads', () => {
   assert.match(xRuntime, /homepanel-x-timeline-filter/);
   assert.match(xRuntime, /data-homepanel-x-filtered/);
-  assert.match(xRuntime, /article\[data-testid="tweet"\]:has\(\[data-testid="socialContext"\]\)/);
   assert.match(xRuntime, /article\[data-testid="tweet"\]:has\(\[data-testid\*="placement" i\]\)/);
-  assert.match(xRuntime, /cellInnerDiv[\s\S]*socialContext/);
   assert.match(xRuntime, /display:\s*none !important/);
   assert.match(xRuntime, /markFilteredArticles\(\)/);
+  assert.doesNotMatch(xRuntime, /article\[data-testid="tweet"\]:has\(\[data-testid="socialContext"\]\)/);
+  assert.doesNotMatch(xRuntime, /cellInnerDiv[^`]*socialContext/);
+  assert.doesNotMatch(xRuntime, /const promotedText/);
+  assert.match(xRuntime, /!element\.closest\?\.\('\[data-testid="tweetText"\]'\)/);
 });
