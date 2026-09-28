@@ -62,8 +62,8 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
   assert.equal(versions.comparison, '20260929.1');
   assert.equal(versions.chartDetail, '20260929.1');
   assert.equal(versions.dailySummaries, '20260929.1');
-  assert.equal(versions.detailsClient, '20260929.1');
-  assert.equal(versions.client, '20260929.1');
+  assert.equal(versions.detailsClient, '20260929.2');
+  assert.equal(versions.client, '20260929.2');
   for (const [asset, version] of Object.entries(versions)) {
     assert.match(version, /^\d{8}\.\d+$/, `${asset} has an invalid deployment version: ${version}`);
   }
