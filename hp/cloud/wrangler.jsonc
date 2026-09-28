@@ -87,6 +87,11 @@
       "database_name": "homepanel-data",
       "database_id": "1c8eb0f8-cd73-4156-9ba7-b49bb18f13a3",
       "migrations_dir": "migrations"
+    },
+    {
+      "binding": "OTHER_DB",
+      "database_name": "stationhead-other",
+      "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11"
     }
   ],
   "r2_buckets": [

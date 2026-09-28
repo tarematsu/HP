@@ -1,4 +1,5 @@
 import type { Env } from "./sources";
+import { syncSpotifyArtistChartR2ToD1 } from "./spotify_artist_chart_read";
 
 const MAX_RECORDS = 4;
 const MAX_ENTRIES = 200;
@@ -254,6 +255,18 @@ export async function applySpotifyArtistChartInput(
     stored = true;
   }
 
+  let d1Sync: Awaited<ReturnType<typeof syncSpotifyArtistChartR2ToD1>> | null = null;
+  try {
+    d1Sync = await syncSpotifyArtistChartR2ToD1(
+      env,
+      captures.map((capture) => capture.chart_date),
+    );
+  } catch (error) {
+    console.error("spotify-artist-chart-d1-sync-failed", {
+      error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+    });
+  }
+
   return {
     status: 200,
     body: {
@@ -263,7 +276,11 @@ export async function applySpotifyArtistChartInput(
       reported: true,
       chartDate: newest.chart_date,
       latestUpdated: canAdvanceLatest,
-      delivery: "r2-pull",
+      d1Synced: d1Sync?.synced === true,
+      d1Backfilled: d1Sync?.backfilled === true,
+      d1Days: d1Sync?.days ?? 0,
+      d1Rows: d1Sync?.rows ?? 0,
+      delivery: "r2-d1-read-model",
     },
   };
 }
