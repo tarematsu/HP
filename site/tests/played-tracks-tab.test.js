@@ -6,9 +6,11 @@ const shell = readFileSync(new URL('../public/played-tracks-shell.js', import.me
 const runtime = readFileSync(new URL('../public/played-tracks.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 
-test('played tracks tab is mounted immediately before likes', () => {
+test('played tracks tab is visible immediately and shell mounts its view', () => {
+  assert.match(page, /data-view="played-tracks">再生履歴/);
   assert.match(shell, /querySelector\('\[data-view="likes"\]'\)/);
   assert.match(shell, /button\.dataset\.view = 'played-tracks'/);
   assert.match(shell, /button\.textContent = '再生履歴'/);
@@ -66,10 +68,10 @@ test('track history exposes a lightweight date index from the daily read model',
   assert.match(api, /latest_date: dates\.at\(-1\) \|\| null/);
 });
 
-test('played tracks runtime is lazy while its shell loads before dashboard tabs', () => {
-  assert.match(metrics, /played-tracks-shell\.js\?v=20260928\.1/);
-  assert.ok(metrics.indexOf('played-tracks-shell.js') < metrics.indexOf('dashboard-tabs.js'));
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260929\.1/);
+test('played tracks shell and runtime are both lazy behind the shared router', () => {
+  assert.doesNotMatch(metrics, /^import .*played-tracks-shell/m);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260929\.2/);
+  assert.match(tabs, /import\('\/played-tracks-shell\.js\?v=20260928\.1'\)/);
   assert.match(tabs, /'played-tracks'/);
   assert.match(tabs, /import\('\/played-tracks\.js\?v=20260927\.2'\)/);
 });
