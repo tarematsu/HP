@@ -87,7 +87,11 @@ function selectPoint(event) {
 window.addEventListener('dashboard:payload', (event) => {
   const payload = event?.detail?.payload;
   if (!payload?.ok) return;
-  rows = normalizeHistory(payload.history);
-  streamRows = normalizeStreamHistory(payload.stream_5m_history);
+  const nextRows = normalizeHistory(payload.history);
+  if (nextRows.length) rows = nextRows;
+  if (Array.isArray(payload.stream_5m_history)) {
+    const nextStreamRows = normalizeStreamHistory(payload.stream_5m_history);
+    if (nextStreamRows.length || payload.stream_5m_history.length === 0) streamRows = nextStreamRows;
+  }
 });
 document.getElementById('audienceChart')?.addEventListener('pointerup', selectPoint, true);
