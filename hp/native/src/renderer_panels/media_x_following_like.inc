@@ -9,23 +9,54 @@ LR"JS(
   state.started = true;
   const deadline = performance.now() + 60 * 1000;
   const likeIntervalMs = 10 * 1000;
+  const filterAttribute = 'data-homepanel-x-filtered';
+  const filterStyleId = 'homepanel-x-timeline-filter';
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const text = element => (element?.innerText || element?.textContent || '')
       .replace(/\s+/g, ' ').trim();
   const followingTab = () => Array.from(document.querySelectorAll('[role="tab"]'))
       .find(tab => /^(?:Following|フォロー中)$/i.test(text(tab)));
-  const isPromoted = article => {
-    const value = text(article);
-    return /(?:^|\s)(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト)(?:\s|$)/i.test(value) ||
-        Boolean(article.querySelector('[data-testid*="placement" i]'));
-  };
+  const promotedLabel = /^(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト|PR)$/i;
+  const hasPromotedLabel = article => Array.from(article?.querySelectorAll?.('span') || [])
+      .some(element => promotedLabel.test(text(element)));
+  const isPromoted = article => hasPromotedLabel(article) ||
+      Boolean(article.querySelector('[data-testid*="placement" i]'));
   const isRepost = article => {
     const socialContext = article.querySelector('[data-testid="socialContext"]');
     const value = text(socialContext);
     return /(?:reposted|repost|retweeted|retweet|リポスト|リツイート)/i.test(value);
   };
   const isOrganic = article => !isPromoted(article) && !isRepost(article);
+  const installTimelineFilterCss = () => {
+    const root = document.head || document.documentElement;
+    if (!root || document.getElementById?.(filterStyleId) ||
+        typeof document.createElement !== 'function') return;
+    const style = document.createElement('style');
+    style.id = filterStyleId;
+    style.textContent = `
+      [${filterAttribute}="true"],
+      article[data-testid="tweet"]:has([data-testid="socialContext"]),
+      article[data-testid="tweet"]:has([data-testid*="placement" i]),
+      [data-testid="cellInnerDiv"]:has(article[data-testid="tweet"] [data-testid="socialContext"]),
+      [data-testid="cellInnerDiv"]:has(article[data-testid="tweet"] [data-testid*="placement" i]) {
+        display: none !important;
+      }
+    `;
+    root.appendChild(style);
+  };
+  const markFilteredArticles = () => {
+    const articles = Array.from(
+        document.querySelectorAll('article[data-testid="tweet"]'));
+    for (const article of articles) {
+      const target = article.closest?.('[data-testid="cellInnerDiv"]') || article;
+      if (isPromoted(article) || isRepost(article)) {
+        target.setAttribute?.(filterAttribute, 'true');
+      } else {
+        target.removeAttribute?.(filterAttribute);
+      }
+    }
+  };
   const articleId = article => {
     const permalink = article?.querySelector('time')?.closest('a')
         ?.getAttribute('href');
@@ -53,9 +84,13 @@ LR"JS(
             'DOMContentLoaded', resolve, { once: true }));
       }
 
+      installTimelineFilterCss();
+      markFilteredArticles();
+
       let tab = followingTab();
       while (!tab && performance.now() < deadline) {
         state.result = 'waiting-login';
+        markFilteredArticles();
         await sleep(1000);
         tab = followingTab();
       }
@@ -82,6 +117,7 @@ LR"JS(
       state.attemptedCount = 0;
       state.likedCount = 0;
       while (performance.now() < deadline) {
+        markFilteredArticles();
         if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
         if (performance.now() >= nextLikeAt) {
           const articles = Array.from(
