@@ -3,7 +3,7 @@ namespace {
 constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
     30ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
-constexpr ULONGLONG kNativeMediaTverContentPhaseMs = 55ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kNativeMediaTverContentPhaseMs = 58ULL * 60ULL * 1000ULL;
 
 struct NativeMediaTverCloudQueueRefreshResult {
   std::wstring generatedAt;
