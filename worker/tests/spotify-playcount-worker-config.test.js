@@ -68,7 +68,8 @@ test('catalog discovery is split into one artist per chained queue step before a
   assert.match(router, /spotify-playcount-catalog/);
   assert.match(router, /spotify-playcount-album/);
   assert.match(router, /SPOTIFY_READ_MODEL_REFRESH_TYPE/);
-  assert.match(router, /requestSpotifyReadModelRefresh\(env, 'playcount-album-batch'\)/);
+  assert.match(router, /latestCompleteRevision/);
+  assert.match(router, /if \(after && after !== before\)[\s\S]*requestSpotifyReadModelRefresh\(env, 'playcount-complete'/);
   assert.doesNotMatch(common, /snapshot_date,status,attempt_no,run_token,albums_queued,albums_completed,\s*catalog_total/);
   assert.match(migration, /catalog_total/);
   assert.match(migration, /catalog_completed/);
