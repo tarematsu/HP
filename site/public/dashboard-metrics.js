@@ -4,17 +4,13 @@ import './dashboard-header.js?v=20260928.1';
 import './first-week-comparison-shell.js?v=20260928.1';
 import './played-tracks-shell.js?v=20260928.1';
 import './spotify-shell.js?v=20260929.1';
-import './dashboard-tabs.js?v=20260929.1';
+import './dashboard-tabs.js?v=20260929.2';
 import './dashboard-current-layout.js?v=20260924.1';
 import './dashboard-current-metric-style.js?v=20260923.1';
-import './dashboard-chart-stability.js?v=20260923.4';
-import './dashboard-chart-comparison.js?v=20260927.2';
-import './dashboard-chart-detail.js?v=20260927.2';
-import './dashboard-daily-summaries.js?v=20260923.4';
-import './dashboard-fetch-cache.js?v=20260923.4';
 
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
 const imageRetryTimers = new WeakMap();
+let currentRuntimePromise = null;
 
 function clearImageRetry(image) {
   const timer = imageRetryTimers.get(image);
@@ -75,14 +71,42 @@ function installImageState(id) {
   if (image.complete && image.naturalWidth > 0) loaded();
 }
 
-installImageState('channelImage');
-installImageState('trackImage');
-
-void import('/dashboard-client.js?v=20260924.1').catch((error) => {
+function showCurrentRuntimeError(error) {
   console.error('dashboard client failed to start', error);
   const status = document.getElementById('statusMessage');
   if (status) {
     status.textContent = '画面の初期化に失敗しました。再読み込みしてください。';
     status.hidden = false;
   }
+}
+
+function ensureCurrentRuntime() {
+  if (currentRuntimePromise) return currentRuntimePromise;
+  currentRuntimePromise = (async () => {
+    await Promise.all([
+      import('./dashboard-chart-stability.js?v=20260923.4'),
+      import('./dashboard-chart-comparison.js?v=20260927.2'),
+      import('./dashboard-chart-detail.js?v=20260927.2'),
+      import('./dashboard-daily-summaries.js?v=20260923.4'),
+    ]);
+    await import('./dashboard-fetch-cache.js?v=20260923.4');
+    await import('/dashboard-client.js?v=20260924.1');
+  })().catch((error) => {
+    currentRuntimePromise = null;
+    showCurrentRuntimeError(error);
+  });
+  return currentRuntimePromise;
+}
+
+function initialModeIsCurrent() {
+  const mode = location.hash.slice(1);
+  return !mode || mode === 'current';
+}
+
+installImageState('channelImage');
+installImageState('trackImage');
+
+if (initialModeIsCurrent()) void ensureCurrentRuntime();
+window.addEventListener('dashboard:current-activated', () => {
+  void ensureCurrentRuntime();
 });
