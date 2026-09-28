@@ -1,5 +1,9 @@
 const QUERY_CHUNK_SIZE = 80;
 const WRITE_CHUNK_SIZE = 50;
+const IDENTITY_SEEN_REFRESH_MS = 12 * 60 * 60 * 1000;
+const LEGACY_ALIAS_BOOTSTRAP_KEY = 'legacy-alias-bootstrap-v1';
+const LEGACY_ALIAS_BOOTSTRAP_WINDOW = 100;
+let aliasBootstrapComplete = false;
 
 function normalizedText(value) {
   return String(value ?? '')
@@ -74,8 +78,8 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
       ) VALUES (?,?,?,?)
       ON CONFLICT(song_key) DO UPDATE SET updated_at=MAX(
         sh_spotify_song_identities.updated_at,excluded.updated_at
-      )`)
-      .bind(songKey, trackId, seenAt, seenAt)
+      ) WHERE excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
+      .bind(songKey, trackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS)
   )));
 
   const canonicalByKey = new Map();
@@ -102,8 +106,11 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
       ON CONFLICT(source_track_id) DO UPDATE SET
         song_key=excluded.song_key,
         canonical_track_id=excluded.canonical_track_id,
-        last_seen_at=MAX(sh_spotify_track_aliases.last_seen_at,excluded.last_seen_at)`)
-      .bind(sourceTrackId, songKey, canonicalTrackId, seenAt, seenAt);
+        last_seen_at=MAX(sh_spotify_track_aliases.last_seen_at,excluded.last_seen_at)
+      WHERE sh_spotify_track_aliases.song_key<>excluded.song_key
+        OR sh_spotify_track_aliases.canonical_track_id<>excluded.canonical_track_id
+        OR excluded.last_seen_at>=sh_spotify_track_aliases.last_seen_at+?`)
+      .bind(sourceTrackId, songKey, canonicalTrackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS);
   }));
 
   return keyedTracks.map(({ track, songKey }) => ({
@@ -113,15 +120,50 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
   }));
 }
 
+export function resetSpotifyAliasBootstrapVerification() {
+  aliasBootstrapComplete = false;
+}
+
 export async function bootstrapSpotifyTrackAliases(db, seenAt) {
+  if (aliasBootstrapComplete) return 0;
+
+  const state = await db.prepare(`SELECT cursor_track_id,is_complete
+    FROM sh_spotify_maintenance_state WHERE maintenance_key=?`)
+    .bind(LEGACY_ALIAS_BOOTSTRAP_KEY).first();
+  if (!state) throw new Error('Spotify legacy alias bootstrap state is missing');
+  if (Number(state.is_complete) === 1) {
+    aliasBootstrapComplete = true;
+    return 0;
+  }
+
+  const cursor = String(state.cursor_track_id || '');
   const result = await db.prepare(`SELECT
-      track.track_id,track.name,track.duration_ms,track.artists_json
+      track.track_id,track.name,track.duration_ms,track.artists_json,
+      alias.source_track_id AS alias_track_id
     FROM sh_spotify_tracks track
     LEFT JOIN sh_spotify_track_aliases alias ON alias.source_track_id=track.track_id
-    WHERE alias.source_track_id IS NULL
-    ORDER BY track.track_id`).all();
-  const tracks = rowsOf(result);
-  if (!tracks.length) return 0;
-  await resolveCanonicalSpotifyTracks(db, tracks, seenAt);
-  return tracks.length;
+    WHERE track.track_id>?
+    ORDER BY track.track_id
+    LIMIT ${LEGACY_ALIAS_BOOTSTRAP_WINDOW}`).bind(cursor).all();
+  const window = rowsOf(result);
+  const missing = window
+    .filter((row) => !String(row.alias_track_id || '').trim())
+    .map((row) => ({
+      track_id: row.track_id,
+      name: row.name,
+      duration_ms: row.duration_ms,
+      artists_json: row.artists_json,
+    }));
+  if (missing.length) await resolveCanonicalSpotifyTracks(db, missing, seenAt);
+
+  const nextCursor = window.length ? String(window.at(-1).track_id || cursor) : cursor;
+  const complete = window.length < LEGACY_ALIAS_BOOTSTRAP_WINDOW ? 1 : 0;
+  await db.prepare(`UPDATE sh_spotify_maintenance_state SET
+      cursor_track_id=CASE WHEN cursor_track_id<? THEN ? ELSE cursor_track_id END,
+      is_complete=MAX(is_complete,?),updated_at=MAX(updated_at,?)
+    WHERE maintenance_key=?`)
+    .bind(nextCursor, nextCursor, complete, seenAt, LEGACY_ALIAS_BOOTSTRAP_KEY)
+    .run();
+  if (complete) aliasBootstrapComplete = true;
+  return missing.length;
 }
