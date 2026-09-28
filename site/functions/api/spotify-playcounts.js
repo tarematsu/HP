@@ -77,6 +77,24 @@ export function spotifyTrendSql() {
     daily.snapshot_date ASC`;
 }
 
+export function spotifyArtistChartSql() {
+  return `WITH latest_chart_date AS (
+    SELECT MAX(chart_date) AS chart_date FROM sh_spotify_artist_chart_daily
+  )
+  SELECT
+    chart.chart_date,
+    chart.artist_key,
+    chart.artist_name,
+    chart.rank,
+    chart.previous_rank,
+    chart.peak_rank,
+    chart.streak,
+    chart.observed_at
+  FROM sh_spotify_artist_chart_daily chart
+  WHERE chart.chart_date >= date((SELECT chart_date FROM latest_chart_date), '-89 days')
+  ORDER BY chart.chart_date ASC,chart.rank ASC,chart.artist_name COLLATE NOCASE ASC`;
+}
+
 function integer(value) {
   if (value == null || value === '') return null;
   const number = Number(value);
@@ -180,7 +198,39 @@ export function spotifyTrend(rows = []) {
   return trend;
 }
 
-export function spotifyReadModel(latestRows = [], trendRows = []) {
+export function spotifyArtistChart(rows = []) {
+  const days = new Map();
+  let latestChartDate = null;
+  let latestObservedAt = null;
+  for (const row of rows) {
+    const chartDate = String(row?.chart_date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(chartDate)) continue;
+    const rank = integer(row?.rank);
+    if (rank == null || rank < 1 || rank > 200) continue;
+    if (!days.has(chartDate)) days.set(chartDate, []);
+    days.get(chartDate).push({
+      artist_key: String(row?.artist_key || '').trim(),
+      artist_name: String(row?.artist_name || '').trim() || String(row?.artist_key || '').trim(),
+      rank,
+      previous_rank: integer(row?.previous_rank),
+      peak_rank: integer(row?.peak_rank),
+      streak: integer(row?.streak),
+    });
+    if (latestChartDate == null || chartDate > latestChartDate) latestChartDate = chartDate;
+    const observedAt = integer(row?.observed_at);
+    if (observedAt != null && (latestObservedAt == null || observedAt > latestObservedAt)) {
+      latestObservedAt = observedAt;
+    }
+  }
+  return {
+    chart_id: 'artist-jp-daily',
+    latest_chart_date: latestChartDate,
+    latest_observed_at: latestObservedAt,
+    days: [...days.entries()].map(([chart_date, entries]) => ({ chart_date, entries })),
+  };
+}
+
+export function spotifyReadModel(latestRows = [], trendRows = [], artistChartRows = []) {
   const sakurazakaRows = latestRows.filter((row) => String(row?.artist_key || '') === DEFAULT_ARTIST_KEY);
   const payload = spotifyPayload(SAKURAZAKA, sakurazakaRows);
   const trend = spotifyTrend(trendRows);
@@ -195,6 +245,7 @@ export function spotifyReadModel(latestRows = [], trendRows = []) {
       [DEFAULT_ARTIST_KEY]: payload,
     },
     trend,
+    artist_chart: spotifyArtistChart(artistChartRows),
   };
 }
 
@@ -206,13 +257,17 @@ export async function onRequestGet({ env }) {
   }
 
   try {
-    const latestResult = await env.OTHER_DB.prepare(spotifyPlaycountSql()).all();
-    const trendResult = await env.OTHER_DB.prepare(spotifyTrendSql()).all();
+    const [latestResult, trendResult, artistChartResult] = await Promise.all([
+      env.OTHER_DB.prepare(spotifyPlaycountSql()).all(),
+      env.OTHER_DB.prepare(spotifyTrendSql()).all(),
+      env.OTHER_DB.prepare(spotifyArtistChartSql()).all(),
+    ]);
     return json({
       ok: true,
       ...spotifyReadModel(
         Array.isArray(latestResult?.results) ? latestResult.results : [],
         Array.isArray(trendResult?.results) ? trendResult.results : [],
+        Array.isArray(artistChartResult?.results) ? artistChartResult.results : [],
       ),
     });
   } catch (error) {
