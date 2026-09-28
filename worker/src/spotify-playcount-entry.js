@@ -5,6 +5,7 @@ import {
   runSpotifyPlaycountScheduled,
 } from './spotify-playcount-collector.js';
 import { spotifyArtistDailyRefreshStatements } from './spotify-playcount-summary.js';
+import { requestSpotifyReadModelRefresh } from './spotify-pages-read-model.js';
 
 async function carryForwardExpiredStaleDays(db, scheduledTime) {
   if (!db?.prepare || jstHour(scheduledTime) !== 5) return 0;
@@ -72,7 +73,10 @@ export default {
     const rawScheduledTime = Number(controller?.scheduledTime);
     const scheduledTime = Number.isFinite(rawScheduledTime) ? rawScheduledTime : Date.now();
     const work = (async () => {
-      await carryForwardExpiredStaleDays(env?.OTHER_DB, scheduledTime);
+      const carried = await carryForwardExpiredStaleDays(env?.OTHER_DB, scheduledTime);
+      if (carried > 0) {
+        await requestSpotifyReadModelRefresh(env, 'playcount-carry-forward', { carried_days: carried });
+      }
       return runSpotifyPlaycountScheduled(controller, env);
     })();
     if (ctx?.waitUntil) {
