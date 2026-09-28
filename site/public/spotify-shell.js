@@ -50,6 +50,11 @@ function mountView() {
       <div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲に限定した各アーティストの前回比上位10曲の再生数合計を重ねたグラフ"></div>
     </section>
 
+    <section class="card spotify-trend-panel" aria-labelledby="spotifyArtistRankTrendTitle">
+      <div class="section-head"><div><p class="kicker">SPOTIFY CHARTS JAPAN</p><h2 id="spotifyArtistRankTrendTitle">Spotify デイリートップアーティスト(日本) 順位推移</h2></div></div>
+      <div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本デイリートップアーティストにおける収集対象アーティストの順位推移"></div>
+    </section>
+
     <section class="card data-panel spotify-data-panel">
       <div class="section-head"><div><p class="kicker">SPOTIFY PLAYCOUNTS</p><h2 id="spotifyTableTitle">櫻坂46 再生数一覧</h2></div></div>
       <div class="table-wrap table-fit-mobile">
