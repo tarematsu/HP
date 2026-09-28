@@ -244,6 +244,62 @@ void NativeMediaDispatchFullscreenKey(
   }
 }
 
+bool NativeMediaDispatchTrustedCssClick(
+    ICoreWebView2* webview, double x, double y) noexcept {
+  if (!webview || x != x || y != y || x < 0.0 || y < 0.0 ||
+      x > 10000.0 || y > 10000.0) return false;
+  const ULONGLONG clickToken = NativeMediaAcquireTrustedClick();
+  if (clickToken == 0) return false;
+  try {
+    ComPtr<ICoreWebView2> view = webview;
+    const std::wstring moved =
+        NativeMediaTrustedMouseParams(L"mouseMoved", x, y, false);
+    const HRESULT dispatched = view->CallDevToolsProtocolMethod(
+        L"Input.dispatchMouseEvent", moved.c_str(),
+        Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+            [view, x, y, clickToken](HRESULT moveResult, LPCWSTR) -> HRESULT {
+              if (FAILED(moveResult) || !view) {
+                NativeMediaReleaseTrustedClick(clickToken);
+                return S_OK;
+              }
+              const std::wstring pressed =
+                  NativeMediaTrustedMouseParams(L"mousePressed", x, y, true);
+              const HRESULT pressDispatched = view->CallDevToolsProtocolMethod(
+                  L"Input.dispatchMouseEvent", pressed.c_str(),
+                  Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                      [view, x, y, clickToken](
+                          HRESULT pressedResult, LPCWSTR) -> HRESULT {
+                        if (FAILED(pressedResult) || !view) {
+                          NativeMediaReleaseTrustedClick(clickToken);
+                          return S_OK;
+                        }
+                        const std::wstring released =
+                            NativeMediaTrustedMouseParams(
+                                L"mouseReleased", x, y, false);
+                        const HRESULT releaseDispatched =
+                            view->CallDevToolsProtocolMethod(
+                                L"Input.dispatchMouseEvent", released.c_str(),
+                                Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                                    [clickToken](HRESULT, LPCWSTR) -> HRESULT {
+                                      NativeMediaReleaseTrustedClick(clickToken);
+                                      return S_OK;
+                                    }).Get());
+                        if (FAILED(releaseDispatched))
+                          NativeMediaReleaseTrustedClick(clickToken);
+                        return S_OK;
+                      }).Get());
+              if (FAILED(pressDispatched))
+                NativeMediaReleaseTrustedClick(clickToken);
+              return S_OK;
+            }).Get());
+    if (FAILED(dispatched)) NativeMediaReleaseTrustedClick(clickToken);
+    return SUCCEEDED(dispatched);
+  } catch (...) {
+    NativeMediaReleaseTrustedClick(clickToken);
+    return false;
+  }
+}
+
 void NativeMediaEnsureEventWakeBridge(
     ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
@@ -291,9 +347,18 @@ void NativeMediaEnsureEventWakeBridge(
               return source.find(needle) != std::wstring::npos;
             };
 
-            if (message == L"homepanel:youtube-fullscreen-key" &&
-                sourceContains(L"youtube.com/watch") &&
-                sourceContains(L"list=PLMWqSdpIVl30")) {
+            unsigned long long statusId = 0;
+            int x = -1;
+            int y = -1;
+            if (sourceContains(L"x.com/home") &&
+                swscanf_s(message.c_str(), L"homepanel:x-like:%llu:%d:%d",
+                          &statusId, &x, &y) == 3 &&
+                statusId != 0 && x >= 0 && y >= 0 && x <= 10000 && y <= 10000) {
+              NativeMediaDispatchTrustedCssClick(
+                  sender, static_cast<double>(x), static_cast<double>(y));
+            } else if (message == L"homepanel:youtube-fullscreen-key" &&
+                       sourceContains(L"youtube.com/watch") &&
+                       sourceContains(L"list=PLMWqSdpIVl30")) {
               NativeMediaDispatchFullscreenKey(sender, false);
             } else if (message == L"homepanel:tver-fullscreen-key" &&
                        sourceContains(L"tver.jp/episodes/")) {
@@ -377,7 +442,10 @@ void NativeMediaEnsureEventWakeBridge(
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
-  if (script == kNativeMediaYoutubeCleanPlayerScript) return kNativeMediaNoopScript;
+  if (script == kNativeMediaYoutubeCleanPlayerScript) {
+    NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
+    return kNativeMediaNoopScript;
+  }
   if (script == kNativeMediaTverWatchdogScript) {
     NativeMediaEnsureEventWakeBridge(webview, hostWindow, alive);
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
