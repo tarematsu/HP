@@ -78,12 +78,13 @@ function validDocument(value: unknown): StoredArtistChartDocument | null {
     rank: Number(entry.rank),
     artist_name: String(entry.artist_name || "").trim(),
   }));
+  const receivedAt = Number(document.received_at);
   return {
     version: 1,
     chart_id: CHART_ID,
     chart_date: chartDate,
     observed_at: Number(document.observed_at) || 0,
-    received_at: Number(document.received_at) || undefined,
+    ...(Number.isFinite(receivedAt) && receivedAt > 0 ? { received_at: receivedAt } : {}),
     entry_count: Number(document.entry_count) || entries.length,
     entries,
   };
@@ -106,7 +107,8 @@ async function datedObjectKeys(bucket: R2Bucket): Promise<Array<{ key: string; d
     const listed = await bucket.list({ prefix: PREFIX, limit: 1000, ...(cursor ? { cursor } : {}) });
     for (const object of listed.objects) {
       const match = object.key.match(DATE_OBJECT);
-      if (match) objects.push({ key: object.key, date: match[1] });
+      const date = match?.[1];
+      if (date) objects.push({ key: object.key, date });
     }
     cursor = listed.truncated ? listed.cursor : undefined;
   } while (cursor);
