@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url';
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8');
 
-test('dashboard entry installs the sole previous-day comparison chart renderer', async () => {
+test('dashboard entry installs the sole previous-day comparison chart renderer lazily', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260927\.2/);
-  assert.match(entry, /dashboard-chart-detail\.js\?v=20260927\.2/);
+  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260929\.1/);
+  assert.match(entry, /dashboard-chart-detail\.js\?v=20260929\.1/);
   assert.doesNotMatch(entry, /dashboard-current-enhancements\.js/);
 });
 
