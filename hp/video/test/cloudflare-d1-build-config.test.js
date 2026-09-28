@@ -18,6 +18,10 @@ test('dependency installation is controlled by the HomePanel workspace lockfile'
   const database = cloudWrangler.d1_databases?.find((entry) => entry?.binding === 'DB');
   assert.equal(database?.database_name, 'homepanel-data');
   assert.match(database?.database_id, /^[0-9a-f-]{36}$/i);
+
+  const spotifyChartDatabase = cloudWrangler.d1_databases?.find((entry) => entry?.binding === 'OTHER_DB');
+  assert.equal(spotifyChartDatabase?.database_name, 'stationhead-other');
+  assert.match(spotifyChartDatabase?.database_id, /^[0-9a-f-]{36}$/i);
 });
 
 test('unified cloud configuration owns the bounded Queue consumer', () => {
