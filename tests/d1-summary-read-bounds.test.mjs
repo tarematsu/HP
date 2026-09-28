@@ -3,7 +3,11 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../site/functions/lib/current-minute-summary.js';
-import { FACTS_HISTORY_SINCE_SQL } from '../site/functions/lib/dashboard-facts.js';
+import {
+  FACTS_HISTORY_SINCE_SQL,
+  applyDashboardHistoryDailyMembers,
+  dashboardHistoryDailyMembersSql,
+} from '../site/functions/lib/dashboard-facts.js';
 
 test('current daily summary reads the incremental one-row projection', () => {
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /FROM sh_current_daily_summary AS p/);
@@ -15,23 +19,33 @@ test('current daily summary reads the incremental one-row projection', () => {
   assert.doesNotMatch(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /ROW_NUMBER\(\) OVER/);
 });
 
-test('dashboard history resolves daily members once per materialized day', () => {
-  assert.match(FACTS_HISTORY_SINCE_SQL, /history AS MATERIALIZED/);
-  assert.match(FACTS_HISTORY_SINCE_SQL, /history_days AS MATERIALIZED/);
-  assert.match(FACTS_HISTORY_SINCE_SQL, /daily_members AS MATERIALIZED/);
-  assert.match(FACTS_HISTORY_SINCE_SQL, /INDEXED BY idx_sh_total_member_daily_latest/);
-  assert.doesNotMatch(FACTS_HISTORY_SINCE_SQL, /ROW_NUMBER\(\) OVER/);
+function d1Adapter(sqlite) {
+  return {
+    prepare(sql) {
+      const statement = sqlite.prepare(sql);
+      return {
+        bind(...bindings) {
+          return {
+            async all() {
+              return { results: statement.all(...bindings) };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+test('dashboard history scans the rollup once and resolves members only for returned days', async () => {
+  assert.doesNotMatch(FACTS_HISTORY_SINCE_SQL, /MATERIALIZED|history_days|daily_members/);
+  assert.doesNotMatch(FACTS_HISTORY_SINCE_SQL, /sh_total_member_daily/);
+  assert.match(FACTS_HISTORY_SINCE_SQL, /r\.channel_id=\?1/);
+  assert.match(FACTS_HISTORY_SINCE_SQL, /r\.bucket_at>=\?2-300000/);
+  assert.match(FACTS_HISTORY_SINCE_SQL, /r\.observed_at>\?2/);
+  assert.match(FACTS_HISTORY_SINCE_SQL, /ORDER BY r\.bucket_at ASC/);
 
   const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE sh_minute_facts(
-    id INTEGER PRIMARY KEY,
-    channel_id INTEGER NOT NULL,
-    minute_at INTEGER NOT NULL,
-    source_code INTEGER NOT NULL
-  );
-  CREATE INDEX idx_sh_minute_facts_live_minute
-    ON sh_minute_facts(source_code,minute_at DESC,id DESC);
-  CREATE TABLE sh_dashboard_history_5m(
+  db.exec(`CREATE TABLE sh_dashboard_history_5m(
     channel_id INTEGER NOT NULL,
     bucket_at INTEGER NOT NULL,
     observed_at INTEGER NOT NULL,
@@ -55,8 +69,6 @@ test('dashboard history resolves daily members once per materialized day', () =>
     );`);
 
   const day = Date.parse('2026-07-20T00:00:00Z');
-  db.prepare('INSERT INTO sh_minute_facts VALUES(?,?,?,?)')
-    .run(1, 318, day + 200_000, 1);
   const insertHistory = db.prepare(
     'INSERT INTO sh_dashboard_history_5m VALUES(?,?,?,?,?,?,?,?)',
   );
@@ -77,15 +89,21 @@ test('dashboard history resolves daily members once per materialized day', () =>
   insertDaily.run(318, day, 1, day + 6_000, 600);
   insertDaily.run(318, day, 3, day + 6_000, 700);
 
-  const rows = db.prepare(FACTS_HISTORY_SINCE_SQL).all(day - 1);
-  assert.deepEqual(rows.map((row) => row.total_member_count), [600, 600, 102]);
+  const rows = db.prepare(FACTS_HISTORY_SINCE_SQL).all(318, day - 1);
+  assert.deepEqual(rows.map((row) => row.total_member_count), [100, 101, 102]);
+  const corrected = await applyDashboardHistoryDailyMembers(d1Adapter(db), 318, rows);
+  assert.deepEqual(corrected.map((row) => row.total_member_count), [600, 600, 102]);
 
-  const plan = db.prepare(`EXPLAIN QUERY PLAN ${FACTS_HISTORY_SINCE_SQL}`)
-    .all(day - 1)
+  const historyPlan = db.prepare(`EXPLAIN QUERY PLAN ${FACTS_HISTORY_SINCE_SQL}`)
+    .all(318, day - 1)
     .map((item) => item.detail)
     .join('\n');
-  assert.match(
-    plan,
-    /idx_sh_total_member_daily_latest \(channel_id=\? AND day_at=\?\)/,
-  );
+  assert.match(historyPlan, /sh_dashboard_history_5m.*channel_id=\? AND bucket_at>\?/);
+  assert.doesNotMatch(historyPlan, /USE TEMP B-TREE FOR ORDER BY/);
+
+  const memberPlan = db.prepare(`EXPLAIN QUERY PLAN ${dashboardHistoryDailyMembersSql(2)}`)
+    .all(318, day, day + 86_400_000)
+    .map((item) => item.detail)
+    .join('\n');
+  assert.match(memberPlan, /idx_sh_total_member_daily_latest \(channel_id=\? AND day_at=\?\)/);
 });

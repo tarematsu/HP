@@ -126,7 +126,7 @@ test('five-minute rollup catches up a completed bucket once after a missed bound
     minute_at: nextBucket + 120_000,
   }).run();
 
-  const rows = sqlite.prepare(FACTS_HISTORY_24H_SQL).all();
+  const rows = sqlite.prepare(FACTS_HISTORY_24H_SQL).all(318);
   assert.equal(result.meta.changes, 1);
   assert.equal(rows.length, 1);
   assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM sh_dashboard_history_5m').get().count, 1);
