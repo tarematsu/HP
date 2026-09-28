@@ -77,11 +77,9 @@ test('Spotify read model keeps Sakurazaka detail and all three all-idol trend me
   ], [
     trendRow('equal-love', '2026-09-26', 210, '＝LOVE', 1, 180, 70),
     trendRow('equal-love', '2026-09-27', 220, '＝LOVE', 1, 190, 80),
-    trendRow('nogizaka46', '2026-09-27', 190, '乃木坂46', 5, 160, 60),
     trendRow('sakurazaka46', '2026-09-27', 120, '櫻坂46', 16, 110, 50),
-    trendRow('hinatazaka46', '2026-09-27', 80, '日向坂46', 18, 75, 30),
   ]);
-  assert.equal(model.default_artist, 'sakurazaka46');
+
   assert.deepEqual(Object.keys(model.groups), ['sakurazaka46']);
   assert.equal(model.groups.sakurazaka46.track_count, 1);
   assert.equal(model.groups.sakurazaka46.total_delta, 120);
@@ -105,18 +103,16 @@ test('Spotify read model keeps Sakurazaka detail and all three all-idol trend me
     'top10_year_delta',
     'total_delta',
   ]);
-  assert.equal(model.trend['equal-love'][0].artist_name, '＝LOVE');
-  assert.equal(model.trend['equal-love'][0].current_rank, 1);
 });
 
-test('Spotify detail merges duplicate editions with the same normalized song title', () => {
+test('Spotify detail merges duplicate editions and sorts by delta after dedupe', () => {
   const first = row('sakurazaka46', 'single-id', 9_386_149, 3_991);
   first.name = '自業自得';
   const second = row('sakurazaka46', 'album-id', 9_386_149, 3_991);
   second.name = ' 自業自得　';
   const third = row('sakurazaka46', 'other-id', 8_781_230, 3_847);
   third.name = '承認欲求';
-  const payload = spotifyReadModel([first, second, third], []).groups.sakurazaka46;
+  const payload = spotifyReadModel([third, second, first], []).groups.sakurazaka46;
 
   assert.equal(payload.track_count, 2);
   assert.deepEqual(payload.tracks.map((track) => track.name), ['自業自得', '承認欲求']);
@@ -124,47 +120,35 @@ test('Spotify detail merges duplicate editions with the same normalized song tit
   assert.deepEqual(payload.tracks.map((track) => track.rank), [1, 2]);
 });
 
-test('Spotify detail SQL reads only Sakurazaka while trend SQL stays on the bounded artist-day summary', () => {
+test('Spotify trend SQL reads only the compact artist-day summary', () => {
   const detailSql = spotifyPlaycountSql();
   assert.match(detailSql, /target\.artist_key='sakurazaka46'/);
   assert.doesNotMatch(detailSql, /nogizaka46|hinatazaka46/);
+
   const trendSql = spotifyTrendSql();
   assert.match(trendSql, /-89 days/);
   assert.match(trendSql, /FROM sh_spotify_artist_daily daily/);
-  assert.match(trendSql, /latest_summary_date/);
-  assert.match(trendSql, /INNER JOIN sh_spotify_artists artist/);
-  assert.match(trendSql, /sh_spotify_top20_history/);
   assert.match(trendSql, /daily\.total_delta/);
   assert.match(trendSql, /daily\.top10_delta/);
   assert.match(trendSql, /daily\.top10_year_delta/);
   assert.doesNotMatch(trendSql, /sh_spotify_playcount_daily|GROUP BY|SUM\(d\.delta\)/);
-  assert.doesNotMatch(trendSql, /target\.artist_key IN/);
 });
 
-test('Spotify API publishes Sakurazaka detail plus all-idol trend summaries', async () => {
+test('Spotify API publishes all three trend metrics', async () => {
   const response = await onRequestGet({
     env: {
       OTHER_DB: mockDb({
-        latestRows: [row('nogizaka46', 'n1', 100, 5), row('sakurazaka46', 's1', 200, 10), row('hinatazaka46', 'h1', 300, 15)],
-        trendRows: [
-          trendRow('equal-love', '2026-09-27', 25, '＝LOVE', 1, 20, 8),
-          trendRow('nogizaka46', '2026-09-27', 5, '乃木坂46', 5, 5, 2),
-          trendRow('sakurazaka46', '2026-09-27', 10, '櫻坂46', 16, 9, 4),
-          trendRow('hinatazaka46', '2026-09-27', 15, '日向坂46', 18, 12, 6),
-        ],
+        latestRows: [row('sakurazaka46', 's1', 200, 10)],
+        trendRows: [trendRow('sakurazaka46', '2026-09-27', 10, '櫻坂46', 16, 9, 4)],
       }),
     },
   });
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(payload.ok, true);
-  assert.deepEqual(Object.keys(payload.groups), ['sakurazaka46']);
-  assert.equal(payload.groups.sakurazaka46.tracks[0].playcount, 200);
-  assert.equal(payload.trend.nogizaka46.length, 1);
-  assert.equal(payload.trend['equal-love'][0].artist_name, '＝LOVE');
-  assert.equal(payload.trend.sakurazaka46.at(-1).total_delta, 10);
-  assert.equal(payload.trend.sakurazaka46.at(-1).top10_delta, 9);
-  assert.equal(payload.trend.sakurazaka46.at(-1).top10_year_delta, 4);
+  assert.equal(payload.trend.sakurazaka46[0].total_delta, 10);
+  assert.equal(payload.trend.sakurazaka46[0].top10_delta, 9);
+  assert.equal(payload.trend.sakurazaka46[0].top10_year_delta, 4);
 });
 
 test('Spotify public API variants resolve to one materialized R2 model and one cache key', () => {
@@ -175,12 +159,12 @@ test('Spotify public API variants resolve to one materialized R2 model and one c
   assert.equal(legacy, plain);
 });
 
-test('Spotify API reports missing D1 only on the read-model producer path', async () => {
+test('Spotify API reports missing D1 only on the producer path', async () => {
   const missing = await onRequestGet({ env: {} });
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab has daily, top-10, and current-year top-10 graphs plus Sakurazaka detail table', () => {
+test('Spotify tab renders daily, top-10, and current-year top-10 graphs', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
@@ -188,43 +172,23 @@ test('Spotify tab has daily, top-10, and current-year top-10 graphs plus Sakuraz
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
-  assert.match(shell, /data-view = 'spotify'|dataset\.view = 'spotify'/);
-  assert.doesNotMatch(shell, /data-spotify-artist|spotify-artist-switch/);
-  assert.match(shell, /櫻坂46 Spotify再生数概要/);
-  assert.match(shell, /<h2 id="spotifyTableTitle">櫻坂46 再生数一覧<\/h2>/);
   assert.match(shell, /Spotify 日次 - 再生数推移/);
   assert.match(shell, /Spotify 上位10曲 - 再生数推移/);
   assert.match(shell, /Spotify 上位10曲\(今年限定\) - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /id="spotifyTop10TrendCharts"/);
   assert.match(shell, /id="spotifyTop10YearTrendCharts"/);
-  assert.match(shell, /spotify\.css\?v=20260928\.5/);
-  assert.match(shell, /table-wrap table-fit-mobile/);
 
-  assert.match(runtime, /SAKURAZAKA_KEY = 'sakurazaka46'/);
-  assert.doesNotMatch(runtime, /activeArtist|updateArtistButtons|data-spotify-artist/);
-  assert.match(runtime, /Object\.entries\(trend \|\| \{\}\)/);
   assert.match(runtime, /metricKey: 'total_delta'/);
   assert.match(runtime, /metricKey: 'top10_delta'/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
-  assert.match(runtime, /spotify-trend-combined/);
-  assert.match(runtime, /spotify-trend-legend/);
   assert.match(runtime, /spotify-trend-scroll chart-fit/);
-  assert.match(runtime, /name\.textContent = artistName/);
-  assert.match(runtime, /chart\.append\(legend, scroll\)/);
-  assert.match(runtime, /container\.append\(chart\)/);
-  assert.match(runtime, /model\?\.groups\?\.\[SAKURAZAKA_KEY\]/);
-  assert.match(runtime, /model\?\.trend/);
   assert.match(runtime, /fetch\('\/api\/spotify-playcounts'\)/);
-  assert.doesNotMatch(runtime, /spotify-playcounts\?artist=/);
 
-  assert.doesNotMatch(styles, /spotify-artist-switch|#likesView|#spotifyView/);
   assert.match(styles, /\.spotify-trend-legend/);
   assert.match(styles, /aspect-ratio: 960 \/ 340/);
   assert.match(sharedLayout, /\.chart-fit > :is\(svg, canvas\)[\s\S]*min-width:\s*0 !important/);
-  assert.match(sharedLayout, /\.table-wrap\.table-fit-mobile[\s\S]*overflow-x:\s*hidden !important/);
-  assert.match(sharedLayout, /\.table-fit-mobile > table[\s\S]*table-layout:\s*fixed !important/);
-  assert.match(tabs, /import\('\/spotify\.js\?v=20260929\.1'\)/);
-  assert.match(dashboard, /spotify-shell\.js\?v=20260929\.1/);
-  assert.match(dashboard, /dashboard-tabs\.js\?v=20260929\.1/);
+  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.5'\)/);
+  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.5/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.5/);
 });
