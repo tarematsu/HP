@@ -27,7 +27,7 @@ function scheduleReveal(source) {
   if (!canvas || settled) return;
   conceal();
   clearTimeout(revealTimer);
-  const delay = source === 'network' ? 380 : 900;
+  const delay = source === 'details-network' ? 180 : 280;
   revealTimer = setTimeout(reveal, delay);
 }
 
@@ -35,6 +35,8 @@ if (canvas) {
   conceal();
   fallbackTimer = setTimeout(reveal, 2500);
   window.addEventListener('dashboard:payload', (event) => {
+    const payload = event?.detail?.payload;
+    if (!Array.isArray(payload?.history) || !payload.history.length) return;
     scheduleReveal(String(event?.detail?.source || 'network'));
   });
 }
