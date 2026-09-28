@@ -1,6 +1,3 @@
-ALTER TABLE sh_spotify_artist_daily ADD COLUMN top10_delta INTEGER;
-ALTER TABLE sh_spotify_artist_daily ADD COLUMN top10_year_delta INTEGER;
-
 WITH latest AS (
   SELECT MAX(snapshot_date) AS snapshot_date
   FROM sh_spotify_playcount_daily
