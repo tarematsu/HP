@@ -204,10 +204,13 @@ test('Spotify tab uses only the materialized Spotify read model for all four gra
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
-  assert.match(shell, /Spotify 日次全曲 再生数推移/);
-  assert.match(shell, /Spotify 日次上位10曲 再生数推移/);
-  assert.match(shell, /Spotify 日次上位10曲\(今年限定\) 再生数推移/);
+  assert.match(shell, /Spotify 全曲合計 再生数推移/);
+  assert.match(shell, /Spotify 上位10曲合計 再生数推移/);
+  assert.match(shell, /Spotify 上位10曲合計\(今年限定\) 再生数推移/);
   assert.match(shell, /Spotify デイリートップアーティスト\(日本\) 順位推移/);
+  assert.match(shell, /櫻坂46楽曲数/);
+  assert.match(shell, /櫻坂46前日比合計/);
+  assert.match(shell, /<th>前日比<\/th>/);
   assert.doesNotMatch(shell, / - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /id="spotifyTop10TrendCharts"/);
@@ -227,7 +230,7 @@ test('Spotify tab uses only the materialized Spotify read model for all four gra
   assert.match(styles, /\.spotify-trend-legend/);
   assert.match(styles, /aspect-ratio: 960 \/ 340/);
   assert.match(sharedLayout, /\.chart-fit > :is\(svg, canvas\)[\s\S]*min-width:\s*0 !important/);
-  assert.match(tabs, /import\('\/spotify\.js\?v=20260928\.5'\)/);
-  assert.match(dashboard, /spotify-shell\.js\?v=20260928\.5/);
-  assert.match(dashboard, /dashboard-tabs\.js\?v=20260928\.5/);
+  assert.match(tabs, /import\('\/spotify\.js\?v=20260929\.1'\)/);
+  assert.match(dashboard, /spotify-shell\.js\?v=20260929\.1/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260929\.1/);
 });
