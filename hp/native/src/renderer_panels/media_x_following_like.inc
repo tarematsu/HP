@@ -31,6 +31,33 @@ LR"JS(
   const followingTab = () => Array.from(document.querySelectorAll('[role="tab"]'))
       .find(tab => /^(?:Following|フォロー中)$/i.test(text(tab)));
 
+  const startupKey = 'homepanel:startup-x-until:v1';
+  const youtubeStart =
+      'https://homepanel-cloud.tarematsu.workers.dev/v1/native/youtube-start';
+  let startupUntil = 0;
+  try { startupUntil = Number(sessionStorage.getItem(startupKey) || 0); }
+  catch (_) {}
+  const startupRequested =
+      new URLSearchParams(location.search).get('homepanel') === 'startup';
+  if (startupRequested &&
+      (!Number.isFinite(startupUntil) || startupUntil <= Date.now())) {
+    startupUntil = Date.now() + 5 * 60 * 1000;
+    try { sessionStorage.setItem(startupKey, String(startupUntil)); }
+    catch (_) {}
+  }
+  if (Number.isFinite(startupUntil) && startupUntil > 0) {
+    const remaining = startupUntil - Date.now();
+    if (remaining > 0) {
+      clearTimeout(state.startupExitTimer);
+      state.startupExitTimer = setTimeout(() => {
+        try { sessionStorage.removeItem(startupKey); } catch (_) {}
+        location.assign(youtubeStart);
+      }, remaining);
+    } else {
+      try { sessionStorage.removeItem(startupKey); } catch (_) {}
+    }
+  }
+
   const run = async () => {
     try {
       if (document.readyState === 'loading') {
