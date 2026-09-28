@@ -10,7 +10,7 @@ const source = [...rawSource.matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
 const mediaSection = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 
-async function run({ selected = true, switchWorks = true, missingTab = false, failLike = false, leaveFollowing = false, bodyMentionsRepost = false, delayedTimers = false, emptyUntil = 0 } = {}) {
+async function run({ selected = true, switchWorks = true, missingTab = false, failLike = false, leaveFollowing = false, bodyMentionsRepost = false, bodyMentionsAd = false, delayedTimers = false, emptyUntil = 0 } = {}) {
   let now = 0;
   let scrollOffset = 0;
   const clickTimes = [];
@@ -29,7 +29,7 @@ async function run({ selected = true, switchWorks = true, missingTab = false, fa
     getAttribute: () => String(selectedTab),
     click: () => { tabClicks++; if (switchWorks) selectedTab = true; },
   };
-  const article = (id, label = 'normal', initiallyLiked = false, baseTop = 0) => {
+  const article = (id, label = 'normal', initiallyLiked = false, baseTop = 0, options = {}) => {
     let liked = initiallyLiked;
     markLiked.set(String(id), () => {
       if (!failLike) liked = true;
@@ -43,11 +43,20 @@ async function run({ selected = true, switchWorks = true, missingTab = false, fa
         return { top, bottom: top + 160 };
       },
       querySelectorAll(selector) {
-        return selector === 'span' ? [] : [];
+        if (selector !== 'span') return [];
+        return [{
+          innerText: label,
+          closest: query => options.promoted
+            ? null
+            : (query === '[data-testid="tweetText"]' ? {} : null),
+        }];
       },
       querySelector(selector) {
-        if (selector === '[data-testid="socialContext"]') return label === 'repost' ? { innerText: 'user reposted' } : null;
-        if (selector.includes('placement')) return null;
+        if (selector === '[data-testid="socialContext"]') {
+          if (options.socialContext) return { innerText: options.socialContext };
+          return label === 'repost' ? { innerText: 'user reposted' } : null;
+        }
+        if (selector.includes('placement')) return options.placement ? {} : null;
         if (selector === 'time') return { closest: () => ({ getAttribute: () => `/user/status/${id}` }) };
         if (selector === '[data-testid="unlike"]') return liked ? {} : null;
         if (selector === '[data-testid="like"]') return liked ? null : {
@@ -65,16 +74,20 @@ async function run({ selected = true, switchWorks = true, missingTab = false, fa
       },
     };
   };
+  const normalLabel = bodyMentionsAd
+    ? '広告'
+    : (bodyMentionsRepost ? 'リポストお願いします' : 'normal');
   const articles = [
-    article(1, 'Promoted', false, 40),
-    article(2, 'repost', false, 90),
-    article(3, 'Boosted', false, 140),
+    article(1, 'Promoted', false, 40, { promoted: true }),
+    article(2, 'repost', false, 90, { socialContext: 'user reposted' }),
+    article(3, 'Boosted', false, 140, { promoted: true }),
     article(4, 'normal', true, 190),
     ...Array.from({ length: 8 }, (_, i) => article(
       i + 10,
-      bodyMentionsRepost ? 'リポストお願いします' : 'normal',
+      normalLabel,
       false,
       320 + i * 220,
+      i === 0 ? { socialContext: 'Pinned' } : {},
     )),
   ];
   const timers = [];
@@ -228,4 +241,16 @@ test('stops liking if the user leaves Following', async () => {
 test('ordinary posts mentioning reposts are not mistaken for reposts', async () => {
   const result = await run({ bodyMentionsRepost: true });
   assert.deepEqual(result.clickedIds, [10, 11, 12, 13, 14]);
+});
+
+test('ordinary tweet text mentioning ads or PR is not mistaken for promotion', async () => {
+  const result = await run({ bodyMentionsAd: true });
+  assert.deepEqual(result.clickedIds, [10, 11, 12, 13, 14]);
+});
+
+test('filter CSS does not hide every social-context post', () => {
+  assert.doesNotMatch(source, /article\[data-testid="tweet"\]:has\(\[data-testid="socialContext"\]\)/);
+  assert.doesNotMatch(source, /cellInnerDiv[^`]*socialContext/);
+  assert.doesNotMatch(source, /const promotedText/);
+  assert.match(source, /!element\.closest\?\.\('\[data-testid="tweetText"\]'\)/);
 });
