@@ -28,6 +28,12 @@
       "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11"
     }
   ],
+  "r2_buckets": [
+    {
+      "binding": "PAGES_RESPONSE_R2",
+      "bucket_name": "sh-pages-responses"
+    }
+  ],
   "queues": {
     "consumers": [
       {
