@@ -48,8 +48,8 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
 
   assert.equal(versions.entry, '20260928.4');
   assert.equal(versions.header, '20260928.1');
-  assert.equal(versions.tabs, '20260929.1');
-  assert.equal(versions.spotifyShell, '20260929.1');
+  assert.equal(versions.tabs, '20260928.5');
+  assert.equal(versions.spotifyShell, '20260928.5');
   assert.equal(versions.spotifyCss, '20260928.5');
   assert.equal(versions.firstWeekShell, '20260928.1');
   assert.equal(versions.playedTracksShell, '20260928.1');
