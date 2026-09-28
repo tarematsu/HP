@@ -23,22 +23,28 @@ const runtime = JSON.parse(readFileSync(
 const cycleStart = Date.UTC(2026, 6, 18);
 const MINUTE = 60_000;
 
-const SCHEDULED_DAILY_VARIANTS = [
+const ALL_VARIANTS = [
   'dashboard',
   'history:daily',
   'history:weekly',
   'history:monthly',
   'history:broadcasts',
   'host-history:summary',
+  'spotify-playcounts',
 ];
 
-test('shared Actions cadence resolver excludes event-driven Spotify from due keys', () => {
-  assert.deepEqual([...dueVariantKeys(cycleStart + 26 * MINUTE)], SCHEDULED_DAILY_VARIANTS);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], SCHEDULED_DAILY_VARIANTS);
+const TWELVE_HOUR_VARIANTS = [
+  'dashboard',
+  'spotify-playcounts',
+];
+
+test('shared cadence metadata stays compatible while Spotify is excluded by scheduled runner', () => {
+  assert.deepEqual([...dueVariantKeys(cycleStart + 26 * MINUTE)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(cycleStart + 56 * MINUTE)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycleStart + 86 * MINUTE)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycleStart + 386 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 746 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 746 * MINUTE)], TWELVE_HOUR_VARIANTS);
   assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
 });
 
