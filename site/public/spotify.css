@@ -172,8 +172,16 @@
     font-size: 0.8rem;
   }
 
+  .spotify-trend-scroll {
+    width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+  }
+
   .spotify-trend-svg {
-    min-width: 720px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .spotify-data-panel .table-wrap {
