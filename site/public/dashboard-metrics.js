@@ -75,6 +75,14 @@ function showCurrentRuntimeError(error) {
   }
 }
 
+function replayCurrentPayload() {
+  const payload = window.__dashboardCurrentPayload;
+  if (!payload?.ok) return;
+  window.dispatchEvent(new CustomEvent('dashboard:payload', {
+    detail: { payload, source: 'runtime-replay' },
+  }));
+}
+
 function ensureCurrentRuntime() {
   if (currentRuntimePromise) return currentRuntimePromise;
   currentRuntimePromise = (async () => {
@@ -93,6 +101,7 @@ function ensureCurrentRuntime() {
       import('./dashboard-chart-detail.js?v=20260929.1'),
       import('./dashboard-daily-summaries.js?v=20260929.1'),
     ]);
+    replayCurrentPayload();
     await import('./dashboard-details-client.js?v=20260929.2');
     await clientPromise;
   })().catch((error) => {
