@@ -66,6 +66,8 @@ LR"JS(
       }
     }
   };
+)JS"
+LR"JS(
   const articleId = article => {
     const permalink = article?.querySelector('time')?.closest('a')
         ?.getAttribute('href');
@@ -110,7 +112,8 @@ LR"JS(
     bridge.postMessage(`homepanel:x-like:${id}:${x}:${y}`);
     return true;
   };
-
+)JS"
+LR"JS(
   const run = async () => {
     try {
       if (document.readyState === 'loading') {
