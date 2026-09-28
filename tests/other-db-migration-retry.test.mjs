@@ -11,6 +11,14 @@ const spotifyCatalogMigration = readFileSync(
   'database/other-migrations/044_spotify_catalog_progress.sql',
   'utf8',
 );
+const spotifyArtistDailyMigration = readFileSync(
+  'database/other-migrations/047_spotify_artist_daily_summary.sql',
+  'utf8',
+);
+const spotifyTop10Migration = readFileSync(
+  'database/other-migrations/050_spotify_artist_top10_daily.sql',
+  'utf8',
+);
 
 test('OTHER_DB provisioning makes migration 039 retry-safe before later migrations run', () => {
   assert.match(
@@ -42,4 +50,11 @@ test('OTHER_DB provisioning makes Spotify catalog progress migration retry-safe'
   assert.match(provisioner, /\['catalog_completed', 'INTEGER NOT NULL DEFAULT 0'\]/);
   assert.match(provisioner, /migrationFile === SPOTIFY_CATALOG_PROGRESS_MIGRATION/);
   assert.match(provisioner, /ALTER TABLE \$\{SPOTIFY_COLLECTION_RUNS_TABLE\} ADD COLUMN \$\{name\} \$\{type\}/);
+});
+
+test('Spotify Top 10 summary migration is safe to replay during full provisioning', () => {
+  assert.match(spotifyArtistDailyMigration, /top10_delta INTEGER/);
+  assert.match(spotifyArtistDailyMigration, /top10_year_delta INTEGER/);
+  assert.doesNotMatch(spotifyTop10Migration, /ALTER TABLE sh_spotify_artist_daily ADD COLUMN/);
+  assert.match(spotifyTop10Migration, /UPDATE sh_spotify_artist_daily/);
 });
