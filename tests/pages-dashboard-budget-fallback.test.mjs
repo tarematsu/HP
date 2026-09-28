@@ -23,11 +23,9 @@ const HISTORY_KEYS = [
   'history:monthly',
   'history:broadcasts',
   'host-history:summary',
-  'spotify-playcounts',
 ];
-const REUSE_ONLY_KEYS = HISTORY_KEYS.filter((key) => key !== 'spotify-playcounts');
 
-test('D1 budget deferral reuses heavy history while allowing the bounded Spotify model to refresh', () => {
+test('D1 budget deferral reuses scheduled history without touching event-driven Spotify', () => {
   assert.match(workflow, /name: Record D1 budget deferral/);
   assert.match(workflow, /name: Install Worker dependencies\n        run: npm ci/);
   assert.match(workflow, /name: Refresh reusable history models during D1 budget deferral/);
@@ -50,7 +48,7 @@ test('D1 budget deferral reuses heavy history while allowing the bounded Spotify
   assert.doesNotMatch(workflow, /Rebuild track history|track-history generation/);
 });
 
-test('budget fallback keeps heavy history reuse-only, refreshes Spotify, and excludes dashboard', async () => {
+test('budget fallback keeps every scheduled history variant reuse-only and excludes Spotify/dashboard', async () => {
   assert.deepEqual(HISTORY_READ_MODEL_VARIANTS.map(({ key }) => key), HISTORY_KEYS);
   const published = [];
   const reuseOnly = [];
@@ -69,8 +67,8 @@ test('budget fallback keeps heavy history reuse-only, refreshes Spotify, and exc
 
   assert.equal(result.ok, true);
   assert.deepEqual(published, HISTORY_KEYS);
-  assert.deepEqual(reuseOnly, REUSE_ONLY_KEYS);
-  assert.equal(reuseOnly.includes('spotify-playcounts'), false);
+  assert.deepEqual(reuseOnly, HISTORY_KEYS);
+  assert.equal(published.includes('spotify-playcounts'), false);
   assert.equal(published.includes('dashboard'), false);
   assert.equal(result.track_history_steps, 0);
   assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
