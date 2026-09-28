@@ -25,11 +25,10 @@ const ALL_VARIANTS = [
 
 const TWELVE_HOUR_VARIANTS = [
   'dashboard',
-  'history:daily',
   'spotify-playcounts',
 ];
 
-test('Actions cadence uses twelve-hour daily/Spotify models and daily archives', () => {
+test('Actions cadence uses daily history models and twelve-hour Spotify models', () => {
   assert.deepEqual([...dueVariantKeys(BASE + 26 * MINUTE_MS)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(BASE + 55 * MINUTE_MS)], ALL_VARIANTS);
   assert.deepEqual([...dueVariantKeys(BASE + 56 * MINUTE_MS)], ['dashboard']);
