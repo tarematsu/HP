@@ -4,6 +4,8 @@
 // recovery endpoint so a normal downstream lag is not rendered as a stopped
 // collector.
 export const FACTS_FRESH_MS = 10 * 60 * 1000;
+const DAY_MS = 86_400_000;
+const DASHBOARD_BUCKET_MS = 5 * 60_000;
 
 export const FACTS_LATEST_SQL = `SELECT
   f.id,f.minute_at,f.observed_at,f.channel_id,
@@ -32,43 +34,64 @@ ORDER BY f.minute_at DESC,f.id DESC
 LIMIT 1`;
 
 function rollupHistorySql(whereClause) {
-  return `WITH latest_channel AS (
-    SELECT channel_id FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
-    WHERE source_code=1 ORDER BY minute_at DESC,id DESC LIMIT 1
-  ), history AS MATERIALIZED (
-    SELECT r.observed_at,r.listener_count,r.online_member_count,
-      r.total_member_count,r.total_listens,
-      (r.observed_at/86400000)*86400000 AS day_at
-    FROM sh_dashboard_history_5m r
-    WHERE r.channel_id=(SELECT channel_id FROM latest_channel)
-      AND ${whereClause}
-    ORDER BY r.observed_at ASC
-    LIMIT 300
-  ), history_days AS MATERIALIZED (
-    SELECT DISTINCT day_at FROM history
-  ), daily_members AS MATERIALIZED (
-    SELECT days.day_at,
-      (SELECT d.last_total_member_count
-       FROM sh_total_member_daily d INDEXED BY idx_sh_total_member_daily_latest
-       WHERE d.channel_id=(SELECT channel_id FROM latest_channel)
-         AND d.day_at=days.day_at
-       ORDER BY d.last_observed_at DESC,d.host_key ASC
-       LIMIT 1) AS last_total_member_count
-    FROM history_days days
-  )
-  SELECT h.observed_at,h.listener_count,h.online_member_count,
-    COALESCE(d.last_total_member_count,h.total_member_count) AS total_member_count,
-    h.total_listens
-  FROM history h
-  LEFT JOIN daily_members d ON d.day_at=h.day_at
-  ORDER BY h.observed_at ASC
+  return `SELECT
+    r.observed_at,r.listener_count,r.online_member_count,
+    r.total_member_count,r.total_listens
+  FROM sh_dashboard_history_5m r
+  WHERE r.channel_id=?1
+    AND ${whereClause}
+  ORDER BY r.bucket_at ASC
   LIMIT 300`;
 }
 
 export const FACTS_HISTORY_24H_SQL = rollupHistorySql(
   "r.bucket_at>=unixepoch('now','-24 hours')*1000",
 );
-export const FACTS_HISTORY_SINCE_SQL = rollupHistorySql('r.observed_at>?');
+export const FACTS_HISTORY_SINCE_SQL = rollupHistorySql(
+  'r.bucket_at>=?2-300000 AND r.observed_at>?2',
+);
+
+function historyDayAt(value) {
+  const observedAt = Number(value);
+  return Number.isFinite(observedAt) && observedAt > 0
+    ? Math.floor(observedAt / DAY_MS) * DAY_MS
+    : null;
+}
+
+export function dashboardHistoryDailyMembersSql(dayCount) {
+  const count = Math.max(0, Math.trunc(Number(dayCount) || 0));
+  if (!count) return '';
+  const values = Array.from({ length: count }, (_, index) => `(?${index + 2})`).join(',');
+  return `WITH requested(day_at) AS (VALUES ${values})
+SELECT requested.day_at,
+  (SELECT d.last_total_member_count
+   FROM sh_total_member_daily d INDEXED BY idx_sh_total_member_daily_latest
+   WHERE d.channel_id=?1 AND d.day_at=requested.day_at
+   ORDER BY d.last_observed_at DESC,d.host_key ASC
+   LIMIT 1) AS last_total_member_count
+FROM requested`;
+}
+
+export async function applyDashboardHistoryDailyMembers(db, channelId, rows) {
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  if (!db?.prepare || !sourceRows.length || channelId == null) return sourceRows;
+  const days = [...new Set(sourceRows.map((row) => historyDayAt(row?.observed_at)).filter((day) => day != null))];
+  if (!days.length) return sourceRows;
+  const result = await db.prepare(dashboardHistoryDailyMembersSql(days.length))
+    .bind(channelId, ...days)
+    .all();
+  const membersByDay = new Map();
+  for (const row of result?.results || []) {
+    const dayAt = Number(row?.day_at);
+    const memberCount = row?.last_total_member_count;
+    if (Number.isFinite(dayAt) && memberCount != null) membersByDay.set(dayAt, memberCount);
+  }
+  return sourceRows.map((row) => {
+    const dayAt = historyDayAt(row?.observed_at);
+    const memberCount = dayAt == null ? null : membersByDay.get(dayAt);
+    return memberCount == null ? row : { ...row, total_member_count: memberCount };
+  });
+}
 
 // Worker-side prediction materialization uses its own aggregate.  Retain this
 // SQL only for offline tests/diagnostics; public loadFactsDashboard never runs it.
@@ -152,19 +175,23 @@ export async function loadFactsDashboard(
   db,
   { since = 0, includeHistory = true, includePrediction: _includePrediction = true } = {},
 ) {
+  const latest = await db.prepare(FACTS_LATEST_SQL).first();
+  if (!includeHistory || latest?.channel_id == null) {
+    return { latest, history: [], prediction: null };
+  }
   const initial = since <= 0;
-  const historyStatement = !includeHistory
-    ? null
-    : initial
-      ? db.prepare(FACTS_HISTORY_24H_SQL)
-      : db.prepare(FACTS_HISTORY_SINCE_SQL).bind(since);
-  const [latest, historyResult] = await Promise.all([
-    db.prepare(FACTS_LATEST_SQL).first(),
-    historyStatement ? historyStatement.all() : Promise.resolve({ results: [] }),
-  ]);
+  const historyStatement = initial
+    ? db.prepare(FACTS_HISTORY_24H_SQL).bind(latest.channel_id)
+    : db.prepare(FACTS_HISTORY_SINCE_SQL).bind(latest.channel_id, since);
+  const historyResult = await historyStatement.all();
+  const history = await applyDashboardHistoryDailyMembers(
+    db,
+    latest.channel_id,
+    historyResult?.results || [],
+  );
   return {
     latest,
-    history: historyResult?.results || [],
+    history,
     prediction: null,
   };
 }
