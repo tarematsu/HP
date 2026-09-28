@@ -239,11 +239,9 @@
     justify-self: stretch !important;
   }
 
-  /* Ranking/likes data tables scroll horizontally on mobile instead of
-     compressing every column into a narrow viewport. The stronger selectors
-     deliberately supersede the older runtime compact-width declarations. */
-  #historyView > .data-panel .table-wrap,
-  #likesView > .data-panel .table-wrap {
+  /* History ranking tables keep horizontal scrolling because they have many
+     columns. The compact Spotify and likes detail tables fit the viewport. */
+  #historyView > .data-panel .table-wrap {
     max-width: 100% !important;
     overflow-x: auto !important;
     overscroll-behavior-inline: contain;
@@ -268,11 +266,47 @@
     table-layout: auto !important;
   }
 
-  #likesView > .data-panel .table-wrap > table {
-    width: max-content !important;
-    min-width: 680px !important;
-    table-layout: auto !important;
+  #likesView > .data-panel .table-wrap,
+  #spotifyView > .spotify-data-panel .table-wrap {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
   }
+
+  #likesView > .data-panel .table-wrap > table,
+  #spotifyView > .spotify-data-panel .table-wrap > table.spotify-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+  }
+
+  #likesView > .data-panel .table-wrap th,
+  #likesView > .data-panel .table-wrap td,
+  #spotifyView > .spotify-data-panel .table-wrap th,
+  #spotifyView > .spotify-data-panel .table-wrap td {
+    padding-inline: 3px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  #likesView > .data-panel .table-wrap th:nth-child(1),
+  #likesView > .data-panel .table-wrap td:nth-child(1) { width: 8% !important; text-align: center !important; }
+  #likesView > .data-panel .table-wrap th:nth-child(2),
+  #likesView > .data-panel .table-wrap td:nth-child(2) { width: 34% !important; }
+  #likesView > .data-panel .table-wrap th:nth-child(3),
+  #likesView > .data-panel .table-wrap td:nth-child(3) { width: 18% !important; }
+  #likesView > .data-panel .table-wrap th:nth-child(4),
+  #likesView > .data-panel .table-wrap td:nth-child(4) { width: 17% !important; text-align: right !important; }
+  #likesView > .data-panel .table-wrap th:nth-child(5),
+  #likesView > .data-panel .table-wrap td:nth-child(5) { width: 23% !important; }
+
+  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(1),
+  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(1) { width: 10% !important; text-align: center !important; }
+  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(2),
+  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(2) { width: 42% !important; min-width: 0 !important; }
+  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(3),
+  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(3) { width: 26% !important; text-align: right !important; }
+  #spotifyView > .spotify-data-panel .spotify-table th:nth-child(4),
+  #spotifyView > .spotify-data-panel .spotify-table td:nth-child(4) { width: 22% !important; text-align: right !important; }
 
   .table-wrap th {
     height: 29px !important;
