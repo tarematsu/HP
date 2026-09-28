@@ -84,7 +84,7 @@ LR"JS(
       window.scrollTo(0, 0);
       await sleep(900);
 
-      const target = 5 + Math.floor(Math.random() * 6);
+      const target = 2 + Math.floor(Math.random() * 4);
       const seen = new Set();
       let liked = 0;
 
