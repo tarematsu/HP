@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { onRequestGet as dashboardGet } from '../functions/api/dashboard.js';
+import { onRequestGet as dashboardDetailsGet } from '../functions/api/dashboard-details.js';
 import {
   FACTS_HISTORY_24H_SQL,
   FACTS_HISTORY_SINCE_SQL,
@@ -83,7 +84,7 @@ test('persisted prediction state suppresses the per-request aggregate scan', asy
   assert.equal(db.callsMatching(/reported_current_stream_count AS current_stream_count/).length, 1);
 });
 
-test('unified dashboard includes facts, history and completed daily summaries', async () => {
+test('critical dashboard returns facts first and detail route supplies charts and daily summaries', async () => {
   resetDashboardDailySummariesCache();
   const now = Date.now();
   const currentDay = Math.floor(now / 86_400_000) * 86_400_000;
@@ -163,11 +164,26 @@ test('unified dashboard includes facts, history and completed daily summaries', 
   assert.equal(payload.history[0].online_member_count, 167);
   assert.equal(payload.daily_change.total_member_count, 99);
   assert.equal(payload.daily_change.total_listens, 366);
-  assert.equal(payload.daily_summaries.yesterday.member_growth, 11);
-  assert.equal(payload.daily_summaries.yesterday.stream_growth, 55);
-  assert.equal(payload.daily_summaries.day_before_yesterday.member_growth, 7);
+  assert.equal(payload.daily_summaries, undefined);
+  assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 0);
+
+  const detailFacts = new FakeD1Database()
+    .route('all', 'FROM sh_dashboard_history_5m', {
+      results: [{ observed_at: now - 2_000, online_member_count: 167 }],
+    })
+    .route('all', 'FROM sh_stream_5m_average_read_model', { results: [] });
+  const detailsResponse = await dashboardDetailsGet({
+    request: new Request('https://skrzk.test/api/dashboard-details?channel_id=318'),
+    env: { MINUTE_DB: detailFacts, OTHER_DB: other },
+  });
+  const details = await responseJson(detailsResponse);
+  assert.equal(detailsResponse.status, 200);
+  assert.equal(details.channel_id, 318);
+  assert.equal(details.history[0].online_member_count, 167);
+  assert.equal(details.daily_summaries.yesterday.member_growth, 11);
+  assert.equal(details.daily_summaries.yesterday.stream_growth, 55);
+  assert.equal(details.daily_summaries.day_before_yesterday.member_growth, 7);
   assert.equal(other.callsMatching(/FROM sh_daily_summary/).length, 1);
   assert.equal(other.callsMatching(/FROM sh_comment_velocity_samples/).length, 0);
-  assert.equal(facts.callsMatching(/r\.bucket_at>=\? AND r\.bucket_at<\?/).length, 1);
   assert.equal(db.callsMatching(/snapshots\.observed_at >=/).length, 0);
 });
