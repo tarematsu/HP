@@ -9,6 +9,13 @@ LR"JS(
   state.started = true;
   const deadline = performance.now() + 60 * 1000;
   const likeIntervalMs = 10 * 1000;
+  const pauseBeforeLikeMs = 900;
+  const pauseAfterLikeMs = 800;
+  const scrollDelayMs = 450;
+  const idleScrollDelayMs = 600;
+  const maxScrollStepPx = 28;
+  const minScrollStepPx = 10;
+  const targetTolerancePx = 18;
   const filterAttribute = 'data-homepanel-x-filtered';
   const filterStyleId = 'homepanel-x-timeline-filter';
 
@@ -67,6 +74,33 @@ LR"JS(
   const articleForId = id => Array.from(
       document.querySelectorAll('article[data-testid="tweet"]'))
       .find(article => articleId(article) === id);
+  const validLikeButton = article => {
+    const button = article?.querySelector?.('[data-testid="like"]');
+    if (!button || button.disabled ||
+        button.getAttribute('aria-disabled') === 'true' ||
+        article.querySelector('[data-testid="unlike"]')) return null;
+    const rect = button.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+    return { button, rect };
+  };
+  const targetY = () => Math.round(innerHeight * 0.62);
+  const findNextCandidate = attempted => {
+    const preferredFloor = targetY() - targetTolerancePx;
+    const candidates = [];
+    for (const article of Array.from(
+        document.querySelectorAll('article[data-testid="tweet"]'))) {
+      if (!article.isConnected || !isOrganic(article)) continue;
+      const id = articleId(article);
+      if (!id || attempted.has(id)) continue;
+      const like = validLikeButton(article);
+      if (!like) continue;
+      const centerY = like.rect.top + like.rect.height / 2;
+      if (centerY < preferredFloor) continue;
+      candidates.push({ article, id, button: like.button, centerY });
+    }
+    candidates.sort((a, b) => a.centerY - b.centerY);
+    return candidates[0] || null;
+  };
   const requestTrustedLike = (id, button) => {
     const bridge = globalThis.chrome?.webview;
     if (!bridge || typeof bridge.postMessage !== 'function') return false;
@@ -121,39 +155,53 @@ LR"JS(
       while (performance.now() < deadline) {
         markFilteredArticles();
         if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
-        if (performance.now() >= nextLikeAt) {
-          const articles = Array.from(
-              document.querySelectorAll('article[data-testid="tweet"]'));
-          for (const article of articles) {
-            if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
-            if (!article.isConnected || !isOrganic(article)) continue;
-            const rect = article.getBoundingClientRect();
-            if (rect.bottom <= 0 || rect.top >= innerHeight) continue;
-            const id = articleId(article);
-            if (!id || attempted.has(id)) continue;
-            const button = article.querySelector('[data-testid="like"]');
-            if (!button || button.disabled ||
-                button.getAttribute('aria-disabled') === 'true' ||
-                article.querySelector('[data-testid="unlike"]')) continue;
-            if (!requestTrustedLike(id, button)) continue;
-            // One trusted input request per interval. Never catch up with bursts.
-            attempted.add(id);
-            state.attemptedCount = attempted.size;
-            nextLikeAt = performance.now() + likeIntervalMs;
-            await sleep(1500);
-            if (articleForId(id)?.querySelector('[data-testid="unlike"]'))
-              state.likedCount++;
-            break;
-          }
+
+        const candidate = findNextCandidate(attempted);
+        if (!candidate) {
+          state.result = 'seeking-like';
+          window.scrollBy({ top: maxScrollStepPx, behavior: 'smooth' });
+          await sleep(idleScrollDelayMs);
+          continue;
         }
+
+        const distance = candidate.centerY - targetY();
+        if (Math.abs(distance) > targetTolerancePx) {
+          state.result = 'approaching-like';
+          const step = Math.max(
+              minScrollStepPx,
+              Math.min(maxScrollStepPx, Math.ceil(Math.abs(distance) * 0.35)));
+          window.scrollBy({ top: Math.sign(distance) * step, behavior: 'smooth' });
+          await sleep(scrollDelayMs);
+          continue;
+        }
+
+        state.result = 'paused-on-like';
+        if (performance.now() < nextLikeAt) {
+          await sleep(Math.min(500, nextLikeAt - performance.now()));
+          continue;
+        }
+
+        await sleep(pauseBeforeLikeMs);
         if (performance.now() >= deadline ||
             followingTab()?.getAttribute('aria-selected') !== 'true') break;
 
-        const scrollDistance = Math.max(
-            20,
-            Math.floor(innerHeight * 0.06));
-        window.scrollBy({ top: scrollDistance, behavior: 'smooth' });
-        await sleep(1000);
+        const freshArticle = articleForId(candidate.id);
+        if (!freshArticle || !freshArticle.isConnected || !isOrganic(freshArticle))
+          continue;
+        const freshLike = validLikeButton(freshArticle);
+        if (!freshLike) continue;
+        const freshCenterY = freshLike.rect.top + freshLike.rect.height / 2;
+        if (Math.abs(freshCenterY - targetY()) > targetTolerancePx) continue;
+        if (!requestTrustedLike(candidate.id, freshLike.button)) continue;
+
+        attempted.add(candidate.id);
+        state.attemptedCount = attempted.size;
+        state.result = 'like-clicked';
+        nextLikeAt = performance.now() + likeIntervalMs;
+        await sleep(1500);
+        if (articleForId(candidate.id)?.querySelector('[data-testid="unlike"]'))
+          state.likedCount++;
+        await sleep(pauseAfterLikeMs);
       }
       state.attemptedCount = attempted.size;
       state.result = 'completed';
