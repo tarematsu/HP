@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-spotify-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/spotify.css?v=20260928.4';
+  link.href = '/spotify.css?v=20260928.5';
   link.dataset.spotifyTabStyles = '1';
   document.head.append(link);
 }
@@ -42,8 +42,14 @@ function mountView() {
 
     <section class="card data-panel spotify-data-panel">
       <div class="section-head"><div><p class="kicker">SPOTIFY PLAYCOUNTS</p><h2 id="spotifyTableTitle">櫻坂46 再生数一覧</h2></div></div>
-      <div class="table-wrap">
+      <div class="table-wrap table-fit-mobile">
         <table class="spotify-table">
+          <colgroup>
+            <col class="col-compact">
+            <col>
+            <col class="col-number">
+            <col class="col-delta">
+          </colgroup>
           <thead><tr><th>順位</th><th>曲名</th><th>累計再生数</th><th>前回比</th></tr></thead>
           <tbody id="spotifyTbody"></tbody>
         </table>
