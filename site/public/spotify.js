@@ -166,7 +166,7 @@ function renderTrendCharts(trend = {}) {
   });
 
   const scroll = document.createElement('div');
-  scroll.className = 'spotify-trend-scroll';
+  scroll.className = 'spotify-trend-scroll chart-fit';
   const svg = svgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
