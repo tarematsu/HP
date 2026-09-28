@@ -57,9 +57,9 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.doesNotMatch(waiting, /scrollTo\(|scrollBy\(/);
 });
 
-test('X likes exclude reposts, ads and boosted posts', () => {
+test('X likes exclude reposts, ads, PR and boosted posts', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
-  assert.match(xRuntime, /Promoted\|Sponsored\|広告\|プロモーション\|スポンサー\|Boosted\|ブースト/);
+  assert.match(xRuntime, /Promoted\|Sponsored\|広告\|プロモーション\|スポンサー\|Boosted\|ブースト\|PR/);
   assert.match(xRuntime, /data-testid="socialContext"/);
   assert.match(xRuntime, /reposted\|repost\|retweeted\|retweet\|リポスト\|リツイート/);
   assert.match(xRuntime, /isOrganic = article => !isPromoted\(article\) && !isRepost\(article\)/);
@@ -68,4 +68,14 @@ test('X likes exclude reposts, ads and boosted posts', () => {
   assert.match(xRuntime, /bridge\.postMessage\(`homepanel:x-like:\$\{id\}:\$\{x\}:\$\{y\}`\)/);
   assert.doesNotMatch(xRuntime, /button\.click\(\)/);
   assert.doesNotMatch(xRuntime, /homepanel:startup-x-until|homepanel=startup/);
+});
+
+test('X timeline CSS hides repost and promoted cells', () => {
+  assert.match(xRuntime, /homepanel-x-timeline-filter/);
+  assert.match(xRuntime, /data-homepanel-x-filtered/);
+  assert.match(xRuntime, /article\[data-testid="tweet"\]:has\(\[data-testid="socialContext"\]\)/);
+  assert.match(xRuntime, /article\[data-testid="tweet"\]:has\(\[data-testid\*="placement" i\]\)/);
+  assert.match(xRuntime, /cellInnerDiv[\s\S]*socialContext/);
+  assert.match(xRuntime, /display:\s*none !important/);
+  assert.match(xRuntime, /markFilteredArticles\(\)/);
 });
