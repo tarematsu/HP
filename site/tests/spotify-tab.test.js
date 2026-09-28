@@ -173,8 +173,8 @@ test('Spotify tab renders daily, top-10, and current-year top-10 graphs', () => 
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
   assert.match(shell, /Spotify 日次 - 再生数推移/);
-  assert.match(shell, /Spotify 上位10曲 - 再生数推移/);
-  assert.match(shell, /Spotify 上位10曲\(今年限定\) - 再生数推移/);
+  assert.match(shell, /Spotify 日次上位10曲 - 再生数推移/);
+  assert.match(shell, /Spotify 日次上位10曲\(今年限定\) - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.match(shell, /id="spotifyTop10TrendCharts"/);
   assert.match(shell, /id="spotifyTop10YearTrendCharts"/);
