@@ -149,8 +149,8 @@
   text-align: right;
 }
 
-.followers-delta-positive::before {
-  content: '+';
+.followers-delta-positive {
+  font-weight: 600;
 }
 
 @media (max-width: 720px) {
