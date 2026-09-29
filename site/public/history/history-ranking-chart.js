@@ -1,5 +1,5 @@
 const RANKING_MODE = 'ranking';
-const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp'];
+const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'];
 const MISSING_START = '2026-01-26';
 const MISSING_END = '2026-09-14';
 const HOST_COLORS = new Map([
