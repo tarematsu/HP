@@ -50,7 +50,6 @@ function createMinuteDb() {
     listener_max INTEGER,
     stream_start INTEGER,
     stream_end INTEGER,
-    member_end INTEGER,
     updated_at INTEGER NOT NULL,
     PRIMARY KEY(channel_id,day_at)
   ) WITHOUT ROWID;
@@ -93,9 +92,8 @@ function insertProjection(db, dayAt, {
   listenerMax = 120,
   streamStart = 1000,
   streamEnd = 1010,
-  memberEnd = 100,
 } = {}) {
-  db.prepare(`INSERT INTO sh_current_daily_summary VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  db.prepare(`INSERT INTO sh_current_daily_summary VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     channelId,
     dayAt,
     dayAt,
@@ -107,7 +105,6 @@ function insertProjection(db, dayAt, {
     listenerMax,
     streamStart,
     streamEnd,
-    memberEnd,
     dayAt + DAY_MS - 60_000,
   );
 }
@@ -122,20 +119,22 @@ function insertDailyMember(db, dayAt, count, {
   ) VALUES(?,?,?,?,?)`).run(channelId, dayAt, hostKey, observedAt, count);
 }
 
-test('recent daily publication reads compact projections, daily member state, and existing summaries', () => {
+test('recent daily publication reads projection metrics and canonical daily member state separately', () => {
   assert.match(RECENT_DAILY_PROJECTION_SQL, /FROM sh_current_daily_summary/);
   assert.match(RECENT_DAILY_PROJECTION_SQL, /WHERE day_at>=\? AND day_at<\?/);
   assert.doesNotMatch(RECENT_DAILY_PROJECTION_SQL, /FROM sh_minute_facts/);
+  assert.doesNotMatch(RECENT_DAILY_PROJECTION_SQL, /member_end/);
   assert.match(RECENT_DAILY_MEMBER_SQL, /FROM sh_total_member_daily/);
   assert.match(RECENT_DAILY_MEMBER_SQL, /INDEXED BY idx_sh_total_member_daily_latest/);
   assert.match(RECENT_DAILY_MEMBER_SQL, /WHERE channel_id=\? AND day_at>=\? AND day_at<\?/);
   assert.match(EXISTING_RECENT_DAILY_SQL, /FROM sh_daily_summary/);
 });
 
-test('missing recent days are copied from the incremental projection without overwriting unrelated fields', async () => {
+test('missing recent days use canonical member state without overwriting unrelated fields', async () => {
   const minute = createMinuteDb();
   const other = createOtherDb();
   const now = Date.UTC(2026, 8, 27, 3, 0);
+  const sep22 = Date.UTC(2026, 8, 22);
   const sep23 = Date.UTC(2026, 8, 23);
   const sep24 = Date.UTC(2026, 8, 24);
   const sep25 = Date.UTC(2026, 8, 25);
@@ -144,10 +143,15 @@ test('missing recent days are copied from the incremental projection without ove
   other.prepare(`INSERT INTO sh_daily_summary(
     period_key,member_end,quality_flags,updated_at
   ) VALUES('2026-09-22',98,'["existing"]',1)`).run();
-  insertProjection(minute, sep23, { memberEnd: 100, streamStart: 2000, streamEnd: 2015 });
-  insertProjection(minute, sep24, { memberEnd: 103, streamStart: 2015, streamEnd: 2035, listenerSum: 950 });
-  insertProjection(minute, sep25, { memberEnd: 104, streamStart: 2035, streamEnd: 2040, reliable: 5, listenerSum: 425 });
-  insertProjection(minute, sep26, { memberEnd: 106, streamStart: 2040, streamEnd: 2060 });
+  insertProjection(minute, sep23, { streamStart: 2000, streamEnd: 2015 });
+  insertProjection(minute, sep24, { streamStart: 2015, streamEnd: 2035, listenerSum: 950 });
+  insertProjection(minute, sep25, { streamStart: 2035, streamEnd: 2040, reliable: 5, listenerSum: 425 });
+  insertProjection(minute, sep26, { streamStart: 2040, streamEnd: 2060 });
+  insertDailyMember(minute, sep22, 98);
+  insertDailyMember(minute, sep23, 100);
+  insertDailyMember(minute, sep24, 103);
+  insertDailyMember(minute, sep25, 104);
+  insertDailyMember(minute, sep26, 106);
 
   const result = await publishRecentDailySummaries(d1(minute), d1(other), now, 4);
   assert.deepEqual(result.published, ['2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26']);
@@ -172,7 +176,7 @@ test('missing recent days are copied from the incremental projection without ove
   assert.equal(other.prepare(`SELECT stream_growth FROM sh_daily_summary WHERE period_key='2026-09-24'`).get().stream_growth, 999);
 });
 
-test('daily member state repairs missing member boundaries even when projection member_end is null', async () => {
+test('daily member state supplies member boundaries independently of the projection', async () => {
   const minute = createMinuteDb();
   const other = createOtherDb();
   const now = Date.UTC(2026, 8, 25, 3, 0);
@@ -180,8 +184,8 @@ test('daily member state repairs missing member boundaries even when projection 
   const sep23 = Date.UTC(2026, 8, 23);
   const sep24 = Date.UTC(2026, 8, 24);
 
-  insertProjection(minute, sep23, { memberEnd: null, streamStart: 3000, streamEnd: 3010 });
-  insertProjection(minute, sep24, { memberEnd: null, streamStart: 3010, streamEnd: 3025 });
+  insertProjection(minute, sep23, { streamStart: 3000, streamEnd: 3010 });
+  insertProjection(minute, sep24, { streamStart: 3010, streamEnd: 3025 });
   insertDailyMember(minute, sep22, 98);
   insertDailyMember(minute, sep23, 100);
   insertDailyMember(minute, sep24, 103);
@@ -209,7 +213,7 @@ test('latest daily member state wins when more than one host row exists for a da
   const sep22 = Date.UTC(2026, 8, 22);
   const sep23 = Date.UTC(2026, 8, 23);
 
-  insertProjection(minute, sep23, { memberEnd: null });
+  insertProjection(minute, sep23);
   insertDailyMember(minute, sep22, 98);
   insertDailyMember(minute, sep23, 100, { hostKey: 1, observedAt: sep23 + 10_000 });
   insertDailyMember(minute, sep23, 101, { hostKey: 2, observedAt: sep23 + 20_000 });
@@ -223,10 +227,11 @@ test('latest daily member state wins when more than one host row exists for a da
   assert.equal(Number(row.member_growth), 3);
 });
 
-test('existing recent days reconcile stale member values while preserving other daily summary fields', async () => {
+test('existing recent days reconcile canonical member values while preserving other summary fields', async () => {
   const minute = createMinuteDb();
   const other = createOtherDb();
   const now = Date.UTC(2026, 8, 25, 3, 0);
+  const sep22 = Date.UTC(2026, 8, 22);
   const sep23 = Date.UTC(2026, 8, 23);
   const sep24 = Date.UTC(2026, 8, 24);
 
@@ -240,8 +245,11 @@ test('existing recent days reconcile stale member values while preserving other 
     period_key,listener_avg,stream_growth,member_start,member_end,member_growth,quality_flags,updated_at
   ) VALUES('2026-09-24',432,888,100,103,3,'["existing"]',1)`).run();
 
-  insertProjection(minute, sep23, { memberEnd: 100, streamStart: 3000, streamEnd: 3010 });
-  insertProjection(minute, sep24, { memberEnd: 102, streamStart: 3010, streamEnd: 3020 });
+  insertProjection(minute, sep23, { streamStart: 3000, streamEnd: 3010 });
+  insertProjection(minute, sep24, { streamStart: 3010, streamEnd: 3020 });
+  insertDailyMember(minute, sep22, 98);
+  insertDailyMember(minute, sep23, 100);
+  insertDailyMember(minute, sep24, 102);
 
   const result = await publishRecentDailySummaries(d1(minute), d1(other), now, 2);
   assert.deepEqual(result.published, ['2026-09-23', '2026-09-24']);
@@ -266,6 +274,24 @@ test('existing recent days reconcile stale member values while preserving other 
 
   const second = await publishRecentDailySummaries(d1(minute), d1(other), now, 2);
   assert.deepEqual(second.published, []);
+});
+
+test('missing canonical member state does not overwrite an existing derived boundary', async () => {
+  const minute = createMinuteDb();
+  const other = createOtherDb();
+  const now = Date.UTC(2026, 8, 24, 3, 0);
+  const sep23 = Date.UTC(2026, 8, 23);
+
+  insertProjection(minute, sep23);
+  other.prepare(`INSERT INTO sh_daily_summary(
+    period_key,member_start,member_end,member_growth,quality_flags,updated_at
+  ) VALUES('2026-09-23',98,100,2,'["existing"]',1)`).run();
+
+  const result = await publishRecentDailySummaries(d1(minute), d1(other), now, 1);
+  assert.deepEqual(result.published, []);
+  const row = other.prepare(`SELECT member_start,member_end,member_growth FROM sh_daily_summary
+    WHERE period_key='2026-09-23'`).get();
+  assert.deepEqual(row, { member_start: 98, member_end: 100, member_growth: 2 });
 });
 
 test('invalid projection counts are refused instead of publishing a corrupt daily row', async () => {
