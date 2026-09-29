@@ -78,9 +78,9 @@ function appendLegend(label, color, datasetKey = '') {
 }
 
 function colorForHost(host, index) {
-  if (chartHosts.length === 1) return '#000000';
   const preset = HOST_COLORS.get(hostKey(host));
   if (preset) return preset;
+  if (chartHosts.length === 1) return '#000000';
   const fallbacks = ['#667287', '#2776b9', '#168b73', '#c56a18'];
   return fallbacks[index % fallbacks.length];
 }
