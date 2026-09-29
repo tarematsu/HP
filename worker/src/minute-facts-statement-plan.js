@@ -21,8 +21,8 @@ function fiveMinuteBoundary(minuteAt) {
 }
 
 function completedDashboardBucket(minuteAt) {
-  if (!fiveMinuteBoundary(minuteAt)) return null;
-  return minuteAt - DASHBOARD_BUCKET_MS;
+  if (!Number.isFinite(minuteAt)) return null;
+  return Math.floor(minuteAt / DASHBOARD_BUCKET_MS) * DASHBOARD_BUCKET_MS - DASHBOARD_BUCKET_MS;
 }
 
 function totalMemberDailyDue(fact) {
@@ -42,15 +42,16 @@ function totalMemberDailyDue(fact) {
     ? Number(fact.host_id)
     : 0;
   const key = `${channelId}:${dayAt}:${hostId}`;
-  const previous = totalMemberHotCache.get(key);
-  const changed = !previous || previous.count !== count;
+  const cachedMember = totalMemberHotCache.get(key);
+  const changed = !cachedMember || cachedMember.count !== count;
   totalMemberHotCache.set(key, { count, minuteAt });
 
   if (totalMemberHotCache.size > TOTAL_MEMBER_HOT_CACHE_MAX) {
     const oldest = totalMemberHotCache.keys().next().value;
     if (oldest !== undefined) totalMemberHotCache.delete(oldest);
   }
-  return changed || fiveMinuteBoundary(minuteAt);
+  const lateRepair = observedAt - minuteAt >= DASHBOARD_BUCKET_MS;
+  return changed || fiveMinuteBoundary(minuteAt) || lateRepair;
 }
 
 export function resetMinuteFactStatementPlanCacheForTests() {
