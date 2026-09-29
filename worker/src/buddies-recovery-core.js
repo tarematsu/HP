@@ -11,7 +11,6 @@ const RETRY_MAX_SECONDS = 300;
 export const BUDDIES_RECOVERY_QUEUE_NAMES = Object.freeze([
   'stationhead-raw-collection',
   'stationhead-ingest-finalize',
-  'stationhead-comments',
   'stationhead-buddies-persist',
 ]);
 
