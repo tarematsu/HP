@@ -361,11 +361,15 @@ export function appleMusicProbePlan(model, now = Date.now()) {
   }
 
   const recommendedHour = Number(measurement.recommended_collect_hour_jst);
-  const latestDate = String(model?.snapshot_date || '');
-  if (latestDate === date) {
-    return { due: false, reason: 'already-updated-today', measurement };
-  }
   const dueHours = Array.from({ length: LEARNED_RETRY_HOURS }, (_, offset) => (recommendedHour + offset) % 24);
+  const latestDate = String(model?.snapshot_date || '');
+  const lastChange = Number(measurement.last_change_at);
+  if (latestDate === date && Number.isFinite(lastChange)) {
+    const changedAt = jstParts(lastChange);
+    if (changedAt.date === date && dueHours.includes(changedAt.hour)) {
+      return { due: false, reason: 'already-updated-today', measurement };
+    }
+  }
   const due = dueHours.includes(hour);
   return { due, reason: due ? 'learned-window' : 'outside-learned-window', measurement };
 }
@@ -483,8 +487,31 @@ function historyPoint(snapshot) {
   };
 }
 
+function migrateHistoryTrackIds(history, regions) {
+  const identityBySongKey = new Map();
+  for (const region of Array.isArray(regions) ? regions : []) {
+    for (const track of Array.isArray(region?.tracks) ? region.tracks : []) {
+      if (!track?.song_key || !Number.isSafeInteger(Number(track?.track_id))) continue;
+      identityBySongKey.set(track.song_key, {
+        track_id: Number(track.track_id),
+        apple_music_id: text(track.apple_music_id),
+      });
+    }
+  }
+  return (Array.isArray(history) ? history : []).map((point) => ({
+    ...point,
+    regions: Object.fromEntries(Object.entries(point?.regions || {}).map(([code, tracks]) => [
+      code,
+      (Array.isArray(tracks) ? tracks : []).map((track) => {
+        const identity = identityBySongKey.get(track?.song_key);
+        return identity ? { ...track, ...identity } : track;
+      }),
+    ])),
+  }));
+}
+
 export function buildAppleMusicReadModel(snapshot, previousModel = null) {
-  const previousHistory = Array.isArray(previousModel?.history) ? previousModel.history : [];
+  const previousHistory = migrateHistoryTrackIds(previousModel?.history, snapshot.regions);
   const history = previousHistory
     .filter((point) => /^\d{4}-\d{2}-\d{2}$/u.test(String(point?.snapshot_date || '')))
     .filter((point) => point.snapshot_date !== snapshot.snapshot_date);
