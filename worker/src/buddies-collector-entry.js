@@ -38,6 +38,8 @@ export function runBuddiesCollectorScheduledWithPagesWatchdog(
     });
   if (typeof ctx?.waitUntil === 'function') ctx.waitUntil(watchdogTask);
 
+  // Reuse the already-authenticated Buddies collector once per JST day instead
+  // of launching a browser or maintaining a second Stationhead session.
   if (String(controller?.cron || '') === BUDDIES_COLLECTOR_CRON && isJstMidnightMinute(scheduledAt)) {
     const collectFollowers = dependencies.collectFollowers || collectStationheadDailyFollowers;
     const followersTask = Promise.resolve()
