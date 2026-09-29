@@ -30,6 +30,7 @@ class SpotifyArtistChartCollector {
     controller_->put_Bounds(bounds);
     controller_->put_IsVisible(TRUE);
   }
+  [[nodiscard]] bool Started() const noexcept { return started_; }
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextWakeAt_; }
 
  private:
