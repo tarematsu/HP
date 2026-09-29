@@ -66,6 +66,51 @@ function normalizeCanvasPresentation(source, file) {
   return next;
 }
 
+function optimizeBundledModule(source, path) {
+  const file = basename(path);
+  let next = normalizeCanvasPresentation(source, file);
+
+  if (file === 'dashboard-header.js') {
+    const runtimeStart = next.indexOf('const KEYBOARD_NAVIGATION_CLASS');
+    if (runtimeStart >= 0) next = next.slice(runtimeStart);
+  }
+
+  if (file === 'dashboard-ui-common.js') {
+    next = next.replace(
+      /export function ensureStylesheet\([\s\S]*?\n}\n\nfunction firstMatch/,
+      'function firstMatch',
+    );
+    next = next.replace(
+      "export function mountDashboardShell({ style, tab, view } = {}) {\n  ensureStylesheet('/dashboard-ui-common.css?v=20260930.1', 'dashboard-ui-common');\n  if (style?.href && style?.key) ensureStylesheet(style.href, style.key);\n",
+      'export function mountDashboardShell({ tab, view } = {}) {\n',
+    );
+  }
+
+  if (next.includes('mountDashboardShell({')) {
+    next = next.replace(/^\s*style:\s*\{[^}\n]*\},\n/gm, '');
+  }
+
+  if (file === 'history-past-toggle-shell.js') {
+    next = next
+      .replace(/^import \{ ensureStylesheet \}[^\n]*\n\n/, '')
+      .replace(/^ensureStylesheet\([^\n]*\);\n/m, '');
+  }
+
+  if (file === 'history-range-navigator.js') {
+    next = next
+      .replace(/\n  function ensureStylesheet\(\) \{[\s\S]*?\n  }\n\n  function todayUtc/, '\n  function todayUtc')
+      .replace(/\n  ensureStylesheet\(\);/, '');
+  }
+
+  return next;
+}
+
+function optimizeBundledCss(source, path) {
+  if (!path.endsWith('/history/history-lite.css')) return source;
+  const historySpecificStart = source.indexOf('.mode-tabs {');
+  return historySpecificStart >= 0 ? source.slice(historySpecificStart) : source;
+}
+
 const browserModuleResolver = {
   name: 'browser-module-resolver',
   setup(buildApi) {
@@ -79,7 +124,7 @@ const browserModuleResolver = {
       return { path };
     });
     buildApi.onLoad({ filter: /\.m?js$/ }, async (args) => ({
-      contents: normalizeCanvasPresentation(await readFile(args.path, 'utf8'), basename(args.path)),
+      contents: optimizeBundledModule(await readFile(args.path, 'utf8'), args.path),
       loader: 'js',
     }));
   },
@@ -92,6 +137,10 @@ const publicCssResolver = {
       if (args.kind !== 'import-rule') return null;
       return { path: resolve(publicRoot, `.${args.path.replace(/[?#].*$/, '')}`) };
     });
+    buildApi.onLoad({ filter: /\.css$/ }, async (args) => ({
+      contents: optimizeBundledCss(await readFile(args.path, 'utf8'), args.path),
+      loader: 'css',
+    }));
   },
 };
 
