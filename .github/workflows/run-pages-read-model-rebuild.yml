@@ -1,6 +1,9 @@
 name: Rebuild pages read models
 
 on:
+  workflow_run:
+    workflows: ['Run runtime offline maintenance']
+    types: [completed]
   schedule:
     - cron: '26 0,6,12,18 * * *'
   push:
@@ -11,6 +14,7 @@ on:
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
+      - 'worker/scripts/run-pages-read-model-revision-actions.mjs'
       - 'worker/scripts/run-pages-history-read-model-actions.mjs'
       - 'worker/scripts/publish-track-ranking-status-actions.mjs'
       - 'site/functions/lib/track-ranking.js'
@@ -22,6 +26,7 @@ on:
       - 'site/functions/lib/materialized-history.js'
       - 'site/functions/lib/period-completeness.js'
       - 'site/functions/api/host-history.js'
+      - 'database/other-migrations/050_read_model_revisions.sql'
   workflow_dispatch:
     inputs:
       force_all:
@@ -39,6 +44,7 @@ concurrency:
 
 jobs:
   rebuild:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Rebuild and publish due pages read models
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -60,7 +66,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:
