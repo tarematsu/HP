@@ -123,6 +123,7 @@ function activeIngestEnv(env, message, collection, capture) {
   Object.defineProperties(active, {
     __shAuthState: { value: message.auth || {}, enumerable: false },
     __shPersistCollectorCredentials: { value: message.persist_credentials !== false, enumerable: false },
+    __shCollectionObservedAt: { value: integer(message.observed_at), enumerable: false },
     __shPreparedCollection: {
       value: { snapshot: collection.snapshot, queue: collection.queue },
       enumerable: false,
