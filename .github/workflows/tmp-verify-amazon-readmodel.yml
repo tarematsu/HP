@@ -1,4 +1,4 @@
-name: Temporary Amazon chart metadata probe
+name: Temporary Amazon album chart trace
 
 on:
   push:
@@ -18,38 +18,58 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Probe known charting track metadata
-        working-directory: worker
+      - name: Install puppeteer core
+        run: npm install --no-save puppeteer-core@24.19.0
+      - name: Trace Amazon Music album page network
         shell: bash
         run: |
           set -euo pipefail
+          which google-chrome || which google-chrome-stable || which chromium || true
           node --input-type=module <<'NODE'
-          import { createAmazonMusicWebClient } from './src/amazon-music-web-client.js';
+          import puppeteer from 'puppeteer-core';
+          import fs from 'node:fs';
 
-          const client = createAmazonMusicWebClient();
-          const doc = await client.fetchTrack('B0H5BRNDF5'); // Number_i - 3XL
-          const hits = [];
-          const seen = new Set();
+          const candidates = ['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium-browser','/usr/bin/chromium'];
+          const executablePath = candidates.find((p) => fs.existsSync(p));
+          if (!executablePath) throw new Error('Chrome executable not found');
+
+          const browser = await puppeteer.launch({
+            executablePath,
+            headless: true,
+            args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'],
+          });
+          const page = await browser.newPage();
+          await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.5' });
+          await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
+
           const interesting = /chart|rank|trend|popular|category|genre|総合|人気|急上昇|ポップ|ランキング|位/i;
-          function walk(value, path = '$', depth = 0) {
-            if (depth > 24 || value == null) return;
-            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-              const text = String(value);
-              if (interesting.test(path) || interesting.test(text)) {
-                const line = `${path} = ${text.slice(0, 500)}`;
-                if (!seen.has(line)) { seen.add(line); hits.push(line); }
+          const seen = new Set();
+          page.on('request', (req) => {
+            const url = req.url();
+            if (!url.includes('skill.music.a2z.com')) return;
+            const line = `REQ ${req.method()} ${url}\nPOST ${String(req.postData() || '').slice(0, 2500)}`;
+            if (!seen.has(line)) { seen.add(line); console.log(line); }
+          });
+          page.on('response', async (res) => {
+            const url = res.url();
+            if (!url.includes('skill.music.a2z.com')) return;
+            try {
+              const text = await res.text();
+              if (!interesting.test(text)) return;
+              console.log(`RESP ${res.status()} ${url}`);
+              const snippets = [];
+              for (const match of text.matchAll(/.{0,180}(?:chart|rank|trend|popular|category|genre|総合|人気|急上昇|ポップ|ランキング|位).{0,280}/giu)) {
+                snippets.push(match[0].replace(/\s+/g, ' ').slice(0, 700));
+                if (snippets.length >= 80) break;
               }
-              return;
-            }
-            if (Array.isArray(value)) {
-              value.forEach((v, i) => walk(v, `${path}[${i}]`, depth + 1));
-              return;
-            }
-            if (typeof value === 'object') {
-              for (const [k, v] of Object.entries(value)) walk(v, `${path}.${k}`, depth + 1);
-            }
-          }
-          walk(doc);
-          console.log(`MATCHES=${hits.length}`);
-          for (const line of hits.slice(0, 400)) console.log(line);
+              for (const s of snippets) console.log(`SNIP ${s}`);
+            } catch {}
+          });
+
+          const url = 'https://music.amazon.co.jp/albums/B0H5BTR7YR';
+          await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+          await new Promise((r) => setTimeout(r, 5000));
+          console.log('PAGE', await page.title());
+          console.log('BODY_MATCHES', (await page.evaluate(() => document.body.innerText)).split('\n').filter((x) => /総合|人気|急上昇|ポップ|ランキング|位/.test(x)).slice(0,100));
+          await browser.close();
           NODE
