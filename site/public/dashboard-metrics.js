@@ -1,5 +1,4 @@
 import './legacy-listening-party-route.js?v=20260926.1';
-import './history/history-global-fixes.js';
 import './dashboard-header.js?v=20260928.1';
 import './dashboard-tab-order.js?v=20260929.1';
 import './dashboard-hinata-route.js?v=20260930.1';
@@ -89,10 +88,7 @@ function replayCurrentPayload() {
 function ensureCurrentRuntime() {
   if (currentRuntimePromise) return currentRuntimePromise;
   currentRuntimePromise = (async () => {
-    const baseUiPromise = Promise.all([
-      import('./dashboard-current-layout.js?v=20260924.1'),
-      import('./dashboard-current-metric-style.js?v=20260923.1'),
-    ]);
+    const baseUiPromise = import('./dashboard-current-layout.js?v=20260924.1');
 
     await import('./dashboard-fetch-cache.js?v=20260923.4');
     const clientPromise = import('/dashboard-client.js?v=20260929.2');
