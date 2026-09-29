@@ -8,6 +8,8 @@ const metricsSource = await readFile(new URL('../public/dashboard-metrics.js', i
 const historyEntry = await readFile(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const legacyRoute = await readFile(new URL('../public/legacy-listening-party-route.js', import.meta.url), 'utf8');
 
+const eventRows = [...viewSource.matchAll(/^  \['\d{4}\/\d{2}\/\d{2}'.+?\],$/gm)].map(([row]) => row);
+
 test('official and unofficial listening parties share one top-level リスパ tab', () => {
   assert.match(pageSource, /data-mode="broadcasts">リスパ<\/button>/);
   assert.doesNotMatch(pageSource, /data-mode="broadcasts">(?:Listening Party|リスニングパーティ)<\/button>/);
@@ -25,38 +27,39 @@ test('unofficial listening party list is appended below the shared official view
   assert.doesNotMatch(viewSource, /長さ|duration|最大同接/);
 });
 
-test('unofficial list contains collaborations only', () => {
-  const rows = [...viewSource.matchAll(/^  \{ date: '[^']+'.+?\},$/gm)].map(([row]) => row);
-  assert.equal(rows.length, 22);
-  assert.equal(rows.filter((row) => row.includes("type: 'コラボ'")).length, 22);
-  assert.equal(rows.filter((row) => row.includes("type: '単独'")).length, 0);
+test('unofficial list contains collaborations only and stores the shared type once', () => {
+  assert.equal(eventRows.length, 22);
+  assert.equal((viewSource.match(/type: 'コラボ'/g) || []).length, 1);
+  assert.match(viewSource, /type: 'コラボ'/);
   assert.doesNotMatch(viewSource, /type: '単独'/);
   assert.doesNotMatch(viewSource, /東京ドーム公演セトリ再現|Addiction.+配信記念リスニング/);
 });
 
-test('collaboration rows retain formal hosting channel names', () => {
-  assert.equal((viewSource.match(/place: ''/g) || []).length, 0);
-  assert.match(viewSource, /date: '2024\/08\/02'.+place: 'BUDDIES STATIONHEAD'/);
-  assert.match(viewSource, /date: '2024\/09\/07'.+place: 'LOCKEY Stationhead'/);
-  assert.match(viewSource, /date: '2024\/11\/01'.+place: 'MINIチャンネル'/);
-  assert.match(viewSource, /date: '2024\/12\/13'.+place: 'Team IMP\.'/);
-  assert.match(viewSource, /date: '2024\/12\/19'.+place: 'FELIX STREAM STATION'/);
-  assert.match(viewSource, /date: '2024\/12\/29'.+place: 'WithUチャンネル'/);
-  assert.match(viewSource, /date: '2024\/12\/30'.+place: 'Ohisama CH\.'/);
+test('collaboration rows retain formal hosting channel names through the compact place table', () => {
+  for (const place of [
+    'BUDDIES STATIONHEAD', 'LOCKEY Stationhead', 'MINIチャンネル', 'Team IMP.',
+    'FELIX STREAM STATION', 'WithUチャンネル', 'Ohisama CH.', "乃木坂46fan's Stationhead",
+  ]) assert.match(viewSource, new RegExp(place.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(viewSource, /\['2024\/08\/02', '22:30'.+, 0, 0, '1818995243200758205'\]/);
+  assert.match(viewSource, /\['2024\/09\/07', '22:00'.+, 1, 0, '1831301387424342514'\]/);
+  assert.match(viewSource, /\['2024\/11\/01', '23:00'.+, 2, 0, '1851972681962525075'\]/);
+  assert.match(viewSource, /\['2024\/12\/30', '22:30'.+, 6, 0, '1872628541235560835'\]/);
   assert.doesNotMatch(viewSource, /BUDDIESチャンネル|Buddiesチャンネル|Ohisamaチャンネル|imp714p/);
 });
 
 test('expanded collaboration history includes Sakamichi joint events and Keyaki Derby', () => {
-  assert.match(viewSource, /date: '2025\/07\/19', time: '23:00', name: '#坂道Stationhead DAY1', place: "乃木坂46fan's Stationhead"/);
-  assert.match(viewSource, /date: '2025\/07\/20', time: '21:00', name: '#坂道Stationhead DAY2', place: 'BUDDIES STATIONHEAD'/);
-  assert.match(viewSource, /date: '2025\/07\/21', time: '22:00', name: '#坂道Stationhead DAY3', place: 'Ohisama CH\.'/);
-  assert.match(viewSource, /date: '2025\/12\/05', time: '21:00', name: 'Buddies × U:nity Stationhead コラボリスニングパーティー'/);
-  assert.match(viewSource, /date: '2026\/01\/23', time: '22:00', name: '日向坂46 × 櫻坂46 #ケヤキダービー'/);
+  assert.match(viewSource, /\['2025\/07\/19', '23:00', '#坂道Stationhead DAY1', 9, 2, '1942191880726528064'\]/);
+  assert.match(viewSource, /\['2025\/07\/20', '21:00', '#坂道Stationhead DAY2', 0, 2, '1942191880726528064'\]/);
+  assert.match(viewSource, /\['2025\/07\/21', '22:00', '#坂道Stationhead DAY3', 6, 2, '1942191880726528064'\]/);
+  assert.match(viewSource, /\['2025\/12\/05', '21:00', 'Buddies × U:nity Stationhead コラボリスニングパーティー'/);
+  assert.match(viewSource, /\['2026\/01\/23', '22:00', '日向坂46 × 櫻坂46 #ケヤキダービー'/);
   assert.doesNotMatch(viewSource, /妄想W-KEYAKI FES\.2026/);
 });
 
-test('all remaining rows use X announcements and the unified X label', () => {
-  assert.equal((viewSource.match(/source: 'https:\/\/x\.com\//g) || []).length, 22);
+test('all remaining rows build X announcement URLs from compact account and status metadata', () => {
+  assert.equal(eventRows.length, 22);
+  assert.match(viewSource, /X_ACCOUNTS = Object\.freeze\(\['skr_Stationhead', 'saku_saka46', 'HNZ_Stationhead', 'ohisama_discord'\]\)/);
+  assert.match(viewSource, /source: `https:\/\/x\.com\/\$\{X_ACCOUNTS\[accountIndex\]\}\/status\/\$\{statusId\}`/);
   assert.doesNotMatch(viewSource, /note\.com|sourceLabel|告知記事/);
   assert.match(viewSource, /sourceLink\.textContent = 'X告知'/);
   assert.match(viewSource, /sourceLink\.target = '_blank'/);
