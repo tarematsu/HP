@@ -71,6 +71,7 @@ const browserModuleResolver = {
   setup(buildApi) {
     buildApi.onResolve({ filter: /\.m?js(?:[?#].*)?$/ }, (args) => {
       const clean = args.path.replace(/[?#].*$/, '');
+      if (args.kind === 'entry-point' || clean.startsWith(publicRoot)) return null;
       if (!clean.startsWith('/') && !clean.startsWith('.')) return null;
       const path = clean.startsWith('/')
         ? resolve(publicRoot, `.${clean}`)
