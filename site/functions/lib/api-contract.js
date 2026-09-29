@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 10;
+export const API_CONTRACT_VERSION = 11;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -18,6 +18,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },
     { path: '/api/spotify-playcounts', methods: ['GET'], description: 'Latest finalized Spotify cumulative playcounts by Sakamichi group' },
     { path: '/api/amazon-music', methods: ['GET'], description: 'Latest Sakurazaka Amazon Music follower and track-rank read model' },
+    { path: '/api/followers', methods: ['GET'], description: 'Daily Stationhead follower history and comparison for tracked accounts' },
   ]),
 });
 
@@ -41,6 +42,12 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
     key: 'spotify-playcounts',
     url: '/api/spotify-playcounts',
     cadence_minutes: 720,
+    event_driven: true,
+  }),
+  Object.freeze({
+    key: 'followers',
+    url: '/api/followers',
+    cadence_minutes: 1440,
     event_driven: true,
   }),
 ]);
@@ -76,6 +83,7 @@ export function materializedApiKey(input) {
   if (pathname === '/api/spotify-playcounts' && onlyParameters(url, ['artist'])) {
     return 'spotify-playcounts';
   }
+  if (pathname === '/api/followers' && onlyParameters(url)) return 'followers';
   return null;
 }
 
