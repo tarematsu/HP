@@ -81,9 +81,11 @@ test('current daily history reads the incremental projection for the latest live
   const insertContext = db.prepare('INSERT INTO sh_minute_fact_context_v2 VALUES(?,?)');
   const start = Date.parse('2026-07-20T00:00:00Z');
   db.prepare('INSERT INTO sh_hosts VALUES(?,?)').run(1, 'buddies');
-  // Member start must be the previous UTC day's final recorded value.
+  // Member boundaries come only from the compact daily-member state.
   db.prepare('INSERT INTO sh_total_member_daily VALUES(?,?,?,?,?)')
     .run(1, start - 86_400_000, 0, start - 60_000, 790);
+  db.prepare('INSERT INTO sh_total_member_daily VALUES(?,?,?,?,?)')
+    .run(1, start, 0, start + 120_000, 802);
   insertFact.run(1, 1, start, start, 1, 10, 800, 100, null);
   insertFact.run(2, 1, start + 60_000, start + 60_000, 1, null, 801, 110, null);
   insertFact.run(3, 1, start + 120_000, start + 120_000, 1, 30, 802, 130, null);
@@ -103,7 +105,7 @@ test('current daily history reads the incremental projection for the latest live
     1, start, start, start + 120_000, 3, 2,
     40, 10, 30,
     start, 100, start + 120_000, 130,
-    start + 120_000, 802, start + 120_000,
+    start + 120_000, 999, start + 120_000,
   );
 
   const row = db.prepare(CURRENT_DAILY_MINUTE_SUMMARY_SQL)
@@ -125,6 +127,7 @@ test('current daily history reads the incremental projection for the latest live
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /p\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /p\.day_at=\?1/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /p\.period_start<\?2/);
+  assert.doesNotMatch(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /p\.member_end/);
   assert.doesNotMatch(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
   assert.doesNotMatch(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /idx_sh_minute_facts_observed_id|sh_channel_snapshots|sh_total_member_daily_latest d/);
   const plan = db.prepare(`EXPLAIN QUERY PLAN ${CURRENT_DAILY_MINUTE_SUMMARY_SQL}`)
