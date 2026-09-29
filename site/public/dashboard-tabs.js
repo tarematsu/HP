@@ -1,6 +1,6 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'spotify', 'amazon-music', 'likes']);
-const VIEW_IDS = ['currentView', 'historyView', 'firstWeekView', 'playedTracksView', 'spotifyView', 'amazonMusicView', 'likesView'];
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'spotify', 'amazon-music', 'apple-music', 'likes']);
+const VIEW_IDS = ['currentView', 'historyView', 'firstWeekView', 'playedTracksView', 'spotifyView', 'amazonMusicView', 'appleMusicView', 'likesView'];
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
@@ -17,6 +17,8 @@ let spotifyShellPromise = null;
 let spotifyRuntimePromise = null;
 let amazonMusicShellPromise = null;
 let amazonMusicRuntimePromise = null;
+let appleMusicShellPromise = null;
+let appleMusicRuntimePromise = null;
 let likesRuntimePromise = null;
 let historyRuntimeMode = null;
 let activeMode = 'current';
@@ -104,6 +106,16 @@ function ensureAmazonMusicShell() {
   return amazonMusicShellPromise;
 }
 
+function ensureAppleMusicShell() {
+  if (!appleMusicShellPromise) {
+    appleMusicShellPromise = import('/apple-music-shell.js?v=20260930.1').catch((error) => {
+      appleMusicShellPromise = null;
+      throw error;
+    });
+  }
+  return appleMusicShellPromise;
+}
+
 async function loadRankingStatusRuntime() {
   if (!rankingStatusRuntimePromise) {
     rankingStatusRuntimePromise = import('/history/history-ranking-table-status.js?v=20260923.2').catch((error) => {
@@ -163,6 +175,16 @@ async function loadAmazonMusicRuntime() {
     });
   }
   return amazonMusicRuntimePromise;
+}
+
+async function loadAppleMusicRuntime() {
+  if (!appleMusicRuntimePromise) {
+    appleMusicRuntimePromise = import('/apple-music.js?v=20260930.1').catch((error) => {
+      appleMusicRuntimePromise = null;
+      throw error;
+    });
+  }
+  return appleMusicRuntimePromise;
 }
 
 async function loadLikesRuntime() {
@@ -331,6 +353,36 @@ async function showAmazonMusic({ updateUrl = true, replaceUrl = false } = {}) {
   }
 }
 
+async function showAppleMusic({ updateUrl = true, replaceUrl = false } = {}) {
+  activeMode = 'apple-music';
+  showOnly(null);
+  updateTabs('apple-music');
+  if (updateUrl) updateLocation('apple-music', { replace: replaceUrl });
+
+  try {
+    await ensureAppleMusicShell();
+    if (activeMode !== 'apple-music') return;
+    const view = document.getElementById('appleMusicView');
+    showOnly(view);
+    markRouteReady();
+    const runtime = await loadAppleMusicRuntime();
+    if (activeMode !== 'apple-music') return;
+    await runtime.loadAppleMusicView?.();
+  } catch (error) {
+    if (activeMode !== 'apple-music') return;
+    markRouteReady();
+    console.error('apple music runtime failed to start', error);
+    const notice = document.getElementById('appleMusicNotice');
+    if (notice) {
+      notice.textContent = 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。';
+      notice.classList.add('error');
+      notice.hidden = false;
+    }
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
+  }
+}
+
 async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
   activeMode = 'likes';
   showOnly(likesView);
@@ -364,6 +416,7 @@ function showMode(mode, options = {}) {
   else if (mode === 'played-tracks') void showPlayedTracks(options);
   else if (mode === 'spotify') void showSpotify(options);
   else if (mode === 'amazon-music') void showAmazonMusic(options);
+  else if (mode === 'apple-music') void showAppleMusic(options);
   else if (mode === 'likes') void showLikes(options);
   else void showHistory(mode, options);
 }
@@ -399,6 +452,10 @@ tabs?.addEventListener('click', (event) => {
     void showAmazonMusic();
     return;
   }
+  if (button.dataset.view === 'apple-music') {
+    void showAppleMusic();
+    return;
+  }
   if (button.dataset.view === 'likes') {
     void showLikes();
     return;
@@ -412,8 +469,11 @@ tabs?.addEventListener('click', (event) => {
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
 
-void ensureAmazonMusicShell().catch((error) => {
-  console.error('amazon music shell failed to start', error);
+void Promise.all([
+  ensureAmazonMusicShell(),
+  ensureAppleMusicShell(),
+]).catch((error) => {
+  console.error('music tab shell failed to start', error);
 });
 
 const initialMode = modeFromLocation();

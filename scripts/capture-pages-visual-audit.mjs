@@ -139,6 +139,12 @@ async function inspectView(page, tab, viewport, outDir) {
   };
 }
 
+function expectedNavigationAbort(request) {
+  const type = request.resourceType();
+  const errorText = String(request.failure()?.errorText || '');
+  return ['fetch', 'xhr'].includes(type) && errorText === 'net::ERR_ABORTED';
+}
+
 async function auditViewport(browser, baseUrl, viewport, outDir) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
@@ -157,6 +163,7 @@ async function auditViewport(browser, baseUrl, viewport, outDir) {
   page.on('pageerror', (error) => pageErrors.add(error.message));
   page.on('requestfailed', (request) => {
     const type = request.resourceType();
+    if (expectedNavigationAbort(request)) return;
     if (['document', 'script', 'stylesheet', 'fetch', 'xhr'].includes(type)) {
       requestFailures.add(`${type} ${request.url()} ${request.failure()?.errorText || 'failed'}`);
     }
