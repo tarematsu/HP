@@ -68,7 +68,7 @@ test('normalizes ISRC and rejects provider IDs masquerading as recordings', () =
   assert.equal(normalizeCollectedIsrc('spotify-only'), null);
 });
 
-test('raw collection queue keeps only operational fields and ISRC-first identity', () => {
+test('raw collection queue keeps operational identity compact but preserves Spotify identity in metadata', () => {
   const { queue, metadata } = compactCollectedQueue(sourceQueue());
 
   assert.deepEqual(queue.tracks[0], {
@@ -89,12 +89,12 @@ test('raw collection queue keeps only operational fields and ISRC-first identity
   const complete = metadata.find((row) => row.isrc === 'JPABC1234567');
   const incomplete = metadata.find((row) => row.isrc === 'USABC1234567');
   const legacy = metadata.find((row) => row.spotify_id === 'spotify-only');
-  assert.equal(complete.spotify_id, null);
+  assert.equal(complete.spotify_id, 'spotify-complete');
   assert.equal(incomplete.spotify_id, 'spotify-fallback');
   assert.equal(legacy.isrc, null);
 });
 
-test('materialized metadata is filtered and restored only for visible tracks', () => {
+test('materialized metadata restores provider identity for visible tracks', () => {
   const { queue, metadata } = compactCollectedQueue(sourceQueue());
   const visibleQueue = { ...queue, tracks: queue.tracks.slice(0, 1) };
   const visibleMetadata = metadataForCollectedQueue(metadata, visibleQueue);
@@ -104,10 +104,10 @@ test('materialized metadata is filtered and restored only for visible tracks', (
   assert.equal(hydrated.tracks[0].title, 'Song');
   assert.equal(hydrated.tracks[0].artist, 'Artist');
   assert.equal(hydrated.tracks[0].thumbnail_url, 'https://image.invalid/cover');
-  assert.equal(hydrated.tracks[0].spotify_id, null);
+  assert.equal(hydrated.tracks[0].spotify_id, 'spotify-complete');
 });
 
-test('dictionary persistence writes only normalized ISRC metadata', async () => {
+test('dictionary persistence writes only normalized ISRC metadata and never downgrades authoritative source ownership', async () => {
   const bound = [];
   const db = {
     prepare(sql) {
@@ -124,7 +124,7 @@ test('dictionary persistence writes only normalized ISRC metadata', async () => 
   };
   const result = await persistCollectedTrackMetadata(db, [{
     isrc: 'jp-abc-12-34567',
-    spotify_id: null,
+    spotify_id: 'spotify-complete',
     title: 'Song',
     artist: 'Artist',
     thumbnail_url: 'cover',
@@ -138,5 +138,7 @@ test('dictionary persistence writes only normalized ISRC metadata', async () => 
   assert.equal(result.changed, 1);
   assert.equal(bound.length, 1);
   assert.equal(bound[0].values[0], 'JPABC1234567');
+  assert.equal(bound[0].values[1], 'spotify-complete');
+  assert.match(bound[0].sql, /metadata_source IN \('unknown','track_identity','stationhead_queue'\)/);
   assert.match(bound[0].sql, /WHERE \(sh_track_dictionary\.spotify_id IS NULL/);
 });

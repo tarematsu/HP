@@ -15,6 +15,10 @@ const canonicalMigration = await readFile(
   new URL('../../database/facts-migrations/061_canonical_track_metadata_read_model.sql', import.meta.url),
   'utf8',
 );
+const priorityMigration = await readFile(
+  new URL('../../database/facts-migrations/062_track_metadata_source_priority.sql', import.meta.url),
+  'utf8',
+);
 
 test('ISRC dictionary migration materializes metadata but derives latest bite stats', () => {
   assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_track_dictionary/);
@@ -32,6 +36,14 @@ test('canonical migration exposes presentation metadata as a view without anothe
   assert.match(canonicalMigration, /FROM sh_tracks AS t/);
   assert.match(canonicalMigration, /LEFT JOIN sh_track_dictionary AS d/);
   assert.doesNotMatch(canonicalMigration, /CREATE TABLE IF NOT EXISTS sh_track_canonical_metadata/);
+});
+
+test('source-priority migration treats Stationhead as provisional and adds ISRC artwork', () => {
+  assert.match(priorityMigration, /ALTER TABLE sh_isrc_metadata ADD COLUMN thumbnail_url TEXT/);
+  assert.match(priorityMigration, /WHEN 'stationhead_queue' THEN 10/);
+  assert.match(priorityMigration, /WHEN 'spotify_oembed' THEN 40/);
+  assert.match(priorityMigration, /AFTER UPDATE OF title,artist,thumbnail_url,source,fetched_at ON sh_isrc_metadata/);
+  assert.match(priorityMigration, /UPDATE sh_isrc_metadata[\s\S]*SET fetched_at=0/);
 });
 
 test('minute metadata hydration reads only the canonical track metadata view', async () => {

@@ -46,7 +46,11 @@ function collectedMetadata(track, isrc, spotifyId) {
   if (!isrc && !spotifyId) return null;
   return {
     isrc,
-    spotify_id: isrc && title && artist && thumbnailUrl ? null : spotifyId,
+    // Keep provider identity in the metadata sidecar even when ISRC and display
+    // fields are already present. The compact operational queue stays ISRC-first,
+    // but this lets the canonical dictionary/alias layer verify Stationhead's
+    // provisional title/artist against Spotify once per new track.
+    spotify_id: spotifyId,
     title,
     artist,
     thumbnail_url: thumbnailUrl,
@@ -171,9 +175,10 @@ function dictionaryStatement(db, row, observedAt) {
       artist=COALESCE(sh_track_dictionary.artist,excluded.artist),
       thumbnail_url=COALESCE(sh_track_dictionary.thumbnail_url,excluded.thumbnail_url),
       metadata_source=CASE
-        WHEN sh_track_dictionary.title IS NULL
-          OR sh_track_dictionary.artist IS NULL
-          OR sh_track_dictionary.thumbnail_url IS NULL
+        WHEN sh_track_dictionary.metadata_source IN ('unknown','track_identity','stationhead_queue')
+          AND (sh_track_dictionary.title IS NULL
+            OR sh_track_dictionary.artist IS NULL
+            OR sh_track_dictionary.thumbnail_url IS NULL)
         THEN excluded.metadata_source
         ELSE sh_track_dictionary.metadata_source
       END,

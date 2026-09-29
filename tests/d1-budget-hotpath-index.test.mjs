@@ -150,6 +150,7 @@ const expectedMigrations = [
   'database/facts-migrations/059_current_daily_summary_5m.sql',
   'database/facts-migrations/060_canonical_daily_member_ownership.sql',
   'database/facts-migrations/061_canonical_track_metadata_read_model.sql',
+  'database/facts-migrations/062_track_metadata_source_priority.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {

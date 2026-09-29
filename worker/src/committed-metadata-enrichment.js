@@ -10,6 +10,9 @@ let ingestModulePromise;
 let spotifyModulePromise;
 let isrcModulePromise;
 
+const SPOTIFY_AUTHORITATIVE_SOURCES = new Set(['spotify_oembed', 'isrc_peer']);
+const PROVISIONAL_SOURCES = new Set(['unknown', 'track_identity', 'stationhead_queue', 'isrc_not_found']);
+
 function sourceDatabaseEnv(env) {
   const source = env?.MINUTE_DB;
   return source ? environmentView(env, { DB: source }) : env;
@@ -27,6 +30,18 @@ function normalizeIsrc(value) {
 function text(value) {
   const normalized = String(value ?? '').trim();
   return normalized || null;
+}
+
+function completePresentation(row) {
+  return Boolean(text(row?.title) && text(row?.artist) && text(row?.thumbnail_url));
+}
+
+function spotifyAuthoritative(row) {
+  return SPOTIFY_AUTHORITATIVE_SOURCES.has(text(row?.metadata_source));
+}
+
+function provisionalPresentation(row) {
+  return !row || PROVISIONAL_SOURCES.has(text(row?.metadata_source));
 }
 
 function loadConfigModule() {
@@ -69,7 +84,8 @@ async function dictionaryRows(db, queue) {
   if (!db?.prepare || !isrcs.length) return new Map();
   const placeholders = isrcs.map(() => '?').join(',');
   try {
-    const result = await db.prepare(`SELECT isrc,spotify_id,title,artist,thumbnail_url
+    const result = await db.prepare(`SELECT
+        isrc,spotify_id,title,artist,thumbnail_url,metadata_source
       FROM sh_track_dictionary WHERE isrc IN (${placeholders})`).bind(...isrcs).all();
     return new Map((result.results || []).map((row) => [normalizeIsrc(row?.isrc), row]));
   } catch (error) {
@@ -84,16 +100,28 @@ function filteredQueue(queue, rows, stage) {
   const tracks = queue.tracks.flatMap((track) => {
     const isrc = normalizeIsrc(track?.isrc);
     const row = isrc ? rows.get(isrc) : null;
-    const hasTitleArtist = Boolean(text(row?.title) && text(row?.artist));
+    const originalSpotifyId = text(track?.spotify_id);
+    const spotifyId = originalSpotifyId || text(row?.spotify_id);
+
     if (stage === 'isrc') {
-      if (isrc && !hasTitleArtist) return [track];
+      // Avoid doing both external lookups for the same new track. If a Spotify
+      // identity is already known, Spotify is the authoritative enrichment path.
+      if (!isrc || spotifyId) {
+        changed = true;
+        return [];
+      }
+      if (!completePresentation(row) || provisionalPresentation(row) || text(row?.metadata_source) === 'musicbrainz') {
+        return [track];
+      }
       changed = true;
       return [];
     }
 
-    const originalSpotifyId = text(track?.spotify_id);
-    const spotifyId = originalSpotifyId || text(row?.spotify_id);
-    if (!spotifyId || (isrc && hasTitleArtist && text(row?.thumbnail_url))) {
+    if (!spotifyId) {
+      changed = true;
+      return [];
+    }
+    if (completePresentation(row) && spotifyAuthoritative(row)) {
       changed = true;
       return [];
     }

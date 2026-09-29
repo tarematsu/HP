@@ -28,18 +28,16 @@ class Statement {
 
   async run() {
     if (this.sql.includes('INSERT INTO sh_isrc_metadata')) {
-      const [isrc, title, artist, source, fetchedAt, rawJson] = this.args;
+      const [isrc, title, artist, thumbnailUrl, source, fetchedAt, rawJson] = this.args;
       this.db.metadata.set(isrc, {
         isrc,
         title,
         artist,
+        thumbnail_url: thumbnailUrl,
         source,
         fetched_at: fetchedAt,
         raw_json: rawJson,
       });
-    }
-    if (this.sql.includes('UPDATE sh_tracks SET')) {
-      this.db.trackUpdates.push(this.args);
     }
     return { meta: { changes: 1 } };
   }
@@ -48,7 +46,6 @@ class Statement {
 class FakeDb {
   constructor() {
     this.metadata = new Map();
-    this.trackUpdates = [];
   }
 
   prepare(sql) {
@@ -74,24 +71,27 @@ test('MusicBrainz response becomes title and artist metadata', () => {
     isrc: 'JPSR02600001',
     title: 'Test Song',
     artist: 'Artist A & Artist B',
+    thumbnail_url: null,
     source: 'musicbrainz',
     fetched_at: 1234,
     raw_json: JSON.stringify({ recording_id: 'recording-1' }),
   });
 });
 
-test('Deezer response becomes title and artist metadata for the requested ISRC', () => {
+test('Deezer response includes artwork for the requested ISRC', () => {
   const metadata = deezerTrackMetadata({
     id: 987654,
     isrc: 'JP-SR0-26-00001',
     title: 'Fallback Song',
     artist: { name: 'Fallback Artist' },
+    album: { cover_xl: 'https://image.invalid/cover-xl' },
   }, 'JPSR02600001', 2345);
 
   assert.deepEqual(metadata, {
     isrc: 'JPSR02600001',
     title: 'Fallback Song',
     artist: 'Fallback Artist',
+    thumbnail_url: 'https://image.invalid/cover-xl',
     source: 'deezer',
     fetched_at: 2345,
     raw_json: JSON.stringify({ track_id: 987654 }),
@@ -117,7 +117,7 @@ test('ISRC enrichment is disabled unless the minute worker enables it', async ()
   assert.equal(db.metadata.size, 0);
 });
 
-test('ISRC enrichment persists one source-cache lookup without copying presentation into sh_tracks', async () => {
+test('ISRC enrichment persists artwork without copying presentation into sh_tracks', async () => {
   const db = new FakeDb();
   const result = await enrichIsrcTracks({ MINUTE_DB: db, ISRC_METADATA_LIMIT: 1 }, {
     tracks: [
@@ -129,7 +129,8 @@ test('ISRC enrichment persists one source-cache lookup without copying presentat
       isrc,
       title: 'Resolved Song',
       artist: 'Resolved Artist',
-      source: 'musicbrainz',
+      thumbnail_url: 'https://image.invalid/resolved',
+      source: 'deezer',
       fetched_at: 2000,
       raw_json: '{}',
     }),
@@ -137,6 +138,5 @@ test('ISRC enrichment persists one source-cache lookup without copying presentat
 
   assert.deepEqual(result, { saved: 1, attempted: 1 });
   assert.equal(db.metadata.size, 1);
-  assert.equal(db.metadata.get('JPSR02600001')?.title, 'Resolved Song');
-  assert.deepEqual(db.trackUpdates, []);
+  assert.equal(db.metadata.get('JPSR02600001')?.thumbnail_url, 'https://image.invalid/resolved');
 });

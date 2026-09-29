@@ -54,7 +54,7 @@ test('raw queue compaction reads track identity and likes once', () => {
   });
   assert.deepEqual(result.metadata, [{
     isrc: 'JPABC1234567',
-    spotify_id: null,
+    spotify_id: 'spotify-fallback',
     title: 'Song',
     artist: 'Artist',
     thumbnail_url: 'cover',
