@@ -10,6 +10,7 @@ import {
   const PAGE_SIZE = 200;
   const CACHE_PREFIX = 'sh.history.v3:';
   const MAX_CACHE_CHARS = 1_500_000;
+  const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
   const integer = new Intl.NumberFormat('ja-JP');
   const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateOnly = new Intl.DateTimeFormat('ja-JP', {
@@ -29,11 +30,18 @@ import {
   });
 
   const SUMMARY_COLUMNS = [
-    ['period_key', '期間'], ['sample_count', '記録数'], ['reliable_sample_count', '有効記録数'],
-    ['listener_avg', '平均同接'], ['listener_min', '最小同接'], ['listener_max', '最大同接'],
-    ['stream_start', '再生数（開始）'], ['stream_end', '再生数（終了）'], ['stream_growth', '再生数増加'],
-    ['member_start', 'メンバー（開始）'], ['member_end', 'メンバー（終了）'], ['member_growth', 'メンバー増加'],
-    ['likes_max', '最大いいね'], ['distinct_tracks', '曲数'], ['primary_host', '主なホスト'], ['quality_score', '品質'],
+    ['period_key', '期間'],
+    ['sample_count', '取得記録数', 'その期間に保存された全サンプル数'],
+    ['listener_avg', '平均同接'],
+    ['listener_min', '最小同接'],
+    ['listener_max', '最大同接'],
+    ['stream_start', '再生数（開始）'],
+    ['stream_end', '再生数（終了）'],
+    ['stream_growth', '再生数増加'],
+    ['member_start', 'メンバー数（開始）', '期間開始時点のメンバー数'],
+    ['member_end', 'メンバー数（終了）', '期間終了時点のメンバー数'],
+    ['member_growth', 'メンバー増加数', '期間内のメンバー数の増加'],
+    ['distinct_tracks', '楽曲数', '期間内に確認された楽曲数'],
   ];
   const BROADCAST_COLUMNS = [
     ['event_name', '放送名'], ['started_at', '開始日時（UTC）'], ['ended_at', '終了日時（UTC）'],
@@ -41,8 +49,12 @@ import {
     ['listener_max', '最大同接'], ['likes_max', '最大いいね'], ['distinct_tracks', '曲数'], ['host_handle', 'ホスト'],
   ];
   const RANKING_COLUMNS = [
-    ['ranking_date', '週'], ['host_name', 'ホスト'], ['rank', '順位'], ['previous_rank', '前週順位'],
-    ['rank_change', '前週比'], ['ranking_type', 'ランキング種別'], ['source_sheet', '順位データ出典'], ['quality_score', '品質'],
+    ['ranking_date', '週'],
+    ['host_name', 'ホスト'],
+    ['stationhead_channel_name', 'チャンネル'],
+    ['artist_name', 'アーティスト名'],
+    ['relation_label', '種別'],
+    ['rank', '順位'],
   ];
 
   const state = {
@@ -52,6 +64,7 @@ import {
     tableRows: [],
     visibleRows: PAGE_SIZE,
     data: null,
+    rankingMetadataByHost: new Map(),
     controller: null,
     requestToken: 0,
   };
@@ -146,11 +159,41 @@ import {
     return SUMMARY_COLUMNS;
   }
 
+  function hostKey(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function rebuildRankingMetadata() {
+    state.rankingMetadataByHost.clear();
+    for (const row of state.rows) {
+      const key = hostKey(row?.host_name);
+      if (!key) continue;
+      const current = state.rankingMetadataByHost.get(key) || {};
+      const artist = String(row?.artist_name || current.artist_name || '').trim();
+      state.rankingMetadataByHost.set(key, {
+        stationhead_channel_name: String(row?.stationhead_channel_name || current.stationhead_channel_name || '').trim(),
+        artist_name: artist,
+        fandom_type: row?.fandom_type || current.fandom_type || null,
+      });
+    }
+  }
+
+  function rankingMetadata(row) {
+    return state.rankingMetadataByHost.get(hostKey(row?.host_name)) || {};
+  }
+
   function displayCell(key, row) {
-    const value = row?.[key];
+    let value = row?.[key];
+    if (key === 'stationhead_channel_name') value = value || rankingMetadata(row).stationhead_channel_name;
+    if (key === 'artist_name') value = value || rankingMetadata(row).artist_name;
+    if (key === 'relation_label') {
+      const metadata = rankingMetadata(row);
+      const artist = String(row?.artist_name || metadata.artist_name || '').trim();
+      value = artist ? ((row?.fandom_type || metadata.fandom_type) === 'official' ? '公式' : 'ファンダム') : null;
+    }
     if (value == null || value === '') return '—';
+    if (key === 'event_name') return String(value).replace(OFFICIAL_EVENT_DATE_GAP, '$1');
     if (key.endsWith('_at')) return formatDate(value, true);
-    if (key === 'quality_score') return numberText(value);
     if (['rank_change', 'stream_growth', 'member_growth'].includes(key)) {
       const number = finite(value);
       return number == null ? '—' : `${number > 0 ? '+' : ''}${integer.format(number)}`;
@@ -167,14 +210,25 @@ import {
     return [...rows].reverse();
   }
 
+  function syncTableModeClass(mode) {
+    const table = el('thead')?.closest('table');
+    if (!table) return;
+    table.classList.toggle('compact-columns', mode === 'ranking');
+    table.classList.toggle('official-party-table', mode === 'broadcasts');
+    table.classList.remove('all-host-ranking-table');
+  }
+
   function renderTable(reset = false) {
     if (reset) state.visibleRows = PAGE_SIZE;
-    const columns = columnsFor(dataMode());
+    const mode = dataMode();
+    const columns = columnsFor(mode);
+    syncTableModeClass(mode);
     const head = document.createElement('tr');
-    for (const [, label] of columns) {
+    for (const [, label, title] of columns) {
       const cell = document.createElement('th');
       cell.scope = 'col';
       cell.textContent = label;
+      if (title) cell.title = title;
       head.appendChild(cell);
     }
     el('thead').replaceChildren(head);
@@ -204,7 +258,7 @@ import {
 
   function renderRankingWeekly(rows) {
     const head = document.createElement('tr');
-    for (const label of ['週', '平均同接', '再生数増加', 'メンバー増加']) {
+    for (const label of ['週', '平均同接', '再生数増加', 'メンバー増加数']) {
       const th = document.createElement('th');
       th.textContent = label;
       head.appendChild(th);
@@ -228,23 +282,119 @@ import {
     return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
   }
 
+  function isoDate(value) {
+    const match = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(String(value || '').trim());
+    if (!match) return '';
+    return `${match[1]}-${String(Number(match[2])).padStart(2, '0')}-${String(Number(match[3])).padStart(2, '0')}`;
+  }
+
+  function mondayOnOrBefore(value) {
+    const iso = isoDate(value);
+    if (!iso) return '';
+    const date = new Date(`${iso}T00:00:00Z`);
+    const delta = (date.getUTCDay() + 6) % 7;
+    date.setUTCDate(date.getUTCDate() - delta);
+    return date.toISOString().slice(0, 10);
+  }
+
+  function rankingWeekCounts(payload) {
+    const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+    const singleHost = Array.isArray(payload?.chart_hosts) && payload.chart_hosts.length === 1;
+    const sourceWeeks = singleHost
+      ? rows.map((row) => row?.ranking_date)
+      : Array.isArray(payload?.ranking_weeks) && payload.ranking_weeks.length
+        ? payload.ranking_weeks
+        : rows.map((row) => row?.ranking_date);
+    const weekKeys = new Set(sourceWeeks.map(mondayOnOrBefore).filter(Boolean));
+    const totalWeeks = weekKeys.size;
+    const rankedWeeks = new Set(rows
+      .filter((row) => finite(row?.rank) > 0)
+      .map((row) => mondayOnOrBefore(row?.ranking_date))
+      .filter((week) => weekKeys.has(week))).size;
+    return { totalWeeks, rankedWeeks, outWeeks: Math.max(0, totalWeeks - rankedWeeks) };
+  }
+
+  function setSummary(labels, values) {
+    setText('periodLabel', labels.period);
+    setText('maxLabel', labels.max);
+    setText('streamLabel', labels.stream);
+    setText('memberLabel', labels.member);
+    setText('periods', values.periods);
+    setText('maxListener', values.max);
+    setText('streamGrowth', values.stream);
+    setText('memberGrowth', values.member);
+  }
+
+  function formatMinutes(value) {
+    const rounded = Math.max(0, Math.round(finite(value) || 0));
+    if (rounded < 60) return `${rounded}分`;
+    const hours = Math.floor(rounded / 60);
+    const minutes = rounded % 60;
+    return minutes ? `${hours}時間${minutes}分` : `${hours}時間`;
+  }
+
   function updateSummary() {
     const rows = state.rows;
     const mode = dataMode();
-    setText('periodLabel', mode === 'ranking' ? '順位行' : '期間数');
-    setText('maxLabel', '平均同接');
-    setText('streamLabel', '再生数増加');
-    setText('memberLabel', 'メンバー増加');
-    setText('periods', numberText(rows.length));
     if (mode === 'ranking') {
-      setText('maxListener', '—');
-      setText('streamGrowth', '—');
-      setText('memberGrowth', '—');
+      const data = state.data || {};
+      const singleSelectedHost = data.scope === 'all'
+        && Array.isArray(data.chart_hosts)
+        && data.chart_hosts.length === 1;
+      if (data.scope === 'all' && !singleSelectedHost) {
+        const summary = data.ranking_summary || {};
+        setSummary(
+          { period: '対象週数', max: '掲載ホスト数', stream: '延べランクイン数', member: '圏外・欠測数' },
+          {
+            periods: integer.format(Number(summary.week_count || 0)),
+            max: integer.format(Number(summary.listed_host_count ?? summary.host_count ?? 0)),
+            stream: integer.format(Number(summary.ranked_entry_count || 0)),
+            member: integer.format(Number(summary.out_of_rank_count || 0)),
+          },
+        );
+      } else {
+        const { totalWeeks, rankedWeeks, outWeeks } = rankingWeekCounts(data);
+        setSummary(
+          { period: '総週数', max: 'ランクイン週数', stream: '圏外・欠測週数', member: '対象ホスト' },
+          {
+            periods: integer.format(totalWeeks),
+            max: integer.format(rankedWeeks),
+            stream: integer.format(outWeeks),
+            member: integer.format(Number(data.host_count || 0)),
+          },
+        );
+      }
       return;
     }
-    setText('maxListener', numberText(average(rows, 'listener_avg')));
-    setText('streamGrowth', numberText(average(rows, 'stream_growth')));
-    setText('memberGrowth', numberText(average(rows, 'member_growth')));
+
+    if (mode === 'broadcasts') {
+      const maximums = rows.map((row) => finite(row?.listener_max)).filter((value) => value != null);
+      const durations = rows.map((row) => {
+        const start = finite(row?.started_at);
+        const end = finite(row?.ended_at);
+        return start == null || end == null || end < start ? null : (end - start) / 60_000;
+      }).filter((value) => value != null);
+      setSummary(
+        { period: '期間数', max: '平均同接', stream: '最大同接', member: '平均所要時間' },
+        {
+          periods: numberText(rows.length),
+          max: numberText(average(rows, 'listener_avg')),
+          stream: maximums.length ? integer.format(Math.max(...maximums)) : '—',
+          member: durations.length ? formatMinutes(durations.reduce((sum, value) => sum + value, 0) / durations.length) : '—',
+        },
+      );
+      return;
+    }
+
+    setSummary(
+      { period: '期間数', max: '平均同接', stream: '平均再生増加数', member: '平均メンバー増加数' },
+      {
+        periods: numberText(rows.length),
+        max: numberText(average(rows, 'listener_avg')),
+        stream: numberText(average(rows, 'stream_growth')),
+        member: numberText(average(rows, 'member_growth')),
+      },
+    );
   }
 
   function updateModeUi() {
@@ -277,12 +427,14 @@ import {
     state.rows = [];
     state.tableRows = [];
     state.data = null;
+    state.rankingMetadataByHost.clear();
     state.visibleRows = PAGE_SIZE;
     el('tbody').replaceChildren();
     el('chartLegend').replaceChildren();
   }
 
   function renderLoadedData() {
+    rebuildRankingMetadata();
     updateSummary();
     state.tableRows = tableOrder(state.rows, dataMode());
     renderTable(true);
@@ -363,6 +515,7 @@ import {
     state.mode = mode;
     resetData();
     updateModeUi();
+    updateSummary();
     history.replaceState(null, '', `#${mode}`);
     const runtimeMode = dataMode();
     try {
@@ -385,6 +538,7 @@ import {
     state.pastWeekMode = enabled;
     resetData();
     updateModeUi();
+    updateSummary();
     const mode = dataMode();
     try {
       await ensureModeRuntime(mode);
@@ -446,6 +600,7 @@ import {
     const requestedMode = location.hash.slice(1);
     state.mode = MODES[requestedMode] ? requestedMode : 'weekly';
     updateModeUi();
+    updateSummary();
     const startupToken = ++state.requestToken;
     const runtimeMode = dataMode();
     try {

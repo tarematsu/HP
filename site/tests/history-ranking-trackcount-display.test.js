@@ -3,14 +3,14 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
+const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const rankingAllHosts = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
-const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
 test('ranking chart keeps featured comparison and supports one selected all-host series', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260930\.2/);
+  assert.match(entry, /history-ranking-chart\.js\?v=20260930\.2&rev=20260930\.3/);
   assert.match(entry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
   assert.match(entry, /runtimeKey\(mode\)/);
@@ -19,10 +19,11 @@ test('ranking chart keeps featured comparison and supports one selected all-host
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
   assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
   assert.match(rankingChart, /\['nogizaka46smej', '#812990'\]/);
-  assert.match(rankingChart, /function colorForHost\(host, index\) \{[\s\S]*const preset = HOST_COLORS\.get\(hostKey\(host\)\);[\s\S]*if \(preset\) return preset;[\s\S]*if \(chartHosts\.length === 1\) return '#000000'/);
+  assert.match(rankingChart, /function colorForHost\(host, index\) \{[\s\S]*if \(chartScope !== 'featured'\) return '#000000';[\s\S]*const preset = HOST_COLORS\.get\(hostKey\(host\)\);[\s\S]*if \(preset\) return preset/);
+  assert.match(rankingChart, /const isDefaultFeatured = detail\.data\.scope !== 'all' && !hostSearch/);
+  assert.match(rankingChart, /chartHosts = isDefaultFeatured \? FEATURED_HOSTS : apiChartHosts/);
   assert.match(rankingChart, /detail\.data\.chart_hosts/);
   assert.match(rankingChart, /history:ranking-host-selected/);
-  assert.match(rankingChart, /if \(chartHosts\.length === 1\) return '#000000'/);
   assert.match(rankingChart, /chartHosts\.length === 1 \? 'single-host' : 'featured-hosts'/);
   assert.match(rankingChart, /週間リーダーボード順位/);
   assert.match(rankingChart, /順位推移/);
@@ -71,12 +72,14 @@ test('ranking chart fills missing weeks and paints the missing band in the same 
   assert.doesNotMatch(rankingChart, /DOMNodeInserted|MutationObserver/);
 });
 
-test('summary tables remove auxiliary columns while renaming track count to 楽曲数', () => {
-  assert.match(entry, /history-table-cleanup\.js/);
-  assert.match(tableCleanup, /最大いいね/);
-  assert.match(tableCleanup, /主なホスト/);
-  assert.match(tableCleanup, /\['曲数', \['楽曲数'/);
-  assert.doesNotMatch(tableCleanup, /SUMMARY_REMOVED_LABELS = new Set\([^\n]*曲数/);
+test('summary renderer defines only final visible columns and labels track count as 楽曲数', () => {
+  assert.doesNotMatch(entry, /history-table-cleanup/);
+  const summaryColumns = history.match(/const SUMMARY_COLUMNS = \[[\s\S]*?\n  \];/)?.[0] || '';
+  assert.ok(summaryColumns, 'SUMMARY_COLUMNS must be defined at the source renderer');
+  assert.match(summaryColumns, /\['sample_count', '取得記録数'/);
+  assert.match(summaryColumns, /\['distinct_tracks', '楽曲数'/);
+  assert.doesNotMatch(summaryColumns, /likes_max|primary_host|reliable_sample_count|最大いいね|主なホスト|有効記録数/);
+  assert.match(history, /const BROADCAST_COLUMNS = \[[\s\S]*\['likes_max', '最大いいね'\]/);
 });
 
 test('history read models count total broadcasts including repeated tracks', () => {

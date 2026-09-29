@@ -5,10 +5,7 @@ import test from 'node:test';
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const terminology = readFileSync(new URL('../public/pages-terminology.js', import.meta.url), 'utf8');
-const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
-const pageFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
-const summaryLabels = readFileSync(new URL('../public/history/history-summary-average-labels.js', import.meta.url), 'utf8');
+const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const ranking = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
 const official = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.js', import.meta.url), 'utf8');
@@ -18,21 +15,20 @@ test('current and likes views use explicit user-facing metric names in static ma
   for (const label of ['累計再生数', '対象楽曲数', '最大いいね数', '最終取得', '楽曲別一覧', '最新いいね数', 'リスパ']) {
     assert.match(html, new RegExp(label));
   }
-  assert.match(historyEntry, /pages-terminology\.js\?v=20260924\.3/);
-  assert.doesNotMatch(metrics, /pages-terminology\.js/);
-  assert.doesNotMatch(terminology, /累計再生数|対象楽曲数|最大いいね数|楽曲別一覧|公式リスパ/);
+  assert.doesNotMatch(historyEntry, /pages-terminology/);
+  assert.doesNotMatch(metrics, /pages-terminology/);
 });
 
-test('history terminology distinguishes totals, growth, tracks, missing weeks, and data quality', () => {
-  assert.match(summaryLabels, /平均再生増加数/);
-  for (const label of ['メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数', '楽曲数', '圏外・欠測週数', '平均所要時間']) {
-    assert.match(tableCleanup, new RegExp(label));
+test('history renderer owns final totals, growth, tracks, and ranking terminology', () => {
+  for (const label of [
+    '取得記録数', 'メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数', '楽曲数',
+    '平均再生増加数', '平均メンバー増加数', '圏外・欠測週数', '圏外・欠測数', '平均所要時間',
+  ]) {
+    assert.match(history, new RegExp(label));
   }
-  assert.match(pageFixes, /圏外・欠測週数/);
-  assert.match(pageFixes, /圏外・欠測数/);
+  assert.match(history, /\['relation_label', '種別'\]/);
   assert.match(ranking, /\['relation_label', '種別'\]/);
-  assert.match(terminology, /textContent\.trim\(\) === '品質'/);
-  assert.match(terminology, /'データ品質'/);
+  assert.doesNotMatch(historyEntry, /history-page-fixes|history-table-cleanup|history-summary-average-labels/);
 });
 
 test('official and unofficial listening-party tables use event-specific column names', () => {

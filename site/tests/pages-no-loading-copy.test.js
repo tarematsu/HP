@@ -6,7 +6,6 @@ const publicSources = [
   '../public/index.html',
   '../public/history/history-lite.js',
   '../public/history/history-likes.js',
-  '../public/history/history-table-cleanup.js',
   '../public/history/history-chart-stability.js',
   '../public/played-tracks.js',
   '../public/first-week-comparison.js',
@@ -27,8 +26,8 @@ test('Pages does not render transient loading copy', () => {
 
 test('silent loading changes are cache busted through the Pages entry chain', () => {
   assert.match(historyEntry, /history-chart-stability\.js\?v=20260925\.1/);
-  assert.match(historyEntry, /history-table-cleanup\.js\?v=20260928\.1/);
-  assert.match(historyEntry, /history-lite\.js\?v=20260925\.1/);
+  assert.doesNotMatch(historyEntry, /history-table-cleanup|history-page-fixes|history-summary-average-labels/);
+  assert.match(historyEntry, /history-lite\.js\?v=20260930\.1/);
   assert.match(historyEntry, /unofficial-listening-parties\.js\?v=20260927\.1/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
   assert.match(tabs, /history-main\.js\?v=20260928\.1/);
@@ -45,6 +44,8 @@ test('silent loading changes are cache busted through the Pages entry chain', ()
   assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260929\.1/);
   assert.match(dashboardEntry, /dashboard-details-client\.js\?v=20260929\.2/);
   assert.match(dashboardEntry, /dashboard-client\.js\?v=20260929\.2/);
+  assert.match(html, /dashboard-root-presentation\.css\?v=20260930\.1/);
+  assert.doesNotMatch(dashboardEntry, /dashboard-root-presentation\.css|history-global-fixes|dashboard-current-metric-style/);
   assert.doesNotMatch(dashboardEntry, /import '.\/unofficial-listening-parties\.js/);
   assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260930\.1/);
   assert.match(html, /dashboard-metrics\.js\?v=20260929\.3/);

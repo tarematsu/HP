@@ -6,7 +6,8 @@ const layout = readFileSync(new URL('../public/pages-layout.css', import.meta.ur
 const spotify = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
 const firstWeek = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
 const playedTracks = readFileSync(new URL('../public/played-tracks.css', import.meta.url), 'utf8');
-const cleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
+const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+const presentation = readFileSync(new URL('../public/dashboard-root-presentation.css', import.meta.url), 'utf8');
 
 test('canonical layout does not target individual dashboard view IDs', () => {
   assert.doesNotMatch(layout, /#(?:current|history|likes|spotify|firstWeek|playedTracks)View/);
@@ -19,6 +20,8 @@ test('feature styles do not reimplement dashboard view spacing or mobile fit tab
   }
 });
 
-test('runtime cleanup does not inject CSS layout', () => {
-  assert.doesNotMatch(cleanup, /createElement\('style'\)|style\.textContent|MOBILE_TABLE_STYLE_ID/);
+test('history rendering does not inject CSS and static corrections live in a stylesheet', () => {
+  assert.doesNotMatch(history, /createElement\('style'\)|style\.textContent|MOBILE_TABLE_STYLE_ID/);
+  assert.match(presentation, /\.dashboard-view \.data-panel/);
+  assert.match(presentation, /#historyView \.summary-cards strong/);
 });

@@ -118,14 +118,12 @@ test('ranking data remains available when the materialized model has no fandom m
   assert.ok(data.rows.every((row) => row.fandom_label == null));
 });
 
-test('ranking table cleanup inserts channel, artist, and relation immediately after host', () => {
-  const source = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
-  assert.match(source, /channelHeader\.textContent = 'チャンネル'/);
-  assert.match(source, /artistHeader\.textContent = 'アーティスト名'/);
-  assert.match(source, /relationHeader\.textContent = '種別'/);
-  assert.match(source, /headers\[hostIndex\]\.after\(channelHeader, artistHeader, relationHeader\)/);
-  assert.match(source, /hostCell\.after\(channelCell, artistCell, relationCell\)/);
-  assert.doesNotMatch(source, /fandomHeader\.textContent = 'ファンダム'/);
+test('ranking root renderer defines channel, artist, and relation immediately after host', () => {
+  const source = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
+  assert.match(source, /\['host_name', 'ホスト'\],[\s\S]*\['stationhead_channel_name', 'チャンネル'\],[\s\S]*\['artist_name', 'アーティスト名'\],[\s\S]*\['relation_label', '種別'\]/);
+  assert.match(source, /function rebuildRankingMetadata\(\)/);
+  assert.match(source, /\(row\?\.fandom_type \|\| metadata\.fandom_type\) === 'official' \? '公式' : 'ファンダム'/);
+  assert.doesNotMatch(source, /fandomHeader|channelHeader\.after|hostCell\.after/);
 });
 
 test('D1 migration corrects sbuddies1819 idempotently', () => {

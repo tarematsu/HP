@@ -193,15 +193,14 @@ test('normal track history skips the unused like-ranking status payload', async 
   assert.equal(prepared.some((sql) => sql.includes("model_key='track-history-status'")), false);
 });
 
-test('history runtime uses direct data requests instead of global fetch guards', () => {
+test('history runtime uses direct data requests instead of global fetch guards or UI rewrite modules', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
   const dataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
   const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
-  const tweaks = readFileSync(new URL('../public/pages-ui-tweaks.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(entry, /history-request-guard|history-current-overlay/);
+  assert.doesNotMatch(entry, /history-request-guard|history-current-overlay|pages-ui-tweaks|pages-terminology|history-page-fixes|history-table-cleanup/);
   assert.match(history, /history-data-client\.js/);
   assert.match(dataClient, /fetchHistoryPayload/);
   assert.match(broadcasts, /revision: API_REVISION/);
-  assert.doesNotMatch(tweaks, /window\.fetch|pagesUiNativeFetch|officialPartyRequest/);
+  assert.doesNotMatch(history, /window\.fetch|pagesUiNativeFetch|officialPartyRequest|MutationObserver/);
 });

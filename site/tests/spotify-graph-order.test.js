@@ -3,25 +3,27 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
+const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 
-test('Spotify playcount graph legends are ordered by latest displayed playcount descending', () => {
-  assert.match(shell, /function legendNumericValue\(item\)/);
-  assert.match(shell, /replaceAll\(',', ''\)/);
-  assert.match(shell, /text\.match\(\/\[\+\-\]\?\\d\+\/\)/);
-  assert.match(shell, /function sortLegendByLatestValue\(legend\)/);
-  assert.match(shell, /\.sort\(\(a, b\) => \(b\.value - a\.value\)/);
-  assert.match(shell, /#spotifyTrendCharts \.spotify-trend-legend, #spotifyTop10YearTrendCharts \.spotify-trend-legend/);
-  assert.doesNotMatch(shell, /querySelectorAll\('\.spotify-trend-legend'\)\.forEach\(sortLegendByLatestValue\)/);
-  assert.match(shell, /new MutationObserver\(processAll\)/);
-  assert.match(shell, /observer\.observe\(view, \{ childList: true, subtree: true \}\)/);
+test('Spotify playcount graphs select and render latest-metric order at source', () => {
+  assert.match(runtime, /selectTrendSeriesByLatestMetric\(normalizedSeries, metricKey, maxSeries\)/);
+  assert.match(runtime, /\.sort\(\(a, b\) => \(b\.value - a\.value\)/);
+  assert.match(runtime, /seriesList\.forEach\(\(\{ artistName, points \}, seriesIndex\)/);
+  assert.match(runtime, /アイドル凡例と最新の再生数前日比/);
+  assert.doesNotMatch(shell, /sortLegendByLatestValue|legendNumericValue|MutationObserver/);
 });
 
-test('Spotify graphs visibly render artists that only have one numeric point', () => {
-  assert.match(shell, /function artistNameFromPoint\(circle\)/);
-  assert.match(shell, /function showSinglePointSeries\(container\)/);
-  assert.match(shell, /lineState\.set\(artistName, \/\\sL\\s\/\.test/);
-  assert.match(shell, /spotify-single-point-line/);
-  assert.match(shell, /circle\.setAttribute\('r', '3\.4'\)/);
-  assert.match(shell, /取得済み1点/);
-  assert.match(shell, /querySelectorAll\('\.spotify-trend-charts'\)\.forEach\(showSinglePointSeries\)/);
+test('Spotify renderer emits single-point markers without DOM repair', () => {
+  assert.match(runtime, /plotted\.length === 1/);
+  assert.match(runtime, /spotify-single-point-line/);
+  assert.match(runtime, /r: plotted\.length === 1 \? 3\.4 : 2\.4/);
+  assert.match(runtime, /取得済み1点/);
+  assert.doesNotMatch(shell, /showSinglePointSeries|artistNameFromPoint|MutationObserver/);
+});
+
+test('Spotify accessibility and Daily Top Artist terminology are generated directly', () => {
+  assert.match(runtime, /最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移/);
+  assert.match(runtime, /Spotify日本 Daily Top Artist の順位データはまだありません。/);
+  assert.match(runtime, /Spotify日本 Daily Top Artist の順位推移。1位が上。/);
+  assert.doesNotMatch(shell, /alignPlaycountAccessibilityLabels|alignArtistRankTerminology|installGraphPostProcessing/);
 });
