@@ -77,32 +77,21 @@ function showCurrentRuntimeError(error) {
   }
 }
 
-function replayCurrentPayload() {
-  const payload = window.__dashboardCurrentPayload;
-  if (!payload?.ok) return;
-  window.dispatchEvent(new CustomEvent('dashboard:payload', {
-    detail: { payload, source: 'runtime-replay' },
-  }));
-}
-
 function ensureCurrentRuntime() {
   if (currentRuntimePromise) return currentRuntimePromise;
   currentRuntimePromise = (async () => {
-    const baseUiPromise = import('./dashboard-current-layout.js?v=20260924.1');
-
-    await import('./dashboard-fetch-cache.js?v=20260923.4');
-    const clientPromise = import('/dashboard-client.js?v=20260929.2');
-
     await Promise.all([
-      baseUiPromise,
-      import('./dashboard-chart-stability.js?v=20260929.1'),
-      import('./dashboard-chart-comparison.js?v=20260929.1'),
-      import('./dashboard-chart-detail.js?v=20260929.1'),
-      import('./dashboard-daily-summaries.js?v=20260929.1'),
+      import('./dashboard-current-layout.js?v=20260924.1'),
+      import('./dashboard-chart-stability.js?v=20260930.1'),
+      import('./dashboard-chart-comparison.js?v=20260930.1'),
+      import('./dashboard-chart-detail.js?v=20260930.1'),
+      import('./dashboard-daily-summaries.js?v=20260930.1'),
     ]);
-    replayCurrentPayload();
-    await import('./dashboard-details-client.js?v=20260929.2');
-    await clientPromise;
+    await import('./dashboard-fetch-cache.js?v=20260930.1');
+    await Promise.all([
+      import('/dashboard-client.js?v=20260930.1'),
+      import('./dashboard-details-client.js?v=20260930.1'),
+    ]);
   })().catch((error) => {
     currentRuntimePromise = null;
     showCurrentRuntimeError(error);
