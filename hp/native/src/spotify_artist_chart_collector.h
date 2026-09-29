@@ -16,7 +16,7 @@ class SpotifyArtistChartCollector {
   void Stop();
   void Tick(int64_t nowMs);
   void RequestCaptureNow(int64_t nowMs) noexcept {
-    if (!started_ || creating_ || captureInFlight_) return;
+    if (!started_ || creating_ || captureInFlight_ || teardownPending_) return;
     nextCaptureAt_ = nowMs;
     debugController_ = nullptr;
     debugVisible_ = false;
@@ -24,7 +24,7 @@ class SpotifyArtistChartCollector {
     UpdateNextWake();
   }
   void ShowForDebug() noexcept {
-    if (!controller_ || !window_ || !IsWindow(window_)) {
+    if (teardownPending_ || !controller_ || !window_ || !IsWindow(window_)) {
       debugController_ = nullptr;
       debugVisible_ = false;
       debugBounds_ = {};
@@ -41,10 +41,6 @@ class SpotifyArtistChartCollector {
     const LONG availableHeight = client.bottom - client.top;
     if (availableWidth <= 0 || availableHeight <= 0) return;
 
-    // Debug visibility is intentionally capped to the app's normal 720x480
-    // viewport. Expanding the extra WebView2 controller to the full physical
-    // screen during startup can create a large compositor/GPU allocation spike
-    // while the native media WebView is also initializing.
     constexpr LONG kDebugWidth = 720;
     constexpr LONG kDebugHeight = 480;
     const LONG width = std::min(availableWidth, kDebugWidth);
@@ -74,6 +70,7 @@ class SpotifyArtistChartCollector {
   void ConfigureAndNavigate(uint64_t generation);
   void CompleteCapture(int64_t nowMs);
   void FailCapture(int64_t nowMs, std::wstring_view reason);
+  void ScheduleControllerTeardown(int64_t nowMs) noexcept;
   void CloseController() noexcept;
   void UpdateNextWake() noexcept;
   HRESULT CreateProfileController(
@@ -92,6 +89,7 @@ class SpotifyArtistChartCollector {
   uint64_t generation_ = 0;
   int64_t nextCaptureAt_ = 0;
   int64_t timeoutAt_ = 0;
+  int64_t teardownAt_ = 0;
   int64_t nextWakeAt_ = 0;
   ICoreWebView2Controller* debugController_ = nullptr;
   RECT debugBounds_{};
@@ -100,6 +98,7 @@ class SpotifyArtistChartCollector {
   bool captureInFlight_ = false;
   bool contentInFlight_ = false;
   bool responseHandlerRegistered_ = false;
+  bool teardownPending_ = false;
   bool debugVisible_ = false;
 };
 

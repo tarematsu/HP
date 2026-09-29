@@ -274,6 +274,8 @@ inline void SpotifyArtistChartCollector::Start(int64_t nowMs) {
   creating_ = false;
   captureInFlight_ = false;
   contentInFlight_ = false;
+  teardownPending_ = false;
+  teardownAt_ = 0;
   nextCaptureAt_ = spotify_artist_chart_detail::InitialCaptureAt(nowMs);
   timeoutAt_ = 0;
   UpdateNextWake();
@@ -286,6 +288,8 @@ inline void SpotifyArtistChartCollector::Stop() {
   creating_ = false;
   captureInFlight_ = false;
   contentInFlight_ = false;
+  teardownPending_ = false;
+  teardownAt_ = 0;
   ++generation_;
   CloseController();
   environment_.Reset();
@@ -296,11 +300,24 @@ inline void SpotifyArtistChartCollector::Stop() {
 
 inline void SpotifyArtistChartCollector::Tick(int64_t nowMs) {
   if (!started_) return;
+
+  if (teardownPending_) {
+    if (teardownAt_ > nowMs) {
+      UpdateNextWake();
+      return;
+    }
+    teardownPending_ = false;
+    teardownAt_ = 0;
+    CloseController();
+    environment_.Reset();
+  }
+
   if ((creating_ || captureInFlight_) && timeoutAt_ > 0 && nowMs >= timeoutAt_) {
     FailCapture(nowMs, L"capture-timeout");
     return;
   }
-  if (!creating_ && !captureInFlight_ && nextCaptureAt_ > 0 && nowMs >= nextCaptureAt_) {
+  if (!creating_ && !captureInFlight_ && !teardownPending_ &&
+      nextCaptureAt_ > 0 && nowMs >= nextCaptureAt_) {
     BeginCapture(nowMs);
     return;
   }
@@ -309,7 +326,7 @@ inline void SpotifyArtistChartCollector::Tick(int64_t nowMs) {
 
 inline void SpotifyArtistChartCollector::BeginCapture(int64_t nowMs) {
   using namespace spotify_artist_chart_detail;
-  if (!started_ || creating_ || captureInFlight_) return;
+  if (!started_ || creating_ || captureInFlight_ || teardownPending_) return;
   nextCaptureAt_ = 0;
   timeoutAt_ = nowMs + kCaptureTimeoutMs;
   captureInFlight_ = true;
@@ -469,29 +486,41 @@ inline void SpotifyArtistChartCollector::ConfigureAndNavigate(uint64_t generatio
 }
 
 inline void SpotifyArtistChartCollector::CompleteCapture(int64_t nowMs) {
+  ++generation_;
   captureInFlight_ = false;
   contentInFlight_ = false;
+  creating_ = false;
   timeoutAt_ = 0;
   nextCaptureAt_ = spotify_artist_chart_detail::NextDailyCaptureAt(nowMs);
-  CloseController();
-  environment_.Reset();
+  ScheduleControllerTeardown(nowMs);
   UpdateNextWake();
   spotify_artist_chart_detail::DebugLog(L"captured and queued for R2 upload");
 }
 
 inline void SpotifyArtistChartCollector::FailCapture(int64_t nowMs, std::wstring_view reason) {
+  ++generation_;
   captureInFlight_ = false;
   contentInFlight_ = false;
   creating_ = false;
   timeoutAt_ = 0;
   nextCaptureAt_ = nowMs + spotify_artist_chart_detail::kRetryIntervalMs;
-  CloseController();
-  environment_.Reset();
+  ScheduleControllerTeardown(nowMs);
   UpdateNextWake();
   spotify_artist_chart_detail::DebugLog(std::wstring(L"capture failed: ") + std::wstring(reason));
 }
 
+inline void SpotifyArtistChartCollector::ScheduleControllerTeardown(int64_t nowMs) noexcept {
+  teardownPending_ = true;
+  teardownAt_ = std::max<int64_t>(1, nowMs);
+  debugController_ = nullptr;
+  debugVisible_ = false;
+  debugBounds_ = {};
+}
+
 inline void SpotifyArtistChartCollector::CloseController() noexcept {
+  debugController_ = nullptr;
+  debugVisible_ = false;
+  debugBounds_ = {};
   if (webview_) {
     if (navigationToken_.value != 0) webview_->remove_NavigationCompleted(navigationToken_);
     if (responseHandlerRegistered_) {
@@ -514,6 +543,7 @@ inline void SpotifyArtistChartCollector::UpdateNextWake() noexcept {
   const auto include = [&](int64_t value) {
     if (value > 0 && (next == 0 || value < next)) next = value;
   };
+  include(teardownAt_);
   include(nextCaptureAt_);
   include(timeoutAt_);
   nextWakeAt_ = next;
