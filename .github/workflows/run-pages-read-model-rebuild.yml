@@ -1,9 +1,6 @@
 name: Rebuild pages read models
 
 on:
-  workflow_run:
-    workflows: ['Run runtime offline maintenance']
-    types: [completed]
   schedule:
     - cron: '26 0,6,12,18 * * *'
   push:
@@ -44,7 +41,6 @@ concurrency:
 
 jobs:
   rebuild:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Rebuild and publish due pages read models
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -58,7 +54,7 @@ jobs:
       OTHER_DATABASE_NAME: stationhead-other
       PAGES_RESPONSE_BUCKET: sh-pages-responses
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
-      PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'workflow_run' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
+      PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.force_all) }}
       PAGES_READ_MODEL_RETRY_OVERDUE: 'true'
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
       D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
@@ -66,7 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:
@@ -116,9 +112,6 @@ jobs:
           set -o pipefail
           node scripts/run-pages-history-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
       - name: Publish compact track ranking to R2
-        # This bounded 500-track read keeps Likes available while the expensive
-        # history rebuild is deferred. Skip if telemetry is unavailable or the
-        # D1 write budget is also exceeded.
         if: >-
           steps.d1-write-budget.outputs.read_allowed == 'true' ||
           (steps.d1-write-budget.outputs.write_allowed == 'true' &&
