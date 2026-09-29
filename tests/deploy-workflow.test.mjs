@@ -199,6 +199,7 @@ test('Worker package scripts contain only active deployment and bundle operation
       deploy: 'node scripts/deploy-connected-worker.mjs',
       'deploy:buddies-recovery': 'node scripts/deploy-buddies-recovery.mjs',
       'deploy:buddies-collector': 'node scripts/deploy-buddies-collector.mjs',
+      'deploy:ohisama-collector': 'node scripts/deploy-ohisama-collector.mjs',
       'deploy:sakurazaka46jp': 'node scripts/deploy-sakurazaka46jp.mjs',
       'deploy:nogizaka46smej': 'node scripts/deploy-nogizaka46smej.mjs',
       'deploy:spotify-playcount': 'node scripts/deploy-spotify-playcount.mjs',
@@ -211,6 +212,7 @@ test('Worker package scripts contain only active deployment and bundle operation
   assert.equal(workerPackage.scripts['check:minute-enrichment-bundle'], undefined);
   assert.equal(workerPackage.scripts['check:buddies-recovery-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:buddies-collector-bundle'] !== undefined, true);
+  assert.equal(workerPackage.scripts['check:ohisama-collector-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:sakurazaka46jp-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:nogizaka46smej-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:spotify-playcount-bundle'] !== undefined, true);
