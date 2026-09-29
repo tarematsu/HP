@@ -11,11 +11,38 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - name: Verify production Amazon Music read model
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Tail one Amazon Music scheduled execution
+        working-directory: worker
+        shell: bash
+        run: |
+          set +e
+          timeout 75s npx wrangler tail sh-amazon-music-collector --format json > ../amazon-tail.log 2>&1
+          status=$?
+          set -e
+          cat ../amazon-tail.log
+          if [[ "$status" -ne 0 && "$status" -ne 124 ]]; then exit "$status"; fi
+      - name: Verify read model after tail
         shell: bash
         run: |
           set -euo pipefail
-          body="$(curl --fail --silent --show-error --retry 3 --retry-delay 2 https://skrzk.pages.dev/api/amazon-music)"
-          printf '%s\n' "$body" | jq '{ok, snapshot_date, observed_at, follower, track_count, first_track: (.tracks[0] // null), history_count: (.history | length)}'
-          jq -e '.ok == true and (.track_count // 0) > 0 and (.tracks | length) > 0 and (.snapshot_date | type == "string")' <<<"$body" >/dev/null
+          code="$(curl --silent --show-error --output amazon-response.json --write-out '%{http_code}' https://skrzk.pages.dev/api/amazon-music)"
+          echo "HTTP $code"
+          cat amazon-response.json
+          test "$code" = "200"
+          jq -e '.ok == true and (.track_count // 0) > 0 and (.tracks | length) > 0' amazon-response.json >/dev/null
