@@ -1,5 +1,6 @@
 export const ACTIVE_WORKER_NAMES = Object.freeze([
   'sh-sakurazaka46jp',
+  'sh-nogizaka46smej',
   'sh-buddies-recovery',
   'sh-buddies-collector',
   'sh-runtime-orchestrator',
