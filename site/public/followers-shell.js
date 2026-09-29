@@ -14,8 +14,8 @@ function mountTab() {
   button.type = 'button';
   button.dataset.view = 'followers';
   button.textContent = 'フォロワー';
-  const ranking = tabs.querySelector('[data-mode="ranking"]');
-  if (ranking) ranking.insertAdjacentElement('afterend', button);
+  const firstWeek = tabs.querySelector('[data-view="first-week"]');
+  if (firstWeek) firstWeek.insertAdjacentElement('afterend', button);
   else tabs.append(button);
 }
 
