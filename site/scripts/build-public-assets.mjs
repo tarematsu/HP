@@ -18,7 +18,6 @@ const cssFiles = [
   'dashboard-current-enhancements.css',
   'pages-layout.css',
   'pages-tabs-layout.css',
-  'dashboard-ui-common.css',
   'spotify.css',
   'first-week-comparison.css',
   'played-tracks.css',
@@ -28,6 +27,7 @@ const cssFiles = [
   'hinata.css',
   'history/history-past-toggle.css',
   'history/history-range-navigator.css',
+  'dashboard-ui-common.css',
 ];
 
 const browserModuleResolver = {
