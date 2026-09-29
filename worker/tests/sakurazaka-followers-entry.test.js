@@ -8,12 +8,26 @@ const migration = readFileSync(
   new URL('../../database/other-migrations/055_stationhead_daily_followers.sql', import.meta.url),
   'utf8',
 );
+const workflow = readFileSync(
+  new URL('../../.github/workflows/stationhead-daily-followers.yml', import.meta.url),
+  'utf8',
+);
+const collector = readFileSync(
+  new URL('../../.github/scripts/collect-stationhead-daily-followers.mjs', import.meta.url),
+  'utf8',
+);
 
-test('Sakurazaka deployment reuses its single minute cron for daily followers', () => {
+test('daily followers run once at JST midnight outside the Worker minute cron', () => {
   assert.equal(config.main, 'src/sakurazaka-followers-entry.js');
   assert.deepEqual(config.triggers?.crons, ['* * * * *']);
-  assert.match(entry, /isJstMidnightMinute\(scheduledAt\)/);
-  assert.match(entry, /SAKURAZAKA_QUEUE\.send/);
+  assert.doesNotMatch(entry, /SAKURAZAKA_QUEUE\.send/);
+  assert.match(entry, /stationhead_daily_followers_legacy_queue_drained/);
+  assert.match(workflow, /cron: '0 15 \* \* \*'/);
+  assert.match(workflow, /collect-stationhead-daily-followers\.mjs/);
+  assert.match(collector, /chromium\.launch/);
+  assert.match(collector, /wranglerScript/);
+  assert.match(collector, /PAGES_RESPONSE_R2/);
+  assert.match(collector, /OTHER_DB/);
 });
 
 test('daily follower history uses one compact row per JST date', () => {
