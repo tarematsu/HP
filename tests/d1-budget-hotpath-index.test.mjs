@@ -67,7 +67,7 @@ const repairCandidateMigration = readFileSync(
   'utf8',
 );
 const retireRepairIndexMigration = readFileSync(
-  new URL('../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
+  new URL('../database/facts-migrations/043_retire_minute_fact_repair_candidate_index.sql', import.meta.url),
   'utf8',
 );
 const retireRepairWorkMigration = readFileSync(
@@ -134,7 +134,7 @@ const expectedMigrations = [
   'database/facts-migrations/040_sparse_live_metric_values.sql',
   'database/facts-migrations/041_restore_complete_live_metrics.sql',
   'database/facts-migrations/042_minute_fact_repair_candidate_index.sql',
-  'database/facts-migrations/043_retire_repair_candidate_index.sql',
+  'database/facts-migrations/043_retire_minute_fact_repair_candidate_index.sql',
   'database/facts-migrations/044_retire_minute_fact_repair_work.sql',
   'database/facts-migrations/045_reconcile_minute_fact_job_backlog.sql',
   'database/facts-migrations/046_track_minute_fact_pending_age.sql',
@@ -148,6 +148,7 @@ const expectedMigrations = [
   'database/facts-migrations/057_stream_5m_average_read_model.sql',
   'database/facts-migrations/058_first_week_comparison_read_model.sql',
   'database/facts-migrations/059_current_daily_summary_5m.sql',
+  'database/facts-migrations/060_canonical_daily_member_ownership.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
