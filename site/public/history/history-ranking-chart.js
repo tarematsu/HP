@@ -78,6 +78,7 @@ function appendLegend(label, color, datasetKey = '') {
 }
 
 function colorForHost(host, index) {
+  if (chartScope !== 'featured') return '#000000';
   const preset = HOST_COLORS.get(hostKey(host));
   if (preset) return preset;
   if (chartHosts.length === 1) return '#000000';
@@ -278,10 +279,13 @@ window.addEventListener('history:data-loaded', (event) => {
   rankingWeeks = Array.isArray(detail.data.ranking_weeks)
     ? detail.data.ranking_weeks.map(isoDate).filter(Boolean)
     : [];
-  chartScope = detail.data.scope === 'all' ? 'all' : 'featured';
-  chartHosts = Array.isArray(detail.data.chart_hosts)
+  const hostSearch = String(detail.data.host_search || '').trim();
+  const isDefaultFeatured = detail.data.scope !== 'all' && !hostSearch;
+  chartScope = isDefaultFeatured ? 'featured' : 'all';
+  const apiChartHosts = Array.isArray(detail.data.chart_hosts)
     ? detail.data.chart_hosts.map((host) => String(host || '').trim()).filter(Boolean)
-    : detail.data.scope === 'featured' ? FEATURED_HOSTS : [];
+    : [];
+  chartHosts = isDefaultFeatured ? FEATURED_HOSTS : apiChartHosts;
   selectedWeekIndex = null;
   scheduleDraw();
 });
