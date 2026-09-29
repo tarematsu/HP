@@ -4,13 +4,14 @@ import test from 'node:test';
 
 const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 
-test('Spotify graph legends are ordered by the latest displayed number descending', () => {
+test('Spotify playcount graph legends are ordered by latest displayed playcount descending', () => {
   assert.match(shell, /function legendNumericValue\(item\)/);
   assert.match(shell, /replaceAll\(',', ''\)/);
   assert.match(shell, /text\.match\(\/\[\+\-\]\?\\d\+\/\)/);
   assert.match(shell, /function sortLegendByLatestValue\(legend\)/);
   assert.match(shell, /\.sort\(\(a, b\) => \(b\.value - a\.value\)/);
-  assert.match(shell, /querySelectorAll\('\.spotify-trend-legend'\)\.forEach\(sortLegendByLatestValue\)/);
+  assert.match(shell, /#spotifyTrendCharts \.spotify-trend-legend, #spotifyTop10YearTrendCharts \.spotify-trend-legend/);
+  assert.doesNotMatch(shell, /querySelectorAll\('\.spotify-trend-legend'\)\.forEach\(sortLegendByLatestValue\)/);
   assert.match(shell, /new MutationObserver\(processAll\)/);
   assert.match(shell, /observer\.observe\(view, \{ childList: true, subtree: true \}\)/);
 });
