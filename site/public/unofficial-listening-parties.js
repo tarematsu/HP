@@ -1,27 +1,49 @@
-const EVENTS = [
-  { date: '2024/08/02', time: '22:30', name: '櫻坂46 × INI Streaming Party - ロッキン前夜祭コラボパーティー', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1818995243200758205' },
-  { date: '2024/09/06', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY1', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1831301387424342514' },
-  { date: '2024/09/07', time: '22:00', name: '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY2', place: 'LOCKEY Stationhead', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1831301387424342514' },
-  { date: '2024/09/15', time: '20:30', name: '櫻坂46 × JO1 ロッキン出演&9thリリース記念コラボパーティー', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1834834469531902262' },
-  { date: '2024/10/25', time: '23:50', name: '櫻坂46 × INI Streaming Party 第1夜', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/saku_saka46/status/1849435676288196988' },
-  { date: '2024/11/01', time: '23:00', name: '櫻坂46 × INI Streaming Party 第2夜', place: 'MINIチャンネル', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1851972681962525075' },
-  { date: '2024/12/10', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY1', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1866105637178142945' },
-  { date: '2024/12/13', time: '22:00', name: '櫻坂46 × IMP. コラボパーティー DAY2', place: 'Team IMP.', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1866105637178142945' },
-  { date: '2024/12/19', time: '22:00', name: '#FELIX ( #StrayKids) × #Sakurazaka46 🌸 Collab Listening Party', place: 'FELIX STREAM STATION', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1869336911619494103' },
-  { date: '2024/12/29', time: '20:30', name: '櫻坂46 × NiziU Collab Listening Party', place: 'WithUチャンネル', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1872235924760735993' },
-  { date: '2024/12/30', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY1', place: 'Ohisama CH.', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
-  { date: '2025/01/03', time: '22:30', name: '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1872628541235560835' },
-  { date: '2025/02/28', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY1', place: 'sugaglobalunion', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1895453963149078550' },
-  { date: '2025/03/01', time: '22:00', name: 'SUGA × 櫻坂46 Streaming Party DAY2', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1895453963149078550' },
-  { date: '2025/05/05', time: '22:00', name: 'WHITE SCORPION × 櫻坂46 Stationheadコラボリスニングパーティー DAY1', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1917911905609633908' },
-  { date: '2025/05/10', time: '22:00', name: 'WHITE SCORPION × 櫻坂46 Stationheadコラボリスニングパーティー DAY2', place: 'scopist1ch', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1917911905609633908' },
-  { date: '2025/05/24', time: '22:00', name: 'MONSTA X × 櫻坂46 Stationheadコラボリスニングパーティー', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/skr_Stationhead/status/1926293459385675980' },
-  { date: '2025/07/19', time: '23:00', name: '#坂道Stationhead DAY1', place: "乃木坂46fan's Stationhead", type: 'コラボ', source: 'https://x.com/HNZ_Stationhead/status/1942191880726528064' },
-  { date: '2025/07/20', time: '21:00', name: '#坂道Stationhead DAY2', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/HNZ_Stationhead/status/1942191880726528064' },
-  { date: '2025/07/21', time: '22:00', name: '#坂道Stationhead DAY3', place: 'Ohisama CH.', type: 'コラボ', source: 'https://x.com/HNZ_Stationhead/status/1942191880726528064' },
-  { date: '2025/12/05', time: '21:00', name: 'Buddies × U:nity Stationhead コラボリスニングパーティー', place: 'BUDDIES STATIONHEAD', type: 'コラボ', source: 'https://x.com/saku_saka46/status/1995810178009366546' },
-  { date: '2026/01/23', time: '22:00', name: '日向坂46 × 櫻坂46 #ケヤキダービー', place: 'Ohisama CH.', type: 'コラボ', source: 'https://x.com/ohisama_discord/status/1999465286874071088' },
-];
+const PLACES = Object.freeze([
+  'BUDDIES STATIONHEAD',
+  'LOCKEY Stationhead',
+  'MINIチャンネル',
+  'Team IMP.',
+  'FELIX STREAM STATION',
+  'WithUチャンネル',
+  'Ohisama CH.',
+  'sugaglobalunion',
+  'scopist1ch',
+  "乃木坂46fan's Stationhead",
+]);
+const X_ACCOUNTS = Object.freeze(['skr_Stationhead', 'saku_saka46', 'HNZ_Stationhead', 'ohisama_discord']);
+const EVENT_ROWS = Object.freeze([
+  ['2024/08/02', '22:30', '櫻坂46 × INI Streaming Party - ロッキン前夜祭コラボパーティー', 0, 0, '1818995243200758205'],
+  ['2024/09/06', '22:00', '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY1', 0, 0, '1831301387424342514'],
+  ['2024/09/07', '22:00', '櫻坂46 × SECRET NUMBER ~Streaming Party~ DAY2', 1, 0, '1831301387424342514'],
+  ['2024/09/15', '20:30', '櫻坂46 × JO1 ロッキン出演&9thリリース記念コラボパーティー', 0, 0, '1834834469531902262'],
+  ['2024/10/25', '23:50', '櫻坂46 × INI Streaming Party 第1夜', 0, 1, '1849435676288196988'],
+  ['2024/11/01', '23:00', '櫻坂46 × INI Streaming Party 第2夜', 2, 0, '1851972681962525075'],
+  ['2024/12/10', '22:00', '櫻坂46 × IMP. コラボパーティー DAY1', 0, 0, '1866105637178142945'],
+  ['2024/12/13', '22:00', '櫻坂46 × IMP. コラボパーティー DAY2', 3, 0, '1866105637178142945'],
+  ['2024/12/19', '22:00', '#FELIX ( #StrayKids) × #Sakurazaka46 🌸 Collab Listening Party', 4, 0, '1869336911619494103'],
+  ['2024/12/29', '20:30', '櫻坂46 × NiziU Collab Listening Party', 5, 0, '1872235924760735993'],
+  ['2024/12/30', '22:30', '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY1', 6, 0, '1872628541235560835'],
+  ['2025/01/03', '22:30', '櫻坂46 × 日向坂46 コラボリスニングパーティー DAY2', 0, 0, '1872628541235560835'],
+  ['2025/02/28', '22:00', 'SUGA × 櫻坂46 Streaming Party DAY1', 7, 0, '1895453963149078550'],
+  ['2025/03/01', '22:00', 'SUGA × 櫻坂46 Streaming Party DAY2', 0, 0, '1895453963149078550'],
+  ['2025/05/05', '22:00', 'WHITE SCORPION × 櫻坂46 Stationheadコラボリスニングパーティー DAY1', 0, 0, '1917911905609633908'],
+  ['2025/05/10', '22:00', 'WHITE SCORPION × 櫻坂46 Stationheadコラボリスニングパーティー DAY2', 8, 0, '1917911905609633908'],
+  ['2025/05/24', '22:00', 'MONSTA X × 櫻坂46 Stationheadコラボリスニングパーティー', 0, 0, '1926293459385675980'],
+  ['2025/07/19', '23:00', '#坂道Stationhead DAY1', 9, 2, '1942191880726528064'],
+  ['2025/07/20', '21:00', '#坂道Stationhead DAY2', 0, 2, '1942191880726528064'],
+  ['2025/07/21', '22:00', '#坂道Stationhead DAY3', 6, 2, '1942191880726528064'],
+  ['2025/12/05', '21:00', 'Buddies × U:nity Stationhead コラボリスニングパーティー', 0, 1, '1995810178009366546'],
+  ['2026/01/23', '22:00', '日向坂46 × 櫻坂46 #ケヤキダービー', 6, 3, '1999465286874071088'],
+]);
+
+export const EVENTS = Object.freeze(EVENT_ROWS.map(([date, time, name, placeIndex, accountIndex, statusId]) => Object.freeze({
+  date,
+  time,
+  name,
+  place: PLACES[placeIndex],
+  type: 'コラボ',
+  source: `https://x.com/${X_ACCOUNTS[accountIndex]}/status/${statusId}`,
+})));
 
 const PANEL_ID = 'unofficialListeningPanel';
 const TAB_LABEL = 'リスパ';
@@ -115,5 +137,3 @@ window.addEventListener('hashchange', () => {
   syncTab();
 });
 window.addEventListener('popstate', syncTab);
-
-export { EVENTS };
