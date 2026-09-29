@@ -145,10 +145,37 @@ function optimizeBundledModule(source, path) {
   return next;
 }
 
+function optimizeMonochromeCss(source) {
+  return source
+    .replace(/\n\.top-card,\n\.card,\n\.metric,\n\.guide,\n\.summary-cards article \{\n  border-color: #d3d3d3;\n  background: rgba\(255, 255, 255, \.98\);\n  box-shadow: 0 10px 28px rgba\(0, 0, 0, \.06\);\n}\n/, '\n')
+    .replace(/\.metric\.featured,\n\.daily-total-row \{\n  background: #f1f1f1;\n}/, '.daily-total-row {\n  background: #f1f1f1;\n}')
+    .replace(/\.mode-tabs,\n\.range-presets,\n\.pill,\n\.chart-detail,\n\.like-rank-number,\n\.like-rank-metrics span,\nth \{\n  background: #f4f4f4;\n}/, '.like-rank-metrics span,\nth {\n  background: #f4f4f4;\n}')
+    .replace(/\n\.range-presets button\.active \{\n  background: #ffffff;\n  color: #111111;\n  box-shadow: 0 2px 8px rgba\(0, 0, 0, \.08\);\n}\n/, '\n')
+    .replace(/\n\.status-message \{\n  box-shadow: 0 8px 24px rgba\(0, 0, 0, \.1\);\n}\n/, '\n')
+    .replace(/\n\.section-head \{\n  margin-bottom: 8px;\n}\n\n\.section-head h2 \{\n  font-size: \.94rem;\n  font-weight: 760;\n}\n\n\.host \{\n  font-size: \.68rem;\n}\n/, '\n')
+    .replace(/\.chart-detail \{\n  min-height: 0;\n  margin-top: 4px;\n  padding: 3px 0;\n  border: 0;\n  border-radius: 0;\n  background: transparent;\n  font-size: \.68rem;\n}/, '.chart-detail {\n  border: 0;\n  border-radius: 0;\n  background: transparent;\n}')
+    .replace(/\n\.chart-axis,\n\.chart-foot \{\n  font-size: \.62rem;\n}\n/, '\n')
+    .replace(/\.range-presets button \{\n  min-height: 32px;\n  padding: 4px 7px;\n  border-radius: 0;\n  font-size: \.66rem;\n}/, '.range-presets button {\n  padding: 4px 7px;\n  border-radius: 0;\n}')
+    .replace(/\n\.controls label \{\n  gap: 2px;\n  font-size: \.64rem;\n}\n/, '\n')
+    .replace(/\n\.notice \{\n  min-height: 0;\n  margin: 5px 0;\n  font-size: \.66rem;\n}\n/, '\n')
+    .replace(/\.summary-cards span \{\n  font-size: \.64rem;\n  font-weight: 650;\n}/, '.summary-cards span {\n  font-weight: 650;\n}')
+    .replace(/\n\.like-actions \{\n  gap: 5px;\n  margin: 7px 0;\n}\n\n\.like-ranking \{\n  gap: 0;\n}\n/, '\n')
+    .replace(/\.like-rank-item \{\n  padding: 7px 0;\n  border: 0;\n  border-bottom: 1px solid #e6e6e6;\n  border-radius: 0;\n}/, '.like-rank-item {\n  border: 0;\n  border-bottom: 1px solid #e6e6e6;\n}')
+    .replace(/\.like-rank-metrics span \{\n  padding: 4px 6px;\n  border-radius: 3px;\n  font-size: \.6rem;\n}/, '.like-rank-metrics span {\n  padding: 4px 6px;\n  border-radius: 3px;\n}')
+    .replace(/\n  \.shell \{\n    padding-inline: 8px;\n  }\n\n  \.top-card\.dashboard-header \{\n    gap: 6px;\n    padding-top: 3px;\n  }\n\n  \.mode-tabs\.dashboard-tabs \{\n    grid-template-columns: repeat\(5, minmax\(0, 1fr\)\);\n  }\n\n  \.metrics \{\n    gap: 0;\n  }\n\n  \.metric,\n  \.metric\.featured \{\n    padding: 8px 7px 9px;\n    border-radius: 0;\n  }\n/, '\n')
+    .replace(/  \.primary-grid > \.card:first-child,\n  \.primary-grid > \.card:last-child \{\n    padding: 11px 0;\n    border-right: 0;\n  }/, '  .primary-grid > .card:first-child,\n  .primary-grid > .card:last-child {\n    border-right: 0;\n  }')
+    .replace(/  \.summary-cards article,\n  \.summary-cards\.likes-summary article \{\n    border-bottom: 1px solid #ececec;\n  }/, '  .summary-cards article,\n  .summary-cards.likes-summary article {\n    border-bottom: 1px solid #ececec;\n  }')
+    .replace(/\n  \.chart-panel,\n  \.data-panel,\n  \.goal-card,\n  \.chart-card \{\n    padding: 11px 0;\n    border-radius: 0;\n  }\n/, '\n')
+    .replace(/\n  \.mode-tabs\.dashboard-tabs \{\n    grid-template-columns: repeat\(5, minmax\(0, 1fr\)\);\n  }\n\n  \.mode-tabs\.dashboard-tabs button \{\n    min-height: 34px;\n    padding: 4px 2px;\n    font-size: \.63rem;\n  }\n/, '\n');
+}
+
 function optimizeBundledCss(source, path) {
-  if (!path.endsWith('/history/history-lite.css')) return source;
-  const historySpecificStart = source.indexOf('.mode-tabs {');
-  return historySpecificStart >= 0 ? source.slice(historySpecificStart) : source;
+  if (path.endsWith('/history/history-lite.css')) {
+    const historySpecificStart = source.indexOf('.mode-tabs {');
+    return historySpecificStart >= 0 ? source.slice(historySpecificStart) : source;
+  }
+  if (path.endsWith('/monochrome.css')) return optimizeMonochromeCss(source);
+  return source;
 }
 
 const browserModuleResolver = {
