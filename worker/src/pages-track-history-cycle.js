@@ -161,6 +161,15 @@ export async function loadTrackHistoryDirtyDays(db, now = Date.now(), limit = DI
   }
 }
 
+async function clearConsumedDirtyDay(db, task) {
+  if (!task?.dirty_final || !task.dirty_play_date || !db?.prepare) return false;
+  const result = await db.prepare(`DELETE FROM sh_track_history_dirty_days
+    WHERE play_date=? AND revision=?`)
+    .bind(task.dirty_play_date, Number(task.dirty_revision) || 0)
+    .run();
+  return Number(result?.meta?.changes || 0) > 0;
+}
+
 async function loadOrCreateStage(targetDb, sourceDb, now, dependencies = {}) {
   const load = dependencies.loadPayload || defaultLoadPayload;
   const save = dependencies.savePayload || defaultSavePayload;
@@ -243,9 +252,13 @@ export async function runTrackHistoryCycleStep(env, now = Date.now(), dependenci
 
   const { runLateTrackHistoryShard } = await import('./pages-track-history-stage.js');
   const save = dependencies.savePayload || defaultSavePayload;
-  return runLateTrackHistoryShard(env, stage, timestamp, {
+  const result = await runLateTrackHistoryShard(env, stage, timestamp, {
     ...dependencies,
     saveStage: dependencies.saveStage
       || ((db, nextStage, at) => save(db, TRACK_HISTORY_STAGE_KEY, nextStage, at)),
   });
+  if (result && nextTask.dirty_final) {
+    await (dependencies.clearDirtyDay || clearConsumedDirtyDay)(env.BUDDIES_DB, nextTask);
+  }
+  return result;
 }
