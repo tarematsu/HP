@@ -38,6 +38,14 @@ if (!process.env.CLOUDFLARE_ACCOUNT_ID) {
   console.warn('CLOUDFLARE_ACCOUNT_ID is not set; Wrangler will infer the account from the API token.');
 }
 
+function completedRemoteFileImportDespiteWranglerRace(error, args) {
+  if (args[0] !== 'd1' || args[1] !== 'execute' || !args.includes('--file')) return false;
+  const stdout = String(error?.stdout || '');
+  const stderr = String(error?.stderr || '');
+  return stderr.includes('Not currently importing anything.')
+    && /Processed\s+\d+\s+queries?\./u.test(stdout);
+}
+
 function wrangler(args) {
   try {
     return execFileSync(process.execPath, [wranglerScript, ...args], {
@@ -47,6 +55,10 @@ function wrangler(args) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
+    if (completedRemoteFileImportDespiteWranglerRace(error, args)) {
+      console.warn('Wrangler lost the completed D1 import status; continuing after confirmed processed queries.');
+      return String(error.stdout || '');
+    }
     if (error.stderr) process.stderr.write(error.stderr);
     throw error;
   }
