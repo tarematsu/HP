@@ -1,5 +1,5 @@
-import { mkdir, stat } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdir, readFile, stat } from 'node:fs/promises';
+import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
@@ -30,6 +30,42 @@ const cssFiles = [
   'dashboard-ui-common.css',
 ];
 
+const canvasTransforms = new Map([
+  ['dashboard-chart-comparison.js', [
+    ["context.font = 'bold 10px system-ui';", "context.font = '600 11px system-ui';"],
+    ["context.font = '10px system-ui';", "context.font = '11px system-ui';"],
+    ["context.strokeStyle = 'rgba(31,45,68,.10)';", "context.strokeStyle = 'rgba(31,45,68,.12)';"],
+    ["drawSeries(context, current, xFor, yOnline, '#111', 2.5);", "drawSeries(context, current, xFor, yOnline, '#111', 2);"],
+    ["context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3.5,", "context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3,"],
+    ["context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3.5,", "context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3,"],
+  ]],
+  ['first-week-comparison.js', [
+    ["context.font = '10.5px system-ui';", "context.font = '11px system-ui';"],
+    ['context.lineWidth = 1.8;', 'context.lineWidth = 2;'],
+  ]],
+  ['history-period-chart.js', [
+    ["context.font = '10.5px system-ui';", "context.font = '11px system-ui';"],
+    ["context.font = width < 480 ? '9px system-ui' : '10px system-ui';", "context.font = '11px system-ui';"],
+    ["context.strokeStyle = 'rgba(31,45,68,.24)';", "context.strokeStyle = 'rgba(31,45,68,.12)';"],
+    ["{ key: 'listener_avg', label: '平均同接', color: '#000000', width: 2.6 }", "{ key: 'listener_avg', label: '平均同接', color: '#000000', width: 2 }"],
+    ["{ key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 1.9 }", "{ key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 2 }"],
+    ["{ key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 1.9 }", "{ key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 2 }"],
+  ]],
+  ['history-ranking-chart.js', [
+    ["context.font = '10.5px system-ui';", "context.font = '11px system-ui';"],
+    ["context.font = '10px system-ui';", "context.font = '11px system-ui';"],
+    ["context.strokeStyle = 'rgba(31,45,68,.16)';", "context.strokeStyle = 'rgba(31,45,68,.12)';"],
+    ['context.lineWidth = 2.4;', 'context.lineWidth = 2;'],
+    ['context.arc(positions[index], yFor(rank), 2.5,', 'context.arc(positions[index], yFor(rank), 3,'],
+  ]],
+]);
+
+function normalizeCanvasPresentation(source, file) {
+  let next = source;
+  for (const [before, after] of canvasTransforms.get(file) || []) next = next.replaceAll(before, after);
+  return next;
+}
+
 const browserModuleResolver = {
   name: 'browser-module-resolver',
   setup(buildApi) {
@@ -41,6 +77,10 @@ const browserModuleResolver = {
         : resolve(args.resolveDir, clean);
       return { path };
     });
+    buildApi.onLoad({ filter: /\.m?js$/ }, async (args) => ({
+      contents: normalizeCanvasPresentation(await readFile(args.path, 'utf8'), basename(args.path)),
+      loader: 'js',
+    }));
   },
 };
 
