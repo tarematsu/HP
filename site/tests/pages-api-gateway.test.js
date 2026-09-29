@@ -16,6 +16,7 @@ const CANONICAL_PATHS = [
   '/api/nogizaka46smej-status',
   '/api/dashboard',
   '/api/dashboard-details',
+  '/api/hinata',
   '/api/history',
   '/api/history-current',
   '/api/track-history',

@@ -2,6 +2,7 @@ import './legacy-listening-party-route.js?v=20260926.1';
 import './history/history-global-fixes.js';
 import './dashboard-header.js?v=20260928.1';
 import './dashboard-tab-order.js?v=20260929.1';
+import './dashboard-hinata-route.js?v=20260930.1';
 import './dashboard-followers-route.js?v=20260930.2';
 import './dashboard-tabs.js?v=20260930.1';
 

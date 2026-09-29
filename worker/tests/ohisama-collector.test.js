@@ -49,17 +49,20 @@ test('ohisama normalization keeps only aggregate channel metrics', () => {
   assert.equal('chat' in value, false);
 });
 
-test('ohisama Worker config uses one dedicated D1 and no queues', () => {
+test('ohisama Worker config uses one dedicated D1, one Pages R2 binding, and no queues', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.ohisama-collector.jsonc', import.meta.url),
     'utf8',
   ));
   assert.equal(config.name, 'sh-ohisama-collector');
+  assert.equal(config.main, 'src/ohisama-pages-entry.js');
   assert.deepEqual(config.triggers.crons, ['*/5 * * * *']);
   assert.deepEqual(config.d1_databases.map(({ binding, database_name }) => ({ binding, database_name })), [
     { binding: 'OHISAMA_DB', database_name: 'stationhead-ohisama' },
   ]);
+  assert.deepEqual(config.r2_buckets, [
+    { binding: 'PAGES_RESPONSE_R2', bucket_name: 'sh-pages-responses' },
+  ]);
   assert.equal(config.queues, undefined);
-  assert.equal(config.r2_buckets, undefined);
   assert.equal(config.durable_objects, undefined);
 });

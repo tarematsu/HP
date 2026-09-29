@@ -21,8 +21,9 @@ function unique(values, label) {
 test('API contract contains unique canonical paths only', () => {
   const canonical = canonicalApiPaths();
   unique(canonical, 'canonical API paths');
-  assert.equal(canonical.length, 15);
+  assert.equal(canonical.length, 16);
   assert.ok(canonical.includes('/api/dashboard-details'));
+  assert.ok(canonical.includes('/api/hinata'));
   assert.ok(canonical.includes('/api/history-current'));
   assert.ok(canonical.includes('/api/sakurazaka46jp-status'));
   assert.ok(canonical.includes('/api/nogizaka46smej-status'));
@@ -65,6 +66,7 @@ test('materialized response freshness follows canonical generation policies', ()
   assert.equal(materializedApiKey('https://skrzk.test/api/followers'), 'followers');
   assert.equal(materializedApiKey('https://skrzk.test/api/amazon-music'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/apple-music'), null);
+  assert.equal(materializedApiKey('https://skrzk.test/api/hinata'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/track-history'), null);
   assert.equal(materializedApiKey('https://skrzk.test/api/dashboard-details?channel_id=318'), null);
 });
@@ -73,6 +75,7 @@ test('current minute history uses a 30-second shared cache', () => {
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history-current?mode=daily')), 30);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history?mode=daily')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/dashboard-details?channel_id=318')), 300);
+  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/hinata')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/first-week-comparison')), 3600);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/spotify-playcounts?artist=sakurazaka46')), 300);
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/amazon-music')), 300);
