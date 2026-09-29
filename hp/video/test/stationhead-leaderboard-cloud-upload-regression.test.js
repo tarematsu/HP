@@ -35,7 +35,12 @@ test('legacy leaderboard interception is completely absent from playback WebView
 test('leaderboard acquisition uses a disposable 1x1 background WebView and waits for rendered ranking data', () => {
   assert.match(collector, /https:\/\/www\.stationhead\.com\/leaderboard/);
   assert.doesNotMatch(collector, /about:blank/);
-  assert.match(collector, /kCaptureIntervalMs = 60 \* 60'000/);
+  assert.match(collector, /kStationheadCollectionPhaseMinute = 0/);
+  assert.match(collector, /NextHourlyCollectionSlot\(nowMs, kStationheadCollectionPhaseMinute\)/);
+  assert.match(collector, /PowerSavingController::IsPowerSavingActive\(\)/);
+  assert.match(collector, /power_saving_suspended/);
+  assert.doesNotMatch(collector, /kInitialCaptureDelayMs/);
+  assert.doesNotMatch(collector, /kRetryIntervalMs/);
   assert.match(collector, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
   assert.match(collector, /put_ProfileName\(profileName_\.c_str\(\)\)/);
   assert.match(collector, /put_IsInPrivateModeEnabled\(FALSE\)/);
@@ -77,12 +82,14 @@ test('leaderboard acquisition uses a disposable 1x1 background WebView and waits
   assert.match(snapshotBody, /FAILED\(result\)[\s\S]*captureDueAt_ = now \+ kContentPollIntervalMs/);
   assert.match(snapshotBody, /FAILED\(execute\)[\s\S]*captureDueAt_ = nowMs \+ kContentPollIntervalMs/);
   const completeBody = collector.slice(completeStart, failStart);
+  assert.match(completeBody, /NextHourlyCollectionSlot\(nowMs, kStationheadCollectionPhaseMinute\)/);
   assert.match(completeBody, /\+\+generation_/);
   assert.match(completeBody, /CloseController\(\)/);
   assert.match(completeBody, /environment_\.Reset\(\)/);
   assert.doesNotMatch(completeBody, /Navigate\(/);
 
   const failBody = collector.slice(failStart, collector.indexOf('void StationheadLeaderboardCollector::CloseController'));
+  assert.match(failBody, /NextHourlyCollectionSlot\(nowMs, kStationheadCollectionPhaseMinute\)/);
   assert.match(failBody, /\+\+generation_/);
   assert.match(failBody, /CloseController\(\)/);
   assert.match(failBody, /environment_\.Reset\(\)/);
