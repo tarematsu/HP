@@ -1,5 +1,6 @@
 const HINATA_URL = '/api/hinata';
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const FIVE_MINUTES_MS = 5 * 60_000;
 const integer = new Intl.NumberFormat('ja-JP');
 const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
 const jstTime = new Intl.DateTimeFormat('ja-JP', {
@@ -56,12 +57,40 @@ function renderMetrics(value) {
 
 function normalizedHistory(value) {
   const rows = Array.isArray(value?.history_24h) ? value.history_24h : [];
-  return rows.map((row) => ({
-    observed_at: finite(row?.observed_at),
-    online_member_count: finite(row?.online_member_count),
-    stream_delta_5m: finite(row?.stream_delta_5m),
-  })).filter((row) => row.observed_at != null)
-    .sort((left, right) => left.observed_at - right.observed_at);
+  const buckets = new Map();
+  for (const raw of rows) {
+    const observedAt = finite(raw?.observed_at);
+    if (observedAt == null) continue;
+    const bucket = Math.floor(observedAt / FIVE_MINUTES_MS) * FIVE_MINUTES_MS;
+    const candidate = {
+      observed_at: observedAt,
+      bucket,
+      online_member_count: finite(raw?.online_member_count),
+      stream_count: finite(raw?.stream_count),
+    };
+    const current = buckets.get(bucket);
+    if (!current || candidate.observed_at >= current.observed_at) buckets.set(bucket, candidate);
+  }
+
+  const points = [...buckets.values()].sort((left, right) => left.bucket - right.bucket);
+  return points.map((point, index) => {
+    const previous = points[index - 1];
+    let streamDelta = null;
+    if (
+      previous
+      && point.bucket - previous.bucket === FIVE_MINUTES_MS
+      && point.stream_count != null
+      && previous.stream_count != null
+    ) {
+      const delta = point.stream_count - previous.stream_count;
+      if (delta >= 0) streamDelta = delta;
+    }
+    return {
+      observed_at: point.bucket,
+      online_member_count: point.online_member_count,
+      stream_delta_5m: streamDelta,
+    };
+  });
 }
 
 function renderChart(value) {
@@ -176,7 +205,7 @@ function renderChart(value) {
     const growth = selected.stream_delta_5m == null ? '—' : `+${decimal.format(selected.stream_delta_5m)}`;
     setText(
       'hinataChartDetail',
-      `${jstDateTime.format(new Date(selected.observed_at))} JST　オンライン ${numberText(selected.online_member_count)}人　再生増加 ${growth}/5分`,
+      `${jstDateTime.format(new Date(selected.observed_at))} JST　オンライン ${numberText(selected.online_member_count)}人　再生数増加 ${growth}/5分`,
     );
   });
   svg.append(hit);
@@ -191,7 +220,7 @@ function renderDaily(value) {
   if (!rows.length) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
-    cell.colSpan = 6;
+    cell.colSpan = 8;
     cell.className = 'hinata-empty';
     cell.textContent = '日次データはまだありません。';
     row.append(cell);
@@ -206,7 +235,9 @@ function renderDaily(value) {
       finite(item?.listener_avg) == null ? '—' : decimal.format(item.listener_avg),
       numberText(item?.listener_min),
       numberText(item?.listener_max),
+      numberText(item?.stream_end),
       signedText(item?.stream_growth),
+      numberText(item?.member_end),
       signedText(item?.member_growth),
     ];
     for (const valueText of values) {
