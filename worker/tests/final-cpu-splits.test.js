@@ -1,131 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  processCommentsForwardTask,
-  processCommentsPersistTask,
-  processCommentsTask,
-} from '../src/comments-entry.js';
 import { processIngestFinalizeTask } from '../src/ingest-finalize-entry.js';
 import { processIngestFactTask } from '../src/ingest-prepared-channel.js';
-import {
-  minuteFactQueueMessage,
-  parseMinuteFactQueueMessage,
-} from '../src/minute-facts-queue.js';
+import { minuteFactQueueMessage } from '../src/minute-facts-queue.js';
 import { processTrackMetadataTask } from '../src/track-metadata-entry.js';
-
-function minuteFact() {
-  return minuteFactQueueMessage({
-    observedAt: 1_784_000_000_000,
-    snapshot: { channel_id: 10, station_id: 20 },
-    queue: { tracks: [] },
-  });
-}
-
-function commentsTask() {
-  return {
-    message_type: 'stationhead-comments-task',
-    message_version: 2,
-    observed_at: 1_784_000_000_000,
-    station_id: 20,
-    auth: {
-      authToken: 'token',
-      deviceUid: 'device',
-      tokenExpiresAt: 9_999_999_999_999,
-    },
-    minute_fact: minuteFact(),
-  };
-}
-
-test('comment collection, persistence and forwarding reuse one minute-fact validation', async () => {
-  const sent = [];
-  let parseCalls = 0;
-  let forwarded = null;
-  const parseMinuteFact = (body) => {
-    parseCalls += 1;
-    return parseMinuteFactQueueMessage(body);
-  };
-  const env = {
-    COMMENTS_QUEUE: {
-      async send(body, options) { sent.push({ body, options }); },
-    },
-  };
-  const task = commentsTask();
-  const expectedValidation = {
-    job_id: task.minute_fact.job_id,
-    channel_id: task.minute_fact.channel_id,
-    minute_at: task.minute_fact.minute_at,
-  };
-  const fetched = await processCommentsTask(env, task, {
-    parseMinuteFact,
-    fetchComments: async () => ({
-      comments: [{ comment_id: 1 }, { comment_id: 2 }, { comment_id: 3 }],
-      rawMeta: { next: 'cursor' },
-      skipped: false,
-    }),
-  });
-
-  assert.equal(fetched.persist_deferred, true);
-  assert.equal(fetched.forwarded, false);
-  assert.equal(parseCalls, 1);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].body.message_type, 'stationhead-comments-persist');
-  assert.equal(sent[0].body.minute_fact, task.minute_fact);
-  assert.deepEqual(sent[0].body.minute_fact_validation, expectedValidation);
-  assert.equal(sent[0].body.collected.comments.length, 3);
-
-  const persisted = await processCommentsPersistTask(env, sent.shift().body, {
-    parseMinuteFact,
-    persistComments: async () => ({ commentsSaved: 3, degraded: false, errorStage: null }),
-  });
-  assert.equal(persisted.forward_deferred, true);
-  assert.equal(parseCalls, 1);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].body.message_type, 'stationhead-comments-forward');
-  assert.deepEqual(sent[0].body.minute_fact_validation, expectedValidation);
-  assert.equal(sent[0].body.comments.commentsSaved, 3);
-
-  const forwarding = await processCommentsForwardTask({}, sent.shift().body, {
-    parseMinuteFact,
-    loadCommentFacts: async () => ({ commentCount: 3, commentTotal: 9 }),
-    sendMinuteFact: async (body) => { forwarded = body; },
-  });
-  assert.equal(forwarding.forwarded, true);
-  assert.equal(parseCalls, 1);
-  assert.equal(forwarded.payload.comments.commentCount, 3);
-  assert.equal(forwarded.payload.comments.commentTotal, 9);
-});
-
-test('comment forwarding fully validates legacy or mismatched continuation messages', async () => {
-  let forwarded = null;
-  let parseCalls = 0;
-  const fact = minuteFact();
-  const result = await processCommentsForwardTask({}, {
-    message_type: 'stationhead-comments-forward',
-    message_version: 1,
-    observed_at: 1_784_000_000_000,
-    station_id: 20,
-    minute_fact: fact,
-    minute_fact_validation: {
-      job_id: fact.job_id,
-      channel_id: fact.channel_id + 1,
-      minute_at: fact.minute_at,
-    },
-    comments: { commentsSaved: 3, degraded: false },
-  }, {
-    parseMinuteFact: (body) => {
-      parseCalls += 1;
-      return parseMinuteFactQueueMessage(body);
-    },
-    loadCommentFacts: async () => ({ commentCount: 3, commentTotal: 9 }),
-    sendMinuteFact: async (body) => { forwarded = body; },
-  });
-
-  assert.equal(result.forwarded, true);
-  assert.equal(parseCalls, 1);
-  assert.equal(forwarded.payload.comments.commentCount, 3);
-  assert.equal(forwarded.payload.comments.commentTotal, 9);
-});
 
 test('read-model hydration, remaining preservation and writes run as separate metadata stages', async () => {
   const enqueued = [];
@@ -184,8 +63,8 @@ test('read-model hydration, remaining preservation and writes run as separate me
   assert.equal(written.preserved, true);
 });
 
-test('minute fact handoff queues finalization as a separate ingest invocation', async () => {
-  const comments = [];
+test('minute fact handoff bypasses the retired comments queue', async () => {
+  const minuteFacts = [];
   const finalized = [];
   const observedAt = 1_784_000_000_000;
   const collectorState = {
@@ -196,8 +75,8 @@ test('minute fact handoff queues finalization as a separate ingest invocation', 
   };
   const result = await processIngestFactTask({
     DB: {},
-    COMMENTS_QUEUE: {
-      async send(body) { comments.push(body); },
+    MINUTE_FACT_QUEUE: {
+      async send(body) { minuteFacts.push(body); },
     },
   }, {
     message_type: 'stationhead-ingest-fact',
@@ -206,11 +85,9 @@ test('minute fact handoff queues finalization as a separate ingest invocation', 
       observedAt,
       snapshot: { channel_id: 10, station_id: 20 },
       queue: { station_id: 20, tracks: [] },
-      comments: { commentsSaved: 0, degraded: false },
       auth: { authToken: 'token', deviceUid: 'device' },
       collectorState,
       options: {
-        collectComments: false,
         readModelPresentationOnly: true,
         readModel: {
           channel: { channel_id: 10, observed_at: observedAt, presentation: {} },
@@ -228,8 +105,8 @@ test('minute fact handoff queues finalization as a separate ingest invocation', 
     async sendFinalize(body) { finalized.push(body); },
   });
 
-  assert.equal(comments.length, 1);
-  assert.equal(comments[0].message_type, 'stationhead-comments-task');
+  assert.equal(minuteFacts.length, 1);
+  assert.equal(minuteFacts[0].message_type, 'minute-fact-job');
   assert.equal(finalized.length, 1);
   assert.equal(finalized[0].message_type, 'stationhead-ingest-finalize');
   assert.equal(finalized[0].collector_state, collectorState);
