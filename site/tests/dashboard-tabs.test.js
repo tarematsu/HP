@@ -43,7 +43,7 @@ test('dashboard hides the legacy static shell until the selected route shell is 
   assert.match(page, /document\.documentElement\.setAttribute\('data-dashboard-booting', ''\)/);
   assert.match(page, /dashboard:route-ready/);
   assert.match(tabsClient, /window\.dispatchEvent\(new Event\('dashboard:route-ready'\)\)/);
-  assert.ok(page.indexOf('dashboard-prepaint-guard') < page.indexOf('app-lite.css'));
+  assert.ok(page.indexOf('dashboard-prepaint-guard') < page.indexOf('/assets/dashboard.min.css'));
 });
 
 test('archive and likes markup are integrated below the shared tab panel', () => {
