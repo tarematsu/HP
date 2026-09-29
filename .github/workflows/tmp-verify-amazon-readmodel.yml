@@ -11,41 +11,45 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Probe current Amazon Music client
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Run Amazon Music scheduled collector once
+        working-directory: worker
         shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module <<'NODE'
-          import {
-            createAmazonMusicWebClient,
-            extractAmazonMusicTracks,
-            extractFollowerCount,
-          } from './worker/src/amazon-music-web-client.js';
-
-          const client = createAmazonMusicWebClient();
-          const artist = await client.fetchArtist('B08P3RHP1P');
-          const popular = extractAmazonMusicTracks(artist);
-          console.log('artistPopularCount', popular.length);
-          console.log('artistPopularFirst', JSON.stringify(popular.slice(0, 5)));
-          console.log('follower', JSON.stringify(extractFollowerCount(artist)));
-
-          const tracks = await client.fetchArtistTracks('B08P3RHP1P');
-          console.log('artistTracksCount', tracks.length);
-          console.log('artistTracksFirst', JSON.stringify(tracks.slice(0, 5)));
-
-          const top50 = await client.fetchPlaylist('B088FYHTR4');
-          const top50Tracks = extractAmazonMusicTracks(top50);
-          console.log('top50Count', top50Tracks.length);
-          console.log('top50First', JSON.stringify(top50Tracks.slice(0, 5)));
-
-          if (popular.length === 0 || tracks.length === 0) {
-            throw new Error(`Amazon Music client returned empty data: popular=${popular.length}, tracks=${tracks.length}`);
-          }
-          NODE
+          npx wrangler dev --config wrangler.amazon-music.jsonc --remote --test-scheduled --port 8787 > ../amazon-dev.log 2>&1 &
+          dev_pid=$!
+          trap 'kill "$dev_pid" 2>/dev/null || true; cat ../amazon-dev.log || true' EXIT
+          for i in $(seq 1 40); do
+            if curl --silent --fail http://127.0.0.1:8787/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl --fail --silent --show-error 'http://127.0.0.1:8787/__scheduled?cron=30+1+*+*+*' | cat
+          sleep 20
+          cat ../amazon-dev.log
+      - name: Verify read model
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl --silent --show-error --output amazon-response.json --write-out '%{http_code}' https://skrzk.pages.dev/api/amazon-music)"
+          echo "HTTP $code"
+          cat amazon-response.json
+          test "$code" = "200"
+          jq -e '.ok == true and (.track_count // 0) > 0 and (.tracks | length) > 0' amazon-response.json >/dev/null
