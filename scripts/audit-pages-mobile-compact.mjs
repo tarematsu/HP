@@ -5,8 +5,8 @@ import { chromium } from 'playwright';
 const MODES = [
   { name: 'current', path: '/', panel: '#currentView', tab: '#modeTabs button[data-view="current"]', requiredText: '再生中の曲' },
   { name: 'daily', path: '/#daily', panel: '#historyView', tab: '#modeTabs button[data-mode="daily"]', requiredText: '期間数' },
-  { name: 'weekly', path: '/#weekly', panel: '#historyView', tab: '#modeTabs button[data-mode="weekly"]', requiredText: '期間数' },
-  { name: 'monthly', path: '/#monthly', panel: '#historyView', tab: '#modeTabs button[data-mode="monthly"]', requiredText: '期間数' },
+  { name: 'weekly', path: '/#weekly', panel: '#historyView', tab: null, expectedHash: '#weekly', requiredText: '期間数' },
+  { name: 'monthly', path: '/#monthly', panel: '#historyView', tab: null, expectedHash: '#monthly', requiredText: '期間数' },
   { name: 'ranking', path: '/#ranking', panel: '#historyView', tab: '#modeTabs button[data-mode="ranking"]', requiredText: '週間リーダーボード' },
   { name: 'first-week', path: '/#first-week', panel: '#firstWeekView', tab: '#modeTabs button[data-view="first-week"]', requiredText: '比較対象' },
   { name: 'played-tracks', path: '/#played-tracks', panel: '#playedTracksView', tab: '#modeTabs button[data-view="played-tracks"]', requiredText: '楽曲別再生一覧' },
@@ -67,7 +67,10 @@ async function auditMode(browser, baseUrl, route, outDir) {
     response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 35_000 });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
     await page.locator(route.panel).waitFor({ state: 'visible', timeout: 15_000 });
-    await page.locator(route.tab).waitFor({ state: 'visible', timeout: 15_000 });
+    if (route.tab) await page.locator(route.tab).waitFor({ state: 'visible', timeout: 15_000 });
+    if (route.expectedHash) {
+      await page.waitForFunction((hash) => window.location.hash === hash, route.expectedHash, { timeout: 15_000 });
+    }
     await page.waitForFunction((text) => document.body?.innerText.includes(text), route.requiredText, { timeout: 15_000 }).catch(() => {});
     await page.evaluate(() => document.fonts?.ready).catch(() => {});
     await page.waitForTimeout(500);
@@ -78,10 +81,13 @@ async function auditMode(browser, baseUrl, route, outDir) {
   const bodyText = await page.locator('body').innerText().catch(() => '');
   const mainVisible = await page.locator('main').first().isVisible().catch(() => false);
   const panelVisible = await page.locator(route.panel).isVisible().catch(() => false);
-  const selectedTab = await page.locator(route.tab).evaluate((button) => ({
-    active: button.classList.contains('active'),
-    current: button.getAttribute('aria-current'),
-  })).catch(() => ({ active: false, current: null }));
+  const selectedTab = route.tab
+    ? await page.locator(route.tab).evaluate((button) => ({
+      active: button.classList.contains('active'),
+      current: button.getAttribute('aria-current'),
+    })).catch(() => ({ active: false, current: null }))
+    : null;
+  const actualHash = await page.evaluate(() => window.location.hash).catch(() => '');
 
   const layout = await page.evaluate(({ expectedPanel, mode }) => {
     const visible = (element) => {
@@ -114,7 +120,8 @@ async function auditMode(browser, baseUrl, route, outDir) {
   else if (response.status() >= 400) failures.push(`document returned HTTP ${response.status()}`);
   if (!mainVisible) failures.push('visible <main> element was not found');
   if (!panelVisible || !layout.expectedPanelVisible) failures.push(`expected panel was not visible: ${route.panel}`);
-  if (!selectedTab.active || selectedTab.current !== 'page') failures.push(`selected tab state was not applied: ${route.name}`);
+  if (route.tab && (!selectedTab?.active || selectedTab.current !== 'page')) failures.push(`selected tab state was not applied: ${route.name}`);
+  if (route.expectedHash && actualHash !== route.expectedHash) failures.push(`expected hash was not applied: ${route.expectedHash} (actual ${actualHash || '(empty)'})`);
   if (layout.horizontalOverflow > 1) failures.push(`document overflows viewport horizontally by ${layout.horizontalOverflow}px`);
   if (layout.clippedTabs > 0) failures.push(`${layout.clippedTabs} navigation tabs are clipped`);
   if (!bodyText.includes(route.requiredText)) failures.push(`required text was not rendered: ${route.requiredText}`);
@@ -137,6 +144,7 @@ async function auditMode(browser, baseUrl, route, outDir) {
     mainVisible,
     panelVisible,
     selectedTab,
+    actualHash,
     layout,
     screenshotPath,
     failures,
