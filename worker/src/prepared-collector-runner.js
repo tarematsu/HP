@@ -178,9 +178,19 @@ function minuteAt(observedAt) {
   return Math.floor(Number(observedAt) / 60_000) * 60_000;
 }
 
-export function minuteFactDue(observedAt) {
-  const bucket = minuteAt(observedAt);
-  return Number.isFinite(bucket) && bucket % MINUTE_FACT_INTERVAL_MS === 0;
+function fiveMinuteBucket(observedAt) {
+  const minute = minuteAt(observedAt);
+  return Number.isFinite(minute)
+    ? Math.floor(minute / MINUTE_FACT_INTERVAL_MS) * MINUTE_FACT_INTERVAL_MS
+    : null;
+}
+
+export function minuteFactDue(observedAt, previousRunAt = null) {
+  const currentBucket = fiveMinuteBucket(observedAt);
+  if (currentBucket == null) return false;
+  const previous = Number(previousRunAt);
+  if (!Number.isFinite(previous) || previous <= 0) return true;
+  return fiveMinuteBucket(previous) !== currentBucket;
 }
 
 function estimateD1RowsWritten({
@@ -205,6 +215,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
   const observedAt = Date.now();
   let stage = 'collector_start';
   let state = null;
+  let previousRunAt = 0;
   const activeEnv = activeCollectorEnv(env);
 
   try {
@@ -217,7 +228,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
 
     stage = 'sh_auth';
     state = collectorStateFromAuthState(activeEnv.__shAuthState, activeEnv);
-    const previousRunAt = Number(state.lastRunAt || 0);
+    previousRunAt = Number(state.lastRunAt || 0);
     const previousChannelId = Number(state.channelId || 0) || null;
     const previousStationId = Number(state.stationId || 0) || null;
     const metadataRetry = Boolean(state.lastError);
@@ -263,7 +274,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
 
     const commentResult = NO_PLANNED_COMMENTS_RESULT;
     const factObservedAt = collectionObservedAt(activeEnv, observedAt);
-    const factDue = minuteFactDue(factObservedAt);
+    const factDue = minuteFactDue(factObservedAt, previousRunAt);
     const lastSuccessAt = Date.now();
     const checkpointDue = state.persistCredentials !== false
       || state.clearFailureOnSuccess === true
@@ -397,7 +408,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
     const failure = asCollectorFailure(error, stage, Date.now());
     if (state) {
       await saveCollectorState(activeEnv, state, {
-        lastRunAt: observedAt,
+        lastRunAt: stage === 'minute_fact_handoff' ? previousRunAt : observedAt,
         lastError: failure.message.slice(0, 2000),
         tokenExpiresAt: state.tokenExpiresAt || jwtExpiryMs(state.authToken),
       }).catch(() => {});
