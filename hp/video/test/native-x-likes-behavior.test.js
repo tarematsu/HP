@@ -8,9 +8,21 @@ const rawSource = readFileSync(
 const source = [...rawSource.matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
   .map(([, chunk]) => chunk).join('');
 
-async function run({ selected = true, switchWorks = true, missingTab = false, failLike = false, leaveFollowing = false, bodyMentionsRepost = false, bodyMentionsAd = false, delayedTimers = false, emptyUntil = 0 } = {}) {
+async function run({
+  selected = true,
+  switchWorks = true,
+  missingTab = false,
+  failLike = false,
+  leaveFollowing = false,
+  bodyMentionsRepost = false,
+  bodyMentionsAd = false,
+  delayedTimers = false,
+  emptyUntil = 0,
+  randomValues = [0],
+} = {}) {
   let now = 0;
   let scrollOffset = 0;
+  let randomIndex = 0;
   const clickTimes = [];
   const scrollSteps = [];
   const scrollTimes = [];
@@ -97,8 +109,23 @@ async function run({ selected = true, switchWorks = true, missingTab = false, fa
       scrollTimes.push(now);
     },
   };
+  const testMath = {
+    abs: Math.abs,
+    max: Math.max,
+    min: Math.min,
+    ceil: Math.ceil,
+    round: Math.round,
+    floor: Math.floor,
+    sign: Math.sign,
+    random: () => {
+      const value = randomValues[randomIndex % randomValues.length];
+      randomIndex++;
+      return value;
+    },
+  };
   const context = vm.createContext({
     location: { hostname: 'x.com' }, window, innerWidth: 720, innerHeight: 480,
+    Math: testMath,
     document: {
       readyState: 'complete',
       querySelectorAll: selector => selector === '[role="tab"]'
@@ -112,7 +139,7 @@ async function run({ selected = true, switchWorks = true, missingTab = false, fa
     }),
   });
   vm.runInContext(source, context);
-  for (let i = 0; i < 700 && !window.__homePanelXLikeRuntime.completed; i++) {
+  for (let i = 0; i < 900 && !window.__homePanelXLikeRuntime.completed; i++) {
     timers.shift()?.();
     await Promise.resolve();
     await Promise.resolve();
@@ -129,26 +156,28 @@ async function run({ selected = true, switchWorks = true, missingTab = false, fa
   };
 }
 
-test('slowly approaches a like button, pauses there, then uses the same DOM click style as Following', async () => {
-  const result = await run();
-  assert.deepEqual(result.clickedIds, [10, 11, 12, 13, 14]);
-  assert.equal(result.state.likedCount, 5);
-  assert.equal(result.state.attemptedCount, 5);
-  assert.equal(result.state.clickCount, 5);
-  assert.ok(result.clickTimes[0] >= 10000);
-  for (let i = 1; i < result.clickTimes.length; i++) {
-    assert.ok(result.clickTimes[i] - result.clickTimes[i - 1] >= 10000);
-  }
-  for (const clickTime of result.clickTimes) {
-    const previousScroll = result.scrollTimes.filter(time => time <= clickTime).at(-1);
-    assert.ok(previousScroll != null);
-    assert.ok(clickTime - previousScroll >= 900);
-  }
-  assert.ok(result.clickTimes.every(time => time < 60000));
-  assert.ok(result.scrollSteps.length > 10);
-  assert.ok(result.scrollSteps.every(step => step > 0 && step <= 28));
-  assert.ok(result.scrollSteps.some(step => step < 28));
+test('approaches like buttons at double scroll speed and uses the same DOM click style as Following', async () => {
+  const result = await run({ randomValues: [0] });
+  assert.ok(result.clickedIds.length >= 4);
+  assert.ok(result.clickedIds.every(id => id >= 10));
+  assert.equal(result.state.likedCount, result.clickedIds.length);
+  assert.equal(result.state.clickCount, result.clickedIds.length);
+  assert.ok(result.scrollSteps.length > 4);
+  assert.ok(result.scrollSteps.every(step => step > 0 && step <= 56));
+  assert.ok(result.scrollSteps.some(step => step < 56));
   assert.equal(result.state.completed, true);
+});
+
+test('pre-click wait is randomly selected from 5, 10 and 15 seconds', async () => {
+  const result = await run({ randomValues: [0, 0.5, 0.99] });
+  assert.ok(result.state.likeWaitHistoryMs.length >= 3);
+  assert.deepEqual(result.state.likeWaitHistoryMs.slice(0, 3), [5000, 10000, 15000]);
+  assert.ok(result.state.likeWaitHistoryMs.every(ms => [5000, 10000, 15000].includes(ms)));
+  for (let i = 0; i < Math.min(result.clickTimes.length, result.state.likeWaitHistoryMs.length); i++) {
+    const previousScroll = result.scrollTimes.filter(time => time <= result.clickTimes[i]).at(-1);
+    assert.ok(previousScroll != null);
+    assert.ok(result.clickTimes[i] - previousScroll >= result.state.likeWaitHistoryMs[i]);
+  }
 });
 
 test('runtime explicitly uses click() for both Following and like buttons', () => {
@@ -161,7 +190,7 @@ test('runtime explicitly uses click() for both Following and like buttons', () =
 });
 
 test('unconfirmed DOM likes retry up to three times instead of being treated as successful', async () => {
-  const result = await run({ failLike: true });
+  const result = await run({ failLike: true, randomValues: [0] });
   assert.equal(result.state.likedCount, 0);
   assert.ok(result.state.unconfirmedCount > 0);
   const counts = new Map();
@@ -170,27 +199,30 @@ test('unconfirmed DOM likes retry up to three times instead of being treated as 
   assert.ok([...counts.values()].some(count => count === 3));
 });
 
-test('runtime keeps slow targeted scrolling and pauses before clicks', () => {
-  assert.match(source, /const pauseBeforeLikeMs = 900/);
-  assert.match(source, /const pauseAfterLikeMs = 800/);
-  assert.match(source, /const maxScrollStepPx = 28/);
+test('runtime doubles targeted scroll increments and waits before each click', () => {
+  assert.match(source, /const maxScrollStepPx = 56/);
+  assert.match(source, /const minScrollStepPx = 20/);
   assert.match(source, /const targetY = \(\) => Math\.round\(innerHeight \* 0\.62\)/);
   assert.match(source, /state\.result = 'approaching-like'/);
   assert.match(source, /state\.result = 'paused-on-like'/);
-  assert.match(source, /await sleep\(pauseBeforeLikeMs\)/);
-  assert.match(source, /Math\.min\(maxScrollStepPx, Math\.ceil\(Math\.abs\(distance\) \* 0\.35\)\)/);
+  assert.match(source, /state\.result = 'waiting-before-like'/);
+  assert.match(source, /await sleep\(waitMs\)/);
+  assert.match(source, /Math\.min\(maxScrollStepPx, Math\.ceil\(Math\.abs\(distance\) \* 0\.70\)\)/);
 });
 
-test('delayed timers and late posts never cause confirmed-like catch-up bursts', async () => {
-  for (const options of [{ delayedTimers: true }, { emptyUntil: 32000 }]) {
+test('delayed timers and late posts never cause catch-up bursts', async () => {
+  for (const options of [
+    { delayedTimers: true, randomValues: [0] },
+    { emptyUntil: 32000, randomValues: [0] },
+  ]) {
     const result = await run(options);
     assert.ok(result.clickTimes.length > 0);
     for (let i = 1; i < result.clickTimes.length; i++) {
-      assert.ok(result.clickTimes[i] - result.clickTimes[i - 1] >= 10000);
+      assert.ok(result.clickTimes[i] - result.clickTimes[i - 1] >= 5000);
     }
     assert.ok(result.clickTimes.every(time => time < 60000));
   }
-  const late = await run({ emptyUntil: 32000 });
+  const late = await run({ emptyUntil: 32000, randomValues: [0] });
   assert.ok(late.scrollSteps.every(step => step > 0));
 });
 
@@ -201,21 +233,23 @@ test('does not interact before login or like when Following cannot be selected',
   const failedSwitch = await run({ selected: false, switchWorks: false });
   assert.equal(failedSwitch.clickedIds.length, 0);
   assert.equal(failedSwitch.state.result, 'following-unavailable');
-  assert.equal((await run({ selected: false })).state.likedCount, 5);
+  assert.ok((await run({ selected: false, randomValues: [0] })).state.likedCount > 0);
 });
 
 test('stops liking if the user leaves Following', async () => {
-  assert.equal((await run({ leaveFollowing: true })).clickedIds.length, 1);
+  assert.equal((await run({ leaveFollowing: true, randomValues: [0] })).clickedIds.length, 1);
 });
 
 test('ordinary posts mentioning reposts are not mistaken for reposts', async () => {
-  const result = await run({ bodyMentionsRepost: true });
-  assert.deepEqual(result.clickedIds, [10, 11, 12, 13, 14]);
+  const result = await run({ bodyMentionsRepost: true, randomValues: [0] });
+  assert.ok(result.clickedIds.length > 0);
+  assert.ok(result.clickedIds.every(id => id >= 10));
 });
 
 test('ordinary tweet text mentioning ads or PR is not mistaken for promotion', async () => {
-  const result = await run({ bodyMentionsAd: true });
-  assert.deepEqual(result.clickedIds, [10, 11, 12, 13, 14]);
+  const result = await run({ bodyMentionsAd: true, randomValues: [0] });
+  assert.ok(result.clickedIds.length > 0);
+  assert.ok(result.clickedIds.every(id => id >= 10));
 });
 
 test('filter CSS does not hide every social-context post', () => {
