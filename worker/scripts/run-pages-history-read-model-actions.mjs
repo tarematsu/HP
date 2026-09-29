@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { MATERIALIZED_API_VARIANTS } from '../../site/functions/lib/api-contract.js';
-import { runPagesReadModelActions } from './run-pages-read-model-actions.mjs';
+import { runPagesRevisionReadModelActions } from './run-pages-read-model-revision-actions.mjs';
 
 export const HISTORY_READ_MODEL_VARIANTS = Object.freeze(
   MATERIALIZED_API_VARIANTS.filter(
@@ -20,7 +20,7 @@ export async function runPagesHistoryReadModelActions(options = {}) {
   const reuseOnly = options.reuseOnly
     ?? enabled(process.env.PAGES_READ_MODEL_REUSE_ONLY);
 
-  return runPagesReadModelActions({
+  return runPagesRevisionReadModelActions({
     ...options,
     variants,
     ...(reuseOnly ? {
