@@ -98,3 +98,46 @@ test('conflicting Spotify identities are not guessed', async () => {
   assert.equal(resolved[0].spotify_id, undefined);
   assert.equal(resolved[0].isrc, 'JPSR02600001');
 });
+
+test('large identity lookups are chunked below the D1 binding limit', async () => {
+  const tracks = Array.from({ length: 174 }, (_, index) => ({
+    title: `Amazon Track ${index + 1}`,
+    artist: '櫻坂46',
+  }));
+  const rows = tracks.map((track, index) => ({
+    spotify_id: `spotify-${index + 1}`,
+    isrc: `JPAAA26${String(index + 1).padStart(5, '0')}`,
+    title: track.title,
+    artist: track.artist,
+    fetched_at: index + 1,
+  }));
+  const bindingCounts = [];
+  const db = {
+    prepare(sql) {
+      return {
+        bindings: [],
+        bind(...bindings) {
+          bindingCounts.push(bindings.length);
+          if (bindings.length > 79) throw new Error('too many SQL variables');
+          this.bindings = bindings;
+          return this;
+        },
+        async all() {
+          if (!sql.includes('FROM sh_tracks')) return { results: [] };
+          const requested = new Set(this.bindings.map((value) => String(value).trim().toLowerCase()));
+          return {
+            results: rows.filter((row) => requested.has(row.title.toLowerCase())),
+          };
+        },
+      };
+    },
+  };
+
+  const identityRows = await loadTitleArtistIdentityRows(db, tracks, 240);
+  const resolved = attachTitleArtistIdentity(tracks, identityRows);
+
+  assert.equal(identityRows.length, 174);
+  assert.equal(resolved.filter((track) => track.isrc).length, 174);
+  assert.ok(bindingCounts.length > 4);
+  assert.ok(bindingCounts.every((count) => count <= 79));
+});
