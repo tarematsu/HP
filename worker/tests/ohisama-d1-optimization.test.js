@@ -6,6 +6,9 @@ import {
   runOptimizedOhisamaCollectorScheduled,
 } from '../src/ohisama-collector-optimized.js';
 import { refreshOptimizedOhisamaReadModel } from '../src/ohisama-read-model-optimized.js';
+import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
+
+const HINATA_KEY = pagesActionsR2ResponseKey('hinata');
 
 class FakeR2 {
   constructor(initial = new Map()) {
@@ -46,7 +49,7 @@ test('Ohisama same-day read-model refresh stays entirely off D1', async () => {
   const observedAt = Date.parse('2026-09-30T12:05:00Z');
   const previousAt = observedAt - 300_000;
   const r2 = new FakeR2(new Map([[
-    'pages-response/hinata.json',
+    HINATA_KEY,
     pageEnvelope({
       ok: true,
       model: 'hinata',
@@ -96,7 +99,7 @@ test('Ohisama UTC day rollover persists the completed daily row exactly once', a
   const observedAt = Date.parse('2026-10-01T00:00:00Z');
   const previousAt = observedAt - 300_000;
   const r2 = new FakeR2(new Map([[
-    'pages-response/hinata.json',
+    HINATA_KEY,
     pageEnvelope({
       ok: true,
       model: 'hinata',
