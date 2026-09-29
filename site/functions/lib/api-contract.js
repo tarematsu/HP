@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 9;
+export const API_CONTRACT_VERSION = 10;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -17,6 +17,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
     { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },
     { path: '/api/spotify-playcounts', methods: ['GET'], description: 'Latest finalized Spotify cumulative playcounts by Sakamichi group' },
+    { path: '/api/amazon-music', methods: ['GET'], description: 'Latest Sakurazaka Amazon Music follower and track-rank read model' },
   ]),
 });
 
@@ -40,6 +41,12 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
     key: 'spotify-playcounts',
     url: '/api/spotify-playcounts',
     cadence_minutes: 720,
+    event_driven: true,
+  }),
+  Object.freeze({
+    key: 'amazon-music',
+    url: '/api/amazon-music',
+    cadence_minutes: 1440,
     event_driven: true,
   }),
 ]);
@@ -74,6 +81,9 @@ export function materializedApiKey(input) {
   }
   if (pathname === '/api/spotify-playcounts' && onlyParameters(url, ['artist'])) {
     return 'spotify-playcounts';
+  }
+  if (pathname === '/api/amazon-music' && onlyParameters(url)) {
+    return 'amazon-music';
   }
   return null;
 }
