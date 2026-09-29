@@ -12,53 +12,40 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install browser driver
-        run: npm install --no-save puppeteer-core@24.20.0
-      - name: Trace Amazon Music web player network
+      - name: Probe current Amazon Music client
         shell: bash
         run: |
           set -euo pipefail
-          node <<'NODE'
-          (async () => {
-            const puppeteer = require('puppeteer-core');
-            const { execSync } = require('node:child_process');
-            const chrome = execSync('which google-chrome || which chromium || which chromium-browser').toString().trim();
-            console.log('chrome', chrome);
-            const browser = await puppeteer.launch({headless:true,executablePath:chrome,args:['--no-sandbox','--disable-dev-shm-usage','--lang=ja-JP']});
-            const page = await browser.newPage();
-            await page.setViewport({width:1280,height:900});
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
-            await page.setExtraHTTPHeaders({'Accept-Language':'ja-JP,ja;q=0.9,en;q=0.5'});
-            const requests=[];
-            page.on('request', req => {
-              const u=req.url();
-              if(/music\.a2z\.com|amazon\.co\.jp\/config\.json/i.test(u)) {
-                const pd=req.postData();
-                requests.push({url:u,method:req.method(),post:pd?pd.slice(0,2400):null,headers:req.headers()});
-              }
-            });
-            page.on('response', async res => {
-              const u=res.url();
-              if(/music\.a2z\.com/i.test(u)) {
-                let text=''; try{text=(await res.text()).slice(0,1200)}catch{}
-                console.log('RESPONSE', JSON.stringify({url:u,status:res.status(),body:text.replace(/\s+/g,' ')}));
-              }
-            });
-            const target='https://music.amazon.co.jp/artists/B08P3RHP1P';
-            const nav=await page.goto(target,{waitUntil:'domcontentloaded',timeout:90000});
-            console.log('NAV', nav?.status(), page.url());
-            await new Promise(r=>setTimeout(r,20000));
-            console.log('TITLE', await page.title());
-            const snapshot=await page.evaluate(()=>({
-              text:document.body?.innerText?.slice(0,8000)||'',
-              links:[...document.querySelectorAll('a[href]')].map(a=>({text:(a.textContent||'').trim(),href:a.href})).filter(x=>/\/tracks\/|\/albums\/|\/artists\//.test(x.href)).slice(0,200),
-            }));
-            console.log('BODY', snapshot.text.replace(/\n+/g,' | '));
-            console.log('LINKS', JSON.stringify(snapshot.links));
-            console.log('REQUESTS', JSON.stringify(requests.slice(-100)));
-            await browser.close();
-          })().catch(error => { console.error(error); process.exit(1); });
+          node --input-type=module <<'NODE'
+          import {
+            createAmazonMusicWebClient,
+            extractAmazonMusicTracks,
+            extractFollowerCount,
+          } from './worker/src/amazon-music-web-client.js';
+
+          const client = createAmazonMusicWebClient();
+          const artist = await client.fetchArtist('B08P3RHP1P');
+          const popular = extractAmazonMusicTracks(artist);
+          console.log('artistPopularCount', popular.length);
+          console.log('artistPopularFirst', JSON.stringify(popular.slice(0, 5)));
+          console.log('follower', JSON.stringify(extractFollowerCount(artist)));
+
+          const tracks = await client.fetchArtistTracks('B08P3RHP1P');
+          console.log('artistTracksCount', tracks.length);
+          console.log('artistTracksFirst', JSON.stringify(tracks.slice(0, 5)));
+
+          const top50 = await client.fetchPlaylist('B088FYHTR4');
+          const top50Tracks = extractAmazonMusicTracks(top50);
+          console.log('top50Count', top50Tracks.length);
+          console.log('top50First', JSON.stringify(top50Tracks.slice(0, 5)));
+
+          if (popular.length === 0 || tracks.length === 0) {
+            throw new Error(`Amazon Music client returned empty data: popular=${popular.length}, tracks=${tracks.length}`);
+          }
           NODE
