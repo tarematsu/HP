@@ -92,8 +92,8 @@ export async function onRequestGet({ env }) {
   const generatedAt = Date.now();
   try {
     const event = await env.OTHER_DB.prepare(announcementSql()).first();
-    const collectionActive = event?.status === 'active';
-    const mainLimit = collectionActive ? ACTIVE_MAIN_LIMIT : IDLE_LIMIT;
+    const activeAnnouncement = event?.status === 'active' ? event : null;
+    const mainLimit = activeAnnouncement ? ACTIVE_MAIN_LIMIT : IDLE_LIMIT;
     const [mainResult, chatResult] = await Promise.all([
       env.OTHER_DB.prepare(recentMainSql(mainLimit)).all(),
       env.OTHER_DB.prepare(recentChatSql(CHAT_LIMIT)).all(),
@@ -108,8 +108,8 @@ export async function onRequestGet({ env }) {
       ok: true,
       handle: 'sakurazaka46jp',
       generated_at: generatedAt,
-      collection_active: collectionActive,
-      active_event: collectionActive ? event : null,
+      collection_active: Boolean(activeAnnouncement),
+      active_event: activeAnnouncement,
       event: event || null,
       latest_main: latestMain,
       latest_chat: latestChat,
@@ -123,7 +123,7 @@ export async function onRequestGet({ env }) {
       chat_sample_count: chats.length,
       recent_limit: mainLimit,
       chat_recent_limit: CHAT_LIMIT,
-      refresh_hint_ms: collectionActive ? 15000 : 60000,
+      refresh_hint_ms: activeAnnouncement ? 15000 : 60000,
     });
   } catch (error) {
     const message = String(error?.message || error);
