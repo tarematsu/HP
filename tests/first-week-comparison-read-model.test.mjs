@@ -35,8 +35,7 @@ function fixture() {
 
 test('first-week read model remains installed before the current MINUTE_DB schema tip', () => {
   const path = 'database/facts-migrations/058_first_week_comparison_read_model.sql';
-  assert.equal(descriptor.schema, 'database/facts-migrations/060_canonical_daily_member_ownership.sql');
-  assert.equal(descriptor.migrations.at(-1), descriptor.schema);
+  assert.equal(descriptor.schema, descriptor.migrations.at(-1));
   assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
   assert.ok(descriptor.migrations.indexOf(path) < descriptor.migrations.indexOf(descriptor.schema));
 });
