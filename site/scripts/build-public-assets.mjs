@@ -66,9 +66,49 @@ function normalizeCanvasPresentation(source, file) {
   return next;
 }
 
+function shareCommonUiHelpers(source, file) {
+  let next = source;
+  let imports = '';
+
+  if (file === 'spotify.js' || file === 'amazon-music.js') {
+    imports = "import { byId as element, integerFormat as numberFormat, safeInteger as integer, svgElement } from './dashboard-ui-common.js?v=20260930.1';\n";
+    next = next
+      .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
+      .replace("const numberFormat = new Intl.NumberFormat('ja-JP');\n", '')
+      .replace(/function element\(id\) \{\n  return document\.getElementById\(id\);\n}\n\n/, '')
+      .replace(/function integer\(value\) \{\n  if \(value == null \|\| value === ''\) return null;\n  const (?:number|parsed) = Number\(value\);\n  return Number\.isSafeInteger\((?:number|parsed)\) \? (?:number|parsed) : null;\n}\n\n/, '')
+      .replace(/function svgElement\(name, attributes = \{}\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  return node;\n}\n\n/, '');
+  } else if (file === 'apple-music.js') {
+    imports = "import { byId as element, svgElement } from './dashboard-ui-common.js?v=20260930.1';\n";
+    next = next
+      .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
+      .replace(/function element\(id\) \{\n  return document\.getElementById\(id\);\n}\n\n/, '')
+      .replace(/function svgElement\(name, attributes = \{}\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  return node;\n}\n\n/, '');
+  } else if (file === 'followers.js') {
+    imports = "import { integerFormat as numberFormat, svgElement as createSvgNode } from './dashboard-ui-common.js?v=20260930.1';\n";
+    next = next
+      .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
+      .replace("const numberFormat = new Intl.NumberFormat('ja-JP');\n", '')
+      .replace(/function createSvgNode\(name, attributes = \{}\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  return node;\n}\n/, '');
+  } else if (file === 'hinata.js') {
+    imports = "import { byId, cssColor, decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer, setText, svgElement } from './dashboard-ui-common.js?v=20260930.1';\n";
+    next = next
+      .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
+      .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '')
+      .replace("const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '')
+      .replace(/const byId = \(id\) => document\.getElementById\(id\);\n/, '')
+      .replace(/const finite = \(value\) => \{\n  if \(value === null \|\| value === undefined \|\| value === ''\) return null;\n  const number = Number\(value\);\n  return Number\.isFinite\(number\) \? number : null;\n};\n/, '')
+      .replace(/function setText\(id, value\) \{\n  const node = byId\(id\);\n  if \(node\) node\.textContent = String\(value\);\n}\n\n/, '')
+      .replace(/function cssColor\(name, fallback\) \{\n  return getComputedStyle\(document\.documentElement\)\.getPropertyValue\(name\)\.trim\(\) \|\| fallback;\n}\n\n/, '')
+      .replace(/function svgElement\(name, attributes = \{}, text = null\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  if \(text != null\) node\.textContent = String\(text\);\n  return node;\n}\n\n/, '');
+  }
+
+  return imports ? `${imports}${next}` : next;
+}
+
 function optimizeBundledModule(source, path) {
   const file = basename(path);
-  let next = normalizeCanvasPresentation(source, file);
+  let next = shareCommonUiHelpers(normalizeCanvasPresentation(source, file), file);
 
   if (file === 'dashboard-header.js') {
     const runtimeStart = next.indexOf('const KEYBOARD_NAVIGATION_CLASS');
