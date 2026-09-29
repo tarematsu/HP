@@ -35,6 +35,7 @@ export function svgElement(name, attributes = {}, text = null) {
 }
 
 export function ensureStylesheet(href, key) {
+  if (document.documentElement.dataset.dashboardCssBundled === 'true') return null;
   if (!href || !key) return null;
   const selector = `link[data-dashboard-feature-style="${CSS.escape(key)}"]`;
   const existing = document.querySelector(selector);
