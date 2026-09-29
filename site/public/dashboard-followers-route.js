@@ -24,6 +24,12 @@ function updateTabState(active) {
   });
 }
 
+function deactivateFollowers() {
+  followersActive = false;
+  const view = followerView();
+  if (view) view.hidden = true;
+}
+
 function showOnlyFollowers() {
   const view = followerView();
   if (!view) return false;
@@ -76,7 +82,7 @@ function selectedKnownButton(mode) {
 
 function leaveFollowersForLocation() {
   if (!followersActive) return;
-  followersActive = false;
+  deactivateFollowers();
   const mode = location.hash.slice(1) || 'current';
   const button = selectedKnownButton(mode) || selectedKnownButton('current');
   button?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
@@ -85,7 +91,7 @@ function leaveFollowersForLocation() {
 document.addEventListener('click', (event) => {
   const button = event.target.closest('#modeTabs button[data-view="followers"]');
   if (!button) {
-    if (followersActive && event.target.closest('#modeTabs button')) followersActive = false;
+    if (followersActive && event.target.closest('#modeTabs button')) deactivateFollowers();
     return;
   }
   event.preventDefault();
