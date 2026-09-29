@@ -1,21 +1,15 @@
+import { finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';
+
 const DAY_MS = 86_400_000;
-const MINUTE_MS = 60_000;
-const FIVE_MINUTE_MS = 5 * MINUTE_MS;
+const FIVE_MINUTE_MS = 5 * 60_000;
 const EXTREMA_POINT_COLOR = '#888';
 const STREAM_BAR_COLOR = '#168b73';
-const integer = new Intl.NumberFormat('ja-JP');
-const jstExtremaTime = new Intl.DateTimeFormat('ja-JP', {
+const jstTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
 });
 let lastPayload = null;
 let redrawTimer = 0;
 let observedCanvasWidth = 0;
-
-const finite = (value) => {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
 
 function normalizeCurrent(rows) {
   const list = Array.isArray(rows) ? rows : [];
@@ -82,7 +76,7 @@ function ensureLegend(hasPrevious, hasStreamAverages) {
 
 function labelBox(context, text, x, y, align, width, height) {
   context.save();
-  context.font = 'bold 10px system-ui';
+  context.font = '600 11px system-ui';
   const textWidth = context.measureText(text).width;
   const boxWidth = textWidth + 10;
   const boxHeight = 18;
@@ -199,7 +193,7 @@ function drawComparison(payload) {
   const onlineRange = Math.max(1, onlineMax - onlineMin);
   const yOnline = (value) => onlineBottom - (Number(value) - onlineMin) * onlinePlotHeight / onlineRange;
 
-  context.font = '10px system-ui';
+  context.font = '11px system-ui';
   context.lineWidth = 1;
   for (let index = 0; index <= 4; index += 1) {
     const ratio = index / 4;
@@ -216,7 +210,7 @@ function drawComparison(payload) {
   }
 
   drawSeries(context, previous, xFor, yOnline, '#969ca6', 2);
-  drawSeries(context, current, xFor, yOnline, '#111', 2.5);
+  drawSeries(context, current, xFor, yOnline, '#111', 2);
 
   const streamRawMax = streamAverages.length
     ? Math.max(...streamAverages.map((row) => row.stream_delta))
@@ -226,7 +220,7 @@ function drawComparison(payload) {
   for (let index = 0; index <= 2; index += 1) {
     const ratio = index / 2;
     const y = streamTop + streamPlotHeight * ratio;
-    context.strokeStyle = 'rgba(31,45,68,.10)';
+    context.strokeStyle = 'rgba(31,45,68,.12)';
     context.beginPath();
     context.moveTo(padding.left, y);
     context.lineTo(width - padding.right, y);
@@ -243,12 +237,9 @@ function drawComparison(payload) {
   context.textBaseline = 'alphabetic';
   for (let index = 0; index < 5; index += 1) {
     const time = minTime + timeSpan * index / 4;
-    context.fillText(new Date(time).toLocaleTimeString('ja-JP', {
-      timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit',
-    }), xFor(time), height - 14);
+    context.fillText(jstTime.format(new Date(time)), xFor(time), height - 14);
   }
 
-  context.font = '10px system-ui';
   context.fillStyle = '#667287';
   context.textAlign = 'left';
   context.fillText('オンライン数(人)', 4, 12);
@@ -264,11 +255,11 @@ function drawComparison(payload) {
     if (minRow) {
       context.fillStyle = EXTREMA_POINT_COLOR;
       context.beginPath();
-      context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3.5, 0, Math.PI * 2);
+      context.arc(xFor(minRow.observed_at), yOnline(currentMin), 3, 0, Math.PI * 2);
       context.fill();
       labelBox(
         context,
-        `最小 ${integer.format(currentMin)}（${jstExtremaTime.format(new Date(minRow.observed_at))}）`,
+        `最小 ${integer.format(currentMin)}（${jstTime.format(new Date(minRow.observed_at))}）`,
         xFor(minRow.observed_at) + 5,
         yOnline(currentMin) + 14,
         'left',
@@ -279,11 +270,11 @@ function drawComparison(payload) {
     if (maxRow) {
       context.fillStyle = EXTREMA_POINT_COLOR;
       context.beginPath();
-      context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3.5, 0, Math.PI * 2);
+      context.arc(xFor(maxRow.observed_at), yOnline(currentMax), 3, 0, Math.PI * 2);
       context.fill();
       labelBox(
         context,
-        `最大 ${integer.format(currentMax)}（${jstExtremaTime.format(new Date(maxRow.observed_at))}）`,
+        `最大 ${integer.format(currentMax)}（${jstTime.format(new Date(maxRow.observed_at))}）`,
         xFor(maxRow.observed_at) - 5,
         yOnline(currentMax) - 14,
         'right',
@@ -317,5 +308,5 @@ function installCanvasResizeObserver() {
 }
 
 installCanvasResizeObserver();
-window.addEventListener('dashboard:payload', (event) => scheduleDraw(event?.detail?.payload));
+window.addEventListener('dashboard:details', (event) => scheduleDraw(event?.detail?.payload));
 window.addEventListener('resize', () => scheduleDraw(), { passive: true });
