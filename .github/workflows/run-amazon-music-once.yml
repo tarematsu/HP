@@ -58,7 +58,7 @@ jobs:
             --test-scheduled \
             --ip 127.0.0.1 \
             --port 8787 \
-            --log-level info >"$LOG" 2>&1 &
+            --log-level debug >"$LOG" 2>&1 &
           WRANGLER_PID=$!
           trap 'kill "$WRANGLER_PID" >/dev/null 2>&1 || true' EXIT
 
@@ -80,9 +80,12 @@ jobs:
             exit 1
           fi
 
+          set +e
           curl --fail --show-error --silent --max-time 900 \
             'http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=30+1+%2A+%2A+%2A&format=json' \
             | tee /tmp/amazon-music-once-response.json
+          CURL_STATUS=${PIPESTATUS[0]}
+          set -e
 
           for _ in $(seq 1 180); do
             if grep -q 'amazon-music-collection-complete' "$LOG"; then
@@ -96,6 +99,11 @@ jobs:
             if ! kill -0 "$WRANGLER_PID" >/dev/null 2>&1; then
               cat "$LOG"
               exit 1
+            fi
+            if [[ "$CURL_STATUS" -ne 0 ]]; then
+              sleep 2
+              cat "$LOG"
+              exit "$CURL_STATUS"
             fi
             sleep 5
           done
