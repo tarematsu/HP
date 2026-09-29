@@ -51,22 +51,34 @@ test('Apple Music API preserves real materialized-service failures', async () =>
   assert.equal((await response.json()).ok, false);
 });
 
-test('Apple Music view exposes region switcher, rank history, daily changes, and comparison', () => {
-  assert.match(shell, /id="appleRegionTabs"/);
+test('Apple Music view fixes the top graph to Japan and uses one regional ranking table', () => {
   assert.match(shell, /id="appleRankChart"/);
-  assert.match(shell, /id="appleMusicTbody"/);
+  assert.match(shell, /id="appleRankLegend"/);
+  assert.match(shell, /日本 人気曲順位推移/);
   assert.match(shell, /id="appleRegionCompareTable"/);
-  assert.match(shell, /前日比/);
-  assert.match(runtime, /let selectedRegion = 'jp'/);
-  assert.match(runtime, /rankChangeLabel/);
-  assert.match(runtime, /'NEW'/);
-  assert.match(runtime, /renderRegionComparison/);
+  assert.match(shell, /地域別 人気順位一覧/);
+  assert.doesNotMatch(shell, /appleRegionTabs|appleMusicTbody|前日比/);
+  assert.doesNotMatch(runtime, /selectedRegion|rankChangeLabel|renderCurrentTable|renderRegionTabs/);
+  assert.match(runtime, /regionByCode\(payload, 'jp'\)/);
+  assert.match(runtime, /point\?\.regions\?\.jp/);
 });
 
-test('Apple Music rank chart keeps first place at the top and remains mobile-width safe', () => {
+test('Apple Music regional list is Japan-first and keeps other-region-only songs below it', () => {
+  assert.match(runtime, /REGION_ORDER = Object\.freeze\(\['jp', 'tw', 'hk', 'kr', 'sg', 'th', 'us'\]\)/);
+  assert.match(runtime, /row\.ranks\.get\('jp'\) != null/);
+  assert.match(runtime, /row\.ranks\.get\('jp'\) == null/);
+  assert.match(runtime, /aBest - bBest \|\| aAverage - bAverage/);
+  assert.match(runtime, /rankHeader\.textContent = '順位'/);
+  assert.match(runtime, /songHeader\.textContent = '曲名'/);
+  assert.match(runtime, /cell\.textContent = rank == null \? '-' : String\(rank\)/);
+});
+
+test('Apple Music Japan rank chart keeps first place at the top and exposes a current-rank legend', () => {
   assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
-  assert.match(runtime, /Apple Music櫻坂46人気曲順位推移。1位が上。/);
+  assert.match(runtime, /日本のApple Music櫻坂46人気曲順位推移。1位が上。/);
+  assert.match(runtime, /renderJapanLegend/);
   assert.match(css, /\.apple-rank-svg[\s\S]*width:\s*100%/);
-  assert.match(css, /\.apple-region-table[\s\S]*min-width:\s*720px/);
+  assert.match(css, /\.apple-rank-legend[\s\S]*grid-template-columns/);
+  assert.match(css, /\.apple-region-table[\s\S]*min-width:\s*820px/);
   assert.match(css, /\.apple-region-table-wrap[\s\S]*overflow-x:\s*auto/);
 });

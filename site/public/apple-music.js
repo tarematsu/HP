@@ -1,7 +1,7 @@
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const REGION_ORDER = Object.freeze(['jp', 'tw', 'hk', 'kr', 'sg', 'th', 'us']);
 let loadPromise = null;
 let lastPayload = null;
-let selectedRegion = 'jp';
 
 function element(id) {
   return document.getElementById(id);
@@ -13,7 +13,7 @@ function integer(value) {
 }
 
 function trackKey(track) {
-  return String(track?.song_key || track?.track_id || '');
+  return String(track?.song_key || track?.track_id || track?.apple_music_id || '');
 }
 
 function formatDate(value) {
@@ -47,32 +47,15 @@ function regions(payload) {
 }
 
 function regionByCode(payload, code) {
-  return regions(payload).find((region) => region?.code === code) || regions(payload)[0] || null;
+  return regions(payload).find((region) => region?.code === code) || null;
 }
 
-function previousHistoryPoint(payload) {
-  const history = [...(Array.isArray(payload?.history) ? payload.history : [])]
-    .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(String(point?.snapshot_date || '')))
-    .sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
-  const currentIndex = history.findIndex((point) => point.snapshot_date === payload?.snapshot_date);
-  if (currentIndex > 0) return history[currentIndex - 1];
-  if (currentIndex === -1 && history.length > 1) return history.at(-2);
-  return null;
-}
-
-function previousRankMap(payload, code) {
-  const point = previousHistoryPoint(payload);
-  return new Map((Array.isArray(point?.regions?.[code]) ? point.regions[code] : [])
-    .map((track) => [trackKey(track), integer(track?.rank)])
-    .filter(([key]) => key));
-}
-
-function rankChangeLabel(currentRank, previousRank) {
-  if (previousRank == null) return 'NEW';
-  const delta = previousRank - currentRank;
-  if (delta > 0) return `↑${delta}`;
-  if (delta < 0) return `↓${Math.abs(delta)}`;
-  return '→';
+function orderedRegions(payload) {
+  const byCode = new Map(regions(payload).map((region) => [region?.code, region]));
+  return [
+    ...REGION_ORDER.map((code) => byCode.get(code)).filter(Boolean),
+    ...regions(payload).filter((region) => !REGION_ORDER.includes(region?.code)),
+  ];
 }
 
 function renderSummary(payload) {
@@ -82,85 +65,60 @@ function renderSummary(payload) {
   if (date) date.textContent = formatFullDate(payload?.snapshot_date);
 }
 
-function renderRegionTabs(payload) {
-  const container = element('appleRegionTabs');
-  if (!container) return;
-  container.replaceChildren();
-  for (const region of regions(payload)) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.dataset.region = region.code;
-    button.textContent = region.label || String(region.code || '').toUpperCase();
-    button.classList.toggle('active', region.code === selectedRegion);
-    button.setAttribute('aria-pressed', region.code === selectedRegion ? 'true' : 'false');
-    button.addEventListener('click', () => {
-      selectedRegion = region.code;
-      render(lastPayload || payload);
-    });
-    container.append(button);
-  }
-}
-
-function renderCurrentTable(payload) {
-  const tbody = element('appleMusicTbody');
-  if (!tbody) return;
-  tbody.replaceChildren();
-  const region = regionByCode(payload, selectedRegion);
-  if (!region) return;
-  const previous = previousRankMap(payload, region.code);
-  for (const track of Array.isArray(region.tracks) ? region.tracks : []) {
-    const row = document.createElement('tr');
-    const rank = document.createElement('td');
-    const title = document.createElement('td');
-    const change = document.createElement('td');
-    const currentRank = integer(track?.rank);
-    const previousRank = previous.get(trackKey(track)) ?? null;
-    rank.textContent = currentRank == null ? '-' : `${currentRank}位`;
-    title.textContent = String(track?.title || '曲名不明');
-    change.textContent = currentRank == null ? '-' : rankChangeLabel(currentRank, previousRank);
-    rank.className = 'apple-rank-number';
-    change.className = 'apple-rank-change';
-    if (previousRank != null && currentRank != null) {
-      change.classList.toggle('positive', previousRank > currentRank);
-      change.classList.toggle('negative', previousRank < currentRank);
-    }
-    row.append(rank, title, change);
-    tbody.append(row);
-  }
-}
-
-function historySeries(payload, region) {
-  const currentTracks = (Array.isArray(region?.tracks) ? region.tracks : []).slice(0, 12);
-  const titleById = new Map(currentTracks.map((track) => [trackKey(track), track.title || '曲名不明']).filter(([key]) => key));
+function japanHistorySeries(payload) {
+  const japan = regionByCode(payload, 'jp');
+  const currentTracks = (Array.isArray(japan?.tracks) ? japan.tracks : []).slice(0, 12);
+  const titleById = new Map(currentTracks
+    .map((track) => [trackKey(track), track.title || '曲名不明'])
+    .filter(([key]) => key));
   const byId = new Map([...titleById.keys()].map((id) => [id, []]));
+
   for (const point of Array.isArray(payload?.history) ? payload.history : []) {
     const date = String(point?.snapshot_date || '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    for (const track of Array.isArray(point?.regions?.[region.code]) ? point.regions[region.code] : []) {
+    for (const track of Array.isArray(point?.regions?.jp) ? point.regions.jp : []) {
       const id = trackKey(track);
       const rank = integer(track?.rank);
       if (!byId.has(id) || rank == null || rank < 1) continue;
       byId.get(id).push({ date, rank });
     }
   }
-  return [...byId.entries()].map(([id, points]) => ({
-    id,
-    title: titleById.get(id) || id,
-    points: points.sort((a, b) => a.date.localeCompare(b.date)),
-  })).filter((series) => series.points.length);
+
+  return currentTracks.map((track, index) => ({
+    id: trackKey(track),
+    title: track.title || '曲名不明',
+    currentRank: integer(track.rank) ?? index + 1,
+    points: (byId.get(trackKey(track)) || []).sort((a, b) => a.date.localeCompare(b.date)),
+  })).filter((series) => series.id && series.points.length);
+}
+
+function renderJapanLegend(series) {
+  const container = element('appleRankLegend');
+  if (!container) return;
+  container.replaceChildren();
+  for (const [index, item] of series.entries()) {
+    const entry = document.createElement('span');
+    entry.className = 'apple-rank-legend-item';
+    const marker = document.createElement('i');
+    marker.style.setProperty('--apple-rank-hue', String((index * 43) % 360));
+    const label = document.createElement('span');
+    label.textContent = `${item.currentRank}位 ${item.title}`;
+    entry.append(marker, label);
+    container.append(entry);
+  }
 }
 
 function renderRankChart(payload) {
   const container = element('appleRankChart');
   if (!container) return;
   container.replaceChildren();
-  const region = regionByCode(payload, selectedRegion);
-  const series = historySeries(payload, region);
+  const series = japanHistorySeries(payload);
+  renderJapanLegend(series);
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
   if (!series.length || !dates.length) {
     const empty = document.createElement('p');
     empty.className = 'apple-rank-empty';
-    empty.textContent = '順位履歴はまだありません。';
+    empty.textContent = '日本の順位履歴はまだありません。';
     container.append(empty);
     return;
   }
@@ -180,20 +138,33 @@ function renderRankChart(payload) {
   const svg = svgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
-    'aria-label': `${region?.label || selectedRegion}のApple Music櫻坂46人気曲順位推移。1位が上。`,
+    'aria-label': '日本のApple Music櫻坂46人気曲順位推移。1位が上。',
     class: 'apple-rank-svg',
   });
 
   const rankTicks = [...new Set([1, 3, 5, 10, maxRank].filter((rank) => rank <= maxRank))];
   for (const rank of rankTicks) {
     const y = yFor(rank);
-    svg.append(svgElement('line', { x1: margin.left, y1: y, x2: width - margin.right, y2: y, class: 'apple-rank-grid' }));
-    const label = svgElement('text', { x: margin.left - 8, y: y + 4, 'text-anchor': 'end', class: 'apple-rank-axis-label' });
+    svg.append(svgElement('line', {
+      x1: margin.left,
+      y1: y,
+      x2: width - margin.right,
+      y2: y,
+      class: 'apple-rank-grid',
+    }));
+    const label = svgElement('text', {
+      x: margin.left - 8,
+      y: y + 4,
+      'text-anchor': 'end',
+      class: 'apple-rank-axis-label',
+    });
     label.textContent = `${rank}位`;
     svg.append(label);
   }
 
-  const dateTicks = [...new Set(dates.length <= 1 ? [0] : [0, 0.5, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
+  const dateTicks = [...new Set(dates.length <= 1
+    ? [0]
+    : [0, 0.5, 1].map((ratio) => Math.round((dates.length - 1) * ratio)))];
   for (const index of dateTicks) {
     const label = svgElement('text', {
       x: xFor(dates[index]),
@@ -217,44 +188,66 @@ function renderRankChart(payload) {
     const path = svgElement('path', { d: d.trim(), class: 'apple-rank-line' });
     path.style.setProperty('--apple-rank-hue', String((index * 43) % 360));
     const title = svgElement('title');
-    title.textContent = item.title;
+    title.textContent = `${item.currentRank}位 ${item.title}`;
     path.append(title);
     svg.append(path);
   });
   container.append(svg);
 }
 
-function renderRegionComparison(payload) {
-  const table = element('appleRegionCompareTable');
-  if (!table) return;
-  table.replaceChildren();
-  const allRegions = regions(payload);
-  const titleById = new Map();
-  const ranksById = new Map();
+function regionalRows(payload) {
+  const allRegions = orderedRegions(payload);
+  const rows = new Map();
+
   for (const region of allRegions) {
     for (const track of (Array.isArray(region?.tracks) ? region.tracks : []).slice(0, 12)) {
       const id = trackKey(track);
       if (!id) continue;
-      titleById.set(id, track?.title || '曲名不明');
-      if (!ranksById.has(id)) ranksById.set(id, new Map());
-      ranksById.get(id).set(region.code, integer(track?.rank));
+      if (!rows.has(id)) {
+        rows.set(id, {
+          id,
+          title: track?.title || '曲名不明',
+          ranks: new Map(),
+        });
+      }
+      const row = rows.get(id);
+      if (!row.title || row.title === '曲名不明') row.title = track?.title || '曲名不明';
+      row.ranks.set(region.code, integer(track?.rank));
     }
   }
-  const ids = [...ranksById.keys()].sort((a, b) => {
-    const aRanks = ranksById.get(a);
-    const bRanks = ranksById.get(b);
-    const aFallback = Math.min(...[...aRanks.values()].filter((value) => value != null), Number.POSITIVE_INFINITY);
-    const bFallback = Math.min(...[...bRanks.values()].filter((value) => value != null), Number.POSITIVE_INFINITY);
-    const aJp = aRanks.get('jp') ?? aFallback;
-    const bJp = bRanks.get('jp') ?? bFallback;
-    return aJp - bJp || String(titleById.get(a)).localeCompare(String(titleById.get(b)), 'ja');
-  });
+
+  const values = [...rows.values()];
+  const japanRanked = values
+    .filter((row) => row.ranks.get('jp') != null)
+    .sort((a, b) => a.ranks.get('jp') - b.ranks.get('jp'));
+  const otherRanked = values
+    .filter((row) => row.ranks.get('jp') == null)
+    .sort((a, b) => {
+      const aRanks = [...a.ranks.values()].filter((value) => value != null);
+      const bRanks = [...b.ranks.values()].filter((value) => value != null);
+      const aBest = Math.min(...aRanks, Number.POSITIVE_INFINITY);
+      const bBest = Math.min(...bRanks, Number.POSITIVE_INFINITY);
+      const aAverage = aRanks.length ? aRanks.reduce((sum, value) => sum + value, 0) / aRanks.length : Number.POSITIVE_INFINITY;
+      const bAverage = bRanks.length ? bRanks.reduce((sum, value) => sum + value, 0) / bRanks.length : Number.POSITIVE_INFINITY;
+      return aBest - bBest || aAverage - bAverage || a.title.localeCompare(b.title, 'ja');
+    });
+
+  return { allRegions, rows: [...japanRanked, ...otherRanked] };
+}
+
+function renderRegionComparison(payload) {
+  const table = element('appleRegionCompareTable');
+  if (!table) return;
+  table.replaceChildren();
+  const { allRegions, rows } = regionalRows(payload);
 
   const thead = document.createElement('thead');
   const header = document.createElement('tr');
+  const rankHeader = document.createElement('th');
+  rankHeader.textContent = '順位';
   const songHeader = document.createElement('th');
   songHeader.textContent = '曲名';
-  header.append(songHeader);
+  header.append(rankHeader, songHeader);
   for (const region of allRegions) {
     const th = document.createElement('th');
     th.textContent = region.label || region.code.toUpperCase();
@@ -263,31 +256,30 @@ function renderRegionComparison(payload) {
   thead.append(header);
 
   const tbody = document.createElement('tbody');
-  for (const id of ids) {
+  rows.forEach((item, index) => {
     const row = document.createElement('tr');
+    const order = document.createElement('td');
+    order.textContent = String(index + 1);
+    order.className = 'apple-list-rank';
     const title = document.createElement('td');
-    title.textContent = titleById.get(id) || '曲名不明';
-    row.append(title);
+    title.textContent = item.title;
+    title.className = 'apple-song-title';
+    row.append(order, title);
     for (const region of allRegions) {
       const cell = document.createElement('td');
-      const rank = ranksById.get(id)?.get(region.code);
-      cell.textContent = rank == null ? '-' : `${rank}`;
+      const rank = item.ranks.get(region.code);
+      cell.textContent = rank == null ? '-' : String(rank);
       cell.className = 'apple-rank-number';
       row.append(cell);
     }
     tbody.append(row);
-  }
+  });
   table.append(thead, tbody);
 }
 
 function render(payload) {
-  if (!regions(payload).some((region) => region.code === selectedRegion)) {
-    selectedRegion = regions(payload)[0]?.code || 'jp';
-  }
   renderSummary(payload);
-  renderRegionTabs(payload);
   renderRankChart(payload);
-  renderCurrentTable(payload);
   renderRegionComparison(payload);
 }
 

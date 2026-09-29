@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-apple-music-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/apple-music.css?v=20260930.1';
+  link.href = '/apple-music.css?v=20260930.2';
   link.dataset.appleMusicTabStyles = '1';
   document.head.append(link);
 }
@@ -37,24 +37,17 @@ function mountView() {
       <article><span>取得日</span><strong id="appleSnapshotDate">-</strong></article>
     </section>
 
-    <section class="card apple-rank-panel" aria-labelledby="appleRegionRankTitle">
+    <section class="card apple-rank-panel" aria-labelledby="appleJapanRankTitle">
       <div class="section-head">
-        <div><p class="kicker">APPLE MUSIC</p><h2 id="appleRegionRankTitle">櫻坂46 人気曲順位</h2></div>
+        <div><p class="kicker">APPLE MUSIC · JAPAN</p><h2 id="appleJapanRankTitle">日本 人気曲順位推移</h2></div>
       </div>
-      <div id="appleRegionTabs" class="apple-region-tabs" aria-label="地域選択"></div>
-      <div id="appleRankChart" class="apple-rank-chart chart-fit" aria-label="選択地域のApple Music人気曲順位推移"></div>
-      <div class="table-wrap table-fit-mobile">
-        <table class="apple-table">
-          <colgroup><col class="apple-rank-col"><col><col class="apple-change-col"></colgroup>
-          <thead><tr><th>順位</th><th>曲名</th><th>前日比</th></tr></thead>
-          <tbody id="appleMusicTbody"></tbody>
-        </table>
-      </div>
+      <div id="appleRankChart" class="apple-rank-chart chart-fit" aria-label="日本のApple Music櫻坂46人気曲順位推移"></div>
+      <div id="appleRankLegend" class="apple-rank-legend" aria-label="日本の現在順位"></div>
     </section>
 
     <section class="card data-panel apple-data-panel" aria-labelledby="appleRegionCompareTitle">
       <div class="section-head">
-        <div><p class="kicker">REGION COMPARISON</p><h2 id="appleRegionCompareTitle">地域別 人気順位比較</h2></div>
+        <div><p class="kicker">REGION COMPARISON</p><h2 id="appleRegionCompareTitle">地域別 人気順位一覧</h2></div>
       </div>
       <div class="table-wrap apple-region-table-wrap">
         <table id="appleRegionCompareTable" class="apple-table apple-region-table"></table>
