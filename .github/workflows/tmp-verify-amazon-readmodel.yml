@@ -15,50 +15,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install browser driver
-        run: npm install --no-save puppeteer-core@24.20.0
-      - name: Trace Amazon Music web player network
+      - name: Verify browser-equivalent Amazon Music requests
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
-          const puppeteer = require('puppeteer-core');
-          const { execSync } = require('node:child_process');
-          (async () => {
-            const chrome = execSync('which google-chrome || which chromium || which chromium-browser').toString().trim();
-            console.log('chrome', chrome);
-            const browser = await puppeteer.launch({headless:true,executablePath:chrome,args:['--no-sandbox','--disable-dev-shm-usage','--lang=ja-JP']});
-            const page = await browser.newPage();
-            await page.setViewport({width:1280,height:900});
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
-            await page.setExtraHTTPHeaders({'Accept-Language':'ja-JP,ja;q=0.9,en;q=0.5'});
-            const requests=[];
-            page.on('request', req => {
-              const u=req.url();
-              if(/music\.a2z\.com|amazon\.co\.jp\/config\.json/i.test(u)) {
-                const pd=req.postData();
-                requests.push({url:u,method:req.method(),post:pd?pd.slice(0,1600):null});
-              }
-            });
-            page.on('response', async res => {
-              const u=res.url();
-              if(/music\.a2z\.com/i.test(u)) {
-                let text=''; try{text=(await res.text()).slice(0,1200)}catch{}
-                console.log('RESPONSE', JSON.stringify({url:u,status:res.status(),body:text.replace(/\s+/g,' ')}));
-              }
-            });
-            const target='https://music.amazon.co.jp/artists/B08P3RHP1P';
-            const nav=await page.goto(target,{waitUntil:'domcontentloaded',timeout:90000});
-            console.log('NAV', nav?.status(), page.url());
-            await new Promise(r=>setTimeout(r,20000));
-            console.log('TITLE', await page.title());
-            const snapshot=await page.evaluate(()=>({
-              text:document.body?.innerText?.slice(0,10000)||'',
-              links:[...document.querySelectorAll('a[href]')].map(a=>({text:(a.textContent||'').trim(),href:a.href})).filter(x=>/\/tracks\/|\/albums\/|\/artists\//.test(x.href)).slice(0,160),
-            }));
-            console.log('BODY', snapshot.text.replace(/\n+/g,' | '));
-            console.log('LINKS', JSON.stringify(snapshot.links));
-            console.log('REQUESTS', JSON.stringify(requests.slice(-100)));
-            await browser.close();
-          })().catch(error => { console.error(error); process.exit(1); });
+          (async()=>{
+          const domain='music.amazon.co.jp'; const origin=`https://${domain}`;
+          const ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+          const configRes=await fetch(`${origin}/config.json?skipToken=false&clientApplication=skyfire`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','user-agent':ua,referer:`${origin}/`}});
+          console.log('config',configRes.status);
+          const cfg=await configRes.json(); const csrf=cfg.csrf||{};
+          function headers(pageUrl){return {
+            'x-amzn-authentication':JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:cfg.accessToken||''}),
+            'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer','x-amzn-device-id':cfg.deviceId||'',
+            'x-amzn-user-agent':ua,'x-amzn-session-id':cfg.sessionId||'','x-amzn-device-height':'1080','x-amzn-request-id':crypto.randomUUID(),
+            'x-amzn-device-language':'ja_JP','x-amzn-currency-of-preference':'JPY','x-amzn-os-version':'1.0','x-amzn-application-version':cfg.version||'',
+            'x-amzn-device-time-zone':'UTC','x-amzn-timestamp':String(Date.now()),
+            'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),
+            'x-amzn-music-domain':domain,'x-amzn-referer':'','x-amzn-affiliate-tags':'','x-amzn-ref-marker':'','x-amzn-page-url':pageUrl,
+            'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''};}
+          const outer={accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua};
+          async function post(host,path,body,page){const res=await fetch(`https://${host}/api${path}`,{method:'POST',headers:outer,body:JSON.stringify({...body,headers:JSON.stringify(headers(page))})}); const text=await res.text(); console.log(path,res.status,text.length,/櫻坂46/.test(text),/アクションを完了/.test(text),text.slice(0,120)); return text;}
+          const artistPage=`${origin}/artists/B08P3RHP1P`;
+          await post('fe.web.skill.music.a2z.com','/showHome',{deeplink:JSON.stringify({interface:'DeeplinkInterface.v1_0.DeeplinkClientInformation',deeplink:'/artists/B08P3RHP1P'})},artistPage);
+          const artist=await post('fe.mesk.skill.music.a2z.com','/explore/v1/showCatalogArtist',{id:'B08P3RHP1P',userHash:JSON.stringify({level:'LIBRARY_MEMBER'})},artistPage);
+          const tracks=await post('fe.mesk.skill.music.a2z.com','/showCatalogTracks',{id:'B08P3RHP1P',userHash:JSON.stringify({level:'LIBRARY_MEMBER'})},artistPage);
+          const top=await post('fe.mesk.skill.music.a2z.com','/showCatalogPlaylist',{id:'B088FYHTR4',userHash:JSON.stringify({level:'LIBRARY_MEMBER'})},`${origin}/playlists/B088FYHTR4`);
+          console.log('summary',JSON.stringify({artistBytes:artist.length,tracksBytes:tracks.length,topBytes:top.length,artistHas:/櫻坂46/.test(artist),tracksHas:/櫻坂46/.test(tracks),topHas:/櫻坂46/.test(top)}));
+          })().catch(e=>{console.error(e);process.exit(1)});
           NODE
