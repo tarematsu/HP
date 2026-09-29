@@ -36,8 +36,8 @@ function mountView() {
     </section>
 
     <section class="card amazon-rank-panel" aria-labelledby="amazonAllRankTitle">
-      <div class="section-head"><div><p class="kicker">AMAZON MUSIC</p><h2 id="amazonAllRankTitle">全楽曲 Amazon内順位推移</h2></div></div>
-      <div id="amazonAllRankChart" class="amazon-rank-chart chart-fit" aria-label="櫻坂46全楽曲のAmazon Music内順位推移"></div>
+      <div class="section-head"><div><p class="kicker">AMAZON MUSIC</p><h2 id="amazonAllRankTitle">全楽曲 Amazon総合順位推移</h2></div></div>
+      <div id="amazonAllRankChart" class="amazon-rank-chart chart-fit" aria-label="櫻坂46全楽曲のAmazon Music総合順位推移"></div>
     </section>
 
     <section class="card amazon-rank-panel" aria-labelledby="amazonPopularRankTitle">
@@ -57,7 +57,7 @@ function mountView() {
             <col class="amazon-rank-col">
             <col>
           </colgroup>
-          <thead><tr><th>Amazon内順位</th><th>櫻坂内人気順</th><th>曲名</th></tr></thead>
+          <thead><tr><th>Amazon総合順位</th><th>櫻坂内人気順</th><th>曲名</th></tr></thead>
           <tbody id="amazonMusicTbody"></tbody>
         </table>
       </div>

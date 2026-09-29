@@ -126,13 +126,12 @@ function client({ top50Hit = false } = {}) {
           ]
         : [{ id: 'OTHER', title: 'Other', artist: 'Other' }]);
     },
-    async fetchPopularPageHtml() {
-      return `<script type="application/json">${JSON.stringify({
-        items: [
-          { type: 'track', id: 'OTHER', title: 'Other', artist: 'Other' },
-          { type: 'track', id: 'A1', title: 'Song A', artist: '櫻坂46' },
-        ],
-      })}</script>`;
+    async fetchOverallTrackRanks() {
+      return {
+        scanned_tracks: 10020,
+        exhausted: true,
+        hits: [{ amazon_music_id: 'A1', title: 'Song A', artist: '櫻坂46', rank: 42 }],
+      };
     },
     async fetchTrack() { throw new Error('known aliases must avoid track detail calls'); },
     async fetchArtistPageHtml() { throw new Error('exact follower count is already present'); },
@@ -170,6 +169,8 @@ test('daily collection preserves all-track order and publishes both rank dimensi
   assert.equal(result.japan_top_50_hits, 0);
   assert.equal(result.japan_top_50_stored, false);
   assert.equal(result.catalog_popular_hits, 1);
+  assert.equal(result.catalog_popular_scanned, 10020);
+  assert.equal(result.catalog_popular_exhausted, true);
   assert.equal(result.read_model_published, true);
   assert.equal(bindings.PAGES_RESPONSE_R2.puts.some((key) => key.includes('japan-top-50')), false);
   assert.equal(bindings.PAGES_RESPONSE_R2.values.has('amazon-music/artist/B08P3RHP1P/daily/2026-09-29.json'), true);
@@ -178,10 +179,8 @@ test('daily collection preserves all-track order and publishes both rank dimensi
   assert.equal(readModel.follower.count, 53124);
   assert.equal(readModel.follower.delta, null);
   assert.deepEqual(readModel.tracks.map((track) => track.track_id), [103, 101, 102]);
-  assert.deepEqual(readModel.tracks.map((track) => track.amazon_rank), [1, 2, 3]);
-  assert.equal(readModel.tracks[0].popular_rank, null);
-  assert.equal(readModel.tracks[1].popular_rank, 1);
-  assert.equal(readModel.tracks[2].popular_rank, 2);
+  assert.deepEqual(readModel.tracks.map((track) => track.amazon_rank), [null, 42, null]);
+  assert.deepEqual(readModel.tracks.map((track) => track.popular_rank), [1, 2, 3]);
   assert.equal(readModel.history.length, 1);
 
   const publicKey = pagesActionsR2ResponseKey('amazon-music');

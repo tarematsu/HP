@@ -6,6 +6,10 @@ const CATALOG_SKILL_BASE = 'https://fe.mesk.skill.music.a2z.com/api';
 const CONFIG_CACHE_MS = 30 * 60_000;
 const MAX_ARTIST_PAGES = 25;
 const MAX_TRACKS = 500;
+const MAX_OVERALL_CHART_PAGES = 550;
+const OVERALL_CHART_PAGE_URL = `${AMAZON_ORIGIN}/popular/songs/browsePanel/popularTracks`;
+const OVERALL_CHART_INITIAL_URL = `${CATALOG_SKILL_BASE}/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D`;
+const OVERALL_CHART_RETRY_ATTEMPTS = 6;
 const USER_HASH = JSON.stringify({ level: 'LIBRARY_MEMBER' });
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
@@ -370,6 +374,30 @@ function nextCatalogTracksRequest(document) {
   return found;
 }
 
+function nextChartsWidgetUrl(document) {
+  let found = null;
+  deepValues(document, (node) => {
+    if (found) return;
+    for (const value of Object.values(node)) {
+      if (typeof value !== 'string'
+        || !value.includes('/api/showChartsWidget?')
+        || !value.includes('widgetId=top-songs')
+        || !value.includes('next=')) continue;
+      try {
+        found = new URL(value, CATALOG_SKILL_BASE).toString();
+        return;
+      } catch {
+        // Ignore malformed action URLs.
+      }
+    }
+  });
+  return found;
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function isErrorOnlyPayload(document) {
   let hasContent = false;
   let hasError = false;
@@ -423,6 +451,77 @@ export function createAmazonMusicWebClient(fetchImpl = fetch) {
         request = next;
       }
       return all.slice(0, MAX_TRACKS);
+    },
+
+    async fetchOverallTrackRanks(targetIds = null) {
+      await primeWebPlayer(fetchImpl, 'B08P3RHP1P');
+      const targets = targetIds == null
+        ? null
+        : new Set([...targetIds].map((value) => text(value)).filter(Boolean));
+      const hits = [];
+      const seenUrls = new Set();
+      const seenTrackIds = new Set();
+      let url = OVERALL_CHART_INITIAL_URL;
+      let scannedTracks = 0;
+      let exhausted = false;
+
+      for (let page = 0; page < MAX_OVERALL_CHART_PAGES; page += 1) {
+        if (!url || seenUrls.has(url)) {
+          exhausted = true;
+          break;
+        }
+        seenUrls.add(url);
+
+        let document = null;
+        for (let attempt = 0; attempt < OVERALL_CHART_RETRY_ATTEMPTS; attempt += 1) {
+          const configuration = await config(fetchImpl);
+          const response = await fetchImpl(url, {
+            method: 'POST',
+            headers: outerHeaders(),
+            body: JSON.stringify({
+              headers: JSON.stringify(amazonHeaders(configuration, OVERALL_CHART_PAGE_URL)),
+            }),
+          });
+          if (response.status === 429) {
+            await sleep(Math.min(15_000, 1_000 * (2 ** attempt)));
+            continue;
+          }
+          document = await responseJson(response, 'Amazon Music overall chart');
+          if (isErrorOnlyPayload(document)) {
+            throw new Error('Amazon Music overall chart returned an error template');
+          }
+          break;
+        }
+        if (!document) throw new Error('Amazon Music overall chart rate-limit retries exhausted');
+
+        const pageTracks = extractAmazonMusicTracks(document);
+        const fresh = pageTracks.filter((track) => {
+          const id = text(track?.amazon_music_id);
+          return id && !seenTrackIds.has(id);
+        });
+        if (!fresh.length) {
+          exhausted = true;
+          break;
+        }
+        for (const track of fresh) {
+          seenTrackIds.add(track.amazon_music_id);
+          scannedTracks += 1;
+          if (!targets || targets.has(track.amazon_music_id)) {
+            hits.push({ ...track, rank: scannedTracks });
+          }
+        }
+        if (targets && hits.length >= targets.size) {
+          exhausted = true;
+          break;
+        }
+        const next = nextChartsWidgetUrl(document);
+        if (!next || seenUrls.has(next)) {
+          exhausted = true;
+          break;
+        }
+        url = next;
+      }
+      return { hits, scanned_tracks: scannedTracks, exhausted };
     },
 
     async fetchPlaylist(playlistId) {

@@ -66,7 +66,7 @@ test('Amazon Music view exposes follower summary, two rank graphs, and track ran
 
 test('Amazon Music rank charts keep first place at the top and fit mobile width', () => {
   assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
-  assert.match(runtime, /ariaLabel: '櫻坂46全楽曲のAmazon Music内順位推移。1位が上。'/);
+  assert.match(runtime, /ariaLabel: '櫻坂46全楽曲のAmazon Music総合順位推移。1位が上。'/);
   assert.match(runtime, /ariaLabel: 'Amazon Music櫻坂46アーティストページ内の人気曲順位推移。1位が上。'/);
   assert.match(css, /\.amazon-rank-svg[\s\S]*width:\s*100%/);
   assert.match(css, /\.amazon-table[\s\S]*table-layout:\s*fixed/);
