@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS sh_official_news_comments;
 DROP TABLE IF EXISTS sh_solo_activity_state;
 DROP TABLE IF EXISTS sh_solo_activity_minutes;
 DROP TABLE IF EXISTS sh_solo_activity_days;
+DROP TABLE IF EXISTS sh_comment_velocity_samples;
 DROP TABLE IF EXISTS sh_sakurazaka46jp_chat;
 DROP TABLE IF EXISTS sh_nogizaka46smej_chat;
 
