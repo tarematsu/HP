@@ -1,4 +1,4 @@
-import './followers-shell.js?v=20260930.1';
+import './followers-shell.js?v=20260930.2';
 
 let followersActive = false;
 let runtimePromise = null;
@@ -43,7 +43,7 @@ function showOnlyFollowers() {
 
 async function loadRuntime() {
   if (!runtimePromise) {
-    runtimePromise = import('/followers.js?v=20260930.1').catch((error) => {
+    runtimePromise = import('/followers.js?v=20260930.2').catch((error) => {
       runtimePromise = null;
       throw error;
     });
