@@ -5,10 +5,11 @@ const JSON_HEADERS = {
   'cache-control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=3600',
 };
 
-const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp'];
+const FEATURED_HOSTS = ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'];
 const STATIONHEAD_CHANNEL_BY_HOST = new Map([
   ['sakuramankai', 'Buddies'],
   ['sakurazaka46jp', '櫻坂46'],
+  ['nogizaka46smej', '乃木坂46'],
   ['sbuddies1819', 'ATIN'],
   ['jo1andjam', 'JAM'],
   ['vote6tones', 'team SixTONES'],
