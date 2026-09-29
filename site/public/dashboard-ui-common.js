@@ -47,10 +47,19 @@ export function ensureStylesheet(href, key) {
   return link;
 }
 
+function firstMatch(root, selectors) {
+  for (const selector of selectors || []) {
+    const node = selector ? root?.querySelector(selector) : null;
+    if (node) return node;
+  }
+  return null;
+}
+
 export function mountDashboardTab({
   view,
   label,
   anchorSelector = '',
+  anchorSelectors = [],
   position = 'beforebegin',
   tabsId = 'modeTabs',
 } = {}) {
@@ -60,7 +69,8 @@ export function mountDashboardTab({
   button.type = 'button';
   button.dataset.view = view;
   button.textContent = String(label || view);
-  const anchor = anchorSelector ? tabs.querySelector(anchorSelector) : null;
+  const selectors = anchorSelectors.length ? anchorSelectors : [anchorSelector];
+  const anchor = firstMatch(tabs, selectors);
   if (anchor) anchor.insertAdjacentElement(position, button);
   else tabs.append(button);
   return button;
@@ -71,6 +81,7 @@ export function mountDashboardView({
   className = '',
   html = '',
   anchorId = '',
+  anchorIds = [],
   position = 'beforebegin',
   contentId = 'content',
 } = {}) {
@@ -83,7 +94,8 @@ export function mountDashboardView({
   section.className = ['dashboard-view', className].filter(Boolean).join(' ');
   section.hidden = true;
   section.innerHTML = html;
-  const anchor = anchorId ? byId(anchorId) : null;
+  const ids = anchorIds.length ? anchorIds : [anchorId];
+  const anchor = ids.map((item) => item && byId(item)).find(Boolean) || null;
   if (anchor) anchor.insertAdjacentElement(position, section);
   else main.append(section);
   return section;
