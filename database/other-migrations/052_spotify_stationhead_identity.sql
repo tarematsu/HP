@@ -1,11 +1,11 @@
 -- Stationhead minute facts already own the canonical ISRC-backed track identity.
--- Spotify stores only that integer reference on its song identity rows instead of
--- duplicating ISRC/title/artist metadata in stationhead-other.
-ALTER TABLE sh_spotify_song_identities
+-- Keep only its compact integer id beside each Spotify source id; do not duplicate
+-- ISRC/title/artist metadata in stationhead-other.
+ALTER TABLE sh_spotify_track_aliases
   ADD COLUMN stationhead_track_id INTEGER;
 
-CREATE INDEX IF NOT EXISTS idx_sh_spotify_song_identities_stationhead
-  ON sh_spotify_song_identities (stationhead_track_id)
+CREATE INDEX IF NOT EXISTS idx_sh_spotify_track_aliases_stationhead
+  ON sh_spotify_track_aliases (stationhead_track_id, source_track_id)
   WHERE stationhead_track_id IS NOT NULL;
 
 -- Artist display names are not used by Spotify identity resolution. Keep only
