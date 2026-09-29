@@ -69,7 +69,7 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(collector.d1_databases[1].database_name, 'stationhead-minute');
 
   assert.deepEqual(collector.queues?.producers.map(({ binding }) => binding), [
-    'RAW_COLLECTION_QUEUE', 'PERSIST_QUEUE', 'INGEST_FINALIZE_QUEUE', 'COMMENTS_QUEUE',
+    'RAW_COLLECTION_QUEUE', 'PERSIST_QUEUE', 'INGEST_FINALIZE_QUEUE',
     'MINUTE_FACT_QUEUE', 'MINUTE_LIVE_DERIVE_QUEUE', 'MINUTE_ENRICHMENT_QUEUE',
     'TRACK_METADATA_QUEUE', 'READ_MODEL_QUEUE',
   ]);
@@ -77,13 +77,14 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
     'MINUTE_FACT_QUEUE', 'MINUTE_LIVE_DERIVE_QUEUE', 'MINUTE_ENRICHMENT_QUEUE', 'TRACK_METADATA_QUEUE',
   ]);
   assert.equal(collector.queues.consumers.length, 0);
-  assert.equal(recovery.queues.consumers.length, 4);
+  assert.equal(recovery.queues.consumers.length, 3);
   assert.equal(runtime.queues.consumers.length, 5);
   const recoveryQueues = new Set(recovery.queues.consumers.map(({ queue }) => queue));
   assert.equal(runtime.queues.consumers.some(({ queue }) => recoveryQueues.has(queue)), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-minute-rebuild'), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-host-monitor'), false);
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
   assert.equal(runtime.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-derive').max_concurrency, 1);
   assert.equal(collector.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, true);
   assert.equal(collector.vars.COLLECTOR_MINUTE_FACT_INLINE_ENABLED, true);
