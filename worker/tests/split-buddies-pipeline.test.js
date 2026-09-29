@@ -53,7 +53,6 @@ test('collector, recovery, and runtime have one exclusive owner per active Queue
   for (const queue of [
     'stationhead-raw-collection',
     'stationhead-ingest-finalize',
-    'stationhead-comments',
     'stationhead-buddies-persist',
   ]) {
     assert.equal(recoveryConsumers.get(queue).max_batch_size, 10, queue);
@@ -61,6 +60,9 @@ test('collector, recovery, and runtime have one exclusive owner per active Queue
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
   }
+  assert.equal(recoveryConsumers.has('stationhead-comments'), false);
+  assert.equal(collector.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
+  assert.equal(recovery.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
   for (const queue of [
     'stationhead-minute-enrichment',
     'stationhead-track-metadata',
@@ -76,6 +78,7 @@ test('collector, recovery, and runtime have one exclusive owner per active Queue
     'stationhead-minute-rebuild',
     'stationhead-read-model',
     'stationhead-pages-read-model-publication',
+    'stationhead-comments',
   ]) {
     assert.equal(runtimeConsumers.has(retired), false, retired);
   }
@@ -196,7 +199,7 @@ test('ingest accepts compact v3 payloads and remains compatible with v1 and v2',
   }), /station identity does not match/);
 });
 
-test('prepared collector payload and read-model envelope preserve source timestamps', () => {
+test('legacy compatibility helpers preserve source timestamps', () => {
   const rawObservedAt = 1_784_000_000_000;
   const processingObservedAt = rawObservedAt + 12_345;
   const snapshot = { channel_id: 10, station_id: 123 };
@@ -234,10 +237,9 @@ test('prepared collector payload and read-model envelope preserve source timesta
   assert.equal(envelope.observed_at, rawObservedAt);
   assert.equal(envelope.job_id, `read-model:10:${rawObservedAt}`);
   assert.equal(envelope.read_model.queue.value, queue);
-  assert.equal(envelope.comment_task.station_id, 123);
 });
 
-test('comments task acknowledges only durable success and retries degraded collection', async () => {
+test('legacy comments task validation remains isolated from production Queue ownership', async () => {
   assert.equal((await processCommentsTask({}, commentsTask(), {
     collectComments: async () => ({ commentsSaved: 4, degraded: false, errorStage: null }),
   })).commentsSaved, 4);
