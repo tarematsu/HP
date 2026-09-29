@@ -1,0 +1,21 @@
+name: Temporary Amazon read model verification
+
+on:
+  push:
+    branches:
+      - tmp/verify-amazon-readmodel
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify production Amazon Music read model
+        shell: bash
+        run: |
+          set -euo pipefail
+          body="$(curl --fail --silent --show-error --retry 3 --retry-delay 2 https://skrzk.pages.dev/api/amazon-music)"
+          printf '%s\n' "$body" | jq '{ok, snapshot_date, observed_at, follower, track_count, first_track: (.tracks[0] // null), history_count: (.history | length)}'
+          jq -e '.ok == true and (.track_count // 0) > 0 and (.tracks | length) > 0 and (.snapshot_date | type == "string")' <<<"$body" >/dev/null
