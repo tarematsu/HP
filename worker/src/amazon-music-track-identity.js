@@ -8,7 +8,7 @@ import {
 const AMAZON_ALIAS_TYPE = 'amazon_music_id';
 const ALIAS_LOOKUP_CHUNK_SIZE = 79;
 const REPAIR_BATCH_SIZE = 20;
-const TITLE_ARTIST_LOOKUP_LIMIT = 240;
+const TITLE_ARTIST_LOOKUP_CHUNK_SIZE = 40;
 
 function normalizedIsrc(value) {
   return text(value)?.toUpperCase() || null;
@@ -54,8 +54,16 @@ async function loadKnownAmazonAliases(db, amazonIds) {
 async function hydrateUniqueIsrcFromLocalMetadata(db, tracks) {
   const candidates = tracks.filter((track) => !track.trackId && !track.isrc && track.title && track.artist);
   if (!candidates.length) return;
-  const rows = await loadTitleArtistIdentityRows(db, candidates, TITLE_ARTIST_LOOKUP_LIMIT);
+
+  // Cloudflare D1 has a much lower bind-variable ceiling than desktop SQLite.
+  // loadTitleArtistIdentityRows may emit both original and NFKC title variants,
+  // so keep each lookup well below the limit while still covering every track.
+  const rows = [];
+  for (const part of chunks(candidates, TITLE_ARTIST_LOOKUP_CHUNK_SIZE)) {
+    rows.push(...await loadTitleArtistIdentityRows(db, part, part.length));
+  }
   if (!rows.length) return;
+
   const hydrated = attachTitleArtistIdentity(candidates, rows);
   const byPosition = new Map(hydrated
     .filter((track) => normalizedIsrc(track?.isrc))

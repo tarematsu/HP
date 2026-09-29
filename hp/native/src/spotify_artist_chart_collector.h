@@ -62,6 +62,7 @@ class SpotifyArtistChartCollector {
     debugController_ = currentController;
     debugVisible_ = true;
   }
+  [[nodiscard]] bool Started() const noexcept { return started_; }
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextWakeAt_; }
 
  private:

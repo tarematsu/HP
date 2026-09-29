@@ -1,5 +1,7 @@
 #include "stationhead_leaderboard_collector.h"
 
+#include "hourly_collection_schedule.h"
+#include "power_saving_controller.h"
 #include "shared_webview_environment.h"
 #include "stationhead_leaderboard_capture_spool.h"
 #include "stationhead_leaderboard_diagnostics.h"
@@ -8,9 +10,7 @@
 namespace hp {
 namespace {
 constexpr wchar_t kLeaderboardUrl[] = L"https://www.stationhead.com/leaderboard";
-constexpr int64_t kInitialCaptureDelayMs = 15'000;
-constexpr int64_t kCaptureIntervalMs = 60 * 60'000;
-constexpr int64_t kRetryIntervalMs = 5 * 60'000;
+constexpr int kStationheadCollectionPhaseMinute = 0;
 constexpr int64_t kRenderSettleMs = 2'000;
 constexpr int64_t kContentPollIntervalMs = 2'000;
 constexpr int64_t kCaptureTimeoutMs = 90'000;
@@ -71,12 +71,13 @@ void StationheadLeaderboardCollector::Start(int64_t nowMs) {
   started_ = true;
   creating_ = false;
   captureInFlight_ = false;
-  nextCaptureAt_ = nowMs + kInitialCaptureDelayMs;
+  nextCaptureAt_ =
+      NextHourlyCollectionSlot(nowMs, kStationheadCollectionPhaseMinute);
   captureDueAt_ = 0;
   timeoutAt_ = 0;
   UpdateNextWake();
   stationhead_leaderboard_diagnostics::Mark("started", true);
-  log_.Info(L"Stationhead leaderboard dedicated collector scheduled");
+  log_.Info(L"Stationhead leaderboard collector scheduled for minute :00");
 }
 
 void StationheadLeaderboardCollector::Stop() {
@@ -97,6 +98,25 @@ void StationheadLeaderboardCollector::Stop() {
 void StationheadLeaderboardCollector::Tick(int64_t nowMs) {
   if (!started_) return;
   stationhead_leaderboard_diagnostics::MarkTick();
+
+  if (PowerSavingController::IsPowerSavingActive()) {
+    const bool attemptActive = creating_ || controller_ || webview_ ||
+        captureInFlight_ || captureDueAt_ > 0 || timeoutAt_ > 0;
+    if (attemptActive) {
+      ++generation_;
+      creating_ = false;
+      captureInFlight_ = false;
+      captureDueAt_ = 0;
+      timeoutAt_ = 0;
+      CloseController();
+      environment_.Reset();
+      stationhead_leaderboard_diagnostics::Mark("power_saving_suspended");
+    }
+    nextCaptureAt_ =
+        NextHourlyCollectionSlot(nowMs, kStationheadCollectionPhaseMinute);
+    UpdateNextWake();
+    return;
+  }
 
   if ((creating_ || controller_ || captureInFlight_) && timeoutAt_ > 0 &&
       nowMs >= timeoutAt_) {
@@ -120,7 +140,10 @@ void StationheadLeaderboardCollector::Tick(int64_t nowMs) {
 }
 
 void StationheadLeaderboardCollector::BeginCapture(int64_t nowMs) {
-  if (!started_ || creating_ || captureInFlight_) return;
+  if (!started_ || creating_ || captureInFlight_ ||
+      PowerSavingController::IsPowerSavingActive()) {
+    return;
+  }
 
   nextCaptureAt_ = 0;
   captureDueAt_ = 0;
@@ -149,6 +172,18 @@ void StationheadLeaderboardCollector::BeginCapture(int64_t nowMs) {
       [this, alive, generation](HRESULT result,
                                 ICoreWebView2Environment* environment) {
         if (!CallbackAlive(alive) || !started_ || generation != generation_) return;
+        if (PowerSavingController::IsPowerSavingActive()) {
+          ++generation_;
+          creating_ = false;
+          captureInFlight_ = false;
+          captureDueAt_ = 0;
+          timeoutAt_ = 0;
+          environment_.Reset();
+          nextCaptureAt_ = NextHourlyCollectionSlot(
+              UnixMillis(), kStationheadCollectionPhaseMinute);
+          UpdateNextWake();
+          return;
+        }
         if (FAILED(result) || !environment) {
           FailCapture(UnixMillis(),
                       L"environment-create-failed:" + HResultHex(result));
@@ -181,7 +216,10 @@ HRESULT StationheadLeaderboardCollector::CreateProfileController(
 }
 
 void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
-  if (!started_ || generation != generation_ || !environment_) return;
+  if (!started_ || generation != generation_ || !environment_ ||
+      PowerSavingController::IsPowerSavingActive()) {
+    return;
+  }
   const auto alive = alive_;
   const HRESULT started = CreateProfileController(
       Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
@@ -189,6 +227,19 @@ void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
                                     ICoreWebView2Controller* controller) -> HRESULT {
             if (!CallbackAlive(alive) || !started_ || generation != generation_) {
               if (controller) controller->Close();
+              return S_OK;
+            }
+            if (PowerSavingController::IsPowerSavingActive()) {
+              if (controller) controller->Close();
+              ++generation_;
+              creating_ = false;
+              captureInFlight_ = false;
+              captureDueAt_ = 0;
+              timeoutAt_ = 0;
+              environment_.Reset();
+              nextCaptureAt_ = NextHourlyCollectionSlot(
+                  UnixMillis(), kStationheadCollectionPhaseMinute);
+              UpdateNextWake();
               return S_OK;
             }
             creating_ = false;
@@ -210,7 +261,10 @@ void StationheadLeaderboardCollector::CreateController(uint64_t generation) {
 }
 
 void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) {
-  if (!started_ || generation != generation_ || !controller_) return;
+  if (!started_ || generation != generation_ || !controller_ ||
+      PowerSavingController::IsPowerSavingActive()) {
+    return;
+  }
   // WebView2 can suspend/throttle an invisible controller before navigation and
   // script execution complete. Keep this 1x1 controller logically visible, just
   // like the normal Stationhead background surfaces, so capture continues while
@@ -232,6 +286,19 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
               -> HRESULT {
             if (!CallbackAlive(alive) || !started_ || generation != generation_ ||
                 !args || timeoutAt_ <= 0) {
+              return S_OK;
+            }
+            if (PowerSavingController::IsPowerSavingActive()) {
+              ++generation_;
+              creating_ = false;
+              captureInFlight_ = false;
+              captureDueAt_ = 0;
+              timeoutAt_ = 0;
+              CloseController();
+              environment_.Reset();
+              nextCaptureAt_ = NextHourlyCollectionSlot(
+                  UnixMillis(), kStationheadCollectionPhaseMinute);
+              UpdateNextWake();
               return S_OK;
             }
             BOOL success = FALSE;
@@ -258,7 +325,10 @@ void StationheadLeaderboardCollector::ConfigureAndNavigate(uint64_t generation) 
 }
 
 void StationheadLeaderboardCollector::NavigateCurrent(uint64_t generation) {
-  if (!started_ || generation != generation_ || !webview_) return;
+  if (!started_ || generation != generation_ || !webview_ ||
+      PowerSavingController::IsPowerSavingActive()) {
+    return;
+  }
   captureDueAt_ = 0;
   stationhead_leaderboard_diagnostics::Mark("navigating", true, true);
   webview_->Stop();
@@ -278,7 +348,10 @@ void StationheadLeaderboardCollector::NavigateCurrent(uint64_t generation) {
 
 void StationheadLeaderboardCollector::CaptureSnapshot(
     int64_t nowMs, uint64_t generation) {
-  if (!started_ || generation != generation_ || !webview_ || captureInFlight_) return;
+  if (!started_ || generation != generation_ || !webview_ || captureInFlight_ ||
+      PowerSavingController::IsPowerSavingActive()) {
+    return;
+  }
   captureInFlight_ = true;
   captureDueAt_ = 0;
   UpdateNextWake();
@@ -378,6 +451,19 @@ const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
                 currentView.Get() != webview_.Get()) {
               return S_OK;
             }
+            if (PowerSavingController::IsPowerSavingActive()) {
+              ++generation_;
+              creating_ = false;
+              captureInFlight_ = false;
+              captureDueAt_ = 0;
+              timeoutAt_ = 0;
+              CloseController();
+              environment_.Reset();
+              nextCaptureAt_ = NextHourlyCollectionSlot(
+                  UnixMillis(), kStationheadCollectionPhaseMinute);
+              UpdateNextWake();
+              return S_OK;
+            }
             captureInFlight_ = false;
             if (FAILED(result) || !resultJson) {
               const int64_t now = UnixMillis();
@@ -461,10 +547,12 @@ const links = Array.from(root?.querySelectorAll?.('a[href]') || [])
 
 void StationheadLeaderboardCollector::CompleteCapture(
     int64_t nowMs, bool signedIn) {
+  (void)signedIn;
   captureInFlight_ = false;
   captureDueAt_ = 0;
   timeoutAt_ = 0;
-  nextCaptureAt_ = nowMs + (signedIn ? kCaptureIntervalMs : kRetryIntervalMs);
+  nextCaptureAt_ =
+      NextHourlyCollectionSlot(nowMs, kStationheadCollectionPhaseMinute);
   stationhead_leaderboard_diagnostics::Mark("completed", true, true);
 
   // A successful snapshot is already durably queued and wakes the cloud uploader.
@@ -498,7 +586,7 @@ void StationheadLeaderboardCollector::FailCapture(
 
   // Invalidate every outstanding environment/controller/navigation/script callback
   // before tearing down the failed attempt. This prevents a late callback from an
-  // old timed-out attempt resurrecting a controller during the next retry window.
+  // old timed-out attempt resurrecting a controller during the next scheduled slot.
   ++generation_;
   creating_ = false;
   captureInFlight_ = false;
@@ -506,7 +594,8 @@ void StationheadLeaderboardCollector::FailCapture(
   timeoutAt_ = 0;
   CloseController();
   environment_.Reset();
-  nextCaptureAt_ = nowMs + kRetryIntervalMs;
+  nextCaptureAt_ =
+      NextHourlyCollectionSlot(nowMs, kStationheadCollectionPhaseMinute);
   UpdateNextWake();
 }
 

@@ -17,6 +17,8 @@ class Statement {
 
   async all() {
     if (this.sql.includes('FROM sh_tracks') && this.sql.includes('TRIM(title)')) {
+      this.db.maxTitleBindings = Math.max(this.db.maxTitleBindings, this.bindings.length);
+      if (this.bindings.length > 100) throw new Error('D1_ERROR: too many SQL variables');
       const wanted = new Set(this.bindings.map((value) => String(value).trim().toLowerCase()));
       return {
         results: this.db.trackRows.filter((row) => wanted.has(String(row.title || '').trim().toLowerCase())),
@@ -47,6 +49,7 @@ class FakeDb {
     this.aliases = new Map(entries);
     this.trackRows = trackRows;
     this.trackInserts = 0;
+    this.maxTitleBindings = 0;
   }
 
   prepare(sql) {
@@ -154,5 +157,34 @@ test('ambiguous title-artist ISRC candidates never link an Amazon id', async () 
   assert.equal(resolved.isrc, null);
   assert.equal(resolved.trackId, null);
   assert.equal(db.aliases.has('amazon_music_id:B0AMBIGUOUS'), false);
+  assert.equal(db.trackInserts, 0);
+});
+
+test('large Amazon catalogs split title identity queries below the D1 variable ceiling', async () => {
+  const entries = [];
+  const trackRows = [];
+  const amazonTracks = [];
+  for (let index = 1; index <= 174; index += 1) {
+    const isrc = `JPABC${String(2600000 + index).padStart(7, '0')}`;
+    entries.push([`isrc:${isrc}`, index]);
+    trackRows.push({
+      spotify_id: `spotify-${index}`,
+      isrc,
+      title: `Song ${index}`,
+      artist: '櫻坂46',
+      last_seen_at: 10_000 + index,
+    });
+    amazonTracks.push({
+      amazon_music_id: `B0CHUNK${String(index).padStart(4, '0')}`,
+      title: `Song ${index}`,
+      artist: '櫻坂46',
+    });
+  }
+  const db = new FakeDb(entries, trackRows);
+  const resolved = await resolveAmazonMusicTracks(db, amazonTracks, 50_000);
+
+  assert.equal(resolved.length, 174);
+  assert.equal(resolved.filter((track) => Number.isSafeInteger(Number(track.trackId))).length, 174);
+  assert.ok(db.maxTitleBindings <= 80, `title query used ${db.maxTitleBindings} variables`);
   assert.equal(db.trackInserts, 0);
 });
