@@ -1,0 +1,53 @@
+name: Repair played tracks Sep 23-26
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-played-tracks-20260923-26.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repair-played-tracks-20260923-26
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      TRACK_HISTORY_BACKFILL_START: '2026-09-23'
+      TRACK_HISTORY_BACKFILL_END: '2026-09-26'
+      TRACK_HISTORY_BACKFILL_DELAY_MS: '750'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Repair Track History range
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/backfill-track-history-range-actions.mjs 2>&1 | tee repair-track-history.log
+      - name: Upload repair failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: repair-played-tracks-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/repair-track-history.log
+          if-no-files-found: error
+          retention-days: 7
