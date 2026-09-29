@@ -11,12 +11,19 @@ const workerConfig = readFileSync(new URL('../../worker/wrangler.sakurazaka46jp.
 const HANDLES = ['sakuramankai', 'sakuramankai2', 'sakurazaka46jp', 'nogizaka46smej'];
 
 test('followers tab is isolated from the existing music-tab router', () => {
-  assert.match(entry, /dashboard-followers-route\.js\?v=20260930\.1/);
+  assert.match(entry, /dashboard-followers-route\.js\?v=20260930\.2/);
   assert.ok(entry.indexOf('dashboard-followers-route.js') < entry.indexOf('dashboard-tabs.js'));
   assert.match(route, /followers-shell\.js\?v=20260930\.1/);
   assert.match(route, /followers\.js\?v=20260930\.1/);
   assert.match(shell, /dataset\.view = 'followers'/);
   assert.match(shell, /textContent = 'フォロワー'/);
+});
+
+test('leaving followers always hides its lazy view before another route is shown', () => {
+  assert.match(route, /function deactivateFollowers\(\)/);
+  assert.match(route, /if \(view\) view\.hidden = true/);
+  assert.match(route, /function leaveFollowersForLocation\(\)[\s\S]*deactivateFollowers\(\)/);
+  assert.match(route, /followersActive && event\.target\.closest\('#modeTabs button'\)\) deactivateFollowers\(\)/);
 });
 
 test('followers tab has one shared four-series chart and the requested four-column table', () => {
