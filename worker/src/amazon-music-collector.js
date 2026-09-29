@@ -88,22 +88,33 @@ function rankTracks(tracks = []) {
   return result;
 }
 
+function normalizedTrack(source, current = {}) {
+  const id = text(source?.amazon_music_id) || text(current?.amazon_music_id);
+  return {
+    ...source,
+    ...current,
+    amazon_music_id: id,
+    title: text(current?.title) || text(source?.title),
+    artist: text(current?.artist) || text(source?.artist),
+    album: text(current?.album) || text(source?.album),
+    image: text(current?.image) || text(source?.image),
+    isrc: text(current?.isrc)?.toUpperCase() || text(source?.isrc)?.toUpperCase() || null,
+  };
+}
+
 function mergeTracks(primary = [], fallback = []) {
   const byId = new Map();
-  for (const source of [...fallback, ...primary]) {
+  for (const source of primary) {
     const id = text(source?.amazon_music_id);
     if (!id) continue;
-    const current = byId.get(id) || {};
-    byId.set(id, {
-      ...current,
-      ...source,
-      amazon_music_id: id,
-      title: text(source?.title) || text(current?.title),
-      artist: text(source?.artist) || text(current?.artist),
-      album: text(source?.album) || text(current?.album),
-      image: text(source?.image) || text(current?.image),
-      isrc: text(source?.isrc)?.toUpperCase() || text(current?.isrc)?.toUpperCase() || null,
-    });
+    byId.set(id, normalizedTrack(source));
+  }
+  for (const source of fallback) {
+    const id = text(source?.amazon_music_id);
+    if (!id) continue;
+    const current = byId.get(id);
+    if (current) byId.set(id, normalizedTrack(source, current));
+    else byId.set(id, normalizedTrack(source));
   }
   return [...byId.values()];
 }
