@@ -70,7 +70,7 @@ test('track history exposes a lightweight date index from the daily read model',
 
 test('played tracks shell and runtime are both lazy behind the shared router', () => {
   assert.doesNotMatch(metrics, /^import .*played-tracks-shell/m);
-  assert.match(metrics, /dashboard-tabs\.js\?v=20260929\.4/);
+  assert.match(metrics, /dashboard-tabs\.js\?v=20260930\.1/);
   assert.match(tabs, /import\('\/played-tracks-shell\.js\?v=20260928\.1'\)/);
   assert.match(tabs, /'played-tracks'/);
   assert.match(tabs, /import\('\/played-tracks\.js\?v=20260927\.2'\)/);
