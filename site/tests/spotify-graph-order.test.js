@@ -11,6 +11,16 @@ test('Spotify graph legends are ordered by the latest displayed number descendin
   assert.match(shell, /function sortLegendByLatestValue\(legend\)/);
   assert.match(shell, /\.sort\(\(a, b\) => \(b\.value - a\.value\)/);
   assert.match(shell, /querySelectorAll\('\.spotify-trend-legend'\)\.forEach\(sortLegendByLatestValue\)/);
-  assert.match(shell, /new MutationObserver\(sortAll\)/);
+  assert.match(shell, /new MutationObserver\(processAll\)/);
   assert.match(shell, /observer\.observe\(view, \{ childList: true, subtree: true \}\)/);
+});
+
+test('Spotify graphs visibly render artists that only have one numeric point', () => {
+  assert.match(shell, /function artistNameFromPoint\(circle\)/);
+  assert.match(shell, /function showSinglePointSeries\(container\)/);
+  assert.match(shell, /lineState\.set\(artistName, \/\\sL\\s\/\.test/);
+  assert.match(shell, /spotify-single-point-line/);
+  assert.match(shell, /circle\.setAttribute\('r', '3\.4'\)/);
+  assert.match(shell, /取得済み1点/);
+  assert.match(shell, /querySelectorAll\('\.spotify-trend-charts'\)\.forEach\(showSinglePointSeries\)/);
 });
