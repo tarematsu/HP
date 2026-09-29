@@ -215,7 +215,7 @@ test('measurement learns a stable update hour and probes one hour later', () => 
   let measurement = null;
   const regions = APPLE_MUSIC_REGIONS.map(({ code }) => code);
   for (let day = 0; day < 4; day += 1) {
-    const at = Date.UTC(2026, 8, 30 + day, 6, 15, 0);
+    const at = Date.UTC(2026, 8, 30 + day, 6, 15, 0); // 15:15 JST
     measurement = deriveAppleMusicMeasurement(measurement, at, regions, false);
   }
   assert.equal(measurement.mode, 'learned');
@@ -228,12 +228,30 @@ test('measurement learns a stable update hour and probes one hour later', () => 
     regions: [{ code: 'jp', tracks: [{ rank: 1, apple_music_id: '1' }] }],
     measurement,
   };
-  const due = appleMusicProbePlan(model, Date.UTC(2026, 9, 3, 7, 15, 0));
+  const due = appleMusicProbePlan(model, Date.UTC(2026, 9, 3, 7, 15, 0)); // 16:15 JST
   assert.equal(due.due, true);
   assert.equal(due.reason, 'learned-window');
-  const outside = appleMusicProbePlan(model, Date.UTC(2026, 9, 3, 2, 15, 0));
+  const outside = appleMusicProbePlan(model, Date.UTC(2026, 9, 3, 2, 15, 0)); // 11:15 JST
   assert.equal(outside.due, false);
   assert.equal(outside.reason, 'outside-learned-window');
+
+  const earlyAt = Date.UTC(2026, 9, 4, 1, 15, 0); // 10:15 JST
+  const earlyChange = {
+    ...model,
+    snapshot_date: '2026-10-04',
+    measurement: deriveAppleMusicMeasurement(measurement, earlyAt, ['jp'], false),
+  };
+  assert.equal(appleMusicProbePlan(earlyChange, Date.UTC(2026, 9, 4, 7, 15, 0)).due, true);
+
+  const onWindowAt = Date.UTC(2026, 9, 4, 7, 15, 0); // 16:15 JST
+  const onWindowChange = {
+    ...model,
+    snapshot_date: '2026-10-04',
+    measurement: deriveAppleMusicMeasurement(measurement, onWindowAt, ['jp'], false),
+  };
+  const alreadyUpdated = appleMusicProbePlan(onWindowChange, Date.UTC(2026, 9, 4, 8, 15, 0));
+  assert.equal(alreadyUpdated.due, false);
+  assert.equal(alreadyUpdated.reason, 'already-updated-today');
 });
 
 test('track resolution caches sh_tracks.id and touches D1 only for unseen ISRCs', async () => {
@@ -288,10 +306,18 @@ test('Apple Music read model stores numeric canonical track ids in history', () 
       }],
     }],
   };
-  const model = buildAppleMusicReadModel(snapshot, { history: [] });
+  const model = buildAppleMusicReadModel(snapshot, {
+    history: [{
+      snapshot_date: '2026-09-29',
+      observed_at: 1,
+      regions: { jp: [{ rank: 1, song_key: 'song1', track_id: 'legacyAppleId' }] },
+    }],
+  });
   assert.equal(model.version, 2);
   assert.equal(model.history[0].regions.jp[0].track_id, 101);
   assert.equal(model.history[0].regions.jp[0].apple_music_id, 'jp01');
+  assert.equal(model.history[1].regions.jp[0].track_id, 101);
+  assert.equal(model.history[1].regions.jp[0].apple_music_id, 'jp01');
 });
 
 test('hourly collector writes only on changes and reuses R2 track mapping without D1 reads', async () => {
