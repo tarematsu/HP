@@ -4,7 +4,7 @@ const MAX_LOOKBACK_DAYS = 45;
 
 export const RECENT_DAILY_PROJECTION_SQL = `SELECT
   channel_id,day_at,period_start,period_end,sample_count,reliable_sample_count,
-  listener_sum,listener_min,listener_max,stream_start,stream_end,member_end,updated_at
+  listener_sum,listener_min,listener_max,stream_start,stream_end,updated_at
 FROM sh_current_daily_summary
 WHERE day_at>=? AND day_at<?
 ORDER BY day_at ASC,sample_count DESC,period_end DESC,channel_id ASC`;
@@ -114,15 +114,6 @@ function memberBoundaryFromDailyState(memberStates, channelId, dayAt) {
   return finite(memberStates.get(memberStateKey(channelId, dayAt))?.last_total_member_count);
 }
 
-function fallbackPreviousMemberEnd(dayAt, channelId, projections, existing) {
-  const previousDayAt = dayAt - DAY_MS;
-  const existingValue = finite(existing.get(dayKey(previousDayAt))?.member_end);
-  if (existingValue != null) return existingValue;
-  const previousProjection = projections.get(previousDayAt);
-  if (integer(previousProjection?.channel_id) !== channelId) return null;
-  return finite(previousProjection?.member_end);
-}
-
 export async function publishRecentDailySummaries(
   minuteDb,
   otherDb,
@@ -173,11 +164,10 @@ export async function publishRecentDailySummaries(
       : null;
     const streamStart = finite(row.stream_start);
     const streamEnd = finite(row.stream_end);
-    const memberStart = memberBoundaryFromDailyState(memberStates, channelId, dayAt - DAY_MS)
-      ?? fallbackPreviousMemberEnd(dayAt, channelId, projections, existing);
-    const memberEnd = memberBoundaryFromDailyState(memberStates, channelId, dayAt)
-      ?? finite(row.member_end)
-      ?? finite(existingRow?.member_end);
+    // sh_total_member_daily is the sole owner of member boundaries. A missing
+    // canonical boundary must not be reconstructed from another projection.
+    const memberStart = memberBoundaryFromDailyState(memberStates, channelId, dayAt - DAY_MS);
+    const memberEnd = memberBoundaryFromDailyState(memberStates, channelId, dayAt);
     const write = await otherDb.prepare(INSERT_DAILY_SUMMARY_SQL).bind(
       key,
       finite(row.period_start),
