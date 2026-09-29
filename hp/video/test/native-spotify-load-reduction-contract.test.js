@@ -126,7 +126,7 @@ test('Spotify trims browser UI services without disabling script or web messages
   assert.match(webviewPolicy, /put_IsPinchZoomEnabled\(FALSE\)/);
   assert.match(webviewPolicy, /put_IsSwipeNavigationEnabled\(FALSE\)/);
   assert.match(webviewPolicy, /put_IsScriptEnabled\(TRUE\)/);
-  assert.match(webviewPolicy, /put_IsWebMessageEnabled\(webMessagesEnabled \? TRUE : FALSE\)/);
+  assert.match(webviewPolicy, /put_IsWebMessageEnabled\(TRUE\)/);
 });
 
 test('track changes prefer Spotify SPA links and retain full navigation as fallback', () => {

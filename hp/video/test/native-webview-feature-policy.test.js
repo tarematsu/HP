@@ -17,6 +17,12 @@ test('all media WebViews use the shared minimal feature policy', () => {
   assert.match(media, /controller_\.Get\(\), webview_\.Get\(\), false/);
 });
 
+test('shared policy enables web messages before the first navigation', () => {
+  assert.match(policy, /static_cast<void>\(webMessagesEnabled\)/);
+  assert.match(policy, /put_IsWebMessageEnabled\(TRUE\)/);
+  assert.doesNotMatch(policy, /put_IsWebMessageEnabled\(webMessagesEnabled \? TRUE : FALSE\)/);
+});
+
 test('shared policy disables optional browser UI but retains native automation', () => {
   for (const setting of [
     'AreDefaultScriptDialogsEnabled',
@@ -33,7 +39,7 @@ test('shared policy disables optional browser UI but retains native automation',
     assert.match(policy, new RegExp(`put_${setting}\\(FALSE\\)`));
   }
   assert.match(policy, /put_IsScriptEnabled\(TRUE\)/);
-  assert.match(policy, /put_IsWebMessageEnabled\(webMessagesEnabled \? TRUE : FALSE\)/);
+  assert.match(policy, /put_IsWebMessageEnabled\(TRUE\)/);
 });
 
 test('shared policy keeps remembered form input and password saving enabled', () => {
