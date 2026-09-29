@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-dashboard-css-bundled="true">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -18,9 +18,7 @@
     window.addEventListener('DOMContentLoaded', () => setTimeout(revealDashboard, 1200), { once: true });
   </script>
   <noscript><style>#content { visibility: visible !important; }</style></noscript>
-  <link rel="stylesheet" href="/app-lite.css?v=20260923.4">
-  <link rel="stylesheet" href="/monochrome.css?v=20260923.4">
-  <link rel="stylesheet" href="/dashboard-root-presentation.css?v=20260930.1">
+  <link rel="stylesheet" href="/assets/dashboard.min.css?v=20260930.1">
 </head>
 <body>
   <a class="skip-link" href="#content">本文へ移動</a>
@@ -208,6 +206,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/dashboard-metrics.js?v=20260929.3"></script>
+  <script type="module" src="/assets/dashboard.min.js?v=20260930.1"></script>
 </body>
 </html>
