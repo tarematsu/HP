@@ -41,7 +41,7 @@ test('startup reserves the first X slot before a full YouTube hour when selected
   assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
   assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive/);
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs \+ kNativeMediaYoutubePhaseMs/);
-  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs \+ kNativeMediaYoutubeContentPhaseMs/);
+  assert.match(mediaBase, /startupPrefix \+ kNativeMediaYoutubeContentPhaseMs/);
   assert.match(xRuntime, /homepanel:startup-x-until:v2/);
   assert.match(xRuntime, /homepanel=startup/);
   assert.match(xRuntime, /Date\.now\(\) \+ 60 \* 1000/);
