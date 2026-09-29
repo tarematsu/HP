@@ -35,7 +35,7 @@ export function buildCollectionPlan({
   return Object.freeze({
     snapshot: true,
     queue: queueEnabled,
-    comments: Boolean(state?.stationId),
+    comments: false,
     metadataDue,
     metadata: queueEnabled && (
       queueResult?.structure_changed === true
