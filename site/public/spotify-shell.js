@@ -1,32 +1,19 @@
-function ensureStylesheet() {
-  if (document.querySelector('link[data-spotify-tab-styles]')) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = '/spotify.css?v=20260928.5';
-  link.dataset.spotifyTabStyles = '1';
-  document.head.append(link);
-}
+import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
 
-function mountTab() {
-  const tabs = document.getElementById('modeTabs');
-  const likes = tabs?.querySelector('[data-view="likes"]');
-  if (!tabs || !likes || tabs.querySelector('[data-view="spotify"]')) return;
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.dataset.view = 'spotify';
-  button.textContent = 'Spotify';
-  likes.insertAdjacentElement('beforebegin', button);
-}
-
-function mountView() {
-  const main = document.getElementById('content');
-  if (!main || document.getElementById('spotifyView')) return;
-  const likesView = document.getElementById('likesView');
-  const section = document.createElement('section');
-  section.id = 'spotifyView';
-  section.className = 'dashboard-view spotify-view';
-  section.hidden = true;
-  section.innerHTML = `
+mountDashboardShell({
+  style: { href: '/spotify.css?v=20260928.5', key: 'spotify' },
+  tab: {
+    view: 'spotify',
+    label: 'Spotify',
+    anchorSelector: '[data-view="likes"]',
+    position: 'beforebegin',
+  },
+  view: {
+    id: 'spotifyView',
+    className: 'spotify-view',
+    anchorId: 'likesView',
+    position: 'beforebegin',
+    html: `
     <p id="spotifyNotice" class="notice" role="status" hidden></p>
 
     <section class="summary-cards spotify-summary" aria-label="櫻坂46 Spotify再生数概要">
@@ -53,7 +40,7 @@ function mountView() {
     <section class="card data-panel spotify-data-panel">
       <div class="section-head"><div><p class="kicker">SPOTIFY PLAYCOUNTS</p><h2 id="spotifyTableTitle">櫻坂46 再生数一覧</h2></div></div>
       <div class="table-wrap table-fit-mobile">
-        <table class="spotify-table">
+        <table class="spotify-table shared-numeric-table">
           <colgroup>
             <col class="col-compact">
             <col>
@@ -64,11 +51,6 @@ function mountView() {
           <tbody id="spotifyTbody"></tbody>
         </table>
       </div>
-    </section>`;
-  if (likesView) likesView.insertAdjacentElement('beforebegin', section);
-  else main.append(section);
-}
-
-ensureStylesheet();
-mountTab();
-mountView();
+    </section>`,
+  },
+});
