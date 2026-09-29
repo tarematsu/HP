@@ -1,12 +1,3 @@
-.followers-view {
-  display: grid;
-  gap: 16px;
-}
-
-.followers-view[hidden] {
-  display: none !important;
-}
-
 .followers-chart-panel,
 .followers-data-panel {
   min-width: 0;
@@ -73,15 +64,10 @@
 }
 
 .followers-chart {
-  width: 100%;
-  min-height: 300px;
+  --shared-chart-min-height: 300px;
 }
 
 .followers-chart svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  min-height: 300px;
   overflow: visible;
 }
 
@@ -138,12 +124,6 @@
   width: 38%;
 }
 
-.followers-table th,
-.followers-table td {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
 .followers-table th:not(:first-child),
 .followers-table td:not(:first-child) {
   text-align: right;
@@ -154,29 +134,11 @@
 }
 
 @media (max-width: 720px) {
-  .followers-view {
-    gap: 12px;
-  }
-
   .followers-legend {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .followers-chart {
-    min-height: 250px;
-  }
-
-  .followers-chart svg {
-    min-height: 250px;
-  }
-
-  .followers-table {
-    font-size: 0.78rem;
-  }
-
-  .followers-table th,
-  .followers-table td {
-    padding-left: 5px;
-    padding-right: 5px;
+    --shared-chart-min-height: 250px;
   }
 }
