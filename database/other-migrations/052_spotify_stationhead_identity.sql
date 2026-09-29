@@ -5,7 +5,7 @@ ALTER TABLE sh_spotify_track_aliases
   ADD COLUMN stationhead_track_id INTEGER;
 
 CREATE INDEX IF NOT EXISTS idx_sh_spotify_track_aliases_stationhead
-  ON sh_spotify_track_aliases (stationhead_track_id, source_track_id)
+  ON sh_spotify_track_aliases (stationhead_track_id)
   WHERE stationhead_track_id IS NOT NULL;
 
 -- Artist display names are not used by Spotify identity resolution. Keep only
