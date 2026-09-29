@@ -48,7 +48,7 @@ function installImageState(id) {
       if (!image.hidden || canonicalImageSource(image.currentSrc || image.getAttribute('src') || image.src) !== source) return;
       image.removeAttribute('src');
       requestAnimationFrame(() => { image.src = source; });
-    }, IMAGE_RETRY_DELAYS[attempt];
+    }, IMAGE_RETRY_DELAYS[attempt]);
     imageRetryTimers.set(image, timer);
   };
   image.addEventListener('load', loaded);
