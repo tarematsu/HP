@@ -31,7 +31,7 @@ test('dashboard starts on current and exposes every visible mode in the static t
 
 test('dashboard reorders the right edge to first-week then Spotify before routing starts', () => {
   assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20260929\.1/);
-  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260929\.4/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260930\.1/);
   assert.ok(dashboardEntry.indexOf('dashboard-tab-order.js') < dashboardEntry.indexOf('dashboard-tabs.js'));
   assert.match(tabOrder, /tabs\.append\(firstWeek\)/);
   assert.match(tabOrder, /tabs\.append\(spotify\)/);
@@ -54,7 +54,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260929\.4'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
@@ -81,6 +81,17 @@ test('Spotify shell and runtime are owned by the central lazy router', () => {
   assert.match(tabsClient, /showSpotify/);
   assert.match(tabsClient, /else if \(mode === 'spotify'\) void showSpotify/);
   assert.match(tabsClient, /button\.dataset\.view === 'spotify'/);
+});
+
+test('Apple Music shell and runtime are owned by the central lazy router', () => {
+  assert.doesNotMatch(dashboardEntry, /^import .*apple-music-shell/m);
+  assert.match(tabsClient, /import\('\/apple-music-shell\.js\?v=20260930\.1'\)/);
+  assert.match(tabsClient, /VIEW_MODES[\s\S]*'apple-music'/);
+  assert.match(tabsClient, /appleMusicView/);
+  assert.match(tabsClient, /import\('\/apple-music\.js\?v=20260930\.1'\)/);
+  assert.match(tabsClient, /showAppleMusic/);
+  assert.match(tabsClient, /else if \(mode === 'apple-music'\) void showAppleMusic/);
+  assert.match(tabsClient, /button\.dataset\.view === 'apple-music'/);
 });
 
 test('obsolete unofficial view is not a central dashboard route', () => {
@@ -111,6 +122,7 @@ test('late async history runtimes cannot reactivate a tab the user already left'
   assert.match(tabsClient, /catch \(error\) \{\s*if \(activeMode !== mode\) return;/);
   assert.match(tabsClient, /showLikes[\s\S]*catch \(error\) \{\s*if \(activeMode !== 'likes'\) return;/);
   assert.match(tabsClient, /showSpotify[\s\S]*if \(activeMode !== 'spotify'\) return;/);
+  assert.match(tabsClient, /showAppleMusic[\s\S]*if \(activeMode !== 'apple-music'\) return;/);
 });
 
 test('history and likes startup release unintended skip-link focus', () => {

@@ -1,0 +1,154 @@
+.apple-music-view {
+  display: grid;
+  gap: 16px;
+}
+
+.apple-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.apple-region-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 14px;
+}
+
+.apple-region-tabs button {
+  border: 1px solid var(--border, #d5d7dc);
+  border-radius: 999px;
+  background: var(--surface, #fff);
+  color: inherit;
+  padding: 7px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.apple-region-tabs button.active {
+  border-color: currentColor;
+  font-weight: 700;
+}
+
+.apple-rank-chart {
+  width: 100%;
+  min-height: 220px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.apple-rank-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.apple-rank-grid {
+  stroke: currentColor;
+  stroke-opacity: .12;
+  stroke-width: 1;
+}
+
+.apple-rank-axis-label {
+  fill: currentColor;
+  opacity: .62;
+  font-size: 12px;
+}
+
+.apple-rank-line {
+  fill: none;
+  stroke: hsl(var(--apple-rank-hue) 68% 48%);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.apple-rank-empty {
+  margin: 0;
+  padding: 54px 12px;
+  text-align: center;
+  color: var(--muted, #737780);
+}
+
+.apple-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.apple-table th,
+.apple-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border, #e3e4e8);
+  vertical-align: middle;
+}
+
+.apple-table th {
+  text-align: left;
+  font-weight: 700;
+}
+
+.apple-rank-col,
+.apple-change-col {
+  width: 76px;
+}
+
+.apple-rank-number,
+.apple-rank-change {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.apple-rank-change.positive {
+  font-weight: 700;
+}
+
+.apple-rank-change.negative {
+  opacity: .72;
+}
+
+.apple-region-table-wrap {
+  overflow-x: auto;
+}
+
+.apple-region-table {
+  min-width: 720px;
+  table-layout: auto;
+}
+
+.apple-region-table th:not(:first-child),
+.apple-region-table td:not(:first-child) {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.apple-region-table th:first-child,
+.apple-region-table td:first-child {
+  min-width: 190px;
+}
+
+@media (max-width: 640px) {
+  .apple-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .apple-region-tabs {
+    gap: 6px;
+  }
+
+  .apple-region-tabs button {
+    padding: 6px 9px;
+    font-size: 13px;
+  }
+
+  .apple-table th,
+  .apple-table td {
+    padding: 9px 6px;
+    font-size: 13px;
+  }
+
+  .apple-rank-col,
+  .apple-change-col {
+    width: 62px;
+  }
+}
