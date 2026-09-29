@@ -11,11 +11,13 @@ const api = readFileSync(new URL('../functions/api/track-history.js', import.met
 
 test('played tracks tab is visible immediately and shell mounts its view', () => {
   assert.match(page, /data-view="played-tracks">再生履歴/);
-  assert.match(shell, /querySelector\('\[data-view="likes"\]'\)/);
-  assert.match(shell, /button\.dataset\.view = 'played-tracks'/);
-  assert.match(shell, /button\.textContent = '再生履歴'/);
-  assert.match(shell, /likes\.insertAdjacentElement\('beforebegin', button\)/);
-  assert.match(shell, /section\.id = 'playedTracksView'/);
+  assert.match(shell, /dashboard-ui-common\.js\?v=20260930\.1/);
+  assert.match(shell, /mountDashboardShell/);
+  assert.match(shell, /view: 'played-tracks'/);
+  assert.match(shell, /label: '再生履歴'/);
+  assert.match(shell, /anchorSelector: '\[data-view="likes"\]'/);
+  assert.match(shell, /position: 'beforebegin'/);
+  assert.match(shell, /id: 'playedTracksView'/);
   assert.match(shell, /view-toolbar played-tracks-toolbar/);
 });
 
