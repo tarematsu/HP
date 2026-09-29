@@ -30,7 +30,7 @@ test('main page references only existing local static assets', async () => {
 
 test('dashboard HTML keeps accessibility, privacy and all public sections', async () => {
   const html = await text('public/index.html');
-  assert.match(html, /<html lang="ja">/);
+  assert.match(html, /<html lang="ja"(?:\s[^>]*)?>/);
   assert.match(html, /name="viewport"/);
   assert.match(html, /noindex,nofollow/);
   for (const id of [
@@ -97,20 +97,16 @@ test('dashboard declares and implements a light white-base theme', async () => {
   assert.match(css, /#audienceChart \{[^}]*background:\s*#fff/);
 });
 
-test('mobile dashboard keeps all first-paint stylesheets and one entry script', async () => {
+test('mobile dashboard loads one first-paint stylesheet and one bundled entry script', async () => {
   const html = await text('public/index.html');
   const entry = await text('public/dashboard-metrics.js');
-  const appLite = html.match(/\/app-lite\.css\?v=[^"']+/)?.[0];
-  const monochrome = html.match(/\/monochrome\.css\?v=[^"']+/)?.[0];
-  const rootPresentation = html.match(/\/dashboard-root-presentation\.css\?v=[^"']+/)?.[0];
-  assert.ok(appLite, 'app-lite.css must have an explicit deployment version');
-  assert.ok(monochrome, 'monochrome.css must have an explicit deployment version');
-  assert.ok(rootPresentation, 'dashboard-root-presentation.css must have an explicit deployment version');
-  assert.ok(html.indexOf(appLite) < html.indexOf(monochrome));
-  assert.ok(html.indexOf(monochrome) < html.indexOf(rootPresentation));
-  assert.ok(html.indexOf(rootPresentation) < html.indexOf('</head>'));
-  assert.match(html, /type="module" src="\/dashboard-metrics\.js\?v=[^"']+"/);
-  assert.equal((html.match(/<link rel="stylesheet"/g) || []).length, 3);
+  const bundledCss = html.match(/\/assets\/dashboard\.min\.css\?v=[^"']+/)?.[0];
+  const bundledJs = html.match(/\/assets\/dashboard\.min\.js\?v=[^"']+/)?.[0];
+  assert.ok(bundledCss, 'dashboard.min.css must have an explicit deployment version');
+  assert.ok(bundledJs, 'dashboard.min.js must have an explicit deployment version');
+  assert.ok(html.indexOf(bundledCss) < html.indexOf('</head>'));
+  assert.match(html, /type="module" src="\/assets\/dashboard\.min\.js\?v=[^"']+"/);
+  assert.equal((html.match(/<link rel="stylesheet"/g) || []).length, 1);
   assert.equal((html.match(/<script /g) || []).length, 1);
   assert.match(entry, /import\('\/dashboard-client\.js\?v=[^']+'\)/);
 });
