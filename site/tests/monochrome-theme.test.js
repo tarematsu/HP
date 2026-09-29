@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const theme = readFileSync(new URL('../public/monochrome.css', import.meta.url), 'utf8');
+const assetBuild = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 const dashboardChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
@@ -12,13 +13,13 @@ const broadcastChart = readFileSync(new URL('../public/history/history-broadcast
 const firstWeekShell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
 const firstWeekChart = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
 
-test('dashboard loads the monochrome UI theme before first paint', () => {
-  const appLite = page.match(/\/app-lite\.css\?v=[^"']+/)?.[0];
-  const monochrome = page.match(/\/monochrome\.css\?v=[^"']+/)?.[0];
-  assert.ok(appLite, 'app-lite.css must have an explicit deployment version');
-  assert.ok(monochrome, 'monochrome.css must have an explicit deployment version');
-  assert.ok(page.indexOf(appLite) < page.indexOf(monochrome));
-  assert.ok(page.indexOf(monochrome) < page.indexOf('</head>'));
+test('dashboard loads the monochrome UI theme in the first-paint CSS bundle', () => {
+  const bundledCss = page.match(/\/assets\/dashboard\.min\.css\?v=[^"']+/)?.[0];
+  assert.ok(bundledCss, 'dashboard.min.css must have an explicit deployment version');
+  assert.ok(page.indexOf(bundledCss) < page.indexOf('</head>'));
+  assert.match(assetBuild, /'app-lite\.css'/);
+  assert.match(assetBuild, /'monochrome\.css'/);
+  assert.ok(assetBuild.indexOf("'app-lite.css'") < assetBuild.indexOf("'monochrome.css'"));
   assert.doesNotMatch(header, /monochromeStylesheet|monochrome\.css/);
   assert.match(theme, /body\s*\{[\s\S]*--bg:\s*#ffffff[\s\S]*--accent:\s*#111111/);
   assert.match(theme, /\.button\.primary,[\s\S]*background:\s*#111111/);
