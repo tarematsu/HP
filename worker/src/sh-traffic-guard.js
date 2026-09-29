@@ -1,4 +1,5 @@
 const ORIGIN = 'https://production1.stationhead.com';
+const AUTH_PAGE_URL = 'https://www.stationhead.com/c/ilys';
 const OFFICIAL_IDLE_PATH = '/station/handle/sakurazaka46jp/guest';
 const MAX_REQUESTS_PER_MINUTE = 10;
 const MAX_STATION_REQUESTS_PER_MINUTE = 2;
@@ -170,6 +171,10 @@ export function createShTrafficGuard(nextFetch, nowFn = Date.now) {
     }
 
     const headers = headersOf(input, init);
+    if (rule.budget === 'auth') {
+      headers.set('referer', AUTH_PAGE_URL);
+      headers.set('origin', 'https://www.stationhead.com');
+    }
     const key = [
       method,
       url.toString(),
@@ -204,8 +209,13 @@ export function createShTrafficGuard(nextFetch, nowFn = Date.now) {
     else dataRequestCount += 1;
 
     const requestInput = input instanceof Request ? new Request(url.toString(), input) : url.toString();
+    const requestInit = {
+      ...init,
+      headers,
+      signal: signalWithTimeout(init?.signal),
+    };
     try {
-      const response = await nextFetch(requestInput, { ...init, signal: signalWithTimeout(init?.signal) });
+      const response = await nextFetch(requestInput, requestInit);
       const normalized = await normalizeIdleGuestResponse(response, rule);
       const snapshot = await responseSnapshot(normalized);
       if (retryable(snapshot.status)) {

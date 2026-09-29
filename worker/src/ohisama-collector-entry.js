@@ -1,7 +1,13 @@
-import { API_BASE, DEFAULT_USER_AGENT, firstDefined } from './collector-config.js';
+import {
+  API_BASE,
+  DEFAULT_USER_AGENT,
+  STATIONHEAD_AUTH_PAGE_URL,
+  firstDefined,
+} from './collector-config.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const STATE_ID = 'stationhead';
+const DEFAULT_AUTH_HANDLE = 'ilys';
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
 const DEFAULT_REFRESH_BEFORE_MS = 60 * 60_000;
@@ -72,7 +78,7 @@ function collectorHeaders({ authToken, deviceUid }, env, { guest = false } = {})
     'app-version': env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
     'content-type': 'application/json',
     origin: 'https://www.stationhead.com',
-    referer: 'https://www.stationhead.com/',
+    referer: guest ? STATIONHEAD_AUTH_PAGE_URL : 'https://www.stationhead.com/',
     'sth-device-uid': deviceUid,
     'user-agent': DEFAULT_USER_AGENT,
   };
@@ -108,6 +114,8 @@ async function persistAuthState(env, state, now = Date.now()) {
 
 async function acquireGuestSession(env, fetchImpl = fetch) {
   const timeoutMs = positiveNumber(env.REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, 30_000);
+  const authHandle = String(env.STATIONHEAD_AUTH_HANDLE || DEFAULT_AUTH_HANDLE).trim().toLowerCase()
+    || DEFAULT_AUTH_HANDLE;
   const deviceUid = crypto.randomUUID();
   const tokenResponse = await fetchImpl(`${API_BASE}/web/token`, {
     method: 'POST',
@@ -126,6 +134,21 @@ async function acquireGuestSession(env, fetchImpl = fetch) {
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!loginResponse.ok) throw new Error(`Stationhead guest login failed: ${loginResponse.status}`);
+
+  const verifyResponse = await fetchImpl(
+    `${API_BASE}/station/handle/${encodeURIComponent(authHandle)}/guest`,
+    {
+      method: 'POST',
+      headers: collectorHeaders({ authToken, deviceUid }, env, { guest: true }),
+      body: '',
+      signal: AbortSignal.timeout(timeoutMs),
+    },
+  );
+  if (!verifyResponse.ok) {
+    throw new Error(`Stationhead ILYS auth verification failed: ${verifyResponse.status}`);
+  }
+  await verifyResponse.arrayBuffer().catch(() => {});
+
   const state = { authToken, deviceUid, tokenExpiresAt: jwtExpiryMs(authToken) };
   await persistAuthState(env, state);
   return state;

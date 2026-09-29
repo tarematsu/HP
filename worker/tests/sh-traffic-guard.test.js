@@ -54,6 +54,31 @@ test('station handle reads still have their own per-minute limit', async () => {
   ]);
 });
 
+test('Stationhead auth requests are pinned to the ILYS page context only', async () => {
+  const calls = [];
+  const guarded = createShTrafficGuard(async (input, init) => {
+    calls.push({
+      path: new URL(String(input)).pathname,
+      referer: new Headers(init?.headers).get('referer'),
+    });
+    return okJson();
+  }, () => 0);
+
+  await guarded(`${ORIGIN}/web/token`, {
+    method: 'POST',
+    body: '',
+    headers: { referer: 'https://www.stationhead.com/' },
+  });
+  await guarded(`${ORIGIN}/channels/alias/buddies`, {
+    headers: { referer: 'https://www.stationhead.com/' },
+  });
+
+  assert.deepEqual(calls, [
+    { path: '/web/token', referer: 'https://www.stationhead.com/c/ilys' },
+    { path: '/channels/alias/buddies', referer: 'https://www.stationhead.com/' },
+  ]);
+});
+
 test('cached Stationhead reads are rebuilt from detached bytes instead of cloning the source response', async () => {
   let calls = 0;
   const guarded = createShTrafficGuard(async () => {

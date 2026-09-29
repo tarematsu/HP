@@ -3,6 +3,7 @@ import { sanitizeFailureDetail } from './collector-failure.js';
 import { combinedAbortSignal } from './request-signal.js';
 
 export const API_BASE = 'https://production1.stationhead.com';
+export const STATIONHEAD_AUTH_PAGE_URL = 'https://www.stationhead.com/c/ilys';
 export const COLLECTOR_VERSION = '1.0.0-worker';
 export const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 

@@ -1,9 +1,10 @@
 import { ensureAuthControlRow, readAuthState } from './auth-state.js';
+import { STATIONHEAD_AUTH_PAGE_URL } from './collector-config.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const API_ORIGIN = 'https://production1.stationhead.com';
 const DEFAULT_STATE_ID = 'sakurazaka46jp';
-const DEFAULT_HANDLE = 'sakurazaka46jp';
+const DEFAULT_AUTH_HANDLE = 'ilys';
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
 const AUTH_REFRESH_MARGIN_MS = 5 * 60_000;
 const AUTH_LOCK_MS = 60_000;
@@ -24,7 +25,8 @@ export function sakurazakaAuthStateId(env = {}) {
 function config(env = {}) {
   return {
     stateId: sakurazakaAuthStateId(env),
-    handle: String(env.SOLO_BROADCAST_HANDLE || DEFAULT_HANDLE).trim().toLowerCase() || DEFAULT_HANDLE,
+    authHandle: String(env.STATIONHEAD_AUTH_HANDLE || DEFAULT_AUTH_HANDLE).trim().toLowerCase()
+      || DEFAULT_AUTH_HANDLE,
     appVersion: String(env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0'),
     timeoutMs: positive(env.REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS, 30_000),
   };
@@ -52,7 +54,7 @@ function headers(cfg, deviceUid, authToken = '') {
     'app-version': cfg.appVersion,
     'content-type': 'application/json',
     origin: 'https://www.stationhead.com',
-    referer: 'https://www.stationhead.com/',
+    referer: STATIONHEAD_AUTH_PAGE_URL,
     'sth-device-uid': deviceUid,
     'user-agent': USER_AGENT,
     ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
@@ -93,7 +95,7 @@ async function acquireDirectSession(env, request = fetch) {
 
   const verifyResponse = await stationheadFetch(
     cfg,
-    `/station/handle/${encodeURIComponent(cfg.handle)}/guest`,
+    `/station/handle/${encodeURIComponent(cfg.authHandle)}/guest`,
     { method: 'POST', headers: authHeaders, body: '' },
     request,
   );
