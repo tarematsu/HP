@@ -3,6 +3,8 @@ import {
   trackTitleValue,
 } from './track-metadata-quality.js';
 
+const QUERY_BINDING_CHUNK_SIZE = 79;
+
 function text(value) {
   const normalized = String(value ?? '').trim();
   return normalized || null;
@@ -66,27 +68,31 @@ async function safeRows(db, sql, bindings) {
 
 async function candidateRows(db, titles, canonicalOnly = false) {
   if (!titles.length) return [];
-  const marks = placeholders(titles.length);
-  const where = `WHERE title IS NOT NULL AND artist IS NOT NULL
-      AND TRIM(title) COLLATE NOCASE IN (${marks})`;
-  if (canonicalOnly) {
-    return safeRows(db, `SELECT spotify_id,isrc,title,artist,
-        thumbnail_url,fetched_at
-      FROM sh_track_canonical_metadata ${where}`, titles);
-  }
   const rows = [];
-  rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
-      NULL AS thumbnail_url,last_seen_at AS fetched_at
-    FROM sh_tracks ${where}`, titles));
-  rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
-      thumbnail_url,fetched_at
-    FROM sh_track_metadata ${where}`, titles));
-  rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
-      thumbnail_url,metadata_fetched_at AS fetched_at
-    FROM sh_track_dictionary ${where}`, titles));
-  rows.push(...await safeRows(db, `SELECT NULL AS spotify_id,isrc,title,artist,
-      NULL AS thumbnail_url,fetched_at
-    FROM sh_isrc_metadata ${where}`, titles));
+  for (let offset = 0; offset < titles.length; offset += QUERY_BINDING_CHUNK_SIZE) {
+    const part = titles.slice(offset, offset + QUERY_BINDING_CHUNK_SIZE);
+    const marks = placeholders(part.length);
+    const where = `WHERE title IS NOT NULL AND artist IS NOT NULL
+        AND TRIM(title) COLLATE NOCASE IN (${marks})`;
+    if (canonicalOnly) {
+      rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
+          thumbnail_url,fetched_at
+        FROM sh_track_canonical_metadata ${where}`, part));
+      continue;
+    }
+    rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
+        NULL AS thumbnail_url,last_seen_at AS fetched_at
+      FROM sh_tracks ${where}`, part));
+    rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
+        thumbnail_url,fetched_at
+      FROM sh_track_metadata ${where}`, part));
+    rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
+        thumbnail_url,metadata_fetched_at AS fetched_at
+      FROM sh_track_dictionary ${where}`, part));
+    rows.push(...await safeRows(db, `SELECT NULL AS spotify_id,isrc,title,artist,
+        NULL AS thumbnail_url,fetched_at
+      FROM sh_isrc_metadata ${where}`, part));
+  }
   return rows;
 }
 
