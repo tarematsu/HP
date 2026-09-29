@@ -1,3 +1,5 @@
+import { loadReadModelTrackMetadata as loadCanonicalTrackMetadata } from './read-model-metadata-indexed.js';
+
 export const MINUTE_FACT_QUEUE_RECEIPT_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS sh_minute_fact_queue_receipts (
   job_id TEXT PRIMARY KEY,
   received_at INTEGER NOT NULL
@@ -165,143 +167,8 @@ export function queueNeedsPreviousTrackMetadata(queue) {
   )));
 }
 
-async function runMetadataQuery(db, sql, bindings) {
-  const statement = db.prepare(sql).bind(...bindings);
-  if (typeof statement?.all !== 'function') return [];
-  const result = await statement.all();
-  return result.results || [];
-}
-
-function metadataQuery(spotifyIds, isrcs) {
-  const bindings = [...isrcs, ...spotifyIds];
-  let parameter = 1;
-  const isrcPlaceholders = isrcs.map(() => `?${parameter++}`).join(',');
-  const spotifyPlaceholders = spotifyIds.map(() => `?${parameter++}`).join(',');
-  const clauses = [];
-  if (isrcPlaceholders) clauses.push(`isrc IN (${isrcPlaceholders})`);
-  if (spotifyPlaceholders) clauses.push(`spotify_id IN (${spotifyPlaceholders})`);
-  if (!clauses.length) return null;
-  const whereSql = clauses.join(' OR ');
-  return {
-    sql: `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-      FROM sh_track_metadata
-      WHERE ${whereSql}
-      ORDER BY fetched_at DESC`,
-    whereSql,
-    isrcPlaceholders,
-    bindings,
-  };
-}
-
-async function queryTrackMetadata(db, spotifyIds, isrcs, includeDictionary = false) {
-  if (!db || typeof db.prepare !== 'function') return [];
-  const query = metadataQuery(spotifyIds, isrcs);
-  if (!query) return [];
-  if (!includeDictionary || !query.isrcPlaceholders) {
-    return runMetadataQuery(db, query.sql, query.bindings);
-  }
-
-  const dictionarySql = `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-    FROM (
-      SELECT 0 AS source_priority,spotify_id,isrc,title,artist,thumbnail_url,
-        metadata_fetched_at AS fetched_at
-      FROM sh_track_dictionary
-      WHERE isrc IN (${query.isrcPlaceholders})
-      UNION ALL
-      SELECT 1 AS source_priority,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-      FROM sh_track_metadata
-      WHERE ${query.whereSql}
-    )
-    ORDER BY source_priority,fetched_at DESC`;
-  try {
-    return await runMetadataQuery(db, dictionarySql, query.bindings);
-  } catch (error) {
-    if (!/no such table|no such column/i.test(String(error?.message || ''))) throw error;
-    return runMetadataQuery(db, query.sql, query.bindings);
-  }
-}
-
-async function queryLegacySpotifyMetadata(db, spotifyIds) {
-  if (!db || typeof db.prepare !== 'function' || !spotifyIds.length) return [];
-  const placeholders = spotifyIds.map((_, index) => `?${index + 1}`).join(',');
-  return runMetadataQuery(db, `SELECT spotify_id,NULL AS isrc,title,artist,thumbnail_url,fetched_at
-    FROM sh_track_metadata
-    WHERE spotify_id IN (${placeholders})
-    ORDER BY fetched_at DESC`, spotifyIds);
-}
-
-function completeMetadataRow(row) {
-  return Boolean(row?.title && row?.artist && row?.thumbnail_url);
-}
-
-function mergeMetadataSources(primaryRows, fallbackRows) {
-  const fallbackBySpotifyId = new Map();
-  for (const row of fallbackRows) {
-    const spotifyId = String(row?.spotify_id || '').trim();
-    if (spotifyId && !fallbackBySpotifyId.has(spotifyId)) fallbackBySpotifyId.set(spotifyId, row);
-  }
-  const primarySpotifyIds = new Set();
-  const mergedPrimary = primaryRows.map((row) => {
-    const spotifyId = String(row?.spotify_id || '').trim();
-    if (spotifyId) primarySpotifyIds.add(spotifyId);
-    const fallback = spotifyId ? fallbackBySpotifyId.get(spotifyId) : null;
-    if (!fallback) return row;
-    return {
-      ...fallback,
-      ...row,
-      title: row.title || fallback.title || null,
-      artist: row.artist || fallback.artist || null,
-      thumbnail_url: row.thumbnail_url || fallback.thumbnail_url || null,
-      fetched_at: Math.max(Number(row.fetched_at || 0), Number(fallback.fetched_at || 0)) || null,
-    };
-  });
-  return [
-    ...mergedPrimary,
-    ...fallbackRows.filter((row) => !primarySpotifyIds.has(String(row?.spotify_id || '').trim())),
-  ];
-}
-
 export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs) {
-  const requestedSpotifyIds = [...new Set(
-    (spotifyIds || []).map((value) => String(value || '').trim()).filter(Boolean),
-  )];
-  const requestedIsrcs = [...new Set(
-    (isrcs || []).map(normalizedIsrc).filter(Boolean),
-  )];
-  const primary = env?.MINUTE_DB;
-  const fallback = env?.BUDDIES_DB;
-  let rows = [];
-  try {
-    rows = await queryTrackMetadata(primary, requestedSpotifyIds, requestedIsrcs, true);
-  } catch (error) {
-    if (!/no such table|no such column/i.test(String(error?.message || ''))) throw error;
-  }
-  const completeRows = rows.filter(completeMetadataRow);
-  const completeSpotifyIds = new Set(completeRows.map((row) => String(row?.spotify_id || '').trim()).filter(Boolean));
-  const completeIsrcs = new Set(completeRows.map((row) => normalizedIsrc(row?.isrc)).filter(Boolean));
-  const missingSpotifyIds = requestedSpotifyIds.filter((value) => !completeSpotifyIds.has(value));
-  const missingIsrcs = requestedIsrcs.filter((value) => !completeIsrcs.has(value));
-  if ((!missingSpotifyIds.length && !missingIsrcs.length) || !fallback || fallback === primary) return rows;
-  const missingIsrcSet = new Set(missingIsrcs);
-  const bridgedSpotifyIds = rows
-    .filter((row) => missingIsrcSet.has(normalizedIsrc(row?.isrc)))
-    .map((row) => String(row?.spotify_id || '').trim())
-    .filter(Boolean);
-  const fallbackSpotifyIds = [...new Set([...missingSpotifyIds, ...bridgedSpotifyIds])];
-  try {
-    const fallbackRows = await queryTrackMetadata(fallback, fallbackSpotifyIds, missingIsrcs);
-    return mergeMetadataSources(rows, fallbackRows);
-  } catch (error) {
-    if (!/no such table|no such column/i.test(String(error?.message || ''))) throw error;
-    if (!fallbackSpotifyIds.length) return rows;
-    try {
-      const fallbackRows = await queryLegacySpotifyMetadata(fallback, fallbackSpotifyIds);
-      return mergeMetadataSources(rows, fallbackRows);
-    } catch (fallbackError) {
-      if (!/no such table|no such column/i.test(String(fallbackError?.message || ''))) throw fallbackError;
-      return rows;
-    }
-  }
+  return loadCanonicalTrackMetadata(env, spotifyIds, isrcs);
 }
 
 async function hydrateQueueMetadataFromSource(env, readModel) {
@@ -320,7 +187,7 @@ async function hydrateQueueMetadataFromSource(env, readModel) {
   if (!spotifyIds.length && !isrcs.length) return readModel;
 
   try {
-    const metadataRows = await loadReadModelTrackMetadata(env, spotifyIds, isrcs);
+    const metadataRows = await loadCanonicalTrackMetadata(env, spotifyIds, isrcs);
     const hydratedQueue = attachReadModelTrackMetadata(queue, metadataRows);
     return hydratedQueue === queue
       ? readModel
