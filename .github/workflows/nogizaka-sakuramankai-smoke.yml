@@ -1,0 +1,31 @@
+name: Nogizaka sakuramankai smoke
+
+on:
+  push:
+    branches:
+      - test/nogizaka-sakuramankai-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wait for collector cron
+        run: sleep 75
+      - name: Fetch first realtime sample
+        run: |
+          curl --fail --silent --show-error --max-time 15 \
+            https://skrzk.pages.dev/api/nogizaka46smej-status | tee /tmp/first.json
+          echo
+          node -e "const p=require('/tmp/first.json'); console.log(JSON.stringify({ok:p.ok,active:p.collection_active,event:p.event,latest:p.latest,samples:p.samples?.slice(0,3)},null,2))"
+      - name: Wait for next collector minute
+        run: sleep 65
+      - name: Fetch second realtime sample
+        run: |
+          curl --fail --silent --show-error --max-time 15 \
+            https://skrzk.pages.dev/api/nogizaka46smej-status | tee /tmp/second.json
+          echo
+          node -e "const p=require('/tmp/second.json'); console.log(JSON.stringify({ok:p.ok,active:p.collection_active,event:p.event,latest:p.latest,samples:p.samples?.slice(0,3)},null,2))"
