@@ -158,7 +158,7 @@ test('JST date and weekly key use Tuesday as the Amazon Japan chart boundary', (
   assert.equal(amazonMusicWeekKey(TUESDAY_1030_JST + 7 * 86400_000), '2026-10-06');
 });
 
-test('daily collection preserves all-track order and publishes both rank dimensions', async () => {
+test('daily collection preserves tracks and publishes only Amazon overall rank', async () => {
   const bindings = env();
   const result = await collectAmazonMusicSnapshot(bindings, TUESDAY_1030_JST, client());
 
@@ -180,8 +180,13 @@ test('daily collection preserves all-track order and publishes both rank dimensi
   assert.equal(readModel.follower.delta, null);
   assert.deepEqual(readModel.tracks.map((track) => track.track_id), [103, 101, 102]);
   assert.deepEqual(readModel.tracks.map((track) => track.amazon_rank), [null, 42, null]);
-  assert.deepEqual(readModel.tracks.map((track) => track.popular_rank), [1, 2, 3]);
+  assert.equal(readModel.tracks.some((track) => Object.hasOwn(track, 'popular_rank')), false);
+  assert.equal(readModel.history[0].tracks.some((track) => Object.hasOwn(track, 'popular_rank')), false);
   assert.equal(readModel.history.length, 1);
+
+  const dailySnapshot = JSON.parse(bindings.PAGES_RESPONSE_R2.values.get('amazon-music/artist/B08P3RHP1P/daily/2026-09-29.json'));
+  assert.equal(Object.hasOwn(dailySnapshot, 'popular_tracks'), false);
+  assert.equal(dailySnapshot.all_tracks.some((track) => Object.hasOwn(track, 'rank')), false);
 
   const publicKey = pagesActionsR2ResponseKey('amazon-music');
   const envelope = JSON.parse(bindings.PAGES_RESPONSE_R2.values.get(publicKey));
@@ -192,16 +197,20 @@ test('daily collection preserves all-track order and publishes both rank dimensi
   assert.equal(body.tracks.length, 3);
 });
 
-test('next-day collection calculates follower delta from the exact previous JST day', async () => {
+test('next-day collection strips legacy popular_rank from retained history', async () => {
   const bindings = env();
   await collectAmazonMusicSnapshot(bindings, TUESDAY_1030_JST, client());
-  const second = await collectAmazonMusicSnapshot(bindings, TUESDAY_1030_JST + 86400_000, client());
+  const legacy = JSON.parse(bindings.PAGES_RESPONSE_R2.values.get('amazon-music/read-model/latest.json'));
+  legacy.history[0].tracks[0].popular_rank = 1;
+  bindings.PAGES_RESPONSE_R2.values.set('amazon-music/read-model/latest.json', JSON.stringify(legacy));
 
+  const second = await collectAmazonMusicSnapshot(bindings, TUESDAY_1030_JST + 86400_000, client());
   assert.equal(second.follower_delta, 0);
   const readModel = JSON.parse(bindings.PAGES_RESPONSE_R2.values.get('amazon-music/read-model/latest.json'));
   assert.equal(readModel.follower.delta, 0);
   assert.equal(readModel.history.length, 2);
   assert.deepEqual(readModel.history.map((point) => point.snapshot_date), ['2026-09-29', '2026-09-30']);
+  assert.equal(readModel.history.flatMap((point) => point.tracks).some((track) => Object.hasOwn(track, 'popular_rank')), false);
 });
 
 test('Japan Top 50 history is written once for the week only when Sakurazaka appears', async () => {
