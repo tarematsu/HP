@@ -114,11 +114,14 @@ test('runtime, collector, and recovery configs preserve domain isolation', () =>
   const recoveryConsumers = new Set(recovery.queues.consumers.map(({ queue }) => queue));
   const runtimeConsumers = new Set(runtime.queues.consumers.map(({ queue }) => queue));
 
-  for (const queue of ['stationhead-raw-collection', 'stationhead-comments', 'stationhead-buddies-persist']) {
+  for (const queue of ['stationhead-raw-collection', 'stationhead-buddies-persist']) {
     assert.equal(recoveryConsumers.has(queue), true, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
   }
+  assert.equal(recoveryConsumers.has('stationhead-comments'), false);
+  assert.equal(collector.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
+  assert.equal(recovery.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
   for (const queue of [
     'stationhead-minute-enrichment',
     'stationhead-track-metadata',
@@ -133,6 +136,7 @@ test('runtime, collector, and recovery configs preserve domain isolation', () =>
     'stationhead-pages-read-model-publication',
     'stationhead-read-model',
     'stationhead-host-monitor',
+    'stationhead-comments',
   ]) {
     assert.equal(runtimeConsumers.has(retiredQueue), false, retiredQueue);
   }
