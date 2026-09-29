@@ -9,6 +9,12 @@ FROM sh_current_daily_summary
 WHERE day_at>=? AND day_at<?
 ORDER BY day_at ASC,sample_count DESC,period_end DESC,channel_id ASC`;
 
+export const RECENT_DAILY_MEMBER_SQL = `SELECT
+  channel_id,day_at,last_total_member_count,last_observed_at,host_key
+FROM sh_total_member_daily INDEXED BY idx_sh_total_member_daily_latest
+WHERE channel_id=? AND day_at>=? AND day_at<?
+ORDER BY day_at ASC,last_observed_at DESC,host_key ASC`;
+
 export const EXISTING_RECENT_DAILY_SQL = `SELECT period_key,member_start,member_end,member_growth
 FROM sh_daily_summary
 WHERE period_key>=? AND period_key<?
@@ -80,11 +86,41 @@ function validCounts(row) {
     && reliableSampleCount <= sampleCount;
 }
 
-function memberEndFromProjectionOrSummary(dayAt, projections, existing) {
+function memberStateKey(channelId, dayAt) {
+  return `${channelId}:${dayAt}`;
+}
+
+async function loadDailyMemberStates(minuteDb, projections, rangeStart, currentDay) {
+  const channelIds = [...new Set([...projections.values()]
+    .map((row) => integer(row?.channel_id))
+    .filter((value) => value != null && value > 0))];
+  const selected = new Map();
+  await Promise.all(channelIds.map(async (channelId) => {
+    const result = await minuteDb.prepare(RECENT_DAILY_MEMBER_SQL)
+      .bind(channelId, rangeStart - DAY_MS, currentDay)
+      .all();
+    for (const row of result?.results || []) {
+      const dayAt = integer(row?.day_at);
+      if (dayAt == null) continue;
+      const key = memberStateKey(channelId, dayAt);
+      if (!selected.has(key)) selected.set(key, row);
+    }
+  }));
+  return selected;
+}
+
+function memberBoundaryFromDailyState(memberStates, channelId, dayAt) {
+  if (channelId == null || dayAt == null) return null;
+  return finite(memberStates.get(memberStateKey(channelId, dayAt))?.last_total_member_count);
+}
+
+function fallbackPreviousMemberEnd(dayAt, channelId, projections, existing) {
   const previousDayAt = dayAt - DAY_MS;
-  const projected = finite(projections.get(previousDayAt)?.member_end);
-  if (projected != null) return projected;
-  return finite(existing.get(dayKey(previousDayAt))?.member_end);
+  const existingValue = finite(existing.get(dayKey(previousDayAt))?.member_end);
+  if (existingValue != null) return existingValue;
+  const previousProjection = projections.get(previousDayAt);
+  if (integer(previousProjection?.channel_id) !== channelId) return null;
+  return finite(previousProjection?.member_end);
 }
 
 export async function publishRecentDailySummaries(
@@ -111,6 +147,7 @@ export async function publishRecentDailySummaries(
   ]);
   const projections = projectionByDay(projectionResult?.results || []);
   const existing = new Map((existingResult?.results || []).map((row) => [String(row.period_key), row]));
+  const memberStates = await loadDailyMemberStates(minuteDb, projections, rangeStart, currentDay);
   const published = [];
   const unavailable = [];
   const invalid = [];
@@ -127,6 +164,7 @@ export async function publishRecentDailySummaries(
       invalid.push(key);
       continue;
     }
+    const channelId = integer(row.channel_id);
     const sampleCount = integer(row.sample_count);
     const reliableSampleCount = integer(row.reliable_sample_count);
     const listenerSum = finite(row.listener_sum);
@@ -135,8 +173,11 @@ export async function publishRecentDailySummaries(
       : null;
     const streamStart = finite(row.stream_start);
     const streamEnd = finite(row.stream_end);
-    const memberStart = memberEndFromProjectionOrSummary(dayAt, projections, existing);
-    const memberEnd = finite(row.member_end);
+    const memberStart = memberBoundaryFromDailyState(memberStates, channelId, dayAt - DAY_MS)
+      ?? fallbackPreviousMemberEnd(dayAt, channelId, projections, existing);
+    const memberEnd = memberBoundaryFromDailyState(memberStates, channelId, dayAt)
+      ?? finite(row.member_end)
+      ?? finite(existingRow?.member_end);
     const write = await otherDb.prepare(INSERT_DAILY_SUMMARY_SQL).bind(
       key,
       finite(row.period_start),
