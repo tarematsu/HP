@@ -52,22 +52,20 @@ test('Amazon Music API preserves real materialized-service failures', async () =
   assert.equal((await response.json()).ok, false);
 });
 
-test('Amazon Music view exposes follower summary, two rank graphs, and track rank table', () => {
+test('Amazon Music view exposes follower summary, overall-rank graph, and track rank table', () => {
   assert.match(shell, /フォロワー数/);
   assert.match(shell, /前日比/);
   assert.match(shell, /id="amazonAllRankChart"/);
-  assert.match(shell, /id="amazonPopularRankChart"/);
+  assert.doesNotMatch(shell, /amazonPopularRankChart|櫻坂内人気順|櫻坂46内 人気曲順位/);
   assert.match(shell, /Amazon総合順位/);
-  assert.match(shell, /櫻坂内人気順/);
   assert.match(runtime, /metricKey: 'amazon_rank'/);
-  assert.match(runtime, /metricKey: 'popular_rank'/);
+  assert.doesNotMatch(runtime, /popular_rank|amazonPopularRankChart/);
   assert.match(runtime, /payload\?\.follower\?\.delta/);
 });
 
-test('Amazon Music rank charts keep first place at the top and fit mobile width', () => {
+test('Amazon Music rank chart keeps first place at the top and fits mobile width', () => {
   assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
   assert.match(runtime, /ariaLabel: '櫻坂46全楽曲のAmazon Music総合順位推移。1位が上。'/);
-  assert.match(runtime, /ariaLabel: 'Amazon Music櫻坂46アーティストページ内の人気曲順位推移。1位が上。'/);
   assert.match(css, /\.amazon-rank-svg[\s\S]*width:\s*100%/);
   assert.match(css, /\.amazon-table[\s\S]*table-layout:\s*fixed/);
 });
