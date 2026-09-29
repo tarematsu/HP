@@ -1,4 +1,4 @@
-name: Temporary Amazon overall chart depth probe
+name: Temporary apply Amazon overall ranking
 
 on:
   push:
@@ -6,52 +6,307 @@ on:
       - tmp/verify-amazon-readmodel
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  verify:
+  apply:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Probe chart offsets
-        working-directory: worker
+          ref: fix/amazon-overall-rank
+          fetch-depth: 0
+      - name: Patch Amazon overall ranking
         shell: bash
         run: |
           set -euo pipefail
-          node --input-type=module <<'NODE'
-          import { extractAmazonMusicTracks } from './src/amazon-music-web-client.js';
-          const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
-          const origin='https://music.amazon.co.jp';
-          const ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
-          const cfg=await (await fetch(`${origin}/config.json?skipToken=false&clientApplication=skyfire`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','user-agent':ua,referer:`${origin}/`}})).json();
-          const csrf=cfg.csrf||{};
-          const pageUrl=`${origin}/popular/songs/browsePanel/popularTracks`;
-          function inner(){return {
-            'x-amzn-authentication':JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:cfg.accessToken||''}),
-            'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer','x-amzn-device-id':cfg.deviceId||'',
-            'x-amzn-user-agent':ua,'x-amzn-session-id':cfg.sessionId||'','x-amzn-device-height':'1080','x-amzn-request-id':crypto.randomUUID(),
-            'x-amzn-device-language':'ja_JP','x-amzn-currency-of-preference':'JPY','x-amzn-os-version':'1.0','x-amzn-application-version':cfg.version||'',
-            'x-amzn-device-time-zone':'UTC','x-amzn-timestamp':String(Date.now()),'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),
-            'x-amzn-music-domain':'music.amazon.co.jp','x-amzn-referer':'','x-amzn-affiliate-tags':'','x-amzn-ref-marker':'','x-amzn-page-url':pageUrl,
-            'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''};}
-          const base='https://fe.mesk.skill.music.a2z.com/api/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs';
-          function urlFor(offset){
-            if(offset===0)return `${base}&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D`;
-            const next=encodeURIComponent(JSON.stringify({entityId:'popularTracks',nextToken:`0_${offset}:${offset}`,widgetId:'top-songs'}));
-            return `${base}&next=${next}&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D`;
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f'missing replacement target in {path}: {old[:80]!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          client = 'worker/src/amazon-music-web-client.js'
+          replace_once(client,
+          "const MAX_TRACKS = 500;\nconst USER_HASH = JSON.stringify({ level: 'LIBRARY_MEMBER' });",
+          "const MAX_TRACKS = 500;\nconst MAX_OVERALL_CHART_PAGES = 550;\nconst OVERALL_CHART_PAGE_URL = `${AMAZON_ORIGIN}/popular/songs/browsePanel/popularTracks`;\nconst OVERALL_CHART_INITIAL_URL = `${CATALOG_SKILL_BASE}/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D`;\nconst OVERALL_CHART_RETRY_ATTEMPTS = 6;\nconst USER_HASH = JSON.stringify({ level: 'LIBRARY_MEMBER' });")
+
+          anchor = """function isErrorOnlyPayload(document) {"""
+          helper = """function nextChartsWidgetUrl(document) {
+            let found = null;
+            deepValues(document, (node) => {
+              if (found) return;
+              for (const value of Object.values(node)) {
+                if (typeof value !== 'string'
+                  || !value.includes('/api/showChartsWidget?')
+                  || !value.includes('widgetId=top-songs')
+                  || !value.includes('next=')) continue;
+                try {
+                  found = new URL(value, CATALOG_SKILL_BASE).toString();
+                  return;
+                } catch {
+                  // Ignore malformed action URLs.
+                }
+              }
+            });
+            return found;
           }
-          function findNext(v){let found=null; const walk=(x)=>{if(found||x==null)return;if(Array.isArray(x)){x.forEach(walk);return;}if(typeof x!=='object')return;for(const y of Object.values(x)){if(typeof y==='string'&&y.includes('/api/showChartsWidget?')&&y.includes('widgetId=top-songs')&&y.includes('next=')){found=y;return;}walk(y);}};walk(v);return found;}
-          for(const offset of [0,5000,10000,20000,50000,100000,200000,500000]){
-            const res=await fetch(urlFor(offset),{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua},body:JSON.stringify({headers:JSON.stringify(inner())})});
-            const status=res.status;
-            let tracks=[]; let next=false;
-            if(res.ok){const doc=await res.json();tracks=extractAmazonMusicTracks(doc);next=Boolean(findNext(doc));}
-            console.log('OFFSET',JSON.stringify({offset,status,count:tracks.length,first:tracks[0]?.title||null,last:tracks.at(-1)?.title||null,next}));
-            await sleep(800);
+
+          function sleep(milliseconds) {
+            return new Promise((resolve) => setTimeout(resolve, milliseconds));
           }
-          NODE
+
+          function isErrorOnlyPayload(document) {"""
+          replace_once(client, anchor, helper)
+
+          anchor = """    async fetchPlaylist(playlistId) {"""
+          method = """    async fetchOverallTrackRanks(targetIds = null) {
+              await primeWebPlayer(fetchImpl, 'B08P3RHP1P');
+              const targets = targetIds == null
+                ? null
+                : new Set([...targetIds].map((value) => text(value)).filter(Boolean));
+              const hits = [];
+              const seenUrls = new Set();
+              const seenTrackIds = new Set();
+              let url = OVERALL_CHART_INITIAL_URL;
+              let scannedTracks = 0;
+              let exhausted = false;
+
+              for (let page = 0; page < MAX_OVERALL_CHART_PAGES; page += 1) {
+                if (!url || seenUrls.has(url)) {
+                  exhausted = true;
+                  break;
+                }
+                seenUrls.add(url);
+
+                let document = null;
+                for (let attempt = 0; attempt < OVERALL_CHART_RETRY_ATTEMPTS; attempt += 1) {
+                  const configuration = await config(fetchImpl);
+                  const response = await fetchImpl(url, {
+                    method: 'POST',
+                    headers: outerHeaders(),
+                    body: JSON.stringify({
+                      headers: JSON.stringify(amazonHeaders(configuration, OVERALL_CHART_PAGE_URL)),
+                    }),
+                  });
+                  if (response.status === 429) {
+                    await sleep(Math.min(15_000, 1_000 * (2 ** attempt)));
+                    continue;
+                  }
+                  document = await responseJson(response, 'Amazon Music overall chart');
+                  if (isErrorOnlyPayload(document)) {
+                    throw new Error('Amazon Music overall chart returned an error template');
+                  }
+                  break;
+                }
+                if (!document) throw new Error('Amazon Music overall chart rate-limit retries exhausted');
+
+                const pageTracks = extractAmazonMusicTracks(document);
+                const fresh = pageTracks.filter((track) => {
+                  const id = text(track?.amazon_music_id);
+                  return id && !seenTrackIds.has(id);
+                });
+                if (!fresh.length) {
+                  exhausted = true;
+                  break;
+                }
+
+                for (const track of fresh) {
+                  seenTrackIds.add(track.amazon_music_id);
+                  scannedTracks += 1;
+                  if (!targets || targets.has(track.amazon_music_id)) {
+                    hits.push({ ...track, rank: scannedTracks });
+                  }
+                }
+                if (targets && hits.length >= targets.size) {
+                  exhausted = true;
+                  break;
+                }
+
+                const next = nextChartsWidgetUrl(document);
+                if (!next || seenUrls.has(next)) {
+                  exhausted = true;
+                  break;
+                }
+                url = next;
+              }
+
+              return {
+                hits,
+                scanned_tracks: scannedTracks,
+                exhausted,
+              };
+            },
+
+            async fetchPlaylist(playlistId) {"""
+          replace_once(client, anchor, method)
+
+          collector = 'worker/src/amazon-music-collector.js'
+          old = """function readModelPoint(snapshot) {
+            const popularRank = new Map((snapshot.popular_tracks || [])
+              .map((track) => [track.amazon_music_id, Number(track.rank) || null]));
+            return {
+              snapshot_date: snapshot.snapshot_date,
+              observed_at: snapshot.observed_at,
+              follower_count: snapshot.follower?.count ?? null,
+              tracks: (snapshot.all_tracks || []).map((track) => ({
+                amazon_music_id: track.amazon_music_id,
+                track_id: track.track_id ?? null,
+                amazon_rank: Number(track.rank) || null,
+                popular_rank: popularRank.get(track.amazon_music_id) ?? null,
+              })),
+            };
+          }"""
+          new = """function readModelPoint(snapshot) {
+            const overallRank = new Map((snapshot.catalog_popular_hits || [])
+              .map((track) => [track.amazon_music_id, Number(track.rank) || null]));
+            return {
+              snapshot_date: snapshot.snapshot_date,
+              observed_at: snapshot.observed_at,
+              follower_count: snapshot.follower?.count ?? null,
+              tracks: (snapshot.all_tracks || []).map((track) => ({
+                amazon_music_id: track.amazon_music_id,
+                track_id: track.track_id ?? null,
+                amazon_rank: overallRank.get(track.amazon_music_id) ?? null,
+                popular_rank: Number(track.rank) || null,
+              })),
+            };
+          }"""
+          replace_once(collector, old, new)
+
+          old = """  const popularRank = new Map((snapshot.popular_tracks || [])
+            .map((track) => [track.amazon_music_id, Number(track.rank) || null]));
+          const tracks = (snapshot.all_tracks || []).map((track) => ({
+            amazon_music_id: track.amazon_music_id,
+            track_id: track.track_id ?? null,
+            title: track.title || '曲名不明',
+            album: track.album || null,
+            image: track.image || null,
+            amazon_rank: Number(track.rank) || null,
+            popular_rank: popularRank.get(track.amazon_music_id) ?? null,
+          }));"""
+          new = """  const overallRank = new Map((snapshot.catalog_popular_hits || [])
+            .map((track) => [track.amazon_music_id, Number(track.rank) || null]));
+          const tracks = (snapshot.all_tracks || []).map((track) => ({
+            amazon_music_id: track.amazon_music_id,
+            track_id: track.track_id ?? null,
+            title: track.title || '曲名不明',
+            album: track.album || null,
+            image: track.image || null,
+            amazon_rank: overallRank.get(track.amazon_music_id) ?? null,
+            popular_rank: Number(track.rank) || null,
+          }));"""
+          replace_once(collector, old, new)
+
+          old = """  const [artistDocument, rawArtistTracks, top50Document, popularHtml] = await Promise.all([
+            client.fetchArtist(AMAZON_MUSIC_ARTIST_ID),
+            client.fetchArtistTracks(AMAZON_MUSIC_ARTIST_ID),
+            client.fetchPlaylist(AMAZON_MUSIC_JAPAN_TOP50_ID),
+            client.fetchPopularPageHtml().catch(() => ''),
+          ]);"""
+          new = """  const [artistDocument, rawArtistTracks, top50Document] = await Promise.all([
+            client.fetchArtist(AMAZON_MUSIC_ARTIST_ID),
+            client.fetchArtistTracks(AMAZON_MUSIC_ARTIST_ID),
+            client.fetchPlaylist(AMAZON_MUSIC_JAPAN_TOP50_ID),
+          ]);"""
+          replace_once(collector, old, new)
+
+          old = """  const top50Ranking = rankTracks(extractAmazonMusicTracks(top50Document));
+            const top50Hits = hitsFromRanking(top50Ranking, artistIds).map((track) => publicTrack(track, trackIdByAmazonId));
+            const catalogRanking = rankTracks(extractAmazonMusicTracks(popularHtml));
+            const catalogHits = hitsFromRanking(catalogRanking, artistIds).map((track) => publicTrack(track, trackIdByAmazonId));
+            const follower = await followerInfo(client, artistDocument);"""
+          new = """  const top50Ranking = rankTracks(extractAmazonMusicTracks(top50Document));
+            const top50Hits = hitsFromRanking(top50Ranking, artistIds).map((track) => publicTrack(track, trackIdByAmazonId));
+            const overallRanking = typeof client.fetchOverallTrackRanks === 'function'
+              ? await client.fetchOverallTrackRanks(artistIds)
+              : { hits: [], scanned_tracks: 0, exhausted: false };
+            const catalogHits = hitsFromRanking(
+              Array.isArray(overallRanking?.hits) ? overallRanking.hits : [],
+              artistIds,
+            ).map((track) => publicTrack(track, trackIdByAmazonId));
+            const follower = await followerInfo(client, artistDocument);"""
+          replace_once(collector, old, new)
+
+          replace_once(collector,
+          """    catalog_popular_hits: catalogHits,
+            japan_top_50: top50Hits.length ? { week_key: weekKey, hits: top50Hits } : null,""",
+          """    catalog_popular_hits: catalogHits,
+            catalog_popular_scanned: Number(overallRanking?.scanned_tracks) || 0,
+            catalog_popular_exhausted: Boolean(overallRanking?.exhausted),
+            japan_top_50: top50Hits.length ? { week_key: weekKey, hits: top50Hits } : null,""")
+
+          replace_once(collector,
+          """        observed_at: observedAt,
+                hits: catalogHits,""",
+          """        observed_at: observedAt,
+                scanned_tracks: Number(overallRanking?.scanned_tracks) || 0,
+                exhausted: Boolean(overallRanking?.exhausted),
+                hits: catalogHits,""")
+
+          replace_once(collector,
+          """    catalog_popular_hits: catalogHits.length,
+            catalog_popular_stored: catalogStored,""",
+          """    catalog_popular_hits: catalogHits.length,
+            catalog_popular_scanned: Number(overallRanking?.scanned_tracks) || 0,
+            catalog_popular_exhausted: Boolean(overallRanking?.exhausted),
+            catalog_popular_stored: catalogStored,""")
+
+          tests = 'worker/tests/amazon-music-collector.test.js'
+          replace_once(tests,
+          """    async fetchPopularPageHtml() {
+              return `<script type=\"application/json\">${JSON.stringify({
+                items: [
+                  { type: 'track', id: 'OTHER', title: 'Other', artist: 'Other' },
+                  { type: 'track', id: 'A1', title: 'Song A', artist: '櫻坂46' },
+                ],
+              })}</script>`;
+            },""",
+          """    async fetchOverallTrackRanks() {
+              return {
+                scanned_tracks: 10020,
+                exhausted: true,
+                hits: [{ amazon_music_id: 'A1', title: 'Song A', artist: '櫻坂46', rank: 42 }],
+              };
+            },""")
+          replace_once(tests,
+          """  assert.equal(result.catalog_popular_hits, 1);
+            assert.equal(result.read_model_published, true);""",
+          """  assert.equal(result.catalog_popular_hits, 1);
+            assert.equal(result.catalog_popular_scanned, 10020);
+            assert.equal(result.catalog_popular_exhausted, true);
+            assert.equal(result.read_model_published, true);""")
+          replace_once(tests,
+          """  assert.deepEqual(readModel.tracks.map((track) => track.amazon_rank), [1, 2, 3]);
+            assert.equal(readModel.tracks[0].popular_rank, null);
+            assert.equal(readModel.tracks[1].popular_rank, 1);
+            assert.equal(readModel.tracks[2].popular_rank, 2);""",
+          """  assert.deepEqual(readModel.tracks.map((track) => track.amazon_rank), [null, 42, null]);
+            assert.deepEqual(readModel.tracks.map((track) => track.popular_rank), [1, 2, 3]);""")
+
+          shell = 'site/public/amazon-music-shell.js'
+          p = Path(shell)
+          s = p.read_text().replace('全楽曲 Amazon内順位推移', '全楽曲 Amazon総合順位推移').replace('Amazon内順位</th>', 'Amazon総合順位</th>').replace('櫻坂46全楽曲のAmazon Music内順位推移', '櫻坂46全楽曲のAmazon Music総合順位推移')
+          p.write_text(s)
+
+          runtime = 'site/public/amazon-music.js'
+          p = Path(runtime)
+          s = p.read_text().replace('Amazon Music順位の履歴はまだありません。', 'Amazon Music総合順位の履歴はまだありません。').replace('櫻坂46全楽曲のAmazon Music内順位推移。1位が上。', '櫻坂46全楽曲のAmazon Music総合順位推移。1位が上。')
+          p.write_text(s)
+
+          site_test = 'site/tests/amazon-music-tab.test.js'
+          p = Path(site_test)
+          s = p.read_text().replace('櫻坂46全楽曲のAmazon Music内順位推移。1位が上。', '櫻坂46全楽曲のAmazon Music総合順位推移。1位が上。')
+          p.write_text(s)
+          PY
+          git diff --check
+          git status --short
+          git config user.name 'tarematsu'
+          git config user.email 'yuukiar0202@gmail.com'
+          git add worker/src/amazon-music-web-client.js worker/src/amazon-music-collector.js worker/tests/amazon-music-collector.test.js site/public/amazon-music.js site/public/amazon-music-shell.js site/tests/amazon-music-tab.test.js
+          git commit -m 'Use true Amazon overall music ranks'
+          git push origin HEAD:fix/amazon-overall-rank
