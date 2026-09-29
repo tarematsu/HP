@@ -107,9 +107,9 @@ test('inactive route runtimes are not prefetched from the current tab', () => {
 test('history mode-specific runtimes are lazy-loaded only after history starts', () => {
   assert.match(historyEntry, /function ensureHistoryModeRuntime/);
   assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
-  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260923\.8/);
+  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.1/);
   assert.doesNotMatch(historyEntry, /history-ranking-missing-gap/);
-  assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260924\.1/);
+  assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
   assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
   assert.match(tabsClient, /if \(mode === 'ranking'\)[\s\S]*await loadRankingStatusRuntime\(\);[\s\S]*if \(activeMode !== mode\) return;/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
