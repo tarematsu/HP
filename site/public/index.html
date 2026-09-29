@@ -175,10 +175,11 @@
     <section id="likesView" class="dashboard-view likes-view" hidden>
       <p id="likesNotice" class="notice" role="status" hidden></p>
 
-      <section class="summary-cards likes-summary" aria-label="いいね集計概要">
-        <article><span>対象楽曲数</span><strong id="likesTrackCount">-</strong></article>
-        <article><span>最大いいね数</span><strong id="likesMaxLikes">-</strong></article>
+      <section class="summary-cards likes-summary" aria-label="いいね集計概要" style="grid-template-columns:repeat(4,minmax(0,1fr)) !important">
         <article><span>最終取得</span><strong id="likesLatestAt" class="summary-date">-</strong></article>
+        <article><span>対象楽曲数</span><strong id="likesTrackCount">-</strong></article>
+        <article><span>合計いいね数</span><strong id="likesTotalLikes">-</strong></article>
+        <article style="grid-column:auto !important"><span>合計いいね数 前日比</span><strong id="likesTotalDelta">-</strong></article>
       </section>
 
       <section class="card data-panel">

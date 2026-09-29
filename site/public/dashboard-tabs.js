@@ -189,7 +189,7 @@ async function loadAppleMusicRuntime() {
 
 async function loadLikesRuntime() {
   if (!likesRuntimePromise) {
-    likesRuntimePromise = import('/history/history-likes.js?v=20260925.1').catch((error) => {
+    likesRuntimePromise = import('/history/history-likes.js?v=20260930.1').catch((error) => {
       likesRuntimePromise = null;
       throw error;
     });

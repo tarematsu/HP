@@ -12,9 +12,11 @@ const unofficial = readFileSync(new URL('../public/unofficial-listening-parties.
 const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 
 test('current and likes views use explicit user-facing metric names in static markup', () => {
-  for (const label of ['累計再生数', '対象楽曲数', '最大いいね数', '最終取得', '楽曲別一覧', '最新いいね数', 'リスパ']) {
+  for (const label of ['累計再生数', '最終取得', '対象楽曲数', '合計いいね数', '合計いいね数 前日比', '楽曲別一覧', '最新いいね数', 'リスパ']) {
     assert.match(html, new RegExp(label));
   }
+  assert.doesNotMatch(html, /最大いいね数/);
+  assert.match(html, /likes-summary[^>]*grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(historyEntry, /pages-terminology/);
   assert.doesNotMatch(metrics, /pages-terminology/);
 });
@@ -43,6 +45,9 @@ test('official and unofficial listening-party tables use event-specific column n
 test('likes runtime and CSV use the same likes terminology', () => {
   assert.match(likes, /最新いいね数/);
   assert.match(likes, /'最終取得'/);
+  assert.match(likes, /likesTotalLikes/);
+  assert.match(likes, /likesTotalDelta/);
+  assert.doesNotMatch(likes, /likesMaxLikes/);
   assert.doesNotMatch(likes, /metric\('最新いいね'/);
 });
 

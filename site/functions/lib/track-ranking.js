@@ -41,6 +41,7 @@ LIMIT ?`;
 export const TRACK_RANKING_SUMMARY_SQL = `SELECT
   COUNT(*) AS track_count,
   COALESCE(MAX(latest_like_count),0) AS max_like_count,
+  COALESCE(SUM(latest_like_count),0) AS total_like_count,
   MAX(latest_observed_at) AS latest_observed_at
 FROM sh_track_ranking_current
 WHERE latest_like_count>0`;
@@ -176,6 +177,7 @@ export async function loadTrackRanking(db, { limit = 500, persist = true } = {})
     summary: {
       track_count: Number(summary?.track_count || 0),
       max_like_count: Number(summary?.max_like_count || 0),
+      total_like_count: Number(summary?.total_like_count || 0),
       latest_observed_at: Number(summary?.latest_observed_at || 0) || null,
     },
   };

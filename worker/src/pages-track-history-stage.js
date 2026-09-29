@@ -15,7 +15,8 @@ const TRACK_RANKING_LIMIT = 500;
 const BACKFILL_KEY = 'track-history-backfill';
 const STATUS_KEY = 'track-history-status';
 const TRACK_HISTORY_EPOCH = Date.UTC(2024, 4, 1);
-const TRACK_HISTORY_QUEUE_LOOKBACK_MS = 2 * 86_400_000;
+const DAY_MS = 86_400_000;
+const TRACK_HISTORY_QUEUE_LOOKBACK_MS = 2 * DAY_MS;
 const UNBOUNDED_QUEUE_STARTS_SQL = `WITH RECURSIVE queue_starts AS (
       SELECT DISTINCT station_id,start_time
       FROM sh_queue_items
@@ -62,6 +63,62 @@ function validTimestamp(value) {
 
 function dayText(timestamp) {
   return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function nonNegativeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function rankingLikeTotal(ranking) {
+  const summaryTotal = nonNegativeNumber(ranking?.summary?.total_like_count);
+  if (summaryTotal != null) return summaryTotal;
+  return (ranking?.rows || []).reduce((sum, row) => {
+    const value = nonNegativeNumber(row?.latest_like_count);
+    return sum + (value ?? 0);
+  }, 0);
+}
+
+function statusLikeTotal(status) {
+  const summaryTotal = nonNegativeNumber(status?.ranking_summary?.total_like_count);
+  if (summaryTotal != null) return summaryTotal;
+  return (status?.ranking || []).reduce((sum, row) => {
+    const value = nonNegativeNumber(row?.latest_like_count);
+    return sum + (value ?? 0);
+  }, 0);
+}
+
+export function buildLikeRankingSummary(ranking, previousStatus, now) {
+  const currentDay = dayText(now);
+  const previousDay = dayText(now - DAY_MS);
+  const previousSummary = previousStatus?.ranking_summary || {};
+  const previousGeneratedAt = validTimestamp(previousStatus?.generated_at);
+  const previousTotalDay = String(
+    previousSummary.total_like_count_day
+      || (previousGeneratedAt == null ? '' : dayText(previousGeneratedAt)),
+  );
+
+  let previousDayTotal = null;
+  if (
+    previousSummary.total_like_count_day === currentDay
+    && previousSummary.previous_day_total_like_count_day === previousDay
+  ) {
+    previousDayTotal = nonNegativeNumber(previousSummary.previous_day_total_like_count);
+  } else if (previousTotalDay === previousDay) {
+    previousDayTotal = statusLikeTotal(previousStatus);
+  }
+
+  const totalLikeCount = rankingLikeTotal(ranking);
+  return {
+    ...(ranking?.summary || {}),
+    total_like_count: totalLikeCount,
+    total_like_count_day: currentDay,
+    previous_day_total_like_count: previousDayTotal,
+    previous_day_total_like_count_day: previousDayTotal == null ? null : previousDay,
+    total_like_count_previous_day_delta: previousDayTotal == null
+      ? null
+      : totalLikeCount - previousDayTotal,
+  };
 }
 
 function parsedPayload(row) {
@@ -263,7 +320,7 @@ export async function finalizeTrackHistoryStatus(env, stage, now, dependencies =
     source_truncated: false,
     excluded_play_count_dates: excludedDates,
     ranking: ranking.rows,
-    ranking_summary: ranking.summary,
+    ranking_summary: buildLikeRankingSummary(ranking, stage.previous_status, now),
     ranking_scope: 'all-time-latest-counter',
     grace_ms: TRACK_HISTORY_GRACE_MS,
     backfill_completed: !backfillRange || backfillRange.fromTs <= TRACK_HISTORY_EPOCH,
