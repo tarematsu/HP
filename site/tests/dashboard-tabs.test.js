@@ -19,12 +19,8 @@ test('dashboard starts on current and exposes every visible mode in the static t
   assert.match(page, /id="currentView" class="dashboard-view"/);
   assert.match(page, /id="historyView" class="dashboard-view history-view" hidden/);
   assert.match(page, /id="likesView" class="dashboard-view likes-view" hidden/);
-  for (const mode of ['daily', 'ranking', 'likes', 'broadcasts']) {
-    assert.match(page, new RegExp(`data-mode="${mode}"`));
-  }
-  for (const view of ['first-week', 'played-tracks', 'spotify']) {
-    assert.match(page, new RegExp(`data-view="${view}"`));
-  }
+  for (const mode of ['daily', 'ranking', 'likes', 'broadcasts']) assert.match(page, new RegExp(`data-mode="${mode}"`));
+  for (const view of ['first-week', 'played-tracks', 'spotify']) assert.match(page, new RegExp(`data-view="${view}"`));
   assert.doesNotMatch(page, /data-mode="weekly"|data-mode="monthly"/);
   assert.doesNotMatch(page, /data-mode="tracks"|id="trackControls"/);
 });
@@ -47,51 +43,34 @@ test('dashboard hides the legacy static shell until the selected route shell is 
 });
 
 test('archive and likes markup are integrated below the shared tab panel', () => {
-  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
-    assert.match(page, new RegExp(`id="${id}"`));
-  }
-  for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
-    assert.match(page, new RegExp(`id="${id}"`));
-  }
+  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) assert.match(page, new RegExp(`id="${id}"`));
+  for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) assert.match(page, new RegExp(`id="${id}"`));
   assert.doesNotMatch(page, /id="likesLoad"/);
   assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
-  assert.match(tabsClient, /showOnly\(historyView\)/);
-  assert.match(tabsClient, /showOnly\(likesView\)/);
+  assert.match(tabsClient, /setRoute\(mode, historyView/);
+  assert.match(tabsClient, /viewId: 'likesView'/);
   assert.match(historyEntry, /VALID_MODES/);
 });
 
-test('first-week comparison shell and runtime are both lazy routes', () => {
-  assert.doesNotMatch(dashboardEntry, /^import .*first-week-comparison-shell/m);
-  assert.match(tabsClient, /import\('\/first-week-comparison-shell\.js\?v=20260929\.1'\)/);
-  assert.match(tabsClient, /'first-week'/);
-  assert.match(tabsClient, /document\.getElementById\('firstWeekView'\)/);
-  assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260929\.1'\)/);
-  assert.match(tabsClient, /showFirstWeek/);
-});
-
-test('Spotify shell and runtime are owned by the central lazy router', () => {
-  assert.doesNotMatch(dashboardEntry, /^import .*spotify-shell/m);
-  assert.match(tabsClient, /import\('\/spotify-shell\.js\?v=20260929\.1'\)/);
-  assert.doesNotMatch(dashboardEntry, /spotify-tab-router/);
-  assert.match(tabsClient, /VIEW_MODES[\s\S]*'spotify'/);
-  assert.match(tabsClient, /document\.getElementById\('spotifyView'\)/);
-  assert.match(tabsClient, /import\('\/spotify\.js\?v=20260929\.1'\)/);
-  assert.match(tabsClient, /showSpotify/);
-  assert.match(tabsClient, /else if \(mode === 'spotify'\) void showSpotify/);
-  assert.match(tabsClient, /button\.dataset\.view === 'spotify'/);
-});
-
-test('Apple Music shell and runtime are owned by the central lazy router', () => {
-  assert.doesNotMatch(dashboardEntry, /^import .*apple-music-shell/m);
-  assert.match(tabsClient, /import\('\/apple-music-shell\.js\?v=20260930\.1'\)/);
-  assert.match(tabsClient, /VIEW_MODES[\s\S]*'apple-music'/);
-  assert.match(tabsClient, /appleMusicView/);
-  assert.match(tabsClient, /import\('\/apple-music\.js\?v=20260930\.1'\)/);
-  assert.match(tabsClient, /showAppleMusic/);
-  assert.match(tabsClient, /else if \(mode === 'apple-music'\) void showAppleMusic/);
-  assert.match(tabsClient, /button\.dataset\.view === 'apple-music'/);
+test('feature tabs share one lazy route registry and loader', () => {
+  assert.match(tabsClient, /const LAZY_VIEWS = Object\.freeze/);
+  assert.match(tabsClient, /const modulePromises = new Map\(\)/);
+  assert.match(tabsClient, /function loadOnce\(key, importer\)/);
+  assert.match(tabsClient, /async function showLazyView\(mode, options = \{}\)/);
+  for (const [mode, shell, runtime] of [
+    ['first-week', 'first-week-comparison-shell.js', 'first-week-comparison.js'],
+    ['played-tracks', 'played-tracks-shell.js', 'played-tracks.js'],
+    ['spotify', 'spotify-shell.js', 'spotify.js'],
+    ['amazon-music', 'amazon-music-shell.js', 'amazon-music.js'],
+    ['apple-music', 'apple-music-shell.js', 'apple-music.js'],
+  ]) {
+    assert.match(tabsClient, new RegExp(`'${mode}'|${mode}:`));
+    assert.match(tabsClient, new RegExp(shell.replaceAll('.', '\\.')));
+    assert.match(tabsClient, new RegExp(runtime.replaceAll('.', '\\.')));
+  }
+  assert.doesNotMatch(tabsClient, /function ensureSpotifyShell|function showSpotify|function showAppleMusic|function showPlayedTracks/);
 });
 
 test('obsolete unofficial view is not a central dashboard route', () => {
@@ -111,28 +90,26 @@ test('history mode-specific runtimes are lazy-loaded only after history starts',
   assert.doesNotMatch(historyEntry, /history-ranking-missing-gap/);
   assert.match(historyEntry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
   assert.match(tabsClient, /history-ranking-table-status\.js\?v=20260923\.2/);
-  assert.match(tabsClient, /if \(mode === 'ranking'\)[\s\S]*await loadRankingStatusRuntime\(\);[\s\S]*if \(activeMode !== mode\) return;/);
+  assert.match(tabsClient, /mode === 'ranking'[\s\S]*loadOnce\('ranking-status'/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
   assert.doesNotMatch(tabsClient, /history-period-chart|history-ranking-chart|history-broadcasts/);
 });
 
-test('late async history runtimes cannot reactivate a tab the user already left', () => {
-  assert.match(tabsClient, /await loadHistoryRuntime\(\);\s*if \(activeMode !== mode\) return;/);
-  assert.match(tabsClient, /if \(mode === 'ranking'\) \{[\s\S]*await loadRankingStatusRuntime\(\);[\s\S]*if \(activeMode !== mode\) return;/);
+test('late async runtimes cannot reactivate a tab the user already left', () => {
+  assert.match(tabsClient, /await ensureLazyShell\(mode\);\s*if \(activeMode !== mode\) return;/);
+  assert.match(tabsClient, /const runtime = await loadOnce\(`\$\{mode\}:runtime`/);
+  assert.match(tabsClient, /if \(activeMode !== mode\) return;\s*if \(config\.loadExport\)/);
+  assert.match(tabsClient, /await loadOnce\('history-runtime'[\s\S]*if \(activeMode !== mode\) return;/);
   assert.match(tabsClient, /catch \(error\) \{\s*if \(activeMode !== mode\) return;/);
-  assert.match(tabsClient, /showLikes[\s\S]*catch \(error\) \{\s*if \(activeMode !== 'likes'\) return;/);
-  assert.match(tabsClient, /showSpotify[\s\S]*if \(activeMode !== 'spotify'\) return;/);
-  assert.match(tabsClient, /showAppleMusic[\s\S]*if \(activeMode !== 'apple-music'\) return;/);
 });
 
-test('history and likes startup release unintended skip-link focus', () => {
+test('route startup always releases unintended skip-link focus', () => {
   assert.match(tabsClient, /const skipLink = document\.querySelector\('\.skip-link'\)/);
   assert.match(tabsClient, /function releaseUnexpectedSkipLinkFocus\(\)/);
   assert.match(tabsClient, /document\.activeElement === skipLink[\s\S]*skipLink\?\.blur\(\)/);
   assert.match(tabsClient, /classList\.remove\('keyboard-navigation'\)/);
+  assert.match(tabsClient, /showLazyView[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
   assert.match(tabsClient, /showHistory[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
-  assert.match(tabsClient, /showLikes[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
-  assert.match(tabsClient, /showSpotify[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
 });
 
 test('tab selection stays on the root document and never navigates to history pages', () => {
@@ -147,7 +124,7 @@ test('current and history chart details are owned by their respective renderers'
   assert.match(page, /id="currentChartDetail"[^>]*data-current-chart-detail/);
   assert.match(page, /id="chartDetail"[^>]*data-history-chart-detail/);
   assert.equal((page.match(/id="chartDetail"/g) || []).length, 1);
-  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260929\.1/);
+  assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260930\.1/);
   assert.match(currentChartDetail, /document\.getElementById\('currentChartDetail'\)/);
   assert.doesNotMatch(tabsClient, /savedHistoryDetail|historyChartDetail|currentChartDetail\.textContent/);
 });
