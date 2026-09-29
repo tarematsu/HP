@@ -6,17 +6,25 @@ function config() {
   return JSON.parse(readFileSync(new URL('../wrangler.amazon-music.jsonc', import.meta.url), 'utf8'));
 }
 
-test('Amazon Music collector keeps the daily 10:30 JST schedule', () => {
+test('music collector keeps Amazon daily and adds hourly Apple update-time probes', () => {
   const value = config();
   assert.equal(value.name, 'sh-amazon-music-collector');
   assert.equal(value.main, 'src/amazon-music-entry.js');
-  assert.deepEqual(value.triggers.crons, ['30 1 * * *']);
+  assert.deepEqual(value.triggers.crons, ['15 * * * *', '30 1 * * *']);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB']);
   assert.deepEqual(value.r2_buckets, [{
     binding: 'PAGES_RESPONSE_R2',
     bucket_name: 'sh-pages-responses',
   }]);
   assert.equal(value.queues, undefined);
+});
+
+test('scheduled entry separates the hourly Apple probe from daily Amazon collection', () => {
+  const source = readFileSync(new URL('../src/amazon-music-entry.js', import.meta.url), 'utf8');
+  assert.match(source, /APPLE_MUSIC_PROBE_CRON = '15 \* \* \* \*'/);
+  assert.match(source, /AMAZON_MUSIC_DAILY_CRON = '30 1 \* \* \*'/);
+  assert.match(source, /cron === APPLE_MUSIC_PROBE_CRON[\s\S]*collectAppleMusicSnapshot/);
+  assert.match(source, /cron === AMAZON_MUSIC_DAILY_CRON[\s\S]*collectAmazonMusicSnapshot/);
 });
 
 test('Amazon Music bundle participates in Worker checks and deployment', () => {
