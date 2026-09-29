@@ -3,6 +3,12 @@ const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_STATUS_MODEL_KEY = 'track-history-status';
 const FOLLOWERS_MODEL_KEY = 'followers';
+const FOLLOWER_HANDLES = Object.freeze([
+  'sakuramankai',
+  'sakuramankai2',
+  'sakurazaka46jp',
+  'nogizaka46smej',
+]);
 
 function normalizedModelKey(value) {
   const key = String(value || '').trim();
@@ -33,6 +39,32 @@ function freshEnough(updatedAt, now, maximumAgeMs) {
   const maximumAge = Number(maximumAgeMs);
   if (!Number.isFinite(updatedAt) || updatedAt < 0) return false;
   return !(Number.isFinite(maximumAge) && maximumAge >= 0 && now - updatedAt > maximumAge);
+}
+
+function emptyFollowersResponse(now) {
+  const updatedAt = Number(now) || Date.now();
+  return new Response(JSON.stringify({
+    ok: true,
+    updated_at: updatedAt,
+    latest_date: null,
+    handles: FOLLOWER_HANDLES,
+    rows: [],
+    accounts: FOLLOWER_HANDLES.map((handle) => ({
+      handle,
+      followers: null,
+      previous_day_delta: null,
+      previous_week_delta: null,
+    })),
+  }), {
+    status: 200,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'public, max-age=30, s-maxage=60',
+      'x-api-source': 'worker-r2-empty',
+      'x-materialized-at': String(updatedAt),
+      'x-materialized-cadence-seconds': '60',
+    },
+  });
 }
 
 export async function saveMaterializedR2Response(
@@ -174,8 +206,12 @@ export async function loadMaterializedR2Response(
     return (await loadActionsEnvelope(r2, modelKey, now, maximumAgeMs))
       || loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
   }
-  if (modelKey === TRACK_HISTORY_MODEL_KEY || modelKey === FOLLOWERS_MODEL_KEY) {
+  if (modelKey === TRACK_HISTORY_MODEL_KEY) {
     return loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
+  }
+  if (modelKey === FOLLOWERS_MODEL_KEY) {
+    return (await loadWorkerR2Response(r2, modelKey, now, maximumAgeMs))
+      || emptyFollowersResponse(now);
   }
   return loadActionsEnvelope(r2, modelKey, now, maximumAgeMs);
 }
