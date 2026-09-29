@@ -14,12 +14,13 @@ const history = readFileSync(new URL('../public/history/history-lite.js', import
 
 test('current metrics are statically ordered while current-only renderers load lazily without duplicates', () => {
   assert.match(metrics, /dashboard-current-layout\.js\?v=20260924\.1/);
-  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260929\.1/);
-  assert.match(metrics, /dashboard-chart-detail\.js\?v=20260929\.1/);
-  assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260923\.4/);
+  assert.match(metrics, /dashboard-chart-comparison\.js\?v=20260930\.1/);
+  assert.match(metrics, /dashboard-chart-detail\.js\?v=20260930\.1/);
+  assert.match(metrics, /dashboard-fetch-cache\.js\?v=20260930\.1/);
   assert.doesNotMatch(metrics, /dashboard-current-enhancements\.js/);
-  assert.match(metrics, /dashboard-client\.js\?v=20260929\.2/);
+  assert.match(metrics, /dashboard-client\.js\?v=20260930\.1/);
   assert.match(metrics, /function ensureCurrentRuntime\(\)/);
+  assert.doesNotMatch(metrics, /replayCurrentPayload|runtime-replay/);
   assert.match(header, /dashboard-current-enhancements\.css\?v=20260924\.1/);
   assert.match(header, /pages-layout\.css\?v=20260928\.1/);
   assert.doesNotMatch(metrics, /window\.fetch|response\.clone\(\)\.json|restoreDashboardCache/);
@@ -44,14 +45,14 @@ test('current chart draws online axes, five-minute average stream bars and JST l
   assert.doesNotMatch(chart, /stream_minute_history|コメント\/2分|comment_velocity|commentVelocity|rgba\(22,139,115/);
   assert.match(chart, /時刻 \(JST\)/);
   assert.match(chart, /timeZone: 'Asia\/Tokyo'/);
-  assert.match(chart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\.5\)/);
+  assert.match(chart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
   assert.match(chart, /const EXTREMA_POINT_COLOR = '#888'/);
   assert.match(chart, /if \(minRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
   assert.match(chart, /if \(maxRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
-  assert.match(chart, /`最小 \$\{integer\.format\(currentMin\)\}（\$\{jstExtremaTime\.format/);
-  assert.match(chart, /`最大 \$\{integer\.format\(currentMax\)\}（\$\{jstExtremaTime\.format/);
+  assert.match(chart, /`最小 \$\{integer\.format\(currentMin\)\}（\$\{jstTime\.format/);
+  assert.match(chart, /`最大 \$\{integer\.format\(currentMax\)\}（\$\{jstTime\.format/);
   assert.doesNotMatch(chart, /strokeRect\(/);
-  assert.match(html, /stream-growth-key">5分平均の再生増加</);
+  assert.match(html, /stream-growth-key">5分平均の再生増加/);
 });
 
 test('stream goal is static inside the metric and ETA is display-only JST', () => {
