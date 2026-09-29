@@ -38,6 +38,14 @@ if (!document.querySelector(`link[href="${pagesLayoutHref}"]`)) {
   document.head.append(pagesLayout);
 }
 
+const pagesTabsLayoutHref = '/pages-tabs-layout.css?v=20260930.1';
+if (!document.querySelector(`link[href="${pagesTabsLayoutHref}"]`)) {
+  const pagesTabsLayout = document.createElement('link');
+  pagesTabsLayout.rel = 'stylesheet';
+  pagesTabsLayout.href = pagesTabsLayoutHref;
+  document.head.append(pagesTabsLayout);
+}
+
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
 const skipLink = document.querySelector('.skip-link');
 const clearKeyboardNavigation = () => {
