@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 const dashboardHtml = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
 
 test('integrated archive views remain valid UTF-8 HTML instead of byte-pair mojibake', () => {
-  assert.match(dashboardHtml, /^<!doctype html>\s*<html lang="ja">/i);
+  assert.match(dashboardHtml, /^<!doctype html>\s*<html\b[^>]*\blang="ja"[^>]*>/i);
   assert.match(dashboardHtml, /<meta charset="utf-8">/i);
   assert.match(dashboardHtml, /id="historyView"/);
   assert.match(dashboardHtml, /id="likesView"/);
