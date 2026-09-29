@@ -2,7 +2,6 @@ const QUEUE_OPERATION_BY_BINDING = Object.freeze({
   RAW_COLLECTION_QUEUE: 'raw-collection',
   PERSIST_QUEUE: 'buddies-persist',
   INGEST_FINALIZE_QUEUE: 'ingest-finalize',
-  COMMENTS_QUEUE: 'comments',
   HOST_MONITOR_QUEUE: 'host-monitor',
   MINUTE_FACT_QUEUE: 'minute-fact',
   MINUTE_DERIVE_QUEUE: 'minute-derive',
