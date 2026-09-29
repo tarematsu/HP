@@ -113,9 +113,9 @@ function client({ top50Hit = false } = {}) {
     async fetchArtist() { return artistDocument(); },
     async fetchArtistTracks() {
       return [
+        { amazon_music_id: 'A3', title: 'Song C', artist: '櫻坂46' },
         { amazon_music_id: 'A1', title: 'Song A', artist: '櫻坂46' },
         { amazon_music_id: 'A2', title: 'Song B', artist: '櫻坂46' },
-        { amazon_music_id: 'A3', title: 'Song C', artist: '櫻坂46' },
       ];
     },
     async fetchPlaylist() {
@@ -159,7 +159,7 @@ test('JST date and weekly key use Tuesday as the Amazon Japan chart boundary', (
   assert.equal(amazonMusicWeekKey(TUESDAY_1030_JST + 7 * 86400_000), '2026-10-06');
 });
 
-test('daily collection publishes the Amazon Music read model with both rank dimensions', async () => {
+test('daily collection preserves all-track order and publishes both rank dimensions', async () => {
   const bindings = env();
   const result = await collectAmazonMusicSnapshot(bindings, TUESDAY_1030_JST, client());
 
@@ -177,10 +177,11 @@ test('daily collection publishes the Amazon Music read model with both rank dime
   const readModel = JSON.parse(bindings.PAGES_RESPONSE_R2.values.get('amazon-music/read-model/latest.json'));
   assert.equal(readModel.follower.count, 53124);
   assert.equal(readModel.follower.delta, null);
-  assert.equal(readModel.tracks[0].track_id, 101);
-  assert.equal(readModel.tracks[0].amazon_rank, 1);
-  assert.equal(readModel.tracks[0].popular_rank, 1);
-  assert.equal(readModel.tracks[2].popular_rank, null);
+  assert.deepEqual(readModel.tracks.map((track) => track.track_id), [103, 101, 102]);
+  assert.deepEqual(readModel.tracks.map((track) => track.amazon_rank), [1, 2, 3]);
+  assert.equal(readModel.tracks[0].popular_rank, null);
+  assert.equal(readModel.tracks[1].popular_rank, 1);
+  assert.equal(readModel.tracks[2].popular_rank, 2);
   assert.equal(readModel.history.length, 1);
 
   const publicKey = pagesActionsR2ResponseKey('amazon-music');
