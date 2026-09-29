@@ -13,6 +13,7 @@ const ACTIVE_MINUTE_TASKS = ['derive', 'recovery', 'rebuild'];
 const CANONICAL_PATHS = [
   '/api/health',
   '/api/sakurazaka46jp-status',
+  '/api/nogizaka46smej-status',
   '/api/dashboard',
   '/api/dashboard-details',
   '/api/history',
@@ -148,7 +149,7 @@ async function withFixedNow(action) {
 test('Pages API catalog exposes exactly the canonical routes without Worker URLs', async () => {
   const catalog = apiCatalog(NOW);
   assert.equal(catalog.gateway, 'cloudflare-pages');
-  assert.equal(catalog.contract_version, 10);
+  assert.equal(catalog.contract_version, 11);
   assert.equal(catalog.worker_urls_public, false);
   const paths = Object.values(catalog.groups).flat().map(({ path }) => path);
   assert.deepEqual(paths, CANONICAL_PATHS);
@@ -254,6 +255,7 @@ test('minute backlog policy ignores retired sync state and prevents hypersensiti
 test('only the unified public health Function route exists', () => {
   const configs = [
     '../../worker/wrangler.sakurazaka46jp.jsonc',
+    '../../worker/wrangler.nogizaka46smej.jsonc',
     '../../worker/wrangler.runtime.jsonc',
   ].map((path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8')));
 
