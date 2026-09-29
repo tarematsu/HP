@@ -1,4 +1,4 @@
-name: Temporary Amazon read model verification
+name: Temporary Amazon chart metadata probe
 
 on:
   push:
@@ -12,17 +12,44 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Verify normal and cache-busted Amazon read model
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Probe known charting track metadata
+        working-directory: worker
         shell: bash
         run: |
           set -euo pipefail
-          echo '--- normal ---'
-          curl --silent --show-error -D normal-headers.txt -o normal.json 'https://skrzk.pages.dev/api/amazon-music'
-          cat normal-headers.txt
-          jq '{ok,source,snapshot_date,follower,track_count,tracks_length:(.tracks|length)}' normal.json
-          echo '--- cache-busted ---'
-          ts="$(date +%s)"
-          curl --silent --show-error -D bust-headers.txt -o bust.json -H 'Cache-Control: no-cache' "https://skrzk.pages.dev/api/amazon-music?ts=$ts"
-          cat bust-headers.txt
-          jq '{ok,source,snapshot_date,follower,track_count,tracks_length:(.tracks|length)}' bust.json
-          jq -e '.ok == true and .snapshot_date == "2026-09-30" and .follower.count == 53000 and .track_count == 174 and (.tracks|length) == 174' bust.json >/dev/null
+          node --input-type=module <<'NODE'
+          import { createAmazonMusicWebClient } from './src/amazon-music-web-client.js';
+
+          const client = createAmazonMusicWebClient();
+          const doc = await client.fetchTrack('B0H5BRNDF5'); // Number_i - 3XL
+          const hits = [];
+          const seen = new Set();
+          const interesting = /chart|rank|trend|popular|category|genre|総合|人気|急上昇|ポップ|ランキング|位/i;
+          function walk(value, path = '$', depth = 0) {
+            if (depth > 24 || value == null) return;
+            if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+              const text = String(value);
+              if (interesting.test(path) || interesting.test(text)) {
+                const line = `${path} = ${text.slice(0, 500)}`;
+                if (!seen.has(line)) { seen.add(line); hits.push(line); }
+              }
+              return;
+            }
+            if (Array.isArray(value)) {
+              value.forEach((v, i) => walk(v, `${path}[${i}]`, depth + 1));
+              return;
+            }
+            if (typeof value === 'object') {
+              for (const [k, v] of Object.entries(value)) walk(v, `${path}.${k}`, depth + 1);
+            }
+          }
+          walk(doc);
+          console.log(`MATCHES=${hits.length}`);
+          for (const line of hits.slice(0, 400)) console.log(line);
+          NODE
