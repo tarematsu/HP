@@ -12,6 +12,10 @@ function integer(value) {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
+function trackKey(track) {
+  return String(track?.song_key || track?.track_id || '');
+}
+
 function formatDate(value) {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return String(value || '-');
@@ -59,7 +63,8 @@ function previousHistoryPoint(payload) {
 function previousRankMap(payload, code) {
   const point = previousHistoryPoint(payload);
   return new Map((Array.isArray(point?.regions?.[code]) ? point.regions[code] : [])
-    .map((track) => [String(track?.track_id || ''), integer(track?.rank)]));
+    .map((track) => [trackKey(track), integer(track?.rank)])
+    .filter(([key]) => key));
 }
 
 function rankChangeLabel(currentRank, previousRank) {
@@ -109,7 +114,7 @@ function renderCurrentTable(payload) {
     const title = document.createElement('td');
     const change = document.createElement('td');
     const currentRank = integer(track?.rank);
-    const previousRank = previous.get(String(track?.track_id || '')) ?? null;
+    const previousRank = previous.get(trackKey(track)) ?? null;
     rank.textContent = currentRank == null ? '-' : `${currentRank}位`;
     title.textContent = String(track?.title || '曲名不明');
     change.textContent = currentRank == null ? '-' : rankChangeLabel(currentRank, previousRank);
@@ -126,13 +131,13 @@ function renderCurrentTable(payload) {
 
 function historySeries(payload, region) {
   const currentTracks = (Array.isArray(region?.tracks) ? region.tracks : []).slice(0, 12);
-  const titleById = new Map(currentTracks.map((track) => [String(track.track_id), track.title || '曲名不明']));
+  const titleById = new Map(currentTracks.map((track) => [trackKey(track), track.title || '曲名不明']).filter(([key]) => key));
   const byId = new Map([...titleById.keys()].map((id) => [id, []]));
   for (const point of Array.isArray(payload?.history) ? payload.history : []) {
     const date = String(point?.snapshot_date || '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
     for (const track of Array.isArray(point?.regions?.[region.code]) ? point.regions[region.code] : []) {
-      const id = String(track?.track_id || '');
+      const id = trackKey(track);
       const rank = integer(track?.rank);
       if (!byId.has(id) || rank == null || rank < 1) continue;
       byId.get(id).push({ date, rank });
@@ -228,7 +233,7 @@ function renderRegionComparison(payload) {
   const ranksById = new Map();
   for (const region of allRegions) {
     for (const track of (Array.isArray(region?.tracks) ? region.tracks : []).slice(0, 12)) {
-      const id = String(track?.track_id || '');
+      const id = trackKey(track);
       if (!id) continue;
       titleById.set(id, track?.title || '曲名不明');
       if (!ranksById.has(id)) ranksById.set(id, new Map());
@@ -238,8 +243,10 @@ function renderRegionComparison(payload) {
   const ids = [...ranksById.keys()].sort((a, b) => {
     const aRanks = ranksById.get(a);
     const bRanks = ranksById.get(b);
-    const aJp = aRanks.get('jp') ?? Math.min(...[...aRanks.values()].filter((value) => value != null));
-    const bJp = bRanks.get('jp') ?? Math.min(...[...bRanks.values()].filter((value) => value != null));
+    const aFallback = Math.min(...[...aRanks.values()].filter((value) => value != null), Number.POSITIVE_INFINITY);
+    const bFallback = Math.min(...[...bRanks.values()].filter((value) => value != null), Number.POSITIVE_INFINITY);
+    const aJp = aRanks.get('jp') ?? aFallback;
+    const bJp = bRanks.get('jp') ?? bFallback;
     return aJp - bJp || String(titleById.get(a)).localeCompare(String(titleById.get(b)), 'ja');
   });
 
