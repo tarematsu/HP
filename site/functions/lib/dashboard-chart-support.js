@@ -16,7 +16,7 @@ export const STREAM_5M_HISTORY_SQL = `SELECT
 FROM sh_stream_5m_average_read_model AS d
 WHERE d.channel_id=?
   AND d.bucket_at>=? AND d.bucket_at<?
-  AND d.sample_count=5
+  AND d.sample_count>=1
 ORDER BY d.bucket_at ASC
 LIMIT 300`;
 
