@@ -20,7 +20,17 @@ export function safeInteger(value) {
 
 export function setText(id, value) {
   const node = byId(id);
-  if (node) node.textContent = String(value);
+  const text = String(value);
+  if (node && node.textContent !== text) node.textContent = text;
+}
+
+export function setNotice(id, message = '', error = false) {
+  const node = byId(id);
+  if (!node) return;
+  const text = String(message || '');
+  if (node.textContent !== text) node.textContent = text;
+  node.hidden = !text;
+  node.classList.toggle('error', Boolean(error));
 }
 
 export function cssColor(name, fallback) {
@@ -32,6 +42,21 @@ export function svgElement(name, attributes = {}, text = null) {
   for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
   if (text != null) node.textContent = String(text);
   return node;
+}
+
+export function isoDateParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
+export function shortDate(value, fallback = '-') {
+  const parts = isoDateParts(value);
+  return parts ? `${parts[1]}/${parts[2]}` : String(fallback);
+}
+
+export function fullDate(value, fallback = '-') {
+  const parts = isoDateParts(value);
+  return parts ? `${parts[0]}/${parts[1]}/${parts[2]}` : String(fallback);
 }
 
 export function ensureStylesheet(href, key) {

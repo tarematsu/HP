@@ -6,6 +6,7 @@ const entry = readFileSync(new URL('../public/history/history-main.js', import.m
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const rankingChart = readFileSync(new URL('../public/history/history-ranking-chart.js', import.meta.url), 'utf8');
 const rankingAllHosts = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
+const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const materialized = readFileSync(new URL('../functions/lib/materialized-history.js', import.meta.url), 'utf8');
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
@@ -44,15 +45,12 @@ test('all-host table exposes channel, artist, and relation type after host name 
   assert.match(rankingAllHosts, /setSelectedHost\(defaultHost\)/);
 });
 
-test('all-host table excludes the three featured hosts and fits nine columns on mobile', () => {
+test('all-host table excludes the three featured hosts and uses shared mobile table presentation', () => {
   assert.match(rankingAllHosts, /EXCLUDED_ALL_HOSTS = new Set\(\['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'\]\)/);
   assert.match(rankingAllHosts, /\.filter\(\(row\) => !EXCLUDED_ALL_HOSTS\.has\(hostKey\(row\?\.host_name\)\)\)/);
-  for (const [column, width] of [[1, 5], [2, 17], [3, 14], [4, 18], [5, 10], [6, 10], [7, 9], [8, 9], [9, 8]]) {
-    assert.match(rankingAllHosts, new RegExp(`th:nth-child\\(${column}\\),[\\s\\S]*td:nth-child\\(${column}\\) \\{ width: ${width}% !important; \\}`));
-  }
-  assert.match(rankingAllHosts, /font-size: 8px !important/);
-  assert.match(rankingAllHosts, /padding-left: 2px !important/);
-  assert.match(rankingAllHosts, /text-overflow: clip !important/);
+  assert.doesNotMatch(rankingAllHosts, /createElement\('style'\)|nth-child\(1\).*width: 5%|font-size: 8px/);
+  assert.match(sharedCss, /#historyView table\.all-host-ranking-table \.ranking-host-button/);
+  assert.match(sharedCss, /var\(--dashboard-copy-size\)/);
 });
 
 test('ranking chart fills missing weeks and paints the missing band in the same draw pass', () => {

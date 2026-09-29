@@ -1,3 +1,5 @@
+import { decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer } from '../dashboard-ui-common.js?v=20260930.1';
+
 (() => {
   const MODE = 'broadcasts';
   const VISIBLE_HEADERS = [
@@ -5,24 +7,15 @@
     '楽曲数', '推定再生数', 'コメント数', '放送内容', 'イベント名', '出典',
   ];
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
-  const integer = new Intl.NumberFormat('ja-JP');
-  const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const jstDate = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   });
   const jstTime = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   });
-  const STYLE_ID = 'official-party-table-layout';
 
   function active() {
     return document.querySelector('#modeTabs button.active[data-mode]')?.dataset?.mode === MODE;
-  }
-
-  function finite(value) {
-    if (value === null || value === undefined || value === '') return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
   }
 
   function numberText(value, formatter = decimal) {
@@ -75,23 +68,6 @@
     const end = finite(row?.ended_at);
     if (start == null || end == null || end < start) return null;
     return (end - start) / 60_000;
-  }
-
-  function installStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const style = document.createElement('style');
-    style.id = STYLE_ID;
-    style.textContent = `
-      #historyView .table-wrap table.official-party-table th:nth-child(10),
-      #historyView .table-wrap table.official-party-table td:nth-child(10),
-      #historyView .table-wrap table.official-party-table th:nth-child(11),
-      #historyView .table-wrap table.official-party-table td:nth-child(11),
-      #historyView .table-wrap table.official-party-table th:nth-child(12),
-      #historyView .table-wrap table.official-party-table td:nth-child(12) {
-        text-align: left !important;
-      }
-    `;
-    document.head.appendChild(style);
   }
 
   function createHeader(label) {
@@ -179,8 +155,6 @@
     head.replaceChildren(headRow);
     body.replaceChildren(fragment);
   }
-
-  installStyle();
 
   window.addEventListener('history:data-loaded', (event) => {
     const detail = event?.detail || {};

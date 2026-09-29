@@ -1,25 +1,65 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'spotify', 'amazon-music', 'apple-music', 'likes']);
-const VIEW_IDS = ['currentView', 'historyView', 'firstWeekView', 'playedTracksView', 'spotifyView', 'amazonMusicView', 'appleMusicView', 'likesView'];
+const LAZY_VIEWS = Object.freeze({
+  'first-week': {
+    viewId: 'firstWeekView',
+    shell: () => import('/first-week-comparison-shell.js?v=20260929.1'),
+    runtime: () => import('/first-week-comparison.js?v=20260929.1'),
+    loadExport: 'loadFirstWeekComparisonView',
+    noticeId: 'firstWeekNotice',
+    errorLabel: 'first-week',
+    errorMessage: '初週比較データの初期化に失敗しました。再読み込みしてください。',
+  },
+  'played-tracks': {
+    viewId: 'playedTracksView',
+    shell: () => import('/played-tracks-shell.js?v=20260928.1'),
+    runtime: () => import('/played-tracks.js?v=20260927.2'),
+    noticeId: 'playedTracksNotice',
+    errorLabel: 'played tracks',
+    errorMessage: '再生履歴データの初期化に失敗しました。再読み込みしてください。',
+  },
+  spotify: {
+    viewId: 'spotifyView',
+    shell: () => import('/spotify-shell.js?v=20260929.1'),
+    runtime: () => import('/spotify.js?v=20260929.1'),
+    loadExport: 'loadSpotifyView',
+    noticeId: 'spotifyNotice',
+    errorLabel: 'spotify',
+    errorMessage: 'Spotify再生数の初期化に失敗しました。再読み込みしてください。',
+  },
+  'amazon-music': {
+    viewId: 'amazonMusicView',
+    shell: () => import('/amazon-music-shell.js?v=20260929.1'),
+    runtime: () => import('/amazon-music.js?v=20260929.1'),
+    loadExport: 'loadAmazonMusicView',
+    noticeId: 'amazonMusicNotice',
+    errorLabel: 'amazon music',
+    errorMessage: 'Amazon Musicデータの初期化に失敗しました。再読み込みしてください。',
+  },
+  'apple-music': {
+    viewId: 'appleMusicView',
+    shell: () => import('/apple-music-shell.js?v=20260930.1'),
+    runtime: () => import('/apple-music.js?v=20260930.1'),
+    loadExport: 'loadAppleMusicView',
+    noticeId: 'appleMusicNotice',
+    errorLabel: 'apple music',
+    errorMessage: 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。',
+  },
+  likes: {
+    viewId: 'likesView',
+    runtime: () => import('/history/history-likes.js?v=20260930.1'),
+    noticeId: 'likesNotice',
+    errorLabel: 'likes',
+    errorMessage: 'いいねデータの初期化に失敗しました。再読み込みしてください。',
+  },
+});
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, ...Object.keys(LAZY_VIEWS)]);
+const VIEW_IDS = ['currentView', 'historyView', ...Object.values(LAZY_VIEWS).map(({ viewId }) => viewId)];
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
-const likesView = document.getElementById('likesView');
 const tabs = document.getElementById('modeTabs');
 const skipLink = document.querySelector('.skip-link');
-let historyRuntimePromise = null;
-let rankingStatusRuntimePromise = null;
-let firstWeekShellPromise = null;
-let firstWeekRuntimePromise = null;
-let playedTracksShellPromise = null;
-let playedTracksRuntimePromise = null;
-let spotifyShellPromise = null;
-let spotifyRuntimePromise = null;
-let amazonMusicShellPromise = null;
-let amazonMusicRuntimePromise = null;
-let appleMusicShellPromise = null;
-let appleMusicRuntimePromise = null;
-let likesRuntimePromise = null;
+const modulePromises = new Map();
 let historyRuntimeMode = null;
 let activeMode = 'current';
 let initialRouteReady = false;
@@ -58,143 +98,67 @@ function showOnly(view) {
   }
 }
 
-function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = 'current';
-  showOnly(currentView);
-  updateTabs('current');
-  if (updateUrl) updateLocation('current', { replace: replaceUrl });
+function loadOnce(key, importer) {
+  if (!modulePromises.has(key)) {
+    const promise = importer().catch((error) => {
+      modulePromises.delete(key);
+      throw error;
+    });
+    modulePromises.set(key, promise);
+  }
+  return modulePromises.get(key);
+}
+
+function setRoute(mode, view, { updateUrl = true, replaceUrl = false } = {}) {
+  activeMode = mode;
+  showOnly(view);
+  updateTabs(mode);
+  if (updateUrl) updateLocation(mode, { replace: replaceUrl });
+}
+
+function showCurrent(options = {}) {
+  setRoute('current', currentView, options);
   markRouteReady();
 }
 
-function ensureFirstWeekShell() {
-  if (!firstWeekShellPromise) {
-    firstWeekShellPromise = import('/first-week-comparison-shell.js?v=20260929.1').catch((error) => {
-      firstWeekShellPromise = null;
-      throw error;
-    });
-  }
-  return firstWeekShellPromise;
+function showRuntimeError(config, error) {
+  console.error(`${config.errorLabel} runtime failed to start`, error);
+  const notice = document.getElementById(config.noticeId);
+  if (!notice) return;
+  notice.textContent = config.errorMessage;
+  notice.classList.add('error');
+  notice.hidden = false;
 }
 
-function ensurePlayedTracksShell() {
-  if (!playedTracksShellPromise) {
-    playedTracksShellPromise = import('/played-tracks-shell.js?v=20260928.1').catch((error) => {
-      playedTracksShellPromise = null;
-      throw error;
-    });
-  }
-  return playedTracksShellPromise;
+async function ensureLazyShell(mode) {
+  const config = LAZY_VIEWS[mode];
+  if (!config?.shell) return;
+  await loadOnce(`${mode}:shell`, config.shell);
 }
 
-function ensureSpotifyShell() {
-  if (!spotifyShellPromise) {
-    spotifyShellPromise = import('/spotify-shell.js?v=20260929.1').catch((error) => {
-      spotifyShellPromise = null;
-      throw error;
-    });
-  }
-  return spotifyShellPromise;
-}
+async function showLazyView(mode, options = {}) {
+  const config = LAZY_VIEWS[mode];
+  if (!config) return;
+  setRoute(mode, config.shell ? null : document.getElementById(config.viewId), options);
+  if (!config.shell) markRouteReady();
 
-function ensureAmazonMusicShell() {
-  if (!amazonMusicShellPromise) {
-    amazonMusicShellPromise = import('/amazon-music-shell.js?v=20260929.1').catch((error) => {
-      amazonMusicShellPromise = null;
-      throw error;
-    });
+  try {
+    await ensureLazyShell(mode);
+    if (activeMode !== mode) return;
+    if (config.shell) {
+      showOnly(document.getElementById(config.viewId));
+      markRouteReady();
+    }
+    const runtime = await loadOnce(`${mode}:runtime`, config.runtime);
+    if (activeMode !== mode) return;
+    if (config.loadExport) await runtime[config.loadExport]?.();
+  } catch (error) {
+    if (activeMode !== mode) return;
+    markRouteReady();
+    showRuntimeError(config, error);
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
   }
-  return amazonMusicShellPromise;
-}
-
-function ensureAppleMusicShell() {
-  if (!appleMusicShellPromise) {
-    appleMusicShellPromise = import('/apple-music-shell.js?v=20260930.1').catch((error) => {
-      appleMusicShellPromise = null;
-      throw error;
-    });
-  }
-  return appleMusicShellPromise;
-}
-
-async function loadRankingStatusRuntime() {
-  if (!rankingStatusRuntimePromise) {
-    rankingStatusRuntimePromise = import('/history/history-ranking-table-status.js?v=20260923.2').catch((error) => {
-      rankingStatusRuntimePromise = null;
-      throw error;
-    });
-  }
-  return rankingStatusRuntimePromise;
-}
-
-async function loadHistoryRuntime() {
-  if (!historyRuntimePromise) {
-    historyRuntimePromise = import('/history/history-main.js?v=20260928.1').catch((error) => {
-      historyRuntimePromise = null;
-      historyRuntimeMode = null;
-      throw error;
-    });
-  }
-  return historyRuntimePromise;
-}
-
-async function loadFirstWeekRuntime() {
-  if (!firstWeekRuntimePromise) {
-    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260929.1').catch((error) => {
-      firstWeekRuntimePromise = null;
-      throw error;
-    });
-  }
-  return firstWeekRuntimePromise;
-}
-
-async function loadPlayedTracksRuntime() {
-  if (!playedTracksRuntimePromise) {
-    playedTracksRuntimePromise = import('/played-tracks.js?v=20260927.2').catch((error) => {
-      playedTracksRuntimePromise = null;
-      throw error;
-    });
-  }
-  return playedTracksRuntimePromise;
-}
-
-async function loadSpotifyRuntime() {
-  if (!spotifyRuntimePromise) {
-    spotifyRuntimePromise = import('/spotify.js?v=20260929.1').catch((error) => {
-      spotifyRuntimePromise = null;
-      throw error;
-    });
-  }
-  return spotifyRuntimePromise;
-}
-
-async function loadAmazonMusicRuntime() {
-  if (!amazonMusicRuntimePromise) {
-    amazonMusicRuntimePromise = import('/amazon-music.js?v=20260929.1').catch((error) => {
-      amazonMusicRuntimePromise = null;
-      throw error;
-    });
-  }
-  return amazonMusicRuntimePromise;
-}
-
-async function loadAppleMusicRuntime() {
-  if (!appleMusicRuntimePromise) {
-    appleMusicRuntimePromise = import('/apple-music.js?v=20260930.1').catch((error) => {
-      appleMusicRuntimePromise = null;
-      throw error;
-    });
-  }
-  return appleMusicRuntimePromise;
-}
-
-async function loadLikesRuntime() {
-  if (!likesRuntimePromise) {
-    likesRuntimePromise = import('/history/history-likes.js?v=20260930.1').catch((error) => {
-      likesRuntimePromise = null;
-      throw error;
-    });
-  }
-  return likesRuntimePromise;
 }
 
 async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRuntime = true } = {}) {
@@ -203,203 +167,29 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
     return;
   }
 
-  activeMode = mode;
-  showOnly(historyView);
-  updateTabs(mode);
-  if (updateUrl) updateLocation(mode, { replace: replaceUrl });
+  setRoute(mode, historyView, { updateUrl, replaceUrl });
   markRouteReady();
 
   try {
     if (mode === 'ranking') {
-      await loadRankingStatusRuntime();
+      await loadOnce('ranking-status', () => import('/history/history-ranking-table-status.js?v=20260923.2'));
       if (activeMode !== mode) return;
     }
-    await loadHistoryRuntime();
+    await loadOnce('history-runtime', () => import('/history/history-main.js?v=20260928.1'));
     if (activeMode !== mode) return;
     if (syncRuntime && historyRuntimeMode !== mode) {
-      tabs?.querySelector(`button[data-mode="${mode}"]`)
-        ?.dispatchEvent(new Event('click'));
+      tabs?.querySelector(`button[data-mode="${mode}"]`)?.dispatchEvent(new Event('click'));
     }
     if (activeMode !== mode) return;
     historyRuntimeMode = mode;
   } catch (error) {
     if (activeMode !== mode) return;
-    console.error('history runtime failed to start', error);
-    const notice = document.getElementById('notice');
-    if (notice) {
-      notice.textContent = '過去データの初期化に失敗しました。再読み込みしてください。';
-      notice.classList.add('error');
-    }
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-async function showFirstWeek({ updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = 'first-week';
-  showOnly(null);
-  updateTabs('first-week');
-  if (updateUrl) updateLocation('first-week', { replace: replaceUrl });
-
-  try {
-    await ensureFirstWeekShell();
-    if (activeMode !== 'first-week') return;
-    const view = document.getElementById('firstWeekView');
-    showOnly(view);
-    markRouteReady();
-    const runtime = await loadFirstWeekRuntime();
-    if (activeMode !== 'first-week') return;
-    await runtime.loadFirstWeekComparisonView?.();
-  } catch (error) {
-    if (activeMode !== 'first-week') return;
-    markRouteReady();
-    console.error('first-week runtime failed to start', error);
-    const notice = document.getElementById('firstWeekNotice');
-    if (notice) {
-      notice.textContent = '初週比較データの初期化に失敗しました。再読み込みしてください。';
-      notice.classList.add('error');
-      notice.hidden = false;
-    }
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-async function showPlayedTracks({ updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = 'played-tracks';
-  showOnly(null);
-  updateTabs('played-tracks');
-  if (updateUrl) updateLocation('played-tracks', { replace: replaceUrl });
-
-  try {
-    await ensurePlayedTracksShell();
-    if (activeMode !== 'played-tracks') return;
-    const view = document.getElementById('playedTracksView');
-    showOnly(view);
-    markRouteReady();
-    await loadPlayedTracksRuntime();
-  } catch (error) {
-    if (activeMode !== 'played-tracks') return;
-    markRouteReady();
-    console.error('played tracks runtime failed to start', error);
-    const notice = document.getElementById('playedTracksNotice');
-    if (notice) {
-      notice.textContent = '再生履歴データの初期化に失敗しました。再読み込みしてください。';
-      notice.classList.add('error');
-      notice.hidden = false;
-    }
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-async function showSpotify({ updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = 'spotify';
-  showOnly(null);
-  updateTabs('spotify');
-  if (updateUrl) updateLocation('spotify', { replace: replaceUrl });
-
-  try {
-    await ensureSpotifyShell();
-    if (activeMode !== 'spotify') return;
-    const view = document.getElementById('spotifyView');
-    showOnly(view);
-    markRouteReady();
-    const runtime = await loadSpotifyRuntime();
-    if (activeMode !== 'spotify') return;
-    await runtime.loadSpotifyView?.();
-  } catch (error) {
-    if (activeMode !== 'spotify') return;
-    markRouteReady();
-    console.error('spotify runtime failed to start', error);
-    const notice = document.getElementById('spotifyNotice');
-    if (notice) {
-      notice.textContent = 'Spotify再生数の初期化に失敗しました。再読み込みしてください。';
-      notice.classList.add('error');
-      notice.hidden = false;
-    }
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-async function showAmazonMusic({ updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = 'amazon-music';
-  showOnly(null);
-  updateTabs('amazon-music');
-  if (updateUrl) updateLocation('amazon-music', { replace: replaceUrl });
-
-  try {
-    await ensureAmazonMusicShell();
-    if (activeMode !== 'amazon-music') return;
-    const view = document.getElementById('amazonMusicView');
-    showOnly(view);
-    markRouteReady();
-    const runtime = await loadAmazonMusicRuntime();
-    if (activeMode !== 'amazon-music') return;
-    await runtime.loadAmazonMusicView?.();
-  } catch (error) {
-    if (activeMode !== 'amazon-music') return;
-    markRouteReady();
-    console.error('amazon music runtime failed to start', error);
-    const notice = document.getElementById('amazonMusicNotice');
-    if (notice) {
-      notice.textContent = 'Amazon Musicデータの初期化に失敗しました。再読み込みしてください。';
-      notice.classList.add('error');
-      notice.hidden = false;
-    }
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-async function showAppleMusic({ updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = 'apple-music';
-  showOnly(null);
-  updateTabs('apple-music');
-  if (updateUrl) updateLocation('apple-music', { replace: replaceUrl });
-
-  try {
-    await ensureAppleMusicShell();
-    if (activeMode !== 'apple-music') return;
-    const view = document.getElementById('appleMusicView');
-    showOnly(view);
-    markRouteReady();
-    const runtime = await loadAppleMusicRuntime();
-    if (activeMode !== 'apple-music') return;
-    await runtime.loadAppleMusicView?.();
-  } catch (error) {
-    if (activeMode !== 'apple-music') return;
-    markRouteReady();
-    console.error('apple music runtime failed to start', error);
-    const notice = document.getElementById('appleMusicNotice');
-    if (notice) {
-      notice.textContent = 'Apple Musicデータの初期化に失敗しました。再読み込みしてください。';
-      notice.classList.add('error');
-      notice.hidden = false;
-    }
-  } finally {
-    releaseUnexpectedSkipLinkFocus();
-  }
-}
-
-async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
-  activeMode = 'likes';
-  showOnly(likesView);
-  updateTabs('likes');
-  if (updateUrl) updateLocation('likes', { replace: replaceUrl });
-  markRouteReady();
-
-  try {
-    await loadLikesRuntime();
-  } catch (error) {
-    if (activeMode !== 'likes') return;
-    console.error('likes runtime failed to start', error);
-    const notice = document.getElementById('likesNotice');
-    if (notice) {
-      notice.textContent = 'いいねデータの初期化に失敗しました。再読み込みしてください。';
-      notice.classList.add('error');
-    }
+    historyRuntimeMode = null;
+    showRuntimeError({
+      noticeId: 'notice',
+      errorLabel: 'history',
+      errorMessage: '過去データの初期化に失敗しました。再読み込みしてください。',
+    }, error);
   } finally {
     releaseUnexpectedSkipLinkFocus();
   }
@@ -412,57 +202,26 @@ function modeFromLocation() {
 
 function showMode(mode, options = {}) {
   if (mode === 'current') showCurrent(options);
-  else if (mode === 'first-week') void showFirstWeek(options);
-  else if (mode === 'played-tracks') void showPlayedTracks(options);
-  else if (mode === 'spotify') void showSpotify(options);
-  else if (mode === 'amazon-music') void showAmazonMusic(options);
-  else if (mode === 'apple-music') void showAppleMusic(options);
-  else if (mode === 'likes') void showLikes(options);
-  else void showHistory(mode, options);
+  else if (HISTORY_MODES.has(mode)) void showHistory(mode, options);
+  else void showLazyView(mode, options);
 }
 
 function syncFromLocation() {
   const mode = modeFromLocation();
-  if (mode === activeMode) return;
-  showMode(mode, { updateUrl: false });
+  if (mode !== activeMode) showMode(mode, { updateUrl: false });
 }
 
 tabs?.addEventListener('click', (event) => {
   const button = event.target.closest('button');
   if (!button || !tabs.contains(button)) return;
+  const mode = button.dataset.view || button.dataset.mode;
+  if (!mode || !VIEW_MODES.has(mode)) return;
   event.preventDefault();
-
-  if (button.dataset.view === 'current') {
-    showCurrent();
-    return;
-  }
-  if (button.dataset.view === 'first-week') {
-    void showFirstWeek();
-    return;
-  }
-  if (button.dataset.view === 'played-tracks') {
-    void showPlayedTracks();
-    return;
-  }
-  if (button.dataset.view === 'spotify') {
-    void showSpotify();
-    return;
-  }
-  if (button.dataset.view === 'amazon-music') {
-    void showAmazonMusic();
-    return;
-  }
-  if (button.dataset.view === 'apple-music') {
-    void showAppleMusic();
-    return;
-  }
-  if (button.dataset.view === 'likes') {
-    void showLikes();
-    return;
-  }
-  if (button.dataset.mode) {
-    if (historyRuntimePromise) historyRuntimeMode = button.dataset.mode;
-    void showHistory(button.dataset.mode, { syncRuntime: false });
+  if (HISTORY_MODES.has(mode)) {
+    if (modulePromises.has('history-runtime')) historyRuntimeMode = mode;
+    void showHistory(mode, { syncRuntime: false });
+  } else {
+    showMode(mode);
   }
 }, { capture: true });
 
@@ -470,8 +229,8 @@ window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
 
 void Promise.all([
-  ensureAmazonMusicShell(),
-  ensureAppleMusicShell(),
+  ensureLazyShell('amazon-music'),
+  ensureLazyShell('apple-music'),
 ]).catch((error) => {
   console.error('music tab shell failed to start', error);
 });

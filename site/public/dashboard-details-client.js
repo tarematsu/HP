@@ -18,37 +18,41 @@ function channelIdFrom(payload) {
   return Number.isFinite(value) && value > 0 ? value : null;
 }
 
-function dispatchCombined(source) {
-  if (!basePayload?.ok || !details?.ok) return;
-  const channelId = channelIdFrom(basePayload);
-  if (channelId == null || channelId !== detailsChannelId) return;
-  window.dispatchEvent(new CustomEvent('dashboard:payload', {
-    detail: {
-      source,
-      payload: {
-        ...basePayload,
-        history: Array.isArray(details.history) ? details.history : basePayload.history,
-        previous_day_history: details.previous_day_history || [],
-        stream_5m_history: details.stream_5m_history || [],
-        daily_summaries: details.daily_summaries || null,
-      },
-    },
+function detailPayload() {
+  if (!details?.ok) return null;
+  return {
+    ok: true,
+    channel_id: detailsChannelId,
+    history: Array.isArray(details.history) ? details.history : [],
+    previous_day_history: details.previous_day_history || [],
+    stream_5m_history: details.stream_5m_history || [],
+    daily_summaries: details.daily_summaries || null,
+  };
+}
+
+function dispatchDetails(source) {
+  const payload = detailPayload();
+  if (!payload) return;
+  window.dispatchEvent(new CustomEvent('dashboard:details', {
+    detail: { source, payload },
   }));
 }
 
 function restoreDetails(channelId) {
-  if (details?.ok && detailsChannelId === channelId) return;
+  if (details?.ok && detailsChannelId === channelId) return false;
   try {
     const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
     const savedAt = Number(cached?.savedAt || 0);
     const payload = cached?.payload;
-    if (!payload?.ok || Number(payload.channel_id) !== channelId) return;
-    if (!savedAt || Date.now() - savedAt > CACHE_MAX_AGE_MS) return;
+    if (!payload?.ok || Number(payload.channel_id) !== channelId) return false;
+    if (!savedAt || Date.now() - savedAt > CACHE_MAX_AGE_MS) return false;
     details = payload;
     detailsAt = savedAt;
     detailsChannelId = channelId;
+    return true;
   } catch {
     try { localStorage.removeItem(CACHE_KEY); } catch {}
+    return false;
   }
 }
 
@@ -74,7 +78,7 @@ async function refreshDetails(channelId) {
     detailsAt = Date.now();
     detailsChannelId = channelId;
     saveDetails(payload);
-    dispatchCombined('details-network');
+    dispatchDetails('details-network');
   })().catch((error) => {
     console.warn('dashboard details unavailable', error);
   }).finally(() => {
@@ -93,14 +97,11 @@ function handleBasePayload(payload) {
     detailsAt = 0;
     detailsChannelId = channelId;
   }
-  restoreDetails(channelId);
-  if (details?.ok) dispatchCombined('details-cache');
+  if (restoreDetails(channelId)) dispatchDetails('details-cache');
   void refreshDetails(channelId);
 }
 
 window.addEventListener('dashboard:payload', (event) => {
-  const source = String(event?.detail?.source || '');
-  if (source.startsWith('details-')) return;
   handleBasePayload(event?.detail?.payload);
 });
 

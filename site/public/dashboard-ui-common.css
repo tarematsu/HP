@@ -50,7 +50,6 @@
   white-space: nowrap;
 }
 
-/* All SVG charts use the same axis/grid/point grammar. */
 :is(
   .shared-rank-grid,
   .amazon-rank-grid,
@@ -109,7 +108,6 @@
   vector-effect: non-scaling-stroke;
 }
 
-/* Cross-tab text and legend sizes stay identical unless content requires a larger title. */
 .dashboard-view :is(
   .subtle,
   .notice,
@@ -120,7 +118,9 @@
   .host,
   .delta,
   .spotify-trend-latest,
-  .followers-legend-copy span
+  .followers-legend-copy span,
+  .history-axis-titles,
+  .history-axis-title-x
 ) {
   color: var(--muted, #667287);
   font-size: var(--dashboard-copy-size) !important;
@@ -159,6 +159,58 @@
 .dashboard-view th {
   color: var(--muted, #667287);
   font-weight: 700;
+}
+
+.history-axis-titles {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 1em;
+  margin: 0 2px 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.history-axis-titles > :last-child {
+  margin-left: auto;
+  text-align: right;
+}
+
+.history-axis-title-x {
+  margin-top: 4px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+#chartPanel .chart-axis {
+  display: none !important;
+}
+
+#historyView .table-wrap table.official-party-table :is(th, td):nth-child(n + 10) {
+  text-align: left !important;
+}
+
+#historyView table.all-host-ranking-table .ranking-host-button {
+  appearance: none;
+  width: 100%;
+  max-width: 100%;
+  padding: 2px 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#historyView table.all-host-ranking-table tr.selected-ranking-host td {
+  background: rgba(31, 45, 68, .055);
 }
 
 @media (max-width: 760px) {

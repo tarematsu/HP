@@ -1,6 +1,8 @@
+import { byId, finiteNumber as finite, integerFormat as integer, setText } from './dashboard-ui-common.js?v=20260930.1';
+
 const DASHBOARD_URL = '/api/dashboard?history=0';
-const CACHE_KEY = 'sh.dashboard.v3';
-const integer = new Intl.NumberFormat('ja-JP');
+const REFRESH_INTERVAL_MS = 60_000;
+const MIN_REFRESH_GAP_MS = 45_000;
 
 const state = {
   payload: null,
@@ -8,20 +10,10 @@ const state = {
   playbackIndex: -1,
   refreshing: false,
   abortController: null,
+  lastRefreshStartedAt: 0,
 };
 
-const byId = (id) => document.getElementById(id);
-const finite = (value) => {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
 const number = (value) => finite(value) == null ? '—' : integer.format(Number(value));
-
-function setText(id, value) {
-  const node = byId(id);
-  if (node && node.textContent !== String(value)) node.textContent = String(value);
-}
 
 function reducedImage(source, size = 200) {
   const value = String(source || '').trim();
@@ -229,31 +221,13 @@ function renderNowPlaying(force = false) {
   renderQueue();
 }
 
-function saveCache() {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), payload: state.payload }));
-  } catch {}
-}
-
-function applyPayload(payload, save = true) {
+function applyPayload(payload) {
+  if (!payload?.ok) return;
   state.payload = payload;
   state.queue = Array.isArray(payload.queue) ? payload.queue : [];
   state.playbackIndex = -1;
-  window.__dashboardCurrentPayload = payload;
   renderCurrentMetrics(payload);
   renderNowPlaying(true);
-  if (save) saveCache();
-}
-
-function restoreCache() {
-  try {
-    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
-    if (cached?.payload?.ok && Date.now() - Number(cached.savedAt || 0) < 6 * 60 * 60_000) {
-      applyPayload(cached.payload, false);
-    }
-  } catch {
-    localStorage.removeItem(CACHE_KEY);
-  }
 }
 
 function showStatus(message) {
@@ -263,9 +237,15 @@ function showStatus(message) {
   node.hidden = false;
 }
 
-async function refreshDashboard() {
-  if (state.refreshing || document.hidden) return;
+async function refreshDashboard(force = false) {
+  const now = Date.now();
+  if (
+    state.refreshing
+    || document.hidden
+    || (!force && now - state.lastRefreshStartedAt < MIN_REFRESH_GAP_MS)
+  ) return;
   state.refreshing = true;
+  state.lastRefreshStartedAt = now;
   state.abortController?.abort();
   state.abortController = new AbortController();
   try {
@@ -286,11 +266,11 @@ async function refreshDashboard() {
   }
 }
 
-restoreCache();
+applyPayload(window.__dashboardCurrentPayload);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) state.abortController?.abort();
-  else refreshDashboard();
+  else void refreshDashboard();
 });
-refreshDashboard();
-setInterval(() => { if (!document.hidden) refreshDashboard(); }, 60_000);
+void refreshDashboard(true);
+setInterval(() => { if (!document.hidden) void refreshDashboard(); }, REFRESH_INTERVAL_MS);
 setInterval(() => { if (!document.hidden) renderNowPlaying(); }, 1_000);

@@ -1,3 +1,5 @@
+import { integerFormat as integer } from '../dashboard-ui-common.js?v=20260930.1';
+
 const MODE = 'ranking';
 const EXCLUDED_ALL_HOSTS = new Set(['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej']);
 const ALL_HOST_COLUMNS = [
@@ -12,7 +14,6 @@ const ALL_HOST_COLUMNS = [
   ['worst_rank', '最低順位'],
 ];
 const TEXT_COLUMNS = new Set(['stationhead_channel_name', 'artist_name', 'relation_label']);
-const integer = new Intl.NumberFormat('ja-JP');
 const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 
 let lastData = null;
@@ -77,84 +78,6 @@ function setSelectedHost(host) {
     button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     button.closest('tr')?.classList.toggle('selected-ranking-host', selected);
   }
-}
-
-function installStyle() {
-  if (document.getElementById('all-host-ranking-table-style')) return;
-  const style = document.createElement('style');
-  style.id = 'all-host-ranking-table-style';
-  style.textContent = `
-    #historyView table.all-host-ranking-table .ranking-host-button {
-      appearance: none;
-      border: 0;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      font-weight: 650;
-      padding: 2px 0;
-      text-align: left;
-      text-decoration: underline;
-      text-decoration-thickness: 1px;
-      text-underline-offset: 3px;
-      cursor: pointer;
-      width: 100%;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    #historyView table.all-host-ranking-table tr.selected-ranking-host td {
-      background: rgba(31, 45, 68, .055);
-    }
-    @media (max-width: 760px) {
-      #historyView .table-wrap table.all-host-ranking-table.compact-columns {
-        width: 100% !important;
-        min-width: 100% !important;
-        table-layout: fixed !important;
-        font-size: 9px !important;
-      }
-      #historyView table.all-host-ranking-table th:nth-child(1),
-      #historyView table.all-host-ranking-table td:nth-child(1) { width: 5% !important; }
-      #historyView table.all-host-ranking-table th:nth-child(2),
-      #historyView table.all-host-ranking-table td:nth-child(2) { width: 17% !important; }
-      #historyView table.all-host-ranking-table th:nth-child(3),
-      #historyView table.all-host-ranking-table td:nth-child(3) { width: 14% !important; }
-      #historyView table.all-host-ranking-table th:nth-child(4),
-      #historyView table.all-host-ranking-table td:nth-child(4) { width: 18% !important; }
-      #historyView table.all-host-ranking-table th:nth-child(5),
-      #historyView table.all-host-ranking-table td:nth-child(5) { width: 10% !important; }
-      #historyView table.all-host-ranking-table th:nth-child(6),
-      #historyView table.all-host-ranking-table td:nth-child(6) { width: 10% !important; }
-      #historyView table.all-host-ranking-table th:nth-child(7),
-      #historyView table.all-host-ranking-table td:nth-child(7) { width: 9% !important; }
-      #historyView table.all-host-ranking-table th:nth-child(8),
-      #historyView table.all-host-ranking-table td:nth-child(8) { width: 9% !important; }
-      #historyView table.all-host-ranking-table th:nth-child(9),
-      #historyView table.all-host-ranking-table td:nth-child(9) { width: 8% !important; }
-      #historyView table.all-host-ranking-table th,
-      #historyView table.all-host-ranking-table td {
-        padding-left: 2px !important;
-        padding-right: 2px !important;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      #historyView table.all-host-ranking-table th {
-        font-size: 8px !important;
-        line-height: 1.1 !important;
-        letter-spacing: -.04em !important;
-        text-overflow: clip !important;
-        white-space: nowrap !important;
-      }
-      #historyView table.all-host-ranking-table th:not(:nth-child(2)):not(:nth-child(3)):not(:nth-child(4)),
-      #historyView table.all-host-ranking-table td:not(:nth-child(2)):not(:nth-child(3)):not(:nth-child(4)) {
-        text-align: center !important;
-      }
-      #historyView table.all-host-ranking-table .ranking-host-button {
-        font-size: 9px !important;
-      }
-    }
-  `;
-  document.head.append(style);
 }
 
 function render(data) {
@@ -251,8 +174,6 @@ function exportCsv() {
   link.click();
   URL.revokeObjectURL(link.href);
 }
-
-installStyle();
 
 window.addEventListener('history:data-loaded', (event) => {
   const detail = event?.detail || {};

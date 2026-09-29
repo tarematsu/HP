@@ -25,9 +25,17 @@
 
   function dispatchPayload(payload, source) {
     if (!payload?.ok) return;
+    window.__dashboardCurrentPayload = payload;
     window.dispatchEvent(new CustomEvent('dashboard:payload', {
       detail: { payload, source },
     }));
+  }
+
+  function persistPayload(payload) {
+    if (!payload?.ok) return;
+    try {
+      localStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), payload }));
+    } catch {}
   }
 
   function announceMaterializedAt(response) {
@@ -163,8 +171,6 @@
         history: state.history,
         queue: state.queue,
       });
-      // Preserve the original save time so an old persisted response is not
-      // mistaken for a fresh hidden-tab network response.
       state.cachedAt = savedAt;
       dispatchPayload(state.lastPayload, 'cache');
     } catch {
@@ -244,6 +250,7 @@
     try {
       const payload = mergePayload(await response.clone().json());
       if (payload?.ok) {
+        persistPayload(payload);
         clearTransientStatus();
         dispatchPayload(payload, 'network');
       }

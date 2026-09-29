@@ -19,12 +19,15 @@ test('dashboard payload parsing is owned by the fetch cache instead of the entry
   assert.match(fetchCache, /dispatchPayload\(payload, 'network'\)/);
 });
 
-test('inactive tab runtimes are loaded on demand and never idle-prefetched', () => {
+test('inactive tab runtimes are loaded on demand through one shared loader and never idle-prefetched', () => {
+  assert.match(tabs, /const LAZY_VIEWS = Object\.freeze/);
+  assert.match(tabs, /const modulePromises = new Map\(\)/);
+  assert.match(tabs, /function loadOnce\(key, importer\)/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
   assert.match(tabs, /import\('\/history\/history-ranking-table-status\.js\?v=20260923\.2'\)/);
-  assert.match(tabs, /if \(mode === 'ranking'\) \{[\s\S]*await loadRankingStatusRuntime\(\)/);
-  assert.doesNotMatch(tabs, /modulepreload|requestIdleCallback|scheduleRuntimePrefetch/);
+  assert.match(tabs, /if \(mode === 'ranking'\) \{[\s\S]*await loadOnce\('ranking-status'/);
+  assert.doesNotMatch(tabs, /modulepreload|requestIdleCallback|scheduleRuntimePrefetch|loadRankingStatusRuntime|loadHistoryRuntime/);
   assert.match(historyMain, /function ensureHistoryModeRuntime/);
   assert.match(historyMain, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.match(historyMain, /history-ranking-chart\.js\?v=20260930\.2/);
@@ -59,5 +62,5 @@ test('ranking and axis updates do not keep duplicate legacy observers or canvas 
   assert.match(rankingChart, /context\.fillRect\(left, area\.top/);
   assert.match(axisLabels, /history:data-loaded/);
   assert.match(axisLabels, /hashchange/);
-  assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'|MutationObserver/);
+  assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'|MutationObserver|createElement\('style'\)/);
 });

@@ -66,6 +66,16 @@ function normalizeCanvasPresentation(source, file) {
   return next;
 }
 
+function stripFiniteHelper(source) {
+  return source
+    .replace(/const finite = \(value\) => \{\n  if \(value === null \|\| value === undefined \|\| value === ''\) return null;\n  const (?:number|parsed) = Number\(value\);\n  return Number\.isFinite\((?:number|parsed)\) \? (?:number|parsed) : null;\n};\n/, '')
+    .replace(/function finite\(value\) \{\n  if \(value === null \|\| value === undefined \|\| value === ''\) return null;\n  const parsed = Number\(value\);\n  return Number\.isFinite\(parsed\) \? parsed : null;\n}\n\n/, '');
+}
+
+function stripCssColorHelper(source) {
+  return source.replace(/function cssColor\(name, fallback\) \{\n(?:  if \(!name\) return fallback;\n)?  return getComputedStyle\(document\.documentElement\)\.getPropertyValue\(name\)\.trim\(\) \|\| fallback;\n}\n\n/, '');
+}
+
 function shareCommonUiHelpers(source, file) {
   let next = source;
   let imports = '';
@@ -92,15 +102,49 @@ function shareCommonUiHelpers(source, file) {
       .replace(/function createSvgNode\(name, attributes = \{}\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  return node;\n}\n/, '');
   } else if (file === 'hinata.js') {
     imports = "import { byId, cssColor, decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer, setText, svgElement } from './dashboard-ui-common.js?v=20260930.1';\n";
-    next = next
+    next = stripFiniteHelper(next)
       .replace("const SVG_NS = 'http://www.w3.org/2000/svg';\n", '')
       .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '')
       .replace("const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '')
       .replace(/const byId = \(id\) => document\.getElementById\(id\);\n/, '')
-      .replace(/const finite = \(value\) => \{\n  if \(value === null \|\| value === undefined \|\| value === ''\) return null;\n  const number = Number\(value\);\n  return Number\.isFinite\(number\) \? number : null;\n};\n/, '')
       .replace(/function setText\(id, value\) \{\n  const node = byId\(id\);\n  if \(node\) node\.textContent = String\(value\);\n}\n\n/, '')
-      .replace(/function cssColor\(name, fallback\) \{\n  return getComputedStyle\(document\.documentElement\)\.getPropertyValue\(name\)\.trim\(\) \|\| fallback;\n}\n\n/, '')
       .replace(/function svgElement\(name, attributes = \{}, text = null\) \{\n  const node = document\.createElementNS\(SVG_NS, name\);\n  for \(const \[key, value\] of Object\.entries\(attributes\)\) node\.setAttribute\(key, String\(value\)\);\n  if \(text != null\) node\.textContent = String\(text\);\n  return node;\n}\n\n/, '');
+    next = stripCssColorHelper(next);
+  } else if (file === 'played-tracks.js') {
+    imports = "import { byId, integerFormat as integer, setNotice as setSharedNotice } from './dashboard-ui-common.js?v=20260930.1';\n";
+    next = next
+      .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '')
+      .replace(/const byId = \(id\) => document\.getElementById\(id\);\n\n/, '')
+      .replace(/function setNotice\(message, error = false\) \{\n  const notice = byId\('playedTracksNotice'\);\n  if \(!notice\) return;\n  notice\.textContent = message;\n  notice\.classList\.toggle\('error', error\);\n  notice\.hidden = !message;\n}\n\n/, "const setNotice = (message, error = false) => setSharedNotice('playedTracksNotice', message, error);\n\n");
+  } else if (file === 'history-lite.js') {
+    imports = "import { byId as el, decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer, setText } from '../dashboard-ui-common.js?v=20260930.1';\n";
+    next = stripFiniteHelper(next)
+      .replace("  const integer = new Intl.NumberFormat('ja-JP');\n", '')
+      .replace("  const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '')
+      .replace(/  const el = \(id\) => document\.getElementById\(id\);\n/, '')
+      .replace(/  function setText\(id, value\) \{\n    const node = el\(id\);\n    if \(node\) node\.textContent = String\(value\);\n  }\n\n/, '');
+  } else if (file === 'history-period-chart.js' || file === 'history-ranking-chart.js') {
+    imports = "import { cssColor, finiteNumber as finite, integerFormat as integer } from '../dashboard-ui-common.js?v=20260930.1';\n";
+    next = stripCssColorHelper(stripFiniteHelper(next))
+      .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '');
+  } else if (file === 'history-broadcasts.js') {
+    imports = "import { cssColor, decimalOneFormat as number, finiteNumber as finite } from '../dashboard-ui-common.js?v=20260930.1';\n";
+    next = stripCssColorHelper(stripFiniteHelper(next))
+      .replace("  const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '');
+  } else if (file === 'history-likes.js') {
+    imports = "import { byId as el, decimalOneFormat as number, finiteNumber as finite, setNotice as setSharedNotice } from '../dashboard-ui-common.js?v=20260930.1';\n";
+    next = stripFiniteHelper(next)
+      .replace("  const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });\n", '')
+      .replace(/  const el = \(id\) => document\.getElementById\(id\);\n/, '')
+      .replace(/  function setNotice\(text, error = false\) \{\n    const node = el\('likesNotice'\);\n    node\.textContent = text;\n    node\.hidden = !text;\n    node\.classList\.toggle\('error', error\);\n  }\n\n/, "  const setNotice = (text, error = false) => setSharedNotice('likesNotice', text, error);\n\n");
+  } else if (file === 'first-week-comparison.js') {
+    imports = "import { integerFormat as number } from './dashboard-ui-common.js?v=20260930.1';\n";
+    next = next.replace("const number = new Intl.NumberFormat('ja-JP');\n", '');
+  } else if (file === 'dashboard-current-layout.js') {
+    imports = "import { byId, finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';\n";
+    next = stripFiniteHelper(next)
+      .replace("const integer = new Intl.NumberFormat('ja-JP');\n", '')
+      .replace(/const byId = \(id\) => document\.getElementById\(id\);\n/, '');
   }
 
   return imports ? `${imports}${next}` : next;
@@ -145,6 +189,36 @@ function optimizeBundledModule(source, path) {
   return next;
 }
 
+function optimizeAppLiteCss(source) {
+  return source
+    .replace(/\.shell \{ width: min\(1160px, 100%\); margin: 0 auto; padding: max\(14px, env\(safe-area-inset-top\)\) max\(14px, env\(safe-area-inset-right\)\) max\(30px, env\(safe-area-inset-bottom\)\) max\(14px, env\(safe-area-inset-left\)\); \}/, '.shell { margin: 0 auto; padding-block: max(14px, env(safe-area-inset-top)) max(30px, env(safe-area-inset-bottom)); }')
+    .replace(/border-radius: var\(--radius\); box-shadow:/, 'box-shadow:')
+    .replace(/\.top-card \{ display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px; \}/, '.top-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; }')
+    .replace(/\.metrics \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: 10px; margin-top: 10px; \}/, '.metrics { display: grid; margin-top: 10px; }')
+    .replace(/\.metric \{ position: relative; min-width: 0; padding: 17px; overflow: hidden; \}/, '.metric { position: relative; min-width: 0; overflow: hidden; }')
+    .replace(/\.metric > span \{ display: block; color: var\(--muted\); font-size: \.76rem; font-weight: 740; \}/, '.metric > span { display: block; color: var(--muted); font-weight: 740; }')
+    .replace(/line-height: \.95; letter-spacing: -\.045em; font-variant-numeric: tabular-nums;/, 'letter-spacing: -.045em;')
+    .replace(/\.delta \{ margin-top: 9px; color: var\(--muted\); font-size: \.72rem; font-weight: 760; \}/, '.delta { margin-top: 9px; color: var(--muted); font-weight: 760; }')
+    .replace(/\.card \{ min-width: 0; padding: 18px; \}/, '.card { min-width: 0; }')
+    .replace(/\.section-head \{ display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; \}/, '.section-head { display: flex; justify-content: space-between; }')
+    .replace(/\.host \{ max-width: 48%; color: var\(--muted\); font-size: \.75rem; text-align: right; \}/, '.host { max-width: 48%; color: var(--muted); text-align: right; }')
+    .replace(/\.pill \{ padding: 6px 10px; border: 1px solid var\(--line\); border-radius: 99px; background: var\(--panel-2\); color: var\(--muted\); font-size: \.7rem; font-weight: 800; white-space: nowrap; \}/, '.pill { padding: 6px 10px; border: 1px solid var(--line); border-radius: 99px; background: var(--panel-2); color: var(--muted); font-weight: 800; white-space: nowrap; }')
+    .replace(/\.legend \{ display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px 14px; color: var\(--muted\); font-size: \.71rem; \}/, '.legend { display: flex; flex-wrap: wrap; justify-content: flex-end; color: var(--muted); }')
+    .replace(/\.chart-detail \{ min-height: 43px; margin-top: 9px; padding: 11px 13px; border: 1px solid var\(--line\); border-radius: 11px; background: var\(--panel-2\); color: var\(--muted\); font-size: \.77rem; line-height: 1\.5; \}/, '.chart-detail { border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2); }')
+    .replace(/\n  \.shell \{ padding-inline: 10px; \}/, '')
+    .replace(/  \.top-card \{ align-items: stretch; flex-direction: column; gap: 14px; padding: 16px; \}/, '  .top-card { align-items: stretch; flex-direction: column; }')
+    .replace(/\n  \.metrics \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); gap: 7px; \}/, '')
+    .replace(/\n  \.metric \{ padding: 14px 12px; border-radius: 16px; \}/, '')
+    .replace(/\n  \.metric\.featured \{ grid-column: 1 \/ -1; display: grid; grid-template-columns: minmax\(0, 1fr\) auto; align-items: end; gap: 8px; \}/, '')
+    .replace(/\n  \.metric\.featured > span \{ align-self: center; font-size: \.75rem; \}/, '')
+    .replace(/\n  \.metric > span \{ font-size: \.68rem; \}/, '')
+    .replace(/\n  \.metric strong \{ font-size: clamp\(1\.45rem, 7\.2vw, 2rem\); \}/, '')
+    .replace(/\n  \.metric\.featured strong \{ font-size: clamp\(1\.75rem, 9vw, 2\.25rem\); \}/, '')
+    .replace(/\n  \.delta \{ font-size: \.64rem; \}/, '')
+    .replace(/  \.card \{ padding: 15px; border-radius: 17px; \}/, '')
+    .replace(/\n  \.section-head \{ margin-bottom: 12px; \}/, '');
+}
+
 function optimizeMonochromeCss(source) {
   return source
     .replace(/\n\.top-card,\n\.card,\n\.metric,\n\.guide,\n\.summary-cards article \{\n  border-color: #d3d3d3;\n  background: rgba\(255, 255, 255, \.98\);\n  box-shadow: 0 10px 28px rgba\(0, 0, 0, \.06\);\n}\n/, '\n')
@@ -174,6 +248,7 @@ function optimizeBundledCss(source, path) {
     const historySpecificStart = source.indexOf('.mode-tabs {');
     return historySpecificStart >= 0 ? source.slice(historySpecificStart) : source;
   }
+  if (path.endsWith('/app-lite.css')) return optimizeAppLiteCss(source);
   if (path.endsWith('/monochrome.css')) return optimizeMonochromeCss(source);
   return source;
 }

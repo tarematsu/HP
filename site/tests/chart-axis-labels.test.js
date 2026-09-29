@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const historyMain = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const axisLabels = readFileSync(new URL('../public/history/history-axis-labels.js', import.meta.url), 'utf8');
+const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const currentChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 
 test('history runtime installs dedicated axis labels', () => {
@@ -14,11 +15,11 @@ test('history runtime installs dedicated axis labels', () => {
   assert.match(axisLabels, /chartXAxisTitle/);
   assert.match(axisLabels, /history:data-loaded/);
   assert.match(axisLabels, /hashchange/);
-  assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'|MutationObserver/);
+  assert.doesNotMatch(axisLabels, /modeTabs'\)\?\.addEventListener\('click'|MutationObserver|createElement\('style'\)/);
 });
 
-test('history chart hides duplicate endpoint labels', () => {
-  assert.match(axisLabels, /#chartPanel \.chart-axis \{[\s\S]*display: none !important/);
+test('history chart hides duplicate endpoint labels through shared CSS', () => {
+  assert.match(sharedCss, /#chartPanel \.chart-axis \{[\s\S]*display: none !important/);
   assert.match(axisLabels, /endpointAxis\.hidden = true/);
 });
 

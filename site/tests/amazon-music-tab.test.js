@@ -12,10 +12,10 @@ const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', impo
 const api = readFileSync(new URL('../functions/api/amazon-music.js', import.meta.url), 'utf8');
 
 test('Amazon Music is a dashboard route backed only by the Worker materialized read model', () => {
-  assert.match(tabs, /VIEW_MODES[\s\S]*'amazon-music'/);
+  assert.match(tabs, /'amazon-music':\s*\{/);
   assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=20260929\.1'\)/);
   assert.match(tabs, /import\('\/amazon-music\.js\?v=20260929\.1'\)/);
-  assert.match(tabs, /showAmazonMusic/);
+  assert.match(tabs, /async function showLazyView/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /shared-svg-chart/);
   assert.match(runtime, /fetch\('\/api\/amazon-music'/);

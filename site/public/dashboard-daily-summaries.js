@@ -1,11 +1,4 @@
-const integer = new Intl.NumberFormat('ja-JP');
-const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
-
-function finite(value) {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-}
+import { decimalOneFormat as decimal, finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';
 
 function formatPeriodLabel(periodKey, fallback) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(periodKey || ''));
@@ -83,7 +76,7 @@ if (typeof document !== 'undefined') {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('dashboard:payload', (event) => {
+  window.addEventListener('dashboard:details', (event) => {
     const data = event?.detail?.payload?.daily_summaries;
     if (data) renderDashboardDailySummaries(data);
   });

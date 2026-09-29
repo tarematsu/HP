@@ -104,9 +104,6 @@ export async function onRequestGet({ env }) {
       method: 'GET',
       headers: { accept: 'application/json' },
     }));
-    // Regional collection is generated out-of-band. Before the first object is
-    // available, publish an empty but valid view rather than surfacing a 503 in
-    // the browser. Binding failures and non-404 upstream failures stay errors.
     if (response?.status === 404) return coldStart();
     if (!response?.ok) return unavailable(`Apple Music read model returned HTTP ${response?.status || 503}`);
 

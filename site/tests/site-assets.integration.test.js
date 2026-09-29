@@ -61,6 +61,7 @@ test('dashboard current page renders online history without comment velocity', a
   assert.match(client, /payload\.queue/);
   assert.match(detailsClient, /\/api\/dashboard-details\?channel_id=/);
   assert.match(chart, /payload\?\.history/);
+  assert.match(chart, /dashboard:details/);
   assert.match(chart, /online_member_count/);
   assert.doesNotMatch(chart, /comment_velocity|commentVelocity|コメント\/2分/);
   assert.doesNotMatch(detail, /comment_velocity|commentVelocity|コメント勢い/);
@@ -75,9 +76,9 @@ test('dashboard displays completed UTC-day changes from the deferred details res
   const loader = await text('functions/lib/dashboard-daily-summaries.js');
   assert.match(html, />総メンバー数</);
   assert.match(html, />累計再生数</);
-  assert.match(entry, /dashboard-daily-summaries\.js\?v=20260929\.1/);
+  assert.match(entry, /dashboard-daily-summaries\.js\?v=20260930\.1/);
   assert.match(renderer, /renderDashboardDailySummaries/);
-  assert.match(renderer, /dashboard:payload/);
+  assert.match(renderer, /dashboard:details/);
   assert.match(renderer, /payload\?\.daily_summaries/);
   assert.match(endpoint, /daily_summaries/);
   assert.doesNotMatch(criticalEndpoint, /daily_summaries|augmentDashboardChartData/);
