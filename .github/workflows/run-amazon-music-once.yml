@@ -41,28 +41,26 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
           const source = JSON.parse(fs.readFileSync('wrangler.amazon-music.jsonc', 'utf8'));
-          fs.writeFileSync(
-            'src/amazon-music-once-wrapper.js',
-            `import { collectAmazonMusicSnapshot } from './amazon-music-collector.js';
-
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    if (url.pathname !== '/run-once') return new Response('Not Found', { status: 404 });
-    try {
-      const result = await collectAmazonMusicSnapshot(env, Date.now());
-      console.log(JSON.stringify({ event: 'amazon-music-collection-complete', ...result }));
-      return Response.json({ ok: true, result });
-    } catch (error) {
-      console.error('amazon-music-collection-failed', {
-        error: String(error?.stack || error?.message || error).slice(0, 4000),
-      });
-      return Response.json({ ok: false, error: String(error?.message || error) }, { status: 500 });
-    }
-  },
-};
-`,
-          );
+          const wrapper = [
+            "import { collectAmazonMusicSnapshot } from './amazon-music-collector.js';",
+            '',
+            'export default {',
+            '  async fetch(request, env) {',
+            '    const url = new URL(request.url);',
+            "    if (url.pathname !== '/run-once') return new Response('Not Found', { status: 404 });",
+            '    try {',
+            '      const result = await collectAmazonMusicSnapshot(env, Date.now());',
+            "      console.log(JSON.stringify({ event: 'amazon-music-collection-complete', ...result }));",
+            '      return Response.json({ ok: true, result });',
+            '    } catch (error) {',
+            "      console.error('amazon-music-collection-failed', { error: String(error?.stack || error?.message || error).slice(0, 4000) });",
+            "      return Response.json({ ok: false, error: String(error?.message || error) }, { status: 500 });",
+            '    }',
+            '  },',
+            '};',
+            '',
+          ].join('\n');
+          fs.writeFileSync('src/amazon-music-once-wrapper.js', wrapper);
           source.name = 'sh-amazon-music-collector-once';
           source.main = 'src/amazon-music-once-wrapper.js';
           source.d1_databases = (source.d1_databases || []).map((binding) => ({ ...binding, remote: true }));
