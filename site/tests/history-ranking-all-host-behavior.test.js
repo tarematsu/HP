@@ -77,11 +77,12 @@ function request(params = '') {
   return new URL(`https://example.test/api/history?mode=ranking&from=2026-01-26&to=2026-02-09${params}`);
 }
 
-test('all-host scope excludes featured Sakurazaka hosts and orders the remaining hosts by ranked weeks', async () => {
+test('all-host scope excludes featured Sakamichi hosts and orders the remaining hosts by ranked weeks', async () => {
   const actualRows = [
     { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 1, host_name: 'sakuramankai' },
     { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 2, host_name: 'sakurazaka46jp' },
-    { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 3, host_name: 'alpha' },
+    { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 3, host_name: 'nogizaka46smej' },
+    { ranking_date: '2026-01-26', ranking_type: '週間リーダーボード', rank: 4, host_name: 'alpha' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 5, host_name: 'alpha' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 4, host_name: 'beta' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 6, host_name: 'gamma' },
@@ -93,9 +94,9 @@ test('all-host scope excludes featured Sakurazaka hosts and orders the remaining
   assert.equal(data.host_search, '');
   assert.deepEqual(data.chart_hosts, ['alpha']);
   assert.equal(data.rows.length, 4);
-  assert.ok(data.rows.every((row) => !['sakuramankai', 'sakurazaka46jp'].includes(row.host_name)));
+  assert.ok(data.rows.every((row) => !['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'].includes(row.host_name)));
   assert.deepEqual(data.host_rankings, [
-    { position: 1, host_name: 'alpha', ranked_weeks: 2, average_rank: 4, best_rank: 3, worst_rank: 5 },
+    { position: 1, host_name: 'alpha', ranked_weeks: 2, average_rank: 4.5, best_rank: 4, worst_rank: 5 },
     { position: 2, host_name: 'beta', ranked_weeks: 1, average_rank: 4, best_rank: 4, worst_rank: 4 },
     { position: 2, host_name: 'gamma', ranked_weeks: 1, average_rank: 6, best_rank: 6, worst_rank: 6 },
   ]);
@@ -106,16 +107,17 @@ test('all-host scope excludes featured Sakurazaka hosts and orders the remaining
   assert.equal(data.read_path, 'weekly-ranking-read-model');
 });
 
-test('featured scope still returns the two Sakurazaka hosts', async () => {
+test('featured scope returns the three Sakamichi hosts', async () => {
   const actualRows = [
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 1, host_name: 'sakuramankai' },
     { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 2, host_name: 'sakurazaka46jp' },
-    { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 3, host_name: 'alpha' },
+    { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 3, host_name: 'nogizaka46smej' },
+    { ranking_date: '2026-02-09', ranking_type: '週間リーダーボード', rank: 4, host_name: 'alpha' },
   ];
   const response = await loadRanking(request('&scope=featured'), { OTHER_DB: dbFor(actualRows) });
   const data = await response.json();
-  assert.deepEqual(data.chart_hosts, ['sakuramankai', 'sakurazaka46jp']);
-  assert.deepEqual([...new Set(data.rows.map((row) => row.host_name))].sort(), ['sakuramankai', 'sakurazaka46jp']);
+  assert.deepEqual(data.chart_hosts, ['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej']);
+  assert.deepEqual([...new Set(data.rows.map((row) => row.host_name))].sort(), ['nogizaka46smej', 'sakuramankai', 'sakurazaka46jp']);
 });
 
 test('host ranking counts each leaderboard week once even if duplicate rows exist', async () => {
