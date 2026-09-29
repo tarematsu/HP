@@ -31,7 +31,9 @@ function unavailable(message = 'Amazon Music read model unavailable') {
 }
 
 function coldStart() {
-  return jsonResponse(EMPTY_READ_MODEL, 200, 'public, max-age=15, s-maxage=60');
+  // Never edge-cache the empty bootstrap model. Once the collector publishes
+  // the first R2 object, the next request must be able to observe it immediately.
+  return jsonResponse(EMPTY_READ_MODEL, 200, 'no-store');
 }
 
 export async function onRequestGet({ env }) {
