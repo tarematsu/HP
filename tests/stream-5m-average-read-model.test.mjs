@@ -55,10 +55,12 @@ function readAverages(db) {
     }));
 }
 
-test('five-minute finalization migration is the current MINUTE_DB schema tip', () => {
+test('five-minute finalization migration remains ordered before the current MINUTE_DB schema tip', () => {
   const path = 'database/facts-migrations/063_finalize_stream_5m_once.sql';
-  assert.equal(descriptor.schema, path);
-  assert.equal(descriptor.migrations.at(-1), path);
+  const index = descriptor.migrations.indexOf(path);
+  assert.ok(index >= 0);
+  assert.ok(index < descriptor.migrations.length - 1);
+  assert.equal(descriptor.schema, descriptor.migrations.at(-1));
   assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
 });
 
