@@ -6,7 +6,7 @@ const DATABASE_NAME = 'stationhead-ohisama';
 const BUDDIES_DATABASE_NAME = 'stationhead-buddies';
 const CONFIG_NAME = 'wrangler.ohisama-collector.jsonc';
 const GENERATED_CONFIG_NAME = '.wrangler.ohisama-collector.generated.jsonc';
-const SCHEMA_PATH = '../database/ohisama-migrations/001_initial_schema.sql';
+const SCHEMA_PATH = 'scripts/ohisama-schema.sql';
 const generatedConfigUrl = new URL(`../${GENERATED_CONFIG_NAME}`, import.meta.url);
 
 function parseJsonOutput(value) {
