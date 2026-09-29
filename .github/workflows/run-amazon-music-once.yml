@@ -41,7 +41,12 @@ jobs:
           node <<'NODE'
           const fs = require('node:fs');
           const source = JSON.parse(fs.readFileSync('wrangler.amazon-music.jsonc', 'utf8'));
+          fs.writeFileSync(
+            'src/amazon-music-once-wrapper.js',
+            "import handler from './amazon-music-entry.js';\nexport default handler;\n",
+          );
           source.name = 'sh-amazon-music-collector-once';
+          source.main = 'src/amazon-music-once-wrapper.js';
           source.d1_databases = (source.d1_databases || []).map((binding) => ({ ...binding, remote: true }));
           source.r2_buckets = (source.r2_buckets || []).map((binding) => ({ ...binding, remote: true }));
           fs.writeFileSync('wrangler.amazon-once.jsonc', JSON.stringify(source, null, 2));
@@ -58,13 +63,13 @@ jobs:
             --test-scheduled \
             --ip 127.0.0.1 \
             --port 8787 \
-            --log-level debug >"$LOG" 2>&1 &
+            --log-level info >"$LOG" 2>&1 &
           WRANGLER_PID=$!
           trap 'kill "$WRANGLER_PID" >/dev/null 2>&1 || true' EXIT
 
           ready=false
           for _ in $(seq 1 90); do
-            if (echo > /dev/tcp/127.0.0.1/8787) >/dev/null 2>&1; then
+            if grep -q 'Ready on' "$LOG"; then
               ready=true
               break
             fi
