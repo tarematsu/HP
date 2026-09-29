@@ -17,7 +17,7 @@ async function importModeRuntime(mode) {
     return;
   }
   if (key === 'ranking') {
-    await import('/history/history-ranking-chart.js?v=20260930.2');
+    await import('/history/history-ranking-chart.js?v=20260930.2&rev=20260930.3');
     await import('/history/history-ranking-all-host-table.js?v=20260930.1');
     return;
   }
