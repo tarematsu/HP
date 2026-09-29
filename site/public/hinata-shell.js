@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-hinata-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/hinata.css?v=20260930.2';
+  link.href = '/hinata.css?v=20260930.3';
   link.dataset.hinataTabStyles = '1';
   document.head.append(link);
 }
@@ -45,9 +45,9 @@ function mountView() {
       </div>
       <div class="legend hinata-legend" aria-label="グラフ凡例">
         <span><i class="hinata-line-key"></i>オンライン</span>
-        <span><i class="hinata-bar-key"></i>5分平均の再生増加</span>
+        <span><i class="hinata-bar-key"></i>再生数増加</span>
       </div>
-      <div id="hinataChart" class="hinata-chart chart-fit" role="img" aria-label="過去24時間のオンライン数と5分平均の再生増加"></div>
+      <div id="hinataChart" class="hinata-chart chart-fit" role="img" aria-label="過去24時間のオンライン数と5分ごとの再生数増加"></div>
       <p id="hinataChartDetail" class="chart-detail subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
     </section>
 
@@ -55,7 +55,7 @@ function mountView() {
       <div class="section-head"><div><p class="kicker">DAILY</p><h2 id="hinataDailyTitle">日次データ</h2></div></div>
       <div class="table-wrap table-fit-mobile">
         <table class="hinata-daily-table">
-          <thead><tr><th>日付</th><th>平均同接</th><th>最小同接</th><th>最大同接</th><th>再生数増加</th><th>メンバー増加</th></tr></thead>
+          <thead><tr><th>日付</th><th>平均同接</th><th>最小同接</th><th>最大同接</th><th>総再生数</th><th>再生数増加</th><th>総メンバー数</th><th>メンバー増加</th></tr></thead>
           <tbody id="hinataDailyTbody"></tbody>
         </table>
       </div>
