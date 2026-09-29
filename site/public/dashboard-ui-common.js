@@ -102,6 +102,7 @@ export function mountDashboardView({
 }
 
 export function mountDashboardShell({ style, tab, view } = {}) {
+  ensureStylesheet('/dashboard-ui-common.css?v=20260930.1', 'dashboard-ui-common');
   if (style?.href && style?.key) ensureStylesheet(style.href, style.key);
   if (tab) mountDashboardTab(tab);
   if (view) mountDashboardView(view);
