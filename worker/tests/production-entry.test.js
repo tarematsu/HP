@@ -69,15 +69,18 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(collector.d1_databases[1].database_name, 'stationhead-minute');
 
   assert.deepEqual(collector.queues?.producers.map(({ binding }) => binding), [
-    'RAW_COLLECTION_QUEUE', 'PERSIST_QUEUE', 'INGEST_FINALIZE_QUEUE', 'COMMENTS_QUEUE',
+    'RAW_COLLECTION_QUEUE', 'PERSIST_QUEUE', 'INGEST_FINALIZE_QUEUE',
     'MINUTE_FACT_QUEUE', 'MINUTE_LIVE_DERIVE_QUEUE', 'MINUTE_ENRICHMENT_QUEUE',
     'TRACK_METADATA_QUEUE', 'READ_MODEL_QUEUE',
   ]);
+  assert.equal(collector.queues.producers.some(({ binding }) => binding === 'COMMENTS_QUEUE'), false);
   assert.deepEqual(runtime.queues?.producers.map(({ binding }) => binding), [
     'MINUTE_FACT_QUEUE', 'MINUTE_LIVE_DERIVE_QUEUE', 'MINUTE_ENRICHMENT_QUEUE', 'TRACK_METADATA_QUEUE',
   ]);
   assert.equal(collector.queues.consumers.length, 0);
-  assert.equal(recovery.queues.consumers.length, 4);
+  assert.equal(recovery.queues.consumers.length, 3);
+  assert.equal(recovery.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
+  assert.equal(recovery.queues.producers.some(({ binding }) => binding === 'COMMENTS_QUEUE'), false);
   assert.equal(runtime.queues.consumers.length, 5);
   const recoveryQueues = new Set(recovery.queues.consumers.map(({ queue }) => queue));
   assert.equal(runtime.queues.consumers.some(({ queue }) => recoveryQueues.has(queue)), false);
@@ -90,6 +93,8 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(recovery.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, false);
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
   assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
+  assert.match(preparedCollector, /MINUTE_FACT_INTERVAL_MS = 5 \* 60_000/);
+  assert.match(preparedCollector, /minuteFactDue\(observedAt\)/);
   assert.match(preparedCollector, /PERSIST_QUEUE: \{ value: null/);
   assert.match(preparedCollector, /INGEST_FINALIZE_QUEUE: \{ value: null/);
   assert.match(minuteProduction, /MINUTE_ENRICHMENT_QUEUE/);
