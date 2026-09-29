@@ -51,6 +51,15 @@ function mountView() {
       <p id="hinataChartDetail" class="chart-detail subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
     </section>
 
+    <section class="card chart-card hinata-daily-chart-panel" aria-labelledby="hinataDailyChartTitle">
+      <div class="section-head chart-head hinata-section-head">
+        <div><p class="kicker">DAILY</p><h2 id="hinataDailyChartTitle">同接・再生数の推移</h2></div>
+      </div>
+      <div id="hinataDailyChartLegend" class="legend hinata-legend" aria-label="日次グラフ凡例"></div>
+      <div id="hinataDailyChart" class="hinata-chart chart-fit" role="img" aria-label="日次の平均・最大・最小同接と再生数増加"></div>
+      <p id="hinataDailyChartDetail" class="chart-detail subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
+    </section>
+
     <section class="card data-panel hinata-daily-panel" aria-labelledby="hinataDailyTitle">
       <div class="section-head"><div><p class="kicker">DAILY</p><h2 id="hinataDailyTitle">日次データ</h2></div></div>
       <div class="table-wrap table-fit-mobile">
