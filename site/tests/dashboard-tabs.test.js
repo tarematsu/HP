@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const tabOrder = readFileSync(new URL('../public/dashboard-tab-order.js', import.meta.url), 'utf8');
 const currentChartDetail = readFileSync(new URL('../public/dashboard-chart-detail.js', import.meta.url), 'utf8');
 const tabsClient = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
@@ -28,6 +29,15 @@ test('dashboard starts on current and exposes every visible mode in the static t
   assert.doesNotMatch(page, /data-mode="tracks"|id="trackControls"/);
 });
 
+test('dashboard reorders the right edge to first-week then Spotify before routing starts', () => {
+  assert.match(dashboardEntry, /dashboard-tab-order\.js\?v=20260929\.1/);
+  assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260929\.4/);
+  assert.ok(dashboardEntry.indexOf('dashboard-tab-order.js') < dashboardEntry.indexOf('dashboard-tabs.js'));
+  assert.match(tabOrder, /tabs\.append\(firstWeek\)/);
+  assert.match(tabOrder, /tabs\.append\(spotify\)/);
+  assert.ok(tabOrder.indexOf('append(firstWeek)') < tabOrder.indexOf('append(spotify)'));
+});
+
 test('dashboard hides the legacy static shell until the selected route shell is ready', () => {
   assert.match(page, /<style id="dashboard-prepaint-guard">[\s\S]*html\[data-dashboard-booting\] #content \{ visibility: hidden; \}/);
   assert.match(page, /document\.documentElement\.setAttribute\('data-dashboard-booting', ''\)/);
@@ -44,7 +54,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
     assert.match(page, new RegExp(`id="${id}"`));
   }
   assert.doesNotMatch(page, /id="likesLoad"/);
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260929\.2'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260929\.4'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js\?v=20260925\.1'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
@@ -54,10 +64,10 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
 
 test('first-week comparison shell and runtime are both lazy routes', () => {
   assert.doesNotMatch(dashboardEntry, /^import .*first-week-comparison-shell/m);
-  assert.match(tabsClient, /import\('\/first-week-comparison-shell\.js\?v=20260928\.1'\)/);
+  assert.match(tabsClient, /import\('\/first-week-comparison-shell\.js\?v=20260929\.1'\)/);
   assert.match(tabsClient, /'first-week'/);
   assert.match(tabsClient, /document\.getElementById\('firstWeekView'\)/);
-  assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260927\.1'\)/);
+  assert.match(tabsClient, /import\('\/first-week-comparison\.js\?v=20260929\.1'\)/);
   assert.match(tabsClient, /showFirstWeek/);
 });
 
