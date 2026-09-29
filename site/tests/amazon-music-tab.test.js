@@ -57,7 +57,7 @@ test('Amazon Music view exposes follower summary, two rank graphs, and track ran
   assert.match(shell, /前日比/);
   assert.match(shell, /id="amazonAllRankChart"/);
   assert.match(shell, /id="amazonPopularRankChart"/);
-  assert.match(shell, /Amazon内順位/);
+  assert.match(shell, /Amazon総合順位/);
   assert.match(shell, /櫻坂内人気順/);
   assert.match(runtime, /metricKey: 'amazon_rank'/);
   assert.match(runtime, /metricKey: 'popular_rank'/);
