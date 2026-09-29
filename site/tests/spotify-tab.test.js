@@ -221,6 +221,7 @@ test('Spotify tab uses only the materialized Spotify read model for its three gr
   assert.match(shell, /id="spotifyArtistRankTrendCharts"/);
 
   assert.match(runtime, /metricKey: 'total_delta'/);
+  assert.doesNotMatch(runtime, /spotifyTop10TrendCharts|metricKey: 'top10_delta'/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
   assert.match(runtime, /normalizeTrendSeries\(trend\)/);
   assert.match(runtime, /renderArtistRankChart/);
