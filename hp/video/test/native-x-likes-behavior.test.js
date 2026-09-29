@@ -171,7 +171,7 @@ test('approaches like buttons at double scroll speed and uses the same DOM click
 test('pre-click wait is randomly selected from 5, 10 and 15 seconds', async () => {
   const result = await run({ randomValues: [0, 0.5, 0.99] });
   assert.ok(result.state.likeWaitHistoryMs.length >= 3);
-  assert.deepEqual(result.state.likeWaitHistoryMs.slice(0, 3), [5000, 10000, 15000]);
+  assert.deepEqual(Array.from(result.state.likeWaitHistoryMs.slice(0, 3)), [5000, 10000, 15000]);
   assert.ok(result.state.likeWaitHistoryMs.every(ms => [5000, 10000, 15000].includes(ms)));
   for (let i = 0; i < Math.min(result.clickTimes.length, result.state.likeWaitHistoryMs.length); i++) {
     const previousScroll = result.scrollTimes.filter(time => time <= result.clickTimes[i]).at(-1);
