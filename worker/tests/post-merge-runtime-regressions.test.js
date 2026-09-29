@@ -49,19 +49,16 @@ test('read-model compatibility handoff remains available without a runtime Queue
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-read-model'), false);
 });
 
-test('optional comments are bounded inside the dedicated recovery ingest route', () => {
+test('production comment acquisition Queue is detached', () => {
   const collector = config('wrangler.buddies-collector.jsonc');
   const recovery = config('wrangler.buddies-recovery.jsonc');
   const runtime = config('wrangler.runtime.jsonc');
-  const entry = readFileSync(new URL('../src/ingest-channel-optimized-entry.js', import.meta.url), 'utf8');
-  const comments = recovery.queues.consumers.find(({ queue }) => queue === 'stationhead-comments');
-  assert.equal(collector.vars.COMMENT_CHAIN_MAX_ATTEMPTS, 1);
-  assert.equal(recovery.vars.COMMENT_CHAIN_MAX_ATTEMPTS, 1);
-  assert.equal(comments.max_batch_size, 10);
-  assert.equal(comments.max_batch_timeout, 5);
-  assert.equal(comments.max_concurrency, 1);
+  assert.equal(collector.vars.CHAT_LIMIT, 0);
+  assert.equal(recovery.vars.CHAT_LIMIT, 0);
+  assert.equal(collector.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
+  assert.equal(recovery.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
+  assert.equal(recovery.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
-  assert.match(entry, /CHAT_LIMIT: \{ value: 25/);
 });
 
 test('ingest persists operational snapshots once per hourly slot', () => {
