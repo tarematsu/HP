@@ -163,10 +163,32 @@ async function oldestIncompleteRun(db, today) {
     .bind(today).first();
 }
 
+export async function missingAlwaysCollectArtists(db, snapshotDate) {
+  const keys = SPOTIFY_ALWAYS_COLLECT_ARTISTS.map((artist) => artist.artist_key);
+  if (!keys.length) return [];
+  const placeholders = keys.map(() => '?').join(',');
+  const result = await db.prepare(`SELECT artist_key FROM sh_spotify_artist_daily
+    WHERE snapshot_date=? AND artist_key IN (${placeholders})`)
+    .bind(snapshotDate, ...keys).all();
+  const present = new Set(resultsOf(result).map((row) => String(row.artist_key)));
+  return keys.filter((key) => !present.has(key));
+}
+
 async function selectScheduledSnapshot(db, scheduledTime) {
   const today = jstDateKey(scheduledTime);
   const todayRun = await readRun(db, today);
-  if (todayRun?.status === 'complete') return { skip: 'complete' };
+  if (todayRun?.status === 'complete') {
+    const missingArtistKeys = await missingAlwaysCollectArtists(db, today);
+    if (missingArtistKeys.length) {
+      return {
+        snapshotDate: today,
+        forceRefresh: true,
+        recovery: 'always-collect-backfill',
+        missingArtistKeys,
+      };
+    }
+    return { skip: 'complete' };
+  }
   const older = await oldestIncompleteRun(db, today);
   if (older) return shouldRetryRun(older, scheduledTime) ? { snapshotDate: older.snapshot_date } : { skip: 'in-flight' };
   if (jstHour(scheduledTime) < FIRST_CHECK_HOUR_JST && !todayRun) return { skip: 'before-05:00' };
@@ -221,7 +243,8 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
 
   const snapshotDate = selection.snapshotDate;
   const existing = await readRun(db, snapshotDate);
-  const refreshNeeded = !existing
+  const refreshNeeded = Boolean(selection.forceRefresh)
+    || !existing
     || Number(existing.albums_queued || 0) === 0
     || Number(existing.errors || 0) > 0
     || ['error', 'incomplete'].includes(String(existing.status || ''));
@@ -245,6 +268,8 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
         collection_artists: collectionArtists.length,
         catalog_queued: 1,
         albums_queued: 0,
+        recovery: selection.recovery || null,
+        missing_artists: selection.missingArtistKeys?.length || 0,
       };
       logEvent('spotify_playcount_scheduled', result);
       return result;
@@ -258,6 +283,8 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
       collection_artists: collectionArtists.length,
       catalog_queued: 0,
       albums_queued: albumsQueued,
+      recovery: selection.recovery || null,
+      missing_artists: selection.missingArtistKeys?.length || 0,
     };
     logEvent('spotify_playcount_scheduled', result);
     return result;
