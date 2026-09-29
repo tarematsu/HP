@@ -9,8 +9,8 @@ const text = (relativePath) => readFile(path.join(siteRoot, relativePath), 'utf8
 
 test('dashboard entry installs the sole previous-day comparison chart renderer lazily', async () => {
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260929\.1/);
-  assert.match(entry, /dashboard-chart-detail\.js\?v=20260929\.1/);
+  assert.match(entry, /dashboard-chart-comparison\.js\?v=20260930\.1/);
+  assert.match(entry, /dashboard-chart-detail\.js\?v=20260930\.1/);
   assert.doesNotMatch(entry, /dashboard-current-enhancements\.js/);
 });
 
@@ -20,7 +20,7 @@ test('online chart overlays the previous 24-hour series in gray on the current t
   assert.match(source, /const shiftedAt = observedAt \+ DAY_MS/);
   assert.match(source, /previous\.textContent = '24時間前'/);
   assert.match(source, /drawSeries\(context, previous, xFor, yOnline, '#969ca6', 2\)/);
-  assert.match(source, /drawSeries\(context, current, xFor, yOnline, '#111', 2\.5\)/);
+  assert.match(source, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
 });
 
 test('current chart adds five-minute average stream increase bars below the online series', async () => {
@@ -29,7 +29,7 @@ test('current chart adds five-minute average stream increase bars below the onli
   assert.match(source, /legend\.querySelector\('\.stream-growth-key'\)/);
   assert.match(source, /stream\.hidden = !hasStreamAverages/);
   assert.doesNotMatch(source, /className = 'stream-delta-key'/);
-  assert.match(source, /const FIVE_MINUTE_MS = 5 \* MINUTE_MS/);
+  assert.match(source, /const FIVE_MINUTE_MS = 5 \* 60_000/);
   assert.match(source, /const bucketWidth = plotWidth \* FIVE_MINUTE_MS \/ DAY_MS/);
   assert.match(source, /const STREAM_BAR_COLOR = '#168b73'/);
   assert.match(source, /function drawStreamBars\(/);
@@ -43,13 +43,13 @@ test('current online chart no longer renders comment velocity', async () => {
   assert.match(source, /オンライン数\(人\)/);
 });
 
-test('online extrema labels omit borders, use gray points, and include JST time', async () => {
+test('online extrema labels omit borders, use shared gray points, and include JST time', async () => {
   const source = await text('public/dashboard-chart-comparison.js');
   assert.match(source, /const EXTREMA_POINT_COLOR = '#888'/);
-  assert.match(source, /const jstExtremaTime = new Intl\.DateTimeFormat/);
+  assert.match(source, /const jstTime = new Intl\.DateTimeFormat/);
   assert.match(source, /timeZone: 'Asia\/Tokyo'/);
-  assert.match(source, /`最小 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
-  assert.match(source, /`最大 \$\{[^}]+\}（\$\{jstExtremaTime\.format/);
+  assert.match(source, /`最小 \$\{[^}]+\}（\$\{jstTime\.format/);
+  assert.match(source, /`最大 \$\{[^}]+\}（\$\{jstTime\.format/);
   assert.match(source, /if \(minRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
   assert.match(source, /if \(maxRow\) \{[\s\S]*context\.fillStyle = EXTREMA_POINT_COLOR/);
   assert.doesNotMatch(source, /strokeRect\(/);
@@ -66,8 +66,9 @@ test('online comparison chart waits for a real canvas width and redraws after la
 
 test('chart detail shows the nearest five-minute stream average when available', async () => {
   const source = await text('public/dashboard-chart-detail.js');
+  assert.match(source, /decimalOneFormat as streamNumber/);
   assert.match(source, /payload\.stream_5m_history/);
-  assert.match(source, /maximumFractionDigits: 1/);
   assert.match(source, /再生数増加 \+\$\{streamNumberText\(streamRow\.stream_delta\)\}\/分（5分平均）/);
   assert.match(source, /nearestRow\(streamRows, targetTime, FIVE_MINUTE_MS \/ 2\)/);
+  assert.match(source, /dashboard:details/);
 });
