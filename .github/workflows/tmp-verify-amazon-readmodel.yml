@@ -1,4 +1,4 @@
-name: Temporary locate Sakurazaka overall ranks
+name: Temporary Amazon overall chart depth probe
 
 on:
   push:
@@ -18,19 +18,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Scan top 5000 sequentially
+      - name: Probe chart offsets
         working-directory: worker
         shell: bash
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
-          import { createAmazonMusicWebClient, extractAmazonMusicTracks } from './src/amazon-music-web-client.js';
+          import { extractAmazonMusicTracks } from './src/amazon-music-web-client.js';
           const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
-          const artistId='B08P3RHP1P';
-          const artistTracks=await createAmazonMusicWebClient().fetchArtistTracks(artistId);
-          const target=new Map(artistTracks.map(t=>[t.amazon_music_id,t]).filter(([id])=>id));
-          console.log('TARGETS',target.size);
-
           const origin='https://music.amazon.co.jp';
           const ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
           const cfg=await (await fetch(`${origin}/config.json?skipToken=false&clientApplication=skyfire`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','user-agent':ua,referer:`${origin}/`}})).json();
@@ -44,50 +39,19 @@ jobs:
             'x-amzn-device-time-zone':'UTC','x-amzn-timestamp':String(Date.now()),'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),
             'x-amzn-music-domain':'music.amazon.co.jp','x-amzn-referer':'','x-amzn-affiliate-tags':'','x-amzn-ref-marker':'','x-amzn-page-url':pageUrl,
             'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''};}
-          async function call(url){
-            for(let attempt=0;attempt<6;attempt++){
-              const res=await fetch(url,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua},body:JSON.stringify({headers:JSON.stringify(inner())})});
-              if(res.status===429){const delay=Math.min(15000,1000*(2**attempt)); console.log('RATE_LIMIT',attempt+1,delay); await sleep(delay); continue;}
-              if(!res.ok) throw new Error(`HTTP ${res.status}`);
-              return res.json();
-            }
-            throw new Error('rate limit retries exhausted');
+          const base='https://fe.mesk.skill.music.a2z.com/api/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs';
+          function urlFor(offset){
+            if(offset===0)return `${base}&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D`;
+            const next=encodeURIComponent(JSON.stringify({entityId:'popularTracks',nextToken:`0_${offset}:${offset}`,widgetId:'top-songs'}));
+            return `${base}&next=${next}&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D`;
           }
-          function findNext(v){
-            let found=null;
-            function walk(x){
-              if(found||x==null)return;
-              if(Array.isArray(x)){for(const y of x)walk(y);return;}
-              if(typeof x!=='object')return;
-              for(const y of Object.values(x)){
-                if(typeof y==='string' && y.includes('/api/showChartsWidget?') && y.includes('widgetId=top-songs') && y.includes('next=')){found=y;return;}
-                walk(y);
-              }
-            }
-            walk(v); return found;
+          function findNext(v){let found=null; const walk=(x)=>{if(found||x==null)return;if(Array.isArray(x)){x.forEach(walk);return;}if(typeof x!=='object')return;for(const y of Object.values(x)){if(typeof y==='string'&&y.includes('/api/showChartsWidget?')&&y.includes('widgetId=top-songs')&&y.includes('next=')){found=y;return;}walk(y);}};walk(v);return found;}
+          for(const offset of [0,5000,10000,20000,50000,100000,200000,500000]){
+            const res=await fetch(urlFor(offset),{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua},body:JSON.stringify({headers:JSON.stringify(inner())})});
+            const status=res.status;
+            let tracks=[]; let next=false;
+            if(res.ok){const doc=await res.json();tracks=extractAmazonMusicTracks(doc);next=Boolean(findNext(doc));}
+            console.log('OFFSET',JSON.stringify({offset,status,count:tracks.length,first:tracks[0]?.title||null,last:tracks.at(-1)?.title||null,next}));
+            await sleep(800);
           }
-          let url='https://fe.mesk.skill.music.a2z.com/api/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D';
-          const hits=[]; const seenUrls=new Set(); let scanned=0;
-          for(let page=1;page<=250;page++){
-            if(seenUrls.has(url)) throw new Error('pagination loop');
-            seenUrls.add(url);
-            const doc=await call(url);
-            const tracks=extractAmazonMusicTracks(doc);
-            tracks.forEach((track,i)=>{
-              const rank=scanned+i+1;
-              if(target.has(track.amazon_music_id)){
-                hits.push({rank,amazon_music_id:track.amazon_music_id,title:track.title,artist:track.artist});
-                console.log('HIT',JSON.stringify(hits.at(-1)));
-              }
-            });
-            scanned+=tracks.length;
-            if(page%10===0) console.log('PROGRESS',JSON.stringify({page,scanned,hits:hits.length}));
-            const next=findNext(doc);
-            if(!next||tracks.length===0) break;
-            url=next;
-            await sleep(150);
-          }
-          hits.sort((a,b)=>a.rank-b.rank);
-          console.log('SUMMARY',JSON.stringify({scanned,hits:hits.length,unfound:target.size-hits.length}));
-          console.log('HITS_JSON',JSON.stringify(hits));
           NODE
