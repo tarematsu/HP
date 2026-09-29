@@ -16,7 +16,7 @@ const runtime = JSON.parse(readFileSync(new URL('../../worker/wrangler.runtime.j
 const workers = readFileSync(new URL('../../worker/scripts/cloudflare-workers.mjs', import.meta.url), 'utf8');
 
 // Pages remains read-only. Production Worker ownership is split across the
-// Sakurazaka monitor, buddies recovery, buddies collector, and runtime orchestrator.
+// official Stationhead monitors, buddies recovery, buddies collector, and runtime orchestrator.
 test('dashboard details compose completed daily summaries through a focused loader', () => {
   assert.match(dashboardDetails, /loadDashboardDailySummaries/);
   assert.match(dashboardDetails, /daily_summaries/);
@@ -55,10 +55,11 @@ test('track-history builders remain available only for explicit maintenance', ()
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
 });
 
-test('only the four split production Workers remain active', () => {
+test('only the five split production Workers remain active', () => {
   const activeBlock = workers.slice(workers.indexOf('ACTIVE_WORKER_NAMES'), workers.indexOf('RETIRED_WORKER_NAMES'));
-  assert.equal((activeBlock.match(/'sh-/g) || []).length, 4);
+  assert.equal((activeBlock.match(/'sh-/g) || []).length, 5);
   assert.match(activeBlock, /'sh-sakurazaka46jp'/);
+  assert.match(activeBlock, /'sh-nogizaka46smej'/);
   assert.match(activeBlock, /'sh-buddies-recovery'/);
   assert.match(activeBlock, /'sh-buddies-collector'/);
   assert.match(activeBlock, /'sh-runtime-orchestrator'/);

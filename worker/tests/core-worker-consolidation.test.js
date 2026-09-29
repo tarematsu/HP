@@ -146,6 +146,7 @@ test('runtime, collector, and recovery configs preserve domain isolation', () =>
   });
   assert.equal(packageJson.scripts['deploy:buddies-recovery'], 'node scripts/deploy-buddies-recovery.mjs');
   assert.equal(packageJson.scripts['deploy:buddies-collector'], 'node scripts/deploy-buddies-collector.mjs');
+  assert.equal(packageJson.scripts['deploy:nogizaka46smej'], 'node scripts/deploy-nogizaka46smej.mjs');
   assert.equal(packageJson.scripts['deploy:runtime'], 'node scripts/deploy-runtime.mjs');
   assert.deepEqual(pagesConfig.services, [{
     binding: 'PAGES_READ_MODEL_SERVICE',
@@ -157,6 +158,6 @@ test('runtime, collector, and recovery configs preserve domain isolation', () =>
   );
   assert.deepEqual(
     [...activeBlock.matchAll(/'([^']+)'/g)].map((match) => match[1]),
-    ['sh-sakurazaka46jp', 'sh-buddies-recovery', 'sh-buddies-collector', 'sh-runtime-orchestrator'],
+    ['sh-sakurazaka46jp', 'sh-nogizaka46smej', 'sh-buddies-recovery', 'sh-buddies-collector', 'sh-runtime-orchestrator'],
   );
 });

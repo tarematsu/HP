@@ -9,13 +9,14 @@ function config(name) {
 test('active production Workers stay within the account-wide Free cron limit', () => {
   const configs = [
     config('wrangler.sakurazaka46jp.jsonc'),
+    config('wrangler.nogizaka46smej.jsonc'),
     config('wrangler.buddies-collector.jsonc'),
     config('wrangler.runtime.jsonc'),
   ];
   const counts = configs.map((value) => value.triggers?.crons?.length || 0);
 
-  assert.deepEqual(counts, [1, 1, 0]);
-  assert.equal(counts.reduce((sum, count) => sum + count, 0), 2);
+  assert.deepEqual(counts, [1, 1, 1, 0]);
+  assert.equal(counts.reduce((sum, count) => sum + count, 0), 3);
 });
 
 test('runtime has no cron or offline health threshold after the Actions cutover', () => {
