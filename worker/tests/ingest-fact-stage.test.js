@@ -9,14 +9,11 @@ import { minuteFactQueueMessage } from '../src/minute-facts-queue.js';
 
 const observedAt = 1_784_000_000_000;
 
-test('isolated ingest fact stage preserves comments and finalize ordering', async () => {
-  const comments = [];
-  const finalized = [];
-  const fact = {
+function factFixture() {
+  return {
     observedAt,
     snapshot: { channel_id: 10, station_id: 20 },
     queue: { station_id: 20, tracks: [] },
-    comments: { commentsSaved: 0, degraded: false },
     auth: { authToken: 'token', deviceUid: 'device' },
     collectorState: {
       authToken: 'token',
@@ -25,7 +22,6 @@ test('isolated ingest fact stage preserves comments and finalize ordering', asyn
       lastSuccessAt: observedAt + 1,
     },
     options: {
-      collectComments: false,
       readModelPresentationOnly: true,
       readModel: {
         channel: { channel_id: 10, observed_at: observedAt, presentation: {} },
@@ -34,9 +30,15 @@ test('isolated ingest fact stage preserves comments and finalize ordering', asyn
       },
     },
   };
+}
+
+test('isolated ingest fact stage sends minute facts directly before finalization', async () => {
+  const minuteFacts = [];
+  const finalized = [];
+  const fact = factFixture();
   const result = await processIngestFactTask({
     DB: {},
-    COMMENTS_QUEUE: { async send(body) { comments.push(body); } },
+    MINUTE_FACT_QUEUE: { async send(body) { minuteFacts.push(body); } },
   }, {
     message_type: 'stationhead-ingest-fact',
     message_version: 1,
@@ -50,50 +52,24 @@ test('isolated ingest fact stage preserves comments and finalize ordering', asyn
     async sendFinalize(body) { finalized.push(body); },
   });
 
-  assert.equal(comments.length, 1);
-  assert.equal(comments[0].message_type, 'stationhead-comments-task');
-  assert.equal(comments[0].minute_fact.read_model, null);
+  assert.equal(minuteFacts.length, 1);
+  assert.equal(minuteFacts[0].message_type, 'minute-fact-job');
   assert.equal(finalized.length, 1);
   assert.equal(finalized[0].message_type, 'stationhead-ingest-finalize');
   assert.equal(finalized[0].read_model.message_type, 'stationhead-read-model');
   assert.equal(result.event, 'ingest_fact_completed');
 });
 
-
 test('production ingest fact stage persists the outbox before deferring delivery', async () => {
   const delivered = [];
-  const comments = [];
-  const fact = {
-    observedAt,
-    snapshot: { channel_id: 10, station_id: 20 },
-    queue: { station_id: 20, tracks: [] },
-    comments: { commentsSaved: 0, degraded: false },
-    auth: { authToken: 'token', deviceUid: 'device' },
-    collectorState: {
-      authToken: 'token',
-      deviceUid: 'device',
-      lastRunAt: observedAt,
-      lastSuccessAt: observedAt + 1,
-    },
-    options: {
-      collectComments: false,
-      readModelPresentationOnly: true,
-      readModel: {
-        channel: { channel_id: 10, observed_at: observedAt, presentation: {} },
-        queue: { station_id: 20 },
-        collector: { collector_id: 'cloudflare-worker', updated_at: observedAt },
-      },
-    },
-  };
+  const fact = factFixture();
   const minuteFact = minuteFactQueueMessage({
     observedAt,
     snapshot: fact.snapshot,
     queue: fact.queue,
-    comments: fact.comments,
   }, fact.options);
   const result = await processIngestFactTask({
     DB: {},
-    COMMENTS_QUEUE: { async send(body) { comments.push(body); } },
     INGEST_FINALIZE_QUEUE: { async send(body) { delivered.push(body); } },
   }, {
     message_type: 'stationhead-ingest-fact',
@@ -109,43 +85,20 @@ test('production ingest fact stage persists the outbox before deferring delivery
 
   assert.equal(result.event, 'ingest_fact_staged');
   assert.equal(result.delivery_deferred, true);
-  assert.equal(comments.length, 0);
   assert.equal(delivered.length, 1);
   assert.equal(delivered[0].message_type, 'stationhead-ingest-fact-deliver');
   assert.equal(delivered[0].minute_fact, minuteFact);
   assert.equal(delivered[0].collector_state, fact.collectorState);
 });
 
-test('deferred ingest delivery preserves outbox ordering before comments and finalization', async () => {
-  const comments = [];
+test('deferred ingest delivery preserves outbox ordering before finalization', async () => {
+  const minuteFacts = [];
   const finalized = [];
-  const fact = {
-    observedAt,
-    snapshot: { channel_id: 10, station_id: 20 },
-    queue: { station_id: 20, tracks: [] },
-    comments: { commentsSaved: 0, degraded: false },
-    auth: { authToken: 'token', deviceUid: 'device' },
-    collectorState: {
-      authToken: 'token',
-      deviceUid: 'device',
-      lastRunAt: observedAt,
-      lastSuccessAt: observedAt + 1,
-    },
-    options: {
-      collectComments: false,
-      readModelPresentationOnly: true,
-      readModel: {
-        channel: { channel_id: 10, observed_at: observedAt, presentation: {} },
-        queue: { station_id: 20 },
-        collector: { collector_id: 'cloudflare-worker', updated_at: observedAt },
-      },
-    },
-  };
+  const fact = factFixture();
   const minuteFact = minuteFactQueueMessage({
     observedAt,
     snapshot: fact.snapshot,
     queue: fact.queue,
-    comments: fact.comments,
   }, fact.options);
   const body = {
     message_type: 'stationhead-ingest-fact-deliver',
@@ -158,7 +111,7 @@ test('deferred ingest delivery preserves outbox ordering before comments and fin
     minute_fact: minuteFact,
   };
   const result = await processIngestFactDeliveryTask({
-    COMMENTS_QUEUE: { async send(value) { comments.push(value); } },
+    MINUTE_FACT_QUEUE: { async send(value) { minuteFacts.push(value); } },
   }, body, {
     async flushMinuteFactOutbox(activeEnv, options) {
       assert.equal(options.limit, 1);
@@ -169,8 +122,8 @@ test('deferred ingest delivery preserves outbox ordering before comments and fin
   });
 
   assert.equal(result.event, 'ingest_fact_completed');
-  assert.equal(comments.length, 1);
-  assert.equal(comments[0].message_type, 'stationhead-comments-task');
+  assert.equal(minuteFacts.length, 1);
+  assert.equal(minuteFacts[0].message_type, 'minute-fact-job');
   assert.equal(finalized.length, 1);
   assert.equal(finalized[0].message_type, 'stationhead-ingest-finalize');
 });
