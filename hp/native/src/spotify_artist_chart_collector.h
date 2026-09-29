@@ -20,19 +20,12 @@ class SpotifyArtistChartCollector {
     nextCaptureAt_ = nowMs;
     UpdateNextWake();
   }
-  void ShowForDebug() noexcept {
-    if (!controller_ || !window_) return;
-    RECT bounds{};
-    if (!GetClientRect(window_, &bounds) || bounds.right <= bounds.left ||
-        bounds.bottom <= bounds.top) {
-      bounds = RECT{0, 0, 720, 480};
-    }
-    controller_->put_Bounds(bounds);
-    controller_->put_IsVisible(TRUE);
-  }
+  void ShowForDebug() noexcept;
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextWakeAt_; }
 
  private:
+  bool EnsureDebugHost() noexcept;
+  void DestroyDebugHost() noexcept;
   void BeginCapture(int64_t nowMs);
   void CreateController(uint64_t generation);
   void ConfigureAndNavigate(uint64_t generation);
@@ -44,6 +37,7 @@ class SpotifyArtistChartCollector {
       ICoreWebView2CreateCoreWebView2ControllerCompletedHandler* handler) const noexcept;
 
   HWND window_{};
+  HWND debugHostWindow_{};
   fs::path userDataFolder_;
   std::wstring profileName_{L"spotify-v2-6"};
   ComPtr<ICoreWebView2Environment> environment_;
@@ -57,11 +51,13 @@ class SpotifyArtistChartCollector {
   int64_t nextCaptureAt_ = 0;
   int64_t timeoutAt_ = 0;
   int64_t nextWakeAt_ = 0;
+  RECT debugHostBounds_{};
   bool started_ = false;
   bool creating_ = false;
   bool captureInFlight_ = false;
   bool contentInFlight_ = false;
   bool responseHandlerRegistered_ = false;
+  bool debugVisible_ = false;
 };
 
 }  // namespace hp
