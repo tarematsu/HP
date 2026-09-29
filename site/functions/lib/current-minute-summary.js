@@ -2,8 +2,8 @@
 // The public/current-history path must read one projection row instead of
 // re-aggregating the current UTC day's minute facts for every request.
 //
-// Member growth remains boundary-to-boundary: the start is the previous UTC
-// day's final member value and the end is today's latest daily-member state.
+// Member boundaries are owned only by sh_total_member_daily: the start is the
+// previous UTC day's final member value and the end is today's latest value.
 export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
   SELECT channel_id
   FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
@@ -39,7 +39,7 @@ SELECT strftime('%Y-%m-%d',?1/1000,'unixepoch') AS period_key,
   p.listener_min,p.listener_max,
   p.stream_start,p.stream_end,
   (SELECT last_total_member_count FROM previous_daily_member) AS member_start,
-  COALESCE((SELECT last_total_member_count FROM latest_daily_member),p.member_end) AS member_end,
+  (SELECT last_total_member_count FROM latest_daily_member) AS member_end,
   NULL AS primary_host
 FROM projection AS p
 LIMIT ?3`;
