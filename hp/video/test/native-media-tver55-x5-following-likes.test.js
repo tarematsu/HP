@@ -69,7 +69,7 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.doesNotMatch(waiting, /scrollTo\(|scrollBy\(/);
 });
 
-test('X likes exclude reposts, ads, PR and boosted posts', () => {
+test('X likes use hit-tested trusted clicks and retry until the unlike state is confirmed', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
   assert.match(xRuntime, /Promoted\|Sponsored\|広告\|プロモーション\|スポンサー\|Boosted\|ブースト\|PR/);
   assert.match(xRuntime, /data-testid="socialContext"/);
@@ -80,7 +80,15 @@ test('X likes exclude reposts, ads, PR and boosted posts', () => {
   assert.match(xRuntime, /state\.result = 'paused-on-like'/);
   assert.match(xRuntime, /window\.scrollBy\(\{ top: Math\.sign\(distance\) \* step, behavior: 'smooth' \}\)/);
   assert.match(xRuntime, /const likeIntervalMs = 10 \* 1000/);
-  assert.match(xRuntime, /bridge\.postMessage\(`homepanel:x-like:\$\{id\}:\$\{x\}:\$\{y\}`\)/);
+  assert.match(xRuntime, /const likeRetryIntervalMs = 1800/);
+  assert.match(xRuntime, /const maxLikeAttemptsPerPost = 3/);
+  assert.match(xRuntime, /document\.elementFromPoint\(x, y\)/);
+  assert.match(xRuntime, /hit\.closest\?\.\('\[data-testid="like"\]'\) === button/);
+  assert.match(xRuntime, /bridge\.postMessage\(`homepanel:x-like:\$\{id\}:\$\{point\.x\}:\$\{point\.y\}`\)/);
+  assert.match(xRuntime, /querySelector\('\[data-testid="unlike"\]'\)/);
+  assert.match(xRuntime, /state\.result = 'like-unconfirmed'/);
+  assert.match(xRuntime, /failedAttempts\.set\(candidate\.id, failures\)/);
+  assert.match(xRuntime, /failures >= maxLikeAttemptsPerPost/);
   assert.doesNotMatch(xRuntime, /button\.click\(\)/);
 });
 
