@@ -1,3 +1,4 @@
+import { pagesActionsR2ResponseKey } from './pages-response-r2.js';
 import { resolveAmazonMusicTracks } from './amazon-music-track-identity.js';
 import {
   createAmazonMusicWebClient,
@@ -8,12 +9,19 @@ import {
 
 export const AMAZON_MUSIC_ARTIST_ID = 'B08P3RHP1P';
 export const AMAZON_MUSIC_JAPAN_TOP50_ID = 'B088FYHTR4';
+export const AMAZON_MUSIC_PAGES_MODEL_KEY = 'amazon-music';
 const ARTIST_PREFIX = `amazon-music/artist/${AMAZON_MUSIC_ARTIST_ID}/`;
 const TOP50_PREFIX = 'amazon-music/japan-top-50/';
 const CATALOG_PREFIX = 'amazon-music/catalog-popular/';
 const READ_MODEL_KEY = 'amazon-music/read-model/latest.json';
+const READ_MODEL_HISTORY_DAYS = 365;
 const MAX_ISRC_LOOKUPS = 240;
 const ISRC_LOOKUP_CONCURRENCY = 4;
+const PUBLIC_HEADERS = Object.freeze({
+  'content-type': 'application/json; charset=utf-8',
+  'x-content-type-options': 'nosniff',
+  vary: 'accept-encoding',
+});
 
 function text(value) {
   if (value === null || value === undefined) return null;
@@ -174,6 +182,19 @@ async function r2Exists(r2, key) {
   return Boolean(await r2.head(key));
 }
 
+async function getJson(r2, key) {
+  if (typeof r2?.get !== 'function') return null;
+  const object = await r2.get(key);
+  if (!object) return null;
+  try {
+    if (typeof object.json === 'function') return await object.json();
+    if (typeof object.text === 'function') return JSON.parse(await object.text());
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 async function putJson(r2, key, value, metadata = {}) {
   if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is required');
   const body = JSON.stringify(value);
@@ -192,6 +213,87 @@ async function followerInfo(client, artistDocument) {
   } catch {
     return null;
   }
+}
+
+function readModelPoint(snapshot) {
+  const popularRank = new Map((snapshot.popular_tracks || [])
+    .map((track) => [track.amazon_music_id, Number(track.rank) || null]));
+  return {
+    snapshot_date: snapshot.snapshot_date,
+    observed_at: snapshot.observed_at,
+    follower_count: snapshot.follower?.count ?? null,
+    tracks: (snapshot.all_tracks || []).map((track) => ({
+      amazon_music_id: track.amazon_music_id,
+      track_id: track.track_id ?? null,
+      amazon_rank: Number(track.rank) || null,
+      popular_rank: popularRank.get(track.amazon_music_id) ?? null,
+    })),
+  };
+}
+
+export function buildAmazonMusicReadModel(snapshot, previousModel = null) {
+  const point = readModelPoint(snapshot);
+  const history = (Array.isArray(previousModel?.history) ? previousModel.history : [])
+    .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(String(item?.snapshot_date || '')))
+    .filter((item) => item.snapshot_date !== snapshot.snapshot_date);
+  history.push(point);
+  history.sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
+  const boundedHistory = history.slice(-READ_MODEL_HISTORY_DAYS);
+  const previousDate = amazonMusicJstDate(Number(snapshot.observed_at) - 86400_000);
+  const previousDay = boundedHistory.find((item) => item.snapshot_date === previousDate) || null;
+  const followerCount = snapshot.follower?.count ?? null;
+  const previousFollower = previousDay?.follower_count ?? null;
+  const followerDelta = Number.isSafeInteger(Number(followerCount)) && Number.isSafeInteger(Number(previousFollower))
+    ? Number(followerCount) - Number(previousFollower)
+    : null;
+  const popularRank = new Map((snapshot.popular_tracks || [])
+    .map((track) => [track.amazon_music_id, Number(track.rank) || null]));
+  const tracks = (snapshot.all_tracks || []).map((track) => ({
+    amazon_music_id: track.amazon_music_id,
+    track_id: track.track_id ?? null,
+    title: track.title || '曲名不明',
+    album: track.album || null,
+    image: track.image || null,
+    amazon_rank: Number(track.rank) || null,
+    popular_rank: popularRank.get(track.amazon_music_id) ?? null,
+  }));
+  return {
+    version: 1,
+    source: snapshot.source,
+    artist_id: snapshot.artist_id,
+    artist_name: '櫻坂46',
+    snapshot_date: snapshot.snapshot_date,
+    observed_at: snapshot.observed_at,
+    follower: followerCount == null ? null : {
+      count: followerCount,
+      delta: followerDelta,
+      exact: Boolean(snapshot.follower?.exact),
+      label: snapshot.follower?.label || null,
+    },
+    track_count: tracks.length,
+    tracks,
+    history: boundedHistory,
+  };
+}
+
+async function publishAmazonMusicReadModel(r2, model, observedAt) {
+  const body = JSON.stringify({ ok: true, ...model });
+  const objectKey = pagesActionsR2ResponseKey(AMAZON_MUSIC_PAGES_MODEL_KEY);
+  if (!objectKey) throw new Error('Amazon Music public read-model key is unavailable');
+  const envelope = {
+    version: 1,
+    status: 200,
+    headers: PUBLIC_HEADERS,
+    updated_at: observedAt,
+    cadence_seconds: 0,
+    source_revision: `amazon-music:${model.snapshot_date}:${observedAt}`,
+    renderer_revision: 'amazon-music-v1',
+    body,
+  };
+  await r2.put(objectKey, JSON.stringify(envelope), {
+    httpMetadata: { contentType: 'application/json; charset=utf-8' },
+  });
+  return { objectKey, bytes: body.length };
 }
 
 export async function collectAmazonMusicSnapshot(
@@ -254,7 +356,6 @@ export async function collectAmazonMusicSnapshot(
     bytesWritten += await putJson(r2, dailyKey, snapshot, { snapshotDate, observedAt });
   }
   bytesWritten += await putJson(r2, `${ARTIST_PREFIX}latest.json`, snapshot, { snapshotDate, observedAt });
-  bytesWritten += await putJson(r2, READ_MODEL_KEY, snapshot, { snapshotDate, observedAt });
 
   let top50Stored = false;
   if (top50Hits.length) {
@@ -289,11 +390,18 @@ export async function collectAmazonMusicSnapshot(
     }
   }
 
+  const previousReadModel = await getJson(r2, READ_MODEL_KEY);
+  const readModel = buildAmazonMusicReadModel(snapshot, previousReadModel);
+  bytesWritten += await putJson(r2, READ_MODEL_KEY, readModel, { snapshotDate, observedAt });
+  const publicModel = await publishAmazonMusicReadModel(r2, readModel, observedAt);
+  bytesWritten += publicModel.bytes;
+
   return {
     ok: true,
     snapshot_date: snapshotDate,
     week_key: weekKey,
     follower_count: follower?.count ?? null,
+    follower_delta: readModel.follower?.delta ?? null,
     popular_tracks: artistPopular.length,
     all_tracks: allArtistTracks.length,
     resolved_track_ids: trackIdByAmazonId.size,
@@ -301,6 +409,8 @@ export async function collectAmazonMusicSnapshot(
     japan_top_50_stored: top50Stored,
     catalog_popular_hits: catalogHits.length,
     catalog_popular_stored: catalogStored,
+    read_model_published: true,
+    read_model_object_key: publicModel.objectKey,
     bytes_written: bytesWritten,
   };
 }
