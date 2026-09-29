@@ -68,13 +68,17 @@ test('Apple Music API canonicalizes localized titles and identity with sh_tracks
         tracks: [
           { track_id: 101, rank: 2, title: 'Pikkaan!', song_key: 'pikkaan!' },
           { track_id: 202, rank: 3, title: 'Samidareyo', song_key: 'samidareyo' },
+          { track_id: null, rank: 4, title: 'Unresolved Song', song_key: 'unresolvedsong' },
         ],
       },
     ],
     history: [{
       snapshot_date: '2026-09-29',
       regions: {
-        us: [{ track_id: 101, rank: 3, song_key: 'pikkaan!' }],
+        us: [
+          { track_id: 101, rank: 3, song_key: 'pikkaan!' },
+          { track_id: null, rank: 4, song_key: 'unresolvedsong' },
+        ],
       },
     }],
   };
@@ -101,9 +105,11 @@ test('Apple Music API canonicalizes localized titles and identity with sh_tracks
   assert.deepEqual(us.tracks.map(({ track_id: trackId, title, song_key: songKey }) => ({ trackId, title, songKey })), [
     { trackId: 101, title: 'ピッカーン！', songKey: 'track:101' },
     { trackId: 202, title: '五月雨よ', songKey: 'track:202' },
+    { trackId: null, title: 'Unresolved Song', songKey: 'unresolvedsong' },
   ]);
   assert.equal(payload.regions[0].tracks[0].song_key, 'track:101');
   assert.equal(payload.history[0].regions.us[0].song_key, 'track:101');
+  assert.equal(payload.history[0].regions.us[1].song_key, 'unresolvedsong');
 });
 
 test('Apple Music view fixes the top graph to Japan and uses one regional ranking table', () => {
