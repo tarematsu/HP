@@ -1,11 +1,8 @@
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { spawn } from 'node:child_process';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-
-import { createWranglerRemoteD1 } from '../../worker/scripts/remote-d1-adapter.mjs';
 
 const HANDLES = Object.freeze([
   'sakuramankai',
@@ -14,22 +11,13 @@ const HANDLES = Object.freeze([
   'nogizaka46smej',
 ]);
 const PROFILE_API = 'https://www.stationhead.com/api/account/handle/';
-const RESPONSE_BUCKET = 'sh-pages-responses';
-const RESPONSE_KEY = 'pages-response/v1/followers.json';
-const DATABASE_NAME = 'stationhead-other';
-const JST_OFFSET_MS = 9 * 60 * 60_000;
-const DAY_MS = 86_400_000;
 const repoRoot = resolve(fileURLToPath(new URL('../../', import.meta.url)));
 const workerRoot = join(repoRoot, 'worker');
 const wranglerScript = join(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
-
-function jstDateKey(timestamp) {
-  return new Date(Number(timestamp) + JST_OFFSET_MS).toISOString().slice(0, 10);
-}
-
-function offsetDateKey(date, days) {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
+const tempDir = join(workerRoot, '.daily-followers-action');
+const entryPath = join(tempDir, 'entry.js');
+const configPath = join(tempDir, 'wrangler.jsonc');
+const localUrl = 'http://127.0.0.1:8787';
 
 function nonNegativeInteger(value) {
   const parsed = Number(value);
@@ -55,19 +43,16 @@ async function fetchFollowerSnapshot() {
     locale: 'ja-JP',
     timezoneId: 'Asia/Tokyo',
   });
-  const observedAt = Date.now();
   const followers = {};
   const accountIds = {};
   try {
     const page = await context.newPage();
     for (const handle of HANDLES) {
-      // Establish the same anonymous browser session that the public profile UI uses.
       await page.goto(`https://www.stationhead.com/${handle}`, {
         waitUntil: 'domcontentloaded',
         timeout: 45_000,
       });
       await page.waitForTimeout(1_000);
-
       const response = await context.request.get(`${PROFILE_API}${encodeURIComponent(handle)}`, {
         timeout: 30_000,
         failOnStatusCode: false,
@@ -83,30 +68,58 @@ async function fetchFollowerSnapshot() {
   } finally {
     await browser.close();
   }
-  return { observedAt, followers, accountIds };
+  return {
+    observed_at: Date.now(),
+    followers,
+    account_ids: accountIds,
+  };
 }
 
+function writeRemoteWorkerFiles() {
+  mkdirSync(tempDir, { recursive: true });
+  writeFileSync(entryPath, `
+import { pagesR2ResponseKey, saveMaterializedR2Response } from '../src/pages-response-r2.js';
+
+const HANDLES = ['sakuramankai', 'sakuramankai2', 'sakurazaka46jp', 'nogizaka46smej'];
+const MODEL_KEY = 'followers';
+const JST_OFFSET_MS = 9 * 60 * 60_000;
+const DAY_MS = 86_400_000;
+const HEADERS = {
+  'content-type': 'application/json; charset=utf-8',
+  'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
+};
+
+function dateKey(timestamp) {
+  return new Date(Number(timestamp) + JST_OFFSET_MS).toISOString().slice(0, 10);
+}
+function offsetDateKey(date, days) {
+  return new Date(Date.parse(\`${'${date}'}T00:00:00Z\`) + days * DAY_MS).toISOString().slice(0, 10);
+}
+function nonNegativeInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+function normalizeFollowers(value) {
+  const output = {};
+  for (const handle of HANDLES) {
+    const count = nonNegativeInteger(value?.[handle]);
+    if (count == null) throw new Error(\`invalid followers for ${'${handle}'}\`);
+    output[handle] = count;
+  }
+  return output;
+}
 function normalizeRows(rows) {
   const byDate = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     const date = String(row?.date || '');
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    const normalized = { date };
-    let valid = true;
-    for (const handle of HANDLES) {
-      const value = nonNegativeInteger(row?.[handle]);
-      if (value == null) {
-        valid = false;
-        break;
-      }
-      normalized[handle] = value;
-    }
-    if (valid) byDate.set(date, normalized);
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) continue;
+    try {
+      byDate.set(date, { date, ...normalizeFollowers(row) });
+    } catch {}
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
-
-function followerSummary(rows) {
+function summary(rows) {
   const latest = rows.at(-1);
   if (!latest) return [];
   const byDate = new Map(rows.map((row) => [row.date, row]));
@@ -120,110 +133,156 @@ function followerSummary(rows) {
   }));
 }
 
-function wrangler(args, options = {}) {
-  return execFileSync(process.execPath, [wranglerScript, ...args], {
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === '/health') return new Response('ok');
+    if (url.pathname !== '/run' || request.method !== 'POST') return new Response('not found', { status: 404 });
+
+    const input = await request.json();
+    const observedAt = Number(input?.observed_at) || Date.now();
+    const followers = normalizeFollowers(input?.followers);
+    const date = dateKey(observedAt);
+    const collectedAt = Date.now();
+
+    const key = pagesR2ResponseKey(MODEL_KEY);
+    const object = key ? await env.PAGES_RESPONSE_R2.get(key) : null;
+    let oldRows = [];
+    if (object) {
+      try { oldRows = normalizeRows((await object.json())?.rows); } catch {}
+    }
+    const rows = normalizeRows([...oldRows, { date, ...followers }]);
+
+    const result = await env.OTHER_DB.prepare(\`INSERT INTO sh_stationhead_daily_followers (
+        observed_date_jst,scheduled_at,collected_at,
+        sakuramankai,sakuramankai2,sakurazaka46jp,nogizaka46smej
+      ) VALUES (?,?,?,?,?,?,?)
+      ON CONFLICT(observed_date_jst) DO UPDATE SET
+        scheduled_at=excluded.scheduled_at,
+        collected_at=excluded.collected_at,
+        sakuramankai=excluded.sakuramankai,
+        sakuramankai2=excluded.sakuramankai2,
+        sakurazaka46jp=excluded.sakurazaka46jp,
+        nogizaka46smej=excluded.nogizaka46smej\`)
+      .bind(
+        date, observedAt, collectedAt,
+        followers.sakuramankai, followers.sakuramankai2,
+        followers.sakurazaka46jp, followers.nogizaka46smej,
+      )
+      .run();
+
+    const body = JSON.stringify({
+      ok: true,
+      updated_at: collectedAt,
+      latest_date: rows.at(-1)?.date || null,
+      handles: HANDLES,
+      rows,
+      accounts: summary(rows),
+    });
+    await saveMaterializedR2Response(
+      env.PAGES_RESPONSE_R2,
+      MODEL_KEY,
+      body,
+      200,
+      HEADERS,
+      collectedAt,
+      86400,
+    );
+
+    return Response.json({
+      ok: true,
+      observed_date_jst: date,
+      followers,
+      history_rows: rows.length,
+      d1_rows_written: Number(result?.meta?.changes || 0),
+      d1_reads: 0,
+      r2_reads: 1,
+      r2_writes: 1,
+    });
+  },
+};
+`, 'utf8');
+
+  writeFileSync(configPath, JSON.stringify({
+    name: 'sh-daily-followers-action',
+    main: 'entry.js',
+    compatibility_date: '2026-09-01',
+    d1_databases: [{
+      binding: 'OTHER_DB',
+      database_name: 'stationhead-other',
+      database_id: '21e70e92-6725-4e62-809e-8aadb088cc11',
+    }],
+    r2_buckets: [{
+      binding: 'PAGES_RESPONSE_R2',
+      bucket_name: 'sh-pages-responses',
+    }],
+  }, null, 2), 'utf8');
+}
+
+async function waitForWorker(child, output) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (child.exitCode != null) {
+      throw new Error(`wrangler dev exited early: ${output().slice(-3000)}`);
+    }
+    try {
+      const response = await fetch(`${localUrl}/health`, { signal: AbortSignal.timeout(1_500) });
+      if (response.ok) return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error(`wrangler dev did not become ready: ${output().slice(-3000)}`);
+}
+
+async function persistSnapshot(snapshot) {
+  writeRemoteWorkerFiles();
+  let logs = '';
+  const child = spawn(process.execPath, [
+    wranglerScript,
+    'dev', '--remote',
+    '--config', configPath,
+    '--ip', '127.0.0.1',
+    '--port', '8787',
+    '--log-level', 'warn',
+  ], {
     cwd: workerRoot,
     env: process.env,
-    encoding: 'utf8',
-    stdio: options.capture === false ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
-}
-
-function loadR2Model() {
-  const dir = mkdtempSync(join(tmpdir(), 'followers-r2-read-'));
-  const file = join(dir, 'followers.json');
+  const append = (chunk) => { logs += String(chunk); };
+  child.stdout.on('data', append);
+  child.stderr.on('data', append);
   try {
-    try {
-      wrangler(['r2', 'object', 'get', `${RESPONSE_BUCKET}/${RESPONSE_KEY}`, '--remote', '--file', file]);
-    } catch (error) {
-      const detail = `${String(error?.stderr || '')}\n${String(error?.stdout || '')}\n${String(error?.message || '')}`;
-      if (/not found|does not exist|NoSuchKey|404/i.test(detail)) return null;
-      throw error;
+    await waitForWorker(child, () => logs);
+    const response = await fetch(`${localUrl}/run`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(snapshot),
+      signal: AbortSignal.timeout(45_000),
+    });
+    const text = await response.text();
+    if (!response.ok) throw new Error(`remote persistence failed ${response.status}: ${text.slice(0, 2000)}`);
+    const result = JSON.parse(text);
+    if (!result?.ok || Object.keys(result.followers || {}).length !== HANDLES.length) {
+      throw new Error(`remote persistence returned invalid result: ${text.slice(0, 2000)}`);
     }
-    return JSON.parse(readFileSync(file, 'utf8'));
+    return result;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    child.kill('SIGTERM');
+    await new Promise((resolve) => {
+      if (child.exitCode != null) resolve();
+      else {
+        child.once('exit', resolve);
+        setTimeout(resolve, 3_000).unref();
+      }
+    });
+    rmSync(tempDir, { recursive: true, force: true });
   }
 }
 
-function saveR2Model(payload, updatedAt) {
-  const dir = mkdtempSync(join(tmpdir(), 'followers-r2-write-'));
-  const file = join(dir, 'followers.json');
-  try {
-    writeFileSync(file, JSON.stringify(payload), 'utf8');
-    wrangler([
-      'r2', 'object', 'put', `${RESPONSE_BUCKET}/${RESPONSE_KEY}`,
-      '--remote', '--file', file,
-      '--content-type', 'application/json; charset=utf-8',
-      '--custom-metadata', `version=1,status=200,updated_at=${updatedAt},cadence_seconds=86400,headers_json=${JSON.stringify({
-        'content-type': 'application/json; charset=utf-8',
-        'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
-      })}`,
-    ], { capture: false });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-async function main() {
-  const snapshot = await fetchFollowerSnapshot();
-  const date = jstDateKey(snapshot.observedAt);
-  const collectedAt = Date.now();
-
-  const existing = loadR2Model();
-  const rows = normalizeRows([
-    ...(existing?.rows || []),
-    { date, ...snapshot.followers },
-  ]);
-
-  const db = createWranglerRemoteD1({
-    database: DATABASE_NAME,
-    cwd: workerRoot,
-    wranglerScript,
-  });
-  const writeResult = await db.prepare(`INSERT INTO sh_stationhead_daily_followers (
-      observed_date_jst,scheduled_at,collected_at,
-      sakuramankai,sakuramankai2,sakurazaka46jp,nogizaka46smej
-    ) VALUES (?,?,?,?,?,?,?)
-    ON CONFLICT(observed_date_jst) DO UPDATE SET
-      scheduled_at=excluded.scheduled_at,
-      collected_at=excluded.collected_at,
-      sakuramankai=excluded.sakuramankai,
-      sakuramankai2=excluded.sakuramankai2,
-      sakurazaka46jp=excluded.sakurazaka46jp,
-      nogizaka46smej=excluded.nogizaka46smej`)
-    .bind(
-      date,
-      snapshot.observedAt,
-      collectedAt,
-      snapshot.followers.sakuramankai,
-      snapshot.followers.sakuramankai2,
-      snapshot.followers.sakurazaka46jp,
-      snapshot.followers.nogizaka46smej,
-    )
-    .run();
-
-  const payload = {
-    ok: true,
-    updated_at: collectedAt,
-    latest_date: rows.at(-1)?.date || null,
-    handles: HANDLES,
-    rows,
-    accounts: followerSummary(rows),
-  };
-  saveR2Model(payload, collectedAt);
-
-  console.log(JSON.stringify({
-    event: 'stationhead_daily_followers_collected',
-    observed_date_jst: date,
-    followers: snapshot.followers,
-    account_ids: snapshot.accountIds,
-    d1_rows_written: Number(writeResult?.meta?.changes || 0),
-    d1_reads: 0,
-    r2_reads: 1,
-    r2_writes: 1,
-    history_rows: rows.length,
-  }));
-}
-
-await main();
+const snapshot = await fetchFollowerSnapshot();
+const result = await persistSnapshot(snapshot);
+console.log(JSON.stringify({
+  event: 'stationhead_daily_followers_collected',
+  ...result,
+  account_ids: snapshot.account_ids,
+}));
