@@ -15,40 +15,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Probe Amazon Music JP artist endpoint
+      - name: Probe Amazon Music JP ranking endpoints
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
-          const domain = 'music.amazon.co.jp';
-          const origin = `https://${domain}`;
-          const artistId = 'B08P3RHP1P';
-          const ua = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36';
-          const configRes = await fetch(`${origin}/config.json`, {headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9','user-agent':ua,referer:`${origin}/`}});
-          console.log('config', configRes.status);
-          const config = await configRes.json();
-          const csrf = config.csrf || {};
-          const pageUrl = `${origin}/artists/${artistId}`;
-          const inner = {
-            'x-amzn-authentication': JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:config.accessToken||''}),
-            'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer',
-            'x-amzn-device-id':config.deviceId||'','x-amzn-user-agent':ua,'x-amzn-session-id':config.sessionId||'',
-            'x-amzn-device-height':'1080','x-amzn-request-id':Math.random().toString(36).slice(2),
-            'x-amzn-device-language':'ja_JP','x-amzn-currency-of-preference':'JPY','x-amzn-os-version':'1.0',
-            'x-amzn-application-version':config.version||'','x-amzn-device-time-zone':'Asia/Tokyo','x-amzn-timestamp':String(Date.now()),
+          const domain='music.amazon.co.jp';
+          const origin=`https://${domain}`;
+          const host='fe.mesk.skill.music.a2z.com';
+          const ua='Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36';
+          const cfgRes=await fetch(`${origin}/config.json`,{headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9','user-agent':ua,referer:`${origin}/`}});
+          console.log('config',cfgRes.status);
+          const cfg=await cfgRes.json(); const csrf=cfg.csrf||{};
+          function inner(pageUrl){return {
+            'x-amzn-authentication':JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:cfg.accessToken||''}),
+            'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer','x-amzn-device-id':cfg.deviceId||'',
+            'x-amzn-user-agent':ua,'x-amzn-session-id':cfg.sessionId||'','x-amzn-device-height':'1080','x-amzn-request-id':Math.random().toString(36).slice(2),
+            'x-amzn-device-language':'ja_JP','x-amzn-currency-of-preference':'JPY','x-amzn-os-version':'1.0','x-amzn-application-version':cfg.version||'',
+            'x-amzn-device-time-zone':'Asia/Tokyo','x-amzn-timestamp':String(Date.now()),
             'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),
-            'x-amzn-music-domain':domain,'x-amzn-referer':domain,'x-amzn-affiliate-tags':'','x-amzn-ref-marker':'',
-            'x-amzn-page-url':pageUrl,'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''
-          };
-          const body = JSON.stringify({id:artistId,userHash:JSON.stringify({level:'LIBRARY_MEMBER'}),headers:JSON.stringify(inner)});
-          for (const host of ['fe.web.skill.music.a2z.com','fe.mesk.skill.music.a2z.com','eu.web.skill.music.a2z.com','eu.mesk.skill.music.a2z.com']) {
-            const url = `https://${host}/api/explore/v1/showCatalogArtist`;
-            try {
-              const response = await fetch(url,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua,'sec-ch-ua':'"Chromium";v="125", "Not.A/Brand";v="24"','sec-ch-ua-mobile':'?1','sec-ch-ua-platform':'"Android"','sec-fetch-dest':'empty','sec-fetch-mode':'cors','sec-fetch-site':'cross-site'},body});
-              const text = await response.text();
-              console.log(host, response.status, text.slice(0,300).replace(/\s+/g,' '));
-            } catch (error) {
-              console.log(host, 'ERROR', String(error));
-            }
-          }
+            'x-amzn-music-domain':domain,'x-amzn-referer':domain,'x-amzn-affiliate-tags':'','x-amzn-ref-marker':'','x-amzn-page-url':pageUrl,
+            'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''};}
+          const outer={accept:'*/*','accept-language':'ja-JP,ja;q=0.9','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua,'sec-ch-ua':'"Chromium";v="125", "Not.A/Brand";v="24"','sec-ch-ua-mobile':'?1','sec-ch-ua-platform':'"Android"','sec-fetch-dest':'empty','sec-fetch-mode':'cors','sec-fetch-site':'cross-site'};
+          function countTrackish(root){let ids=new Set(), next=null, messages=[]; const walk=(v,d=0)=>{if(d>16||v==null)return;if(Array.isArray(v)){for(const x of v)walk(x,d+1);return;}if(typeof v!=='object')return; for(const [k,x] of Object.entries(v)){if(typeof x==='string'){if(/^(B0|A)[A-Z0-9]{8,}$/.test(x)&&/(id|asin|track|storage)/i.test(k))ids.add(x);if(/next/i.test(k)&&x.length>7)next??=x;if(/message/i.test(k))messages.push(x.slice(0,120));} walk(x,d+1);}};walk(root);return {ids:[...ids],next,messages:messages.slice(0,3)};}
+          async function call(label,path,id,segment){const page=`${origin}/${segment}/${id}`;const res=await fetch(`https://${host}/api${path}`,{method:'POST',headers:outer,body:JSON.stringify({id,userHash:JSON.stringify({level:'LIBRARY_MEMBER'}),headers:JSON.stringify(inner(page))})});const text=await res.text();let data=null;try{data=JSON.parse(text)}catch{};const summary=data?countTrackish(data):null;console.log(JSON.stringify({label,status:res.status,bytes:text.length,idCount:summary?.ids.length||0,firstIds:summary?.ids.slice(0,8)||[],hasNext:Boolean(summary?.next),messages:summary?.messages||[],prefix:text.slice(0,100)}));}
+          await call('artist','/explore/v1/showCatalogArtist','B08P3RHP1P','artists');
+          await call('artistTracks','/showCatalogTracks','B08P3RHP1P','artists');
+          await call('japanTop50','/showCatalogPlaylist','B088FYHTR4','playlists');
           NODE
