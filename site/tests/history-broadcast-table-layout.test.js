@@ -10,10 +10,11 @@ test('official listening party table uses clear read-model column labels with so
   assert.match(entry, /history-broadcast-table\.js\?v=20260924\.1/);
   for (const label of [
     '日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接',
-    '楽曲数', '推定再生数', 'コメント数', '放送内容', 'イベント名', '出典',
+    '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典',
   ]) {
     assert.match(table, new RegExp(label));
   }
+  assert.doesNotMatch(table, /コメント数|comment_count/);
   assert.match(table, /DATE_PREFIX/);
   assert.match(table, /raw\.slice\(match\[0\]\.length\)\.trim\(\)/);
   assert.match(table, /broadcastTimeLabel\(row\)/);
@@ -39,7 +40,7 @@ test('official listening party table has no hidden compatibility columns or enri
 });
 
 test('official listening party table left-aligns broadcast content, event name and source', () => {
-  for (const column of [10, 11, 12]) {
+  for (const column of [9, 10, 11]) {
     assert.match(table, new RegExp(`official-party-table th:nth-child\\(${column}\\)`));
     assert.match(table, new RegExp(`official-party-table td:nth-child\\(${column}\\)`));
   }
