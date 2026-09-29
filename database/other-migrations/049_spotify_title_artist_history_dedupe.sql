@@ -28,9 +28,26 @@ WITH track_identity AS (
       COALESCE((
         SELECT group_concat(artist_id, ',')
         FROM (
-          SELECT DISTINCT trim(json_extract(artist.value, '$.id')) AS artist_id
-          FROM json_each(track.artists_json) AS artist
-          WHERE trim(COALESCE(json_extract(artist.value, '$.id'), ''))<>''
+          SELECT DISTINCT trim(COALESCE(
+            json_extract(
+              CASE WHEN artist.type='object' THEN artist.value ELSE '{}' END,
+              '$.id'
+            ),
+            ''
+          )) AS artist_id
+          FROM json_each(
+            CASE
+              WHEN json_valid(track.artists_json) THEN track.artists_json
+              ELSE '[]'
+            END
+          ) AS artist
+          WHERE trim(COALESCE(
+            json_extract(
+              CASE WHEN artist.type='object' THEN artist.value ELSE '{}' END,
+              '$.id'
+            ),
+            ''
+          ))<>''
           ORDER BY artist_id
         )
       ), '') AS song_key
@@ -39,8 +56,19 @@ WITH track_identity AS (
     AND json_valid(track.artists_json)
     AND EXISTS (
       SELECT 1
-      FROM json_each(track.artists_json) AS artist
-      WHERE trim(COALESCE(json_extract(artist.value, '$.id'), ''))<>''
+      FROM json_each(
+        CASE
+          WHEN json_valid(track.artists_json) THEN track.artists_json
+          ELSE '[]'
+        END
+      ) AS artist
+      WHERE trim(COALESCE(
+        json_extract(
+          CASE WHEN artist.type='object' THEN artist.value ELSE '{}' END,
+          '$.id'
+        ),
+        ''
+      ))<>''
     )
 ),
 duplicate_groups AS (
