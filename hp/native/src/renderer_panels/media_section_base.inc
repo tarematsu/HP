@@ -17,7 +17,11 @@ constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
 constexpr UINT kNativeMediaXPhaseMs = 1U * 60U * 1000U;
 constexpr UINT kNativeMediaStartupXPhaseMs = 1U * 60U * 1000U;
+// Retained as the neutral/default duration for power saving and legacy contracts.
+// Every normal YouTube phase redraws its content duration in the 45-75 minute range.
 constexpr UINT kNativeMediaYoutubeContentPhaseMs = 60U * 60U * 1000U;
+constexpr UINT kNativeMediaYoutubeMinContentDurationMinutes = 45U;
+constexpr UINT kNativeMediaYoutubeMaxContentDurationMinutes = 75U;
 // Retained as the neutral/default duration for startup state and legacy contracts.
 // Every actual TVer phase redraws its content duration in the 45-75 minute range.
 constexpr UINT kNativeMediaTverContentDurationMs = 58U * 60U * 1000U;
@@ -36,6 +40,7 @@ constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 struct NativeMediaXCyclePlan {
   bool firstSlot = false;
   bool secondSlot = false;
+  UINT youtubeContentDurationMs = kNativeMediaYoutubeContentPhaseMs;
   UINT tverContentDurationMs = kNativeMediaTverContentDurationMs;
 };
 
@@ -68,12 +73,20 @@ NativeMediaXCyclePlan NativeMediaDrawXCyclePlan() noexcept {
       plan.secondSlot = true;
     }
   }
-  const UINT minuteSpan =
+  const UINT youtubeMinuteSpan =
+      kNativeMediaYoutubeMaxContentDurationMinutes -
+      kNativeMediaYoutubeMinContentDurationMinutes + 1U;
+  const UINT youtubeMinutes =
+      kNativeMediaYoutubeMinContentDurationMinutes +
+      NativeMediaXRandomBelow(youtubeMinuteSpan);
+  plan.youtubeContentDurationMs = youtubeMinutes * 60U * 1000U;
+
+  const UINT tverMinuteSpan =
       kNativeMediaTverMaxContentDurationMinutes -
       kNativeMediaTverMinContentDurationMinutes + 1U;
   const UINT tverMinutes =
       kNativeMediaTverMinContentDurationMinutes +
-      NativeMediaXRandomBelow(minuteSpan);
+      NativeMediaXRandomBelow(tverMinuteSpan);
   plan.tverContentDurationMs = tverMinutes * 60U * 1000U;
   return plan;
 }
@@ -104,8 +117,8 @@ void NativeMediaObserveXCyclePhase(bool tver) noexcept {
   }
   if (tver == lastTver) return;
   // Entering TVer means the current cycle's second X slot has finished. Draw
-  // exactly once for the next cycle: its TVer duration and first X slot are
-  // followed by YouTube and the cycle's second X slot.
+  // exactly once for the next cycle: both media durations and the first X slot
+  // are followed by YouTube and the cycle's second X slot.
   if (tver) NativeMediaCurrentXCyclePlan() = NativeMediaDrawXCyclePlan();
   lastTver = tver;
 }
@@ -113,6 +126,10 @@ void NativeMediaObserveXCyclePhase(bool tver) noexcept {
 bool NativeMediaXSlotEnabled(bool firstSlot) noexcept {
   const auto& plan = NativeMediaCurrentXCyclePlan();
   return firstSlot ? plan.firstSlot : plan.secondSlot;
+}
+
+UINT NativeMediaCurrentYoutubeContentDurationMs() noexcept {
+  return NativeMediaCurrentXCyclePlan().youtubeContentDurationMs;
 }
 
 UINT NativeMediaCurrentTverContentDurationMs() noexcept {
@@ -133,12 +150,13 @@ UINT NativeMediaYoutubeContentIntervalMs() noexcept {
   NativeMediaObserveXCyclePhase(false);
   const UINT startupPrefix = NativeMediaStartupYoutubePhaseActive()
       ? kNativeMediaStartupXPhaseMs : 0U;
+  const UINT youtubeContentDurationMs = NativeMediaCurrentYoutubeContentDurationMs();
   if (NativeMediaXSlotEnabled(false)) {
-    return startupPrefix + kNativeMediaYoutubeContentPhaseMs;
+    return startupPrefix + youtubeContentDurationMs;
   }
   // No X navigation is scheduled for an unselected slot. Put the X timer just
   // after the shorter phase boundary so the phase switches first.
-  return startupPrefix + kNativeMediaYoutubeContentPhaseMs + 1000U;
+  return startupPrefix + youtubeContentDurationMs + 1000U;
 }
 
 UINT NativeMediaTverContentIntervalMs() noexcept {
@@ -152,8 +170,9 @@ UINT NativeMediaTverContentIntervalMs() noexcept {
 UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
   NativeMediaObserveXCyclePhase(tver);
   if (gNativeMediaPowerSaving) {
-    // Power-saving mode intentionally has no X slot. Consume the one-shot
-    // startup slot so disabling power saving later cannot open a delayed X page.
+    // Power-saving mode intentionally has no X slot and keeps the established
+    // fixed 60-minute cadence. Consume the one-shot startup slot so disabling
+    // power saving later cannot open a delayed X page.
     if (NativeMediaStartupXDeadlineTick() == 0) {
       NativeMediaStartupXDeadlineTick() = 1;
     }
@@ -176,9 +195,10 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
   }
   const UINT startupPrefix = NativeMediaStartupYoutubePhaseActive()
       ? kNativeMediaStartupXPhaseMs : 0U;
+  const UINT youtubeContentDurationMs = NativeMediaCurrentYoutubeContentDurationMs();
   const UINT tailX = NativeMediaXSlotEnabled(false)
       ? kNativeMediaXPhaseMs : 0U;
-  return startupPrefix + kNativeMediaYoutubeContentPhaseMs + tailX;
+  return startupPrefix + youtubeContentDurationMs + tailX;
 }
 
 const wchar_t* NativeMediaYoutubeNavigationUrl() noexcept {

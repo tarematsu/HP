@@ -29,7 +29,7 @@ test('media cycle randomly selects zero, one or two X slots once per X-YouTube-X
 });
 
 test('unused X slots are skipped instead of displaying the current media for an extra minute', () => {
-  assert.match(mediaBase, /return startupPrefix \+ kNativeMediaYoutubeContentPhaseMs \+ 1000U/);
+  assert.match(mediaBase, /return startupPrefix \+ youtubeContentDurationMs \+ 1000U/);
   assert.match(mediaBase, /return tverContentDurationMs \+ 1000U/);
   assert.match(
     mediaBase,
@@ -49,17 +49,22 @@ test('startup reserves the first X slot only when that slot is selected', () => 
   assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive/);
   assert.match(mediaBase, /const bool startupXEnabled = NativeMediaXSlotEnabled\(true\)/);
   assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive\(\) = startupXEnabled/);
-  assert.match(mediaBase, /return startupPrefix \+ kNativeMediaYoutubeContentPhaseMs \+ tailX/);
+  assert.match(mediaBase, /return startupPrefix \+ youtubeContentDurationMs \+ tailX/);
   assert.match(xRuntime, /homepanel:startup-x-until:v2/);
   assert.match(xRuntime, /homepanel=startup/);
   assert.match(xRuntime, /Date\.now\(\) \+ 60 \* 1000/);
   assert.match(xRuntime, /location\.assign\(youtubeStart\)/);
 });
 
-test('YouTube can hand its final minute to the selected second X slot', () => {
-  assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
+test('YouTube draws one stable 45-75 minute content duration and can hand off to X', () => {
+  assert.match(mediaBase, /kNativeMediaYoutubeMinContentDurationMinutes = 45U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeMaxContentDurationMinutes = 75U/);
+  assert.match(mediaBase, /const UINT youtubeMinuteSpan =[\s\S]*YoutubeMaxContentDurationMinutes -[\s\S]*YoutubeMinContentDurationMinutes \+ 1U/);
+  assert.match(mediaBase, /NativeMediaXRandomBelow\(youtubeMinuteSpan\)/);
+  assert.match(mediaBase, /plan\.youtubeContentDurationMs = youtubeMinutes \* 60U \* 1000U/);
+  assert.match(mediaBase, /UINT NativeMediaCurrentYoutubeContentDurationMs\(\) noexcept/);
+  assert.match(mediaBase, /const UINT youtubeContentDurationMs = NativeMediaCurrentYoutubeContentDurationMs\(\)/);
   assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs =[\s\S]*kNativeMediaYoutubeContentPhaseMs \+ kNativeMediaXPhaseMs/);
   assert.doesNotMatch(youtubePolicy, /media_youtube_x_transition/);
   assert.match(host, /ArmTimer\(kNativeMediaXStartTimer, xRemaining\)/);
   assert.match(host, /Navigate\(L"https:\/\/x\.com\/home"\)/);
@@ -68,8 +73,8 @@ test('YouTube can hand its final minute to the selected second X slot', () => {
 test('TVer draws one stable 45-75 minute content duration before a selected first X slot', () => {
   assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 45U/);
   assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 75U/);
-  assert.match(mediaBase, /const UINT minuteSpan =[\s\S]*MaxContentDurationMinutes -[\s\S]*MinContentDurationMinutes \+ 1U/);
-  assert.match(mediaBase, /NativeMediaXRandomBelow\(minuteSpan\)/);
+  assert.match(mediaBase, /const UINT tverMinuteSpan =[\s\S]*TverMaxContentDurationMinutes -[\s\S]*TverMinContentDurationMinutes \+ 1U/);
+  assert.match(mediaBase, /NativeMediaXRandomBelow\(tverMinuteSpan\)/);
   assert.match(mediaBase, /plan\.tverContentDurationMs = tverMinutes \* 60U \* 1000U/);
   assert.match(mediaBase, /UINT NativeMediaCurrentTverContentDurationMs\(\) noexcept/);
   assert.match(mediaBase, /const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs\(\)/);
