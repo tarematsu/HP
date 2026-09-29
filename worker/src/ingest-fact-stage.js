@@ -68,18 +68,6 @@ function validateDeliveryTask(body) {
   };
 }
 
-function commentsTask(fact, body) {
-  body.read_model = null;
-  return {
-    message_type: 'stationhead-comments-task',
-    message_version: 2,
-    auth: fact.auth || {},
-    observed_at: integer(fact.observedAt) ?? Date.now(),
-    station_id: integer(fact.snapshot?.station_id),
-    minute_fact: body,
-  };
-}
-
 function readModelEnvelope(fact, body) {
   const compact = objectValue(body?.read_model) || objectValue(fact.options?.readModel);
   if (!compact) throw new Error('minute fact read model is missing');
@@ -104,28 +92,23 @@ function readModelEnvelope(fact, body) {
     observed_at: observedAt,
     job_id: `read-model:${channelId}:${observedAt}`,
     read_model: compact,
-    comment_task: {
-      observed_at: observedAt,
-      station_id: integer(fact.snapshot?.station_id),
-      auth: fact.auth || {},
-    },
   };
 }
 
 function activeFactEnv(env, fact, capture) {
   const active = Object.create(env || null);
-  const commentsQueue = env?.COMMENTS_QUEUE;
+  const minuteFactQueue = env?.MINUTE_FACT_QUEUE;
   Object.defineProperty(active, 'MINUTE_FACT_QUEUE', {
     enumerable: false,
-    value: commentsQueue?.send ? {
+    value: minuteFactQueue?.send ? {
       send(body, options) {
         const sourceBody = minuteFactQueueSourceMessage(body);
         if (sourceBody && typeof sourceBody === 'object') {
           capture.envelope = readModelEnvelope(fact, sourceBody);
         }
-        return commentsQueue.send(commentsTask(fact, sourceBody), options);
+        return minuteFactQueue.send(body, options);
       },
-    } : commentsQueue,
+    } : minuteFactQueue,
   });
   return active;
 }
