@@ -20,13 +20,15 @@ const tverQueue = readFileSync(
 const youtubeRuntime = readExpandedNativeSource(
   '../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url);
 
-test('media cadence keeps two one-minute X slots but activates a randomized subset per cycle', () => {
+test('media cadence keeps two one-minute X slots with variable YouTube and TVer durations', () => {
   assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 1U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaYoutubePhaseMs =[\s\S]*kNativeMediaYoutubeContentPhaseMs \+ kNativeMediaXPhaseMs/);
-  assert.match(mediaBase, /kNativeMediaTverPhaseMs =[\s\S]*kNativeMediaTverContentDurationMs \+ kNativeMediaXPhaseMs/);
+  assert.match(mediaBase, /kNativeMediaYoutubeMinContentDurationMinutes = 45U/);
+  assert.match(mediaBase, /kNativeMediaYoutubeMaxContentDurationMinutes = 75U/);
+  assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 45U/);
+  assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 75U/);
+  assert.match(mediaBase, /NativeMediaCurrentYoutubeContentDurationMs\(\)/);
+  assert.match(mediaBase, /NativeMediaCurrentTverContentDurationMs\(\)/);
   assert.match(mediaBase, /const UINT count = NativeMediaXRandomBelow\(3\)/);
   assert.match(mediaBase, /NativeMediaXSlotEnabled\(true\)/);
   assert.match(mediaBase, /NativeMediaXSlotEnabled\(false\)/);
