@@ -3,9 +3,7 @@ const canvas = document.getElementById('firstWeekChart');
 const legend = document.getElementById('firstWeekLegend');
 const detail = document.getElementById('firstWeekChartDetail');
 const notice = document.getElementById('firstWeekNotice');
-const title = document.getElementById('firstWeekChartTitle');
 const tbody = document.getElementById('firstWeekTbody');
-const metricButtons = [...document.querySelectorAll('[data-first-week-metric]')];
 
 const CACHE_KEY = 'sh.first-week-comparison.v2';
 const CACHE_MS = 60 * 60_000;
@@ -22,9 +20,7 @@ const SERIES_COLORS = [
 ];
 
 const number = new Intl.NumberFormat('ja-JP');
-const compact = new Intl.NumberFormat('ja-JP', { notation: 'compact', maximumFractionDigits: 1 });
 let series = [];
-let metric = 'listener';
 let selectedMinute = null;
 let loading = false;
 let resizeTimer = 0;
@@ -59,16 +55,12 @@ function colorFor(index) {
   return `hsl(${(18 + index * 137.508) % 360} 62% 44%)`;
 }
 
-function valueIndex() {
-  return metric === 'streams' ? 2 : 1;
-}
-
-function valueUnit() {
-  return metric === 'streams' ? '回' : '人';
+function pointValue(point) {
+  return finite(point?.[1]);
 }
 
 function valueLabel(value) {
-  return `${number.format(Math.round(Number(value) || 0))}${valueUnit()}`;
+  return `${number.format(Math.round(Number(value) || 0))}人`;
 }
 
 function elapsedLabel(minutes) {
@@ -81,10 +73,6 @@ function elapsedLabel(minutes) {
   if (days) return `${days}日${hours ? `${hours}時間` : ''}${mins ? `${mins}分` : ''}`;
   if (hours) return `${hours}時間${mins ? `${mins}分` : ''}`;
   return `${mins}分`;
-}
-
-function pointValue(point) {
-  return finite(point?.[valueIndex()]);
 }
 
 function nearestPoint(points, targetMinute) {
@@ -167,10 +155,6 @@ function draw() {
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
 
-  if (title) title.textContent = metric === 'streams'
-    ? 'ストリーミング配信後のチャンネル再生数増加'
-    : 'ストリーミング配信後の同接推移';
-
   const available = series.filter((item) => item.points.some((point) => pointValue(point) != null));
   if (!available.length) {
     context.font = '14px system-ui';
@@ -189,7 +173,7 @@ function draw() {
       if (value != null) rawMax = Math.max(rawMax, value);
     }
   }
-  const stepBase = metric === 'streams' ? 10_000 : 50;
+  const stepBase = 50;
   const maxValue = Math.max(stepBase, Math.ceil(rawMax / stepBase) * stepBase);
   const area = { left: 58, right: 18, top: 18, bottom: 42 };
   area.width = Math.max(1, width - area.left - area.right);
@@ -209,7 +193,7 @@ function draw() {
     context.stroke();
     const yValue = Math.round(maxValue * (1 - index / 4));
     context.textAlign = 'right';
-    context.fillText(metric === 'streams' ? compact.format(yValue) : number.format(yValue), area.left - 8, y + 3);
+    context.fillText(number.format(yValue), area.left - 8, y + 3);
   }
 
   for (let day = 0; day <= 7; day += 1) {
@@ -333,15 +317,6 @@ function handlePointer(event) {
     (clientX - rect.left - left) / chartWidth * DURATION_MINUTES));
   draw();
 }
-
-metricButtons.forEach((button) => {
-  button.addEventListener('click', () => {
-    metric = button.dataset.firstWeekMetric === 'streams' ? 'streams' : 'listener';
-    metricButtons.forEach((item) => item.classList.toggle('active', item === button));
-    selectedMinute = null;
-    draw();
-  });
-});
 
 canvas?.addEventListener('click', handlePointer);
 canvas?.addEventListener('touchstart', handlePointer, { passive: true });
