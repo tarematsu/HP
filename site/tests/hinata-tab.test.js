@@ -10,7 +10,7 @@ const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url),
 
 test('Pages mounts a dedicated Hinata dashboard tab', () => {
   assert.match(metrics, /dashboard-hinata-route\.js/);
-  assert.match(shell, /data\.view = 'hinata'/);
+  assert.match(shell, /dataset\.view = 'hinata'/);
   assert.match(shell, /日向坂/);
   assert.match(shell, /オンライン/);
   assert.match(shell, /総再生数/);
