@@ -46,6 +46,11 @@ function signalFrom(value) {
   return value?.__COLLECTION_ABORT_SIGNAL || null;
 }
 
+function collectionObservedAt(env) {
+  const value = Number(env?.__shCollectionObservedAt);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : Date.now();
+}
+
 function collectionAbortError(signal, stage) {
   if (signal?.reason instanceof Error) return signal.reason;
   const error = new Error(`Collection aborted during ${stage}`);
@@ -197,7 +202,7 @@ function estimateD1RowsWritten({
 }
 
 export async function collectPreparedOnce(env, source = 'raw-collection-queue') {
-  const observedAt = Date.now();
+  const observedAt = collectionObservedAt(env);
   let stage = 'collector_start';
   let state = null;
   const activeEnv = activeCollectorEnv(env);
