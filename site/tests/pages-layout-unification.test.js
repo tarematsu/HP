@@ -2,18 +2,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
+const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
 const spotifyShell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 const firstWeekShell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
 const playedTracksShell = readFileSync(new URL('../public/played-tracks-shell.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
-test('one canonical cross-view stylesheet owns dashboard layout', () => {
-  assert.match(header, /pages-layout\.css\?v=20260928\.1/);
-  assert.doesNotMatch(header, /pages-layout-unification|pages-layout-final-fixes/);
+test('one canonical cross-view stylesheet owns dashboard layout and is bundled after feature refinements', () => {
+  assert.match(buildScript, /'pages-layout\.css'/);
+  assert.doesNotMatch(buildScript, /pages-layout-unification|pages-layout-final-fixes/);
   assert.ok(
-    header.indexOf('currentEnhancementsHref') < header.indexOf('pagesLayoutHref'),
+    buildScript.indexOf("'dashboard-current-enhancements.css'") < buildScript.indexOf("'pages-layout.css'"),
     'shared layout must load after feature refinements',
   );
 });
