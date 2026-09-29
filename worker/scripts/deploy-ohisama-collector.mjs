@@ -1,4 +1,7 @@
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
+
+import { OHISAMA_LEGACY_DAILY_SQL_GZIP_BASE64 } from './ohisama-legacy-daily-data.mjs';
 
 import { runWrangler } from './cloudflare-queues.mjs';
 
@@ -7,6 +10,7 @@ const BUDDIES_DATABASE_NAME = 'stationhead-buddies';
 const CONFIG_NAME = 'wrangler.ohisama-collector.jsonc';
 const GENERATED_CONFIG_NAME = '.wrangler.ohisama-collector.generated.jsonc';
 const SCHEMA_PATH = 'scripts/ohisama-schema.sql';
+const LEGACY_DAILY_MIGRATION_ID = 'ohisama-legacy-daily-2024-2025-v1';
 const generatedConfigUrl = new URL(`../${GENERATED_CONFIG_NAME}`, import.meta.url);
 
 function parseJsonOutput(value) {
@@ -59,6 +63,32 @@ function applySchema() {
   ]);
 }
 
+function applyLegacyDailyImport() {
+  const existing = wranglerJson([
+    'd1', 'execute', DATABASE_NAME,
+    '--remote', '--yes', '--json',
+    '--command', `SELECT id FROM sh_data_migrations
+      WHERE id=${sqlText(LEGACY_DAILY_MIGRATION_ID)} LIMIT 1`,
+  ], { allowFailure: true });
+  if (resultRows(existing).length) return false;
+
+  const sql = gunzipSync(Buffer.from(OHISAMA_LEGACY_DAILY_SQL_GZIP_BASE64, 'base64')).toString('utf8');
+  runWrangler([
+    'd1', 'execute', DATABASE_NAME,
+    '--remote', '--yes',
+    '--command', sql,
+  ]);
+
+  runWrangler([
+    'd1', 'execute', DATABASE_NAME,
+    '--remote', '--yes',
+    '--command', `INSERT INTO sh_data_migrations(id,applied_at)
+      VALUES(${sqlText(LEGACY_DAILY_MIGRATION_ID)},${Date.now()})
+      ON CONFLICT(id) DO NOTHING`,
+  ]);
+  return true;
+}
+
 function seedBuddiesAuth() {
   const source = wranglerJson([
     'd1', 'execute', BUDDIES_DATABASE_NAME,
@@ -92,6 +122,7 @@ function seedBuddiesAuth() {
 
 const { id } = ensureDatabase();
 applySchema();
+const legacyDailyImported = applyLegacyDailyImport();
 const authSeeded = seedBuddiesAuth();
 
 const config = JSON.parse(readFileSync(new URL(`../${CONFIG_NAME}`, import.meta.url), 'utf8'));
@@ -111,5 +142,6 @@ console.log(JSON.stringify({
   event: 'ohisama_collector_worker_deployed',
   script: config.name,
   database_name: DATABASE_NAME,
+  legacy_daily_imported: legacyDailyImported,
   auth_seeded_from_buddies: authSeeded,
 }));
