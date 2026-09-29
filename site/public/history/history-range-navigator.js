@@ -19,6 +19,7 @@
   let activePeriod = 'all';
 
   function ensureStylesheet() {
+    if (document.documentElement.dataset.dashboardCssBundled === 'true') return;
     if (document.querySelector('link[data-history-range-navigator]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';

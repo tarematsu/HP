@@ -3,83 +3,67 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
-const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
-const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
+const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
-const spotifyShell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+const common = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
+const rangeNavigator = readFileSync(new URL('../public/history/history-range-navigator.js', import.meta.url), 'utf8');
 
 function assetVersion(source, asset) {
-  const match = source.match(new RegExp(
-    `(?:/|\\./)${escapeRegExp(asset)}\\?v=([^'"\\s)>]+)`,
-  ));
+  const escaped = asset.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = source.match(new RegExp(`${escaped}\\?v=([^'"\\s)>]+)`));
   assert.ok(match, `${asset} must use an explicit deployment version`);
   return match[1];
 }
 
-test('dashboard asset dependency chain gives every cacheable asset an explicit version', () => {
-  const versions = {
-    appLite: assetVersion(html, 'app-lite.css'),
-    monochrome: assetVersion(html, 'monochrome.css'),
-    rootPresentation: assetVersion(html, 'dashboard-root-presentation.css'),
-    entry: assetVersion(html, 'dashboard-metrics.js'),
-    header: assetVersion(entry, 'dashboard-header.js'),
-    tabOrder: assetVersion(entry, 'dashboard-tab-order.js'),
-    followersRoute: assetVersion(entry, 'dashboard-followers-route.js'),
-    tabs: assetVersion(entry, 'dashboard-tabs.js'),
-    spotifyShell: assetVersion(tabs, 'spotify-shell.js'),
-    spotifyCss: assetVersion(spotifyShell, 'spotify.css'),
-    firstWeekShell: assetVersion(tabs, 'first-week-comparison-shell.js'),
-    playedTracksShell: assetVersion(tabs, 'played-tracks-shell.js'),
-    historyMain: assetVersion(tabs, 'history/history-main.js'),
-    pagesLayout: assetVersion(header, 'pages-layout.css'),
-    legacyListeningPartyRoute: assetVersion(entry, 'legacy-listening-party-route.js'),
-    fetchCache: assetVersion(entry, 'dashboard-fetch-cache.js'),
-    unofficialListeningParties: assetVersion(historyEntry, 'unofficial-listening-parties.js'),
-    officialListeningPartyCopy: assetVersion(historyEntry, 'official-listening-party-copy.js'),
-    chartStability: assetVersion(entry, 'dashboard-chart-stability.js'),
-    dailySummaries: assetVersion(entry, 'dashboard-daily-summaries.js'),
-    detailsClient: assetVersion(entry, 'dashboard-details-client.js'),
-    comparison: assetVersion(entry, 'dashboard-chart-comparison.js'),
-    chartDetail: assetVersion(entry, 'dashboard-chart-detail.js'),
-    client: assetVersion(entry, 'dashboard-client.js'),
-    fixes: assetVersion(header, 'dashboard-fixes.css'),
-  };
-
-  assert.equal(versions.rootPresentation, '20260930.1');
-  assert.equal(versions.entry, '20260929.3');
-  assert.equal(versions.header, '20260928.1');
-  assert.equal(versions.tabOrder, '20260929.1');
-  assert.equal(versions.followersRoute, '20260930.2');
-  assert.equal(versions.tabs, '20260930.1');
-  assert.equal(versions.spotifyShell, '20260929.1');
-  assert.equal(versions.spotifyCss, '20260928.5');
-  assert.equal(versions.firstWeekShell, '20260929.1');
-  assert.equal(versions.playedTracksShell, '20260928.1');
-  assert.equal(versions.historyMain, '20260928.1');
-  assert.equal(versions.pagesLayout, '20260928.1');
-  assert.equal(versions.unofficialListeningParties, '20260927.1');
-  assert.equal(versions.chartStability, '20260929.1');
-  assert.equal(versions.comparison, '20260929.1');
-  assert.equal(versions.chartDetail, '20260929.1');
-  assert.equal(versions.dailySummaries, '20260929.1');
-  assert.equal(versions.detailsClient, '20260929.2');
-  assert.equal(versions.client, '20260929.2');
-  for (const [asset, version] of Object.entries(versions)) {
-    assert.match(version, /^\d{8}\.\d+$/, `${asset} has an invalid deployment version: ${version}`);
-  }
+test('dashboard ships one CSS and one JavaScript browser asset', () => {
+  const styles = [...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map((match) => match[1]);
+  const modules = [...html.matchAll(/<script\s+type="module"\s+src="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(styles, ['/assets/dashboard.min.css?v=20260930.1']);
+  assert.deepEqual(modules, ['/assets/dashboard.min.js?v=20260930.1']);
+  assert.match(html, /data-dashboard-css-bundled="true"/);
+  assert.match(assetVersion(html, 'assets/dashboard.min.css'), /^\d{8}\.\d+$/);
+  assert.match(assetVersion(html, 'assets/dashboard.min.js'), /^\d{8}\.\d+$/);
+  assert.doesNotMatch(html, /(?:app-lite|monochrome|dashboard-root-presentation|dashboard-metrics)\.(?:css|js)\?v=/);
 });
 
-test('fixed entry URLs without a version cannot silently return stale layout code', () => {
-  assert.doesNotMatch(html, /(?:href|src)="\/(?:app-lite\.css|monochrome\.css|dashboard-root-presentation\.css|dashboard-metrics\.js)"/);
-  assert.doesNotMatch(entry, /(?:from |import\()'\/(?:dashboard-client\.js)'/);
-  assert.doesNotMatch(entry, /dashboard-current-metric-style/);
-  assert.doesNotMatch(header, /stylesheetHref = '\/dashboard-fixes\.css'/);
-  assert.doesNotMatch(header, /pages-layout\.css['"]/);
-  assert.doesNotMatch(tabs, /spotify-shell\.js['"]/);
-  assert.doesNotMatch(spotifyShell, /spotify\.css['"]/);
+test('build collapses the complete module graph and feature styles into minified assets', () => {
+  assert.match(buildScript, /entryPoints:\s*\[resolve\(publicRoot, 'dashboard-metrics\.js'\)\]/);
+  assert.match(buildScript, /outfile:\s*resolve\(assetsDir, 'dashboard\.min\.js'\)/);
+  assert.match(buildScript, /bundle:\s*true/);
+  assert.match(buildScript, /splitting:\s*false/);
+  assert.match(buildScript, /minify:\s*true/);
+  assert.match(buildScript, /outfile:\s*resolve\(assetsDir, 'dashboard\.min\.css'\)/);
+  for (const css of [
+    'app-lite.css',
+    'dashboard-root-presentation.css',
+    'pages-layout.css',
+    'spotify.css',
+    'apple-music.css',
+    'amazon-music.css',
+    'followers.css',
+    'hinata.css',
+    'dashboard-ui-common.css',
+  ]) assert.match(buildScript, new RegExp(css.replaceAll('.', '\\.')));
+  assert.ok(
+    buildScript.lastIndexOf("'dashboard-ui-common.css'") > buildScript.indexOf("'hinata.css'"),
+    'shared presentation contract must be last in the CSS bundle',
+  );
+});
+
+test('bundled pages never request feature styles at runtime', () => {
+  assert.match(header, /dataset\.dashboardCssBundled !== 'true'/);
+  assert.match(common, /dataset\.dashboardCssBundled === 'true'\) return null/);
+  assert.match(rangeNavigator, /dataset\.dashboardCssBundled === 'true'\) return/);
+});
+
+test('Canvas chart normalization is part of the production bundle build', () => {
+  for (const file of [
+    'dashboard-chart-comparison.js',
+    'first-week-comparison.js',
+    'history-period-chart.js',
+    'history-ranking-chart.js',
+  ]) assert.match(buildScript, new RegExp(file.replaceAll('.', '\\.')));
+  assert.match(buildScript, /11px system-ui/);
+  assert.match(buildScript, /context\.lineWidth = 2;/);
+  assert.match(buildScript, /context\.arc\(positions\[index\], yFor\(rank\), 3,/);
 });

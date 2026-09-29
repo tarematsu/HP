@@ -69,6 +69,11 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
         working-directory: site
 
+      - name: Build optimized Pages assets
+        if: github.event_name == 'pull_request'
+        run: npm run assets:build
+        working-directory: site
+
       - name: Deploy pull request Pages preview
         if: github.event_name == 'pull_request'
         id: preview

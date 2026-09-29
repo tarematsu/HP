@@ -16,6 +16,7 @@ const publicSources = [
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const assetBuild = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 
 test('Pages does not render transient loading copy', () => {
@@ -24,7 +25,7 @@ test('Pages does not render transient loading copy', () => {
   }
 });
 
-test('silent loading changes are cache busted through the Pages entry chain', () => {
+test('silent loading changes are cache busted through the bundled Pages entry', () => {
   assert.match(historyEntry, /history-chart-stability\.js\?v=20260925\.1/);
   assert.doesNotMatch(historyEntry, /history-table-cleanup|history-page-fixes|history-summary-average-labels/);
   assert.match(historyEntry, /history-lite\.js\?v=20260930\.1/);
@@ -44,9 +45,10 @@ test('silent loading changes are cache busted through the Pages entry chain', ()
   assert.match(dashboardEntry, /dashboard-chart-detail\.js\?v=20260929\.1/);
   assert.match(dashboardEntry, /dashboard-details-client\.js\?v=20260929\.2/);
   assert.match(dashboardEntry, /dashboard-client\.js\?v=20260929\.2/);
-  assert.match(html, /dashboard-root-presentation\.css\?v=20260930\.1/);
+  assert.match(assetBuild, /'dashboard-root-presentation\.css'/);
   assert.doesNotMatch(dashboardEntry, /dashboard-root-presentation\.css|history-global-fixes|dashboard-current-metric-style/);
   assert.doesNotMatch(dashboardEntry, /import '.\/unofficial-listening-parties\.js/);
   assert.match(dashboardEntry, /dashboard-tabs\.js\?v=20260930\.1/);
-  assert.match(html, /dashboard-metrics\.js\?v=20260929\.3/);
+  assert.match(html, /\/assets\/dashboard\.min\.css\?v=[^"']+/);
+  assert.match(html, /\/assets\/dashboard\.min\.js\?v=[^"']+/);
 });
