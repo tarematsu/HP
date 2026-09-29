@@ -8,6 +8,10 @@ const collectorHeader = read('../../native/src/spotify_artist_chart_collector.h'
 const collector = read('../../native/src/spotify_artist_chart_collector.inl');
 const spool = read('../../native/src/spotify_artist_chart_capture_spool.h');
 const leaderboardHeader = read('../../native/src/stationhead_leaderboard_collector.h');
+const leaderboardCollector = read('../../native/src/stationhead_leaderboard_collector.cpp');
+const hourlySchedule = read('../../native/src/hourly_collection_schedule.h');
+const powerSavingHeader = read('../../native/src/power_saving_controller.h');
+const powerSavingSchedule = read('../../native/src/power_saving_schedule.inc');
 const appMessages = read('../../native/src/app_messages.cpp');
 const exchange = read('../../native/src/cloud_client_exchange.inc');
 const cloudCapture = read('../../cloud/src/spotify_artist_chart_capture.ts');
@@ -35,13 +39,15 @@ test('Spotify Japan daily artist chart uses the authenticated Stationhead WebVie
   assert.match(collector, /capture\.Insert\(L"chart_date"/);
 });
 
-test('native app starts the visible Japan daily artist chart at startup without relying on a delay workaround', () => {
+test('native app requests the Japan daily artist chart at minute :30 every hour', () => {
+  assert.match(appMessages, /#include "hourly_collection_schedule\.h"/);
+  assert.match(appMessages, /#include "power_saving_controller\.h"/);
   assert.match(appMessages, /#include "spotify_artist_chart_collector\.h"/);
-  assert.match(appMessages, /kSpotifyArtistChartInitialDelayMs = 250/);
-  assert.doesNotMatch(appMessages, /kSpotifyArtistChartStartupRetryMs/);
-  assert.doesNotMatch(appMessages, /RearmSpotifyArtistChartAfterStartup/);
-  assert.match(appMessages, /kSpotifyArtistChartIntervalMs = 60 \* 60 \* 1000/);
-  assert.match(appMessages, /SetTimer\(window, kSpotifyArtistChartTimer, kSpotifyArtistChartIntervalMs, nullptr\)/);
+  assert.match(appMessages, /kSpotifyArtistChartPhaseMinute = 30/);
+  assert.match(appMessages, /NextHourlyCollectionSlot\(nowMs, kSpotifyArtistChartPhaseMinute\)/);
+  assert.match(appMessages, /ArmSpotifyArtistChartTimer\(window, now\)/);
+  assert.doesNotMatch(appMessages, /kSpotifyArtistChartInitialDelayMs/);
+  assert.doesNotMatch(appMessages, /kSpotifyArtistChartIntervalMs/);
   assert.match(appMessages, /collector\.EnsureStarted\(now\)/);
   assert.match(appMessages, /collector\.RequestCaptureNow\(now\)/);
   assert.match(appMessages, /collector\.Tick\(now\)/);
@@ -49,6 +55,21 @@ test('native app starts the visible Japan daily artist chart at startup without 
   assert.match(appMessages, /kSpotifyArtistChartWatchTimer/);
   assert.match(appMessages, /StopSpotifyArtistChartCapture\(window\)/);
   assert.doesNotMatch(leaderboardHeader, /spotifyArtistChartCollector_/);
+});
+
+test('Spotify and Stationhead hourly collectors stay 30 minutes apart and suspend in power saving', () => {
+  assert.match(hourlySchedule, /kHourlyCollectionIntervalMs = 60 \* 60'000LL/);
+  assert.match(hourlySchedule, /NextHourlyCollectionSlot/);
+  assert.match(leaderboardCollector, /kStationheadCollectionPhaseMinute = 0/);
+  assert.match(leaderboardCollector, /NextHourlyCollectionSlot\(nowMs, kStationheadCollectionPhaseMinute\)/);
+  assert.match(leaderboardCollector, /PowerSavingController::IsPowerSavingActive\(\)/);
+  assert.match(leaderboardCollector, /power_saving_suspended/);
+  assert.match(appMessages, /kSpotifyArtistChartPhaseMinute = 30/);
+  assert.match(appMessages, /PowerSavingController::IsPowerSavingActive\(\)/);
+  assert.match(appMessages, /PauseSpotifyArtistChartCapture\(window\)/);
+  assert.match(collectorHeader, /bool Started\(\) const noexcept/);
+  assert.match(powerSavingHeader, /static bool IsPowerSavingActive\(\) noexcept/);
+  assert.match(powerSavingSchedule, /layoutChanged[\s\S]*PostMessageW\(parent_, WM_TIMER, 0, 0\)/);
 });
 
 test('Spotify chart controller teardown invalidates late callbacks and runs outside WebView callbacks', () => {

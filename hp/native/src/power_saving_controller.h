@@ -19,6 +19,9 @@ class PowerSavingController {
   void InstallForCurrentThread();
   void Uninstall() noexcept;
   static void AttachCurrent(HWND parent);
+  [[nodiscard]] static bool IsPowerSavingActive() noexcept {
+    return current_ && current_->powerSaving_;
+  }
 
  private:
   enum class AudioMode {
