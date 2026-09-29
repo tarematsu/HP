@@ -2,22 +2,20 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const pageFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
-const globalFixes = readFileSync(new URL('../public/history/history-global-fixes.js', import.meta.url), 'utf8');
+const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const sakurazakaStatus = readFileSync(new URL('../public/sakurazaka46jp/live.js', import.meta.url), 'utf8');
 const historySummary = readFileSync(new URL('../functions/lib/history-summary.js', import.meta.url), 'utf8');
 
 test('ranking session cache survives ordinary page startup', () => {
-  assert.doesNotMatch(pageFixes, /sessionStorage\.removeItem/);
-  assert.doesNotMatch(pageFixes, /mode=ranking/);
+  assert.doesNotMatch(history, /sessionStorage\.removeItem\([^)]*ranking/);
+  assert.match(history, /sessionStorage\.getItem/);
 });
 
-test('playback metadata recovery does not observe the whole current view', () => {
-  assert.doesNotMatch(globalFixes, /observe\(currentView/);
-  assert.match(globalFixes, /observe\(nowPlayingLink/);
-  assert.match(globalFixes, /observe\(queue/);
-  assert.match(globalFixes, /\['trackTitle', 'trackArtist'\]/);
-  assert.doesNotMatch(globalFixes, /trackTime/);
+test('current playback does not run a second metadata-repair observer or request', () => {
+  assert.doesNotMatch(metrics, /history-global-fixes|repairPlaybackMetadata|ranking_only=1&ranking_limit=500/);
+  assert.equal((metrics.match(/new MutationObserver/g) || []).length, 1);
+  assert.match(metrics, /attributeFilter: \['src'\]/);
 });
 
 test('Sakurazaka realtime polling pauses while the page is hidden', () => {

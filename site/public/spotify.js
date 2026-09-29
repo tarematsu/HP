@@ -184,7 +184,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
   chart.className = 'spotify-trend-series spotify-trend-combined';
   const legend = document.createElement('div');
   legend.className = 'spotify-trend-legend';
-  legend.setAttribute('aria-label', 'アーティスト凡例と最新再生数');
+  legend.setAttribute('aria-label', 'アイドル凡例と最新の再生数前日比');
   seriesList.forEach(({ artistName, points }, seriesIndex) => {
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
     const latest = [...points].reverse().find((point) => integer(point?.[metricKey]) != null);
@@ -233,6 +233,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
   seriesList.forEach(({ artistName, points }, seriesIndex) => {
     const color = TREND_COLORS[seriesIndex % TREND_COLORS.length];
     const byDate = new Map(points.map((point) => [String(point.snapshot_date), point]));
+    const plotted = [];
     let pathData = '';
     let drawing = false;
     for (const date of dates) {
@@ -243,16 +244,31 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
       }
       const x = axis.xForIndex(axis.dateIndex.get(date));
       const y = yForValue(value);
+      plotted.push({ x, y });
       pathData += `${drawing ? ' L' : ' M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
       drawing = true;
     }
-    if (pathData) {
+    if (plotted.length > 1 && pathData) {
       const path = svgElement('path', { d: pathData.trim(), class: 'spotify-trend-line' });
       path.style.setProperty('--spotify-trend-color', color);
       const title = svgElement('title');
       title.textContent = artistName;
       path.append(title);
       svg.append(path);
+    } else if (plotted.length === 1) {
+      const [{ x, y }] = plotted;
+      const marker = svgElement('line', {
+        x1: x - 5,
+        x2: x + 5,
+        y1: y,
+        y2: y,
+        class: 'spotify-trend-line spotify-single-point-line',
+      });
+      marker.style.setProperty('--spotify-trend-color', color);
+      const title = svgElement('title');
+      title.textContent = `${artistName}（取得済み1点）`;
+      marker.append(title);
+      svg.append(marker);
     }
     for (const point of points) {
       const value = integer(point?.[metricKey]);
@@ -261,7 +277,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
       const circle = svgElement('circle', {
         cx: axis.xForIndex(index),
         cy: yForValue(value),
-        r: 2.4,
+        r: plotted.length === 1 ? 3.4 : 2.4,
         class: 'spotify-trend-point',
       });
       circle.style.setProperty('--spotify-trend-color', color);
@@ -319,7 +335,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   if (!dates.length || !ranks.length) {
     const empty = document.createElement('p');
     empty.className = 'spotify-trend-empty';
-    empty.textContent = 'Spotify日本デイリートップアーティストの順位データはまだありません。';
+    empty.textContent = 'Spotify日本 Daily Top Artist の順位データはまだありません。';
     container.append(empty);
     return;
   }
@@ -360,7 +376,7 @@ function renderArtistRankChart(chart = {}, trend = {}) {
   const svg = svgElement('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
-    'aria-label': 'Spotify日本デイリートップアーティストの順位推移。1位が上。',
+    'aria-label': 'Spotify日本 Daily Top Artist の順位推移。1位が上。',
     class: 'spotify-trend-svg',
   });
   for (const rank of rankTicks) {
@@ -440,13 +456,13 @@ function render(payload, trend, artistChart) {
   renderTrendChart(trend, {
     containerId: 'spotifyTrendCharts',
     metricKey: 'total_delta',
-    ariaLabel: '収集対象の女性アイドル 最新前日比全曲合計の上位10アーティスト Spotify再生数推移',
+    ariaLabel: '最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移',
     maxSeries: TREND_ARTIST_LIMIT,
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
     metricKey: 'top10_year_delta',
-    ariaLabel: '収集対象の女性アイドル 今年リリース曲の最新前日比上位10曲合計による上位10アーティスト Spotify再生数推移',
+    ariaLabel: '今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移',
     maxSeries: TREND_ARTIST_LIMIT,
   });
   renderArtistRankChart(artistChart, trend);

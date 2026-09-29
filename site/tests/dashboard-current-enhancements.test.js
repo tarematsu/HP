@@ -10,7 +10,7 @@ const layout = readFileSync(new URL('../public/dashboard-current-layout.js', imp
 const chart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/dashboard-current-enhancements.css', import.meta.url), 'utf8');
 const sharedLayout = readFileSync(new URL('../public/pages-layout.css', import.meta.url), 'utf8');
-const tableCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
+const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
 test('current metrics are statically ordered while current-only renderers load lazily without duplicates', () => {
   assert.match(metrics, /dashboard-current-layout\.js\?v=20260924\.1/);
@@ -70,8 +70,7 @@ test('dashboard deltas are green and refresh label is not ellipsized', () => {
   assert.match(css, /#updated[\s\S]*white-space:\s*normal !important/);
 });
 
-test('history summary keeps total sample count and hides listener-valid sample count', () => {
-  assert.match(tableCleanup, /\['記録数', \['取得記録数', 'その期間に保存された全サンプル数'\]\]/);
-  assert.match(tableCleanup, /SUMMARY_REMOVED_LABELS[\s\S]*'有効記録数'[\s\S]*'同接有効数'/);
-  assert.doesNotMatch(tableCleanup, /\['有効記録数', \['同接有効数'/);
+test('history summary keeps total sample count and never renders listener-valid sample count', () => {
+  assert.match(history, /\['sample_count', '取得記録数', 'その期間に保存された全サンプル数'\]/);
+  assert.doesNotMatch(history, /\['reliable_sample_count'|有効記録数|同接有効数/);
 });

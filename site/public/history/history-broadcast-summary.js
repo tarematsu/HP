@@ -1,12 +1,8 @@
 const browser = typeof window === 'undefined' ? null : window;
 const previousFetch = browser?.fetch?.bind(browser) || null;
 const SERIES_CACHE_PREFIX = 'sakurazaka46jp:v1:';
-const BROADCAST_MODE = 'broadcasts';
 const LIVE_REFRESH_MS = 15_000;
-const integer = new Intl.NumberFormat('ja-JP');
 
-let rows = [];
-let renderTimer = 0;
 let liveRefreshTimer = 0;
 let liveCollectionActive = null;
 
@@ -33,46 +29,6 @@ function requestUrl(input) {
 
 function active() {
   return document.querySelector('#modeTabs button.active[data-mode="broadcasts"]') != null;
-}
-
-function setText(id, value) {
-  const node = document.getElementById(id);
-  const text = String(value);
-  if (node && node.textContent !== text) node.textContent = text;
-}
-
-function durationMinutes(row) {
-  const startedAt = finite(row?.started_at);
-  const endedAt = finite(row?.ended_at);
-  if (startedAt == null || endedAt == null || endedAt < startedAt) return null;
-  return (endedAt - startedAt) / 60_000;
-}
-
-function formatMinutes(value) {
-  const rounded = Math.max(0, Math.round(finite(value) || 0));
-  if (rounded < 60) return `${rounded}分`;
-  const hours = Math.floor(rounded / 60);
-  const minutes = rounded % 60;
-  return minutes ? `${hours}時間${minutes}分` : `${hours}時間`;
-}
-
-function render() {
-  if (!active()) return;
-  const maximums = rows.map((row) => finite(row?.listener_max)).filter((value) => value != null);
-  const durations = rows.map(durationMinutes).filter((value) => value != null);
-  const averageDuration = durations.length
-    ? durations.reduce((sum, value) => sum + value, 0) / durations.length
-    : null;
-
-  setText('streamLabel', '最大同接');
-  setText('memberLabel', '平均所要時間');
-  setText('streamGrowth', maximums.length ? integer.format(Math.max(...maximums)) : '—');
-  setText('memberGrowth', averageDuration == null ? '—' : formatMinutes(averageDuration));
-}
-
-function scheduleRender(delay = 0) {
-  clearTimeout(renderTimer);
-  renderTimer = setTimeout(render, delay);
 }
 
 function mergeLiveSeries(basePayload, statusPayload) {
@@ -202,24 +158,13 @@ if (browser && previousFetch) {
   };
 }
 
-window.addEventListener('history:data-loaded', (event) => {
-  const detail = event?.detail || {};
-  if (detail.mode !== BROADCAST_MODE || !detail.data?.ok || !Array.isArray(detail.data.rows)) return;
-  rows = detail.data.rows;
-  scheduleRender();
-});
-
 document.querySelector('[data-mode="broadcasts"]')?.addEventListener('click', () => {
   if (!active()) {
     clearLiveRefresh();
     return;
   }
-  scheduleRender();
   if (liveCollectionActive === true) scheduleLiveRefresh();
 });
-document.getElementById('load')?.addEventListener('click', () => scheduleRender(50));
-document.querySelectorAll('#rangePresets button').forEach((button) =>
-  button.addEventListener('click', () => scheduleRender(50)));
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') clearLiveRefresh();
   else if (active() && liveCollectionActive === true) scheduleLiveRefresh();

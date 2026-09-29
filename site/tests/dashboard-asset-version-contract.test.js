@@ -25,9 +25,11 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
   const versions = {
     appLite: assetVersion(html, 'app-lite.css'),
     monochrome: assetVersion(html, 'monochrome.css'),
+    rootPresentation: assetVersion(html, 'dashboard-root-presentation.css'),
     entry: assetVersion(html, 'dashboard-metrics.js'),
     header: assetVersion(entry, 'dashboard-header.js'),
     tabOrder: assetVersion(entry, 'dashboard-tab-order.js'),
+    followersRoute: assetVersion(entry, 'dashboard-followers-route.js'),
     tabs: assetVersion(entry, 'dashboard-tabs.js'),
     spotifyShell: assetVersion(tabs, 'spotify-shell.js'),
     spotifyCss: assetVersion(spotifyShell, 'spotify.css'),
@@ -37,7 +39,6 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     pagesLayout: assetVersion(header, 'pages-layout.css'),
     legacyListeningPartyRoute: assetVersion(entry, 'legacy-listening-party-route.js'),
     fetchCache: assetVersion(entry, 'dashboard-fetch-cache.js'),
-    metricStyle: assetVersion(entry, 'dashboard-current-metric-style.js'),
     unofficialListeningParties: assetVersion(historyEntry, 'unofficial-listening-parties.js'),
     officialListeningPartyCopy: assetVersion(historyEntry, 'official-listening-party-copy.js'),
     chartStability: assetVersion(entry, 'dashboard-chart-stability.js'),
@@ -49,9 +50,11 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     fixes: assetVersion(header, 'dashboard-fixes.css'),
   };
 
+  assert.equal(versions.rootPresentation, '20260930.1');
   assert.equal(versions.entry, '20260929.3');
   assert.equal(versions.header, '20260928.1');
   assert.equal(versions.tabOrder, '20260929.1');
+  assert.equal(versions.followersRoute, '20260930.2');
   assert.equal(versions.tabs, '20260930.1');
   assert.equal(versions.spotifyShell, '20260929.1');
   assert.equal(versions.spotifyCss, '20260928.5');
@@ -72,8 +75,9 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
 });
 
 test('fixed entry URLs without a version cannot silently return stale layout code', () => {
-  assert.doesNotMatch(html, /(?:href|src)="\/(?:app-lite\.css|monochrome\.css|dashboard-metrics\.js)"/);
+  assert.doesNotMatch(html, /(?:href|src)="\/(?:app-lite\.css|monochrome\.css|dashboard-root-presentation\.css|dashboard-metrics\.js)"/);
   assert.doesNotMatch(entry, /(?:from |import\()'\/(?:dashboard-client\.js)'/);
+  assert.doesNotMatch(entry, /dashboard-current-metric-style/);
   assert.doesNotMatch(header, /stylesheetHref = '\/dashboard-fixes\.css'/);
   assert.doesNotMatch(header, /pages-layout\.css['"]/);
   assert.doesNotMatch(tabs, /spotify-shell\.js['"]/);

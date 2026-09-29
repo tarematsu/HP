@@ -6,7 +6,6 @@ const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyData = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
-const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
 const historyStyles = readFileSync(new URL('../public/history/history-lite.css', import.meta.url), 'utf8');
 const mainStyles = readFileSync(new URL('../public/app-lite.css', import.meta.url), 'utf8');
 const likesClient = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
@@ -44,7 +43,8 @@ test('embedded history defaults invalid hashes to weekly and lazy-loads mode run
   assert.doesNotMatch(historyEntry, /'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
   assert.match(historyEntry, /window\.__ensureHistoryModeRuntime = ensureHistoryModeRuntime/);
-  assert.match(historyEntry, /history-lite\.js\?v=20260925\.1/);
+  assert.match(historyEntry, /history-lite\.js\?v=20260930\.1/);
+  assert.doesNotMatch(historyEntry, /history-page-fixes|history-table-cleanup|history-summary-average-labels|pages-ui-tweaks|pages-terminology/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
   for (const mode of INTERNAL_ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
 });
@@ -62,14 +62,14 @@ test('history keeps the guide as an accessible hidden label source', () => {
   assert.match(historyClient, /setText\('tableTitle', config\.table\)/);
 });
 
-test('history keeps one visible chart and delegates rendering to mode-specific runtimes', () => {
+test('history keeps one visible chart and delegates chart drawing to mode-specific runtimes', () => {
   assert.match(mainPage, /<canvas id="chart"[^>]*><\/canvas>/);
   assert.match(historyStyles, /\.chart-panel \{[^}]*margin-top/);
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
   assert.doesNotMatch(historyClient, /drawSummaryChart|prepareCanvas|history-broadcasts\.js/);
   assert.match(historyClient, /history:data-loaded/);
   assert.match(historyEntry, /history-period-chart\.js\?v=20260923\.\d+/);
-  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.\d+/);
+  assert.match(historyEntry, /history-ranking-chart\.js\?v=20260930\.2/);
   assert.match(historyEntry, /history-broadcasts\.js\?v=20260927\.1/);
   assert.match(periodChart, /history:data-loaded/);
   assert.match(rankingChart, /history:data-loaded/);
@@ -82,14 +82,13 @@ test('active history timestamps and range defaults are explicitly UTC', () => {
   assert.match(historyClient, /function applyPreset\(days\)/);
   assert.match(historyClient, /\['started_at', '開始日時（UTC）'\]/);
   assert.match(likesClient, /timeZone: 'UTC'/);
-  assert.doesNotMatch([historyEntry, historyClient, historyFixes, likesClient].join('\n'), /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
+  assert.doesNotMatch([historyEntry, historyClient, likesClient].join('\n'), /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
 test('track-specific archive aggregation and runtime are removed', () => {
-  assert.doesNotMatch(historyFixes, /aggregateCompleteTrackRows|history:track-rows|再生数ランキング/);
   assert.doesNotMatch(historyData, /normalizeTrackRows|summarizeCompleteTrackRows|\/api\/track-history/);
   assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode|'tracks'/);
-  assert.doesNotMatch(historyClient, /TRACK_COLUMNS|trackDate|trackWeekMode|mode === 'tracks'|\/api\/track-history/);
+  assert.doesNotMatch(historyClient, /TRACK_COLUMNS|trackDate|trackWeekMode|mode === 'tracks'|\/api\/track-history|aggregateCompleteTrackRows|history:track-rows/);
 });
 
 test('history visual tokens and panel sizing match the main dashboard', () => {

@@ -8,7 +8,7 @@ const dashboardDaily = readFileSync(new URL('../public/dashboard-daily-summaries
 const dashboardClient = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const dashboardChart = readFileSync(new URL('../public/dashboard-chart-comparison.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
-const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
+const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const periodChart = readFileSync(new URL('../public/history/history-period-chart.js', import.meta.url), 'utf8');
 const historyLikes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const trackEndpoint = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
@@ -52,12 +52,12 @@ test('like ranking is an integrated view backed by the materialized status paylo
 test('archive removes the track playback tab and its aggregation runtime', () => {
   assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲/);
   assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode|'tracks'/);
-  assert.doesNotMatch(historyFixes, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
+  assert.doesNotMatch(historyClient, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
 });
 
 test('sparse daily summaries draw visible point markers without global canvas patches', () => {
   assert.match(periodChart, /mode === 'daily' && lineCount === 0/);
   assert.match(periodChart, /context\.arc\(x, y, 3/);
   assert.match(periodChart, /context\.fill\(\)/);
-  assert.doesNotMatch(historyFixes, /CanvasRenderingContext2D\.prototype|beginPathWithDailyPoints|strokeWithDailyPoints/);
+  assert.doesNotMatch(historyClient, /CanvasRenderingContext2D\.prototype|beginPathWithDailyPoints|strokeWithDailyPoints/);
 });

@@ -7,7 +7,7 @@ const css = readFileSync(new URL('../public/pages-layout.css', import.meta.url),
 const spotifyShell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
 const firstWeekShell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
 const playedTracksShell = readFileSync(new URL('../public/played-tracks-shell.js', import.meta.url), 'utf8');
-const historyCleanup = readFileSync(new URL('../public/history/history-table-cleanup.js', import.meta.url), 'utf8');
+const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 
 test('one canonical cross-view stylesheet owns dashboard layout', () => {
   assert.match(header, /pages-layout\.css\?v=20260928\.1/);
@@ -44,10 +44,10 @@ test('toolbars, fitting tables and fitting charts use shared semantic utilities'
   assert.match(spotifyShell, /table-wrap table-fit-mobile/);
 });
 
-test('history cleanup changes table meaning only and injects no layout CSS', () => {
-  assert.match(historyCleanup, /classList\.toggle\('compact-columns', mode === 'ranking'\)/);
-  assert.match(historyCleanup, /classList\.toggle\('official-party-table', mode === 'broadcasts'\)/);
-  assert.doesNotMatch(historyCleanup, /createElement\('style'\)|MOBILE_TABLE_STYLE_ID|installMobileTableWidthStyle/);
+test('history renderer assigns table meaning classes without injecting layout CSS', () => {
+  assert.match(history, /classList\.toggle\('compact-columns', mode === 'ranking'\)/);
+  assert.match(history, /classList\.toggle\('official-party-table', mode === 'broadcasts'\)/);
+  assert.doesNotMatch(history, /createElement\('style'\)|MOBILE_TABLE_STYLE_ID|installMobileTableWidthStyle/);
 });
 
 test('mobile navigation remains one row and shared layout handles wide-table exceptions by class', () => {
