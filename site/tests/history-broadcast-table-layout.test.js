@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
+const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 
 test('official listening party table uses clear read-model column labels with source at the right edge', () => {
@@ -35,15 +36,13 @@ test('official listening party source URLs are owned by the server read model', 
 test('official listening party table has no hidden compatibility columns or enrichment pass', () => {
   assert.doesNotMatch(table, /TECHNICAL_HEADERS|開始日時（UTC）|nth-child\(n\+11\)/);
   assert.doesNotMatch(table, /getElementById\('more'\)|setTimeout\(\(\) => render/);
+  assert.doesNotMatch(table, /createElement\('style'\)/);
   assert.match(table, /dataset\.officialPartyReadModel = 'complete'/);
 });
 
-test('official listening party table left-aligns broadcast content, event name and source', () => {
-  for (const column of [10, 11, 12]) {
-    assert.match(table, new RegExp(`official-party-table th:nth-child\\(${column}\\)`));
-    assert.match(table, new RegExp(`official-party-table td:nth-child\\(${column}\\)`));
-  }
-  assert.match(table, /text-align: left !important/);
+test('official listening party table left-aligns content columns through shared CSS', () => {
+  assert.match(sharedCss, /official-party-table :is\(th, td\):nth-child\(n \+ 10\)/);
+  assert.match(sharedCss, /text-align: left !important/);
 });
 
 test('official listening party table layout does not rewrite the graph legend', () => {
