@@ -30,10 +30,10 @@ test('media cycle randomly selects zero, one or two X slots once per X-YouTube-X
 
 test('unused X slots are skipped instead of displaying the current media for an extra minute', () => {
   assert.match(mediaBase, /return startupPrefix \+ kNativeMediaYoutubeContentPhaseMs \+ 1000U/);
-  assert.match(mediaBase, /return kNativeMediaTverContentDurationMs \+ 1000U/);
+  assert.match(mediaBase, /return tverContentDurationMs \+ 1000U/);
   assert.match(
     mediaBase,
-    /kNativeMediaTverContentDurationMs \+[\s\S]*NativeMediaXSlotEnabled\(true\) \? kNativeMediaXPhaseMs : 0U/,
+    /return tverContentDurationMs \+[\s\S]*NativeMediaXSlotEnabled\(true\) \? kNativeMediaXPhaseMs : 0U/,
   );
   assert.match(mediaBase, /const UINT tailX = NativeMediaXSlotEnabled\(false\)/);
   assert.match(mediaBase, /#define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs\(\)/);
@@ -65,10 +65,16 @@ test('YouTube can hand its final minute to the selected second X slot', () => {
   assert.match(host, /Navigate\(L"https:\/\/x\.com\/home"\)/);
 });
 
-test('TVer runs 58 minutes before a selected first X slot', () => {
-  assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \* 60U \* 1000U/);
-  assert.match(mediaBase, /kNativeMediaTverPhaseMs =[\s\S]*kNativeMediaTverContentDurationMs \+ kNativeMediaXPhaseMs/);
-  assert.match(tverQueue, /kNativeMediaTverContentPhaseMs = 58ULL \* 60ULL \* 1000ULL/);
+test('TVer draws one stable 45-75 minute content duration before a selected first X slot', () => {
+  assert.match(mediaBase, /kNativeMediaTverMinContentDurationMinutes = 45U/);
+  assert.match(mediaBase, /kNativeMediaTverMaxContentDurationMinutes = 75U/);
+  assert.match(mediaBase, /const UINT minuteSpan =[\s\S]*MaxContentDurationMinutes -[\s\S]*MinContentDurationMinutes \+ 1U/);
+  assert.match(mediaBase, /NativeMediaXRandomBelow\(minuteSpan\)/);
+  assert.match(mediaBase, /plan\.tverContentDurationMs = tverMinutes \* 60U \* 1000U/);
+  assert.match(mediaBase, /UINT NativeMediaCurrentTverContentDurationMs\(\) noexcept/);
+  assert.match(mediaBase, /const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs\(\)/);
+  assert.match(tverQueue, /NativeMediaCurrentTverContentDurationMs\(\)/);
+  assert.match(tverQueue, /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\)/);
   assert.match(tverQueue, /ULONGLONG phaseStartedAt = 0/);
   assert.match(tverQueue, /NativeMediaTverXPhaseActive\(\)/);
   assert.doesNotMatch(tverRuntime, /homepanel:tver-x-phase-start/);

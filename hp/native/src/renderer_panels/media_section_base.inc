@@ -18,7 +18,11 @@ constexpr UINT kNativeMediaRecreateMessage = WM_USER + 0x4D;
 constexpr UINT kNativeMediaXPhaseMs = 1U * 60U * 1000U;
 constexpr UINT kNativeMediaStartupXPhaseMs = 1U * 60U * 1000U;
 constexpr UINT kNativeMediaYoutubeContentPhaseMs = 60U * 60U * 1000U;
+// Retained as the neutral/default duration for startup state and legacy contracts.
+// Every actual TVer phase redraws its content duration in the 45-75 minute range.
 constexpr UINT kNativeMediaTverContentDurationMs = 58U * 60U * 1000U;
+constexpr UINT kNativeMediaTverMinContentDurationMinutes = 45U;
+constexpr UINT kNativeMediaTverMaxContentDurationMinutes = 75U;
 constexpr UINT kNativeMediaYoutubePhaseMs =
     kNativeMediaYoutubeContentPhaseMs + kNativeMediaXPhaseMs;
 constexpr UINT kNativeMediaTverPhaseMs =
@@ -32,6 +36,7 @@ constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 struct NativeMediaXCyclePlan {
   bool firstSlot = false;
   bool secondSlot = false;
+  UINT tverContentDurationMs = kNativeMediaTverContentDurationMs;
 };
 
 ULONGLONG NativeMediaXRandomWord() noexcept {
@@ -63,6 +68,13 @@ NativeMediaXCyclePlan NativeMediaDrawXCyclePlan() noexcept {
       plan.secondSlot = true;
     }
   }
+  const UINT minuteSpan =
+      kNativeMediaTverMaxContentDurationMinutes -
+      kNativeMediaTverMinContentDurationMinutes + 1U;
+  const UINT tverMinutes =
+      kNativeMediaTverMinContentDurationMinutes +
+      NativeMediaXRandomBelow(minuteSpan);
+  plan.tverContentDurationMs = tverMinutes * 60U * 1000U;
   return plan;
 }
 
@@ -92,8 +104,8 @@ void NativeMediaObserveXCyclePhase(bool tver) noexcept {
   }
   if (tver == lastTver) return;
   // Entering TVer means the current cycle's second X slot has finished. Draw
-  // exactly once for the next cycle: its first slot is the tail of this TVer
-  // phase, followed by YouTube and its second X slot.
+  // exactly once for the next cycle: its TVer duration and first X slot are
+  // followed by YouTube and the cycle's second X slot.
   if (tver) NativeMediaCurrentXCyclePlan() = NativeMediaDrawXCyclePlan();
   lastTver = tver;
 }
@@ -101,6 +113,10 @@ void NativeMediaObserveXCyclePhase(bool tver) noexcept {
 bool NativeMediaXSlotEnabled(bool firstSlot) noexcept {
   const auto& plan = NativeMediaCurrentXCyclePlan();
   return firstSlot ? plan.firstSlot : plan.secondSlot;
+}
+
+UINT NativeMediaCurrentTverContentDurationMs() noexcept {
+  return NativeMediaCurrentXCyclePlan().tverContentDurationMs;
 }
 
 ULONGLONG& NativeMediaStartupXDeadlineTick() noexcept {
@@ -127,9 +143,10 @@ UINT NativeMediaYoutubeContentIntervalMs() noexcept {
 
 UINT NativeMediaTverContentIntervalMs() noexcept {
   NativeMediaObserveXCyclePhase(true);
-  if (NativeMediaXSlotEnabled(true)) return kNativeMediaTverContentDurationMs;
+  const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs();
+  if (NativeMediaXSlotEnabled(true)) return tverContentDurationMs;
   // An unselected first X slot is skipped entirely instead of extending TVer.
-  return kNativeMediaTverContentDurationMs + 1000U;
+  return tverContentDurationMs + 1000U;
 }
 
 UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
@@ -145,7 +162,8 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
   }
   if (tver) {
     NativeMediaStartupYoutubePhaseActive() = false;
-    return kNativeMediaTverContentDurationMs +
+    const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs();
+    return tverContentDurationMs +
         (NativeMediaXSlotEnabled(true) ? kNativeMediaXPhaseMs : 0U);
   }
 

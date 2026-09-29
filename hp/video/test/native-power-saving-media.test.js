@@ -118,5 +118,5 @@ test('actual power-saving state controls media; monitor-only hiding does not', (
   assert.match(schedule, /SetNativeMediaPowerSavingMode\(powerSaving_\)/);
   assert.match(schedule, /boundary\.tm_hour = kPowerSavingStartMinute \/ 60/);
   assert.match(schedule, /boundary\.tm_hour = kPowerSavingEndMinute \/ 60/);
-  assert.match(read('renderer_panels/media_tver_cloud_queue_refresh.inc'), /NativeMediaTverXPhaseActive\(\) noexcept \{\s*if \(gNativeMediaPowerSaving\) return false/);
+  assert.match(read('renderer_panels/media_tver_cloud_queue_refresh.inc'), /NativeMediaTverXPhaseActive\(\) noexcept \{\s*if \(gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\)\) return false/);
 });

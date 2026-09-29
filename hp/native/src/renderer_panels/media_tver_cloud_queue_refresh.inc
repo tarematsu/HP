@@ -3,6 +3,8 @@ namespace {
 constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
     30ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kNativeMediaTverStartupTimeoutMs = 30ULL * 1000ULL;
+// Retained as the neutral/default duration for legacy contracts. Runtime X
+// boundary checks use the duration drawn for the current TVer phase.
 constexpr ULONGLONG kNativeMediaTverContentPhaseMs = 58ULL * 60ULL * 1000ULL;
 
 struct NativeMediaTverCloudQueueRefreshResult {
@@ -204,13 +206,15 @@ void NativeMediaTverEndQueuePhase() noexcept {
 }
 
 bool NativeMediaTverXPhaseActive() noexcept {
-  if (gNativeMediaPowerSaving) return false;
+  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true)) return false;
   auto& state = NativeMediaTverNativeQueue();
   std::lock_guard lock(state.mutex);
   if (!state.phaseActive || state.phaseStartedAt == 0) return false;
   ULONGLONG now = GetTickCount64();
   if (now == 0 || now < state.phaseStartedAt) return false;
-  return now - state.phaseStartedAt >= kNativeMediaTverContentPhaseMs;
+  const ULONGLONG contentPhaseMs =
+      static_cast<ULONGLONG>(NativeMediaCurrentTverContentDurationMs());
+  return now - state.phaseStartedAt >= contentPhaseMs;
 }
 
 std::wstring NativeMediaTverCurrentEpisodeUrl(
