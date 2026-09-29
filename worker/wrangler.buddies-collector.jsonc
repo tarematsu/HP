@@ -68,7 +68,6 @@
       { "binding": "RAW_COLLECTION_QUEUE", "queue": "stationhead-raw-collection" },
       { "binding": "PERSIST_QUEUE", "queue": "stationhead-buddies-persist" },
       { "binding": "INGEST_FINALIZE_QUEUE", "queue": "stationhead-ingest-finalize" },
-      { "binding": "COMMENTS_QUEUE", "queue": "stationhead-comments" },
       { "binding": "MINUTE_FACT_QUEUE", "queue": "stationhead-buddies-facts" },
       { "binding": "MINUTE_LIVE_DERIVE_QUEUE", "queue": "stationhead-minute-live-derive" },
       { "binding": "MINUTE_ENRICHMENT_QUEUE", "queue": "stationhead-minute-enrichment" },

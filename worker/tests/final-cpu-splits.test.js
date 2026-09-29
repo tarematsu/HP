@@ -184,8 +184,8 @@ test('read-model hydration, remaining preservation and writes run as separate me
   assert.equal(written.preserved, true);
 });
 
-test('minute fact handoff queues finalization as a separate ingest invocation', async () => {
-  const comments = [];
+test('minute fact handoff bypasses comments and queues finalization separately', async () => {
+  const facts = [];
   const finalized = [];
   const observedAt = 1_784_000_000_000;
   const collectorState = {
@@ -196,8 +196,8 @@ test('minute fact handoff queues finalization as a separate ingest invocation', 
   };
   const result = await processIngestFactTask({
     DB: {},
-    COMMENTS_QUEUE: {
-      async send(body) { comments.push(body); },
+    MINUTE_FACT_QUEUE: {
+      async send(body) { facts.push(body); },
     },
   }, {
     message_type: 'stationhead-ingest-fact',
@@ -228,12 +228,13 @@ test('minute fact handoff queues finalization as a separate ingest invocation', 
     async sendFinalize(body) { finalized.push(body); },
   });
 
-  assert.equal(comments.length, 1);
-  assert.equal(comments[0].message_type, 'stationhead-comments-task');
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0].message_type, 'minute-fact-job');
   assert.equal(finalized.length, 1);
   assert.equal(finalized[0].message_type, 'stationhead-ingest-finalize');
   assert.equal(finalized[0].collector_state, collectorState);
   assert.equal(finalized[0].read_model.message_type, 'stationhead-read-model');
+  assert.equal(Object.hasOwn(finalized[0].read_model, 'comment_task'), false);
   assert.equal(result.event, 'ingest_fact_completed');
 });
 

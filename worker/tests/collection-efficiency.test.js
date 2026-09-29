@@ -5,7 +5,7 @@ import { buildCollectionPlan, metadataRefreshDue } from '../src/collector-plan.j
 
 const FIFTEEN_MINUTES = 15 * 60_000;
 
-test('collection plan disables heartbeat and metadata for an unchanged queue within one refresh window', () => {
+test('collection plan disables comments, heartbeat and metadata for an unchanged queue within one refresh window', () => {
   const plan = buildCollectionPlan({
     state: { stationId: 10 },
     queue: { tracks: [{ spotify_id: 'track-1' }] },
@@ -17,7 +17,7 @@ test('collection plan disables heartbeat and metadata for an unchanged queue wit
 
   assert.equal(plan.snapshot, true);
   assert.equal(plan.queue, true);
-  assert.equal(plan.comments, true);
+  assert.equal(plan.comments, false);
   assert.equal(plan.metadata, false);
   assert.equal(plan.metadataDue, false);
   assert.equal(plan.heartbeat, false);

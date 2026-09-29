@@ -47,7 +47,8 @@ test('recovery retains bounded single-writer consumers and DLQ isolation', () =>
     'utf8',
   ));
 
-  assert.equal(config.queues.consumers.length, 4);
+  assert.equal(config.queues.consumers.length, 3);
+  assert.equal(config.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
   for (const consumer of config.queues.consumers) {
     assert.equal(consumer.max_retries, 4);
     assert.equal(consumer.max_concurrency, 1);

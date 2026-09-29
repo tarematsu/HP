@@ -13,7 +13,6 @@ function config(path) {
 const INGEST_QUEUES = Object.freeze([
   'stationhead-raw-collection',
   'stationhead-ingest-finalize',
-  'stationhead-comments',
   'stationhead-buddies-persist',
 ]);
 
@@ -31,6 +30,7 @@ test('collector owns the scheduled collection surface and recovery owns ingest Q
     collector.queues.producers.find(({ binding }) => binding === 'RAW_COLLECTION_QUEUE').queue,
     'stationhead-raw-collection',
   );
+  assert.equal(collector.queues.producers.some(({ queue }) => queue === 'stationhead-comments'), false);
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'RAW_COLLECTION_QUEUE'), false);
   assert.equal(Object.hasOwn(runtime.vars, 'RAW_COLLECTION_ENABLED'), false);
   assert.equal(runtime.triggers, undefined);
@@ -56,6 +56,7 @@ test('recovery Worker batches Queue delivery around one-message ingest dispatch'
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
   }
+  assert.equal(recoveryConsumers.has('stationhead-comments'), false);
   assert.match(recoveryCore, /for \(const sourceMessage of messages\)/);
   assert.match(entry, /const message = messages\[0\]/);
   assert.match(entry, /switch \(type\)/);
@@ -63,16 +64,14 @@ test('recovery Worker batches Queue delivery around one-message ingest dispatch'
   assert.doesNotMatch(entry, /fetch\s*\(/);
 });
 
-test('persist and comments remain lazy sequential recovery lanes', () => {
+test('persist remains the lazy sequential recovery lane and comments Queue is detached', () => {
   const recovery = config('../wrangler.buddies-recovery.jsonc');
   const entry = source('../src/ingest-channel-optimized-entry.js');
   const consumers = new Map(recovery.queues.consumers.map((consumer) => [consumer.queue, consumer]));
-  for (const queue of ['stationhead-comments', 'stationhead-buddies-persist']) {
-    assert.equal(consumers.get(queue).max_batch_size, 10);
-    assert.equal(consumers.get(queue).max_batch_timeout, 5);
-    assert.equal(consumers.get(queue).max_concurrency, 1);
-  }
-  assert.match(entry, /commentsModulePromise/);
+  const persist = consumers.get('stationhead-buddies-persist');
+  assert.equal(persist.max_batch_size, 10);
+  assert.equal(persist.max_batch_timeout, 5);
+  assert.equal(persist.max_concurrency, 1);
+  assert.equal(consumers.has('stationhead-comments'), false);
   assert.match(entry, /persistModulePromise/);
-  assert.match(entry, /CHAT_LIMIT: \{ value: 25/);
 });
