@@ -1,4 +1,4 @@
-name: Temporary Amazon showCharts API probe
+name: Temporary Amazon overall chart pagination depth
 
 on:
   push:
@@ -12,20 +12,25 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Probe overall chart API directly
+      - name: Walk overall chart pages
+        working-directory: worker
         shell: bash
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE'
+          import { extractAmazonMusicTracks } from './src/amazon-music-web-client.js';
           const origin='https://music.amazon.co.jp';
           const ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
-          const cfgRes=await fetch(`${origin}/config.json?skipToken=false&clientApplication=skyfire`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','user-agent':ua,referer:`${origin}/`}});
-          const cfg=await cfgRes.json();
+          const cfg=await (await fetch(`${origin}/config.json?skipToken=false&clientApplication=skyfire`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','user-agent':ua,referer:`${origin}/`}})).json();
           const csrf=cfg.csrf||{};
-          function inner(pageUrl){return {
+          const pageUrl=`${origin}/popular/songs/browsePanel/popularTracks`;
+          function headers(){return {
             'x-amzn-authentication':JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:cfg.accessToken||''}),
             'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer','x-amzn-device-id':cfg.deviceId||'',
             'x-amzn-user-agent':ua,'x-amzn-session-id':cfg.sessionId||'','x-amzn-device-height':'1080','x-amzn-request-id':crypto.randomUUID(),
@@ -33,32 +38,38 @@ jobs:
             'x-amzn-device-time-zone':'UTC','x-amzn-timestamp':String(Date.now()),'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),
             'x-amzn-music-domain':'music.amazon.co.jp','x-amzn-referer':'','x-amzn-affiliate-tags':'','x-amzn-ref-marker':'','x-amzn-page-url':pageUrl,
             'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''};}
-          async function call(path,pageUrl){
-            const res=await fetch(`https://fe.mesk.skill.music.a2z.com${path}`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua},body:JSON.stringify({headers:JSON.stringify(inner(pageUrl))})});
-            const text=await res.text();
-            console.log('CALL',path,'HTTP',res.status,'BYTES',text.length);
-            return JSON.parse(text);
+          async function call(url){
+            const res=await fetch(url,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua},body:JSON.stringify({headers:JSON.stringify(headers())})});
+            if(!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
           }
-          const pageUrl=`${origin}/popular/browsePanel/popularTracks`;
-          const paths=[
-            '/api/showCharts?genreTitle=browsePanel&genreId=popularTracks&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D',
-            '/api/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D'
-          ];
-          function walk(v,path='$',out=[]){if(v==null)return out;if(Array.isArray(v)){v.forEach((x,i)=>walk(x,`${path}[${i}]`,out));return out;}if(typeof v!=='object')return out;out.push([path,v]);for(const[k,x]of Object.entries(v))walk(x,`${path}.${k}`,out);return out;}
-          for(const path of paths){
-            const doc=await call(path,pageUrl);
-            const rows=[]; const actions=[];
-            for(const [p,o] of walk(doc)){
-              const storage=String(o?.iconButton?.observer?.storageKey||o?.observer?.storageKey||'');
-              const asin=(storage.match(/track:([A-Z0-9]{10})/)||[])[1]||null;
-              const title=typeof o?.primaryText==='string'?o.primaryText:typeof o?.title==='string'?o.title:null;
-              const secondary=typeof o?.secondaryText==='string'?o.secondaryText:null;
-              if(asin&&(title||secondary)) rows.push({p,asin,title,secondary});
-              for(const x of Object.values(o)) if(typeof x==='string'&&/next|showCharts|offset|pageToken|pagination/i.test(x)) actions.push(x);
+          function findNext(v){
+            let found=null;
+            function walk(x){
+              if(found||x==null)return;
+              if(Array.isArray(x)){for(const y of x)walk(y);return;}
+              if(typeof x!=='object')return;
+              for(const y of Object.values(x)){
+                if(typeof y==='string' && y.includes('/api/showChartsWidget?') && y.includes('widgetId=top-songs') && y.includes('next=')){found=y;return;}
+                walk(y);
+              }
             }
-            const unique=[...new Map(rows.map(r=>[r.asin,r])).values()];
-            console.log('ROWS',path,unique.length,JSON.stringify(unique.slice(0,30)));
-            console.log('ACTIONS_COUNT',actions.length);
-            for(const a of [...new Set(actions)].slice(0,100)) console.log('ACTION',a.slice(0,3000));
+            walk(v); return found;
           }
+          let url='https://fe.mesk.skill.music.a2z.com/api/showChartsWidget?genreTitle=browsePanel&genreId=popularTracks&widgetId=top-songs&userHash=%7B%22level%22%3A%22LIBRARY_MEMBER%22%7D';
+          const seenUrls=new Set(); const seenTracks=new Set(); const pages=[];
+          for(let page=1;page<=60;page++){
+            if(seenUrls.has(url)) throw new Error('pagination loop');
+            seenUrls.add(url);
+            const doc=await call(url);
+            const tracks=extractAmazonMusicTracks(doc);
+            const fresh=tracks.filter(t=>t.amazon_music_id&&!seenTracks.has(t.amazon_music_id));
+            for(const t of fresh)seenTracks.add(t.amazon_music_id);
+            const next=findNext(doc);
+            pages.push({page,tracks:tracks.length,fresh:fresh.length,total:seenTracks.size,next:next?decodeURIComponent((new URL(next)).searchParams.get('next')||''):null,first:fresh[0]?.title||null,last:fresh.at(-1)?.title||null});
+            console.log('PAGE',JSON.stringify(pages.at(-1)));
+            if(!next)break;
+            url=next;
+          }
+          console.log('SUMMARY',JSON.stringify({pages:pages.length,total:seenTracks.size,last:pages.at(-1)}));
           NODE
