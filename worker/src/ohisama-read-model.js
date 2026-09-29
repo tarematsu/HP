@@ -25,7 +25,7 @@ function integer(value) {
 }
 
 function streamValue(row) {
-  return finite(row?.reported_current_stream_count) ?? finite(row?.reported_total_listens);
+  return finite(row?.reported_current_stream_count);
 }
 
 function dayStart(timestamp) {
@@ -86,8 +86,7 @@ export function normalizeOhisamaDaily(rows = []) {
 }
 
 export function ohisamaReadModelPayload(collection, historyRows = [], dailyRows = [], updatedAt = Date.now()) {
-  const streamCount = finite(collection?.reported_current_stream_count)
-    ?? finite(collection?.reported_total_listens);
+  const streamCount = finite(collection?.reported_current_stream_count);
   return {
     ok: true,
     model: OHISAMA_PAGES_MODEL_KEY,
@@ -114,7 +113,7 @@ async function refreshDailySummary(db, channelId, observedAt) {
   const summary = await db.prepare(`WITH day_rows AS (
       SELECT
         id,minute_at,online_member_count,total_member_count,
-        COALESCE(reported_current_stream_count,reported_total_listens) AS stream_count,
+        reported_current_stream_count AS stream_count,
         ROW_NUMBER() OVER (ORDER BY minute_at ASC,id ASC) AS first_rank,
         ROW_NUMBER() OVER (ORDER BY minute_at DESC,id DESC) AS last_rank
       FROM sh_minute_facts
@@ -185,8 +184,7 @@ async function refreshDailySummary(db, channelId, observedAt) {
 
 async function loadHistory(db, channelId, observedAt) {
   const result = await db.prepare(`SELECT
-      observed_at,online_member_count,total_member_count,
-      reported_total_listens,reported_current_stream_count
+      observed_at,online_member_count,total_member_count,reported_current_stream_count
     FROM sh_minute_facts
     WHERE channel_id=? AND observed_at>=? AND observed_at<=?
     ORDER BY observed_at ASC,id ASC`)
