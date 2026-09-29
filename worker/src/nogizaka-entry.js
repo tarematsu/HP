@@ -18,7 +18,6 @@ import {
   runNogizakaNewsListStage,
 } from './nogizaka-official-news.js';
 import {
-  collectNogizakaStationChat,
   collectNogizakaStationMain,
   decodeNogizakaStationMain,
   finalizeNogizakaStationProbe,
@@ -99,7 +98,6 @@ function stageDependencies() {
     auth: ensureSakurazakaSession,
     main: collectNogizakaStationMain,
     decode: decodeNogizakaStationMain,
-    chat: collectNogizakaStationChat,
     finalize: finalizeNogizakaStationProbe,
     rawMaterialize: materializeNogizakaRawMinute,
     reconcile: reconcileNogizakaOfficialAnnouncements,
