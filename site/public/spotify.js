@@ -5,6 +5,7 @@ const TREND_COLORS = Object.freeze([
   '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#fc8d62',
   '#66c2a5', '#e5c494', '#b3b3b3', '#1b9e77', '#d95f02',
   '#7570b3', '#e7298a', '#66a61e', '#e6ab02', '#a6761d',
+  '#1f78b4', '#b15928',
 ]);
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -411,11 +412,6 @@ function render(payload, trend, artistChart) {
     containerId: 'spotifyTrendCharts',
     metricKey: 'total_delta',
     ariaLabel: '収集対象の女性アイドル全アーティスト Spotify前日比全曲合計の再生数推移',
-  });
-  renderTrendChart(trend, {
-    containerId: 'spotifyTop10TrendCharts',
-    metricKey: 'top10_delta',
-    ariaLabel: '収集対象の女性アイドル全アーティスト Spotify前日比上位10曲合計の再生数推移',
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
