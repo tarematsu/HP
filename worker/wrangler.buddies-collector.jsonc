@@ -17,8 +17,6 @@
   },
   "vars": {
     "CHANNEL_ALIAS": "buddies",
-    "CHAT_LIMIT": 0,
-    "COMMENT_CHAIN_MAX_ATTEMPTS": 1,
     "SH_APP_VERSION": "1.0.0",
     "COLLECTOR_ID": "cloudflare-worker",
     "COLLECTOR_INLINE_PIPELINE_ENABLED": true,
@@ -68,7 +66,6 @@
       { "binding": "RAW_COLLECTION_QUEUE", "queue": "stationhead-raw-collection" },
       { "binding": "PERSIST_QUEUE", "queue": "stationhead-buddies-persist" },
       { "binding": "INGEST_FINALIZE_QUEUE", "queue": "stationhead-ingest-finalize" },
-      { "binding": "COMMENTS_QUEUE", "queue": "stationhead-comments" },
       { "binding": "MINUTE_FACT_QUEUE", "queue": "stationhead-buddies-facts" },
       { "binding": "MINUTE_LIVE_DERIVE_QUEUE", "queue": "stationhead-minute-live-derive" },
       { "binding": "MINUTE_ENRICHMENT_QUEUE", "queue": "stationhead-minute-enrichment" },
