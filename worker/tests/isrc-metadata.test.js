@@ -117,7 +117,7 @@ test('ISRC enrichment is disabled unless the minute worker enables it', async ()
   assert.equal(db.metadata.size, 0);
 });
 
-test('ISRC enrichment persists one lookup and applies it to matching tracks', async () => {
+test('ISRC enrichment persists one source-cache lookup without copying presentation into sh_tracks', async () => {
   const db = new FakeDb();
   const result = await enrichIsrcTracks({ MINUTE_DB: db, ISRC_METADATA_LIMIT: 1 }, {
     tracks: [
@@ -137,5 +137,6 @@ test('ISRC enrichment persists one lookup and applies it to matching tracks', as
 
   assert.deepEqual(result, { saved: 1, attempted: 1 });
   assert.equal(db.metadata.size, 1);
-  assert.deepEqual(db.trackUpdates[0], ['Resolved Song', 'Resolved Artist', 'JPSR02600001']);
+  assert.equal(db.metadata.get('JPSR02600001')?.title, 'Resolved Song');
+  assert.deepEqual(db.trackUpdates, []);
 });

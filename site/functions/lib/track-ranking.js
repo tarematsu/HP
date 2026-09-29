@@ -1,22 +1,39 @@
 export const TRACK_RANKING_SQL = `SELECT
   current.track_identity,current.track_id,
   current.title AS current_title,current.artist AS current_artist,
+  current.isrc AS stored_isrc,current.spotify_id AS stored_spotify_id,
   direct.title AS direct_title,direct.artist AS direct_artist,
   by_isrc.title AS isrc_title,by_isrc.artist AS isrc_artist,
   by_spotify.title AS spotify_title,by_spotify.artist AS spotify_artist,
-  COALESCE(NULLIF(TRIM(direct.isrc),''),NULLIF(TRIM(by_isrc.isrc),''),NULLIF(TRIM(by_spotify.isrc),''),current.isrc) AS isrc,
-  COALESCE(NULLIF(TRIM(direct.spotify_id),''),NULLIF(TRIM(by_isrc.spotify_id),''),NULLIF(TRIM(by_spotify.spotify_id),''),current.spotify_id) AS spotify_id,
+  COALESCE(direct.isrc,by_isrc.isrc,by_spotify.isrc,current.isrc) AS isrc,
+  COALESCE(direct.spotify_id,by_isrc.spotify_id,by_spotify.spotify_id,current.spotify_id) AS spotify_id,
+  COALESCE(direct.thumbnail_url,by_isrc.thumbnail_url,by_spotify.thumbnail_url) AS thumbnail_url,
   current.latest_like_count,current.latest_observed_at,current.latest_occurrence_key
 FROM sh_track_ranking_current current
-LEFT JOIN sh_tracks direct ON direct.id=current.track_id
-LEFT JOIN sh_tracks by_isrc
+LEFT JOIN sh_track_canonical_metadata direct
+  ON direct.track_id=current.track_id
+LEFT JOIN sh_track_canonical_metadata by_isrc
   ON current.track_id IS NULL
- AND current.isrc IS NOT NULL AND TRIM(current.isrc)<>''
- AND by_isrc.isrc=UPPER(TRIM(current.isrc))
-LEFT JOIN sh_tracks by_spotify
-  ON current.track_id IS NULL AND by_isrc.id IS NULL
- AND current.spotify_id IS NOT NULL AND TRIM(current.spotify_id)<>''
- AND by_spotify.spotify_id=TRIM(current.spotify_id)
+ AND by_isrc.isrc=COALESCE(
+   NULLIF(UPPER(REPLACE(REPLACE(TRIM(current.isrc),'-',''),' ','')),''),
+   CASE
+     WHEN current.track_identity LIKE 'isrc:%'
+       THEN UPPER(REPLACE(REPLACE(TRIM(SUBSTR(current.track_identity,6)),'-',''),' ',''))
+     WHEN current.track_identity LIKE 'key:isrc:%'
+       THEN UPPER(REPLACE(REPLACE(TRIM(SUBSTR(current.track_identity,10)),'-',''),' ',''))
+   END
+ )
+LEFT JOIN sh_track_canonical_metadata by_spotify
+  ON current.track_id IS NULL AND by_isrc.isrc IS NULL
+ AND by_spotify.spotify_id=COALESCE(
+   NULLIF(TRIM(current.spotify_id),''),
+   CASE
+     WHEN current.track_identity LIKE 'spotify:%'
+       THEN NULLIF(TRIM(SUBSTR(current.track_identity,9)),'')
+     WHEN current.track_identity LIKE 'key:spotify:%'
+       THEN NULLIF(TRIM(SUBSTR(current.track_identity,13)),'')
+   END
+ )
 WHERE current.latest_like_count>0
 ORDER BY current.latest_like_count DESC,current.latest_observed_at DESC,current.track_identity
 LIMIT ?`;
@@ -70,21 +87,6 @@ function rowIsrc(row) {
   return normalizedIsrc(row?.isrc) || normalizedIsrc(identityValue(row, 'isrc')) || null;
 }
 
-function chunks(values, size = 70) {
-  const result = [];
-  for (let index = 0; index < values.length; index += size) result.push(values.slice(index, index + size));
-  return result;
-}
-
-async function safeRows(db, sql, bindings) {
-  try {
-    return (await db.prepare(sql).bind(...bindings).all()).results || [];
-  } catch (error) {
-    if (/no such table|no such column|no such index/i.test(String(error?.message || error))) return [];
-    throw error;
-  }
-}
-
 async function safeRun(db, sql, bindings) {
   try {
     return await db.prepare(sql).bind(...bindings).run();
@@ -94,75 +96,13 @@ async function safeRun(db, sql, bindings) {
   }
 }
 
-async function metadataRows(db, rows) {
-  const spotifyIds = [...new Set(rows.map(rowSpotifyId).filter(Boolean))];
-  const isrcs = [...new Set(rows.map(rowIsrc).filter(Boolean))];
-  const metadata = [];
-
-  for (const part of chunks(spotifyIds)) {
-    const marks = part.map(() => '?').join(',');
-    let found = await safeRows(db, `SELECT spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
-      FROM sh_track_metadata WHERE spotify_id IN (${marks}) ORDER BY fetched_at DESC`, part);
-    if (!found.length) {
-      found = await safeRows(db, `SELECT spotify_id,title,artist,display_title,thumbnail_url,fetched_at
-        FROM sh_track_metadata WHERE spotify_id IN (${marks}) ORDER BY fetched_at DESC`, part);
-    }
-    metadata.push(...found);
-  }
-
-  for (const part of chunks(isrcs)) {
-    const marks = part.map(() => '?').join(',');
-    metadata.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,display_title,thumbnail_url,fetched_at
-      FROM sh_track_metadata
-      WHERE isrc IS NOT NULL AND TRIM(isrc)<>'' AND UPPER(REPLACE(REPLACE(isrc,'-',''),' ','')) IN (${marks})
-      ORDER BY fetched_at DESC`, part));
-    metadata.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,NULL AS display_title,thumbnail_url,metadata_fetched_at AS fetched_at
-      FROM sh_track_dictionary WHERE isrc IN (${marks}) ORDER BY metadata_fetched_at DESC`, part));
-  }
-  return metadata;
-}
-
-function mergeMetadata(current, candidate) {
-  if (!current) return {
-    ...candidate,
-    title: usable(candidate?.title, 'title'),
-    artist: usable(candidate?.artist, 'artist'),
-    isrc: normalizedIsrc(candidate?.isrc) || null,
-  };
-  return {
-    ...candidate,
-    ...current,
-    title: usable(current.title, 'title') || usable(candidate?.title, 'title'),
-    artist: usable(current.artist, 'artist') || usable(candidate?.artist, 'artist'),
-    display_title: text(current.display_title) || text(candidate?.display_title),
-    thumbnail_url: text(current.thumbnail_url) || text(candidate?.thumbnail_url),
-    spotify_id: text(current.spotify_id) || text(candidate?.spotify_id),
-    isrc: normalizedIsrc(current.isrc) || normalizedIsrc(candidate?.isrc) || null,
-    fetched_at: Math.max(Number(current.fetched_at || 0), Number(candidate?.fetched_at || 0)) || null,
-  };
-}
-
-function metadataMaps(metadata) {
-  const bySpotify = new Map();
-  const byIsrc = new Map();
-  for (const row of metadata) {
-    const spotifyId = text(row.spotify_id);
-    const isrc = normalizedIsrc(row.isrc);
-    if (spotifyId) bySpotify.set(spotifyId, mergeMetadata(bySpotify.get(spotifyId), row));
-    if (isrc) byIsrc.set(isrc, mergeMetadata(byIsrc.get(isrc), row));
-  }
-  return { bySpotify, byIsrc };
-}
-
-function enrichRanking(rows, metadata) {
-  const { bySpotify, byIsrc } = metadataMaps(metadata);
+function enrichRanking(rows) {
   return rows.map((row) => {
-    const spotifyId = rowSpotifyId(row);
-    const isrc = rowIsrc(row);
-    const metadataRow = bySpotify.get(spotifyId) || byIsrc.get(isrc) || null;
     const {
       current_title: currentTitle,
       current_artist: currentArtist,
+      stored_isrc: _storedIsrc,
+      stored_spotify_id: _storedSpotifyId,
       direct_title: directTitle,
       direct_artist: directArtist,
       isrc_title: isrcTitle,
@@ -171,14 +111,12 @@ function enrichRanking(rows, metadata) {
       spotify_artist: spotifyArtist,
       ...publicRow
     } = row;
-    const title = usable(metadataRow?.title, 'title')
-      || usable(directTitle, 'title')
+    const title = usable(directTitle, 'title')
       || usable(isrcTitle, 'title')
       || usable(spotifyTitle, 'title')
       || usable(currentTitle, 'title')
       || '曲名不明';
-    const artist = usable(metadataRow?.artist, 'artist')
-      || usable(directArtist, 'artist')
+    const artist = usable(directArtist, 'artist')
       || usable(isrcArtist, 'artist')
       || usable(spotifyArtist, 'artist')
       || usable(currentArtist, 'artist')
@@ -187,72 +125,39 @@ function enrichRanking(rows, metadata) {
       ...publicRow,
       title,
       artist,
-      display_title: text(metadataRow?.display_title),
-      thumbnail_url: text(metadataRow?.thumbnail_url),
-      spotify_id: spotifyId || text(metadataRow?.spotify_id),
-      isrc: isrc || normalizedIsrc(metadataRow?.isrc) || null,
+      display_title: title !== '曲名不明' && artist !== '—' ? `${title} — ${artist}` : null,
+      thumbnail_url: text(row.thumbnail_url),
+      spotify_id: rowSpotifyId(row),
+      isrc: rowIsrc(row),
     };
   });
 }
 
-const TITLE_PLACEHOLDER_SQL = `title IS NULL OR TRIM(title)='' OR LOWER(TRIM(title)) IN
-  ('曲名不明','曲名…','曲名...','unknown','unknown title','_','-','—')`;
-const ARTIST_PLACEHOLDER_SQL = `artist IS NULL OR TRIM(artist)='' OR LOWER(TRIM(artist)) IN
-  ('アーティスト不明','unknown','unknown artist','_','-','—')`;
-
-async function persistRecoveredRanking(db, baseRows, enrichedRows) {
+async function persistRecoveredIdentity(db, baseRows, enrichedRows) {
   for (let index = 0; index < baseRows.length; index += 1) {
     const base = baseRows[index];
     const enriched = enrichedRows[index];
-    const title = usable(enriched?.title, 'title');
-    const artist = usable(enriched?.artist, 'artist');
     const isrc = rowIsrc(enriched);
     const spotifyId = rowSpotifyId(enriched);
-    if (!title && !artist && !isrc && !spotifyId) continue;
+    if (!isrc && !spotifyId) continue;
 
-    const rankingNeedsRepair = Boolean(
-      (title && !usable(base.current_title, 'title'))
-      || (artist && !usable(base.current_artist, 'artist'))
-      || (isrc && !normalizedIsrc(base.isrc))
-      || (spotifyId && !text(base.spotify_id)),
-    );
-    const trackNeedsRepair = Boolean(
-      (title && !usable(base.direct_title, 'title'))
-      || (artist && !usable(base.direct_artist, 'artist'))
-      || (isrc && !normalizedIsrc(base.isrc))
-      || (spotifyId && !text(base.spotify_id)),
-    );
-
-    if (rankingNeedsRepair) {
-      const bindings = [title, artist, isrc, spotifyId, base.track_identity];
+    if ((isrc && !normalizedIsrc(base.stored_isrc)) || (spotifyId && !text(base.stored_spotify_id))) {
+      const bindings = [isrc, spotifyId, base.track_identity];
       await safeRun(db, `UPDATE sh_track_ranking_current SET
-        title=CASE WHEN ${TITLE_PLACEHOLDER_SQL} THEN COALESCE(?,title) ELSE title END,
-        artist=CASE WHEN ${ARTIST_PLACEHOLDER_SQL} THEN COALESCE(?,artist) ELSE artist END,
         isrc=CASE WHEN isrc IS NULL OR TRIM(isrc)='' THEN COALESCE(?,isrc) ELSE isrc END,
         spotify_id=CASE WHEN spotify_id IS NULL OR TRIM(spotify_id)='' THEN COALESCE(?,spotify_id) ELSE spotify_id END
         WHERE track_identity=?`, bindings);
       await safeRun(db, `UPDATE sh_track_ranking_occurrence SET
-        title=CASE WHEN ${TITLE_PLACEHOLDER_SQL} THEN COALESCE(?,title) ELSE title END,
-        artist=CASE WHEN ${ARTIST_PLACEHOLDER_SQL} THEN COALESCE(?,artist) ELSE artist END,
         isrc=CASE WHEN isrc IS NULL OR TRIM(isrc)='' THEN COALESCE(?,isrc) ELSE isrc END,
         spotify_id=CASE WHEN spotify_id IS NULL OR TRIM(spotify_id)='' THEN COALESCE(?,spotify_id) ELSE spotify_id END
         WHERE track_identity=?`, bindings);
     }
 
-    if (trackNeedsRepair && (base.track_id != null || isrc || spotifyId)) {
+    if (base.track_id != null) {
       await safeRun(db, `UPDATE sh_tracks SET
-        title=CASE WHEN ${TITLE_PLACEHOLDER_SQL} OR title=spotify_id THEN COALESCE(?,title) ELSE title END,
-        artist=CASE WHEN ${ARTIST_PLACEHOLDER_SQL} OR artist=spotify_id THEN COALESCE(?,artist) ELSE artist END,
         isrc=CASE WHEN isrc IS NULL OR TRIM(isrc)='' THEN COALESCE(?,isrc) ELSE isrc END,
         spotify_id=CASE WHEN spotify_id IS NULL OR TRIM(spotify_id)='' THEN COALESCE(?,spotify_id) ELSE spotify_id END
-        WHERE (id=? AND ? IS NOT NULL)
-          OR (? IS NOT NULL AND UPPER(REPLACE(REPLACE(COALESCE(isrc,''),'-',''),' ',''))=?)
-          OR (? IS NOT NULL AND spotify_id=?)`, [
-        title, artist, isrc, spotifyId,
-        base.track_id, base.track_id,
-        isrc, isrc,
-        spotifyId, spotifyId,
-      ]);
+        WHERE id=?`, [isrc, spotifyId, base.track_id]);
     }
   }
 }
@@ -264,9 +169,8 @@ export async function loadTrackRanking(db, { limit = 500, persist = true } = {})
     db.prepare(TRACK_RANKING_SUMMARY_SQL).first(),
   ]);
   const baseRows = result.results || [];
-  const metadata = await metadataRows(db, baseRows);
-  const rows = enrichRanking(baseRows, metadata);
-  if (persist) await persistRecoveredRanking(db, baseRows, rows);
+  const rows = enrichRanking(baseRows);
+  if (persist) await persistRecoveredIdentity(db, baseRows, rows);
   return {
     rows: rows.map((row, index) => ({ rank: index + 1, ...row })),
     summary: {

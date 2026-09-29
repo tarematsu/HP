@@ -4,6 +4,9 @@ import {
   trackTitleValue,
 } from './track-metadata-quality.js';
 
+const MAX_KEYS_PER_TYPE = 80;
+const CANONICAL_QUERY_UNAVAILABLE = 'canonical metadata query unavailable';
+
 function normalizedIsrc(value) {
   return String(value || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
 }
@@ -17,169 +20,131 @@ function placeholders(count) {
   return Array.from({ length: count }, () => '?').join(',');
 }
 
-async function runRows(db, sql, bindings) {
-  if (!db?.prepare || !bindings.length) return [];
-  const statement = db.prepare(sql).bind(...bindings);
-  if (typeof statement?.all !== 'function') return [];
-  const result = await statement.all();
-  return result?.results || [];
+function numberedPlaceholders(count, start = 1) {
+  return Array.from({ length: count }, (_, index) => `?${start + index}`).join(',');
 }
 
 function missingSchema(error) {
   return /no such table|no such column/i.test(String(error?.message || error));
 }
 
-function missingIndex(error) {
-  return /no such index/i.test(String(error?.message || error));
+function canonicalUnavailable(error) {
+  return missingSchema(error)
+    || String(error?.message || error).includes(CANONICAL_QUERY_UNAVAILABLE);
 }
 
-function complete(row) {
-  return Boolean(trackTitleValue(row?.title)
-    && trackArtistValue(row?.artist)
-    && row?.thumbnail_url);
+async function runRows(db, sql, bindings) {
+  if (!db?.prepare || !bindings.length) return [];
+  const statement = db.prepare(sql).bind(...bindings);
+  if (typeof statement?.all !== 'function') throw new Error(CANONICAL_QUERY_UNAVAILABLE);
+  const result = await statement.all();
+  return result?.results || [];
+}
+
+function mergeRow(current, rawRow) {
+  const row = sanitizeMetadataRow(rawRow);
+  if (!current) return row;
+  return {
+    ...row,
+    ...current,
+    title: trackTitleValue(current.title) || trackTitleValue(row.title),
+    artist: trackArtistValue(current.artist) || trackArtistValue(row.artist),
+    thumbnail_url: current.thumbnail_url || row.thumbnail_url || null,
+    fetched_at: Math.max(Number(current.fetched_at || 0), Number(row.fetched_at || 0)) || null,
+  };
 }
 
 function uniqueRows(rows) {
   const byIdentity = new Map();
   for (const rawRow of rows || []) {
     const row = sanitizeMetadataRow(rawRow);
+    const trackId = Number(row?.track_id);
     const spotifyId = text(row?.spotify_id);
     const isrc = normalizedIsrc(row?.isrc);
-    const key = `${spotifyId || ''}|${isrc || ''}`;
-    if (!spotifyId && !isrc) continue;
-    const current = byIdentity.get(key);
-    if (!current) {
-      byIdentity.set(key, { ...row, isrc: isrc || row?.isrc || null });
-      continue;
-    }
-    byIdentity.set(key, {
-      ...row,
-      ...current,
-      title: trackTitleValue(current.title) || trackTitleValue(row.title),
-      artist: trackArtistValue(current.artist) || trackArtistValue(row.artist),
-      thumbnail_url: current.thumbnail_url || row.thumbnail_url || null,
-      fetched_at: Math.max(Number(current.fetched_at || 0), Number(row.fetched_at || 0)) || null,
-    });
+    if (!Number.isFinite(trackId) && !spotifyId && !isrc) continue;
+    const key = Number.isFinite(trackId)
+      ? `track:${Math.trunc(trackId)}`
+      : (isrc ? `isrc:${isrc}` : `spotify:${spotifyId}`);
+    byIdentity.set(key, mergeRow(byIdentity.get(key), { ...row, isrc: isrc || row?.isrc || null }));
   }
   return [...byIdentity.values()];
 }
 
-async function dictionaryRows(db, isrcs) {
+async function canonicalRowsByIsrc(db, isrcs) {
   if (!isrcs.length) return [];
-  return runRows(db, `SELECT spotify_id,isrc,title,artist,thumbnail_url,
-      metadata_fetched_at AS fetched_at
-    FROM sh_track_dictionary
+  return runRows(db, `SELECT track_id,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
+    FROM sh_track_canonical_metadata
     WHERE isrc IN (${placeholders(isrcs.length)})`, isrcs);
 }
 
-async function metadataRowsBySpotify(db, spotifyIds) {
+async function canonicalRowsBySpotify(db, spotifyIds) {
   if (!spotifyIds.length) return [];
-  return runRows(db, `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-    FROM sh_track_metadata
-    WHERE spotify_id IN (${placeholders(spotifyIds.length)})
-    ORDER BY fetched_at DESC`, spotifyIds);
+  return runRows(db, `SELECT track_id,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
+    FROM sh_track_canonical_metadata
+    WHERE spotify_id IN (${placeholders(spotifyIds.length)})`, spotifyIds);
 }
 
-async function metadataRowsByIsrc(db, isrcs) {
-  if (!isrcs.length) return [];
-  const where = `WHERE isrc IS NOT NULL AND TRIM(isrc)<>''
-      AND isrc IN (${placeholders(isrcs.length)})
-    ORDER BY fetched_at DESC`;
-  try {
-    return await runRows(db, `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-      FROM sh_track_metadata INDEXED BY idx_sh_track_metadata_isrc
-      ${where}`, isrcs);
-  } catch (error) {
-    if (!missingIndex(error)) throw error;
-    return runRows(db, `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-      FROM sh_track_metadata
-      ${where}`, isrcs);
-  }
-}
-
-async function indexedRows(db, spotifyIds, isrcs, { dictionary = false } = {}) {
+async function legacyRowsDuringMigration(db, spotifyIds, isrcs) {
   if (!db?.prepare) return [];
-  let preferred = [];
-  if (dictionary && isrcs.length) {
-    try {
-      preferred = await dictionaryRows(db, isrcs);
-    } catch (error) {
-      if (!missingSchema(error)) throw error;
-    }
+  const clauses = [];
+  const bindings = [];
+  if (isrcs.length) {
+    clauses.push(`isrc IN (${numberedPlaceholders(isrcs.length, bindings.length + 1)})`);
+    bindings.push(...isrcs);
   }
-
-  const completeIsrcs = new Set(
-    preferred.filter(complete).map((row) => normalizedIsrc(row?.isrc)).filter(Boolean),
-  );
-  const completeSpotifyIds = new Set(
-    preferred.filter(complete).map((row) => text(row?.spotify_id)).filter(Boolean),
-  );
-  const metadataIsrcs = isrcs.filter((value) => !completeIsrcs.has(value));
-  const metadataSpotifyIds = spotifyIds.filter((value) => !completeSpotifyIds.has(value));
-
-  let byIsrc = [];
+  if (spotifyIds.length) {
+    clauses.push(`spotify_id IN (${numberedPlaceholders(spotifyIds.length, bindings.length + 1)})`);
+    bindings.push(...spotifyIds);
+  }
+  if (!clauses.length) return [];
   try {
-    byIsrc = await metadataRowsByIsrc(db, metadataIsrcs);
+    return uniqueRows(await runRows(db, `SELECT NULL AS track_id,spotify_id,isrc,title,artist,thumbnail_url,fetched_at
+      FROM sh_track_metadata
+      WHERE ${clauses.join(' OR ')}
+      ORDER BY fetched_at DESC`, bindings));
   } catch (error) {
     if (!missingSchema(error)) throw error;
+    if (!spotifyIds.length) return [];
+    const marks = numberedPlaceholders(spotifyIds.length);
+    try {
+      return uniqueRows(await runRows(db, `SELECT NULL AS track_id,spotify_id,NULL AS isrc,title,artist,thumbnail_url,fetched_at
+        FROM sh_track_metadata WHERE spotify_id IN (${marks}) ORDER BY fetched_at DESC`, spotifyIds));
+    } catch (legacyError) {
+      if (missingSchema(legacyError)) return [];
+      throw legacyError;
+    }
   }
-  const bySpotify = await metadataRowsBySpotify(db, metadataSpotifyIds);
-  return uniqueRows([...preferred, ...byIsrc, ...bySpotify]);
 }
 
-function mergeSources(primaryRows, fallbackRows) {
-  const fallbackBySpotify = new Map();
-  const fallbackByIsrc = new Map();
-  for (const rawRow of fallbackRows) {
-    const row = sanitizeMetadataRow(rawRow);
-    const spotifyId = text(row?.spotify_id);
-    const isrc = normalizedIsrc(row?.isrc);
-    if (spotifyId && !fallbackBySpotify.has(spotifyId)) fallbackBySpotify.set(spotifyId, row);
-    if (isrc && !fallbackByIsrc.has(isrc)) fallbackByIsrc.set(isrc, row);
-  }
-  const merged = primaryRows.map((rawRow) => {
-    const row = sanitizeMetadataRow(rawRow);
-    const fallback = fallbackByIsrc.get(normalizedIsrc(row?.isrc))
-      || fallbackBySpotify.get(text(row?.spotify_id));
-    if (!fallback) return row;
-    return {
-      ...fallback,
-      ...row,
-      title: trackTitleValue(row.title) || trackTitleValue(fallback.title),
-      artist: trackArtistValue(row.artist) || trackArtistValue(fallback.artist),
-      thumbnail_url: row.thumbnail_url || fallback.thumbnail_url || null,
-      fetched_at: Math.max(Number(row.fetched_at || 0), Number(fallback.fetched_at || 0)) || null,
-    };
-  });
-  const primarySpotify = new Set(primaryRows.map((row) => text(row?.spotify_id)).filter(Boolean));
-  const primaryIsrc = new Set(primaryRows.map((row) => normalizedIsrc(row?.isrc)).filter(Boolean));
-  merged.push(...fallbackRows.filter((row) => (
-    !primarySpotify.has(text(row?.spotify_id)) && !primaryIsrc.has(normalizedIsrc(row?.isrc))
-  )));
-  return uniqueRows(merged);
-}
-
+/**
+ * Read presentation metadata from the single MINUTE_DB canonical view.
+ *
+ * Source caches never supplement a working canonical view. The only exception
+ * is a bounded BUDDIES_DB fallback when the canonical query itself is
+ * unavailable during a rolling migration; once migration 061 is installed,
+ * even an empty canonical result is authoritative.
+ */
 export async function loadReadModelTrackMetadata(env, spotifyIds, isrcs) {
   const requestedSpotifyIds = [...new Set(
     (spotifyIds || []).map(text).filter(Boolean),
-  )].slice(0, 80);
+  )].slice(0, MAX_KEYS_PER_TYPE);
   const requestedIsrcs = [...new Set(
     (isrcs || []).map(normalizedIsrc).filter(Boolean),
-  )].slice(0, 80);
+  )].slice(0, MAX_KEYS_PER_TYPE);
   if (!requestedSpotifyIds.length && !requestedIsrcs.length) return [];
 
-  const primary = await indexedRows(env?.MINUTE_DB, requestedSpotifyIds, requestedIsrcs, {
-    dictionary: true,
-  });
-  const completeSpotify = new Set(primary.filter(complete).map((row) => text(row?.spotify_id)).filter(Boolean));
-  const completeIsrc = new Set(primary.filter(complete).map((row) => normalizedIsrc(row?.isrc)).filter(Boolean));
-  const missingSpotify = requestedSpotifyIds.filter((value) => !completeSpotify.has(value));
-  const missingIsrc = requestedIsrcs.filter((value) => !completeIsrc.has(value));
-  const fallback = env?.BUDDIES_DB;
-  if ((!missingSpotify.length && !missingIsrc.length) || !fallback || fallback === env?.MINUTE_DB) {
-    return primary;
+  const db = env?.MINUTE_DB;
+  if (!db?.prepare) return [];
+  try {
+    const [byIsrc, bySpotify] = await Promise.all([
+      canonicalRowsByIsrc(db, requestedIsrcs),
+      canonicalRowsBySpotify(db, requestedSpotifyIds),
+    ]);
+    return uniqueRows([...byIsrc, ...bySpotify]);
+  } catch (error) {
+    if (!canonicalUnavailable(error)) throw error;
+    const fallback = env?.BUDDIES_DB;
+    if (!fallback || fallback === db) return [];
+    return legacyRowsDuringMigration(fallback, requestedSpotifyIds, requestedIsrcs);
   }
-
-  const fallbackRows = await indexedRows(fallback, missingSpotify, missingIsrc);
-  return mergeSources(primary, fallbackRows);
 }

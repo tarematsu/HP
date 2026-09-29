@@ -64,11 +64,16 @@ async function safeRows(db, sql, bindings) {
   }
 }
 
-async function candidateRows(db, titles) {
+async function candidateRows(db, titles, canonicalOnly = false) {
   if (!titles.length) return [];
   const marks = placeholders(titles.length);
   const where = `WHERE title IS NOT NULL AND artist IS NOT NULL
       AND TRIM(title) COLLATE NOCASE IN (${marks})`;
+  if (canonicalOnly) {
+    return safeRows(db, `SELECT spotify_id,isrc,title,artist,
+        thumbnail_url,fetched_at
+      FROM sh_track_canonical_metadata ${where}`, titles);
+  }
   const rows = [];
   rows.push(...await safeRows(db, `SELECT spotify_id,isrc,title,artist,
       NULL AS thumbnail_url,last_seen_at AS fetched_at
@@ -146,7 +151,12 @@ function resolveRows(tracks, rows, limit) {
   return resolved;
 }
 
-export async function loadTitleArtistIdentityRows(databases, tracks, limit = 80) {
+export async function loadTitleArtistIdentityRows(
+  databases,
+  tracks,
+  limit = 80,
+  { canonicalOnly = false } = {},
+) {
   const boundedLimit = Math.max(1, Math.trunc(Number(limit) || 80));
   const titles = titleVariants(tracks, boundedLimit);
   if (!titles.length) return [];
@@ -156,7 +166,7 @@ export async function loadTitleArtistIdentityRows(databases, tracks, limit = 80)
   for (const db of sources) {
     if (!db || seen.has(db)) continue;
     seen.add(db);
-    rows.push(...await candidateRows(db, titles));
+    rows.push(...await candidateRows(db, titles, canonicalOnly));
   }
   return resolveRows(tracks, rows, boundedLimit);
 }

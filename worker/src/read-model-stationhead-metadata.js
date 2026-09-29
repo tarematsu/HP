@@ -53,8 +53,9 @@ function mergeRow(current, rawRow) {
 async function stationheadRows(db, stationheadTrackIds) {
   if (!db?.prepare || !stationheadTrackIds.length) return [];
   try {
-    const statement = db.prepare(`SELECT stationhead_track_id,spotify_id,isrc,title,artist,
-        NULL AS album_name,NULL AS thumbnail_url,last_seen_at AS fetched_at
+    const statement = db.prepare(`SELECT stationhead_track_id,spotify_id,isrc,
+        NULL AS title,NULL AS artist,NULL AS album_name,NULL AS thumbnail_url,
+        last_seen_at AS fetched_at
       FROM sh_tracks
       WHERE stationhead_track_id IN (${placeholders(stationheadTrackIds.length)})
       ORDER BY last_seen_at DESC`).bind(...stationheadTrackIds);

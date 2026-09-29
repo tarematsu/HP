@@ -7,9 +7,10 @@ export async function resolveReadModelTitleArtistIdentity(env, readModel, limit 
   const queue = readModel?.queue?.value;
   if (!queue?.tracks?.length) return readModel;
   const rows = await loadTitleArtistIdentityRows(
-    [env?.MINUTE_DB, env?.BUDDIES_DB],
+    env?.MINUTE_DB,
     queue.tracks,
     limit,
+    { canonicalOnly: true },
   );
   if (!rows.length) return readModel;
   const tracks = attachTitleArtistIdentity(queue.tracks, rows);

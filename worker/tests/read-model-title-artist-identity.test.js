@@ -9,8 +9,9 @@ function db() {
       return {
         bind() { return this; },
         async all() {
-          if (sql.includes('FROM sh_track_dictionary')) {
+          if (sql.includes('FROM sh_track_canonical_metadata')) {
             return { results: [{
+              track_id: 1,
               spotify_id: 'spotify-known',
               isrc: 'JPSR02600001',
               title: 'Known Song',
@@ -26,7 +27,7 @@ function db() {
   };
 }
 
-test('read model promotes display-derived title and artist into provider identity', async () => {
+test('read model promotes canonical title and artist into provider identity', async () => {
   const readModel = {
     queue: {
       value: {

@@ -10,6 +10,7 @@ import {
 
 function database(updates) {
   const metadata = [{
+    track_id: 1,
     spotify_id: 'sp1',
     isrc: 'JPX1',
     title: 'Recovered Song',
@@ -36,10 +37,7 @@ function database(updates) {
               }] }),
             }] };
           }
-          if (/FROM sh_track_dictionary/.test(sql)) {
-            throw new Error('no such table: sh_track_dictionary');
-          }
-          if (/FROM sh_track_metadata/.test(sql)) return { results: metadata };
+          if (/FROM sh_track_canonical_metadata/.test(sql)) return { results: metadata };
           return { results: [] };
         },
         async run() {
@@ -70,7 +68,7 @@ test('placeholder playback names are treated as missing metadata', () => {
   });
 });
 
-test('playback repair replaces persisted placeholders with known metadata', async () => {
+test('playback repair replaces persisted placeholders with canonical metadata', async () => {
   const updates = [];
   const result = await repairPlaybackReadModels({ MINUTE_DB: database(updates) });
 
