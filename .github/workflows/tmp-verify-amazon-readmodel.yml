@@ -1,4 +1,4 @@
-name: Temporary apply Amazon overall ranking
+name: Temporary sync Amazon overall branch
 
 on:
   push:
@@ -9,25 +9,19 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: tmp/verify-amazon-readmodel
+          ref: fix/amazon-overall-rank
           fetch-depth: 0
-      - name: Apply patch to feature branch
+      - name: Merge latest main
         shell: bash
         run: |
           set -euo pipefail
-          cp .github/scripts/tmp-apply-amazon-overall.py /tmp/apply-amazon-overall.py
-          git fetch origin fix/amazon-overall-rank
-          git checkout -B fix/amazon-overall-rank origin/fix/amazon-overall-rank
-          python3 /tmp/apply-amazon-overall.py
-          git diff --check
-          git status --short
+          git fetch origin main
           git config user.name 'tarematsu'
           git config user.email 'yuukiar0202@gmail.com'
-          git add worker/src/amazon-music-web-client.js worker/src/amazon-music-collector.js worker/tests/amazon-music-collector.test.js site/public/amazon-music.js site/public/amazon-music-shell.js site/tests/amazon-music-tab.test.js
-          git commit -m 'Use true Amazon overall music ranks'
+          git merge --no-edit origin/main
           git push origin HEAD:fix/amazon-overall-rank
