@@ -1,23 +1,6 @@
-.apple-music-view {
-  display: grid;
-  gap: 16px;
-}
-
-.apple-summary {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .apple-rank-chart {
-  width: 100%;
-  min-height: 220px;
+  --shared-chart-min-height: 220px;
   margin-bottom: 10px;
-  overflow: hidden;
-}
-
-.apple-rank-svg {
-  display: block;
-  width: 100%;
-  height: auto;
 }
 
 .apple-rank-grid {
@@ -83,7 +66,6 @@
 
 .apple-table th,
 .apple-table td {
-  padding: 10px 8px;
   border-bottom: 1px solid var(--border, #e3e4e8);
   vertical-align: middle;
 }
@@ -97,7 +79,6 @@
 .apple-list-rank {
   text-align: right;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
 }
 
 .apple-region-table-wrap {
@@ -107,11 +88,6 @@
 .apple-region-table {
   min-width: 820px;
   table-layout: auto;
-}
-
-.apple-region-table th,
-.apple-region-table td {
-  white-space: nowrap;
 }
 
 .apple-region-table th:first-child,
@@ -134,16 +110,6 @@
 }
 
 @media (max-width: 640px) {
-  .apple-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .apple-table th,
-  .apple-table td {
-    padding: 8px 5px;
-    font-size: 12px;
-  }
-
   .apple-rank-legend {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px 10px;
