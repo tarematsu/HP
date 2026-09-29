@@ -127,34 +127,14 @@ LR"JS(
     candidates.sort((a, b) => a.centerY - b.centerY);
     return candidates[0] || null;
   };
-  const trustedHitPoint = button => {
-    const rect = button?.getBoundingClientRect?.();
-    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
-    const ratios = [
-      [0.50, 0.50], [0.38, 0.50], [0.62, 0.50],
-      [0.50, 0.38], [0.50, 0.62],
-    ];
-    for (const [rx, ry] of ratios) {
-      const x = Math.round(rect.left + rect.width * rx);
-      const y = Math.round(rect.top + rect.height * ry);
-      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
-      if (typeof document.elementFromPoint !== 'function') return { x, y };
-      const hit = document.elementFromPoint(x, y);
-      if (!hit) continue;
-      if (hit === button || button.contains?.(hit) ||
-          hit.closest?.('[data-testid="like"]') === button) {
-        return { x, y };
-      }
+  const clickLikeButton = button => {
+    if (!button || typeof button.click !== 'function') return false;
+    try {
+      button.click();
+      return true;
+    } catch (_) {
+      return false;
     }
-    return null;
-  };
-  const requestTrustedLike = (id, button) => {
-    const bridge = globalThis.chrome?.webview;
-    if (!bridge || typeof bridge.postMessage !== 'function') return false;
-    const point = trustedHitPoint(button);
-    if (!point) return false;
-    bridge.postMessage(`homepanel:x-like:${id}:${point.x}:${point.y}`);
-    return true;
   };
 )JS"
 LR"JS(
@@ -198,7 +178,7 @@ LR"JS(
       const failedAttempts = new Map();
       state.attemptedCount = 0;
       state.likedCount = 0;
-      state.dispatchCount = 0;
+      state.clickCount = 0;
       state.unconfirmedCount = 0;
       while (performance.now() < deadline) {
         markFilteredArticles();
@@ -247,11 +227,11 @@ LR"JS(
         const freshCenterY = freshLike.rect.top + freshLike.rect.height / 2;
         if (Math.abs(freshCenterY - targetY()) > targetTolerancePx) continue;
 
-        if (!requestTrustedLike(candidate.id, freshLike.button)) {
+        if (!clickLikeButton(freshLike.button)) {
           const failures = (failedAttempts.get(candidate.id) || 0) + 1;
           failedAttempts.set(candidate.id, failures);
           state.unconfirmedCount++;
-          state.result = 'like-dispatch-unavailable';
+          state.result = 'like-click-unavailable';
           if (failures >= maxLikeAttemptsPerPost) {
             attempted.add(candidate.id);
             state.attemptedCount = attempted.size;
@@ -264,8 +244,8 @@ LR"JS(
           continue;
         }
 
-        state.dispatchCount++;
-        state.result = 'like-dispatched';
+        state.clickCount++;
+        state.result = 'like-clicked';
         await sleep(1500);
         const confirmed = Boolean(
             articleForId(candidate.id)?.querySelector('[data-testid="unlike"]'));
