@@ -1,1 +1,0 @@
-Legacy Ohisama daily import is generated from the Google Sheet raw Ohisama observations using JST timestamps and a JST 09:00 = UTC 00:00 day boundary. Non-numeric annotations and spreadsheet error values are ignored. Existing sh_daily_summary rows are preserved by ON CONFLICT(period_key) DO NOTHING.
