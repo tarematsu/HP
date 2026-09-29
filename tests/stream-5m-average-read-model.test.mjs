@@ -61,6 +61,7 @@ test('five-minute stream average migration remains ordered before the current MI
 
 test('five-minute migration is rerunnable and keeps partial real samples', () => {
   assert.match(averageMigration, /CREATE TABLE IF NOT EXISTS sh_stream_5m_average_read_model/);
+  assert.match(averageMigration, /FROM sh_minute_facts AS f/);
   assert.match(averageMigration, /HAVING COUNT\(\*\)>=1/);
   assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_insert/);
   assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_update/);
@@ -83,6 +84,7 @@ test('partial valid minute deltas remain visible without inventing zero samples'
   }
 
   db.exec(minuteMigration);
+  db.exec(averageMigration);
   db.exec(averageMigration);
   assert.deepEqual(readAverages(db), [{
     bucket_at: bucket,
