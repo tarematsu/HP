@@ -94,12 +94,31 @@ function normalizeTrendSeries(trend = {}) {
       points,
     };
   }).filter((series) => series.points.length)
-    .sort((a, b) => {
-      const aRank = a.currentRank ?? Number.MAX_SAFE_INTEGER;
-      const bRank = b.currentRank ?? Number.MAX_SAFE_INTEGER;
-      if (aRank !== bRank) return aRank - bRank;
-      return a.artistName.localeCompare(b.artistName, 'ja');
-    });
+    .sort((a, b) => a.artistName.localeCompare(b.artistName, 'ja'));
+}
+
+export function selectTrendSeriesByLatestMetric(seriesList = [], metricKey, limit = TREND_ARTIST_LIMIT) {
+  let latestSnapshotDate = '';
+  for (const series of seriesList) {
+    for (const point of Array.isArray(series?.points) ? series.points : []) {
+      const snapshotDate = String(point?.snapshot_date || '');
+      if (integer(point?.[metricKey]) != null && snapshotDate > latestSnapshotDate) {
+        latestSnapshotDate = snapshotDate;
+      }
+    }
+  }
+  if (!latestSnapshotDate) return [];
+
+  const ranked = seriesList.map((series) => {
+    const point = (Array.isArray(series?.points) ? series.points : [])
+      .find((candidate) => String(candidate?.snapshot_date || '') === latestSnapshotDate);
+    return { series, value: integer(point?.[metricKey]) };
+  }).filter(({ value }) => value != null)
+    .sort((a, b) => (b.value - a.value)
+      || String(a.series?.artistName || '').localeCompare(String(b.series?.artistName || ''), 'ja'));
+
+  const selected = Number.isInteger(limit) && limit > 0 ? ranked.slice(0, limit) : ranked;
+  return selected.map(({ series }) => series);
 }
 
 function xAxis(dates, margin, width) {
@@ -134,7 +153,7 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
 
   const normalizedSeries = normalizeTrendSeries(trend);
   const seriesList = Number.isInteger(maxSeries) && maxSeries > 0
-    ? normalizedSeries.slice(0, maxSeries)
+    ? selectTrendSeriesByLatestMetric(normalizedSeries, metricKey, maxSeries)
     : normalizedSeries;
   const dates = [...new Set(seriesList.flatMap((series) =>
     series.points.map((point) => String(point.snapshot_date))))].sort();
@@ -258,12 +277,11 @@ function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSe
   container.append(chart);
 }
 
-function normalizeArtistRankSeries(chart = {}, trend = {}) {
+export function normalizeArtistRankSeries(chart = {}, trend = {}) {
   const tracked = normalizeTrendSeries(trend);
-  const byKey = new Map(tracked.map((series, colorIndex) => [series.artistKey, {
+  const byKey = new Map(tracked.map((series) => [series.artistKey, {
     artistKey: series.artistKey,
     artistName: series.artistName,
-    colorIndex,
     points: [],
   }]));
   const byName = new Map([...byKey.values()].map((series) => [series.artistName, series]));
@@ -280,7 +298,14 @@ function normalizeArtistRankSeries(chart = {}, trend = {}) {
       series.points.push({ chart_date: String(day.chart_date), rank });
     }
   }
-  return [...byKey.values()].filter((series) => series.points.length);
+  return [...byKey.values()].filter((series) => series.points.length)
+    .sort((a, b) => {
+      const aRank = a.points.at(-1)?.rank ?? Number.MAX_SAFE_INTEGER;
+      const bRank = b.points.at(-1)?.rank ?? Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
+      return a.artistName.localeCompare(b.artistName, 'ja');
+    })
+    .map((series, colorIndex) => ({ ...series, colorIndex }));
 }
 
 function renderArtistRankChart(chart = {}, trend = {}) {
@@ -415,13 +440,13 @@ function render(payload, trend, artistChart) {
   renderTrendChart(trend, {
     containerId: 'spotifyTrendCharts',
     metricKey: 'total_delta',
-    ariaLabel: '収集対象の女性アイドル上位10アーティスト Spotify前日比全曲合計の再生数推移',
+    ariaLabel: '収集対象の女性アイドル 最新前日比全曲合計の上位10アーティスト Spotify再生数推移',
     maxSeries: TREND_ARTIST_LIMIT,
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
     metricKey: 'top10_year_delta',
-    ariaLabel: '収集対象の女性アイドル上位10アーティスト 今年リリース曲に限定したSpotify前日比上位10曲合計の再生数推移',
+    ariaLabel: '収集対象の女性アイドル 今年リリース曲の最新前日比上位10曲合計による上位10アーティスト Spotify再生数推移',
     maxSeries: TREND_ARTIST_LIMIT,
   });
   renderArtistRankChart(artistChart, trend);
