@@ -43,7 +43,7 @@ test('public first-week reads use only the compact release read model', () => {
   assert.match(readModelMigration, /'2026-09-17'/);
 });
 
-test('stream growth is rebased to the first observed point without masking counter regressions as growth', () => {
+test('stream growth is rebased in the compact payload without masking counter regressions', () => {
   assert.deepEqual(normalizeFirstWeekRows([
     { elapsed_minutes: 0, listener_count: 100, stream_count: 1_000 },
     { elapsed_minutes: 5, listener_count: 105, stream_count: 1_025 },
@@ -87,26 +87,39 @@ test('dashboard keeps the first-week tab visible while deferring its shell and r
   assert.match(entry, /dashboard-tabs\.js\?v=20260929\.2/);
   assert.match(tabs, /first-week-comparison-shell\.js\?v=20260928\.1/);
   assert.match(shell, /first-week-comparison\.css\?v=20260928\.1/);
-  assert.match(shell, /view-toolbar first-week-toolbar/);
+  assert.doesNotMatch(shell, /first-week-metric-toggle|data-first-week-metric|再生数増加/);
   assert.match(shell, /dataset\.view = 'first-week'/);
   assert.match(shell, /textContent = '初週比較'/);
-  assert.match(shell, /querySelector\('\[data-mode="daily"\]'\)/);
+  assert.match(shell, /querySelector\('\[data-view="spotify"\]'\)/);
   assert.doesNotMatch(shell, /firstWeekLoad|>更新</);
   assert.match(tabs, /'first-week'/);
   assert.match(tabs, /first-week-comparison\.js\?v=20260927\.1/);
   assert.match(runtime, /sh\.first-week-comparison\.v2/);
   assert.match(runtime, /first-week-comparison\?v=20260926\.2/);
-  assert.doesNotMatch(runtime, /firstWeekLoad|loadButton/);
+  assert.doesNotMatch(runtime, /firstWeekLoad|loadButton|data-first-week-metric|metricButtons|metric === 'streams'/);
   assert.doesNotMatch(css, /#firstWeekLoad|#modeTabs\.mode-tabs\.dashboard-tabs/);
 });
 
-test('first-week copy uses streaming-release wording and contains no idle chart helper sentence', () => {
+test('first-week view exposes listener comparison only', () => {
   const shell = readFileSync(new URL('../public/first-week-comparison-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/first-week-comparison.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(shell, /先行配信|グラフをタッチ/);
-  assert.doesNotMatch(runtime, /先行配信|グラフをタッチ/);
+  assert.doesNotMatch(shell, /先行配信|グラフをタッチ|再生数増加/);
+  assert.doesNotMatch(runtime, /先行配信|グラフをタッチ|再生数増加/);
   assert.match(shell, /ストリーミング配信後の同接推移/);
   assert.match(shell, /ストリーミング配信日/);
-  assert.match(runtime, /ストリーミング配信後のチャンネル再生数増加/);
+  assert.match(runtime, /point\?\.\[1\]/);
+  assert.match(runtime, /\}人`/);
   assert.match(runtime, /detail\.replaceChildren\(\)/);
+});
+
+test('tab order ends with first-week comparison then Spotify', () => {
+  const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+  const order = readFileSync(new URL('../public/dashboard-tab-order.js', import.meta.url), 'utf8');
+  assert.match(entry, /dashboard-tab-order\.js\?v=20260929\.1/);
+  assert.ok(entry.indexOf('dashboard-tab-order.js') < entry.indexOf('dashboard-tabs.js'));
+  assert.match(order, /querySelector\('\[data-view="first-week"\]'\)/);
+  assert.match(order, /querySelector\('\[data-view="spotify"\]'\)/);
+  assert.match(order, /tabs\.append\(firstWeek\)/);
+  assert.match(order, /tabs\.append\(spotify\)/);
+  assert.ok(order.indexOf('append(firstWeek)') < order.indexOf('append(spotify)'));
 });
