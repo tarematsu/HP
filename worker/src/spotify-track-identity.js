@@ -1,3 +1,5 @@
+import { attachStationheadTrackIds } from './spotify-stationhead-identity.js';
+
 const QUERY_CHUNK_SIZE = 80;
 const WRITE_CHUNK_SIZE = 50;
 const IDENTITY_SEEN_REFRESH_MS = 12 * 60 * 60 * 1000;
@@ -22,9 +24,15 @@ function normalizedArtistIds(artistsJson) {
   }
   return [...new Set(
     (Array.isArray(artists) ? artists : [])
-      .map((artist) => String(artist?.id || '').trim())
+      .map((artist) => (typeof artist === 'string' ? artist : artist?.id))
+      .map((id) => String(id || '').trim())
       .filter(Boolean),
   )].sort();
+}
+
+function positiveInteger(value) {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
 function rowsOf(result) {
@@ -46,6 +54,11 @@ async function batchWrites(db, statements) {
 }
 
 export function spotifySongKey(track) {
+  const stationheadTrackId = positiveInteger(track?.stationhead_track_id);
+  if (stationheadTrackId != null) {
+    return `stationhead:v1:${stationheadTrackId}`;
+  }
+
   const sourceTrackId = String(track?.track_id || '').trim();
   const name = normalizedText(track?.name);
   const artistIds = normalizedArtistIds(track?.artists_json);
@@ -56,28 +69,51 @@ export function spotifySongKey(track) {
 }
 
 export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
-  const keyedTracks = (tracks || []).map((track) => ({
+  const identifiedTracks = await attachStationheadTrackIds(tracks);
+  const keyedTracks = (identifiedTracks || []).map((track) => ({
     track,
     songKey: spotifySongKey(track),
   }));
   if (!keyedTracks.length) return [];
 
   const initialCanonicalByKey = new Map();
+  const stationheadByKey = new Map();
   for (const { track, songKey } of keyedTracks) {
     if (!initialCanonicalByKey.has(songKey)) {
       initialCanonicalByKey.set(songKey, String(track.track_id));
     }
+    const stationheadTrackId = positiveInteger(track?.stationhead_track_id);
+    if (stationheadTrackId != null) stationheadByKey.set(songKey, stationheadTrackId);
   }
 
-  await batchWrites(db, [...initialCanonicalByKey].map(([songKey, trackId]) => (
-    db.prepare(`INSERT INTO sh_spotify_song_identities (
-        song_key,canonical_track_id,created_at,updated_at
-      ) VALUES (?,?,?,?)
-      ON CONFLICT(song_key) DO UPDATE SET updated_at=MAX(
-        sh_spotify_song_identities.updated_at,excluded.updated_at
-      ) WHERE excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
-      .bind(songKey, trackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS)
-  )));
+  await batchWrites(db, [...initialCanonicalByKey].map(([songKey, trackId]) => {
+    const stationheadTrackId = stationheadByKey.get(songKey);
+    if (stationheadTrackId == null) {
+      return db.prepare(`INSERT INTO sh_spotify_song_identities (
+          song_key,canonical_track_id,created_at,updated_at
+        ) VALUES (?,?,?,?)
+        ON CONFLICT(song_key) DO UPDATE SET updated_at=MAX(
+          sh_spotify_song_identities.updated_at,excluded.updated_at
+        ) WHERE excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
+        .bind(songKey, trackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS);
+    }
+    return db.prepare(`INSERT INTO sh_spotify_song_identities (
+        song_key,canonical_track_id,stationhead_track_id,created_at,updated_at
+      ) VALUES (?,?,?,?,?)
+      ON CONFLICT(song_key) DO UPDATE SET
+        stationhead_track_id=COALESCE(
+          sh_spotify_song_identities.stationhead_track_id,
+          excluded.stationhead_track_id
+        ),
+        updated_at=MAX(sh_spotify_song_identities.updated_at,excluded.updated_at)
+      WHERE (sh_spotify_song_identities.stationhead_track_id IS NULL
+          AND excluded.stationhead_track_id IS NOT NULL)
+        OR excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
+      .bind(
+        songKey, trackId, stationheadTrackId, seenAt, seenAt,
+        IDENTITY_SEEN_REFRESH_MS,
+      );
+  }));
 
   const canonicalByKey = new Map();
   const songKeys = [...initialCanonicalByKey.keys()];
@@ -110,11 +146,17 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
       .bind(sourceTrackId, songKey, canonicalTrackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS);
   }));
 
-  return keyedTracks.map(({ track, songKey }) => ({
-    ...track,
-    source_track_id: String(track.track_id),
-    track_id: canonicalByKey.get(songKey),
-  }));
+  return keyedTracks.map(({ track, songKey }) => {
+    const artistIds = normalizedArtistIds(track?.artists_json);
+    return {
+      ...track,
+      source_track_id: String(track.track_id),
+      track_id: canonicalByKey.get(songKey),
+      artists_json: artistIds.length
+        ? JSON.stringify(artistIds)
+        : String(track?.artists_json || '[]'),
+    };
+  });
 }
 
 export function resetSpotifyAliasBootstrapVerification() {
