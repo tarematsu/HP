@@ -150,7 +150,7 @@ function changesMinuteDbSchema(changedPath) {
 }
 
 function changesOhisamaDbSchema(changedPath) {
-  return changedPath.startsWith('database/ohisama-migrations/');
+  return changedPath === 'worker/scripts/ohisama-schema.sql';
 }
 
 const changed = readChangedPaths();
