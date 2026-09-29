@@ -34,9 +34,9 @@ function scheduleReveal(source) {
 if (canvas) {
   conceal();
   fallbackTimer = setTimeout(reveal, 2500);
-  window.addEventListener('dashboard:payload', (event) => {
+  window.addEventListener('dashboard:details', (event) => {
     const payload = event?.detail?.payload;
     if (!Array.isArray(payload?.history) || !payload.history.length) return;
-    scheduleReveal(String(event?.detail?.source || 'network'));
+    scheduleReveal(String(event?.detail?.source || 'details-network'));
   });
 }
