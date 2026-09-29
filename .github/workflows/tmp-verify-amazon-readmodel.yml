@@ -12,30 +12,44 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/amazon-music-web-player-flow
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Probe Amazon Music popular-songs pagination
+      - name: Exercise fixed Amazon Music client
         shell: bash
         run: |
           set -euo pipefail
-          node <<'NODE'
-          (async()=>{
-          const domain='music.amazon.co.jp', origin=`https://${domain}`, artistId='B08P3RHP1P';
-          const ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
-          const cfg=await (await fetch(`${origin}/config.json?skipToken=false&clientApplication=skyfire`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','user-agent':ua,referer:`${origin}/`}})).json(); const csrf=cfg.csrf||{};
-          const page=`${origin}/artists/${artistId}`;
-          function h(){return {'x-amzn-authentication':JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:cfg.accessToken||''}),'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer','x-amzn-device-id':cfg.deviceId||'','x-amzn-user-agent':ua,'x-amzn-session-id':cfg.sessionId||'','x-amzn-device-height':'1080','x-amzn-request-id':crypto.randomUUID(),'x-amzn-device-language':'ja_JP','x-amzn-currency-of-preference':'JPY','x-amzn-os-version':'1.0','x-amzn-application-version':cfg.version||'','x-amzn-device-time-zone':'UTC','x-amzn-timestamp':String(Date.now()),'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),'x-amzn-music-domain':domain,'x-amzn-referer':'','x-amzn-affiliate-tags':'','x-amzn-ref-marker':'','x-amzn-page-url':page,'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''};}
-          const outer={accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua};
-          async function post(host,path,body){const res=await fetch(`https://${host}/api${path}`,{method:'POST',headers:outer,body:JSON.stringify({...body,headers:JSON.stringify(h())})}); const txt=await res.text(); return {status:res.status,text:txt,json:JSON.parse(txt)};}
-          await post('fe.web.skill.music.a2z.com','/showHome',{deeplink:JSON.stringify({interface:'DeeplinkInterface.v1_0.DeeplinkClientInformation',deeplink:`/artists/${artistId}`})});
-          const artist=(await post('fe.mesk.skill.music.a2z.com','/explore/v1/showCatalogArtist',{id:artistId,userHash:JSON.stringify({level:'LIBRARY_MEMBER'})})).json;
-          const tracks=await post('fe.mesk.skill.music.a2z.com','/showCatalogTracks',{id:`uri://artist/${artistId}/popular-songs`,userHash:JSON.stringify({level:'LIBRARY_MEMBER'})});
-          const urls=[], strings=[], ids=new Set();
-          function walk(v){if(v==null)return;if(Array.isArray(v)){v.forEach(walk);return;}if(typeof v!=='object')return;for(const [k,x] of Object.entries(v)){if(typeof x==='string'){if(/showCatalogTracks|nextPage|pagination/i.test(x)) urls.push(x.slice(0,4000));if(/フォロワ|follower/i.test(x)) strings.push(x);if(/^(B0|A)[A-Z0-9]{8,}$/.test(x)&&/(id|asin|track|storage)/i.test(k))ids.add(x);}walk(x);}}
-          walk(tracks.json); const follower=[]; function walkFollower(v,p=[]){if(v==null)return;if(Array.isArray(v)){v.forEach((x,i)=>walkFollower(x,[...p,i]));return;}if(typeof v!=='object')return;for(const[k,x]of Object.entries(v)){if(typeof x==='string'&&/フォロワ|follower/i.test(x))follower.push({path:[...p,k].join('.'),value:x});walkFollower(x,[...p,k]);}}
-          walkFollower(artist);
-          console.log('TRACKS',JSON.stringify({status:tracks.status,bytes:tracks.text.length,idCount:ids.size,firstIds:[...ids].slice(0,20),urls:[...new Set(urls)].slice(0,20),strings:[...new Set(strings)].slice(0,20)}));
-          console.log('FOLLOWER',JSON.stringify(follower.slice(0,30)));
-          })().catch(e=>{console.error(e);process.exit(1)});
+          node --input-type=module <<'NODE'
+          import {
+            createAmazonMusicWebClient,
+            extractAmazonMusicTracks,
+            extractFollowerCount,
+            extractIsrc,
+          } from './worker/src/amazon-music-web-client.js';
+          const client = createAmazonMusicWebClient();
+          const artist = await client.fetchArtist('B08P3RHP1P');
+          const tracks = await client.fetchArtistTracks('B08P3RHP1P');
+          const playlist = await client.fetchPlaylist('B088FYHTR4');
+          const popular = extractAmazonMusicTracks(artist);
+          const top50 = extractAmazonMusicTracks(playlist);
+          const follower = extractFollowerCount(artist);
+          const first = tracks[0];
+          let sampleIsrc = null;
+          if (first?.amazon_music_id) {
+            try { sampleIsrc = extractIsrc(await client.fetchTrack(first.amazon_music_id)); } catch (error) { console.log('track-detail-error', String(error)); }
+          }
+          console.log(JSON.stringify({
+            follower,
+            artistPopularCount: popular.length,
+            allTracksCount: tracks.length,
+            firstTracks: tracks.slice(0, 8).map(({amazon_music_id,title,artist})=>({amazon_music_id,title,artist})),
+            top50Count: top50.length,
+            sakurazakaTop50: top50.filter((x)=>/櫻坂46|sakurazaka/i.test(String(x.artist||''))).map((x,i)=>({rank:i+1,title:x.title,artist:x.artist})),
+            sampleIsrc,
+          }, null, 2));
+          if (!tracks.length) throw new Error('No Amazon Music artist tracks returned');
+          if (!follower?.count) throw new Error('No Amazon Music follower count returned');
           NODE
