@@ -64,7 +64,7 @@ function showCurrent({ updateUrl = true, replaceUrl = false } = {}) {
 
 function ensureFirstWeekShell() {
   if (!firstWeekShellPromise) {
-    firstWeekShellPromise = import('/first-week-comparison-shell.js?v=20260928.1').catch((error) => {
+    firstWeekShellPromise = import('/first-week-comparison-shell.js?v=20260929.1').catch((error) => {
       firstWeekShellPromise = null;
       throw error;
     });
@@ -115,7 +115,7 @@ async function loadHistoryRuntime() {
 
 async function loadFirstWeekRuntime() {
   if (!firstWeekRuntimePromise) {
-    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260927.1').catch((error) => {
+    firstWeekRuntimePromise = import('/first-week-comparison.js?v=20260929.1').catch((error) => {
       firstWeekRuntimePromise = null;
       throw error;
     });
