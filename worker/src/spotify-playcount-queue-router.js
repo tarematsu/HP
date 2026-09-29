@@ -11,19 +11,22 @@ function batchWith(messages) {
 }
 
 async function latestCompleteRevision(db) {
-  if (!db?.prepare) return '';
-  const row = await db.prepare(`SELECT snapshot_date,tracks_collected,completed_at,updated_at
+  if (!db?.prepare) return null;
+  const row = await db.prepare(`SELECT snapshot_date,run_token,tracks_collected,completed_at,updated_at
     FROM sh_spotify_collection_runs
     WHERE status='complete'
     ORDER BY snapshot_date DESC
     LIMIT 1`).first();
-  if (!row?.snapshot_date) return '';
-  return [
-    String(row.snapshot_date),
-    Number(row.tracks_collected || 0),
-    Number(row.completed_at || 0),
-    Number(row.updated_at || 0),
-  ].join(':');
+  if (!row?.snapshot_date) return null;
+  return {
+    revision: [
+      String(row.snapshot_date),
+      Number(row.tracks_collected || 0),
+      Number(row.completed_at || 0),
+      Number(row.updated_at || 0),
+    ].join(':'),
+    confirmed: String(row.run_token || '').endsWith(':confirm'),
+  };
 }
 
 export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}) {
@@ -51,8 +54,8 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
     const before = await latestCompleteRevision(env?.OTHER_DB);
     results.push(await processSpotifyAlbumBatch(batchWith(albums), env, dependencies));
     const after = await latestCompleteRevision(env?.OTHER_DB);
-    if (after && after !== before) {
-      await requestSpotifyReadModelRefresh(env, 'playcount-complete', { source_revision: after });
+    if (after?.confirmed && after.revision !== before?.revision) {
+      await requestSpotifyReadModelRefresh(env, 'playcount-complete', { source_revision: after.revision });
     }
   }
   if (readModelRefresh.length) {

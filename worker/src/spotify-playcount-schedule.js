@@ -16,6 +16,10 @@ import {
   batchStatements,
 } from './spotify-playcount-common.js';
 
+function isConfirmationRunToken(value) {
+  return String(value || '').endsWith(':confirm');
+}
+
 async function syncCollectionRoster(db) {
   const writes = [];
   const artistsByKey = new Map([
@@ -183,8 +187,16 @@ async function selectScheduledSnapshot(db, scheduledTime) {
       return {
         snapshotDate: today,
         forceRefresh: true,
+        confirmationPass: true,
         recovery: 'always-collect-backfill',
         missingArtistKeys,
+      };
+    }
+    if (!isConfirmationRunToken(todayRun.run_token)) {
+      return {
+        snapshotDate: today,
+        confirmationPass: true,
+        recovery: 'unconfirmed-complete',
       };
     }
     return { skip: 'complete' };
@@ -243,13 +255,17 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
 
   const snapshotDate = selection.snapshotDate;
   const existing = await readRun(db, snapshotDate);
+  const existingStatus = String(existing?.status || '');
+  const confirmationPass = Boolean(selection.confirmationPass)
+    || (['error', 'incomplete'].includes(existingStatus) && isConfirmationRunToken(existing?.run_token));
   const refreshNeeded = Boolean(selection.forceRefresh)
     || !existing
     || Number(existing.albums_queued || 0) === 0
     || Number(existing.errors || 0) > 0
-    || ['error', 'incomplete'].includes(String(existing.status || ''));
+    || ['error', 'incomplete'].includes(existingStatus);
   const attemptNo = Math.max(0, integer(existing?.attempt_no) ?? 0) + 1;
-  const runToken = `${snapshotDate}:${scheduledTime}:${attemptNo}`;
+  const runTokenBase = `${snapshotDate}:${scheduledTime}:${attemptNo}`;
+  const runToken = confirmationPass ? `${runTokenBase}:confirm` : runTokenBase;
   await beginAttempt(
     db, snapshotDate, attemptNo, runToken, Date.now(),
     refreshNeeded ? collectionArtists.length : 0,
@@ -265,6 +281,7 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
         ok: true,
         snapshot_date: snapshotDate,
         attempt_no: attemptNo,
+        confirmation: confirmationPass,
         collection_artists: collectionArtists.length,
         catalog_queued: 1,
         albums_queued: 0,
@@ -280,6 +297,7 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
       ok: true,
       snapshot_date: snapshotDate,
       attempt_no: attemptNo,
+      confirmation: confirmationPass,
       collection_artists: collectionArtists.length,
       catalog_queued: 0,
       albums_queued: albumsQueued,
@@ -292,6 +310,7 @@ export async function runSpotifyPlaycountScheduled(controller, env) {
     await failRun(db, snapshotDate, runToken, error).catch(() => {});
     logEvent('spotify_playcount_collection_error', {
       stage: 'schedule', snapshot_date: snapshotDate, attempt_no: attemptNo,
+      confirmation: confirmationPass,
       error: truncateError(error, 500),
     });
     throw error;
