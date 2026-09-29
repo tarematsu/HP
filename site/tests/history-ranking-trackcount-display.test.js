@@ -10,7 +10,7 @@ const materialized = readFileSync(new URL('../functions/lib/materialized-history
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
 test('ranking chart keeps featured comparison and supports one selected all-host series', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260930\.1/);
+  assert.match(entry, /history-ranking-chart\.js\?v=20260930\.2/);
   assert.match(entry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
   assert.match(entry, /runtimeKey\(mode\)/);
@@ -18,6 +18,8 @@ test('ranking chart keeps featured comparison and supports one selected all-host
   assert.match(rankingChart, /const FEATURED_HOSTS = \['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'\]/);
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
   assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
+  assert.match(rankingChart, /\['nogizaka46smej', '#812990'\]/);
+  assert.match(rankingChart, /function colorForHost\(host, index\) \{[\s\S]*const preset = HOST_COLORS\.get\(hostKey\(host\)\);[\s\S]*if \(preset\) return preset;[\s\S]*if \(chartHosts\.length === 1\) return '#000000'/);
   assert.match(rankingChart, /detail\.data\.chart_hosts/);
   assert.match(rankingChart, /history:ranking-host-selected/);
   assert.match(rankingChart, /if \(chartHosts\.length === 1\) return '#000000'/);
