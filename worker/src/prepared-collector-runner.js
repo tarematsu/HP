@@ -46,9 +46,9 @@ function signalFrom(value) {
   return value?.__COLLECTION_ABORT_SIGNAL || null;
 }
 
-function collectionObservedAt(env) {
+function collectionObservedAt(env, fallback) {
   const value = Number(env?.__shCollectionObservedAt);
-  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : Date.now();
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : fallback;
 }
 
 function collectionAbortError(signal, stage) {
@@ -202,7 +202,7 @@ function estimateD1RowsWritten({
 }
 
 export async function collectPreparedOnce(env, source = 'raw-collection-queue') {
-  const observedAt = collectionObservedAt(env);
+  const observedAt = Date.now();
   let stage = 'collector_start';
   let state = null;
   const activeEnv = activeCollectorEnv(env);
@@ -262,7 +262,8 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
     }
 
     const commentResult = NO_PLANNED_COMMENTS_RESULT;
-    const factDue = minuteFactDue(observedAt);
+    const factObservedAt = collectionObservedAt(activeEnv, observedAt);
+    const factDue = minuteFactDue(factObservedAt);
     const lastSuccessAt = Date.now();
     const checkpointDue = state.persistCredentials !== false
       || state.clearFailureOnSuccess === true
@@ -290,23 +291,23 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
         readModel: {
           channel: {
             channel_id: state.channelId,
-            observed_at: observedAt,
+            observed_at: factObservedAt,
             presentation: readModelPresentation(snapshot),
           },
           queue: factQueueReadModel,
           collector: {
             collector_id: config.collectorId,
-            last_run_at: observedAt,
-            last_success_at: observedAt,
+            last_run_at: factObservedAt,
+            last_success_at: factObservedAt,
             last_error_present: false,
-            updated_at: observedAt,
+            updated_at: factObservedAt,
           },
         },
       };
 
       if (activeEnv?.INGEST_FINALIZE_QUEUE?.send) {
         factStage = {
-          observedAt,
+          observedAt: factObservedAt,
           snapshot: factSnapshot,
           queue: factQueue,
           comments: commentResult,
@@ -317,12 +318,12 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
         minuteFactJob = {
           enqueued: false,
           outbox_pending: false,
-          minute_at: minuteAt(observedAt),
+          minute_at: minuteAt(factObservedAt),
         };
       } else {
         stage = 'minute_fact_handoff';
         minuteFactJob = await handoffMinuteFactJob(activeEnv, {
-          observedAt,
+          observedAt: factObservedAt,
           snapshot: factSnapshot,
           queue: factQueue,
           comments: commentResult,
@@ -380,6 +381,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       metadata_deferred: Boolean(queue),
       metadata_delegated: Boolean(metadataPlanned),
       minute_fact_due: factDue,
+      minute_fact_observed_at: factDue ? factObservedAt : null,
       minute_fact_job_enqueued: Boolean(minuteFactJob?.enqueued),
       minute_fact_outbox_pending: Boolean(minuteFactJob?.outbox_pending),
       minute_fact_job_minute_at: minuteFactJob?.minute_at ?? null,
