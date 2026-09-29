@@ -16,6 +16,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'sh-buddies-recovery',
     'sh-buddies-collector',
     'sh-spotify-playcount-collector',
+    'sh-amazon-music-collector',
     'sh-runtime-orchestrator',
   ]);
   assert.deepEqual(result.commands, [
@@ -23,6 +24,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
     'deploy:buddies-recovery',
     'deploy:buddies-collector',
     'deploy:spotify-playcount',
+    'deploy:amazon-music',
     'deploy:runtime',
   ]);
 });

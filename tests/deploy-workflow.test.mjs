@@ -201,6 +201,7 @@ test('Worker package scripts contain only active deployment and bundle operation
       'deploy:buddies-collector': 'node scripts/deploy-buddies-collector.mjs',
       'deploy:sakurazaka46jp': 'node scripts/deploy-sakurazaka46jp.mjs',
       'deploy:spotify-playcount': 'node scripts/deploy-spotify-playcount.mjs',
+      'deploy:amazon-music': 'node scripts/deploy-amazon-music.mjs',
       'deploy:runtime': 'node scripts/deploy-runtime.mjs',
     },
   );
@@ -211,6 +212,7 @@ test('Worker package scripts contain only active deployment and bundle operation
   assert.equal(workerPackage.scripts['check:buddies-collector-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:sakurazaka46jp-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:spotify-playcount-bundle'] !== undefined, true);
+  assert.equal(workerPackage.scripts['check:amazon-music-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:runtime-bundle'] !== undefined, true);
 
   for (const path of [

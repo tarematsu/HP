@@ -1,6 +1,6 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'spotify', 'likes']);
-const VIEW_IDS = ['currentView', 'historyView', 'firstWeekView', 'playedTracksView', 'spotifyView', 'likesView'];
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'spotify', 'amazon-music', 'likes']);
+const VIEW_IDS = ['currentView', 'historyView', 'firstWeekView', 'playedTracksView', 'spotifyView', 'amazonMusicView', 'likesView'];
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
@@ -15,6 +15,8 @@ let playedTracksShellPromise = null;
 let playedTracksRuntimePromise = null;
 let spotifyShellPromise = null;
 let spotifyRuntimePromise = null;
+let amazonMusicShellPromise = null;
+let amazonMusicRuntimePromise = null;
 let likesRuntimePromise = null;
 let historyRuntimeMode = null;
 let activeMode = 'current';
@@ -92,6 +94,16 @@ function ensureSpotifyShell() {
   return spotifyShellPromise;
 }
 
+function ensureAmazonMusicShell() {
+  if (!amazonMusicShellPromise) {
+    amazonMusicShellPromise = import('/amazon-music-shell.js?v=20260929.1').catch((error) => {
+      amazonMusicShellPromise = null;
+      throw error;
+    });
+  }
+  return amazonMusicShellPromise;
+}
+
 async function loadRankingStatusRuntime() {
   if (!rankingStatusRuntimePromise) {
     rankingStatusRuntimePromise = import('/history/history-ranking-table-status.js?v=20260923.2').catch((error) => {
@@ -141,6 +153,16 @@ async function loadSpotifyRuntime() {
     });
   }
   return spotifyRuntimePromise;
+}
+
+async function loadAmazonMusicRuntime() {
+  if (!amazonMusicRuntimePromise) {
+    amazonMusicRuntimePromise = import('/amazon-music.js?v=20260929.1').catch((error) => {
+      amazonMusicRuntimePromise = null;
+      throw error;
+    });
+  }
+  return amazonMusicRuntimePromise;
 }
 
 async function loadLikesRuntime() {
@@ -279,6 +301,36 @@ async function showSpotify({ updateUrl = true, replaceUrl = false } = {}) {
   }
 }
 
+async function showAmazonMusic({ updateUrl = true, replaceUrl = false } = {}) {
+  activeMode = 'amazon-music';
+  showOnly(null);
+  updateTabs('amazon-music');
+  if (updateUrl) updateLocation('amazon-music', { replace: replaceUrl });
+
+  try {
+    await ensureAmazonMusicShell();
+    if (activeMode !== 'amazon-music') return;
+    const view = document.getElementById('amazonMusicView');
+    showOnly(view);
+    markRouteReady();
+    const runtime = await loadAmazonMusicRuntime();
+    if (activeMode !== 'amazon-music') return;
+    await runtime.loadAmazonMusicView?.();
+  } catch (error) {
+    if (activeMode !== 'amazon-music') return;
+    markRouteReady();
+    console.error('amazon music runtime failed to start', error);
+    const notice = document.getElementById('amazonMusicNotice');
+    if (notice) {
+      notice.textContent = 'Amazon Musicデータの初期化に失敗しました。再読み込みしてください。';
+      notice.classList.add('error');
+      notice.hidden = false;
+    }
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
+  }
+}
+
 async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
   activeMode = 'likes';
   showOnly(likesView);
@@ -311,6 +363,7 @@ function showMode(mode, options = {}) {
   else if (mode === 'first-week') void showFirstWeek(options);
   else if (mode === 'played-tracks') void showPlayedTracks(options);
   else if (mode === 'spotify') void showSpotify(options);
+  else if (mode === 'amazon-music') void showAmazonMusic(options);
   else if (mode === 'likes') void showLikes(options);
   else void showHistory(mode, options);
 }
@@ -342,6 +395,10 @@ tabs?.addEventListener('click', (event) => {
     void showSpotify();
     return;
   }
+  if (button.dataset.view === 'amazon-music') {
+    void showAmazonMusic();
+    return;
+  }
   if (button.dataset.view === 'likes') {
     void showLikes();
     return;
@@ -354,6 +411,10 @@ tabs?.addEventListener('click', (event) => {
 
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
+
+void ensureAmazonMusicShell().catch((error) => {
+  console.error('amazon music shell failed to start', error);
+});
 
 const initialMode = modeFromLocation();
 showMode(initialMode, {
