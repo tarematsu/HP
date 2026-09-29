@@ -157,7 +157,10 @@ void PowerSavingController::ApplyMonitorMode(MonitorMode mode) noexcept {
   // every profile change, including ServiceGrid -> Off, emits the relayout tick.
   ApplyStationheadMonitorPlacement();
 
-  if (layoutChanged) LayoutOverlay();
+  if (layoutChanged) {
+    LayoutOverlay();
+    if (parent_ && IsWindow(parent_)) PostMessageW(parent_, WM_TIMER, 0, 0);
+  }
   if (monitorMode_ != MonitorMode::Off) RequestMonitorAuthProbe();
   ArmScheduleTimer();
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
