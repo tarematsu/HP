@@ -85,19 +85,62 @@ function sortLegendByLatestValue(legend) {
   legend.append(...sorted);
 }
 
-function installLegendOrdering() {
+function artistNameFromPoint(circle) {
+  const text = String(circle.querySelector('title')?.textContent || '');
+  const match = text.match(/^(.*?)\s+\d{4}\/\d{1,2}\/\d{1,2}\s+/);
+  return match ? match[1] : '';
+}
+
+function showSinglePointSeries(container) {
+  const svg = container.querySelector('svg.spotify-trend-svg');
+  if (!svg) return;
+
+  const lineState = new Map();
+  for (const path of svg.querySelectorAll('path.spotify-trend-line')) {
+    const artistName = String(path.querySelector('title')?.textContent || '');
+    if (!artistName) continue;
+    lineState.set(artistName, /\sL\s/.test(String(path.getAttribute('d') || '')));
+  }
+
+  for (const circle of svg.querySelectorAll('circle.spotify-trend-point')) {
+    if (circle.dataset.spotifySinglePointMarker === '1') continue;
+    const artistName = artistNameFromPoint(circle);
+    if (!artistName || lineState.get(artistName) === true) continue;
+
+    const x = Number(circle.getAttribute('cx'));
+    const y = Number(circle.getAttribute('cy'));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+
+    const marker = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    marker.setAttribute('x1', String(x - 5));
+    marker.setAttribute('x2', String(x + 5));
+    marker.setAttribute('y1', String(y));
+    marker.setAttribute('y2', String(y));
+    marker.setAttribute('class', 'spotify-trend-line spotify-single-point-line');
+    marker.style.setProperty('--spotify-trend-color', circle.style.getPropertyValue('--spotify-trend-color'));
+    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    title.textContent = `${artistName}（取得済み1点）`;
+    marker.append(title);
+    circle.before(marker);
+    circle.setAttribute('r', '3.4');
+    circle.dataset.spotifySinglePointMarker = '1';
+  }
+}
+
+function installGraphPostProcessing() {
   const view = document.getElementById('spotifyView');
-  if (!view || view.dataset.spotifyLegendOrdering === '1') return;
-  view.dataset.spotifyLegendOrdering = '1';
-  const sortAll = () => {
+  if (!view || view.dataset.spotifyGraphPostProcessing === '1') return;
+  view.dataset.spotifyGraphPostProcessing = '1';
+  const processAll = () => {
     view.querySelectorAll('.spotify-trend-legend').forEach(sortLegendByLatestValue);
+    view.querySelectorAll('.spotify-trend-charts').forEach(showSinglePointSeries);
   };
-  const observer = new MutationObserver(sortAll);
+  const observer = new MutationObserver(processAll);
   observer.observe(view, { childList: true, subtree: true });
-  sortAll();
+  processAll();
 }
 
 ensureStylesheet();
 mountTab();
 mountView();
-installLegendOrdering();
+installGraphPostProcessing();
