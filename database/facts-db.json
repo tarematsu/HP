@@ -2,7 +2,7 @@
   "binding": "MINUTE_DB",
   "database_name": "stationhead-minute",
   "database_id": "43c12c1e-886d-4496-9c37-61bc8a15bbd7",
-  "schema": "database/facts-migrations/059_current_daily_summary_5m.sql",
+  "schema": "database/facts-migrations/060_canonical_daily_member_ownership.sql",
   "migrations": [
     "database/facts-migrations/025_d1_budget_hotpath_index.sql",
     "database/facts-migrations/026_remove_apple_music_compatibility.sql",
@@ -35,6 +35,7 @@
     "database/facts-migrations/056_stream_minute_delta_read_model.sql",
     "database/facts-migrations/057_stream_5m_average_read_model.sql",
     "database/facts-migrations/058_first_week_comparison_read_model.sql",
-    "database/facts-migrations/059_current_daily_summary_5m.sql"
+    "database/facts-migrations/059_current_daily_summary_5m.sql",
+    "database/facts-migrations/060_canonical_daily_member_ownership.sql"
   ]
 }
