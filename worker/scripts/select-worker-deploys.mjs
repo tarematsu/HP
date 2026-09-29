@@ -6,6 +6,7 @@ const workerRoot = resolve(repositoryRoot, 'worker');
 
 const workerDefinitions = [
   { name: 'sh-sakurazaka46jp', config: 'worker/wrangler.sakurazaka46jp.jsonc', command: 'deploy:sakurazaka46jp' },
+  { name: 'sh-nogizaka46smej', config: 'worker/wrangler.nogizaka46smej.jsonc', command: 'deploy:nogizaka46smej' },
   { name: 'sh-buddies-recovery', config: 'worker/wrangler.buddies-recovery.jsonc', command: 'deploy:buddies-recovery' },
   { name: 'sh-buddies-collector', config: 'worker/wrangler.buddies-collector.jsonc', command: 'deploy:buddies-collector' },
   { name: 'sh-spotify-playcount-collector', config: 'worker/wrangler.spotify-playcount.jsonc', command: 'deploy:spotify-playcount' },
@@ -29,6 +30,7 @@ const deployScriptWorkers = new Map([
   ['worker/scripts/pages-response-kv-namespace.mjs', runtimeWorker],
   ['worker/scripts/verify-runtime-deployment.mjs', runtimeWorker],
   ['worker/scripts/deploy-sakurazaka46jp.mjs', 'sh-sakurazaka46jp'],
+  ['worker/scripts/deploy-nogizaka46smej.mjs', 'sh-nogizaka46smej'],
 ]);
 
 const allWorkerDeployScripts = new Set([
