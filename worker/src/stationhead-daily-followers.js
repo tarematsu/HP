@@ -4,6 +4,7 @@ import {
 } from './pages-response-r2.js';
 
 const PROFILE_BASE = 'https://www.stationhead.com/api/account/handle/';
+const AUTH_STATE_ID = 'stationhead';
 const JST_OFFSET_MS = 9 * 60 * 60_000;
 const DEFAULT_TIMEOUT_MS = 8_000;
 const FOLLOWERS_READ_MODEL_KEY = 'followers';
@@ -147,6 +148,22 @@ async function publishFollowerReadModel(r2, date, followers, updatedAt) {
   return next.length;
 }
 
+function bearer(value) {
+  const token = String(value || '').trim();
+  if (!token) return '';
+  return /^Bearer\s+/i.test(token) ? token : `Bearer ${token}`;
+}
+
+export async function loadBuddiesFollowerSession(env) {
+  if (typeof env?.BUDDIES_DB?.prepare !== 'function') throw new Error('BUDDIES_DB binding is unavailable');
+  const row = await env.BUDDIES_DB.prepare(`SELECT auth_token,device_uid,token_expires_at
+      FROM sh_worker_collector_state WHERE id=? LIMIT 1`)
+    .bind(AUTH_STATE_ID)
+    .first();
+  if (!row?.auth_token || !row?.device_uid) throw new Error('Buddies Stationhead session is unavailable');
+  return row;
+}
+
 export function jstDateKey(timestamp) {
   const value = Number(timestamp);
   if (!Number.isFinite(value)) throw new TypeError('timestamp must be finite');
@@ -181,12 +198,19 @@ export async function fetchStationheadFollowerProfile(handle, options = {}) {
   if (!normalized) throw new Error('Stationhead handle is empty');
   const fetchFn = options.fetchFn || globalThis.fetch;
   if (typeof fetchFn !== 'function') throw new Error('fetch is unavailable');
+  const session = options.session;
+  if (!session?.auth_token || !session?.device_uid) throw new Error('Stationhead session is unavailable');
   const timeoutMs = Math.max(1_000, Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS);
   const response = await fetchFn(`${PROFILE_BASE}${encodeURIComponent(normalized)}`, {
     headers: {
       accept: 'application/json, text/plain, */*',
       'accept-language': 'ja,en-US;q=0.9,en;q=0.8',
-      'user-agent': 'Mozilla/5.0 (compatible; sh-daily-followers/1.0)',
+      'app-platform': 'web',
+      'app-version': String(options.appVersion || '1.0.0'),
+      origin: 'https://www.stationhead.com',
+      referer: 'https://www.stationhead.com/',
+      'sth-device-uid': String(session.device_uid),
+      authorization: bearer(session.auth_token),
     },
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -212,8 +236,15 @@ export async function collectStationheadDailyFollowers(env, scheduledAt = Date.n
   const now = dependencies.now || Date.now;
   const fetchFn = dependencies.fetchFn || globalThis.fetch;
   const timeoutMs = dependencies.timeoutMs;
+  const loadSession = dependencies.loadSession || loadBuddiesFollowerSession;
+  const session = await loadSession(env);
   const profiles = await Promise.all(STATIONHEAD_DAILY_FOLLOWER_HANDLES.map((handle) => (
-    fetchStationheadFollowerProfile(handle, { fetchFn, timeoutMs })
+    fetchStationheadFollowerProfile(handle, {
+      fetchFn,
+      timeoutMs,
+      session,
+      appVersion: env?.SH_APP_VERSION,
+    })
   )));
   const followers = Object.fromEntries(profiles.map((profile) => [profile.handle, profile.followers]));
   const date = jstDateKey(observedAt);
@@ -230,7 +261,13 @@ export async function collectStationheadDailyFollowers(env, scheduledAt = Date.n
       observed_date_jst,scheduled_at,collected_at,
       sakuramankai,sakuramankai2,sakurazaka46jp,nogizaka46smej
     ) VALUES (?,?,?,?,?,?,?)
-    ON CONFLICT(observed_date_jst) DO NOTHING`)
+    ON CONFLICT(observed_date_jst) DO UPDATE SET
+      scheduled_at=excluded.scheduled_at,
+      collected_at=excluded.collected_at,
+      sakuramankai=excluded.sakuramankai,
+      sakuramankai2=excluded.sakuramankai2,
+      sakurazaka46jp=excluded.sakurazaka46jp,
+      nogizaka46smej=excluded.nogizaka46smej`)
     .bind(
       date,
       observedAt,
@@ -249,7 +286,8 @@ export async function collectStationheadDailyFollowers(env, scheduledAt = Date.n
     followers,
     history_rows: historyRows,
     inserted: Number(result?.meta?.changes || 0) > 0,
-    d1_reads: 0,
+    buddies_auth_d1_reads: 1,
+    other_d1_reads: 0,
     d1_rows_written: Number(result?.meta?.changes || 0),
     r2_reads: 1,
     r2_writes: 1,
