@@ -154,11 +154,11 @@ ORDER BY started_at ASC`;
 export const BROADCAST_READ_MODEL_SQL = `SELECT
   event_name,started_at,ended_at,sample_count,
   listener_avg,listener_min,listener_max,likes_max,distinct_tracks,
-  comment_count,host_handle,session_id,1 AS has_data
+  host_handle,session_id,1 AS has_data
 FROM sh_official_broadcast_summary
 WHERE host_handle='sakurazaka46jp' AND started_at>=?1 AND started_at<?2
 UNION ALL
-SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
   EXISTS(SELECT 1 FROM sh_official_broadcast_summary
     WHERE host_handle='sakurazaka46jp') AS has_data
 WHERE NOT EXISTS (
