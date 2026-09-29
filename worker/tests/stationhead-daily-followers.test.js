@@ -15,6 +15,25 @@ function followerPayload(handle, followers, id) {
   return { data: { account: { id, handle, followers } } };
 }
 
+function buddiesDb(session, state = { reads: 0 }) {
+  return {
+    prepare(sql) {
+      assert.match(sql, /FROM sh_worker_collector_state WHERE id=\?/);
+      return {
+        bind(id) {
+          assert.equal(id, 'stationhead');
+          return {
+            async first() {
+              state.reads += 1;
+              return session;
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 test('daily follower schedule fires only at the JST midnight minute', () => {
   assert.equal(isJstMidnightMinute(MIDNIGHT_JST), true);
   assert.equal(isJstMidnightMinute(MIDNIGHT_JST + 59_999), true);
@@ -33,7 +52,7 @@ test('profile extraction requires a non-negative follower count', () => {
   );
 });
 
-test('collector performs four HTTP reads, one R2 read/write, one D1 write and zero D1 reads', async () => {
+test('collector reuses one Buddies auth read for four authenticated profile requests', async () => {
   const counts = new Map([
     ['sakuramankai', 101],
     ['sakuramankai2', 202],
@@ -41,9 +60,13 @@ test('collector performs four HTTP reads, one R2 read/write, one D1 write and ze
     ['nogizaka46smej', 404],
   ]);
   const requested = [];
-  const fetchFn = async (url) => {
+  const authReads = { reads: 0 };
+  const fetchFn = async (url, options) => {
     const handle = decodeURIComponent(new URL(url).pathname.split('/').at(-1));
     requested.push(handle);
+    assert.equal(options.headers.authorization, 'Bearer buddies-token');
+    assert.equal(options.headers['sth-device-uid'], 'buddies-device');
+    assert.equal(options.headers['app-platform'], 'web');
     return Response.json(followerPayload(handle, counts.get(handle), requested.length));
   };
 
@@ -55,11 +78,17 @@ test('collector performs four HTTP reads, one R2 read/write, one D1 write and ze
   let storedBody = null;
   let storedOptions = null;
   const env = {
+    SH_APP_VERSION: '1.0.0',
+    BUDDIES_DB: buddiesDb({
+      auth_token: 'buddies-token',
+      device_uid: 'buddies-device',
+      token_expires_at: MIDNIGHT_JST + 3_600_000,
+    }, authReads),
     OTHER_DB: {
       prepare(sql) {
         prepareCount += 1;
         assert.match(sql, /INSERT INTO sh_stationhead_daily_followers/);
-        assert.match(sql, /ON CONFLICT\(observed_date_jst\) DO NOTHING/);
+        assert.match(sql, /ON CONFLICT\(observed_date_jst\) DO UPDATE SET/);
         return {
           bind(...values) {
             bound = values;
@@ -94,6 +123,7 @@ test('collector performs four HTTP reads, one R2 read/write, one D1 write and ze
   });
 
   assert.deepEqual(requested.sort(), [...STATIONHEAD_DAILY_FOLLOWER_HANDLES].sort());
+  assert.equal(authReads.reads, 1);
   assert.equal(prepareCount, 1);
   assert.equal(runCount, 1);
   assert.deepEqual(bound, [
@@ -123,7 +153,8 @@ test('collector performs four HTTP reads, one R2 read/write, one D1 write and ze
     { handle: 'nogizaka46smej', followers: 404, previous_day_delta: null, previous_week_delta: null },
   ]);
   assert.equal(storedOptions.customMetadata.cadence_seconds, '86400');
-  assert.equal(result.d1_reads, 0);
+  assert.equal(result.buddies_auth_d1_reads, 1);
+  assert.equal(result.other_d1_reads, 0);
   assert.equal(result.d1_rows_written, 1);
   assert.equal(result.r2_reads, 1);
   assert.equal(result.r2_writes, 1);
@@ -147,6 +178,7 @@ test('R2 history is de-duplicated by date and computes exact day/week deltas', a
     ['nogizaka46smej', 411],
   ]);
   const env = {
+    BUDDIES_DB: buddiesDb({ auth_token: 'token', device_uid: 'device' }),
     OTHER_DB: {
       prepare() {
         return {
