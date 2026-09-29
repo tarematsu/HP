@@ -5,7 +5,7 @@ import test from 'node:test';
 import { loadCompactReadModelRevision } from '../worker/scripts/run-pages-read-model-revision-actions.mjs';
 
 const otherMigration = readFileSync(
-  new URL('../database/other-migrations/050_read_model_revisions.sql', import.meta.url),
+  new URL('../database/other-migrations/053_read_model_revisions.sql', import.meta.url),
   'utf8',
 );
 const factsMigration = readFileSync(
