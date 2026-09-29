@@ -69,6 +69,35 @@ function mountView() {
   else main.append(section);
 }
 
+function legendNumericValue(item) {
+  const text = String(item.querySelector('.spotify-trend-latest')?.textContent || '').replaceAll(',', '');
+  const match = text.match(/[+-]?\d+/);
+  return match ? Number(match[0]) : Number.NEGATIVE_INFINITY;
+}
+
+function sortLegendByLatestValue(legend) {
+  const items = [...legend.children].filter((node) => node.classList?.contains('spotify-trend-legend-item'));
+  if (items.length < 2) return;
+  const sorted = items.map((item, index) => ({ item, index, value: legendNumericValue(item) }))
+    .sort((a, b) => (b.value - a.value) || (a.index - b.index))
+    .map(({ item }) => item);
+  if (sorted.every((item, index) => item === items[index])) return;
+  legend.append(...sorted);
+}
+
+function installLegendOrdering() {
+  const view = document.getElementById('spotifyView');
+  if (!view || view.dataset.spotifyLegendOrdering === '1') return;
+  view.dataset.spotifyLegendOrdering = '1';
+  const sortAll = () => {
+    view.querySelectorAll('.spotify-trend-legend').forEach(sortLegendByLatestValue);
+  };
+  const observer = new MutationObserver(sortAll);
+  observer.observe(view, { childList: true, subtree: true });
+  sortAll();
+}
+
 ensureStylesheet();
 mountTab();
 mountView();
+installLegendOrdering();
