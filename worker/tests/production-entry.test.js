@@ -62,7 +62,7 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.deepEqual(runtime.durable_objects, {
     bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
   });
-  assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB']);
+  assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB', 'OTHER_DB']);
   assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(runtime.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB', 'OTHER_DB']);
   assert.equal(collector.d1_databases[0].database_name, 'stationhead-buddies');
