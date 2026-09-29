@@ -1,3 +1,4 @@
+import { bootstrapSpotifyReadModel } from './bootstrap-spotify-read-model.mjs';
 import { runWrangler } from './cloudflare-queues.mjs';
 
 for (const queue of [
@@ -14,3 +15,5 @@ runWrangler(
   ['deploy', '--config', 'wrangler.spotify-playcount.jsonc'],
   { capture: true, mirror: true },
 );
+
+console.log(JSON.stringify(await bootstrapSpotifyReadModel()));
