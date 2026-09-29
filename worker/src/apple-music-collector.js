@@ -60,16 +60,6 @@ export function appleMusicTopSongsUrl(regionCode, limit = TOP_SONG_LIMIT) {
   return url.toString();
 }
 
-export function appleMusicLookupUrl(regionCode, limit = TOP_SONG_LIMIT) {
-  const url = new URL('https://itunes.apple.com/lookup');
-  url.searchParams.set('id', APPLE_MUSIC_ARTIST_ID);
-  url.searchParams.set('entity', 'song');
-  url.searchParams.set('sort', 'popular');
-  url.searchParams.set('limit', String(Math.max(1, Math.min(200, Number(limit) || TOP_SONG_LIMIT))));
-  url.searchParams.set('country', String(regionCode || 'jp').toLowerCase());
-  return url.toString();
-}
-
 export function appleMusicBundleUrls(html) {
   const urls = [];
   const seen = new Set();
@@ -168,25 +158,6 @@ export function normalizeAppleMusicTopSongs(payload) {
   return tracks.slice(0, TOP_SONG_LIMIT);
 }
 
-export function normalizeAppleMusicLookup(payload) {
-  const seen = new Set();
-  const tracks = [];
-  for (const item of Array.isArray(payload?.results) ? payload.results : []) {
-    if (item?.wrapperType !== 'track' || !item?.trackName) continue;
-    pushUniqueTrack(tracks, seen, {
-      track_id: text(item.trackId),
-      title: text(item.trackName),
-      album: text(item.collectionName),
-      artist: text(item.artistName),
-      artwork: normalizedArtworkUrl(item.artworkUrl100),
-      url: text(item.trackViewUrl),
-      release_date: text(item.releaseDate),
-      isrc: text(item.isrc),
-    });
-  }
-  return tracks.slice(0, TOP_SONG_LIMIT);
-}
-
 async function fetchAppleMusicTopSongs(region, token, fetchImpl) {
   if (!token) throw new Error('Apple Music web token unavailable');
   const response = await fetchImpl(appleMusicTopSongsUrl(region.code), {
@@ -204,41 +175,12 @@ async function fetchAppleMusicTopSongs(region, token, fetchImpl) {
   return tracks;
 }
 
-async function fetchAppleMusicLookup(region, fetchImpl) {
-  const response = await fetchImpl(appleMusicLookupUrl(region.code), {
-    headers: {
-      accept: 'application/json',
-      'user-agent': 'skrzk-pages/1.0',
-    },
-  });
-  if (!response?.ok) throw new Error(`Apple Music ${region.code} lookup HTTP ${response?.status || 0}`);
-  const tracks = normalizeAppleMusicLookup(await response.json());
-  if (!tracks.length) throw new Error(`Apple Music ${region.code} lookup returned no tracks`);
-  return tracks;
-}
-
-export async function fetchAppleMusicRegion(region, { token = null, fetchImpl = fetch } = {}) {
-  if (token) {
-    try {
-      return {
-        code: region.code,
-        label: region.label,
-        source: 'apple-music-web-top-songs',
-        tracks: await fetchAppleMusicTopSongs(region, token, fetchImpl),
-      };
-    } catch (error) {
-      console.warn('apple music top-songs fallback', {
-        region: region.code,
-        error: String(error?.message || error).slice(0, 240),
-      });
-    }
-  }
-
+export async function fetchAppleMusicRegion(region, { token, fetchImpl = fetch } = {}) {
   return {
     code: region.code,
     label: region.label,
-    source: 'itunes-lookup-sort-popular',
-    tracks: await fetchAppleMusicLookup(region, fetchImpl),
+    source: 'apple-music-web-top-songs',
+    tracks: await fetchAppleMusicTopSongs(region, token, fetchImpl),
   };
 }
 
@@ -320,25 +262,13 @@ async function publishReadModel(r2, model, observedAt) {
   return { objectKey, bytes: body.length };
 }
 
-function snapshotSource(regions) {
-  const sources = [...new Set(regions.map((region) => region.source).filter(Boolean))];
-  return sources.length === 1 ? sources[0] : 'mixed';
-}
-
 export async function collectAppleMusicSnapshot(env, now = Date.now(), fetchImpl = fetch) {
   const r2 = env?.PAGES_RESPONSE_R2;
   if (typeof r2?.put !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is required');
 
   const observedAt = Number(now) || Date.now();
   const snapshotDate = appleMusicJstDate(observedAt);
-  let token = null;
-  try {
-    token = await fetchAppleMusicWebToken(fetchImpl, observedAt);
-  } catch (error) {
-    console.warn('apple music web token unavailable; using lookup fallback', {
-      error: String(error?.message || error).slice(0, 240),
-    });
-  }
+  const token = await fetchAppleMusicWebToken(fetchImpl, observedAt);
 
   const settled = await Promise.allSettled(
     APPLE_MUSIC_REGIONS.map((region) => fetchAppleMusicRegion(region, { token, fetchImpl })),
@@ -359,7 +289,7 @@ export async function collectAppleMusicSnapshot(env, now = Date.now(), fetchImpl
 
   const snapshot = {
     version: 1,
-    source: snapshotSource(regions),
+    source: 'apple-music-web-top-songs',
     artist_id: APPLE_MUSIC_ARTIST_ID,
     artist_name: '櫻坂46',
     snapshot_date: snapshotDate,
