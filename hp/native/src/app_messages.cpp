@@ -9,7 +9,13 @@ namespace {
 constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
 constexpr UINT_PTR kSpotifyArtistChartTimer = 41;
 constexpr UINT_PTR kSpotifyArtistChartWatchTimer = 42;
-constexpr UINT kSpotifyArtistChartInitialDelayMs = 250;
+// Creating the extra Spotify Charts controller 250 ms after WM_NCCREATE races
+// the dashboard/YouTube WebView2 startup on low-spec tablets. The collector had
+// historically been isolated from startup for the same stability reason. Keep
+// the temporary visible debug surface, but do not create it until the six media
+// profile startup sequence has had time to settle.
+constexpr UINT kSpotifyArtistChartInitialDelayMs = 4 * 60 * 1000;
+constexpr UINT kSpotifyArtistChartStartupRetryMs = 30 * 1000;
 constexpr UINT kSpotifyArtistChartIntervalMs = 60 * 60 * 1000;
 constexpr UINT kSpotifyArtistChartWatchMs = 250;
 constexpr int64_t kSpotifyArtistChartIdleThresholdMs = 5 * 60'000LL;
@@ -22,6 +28,12 @@ SpotifyArtistChartCollector& SpotifyArtistChartCollectorInstance() {
 void ArmSpotifyArtistChartInitialTimer(HWND window) {
   if (!window) return;
   SetTimer(window, kSpotifyArtistChartTimer, kSpotifyArtistChartInitialDelayMs, nullptr);
+}
+
+void RearmSpotifyArtistChartAfterStartup(HWND window) {
+  if (!window) return;
+  KillTimer(window, kSpotifyArtistChartTimer);
+  SetTimer(window, kSpotifyArtistChartTimer, kSpotifyArtistChartStartupRetryMs, nullptr);
 }
 
 void CaptureSpotifyArtistChartHourly(HWND window) {
@@ -85,6 +97,13 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
       if (wParam == kSpotifyArtistChartTimer) {
+        // Do not let the debug collector become the first user of the shared
+        // spotify-v2-6 profile. The sixth Stationhead startup owns that profile
+        // and is deliberately staged after the other five media windows.
+        if (!stationheadStarted_ || !stationheadLeaderboardCollectorStarted_) {
+          RearmSpotifyArtistChartAfterStartup(window_);
+          return 0;
+        }
         CaptureSpotifyArtistChartHourly(window_);
         return 0;
       }
