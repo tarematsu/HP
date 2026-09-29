@@ -49,6 +49,14 @@ test('ohisama normalization keeps only aggregate channel metrics', () => {
   assert.equal('chat' in value, false);
 });
 
+test('ohisama auth acquisition is fixed to ILYS while collection remains ohisama', () => {
+  const source = readFileSync(new URL('../src/ohisama-collector-entry.js', import.meta.url), 'utf8');
+  assert.match(source, /DEFAULT_AUTH_HANDLE = 'ilys'/);
+  assert.match(source, /STATIONHEAD_AUTH_PAGE_URL/);
+  assert.match(source, /station\/handle\/\$\{encodeURIComponent\(authHandle\)\}\/guest/);
+  assert.match(source, /env\.CHANNEL_ALIAS \|\| 'ohisama'/);
+});
+
 test('ohisama Worker config uses one dedicated D1, one Pages R2 binding, and no queues', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.ohisama-collector.jsonc', import.meta.url),
