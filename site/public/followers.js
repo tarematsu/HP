@@ -11,6 +11,7 @@ let loadPromise = null;
 let resizeObserver = null;
 
 function integer(value) {
+  if (value == null || value === '') return null;
   const parsed = Number(value);
   return Number.isInteger(parsed) ? parsed : null;
 }
