@@ -26,6 +26,33 @@ LR"JS(
       document.querySelectorAll('article[data-testid="tweet"]'));
   const followingTab = () => Array.from(document.querySelectorAll('[role="tab"]'))
       .find(tab => /^(?:Following|フォロー中)$/i.test(text(tab)));
+
+  const startupRequested =
+      /(?:^|[?&])homepanel=startup(?:&|$)/.test(String(location.search || ''));
+  if (startupRequested) {
+    const startupKey = 'homepanel:startup-x-until:v2';
+    const youtubeStart =
+        'https://homepanel-cloud.tarematsu.workers.dev/v1/native/youtube-start';
+    let startupUntil = 0;
+    try { startupUntil = Number(sessionStorage.getItem(startupKey) || 0); }
+    catch (_) {}
+    if (!Number.isFinite(startupUntil) || startupUntil <= Date.now()) {
+      startupUntil = Date.now() + 60 * 1000;
+      try { sessionStorage.setItem(startupKey, String(startupUntil)); }
+      catch (_) {}
+    }
+    const remaining = startupUntil - Date.now();
+    if (remaining > 0) {
+      if (state.startupExitTimer) clearTimeout(state.startupExitTimer);
+      state.startupExitTimer = setTimeout(() => {
+        try { sessionStorage.removeItem(startupKey); } catch (_) {}
+        location.assign(youtubeStart);
+      }, remaining);
+    } else {
+      try { sessionStorage.removeItem(startupKey); } catch (_) {}
+    }
+  }
+
   const promotedLabel = /^(?:Promoted|Sponsored|広告|プロモーション|スポンサー|Boosted|ブースト|PR)$/i;
   const hasPromotedLabel = article => Array.from(article?.querySelectorAll?.('span') || [])
       .some(element => !element.closest?.('[data-testid="tweetText"]') &&
