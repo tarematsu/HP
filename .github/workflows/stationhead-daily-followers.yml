@@ -5,6 +5,10 @@ on:
     # GitHub cron is UTC: 15:00 UTC = 00:00 JST on the following calendar day.
     - cron: '0 15 * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stationhead-daily-followers.yml'
 
 permissions:
   contents: read
