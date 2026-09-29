@@ -199,7 +199,7 @@ test('Spotify API reports missing D1 only on the producer path', async () => {
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab uses only the materialized Spotify read model for all four graphs', () => {
+test('Spotify tab uses only the materialized Spotify read model for its three graphs', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
@@ -208,7 +208,7 @@ test('Spotify tab uses only the materialized Spotify read model for all four gra
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
   assert.match(shell, /Spotify 全曲合計 再生数推移/);
-  assert.match(shell, /Spotify 上位10曲合計 再生数推移/);
+  assert.doesNotMatch(shell, /Spotify 上位10曲合計 再生数推移/);
   assert.match(shell, /Spotify 上位10曲合計\(今年限定\) 再生数推移/);
   assert.match(shell, /Spotify デイリートップアーティスト\(日本\) 順位推移/);
   assert.match(shell, /櫻坂46楽曲数/);
@@ -216,12 +216,11 @@ test('Spotify tab uses only the materialized Spotify read model for all four gra
   assert.match(shell, /<th>前日比<\/th>/);
   assert.doesNotMatch(shell, / - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
-  assert.match(shell, /id="spotifyTop10TrendCharts"/);
+  assert.doesNotMatch(shell, /id="spotifyTop10TrendCharts"/);
   assert.match(shell, /id="spotifyTop10YearTrendCharts"/);
   assert.match(shell, /id="spotifyArtistRankTrendCharts"/);
 
   assert.match(runtime, /metricKey: 'total_delta'/);
-  assert.match(runtime, /metricKey: 'top10_delta'/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
   assert.match(runtime, /normalizeTrendSeries\(trend\)/);
   assert.match(runtime, /renderArtistRankChart/);
