@@ -1,5 +1,6 @@
 const SAKURAZAKA_KEY = 'sakurazaka46';
 const SAKURAZAKA_NAME = '櫻坂46';
+const TREND_ARTIST_LIMIT = 10;
 const TREND_COLORS = Object.freeze([
   '#f3a6c8', '#8264b0', '#9ecff3', '#ef8a62', '#67a9cf',
   '#a6d854', '#ffd92f', '#e78ac3', '#8da0cb', '#fc8d62',
@@ -126,12 +127,15 @@ function appendDateTicks(svg, dates, axis, height) {
   }
 }
 
-function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel }) {
+function renderTrendChart(trend = {}, { containerId, metricKey, ariaLabel, maxSeries = null }) {
   const container = element(containerId);
   if (!container) return;
   container.replaceChildren();
 
-  const seriesList = normalizeTrendSeries(trend);
+  const normalizedSeries = normalizeTrendSeries(trend);
+  const seriesList = Number.isInteger(maxSeries) && maxSeries > 0
+    ? normalizedSeries.slice(0, maxSeries)
+    : normalizedSeries;
   const dates = [...new Set(seriesList.flatMap((series) =>
     series.points.map((point) => String(point.snapshot_date))))].sort();
   const values = seriesList.flatMap((series) =>
@@ -411,12 +415,14 @@ function render(payload, trend, artistChart) {
   renderTrendChart(trend, {
     containerId: 'spotifyTrendCharts',
     metricKey: 'total_delta',
-    ariaLabel: '収集対象の女性アイドル全アーティスト Spotify前日比全曲合計の再生数推移',
+    ariaLabel: '収集対象の女性アイドル上位10アーティスト Spotify前日比全曲合計の再生数推移',
+    maxSeries: TREND_ARTIST_LIMIT,
   });
   renderTrendChart(trend, {
     containerId: 'spotifyTop10YearTrendCharts',
     metricKey: 'top10_year_delta',
-    ariaLabel: '収集対象の女性アイドル全アーティスト 今年リリース曲に限定したSpotify前日比上位10曲合計の再生数推移',
+    ariaLabel: '収集対象の女性アイドル上位10アーティスト 今年リリース曲に限定したSpotify前日比上位10曲合計の再生数推移',
+    maxSeries: TREND_ARTIST_LIMIT,
   });
   renderArtistRankChart(artistChart, trend);
   renderRows(payload || {});
