@@ -1,5 +1,6 @@
 import collector from './index.js';
 import { jsonResponse as json, normalizeBearer, jwtExpiryMs, positiveNumber as positive } from './shared.js';
+import { STATIONHEAD_AUTH_PAGE_URL } from './collector-config.js';
 import { ensureAuthControlRow, readAuthState } from './auth-state.js';
 import { withAuthState } from './optimized-health.js';
 
@@ -7,12 +8,13 @@ export { authHealth, readOptimizedHealth, withAuthState } from './optimized-heal
 
 const API_ORIGIN = 'https://production1.stationhead.com';
 const STATE_ID = 'stationhead';
+const AUTH_ALIAS = 'ilys';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
 function authConfig(env) {
   return {
-    alias: env.CHANNEL_ALIAS || 'buddies',
+    authAlias: env.STATIONHEAD_AUTH_ALIAS || AUTH_ALIAS,
     appVersion: env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
     requestTimeoutMs: Math.min(positive(env.REQUEST_TIMEOUT_MS, 20_000), 30_000),
     refreshBeforeMs: positive(env.AUTH_REFRESH_BEFORE_MS, 3_600_000),
@@ -70,7 +72,7 @@ function shHeaders(cfg, deviceUid, authToken = '') {
     'app-version': cfg.appVersion,
     'content-type': 'application/json',
     origin: 'https://www.stationhead.com',
-    referer: 'https://www.stationhead.com/',
+    referer: STATIONHEAD_AUTH_PAGE_URL,
     'sth-device-uid': deviceUid,
     'user-agent': USER_AGENT,
     ...(authToken ? { authorization: `Bearer ${authToken}` } : {}),
@@ -110,7 +112,7 @@ async function acquireDirectSession(cfg) {
     throw new Error(`guest login failed: status=${loginResponse.status}${body ? `, body=${body.slice(0, 160)}` : ''}`);
   }
 
-  const verifyResponse = await shFetch(cfg, `/channels/alias/${encodeURIComponent(cfg.alias)}`, {
+  const verifyResponse = await shFetch(cfg, `/channels/alias/${encodeURIComponent(cfg.authAlias)}`, {
     headers: authHeaders,
   });
   if (!verifyResponse.ok) {
@@ -141,6 +143,7 @@ async function refreshSession(env, reason) {
       event: 'sh_auth_refreshed',
       method: 'direct-api',
       reason,
+      auth_alias: cfg.authAlias,
       token_expires_at: state.tokenExpiresAt || null,
     }));
     return state;
