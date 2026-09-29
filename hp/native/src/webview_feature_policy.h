@@ -5,9 +5,11 @@
 namespace hp {
 
 // Applies the browser surface shared by Stationhead, Spotify, and YouTube.
-// Script and web-message access remain configurable because native playback
-// automation uses them. Autofill stays enabled so each persistent WebView2
-// profile can remember sign-in and form input.
+// Script and web-message access stay enabled because native playback automation
+// uses them. WebView2 applies IsWebMessageEnabled to a document when it loads,
+// so enabling it only after navigation is too late for the first X phase.
+// Autofill stays enabled so each persistent WebView2 profile can remember
+// sign-in and form input.
 inline void ApplyMediaWebViewFeaturePolicy(
     ICoreWebView2Controller* controller, ICoreWebView2* webview,
     bool webMessagesEnabled) noexcept {
@@ -24,8 +26,9 @@ inline void ApplyMediaWebViewFeaturePolicy(
   ComPtr<ICoreWebView2Settings> settings;
   if (FAILED(webview->get_Settings(&settings)) || !settings) return;
 
+  static_cast<void>(webMessagesEnabled);
   settings->put_IsScriptEnabled(TRUE);
-  settings->put_IsWebMessageEnabled(webMessagesEnabled ? TRUE : FALSE);
+  settings->put_IsWebMessageEnabled(TRUE);
   settings->put_AreDefaultScriptDialogsEnabled(FALSE);
   settings->put_AreDefaultContextMenusEnabled(FALSE);
   settings->put_AreDevToolsEnabled(FALSE);
