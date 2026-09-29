@@ -9,6 +9,7 @@ const workerDefinitions = [
   { name: 'sh-nogizaka46smej', config: 'worker/wrangler.nogizaka46smej.jsonc', command: 'deploy:nogizaka46smej' },
   { name: 'sh-buddies-recovery', config: 'worker/wrangler.buddies-recovery.jsonc', command: 'deploy:buddies-recovery' },
   { name: 'sh-buddies-collector', config: 'worker/wrangler.buddies-collector.jsonc', command: 'deploy:buddies-collector' },
+  { name: 'sh-ohisama-collector', config: 'worker/wrangler.ohisama-collector.jsonc', command: 'deploy:ohisama-collector' },
   { name: 'sh-spotify-playcount-collector', config: 'worker/wrangler.spotify-playcount.jsonc', command: 'deploy:spotify-playcount' },
   { name: 'sh-amazon-music-collector', config: 'worker/wrangler.amazon-music.jsonc', command: 'deploy:amazon-music' },
   { name: 'sh-runtime-orchestrator', config: 'worker/wrangler.runtime.jsonc', command: 'deploy:runtime' },
@@ -17,6 +18,7 @@ const workerDefinitions = [
 const gitConnectedWorkers = new Set(['sh-runtime-orchestrator']);
 const recoveryWorker = 'sh-buddies-recovery';
 const collectorWorker = 'sh-buddies-collector';
+const ohisamaCollectorWorker = 'sh-ohisama-collector';
 const spotifyPlaycountWorker = 'sh-spotify-playcount-collector';
 const amazonMusicWorker = 'sh-amazon-music-collector';
 const runtimeWorker = 'sh-runtime-orchestrator';
@@ -24,6 +26,7 @@ const runtimeWorker = 'sh-runtime-orchestrator';
 const deployScriptWorkers = new Map([
   ['worker/scripts/deploy-buddies-recovery.mjs', recoveryWorker],
   ['worker/scripts/deploy-buddies-collector.mjs', collectorWorker],
+  ['worker/scripts/deploy-ohisama-collector.mjs', ohisamaCollectorWorker],
   ['worker/scripts/deploy-spotify-playcount.mjs', spotifyPlaycountWorker],
   ['worker/scripts/deploy-amazon-music.mjs', amazonMusicWorker],
   ['worker/scripts/deploy-runtime.mjs', runtimeWorker],
@@ -146,6 +149,10 @@ function changesMinuteDbSchema(changedPath) {
     || changedPath.startsWith('database/facts-migrations/');
 }
 
+function changesOhisamaDbSchema(changedPath) {
+  return changedPath.startsWith('database/ohisama-migrations/');
+}
+
 const changed = readChangedPaths();
 const selected = new Set();
 
@@ -160,6 +167,11 @@ if (changed.all) {
 
     if (changesMinuteDbSchema(changedPath)) {
       selected.add(runtimeWorker);
+      continue;
+    }
+
+    if (changesOhisamaDbSchema(changedPath)) {
+      selected.add(ohisamaCollectorWorker);
       continue;
     }
 
