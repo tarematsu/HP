@@ -56,6 +56,12 @@ export function aliasKey(type, value) {
 function trackAliases(source = {}) {
   const isrc = normalizedIsrc(source.isrc);
   const spotifyId = text(source.spotifyId ?? source.spotify_id);
+  const amazonMusicId = text(
+    source.amazonMusicId
+    ?? source.amazon_music_id
+    ?? source.amazonTrackId
+    ?? source.amazon_track_id,
+  );
   const stationheadId = integer(source.stationheadId ?? source.stationhead_track_id);
   const legacyId = integer(source.legacyId ?? source.legacy_track_id);
   const title = text(source.title);
@@ -67,6 +73,7 @@ function trackAliases(source = {}) {
     stationheadId == null ? null : { type: 'stationhead_track_id', value: String(stationheadId) },
     legacyId == null ? null : { type: 'legacy_track_id', value: String(legacyId) },
     legacyName ? { type: 'legacy_name', value: legacyName } : null,
+    amazonMusicId ? { type: 'amazon_music_id', value: amazonMusicId } : null,
   ].filter(Boolean);
   const seen = new Set();
   return aliases.filter((alias) => {
@@ -84,16 +91,23 @@ export function buildTrackDescriptor(track = {}, details = {}, fallbackPosition 
     artist: text(track.artist ?? track.artist_name) || text(details.artist),
   };
   const aliases = trackAliases(source);
+  const canonicalAlias = aliases.find((alias) => alias.type !== 'amazon_music_id') || null;
   return {
     ...track,
     position: integer(track.position) ?? fallbackPosition,
     isrc: normalizedIsrc(track.isrc),
     spotify_id: text(track.spotify_id),
+    amazon_music_id: text(
+      track.amazonMusicId
+      ?? track.amazon_music_id
+      ?? track.amazonTrackId
+      ?? track.amazon_track_id,
+    ),
     stationhead_track_id: integer(track.stationhead_track_id),
     title: text(source.title),
     artist: text(source.artist),
     aliases,
-    canonicalKey: aliases.length ? aliasKey(aliases[0].type, aliases[0].value) : null,
+    canonicalKey: canonicalAlias ? aliasKey(canonicalAlias.type, canonicalAlias.value) : null,
     trackId: null,
   };
 }
