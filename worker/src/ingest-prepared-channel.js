@@ -53,18 +53,6 @@ function preparedCollection(message) {
   return { snapshot, queue };
 }
 
-function commentsTaskForMinuteFact(commentTask, body) {
-  body.read_model = null;
-  return {
-    message_type: 'stationhead-comments-task',
-    message_version: 2,
-    auth: commentTask?.auth || {},
-    observed_at: integer(body?.payload?.observedAt) ?? integer(commentTask?.observed_at) ?? Date.now(),
-    station_id: integer(body?.payload?.snapshot?.station_id) ?? integer(commentTask?.station_id),
-    minute_fact: body,
-  };
-}
-
 function trustedMinuteFactQueueMessage(body) {
   const payload = objectValue(body?.payload);
   const channelId = integer(body?.channel_id);
@@ -126,24 +114,12 @@ function readModelEnvelopeForMinuteFact(rawMessage, body, trusted = false) {
     observed_at: observedAt,
     job_id: `read-model:${parsed.channel_id}:${observedAt}`,
     read_model: readModel,
-    comment_task: {
-      observed_at: observedAt,
-      station_id: integer(parsed.payload?.snapshot?.station_id),
-      auth: rawMessage?.auth || {},
-    },
   };
 }
 
 function activeIngestEnv(env, message, collection, capture) {
   const active = Object.create(env || null);
-  const inlinePipeline = enabled(env?.COLLECTOR_INLINE_PIPELINE_ENABLED);
-  const commentsQueue = env?.COMMENTS_QUEUE;
-  const destinationQueue = inlinePipeline ? env?.MINUTE_FACT_QUEUE : commentsQueue;
-  const commentTask = {
-    observed_at: integer(message?.observed_at),
-    station_id: null,
-    auth: message?.auth || {},
-  };
+  const destinationQueue = env?.MINUTE_FACT_QUEUE;
   Object.defineProperties(active, {
     __shAuthState: { value: message.auth || {}, enumerable: false },
     __shPersistCollectorCredentials: { value: message.persist_credentials !== false, enumerable: false },
@@ -151,7 +127,6 @@ function activeIngestEnv(env, message, collection, capture) {
       value: { snapshot: collection.snapshot, queue: collection.queue },
       enumerable: false,
     },
-    CHAT_LIMIT: { value: 0, enumerable: true },
     MINUTE_FACT_QUEUE: {
       enumerable: false,
       value: destinationQueue?.send ? {
@@ -162,8 +137,6 @@ function activeIngestEnv(env, message, collection, capture) {
             capture.channelId = integer(sourceBody.channel_id);
             capture.minuteAt = integer(sourceBody.minute_at);
             capture.envelope = envelope;
-            if (inlinePipeline) return destinationQueue.send(body, options);
-            return commentsQueue.send(commentsTaskForMinuteFact(commentTask, sourceBody), options);
           }
           return destinationQueue.send(body, options);
         },
@@ -214,11 +187,6 @@ function fallbackReadModelEnvelope(env, message, collection) {
         last_error_present: false,
         updated_at: observedAt,
       },
-    },
-    comment_task: {
-      observed_at: observedAt,
-      station_id: stationId,
-      auth: message.auth || {},
     },
   };
 }
