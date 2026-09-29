@@ -14,10 +14,8 @@ function mountTab() {
   button.type = 'button';
   button.dataset.view = 'apple-music';
   button.textContent = 'Apple Music';
-  const amazon = tabs.querySelector('[data-view="amazon-music"]');
   const spotify = tabs.querySelector('[data-view="spotify"]');
-  if (amazon) amazon.insertAdjacentElement('afterend', button);
-  else if (spotify) spotify.insertAdjacentElement('afterend', button);
+  if (spotify) spotify.insertAdjacentElement('beforebegin', button);
   else tabs.append(button);
 }
 
