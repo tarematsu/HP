@@ -4,12 +4,14 @@ import test from 'node:test';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const rootPresentation = readFileSync(new URL('../public/dashboard-root-presentation.css', import.meta.url), 'utf8');
 const officialCopy = readFileSync(new URL('../public/official-listening-party-copy.js', import.meta.url), 'utf8');
 
-test('online, members and total streams use one initial stylesheet rule', () => {
-  assert.match(html, /dashboard-root-presentation\.css\?v=20260930\.1/);
+test('online, members and total streams use one initial bundled stylesheet rule', () => {
+  assert.match(html, /assets\/dashboard\.min\.css\?v=20260930\.1/);
+  assert.match(buildScript, /'dashboard-root-presentation\.css'/);
   assert.doesNotMatch(metrics, /dashboard-current-metric-style|ensureRootPresentationStylesheet|createElement\('link'\)/);
   assert.match(rootPresentation, /#currentView \.metrics #online,[\s\S]*#currentView \.metrics #members,[\s\S]*#currentView \.metrics #totalStreams/);
   assert.match(rootPresentation, /font-size: clamp\(1\.75rem, 5\.8vw, 2\.5rem\) !important/);
