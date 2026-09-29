@@ -29,21 +29,11 @@ test('same song across different Spotify track ids and durations resolves to one
   assert.equal(single, album);
 });
 
-test('Stationhead ISRC-backed identity takes precedence over Spotify metadata', () => {
-  const first = spotifySongKey(track({
-    track_id: 'single-id',
-    stationhead_track_id: 42,
-    name: 'Title A',
-    artists_json: '[]',
-  }));
-  const second = spotifySongKey(track({
-    track_id: 'album-id',
-    stationhead_track_id: 42,
-    name: 'Title B',
-    artists_json: JSON.stringify([{ id: 'other-artist' }]),
-  }));
-  assert.equal(first, 'stationhead:v1:42');
-  assert.equal(first, second);
+test('Stationhead cross-service reference does not re-key Spotify history', () => {
+  assert.equal(
+    spotifySongKey(track()),
+    spotifySongKey(track({ stationhead_track_id: 42 })),
+  );
 });
 
 test('compact artist-id storage preserves Spotify fallback identity', () => {
