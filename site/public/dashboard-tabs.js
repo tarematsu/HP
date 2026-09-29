@@ -1,6 +1,6 @@
 const HISTORY_MODES = new Set(['daily', 'weekly', 'monthly', 'ranking', 'broadcasts']);
-const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'spotify', 'amazon-music', 'likes']);
-const VIEW_IDS = ['currentView', 'historyView', 'firstWeekView', 'playedTracksView', 'spotifyView', 'amazonMusicView', 'likesView'];
+const VIEW_MODES = new Set(['current', ...HISTORY_MODES, 'first-week', 'played-tracks', 'followers', 'spotify', 'amazon-music', 'likes']);
+const VIEW_IDS = ['currentView', 'historyView', 'firstWeekView', 'playedTracksView', 'followersView', 'spotifyView', 'amazonMusicView', 'likesView'];
 
 const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
@@ -13,6 +13,8 @@ let firstWeekShellPromise = null;
 let firstWeekRuntimePromise = null;
 let playedTracksShellPromise = null;
 let playedTracksRuntimePromise = null;
+let followersShellPromise = null;
+let followersRuntimePromise = null;
 let spotifyShellPromise = null;
 let spotifyRuntimePromise = null;
 let amazonMusicShellPromise = null;
@@ -84,6 +86,16 @@ function ensurePlayedTracksShell() {
   return playedTracksShellPromise;
 }
 
+function ensureFollowersShell() {
+  if (!followersShellPromise) {
+    followersShellPromise = import('/followers-shell.js?v=20260930.1').catch((error) => {
+      followersShellPromise = null;
+      throw error;
+    });
+  }
+  return followersShellPromise;
+}
+
 function ensureSpotifyShell() {
   if (!spotifyShellPromise) {
     spotifyShellPromise = import('/spotify-shell.js?v=20260929.1').catch((error) => {
@@ -143,6 +155,16 @@ async function loadPlayedTracksRuntime() {
     });
   }
   return playedTracksRuntimePromise;
+}
+
+async function loadFollowersRuntime() {
+  if (!followersRuntimePromise) {
+    followersRuntimePromise = import('/followers.js?v=20260930.1').catch((error) => {
+      followersRuntimePromise = null;
+      throw error;
+    });
+  }
+  return followersRuntimePromise;
 }
 
 async function loadSpotifyRuntime() {
@@ -271,6 +293,37 @@ async function showPlayedTracks({ updateUrl = true, replaceUrl = false } = {}) {
   }
 }
 
+async function showFollowers({ updateUrl = true, replaceUrl = false } = {}) {
+  activeMode = 'followers';
+  showOnly(null);
+  updateTabs('followers');
+  if (updateUrl) updateLocation('followers', { replace: replaceUrl });
+
+  try {
+    await ensureFollowersShell();
+    if (activeMode !== 'followers') return;
+    const view = document.getElementById('followersView');
+    showOnly(view);
+    updateTabs('followers');
+    markRouteReady();
+    const runtime = await loadFollowersRuntime();
+    if (activeMode !== 'followers') return;
+    await runtime.loadFollowersView?.();
+  } catch (error) {
+    if (activeMode !== 'followers') return;
+    markRouteReady();
+    console.error('followers runtime failed to start', error);
+    const notice = document.getElementById('followersNotice');
+    if (notice) {
+      notice.textContent = 'フォロワーデータの初期化に失敗しました。再読み込みしてください。';
+      notice.classList.add('error');
+      notice.hidden = false;
+    }
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
+  }
+}
+
 async function showSpotify({ updateUrl = true, replaceUrl = false } = {}) {
   activeMode = 'spotify';
   showOnly(null);
@@ -362,6 +415,7 @@ function showMode(mode, options = {}) {
   if (mode === 'current') showCurrent(options);
   else if (mode === 'first-week') void showFirstWeek(options);
   else if (mode === 'played-tracks') void showPlayedTracks(options);
+  else if (mode === 'followers') void showFollowers(options);
   else if (mode === 'spotify') void showSpotify(options);
   else if (mode === 'amazon-music') void showAmazonMusic(options);
   else if (mode === 'likes') void showLikes(options);
@@ -391,6 +445,10 @@ tabs?.addEventListener('click', (event) => {
     void showPlayedTracks();
     return;
   }
+  if (button.dataset.view === 'followers') {
+    void showFollowers();
+    return;
+  }
   if (button.dataset.view === 'spotify') {
     void showSpotify();
     return;
@@ -412,6 +470,9 @@ tabs?.addEventListener('click', (event) => {
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
 
+void ensureFollowersShell().catch((error) => {
+  console.error('followers shell failed to start', error);
+});
 void ensureAmazonMusicShell().catch((error) => {
   console.error('amazon music shell failed to start', error);
 });
