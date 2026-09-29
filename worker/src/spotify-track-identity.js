@@ -54,11 +54,6 @@ async function batchWrites(db, statements) {
 }
 
 export function spotifySongKey(track) {
-  const stationheadTrackId = positiveInteger(track?.stationhead_track_id);
-  if (stationheadTrackId != null) {
-    return `stationhead:v1:${stationheadTrackId}`;
-  }
-
   const sourceTrackId = String(track?.track_id || '').trim();
   const name = normalizedText(track?.name);
   const artistIds = normalizedArtistIds(track?.artists_json);
@@ -77,43 +72,21 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
   if (!keyedTracks.length) return [];
 
   const initialCanonicalByKey = new Map();
-  const stationheadByKey = new Map();
   for (const { track, songKey } of keyedTracks) {
     if (!initialCanonicalByKey.has(songKey)) {
       initialCanonicalByKey.set(songKey, String(track.track_id));
     }
-    const stationheadTrackId = positiveInteger(track?.stationhead_track_id);
-    if (stationheadTrackId != null) stationheadByKey.set(songKey, stationheadTrackId);
   }
 
-  await batchWrites(db, [...initialCanonicalByKey].map(([songKey, trackId]) => {
-    const stationheadTrackId = stationheadByKey.get(songKey);
-    if (stationheadTrackId == null) {
-      return db.prepare(`INSERT INTO sh_spotify_song_identities (
-          song_key,canonical_track_id,created_at,updated_at
-        ) VALUES (?,?,?,?)
-        ON CONFLICT(song_key) DO UPDATE SET updated_at=MAX(
-          sh_spotify_song_identities.updated_at,excluded.updated_at
-        ) WHERE excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
-        .bind(songKey, trackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS);
-    }
-    return db.prepare(`INSERT INTO sh_spotify_song_identities (
-        song_key,canonical_track_id,stationhead_track_id,created_at,updated_at
-      ) VALUES (?,?,?,?,?)
-      ON CONFLICT(song_key) DO UPDATE SET
-        stationhead_track_id=COALESCE(
-          sh_spotify_song_identities.stationhead_track_id,
-          excluded.stationhead_track_id
-        ),
-        updated_at=MAX(sh_spotify_song_identities.updated_at,excluded.updated_at)
-      WHERE (sh_spotify_song_identities.stationhead_track_id IS NULL
-          AND excluded.stationhead_track_id IS NOT NULL)
-        OR excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
-      .bind(
-        songKey, trackId, stationheadTrackId, seenAt, seenAt,
-        IDENTITY_SEEN_REFRESH_MS,
-      );
-  }));
+  await batchWrites(db, [...initialCanonicalByKey].map(([songKey, trackId]) => (
+    db.prepare(`INSERT INTO sh_spotify_song_identities (
+        song_key,canonical_track_id,created_at,updated_at
+      ) VALUES (?,?,?,?)
+      ON CONFLICT(song_key) DO UPDATE SET updated_at=MAX(
+        sh_spotify_song_identities.updated_at,excluded.updated_at
+      ) WHERE excluded.updated_at>=sh_spotify_song_identities.updated_at+?`)
+      .bind(songKey, trackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS)
+  )));
 
   const canonicalByKey = new Map();
   const songKeys = [...initialCanonicalByKey.keys()];
@@ -133,17 +106,36 @@ export async function resolveCanonicalSpotifyTracks(db, tracks, seenAt) {
   await batchWrites(db, keyedTracks.map(({ track, songKey }) => {
     const sourceTrackId = String(track.track_id);
     const canonicalTrackId = canonicalByKey.get(songKey);
+    const stationheadTrackId = positiveInteger(track?.stationhead_track_id);
+    if (stationheadTrackId == null) {
+      return db.prepare(`INSERT INTO sh_spotify_track_aliases (
+          source_track_id,song_key,canonical_track_id,first_seen_at,last_seen_at
+        ) VALUES (?,?,?,?,?)
+        ON CONFLICT(source_track_id) DO UPDATE SET
+          song_key=excluded.song_key,
+          canonical_track_id=excluded.canonical_track_id,
+          last_seen_at=MAX(sh_spotify_track_aliases.last_seen_at,excluded.last_seen_at)
+        WHERE sh_spotify_track_aliases.song_key<>excluded.song_key
+          OR sh_spotify_track_aliases.canonical_track_id<>excluded.canonical_track_id
+          OR excluded.last_seen_at>=sh_spotify_track_aliases.last_seen_at+?`)
+        .bind(sourceTrackId, songKey, canonicalTrackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS);
+    }
     return db.prepare(`INSERT INTO sh_spotify_track_aliases (
-        source_track_id,song_key,canonical_track_id,first_seen_at,last_seen_at
-      ) VALUES (?,?,?,?,?)
+        source_track_id,song_key,canonical_track_id,stationhead_track_id,first_seen_at,last_seen_at
+      ) VALUES (?,?,?,?,?,?)
       ON CONFLICT(source_track_id) DO UPDATE SET
         song_key=excluded.song_key,
         canonical_track_id=excluded.canonical_track_id,
+        stationhead_track_id=excluded.stationhead_track_id,
         last_seen_at=MAX(sh_spotify_track_aliases.last_seen_at,excluded.last_seen_at)
       WHERE sh_spotify_track_aliases.song_key<>excluded.song_key
         OR sh_spotify_track_aliases.canonical_track_id<>excluded.canonical_track_id
+        OR sh_spotify_track_aliases.stationhead_track_id IS NOT excluded.stationhead_track_id
         OR excluded.last_seen_at>=sh_spotify_track_aliases.last_seen_at+?`)
-      .bind(sourceTrackId, songKey, canonicalTrackId, seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS);
+      .bind(
+        sourceTrackId, songKey, canonicalTrackId, stationheadTrackId,
+        seenAt, seenAt, IDENTITY_SEEN_REFRESH_MS,
+      );
   }));
 
   return keyedTracks.map(({ track, songKey }) => {
