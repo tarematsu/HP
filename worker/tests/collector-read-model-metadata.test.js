@@ -4,14 +4,11 @@ import test from 'node:test';
 
 import { loadMinuteFactQueueMetadata } from '../src/collector-runner.js';
 
-test('primary collector owns optional comments while metadata stays delegated', () => {
+test('primary collector has no comment collection while metadata stays delegated', () => {
   const source = readFileSync(new URL('../src/collector-runner.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /sharedEnrichTracks|d1_write_track_metadata/);
-  assert.match(source, /collectOptionalComments/);
-  assert.match(source, /stage = 'sh_chat_history'/);
+  assert.doesNotMatch(source, /collectOptionalComments|sh_chat_history|COMMENTS_QUEUE/);
   assert.match(source, /enrichTrackMetadata: metadataPlanned/);
-  assert.match(source, /collectComments: false/);
-  assert.match(source, /comments_deferred: false/);
 });
 
 test('loadMinuteFactQueueMetadata reads distinct ids and hydrates the Queue read model', async () => {
