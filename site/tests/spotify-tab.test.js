@@ -9,6 +9,7 @@ import {
   spotifyPlaycountSql,
   spotifyReadModel,
   spotifyTrendSql,
+  SPOTIFY_TREND_START_DATE,
 } from '../functions/api/spotify-playcounts.js';
 import {
   canonicalApiCacheRequest,
@@ -145,23 +146,25 @@ test('Spotify detail merges duplicate editions and sorts by delta after dedupe',
   assert.deepEqual(payload.tracks.map((track) => track.rank), [1, 2]);
 });
 
-test('Spotify read-model SQL uses compact summaries including D1-normalized artist ranks', () => {
+test('Spotify read-model SQL shows every collected idol from the fixed September 28 origin', () => {
+  assert.equal(SPOTIFY_TREND_START_DATE, '2026-09-28');
+
   const detailSql = spotifyPlaycountSql();
   assert.match(detailSql, /target\.artist_key='sakurazaka46'/);
   assert.doesNotMatch(detailSql, /nogizaka46|hinatazaka46/);
 
   const trendSql = spotifyTrendSql();
-  assert.match(trendSql, /-89 days/);
   assert.match(trendSql, /FROM sh_spotify_artist_daily daily/);
+  assert.match(trendSql, /daily\.snapshot_date >= '2026-09-28'/);
   assert.match(trendSql, /daily\.total_delta/);
   assert.match(trendSql, /daily\.top10_delta/);
   assert.match(trendSql, /daily\.top10_year_delta/);
-  assert.doesNotMatch(trendSql, /sh_spotify_playcount_daily|SUM\(d\.delta\)/);
+  assert.doesNotMatch(trendSql, /-89 days|sh_spotify_playcount_daily|SUM\(d\.delta\)/);
 
   const chartSql = spotifyArtistChartSql();
   assert.match(chartSql, /FROM sh_spotify_artist_chart_daily chart/);
-  assert.match(chartSql, /-89 days/);
-  assert.doesNotMatch(chartSql, /spotify\/charts|homepanel-cloud/);
+  assert.match(chartSql, /chart\.chart_date >= '2026-09-28'/);
+  assert.doesNotMatch(chartSql, /-89 days|spotify\/charts|homepanel-cloud/);
 });
 
 test('Spotify API publishes trend metrics and Japan daily artist ranks in one model', async () => {
@@ -196,7 +199,7 @@ test('Spotify API reports missing D1 only on the producer path', async () => {
   assert.equal(missing.status, 503);
 });
 
-test('Spotify tab uses only the materialized Spotify read model for all four graphs', () => {
+test('Spotify tab uses only the materialized Spotify read model for its three graphs', () => {
   const shell = readFileSync(new URL('../public/spotify-shell.js', import.meta.url), 'utf8');
   const runtime = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
   const styles = readFileSync(new URL('../public/spotify.css', import.meta.url), 'utf8');
@@ -205,7 +208,7 @@ test('Spotify tab uses only the materialized Spotify read model for all four gra
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
   assert.match(shell, /Spotify 全曲合計 再生数推移/);
-  assert.match(shell, /Spotify 上位10曲合計 再生数推移/);
+  assert.doesNotMatch(shell, /Spotify 上位10曲合計 再生数推移/);
   assert.match(shell, /Spotify 上位10曲合計\(今年限定\) 再生数推移/);
   assert.match(shell, /Spotify デイリートップアーティスト\(日本\) 順位推移/);
   assert.match(shell, /櫻坂46楽曲数/);
@@ -213,13 +216,14 @@ test('Spotify tab uses only the materialized Spotify read model for all four gra
   assert.match(shell, /<th>前日比<\/th>/);
   assert.doesNotMatch(shell, / - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
-  assert.match(shell, /id="spotifyTop10TrendCharts"/);
+  assert.doesNotMatch(shell, /id="spotifyTop10TrendCharts"/);
   assert.match(shell, /id="spotifyTop10YearTrendCharts"/);
   assert.match(shell, /id="spotifyArtistRankTrendCharts"/);
 
   assert.match(runtime, /metricKey: 'total_delta'/);
-  assert.match(runtime, /metricKey: 'top10_delta'/);
+  assert.doesNotMatch(runtime, /spotifyTop10TrendCharts|metricKey: 'top10_delta'/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
+  assert.match(runtime, /normalizeTrendSeries\(trend\)/);
   assert.match(runtime, /renderArtistRankChart/);
   assert.match(runtime, /model\?\.artist_chart/);
   assert.match(runtime, /latestValue\.textContent = latest \? `\$\{numberFormat\.format\(latest\.rank\)\}位` : '-'/);

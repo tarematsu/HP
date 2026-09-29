@@ -1,5 +1,6 @@
 const SAKURAZAKA = Object.freeze({ key: 'sakurazaka46', name: '櫻坂46' });
 const DEFAULT_ARTIST_KEY = SAKURAZAKA.key;
+export const SPOTIFY_TREND_START_DATE = '2026-09-28';
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
@@ -55,8 +56,6 @@ export function spotifyTrendSql() {
     SELECT h.artist_key,h.rank
     FROM sh_spotify_top20_history h
     INNER JOIN latest_ranking_date latest ON latest.ranking_date=h.ranking_date
-  ), latest_summary_date AS (
-    SELECT MAX(snapshot_date) AS snapshot_date FROM sh_spotify_artist_daily
   )
   SELECT
     daily.artist_key,
@@ -69,7 +68,7 @@ export function spotifyTrendSql() {
   FROM sh_spotify_artist_daily daily
   INNER JOIN sh_spotify_artists artist ON artist.artist_key=daily.artist_key
   LEFT JOIN current_rank ON current_rank.artist_key=daily.artist_key
-  WHERE daily.snapshot_date >= date((SELECT snapshot_date FROM latest_summary_date), '-89 days')
+  WHERE daily.snapshot_date >= '${SPOTIFY_TREND_START_DATE}'
   ORDER BY
     CASE WHEN current_rank.rank IS NULL THEN 1 ELSE 0 END,
     current_rank.rank ASC,
@@ -78,10 +77,7 @@ export function spotifyTrendSql() {
 }
 
 export function spotifyArtistChartSql() {
-  return `WITH latest_chart_date AS (
-    SELECT MAX(chart_date) AS chart_date FROM sh_spotify_artist_chart_daily
-  )
-  SELECT
+  return `SELECT
     chart.chart_date,
     chart.artist_key,
     chart.artist_name,
@@ -91,7 +87,7 @@ export function spotifyArtistChartSql() {
     chart.streak,
     chart.observed_at
   FROM sh_spotify_artist_chart_daily chart
-  WHERE chart.chart_date >= date((SELECT chart_date FROM latest_chart_date), '-89 days')
+  WHERE chart.chart_date >= '${SPOTIFY_TREND_START_DATE}'
   ORDER BY chart.chart_date ASC,chart.rank ASC,chart.artist_name COLLATE NOCASE ASC`;
 }
 

@@ -40,11 +40,6 @@ function mountView() {
       <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="収集対象の女性アイドル全アーティストの前日比全曲合計を重ねたグラフ"></div>
     </section>
 
-    <section class="card spotify-trend-panel" aria-labelledby="spotifyTop10TrendTitle">
-      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10TrendTitle">Spotify 上位10曲合計 再生数推移</h2></div></div>
-      <div id="spotifyTop10TrendCharts" class="spotify-trend-charts" aria-label="各アーティストの前日比上位10曲の再生数合計を重ねたグラフ"></div>
-    </section>
-
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTop10YearTrendTitle">
       <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10YearTrendTitle">Spotify 上位10曲合計(今年限定) 再生数推移</h2></div></div>
       <div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲に限定した各アーティストの前日比上位10曲の再生数合計を重ねたグラフ"></div>
