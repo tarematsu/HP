@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sh-amazon-music-collector",
+  "main": "src/amazon-music-entry.js",
+  "compatibility_date": "2026-06-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1.0,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1.0,
+      "persist": true,
+      "invocation_logs": true
+    }
+  },
+  "triggers": {
+    "crons": ["30 1 * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "MINUTE_DB",
+      "database_name": "stationhead-minute",
+      "database_id": "43c12c1e-886d-4496-9c37-61bc8a15bbd7"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PAGES_RESPONSE_R2",
+      "bucket_name": "sh-pages-responses"
+    }
+  ]
+}
