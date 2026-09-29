@@ -548,3 +548,5 @@ inline void SpotifyArtistChartCollector::UpdateNextWake() noexcept {
   include(timeoutAt_);
   nextWakeAt_ = next;
 }
+
+}  // namespace hp
