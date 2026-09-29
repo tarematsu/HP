@@ -1,49 +1,20 @@
-const stylesheetHref = '/dashboard-fixes.css?v=20260923.4';
-if (!document.querySelector(`link[href="${stylesheetHref}"]`)) {
-  const stylesheet = document.createElement('link');
-  stylesheet.rel = 'stylesheet';
-  stylesheet.href = stylesheetHref;
-  document.head.append(stylesheet);
-}
+const dashboardStylesheets = [
+  '/dashboard-fixes.css?v=20260923.4',
+  '/screenshot-audit-cleanup.css?v=20260919.3',
+  '/period-display-fixes.css?v=20260921.4',
+  '/dashboard-current-enhancements.css?v=20260924.1',
+  '/pages-layout.css?v=20260928.1',
+  '/pages-tabs-layout.css?v=20260930.1',
+];
 
-const screenshotCleanupHref = '/screenshot-audit-cleanup.css?v=20260919.3';
-if (!document.querySelector(`link[href="${screenshotCleanupHref}"]`)) {
-  const screenshotCleanup = document.createElement('link');
-  screenshotCleanup.rel = 'stylesheet';
-  screenshotCleanup.href = screenshotCleanupHref;
-  document.head.append(screenshotCleanup);
-}
-
-const periodDisplayFixesHref = '/period-display-fixes.css?v=20260921.4';
-if (!document.querySelector(`link[href="${periodDisplayFixesHref}"]`)) {
-  const periodDisplayFixes = document.createElement('link');
-  periodDisplayFixes.rel = 'stylesheet';
-  periodDisplayFixes.href = periodDisplayFixesHref;
-  document.head.append(periodDisplayFixes);
-}
-
-const currentEnhancementsHref = '/dashboard-current-enhancements.css?v=20260924.1';
-if (!document.querySelector(`link[href="${currentEnhancementsHref}"]`)) {
-  const currentEnhancements = document.createElement('link');
-  currentEnhancements.rel = 'stylesheet';
-  currentEnhancements.href = currentEnhancementsHref;
-  document.head.append(currentEnhancements);
-}
-
-const pagesLayoutHref = '/pages-layout.css?v=20260928.1';
-if (!document.querySelector(`link[href="${pagesLayoutHref}"]`)) {
-  const pagesLayout = document.createElement('link');
-  pagesLayout.rel = 'stylesheet';
-  pagesLayout.href = pagesLayoutHref;
-  document.head.append(pagesLayout);
-}
-
-const pagesTabsLayoutHref = '/pages-tabs-layout.css?v=20260930.1';
-if (!document.querySelector(`link[href="${pagesTabsLayoutHref}"]`)) {
-  const pagesTabsLayout = document.createElement('link');
-  pagesTabsLayout.rel = 'stylesheet';
-  pagesTabsLayout.href = pagesTabsLayoutHref;
-  document.head.append(pagesTabsLayout);
+if (document.documentElement.dataset.dashboardCssBundled !== 'true') {
+  for (const href of dashboardStylesheets) {
+    if (document.querySelector(`link[href="${href}"]`)) continue;
+    const stylesheet = document.createElement('link');
+    stylesheet.rel = 'stylesheet';
+    stylesheet.href = href;
+    document.head.append(stylesheet);
+  }
 }
 
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
