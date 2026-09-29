@@ -30,6 +30,11 @@
       "binding": "OHISAMA_DB",
       "database_name": "stationhead-ohisama",
       "database_id": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "binding": "OTHER_DB",
+      "database_name": "stationhead-other",
+      "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11"
     }
   ]
 }
