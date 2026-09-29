@@ -11,43 +11,44 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Resolve Cloudflare account context
-        uses: ./.github/actions/cloudflare-context
-        with:
-          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-      - name: Install Worker dependencies
-        working-directory: worker
-        run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Run Amazon Music scheduled collector once
-        working-directory: worker
+      - name: Probe Amazon Music JP artist endpoint
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler dev --config wrangler.amazon-music.jsonc --remote --test-scheduled --port 8787 > ../amazon-dev.log 2>&1 &
-          dev_pid=$!
-          trap 'kill "$dev_pid" 2>/dev/null || true; cat ../amazon-dev.log || true' EXIT
-          for i in $(seq 1 30); do
-            if curl --silent --fail http://127.0.0.1:8787/ >/dev/null 2>&1; then break; fi
-            sleep 1
-          done
-          curl --fail --silent --show-error 'http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*' | cat
-          sleep 15
-          cat ../amazon-dev.log
-      - name: Verify read model
-        shell: bash
-        run: |
-          set -euo pipefail
-          code="$(curl --silent --show-error --output amazon-response.json --write-out '%{http_code}' https://skrzk.pages.dev/api/amazon-music)"
-          echo "HTTP $code"
-          cat amazon-response.json
-          test "$code" = "200"
-          jq -e '.ok == true and (.track_count // 0) > 0 and (.tracks | length) > 0' amazon-response.json >/dev/null
+          node <<'NODE'
+          const domain = 'music.amazon.co.jp';
+          const origin = `https://${domain}`;
+          const artistId = 'B08P3RHP1P';
+          const ua = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36';
+          const configRes = await fetch(`${origin}/config.json`, {headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9','user-agent':ua,referer:`${origin}/`}});
+          console.log('config', configRes.status);
+          const config = await configRes.json();
+          const csrf = config.csrf || {};
+          const pageUrl = `${origin}/artists/${artistId}`;
+          const inner = {
+            'x-amzn-authentication': JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:config.accessToken||''}),
+            'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer',
+            'x-amzn-device-id':config.deviceId||'','x-amzn-user-agent':ua,'x-amzn-session-id':config.sessionId||'',
+            'x-amzn-device-height':'1080','x-amzn-request-id':Math.random().toString(36).slice(2),
+            'x-amzn-device-language':'ja_JP','x-amzn-currency-of-preference':'JPY','x-amzn-os-version':'1.0',
+            'x-amzn-application-version':config.version||'','x-amzn-device-time-zone':'Asia/Tokyo','x-amzn-timestamp':String(Date.now()),
+            'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),
+            'x-amzn-music-domain':domain,'x-amzn-referer':domain,'x-amzn-affiliate-tags':'','x-amzn-ref-marker':'',
+            'x-amzn-page-url':pageUrl,'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''
+          };
+          const body = JSON.stringify({id:artistId,userHash:JSON.stringify({level:'LIBRARY_MEMBER'}),headers:JSON.stringify(inner)});
+          for (const host of ['fe.web.skill.music.a2z.com','fe.mesk.skill.music.a2z.com','eu.web.skill.music.a2z.com','eu.mesk.skill.music.a2z.com']) {
+            const url = `https://${host}/api/explore/v1/showCatalogArtist`;
+            try {
+              const response = await fetch(url,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua,'sec-ch-ua':'"Chromium";v="125", "Not.A/Brand";v="24"','sec-ch-ua-mobile':'?1','sec-ch-ua-platform':'"Android"','sec-fetch-dest':'empty','sec-fetch-mode':'cors','sec-fetch-site':'cross-site'},body});
+              const text = await response.text();
+              console.log(host, response.status, text.slice(0,300).replace(/\s+/g,' '));
+            } catch (error) {
+              console.log(host, 'ERROR', String(error));
+            }
+          }
+          NODE
