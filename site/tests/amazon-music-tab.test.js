@@ -6,13 +6,17 @@ const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url
 const shell = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/amazon-music.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/amazon-music.css', import.meta.url), 'utf8');
+const api = readFileSync(new URL('../functions/api/amazon-music.js', import.meta.url), 'utf8');
 
-test('Amazon Music is a central dashboard route backed by the materialized API only', () => {
+test('Amazon Music is a dashboard route backed only by the Worker materialized read model', () => {
   assert.match(tabs, /VIEW_MODES[\s\S]*'amazon-music'/);
   assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=20260929\.1'\)/);
   assert.match(tabs, /import\('\/amazon-music\.js\?v=20260929\.1'\)/);
   assert.match(tabs, /showAmazonMusic/);
   assert.match(runtime, /fetch\('\/api\/amazon-music'/);
+  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(api, /_internal\/pages-response\?key=amazon-music/);
+  assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
 });
 
