@@ -1,9 +1,14 @@
 import { chunks, text } from './minute-facts-track-descriptor.js';
 import { resolveTracksAliasFirst } from './minute-track-resolution-optimized.js';
+import {
+  attachTitleArtistIdentity,
+  loadTitleArtistIdentityRows,
+} from './track-title-artist-identity.js';
 
 const AMAZON_ALIAS_TYPE = 'amazon_music_id';
 const ALIAS_LOOKUP_CHUNK_SIZE = 79;
 const REPAIR_BATCH_SIZE = 20;
+const TITLE_ARTIST_LOOKUP_LIMIT = 240;
 
 function normalizedIsrc(value) {
   return text(value)?.toUpperCase() || null;
@@ -23,6 +28,8 @@ function normalizedTrack(track = {}, position = 0) {
     position,
     amazon_music_id: amazonMusicId(track),
     isrc: normalizedIsrc(track.isrc),
+    title: text(track.title),
+    artist: text(track.artist),
   };
 }
 
@@ -42,6 +49,21 @@ async function loadKnownAmazonAliases(db, amazonIds) {
     }
   }
   return result;
+}
+
+async function hydrateUniqueIsrcFromLocalMetadata(db, tracks) {
+  const candidates = tracks.filter((track) => !track.trackId && !track.isrc && track.title && track.artist);
+  if (!candidates.length) return;
+  const rows = await loadTitleArtistIdentityRows(db, candidates, TITLE_ARTIST_LOOKUP_LIMIT);
+  if (!rows.length) return;
+  const hydrated = attachTitleArtistIdentity(candidates, rows);
+  const byPosition = new Map(hydrated
+    .filter((track) => normalizedIsrc(track?.isrc))
+    .map((track) => [track.position, normalizedIsrc(track.isrc)]));
+  for (const track of tracks) {
+    const isrc = byPosition.get(track.position);
+    if (isrc) track.isrc = isrc;
+  }
 }
 
 async function repairAmazonAliasConflicts(db, resolved, observedAt) {
@@ -72,6 +94,11 @@ export async function resolveAmazonMusicTracks(db, tracks, observedAt = Date.now
     ...track,
     trackId: track.amazon_music_id ? (knownAliases.get(track.amazon_music_id) ?? null) : null,
   }));
+
+  // Amazon's current anonymous Web Player does not expose ISRC on catalog-track
+  // detail responses. Reuse the existing metadata dictionary only when title +
+  // artist resolves to one compatible ISRC. Ambiguous matches stay unresolved.
+  await hydrateUniqueIsrcFromLocalMetadata(db, result);
 
   const firstSeenWithIsrc = [];
   const firstSeenIndexes = [];
