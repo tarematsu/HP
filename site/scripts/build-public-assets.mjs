@@ -84,6 +84,16 @@ const browserModuleResolver = {
   },
 };
 
+const publicCssResolver = {
+  name: 'public-css-resolver',
+  setup(buildApi) {
+    buildApi.onResolve({ filter: /^\// }, (args) => {
+      if (args.kind !== 'import-rule') return null;
+      return { path: resolve(publicRoot, `.${args.path.replace(/[?#].*$/, '')}`) };
+    });
+  },
+};
+
 await mkdir(assetsDir, { recursive: true });
 
 await build({
@@ -113,6 +123,7 @@ await build({
   minify: true,
   legalComments: 'none',
   charset: 'utf8',
+  plugins: [publicCssResolver],
 });
 
 const [js, css] = await Promise.all([
