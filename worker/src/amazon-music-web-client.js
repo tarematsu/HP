@@ -1,13 +1,17 @@
 const AMAZON_HOST = 'music.amazon.co.jp';
 const AMAZON_ORIGIN = `https://${AMAZON_HOST}`;
-const CONFIG_URL = `${AMAZON_ORIGIN}/config.json`;
-const SKILL_BASE = 'https://fe.web.skill.music.a2z.com/api';
+const CONFIG_URL = `${AMAZON_ORIGIN}/config.json?skipToken=false&clientApplication=skyfire`;
+const WEB_SKILL_BASE = 'https://fe.web.skill.music.a2z.com/api';
+const CATALOG_SKILL_BASE = 'https://fe.mesk.skill.music.a2z.com/api';
 const CONFIG_CACHE_MS = 30 * 60_000;
-const MAX_ARTIST_PAGES = 8;
+const MAX_ARTIST_PAGES = 25;
 const MAX_TRACKS = 500;
+const USER_HASH = JSON.stringify({ level: 'LIBRARY_MEMBER' });
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
 let cachedConfig = null;
 let configExpiresAt = 0;
+let primePromise = null;
 
 function text(value) {
   if (value === null || value === undefined) return null;
@@ -20,7 +24,7 @@ function object(value) {
 }
 
 function deepValues(value, visit, depth = 0) {
-  if (depth > 14 || value === null || value === undefined) return;
+  if (depth > 20 || value === null || value === undefined) return;
   if (Array.isArray(value)) {
     for (const child of value) deepValues(child, visit, depth + 1);
     return;
@@ -137,7 +141,7 @@ function embeddedJsonDocuments(html) {
     try {
       documents.push(JSON.parse(match[1]));
     } catch {
-      // Amazon occasionally emits non-JSON script blocks; ignore them.
+      // Ignore non-JSON application/json blocks.
     }
   }
   return documents;
@@ -240,21 +244,26 @@ export function extractIsrc(value) {
 
 async function responseJson(response, label) {
   if (!response.ok) throw new Error(`${label} failed with HTTP ${response.status}`);
-  return response.json();
+  const value = await response.json();
+  if (!object(value)) throw new Error(`${label} returned a non-object payload`);
+  return value;
 }
 
 async function config(fetchImpl) {
   const now = Date.now();
   if (cachedConfig && now < configExpiresAt) return cachedConfig;
   const response = await fetchImpl(CONFIG_URL, {
+    method: 'POST',
     headers: {
-      accept: 'application/json,*/*',
+      accept: '*/*',
       'accept-language': 'ja-JP,ja;q=0.9,en;q=0.5',
+      'user-agent': USER_AGENT,
       referer: `${AMAZON_ORIGIN}/`,
     },
   });
   cachedConfig = await responseJson(response, 'Amazon Music config');
   configExpiresAt = now + CONFIG_CACHE_MS;
+  primePromise = null;
   return cachedConfig;
 }
 
@@ -266,17 +275,18 @@ function amazonHeaders(configuration, pageUrl) {
       accessToken: configuration?.accessToken || '',
     }),
     'x-amzn-device-model': 'WEBPLAYER',
-    'x-amzn-device-width': '1280',
+    'x-amzn-device-width': '1920',
     'x-amzn-device-family': 'WebPlayer',
     'x-amzn-device-id': configuration?.deviceId || '',
+    'x-amzn-user-agent': USER_AGENT,
     'x-amzn-session-id': configuration?.sessionId || '',
-    'x-amzn-device-height': '720',
+    'x-amzn-device-height': '1080',
     'x-amzn-request-id': crypto.randomUUID(),
     'x-amzn-device-language': 'ja_JP',
     'x-amzn-currency-of-preference': 'JPY',
     'x-amzn-os-version': '1.0',
     'x-amzn-application-version': configuration?.version || '',
-    'x-amzn-device-time-zone': 'Asia/Tokyo',
+    'x-amzn-device-time-zone': 'UTC',
     'x-amzn-timestamp': String(Date.now()),
     'x-amzn-csrf': JSON.stringify({
       interface: 'CSRFInterface.v1_0.CSRFHeaderElement',
@@ -285,7 +295,7 @@ function amazonHeaders(configuration, pageUrl) {
       rndNonce: csrf.rnd == null ? '' : String(csrf.rnd),
     }),
     'x-amzn-music-domain': AMAZON_HOST,
-    'x-amzn-referer': AMAZON_HOST,
+    'x-amzn-referer': '',
     'x-amzn-affiliate-tags': '',
     'x-amzn-ref-marker': '',
     'x-amzn-page-url': pageUrl,
@@ -297,17 +307,22 @@ function amazonHeaders(configuration, pageUrl) {
   };
 }
 
-async function postSkill(fetchImpl, path, request, pageUrl) {
+function outerHeaders() {
+  return {
+    accept: '*/*',
+    'accept-language': 'ja-JP,ja;q=0.9,en;q=0.5',
+    'content-type': 'text/plain;charset=UTF-8',
+    origin: AMAZON_ORIGIN,
+    referer: `${AMAZON_ORIGIN}/`,
+    'user-agent': USER_AGENT,
+  };
+}
+
+async function postSkill(fetchImpl, base, path, request, pageUrl) {
   const configuration = await config(fetchImpl);
-  const response = await fetchImpl(`${SKILL_BASE}${path}`, {
+  const response = await fetchImpl(`${base}${path}`, {
     method: 'POST',
-    headers: {
-      accept: '*/*',
-      'accept-language': 'ja-JP,ja;q=0.9,en;q=0.5',
-      'content-type': 'text/plain;charset=UTF-8',
-      origin: AMAZON_ORIGIN,
-      referer: `${AMAZON_ORIGIN}/`,
-    },
+    headers: outerHeaders(),
     body: JSON.stringify({
       ...request,
       headers: JSON.stringify(amazonHeaders(configuration, pageUrl)),
@@ -316,58 +331,124 @@ async function postSkill(fetchImpl, path, request, pageUrl) {
   return responseJson(response, `Amazon Music ${path}`);
 }
 
+async function primeWebPlayer(fetchImpl, artistId) {
+  if (primePromise) return primePromise;
+  primePromise = (async () => {
+    const pageUrl = `${AMAZON_ORIGIN}/artists/${encodeURIComponent(artistId)}`;
+    const deeplink = JSON.stringify({
+      interface: 'DeeplinkInterface.v1_0.DeeplinkClientInformation',
+      deeplink: `/artists/${artistId}`,
+    });
+    return postSkill(fetchImpl, WEB_SKILL_BASE, '/showHome', { deeplink }, pageUrl);
+  })().catch((error) => {
+    primePromise = null;
+    throw error;
+  });
+  return primePromise;
+}
+
+function nextCatalogTracksRequest(document) {
+  let found = null;
+  deepValues(document, (node) => {
+    if (found) return;
+    for (const value of Object.values(node)) {
+      if (typeof value !== 'string' || !value.includes('/api/showCatalogTracks?') || !value.includes('next=')) continue;
+      try {
+        const url = new URL(value);
+        const id = text(url.searchParams.get('id'));
+        const next = text(url.searchParams.get('next'));
+        const userHash = text(url.searchParams.get('userHash')) || USER_HASH;
+        if (id && next) {
+          found = { id, next, userHash };
+          return;
+        }
+      } catch {
+        // Ignore malformed action URLs.
+      }
+    }
+  });
+  return found;
+}
+
+function isErrorOnlyPayload(document) {
+  let hasContent = false;
+  let hasError = false;
+  deepValues(document, (node) => {
+    const iface = text(node?.interface) || '';
+    if (iface.includes('DetailTemplateInterface')
+      || iface.includes('VerticalListTemplateInterface')
+      || iface.includes('TrackListTemplateInterface')) hasContent = true;
+    const message = text(node?.message);
+    if (message && /アクションを完了できません|unable to complete|service error/i.test(message)) hasError = true;
+  });
+  return hasError && !hasContent;
+}
+
+async function catalogPost(fetchImpl, path, request, pageUrl) {
+  const document = await postSkill(fetchImpl, CATALOG_SKILL_BASE, path, request, pageUrl);
+  if (isErrorOnlyPayload(document)) throw new Error(`Amazon Music ${path} returned an error template`);
+  return document;
+}
+
 export function createAmazonMusicWebClient(fetchImpl = fetch) {
   return {
     async fetchArtist(artistId) {
+      await primeWebPlayer(fetchImpl, artistId);
       const pageUrl = `${AMAZON_ORIGIN}/artists/${encodeURIComponent(artistId)}`;
-      return postSkill(fetchImpl, '/explore/v1/showCatalogArtist', {
+      return catalogPost(fetchImpl, '/explore/v1/showCatalogArtist', {
         id: artistId,
-        userHash: JSON.stringify({ level: 'LIBRARY_MEMBER' }),
+        userHash: USER_HASH,
       }, pageUrl);
     },
 
     async fetchArtistTracks(artistId) {
+      await primeWebPlayer(fetchImpl, artistId);
       const pageUrl = `${AMAZON_ORIGIN}/artists/${encodeURIComponent(artistId)}`;
       const all = [];
       const seen = new Set();
-      let next = null;
+      let request = {
+        id: `uri://artist/${artistId}/popular-songs`,
+        userHash: USER_HASH,
+      };
       for (let page = 0; page < MAX_ARTIST_PAGES && all.length < MAX_TRACKS; page += 1) {
-        const document = await postSkill(fetchImpl, '/showCatalogTracks', {
-          id: artistId,
-          ...(next ? { next } : {}),
-          userHash: JSON.stringify({ level: 'LIBRARY_MEMBER' }),
-        }, pageUrl);
+        const document = await catalogPost(fetchImpl, '/showCatalogTracks', request, pageUrl);
         for (const track of extractAmazonMusicTracks(document)) {
-          if (seen.has(track.amazon_music_id)) continue;
+          if (!track.amazon_music_id || seen.has(track.amazon_music_id)) continue;
           seen.add(track.amazon_music_id);
           all.push(track);
+          if (all.length >= MAX_TRACKS) break;
         }
-        const candidate = extractNextToken(document);
-        if (!candidate || candidate === next) break;
-        next = candidate;
+        const next = nextCatalogTracksRequest(document);
+        if (!next || next.next === request.next) break;
+        request = next;
       }
       return all.slice(0, MAX_TRACKS);
     },
 
     async fetchPlaylist(playlistId) {
+      await primeWebPlayer(fetchImpl, 'B08P3RHP1P');
       const pageUrl = `${AMAZON_ORIGIN}/playlists/${encodeURIComponent(playlistId)}`;
-      return postSkill(fetchImpl, '/showCatalogPlaylist', {
+      return catalogPost(fetchImpl, '/showCatalogPlaylist', {
         id: playlistId,
-        userHash: JSON.stringify({ level: 'LIBRARY_MEMBER' }),
+        userHash: USER_HASH,
       }, pageUrl);
     },
 
     async fetchTrack(trackId) {
+      await primeWebPlayer(fetchImpl, 'B08P3RHP1P');
       const pageUrl = `${AMAZON_ORIGIN}/tracks/${encodeURIComponent(trackId)}`;
-      return postSkill(fetchImpl, '/cosmicTrack/displayCatalogTrack', {
+      return catalogPost(fetchImpl, '/cosmicTrack/displayCatalogTrack', {
         id: trackId,
-        userHash: JSON.stringify({ level: 'LIBRARY_MEMBER' }),
+        userHash: USER_HASH,
       }, pageUrl);
     },
 
     async fetchArtistPageHtml(artistId) {
       const response = await fetchImpl(`${AMAZON_ORIGIN}/artists/${encodeURIComponent(artistId)}`, {
-        headers: { 'accept-language': 'ja-JP,ja;q=0.9,en;q=0.5' },
+        headers: {
+          'accept-language': 'ja-JP,ja;q=0.9,en;q=0.5',
+          'user-agent': USER_AGENT,
+        },
       });
       if (!response.ok) return '';
       return response.text();
@@ -375,7 +456,10 @@ export function createAmazonMusicWebClient(fetchImpl = fetch) {
 
     async fetchPopularPageHtml() {
       const response = await fetchImpl(`${AMAZON_ORIGIN}/popular`, {
-        headers: { 'accept-language': 'ja-JP,ja;q=0.9,en;q=0.5' },
+        headers: {
+          'accept-language': 'ja-JP,ja;q=0.9,en;q=0.5',
+          'user-agent': USER_AGENT,
+        },
       });
       if (!response.ok) return '';
       return response.text();
@@ -386,4 +470,5 @@ export function createAmazonMusicWebClient(fetchImpl = fetch) {
 export function resetAmazonMusicConfigCache() {
   cachedConfig = null;
   configExpiresAt = 0;
+  primePromise = null;
 }

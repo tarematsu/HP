@@ -16,6 +16,12 @@ class Statement {
   }
 
   async all() {
+    if (this.sql.includes('FROM sh_tracks') && this.sql.includes('TRIM(title)')) {
+      const wanted = new Set(this.bindings.map((value) => String(value).trim().toLowerCase()));
+      return {
+        results: this.db.trackRows.filter((row) => wanted.has(String(row.title || '').trim().toLowerCase())),
+      };
+    }
     if (!this.sql.includes('FROM sh_track_aliases')) return { results: [] };
     const results = [];
     if (this.sql.includes("alias_type='amazon_music_id'")) {
@@ -37,8 +43,9 @@ class Statement {
 }
 
 class FakeDb {
-  constructor(entries = []) {
+  constructor(entries = [], trackRows = []) {
     this.aliases = new Map(entries);
+    this.trackRows = trackRows;
     this.trackInserts = 0;
   }
 
@@ -108,4 +115,44 @@ test('known Amazon alias resolves without ISRC and unknown alias stays unresolve
   assert.deepEqual(resolved.map((track) => track.trackId), [77, null]);
   assert.equal(db.trackInserts, 0);
   assert.equal(db.aliases.has('amazon_music_id:B0UNKNOWN'), false);
+});
+
+test('missing Amazon ISRC is recovered only from a unique title-artist ISRC identity', async () => {
+  const db = new FakeDb(
+    [['isrc:JPABC2600005', 88]],
+    [{ spotify_id: 'spotify-ban', isrc: 'JPABC2600005', title: 'BAN', artist: '櫻坂46', last_seen_at: 9_000 }],
+  );
+  const [resolved] = await resolveAmazonMusicTracks(db, [{
+    amazon_music_id: 'B0AMAZON005',
+    title: 'BAN',
+    artist: '櫻坂46',
+  }], 30_000);
+
+  assert.equal(resolved.isrc, 'JPABC2600005');
+  assert.equal(resolved.trackId, 88);
+  assert.equal(db.aliases.get('amazon_music_id:B0AMAZON005'), 88);
+  assert.equal(db.trackInserts, 0);
+});
+
+test('ambiguous title-artist ISRC candidates never link an Amazon id', async () => {
+  const db = new FakeDb(
+    [
+      ['isrc:JPABC2600006', 91],
+      ['isrc:JPABC2600007', 92],
+    ],
+    [
+      { spotify_id: 'spotify-a', isrc: 'JPABC2600006', title: 'Same Song', artist: '櫻坂46', last_seen_at: 9_000 },
+      { spotify_id: 'spotify-b', isrc: 'JPABC2600007', title: 'Same Song', artist: '櫻坂46', last_seen_at: 10_000 },
+    ],
+  );
+  const [resolved] = await resolveAmazonMusicTracks(db, [{
+    amazon_music_id: 'B0AMBIGUOUS',
+    title: 'Same Song',
+    artist: '櫻坂46',
+  }], 40_000);
+
+  assert.equal(resolved.isrc, null);
+  assert.equal(resolved.trackId, null);
+  assert.equal(db.aliases.has('amazon_music_id:B0AMBIGUOUS'), false);
+  assert.equal(db.trackInserts, 0);
 });
