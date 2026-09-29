@@ -182,6 +182,12 @@ function publicTrack(track, trackIdByAmazonId) {
   };
 }
 
+function publicCatalogTrack(track, trackIdByAmazonId) {
+  const item = publicTrack(track, trackIdByAmazonId);
+  delete item.rank;
+  return item;
+}
+
 function hitsFromRanking(ranking, artistIds) {
   return ranking
     .filter((track) => artistIds.has(track.amazon_music_id) || isSakurazakaArtist(track.artist))
@@ -237,7 +243,19 @@ function readModelPoint(snapshot) {
       amazon_music_id: track.amazon_music_id,
       track_id: track.track_id ?? null,
       amazon_rank: overallRank.get(track.amazon_music_id) ?? null,
-      popular_rank: Number(track.rank) || null,
+    })),
+  };
+}
+
+function compactHistoryPoint(point) {
+  return {
+    snapshot_date: point.snapshot_date,
+    observed_at: point.observed_at,
+    follower_count: point.follower_count ?? null,
+    tracks: (Array.isArray(point?.tracks) ? point.tracks : []).map((track) => ({
+      amazon_music_id: track.amazon_music_id,
+      track_id: track.track_id ?? null,
+      amazon_rank: Number(track.amazon_rank) || null,
     })),
   };
 }
@@ -246,7 +264,8 @@ export function buildAmazonMusicReadModel(snapshot, previousModel = null) {
   const point = readModelPoint(snapshot);
   const history = (Array.isArray(previousModel?.history) ? previousModel.history : [])
     .filter((item) => /^\d{4}-\d{2}-\d{2}$/.test(String(item?.snapshot_date || '')))
-    .filter((item) => item.snapshot_date !== snapshot.snapshot_date);
+    .filter((item) => item.snapshot_date !== snapshot.snapshot_date)
+    .map(compactHistoryPoint);
   history.push(point);
   history.sort((a, b) => String(a.snapshot_date).localeCompare(String(b.snapshot_date)));
   const boundedHistory = history.slice(-READ_MODEL_HISTORY_DAYS);
@@ -269,7 +288,6 @@ export function buildAmazonMusicReadModel(snapshot, previousModel = null) {
     album: track.album || null,
     image: track.image || null,
     amazon_rank: overallRank.get(track.amazon_music_id) ?? null,
-    popular_rank: Number(track.rank) || null,
   }));
   return {
     version: 1,
@@ -362,8 +380,7 @@ export async function collectAmazonMusicSnapshot(
       exact: Boolean(follower.exact),
       label: follower.label || null,
     } : null,
-    popular_tracks: artistPopular.map((track) => publicTrack(track, trackIdByAmazonId)),
-    all_tracks: allArtistTracks.map((track) => publicTrack(track, trackIdByAmazonId)),
+    all_tracks: allArtistTracks.map((track) => publicCatalogTrack(track, trackIdByAmazonId)),
     catalog_popular_hits: catalogHits,
     catalog_popular_scanned: Number(overallRanking?.scanned_tracks) || 0,
     catalog_popular_exhausted: Boolean(overallRanking?.exhausted),
@@ -424,7 +441,6 @@ export async function collectAmazonMusicSnapshot(
     week_key: weekKey,
     follower_count: follower?.count ?? null,
     follower_delta: readModel.follower?.delta ?? null,
-    popular_tracks: artistPopular.length,
     all_tracks: allArtistTracks.length,
     resolved_track_ids: trackIdByAmazonId.size,
     japan_top_50_hits: top50Hits.length,
