@@ -27,6 +27,7 @@ export function musicBrainzRecordingMetadata(payload, isrc, fetchedAt = Date.now
     isrc,
     title,
     artist,
+    thumbnail_url: null,
     source: 'musicbrainz',
     fetched_at: fetchedAt,
     raw_json: JSON.stringify({ recording_id: recording.id || null }),
@@ -45,6 +46,12 @@ export function deezerTrackMetadata(payload, isrc, fetchedAt = Date.now()) {
     isrc: requestedIsrc,
     title,
     artist,
+    thumbnail_url: text(
+      payload?.album?.cover_xl
+      || payload?.album?.cover_big
+      || payload?.album?.cover_medium
+      || payload?.album?.cover,
+    ),
     source: 'deezer',
     fetched_at: fetchedAt,
     raw_json: JSON.stringify({ track_id: payload?.id || null }),
@@ -82,23 +89,34 @@ async function fetchDeezerMetadata(normalized, config) {
 export async function fetchIsrcMetadata(isrc, config = {}) {
   const normalized = normalizeIsrc(isrc);
   if (!normalized) return null;
-  const musicBrainz = await fetchMusicBrainzMetadata(normalized, config);
-  if (musicBrainz) return musicBrainz;
-  return fetchDeezerMetadata(normalized, config);
+  // Deezer is tried first because it provides artwork in addition to title and artist.
+  const deezer = await fetchDeezerMetadata(normalized, config);
+  if (deezer) return deezer;
+  return fetchMusicBrainzMetadata(normalized, config);
 }
 
 async function persistIsrcMetadata(db, row) {
-  await db.prepare(`INSERT INTO sh_isrc_metadata(isrc,title,artist,source,fetched_at,raw_json)
-    VALUES(?,?,?,?,?,?) ON CONFLICT(isrc) DO UPDATE SET
+  await db.prepare(`INSERT INTO sh_isrc_metadata(
+      isrc,title,artist,thumbnail_url,source,fetched_at,raw_json
+    ) VALUES(?,?,?,?,?,?,?) ON CONFLICT(isrc) DO UPDATE SET
       title=COALESCE(excluded.title,sh_isrc_metadata.title),
       artist=COALESCE(excluded.artist,sh_isrc_metadata.artist),
+      thumbnail_url=COALESCE(excluded.thumbnail_url,sh_isrc_metadata.thumbnail_url),
       source=excluded.source,
       fetched_at=MAX(excluded.fetched_at,sh_isrc_metadata.fetched_at),
       raw_json=COALESCE(excluded.raw_json,sh_isrc_metadata.raw_json)`)
-    .bind(row.isrc, row.title, row.artist, row.source, row.fetched_at, row.raw_json).run();
-  // Presentation ownership belongs to sh_track_dictionary. Migration 020's
-  // source-cache trigger projects this row there, so never copy title/artist
-  // into sh_tracks as a second competing truth.
+    .bind(
+      row.isrc,
+      row.title,
+      row.artist,
+      row.thumbnail_url || null,
+      row.source,
+      row.fetched_at,
+      row.raw_json,
+    ).run();
+  // Presentation ownership belongs to sh_track_dictionary. Migration 062's
+  // source-priority triggers project this cache row there without competing
+  // with sh_tracks identity fields.
 }
 
 export async function enrichIsrcTracks(env, queue, config = {}, dependencies = {}) {
@@ -114,7 +132,7 @@ export async function enrichIsrcTracks(env, queue, config = {}, dependencies = {
   const placeholders = candidates.map(() => '?').join(',');
   let stored;
   try {
-    stored = await db.prepare(`SELECT isrc,title,artist,fetched_at FROM sh_isrc_metadata
+    stored = await db.prepare(`SELECT isrc,title,artist,thumbnail_url,fetched_at FROM sh_isrc_metadata
       WHERE isrc IN (${placeholders})`).bind(...candidates).all();
   } catch {
     return { saved: 0, attempted: 0, skipped: 'isrc-metadata-table-missing' };
@@ -122,7 +140,7 @@ export async function enrichIsrcTracks(env, queue, config = {}, dependencies = {
   const storedByIsrc = new Map((stored.results || []).map((row) => [String(row.isrc), row]));
   const retryable = candidates.filter((isrc) => {
     const row = storedByIsrc.get(isrc);
-    if (text(row?.title) && text(row?.artist)) return false;
+    if (text(row?.title) && text(row?.artist) && text(row?.thumbnail_url)) return false;
     return now - Number(row?.fetched_at || 0) >= RETRY_MS;
   }).slice(0, limit);
   if (!retryable.length) return { saved: 0, attempted: 0 };
@@ -135,6 +153,7 @@ export async function enrichIsrcTracks(env, queue, config = {}, dependencies = {
       isrc,
       title: null,
       artist: null,
+      thumbnail_url: null,
       source: 'isrc_not_found',
       fetched_at: now,
       raw_json: null,
