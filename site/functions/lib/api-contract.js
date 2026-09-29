@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 11;
+export const API_CONTRACT_VERSION = 12;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -19,6 +19,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },
     { path: '/api/spotify-playcounts', methods: ['GET'], description: 'Latest finalized Spotify cumulative playcounts by Sakamichi group' },
     { path: '/api/amazon-music', methods: ['GET'], description: 'Latest Sakurazaka Amazon Music follower and track-rank read model' },
+    { path: '/api/apple-music', methods: ['GET'], description: 'Latest Sakurazaka Apple Music regional artist-popularity read model' },
   ]),
 });
 
