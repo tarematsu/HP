@@ -39,7 +39,7 @@ test('toolbars, fitting tables and fitting charts use shared semantic utilities'
   assert.match(css, /\.table-wrap\.table-fit-mobile/);
   assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*fixed !important/);
   assert.match(css, /\.chart-fit > :is\(svg, canvas\)/);
-  assert.match(firstWeekShell, /view-toolbar first-week-toolbar/);
+  assert.doesNotMatch(firstWeekShell, /view-toolbar first-week-toolbar|data-first-week-metric/);
   assert.match(playedTracksShell, /view-toolbar played-tracks-toolbar/);
   assert.match(spotifyShell, /table-wrap table-fit-mobile/);
 });

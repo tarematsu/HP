@@ -9,13 +9,14 @@ function ensureStylesheet() {
 
 function mountTab() {
   const tabs = document.getElementById('modeTabs');
-  const daily = tabs?.querySelector('[data-mode="daily"]');
-  if (!tabs || !daily || tabs.querySelector('[data-view="first-week"]')) return;
+  const spotify = tabs?.querySelector('[data-view="spotify"]');
+  if (!tabs || tabs.querySelector('[data-view="first-week"]')) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.view = 'first-week';
   button.textContent = '初週比較';
-  daily.insertAdjacentElement('afterend', button);
+  if (spotify) spotify.insertAdjacentElement('beforebegin', button);
+  else tabs.append(button);
 }
 
 function mountView() {
@@ -27,13 +28,6 @@ function mountView() {
   section.className = 'dashboard-view first-week-view';
   section.hidden = true;
   section.innerHTML = `
-    <div class="view-toolbar first-week-toolbar">
-      <div class="first-week-metric-toggle" role="group" aria-label="比較指標">
-        <button type="button" data-first-week-metric="listener" class="active">同接</button>
-        <button type="button" data-first-week-metric="streams">再生数増加</button>
-      </div>
-    </div>
-
     <p id="firstWeekNotice" class="notice" role="status" hidden></p>
 
     <section class="card chart-panel first-week-chart-panel">

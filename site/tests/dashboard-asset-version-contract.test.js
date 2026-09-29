@@ -27,6 +27,7 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
     monochrome: assetVersion(html, 'monochrome.css'),
     entry: assetVersion(html, 'dashboard-metrics.js'),
     header: assetVersion(entry, 'dashboard-header.js'),
+    tabOrder: assetVersion(entry, 'dashboard-tab-order.js'),
     tabs: assetVersion(entry, 'dashboard-tabs.js'),
     spotifyShell: assetVersion(tabs, 'spotify-shell.js'),
     spotifyCss: assetVersion(spotifyShell, 'spotify.css'),
@@ -50,10 +51,11 @@ test('dashboard asset dependency chain gives every cacheable asset an explicit v
 
   assert.equal(versions.entry, '20260929.3');
   assert.equal(versions.header, '20260928.1');
-  assert.equal(versions.tabs, '20260929.2');
+  assert.equal(versions.tabOrder, '20260929.1');
+  assert.equal(versions.tabs, '20260929.4');
   assert.equal(versions.spotifyShell, '20260929.1');
   assert.equal(versions.spotifyCss, '20260928.5');
-  assert.equal(versions.firstWeekShell, '20260928.1');
+  assert.equal(versions.firstWeekShell, '20260929.1');
   assert.equal(versions.playedTracksShell, '20260928.1');
   assert.equal(versions.historyMain, '20260928.1');
   assert.equal(versions.pagesLayout, '20260928.1');

@@ -21,25 +21,22 @@ const INSERT_DAILY_SUMMARY_SQL = `INSERT INTO sh_daily_summary(
   quality_score,quality_flags,updated_at
 ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(period_key) DO UPDATE SET
-  member_start=COALESCE(sh_daily_summary.member_start,excluded.member_start),
-  member_end=COALESCE(sh_daily_summary.member_end,excluded.member_end),
+  member_start=COALESCE(excluded.member_start,sh_daily_summary.member_start),
+  member_end=COALESCE(excluded.member_end,sh_daily_summary.member_end),
   member_growth=CASE
-    WHEN sh_daily_summary.member_growth IS NOT NULL THEN sh_daily_summary.member_growth
-    WHEN COALESCE(sh_daily_summary.member_start,excluded.member_start) IS NOT NULL
-      AND COALESCE(sh_daily_summary.member_end,excluded.member_end) IS NOT NULL
-    THEN COALESCE(sh_daily_summary.member_end,excluded.member_end)
-      - COALESCE(sh_daily_summary.member_start,excluded.member_start)
-    ELSE NULL
+    WHEN excluded.member_start IS NOT NULL AND excluded.member_end IS NOT NULL
+      THEN excluded.member_end-excluded.member_start
+    ELSE sh_daily_summary.member_growth
   END,
   updated_at=excluded.updated_at
 WHERE
-  (sh_daily_summary.member_start IS NULL AND excluded.member_start IS NOT NULL)
-  OR (sh_daily_summary.member_end IS NULL AND excluded.member_end IS NOT NULL)
-  OR (
-    sh_daily_summary.member_growth IS NULL
-    AND COALESCE(sh_daily_summary.member_start,excluded.member_start) IS NOT NULL
-    AND COALESCE(sh_daily_summary.member_end,excluded.member_end) IS NOT NULL
-  )`;
+  sh_daily_summary.member_start IS NOT COALESCE(excluded.member_start,sh_daily_summary.member_start)
+  OR sh_daily_summary.member_end IS NOT COALESCE(excluded.member_end,sh_daily_summary.member_end)
+  OR sh_daily_summary.member_growth IS NOT CASE
+    WHEN excluded.member_start IS NOT NULL AND excluded.member_end IS NOT NULL
+      THEN excluded.member_end-excluded.member_start
+    ELSE sh_daily_summary.member_growth
+  END`;
 
 function integer(value) {
   const parsed = Number(value);
@@ -90,12 +87,6 @@ function memberEndFromProjectionOrSummary(dayAt, projections, existing) {
   return finite(existing.get(dayKey(previousDayAt))?.member_end);
 }
 
-function memberBoundariesComplete(row) {
-  return finite(row?.member_start) != null
-    && finite(row?.member_end) != null
-    && finite(row?.member_growth) != null;
-}
-
 export async function publishRecentDailySummaries(
   minuteDb,
   otherDb,
@@ -127,7 +118,6 @@ export async function publishRecentDailySummaries(
   for (let dayAt = rangeStart; dayAt < currentDay; dayAt += DAY_MS) {
     const key = dayKey(dayAt);
     const existingRow = existing.get(key);
-    if (existingRow && memberBoundariesComplete(existingRow)) continue;
     const row = projections.get(dayAt);
     if (!row) {
       unavailable.push(key);
@@ -173,12 +163,11 @@ export async function publishRecentDailySummaries(
     ).run();
     if (Number(write?.meta?.changes ?? 1) > 0) {
       published.push(key);
-      const nextMemberStart = finite(existingRow?.member_start) ?? memberStart;
-      const nextMemberEnd = finite(existingRow?.member_end) ?? memberEnd;
-      const nextMemberGrowth = finite(existingRow?.member_growth)
-        ?? (nextMemberStart != null && nextMemberEnd != null
-          ? nextMemberEnd - nextMemberStart
-          : null);
+      const nextMemberStart = memberStart ?? finite(existingRow?.member_start);
+      const nextMemberEnd = memberEnd ?? finite(existingRow?.member_end);
+      const nextMemberGrowth = nextMemberStart != null && nextMemberEnd != null
+        ? nextMemberEnd - nextMemberStart
+        : finite(existingRow?.member_growth);
       existing.set(key, {
         period_key: key,
         member_start: nextMemberStart,
@@ -190,7 +179,7 @@ export async function publishRecentDailySummaries(
 
   return {
     skipped: published.length === 0,
-    reason: published.length ? null : 'no-missing-projected-days',
+    reason: published.length ? null : 'no-member-reconciliation-needed',
     published,
     unavailable,
     invalid,

@@ -59,17 +59,18 @@ test('five-minute stream average migration remains ordered before the current MI
   assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
 });
 
-test('five-minute migration retires the one-minute intermediate model', () => {
+test('five-minute migration is rerunnable and keeps partial real samples', () => {
   assert.match(averageMigration, /CREATE TABLE IF NOT EXISTS sh_stream_5m_average_read_model/);
-  assert.match(averageMigration, /HAVING COUNT\(\*\)=5/);
-  assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_minute_delta_after_insert/);
-  assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_minute_delta_after_update/);
+  assert.match(averageMigration, /FROM sh_minute_facts AS f/);
+  assert.match(averageMigration, /HAVING COUNT\(\*\)>=1/);
+  assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_insert/);
+  assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_update/);
   assert.match(averageMigration, /DROP TABLE IF EXISTS sh_stream_minute_delta_read_model/);
-  assert.match(averageMigration, /CREATE TRIGGER IF NOT EXISTS trg_sh_stream_5m_average_after_insert/);
-  assert.match(averageMigration, /CREATE TRIGGER IF NOT EXISTS trg_sh_stream_5m_average_after_update/);
+  assert.match(averageMigration, /CREATE TRIGGER trg_sh_stream_5m_average_after_insert/);
+  assert.match(averageMigration, /CREATE TRIGGER trg_sh_stream_5m_average_after_update/);
 });
 
-test('five valid minute deltas materialize one average and invalid buckets fail closed', () => {
+test('partial valid minute deltas remain visible without inventing zero samples', () => {
   const db = fixture();
   const bucket = Math.floor(Date.now() / 300_000) * 300_000 - 600_000;
   const insert = db.prepare(`INSERT INTO sh_minute_facts(
@@ -84,16 +85,12 @@ test('five valid minute deltas materialize one average and invalid buckets fail 
 
   db.exec(minuteMigration);
   db.exec(averageMigration);
+  db.exec(averageMigration);
   assert.deepEqual(readAverages(db), [{
     bucket_at: bucket,
     stream_delta_avg: 4,
     sample_count: 5,
   }]);
-  assert.equal(
-    db.prepare(`SELECT COUNT(*) AS n FROM sqlite_master
-      WHERE name='sh_stream_minute_delta_read_model'`).get().n,
-    0,
-  );
 
   const next = [121, 123, 126, 130, 135];
   for (let index = 0; index < next.length; index += 1) {
@@ -107,13 +104,14 @@ test('five valid minute deltas materialize one average and invalid buckets fail 
 
   db.prepare(`UPDATE sh_minute_facts SET reported_current_stream_count=90
     WHERE channel_id=1 AND minute_at=?`).run(bucket + 120_000);
-  assert.deepEqual(readAverages(db), [
-    { bucket_at: bucket + 300_000, stream_delta_avg: 3, sample_count: 5 },
-  ]);
+  const partial = readAverages(db);
+  assert.equal(partial[0].bucket_at, bucket);
+  assert.equal(partial[0].sample_count, 4);
+  assert.equal(partial[0].stream_delta_avg, 8.75);
 
   db.prepare(`UPDATE sh_minute_facts SET reported_current_stream_count=109
     WHERE channel_id=1 AND minute_at=?`).run(bucket + 120_000);
-  assert.equal(readAverages(db)[0].bucket_at, bucket);
+  assert.equal(readAverages(db)[0].sample_count, 5);
 
   db.prepare(`UPDATE sh_minute_facts SET reported_current_stream_count=121
     WHERE channel_id=1 AND minute_at=?`).run(bucket + 240_000);
@@ -122,8 +120,9 @@ test('five valid minute deltas materialize one average and invalid buckets fail 
   assert.equal(repaired[1].stream_delta_avg, 2.8);
 });
 
-test('Pages reads only the final five-minute average model', () => {
+test('Pages reads partial rows only from the compact five-minute model', () => {
   assert.match(dashboard, /FROM sh_stream_5m_average_read_model AS d/);
+  assert.match(dashboard, /d\.sample_count>=1/);
   assert.match(dashboard, /stream_5m_history/);
   assert.doesNotMatch(dashboard, /sh_stream_minute_delta_read_model/);
   assert.doesNotMatch(dashboard, /FROM sh_minute_facts|AVG\(|GROUP BY/);

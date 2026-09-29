@@ -48,12 +48,12 @@ test('previous-day chart ordering follows the primary-key range without a tempor
   assert.doesNotMatch(plan, /TEMP B-TREE/);
 });
 
-test('stream chart reads bounded precomputed five-minute averages', () => {
+test('stream chart reads bounded precomputed five-minute averages including partial buckets', () => {
   assert.match(STREAM_5M_HISTORY_SQL, /FROM sh_stream_5m_average_read_model AS d/);
   assert.match(STREAM_5M_HISTORY_SQL, /d\.channel_id=\?/);
   assert.match(STREAM_5M_HISTORY_SQL, /d\.bucket_at>=\? AND d\.bucket_at<\?/);
   assert.match(STREAM_5M_HISTORY_SQL, /d\.stream_delta_avg AS stream_delta/);
-  assert.match(STREAM_5M_HISTORY_SQL, /d\.sample_count=5/);
+  assert.match(STREAM_5M_HISTORY_SQL, /d\.sample_count>=1/);
   assert.match(STREAM_5M_HISTORY_SQL, /ORDER BY d\.bucket_at ASC/);
   assert.match(STREAM_5M_HISTORY_SQL, /LIMIT 300/);
 });

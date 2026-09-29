@@ -106,11 +106,10 @@ test('recent daily publication reads only completed projection rows and existing
   assert.match(EXISTING_RECENT_DAILY_SQL, /FROM sh_daily_summary/);
 });
 
-test('missing recent days are copied from the incremental projection without overwriting existing rows', async () => {
+test('missing recent days are copied from the incremental projection without overwriting unrelated fields', async () => {
   const minute = createMinuteDb();
   const other = createOtherDb();
   const now = Date.UTC(2026, 8, 27, 3, 0);
-  const sep22 = Date.UTC(2026, 8, 22);
   const sep23 = Date.UTC(2026, 8, 23);
   const sep24 = Date.UTC(2026, 8, 24);
   const sep25 = Date.UTC(2026, 8, 25);
@@ -147,7 +146,7 @@ test('missing recent days are copied from the incremental projection without ove
   assert.equal(other.prepare(`SELECT stream_growth FROM sh_daily_summary WHERE period_key='2026-09-24'`).get().stream_growth, 999);
 });
 
-test('existing recent days repair only missing member boundaries', async () => {
+test('existing recent days reconcile stale member values while preserving other daily summary fields', async () => {
   const minute = createMinuteDb();
   const other = createOtherDb();
   const now = Date.UTC(2026, 8, 25, 3, 0);
@@ -162,7 +161,7 @@ test('existing recent days repair only missing member boundaries', async () => {
   ) VALUES('2026-09-23',321,777,98,NULL,NULL,'["existing"]',1)`).run();
   other.prepare(`INSERT INTO sh_daily_summary(
     period_key,listener_avg,stream_growth,member_start,member_end,member_growth,quality_flags,updated_at
-  ) VALUES('2026-09-24',432,888,NULL,103,NULL,'["existing"]',1)`).run();
+  ) VALUES('2026-09-24',432,888,100,103,3,'["existing"]',1)`).run();
 
   insertProjection(minute, sep23, { memberEnd: 100, streamStart: 3000, streamEnd: 3010 });
   insertProjection(minute, sep24, { memberEnd: 102, streamStart: 3010, streamEnd: 3020 });
@@ -184,8 +183,8 @@ test('existing recent days repair only missing member boundaries', async () => {
   assert.equal(Number(rows[1].listener_avg), 432);
   assert.equal(Number(rows[1].stream_growth), 888);
   assert.equal(Number(rows[1].member_start), 100);
-  assert.equal(Number(rows[1].member_end), 103);
-  assert.equal(Number(rows[1].member_growth), 3);
+  assert.equal(Number(rows[1].member_end), 102);
+  assert.equal(Number(rows[1].member_growth), 2);
   assert.equal(rows[1].quality_flags, '["existing"]');
 
   const second = await publishRecentDailySummaries(d1(minute), d1(other), now, 2);

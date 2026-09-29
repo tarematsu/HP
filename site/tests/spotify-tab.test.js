@@ -236,6 +236,6 @@ test('Spotify tab uses only the materialized Spotify read model for its three gr
   assert.match(sharedLayout, /\.chart-fit > :is\(svg, canvas\)[\s\S]*min-width:\s*0 !important/);
   assert.match(tabs, /import\('\/spotify-shell\.js\?v=20260929\.1'\)/);
   assert.match(tabs, /import\('\/spotify\.js\?v=20260929\.1'\)/);
-  assert.match(dashboard, /dashboard-tabs\.js\?v=20260929\.2/);
+  assert.match(dashboard, /dashboard-tabs\.js\?v=20260929\.4/);
   assert.doesNotMatch(dashboard, /^import .*spotify-shell/m);
 });
