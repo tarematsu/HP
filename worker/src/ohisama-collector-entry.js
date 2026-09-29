@@ -78,7 +78,7 @@ function collectorHeaders({ authToken, deviceUid }, env, { guest = false } = {})
     'app-version': env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
     'content-type': 'application/json',
     origin: 'https://www.stationhead.com',
-    referer: STATIONHEAD_AUTH_PAGE_URL,
+    referer: guest ? STATIONHEAD_AUTH_PAGE_URL : 'https://www.stationhead.com/',
     'sth-device-uid': deviceUid,
     'user-agent': DEFAULT_USER_AGENT,
   };
