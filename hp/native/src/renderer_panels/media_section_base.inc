@@ -143,11 +143,10 @@ UINT NativeMediaYoutubeContentIntervalMs() noexcept {
 
 UINT NativeMediaTverContentIntervalMs() noexcept {
   NativeMediaObserveXCyclePhase(true);
-  const UINT kNativeMediaTverContentDurationMs =
-      NativeMediaCurrentTverContentDurationMs();
-  if (NativeMediaXSlotEnabled(true)) return kNativeMediaTverContentDurationMs;
+  const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs();
+  if (NativeMediaXSlotEnabled(true)) return tverContentDurationMs;
   // An unselected first X slot is skipped entirely instead of extending TVer.
-  return kNativeMediaTverContentDurationMs + 1000U;
+  return tverContentDurationMs + 1000U;
 }
 
 UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
@@ -163,9 +162,8 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
   }
   if (tver) {
     NativeMediaStartupYoutubePhaseActive() = false;
-    const UINT kNativeMediaTverContentDurationMs =
-        NativeMediaCurrentTverContentDurationMs();
-    return kNativeMediaTverContentDurationMs +
+    const UINT tverContentDurationMs = NativeMediaCurrentTverContentDurationMs();
+    return tverContentDurationMs +
         (NativeMediaXSlotEnabled(true) ? kNativeMediaXPhaseMs : 0U);
   }
 
