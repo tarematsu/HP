@@ -27,9 +27,12 @@ test('Spotify Japan daily artist chart uses the authenticated Stationhead WebVie
   assert.match(collector, /capture\.Insert\(L"chart_date"/);
 });
 
-test('native app requests the Japan daily artist chart immediately at startup and then every hour', () => {
+test('native app defers the visible Japan daily artist chart until staged media startup is complete', () => {
   assert.match(appMessages, /#include "spotify_artist_chart_collector\.h"/);
-  assert.match(appMessages, /kSpotifyArtistChartInitialDelayMs = 250/);
+  assert.match(appMessages, /kSpotifyArtistChartInitialDelayMs = 4 \* 60 \* 1000/);
+  assert.match(appMessages, /kSpotifyArtistChartStartupRetryMs = 30 \* 1000/);
+  assert.match(appMessages, /!stationheadStarted_ \|\| !stationheadLeaderboardCollectorStarted_/);
+  assert.match(appMessages, /RearmSpotifyArtistChartAfterStartup\(window_\)/);
   assert.match(appMessages, /kSpotifyArtistChartIntervalMs = 60 \* 60 \* 1000/);
   assert.match(appMessages, /SetTimer\(window, kSpotifyArtistChartTimer, kSpotifyArtistChartIntervalMs, nullptr\)/);
   assert.match(appMessages, /collector\.EnsureStarted\(now\)/);
