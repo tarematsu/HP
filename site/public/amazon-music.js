@@ -225,16 +225,12 @@ function renderTable(payload) {
   for (const track of tracks) {
     const row = document.createElement('tr');
     const amazonRank = document.createElement('td');
-    const popularRank = document.createElement('td');
     const title = document.createElement('td');
     const amazon = integer(track?.amazon_rank);
-    const popular = integer(track?.popular_rank);
     amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
-    popularRank.textContent = popular == null ? '-' : `${numberFormat.format(popular)}位`;
     title.textContent = String(track?.title || '曲名不明');
     amazonRank.className = 'amazon-rank-number';
-    popularRank.className = 'amazon-rank-number';
-    row.append(amazonRank, popularRank, title);
+    row.append(amazonRank, title);
     tbody.append(row);
   }
 }
@@ -246,12 +242,6 @@ function render(payload) {
     metricKey: 'amazon_rank',
     emptyText: 'Amazon Music総合順位の履歴はまだありません。',
     ariaLabel: '櫻坂46全楽曲のAmazon Music総合順位推移。1位が上。',
-  });
-  renderRankChart(payload, {
-    containerId: 'amazonPopularRankChart',
-    metricKey: 'popular_rank',
-    emptyText: '櫻坂46内人気曲順位の履歴はまだありません。',
-    ariaLabel: 'Amazon Music櫻坂46アーティストページ内の人気曲順位推移。1位が上。',
   });
   renderTable(payload);
 }
