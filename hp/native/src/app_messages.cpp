@@ -9,9 +9,9 @@ namespace {
 constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
 constexpr UINT_PTR kSpotifyArtistChartTimer = 41;
 constexpr UINT_PTR kSpotifyArtistChartWatchTimer = 42;
-constexpr UINT kSpotifyArtistChartInitialDelayMs = 4 * 60 * 1000;
+constexpr UINT kSpotifyArtistChartInitialDelayMs = 250;
 constexpr UINT kSpotifyArtistChartIntervalMs = 60 * 60 * 1000;
-constexpr UINT kSpotifyArtistChartWatchMs = 2000;
+constexpr UINT kSpotifyArtistChartWatchMs = 250;
 constexpr int64_t kSpotifyArtistChartIdleThresholdMs = 5 * 60'000LL;
 
 SpotifyArtistChartCollector& SpotifyArtistChartCollectorInstance() {
@@ -34,6 +34,7 @@ void CaptureSpotifyArtistChartHourly(HWND window) {
   collector.EnsureStarted(now);
   collector.RequestCaptureNow(now);
   collector.Tick(now);
+  collector.ShowForDebug();
   SetTimer(window, kSpotifyArtistChartWatchTimer, kSpotifyArtistChartWatchMs, nullptr);
 }
 
@@ -41,6 +42,7 @@ void TickSpotifyArtistChartCapture(HWND window) {
   const int64_t now = UnixMillis();
   auto& collector = SpotifyArtistChartCollectorInstance();
   collector.Tick(now);
+  collector.ShowForDebug();
   const int64_t nextWake = collector.NextWakeAt();
   if (nextWake <= 0 || nextWake - now > kSpotifyArtistChartIdleThresholdMs) {
     KillTimer(window, kSpotifyArtistChartWatchTimer);

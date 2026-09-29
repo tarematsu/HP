@@ -20,6 +20,16 @@ class SpotifyArtistChartCollector {
     nextCaptureAt_ = nowMs;
     UpdateNextWake();
   }
+  void ShowForDebug() noexcept {
+    if (!controller_ || !window_) return;
+    RECT bounds{};
+    if (!GetClientRect(window_, &bounds) || bounds.right <= bounds.left ||
+        bounds.bottom <= bounds.top) {
+      bounds = RECT{0, 0, 720, 480};
+    }
+    controller_->put_Bounds(bounds);
+    controller_->put_IsVisible(TRUE);
+  }
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextWakeAt_; }
 
  private:

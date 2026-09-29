@@ -27,24 +27,28 @@ test('Spotify Japan daily artist chart uses the authenticated Stationhead WebVie
   assert.match(collector, /capture\.Insert\(L"chart_date"/);
 });
 
-test('native app requests the Japan daily artist chart every hour after Stationhead profile startup', () => {
+test('native app requests the Japan daily artist chart immediately at startup and then every hour', () => {
   assert.match(appMessages, /#include "spotify_artist_chart_collector\.h"/);
-  assert.match(appMessages, /kSpotifyArtistChartInitialDelayMs = 4 \* 60 \* 1000/);
+  assert.match(appMessages, /kSpotifyArtistChartInitialDelayMs = 250/);
   assert.match(appMessages, /kSpotifyArtistChartIntervalMs = 60 \* 60 \* 1000/);
   assert.match(appMessages, /SetTimer\(window, kSpotifyArtistChartTimer, kSpotifyArtistChartIntervalMs, nullptr\)/);
   assert.match(appMessages, /collector\.EnsureStarted\(now\)/);
   assert.match(appMessages, /collector\.RequestCaptureNow\(now\)/);
   assert.match(appMessages, /collector\.Tick\(now\)/);
+  assert.match(appMessages, /collector\.ShowForDebug\(\)/);
   assert.match(appMessages, /kSpotifyArtistChartWatchTimer/);
   assert.match(appMessages, /StopSpotifyArtistChartCapture\(window\)/);
   assert.doesNotMatch(leaderboardHeader, /spotifyArtistChartCollector_/);
 });
 
-test('Spotify chart collector remains self-contained and uses a hidden WebView2 surface', () => {
+test('Spotify chart collector can temporarily expose its WebView2 surface for debugging', () => {
   assert.match(collectorHeader, /void RequestCaptureNow\(int64_t nowMs\) noexcept/);
   assert.match(collectorHeader, /nextCaptureAt_ = nowMs/);
+  assert.match(collectorHeader, /void ShowForDebug\(\) noexcept/);
+  assert.match(collectorHeader, /GetClientRect\(window_, &bounds\)/);
+  assert.match(collectorHeader, /controller_->put_Bounds\(bounds\)/);
+  assert.match(collectorHeader, /controller_->put_IsVisible\(TRUE\)/);
   assert.match(collector, /CreateCoreWebView2ControllerWithOptions/);
-  assert.match(collector, /RECT bounds\{0, 0, 1, 1\}/);
 });
 
 test('Spotify chart capture uses durable spool acknowledgement through device exchange', () => {
