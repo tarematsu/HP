@@ -25,8 +25,10 @@ function triggerBody(name, nextName) {
 }
 
 test('member boundaries have one canonical compact owner', () => {
-  assert.equal(descriptor.schema, 'database/facts-migrations/060_canonical_daily_member_ownership.sql');
+  const path = 'database/facts-migrations/060_canonical_daily_member_ownership.sql';
   assert.equal(descriptor.schema, descriptor.migrations.at(-1));
+  assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
+  assert.ok(descriptor.migrations.indexOf(path) < descriptor.migrations.length);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /FROM sh_total_member_daily/);
   assert.doesNotMatch(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /p\.member_end/);
   assert.doesNotMatch(RECENT_DAILY_PROJECTION_SQL, /member_end/);

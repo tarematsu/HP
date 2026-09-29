@@ -11,6 +11,10 @@ const migration = await readFile(
   new URL('../../database/facts-migrations/020_isrc_track_dictionary.sql', import.meta.url),
   'utf8',
 );
+const canonicalMigration = await readFile(
+  new URL('../../database/facts-migrations/061_canonical_track_metadata_read_model.sql', import.meta.url),
+  'utf8',
+);
 
 test('ISRC dictionary migration materializes metadata but derives latest bite stats', () => {
   assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_track_dictionary/);
@@ -23,27 +27,36 @@ test('ISRC dictionary migration materializes metadata but derives latest bite st
   assert.doesNotMatch(migration, /CREATE TABLE IF NOT EXISTS sh_track_stats_by_isrc/);
 });
 
-test('minute metadata hydration reads the ISRC dictionary before legacy metadata', async () => {
-  let sql = '';
-  let bindings = [];
+test('canonical migration exposes presentation metadata as a view without another stored copy', () => {
+  assert.match(canonicalMigration, /CREATE VIEW sh_track_canonical_metadata/);
+  assert.match(canonicalMigration, /FROM sh_tracks AS t/);
+  assert.match(canonicalMigration, /LEFT JOIN sh_track_dictionary AS d/);
+  assert.doesNotMatch(canonicalMigration, /CREATE TABLE IF NOT EXISTS sh_track_canonical_metadata/);
+});
+
+test('minute metadata hydration reads only the canonical track metadata view', async () => {
+  const statements = [];
   const MINUTE_DB = {
-    prepare(statement) {
-      sql = statement;
+    prepare(sql) {
+      statements.push(sql);
       return {
+        bindings: [],
         bind(...values) {
-          bindings = values;
+          this.bindings = values;
           return this;
         },
         async all() {
+          const wanted = new Set(this.bindings);
           return {
-            results: [{
+            results: wanted.has('USABC1234567') || wanted.has('new-sp') ? [{
+              track_id: 10,
               spotify_id: 'old-sp',
               isrc: 'USABC1234567',
               title: 'Song',
               artist: 'Artist',
               thumbnail_url: 'cover',
               fetched_at: 10,
-            }],
+            }] : [],
           };
         },
       };
@@ -55,9 +68,9 @@ test('minute metadata hydration reads the ISRC dictionary before legacy metadata
     ['new-sp'],
     ['USABC1234567'],
   );
-  assert.match(sql, /FROM sh_track_dictionary/);
-  assert.match(sql, /UNION ALL/);
-  assert.deepEqual(bindings, ['USABC1234567', 'new-sp']);
+  assert.equal(rows.length, 1);
+  assert.ok(statements.every((sql) => /FROM sh_track_canonical_metadata/.test(sql)));
+  assert.ok(statements.every((sql) => !/sh_track_metadata|sh_isrc_metadata|sh_track_dictionary/.test(sql)));
 
   const hydrated = attachReadModelTrackMetadata({
     tracks: [{
@@ -72,26 +85,15 @@ test('minute metadata hydration reads the ISRC dictionary before legacy metadata
   assert.equal(hydrated.tracks[0].thumbnail_url, 'cover');
 });
 
-test('minute metadata hydration falls back to the legacy table before migration deployment', async () => {
+test('missing canonical view does not fall back to source metadata tables', async () => {
   const statements = [];
   const MINUTE_DB = {
     prepare(sql) {
-      const call = statements.length;
       statements.push(sql);
       return {
         bind() { return this; },
         async all() {
-          if (call === 0) throw new Error('no such table: sh_track_dictionary');
-          return {
-            results: [{
-              spotify_id: 'sp1',
-              isrc: 'USABC1234567',
-              title: 'Legacy Song',
-              artist: 'Legacy Artist',
-              thumbnail_url: 'legacy-cover',
-              fetched_at: 5,
-            }],
-          };
+          throw new Error('no such table: sh_track_canonical_metadata');
         },
       };
     },
@@ -102,8 +104,6 @@ test('minute metadata hydration falls back to the legacy table before migration 
     ['sp1'],
     ['USABC1234567'],
   );
-  assert.equal(statements.length, 2);
-  assert.match(statements[0], /sh_track_dictionary/);
-  assert.doesNotMatch(statements[1], /sh_track_dictionary/);
-  assert.equal(rows[0].title, 'Legacy Song');
+  assert.deepEqual(rows, []);
+  assert.ok(statements.every((sql) => /sh_track_canonical_metadata/.test(sql)));
 });

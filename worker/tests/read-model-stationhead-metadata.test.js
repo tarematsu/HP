@@ -23,15 +23,18 @@ function metadataDb(calls) {
               stationhead_track_id: 42,
               spotify_id: 'spotify-42',
               isrc: 'JPX42',
-              title: '曲名不明',
-              artist: 'アーティスト不明',
+              title: null,
+              artist: null,
+              album_name: null,
               thumbnail_url: null,
               fetched_at: 10,
             }] };
           }
-          if (/FROM sh_track_dictionary/.test(sql)) return { results: [] };
-          if (/FROM sh_track_metadata/.test(sql)) {
+          if (/FROM sh_track_canonical_metadata/.test(sql)) {
+            const wanted = new Set(this.bindings);
+            if (!wanted.has('spotify-42') && !wanted.has('JPX42')) return { results: [] };
             return { results: [{
+              track_id: 42,
               spotify_id: 'spotify-42',
               isrc: 'JPX42',
               title: 'Resolved Song',
@@ -48,7 +51,7 @@ function metadataDb(calls) {
   };
 }
 
-test('Stationhead-only playback tracks bridge through sh_tracks into provider metadata', async () => {
+test('Stationhead-only playback tracks use sh_tracks for identity and canonical view for presentation', async () => {
   const calls = [];
   const queue = {
     tracks: [{
@@ -68,8 +71,11 @@ test('Stationhead-only playback tracks bridge through sh_tracks into provider me
   assert.equal(hydrated.tracks[0].thumbnail_url, 'https://img.example/42.jpg');
   assert.equal(hydrated.tracks[0].spotify_id, 'spotify-42');
   assert.equal(hydrated.tracks[0].isrc, 'JPX42');
-  assert.ok(calls.some((call) => /FROM sh_tracks/.test(call.sql)));
-  assert.ok(calls.some((call) => /FROM sh_track_metadata/.test(call.sql)));
+  const identityCall = calls.find((call) => /FROM sh_tracks/.test(call.sql));
+  assert.ok(identityCall);
+  assert.match(identityCall.sql, /NULL AS title,NULL AS artist/);
+  assert.ok(calls.some((call) => /FROM sh_track_canonical_metadata/.test(call.sql)));
+  assert.equal(calls.some((call) => /FROM sh_track_metadata/.test(call.sql)), false);
 });
 
 test('Stationhead-only incomplete tracks are scheduled for hydration', () => {

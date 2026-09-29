@@ -37,9 +37,9 @@ function database(calls) {
               fetched_at: 200,
             }] };
           }
-          if (/FROM sh_track_dictionary/.test(sql)) return { results: [] };
-          if (/FROM sh_track_metadata/.test(sql)) {
+          if (/FROM sh_track_canonical_metadata/.test(sql)) {
             return { results: [{
+              track_id: 77,
               spotify_id: 'spotify-77',
               isrc: 'JPABC770001',
               title: 'Resolved Current Song',
@@ -56,7 +56,7 @@ function database(calls) {
   };
 }
 
-test('current placeholder track resolves through persisted latest-queue identity by position', async () => {
+test('current placeholder track resolves identity by position and presentation from canonical metadata', async () => {
   const calls = [];
   const queue = {
     tracks: [{
@@ -84,5 +84,6 @@ test('current placeholder track resolves through persisted latest-queue identity
   assert.equal(hydrated.tracks[0].thumbnail_url, 'https://img.example/current.jpg');
   assert.ok(calls.some((call) => /JOIN sh_queue_items/.test(call.sql)));
   assert.ok(calls.some((call) => /FROM sh_tracks/.test(call.sql)));
-  assert.ok(calls.some((call) => /FROM sh_track_metadata/.test(call.sql)));
+  assert.ok(calls.some((call) => /FROM sh_track_canonical_metadata/.test(call.sql)));
+  assert.equal(calls.some((call) => /FROM sh_track_metadata/.test(call.sql)), false);
 });
