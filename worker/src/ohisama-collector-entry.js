@@ -8,6 +8,7 @@ import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const STATE_ID = 'stationhead';
 const DEFAULT_AUTH_HANDLE = 'ilys';
+const FOLLOWER_SOURCE_OHISAMA = 4;
 const FIVE_MINUTES_MS = 5 * 60_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 8_000;
 const DEFAULT_REFRESH_BEFORE_MS = 60 * 60_000;
@@ -36,6 +37,11 @@ function nullableBooleanCode(value) {
   return null;
 }
 
+function normalizedHandle(value) {
+  const handle = String(value || '').trim().toLowerCase();
+  return handle && handle.length <= 128 ? handle : null;
+}
+
 export function fiveMinuteBucket(timestamp) {
   const parsed = Number(timestamp);
   if (!Number.isFinite(parsed) || parsed < 0) throw new Error('invalid observation timestamp');
@@ -55,6 +61,8 @@ export function normalizeOhisamaSnapshot(channel, expectedAlias = 'ohisama') {
 
   const station = channel.current_station || {};
   const party = station.streaming_party || channel.streaming_party || {};
+  const host = station.host || channel.host || {};
+  const hostAccount = host.account || {};
   return {
     channel_id: channelId,
     station_id: nullableNumber(firstDefined(channel.current_station_id, station.id)),
@@ -66,6 +74,8 @@ export function normalizeOhisamaSnapshot(channel, expectedAlias = 'ohisama') {
     reported_total_listens: nullableNumber(station.total_listens),
     stream_goal: nullableNumber(party.stream_goal),
     reported_current_stream_count: nullableNumber(party.current_stream_count),
+    host_account_id: nullableNumber(firstDefined(host.account_id, hostAccount.id)),
+    host_handle: normalizedHandle(firstDefined(hostAccount.handle, host.handle, station.host_handle)),
   };
 }
 
@@ -263,6 +273,20 @@ async function persistSnapshot(env, snapshot, state, observedAt) {
   return minuteAt;
 }
 
+export async function registerOhisamaFollowerTarget(env, snapshot, observedAt) {
+  if (snapshot?.is_broadcasting !== 1 || !snapshot?.host_handle) return false;
+  if (typeof env?.OTHER_DB?.prepare !== 'function') return false;
+  const result = await env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_follower_targets(
+      handle,source_mask,first_seen_at
+    ) VALUES(?,?,?)
+    ON CONFLICT(handle) DO UPDATE SET
+      source_mask=(sh_stationhead_follower_targets.source_mask | excluded.source_mask)
+    WHERE (sh_stationhead_follower_targets.source_mask & excluded.source_mask)=0`)
+    .bind(snapshot.host_handle, FOLLOWER_SOURCE_OHISAMA, observedAt)
+    .run();
+  return Number(result?.meta?.changes || 0) > 0;
+}
+
 async function recordFailure(env, observedAt, error) {
   if (!env?.OHISAMA_DB?.prepare) return;
   const detail = String(error?.message || error).slice(0, 800);
@@ -293,6 +317,15 @@ export async function runOhisamaCollectorScheduled(
     const { payload, state, alias } = await requestChannel(env, dependencies);
     const snapshot = normalizeOhisamaSnapshot(payload, alias);
     const minuteAt = await persistSnapshot(env, snapshot, state, observedAt);
+    const registerTarget = dependencies.registerFollowerTarget || registerOhisamaFollowerTarget;
+    const followerTargetAdded = await registerTarget(env, snapshot, observedAt).catch((error) => {
+      console.warn(JSON.stringify({
+        event: 'ohisama_follower_target_registration_failed',
+        handle: snapshot.host_handle || null,
+        error: String(error?.message || error).slice(0, 500),
+      }));
+      return false;
+    });
     console.log(JSON.stringify({
       event: 'ohisama_collection_completed',
       observed_at: observedAt,
@@ -304,8 +337,16 @@ export async function runOhisamaCollectorScheduled(
       online_member_count: snapshot.online_member_count,
       total_member_count: snapshot.total_member_count,
       reported_total_listens: snapshot.reported_total_listens,
+      host_handle: snapshot.host_handle,
+      follower_target_added: followerTargetAdded,
     }));
-    return { collected: true, observed_at: observedAt, minute_at: minuteAt, ...snapshot };
+    return {
+      collected: true,
+      observed_at: observedAt,
+      minute_at: minuteAt,
+      follower_target_added: followerTargetAdded,
+      ...snapshot,
+    };
   } catch (error) {
     await recordFailure(env, observedAt, error);
     throw error;
