@@ -87,16 +87,6 @@ export async function fetchIsrcMetadata(isrc, config = {}) {
   return fetchDeezerMetadata(normalized, config);
 }
 
-async function applyIsrcMetadataToTracks(db, row) {
-  if (!row?.title || !row?.artist) return;
-  await db.prepare(`UPDATE sh_tracks SET
-      title=CASE WHEN title IS NULL OR TRIM(title)='' OR title=spotify_id THEN ? ELSE title END,
-      artist=CASE WHEN artist IS NULL OR TRIM(artist)='' OR artist=spotify_id
-        OR artist GLOB 'JP[A-Z0-9]*' THEN ? ELSE artist END
-    WHERE UPPER(REPLACE(isrc,'-',''))=?`)
-    .bind(row.title, row.artist, row.isrc).run();
-}
-
 async function persistIsrcMetadata(db, row) {
   await db.prepare(`INSERT INTO sh_isrc_metadata(isrc,title,artist,source,fetched_at,raw_json)
     VALUES(?,?,?,?,?,?) ON CONFLICT(isrc) DO UPDATE SET
@@ -106,7 +96,9 @@ async function persistIsrcMetadata(db, row) {
       fetched_at=MAX(excluded.fetched_at,sh_isrc_metadata.fetched_at),
       raw_json=COALESCE(excluded.raw_json,sh_isrc_metadata.raw_json)`)
     .bind(row.isrc, row.title, row.artist, row.source, row.fetched_at, row.raw_json).run();
-  await applyIsrcMetadataToTracks(db, row);
+  // Presentation ownership belongs to sh_track_dictionary. Migration 020's
+  // source-cache trigger projects this row there, so never copy title/artist
+  // into sh_tracks as a second competing truth.
 }
 
 export async function enrichIsrcTracks(env, queue, config = {}, dependencies = {}) {
@@ -128,7 +120,6 @@ export async function enrichIsrcTracks(env, queue, config = {}, dependencies = {
     return { saved: 0, attempted: 0, skipped: 'isrc-metadata-table-missing' };
   }
   const storedByIsrc = new Map((stored.results || []).map((row) => [String(row.isrc), row]));
-  for (const row of stored.results || []) await applyIsrcMetadataToTracks(db, row);
   const retryable = candidates.filter((isrc) => {
     const row = storedByIsrc.get(isrc);
     if (text(row?.title) && text(row?.artist)) return false;
