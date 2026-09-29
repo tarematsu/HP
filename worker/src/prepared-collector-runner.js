@@ -20,11 +20,7 @@ const RAW_D1_STATEMENT = Symbol('prepared-collector-raw-d1-statement');
 const PREPARED_COLLECTOR_FINALIZE = Symbol('prepared-collector-finalize');
 const PREPARED_COLLECTOR_FACT = Symbol('prepared-collector-fact');
 const COLLECTOR_STATE_CHECKPOINT_MS = 20 * 60_000;
-const NO_COMMENTS_RESULT = Object.freeze({
-  commentsSaved: 0,
-  degraded: false,
-  errorStage: null,
-});
+const MINUTE_FACT_INTERVAL_MS = 5 * 60_000;
 const NO_PLANNED_COMMENTS_RESULT = Object.freeze({
   commentsSaved: 0,
   commentTotal: null,
@@ -177,6 +173,11 @@ function minuteAt(observedAt) {
   return Math.floor(Number(observedAt) / 60_000) * 60_000;
 }
 
+export function minuteFactDue(observedAt) {
+  const bucket = minuteAt(observedAt);
+  return Number.isFinite(bucket) && bucket % MINUTE_FACT_INTERVAL_MS === 0;
+}
+
 function estimateD1RowsWritten({
   snapshotResult,
   queueResult,
@@ -255,38 +256,8 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       }
     }
 
-    const commentResult = plan.comments
-      ? NO_COMMENTS_RESULT
-      : NO_PLANNED_COMMENTS_RESULT;
-    const factSnapshot = minuteFactSnapshot(snapshot);
-    const factQueue = minuteFactQueue(queue);
-    const factQueueReadModel = {
-      station_id: factQueue?.station_id ?? state.stationId,
-      queue_id: factQueue?.queue_id ?? null,
-      start_time: factQueue?.start_time ?? null,
-      is_paused: factQueue?.is_paused ?? null,
-    };
-    if (factQueue === null) factQueueReadModel.value = null;
-    const factOptions = {
-      enrichTrackMetadata: metadataPlanned,
-      collectComments: false,
-      readModelPresentationOnly: true,
-      readModel: {
-        channel: {
-          channel_id: state.channelId,
-          observed_at: observedAt,
-          presentation: readModelPresentation(snapshot),
-        },
-        queue: factQueueReadModel,
-        collector: {
-          collector_id: config.collectorId,
-          last_run_at: observedAt,
-          last_success_at: observedAt,
-          last_error_present: false,
-          updated_at: observedAt,
-        },
-      },
-    };
+    const commentResult = NO_PLANNED_COMMENTS_RESULT;
+    const factDue = minuteFactDue(observedAt);
     const lastSuccessAt = Date.now();
     const checkpointDue = state.persistCredentials !== false
       || state.clearFailureOnSuccess === true
@@ -297,30 +268,64 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
     let minuteFactJob = null;
     let factStage = null;
 
-    if (activeEnv?.INGEST_FINALIZE_QUEUE?.send) {
-      factStage = {
-        observedAt,
-        snapshot: factSnapshot,
-        queue: factQueue,
-        comments: commentResult,
-        options: factOptions,
-        collectorState: deferredState,
-        auth: activeEnv.__shAuthState || {},
+    if (factDue) {
+      const factSnapshot = minuteFactSnapshot(snapshot);
+      const factQueue = minuteFactQueue(queue);
+      const factQueueReadModel = {
+        station_id: factQueue?.station_id ?? state.stationId,
+        queue_id: factQueue?.queue_id ?? null,
+        start_time: factQueue?.start_time ?? null,
+        is_paused: factQueue?.is_paused ?? null,
       };
-      minuteFactJob = {
-        enqueued: false,
-        outbox_pending: false,
-        minute_at: minuteAt(observedAt),
+      if (factQueue === null) factQueueReadModel.value = null;
+      const factOptions = {
+        enrichTrackMetadata: metadataPlanned,
+        collectComments: false,
+        readModelPresentationOnly: true,
+        readModel: {
+          channel: {
+            channel_id: state.channelId,
+            observed_at: observedAt,
+            presentation: readModelPresentation(snapshot),
+          },
+          queue: factQueueReadModel,
+          collector: {
+            collector_id: config.collectorId,
+            last_run_at: observedAt,
+            last_success_at: observedAt,
+            last_error_present: false,
+            updated_at: observedAt,
+          },
+        },
       };
-    } else {
-      stage = 'minute_fact_handoff';
-      minuteFactJob = await handoffMinuteFactJob(activeEnv, {
-        observedAt,
-        snapshot: factSnapshot,
-        queue: factQueue,
-        comments: commentResult,
-      }, factOptions);
 
+      if (activeEnv?.INGEST_FINALIZE_QUEUE?.send) {
+        factStage = {
+          observedAt,
+          snapshot: factSnapshot,
+          queue: factQueue,
+          comments: commentResult,
+          options: factOptions,
+          collectorState: deferredState,
+          auth: activeEnv.__shAuthState || {},
+        };
+        minuteFactJob = {
+          enqueued: false,
+          outbox_pending: false,
+          minute_at: minuteAt(observedAt),
+        };
+      } else {
+        stage = 'minute_fact_handoff';
+        minuteFactJob = await handoffMinuteFactJob(activeEnv, {
+          observedAt,
+          snapshot: factSnapshot,
+          queue: factQueue,
+          comments: commentResult,
+        }, factOptions);
+      }
+    }
+
+    if (!activeEnv?.INGEST_FINALIZE_QUEUE?.send) {
       stage = 'd1_write_collector_state';
       throwIfAborted(activeEnv, stage);
       await saveCollectorStateAndClearFailure(activeEnv, state, {
@@ -369,6 +374,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       metadata_saved: 0,
       metadata_deferred: Boolean(queue),
       metadata_delegated: Boolean(metadataPlanned),
+      minute_fact_due: factDue,
       minute_fact_job_enqueued: Boolean(minuteFactJob?.enqueued),
       minute_fact_outbox_pending: Boolean(minuteFactJob?.outbox_pending),
       minute_fact_job_minute_at: minuteFactJob?.minute_at ?? null,
