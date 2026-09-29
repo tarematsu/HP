@@ -1,4 +1,4 @@
-name: Temporary test Amazon overall rank
+name: Temporary sync Amazon overall branch
 
 on:
   push:
@@ -6,26 +6,22 @@ on:
       - tmp/verify-amazon-readmodel
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  verify:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/amazon-overall-rank
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Worker Amazon tests
-        working-directory: worker
-        run: node --test tests/amazon-music-collector.test.js
-      - name: Pages Amazon tests
-        run: node --test site/tests/amazon-music-tab.test.js
-      - name: Syntax checks
+          fetch-depth: 0
+      - name: Merge latest main
+        shell: bash
         run: |
-          node --check worker/src/amazon-music-web-client.js
-          node --check worker/src/amazon-music-collector.js
-          node --check site/public/amazon-music.js
-          node --check site/public/amazon-music-shell.js
+          set -euo pipefail
+          git fetch origin main
+          git config user.name 'tarematsu'
+          git config user.email 'yuukiar0202@gmail.com'
+          git merge --no-edit origin/main
+          git push origin HEAD:fix/amazon-overall-rank
