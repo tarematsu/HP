@@ -76,3 +76,12 @@ test('Spotify Stationhead identity migration is safe to replay during full provi
   assert.match(provisioner, /ADD COLUMN stationhead_track_id INTEGER/);
   assert.match(provisioner, /`--command=\$\{remainderSql\}`/);
 });
+
+test('OTHER_DB provisioning tolerates Wrangler losing a completed file-import status', () => {
+  assert.match(provisioner, /function completedRemoteFileImportDespiteWranglerRace\(error, args\)/);
+  assert.match(provisioner, /args\.includes\('--file'\)/);
+  assert.match(provisioner, /Not currently importing anything\./);
+  assert.match(provisioner, /Processed\\s\+\\d\+\\s\+queries\?/);
+  assert.match(provisioner, /continuing after confirmed processed queries/);
+  assert.match(provisioner, /return String\(error\.stdout \|\| ''\)/);
+});
