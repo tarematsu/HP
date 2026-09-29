@@ -23,6 +23,10 @@ const retentionIndexMigration = readFileSync(
   new URL('../../database/buddies-migrations/014_retention_time_indexes.sql', import.meta.url),
   'utf8',
 );
+const dirtyDaysMigration = readFileSync(
+  new URL('../../database/buddies-migrations/015_track_history_dirty_days.sql', import.meta.url),
+  'utf8',
+);
 const manifest = JSON.parse(readFileSync(
   new URL('../../database/buddies-db.json', import.meta.url),
   'utf8',
@@ -43,7 +47,7 @@ test('all durable reconstruction sources share a thirty-day retention floor', ()
 });
 
 test('current buddies schema keeps retention safe and indexes bounded repair paths', () => {
-  assert.equal(manifest.schema, 'database/buddies-migrations/014_retention_time_indexes.sql');
+  assert.equal(manifest.schema, 'database/buddies-migrations/015_track_history_dirty_days.sql');
   assert.match(retentionMigration, /DROP TRIGGER IF EXISTS trg_sh_claim_retention/);
   assert.doesNotMatch(retentionMigration, /172800000/);
   assert.doesNotMatch(retentionMigration, /DELETE FROM sh_comment_minute_counts/);
@@ -62,4 +66,6 @@ test('current buddies schema keeps retention safe and indexes bounded repair pat
   assert.match(retentionIndexMigration, /idx_sh_ingest_conflicts_observed/);
   assert.match(retentionIndexMigration, /ON sh_ingest_conflicts\(observed_at ASC, id ASC\)/);
   assert.doesNotMatch(retentionIndexMigration, /DELETE|UPDATE|ANALYZE|PRAGMA optimize/);
+  assert.match(dirtyDaysMigration, /CREATE TABLE IF NOT EXISTS sh_track_history_dirty_days/);
+  assert.match(dirtyDaysMigration, /INSERT OR IGNORE INTO sh_track_history_dirty_days/);
 });
