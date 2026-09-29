@@ -17,8 +17,6 @@
   },
   "vars": {
     "CHANNEL_ALIAS": "buddies",
-    "CHAT_LIMIT": 0,
-    "COMMENT_CHAIN_MAX_ATTEMPTS": 1,
     "SH_APP_VERSION": "1.0.0",
     "COLLECTOR_ID": "cloudflare-worker",
     "COLLECTOR_INLINE_PIPELINE_ENABLED": false,
@@ -51,14 +49,12 @@
     "consumers": [
       { "queue": "stationhead-raw-collection", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-raw-collection-dlq", "max_concurrency": 1 },
       { "queue": "stationhead-ingest-finalize", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-ingest-finalize-dlq", "max_concurrency": 1 },
-      { "queue": "stationhead-comments", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-comments-dlq", "max_concurrency": 1 },
       { "queue": "stationhead-buddies-persist", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-buddies-persist-dlq", "max_concurrency": 1 }
     ],
     "producers": [
       { "binding": "RAW_COLLECTION_QUEUE", "queue": "stationhead-raw-collection" },
       { "binding": "PERSIST_QUEUE", "queue": "stationhead-buddies-persist" },
       { "binding": "INGEST_FINALIZE_QUEUE", "queue": "stationhead-ingest-finalize" },
-      { "binding": "COMMENTS_QUEUE", "queue": "stationhead-comments" },
       { "binding": "MINUTE_FACT_QUEUE", "queue": "stationhead-buddies-facts" },
       { "binding": "MINUTE_LIVE_DERIVE_QUEUE", "queue": "stationhead-minute-live-derive" },
       { "binding": "MINUTE_ENRICHMENT_QUEUE", "queue": "stationhead-minute-enrichment" },
