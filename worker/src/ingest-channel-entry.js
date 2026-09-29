@@ -83,19 +83,6 @@ export function channelFromRawCollection(message) {
   return collection.channel;
 }
 
-export function commentsTaskForMinuteFact(commentTask, body, options = {}) {
-  const compact = options.inPlace === true ? body : { ...body };
-  compact.read_model = null;
-  return {
-    message_type: 'stationhead-comments-task',
-    message_version: 2,
-    auth: commentTask?.auth || {},
-    observed_at: integer(body?.payload?.observedAt) ?? integer(commentTask?.observed_at) ?? Date.now(),
-    station_id: integer(body?.payload?.snapshot?.station_id) ?? integer(commentTask?.station_id),
-    minute_fact: compact,
-  };
-}
-
 function trustedMinuteFactQueueMessage(body) {
   const payload = objectValue(body?.payload);
   const channelId = integer(body?.channel_id);
@@ -112,10 +99,6 @@ function trustedMinuteFactQueueMessage(body) {
 }
 
 export function readModelEnvelopeForMinuteFact(rawMessage, body, options = {}) {
-  // The active ingest wrapper receives the exact object returned by
-  // minuteFactQueueMessage(), which was already normalized, validated and
-  // size-checked. Avoid walking the full snapshot/queue a second time there.
-  // Durable outbox recovery still uses the strict parser below.
   const trusted = options.trusted === true;
   const parsed = trusted
     ? trustedMinuteFactQueueMessage(body)
@@ -129,9 +112,6 @@ export function readModelEnvelopeForMinuteFact(rawMessage, body, options = {}) {
   const compactCollector = objectValue(compact.collector) || {};
   let readModel;
   if (trusted) {
-    // The durable outbox JSON was serialized before this Queue wrapper runs.
-    // Hydrate only the disposable in-memory copy so the normal path avoids
-    // cloning the read model, channel, queue and collector objects.
     compactChannel.observed_at = observedAt;
     if (compactQueue && !Object.hasOwn(compactQueue, 'value')) {
       compactQueue.value = parsed.payload.queue ?? null;
@@ -166,11 +146,6 @@ export function readModelEnvelopeForMinuteFact(rawMessage, body, options = {}) {
     observed_at: observedAt,
     job_id: `read-model:${parsed.channel_id}:${observedAt}`,
     read_model: readModel,
-    comment_task: {
-      observed_at: observedAt,
-      station_id: integer(parsed.payload?.snapshot?.station_id),
-      auth: rawMessage?.auth || {},
-    },
   };
 }
 
@@ -218,22 +193,12 @@ function fallbackReadModelEnvelope(env, message, collection) {
         updated_at: observedAt,
       },
     },
-    comment_task: {
-      observed_at: observedAt,
-      station_id: state.stationId,
-      auth: message.auth || {},
-    },
   };
 }
 
 function activeIngestEnv(env, message, collection, capture) {
   const active = Object.create(env || null);
-  const commentsQueue = env?.COMMENTS_QUEUE;
-  const commentTask = {
-    observed_at: integer(message?.observed_at),
-    station_id: null,
-    auth: message?.auth || {},
-  };
+  const destinationQueue = env?.MINUTE_FACT_QUEUE;
   Object.defineProperties(active, {
     __shAuthState: { value: message.auth || {}, enumerable: false },
     __shPersistCollectorCredentials: { value: message.persist_credentials !== false, enumerable: false },
@@ -245,25 +210,19 @@ function activeIngestEnv(env, message, collection, capture) {
       } : null,
       enumerable: false,
     },
-    CHAT_LIMIT: { value: 0, enumerable: true },
     MINUTE_FACT_QUEUE: {
       enumerable: false,
-      value: commentsQueue?.send ? {
+      value: destinationQueue?.send ? {
         send(body, options) {
           if (body && typeof body === 'object') {
             const envelope = readModelEnvelopeForMinuteFact(message, body, { trusted: true });
             capture.channelId = integer(body.channel_id);
             capture.minuteAt = integer(body.minute_at);
             capture.envelope = envelope;
-            return commentsQueue.send(commentsTaskForMinuteFact(
-              commentTask,
-              body,
-              { inPlace: true },
-            ), options);
           }
-          return commentsQueue.send(body, options);
+          return destinationQueue.send(body, options);
         },
-      } : commentsQueue,
+      } : destinationQueue,
     },
   });
   return active;
@@ -301,9 +260,6 @@ async function recoverCurrentReadModelEnvelope(env, message, collection, result)
     }));
   }
 
-  // A retried raw message can find its minute outbox row already sent and
-  // compacted to '{}', while the previous read-model Queue send never
-  // completed. Preserve that retry path by rebuilding only in this rare case.
   return fallbackReadModelEnvelope(env, message, collection);
 }
 
