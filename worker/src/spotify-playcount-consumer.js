@@ -142,13 +142,14 @@ async function deactivateUnrelatedRelease(db, message) {
     .run();
 }
 
+// Historical export name retained for compatibility. A published adjustment can move up or down.
 export function hasPlaycountAdvance(previousRows, candidateRows) {
   const previous = new Map((previousRows || []).map((row) => [String(row.track_id), integer(row.playcount)]));
   if (!previous.size) return true;
   for (const row of candidateRows || []) {
     const oldValue = previous.get(String(row.track_id));
     const newValue = integer(row.playcount);
-    if (oldValue != null && newValue != null && newValue > oldValue) return true;
+    if (oldValue != null && newValue != null && newValue !== oldValue) return true;
   }
   return false;
 }
@@ -205,19 +206,17 @@ async function finalizeAttempt(db, message) {
     }
     const regressions = countPlaycountRegressions(previous, candidates);
     if (regressions) {
-      const now = Date.now();
-      const detail = `candidate snapshot regressed on ${regressions} tracks from ${previousDate}`;
-      await db.prepare(`UPDATE sh_spotify_collection_runs
-        SET status='incomplete',updated_at=?,completed_at=?,last_error=?
-        WHERE snapshot_date=? AND run_token=?`)
-        .bind(now, now, detail, message.snapshot_date, message.run_token).run();
-      return { incomplete: true, regressions };
+      logEvent('spotify_playcount_adjustment', {
+        snapshot_date: message.snapshot_date,
+        previous_date: previousDate,
+        decreased_tracks: regressions,
+      });
     }
     if (!hasPlaycountAdvance(previous, candidates)) {
       const now = Date.now();
       await db.prepare(`UPDATE sh_spotify_collection_runs
         SET status='stale',updated_at=?,completed_at=?,
-            last_error='Spotify playcounts have not advanced from the previous day'
+            last_error='Spotify playcounts have not changed from the previous day'
         WHERE snapshot_date=? AND run_token=?`)
         .bind(now, now, message.snapshot_date, message.run_token).run();
       return { stale: true };
