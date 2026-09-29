@@ -291,7 +291,7 @@ test('missing canonical member state does not overwrite an existing derived boun
   assert.deepEqual(result.published, []);
   const row = other.prepare(`SELECT member_start,member_end,member_growth FROM sh_daily_summary
     WHERE period_key='2026-09-23'`).get();
-  assert.deepEqual(row, { member_start: 98, member_end: 100, member_growth: 2 });
+  assert.deepEqual({ ...row }, { member_start: 98, member_end: 100, member_growth: 2 });
 });
 
 test('invalid projection counts are refused instead of publishing a corrupt daily row', async () => {
