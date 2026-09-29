@@ -21,10 +21,11 @@ function unique(values, label) {
 test('API contract contains unique canonical paths only', () => {
   const canonical = canonicalApiPaths();
   unique(canonical, 'canonical API paths');
-  assert.equal(canonical.length, 12);
+  assert.equal(canonical.length, 13);
   assert.ok(canonical.includes('/api/dashboard-details'));
   assert.ok(canonical.includes('/api/history-current'));
   assert.ok(canonical.includes('/api/sakurazaka46jp-status'));
+  assert.ok(canonical.includes('/api/nogizaka46smej-status'));
   assert.ok(canonical.includes('/api/first-week-comparison'));
   assert.ok(canonical.includes('/api/spotify-playcounts'));
   assert.ok(canonical.includes('/api/amazon-music'));
@@ -34,7 +35,7 @@ test('API contract contains unique canonical paths only', () => {
 test('GET /api catalog is generated from the canonical contract only', () => {
   const catalog = apiCatalog(0);
   assert.equal(catalog.contract_version, API_CONTRACT_VERSION);
-  assert.equal(catalog.contract_version, 10);
+  assert.equal(catalog.contract_version, 11);
   assert.deepEqual(catalog.groups, API_GROUPS);
   assert.equal('compatibility' in catalog, false);
   assert.equal('retired' in catalog, false);
@@ -71,8 +72,9 @@ test('current minute history uses a 30-second shared cache', () => {
   assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/amazon-music')), 300);
 });
 
-test('Sakurazaka status endpoint bypasses shared edge cache', () => {
+test('official Stationhead status endpoints bypass shared edge cache', () => {
   assert.equal(edgeCacheableApiRequest(new Request('https://skrzk.test/api/sakurazaka46jp-status')), false);
+  assert.equal(edgeCacheableApiRequest(new Request('https://skrzk.test/api/nogizaka46smej-status')), false);
 });
 
 test('cache middleware contains the canonical Sakurazaka policies', () => {
