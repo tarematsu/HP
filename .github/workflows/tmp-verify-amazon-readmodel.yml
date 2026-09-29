@@ -1,4 +1,4 @@
-name: Temporary Amazon popular songs pagination trace
+name: Temporary Amazon web player bundle chart probe
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
           node-version: 22
       - name: Install puppeteer core
         run: npm install --no-save puppeteer-core@24.19.0
-      - name: Trace popular songs pagination
+      - name: Inspect loaded web player bundles
         shell: bash
         run: |
           set -euo pipefail
@@ -26,55 +26,40 @@ jobs:
           import fs from 'node:fs';
           const executablePath = ['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium-browser','/usr/bin/chromium'].find(fs.existsSync);
           if (!executablePath) throw new Error('Chrome executable not found');
-          const browser = await puppeteer.launch({ executablePath, headless: true, args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+          const browser = await puppeteer.launch({ executablePath, headless:true, args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
           const page = await browser.newPage();
-          await page.setViewport({width:1280,height:900});
-          await page.setExtraHTTPHeaders({ 'Accept-Language':'ja-JP,ja;q=0.9,en;q=0.5' });
+          await page.setExtraHTTPHeaders({'Accept-Language':'ja-JP,ja;q=0.9,en;q=0.5'});
           await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
-
-          const skillRequests = new Set();
-          const trackIds = new Set();
-          const actionLines = new Set();
-          function inspectText(text, source) {
-            for (const m of text.matchAll(/(?:storageKey|trackAsin|\"at\"|%22at%22)[^A-Za-z0-9]{0,30}([A-Z0-9]{10})/g)) trackIds.add(m[1]);
-            const decoded = text.replace(/\\u002F/gi,'/').replace(/\\\//g,'/').replace(/%2F/gi,'/').replace(/%3F/gi,'?').replace(/%3D/gi,'=').replace(/%26/gi,'&');
-            for (const m of decoded.matchAll(/.{0,180}(?:next|showCatalogTracks|showMore|showPopular|popular\/songs|POPULAR_TRACKS|browsePanel\/popularTracks).{0,500}/gi)) {
-              const line = `${source} ${m[0].replace(/\\+/g,'').replace(/\s+/g,' ').slice(0,900)}`;
-              if (!actionLines.has(line)) { actionLines.add(line); console.log('ACTION', line); }
-            }
-          }
-          page.on('request', (req) => {
-            const url = req.url();
-            if (!url.includes('skill.music.a2z.com')) return;
-            const key = `${req.method()} ${url} ${req.postData() || ''}`;
-            if (!skillRequests.has(key)) {
-              skillRequests.add(key);
-              if (/next|catalog|popular|track/i.test(url + ' ' + (req.postData() || ''))) {
-                console.log('REQ', req.method(), url);
-                if (req.postData()) console.log('POST', req.postData().slice(0,4000));
-              }
-            }
-          });
-          page.on('response', async (res) => {
-            if (!res.url().includes('skill.music.a2z.com')) return;
-            try {
-              const text = await res.text();
-              inspectText(text, `RESP ${res.url()}`);
-            } catch {}
-          });
-
-          await page.goto('https://music.amazon.co.jp/popular/songs', {waitUntil:'networkidle2',timeout:60000});
+          await page.goto('https://music.amazon.co.jp/popular/songs',{waitUntil:'networkidle2',timeout:60000});
           await new Promise(r=>setTimeout(r,2500));
-          for (let i=0;i<25;i++) {
-            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-            await new Promise(r=>setTimeout(r,700));
+          const scripts = await page.evaluate(() => [...document.scripts].map(s=>s.src).filter(Boolean));
+          console.log('SCRIPT_COUNT', scripts.length);
+          const needles = [
+            '/v2/tracks/top','tracks/top','POPULAR_TRACKS','popularTracks','browsePanel/popularTracks',
+            '/popular/songs','showCatalogTracks','showHome','nextPageToken','pagination','popularityRank',
+            'chartRank','overallRank','ranking'
+          ];
+          for (const url of scripts) {
+            try {
+              const res = await fetch(url);
+              const text = await res.text();
+              const lower = text.toLowerCase();
+              const matched = needles.filter(n=>lower.includes(n.toLowerCase()));
+              if (!matched.length) continue;
+              console.log('BUNDLE', url, 'BYTES', text.length, 'MATCH', matched.join(','));
+              for (const needle of matched) {
+                const target = needle.toLowerCase();
+                let start = 0;
+                let emitted = 0;
+                while (emitted < 8) {
+                  const idx = lower.indexOf(target,start);
+                  if (idx < 0) break;
+                  console.log('CTX', needle, text.slice(Math.max(0,idx-500),Math.min(text.length,idx+900)).replace(/\s+/g,' ').slice(0,1500));
+                  start = idx + target.length;
+                  emitted++;
+                }
+              }
+            } catch (e) { console.log('FETCH_ERR', url, String(e)); }
           }
-          const body = await page.evaluate(() => document.body.innerText);
-          const ranked = [...body.matchAll(/(?:^|\n)\s*(\d{1,4})\.\s*([^\n]+)/g)].map(m=>({rank:Number(m[1]),title:m[2].trim()}));
-          console.log('RANKED_DOM_COUNT', ranked.length);
-          console.log('RANKED_DOM_FIRST_LAST', JSON.stringify([ranked.slice(0,5), ranked.slice(-5)]));
-          console.log('UNIQUE_TRACK_IDS', trackIds.size, [...trackIds].slice(0,10), [...trackIds].slice(-10));
-          console.log('SKILL_REQUESTS', skillRequests.size);
-          console.log('FINAL_HEIGHT', await page.evaluate(() => document.body.scrollHeight));
           await browser.close();
           NODE
