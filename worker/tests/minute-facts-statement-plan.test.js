@@ -83,3 +83,27 @@ test('member changes are persisted immediately even between five-minute checkpoi
   assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_dashboard_history_5m')), false);
   assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_total_member_daily')), true);
 });
+
+test('sessionless minute without queue or override data does not create an empty context row', () => {
+  const db = fakeDb();
+  const statements = minuteFactStatements(db, fact({
+    broadcast_session_id: null,
+    station_id: null,
+    host_id: null,
+    broadcast_start_time: null,
+  }));
+
+  assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_minute_fact_context_v2')), false);
+  assert.equal(statements.some(({ sql }) => sql.includes('DELETE FROM sh_minute_fact_context_v2')), true);
+});
+
+test('sessionless minute retains real source context when an override value exists', () => {
+  const db = fakeDb();
+  const statements = minuteFactStatements(db, fact({
+    broadcast_session_id: null,
+    station_id: 99,
+  }));
+
+  assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_minute_fact_context_v2')), true);
+  assert.equal(statements.some(({ sql }) => sql.includes('DELETE FROM sh_minute_fact_context_v2')), false);
+});

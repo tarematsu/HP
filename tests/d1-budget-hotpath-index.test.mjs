@@ -102,6 +102,10 @@ const currentDailyFiveMinuteMigration = readFileSync(
   new URL('../database/facts-migrations/059_current_daily_summary_5m.sql', import.meta.url),
   'utf8',
 );
+const redundantIndexMigration = readFileSync(
+  new URL('../database/facts-migrations/064_retire_redundant_indexes.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -152,6 +156,7 @@ const expectedMigrations = [
   'database/facts-migrations/061_canonical_track_metadata_read_model.sql',
   'database/facts-migrations/062_track_metadata_source_priority.sql',
   'database/facts-migrations/063_finalize_stream_5m_once.sql',
+  'database/facts-migrations/064_retire_redundant_indexes.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -271,6 +276,9 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
     currentDailyFiveMinuteMigration,
     /CREATE TRIGGER trg_sh_current_daily_summary_insert\b/,
   );
+  assert.match(redundantIndexMigration, /DROP INDEX IF EXISTS idx_sh_minute_facts_live_latest/);
+  assert.match(redundantIndexMigration, /DROP INDEX IF EXISTS idx_sh_total_member_daily_channel_time/);
+  assert.doesNotMatch(redundantIndexMigration, /CREATE INDEX|INSERT|UPDATE|DELETE|ANALYZE|PRAGMA optimize/);
 });
 
 test('production keeps realtime derive bounded while Actions owns ordinary reconstruction', () => {
