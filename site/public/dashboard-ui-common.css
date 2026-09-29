@@ -1,5 +1,16 @@
-/* Shared component rules for lazily mounted dashboard tabs.
-   Feature styles should only keep feature-specific dimensions, colors and selectors. */
+/* Shared presentation contract for every dashboard tab. */
+:root {
+  --dashboard-copy-size: .72rem;
+  --dashboard-small-size: .68rem;
+  --dashboard-label-size: .7rem;
+  --dashboard-axis-font-size: 11px;
+  --dashboard-axis-color: color-mix(in srgb, var(--text, #172033) 62%, transparent);
+  --dashboard-grid-color: color-mix(in srgb, var(--text, #172033) 12%, transparent);
+  --dashboard-grid-width: 1;
+  --dashboard-line-width: 2;
+  --dashboard-point-radius: 3px;
+  --dashboard-point-stroke-width: 1.25;
+}
 
 .shared-svg-chart {
   width: 100%;
@@ -24,6 +35,7 @@
   display: grid;
   place-items: center;
   color: var(--muted, #666);
+  font-size: var(--dashboard-copy-size);
   text-align: center;
 }
 
@@ -38,22 +50,123 @@
   white-space: nowrap;
 }
 
-.shared-rank-grid {
-  stroke: currentColor;
-  stroke-opacity: .12;
-  stroke-width: 1;
+/* All SVG charts use the same axis/grid/point grammar. */
+:is(
+  .shared-rank-grid,
+  .amazon-rank-grid,
+  .apple-rank-grid,
+  .followers-grid-line,
+  .spotify-trend-grid,
+  .spotify-trend-axis,
+  .hinata-chart line
+) {
+  stroke: var(--dashboard-grid-color) !important;
+  stroke-width: var(--dashboard-grid-width) !important;
+  stroke-dasharray: none !important;
+  vector-effect: non-scaling-stroke;
 }
 
-.shared-rank-axis-label {
-  fill: currentColor;
-  opacity: .62;
-  font-size: 12px;
+:is(
+  .shared-rank-axis-label,
+  .amazon-rank-axis-label,
+  .apple-rank-axis-label,
+  .followers-axis-label,
+  .spotify-trend-axis-label,
+  .hinata-chart text
+) {
+  fill: var(--dashboard-axis-color) !important;
+  color: var(--dashboard-axis-color) !important;
+  opacity: 1 !important;
+  font-family: inherit !important;
+  font-size: var(--dashboard-axis-font-size) !important;
   font-variant-numeric: tabular-nums;
+  font-weight: 500 !important;
 }
 
-.shared-svg-line {
+:is(
+  .shared-svg-line,
+  .amazon-rank-line,
+  .apple-rank-line,
+  .followers-line,
+  .spotify-trend-line,
+  .hinata-chart path[fill="none"]
+) {
   fill: none;
+  stroke-width: var(--dashboard-line-width) !important;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+}
+
+:is(
+  .amazon-rank-point,
+  .followers-endpoint,
+  .spotify-trend-point,
+  .hinata-chart circle
+) {
+  r: var(--dashboard-point-radius) !important;
+  stroke-width: var(--dashboard-point-stroke-width) !important;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Cross-tab text and legend sizes stay identical unless content requires a larger title. */
+.dashboard-view :is(
+  .subtle,
+  .notice,
+  .pill,
+  .chart-detail,
+  .chart-axis,
+  .chart-foot,
+  .host,
+  .delta,
+  .spotify-trend-latest,
+  .followers-legend-copy span
+) {
+  color: var(--muted, #667287);
+  font-size: var(--dashboard-copy-size) !important;
+  line-height: 1.4;
+}
+
+.dashboard-view :is(
+  .legend,
+  .chart-legend,
+  .spotify-trend-legend,
+  .followers-legend,
+  .apple-rank-legend
+) {
+  color: var(--muted, #667287);
+  font-size: var(--dashboard-label-size) !important;
+  line-height: 1.35;
+}
+
+.dashboard-view :is(
+  .spotify-trend-legend-item,
+  .followers-legend-item,
+  .apple-rank-legend-item
+) {
+  font-size: inherit !important;
+  line-height: inherit;
+}
+
+.dashboard-view :is(table, .shared-numeric-table) {
+  color: var(--text, #172033);
+}
+
+.dashboard-view :is(th, td) {
+  font-size: inherit;
+}
+
+.dashboard-view th {
+  color: var(--muted, #667287);
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  :root {
+    --dashboard-copy-size: 10px;
+    --dashboard-small-size: 9px;
+    --dashboard-label-size: 10px;
+    --dashboard-axis-font-size: 10px;
+    --dashboard-point-radius: 2.75px;
+  }
 }
