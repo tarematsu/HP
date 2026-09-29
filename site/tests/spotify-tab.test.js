@@ -207,14 +207,16 @@ test('Spotify tab uses only the materialized Spotify read model for its three gr
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 
-  assert.match(shell, /Spotify 全曲合計 再生数推移/);
-  assert.doesNotMatch(shell, /Spotify 上位10曲合計 再生数推移/);
-  assert.match(shell, /Spotify 上位10曲合計\(今年限定\) 再生数推移/);
-  assert.match(shell, /最新前日比 上位10アーティスト/);
-  assert.match(shell, /Spotify デイリートップアーティスト\(日本\) 順位推移/);
-  assert.match(shell, /櫻坂46楽曲数/);
-  assert.match(shell, /櫻坂46前日比合計/);
+  assert.match(shell, /Spotify 全曲合計 再生数前日比推移 \(上位10アイドル\)/);
+  assert.match(shell, /Spotify 上位10曲合計\(今年限定\) 再生数前日比推移 \(上位10アイドル\)/);
+  assert.doesNotMatch(shell, /最新前日比 上位10アーティスト/);
+  assert.match(shell, /Spotify Daily Top Artist \(日本\) 順位推移/);
+  assert.doesNotMatch(shell, /Spotify デイリートップアーティスト\(日本\) 順位推移/);
+  assert.match(shell, /集計日/);
+  assert.match(shell, /櫻坂46 楽曲数/);
+  assert.match(shell, /櫻坂46 再生数前日比合計/);
   assert.match(shell, /<th>前日比<\/th>/);
+  assert.match(shell, /最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移/);
   assert.doesNotMatch(shell, / - 再生数推移/);
   assert.match(shell, /id="spotifyTrendCharts"/);
   assert.doesNotMatch(shell, /id="spotifyTop10TrendCharts"/);

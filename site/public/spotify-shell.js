@@ -30,24 +30,24 @@ function mountView() {
     <p id="spotifyNotice" class="notice" role="status" hidden></p>
 
     <section class="summary-cards spotify-summary" aria-label="櫻坂46 Spotify再生数概要">
-      <article><span>確定日</span><strong id="spotifySnapshotDate" class="summary-date">-</strong></article>
-      <article><span>櫻坂46楽曲数</span><strong id="spotifyTrackCount">-</strong></article>
-      <article><span>櫻坂46前日比合計</span><strong id="spotifyTotalDelta">-</strong></article>
+      <article><span>集計日</span><strong id="spotifySnapshotDate" class="summary-date">-</strong></article>
+      <article><span>櫻坂46 楽曲数</span><strong id="spotifyTrackCount">-</strong></article>
+      <article><span>櫻坂46 再生数前日比合計</span><strong id="spotifyTotalDelta">-</strong></article>
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTrendTitle">
-      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">Spotify 全曲合計 再生数推移（最新前日比 上位10アーティスト）</h2></div></div>
-      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="最新の前日比全曲合計が大きい女性アイドル上位10アーティストの推移"></div>
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTrendTitle">Spotify 全曲合計 再生数前日比推移 (上位10アイドル)</h2></div></div>
+      <div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移"></div>
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyTop10YearTrendTitle">
-      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10YearTrendTitle">Spotify 上位10曲合計(今年限定) 再生数推移（最新前日比 上位10アーティスト）</h2></div></div>
-      <div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲の前日比上位10曲合計が最新日に大きい女性アイドル上位10アーティストの推移"></div>
+      <div class="section-head"><div><p class="kicker">FEMALE IDOLS</p><h2 id="spotifyTop10YearTrendTitle">Spotify 上位10曲合計(今年限定) 再生数前日比推移 (上位10アイドル)</h2></div></div>
+      <div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移"></div>
     </section>
 
     <section class="card spotify-trend-panel" aria-labelledby="spotifyArtistRankTrendTitle">
-      <div class="section-head"><div><p class="kicker">SPOTIFY CHARTS JAPAN</p><h2 id="spotifyArtistRankTrendTitle">Spotify デイリートップアーティスト(日本) 順位推移</h2></div></div>
-      <div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本デイリートップアーティストにおける収集対象アーティストの順位推移"></div>
+      <div class="section-head"><div><p class="kicker">SPOTIFY CHARTS JAPAN</p><h2 id="spotifyArtistRankTrendTitle">Spotify Daily Top Artist (日本) 順位推移</h2></div></div>
+      <div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本 Daily Top Artist における収集対象アーティストの順位推移"></div>
     </section>
 
     <section class="card data-panel spotify-data-panel">
@@ -127,6 +127,33 @@ function showSinglePointSeries(container) {
   }
 }
 
+function alignPlaycountAccessibilityLabels() {
+  const total = document.querySelector('#spotifyTrendCharts svg.spotify-trend-svg');
+  if (total) {
+    total.setAttribute('aria-label', '最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移');
+  }
+  const year = document.querySelector('#spotifyTop10YearTrendCharts svg.spotify-trend-svg');
+  if (year) {
+    year.setAttribute(
+      'aria-label',
+      '今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移',
+    );
+  }
+  document.querySelectorAll(
+    '#spotifyTrendCharts .spotify-trend-legend, #spotifyTop10YearTrendCharts .spotify-trend-legend',
+  ).forEach((legend) => legend.setAttribute('aria-label', 'アイドル凡例と最新の再生数前日比'));
+}
+
+function alignArtistRankTerminology() {
+  const container = document.getElementById('spotifyArtistRankTrendCharts');
+  const svg = container?.querySelector('svg.spotify-trend-svg');
+  if (svg) svg.setAttribute('aria-label', 'Spotify日本 Daily Top Artist の順位推移。1位が上。');
+  const empty = container?.querySelector('.spotify-trend-empty');
+  if (empty && empty.textContent.includes('デイリートップアーティスト')) {
+    empty.textContent = 'Spotify日本 Daily Top Artist の順位データはまだありません。';
+  }
+}
+
 function installGraphPostProcessing() {
   const view = document.getElementById('spotifyView');
   if (!view || view.dataset.spotifyGraphPostProcessing === '1') return;
@@ -136,6 +163,8 @@ function installGraphPostProcessing() {
       '#spotifyTrendCharts .spotify-trend-legend, #spotifyTop10YearTrendCharts .spotify-trend-legend',
     ).forEach(sortLegendByLatestValue);
     view.querySelectorAll('.spotify-trend-charts').forEach(showSinglePointSeries);
+    alignPlaycountAccessibilityLabels();
+    alignArtistRankTerminology();
   };
   const observer = new MutationObserver(processAll);
   observer.observe(view, { childList: true, subtree: true });
