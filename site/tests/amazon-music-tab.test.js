@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { onRequestGet as amazonMusicApi } from '../functions/api/amazon-music.js';
+
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/amazon-music.js', import.meta.url), 'utf8');
@@ -18,6 +20,36 @@ test('Amazon Music is a dashboard route backed only by the Worker materialized r
   assert.match(api, /_internal\/pages-response\?key=amazon-music/);
   assert.doesNotMatch(api, /OTHER_DB|MINUTE_DB|\.prepare\(/);
   assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
+});
+
+test('Amazon Music API treats an ungenerated read model as an empty successful dataset', async () => {
+  const response = await amazonMusicApi({
+    env: {
+      PAGES_READ_MODEL_SERVICE: {
+        fetch: async () => new Response(null, { status: 404 }),
+      },
+    },
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('cache-control') || '', /max-age=15/);
+  const payload = await response.json();
+  assert.equal(payload.ok, true);
+  assert.equal(payload.track_count, 0);
+  assert.equal(payload.follower, null);
+  assert.deepEqual(payload.tracks, []);
+  assert.deepEqual(payload.history, []);
+});
+
+test('Amazon Music API preserves real materialized-service failures', async () => {
+  const response = await amazonMusicApi({
+    env: {
+      PAGES_READ_MODEL_SERVICE: {
+        fetch: async () => new Response(null, { status: 500 }),
+      },
+    },
+  });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).ok, false);
 });
 
 test('Amazon Music view exposes follower summary, two rank graphs, and track rank table', () => {
