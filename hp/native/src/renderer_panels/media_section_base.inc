@@ -29,6 +29,57 @@ constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 
+struct NativeMediaXCyclePlan {
+  bool firstSlot = false;
+  bool secondSlot = false;
+};
+
+ULONGLONG NativeMediaXRandomWord() noexcept {
+  static ULONGLONG state = 0;
+  if (state == 0) {
+    state = std::max<ULONGLONG>(1, GetTickCount64()) ^ 0x9E3779B97F4A7C15ULL;
+  }
+  state ^= state << 13;
+  state ^= state >> 7;
+  state ^= state << 17;
+  return state;
+}
+
+UINT NativeMediaXRandomBelow(UINT exclusiveUpperBound) noexcept {
+  if (exclusiveUpperBound <= 1) return 0;
+  return static_cast<UINT>(NativeMediaXRandomWord() % exclusiveUpperBound);
+}
+
+NativeMediaXCyclePlan NativeMediaDrawXCyclePlan() noexcept {
+  NativeMediaXCyclePlan plan{};
+  const UINT count = NativeMediaXRandomBelow(3);  // 0, 1, 2 are equally likely.
+  if (count == 2) {
+    plan.firstSlot = true;
+    plan.secondSlot = true;
+  } else if (count == 1) {
+    if (NativeMediaXRandomBelow(2) == 0) {
+      plan.firstSlot = true;
+    } else {
+      plan.secondSlot = true;
+    }
+  }
+  return plan;
+}
+
+NativeMediaXCyclePlan& NativeMediaCurrentXCyclePlan() noexcept {
+  static NativeMediaXCyclePlan plan{};
+  return plan;
+}
+
+void NativeMediaDrawNextXCyclePlan() noexcept {
+  NativeMediaCurrentXCyclePlan() = NativeMediaDrawXCyclePlan();
+}
+
+bool NativeMediaXSlotEnabled(bool firstSlot) noexcept {
+  const auto& plan = NativeMediaCurrentXCyclePlan();
+  return firstSlot ? plan.firstSlot : plan.secondSlot;
+}
+
 ULONGLONG& NativeMediaStartupXDeadlineTick() noexcept {
   static ULONGLONG deadline = 0;
   return deadline;
@@ -72,7 +123,9 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
 }
 
 const wchar_t* NativeMediaYoutubeNavigationUrl() noexcept {
-  if (gNativeMediaPowerSaving) return kNativeMediaYoutubeContentUrl;
+  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true)) {
+    return kNativeMediaYoutubeContentUrl;
+  }
   const ULONGLONG deadline = NativeMediaStartupXDeadlineTick();
   const ULONGLONG now = std::max<ULONGLONG>(1, GetTickCount64());
   if (deadline > now) return kNativeMediaStartupXUrl;
