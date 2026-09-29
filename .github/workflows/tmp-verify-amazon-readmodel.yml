@@ -27,17 +27,22 @@ jobs:
       - name: Install Worker dependencies
         working-directory: worker
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Tail one Amazon Music scheduled execution
+      - name: Run Amazon Music scheduled collector once
         working-directory: worker
         shell: bash
         run: |
-          set +e
-          timeout 75s npx wrangler tail sh-amazon-music-collector --format json > ../amazon-tail.log 2>&1
-          status=$?
-          set -e
-          cat ../amazon-tail.log
-          if [[ "$status" -ne 0 && "$status" -ne 124 ]]; then exit "$status"; fi
-      - name: Verify read model after tail
+          set -euo pipefail
+          npx wrangler dev --config wrangler.amazon-music.jsonc --remote --test-scheduled --port 8787 > ../amazon-dev.log 2>&1 &
+          dev_pid=$!
+          trap 'kill "$dev_pid" 2>/dev/null || true; cat ../amazon-dev.log || true' EXIT
+          for i in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:8787/ >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          curl --fail --silent --show-error 'http://127.0.0.1:8787/__scheduled?cron=*+*+*+*+*' | cat
+          sleep 15
+          cat ../amazon-dev.log
+      - name: Verify read model
         shell: bash
         run: |
           set -euo pipefail
