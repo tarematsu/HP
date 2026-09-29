@@ -5,6 +5,7 @@ const MISSING_END = '2026-09-14';
 const HOST_COLORS = new Map([
   ['sakuramankai', '#000000'],
   ['sakurazaka46jp', '#d93f79'],
+  ['nogizaka46smej', '#812990'],
 ]);
 const integer = new Intl.NumberFormat('ja-JP');
 
