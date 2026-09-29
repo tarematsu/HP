@@ -120,18 +120,16 @@ UINT NativeMediaYoutubeContentIntervalMs() noexcept {
   if (NativeMediaXSlotEnabled(false)) {
     return startupPrefix + kNativeMediaYoutubeContentPhaseMs;
   }
-  // Keep the one-minute slot in the two-hour cycle but leave YouTube running.
-  // Place the X timer after the phase timer so ArmPhaseTimer on the next phase
-  // kills it before it can navigate to X.
-  const UINT phaseDuration = startupPrefix + kNativeMediaYoutubePhaseMs;
-  return phaseDuration + 1000U;
+  // No X navigation is scheduled for an unselected slot. Put the X timer just
+  // after the shorter phase boundary so the phase switches first.
+  return startupPrefix + kNativeMediaYoutubeContentPhaseMs + 1000U;
 }
 
 UINT NativeMediaTverContentIntervalMs() noexcept {
   NativeMediaObserveXCyclePhase(true);
   if (NativeMediaXSlotEnabled(true)) return kNativeMediaTverContentDurationMs;
-  // Same fixed-slot rule as YouTube: an unused first X slot simply extends TVer.
-  return kNativeMediaTverPhaseMs + 1000U;
+  // An unselected first X slot is skipped entirely instead of extending TVer.
+  return kNativeMediaTverContentDurationMs + 1000U;
 }
 
 UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
@@ -147,18 +145,22 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
   }
   if (tver) {
     NativeMediaStartupYoutubePhaseActive() = false;
-    return kNativeMediaTverPhaseMs;
+    return kNativeMediaTverContentDurationMs +
+        (NativeMediaXSlotEnabled(true) ? kNativeMediaXPhaseMs : 0U);
   }
 
   auto& deadline = NativeMediaStartupXDeadlineTick();
   if (deadline == 0) {
     const ULONGLONG now = std::max<ULONGLONG>(1, GetTickCount64());
-    deadline = now + kNativeMediaStartupXPhaseMs;
-    NativeMediaStartupYoutubePhaseActive() = true;
+    const bool startupXEnabled = NativeMediaXSlotEnabled(true);
+    deadline = startupXEnabled ? now + kNativeMediaStartupXPhaseMs : 1;
+    NativeMediaStartupYoutubePhaseActive() = startupXEnabled;
   }
-  return NativeMediaStartupYoutubePhaseActive()
-      ? kNativeMediaStartupXPhaseMs + kNativeMediaYoutubePhaseMs
-      : kNativeMediaYoutubePhaseMs;
+  const UINT startupPrefix = NativeMediaStartupYoutubePhaseActive()
+      ? kNativeMediaStartupXPhaseMs : 0U;
+  const UINT tailX = NativeMediaXSlotEnabled(false)
+      ? kNativeMediaXPhaseMs : 0U;
+  return startupPrefix + kNativeMediaYoutubeContentPhaseMs + tailX;
 }
 
 const wchar_t* NativeMediaYoutubeNavigationUrl() noexcept {

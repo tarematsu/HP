@@ -28,20 +28,28 @@ test('media cycle randomly selects zero, one or two X slots once per X-YouTube-X
   assert.match(mediaBase, /NativeMediaXSlotEnabled\(false\)/);
 });
 
-test('unused X slots keep the fixed cycle length by continuing the current media', () => {
-  assert.match(mediaBase, /return phaseDuration \+ 1000U/);
-  assert.match(mediaBase, /return kNativeMediaTverPhaseMs \+ 1000U/);
+test('unused X slots are skipped instead of displaying the current media for an extra minute', () => {
+  assert.match(mediaBase, /return startupPrefix \+ kNativeMediaYoutubeContentPhaseMs \+ 1000U/);
+  assert.match(mediaBase, /return kNativeMediaTverContentDurationMs \+ 1000U/);
+  assert.match(
+    mediaBase,
+    /kNativeMediaTverContentDurationMs \+[\s\S]*NativeMediaXSlotEnabled\(true\) \? kNativeMediaXPhaseMs : 0U/,
+  );
+  assert.match(mediaBase, /const UINT tailX = NativeMediaXSlotEnabled\(false\)/);
   assert.match(mediaBase, /#define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs\(\)/);
   assert.match(mediaBase, /#define kNativeMediaTverContentDurationMs NativeMediaTverContentIntervalMs\(\)/);
   assert.match(mediaBase, /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\)/);
+  assert.doesNotMatch(mediaBase, /return phaseDuration \+ 1000U/);
+  assert.doesNotMatch(mediaBase, /return kNativeMediaTverPhaseMs \+ 1000U/);
 });
 
-test('startup reserves the first X slot before a full YouTube hour when selected', () => {
+test('startup reserves the first X slot only when that slot is selected', () => {
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 1U \* 60U \* 1000U/);
   assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
   assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive/);
-  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs \+ kNativeMediaYoutubePhaseMs/);
-  assert.match(mediaBase, /startupPrefix \+ kNativeMediaYoutubeContentPhaseMs/);
+  assert.match(mediaBase, /const bool startupXEnabled = NativeMediaXSlotEnabled\(true\)/);
+  assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive\(\) = startupXEnabled/);
+  assert.match(mediaBase, /return startupPrefix \+ kNativeMediaYoutubeContentPhaseMs \+ tailX/);
   assert.match(xRuntime, /homepanel:startup-x-until:v2/);
   assert.match(xRuntime, /homepanel=startup/);
   assert.match(xRuntime, /Date\.now\(\) \+ 60 \* 1000/);
