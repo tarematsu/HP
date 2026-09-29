@@ -33,11 +33,12 @@ function fixture() {
   return db;
 }
 
-test('first-week read model is the current MINUTE_DB schema tip', () => {
+test('first-week read model remains installed before the current MINUTE_DB schema tip', () => {
   const path = 'database/facts-migrations/058_first_week_comparison_read_model.sql';
-  assert.equal(descriptor.schema, path);
-  assert.equal(descriptor.migrations.at(-1), path);
+  assert.equal(descriptor.schema, 'database/facts-migrations/059_current_daily_summary_5m.sql');
+  assert.equal(descriptor.migrations.at(-1), descriptor.schema);
   assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
+  assert.ok(descriptor.migrations.indexOf(path) < descriptor.migrations.indexOf(descriptor.schema));
 });
 
 test('migration compacts each release week into one ordered JSON row', () => {

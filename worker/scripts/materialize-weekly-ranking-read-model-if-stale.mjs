@@ -7,6 +7,7 @@ import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const RANKING_TYPE = '週間リーダーボード';
 const CHUNK_STORAGE = 'chunked-json-v1';
+const REVISION_KEY = 'weekly-ranking';
 
 function finiteInteger(value) {
   const number = Number(value);
@@ -32,6 +33,10 @@ function chunkPointer(payloadJson) {
 
 export function sourceRevision(source) {
   if (!validDate(source?.max_ranking_date)) return null;
+  if (source?.compact_revision != null) {
+    return `${source.max_ranking_date}:r${finiteInteger(source.compact_revision)}`;
+  }
+  // Compatibility for tests/older callers during rollout.
   return [
     source.max_ranking_date,
     finiteInteger(source.max_ranking_imported_at),
@@ -45,6 +50,9 @@ export function shouldRefreshWeeklyRankingReadModel(source, stored) {
   if (!stored) return true;
   if (String(stored.source_max_ranking_date || '') !== source.max_ranking_date) return true;
   if (stored.chunk_complete !== true) return true;
+  if (source?.compact_revision != null) {
+    return finiteInteger(stored.source_revision) !== finiteInteger(source.compact_revision);
+  }
   const sourceUpdatedAt = Math.max(
     finiteInteger(source.max_ranking_imported_at),
     finiteInteger(source.max_weekly_summary_updated_at),
@@ -54,30 +62,31 @@ export function shouldRefreshWeeklyRankingReadModel(source, stored) {
 }
 
 export async function loadWeeklyRankingSourceRevision(db) {
-  const [ranking, weekly, fandom] = await Promise.all([
-    db.prepare(`SELECT MAX(ranking_date) AS max_ranking_date,
-      COALESCE(MAX(imported_at),0) AS max_ranking_imported_at
-      FROM sh_channel_rankings
-      WHERE ranking_type=?`).bind(RANKING_TYPE).first(),
-    db.prepare(`SELECT COALESCE(MAX(updated_at),0) AS max_weekly_summary_updated_at
-      FROM sh_weekly_summary`).first(),
-    db.prepare(`SELECT COALESCE(MAX(verified_at),0) AS max_fandom_verified_at
-      FROM sh_channel_fandoms`).first(),
-  ]);
+  const row = await db.prepare(`SELECT
+      (SELECT MAX(ranking_date)
+       FROM sh_channel_rankings
+       WHERE ranking_type=?) AS max_ranking_date,
+      (SELECT revision
+       FROM sh_read_model_revision
+       WHERE model_key=?) AS compact_revision`).bind(RANKING_TYPE, REVISION_KEY).first();
   return {
-    max_ranking_date: String(ranking?.max_ranking_date || ''),
-    max_ranking_imported_at: finiteInteger(ranking?.max_ranking_imported_at),
-    max_weekly_summary_updated_at: finiteInteger(weekly?.max_weekly_summary_updated_at),
-    max_fandom_verified_at: finiteInteger(fandom?.max_fandom_verified_at),
+    max_ranking_date: String(row?.max_ranking_date || ''),
+    compact_revision: finiteInteger(row?.compact_revision),
   };
 }
 
 export async function loadWeeklyRankingReadModelState(db) {
   let stored;
   try {
-    stored = await db.prepare(`SELECT source_max_ranking_date,payload_json,refreshed_at
-      FROM sh_weekly_ranking_read_model
-      WHERE id=1`).first();
+    const [model, revisionState] = await Promise.all([
+      db.prepare(`SELECT source_max_ranking_date,payload_json,refreshed_at
+        FROM sh_weekly_ranking_read_model
+        WHERE id=1`).first(),
+      db.prepare(`SELECT source_revision,refreshed_at
+        FROM sh_weekly_ranking_revision_state
+        WHERE id=1`).first(),
+    ]);
+    stored = model ? { ...model, source_revision: finiteInteger(revisionState?.source_revision) } : null;
   } catch (error) {
     if (/no such table/i.test(String(error?.message || ''))) return null;
     throw error;
@@ -94,6 +103,7 @@ export async function loadWeeklyRankingReadModelState(db) {
   }
   return {
     source_max_ranking_date: String(stored.source_max_ranking_date || ''),
+    source_revision: finiteInteger(stored.source_revision),
     refreshed_at: finiteInteger(stored.refreshed_at),
     chunk_complete: chunkComplete,
   };
@@ -107,11 +117,22 @@ async function invalidateSameSourceRevision(db, source, stored) {
   return true;
 }
 
+async function saveConsumedRevision(db, source, now) {
+  if (source?.compact_revision == null) return;
+  await db.prepare(`INSERT INTO sh_weekly_ranking_revision_state(id,source_revision,refreshed_at)
+    VALUES(1,?,?)
+    ON CONFLICT(id) DO UPDATE SET
+      source_revision=excluded.source_revision,
+      refreshed_at=excluded.refreshed_at`)
+    .bind(finiteInteger(source.compact_revision), finiteInteger(now)).run();
+}
+
 export async function refreshWeeklyRankingReadModelIfStale(db, now = Date.now(), dependencies = {}) {
   const loadSource = dependencies.loadSourceRevision || loadWeeklyRankingSourceRevision;
   const loadStored = dependencies.loadReadModelState || loadWeeklyRankingReadModelState;
   const materialize = dependencies.materialize || materializeWeeklyRankingReadModel;
   const invalidate = dependencies.invalidate || invalidateSameSourceRevision;
+  const saveRevision = dependencies.saveConsumedRevision || saveConsumedRevision;
 
   const source = await loadSource(db);
   const revision = sourceRevision(source);
@@ -129,12 +150,9 @@ export async function refreshWeeklyRankingReadModelIfStale(db, now = Date.now(),
     };
   }
 
-  // The underlying materializer historically used source_max_ranking_date as its
-  // first freshness check. Invalidate that marker when the same week changed so
-  // corrections, weekly-summary changes, fandom changes, and broken chunks force
-  // a full rebuild instead of being mistaken for an unchanged model.
   await invalidate(db, source, stored);
   const result = await materialize(db, now);
+  await saveRevision(db, source, now);
   return {
     ...result,
     source_revision: revision,

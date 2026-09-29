@@ -52,7 +52,7 @@ test('Pages leaderboard reads only the weekly materialized model', () => {
   assert.doesNotMatch(source, /FROM sh_channel_rankings|FROM sh_channel_fandoms|summaryLoader\s*\(/);
 });
 
-test('weekly leaderboard read model refresh is chained to the hourly import instead of an independent cron', () => {
+test('weekly leaderboard read model refresh is chained to import and uses a compact source revision', () => {
   const workflow = readFileSync(
     new URL('../.github/workflows/materialize-weekly-ranking-read-model.yml', import.meta.url),
     'utf8',
@@ -65,39 +65,31 @@ test('weekly leaderboard read model refresh is chained to the hourly import inst
   assert.match(workflow, /workflow_run:/);
   assert.match(workflow, /Stationhead leaderboard probe report/);
   assert.match(workflow, /materialize-weekly-ranking-read-model-if-stale\.mjs/);
-  assert.match(gate, /MAX\(imported_at\)/);
-  assert.match(gate, /MAX\(updated_at\)/);
-  assert.match(gate, /MAX\(verified_at\)/);
+  assert.match(gate, /sh_read_model_revision/);
+  assert.match(gate, /sh_weekly_ranking_revision_state/);
+  assert.doesNotMatch(gate, /MAX\(imported_at\)|MAX\(verified_at\)/);
   assert.match(gate, /materializeWeeklyRankingReadModel/);
 });
 
-test('weekly leaderboard freshness gate skips current sources and rebuilds same-week revisions', () => {
+test('weekly leaderboard freshness gate skips current compact revision and rebuilds same-week changes', () => {
   const source = {
     max_ranking_date: '2026-09-21',
-    max_ranking_imported_at: 200,
-    max_weekly_summary_updated_at: 180,
-    max_fandom_verified_at: 150,
+    compact_revision: 10,
   };
-  assert.equal(sourceRevision(source), '2026-09-21:200:180:150');
+  assert.equal(sourceRevision(source), '2026-09-21:r10');
   assert.equal(shouldRefreshWeeklyRankingReadModel(source, {
     source_max_ranking_date: '2026-09-21',
+    source_revision: 10,
     refreshed_at: 200,
     chunk_complete: true,
   }), false);
   assert.equal(shouldRefreshWeeklyRankingReadModel({
     ...source,
-    max_ranking_imported_at: 201,
+    compact_revision: 11,
   }, {
     source_max_ranking_date: '2026-09-21',
-    refreshed_at: 200,
-    chunk_complete: true,
-  }), true);
-  assert.equal(shouldRefreshWeeklyRankingReadModel({
-    ...source,
-    max_weekly_summary_updated_at: 205,
-  }, {
-    source_max_ranking_date: '2026-09-21',
-    refreshed_at: 200,
+    source_revision: 10,
+    refreshed_at: 999,
     chunk_complete: true,
   }), true);
   assert.equal(shouldRefreshWeeklyRankingReadModel({
@@ -105,11 +97,13 @@ test('weekly leaderboard freshness gate skips current sources and rebuilds same-
     max_ranking_date: '2026-09-28',
   }, {
     source_max_ranking_date: '2026-09-21',
+    source_revision: 10,
     refreshed_at: 999,
     chunk_complete: true,
   }), true);
   assert.equal(shouldRefreshWeeklyRankingReadModel(source, {
     source_max_ranking_date: '2026-09-21',
+    source_revision: 10,
     refreshed_at: 999,
     chunk_complete: false,
   }), true);

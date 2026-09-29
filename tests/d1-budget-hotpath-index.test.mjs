@@ -98,6 +98,10 @@ const canonicalRollupMigration = readFileSync(
   new URL('../database/facts-migrations/051_canonical_rollup_minute_range.sql', import.meta.url),
   'utf8',
 );
+const currentDailyFiveMinuteMigration = readFileSync(
+  new URL('../database/facts-migrations/059_current_daily_summary_5m.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -143,6 +147,7 @@ const expectedMigrations = [
   'database/facts-migrations/056_stream_minute_delta_read_model.sql',
   'database/facts-migrations/057_stream_5m_average_read_model.sql',
   'database/facts-migrations/058_first_week_comparison_read_model.sql',
+  'database/facts-migrations/059_current_daily_summary_5m.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -255,6 +260,13 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.match(canonicalRollupMigration, /f\.minute_at AS observed_at/);
   assert.match(canonicalRollupMigration, /INDEXED BY idx_sh_minute_facts_time/);
   assert.doesNotMatch(canonicalRollupMigration, /CREATE INDEX|ANALYZE|PRAGMA optimize/);
+  assert.match(currentDailyFiveMinuteMigration, /NEW\.minute_at%300000=0/);
+  assert.match(currentDailyFiveMinuteMigration, /NEW\.minute_at-300000/);
+  assert.match(currentDailyFiveMinuteMigration, /trg_sh_current_daily_summary_late_insert/);
+  assert.doesNotMatch(
+    currentDailyFiveMinuteMigration,
+    /CREATE TRIGGER trg_sh_current_daily_summary_insert\b/,
+  );
 });
 
 test('production keeps realtime derive bounded while Actions owns ordinary reconstruction', () => {
