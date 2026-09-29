@@ -79,7 +79,7 @@ test('collector, recovery, and runtime have one exclusive owner per active Queue
   ]) {
     assert.equal(runtimeConsumers.has(retired), false, retired);
   }
-  assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB']);
+  assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB', 'OTHER_DB']);
   assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(runtime.d1_databases.map(({ binding }) => binding), [
     'BUDDIES_DB',
