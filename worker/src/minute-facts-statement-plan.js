@@ -6,6 +6,8 @@ import {
 } from './minute-facts-write-guards.js';
 
 const DASHBOARD_BUCKET_MS = 5 * 60_000;
+const TOTAL_MEMBER_HOT_CACHE_MAX = 128;
+const totalMemberHotCache = new Map();
 
 function contextPresent(fact) {
   return fact.queue_revision_id != null
@@ -14,9 +16,46 @@ function contextPresent(fact) {
     || fact.broadcast_session_id == null;
 }
 
+function fiveMinuteBoundary(minuteAt) {
+  return Number.isFinite(minuteAt) && minuteAt % DASHBOARD_BUCKET_MS === 0;
+}
+
 function completedDashboardBucket(minuteAt) {
   if (!Number.isFinite(minuteAt)) return null;
   return Math.floor(minuteAt / DASHBOARD_BUCKET_MS) * DASHBOARD_BUCKET_MS - DASHBOARD_BUCKET_MS;
+}
+
+function totalMemberDailyDue(fact) {
+  const count = Number(fact?.total_member_count);
+  if (!Number.isFinite(count) || count < 0) return false;
+  if (Number(fact?.source_code) !== 1) return true;
+
+  const minuteAt = Number(fact?.minute_at);
+  const observedAt = Number(fact?.observed_at);
+  const channelId = Number(fact?.channel_id);
+  if (!Number.isFinite(minuteAt) || !Number.isFinite(observedAt) || !Number.isFinite(channelId)) {
+    return true;
+  }
+
+  const dayAt = Math.floor(observedAt / 86_400_000) * 86_400_000;
+  const hostId = Number.isFinite(Number(fact?.host_id)) && Number(fact.host_id) > 0
+    ? Number(fact.host_id)
+    : 0;
+  const key = `${channelId}:${dayAt}:${hostId}`;
+  const cachedMember = totalMemberHotCache.get(key);
+  const changed = !cachedMember || cachedMember.count !== count;
+  totalMemberHotCache.set(key, { count, minuteAt });
+
+  if (totalMemberHotCache.size > TOTAL_MEMBER_HOT_CACHE_MAX) {
+    const oldest = totalMemberHotCache.keys().next().value;
+    if (oldest !== undefined) totalMemberHotCache.delete(oldest);
+  }
+  const lateRepair = observedAt - minuteAt >= DASHBOARD_BUCKET_MS;
+  return changed || fiveMinuteBoundary(minuteAt) || lateRepair;
+}
+
+export function resetMinuteFactStatementPlanCacheForTests() {
+  totalMemberHotCache.clear();
 }
 
 export function dashboardHistoryRollupStatement(db, fact) {
@@ -71,12 +110,17 @@ export function dashboardHistoryRollupStatement(db, fact) {
 }
 
 export function minuteFactStatements(db, fact) {
-  return [
-    guardedMinuteFactStatement(db, fact),
-    dashboardHistoryRollupStatement(db, fact),
-    totalMemberDailyChangeStatement(db, fact),
+  const statements = [guardedMinuteFactStatement(db, fact)];
+  if (Number(fact?.source_code) === 1 && fiveMinuteBoundary(Number(fact?.minute_at))) {
+    statements.push(dashboardHistoryRollupStatement(db, fact));
+  }
+  if (totalMemberDailyDue(fact)) {
+    statements.push(totalMemberDailyChangeStatement(db, fact));
+  }
+  statements.push(
     contextPresent(fact)
       ? guardedMinuteFactContextUpsertStatement(db, fact)
       : minuteFactContextDeleteStatement(db, fact),
-  ];
+  );
+  return statements;
 }

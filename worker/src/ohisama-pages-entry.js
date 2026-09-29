@@ -1,12 +1,12 @@
-import { runOhisamaCollectorScheduled } from './ohisama-collector-entry.js';
-import { refreshOhisamaReadModel } from './ohisama-read-model.js';
+import { runOptimizedOhisamaCollectorScheduled } from './ohisama-collector-optimized.js';
+import { refreshOptimizedOhisamaReadModel } from './ohisama-read-model-optimized.js';
 
 export async function runOhisamaPagesScheduled(controller, env, ctx, dependencies = {}) {
-  const result = await runOhisamaCollectorScheduled(controller, env, ctx, dependencies);
+  const result = await runOptimizedOhisamaCollectorScheduled(controller, env, ctx, dependencies);
   if (!result?.collected) return result;
 
   try {
-    const readModel = await refreshOhisamaReadModel(env, result, result.observed_at);
+    const readModel = await refreshOptimizedOhisamaReadModel(env, result, result.observed_at);
     console.log(JSON.stringify({
       event: 'ohisama_pages_read_model_published',
       ...readModel,
