@@ -6,7 +6,7 @@ import {
 (() => {
   'use strict';
 
-  const CACHE_PREFIX = 'sh.track-like-ranking.v3:';
+  const CACHE_PREFIX = 'sh.track-like-ranking.v4:';
   const CACHE_MS = 5 * 60_000;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateTime = new Intl.DateTimeFormat('ja-JP', {
@@ -28,6 +28,12 @@ import {
     return Number.isFinite(parsed) ? parsed : null;
   };
   const fmt = (value) => finite(value) == null ? '—' : number.format(Number(value));
+  const fmtSigned = (value) => {
+    const parsed = finite(value);
+    if (parsed == null) return '—';
+    if (parsed > 0) return `+${number.format(parsed)}`;
+    return number.format(parsed);
+  };
   const trackName = (row) => displayTrackTitle(row);
   const artistName = (row) => displayTrackArtist(row);
 
@@ -66,7 +72,8 @@ import {
 
   function renderSummary() {
     el('likesTrackCount').textContent = fmt(state.summary.track_count || 0);
-    el('likesMaxLikes').textContent = fmt(state.summary.max_like_count || 0);
+    el('likesTotalLikes').textContent = fmt(state.summary.total_like_count);
+    el('likesTotalDelta').textContent = fmtSigned(state.summary.total_like_count_previous_day_delta);
     el('likesLatestAt').textContent = state.summary.latest_observed_at
       ? shortDate.format(new Date(Number(state.summary.latest_observed_at)))
       : '—';
