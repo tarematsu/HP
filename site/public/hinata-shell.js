@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-hinata-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/hinata.css?v=20260930.1';
+  link.href = '/hinata.css?v=20260930.2';
   link.dataset.hinataTabStyles = '1';
   document.head.append(link);
 }
@@ -14,8 +14,10 @@ function mountTab() {
   button.type = 'button';
   button.dataset.view = 'hinata';
   button.textContent = '日向坂';
-  const daily = tabs.querySelector('[data-mode="daily"]');
-  if (daily) daily.insertAdjacentElement('afterend', button);
+  const amazonMusic = tabs.querySelector('[data-view="amazon-music"]');
+  const spotify = tabs.querySelector('[data-view="spotify"]');
+  const anchor = amazonMusic || spotify;
+  if (anchor) anchor.insertAdjacentElement('afterend', button);
   else tabs.append(button);
 }
 
@@ -30,23 +32,23 @@ function mountView() {
   section.innerHTML = `
     <p id="hinataNotice" class="notice" role="status" hidden></p>
 
-    <section class="hinata-metrics" aria-label="日向坂 Stationhead 最新値">
-      <div class="card hinata-metric"><span>オンライン</span><strong id="hinataOnline">—</strong></div>
-      <div class="card hinata-metric"><span>総再生数</span><strong id="hinataStreams">—</strong></div>
-      <div class="card hinata-metric"><span>総メンバー数</span><strong id="hinataMembers">—</strong></div>
+    <section class="metrics hinata-metrics" aria-label="日向坂 Stationhead 最新値">
+      <article class="metric hinata-metric"><span>オンライン</span><div class="metric-value"><strong id="hinataOnline">—</strong></div></article>
+      <article class="metric hinata-metric"><span>総再生数</span><div class="metric-value"><strong id="hinataStreams">—</strong></div></article>
+      <article class="metric hinata-metric"><span>総メンバー数</span><div class="metric-value"><strong id="hinataMembers">—</strong></div></article>
     </section>
 
-    <section class="card hinata-chart-panel" aria-labelledby="hinataChartTitle">
-      <div class="section-head hinata-section-head">
+    <section class="card chart-card hinata-chart-panel" aria-labelledby="hinataChartTitle">
+      <div class="section-head chart-head hinata-section-head">
         <div><p class="kicker">OHISAMA / 24H</p><h2 id="hinataChartTitle">オンライン・再生数</h2></div>
         <span id="hinataUpdated" class="pill">—</span>
       </div>
-      <div class="hinata-legend" aria-label="グラフ凡例">
+      <div class="legend hinata-legend" aria-label="グラフ凡例">
         <span><i class="hinata-line-key"></i>オンライン</span>
         <span><i class="hinata-bar-key"></i>5分平均の再生増加</span>
       </div>
-      <div id="hinataChart" class="hinata-chart" role="img" aria-label="過去24時間のオンライン数と5分平均の再生増加"></div>
-      <p id="hinataChartDetail" class="subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
+      <div id="hinataChart" class="hinata-chart chart-fit" role="img" aria-label="過去24時間のオンライン数と5分平均の再生増加"></div>
+      <p id="hinataChartDetail" class="chart-detail subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
     </section>
 
     <section class="card data-panel hinata-daily-panel" aria-labelledby="hinataDailyTitle">
