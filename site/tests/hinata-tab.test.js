@@ -68,3 +68,22 @@ test('Hinata UI includes the 24-hour online and playback graph plus daily metric
   assert.match(runtime, /stream_growth/);
   assert.match(runtime, /member_growth/);
 });
+
+test('Hinata adds a daily listener and stream graph below the 24-hour graph', () => {
+  const liveChartIndex = shell.indexOf('id="hinataChart"');
+  const dailyChartIndex = shell.indexOf('id="hinataDailyChart"');
+  const dailyTableIndex = shell.indexOf('class="card data-panel hinata-daily-panel"');
+  assert.ok(liveChartIndex >= 0);
+  assert.ok(dailyChartIndex > liveChartIndex);
+  assert.ok(dailyTableIndex > dailyChartIndex);
+  assert.match(shell, /id="hinataDailyChartTitle">同接・再生数の推移</);
+  assert.match(shell, /aria-label="日次の平均・最大・最小同接と再生数増加"/);
+  assert.match(runtime, /function renderDailyChart\(value\)/);
+  assert.match(runtime, /listener_avg/);
+  assert.match(runtime, /listener_max/);
+  assert.match(runtime, /listener_min/);
+  assert.match(runtime, /stream_growth/);
+  assert.match(runtime, /appendDailyLegend\('再生数', streamColor, true\)/);
+  assert.match(runtime, /row\.timestamp - previousTime <= DAY_MS \* 1\.5/);
+  assert.match(runtime, /renderDailyChart\(value\)/);
+});
