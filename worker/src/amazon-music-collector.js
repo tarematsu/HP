@@ -254,7 +254,10 @@ export function buildAmazonMusicReadModel(snapshot, previousModel = null) {
   const previousDay = boundedHistory.find((item) => item.snapshot_date === previousDate) || null;
   const followerCount = snapshot.follower?.count ?? null;
   const previousFollower = previousDay?.follower_count ?? null;
-  const followerDelta = Number.isSafeInteger(Number(followerCount)) && Number.isSafeInteger(Number(previousFollower))
+  const followerDelta = followerCount !== null
+      && previousFollower !== null
+      && Number.isSafeInteger(Number(followerCount))
+      && Number.isSafeInteger(Number(previousFollower))
     ? Number(followerCount) - Number(previousFollower)
     : null;
   const popularRank = new Map((snapshot.popular_tracks || [])
