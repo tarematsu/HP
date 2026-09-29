@@ -9,9 +9,9 @@ CREATE TABLE IF NOT EXISTS sh_stream_5m_average_read_model (
   PRIMARY KEY(channel_id, bucket_at)
 ) WITHOUT ROWID;
 
--- Carry the existing bounded one-minute materialization forward before retiring
--- it. Five-minute boundaries are identical in UTC and JST because the offset is
--- an exact multiple of five minutes.
+-- Rebuild the bounded recent window directly from canonical minute facts. This
+-- also makes this changed migration safe to re-apply after the retired one-minute
+-- intermediate table has already been dropped in production.
 WITH latest_channel AS (
   SELECT channel_id
   FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
@@ -23,15 +23,22 @@ INSERT INTO sh_stream_5m_average_read_model(
   channel_id,bucket_at,stream_delta_avg,sample_count
 )
 SELECT
-  d.channel_id,
-  (d.minute_at/300000)*300000 AS bucket_at,
-  AVG(d.stream_delta) AS stream_delta_avg,
+  f.channel_id,
+  (f.minute_at/300000)*300000 AS bucket_at,
+  AVG(f.reported_current_stream_count-p.reported_current_stream_count) AS stream_delta_avg,
   COUNT(*) AS sample_count
-FROM sh_stream_minute_delta_read_model AS d
-WHERE d.channel_id=(SELECT channel_id FROM latest_channel)
-  AND d.minute_at>=unixepoch('now','-26 hours')*1000
-  AND d.stream_delta IS NOT NULL
-GROUP BY d.channel_id,(d.minute_at/300000)*300000
+FROM sh_minute_facts AS f
+JOIN sh_minute_facts AS p
+  ON p.channel_id=f.channel_id
+ AND p.minute_at=f.minute_at-60000
+ AND p.source_code=1
+WHERE f.source_code=1
+  AND f.channel_id=(SELECT channel_id FROM latest_channel)
+  AND f.minute_at>=unixepoch('now','-26 hours')*1000
+  AND f.reported_current_stream_count IS NOT NULL
+  AND p.reported_current_stream_count IS NOT NULL
+  AND f.reported_current_stream_count>=p.reported_current_stream_count
+GROUP BY f.channel_id,(f.minute_at/300000)*300000
 HAVING COUNT(*)>=1
 ON CONFLICT(channel_id,bucket_at) DO UPDATE SET
   stream_delta_avg=excluded.stream_delta_avg,
