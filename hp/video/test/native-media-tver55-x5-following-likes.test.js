@@ -69,27 +69,21 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.doesNotMatch(waiting, /scrollTo\(|scrollBy\(/);
 });
 
-test('X likes use hit-tested trusted clicks and retry until the unlike state is confirmed', () => {
+test('X likes use the same DOM click style as the Following tab and retry until confirmed', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
-  assert.match(xRuntime, /Promoted\|Sponsored\|広告\|プロモーション\|スポンサー\|Boosted\|ブースト\|PR/);
-  assert.match(xRuntime, /data-testid="socialContext"/);
-  assert.match(xRuntime, /reposted\|repost\|retweeted\|retweet\|リポスト\|リツイート/);
-  assert.match(xRuntime, /isOrganic = article => !isPromoted\(article\) && !isRepost\(article\)/);
-  assert.match(xRuntime, /const maxScrollStepPx = 28/);
-  assert.match(xRuntime, /state\.result = 'approaching-like'/);
-  assert.match(xRuntime, /state\.result = 'paused-on-like'/);
-  assert.match(xRuntime, /window\.scrollBy\(\{ top: Math\.sign\(distance\) \* step, behavior: 'smooth' \}\)/);
+  assert.match(xRuntime, /tab\.click\(\)/);
+  assert.match(xRuntime, /const clickLikeButton = button =>/);
+  assert.match(xRuntime, /button\.click\(\)/);
   assert.match(xRuntime, /const likeIntervalMs = 10 \* 1000/);
   assert.match(xRuntime, /const likeRetryIntervalMs = 1800/);
   assert.match(xRuntime, /const maxLikeAttemptsPerPost = 3/);
-  assert.match(xRuntime, /document\.elementFromPoint\(x, y\)/);
-  assert.match(xRuntime, /hit\.closest\?\.\('\[data-testid="like"\]'\) === button/);
-  assert.match(xRuntime, /bridge\.postMessage\(`homepanel:x-like:\$\{id\}:\$\{point\.x\}:\$\{point\.y\}`\)/);
   assert.match(xRuntime, /querySelector\('\[data-testid="unlike"\]'\)/);
+  assert.match(xRuntime, /state\.result = 'like-clicked'/);
+  assert.match(xRuntime, /state\.result = 'like-confirmed'/);
   assert.match(xRuntime, /state\.result = 'like-unconfirmed'/);
   assert.match(xRuntime, /failedAttempts\.set\(candidate\.id, failures\)/);
   assert.match(xRuntime, /failures >= maxLikeAttemptsPerPost/);
-  assert.doesNotMatch(xRuntime, /button\.click\(\)/);
+  assert.doesNotMatch(xRuntime, /homepanel:x-like:/);
 });
 
 test('X timeline CSS only hides classified repost/promotion rows and placement ads', () => {
