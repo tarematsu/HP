@@ -8,6 +8,7 @@ const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url
 const shell = readFileSync(new URL('../public/apple-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/apple-music.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
+const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/apple-music.js', import.meta.url), 'utf8');
 
 test('Apple Music is a dashboard route backed only by the Worker materialized read model', () => {
@@ -15,6 +16,8 @@ test('Apple Music is a dashboard route backed only by the Worker materialized re
   assert.match(tabs, /import\('\/apple-music-shell\.js\?v=20260930\.1'\)/);
   assert.match(tabs, /import\('\/apple-music\.js\?v=20260930\.1'\)/);
   assert.match(tabs, /showAppleMusic/);
+  assert.match(shell, /mountDashboardShell/);
+  assert.match(shell, /shared-svg-chart/);
   assert.match(runtime, /fetch\('\/api\/apple-music'/);
   assert.match(api, /PAGES_READ_MODEL_SERVICE/);
   assert.match(api, /_internal\/pages-response\?key=apple-music/);
@@ -77,7 +80,8 @@ test('Apple Music Japan rank chart keeps first place at the top and exposes a cu
   assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
   assert.match(runtime, /日本のApple Music櫻坂46人気曲順位推移。1位が上。/);
   assert.match(runtime, /renderJapanLegend/);
-  assert.match(css, /\.apple-rank-svg[\s\S]*width:\s*100%/);
+  assert.match(shell, /apple-rank-chart chart-fit shared-svg-chart/);
+  assert.match(sharedCss, /\.shared-svg-chart svg[\s\S]*width:\s*100%/);
   assert.match(css, /\.apple-rank-legend[\s\S]*grid-template-columns/);
   assert.match(css, /\.apple-region-table[\s\S]*min-width:\s*820px/);
   assert.match(css, /\.apple-region-table-wrap[\s\S]*overflow-x:\s*auto/);
