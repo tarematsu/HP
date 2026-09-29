@@ -52,7 +52,6 @@ function validateDeliveryTask(body) {
       observedAt,
       snapshot: minuteFact.payload.snapshot,
       queue: minuteFact.payload.queue ?? null,
-      comments: minuteFact.payload.comments || {},
       auth: objectValue(body.auth) || {
         authToken: collectorState.authToken,
         deviceUid: collectorState.deviceUid,
@@ -65,18 +64,6 @@ function validateDeliveryTask(body) {
         readModelPresentationOnly: true,
       },
     },
-  };
-}
-
-function commentsTask(fact, body) {
-  body.read_model = null;
-  return {
-    message_type: 'stationhead-comments-task',
-    message_version: 2,
-    auth: fact.auth || {},
-    observed_at: integer(fact.observedAt) ?? Date.now(),
-    station_id: integer(fact.snapshot?.station_id),
-    minute_fact: body,
   };
 }
 
@@ -104,28 +91,23 @@ function readModelEnvelope(fact, body) {
     observed_at: observedAt,
     job_id: `read-model:${channelId}:${observedAt}`,
     read_model: compact,
-    comment_task: {
-      observed_at: observedAt,
-      station_id: integer(fact.snapshot?.station_id),
-      auth: fact.auth || {},
-    },
   };
 }
 
 function activeFactEnv(env, fact, capture) {
   const active = Object.create(env || null);
-  const commentsQueue = env?.COMMENTS_QUEUE;
+  const destinationQueue = env?.MINUTE_FACT_QUEUE;
   Object.defineProperty(active, 'MINUTE_FACT_QUEUE', {
     enumerable: false,
-    value: commentsQueue?.send ? {
+    value: destinationQueue?.send ? {
       send(body, options) {
         const sourceBody = minuteFactQueueSourceMessage(body);
         if (sourceBody && typeof sourceBody === 'object') {
           capture.envelope = readModelEnvelope(fact, sourceBody);
         }
-        return commentsQueue.send(commentsTask(fact, sourceBody), options);
+        return destinationQueue.send(body, options);
       },
-    } : commentsQueue,
+    } : destinationQueue,
   });
   return active;
 }
@@ -225,7 +207,6 @@ export async function processIngestFactTask(env, body, dependencies = {}) {
       observedAt: fact.observedAt,
       snapshot: fact.snapshot,
       queue: fact.queue ?? null,
-      comments: fact.comments || {},
     }, fact.options);
     await enqueueDelivery(env, fact, staged.message, dependencies);
     return {
@@ -246,7 +227,6 @@ export async function processIngestFactTask(env, body, dependencies = {}) {
     observedAt: fact.observedAt,
     snapshot: fact.snapshot,
     queue: fact.queue ?? null,
-    comments: fact.comments || {},
   }, fact.options);
   const minuteAt = integer(minuteFactJob?.minute_at);
   const envelope = capture.envelope || await recoverReadModelEnvelope(env, fact, minuteAt);
