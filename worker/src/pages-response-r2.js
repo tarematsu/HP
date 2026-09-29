@@ -2,6 +2,7 @@ const R2_RESPONSE_KEY_PREFIX = 'pages-response/v1/';
 const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const TRACK_HISTORY_STATUS_MODEL_KEY = 'track-history-status';
+const FOLLOWERS_MODEL_KEY = 'followers';
 
 function normalizedModelKey(value) {
   const key = String(value || '').trim();
@@ -167,16 +168,13 @@ export async function loadMaterializedR2Response(
   now = Date.now(),
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
 ) {
-  // Actions owns every current materialized API variant. A miss or stale object
-  // must therefore stop after the canonical actions-v2 lookup; probing retired
-  // Actions/Worker keys multiplies R2 work on the strict 10 ms HTTP path.
-  // Track history is Worker-owned. Its compact ranking is published by Actions;
-  // keep the Worker key as a fallback for previously generated status objects.
+  // Actions owns the general materialized API variants. Track history and the
+  // daily follower comparison are Worker-owned and use the direct Worker key.
   if (modelKey === TRACK_HISTORY_STATUS_MODEL_KEY) {
     return (await loadActionsEnvelope(r2, modelKey, now, maximumAgeMs))
       || loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
   }
-  if (modelKey === TRACK_HISTORY_MODEL_KEY) {
+  if (modelKey === TRACK_HISTORY_MODEL_KEY || modelKey === FOLLOWERS_MODEL_KEY) {
     return loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
   }
   return loadActionsEnvelope(r2, modelKey, now, maximumAgeMs);
