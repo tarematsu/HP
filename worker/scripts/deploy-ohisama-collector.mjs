@@ -11,7 +11,9 @@ const CONFIG_NAME = 'wrangler.ohisama-collector.jsonc';
 const GENERATED_CONFIG_NAME = '.wrangler.ohisama-collector.generated.jsonc';
 const SCHEMA_PATH = 'scripts/ohisama-schema.sql';
 const LEGACY_DAILY_MIGRATION_ID = 'ohisama-legacy-daily-2024-2025-v1';
+const LEGACY_DAILY_SQL_NAME = '.ohisama-legacy-daily-import.sql';
 const generatedConfigUrl = new URL(`../${GENERATED_CONFIG_NAME}`, import.meta.url);
+const legacyDailySqlUrl = new URL(`../${LEGACY_DAILY_SQL_NAME}`, import.meta.url);
 
 function parseJsonOutput(value) {
   const source = String(value || '').trim();
@@ -73,11 +75,16 @@ function applyLegacyDailyImport() {
   if (resultRows(existing).length) return false;
 
   const sql = gunzipSync(Buffer.from(OHISAMA_LEGACY_DAILY_SQL_GZIP_BASE64, 'base64')).toString('utf8');
-  runWrangler([
-    'd1', 'execute', DATABASE_NAME,
-    '--remote', '--yes',
-    '--command', sql,
-  ]);
+  writeFileSync(legacyDailySqlUrl, sql);
+  try {
+    runWrangler([
+      'd1', 'execute', DATABASE_NAME,
+      '--remote', '--yes',
+      '--file', LEGACY_DAILY_SQL_NAME,
+    ]);
+  } finally {
+    try { unlinkSync(legacyDailySqlUrl); } catch {}
+  }
 
   runWrangler([
     'd1', 'execute', DATABASE_NAME,
