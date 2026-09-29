@@ -11,21 +11,26 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
     steps:
-      - name: Wait for collector cron
-        run: sleep 75
-      - name: Fetch first realtime sample
+      - name: Fetch realtime status
         run: |
           curl --fail --silent --show-error --max-time 15 \
-            https://skrzk.pages.dev/api/nogizaka46smej-status | tee /tmp/first.json
+            https://skrzk.pages.dev/api/nogizaka46smej-status | tee /tmp/status.json
           echo
-          node -e "const p=require('/tmp/first.json'); console.log(JSON.stringify({ok:p.ok,active:p.collection_active,event:p.event,latest:p.latest,samples:p.samples?.slice(0,3)},null,2))"
-      - name: Wait for next collector minute
-        run: sleep 65
-      - name: Fetch second realtime sample
+      - name: Inspect test announcement
         run: |
-          curl --fail --silent --show-error --max-time 15 \
-            https://skrzk.pages.dev/api/nogizaka46smej-status | tee /tmp/second.json
-          echo
-          node -e "const p=require('/tmp/second.json'); console.log(JSON.stringify({ok:p.ok,active:p.collection_active,event:p.event,latest:p.latest,samples:p.samples?.slice(0,3)},null,2))"
+          npx --yes wrangler@4.104.0 d1 execute stationhead-other --remote --command \
+            "SELECT id,news_id,status,scheduled_at,matched_station_id,first_broadcast_at,last_broadcast_at,inactive_streak,updated_at FROM sh_nogizaka_official_news_announcements WHERE news_id='manual-test-sakuramankai-20260930';"
+      - name: Inspect raw collector rows
+        run: |
+          npx --yes wrangler@4.104.0 d1 execute stationhead-other --remote --command \
+            "SELECT observed_at,observed_minute,buddies_station_id,station_id,broadcast_id,broadcast_start_time,is_broadcasting,listener_count,guest_count,total_listens,status,chat_status,channel_id,channel_alias,json_valid(raw_json) AS raw_valid,length(raw_json) AS raw_bytes FROM sh_nogizaka46smej_main ORDER BY observed_at DESC LIMIT 5;"
+      - name: Inspect auth health without credentials
+        run: |
+          npx --yes wrangler@4.104.0 d1 execute stationhead-other --remote --command \
+            "SELECT id,last_attempt_at,last_success_at,last_error,lock_until,updated_at FROM sh_worker_auth_control WHERE id='nogizaka46smej';"
+          npx --yes wrangler@4.104.0 d1 execute stationhead-other --remote --command \
+            "SELECT id,last_run_at,last_success_at,last_error,last_channel_id,last_station_id,updated_at FROM sh_worker_collector_state WHERE id='nogizaka46smej';"
