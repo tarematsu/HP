@@ -17,7 +17,7 @@ function intParam(value, fallback, min, max) {
 export const HOST_SUMMARY_SQL = `WITH active_session AS (
   SELECT id,handle,station_id,started_at,confirmed_at,ended_at,status,
     peak_listeners,average_listeners,total_listens_start,total_listens_end,
-    listener_sample_count,track_count,comment_count,last_observed_at
+    listener_sample_count,track_count,last_observed_at
   FROM sh_host_broadcast_sessions
   WHERE handle='sakurazaka46jp' AND status IN ('provisional','active')
   ORDER BY started_at DESC
@@ -25,7 +25,7 @@ export const HOST_SUMMARY_SQL = `WITH active_session AS (
 ), recent_sessions AS (
   SELECT id,handle,station_id,started_at,confirmed_at,ended_at,status,
     peak_listeners,average_listeners,total_listens_start,total_listens_end,
-    listener_sample_count,track_count,comment_count,last_observed_at
+    listener_sample_count,track_count,last_observed_at
   FROM sh_host_broadcast_sessions
   WHERE handle='sakurazaka46jp'
   ORDER BY started_at DESC
@@ -36,7 +36,7 @@ export const HOST_SUMMARY_SQL = `WITH active_session AS (
     listener_max AS peak_listeners,listener_avg AS average_listeners,
     NULL AS total_listens_start,NULL AS total_listens_end,
     sample_count AS listener_sample_count,distinct_tracks AS track_count,
-    NULL AS comment_count,COALESCE(ended_at,started_at) AS last_observed_at
+    COALESCE(ended_at,started_at) AS last_observed_at
   FROM sh_official_broadcast_summary
   WHERE host_handle='sakurazaka46jp'
     AND NOT EXISTS (SELECT 1 FROM recent_sessions)
@@ -45,17 +45,17 @@ export const HOST_SUMMARY_SQL = `WITH active_session AS (
 )
 SELECT 1 AS result_kind,id,handle,station_id,started_at,confirmed_at,ended_at,status,
   peak_listeners,average_listeners,total_listens_start,total_listens_end,
-  listener_sample_count,track_count,comment_count,last_observed_at
+  listener_sample_count,track_count,last_observed_at
 FROM active_session
 UNION ALL
 SELECT 2,id,handle,station_id,started_at,confirmed_at,ended_at,status,
   peak_listeners,average_listeners,total_listens_start,total_listens_end,
-  listener_sample_count,track_count,comment_count,last_observed_at
+  listener_sample_count,track_count,last_observed_at
 FROM recent_sessions
 UNION ALL
 SELECT 2,id,handle,station_id,started_at,confirmed_at,ended_at,status,
   peak_listeners,average_listeners,total_listens_start,total_listens_end,
-  listener_sample_count,track_count,comment_count,last_observed_at
+  listener_sample_count,track_count,last_observed_at
 FROM official_fallback
 ORDER BY result_kind ASC,started_at DESC`;
 
@@ -70,7 +70,6 @@ function activeSessionFromRow(row) {
     peak_listeners: row.peak_listeners,
     listener_sample_count: row.listener_sample_count,
     track_count: row.track_count,
-    comment_count: row.comment_count,
     last_observed_at: row.last_observed_at,
   };
 }
@@ -88,7 +87,6 @@ function recentSessionFromRow(row) {
     total_listens_start: row.total_listens_start,
     total_listens_end: row.total_listens_end,
     track_count: row.track_count,
-    comment_count: row.comment_count,
   };
 }
 
@@ -160,7 +158,7 @@ export async function onRequestGet({ request, env }) {
                end_reason, peak_listeners, average_listeners,
                total_listens_start, total_listens_end,
                followers_start, followers_end, total_streams_start, total_streams_end,
-               track_count, comment_count, last_observed_at
+               track_count, last_observed_at
         FROM sh_host_broadcast_sessions
         WHERE handle = 'sakurazaka46jp'
         ORDER BY started_at DESC
@@ -179,7 +177,7 @@ export async function onRequestGet({ request, env }) {
           buddies_station_id,channel_id,channel_alias,total_listens_start,total_listens_end,
           followers_start,followers_end,total_streams_start,total_streams_end,
           peak_listeners,listener_sum,listener_sample_count,average_listeners,
-          track_count,comment_count,last_observed_at
+          track_count,last_observed_at
           FROM sh_host_broadcast_sessions
           WHERE id=? AND handle='sakurazaka46jp' LIMIT 1`).bind(sessionId),
         env.OTHER_DB.prepare(`SELECT observed_at,listener_count,guest_count,total_listens,
