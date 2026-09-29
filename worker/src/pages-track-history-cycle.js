@@ -147,6 +147,7 @@ async function defaultSavePayload(db, key, payload, now) {
 }
 
 export async function loadTrackHistoryDirtyDays(db, now = Date.now(), limit = DIRTY_DAY_LIMIT) {
+  if (!db?.prepare) return null;
   const currentDay = dayText(now);
   try {
     const result = await db.prepare(`SELECT play_date,revision,updated_at
