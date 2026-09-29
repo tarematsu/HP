@@ -48,7 +48,7 @@ export function shHeaders(state, config) {
     'app-version': config.appVersion,
     'content-type': 'application/json',
     origin: 'https://www.stationhead.com',
-    referer: STATIONHEAD_AUTH_PAGE_URL,
+    referer: 'https://www.stationhead.com/',
     'sth-device-uid': state.deviceUid,
     'user-agent': DEFAULT_USER_AGENT,
   };
