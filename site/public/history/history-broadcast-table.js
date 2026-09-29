@@ -2,7 +2,7 @@
   const MODE = 'broadcasts';
   const VISIBLE_HEADERS = [
     '日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接',
-    '楽曲数', '推定再生数', 'コメント数', '放送内容', 'イベント名', '出典',
+    '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典',
   ];
   const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/;
   const integer = new Intl.NumberFormat('ja-JP');
@@ -82,12 +82,12 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
+      #historyView .table-wrap table.official-party-table th:nth-child(9),
+      #historyView .table-wrap table.official-party-table td:nth-child(9),
       #historyView .table-wrap table.official-party-table th:nth-child(10),
       #historyView .table-wrap table.official-party-table td:nth-child(10),
       #historyView .table-wrap table.official-party-table th:nth-child(11),
-      #historyView .table-wrap table.official-party-table td:nth-child(11),
-      #historyView .table-wrap table.official-party-table th:nth-child(12),
-      #historyView .table-wrap table.official-party-table td:nth-child(12) {
+      #historyView .table-wrap table.official-party-table td:nth-child(11) {
         text-align: left !important;
       }
     `;
@@ -157,7 +157,6 @@
         numberText(row?.listener_max),
         numberText(tracks, integer),
         numberText(estimated, integer),
-        numberText(row?.comment_count, integer),
         String(row?.broadcast_content || '—'),
         identity.name,
       ];
