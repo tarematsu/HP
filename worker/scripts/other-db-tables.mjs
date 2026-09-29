@@ -39,6 +39,8 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_weekly_ranking_read_model_chunks',
   'sh_weekly_ranking_revision_state',
   'sh_read_model_revision',
+  'sh_stationhead_follower_targets',
+  'sh_stationhead_daily_followers_v2',
   'sh_spotify_artists',
   'sh_spotify_releases',
   'sh_spotify_release_targets',
