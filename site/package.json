@@ -10,7 +10,7 @@
     "db:guard": "node scripts/check-tokenless-d1-coverage.mjs",
     "db:migrate": "node scripts/apply-d1-migrations.mjs",
     "db:verify": "node scripts/verify-d1-schema.mjs",
-    "check": "npm run assets:build && node ../scripts/check-js-syntax.mjs site/functions site/public site/scripts site/tests",
+    "check": "npm run assets:build && node scripts/check-public-asset-budget.mjs && node ../scripts/check-js-syntax.mjs site/functions site/public site/scripts site/tests",
     "test": "npm run test:integration && npm run test:d1",
     "pretest:integration": "node scripts/ensure-worker-test-deps.mjs",
     "test:integration": "node --test tests/*.test.js",
