@@ -18,6 +18,18 @@ const youtubePolicy = readFileSync(
 const xRuntime = readFileSync(
   new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
 
+test('startup runs X for one minute before a full YouTube hour', () => {
+  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 1U \* 60U \* 1000U/);
+  assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
+  assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive/);
+  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs \+ kNativeMediaYoutubePhaseMs/);
+  assert.match(mediaBase, /kNativeMediaStartupXPhaseMs \+ kNativeMediaYoutubeContentPhaseMs/);
+  assert.match(xRuntime, /homepanel:startup-x-until:v2/);
+  assert.match(xRuntime, /homepanel=startup/);
+  assert.match(xRuntime, /Date\.now\(\) \+ 60 \* 1000/);
+  assert.match(xRuntime, /location\.assign\(youtubeStart\)/);
+});
+
 test('YouTube hands its final minute to X after 60 minutes', () => {
   assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
@@ -70,7 +82,6 @@ test('X likes exclude reposts, ads, PR and boosted posts', () => {
   assert.match(xRuntime, /const likeIntervalMs = 10 \* 1000/);
   assert.match(xRuntime, /bridge\.postMessage\(`homepanel:x-like:\$\{id\}:\$\{x\}:\$\{y\}`\)/);
   assert.doesNotMatch(xRuntime, /button\.click\(\)/);
-  assert.doesNotMatch(xRuntime, /homepanel:startup-x-until|homepanel=startup/);
 });
 
 test('X timeline CSS only hides classified repost/promotion rows and placement ads', () => {

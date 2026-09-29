@@ -15,6 +15,7 @@ test('native timers honor power saving and preserve elapsed phase time', () => {
   const dir = mkdtempSync(join(tmpdir(), 'native-media-power-'));
   try {
     const code = `
+#include <algorithm>
 #include <cassert>
 #include <map>
 using UINT = unsigned int;
@@ -29,7 +30,8 @@ bool IsWindow(HWND h) { return h != 0; }
 void KillTimer(HWND, UINT_PTR id) { timers.erase(id); }
 bool gNativeMediaPowerSaving = false;
 ${section(base, 'constexpr UINT_PTR kNativeMediaXStartTimer', 'constexpr UINT kNativeMediaNavigationRetryMs')}
-${section(base, '#define kNativeMediaPhaseMs', '#define kNativeMediaTverForce')}
+${section(base, 'ULONGLONG& NativeMediaStartupXDeadlineTick', 'const wchar_t* NativeMediaYoutubeNavigationUrl')}
+${section(base, '#define kNativeMediaYoutubeUrl', '#define kNativeMediaTverForce')}
 ${section(schedule, 'constexpr int kPowerSavingStartMinute', 'static_assert(kMonitorAuthProbeIntervalMs')}
 class Host {
 public:
@@ -57,10 +59,10 @@ int main() {
   constexpr UINT minute = 60000;
   Host h;
   h.ArmPhaseTimer();
-  assert(timers[kNativeMediaPhaseTimer] == 61 * minute);
-  assert(timers[kNativeMediaXStartTimer] == 60 * minute);
+  assert(timers[kNativeMediaPhaseTimer] == 62 * minute);
+  assert(timers[kNativeMediaXStartTimer] == 61 * minute);
   h.OnTimer(kNativeMediaXStartTimer);
-  assert(!h.xPhaseActive_ && timers[kNativeMediaXStartTimer] == 60 * minute);
+  assert(!h.xPhaseActive_ && timers[kNativeMediaXStartTimer] == 61 * minute);
   tick += 30 * minute;
   gNativeMediaPowerSaving = true;
   h.ApplyPowerSavingMode();
