@@ -67,7 +67,7 @@ jobs:
             "$schema": "node_modules/wrangler/config-schema.json",
             "name": "sh-one-shot-followers",
             "main": "one-shot-followers-entry.js",
-            "compatibility_date": "2026-09-30",
+            "compatibility_date": "2026-09-29",
             "d1_databases": [
               { "binding": "OTHER_DB", "database_name": "stationhead-other", "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11" }
             ],
@@ -83,7 +83,7 @@ jobs:
 
           ready=0
           for _ in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1; then
+            if curl --max-time 2 -fsS http://127.0.0.1:8787/ >/dev/null 2>&1; then
               ready=1
               break
             fi
@@ -94,9 +94,9 @@ jobs:
             exit 1
           fi
 
-          curl -fsS http://127.0.0.1:8787/run | tee one-shot-result.json
+          curl --max-time 45 -fsS http://127.0.0.1:8787/run | tee one-shot-result.json
           echo
-          curl -fsS http://127.0.0.1:8787/verify | tee one-shot-verify.json
+          curl --max-time 20 -fsS http://127.0.0.1:8787/verify | tee one-shot-verify.json
           echo
 
           node <<'NODE'
