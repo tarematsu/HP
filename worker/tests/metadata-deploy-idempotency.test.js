@@ -79,7 +79,7 @@ test('retired Workers are not deleted while an active replacement is missing', a
   assert.equal(calls.some(({ method }) => method === 'DELETE'), false);
 });
 
-test('retired Workers are deleted after all four active Workers are reachable', async () => {
+test('retired Workers are deleted after all five active Workers are reachable', async () => {
   const calls = [];
   await withWorkerApi(async (url, options = {}) => {
     const href = String(url);
@@ -93,7 +93,7 @@ test('retired Workers are deleted after all four active Workers are reachable', 
     };
   }, () => pruneRetiredWorkers(['sh-monitor-other']));
   assert.deepEqual(calls.map(({ method }) => method), [
-    'GET', 'GET', 'GET', 'GET', 'DELETE', 'GET',
+    'GET', 'GET', 'GET', 'GET', 'GET', 'DELETE', 'GET',
   ]);
 });
 
