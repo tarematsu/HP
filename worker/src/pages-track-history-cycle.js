@@ -2,6 +2,7 @@ import { trackHistoryRefreshRanges } from './pages-track-history-support.js';
 
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
+const DIRTY_DAY_LIMIT = 4;
 export const TRACK_HISTORY_CYCLE_MS = DAY_MS;
 export const TRACK_HISTORY_SHARD_MS = 3 * 60 * MINUTE_MS;
 export const TRACK_HISTORY_ACTIVE_MINUTES = 24 * 60 - 5;
@@ -28,6 +29,11 @@ const SHARD_SCHEMA_SQL = [
 
 function dayText(timestamp) {
   return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function dayRange(value) {
+  const fromTs = Date.parse(`${String(value || '')}T00:00:00Z`);
+  return Number.isFinite(fromTs) ? { fromTs, toTs: fromTs + DAY_MS } : null;
 }
 
 function shardText(timestamp) {
@@ -60,12 +66,38 @@ function stageTask(kind, range, index) {
   };
 }
 
-export function createTrackHistoryCycleStage(now, backfillState = null, previousStatus = {}) {
+function dirtyDayTasks(rows) {
+  const tasks = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const range = dayRange(row?.play_date);
+    if (!range) continue;
+    const shards = splitTrackHistoryRange(range);
+    shards.forEach((shard, index) => {
+      tasks.push({
+        ...stageTask('recent', shard, index),
+        id: `dirty:${row.play_date}:r${Number(row.revision) || 0}:${index}`,
+        dirty_play_date: String(row.play_date),
+        dirty_revision: Number(row.revision) || 0,
+        dirty_final: index === shards.length - 1,
+      });
+    });
+  }
+  return tasks;
+}
+
+export function createTrackHistoryCycleStage(
+  now,
+  backfillState = null,
+  previousStatus = {},
+  dirtyDays = null,
+) {
   const timestamp = Number(now);
   const generation = Math.floor(timestamp / TRACK_HISTORY_CYCLE_MS) * TRACK_HISTORY_CYCLE_MS;
   const ranges = trackHistoryRefreshRanges(timestamp, backfillState, previousStatus);
-  const recentTasks = splitTrackHistoryRange(ranges.recent)
-    .map((range, index) => stageTask('recent', range, index));
+  const recentTasks = Array.isArray(dirtyDays)
+    ? dirtyDayTasks(dirtyDays)
+    : splitTrackHistoryRange(ranges.recent)
+      .map((range, index) => stageTask('recent', range, index));
   const backfillTasks = splitTrackHistoryRange(ranges.backfill)
     .map((range, index) => stageTask('backfill', range, index));
   return {
@@ -74,7 +106,9 @@ export function createTrackHistoryCycleStage(now, backfillState = null, previous
     updated_at: timestamp,
     published: false,
     published_at: null,
-    refresh_mode: ranges.fullReconcile ? 'full' : 'incremental',
+    refresh_mode: Array.isArray(dirtyDays)
+      ? (recentTasks.length ? 'dirty' : 'backfill')
+      : (ranges.fullReconcile ? 'full' : 'incremental'),
     previous_full_at: ranges.previousFullAt,
     previous_status: previousStatus || {},
     ranges: {
@@ -112,9 +146,25 @@ async function defaultSavePayload(db, key, payload, now) {
     .bind(key, JSON.stringify(payload), now).run();
 }
 
-async function loadOrCreateStage(targetDb, now, dependencies = {}) {
+export async function loadTrackHistoryDirtyDays(db, now = Date.now(), limit = DIRTY_DAY_LIMIT) {
+  const currentDay = dayText(now);
+  try {
+    const result = await db.prepare(`SELECT play_date,revision,updated_at
+      FROM sh_track_history_dirty_days
+      WHERE play_date<?
+      ORDER BY play_date ASC
+      LIMIT ?`).bind(currentDay, Math.max(1, Math.trunc(Number(limit) || DIRTY_DAY_LIMIT))).all();
+    return result?.results || [];
+  } catch (error) {
+    if (/no such table/i.test(String(error?.message || error))) return null;
+    throw error;
+  }
+}
+
+async function loadOrCreateStage(targetDb, sourceDb, now, dependencies = {}) {
   const load = dependencies.loadPayload || defaultLoadPayload;
   const save = dependencies.savePayload || defaultSavePayload;
+  const loadDirty = dependencies.loadDirtyDays || loadTrackHistoryDirtyDays;
   const generation = Math.floor(now / TRACK_HISTORY_CYCLE_MS) * TRACK_HISTORY_CYCLE_MS;
   const existing = await load(targetDb, TRACK_HISTORY_STAGE_KEY);
   if (existing && !existing.published) {
@@ -127,11 +177,17 @@ async function loadOrCreateStage(targetDb, now, dependencies = {}) {
   }
   if (existing?.generation === generation) return existing;
 
-  const [backfillState, previousStatus] = await Promise.all([
+  const [backfillState, previousStatus, dirtyDays] = await Promise.all([
     load(targetDb, BACKFILL_KEY),
     load(targetDb, STATUS_KEY),
+    loadDirty(sourceDb, now),
   ]);
-  const stage = createTrackHistoryCycleStage(now, backfillState, previousStatus || {});
+  const stage = createTrackHistoryCycleStage(
+    now,
+    backfillState,
+    previousStatus || {},
+    dirtyDays,
+  );
   await save(targetDb, TRACK_HISTORY_STAGE_KEY, stage, now);
   return stage;
 }
@@ -161,7 +217,7 @@ export async function runTrackHistoryCycleStep(env, now = Date.now(), dependenci
     throw new Error('track-history cycle step is missing BUDDIES_DB or MINUTE_DB');
   }
 
-  const stage = await loadOrCreateStage(env.MINUTE_DB, timestamp, dependencies);
+  const stage = await loadOrCreateStage(env.MINUTE_DB, env.BUDDIES_DB, timestamp, dependencies);
   if (stage.published) {
     return {
       skipped: true,
