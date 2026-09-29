@@ -22,7 +22,7 @@ test('Amazon Music is a dashboard route backed only by the Worker materialized r
   assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
 });
 
-test('Amazon Music API treats an ungenerated read model as an empty successful dataset', async () => {
+test('Amazon Music API treats an ungenerated read model as an uncached empty successful dataset', async () => {
   const response = await amazonMusicApi({
     env: {
       PAGES_READ_MODEL_SERVICE: {
@@ -31,7 +31,7 @@ test('Amazon Music API treats an ungenerated read model as an empty successful d
     },
   });
   assert.equal(response.status, 200);
-  assert.match(response.headers.get('cache-control') || '', /max-age=15/);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
   const payload = await response.json();
   assert.equal(payload.ok, true);
   assert.equal(payload.track_count, 0);
