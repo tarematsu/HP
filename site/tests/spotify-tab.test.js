@@ -210,6 +210,7 @@ test('Spotify tab uses only the materialized Spotify read model for its three gr
   assert.match(shell, /Spotify 全曲合計 再生数推移/);
   assert.doesNotMatch(shell, /Spotify 上位10曲合計 再生数推移/);
   assert.match(shell, /Spotify 上位10曲合計\(今年限定\) 再生数推移/);
+  assert.match(shell, /上位10アーティスト/);
   assert.match(shell, /Spotify デイリートップアーティスト\(日本\) 順位推移/);
   assert.match(shell, /櫻坂46楽曲数/);
   assert.match(shell, /櫻坂46前日比合計/);
@@ -220,10 +221,13 @@ test('Spotify tab uses only the materialized Spotify read model for its three gr
   assert.match(shell, /id="spotifyTop10YearTrendCharts"/);
   assert.match(shell, /id="spotifyArtistRankTrendCharts"/);
 
+  assert.match(runtime, /const TREND_ARTIST_LIMIT = 10/);
   assert.match(runtime, /metricKey: 'total_delta'/);
   assert.doesNotMatch(runtime, /spotifyTop10TrendCharts|metricKey: 'top10_delta'/);
   assert.match(runtime, /metricKey: 'top10_year_delta'/);
   assert.match(runtime, /normalizeTrendSeries\(trend\)/);
+  assert.match(runtime, /normalizedSeries\.slice\(0, maxSeries\)/);
+  assert.equal((runtime.match(/maxSeries: TREND_ARTIST_LIMIT/g) || []).length, 2);
   assert.match(runtime, /renderArtistRankChart/);
   assert.match(runtime, /model\?\.artist_chart/);
   assert.match(runtime, /latestValue\.textContent = latest \? `\$\{numberFormat\.format\(latest\.rank\)\}位` : '-'/);
