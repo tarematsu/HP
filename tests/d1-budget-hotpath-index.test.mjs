@@ -67,7 +67,7 @@ const repairCandidateMigration = readFileSync(
   'utf8',
 );
 const retireRepairIndexMigration = readFileSync(
-  new URL('../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
+  new URL('../database/facts-migrations/043_retire_minute_fact_repair_candidate_index.sql', import.meta.url),
   'utf8',
 );
 const retireRepairWorkMigration = readFileSync(
@@ -151,6 +151,7 @@ const expectedMigrations = [
   'database/facts-migrations/060_canonical_daily_member_ownership.sql',
   'database/facts-migrations/061_canonical_track_metadata_read_model.sql',
   'database/facts-migrations/062_track_metadata_source_priority.sql',
+  'database/facts-migrations/063_finalize_stream_5m_once.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
