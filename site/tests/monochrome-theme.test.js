@@ -33,7 +33,7 @@ test('images are not desaturated by the monochrome theme', () => {
 
 test('canvas graph palette remains independent from monochrome UI overrides', () => {
   assert.doesNotMatch(theme, /:root\s*\{/);
-  assert.match(dashboardChart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\.5\)/);
+  assert.match(dashboardChart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
   assert.match(periodChart, /getComputedStyle\(document\.documentElement\)/);
   assert.match(rankingChart, /getComputedStyle\(document\.documentElement\)/);
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
