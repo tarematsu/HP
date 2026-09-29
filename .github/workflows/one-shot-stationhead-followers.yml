@@ -1,0 +1,121 @@
+name: One-shot Stationhead followers
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/one-shot-stationhead-followers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CI: 'true'
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Install Worker dependencies
+        working-directory: worker
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Run collector once against remote D1 and R2
+        working-directory: worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > one-shot-followers-entry.js <<'EOF'
+          import { collectStationheadDailyFollowers, jstDateKey } from './src/stationhead-daily-followers.js';
+
+          const KEY = 'pages-response/v1/followers.json';
+
+          export default {
+            async fetch(request, env) {
+              const url = new URL(request.url);
+              if (url.pathname === '/run') {
+                const result = await collectStationheadDailyFollowers(env, Date.now());
+                return Response.json(result);
+              }
+              if (url.pathname === '/verify') {
+                const date = jstDateKey(Date.now());
+                const row = await env.OTHER_DB.prepare(`SELECT observed_date_jst,scheduled_at,collected_at,
+                    sakuramankai,sakuramankai2,sakurazaka46jp,nogizaka46smej
+                  FROM sh_stationhead_daily_followers
+                  WHERE observed_date_jst=? LIMIT 1`).bind(date).first();
+                const object = await env.PAGES_RESPONSE_R2.get(KEY);
+                const payload = object ? await object.json() : null;
+                return Response.json({ date, row, r2_latest_date: payload?.latest_date ?? null, r2_accounts: payload?.accounts ?? [] });
+              }
+              return new Response('ok');
+            },
+          };
+          EOF
+
+          cat > wrangler.one-shot-followers.jsonc <<'EOF'
+          {
+            "$schema": "node_modules/wrangler/config-schema.json",
+            "name": "sh-one-shot-followers",
+            "main": "one-shot-followers-entry.js",
+            "compatibility_date": "2026-09-30",
+            "d1_databases": [
+              { "binding": "OTHER_DB", "database_name": "stationhead-other", "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11" }
+            ],
+            "r2_buckets": [
+              { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }
+            ]
+          }
+          EOF
+
+          npx wrangler dev --remote --config wrangler.one-shot-followers.jsonc --ip 127.0.0.1 --port 8787 --log-level warn > one-shot-wrangler.log 2>&1 &
+          wrangler_pid=$!
+          trap 'kill "$wrangler_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != '1' ]; then
+            cat one-shot-wrangler.log
+            exit 1
+          fi
+
+          curl -fsS http://127.0.0.1:8787/run | tee one-shot-result.json
+          echo
+          curl -fsS http://127.0.0.1:8787/verify | tee one-shot-verify.json
+          echo
+
+          node <<'NODE'
+          const fs = require('fs');
+          const run = JSON.parse(fs.readFileSync('one-shot-result.json', 'utf8'));
+          const verify = JSON.parse(fs.readFileSync('one-shot-verify.json', 'utf8'));
+          if (!run?.followers || Object.keys(run.followers).length !== 4) throw new Error('collector did not return four follower counts');
+          if (!verify?.row || verify.row.observed_date_jst !== verify.date) throw new Error('D1 verification failed');
+          if (verify.r2_latest_date !== verify.date || verify.r2_accounts?.length !== 4) throw new Error('R2 verification failed');
+          console.log(JSON.stringify({ ok: true, run, verify }));
+          NODE
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: one-shot-stationhead-followers-${{ github.run_id }}
+          path: |
+            worker/one-shot-result.json
+            worker/one-shot-verify.json
+            worker/one-shot-wrangler.log
+          if-no-files-found: ignore
+          retention-days: 1
