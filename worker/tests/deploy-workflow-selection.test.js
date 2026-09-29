@@ -13,6 +13,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
 
   assert.deepEqual(result.workers, [
     'sh-sakurazaka46jp',
+    'sh-nogizaka46smej',
     'sh-buddies-recovery',
     'sh-buddies-collector',
     'sh-spotify-playcount-collector',
@@ -21,6 +22,7 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
   ]);
   assert.deepEqual(result.commands, [
     'deploy:sakurazaka46jp',
+    'deploy:nogizaka46smej',
     'deploy:buddies-recovery',
     'deploy:buddies-collector',
     'deploy:spotify-playcount',
