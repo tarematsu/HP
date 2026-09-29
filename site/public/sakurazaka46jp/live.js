@@ -98,8 +98,16 @@ function render(payload) {
   renderChart(payload?.samples);
 }
 
+function scheduleRefresh(delay) {
+  clearTimeout(refreshTimer);
+  refreshTimer = null;
+  if (!document.hidden) refreshTimer = setTimeout(refresh, delay);
+}
+
 async function refresh() {
   clearTimeout(refreshTimer);
+  refreshTimer = null;
+  if (document.hidden) return;
   const error = $('error');
   try {
     const response = await fetch('/api/sakurazaka46jp-status', {
@@ -110,12 +118,21 @@ async function refresh() {
     if (!response.ok || !payload?.ok) throw new Error(payload?.error || `HTTP ${response.status}`);
     render(payload);
     error.hidden = true;
-    refreshTimer = setTimeout(refresh, Number(payload.refresh_hint_ms) || (payload.collection_active ? 15000 : 60000));
+    scheduleRefresh(Number(payload.refresh_hint_ms) || (payload.collection_active ? 15000 : 60000));
   } catch (reason) {
     error.textContent = `取得エラー: ${String(reason?.message || reason)}`;
     error.hidden = false;
-    refreshTimer = setTimeout(refresh, 30000);
+    scheduleRefresh(30000);
   }
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+    return;
+  }
+  refresh();
+});
 
 refresh();
