@@ -8,20 +8,20 @@ LR"JS(
   if (state.started) return true;
   state.started = true;
   const deadline = performance.now() + 60 * 1000;
-  const likeIntervalMs = 10 * 1000;
-  const likeRetryIntervalMs = 1800;
+  const likeWaitChoicesMs = [5 * 1000, 10 * 1000, 15 * 1000];
   const maxLikeAttemptsPerPost = 3;
-  const pauseBeforeLikeMs = 900;
   const pauseAfterLikeMs = 800;
   const scrollDelayMs = 450;
   const idleScrollDelayMs = 600;
-  const maxScrollStepPx = 28;
-  const minScrollStepPx = 10;
+  const maxScrollStepPx = 56;
+  const minScrollStepPx = 20;
   const targetTolerancePx = 18;
   const filterAttribute = 'data-homepanel-x-filtered';
   const filterStyleId = 'homepanel-x-timeline-filter';
 
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const randomLikeWaitMs = () => likeWaitChoicesMs[
+      Math.floor(Math.random() * likeWaitChoicesMs.length)];
   const text = element => (element?.innerText || element?.textContent || '')
       .replace(/\s+/g, ' ').trim();
   const timelineArticles = () => Array.from(
@@ -173,13 +173,13 @@ LR"JS(
 
       window.scrollTo(0, 0);
       await sleep(1200);
-      let nextLikeAt = performance.now() + likeIntervalMs;
       const attempted = new Set();
       const failedAttempts = new Map();
       state.attemptedCount = 0;
       state.likedCount = 0;
       state.clickCount = 0;
       state.unconfirmedCount = 0;
+      state.likeWaitHistoryMs = [];
       while (performance.now() < deadline) {
         markFilteredArticles();
         if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
@@ -203,19 +203,18 @@ LR"JS(
           state.result = 'approaching-like';
           const step = Math.max(
               minScrollStepPx,
-              Math.min(maxScrollStepPx, Math.ceil(Math.abs(distance) * 0.35)));
+              Math.min(maxScrollStepPx, Math.ceil(Math.abs(distance) * 0.70)));
           window.scrollBy({ top: Math.sign(distance) * step, behavior: 'smooth' });
           await sleep(scrollDelayMs);
           continue;
         }
 
         state.result = 'paused-on-like';
-        if (performance.now() < nextLikeAt) {
-          await sleep(Math.min(500, nextLikeAt - performance.now()));
-          continue;
-        }
-
-        await sleep(pauseBeforeLikeMs);
+        const waitMs = randomLikeWaitMs();
+        state.lastLikeWaitMs = waitMs;
+        state.likeWaitHistoryMs.push(waitMs);
+        state.result = 'waiting-before-like';
+        await sleep(waitMs);
         if (performance.now() >= deadline ||
             followingTab()?.getAttribute('aria-selected') !== 'true') break;
 
@@ -236,9 +235,6 @@ LR"JS(
             attempted.add(candidate.id);
             state.attemptedCount = attempted.size;
             failedAttempts.delete(candidate.id);
-            nextLikeAt = performance.now() + likeIntervalMs;
-          } else {
-            nextLikeAt = performance.now() + likeRetryIntervalMs;
           }
           await sleep(pauseAfterLikeMs);
           continue;
@@ -255,7 +251,6 @@ LR"JS(
           state.attemptedCount = attempted.size;
           state.likedCount++;
           state.result = 'like-confirmed';
-          nextLikeAt = performance.now() + likeIntervalMs;
         } else {
           const failures = (failedAttempts.get(candidate.id) || 0) + 1;
           failedAttempts.set(candidate.id, failures);
@@ -265,9 +260,6 @@ LR"JS(
             attempted.add(candidate.id);
             state.attemptedCount = attempted.size;
             failedAttempts.delete(candidate.id);
-            nextLikeAt = performance.now() + likeIntervalMs;
-          } else {
-            nextLikeAt = performance.now() + likeRetryIntervalMs;
           }
         }
         await sleep(pauseAfterLikeMs);
