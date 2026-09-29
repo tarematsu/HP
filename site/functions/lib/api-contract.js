@@ -1,4 +1,4 @@
-export const API_CONTRACT_VERSION = 12;
+export const API_CONTRACT_VERSION = 13;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
@@ -20,6 +20,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/spotify-playcounts', methods: ['GET'], description: 'Latest finalized Spotify cumulative playcounts by Sakamichi group' },
     { path: '/api/amazon-music', methods: ['GET'], description: 'Latest Sakurazaka Amazon Music follower and track-rank read model' },
     { path: '/api/apple-music', methods: ['GET'], description: 'Latest Sakurazaka Apple Music regional artist-popularity read model' },
+    { path: '/api/followers', methods: ['GET'], description: 'Daily Stationhead follower history and comparison for tracked accounts' },
   ]),
 });
 
@@ -78,6 +79,7 @@ export function materializedApiKey(input) {
   if (pathname === '/api/spotify-playcounts' && onlyParameters(url, ['artist'])) {
     return 'spotify-playcounts';
   }
+  if (pathname === '/api/followers' && onlyParameters(url)) return 'followers';
   return null;
 }
 
@@ -98,6 +100,7 @@ export function apiCacheTtlSeconds(request) {
 }
 
 export function materializedResponseCadenceSeconds(modelKey) {
+  if (String(modelKey || '') === 'followers') return 0;
   const variant = materializedVariantsByKey.get(String(modelKey || ''));
   if (variant?.event_driven === true) return 0;
   const cadenceMinutes = Number(variant?.cadence_minutes);
@@ -106,6 +109,7 @@ export function materializedResponseCadenceSeconds(modelKey) {
 }
 
 export function materializedResponseMaximumAge(modelKey, env = {}) {
+  if (String(modelKey || '') === 'followers') return Number.MAX_SAFE_INTEGER;
   const variant = materializedVariantsByKey.get(String(modelKey || ''));
   if (variant?.event_driven === true) return Number.MAX_SAFE_INTEGER;
   const configured = Number(env.PAGES_RESPONSE_MAX_AGE_MS);

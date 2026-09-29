@@ -105,6 +105,40 @@ test('track history reads its Worker-owned key directly with one R2 get', async 
   assert.deepEqual(await response.json(), { source: 'worker' });
 });
 
+test('followers read model reads its Worker-owned key directly with one R2 get', async () => {
+  const expected = pagesR2ResponseKey('followers');
+  const calls = [];
+  const response = await loadMaterializedR2Response({
+    async get(key) {
+      calls.push(key);
+      return key === expected ? workerObject({ source: 'followers-worker' }) : null;
+    },
+  }, 'followers', NOW, Number.MAX_SAFE_INTEGER);
+
+  assert.deepEqual(calls, [expected]);
+  assert.equal(response.headers.get('x-api-source'), 'worker-r2');
+  assert.deepEqual(await response.json(), { source: 'followers-worker' });
+});
+
+test('followers read model returns an empty materialized response before first collection', async () => {
+  const expected = pagesR2ResponseKey('followers');
+  const calls = [];
+  const response = await loadMaterializedR2Response({
+    async get(key) {
+      calls.push(key);
+      return null;
+    },
+  }, 'followers', NOW, Number.MAX_SAFE_INTEGER);
+
+  assert.deepEqual(calls, [expected]);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-api-source'), 'worker-r2-empty');
+  const payload = await response.json();
+  assert.equal(payload.ok, true);
+  assert.deepEqual(payload.rows, []);
+  assert.equal(payload.accounts.length, 4);
+});
+
 test('track ranking status reads the Actions object before the legacy Worker key', async () => {
   const expected = pagesActionsR2ResponseKey('track-history-status');
   const calls = [];
