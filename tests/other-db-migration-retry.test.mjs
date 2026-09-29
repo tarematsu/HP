@@ -19,6 +19,10 @@ const spotifyTop10Migration = readFileSync(
   'database/other-migrations/050_spotify_artist_top10_daily.sql',
   'utf8',
 );
+const spotifyStationheadIdentityMigration = readFileSync(
+  'database/other-migrations/052_spotify_stationhead_identity.sql',
+  'utf8',
+);
 
 test('OTHER_DB provisioning makes migration 039 retry-safe before later migrations run', () => {
   assert.match(
@@ -57,4 +61,18 @@ test('Spotify Top 10 summary migration is safe to replay during full provisionin
   assert.match(spotifyArtistDailyMigration, /top10_year_delta INTEGER/);
   assert.doesNotMatch(spotifyTop10Migration, /ALTER TABLE sh_spotify_artist_daily ADD COLUMN/);
   assert.match(spotifyTop10Migration, /UPDATE sh_spotify_artist_daily/);
+});
+
+test('Spotify Stationhead identity migration is safe to replay during full provisioning', () => {
+  assert.match(
+    spotifyStationheadIdentityMigration,
+    /ALTER TABLE sh_spotify_track_aliases\s+ADD COLUMN stationhead_track_id INTEGER/,
+  );
+  assert.match(provisioner, /SPOTIFY_STATIONHEAD_IDENTITY_MIGRATION = '052_spotify_stationhead_identity\.sql'/);
+  assert.match(provisioner, /SPOTIFY_TRACK_ALIASES_TABLE = 'sh_spotify_track_aliases'/);
+  assert.match(provisioner, /ensureSpotifyStationheadIdentityColumn\(\)/);
+  assert.match(provisioner, /columns\.has\('stationhead_track_id'\)/);
+  assert.match(provisioner, /migrationFile === SPOTIFY_STATIONHEAD_IDENTITY_MIGRATION/);
+  assert.match(provisioner, /ADD COLUMN stationhead_track_id INTEGER/);
+  assert.match(provisioner, /`--command=\$\{remainderSql\}`/);
 });

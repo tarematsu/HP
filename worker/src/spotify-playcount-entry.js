@@ -6,6 +6,7 @@ import {
 } from './spotify-playcount-collector.js';
 import { spotifyArtistDailyRefreshStatements } from './spotify-playcount-summary.js';
 import { requestSpotifyReadModelRefresh } from './spotify-pages-read-model.js';
+import { configureStationheadTrackResolver } from './spotify-stationhead-identity.js';
 
 async function carryForwardExpiredStaleDays(db, scheduledTime) {
   if (!db?.prepare || jstHour(scheduledTime) !== 5) return 0;
@@ -87,6 +88,7 @@ export default {
   },
 
   async queue(batch, env, ctx) {
+    configureStationheadTrackResolver(env?.MINUTE_DB);
     return processSpotifyPlaycountBatch(batch, env, { ctx });
   },
 

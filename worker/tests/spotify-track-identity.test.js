@@ -29,6 +29,23 @@ test('same song across different Spotify track ids and durations resolves to one
   assert.equal(single, album);
 });
 
+test('Stationhead cross-service reference does not re-key Spotify history', () => {
+  assert.equal(
+    spotifySongKey(track()),
+    spotifySongKey(track({ stationhead_track_id: 42 })),
+  );
+});
+
+test('compact artist-id storage preserves Spotify fallback identity', () => {
+  assert.equal(
+    spotifySongKey(track()),
+    spotifySongKey(track({
+      track_id: 'compact-id',
+      artists_json: JSON.stringify(['artist-b', 'artist-a']),
+    })),
+  );
+});
+
 test('version labels remain distinct', () => {
   assert.notEqual(
     spotifySongKey(track()),

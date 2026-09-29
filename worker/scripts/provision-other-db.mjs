@@ -21,6 +21,8 @@ const OFFICIAL_PARTY_SUMMARY_TABLE = 'sh_official_broadcast_summary';
 const OFFICIAL_PARTY_METRICS_MIGRATION = '039_official_party_materialized_metrics.sql';
 const SPOTIFY_COLLECTION_RUNS_TABLE = 'sh_spotify_collection_runs';
 const SPOTIFY_CATALOG_PROGRESS_MIGRATION = '044_spotify_catalog_progress.sql';
+const SPOTIFY_TRACK_ALIASES_TABLE = 'sh_spotify_track_aliases';
+const SPOTIFY_STATIONHEAD_IDENTITY_MIGRATION = '052_spotify_stationhead_identity.sql';
 
 // Runtime writes the operational tables and Pages reads the public projections.
 // Provisioning updates only those two explicit owners.
@@ -133,6 +135,16 @@ function ensureSpotifyCatalogProgressColumns() {
   }
 }
 
+function ensureSpotifyStationheadIdentityColumn() {
+  const columns = tableColumns(SPOTIFY_TRACK_ALIASES_TABLE);
+  if (columns.has('stationhead_track_id')) return;
+  wrangler([
+    'd1', 'execute', databaseName,
+    '--remote', '--yes',
+    '--command', `ALTER TABLE ${SPOTIFY_TRACK_ALIASES_TABLE} ADD COLUMN stationhead_track_id INTEGER`,
+  ]);
+}
+
 function applyMigration(migrationFile) {
   const migrationPath = resolve(migrationsDir, migrationFile);
   if (migrationFile === SPOTIFY_CATALOG_PROGRESS_MIGRATION) {
@@ -140,6 +152,19 @@ function applyMigration(migrationFile) {
     // either or both after an earlier successful deployment. Replay it by
     // adding only missing columns instead of executing the raw ALTER statements.
     ensureSpotifyCatalogProgressColumns();
+    return;
+  }
+  if (migrationFile === SPOTIFY_STATIONHEAD_IDENTITY_MIGRATION) {
+    // Provisioning intentionally replays every active migration. Add the new
+    // column only once, then replay the idempotent index + compaction statements.
+    ensureSpotifyStationheadIdentityColumn();
+    const remainderSql = readFileSync(migrationPath, 'utf8')
+      .replace(/^[\s\S]*?ALTER TABLE sh_spotify_track_aliases\s+ADD COLUMN stationhead_track_id INTEGER;\s*/u, '');
+    wrangler([
+      'd1', 'execute', databaseName,
+      '--remote', '--yes',
+      `--command=${remainderSql}`,
+    ]);
     return;
   }
   if (migrationFile !== OFFICIAL_PARTY_METRICS_MIGRATION) {

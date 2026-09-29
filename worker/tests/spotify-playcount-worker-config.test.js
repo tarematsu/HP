@@ -13,7 +13,7 @@ test('Spotify collector is isolated, wakes hourly, and owns its event-driven Pag
   assert.equal(value.name, 'sh-spotify-playcount-collector');
   assert.equal(value.main, 'src/spotify-playcount-entry.js');
   assert.deepEqual(value.triggers.crons, ['0 * * * *']);
-  assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['OTHER_DB']);
+  assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.deepEqual(value.r2_buckets, [
     {
       binding: 'PAGES_RESPONSE_R2',
