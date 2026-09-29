@@ -1,5 +1,6 @@
 import { collectAmazonMusicSnapshot } from './amazon-music-collector.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
+import { appleMusicFetch } from './apple-music-fetch.js';
 
 export const AMAZON_MUSIC_DAILY_CRON = '30 1 * * *';
 export const APPLE_MUSIC_PROBE_CRON = '15 * * * *';
@@ -28,7 +29,7 @@ export default {
     if (cron === APPLE_MUSIC_PROBE_CRON) {
       run = loggedRun(
         'apple-music-collection',
-        () => collectAppleMusicSnapshot(env, scheduledTime),
+        () => collectAppleMusicSnapshot(env, scheduledTime, appleMusicFetch),
       );
     } else if (cron === AMAZON_MUSIC_DAILY_CRON) {
       run = loggedRun(
@@ -46,7 +47,7 @@ export default {
         ),
         loggedRun(
           'apple-music-collection',
-          () => collectAppleMusicSnapshot(env, scheduledTime),
+          () => collectAppleMusicSnapshot(env, scheduledTime, appleMusicFetch),
         ),
       ]);
     }
