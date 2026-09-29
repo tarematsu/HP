@@ -15,10 +15,6 @@ const averageMigration = readFileSync(
   new URL('../database/facts-migrations/057_stream_5m_average_read_model.sql', import.meta.url),
   'utf8',
 );
-const partialMigration = readFileSync(
-  new URL('../database/facts-migrations/059_stream_5m_partial_buckets.sql', import.meta.url),
-  'utf8',
-);
 const dashboard = readFileSync(
   new URL('../site/functions/lib/dashboard-chart-support.js', import.meta.url),
   'utf8',
@@ -55,19 +51,22 @@ function readAverages(db) {
     }));
 }
 
-test('partial-bucket repair is the current MINUTE_DB schema tip', () => {
-  const path = 'database/facts-migrations/059_stream_5m_partial_buckets.sql';
-  assert.equal(descriptor.schema, path);
-  assert.equal(descriptor.migrations.at(-1), path);
+test('five-minute stream average migration remains ordered before the current MINUTE_DB schema tip', () => {
+  const path = 'database/facts-migrations/057_stream_5m_average_read_model.sql';
+  const index = descriptor.migrations.indexOf(path);
+  assert.ok(index >= 0);
+  assert.ok(index < descriptor.migrations.length - 1);
   assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
 });
 
-test('five-minute base migration retires the one-minute intermediate model', () => {
+test('five-minute migration is rerunnable and keeps partial real samples', () => {
   assert.match(averageMigration, /CREATE TABLE IF NOT EXISTS sh_stream_5m_average_read_model/);
+  assert.match(averageMigration, /HAVING COUNT\(\*\)>=1/);
+  assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_insert/);
+  assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_update/);
   assert.match(averageMigration, /DROP TABLE IF EXISTS sh_stream_minute_delta_read_model/);
-  assert.match(partialMigration, /HAVING COUNT\(\*\)>=1/);
-  assert.match(partialMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_insert/);
-  assert.match(partialMigration, /CREATE TRIGGER trg_sh_stream_5m_average_after_insert/);
+  assert.match(averageMigration, /CREATE TRIGGER trg_sh_stream_5m_average_after_insert/);
+  assert.match(averageMigration, /CREATE TRIGGER trg_sh_stream_5m_average_after_update/);
 });
 
 test('partial valid minute deltas remain visible without inventing zero samples', () => {
@@ -85,7 +84,6 @@ test('partial valid minute deltas remain visible without inventing zero samples'
 
   db.exec(minuteMigration);
   db.exec(averageMigration);
-  db.exec(partialMigration);
   assert.deepEqual(readAverages(db), [{
     bucket_at: bucket,
     stream_delta_avg: 4,
