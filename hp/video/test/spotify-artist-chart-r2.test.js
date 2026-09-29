@@ -41,13 +41,21 @@ test('native app requests the Japan daily artist chart immediately at startup an
   assert.doesNotMatch(leaderboardHeader, /spotifyArtistChartCollector_/);
 });
 
-test('Spotify chart collector can temporarily expose its WebView2 surface for debugging', () => {
+test('Spotify chart debug surface is startup-safe and avoids repeated full-screen compositor resizes', () => {
   assert.match(collectorHeader, /void RequestCaptureNow\(int64_t nowMs\) noexcept/);
   assert.match(collectorHeader, /nextCaptureAt_ = nowMs/);
+  assert.match(collectorHeader, /debugController_ = nullptr/);
   assert.match(collectorHeader, /void ShowForDebug\(\) noexcept/);
-  assert.match(collectorHeader, /GetClientRect\(window_, &bounds\)/);
-  assert.match(collectorHeader, /controller_->put_Bounds\(bounds\)/);
-  assert.match(collectorHeader, /controller_->put_IsVisible\(TRUE\)/);
+  assert.match(collectorHeader, /GetWindowThreadProcessId\(window_, &processId\)/);
+  assert.match(collectorHeader, /processId != GetCurrentProcessId\(\)/);
+  assert.match(collectorHeader, /constexpr LONG kDebugWidth = 720/);
+  assert.match(collectorHeader, /constexpr LONG kDebugHeight = 480/);
+  assert.match(collectorHeader, /std::min\(availableWidth, kDebugWidth\)/);
+  assert.match(collectorHeader, /std::min\(availableHeight, kDebugHeight\)/);
+  assert.match(collectorHeader, /const bool controllerChanged = debugController_ != currentController/);
+  assert.match(collectorHeader, /const bool boundsChanged = !EqualRect\(&debugBounds_, &bounds\)/);
+  assert.match(collectorHeader, /if \(controllerChanged \|\| boundsChanged\)[\s\S]*controller_->put_Bounds\(bounds\)/);
+  assert.match(collectorHeader, /if \(controllerChanged \|\| !debugVisible_\)[\s\S]*controller_->put_IsVisible\(TRUE\)/);
   assert.match(collector, /CreateCoreWebView2ControllerWithOptions/);
 });
 
