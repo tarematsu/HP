@@ -29,6 +29,80 @@ constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr ULONGLONG kNativeMediaWatchdogExecutionTimeoutMs = 5ULL * 1000ULL;
 
+struct NativeMediaXCyclePlan {
+  bool firstSlot = false;
+  bool secondSlot = false;
+};
+
+ULONGLONG NativeMediaXRandomWord() noexcept {
+  static ULONGLONG state = 0;
+  if (state == 0) {
+    state = std::max<ULONGLONG>(1, GetTickCount64()) ^ 0x9E3779B97F4A7C15ULL;
+  }
+  state ^= state << 13;
+  state ^= state >> 7;
+  state ^= state << 17;
+  return state;
+}
+
+UINT NativeMediaXRandomBelow(UINT exclusiveUpperBound) noexcept {
+  if (exclusiveUpperBound <= 1) return 0;
+  return static_cast<UINT>(NativeMediaXRandomWord() % exclusiveUpperBound);
+}
+
+NativeMediaXCyclePlan NativeMediaDrawXCyclePlan() noexcept {
+  NativeMediaXCyclePlan plan{};
+  const UINT count = NativeMediaXRandomBelow(3);  // 0, 1, 2 are equally likely.
+  if (count == 2) {
+    plan.firstSlot = true;
+    plan.secondSlot = true;
+  } else if (count == 1) {
+    if (NativeMediaXRandomBelow(2) == 0) {
+      plan.firstSlot = true;
+    } else {
+      plan.secondSlot = true;
+    }
+  }
+  return plan;
+}
+
+NativeMediaXCyclePlan& NativeMediaCurrentXCyclePlan() noexcept {
+  static NativeMediaXCyclePlan plan{};
+  return plan;
+}
+
+bool& NativeMediaXCyclePlanInitialized() noexcept {
+  static bool initialized = false;
+  return initialized;
+}
+
+bool& NativeMediaXCycleLastPhaseTver() noexcept {
+  static bool tver = false;
+  return tver;
+}
+
+void NativeMediaObserveXCyclePhase(bool tver) noexcept {
+  auto& initialized = NativeMediaXCyclePlanInitialized();
+  auto& lastTver = NativeMediaXCycleLastPhaseTver();
+  if (!initialized) {
+    NativeMediaCurrentXCyclePlan() = NativeMediaDrawXCyclePlan();
+    initialized = true;
+    lastTver = tver;
+    return;
+  }
+  if (tver == lastTver) return;
+  // Entering TVer means the current cycle's second X slot has finished. Draw
+  // exactly once for the next cycle: its first slot is the tail of this TVer
+  // phase, followed by YouTube and its second X slot.
+  if (tver) NativeMediaCurrentXCyclePlan() = NativeMediaDrawXCyclePlan();
+  lastTver = tver;
+}
+
+bool NativeMediaXSlotEnabled(bool firstSlot) noexcept {
+  const auto& plan = NativeMediaCurrentXCyclePlan();
+  return firstSlot ? plan.firstSlot : plan.secondSlot;
+}
+
 ULONGLONG& NativeMediaStartupXDeadlineTick() noexcept {
   static ULONGLONG deadline = 0;
   return deadline;
@@ -40,12 +114,28 @@ bool& NativeMediaStartupYoutubePhaseActive() noexcept {
 }
 
 UINT NativeMediaYoutubeContentIntervalMs() noexcept {
-  return NativeMediaStartupYoutubePhaseActive()
-      ? kNativeMediaStartupXPhaseMs + kNativeMediaYoutubeContentPhaseMs
-      : kNativeMediaYoutubeContentPhaseMs;
+  NativeMediaObserveXCyclePhase(false);
+  const UINT startupPrefix = NativeMediaStartupYoutubePhaseActive()
+      ? kNativeMediaStartupXPhaseMs : 0U;
+  if (NativeMediaXSlotEnabled(false)) {
+    return startupPrefix + kNativeMediaYoutubeContentPhaseMs;
+  }
+  // Keep the one-minute slot in the two-hour cycle but leave YouTube running.
+  // Place the X timer after the phase timer so ArmPhaseTimer on the next phase
+  // kills it before it can navigate to X.
+  const UINT phaseDuration = startupPrefix + kNativeMediaYoutubePhaseMs;
+  return phaseDuration + 1000U;
+}
+
+UINT NativeMediaTverContentIntervalMs() noexcept {
+  NativeMediaObserveXCyclePhase(true);
+  if (NativeMediaXSlotEnabled(true)) return kNativeMediaTverContentDurationMs;
+  // Same fixed-slot rule as YouTube: an unused first X slot simply extends TVer.
+  return kNativeMediaTverPhaseMs + 1000U;
 }
 
 UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
+  NativeMediaObserveXCyclePhase(tver);
   if (gNativeMediaPowerSaving) {
     // Power-saving mode intentionally has no X slot. Consume the one-shot
     // startup slot so disabling power saving later cannot open a delayed X page.
@@ -72,7 +162,10 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
 }
 
 const wchar_t* NativeMediaYoutubeNavigationUrl() noexcept {
-  if (gNativeMediaPowerSaving) return kNativeMediaYoutubeContentUrl;
+  NativeMediaObserveXCyclePhase(false);
+  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true)) {
+    return kNativeMediaYoutubeContentUrl;
+  }
   const ULONGLONG deadline = NativeMediaStartupXDeadlineTick();
   const ULONGLONG now = std::max<ULONGLONG>(1, GetTickCount64());
   if (deadline > now) return kNativeMediaStartupXUrl;
@@ -91,12 +184,14 @@ LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 
 #define kNativeMediaYoutubeUrl NativeMediaYoutubeNavigationUrl()
 #define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs()
+#define kNativeMediaTverContentDurationMs NativeMediaTverContentIntervalMs()
 #define kNativeMediaPhaseMs NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)
 #define kNativeMediaTverForceFullscreenAdSafeScript \
   kNativeMediaTverForceFullscreenAnyMediaScript
 #include "media_host.inc"
 #undef kNativeMediaTverForceFullscreenAdSafeScript
 #undef kNativeMediaPhaseMs
+#undef kNativeMediaTverContentDurationMs
 #undef kNativeMediaYoutubeContentPhaseMs
 #undef kNativeMediaYoutubeUrl
 #include "media_host_window.inc"

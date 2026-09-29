@@ -29,9 +29,11 @@ ULONGLONG GetTickCount64() { return tick; }
 bool IsWindow(HWND h) { return h != 0; }
 void KillTimer(HWND, UINT_PTR id) { timers.erase(id); }
 bool gNativeMediaPowerSaving = false;
-${section(base, 'constexpr UINT_PTR kNativeMediaXStartTimer', 'constexpr UINT kNativeMediaNavigationRetryMs')}
-${section(base, 'ULONGLONG& NativeMediaStartupXDeadlineTick', 'const wchar_t* NativeMediaYoutubeNavigationUrl')}
-${section(base, '#define kNativeMediaYoutubeUrl', '#define kNativeMediaTverForce')}
+${section(base, 'constexpr wchar_t kNativeMediaYoutubeContentUrl', 'constexpr UINT kNativeMediaNavigationRetryMs')}
+${section(base, 'struct NativeMediaXCyclePlan', 'constexpr const wchar_t* kNativeMediaPlayAllScript')}
+#define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs()
+#define kNativeMediaTverContentDurationMs NativeMediaTverContentIntervalMs()
+#define kNativeMediaPhaseMs NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)
 ${section(schedule, 'constexpr int kPowerSavingStartMinute', 'static_assert(kMonitorAuthProbeIntervalMs')}
 class Host {
 public:
@@ -49,8 +51,13 @@ public:
   void ProbeYoutubeWatchdog() {}
   void ProbeTverWatchdog() {}
   void NavigateCurrentPhase() { ++navigations; }
-  void SwitchToTver() { phase_ = Phase::Tver; ++switches; ArmPhaseTimer(); }
-  void SwitchToYouTube() { phase_ = Phase::YouTube; ++switches; ArmPhaseTimer(); }
+  void ForceAllXSlots(bool tverPhase) {
+    NativeMediaCurrentXCyclePlan() = {true, true};
+    NativeMediaXCyclePlanInitialized() = true;
+    NativeMediaXCycleLastPhaseTver() = tverPhase;
+  }
+  void SwitchToTver() { phase_ = Phase::Tver; ++switches; ForceAllXSlots(true); ArmPhaseTimer(); }
+  void SwitchToYouTube() { phase_ = Phase::YouTube; ++switches; ForceAllXSlots(false); ArmPhaseTimer(); }
 ${section(host, '  void ApplyPowerSavingMode()', '  void SetMuted(')}
 ${section(host, '  bool OnTimer(', '  void Paint(')}
 ${section(host, '  void ArmPhaseTimer(', '  void SwitchToYouTube()')}
@@ -58,6 +65,7 @@ ${section(host, '  void ArmPhaseTimer(', '  void SwitchToYouTube()')}
 int main() {
   constexpr UINT minute = 60000;
   Host h;
+  h.ForceAllXSlots(false);
   h.ArmPhaseTimer();
   assert(timers[kNativeMediaPhaseTimer] == 62 * minute);
   assert(timers[kNativeMediaXStartTimer] == 61 * minute);
