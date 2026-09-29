@@ -1,7 +1,6 @@
 const DAY_MS = 86_400_000;
 const TRACK_HISTORY_DAYS = 35;
 const TRACK_HISTORY_HOURLY_DAYS = 1;
-const TRACK_HISTORY_RECENT_REPAIR_DAYS = 7;
 const TRACK_HISTORY_BACKFILL_DAYS = 1;
 const TRACK_HISTORY_FULL_RECONCILE_MS = 30 * DAY_MS;
 const TRACK_HISTORY_EPOCH = Date.UTC(2024, 4, 1);
@@ -19,22 +18,15 @@ export function trackHistoryRefreshRanges(now, backfillState = null, statusState
   const currentDayStart = Math.floor(now / DAY_MS) * DAY_MS;
   const fullRecentFrom = currentDayStart - TRACK_HISTORY_DAYS * DAY_MS;
   const hourlyRecentFrom = currentDayStart - TRACK_HISTORY_HOURLY_DAYS * DAY_MS;
-  const recentRepairFrom = currentDayStart - TRACK_HISTORY_RECENT_REPAIR_DAYS * DAY_MS;
   const toTs = currentDayStart;
   const previousFullAt = validTimestamp(
     statusState?.full_reconciled_at ?? statusState?.generated_at,
   );
   const fullReconcile = previousFullAt == null
     || previousFullAt + TRACK_HISTORY_FULL_RECONCILE_MS <= currentDayStart;
-  const recentRepair = !fullReconcile
-    && validTimestamp(statusState?.recent_repair_completed_at) == null;
   const fullRecent = { fromTs: fullRecentFrom, toTs };
   const recent = {
-    fromTs: fullReconcile
-      ? fullRecentFrom
-      : recentRepair
-        ? recentRepairFrom
-        : hourlyRecentFrom,
+    fromTs: fullReconcile ? fullRecentFrom : hourlyRecentFrom,
     toTs,
   };
   const storedCursor = Number(backfillState?.next_to);
@@ -52,7 +44,6 @@ export function trackHistoryRefreshRanges(now, backfillState = null, statusState
     recent,
     fullRecent,
     fullReconcile,
-    recentRepair,
     previousFullAt,
     backfill,
   };
