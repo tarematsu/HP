@@ -94,7 +94,7 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
   assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
   assert.match(preparedCollector, /MINUTE_FACT_INTERVAL_MS = 5 \* 60_000/);
-  assert.match(preparedCollector, /minuteFactDue\(observedAt\)/);
+  assert.match(preparedCollector, /minuteFactDue\(factObservedAt, previousRunAt\)/);
   assert.match(preparedCollector, /PERSIST_QUEUE: \{ value: null/);
   assert.match(preparedCollector, /INGEST_FINALIZE_QUEUE: \{ value: null/);
   assert.match(minuteProduction, /MINUTE_ENRICHMENT_QUEUE/);
