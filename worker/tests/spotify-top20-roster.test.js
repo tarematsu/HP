@@ -55,6 +55,15 @@ test('collection roster keeps ever-Top-20 artists and explicit always-collect ar
   assert.doesNotMatch(schedule, /DELETE FROM sh_spotify_artists/);
 });
 
+test('completed current day is reopened once when always-collect artists are missing', () => {
+  const schedule = readFileSync(new URL('../src/spotify-playcount-schedule.js', import.meta.url), 'utf8');
+  assert.match(schedule, /missingAlwaysCollectArtists/);
+  assert.match(schedule, /FROM sh_spotify_artist_daily/);
+  assert.match(schedule, /recovery: 'always-collect-backfill'/);
+  assert.match(schedule, /forceRefresh: true/);
+  assert.match(schedule, /Boolean\(selection\.forceRefresh\)/);
+});
+
 test('migration seeds the additive roster and Top 20 history', () => {
   const migration = readFileSync(new URL('../../database/other-migrations/043_spotify_ever_top20_roster.sql', import.meta.url), 'utf8');
   assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_spotify_top20_history/);
