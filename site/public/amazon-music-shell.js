@@ -1,33 +1,19 @@
-function ensureStylesheet() {
-  if (document.querySelector('link[data-amazon-music-tab-styles]')) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = '/amazon-music.css?v=20260929.1';
-  link.dataset.amazonMusicTabStyles = '1';
-  document.head.append(link);
-}
+import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
 
-function mountTab() {
-  const tabs = document.getElementById('modeTabs');
-  if (!tabs || tabs.querySelector('[data-view="amazon-music"]')) return;
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.dataset.view = 'amazon-music';
-  button.textContent = 'Amazon Music';
-  const spotify = tabs.querySelector('[data-view="spotify"]');
-  if (spotify) spotify.insertAdjacentElement('afterend', button);
-  else tabs.append(button);
-}
-
-function mountView() {
-  const main = document.getElementById('content');
-  if (!main || document.getElementById('amazonMusicView')) return;
-  const likesView = document.getElementById('likesView');
-  const section = document.createElement('section');
-  section.id = 'amazonMusicView';
-  section.className = 'dashboard-view amazon-music-view';
-  section.hidden = true;
-  section.innerHTML = `
+mountDashboardShell({
+  style: { href: '/amazon-music.css?v=20260930.1', key: 'amazon-music' },
+  tab: {
+    view: 'amazon-music',
+    label: 'Amazon Music',
+    anchorSelector: '[data-view="spotify"]',
+    position: 'afterend',
+  },
+  view: {
+    id: 'amazonMusicView',
+    className: 'amazon-music-view',
+    anchorId: 'likesView',
+    position: 'beforebegin',
+    html: `
     <p id="amazonMusicNotice" class="notice" role="status" hidden></p>
 
     <section class="summary-cards amazon-summary" aria-label="櫻坂46 Amazon Music フォロワー概要">
@@ -37,7 +23,7 @@ function mountView() {
 
     <section class="card amazon-rank-panel" aria-labelledby="amazonAllRankTitle">
       <div class="section-head"><div><p class="kicker">AMAZON MUSIC</p><h2 id="amazonAllRankTitle">Amazon総合順位推移</h2></div></div>
-      <div id="amazonAllRankChart" class="amazon-rank-chart chart-fit" aria-label="櫻坂46楽曲のAmazon Music総合順位推移"></div>
+      <div id="amazonAllRankChart" class="amazon-rank-chart chart-fit shared-svg-chart" aria-label="櫻坂46楽曲のAmazon Music総合順位推移"></div>
     </section>
 
     <section class="card data-panel amazon-data-panel">
@@ -46,7 +32,7 @@ function mountView() {
         <span id="amazonSnapshotDate" class="subtle">-</span>
       </div>
       <div class="table-wrap table-fit-mobile">
-        <table class="amazon-table">
+        <table class="amazon-table shared-numeric-table">
           <colgroup>
             <col class="amazon-rank-col">
             <col>
@@ -55,11 +41,6 @@ function mountView() {
           <tbody id="amazonMusicTbody"></tbody>
         </table>
       </div>
-    </section>`;
-  if (likesView) likesView.insertAdjacentElement('beforebegin', section);
-  else main.append(section);
-}
-
-ensureStylesheet();
-mountTab();
-mountView();
+    </section>`,
+  },
+});
