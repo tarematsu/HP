@@ -55,7 +55,7 @@ function mountView() {
       <div class="section-head"><div><p class="kicker">DAILY</p><h2 id="hinataDailyTitle">日次データ</h2></div></div>
       <div class="table-wrap table-fit-mobile">
         <table class="hinata-daily-table">
-          <thead><tr><th>日付</th><th>平均同接</th><th>最小同接</th><th>最大同接</th><th>総再生数</th><th>再生数増加</th><th>総メンバー数</th><th>メンバー増加</th></tr></thead>
+          <thead><tr><th>日付</th><th>平均同接</th><th>最小同接</th><th>最大同接</th><th>再生数（開始）</th><th>再生数（終了）</th><th>再生数増加</th><th>メンバー数（開始）</th><th>メンバー数（終了）</th><th>メンバー増加</th></tr></thead>
           <tbody id="hinataDailyTbody"></tbody>
         </table>
       </div>

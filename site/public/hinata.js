@@ -220,7 +220,7 @@ function renderDaily(value) {
   if (!rows.length) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
-    cell.colSpan = 8;
+    cell.colSpan = 10;
     cell.className = 'hinata-empty';
     cell.textContent = '日次データはまだありません。';
     row.append(cell);
@@ -235,8 +235,10 @@ function renderDaily(value) {
       finite(item?.listener_avg) == null ? '—' : decimal.format(item.listener_avg),
       numberText(item?.listener_min),
       numberText(item?.listener_max),
+      numberText(item?.stream_start),
       numberText(item?.stream_end),
       signedText(item?.stream_growth),
+      numberText(item?.member_start),
       numberText(item?.member_end),
       signedText(item?.member_growth),
     ];
