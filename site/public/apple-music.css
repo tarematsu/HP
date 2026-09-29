@@ -7,32 +7,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.apple-region-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0 14px;
-}
-
-.apple-region-tabs button {
-  border: 1px solid var(--border, #d5d7dc);
-  border-radius: 999px;
-  background: var(--surface, #fff);
-  color: inherit;
-  padding: 7px 12px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.apple-region-tabs button.active {
-  border-color: currentColor;
-  font-weight: 700;
-}
-
 .apple-rank-chart {
   width: 100%;
   min-height: 220px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   overflow: hidden;
 }
 
@@ -62,6 +40,34 @@
   stroke-linejoin: round;
 }
 
+.apple-rank-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 7px 12px;
+  margin-top: 8px;
+}
+
+.apple-rank-legend-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  font-size: 13px;
+}
+
+.apple-rank-legend-item i {
+  flex: 0 0 18px;
+  height: 3px;
+  border-radius: 999px;
+  background: hsl(var(--apple-rank-hue) 68% 48%);
+}
+
+.apple-rank-legend-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .apple-rank-empty {
   margin: 0;
   padding: 54px 12px;
@@ -87,24 +93,11 @@
   font-weight: 700;
 }
 
-.apple-rank-col,
-.apple-change-col {
-  width: 76px;
-}
-
 .apple-rank-number,
-.apple-rank-change {
+.apple-list-rank {
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.apple-rank-change.positive {
-  font-weight: 700;
-}
-
-.apple-rank-change.negative {
-  opacity: .72;
 }
 
 .apple-region-table-wrap {
@@ -112,19 +105,32 @@
 }
 
 .apple-region-table {
-  min-width: 720px;
+  min-width: 820px;
   table-layout: auto;
 }
 
-.apple-region-table th:not(:first-child),
-.apple-region-table td:not(:first-child) {
-  text-align: center;
+.apple-region-table th,
+.apple-region-table td {
   white-space: nowrap;
 }
 
 .apple-region-table th:first-child,
 .apple-region-table td:first-child {
+  width: 52px;
+  min-width: 52px;
+  text-align: right;
+}
+
+.apple-region-table th:nth-child(2),
+.apple-region-table td:nth-child(2) {
   min-width: 190px;
+  text-align: left;
+}
+
+.apple-region-table th:nth-child(n + 3),
+.apple-region-table td:nth-child(n + 3) {
+  min-width: 64px;
+  text-align: center;
 }
 
 @media (max-width: 640px) {
@@ -132,23 +138,22 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .apple-region-tabs {
-    gap: 6px;
-  }
-
-  .apple-region-tabs button {
-    padding: 6px 9px;
-    font-size: 13px;
-  }
-
   .apple-table th,
   .apple-table td {
-    padding: 9px 6px;
-    font-size: 13px;
+    padding: 8px 5px;
+    font-size: 12px;
   }
 
-  .apple-rank-col,
-  .apple-change-col {
-    width: 62px;
+  .apple-rank-legend {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+  }
+
+  .apple-rank-legend-item {
+    font-size: 12px;
+  }
+
+  .apple-region-table {
+    min-width: 760px;
   }
 }
