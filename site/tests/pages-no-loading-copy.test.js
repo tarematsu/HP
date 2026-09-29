@@ -35,7 +35,7 @@ test('silent loading changes are cache busted through the Pages entry chain', ()
   assert.match(tabs, /first-week-comparison\.js\?v=20260929\.1/);
   assert.match(tabs, /played-tracks-shell\.js\?v=20260928\.1/);
   assert.match(tabs, /played-tracks\.js\?v=20260927\.2/);
-  assert.match(tabs, /history-likes\.js\?v=20260925\.1/);
+  assert.match(tabs, /history-likes\.js\?v=20260930\.1/);
   assert.match(tabs, /spotify-shell\.js\?v=20260929\.1/);
   assert.match(tabs, /spotify\.js\?v=20260929\.1/);
   assert.match(dashboardEntry, /legacy-listening-party-route\.js\?v=20260926\.1/);
