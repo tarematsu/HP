@@ -1,5 +1,7 @@
 const QUERY_CHUNK_SIZE = 80;
 const CACHE_LIMIT = 2048;
+const HIT_CACHE_MS = 12 * 60 * 60 * 1000;
+const MISS_CACHE_MS = 30 * 60 * 1000;
 
 let minuteDb = null;
 const stationheadTrackBySpotifyId = new Map();
@@ -17,13 +19,27 @@ function positiveInteger(value) {
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 }
 
-function cacheSet(spotifyId, stationheadTrackId) {
+function cached(spotifyId, now = Date.now()) {
+  const entry = stationheadTrackBySpotifyId.get(spotifyId);
+  if (!entry) return { found: false, trackId: null };
+  if (entry.expiresAt <= now) {
+    stationheadTrackBySpotifyId.delete(spotifyId);
+    return { found: false, trackId: null };
+  }
+  return { found: true, trackId: entry.trackId };
+}
+
+function cacheSet(spotifyId, stationheadTrackId, now = Date.now()) {
   if (!stationheadTrackBySpotifyId.has(spotifyId)
     && stationheadTrackBySpotifyId.size >= CACHE_LIMIT) {
     const oldest = stationheadTrackBySpotifyId.keys().next().value;
     if (oldest != null) stationheadTrackBySpotifyId.delete(oldest);
   }
-  stationheadTrackBySpotifyId.set(spotifyId, stationheadTrackId);
+  const trackId = positiveInteger(stationheadTrackId);
+  stationheadTrackBySpotifyId.set(spotifyId, {
+    trackId,
+    expiresAt: now + (trackId == null ? MISS_CACHE_MS : HIT_CACHE_MS),
+  });
 }
 
 export function configureStationheadTrackResolver(db) {
@@ -37,11 +53,12 @@ export async function attachStationheadTrackIds(tracks) {
   const rows = Array.isArray(tracks) ? tracks : [];
   if (!rows.length || !minuteDb?.prepare) return rows;
 
+  const now = Date.now();
   const unresolvedIds = [...new Set(rows
     .filter((track) => positiveInteger(track?.stationhead_track_id) == null)
     .map((track) => String(track?.track_id || '').trim())
     .filter(Boolean))]
-    .filter((spotifyId) => !stationheadTrackBySpotifyId.has(spotifyId));
+    .filter((spotifyId) => !cached(spotifyId, now).found);
 
   for (const group of chunks(unresolvedIds, QUERY_CHUNK_SIZE)) {
     const placeholders = group.map(() => '?').join(',');
@@ -62,18 +79,18 @@ export async function attachStationheadTrackIds(tracks) {
       const spotifyId = String(row?.spotify_id || '').trim();
       const stationheadTrackId = positiveInteger(row?.stationhead_track_id);
       if (!spotifyId || stationheadTrackId == null) continue;
-      cacheSet(spotifyId, stationheadTrackId);
+      cacheSet(spotifyId, stationheadTrackId, now);
       found.add(spotifyId);
     }
     for (const spotifyId of group) {
-      if (!found.has(spotifyId)) cacheSet(spotifyId, null);
+      if (!found.has(spotifyId)) cacheSet(spotifyId, null, now);
     }
   }
 
   return rows.map((track) => {
     if (positiveInteger(track?.stationhead_track_id) != null) return track;
     const spotifyId = String(track?.track_id || '').trim();
-    const stationheadTrackId = stationheadTrackBySpotifyId.get(spotifyId);
+    const stationheadTrackId = cached(spotifyId, now).trackId;
     return stationheadTrackId == null
       ? track
       : { ...track, stationhead_track_id: stationheadTrackId };
