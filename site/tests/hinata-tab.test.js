@@ -43,6 +43,22 @@ test('Hinata tab reads only the materialized model API', () => {
   assert.doesNotMatch(api, /\.prepare\(|OHISAMA_DB|MINUTE_DB|OTHER_DB/);
 });
 
+test('Hinata graph is rendered as five-minute buckets with actual five-minute stream growth', () => {
+  assert.match(runtime, /const FIVE_MINUTES_MS = 5 \* 60_000/);
+  assert.match(runtime, /Math\.floor\(observedAt \/ FIVE_MINUTES_MS\) \* FIVE_MINUTES_MS/);
+  assert.match(runtime, /point\.bucket - previous\.bucket === FIVE_MINUTES_MS/);
+  assert.match(runtime, /point\.stream_count - previous\.stream_count/);
+  assert.match(shell, />再生数増加</);
+  assert.doesNotMatch(shell, /5分平均の再生増加/);
+});
+
+test('Hinata daily table includes cumulative stream and member totals', () => {
+  assert.match(shell, /<th>総再生数<\/th><th>再生数増加<\/th><th>総メンバー数<\/th><th>メンバー増加<\/th>/);
+  assert.match(runtime, /numberText\(item\?\.stream_end\)/);
+  assert.match(runtime, /numberText\(item\?\.member_end\)/);
+  assert.match(runtime, /cell\.colSpan = 8/);
+});
+
 test('Hinata UI includes the 24-hour online and playback graph plus daily metrics', () => {
   assert.match(runtime, /history_24h/);
   assert.match(runtime, /stream_delta_5m/);
