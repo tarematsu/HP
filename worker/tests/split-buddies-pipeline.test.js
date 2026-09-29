@@ -2,11 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { processCommentsTask } from '../src/comments-entry.js';
 import {
   channelFromRawCollection,
   collectionFromRawCollection,
-  commentsTaskForMinuteFact,
   readModelEnvelopeForMinuteFact,
 } from '../src/ingest-channel-entry.js';
 import { preparedCollectionPayload } from '../src/collector-runner.js';
@@ -15,20 +13,6 @@ import { collectRawChannel } from '../src/raw-collector-entry.js';
 
 function config(name) {
   return JSON.parse(readFileSync(new URL(`../${name}`, import.meta.url), 'utf8'));
-}
-
-function commentsTask() {
-  return {
-    message_type: 'stationhead-comments-task',
-    message_version: 1,
-    observed_at: 1_784_000_000_000,
-    station_id: 123,
-    auth: {
-      authToken: 'token',
-      deviceUid: 'device',
-      tokenExpiresAt: 9_999_999_999_999,
-    },
-  };
 }
 
 test('collector, recovery, and runtime have one exclusive owner per active Queue boundary', () => {
@@ -53,7 +37,6 @@ test('collector, recovery, and runtime have one exclusive owner per active Queue
   for (const queue of [
     'stationhead-raw-collection',
     'stationhead-ingest-finalize',
-    'stationhead-comments',
     'stationhead-buddies-persist',
   ]) {
     assert.equal(recoveryConsumers.get(queue).max_batch_size, 10, queue);
@@ -73,11 +56,14 @@ test('collector, recovery, and runtime have one exclusive owner per active Queue
     assert.equal(recoveryConsumers.has(queue), false, queue);
   }
   for (const retired of [
+    'stationhead-comments',
     'stationhead-minute-rebuild',
     'stationhead-read-model',
     'stationhead-pages-read-model-publication',
   ]) {
     assert.equal(runtimeConsumers.has(retired), false, retired);
+    assert.equal(collectorConsumers.has(retired), false, retired);
+    assert.equal(recoveryConsumers.has(retired), false, retired);
   }
   assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB', 'OTHER_DB']);
   assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
@@ -216,13 +202,8 @@ test('prepared collector payload and read-model envelope preserve source timesta
   assert.equal(state.stationId, 123);
 
   const minuteFact = minuteFactQueueMessage({ observedAt: processingObservedAt, snapshot, queue });
-  const task = commentsTaskForMinuteFact(commentsTask(), minuteFact);
-  assert.equal(task.observed_at, processingObservedAt);
-  assert.equal(task.station_id, 123);
-
   const envelope = readModelEnvelopeForMinuteFact({
     observed_at: rawObservedAt,
-    auth: commentsTask().auth,
   }, {
     ...minuteFact,
     read_model: {
@@ -234,25 +215,5 @@ test('prepared collector payload and read-model envelope preserve source timesta
   assert.equal(envelope.observed_at, rawObservedAt);
   assert.equal(envelope.job_id, `read-model:10:${rawObservedAt}`);
   assert.equal(envelope.read_model.queue.value, queue);
-  assert.equal(envelope.comment_task.station_id, 123);
-});
-
-test('comments task acknowledges only durable success and retries degraded collection', async () => {
-  assert.equal((await processCommentsTask({}, commentsTask(), {
-    collectComments: async () => ({ commentsSaved: 4, degraded: false, errorStage: null }),
-  })).commentsSaved, 4);
-
-  let collected = 0;
-  await assert.rejects(processCommentsTask({}, {
-    ...commentsTask(),
-    message_version: 2,
-    minute_fact: { message_type: 'unknown' },
-  }, {
-    collectComments: async () => { collected += 1; return { commentsSaved: 0, degraded: false }; },
-  }), /message_type is unsupported/);
-  assert.equal(collected, 0);
-
-  await assert.rejects(processCommentsTask({}, commentsTask(), {
-    collectComments: async () => ({ commentsSaved: 0, degraded: true, errorStage: 'd1_write_comments' }),
-  }), /comment collection degraded at d1_write_comments/);
+  assert.equal(Object.hasOwn(envelope, 'comment_task'), false);
 });
