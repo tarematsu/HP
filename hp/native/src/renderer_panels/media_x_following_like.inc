@@ -9,6 +9,8 @@ LR"JS(
   state.started = true;
   const deadline = performance.now() + 60 * 1000;
   const likeIntervalMs = 10 * 1000;
+  const likeRetryIntervalMs = 1800;
+  const maxLikeAttemptsPerPost = 3;
   const pauseBeforeLikeMs = 900;
   const pauseAfterLikeMs = 800;
   const scrollDelayMs = 450;
@@ -125,15 +127,33 @@ LR"JS(
     candidates.sort((a, b) => a.centerY - b.centerY);
     return candidates[0] || null;
   };
+  const trustedHitPoint = button => {
+    const rect = button?.getBoundingClientRect?.();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return null;
+    const ratios = [
+      [0.50, 0.50], [0.38, 0.50], [0.62, 0.50],
+      [0.50, 0.38], [0.50, 0.62],
+    ];
+    for (const [rx, ry] of ratios) {
+      const x = Math.round(rect.left + rect.width * rx);
+      const y = Math.round(rect.top + rect.height * ry);
+      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+      if (typeof document.elementFromPoint !== 'function') return { x, y };
+      const hit = document.elementFromPoint(x, y);
+      if (!hit) continue;
+      if (hit === button || button.contains?.(hit) ||
+          hit.closest?.('[data-testid="like"]') === button) {
+        return { x, y };
+      }
+    }
+    return null;
+  };
   const requestTrustedLike = (id, button) => {
     const bridge = globalThis.chrome?.webview;
     if (!bridge || typeof bridge.postMessage !== 'function') return false;
-    const rect = button.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return false;
-    const x = Math.round(rect.left + rect.width / 2);
-    const y = Math.round(rect.top + rect.height / 2);
-    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return false;
-    bridge.postMessage(`homepanel:x-like:${id}:${x}:${y}`);
+    const point = trustedHitPoint(button);
+    if (!point) return false;
+    bridge.postMessage(`homepanel:x-like:${id}:${point.x}:${point.y}`);
     return true;
   };
 )JS"
@@ -175,8 +195,11 @@ LR"JS(
       await sleep(1200);
       let nextLikeAt = performance.now() + likeIntervalMs;
       const attempted = new Set();
+      const failedAttempts = new Map();
       state.attemptedCount = 0;
       state.likedCount = 0;
+      state.dispatchCount = 0;
+      state.unconfirmedCount = 0;
       while (performance.now() < deadline) {
         markFilteredArticles();
         if (followingTab()?.getAttribute('aria-selected') !== 'true') break;
@@ -223,15 +246,50 @@ LR"JS(
         if (!freshLike) continue;
         const freshCenterY = freshLike.rect.top + freshLike.rect.height / 2;
         if (Math.abs(freshCenterY - targetY()) > targetTolerancePx) continue;
-        if (!requestTrustedLike(candidate.id, freshLike.button)) continue;
 
-        attempted.add(candidate.id);
-        state.attemptedCount = attempted.size;
-        state.result = 'like-clicked';
-        nextLikeAt = performance.now() + likeIntervalMs;
+        if (!requestTrustedLike(candidate.id, freshLike.button)) {
+          const failures = (failedAttempts.get(candidate.id) || 0) + 1;
+          failedAttempts.set(candidate.id, failures);
+          state.unconfirmedCount++;
+          state.result = 'like-dispatch-unavailable';
+          if (failures >= maxLikeAttemptsPerPost) {
+            attempted.add(candidate.id);
+            state.attemptedCount = attempted.size;
+            failedAttempts.delete(candidate.id);
+            nextLikeAt = performance.now() + likeIntervalMs;
+          } else {
+            nextLikeAt = performance.now() + likeRetryIntervalMs;
+          }
+          await sleep(pauseAfterLikeMs);
+          continue;
+        }
+
+        state.dispatchCount++;
+        state.result = 'like-dispatched';
         await sleep(1500);
-        if (articleForId(candidate.id)?.querySelector('[data-testid="unlike"]'))
+        const confirmed = Boolean(
+            articleForId(candidate.id)?.querySelector('[data-testid="unlike"]'));
+        if (confirmed) {
+          attempted.add(candidate.id);
+          failedAttempts.delete(candidate.id);
+          state.attemptedCount = attempted.size;
           state.likedCount++;
+          state.result = 'like-confirmed';
+          nextLikeAt = performance.now() + likeIntervalMs;
+        } else {
+          const failures = (failedAttempts.get(candidate.id) || 0) + 1;
+          failedAttempts.set(candidate.id, failures);
+          state.unconfirmedCount++;
+          state.result = 'like-unconfirmed';
+          if (failures >= maxLikeAttemptsPerPost) {
+            attempted.add(candidate.id);
+            state.attemptedCount = attempted.size;
+            failedAttempts.delete(candidate.id);
+            nextLikeAt = performance.now() + likeIntervalMs;
+          } else {
+            nextLikeAt = performance.now() + likeRetryIntervalMs;
+          }
+        }
         await sleep(pauseAfterLikeMs);
       }
       state.attemptedCount = attempted.size;
