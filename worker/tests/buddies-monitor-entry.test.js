@@ -35,7 +35,8 @@ test('the dedicated buddies Worker owns scheduled raw collection', () => {
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
   assert.deepEqual(collector.queues.consumers, []);
   assert.equal(recovery.name, 'sh-buddies-recovery');
-  assert.equal(recovery.queues.consumers.length, 4);
+  assert.equal(recovery.queues.consumers.length, 3);
+  assert.equal(recovery.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
   assert.equal(
     collector.queues.producers.find(({ binding }) => binding === 'RAW_COLLECTION_QUEUE').queue,
     'stationhead-raw-collection',
