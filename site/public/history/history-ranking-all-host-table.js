@@ -1,5 +1,5 @@
 const MODE = 'ranking';
-const EXCLUDED_ALL_HOSTS = new Set(['sakuramankai', 'sakurazaka46jp']);
+const EXCLUDED_ALL_HOSTS = new Set(['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej']);
 const ALL_HOST_COLUMNS = [
   ['position', '順位'],
   ['host_name', 'ホスト名'],

@@ -10,12 +10,12 @@ const materialized = readFileSync(new URL('../functions/lib/materialized-history
 const current = readFileSync(new URL('../functions/api/history-current.js', import.meta.url), 'utf8');
 
 test('ranking chart keeps featured comparison and supports one selected all-host series', () => {
-  assert.match(entry, /history-ranking-chart\.js\?v=20260923\.8/);
-  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260924\.1/);
+  assert.match(entry, /history-ranking-chart\.js\?v=20260930\.1/);
+  assert.match(entry, /history-ranking-all-host-table\.js\?v=20260930\.1/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
   assert.match(entry, /runtimeKey\(mode\)/);
   assert.match(entry, /if \(mode === 'ranking' \|\| mode === 'broadcasts'\) return mode/);
-  assert.match(rankingChart, /const FEATURED_HOSTS = \['sakuramankai', 'sakurazaka46jp'\]/);
+  assert.match(rankingChart, /const FEATURED_HOSTS = \['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'\]/);
   assert.match(rankingChart, /\['sakuramankai', '#000000'\]/);
   assert.match(rankingChart, /\['sakurazaka46jp', '#d93f79'\]/);
   assert.match(rankingChart, /detail\.data\.chart_hosts/);
@@ -41,8 +41,8 @@ test('all-host table exposes channel, artist, and relation type after host name 
   assert.match(rankingAllHosts, /setSelectedHost\(defaultHost\)/);
 });
 
-test('all-host table excludes the two featured hosts and fits nine columns on mobile', () => {
-  assert.match(rankingAllHosts, /EXCLUDED_ALL_HOSTS = new Set\(\['sakuramankai', 'sakurazaka46jp'\]\)/);
+test('all-host table excludes the three featured hosts and fits nine columns on mobile', () => {
+  assert.match(rankingAllHosts, /EXCLUDED_ALL_HOSTS = new Set\(\['sakuramankai', 'sakurazaka46jp', 'nogizaka46smej'\]\)/);
   assert.match(rankingAllHosts, /\.filter\(\(row\) => !EXCLUDED_ALL_HOSTS\.has\(hostKey\(row\?\.host_name\)\)\)/);
   for (const [column, width] of [[1, 5], [2, 17], [3, 14], [4, 18], [5, 10], [6, 10], [7, 9], [8, 9], [9, 8]]) {
     assert.match(rankingAllHosts, new RegExp(`th:nth-child\\(${column}\\),[\\s\\S]*td:nth-child\\(${column}\\) \\{ width: ${width}% !important; \\}`));
