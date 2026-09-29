@@ -149,14 +149,25 @@ bool SameHttpsOrigin(const std::wstring& url, const std::wstring& trustedBase) {
 
 std::string FetchAuthorizedManifest(const fs::path& root) {
   const fs::path data = root / L"data";
-  AppConfig config = LoadConfig(data / L"settings.json");
-  const std::wstring deviceToken = LoadProtectedToken(data / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
+  const AppConfig config = LoadConfig(data / L"settings.json");
+  const std::wstring deviceToken =
+      LoadProtectedToken(data / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
   if (deviceToken.empty()) {
-    throw std::runtime_error("device token is unavailable; start HomePanel once or restore data/device-token.dat");
+    throw std::runtime_error(
+        "device token is unavailable; start HomePanel once or restore data/device-token.dat");
   }
-  Logger cloudLog(data / L"homepanel-updater.log");
-  CloudClient cloud(nullptr, config, data, deviceToken, L"", cloudLog);
-  return cloud.FetchUpdateManifest();
+  if (config.cloudflareBaseUrl.empty()) {
+    throw std::runtime_error("Cloudflare base URL is unavailable for update check");
+  }
+
+  std::wstring manifestUrl = config.cloudflareBaseUrl;
+  while (!manifestUrl.empty() && manifestUrl.back() == L'/') manifestUrl.pop_back();
+  manifestUrl += L"/v1/update/manifest";
+
+  constexpr size_t kMaximumManifestBytes = 1024 * 1024;
+  const auto bytes =
+      DownloadHttpsFile(manifestUrl, kMaximumManifestBytes, deviceToken);
+  return std::string(bytes.begin(), bytes.end());
 }
 
 void VerifyInstalledFiles(const UpdateManifest& manifest, const fs::path& root) {
@@ -233,9 +244,13 @@ int HardenedRunStandalone(const fs::path& root) {
   std::string initialManifestJson;
   {
     UpdaterProgressWindow progress(L"更新情報を取得しています...");
+    Log(root, L"Authenticated manifest fetch started");
     initialManifestJson = FetchAuthorizedManifest(root);
+    Log(root, L"Authenticated manifest bytes received: " +
+                  std::to_wstring(initialManifestJson.size()));
   }
   const UpdateManifest initialManifest = ParseUpdateManifest(initialManifestJson);
+  Log(root, L"Authenticated manifest parsed version " + initialManifest.version);
   if (IsVersionNewer(installedVersion, initialManifest.version)) {
     throw std::runtime_error("server update version is older than installed HomePanel");
   }
@@ -254,9 +269,13 @@ int HardenedRunStandalone(const fs::path& root) {
   std::string manifestJson;
   {
     UpdaterProgressWindow progress(L"更新用ファイルの情報を準備しています...");
+    Log(root, L"Authenticated confirmed manifest fetch started");
     manifestJson = FetchAuthorizedManifest(root);
+    Log(root, L"Authenticated confirmed manifest bytes received: " +
+                  std::to_wstring(manifestJson.size()));
   }
   const UpdateManifest manifest = ParseUpdateManifest(manifestJson);
+  Log(root, L"Authenticated confirmed manifest parsed version " + manifest.version);
   if (IsVersionNewer(installedVersion, manifest.version)) {
     throw std::runtime_error("server update version became older than installed HomePanel");
   }
@@ -266,6 +285,7 @@ int HardenedRunStandalone(const fs::path& root) {
   }
 
   const fs::path pending = WritePendingManifest(root, manifestJson);
+  Log(root, L"Authenticated pending manifest saved");
   const DWORD appPid = FindHomePanelProcess(root);
   if (!LaunchRunner(root, pending, manifest.version, appPid)) {
     throw std::runtime_error("cannot start the staged updater");
@@ -308,19 +328,23 @@ void HardenedInstallPendingUpdate(const Arguments& arguments) {
   const fs::path backup = arguments.root / L"data" / L"update-backup";
   const fs::path data = arguments.root / L"data";
   const AppConfig config = LoadConfig(data / L"settings.json");
-  const std::wstring deviceToken = LoadProtectedToken(data / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
+  const std::wstring deviceToken = LoadProtectedToken(
+      data / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
   if (deviceToken.empty()) {
-    throw std::runtime_error("device token is unavailable; cannot download authenticated update files");
+    throw std::runtime_error(
+        "device token is unavailable; cannot download authenticated update files");
   }
   if (config.cloudflareBaseUrl.empty()) {
-    throw std::runtime_error("Cloudflare base URL is unavailable for update origin verification");
+    throw std::runtime_error(
+        "Cloudflare base URL is unavailable for update origin verification");
   }
   fs::remove_all(staging);
   fs::create_directories(staging);
 
   for (const auto& file : manifest.files) {
     if (!SameHttpsOrigin(file.url, config.cloudflareBaseUrl)) {
-      throw std::runtime_error("update file URL is outside the configured HomePanel Worker origin");
+      throw std::runtime_error(
+          "update file URL is outside the configured HomePanel Worker origin");
     }
     const size_t maximum = static_cast<size_t>(
         std::min<uint64_t>(file.size + 1024 * 1024, 64ull * 1024ull * 1024ull));
@@ -477,6 +501,24 @@ int RelaunchFromHomePanelRoot(
   return 0;
 }
 
+class ScopedWinRtApartment final {
+ public:
+  ScopedWinRtApartment() {
+    winrt::init_apartment(winrt::apartment_type::single_threaded);
+    initialized_ = true;
+  }
+
+  ~ScopedWinRtApartment() {
+    if (initialized_) winrt::uninit_apartment();
+  }
+
+  ScopedWinRtApartment(const ScopedWinRtApartment&) = delete;
+  ScopedWinRtApartment& operator=(const ScopedWinRtApartment&) = delete;
+
+ private:
+  bool initialized_ = false;
+};
+
 }
 
 int WINAPI wWinMain(
@@ -489,6 +531,8 @@ int WINAPI wWinMain(
   try {
     SetErrorMode(
         SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    ScopedWinRtApartment apartment;
+
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argv) throw std::runtime_error("command line parsing failed");
@@ -502,8 +546,7 @@ int WINAPI wWinMain(
         throw std::runtime_error("cannot resolve updater location");
       }
       if (!LooksLikeHomePanelRoot(executable.parent_path())) {
-        const std::filesystem::path resolved =
-            ResolveHomePanelRoot(executable);
+        const std::filesystem::path resolved = ResolveHomePanelRoot(executable);
         if (resolved.empty()) {
           hp::ShowUpdaterMessage(
               L"HomePanelの設置先を特定できませんでした。\n"
