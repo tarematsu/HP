@@ -11,34 +11,16 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 6
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: 0500f25c2f74e7e76c94a8bcb6c7008b
     steps:
-      - name: Inspect cron schedules
-        run: |
-          for worker in sh-sakurazaka46jp sh-nogizaka46smej; do
-            echo "=== $worker schedules ==="
-            curl --fail --silent --show-error \
-              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$worker/schedules"
-            echo
-          done
-      - name: Compare live tails for one minute
+      - name: Tail Nogizaka after cron propagation window
         run: |
           set +e
-          timeout 75s npx --yes wrangler@4.104.0 tail sh-sakurazaka46jp --format=json > /tmp/saku.log 2>&1 &
-          p1=$!
-          timeout 75s npx --yes wrangler@4.104.0 tail sh-nogizaka46smej --format=json > /tmp/nogi.log 2>&1 &
-          p2=$!
-          wait "$p1"; s1=$?
-          wait "$p2"; s2=$?
-          echo '=== sakurazaka tail ==='; cat /tmp/saku.log
-          echo '=== nogizaka tail ==='; cat /tmp/nogi.log
-          for s in "$s1" "$s2"; do
-            if [ "$s" -ne 0 ] && [ "$s" -ne 124 ]; then exit "$s"; fi
-          done
+          timeout 110s npx --yes wrangler@4.104.0 tail sh-nogizaka46smej --format=json
+          status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then exit "$status"; fi
       - name: Fetch realtime status
         run: |
           curl --fail --silent --show-error --max-time 15 \
