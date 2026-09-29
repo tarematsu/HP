@@ -1,4 +1,4 @@
-import './hinata-shell.js?v=20260930.3';
+import './hinata-shell.js?v=20260930.4';
 
 let hinataActive = false;
 let runtimePromise = null;
@@ -43,7 +43,7 @@ function showOnlyHinata() {
 
 async function loadRuntime() {
   if (!runtimePromise) {
-    runtimePromise = import('/hinata.js?v=20260930.2').catch((error) => {
+    runtimePromise = import('/hinata.js?v=20260930.3').catch((error) => {
       runtimePromise = null;
       throw error;
     });

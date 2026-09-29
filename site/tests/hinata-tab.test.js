@@ -52,11 +52,13 @@ test('Hinata graph is rendered as five-minute buckets with actual five-minute st
   assert.doesNotMatch(shell, /5分平均の再生増加/);
 });
 
-test('Hinata daily table includes cumulative stream and member totals', () => {
-  assert.match(shell, /<th>総再生数<\/th><th>再生数増加<\/th><th>総メンバー数<\/th><th>メンバー増加<\/th>/);
+test('Hinata daily table matches history start and end cumulative columns', () => {
+  assert.match(shell, /<th>再生数（開始）<\/th><th>再生数（終了）<\/th><th>再生数増加<\/th><th>メンバー数（開始）<\/th><th>メンバー数（終了）<\/th><th>メンバー増加<\/th>/);
+  assert.match(runtime, /numberText\(item\?\.stream_start\)/);
   assert.match(runtime, /numberText\(item\?\.stream_end\)/);
+  assert.match(runtime, /numberText\(item\?\.member_start\)/);
   assert.match(runtime, /numberText\(item\?\.member_end\)/);
-  assert.match(runtime, /cell\.colSpan = 8/);
+  assert.match(runtime, /cell\.colSpan = 10/);
 });
 
 test('Hinata UI includes the 24-hour online and playback graph plus daily metrics', () => {
