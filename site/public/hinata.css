@@ -1,5 +1,3 @@
-.hinata-view[hidden] { display: none !important; }
-
 .hinata-metric {
   min-width: 0;
   text-align: center;
@@ -31,17 +29,7 @@
 }
 
 .hinata-chart {
-  width: 100%;
-  min-height: 280px;
-  overflow: hidden;
-  touch-action: manipulation;
-}
-
-.hinata-chart svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  min-height: 280px;
+  --shared-chart-min-height: 280px;
 }
 
 .hinata-chart-detail {
@@ -51,8 +39,6 @@
 .hinata-daily-table th,
 .hinata-daily-table td {
   text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .hinata-daily-table th:first-child,
@@ -66,8 +52,7 @@
 }
 
 @media (max-width: 760px) {
-  .hinata-chart,
-  .hinata-chart svg {
-    min-height: 230px;
+  .hinata-chart {
+    --shared-chart-min-height: 230px;
   }
 }

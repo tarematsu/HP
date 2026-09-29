@@ -1,0 +1,59 @@
+/* Shared component rules for lazily mounted dashboard tabs.
+   Feature styles should only keep feature-specific dimensions, colors and selectors. */
+
+.shared-svg-chart {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--shared-chart-min-height, 220px);
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+.shared-svg-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  min-height: var(--shared-chart-min-height, 220px);
+}
+
+.shared-empty {
+  margin: 0;
+  min-height: var(--shared-empty-min-height, 0);
+  padding: var(--shared-empty-padding, 48px 16px);
+  display: grid;
+  place-items: center;
+  color: var(--muted, #666);
+  text-align: center;
+}
+
+.shared-numeric,
+.shared-numeric-table th,
+.shared-numeric-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.shared-numeric-table th,
+.shared-numeric-table td {
+  white-space: nowrap;
+}
+
+.shared-rank-grid {
+  stroke: currentColor;
+  stroke-opacity: .12;
+  stroke-width: 1;
+}
+
+.shared-rank-axis-label {
+  fill: currentColor;
+  opacity: .62;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shared-svg-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}

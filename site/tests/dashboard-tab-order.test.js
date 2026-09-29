@@ -14,11 +14,11 @@ test('leaderboard tab is immediately to the right of likes in static navigation'
 });
 
 test('followers tab is inserted immediately after first-week comparison', () => {
-  assert.match(followersShell, /querySelector\('\[data-view="first-week"\]'\)/);
-  assert.match(followersShell, /firstWeek\.insertAdjacentElement\('afterend', button\)/);
+  assert.match(followersShell, /anchorSelector: '\[data-view="first-week"\]'/);
+  assert.match(followersShell, /position: 'afterend'/);
 });
 
 test('Apple Music tab is inserted immediately before Spotify', () => {
-  assert.match(appleMusicShell, /querySelector\('\[data-view="spotify"\]'\)/);
-  assert.match(appleMusicShell, /spotify\.insertAdjacentElement\('beforebegin', button\)/);
+  assert.match(appleMusicShell, /anchorSelector: '\[data-view="spotify"\]'/);
+  assert.match(appleMusicShell, /position: 'beforebegin'/);
 });

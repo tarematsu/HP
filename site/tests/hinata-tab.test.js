@@ -5,22 +5,27 @@ import test from 'node:test';
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const route = readFileSync(new URL('../public/dashboard-hinata-route.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/hinata-shell.js', import.meta.url), 'utf8');
+const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
+const sharedRoute = readFileSync(new URL('../public/dashboard-standalone-route.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/hinata.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/hinata.css', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/hinata.js', import.meta.url), 'utf8');
 
 test('Pages mounts a dedicated Hinata dashboard tab after Amazon Music', () => {
   assert.match(metrics, /dashboard-hinata-route\.js/);
-  assert.match(shell, /dataset\.view = 'hinata'/);
-  assert.match(shell, /\[data-view="amazon-music"\]/);
-  assert.match(shell, /const anchor = amazonMusic \|\| spotify/);
-  assert.match(shell, /anchor\.insertAdjacentElement\('afterend', button\)/);
+  assert.match(shell, /mountDashboardShell/);
+  assert.match(shell, /view: 'hinata'/);
+  assert.match(shell, /anchorSelectors: \['\[data-view="amazon-music"\]', '\[data-view="spotify"\]'\]/);
+  assert.match(shell, /position: 'afterend'/);
   assert.match(shell, /日向坂/);
   assert.match(shell, /オンライン/);
   assert.match(shell, /総再生数/);
   assert.match(shell, /総メンバー数/);
   assert.match(shell, /日次データ/);
-  assert.match(route, /#hinata/);
+  assert.match(route, /registerStandaloneDashboardRoute/);
+  assert.match(route, /mode: 'hinata'/);
+  assert.match(sharedUi, /export function mountDashboardShell/);
+  assert.match(sharedRoute, /location\.hash === `#\$\{mode\}`/);
 });
 
 test('Hinata tab reuses the shared current and history layout system', () => {
@@ -28,8 +33,11 @@ test('Hinata tab reuses the shared current and history layout system', () => {
   assert.match(shell, /class="metric hinata-metric"/);
   assert.match(shell, /class="section-head chart-head hinata-section-head"/);
   assert.match(shell, /class="legend hinata-legend"/);
+  assert.match(shell, /shared-svg-chart/);
+  assert.match(shell, /shared-numeric-table/);
   assert.match(shell, /class="chart-detail subtle hinata-chart-detail"/);
   assert.match(shell, /class="card data-panel hinata-daily-panel"/);
+  assert.doesNotMatch(css, /\.hinata-view\[hidden\]/);
   assert.doesNotMatch(css, /font-size:/);
   assert.doesNotMatch(css, /padding:/);
 });

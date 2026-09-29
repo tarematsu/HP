@@ -1,11 +1,4 @@
-function ensureStylesheet() {
-  if (document.querySelector('link[data-history-past-toggle-styles]')) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = '/history/history-past-toggle.css?v=20260926.1';
-  link.dataset.historyPastToggleStyles = '1';
-  document.head.append(link);
-}
+import { ensureStylesheet } from '../dashboard-ui-common.js?v=20260930.1';
 
 function mountPastWeekToggle() {
   const rangePresets = document.getElementById('rangePresets');
@@ -22,5 +15,5 @@ function mountPastWeekToggle() {
   rangePresets.append(wrap);
 }
 
-ensureStylesheet();
+ensureStylesheet('/history/history-past-toggle.css?v=20260926.1', 'history-past-toggle');
 mountPastWeekToggle();

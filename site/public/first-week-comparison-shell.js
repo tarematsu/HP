@@ -1,33 +1,17 @@
-function ensureStylesheet() {
-  if (document.querySelector('link[data-first-week-comparison-styles]')) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = '/first-week-comparison.css?v=20260928.1';
-  link.dataset.firstWeekComparisonStyles = '1';
-  document.head.append(link);
-}
+import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
 
-function mountTab() {
-  const tabs = document.getElementById('modeTabs');
-  const spotify = tabs?.querySelector('[data-view="spotify"]');
-  if (!tabs || tabs.querySelector('[data-view="first-week"]')) return;
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.dataset.view = 'first-week';
-  button.textContent = '初週比較';
-  if (spotify) spotify.insertAdjacentElement('beforebegin', button);
-  else tabs.append(button);
-}
-
-function mountView() {
-  const main = document.getElementById('content');
-  if (!main || document.getElementById('firstWeekView')) return;
-
-  const section = document.createElement('section');
-  section.id = 'firstWeekView';
-  section.className = 'dashboard-view first-week-view';
-  section.hidden = true;
-  section.innerHTML = `
+mountDashboardShell({
+  style: { href: '/first-week-comparison.css?v=20260928.1', key: 'first-week-comparison' },
+  tab: {
+    view: 'first-week',
+    label: '初週比較',
+    anchorSelector: '[data-view="spotify"]',
+    position: 'beforebegin',
+  },
+  view: {
+    id: 'firstWeekView',
+    className: 'first-week-view',
+    html: `
     <p id="firstWeekNotice" class="notice" role="status" hidden></p>
 
     <section class="card chart-panel first-week-chart-panel">
@@ -49,10 +33,6 @@ function mountView() {
           <tbody id="firstWeekTbody"></tbody>
         </table>
       </div>
-    </section>`;
-  main.append(section);
-}
-
-ensureStylesheet();
-mountTab();
-mountView();
+    </section>`,
+  },
+});
