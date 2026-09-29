@@ -1,6 +1,7 @@
 const HINATA_URL = '/api/hinata';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const FIVE_MINUTES_MS = 5 * 60_000;
+const DAY_MS = 24 * 60 * 60_000;
 const integer = new Intl.NumberFormat('ja-JP');
 const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
 const jstTime = new Intl.DateTimeFormat('ja-JP', {
@@ -17,9 +18,15 @@ const jstDateTime = new Intl.DateTimeFormat('ja-JP', {
   minute: '2-digit',
   hour12: false,
 });
+const utcDay = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'UTC',
+  month: 'numeric',
+  day: 'numeric',
+});
 
 let payload = null;
 let chartRows = [];
+let dailyChartRows = [];
 
 const byId = (id) => document.getElementById(id);
 const finite = (value) => {
@@ -37,6 +44,10 @@ const signedText = (value) => {
 function setText(id, value) {
   const node = byId(id);
   if (node) node.textContent = String(value);
+}
+
+function cssColor(name, fallback) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
 function svgElement(name, attributes = {}, text = null) {
@@ -212,6 +223,222 @@ function renderChart(value) {
   host.append(svg);
 }
 
+function normalizeDailyChartRows(value) {
+  return (Array.isArray(value?.daily) ? value.daily : [])
+    .map((row) => {
+      const periodKey = String(row?.period_key || '');
+      const timestamp = /^\d{4}-\d{2}-\d{2}$/.test(periodKey)
+        ? Date.parse(`${periodKey}T00:00:00Z`)
+        : NaN;
+      return {
+        period_key: periodKey,
+        timestamp,
+        listener_avg: finite(row?.listener_avg),
+        listener_min: finite(row?.listener_min),
+        listener_max: finite(row?.listener_max),
+        stream_growth: finite(row?.stream_growth),
+      };
+    })
+    .filter((row) => Number.isFinite(row.timestamp)
+      && ['listener_avg', 'listener_min', 'listener_max', 'stream_growth']
+        .some((key) => row[key] != null))
+    .sort((left, right) => left.timestamp - right.timestamp);
+}
+
+function appendDailyLegend(label, color, bar = false) {
+  const span = document.createElement('span');
+  const marker = document.createElement('i');
+  marker.className = bar ? 'hinata-bar-key' : 'hinata-line-key';
+  marker.style.background = color;
+  span.append(marker, document.createTextNode(label));
+  return span;
+}
+
+function renderDailyChart(value) {
+  const host = byId('hinataDailyChart');
+  if (!host) return;
+  dailyChartRows = normalizeDailyChartRows(value);
+  host.replaceChildren();
+  const legend = byId('hinataDailyChartLegend');
+  legend?.replaceChildren();
+  if (!dailyChartRows.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hinata-empty';
+    empty.textContent = '日次グラフデータはまだありません。';
+    host.append(empty);
+    return;
+  }
+
+  const width = 1000;
+  const height = 340;
+  const padding = { left: 58, right: 70, top: 20, bottom: 42 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const minTime = dailyChartRows[0].timestamp;
+  const maxTime = dailyChartRows.at(-1).timestamp;
+  const span = Math.max(DAY_MS, maxTime - minTime);
+  const x = (time) => padding.left + (time - minTime) / span * plotWidth;
+
+  const listenerSeries = [
+    { key: 'listener_avg', label: '平均同接', color: '#000000', width: 3 },
+    { key: 'listener_max', label: '最大同接', color: cssColor('--orange', '#c56a18'), width: 2 },
+    { key: 'listener_min', label: '最小同接', color: cssColor('--blue', '#2776b9'), width: 2 },
+  ];
+  const listenerValues = listenerSeries.flatMap(({ key }) =>
+    dailyChartRows.map((row) => row[key]).filter((item) => item != null));
+  const rawMin = listenerValues.length ? Math.min(...listenerValues) : 0;
+  const rawMax = listenerValues.length ? Math.max(...listenerValues) : 1;
+  const listenerPadding = Math.max(1, (rawMax - rawMin) * 0.08);
+  const listenerMin = Math.max(0, rawMin - listenerPadding);
+  const listenerMax = Math.max(listenerMin + 1, rawMax + listenerPadding);
+  const listenerRange = listenerMax - listenerMin;
+  const listenerY = (number) => padding.top + plotHeight
+    - (Number(number) - listenerMin) / listenerRange * plotHeight;
+
+  const streamValues = dailyChartRows
+    .map((row) => row.stream_growth)
+    .filter((item) => item != null && item >= 0);
+  const streamColor = cssColor('--green', '#168b73');
+  const streamMax = Math.max(1, ...streamValues);
+  const streamCeiling = Math.max(1, streamMax * 1.08);
+  const streamY = (number) => padding.top + plotHeight
+    - Math.max(0, Number(number) || 0) / streamCeiling * plotHeight;
+
+  const svg = svgElement('svg', {
+    viewBox: `0 0 ${width} ${height}`,
+    role: 'presentation',
+    preserveAspectRatio: 'none',
+  });
+
+  for (let index = 0; index <= 4; index += 1) {
+    const ratio = index / 4;
+    const gridY = padding.top + plotHeight * ratio;
+    svg.append(svgElement('line', {
+      x1: padding.left,
+      x2: width - padding.right,
+      y1: gridY,
+      y2: gridY,
+      stroke: 'rgba(31,45,68,.12)',
+      'stroke-width': 1,
+    }));
+    if (listenerValues.length) {
+      svg.append(svgElement('text', {
+        x: padding.left - 9,
+        y: gridY + 4,
+        'text-anchor': 'end',
+        'font-size': 20,
+        fill: '#777',
+      }, integer.format(Math.round(listenerMax - listenerRange * ratio))));
+    }
+    if (streamValues.length) {
+      svg.append(svgElement('text', {
+        x: width - padding.right + 9,
+        y: gridY + 4,
+        'text-anchor': 'start',
+        'font-size': 20,
+        fill: '#777',
+      }, integer.format(Math.round(streamCeiling * (1 - ratio)))));
+    }
+  }
+
+  if (streamValues.length) {
+    const totalDays = Math.max(1, Math.round(span / DAY_MS) + 1);
+    const slot = plotWidth / totalDays;
+    const barWidth = Math.max(1.5, Math.min(16, slot * 0.58));
+    for (const row of dailyChartRows) {
+      if (row.stream_growth == null || row.stream_growth < 0) continue;
+      const y = streamY(row.stream_growth);
+      svg.append(svgElement('rect', {
+        x: x(row.timestamp) - barWidth / 2,
+        y,
+        width: barWidth,
+        height: padding.top + plotHeight - y,
+        fill: streamColor,
+        'fill-opacity': 0.42,
+      }));
+    }
+  }
+
+  for (const series of listenerSeries) {
+    let path = '';
+    let previousTime = null;
+    for (const row of dailyChartRows) {
+      const next = row[series.key];
+      if (next == null) {
+        previousTime = null;
+        continue;
+      }
+      const command = previousTime != null && row.timestamp - previousTime <= DAY_MS * 1.5 ? 'L' : 'M';
+      path += `${command} ${x(row.timestamp).toFixed(2)} ${listenerY(next).toFixed(2)} `;
+      previousTime = row.timestamp;
+    }
+    if (!path) continue;
+    svg.append(svgElement('path', {
+      d: path.trim(),
+      fill: 'none',
+      stroke: series.color,
+      'stroke-width': series.width,
+      'vector-effect': 'non-scaling-stroke',
+      'stroke-linejoin': 'round',
+      'stroke-linecap': 'round',
+    }));
+  }
+
+  svg.append(svgElement('line', {
+    x1: padding.left,
+    x2: width - padding.right,
+    y1: padding.top + plotHeight,
+    y2: padding.top + plotHeight,
+    stroke: 'rgba(31,45,68,.24)',
+    'stroke-width': 1,
+  }));
+  for (let index = 0; index <= 4; index += 1) {
+    const timestamp = minTime + span * index / 4;
+    svg.append(svgElement('text', {
+      x: padding.left + plotWidth * index / 4,
+      y: height - 8,
+      'text-anchor': index === 0 ? 'start' : index === 4 ? 'end' : 'middle',
+      'font-size': 20,
+      fill: '#777',
+    }, utcDay.format(new Date(timestamp))));
+  }
+
+  const hit = svgElement('rect', {
+    x: padding.left,
+    y: padding.top,
+    width: plotWidth,
+    height: plotHeight,
+    fill: 'transparent',
+  });
+  hit.addEventListener('pointerup', (event) => {
+    const bounds = svg.getBoundingClientRect();
+    if (!bounds.width) return;
+    const svgX = (event.clientX - bounds.left) / bounds.width * width;
+    const target = minTime + Math.max(0, Math.min(1, (svgX - padding.left) / plotWidth)) * span;
+    let selected = dailyChartRows[0];
+    for (const row of dailyChartRows) {
+      if (Math.abs(row.timestamp - target) < Math.abs(selected.timestamp - target)) selected = row;
+    }
+    setText(
+      'hinataDailyChartDetail',
+      `${selected.period_key}　平均同接 ${numberText(selected.listener_avg)}`
+      + `　最大同接 ${numberText(selected.listener_max)}`
+      + `　最小同接 ${numberText(selected.listener_min)}`
+      + `　再生数 ${numberText(selected.stream_growth)}`,
+    );
+  });
+  svg.append(hit);
+  host.append(svg);
+
+  if (legend) {
+    const items = listenerSeries
+      .filter((series) => dailyChartRows.some((row) => row[series.key] != null))
+      .map((series) => appendDailyLegend(series.label, series.color));
+    if (streamValues.length) items.push(appendDailyLegend('再生数', streamColor, true));
+    legend.replaceChildren(...items);
+  }
+}
+
 function renderDaily(value) {
   const tbody = byId('hinataDailyTbody');
   if (!tbody) return;
@@ -255,6 +482,7 @@ function render(value) {
   payload = value;
   renderMetrics(value);
   renderChart(value);
+  renderDailyChart(value);
   renderDaily(value);
   const notice = byId('hinataNotice');
   if (notice) {
@@ -274,5 +502,8 @@ export async function loadHinataView() {
 }
 
 window.addEventListener('resize', () => {
-  if (payload && !byId('hinataView')?.hidden) renderChart(payload);
+  if (payload && !byId('hinataView')?.hidden) {
+    renderChart(payload);
+    renderDailyChart(payload);
+  }
 });
