@@ -43,16 +43,35 @@ jobs:
           const source = JSON.parse(fs.readFileSync('wrangler.amazon-music.jsonc', 'utf8'));
           fs.writeFileSync(
             'src/amazon-music-once-wrapper.js',
-            "import handler from './amazon-music-entry.js';\nexport default handler;\n",
+            `import { collectAmazonMusicSnapshot } from './amazon-music-collector.js';
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname !== '/run-once') return new Response('Not Found', { status: 404 });
+    try {
+      const result = await collectAmazonMusicSnapshot(env, Date.now());
+      console.log(JSON.stringify({ event: 'amazon-music-collection-complete', ...result }));
+      return Response.json({ ok: true, result });
+    } catch (error) {
+      console.error('amazon-music-collection-failed', {
+        error: String(error?.stack || error?.message || error).slice(0, 4000),
+      });
+      return Response.json({ ok: false, error: String(error?.message || error) }, { status: 500 });
+    }
+  },
+};
+`,
           );
           source.name = 'sh-amazon-music-collector-once';
           source.main = 'src/amazon-music-once-wrapper.js';
           source.d1_databases = (source.d1_databases || []).map((binding) => ({ ...binding, remote: true }));
           source.r2_buckets = (source.r2_buckets || []).map((binding) => ({ ...binding, remote: true }));
+          delete source.triggers;
           fs.writeFileSync('wrangler.amazon-once.jsonc', JSON.stringify(source, null, 2));
           NODE
 
-      - name: Trigger Amazon Music scheduled collection now
+      - name: Run Amazon Music collection against production bindings
         working-directory: worker
         shell: bash
         run: |
@@ -60,7 +79,6 @@ jobs:
           LOG=/tmp/amazon-music-once.log
           npx wrangler dev \
             --config wrangler.amazon-once.jsonc \
-            --test-scheduled \
             --ip 127.0.0.1 \
             --port 8787 \
             --log-level info >"$LOG" 2>&1 &
@@ -86,33 +104,22 @@ jobs:
           fi
 
           set +e
-          curl --fail --show-error --silent --max-time 900 \
-            'http://127.0.0.1:8787/cdn-cgi/local/scheduled?cron=30+1+%2A+%2A+%2A&format=json' \
-            | tee /tmp/amazon-music-once-response.json
-          CURL_STATUS=${PIPESTATUS[0]}
+          HTTP_CODE=$(curl --show-error --silent --max-time 900 \
+            -o /tmp/amazon-music-once-response.json \
+            -w '%{http_code}' \
+            'http://127.0.0.1:8787/run-once')
+          CURL_STATUS=$?
           set -e
 
-          for _ in $(seq 1 180); do
-            if grep -q 'amazon-music-collection-complete' "$LOG"; then
-              cat "$LOG"
-              exit 0
-            fi
-            if grep -q 'amazon-music-collection-failed' "$LOG"; then
-              cat "$LOG"
-              exit 1
-            fi
-            if ! kill -0 "$WRANGLER_PID" >/dev/null 2>&1; then
-              cat "$LOG"
-              exit 1
-            fi
-            if [[ "$CURL_STATUS" -ne 0 ]]; then
-              sleep 2
-              cat "$LOG"
-              exit "$CURL_STATUS"
-            fi
-            sleep 5
-          done
-
+          cat /tmp/amazon-music-once-response.json || true
+          echo
           cat "$LOG"
-          echo 'Amazon Music collection did not finish within the workflow timeout window' >&2
-          exit 1
+
+          if [[ "$CURL_STATUS" -ne 0 ]]; then
+            exit "$CURL_STATUS"
+          fi
+          if [[ "$HTTP_CODE" != 200 ]]; then
+            echo "Amazon Music one-time run returned HTTP $HTTP_CODE" >&2
+            exit 1
+          fi
+          grep -q 'amazon-music-collection-complete' "$LOG"
