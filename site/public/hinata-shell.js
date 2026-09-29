@@ -1,35 +1,19 @@
-function ensureStylesheet() {
-  if (document.querySelector('link[data-hinata-tab-styles]')) return;
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = '/hinata.css?v=20260930.3';
-  link.dataset.hinataTabStyles = '1';
-  document.head.append(link);
-}
+import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
 
-function mountTab() {
-  const tabs = document.getElementById('modeTabs');
-  if (!tabs || tabs.querySelector('[data-view="hinata"]')) return;
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.dataset.view = 'hinata';
-  button.textContent = '日向坂';
-  const amazonMusic = tabs.querySelector('[data-view="amazon-music"]');
-  const spotify = tabs.querySelector('[data-view="spotify"]');
-  const anchor = amazonMusic || spotify;
-  if (anchor) anchor.insertAdjacentElement('afterend', button);
-  else tabs.append(button);
-}
-
-function mountView() {
-  const main = document.getElementById('content');
-  if (!main || document.getElementById('hinataView')) return;
-  const historyView = document.getElementById('historyView');
-  const section = document.createElement('section');
-  section.id = 'hinataView';
-  section.className = 'dashboard-view hinata-view';
-  section.hidden = true;
-  section.innerHTML = `
+mountDashboardShell({
+  style: { href: '/hinata.css?v=20260930.4', key: 'hinata' },
+  tab: {
+    view: 'hinata',
+    label: '日向坂',
+    anchorSelectors: ['[data-view="amazon-music"]', '[data-view="spotify"]'],
+    position: 'afterend',
+  },
+  view: {
+    id: 'hinataView',
+    className: 'hinata-view',
+    anchorId: 'historyView',
+    position: 'afterend',
+    html: `
     <p id="hinataNotice" class="notice" role="status" hidden></p>
 
     <section class="metrics hinata-metrics" aria-label="日向坂 Stationhead 最新値">
@@ -47,7 +31,7 @@ function mountView() {
         <span><i class="hinata-line-key"></i>オンライン</span>
         <span><i class="hinata-bar-key"></i>再生数増加</span>
       </div>
-      <div id="hinataChart" class="hinata-chart chart-fit" role="img" aria-label="過去24時間のオンライン数と5分ごとの再生数増加"></div>
+      <div id="hinataChart" class="hinata-chart chart-fit shared-svg-chart" role="img" aria-label="過去24時間のオンライン数と5分ごとの再生数増加"></div>
       <p id="hinataChartDetail" class="chart-detail subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
     </section>
 
@@ -56,23 +40,18 @@ function mountView() {
         <div><p class="kicker">DAILY</p><h2 id="hinataDailyChartTitle">同接・再生数の推移</h2></div>
       </div>
       <div id="hinataDailyChartLegend" class="legend hinata-legend" aria-label="日次グラフ凡例"></div>
-      <div id="hinataDailyChart" class="hinata-chart chart-fit" role="img" aria-label="日次の平均・最大・最小同接と再生数増加"></div>
+      <div id="hinataDailyChart" class="hinata-chart chart-fit shared-svg-chart" role="img" aria-label="日次の平均・最大・最小同接と再生数増加"></div>
       <p id="hinataDailyChartDetail" class="chart-detail subtle hinata-chart-detail">グラフをタッチすると数値を確認できます。</p>
     </section>
 
     <section class="card data-panel hinata-daily-panel" aria-labelledby="hinataDailyTitle">
       <div class="section-head"><div><p class="kicker">DAILY</p><h2 id="hinataDailyTitle">日次データ</h2></div></div>
       <div class="table-wrap table-fit-mobile">
-        <table class="hinata-daily-table">
+        <table class="hinata-daily-table shared-numeric-table">
           <thead><tr><th>日付</th><th>平均同接</th><th>最小同接</th><th>最大同接</th><th>再生数（開始）</th><th>再生数（終了）</th><th>再生数増加</th><th>メンバー数（開始）</th><th>メンバー数（終了）</th><th>メンバー増加</th></tr></thead>
           <tbody id="hinataDailyTbody"></tbody>
         </table>
       </div>
-    </section>`;
-  if (historyView) historyView.insertAdjacentElement('afterend', section);
-  else main.append(section);
-}
-
-ensureStylesheet();
-mountTab();
-mountView();
+    </section>`,
+  },
+});
