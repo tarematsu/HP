@@ -1,8 +1,7 @@
+import { decimalOneFormat as streamNumber, finiteNumber as finite, integerFormat as integer } from './dashboard-ui-common.js?v=20260930.1';
+
 const DAY_MS = 86_400_000;
-const MINUTE_MS = 60_000;
-const FIVE_MINUTE_MS = 5 * MINUTE_MS;
-const integer = new Intl.NumberFormat('ja-JP');
-const streamNumber = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
+const FIVE_MINUTE_MS = 5 * 60_000;
 const jstChartDateTime = new Intl.DateTimeFormat('ja-JP', {
   timeZone: 'Asia/Tokyo',
   month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -10,11 +9,6 @@ const jstChartDateTime = new Intl.DateTimeFormat('ja-JP', {
 let rows = [];
 let streamRows = [];
 
-const finite = (value) => {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
 const numberText = (value) => finite(value) == null ? '—' : integer.format(Number(value));
 const streamNumberText = (value) => finite(value) == null ? '—' : streamNumber.format(Number(value));
 
@@ -84,14 +78,10 @@ function selectPoint(event) {
   }
 }
 
-window.addEventListener('dashboard:payload', (event) => {
+window.addEventListener('dashboard:details', (event) => {
   const payload = event?.detail?.payload;
   if (!payload?.ok) return;
-  const nextRows = normalizeHistory(payload.history);
-  if (nextRows.length) rows = nextRows;
-  if (Array.isArray(payload.stream_5m_history)) {
-    const nextStreamRows = normalizeStreamHistory(payload.stream_5m_history);
-    if (nextStreamRows.length || payload.stream_5m_history.length === 0) streamRows = nextStreamRows;
-  }
+  rows = normalizeHistory(payload.history);
+  streamRows = normalizeStreamHistory(payload.stream_5m_history);
 });
 document.getElementById('audienceChart')?.addEventListener('pointerup', selectPoint, true);
