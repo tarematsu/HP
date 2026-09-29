@@ -15,6 +15,10 @@ const averageMigration = readFileSync(
   new URL('../database/facts-migrations/057_stream_5m_average_read_model.sql', import.meta.url),
   'utf8',
 );
+const finalizeMigration = readFileSync(
+  new URL('../database/facts-migrations/063_finalize_stream_5m_once.sql', import.meta.url),
+  'utf8',
+);
 const dashboard = readFileSync(
   new URL('../site/functions/lib/dashboard-chart-support.js', import.meta.url),
   'utf8',
@@ -51,28 +55,23 @@ function readAverages(db) {
     }));
 }
 
-test('five-minute stream average migration remains ordered before the current MINUTE_DB schema tip', () => {
-  const path = 'database/facts-migrations/057_stream_5m_average_read_model.sql';
-  const index = descriptor.migrations.indexOf(path);
-  assert.ok(index >= 0);
-  assert.ok(index < descriptor.migrations.length - 1);
+test('five-minute finalization migration is the current MINUTE_DB schema tip', () => {
+  const path = 'database/facts-migrations/063_finalize_stream_5m_once.sql';
+  assert.equal(descriptor.schema, path);
+  assert.equal(descriptor.migrations.at(-1), path);
   assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
 });
 
-test('five-minute migration is rerunnable and keeps partial real samples', () => {
-  assert.match(averageMigration, /CREATE TABLE IF NOT EXISTS sh_stream_5m_average_read_model/);
-  assert.match(averageMigration, /FROM sh_minute_facts AS f/);
-  assert.match(averageMigration, /HAVING COUNT\(\*\)>=1/);
-  assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_insert/);
-  assert.match(averageMigration, /DROP TRIGGER IF EXISTS trg_sh_stream_5m_average_after_update/);
-  assert.match(averageMigration, /DROP TABLE IF EXISTS sh_stream_minute_delta_read_model/);
-  assert.match(averageMigration, /CREATE TRIGGER trg_sh_stream_5m_average_after_insert/);
-  assert.match(averageMigration, /CREATE TRIGGER trg_sh_stream_5m_average_after_update/);
+test('five-minute finalization keeps normal inserts to one completed-bucket refresh', () => {
+  assert.match(finalizeMigration, /NEW\.minute_at%300000=0/);
+  assert.match(finalizeMigration, /NEW\.minute_at-300000/);
+  assert.match(finalizeMigration, /trg_sh_stream_5m_average_late_insert/);
+  assert.match(finalizeMigration, /trg_sh_stream_5m_average_after_update/);
 });
 
-test('partial valid minute deltas remain visible without inventing zero samples', () => {
+test('completed buckets finalize once while late corrections remain repairable', () => {
   const db = fixture();
-  const bucket = Math.floor(Date.now() / 300_000) * 300_000 - 600_000;
+  const bucket = Math.floor(Date.now() / 300_000) * 300_000 - 900_000;
   const insert = db.prepare(`INSERT INTO sh_minute_facts(
     channel_id,minute_at,observed_at,source_code,reported_current_stream_count
   ) VALUES(?,?,?,?,?)`);
@@ -85,7 +84,7 @@ test('partial valid minute deltas remain visible without inventing zero samples'
 
   db.exec(minuteMigration);
   db.exec(averageMigration);
-  db.exec(averageMigration);
+  db.exec(finalizeMigration);
   assert.deepEqual(readAverages(db), [{
     bucket_at: bucket,
     stream_delta_avg: 4,
@@ -97,6 +96,16 @@ test('partial valid minute deltas remain visible without inventing zero samples'
     const minuteAt = bucket + 300_000 + index * 60_000;
     insert.run(1, minuteAt, minuteAt + 1_000, 1, next[index]);
   }
+
+  // The current bucket is intentionally not rewritten five times while it is open.
+  assert.deepEqual(readAverages(db), [{
+    bucket_at: bucket,
+    stream_delta_avg: 4,
+    sample_count: 5,
+  }]);
+
+  const boundary = bucket + 600_000;
+  insert.run(1, boundary, boundary + 1_000, 1, 141);
   assert.deepEqual(readAverages(db), [
     { bucket_at: bucket, stream_delta_avg: 4, sample_count: 5 },
     { bucket_at: bucket + 300_000, stream_delta_avg: 3, sample_count: 5 },
@@ -120,7 +129,7 @@ test('partial valid minute deltas remain visible without inventing zero samples'
   assert.equal(repaired[1].stream_delta_avg, 2.8);
 });
 
-test('Pages reads partial rows only from the compact five-minute model', () => {
+test('Pages reads rows only from the compact five-minute model', () => {
   assert.match(dashboard, /FROM sh_stream_5m_average_read_model AS d/);
   assert.match(dashboard, /d\.sample_count>=1/);
   assert.match(dashboard, /stream_5m_history/);
