@@ -1,4 +1,4 @@
-name: Temporary Amazon shared chart trace
+name: Temporary Amazon popular ranking trace
 
 on:
   push:
@@ -12,60 +12,49 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install puppeteer core
         run: npm install --no-save puppeteer-core@24.19.0
-      - name: Resolve and trace shared Amazon Music URL
+      - name: Trace popular page actions
         shell: bash
         run: |
           set -euo pipefail
-          final_url="$(curl -Ls -o /dev/null -w '%{url_effective}' 'https://t.co/nvGo3aU6aU')"
-          echo "FINAL_URL=$final_url"
-          export FINAL_URL="$final_url"
           node --input-type=module <<'NODE'
           import puppeteer from 'puppeteer-core';
           import fs from 'node:fs';
-
-          const candidates = ['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium-browser','/usr/bin/chromium'];
-          const executablePath = candidates.find((p) => fs.existsSync(p));
+          const executablePath = ['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium-browser','/usr/bin/chromium'].find(fs.existsSync);
           if (!executablePath) throw new Error('Chrome executable not found');
-          const browser = await puppeteer.launch({ executablePath, headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+          const browser = await puppeteer.launch({ executablePath, headless: true, args:['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
           const page = await browser.newPage();
-          await page.setExtraHTTPHeaders({ 'Accept-Language': 'ja-JP,ja;q=0.9,en;q=0.5' });
+          await page.setExtraHTTPHeaders({ 'Accept-Language':'ja-JP,ja;q=0.9,en;q=0.5' });
           await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36');
-
-          const interesting = /chart|rank|trend|popular|category|genre|総合|人気|急上昇|ポップ|ランキング|位/i;
-          page.on('request', (req) => {
-            const url = req.url();
-            if (!url.includes('skill.music.a2z.com')) return;
-            console.log(`REQ ${req.method()} ${url}`);
-            const post = req.postData();
-            if (post) console.log(`POST ${post.slice(0, 3000)}`);
-          });
           page.on('response', async (res) => {
-            const url = res.url();
-            if (!url.includes('skill.music.a2z.com')) return;
+            if (!res.url().includes('skill.music.a2z.com/api/showHome')) return;
             try {
               const text = await res.text();
-              if (!interesting.test(text)) return;
-              console.log(`RESP ${res.status()} ${url}`);
-              for (const match of text.matchAll(/.{0,220}(?:chart|rank|trend|popular|category|genre|総合|人気|急上昇|ポップ|ランキング|位).{0,420}/giu)) {
-                console.log(`SNIP ${match[0].replace(/\s+/g, ' ').slice(0,900)}`);
+              console.log(`SHOWHOME_BYTES=${text.length}`);
+              const decoded = text.replace(/\\u002F/gi,'/').replace(/\\\//g,'/');
+              const patterns = [
+                /[^"\\]{0,180}browsePanel[^"\\]{0,500}/gi,
+                /[^"\\]{0,180}popular[^"\\]{0,500}/gi,
+                /[^"\\]{0,180}showCatalogTracks[^"\\]{0,500}/gi,
+                /deeplink.{0,500}/gi,
+              ];
+              const seen = new Set();
+              for (const pattern of patterns) {
+                for (const m of decoded.matchAll(pattern)) {
+                  const v = m[0].replace(/\\+/g,'').replace(/\s+/g,' ').slice(0,900);
+                  if (!seen.has(v)) { seen.add(v); console.log('ACTION',v); }
+                  if (seen.size >= 250) break;
+                }
               }
-            } catch {}
+            } catch (e) { console.log('RESP_ERR', String(e)); }
           });
-
-          const target = process.env.FINAL_URL;
-          await page.goto(target, { waitUntil: 'networkidle2', timeout: 60000 });
-          await new Promise((r) => setTimeout(r, 5000));
-          console.log('PAGE_URL', page.url());
-          console.log('PAGE_TITLE', await page.title());
-          const body = await page.evaluate(() => document.body.innerText);
-          console.log('BODY_MATCHES', body.split('\n').filter((x) => /総合|人気|急上昇|ポップ|ランキング|位/.test(x)).slice(0,200));
+          await page.goto('https://music.amazon.co.jp/popular', {waitUntil:'networkidle2',timeout:60000});
+          await new Promise(r=>setTimeout(r,3000));
+          const links = await page.evaluate(() => [...document.querySelectorAll('a')].map(a=>({text:(a.innerText||a.textContent||'').trim(),href:a.href})).filter(x=>/人気|もっと|すべて|楽曲|曲/.test(x.text)||/popular|browsePanel/.test(x.href)));
+          console.log('DOM_LINKS', JSON.stringify(links.slice(0,100)));
           await browser.close();
           NODE
