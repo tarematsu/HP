@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
+const shell = readFileSync(new URL('../public/amazon-music-shell.js', import.meta.url), 'utf8');
+const runtime = readFileSync(new URL('../public/amazon-music.js', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../public/amazon-music.css', import.meta.url), 'utf8');
+
+test('Amazon Music is a central dashboard route backed by the materialized API only', () => {
+  assert.match(tabs, /VIEW_MODES[\s\S]*'amazon-music'/);
+  assert.match(tabs, /import\('\/amazon-music-shell\.js\?v=20260929\.1'\)/);
+  assert.match(tabs, /import\('\/amazon-music\.js\?v=20260929\.1'\)/);
+  assert.match(tabs, /showAmazonMusic/);
+  assert.match(runtime, /fetch\('\/api\/amazon-music'/);
+  assert.doesNotMatch(runtime, /\/api\/history|\/api\/dashboard|OTHER_DB|MINUTE_DB/);
+});
+
+test('Amazon Music view exposes follower summary, two rank graphs, and track rank table', () => {
+  assert.match(shell, /フォロワー数/);
+  assert.match(shell, /前日比/);
+  assert.match(shell, /id="amazonAllRankChart"/);
+  assert.match(shell, /id="amazonPopularRankChart"/);
+  assert.match(shell, /Amazon内順位/);
+  assert.match(shell, /櫻坂内人気順/);
+  assert.match(runtime, /metricKey: 'amazon_rank'/);
+  assert.match(runtime, /metricKey: 'popular_rank'/);
+  assert.match(runtime, /payload\?\.follower\?\.delta/);
+});
+
+test('Amazon Music rank charts keep first place at the top and fit mobile width', () => {
+  assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
+  assert.match(runtime, /ariaLabel: '櫻坂46全楽曲のAmazon Music内順位推移。1位が上。'/);
+  assert.match(runtime, /ariaLabel: 'Amazon Music櫻坂46アーティストページ内の人気曲順位推移。1位が上。'/);
+  assert.match(css, /\.amazon-rank-svg[\s\S]*width:\s*100%/);
+  assert.match(css, /\.amazon-table[\s\S]*table-layout:\s*fixed/);
+});
