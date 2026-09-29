@@ -18,7 +18,25 @@ const youtubePolicy = readFileSync(
 const xRuntime = readFileSync(
   new URL('../../native/src/renderer_panels/media_x_following_like.inc', import.meta.url), 'utf8');
 
-test('startup runs X for one minute before a full YouTube hour', () => {
+test('media cycle randomly selects zero, one or two X slots once per X-YouTube-X-TVer cycle', () => {
+  assert.match(mediaBase, /struct NativeMediaXCyclePlan/);
+  assert.match(mediaBase, /const UINT count = NativeMediaXRandomBelow\(3\)/);
+  assert.match(mediaBase, /if \(count == 2\)[\s\S]*firstSlot = true[\s\S]*secondSlot = true/);
+  assert.match(mediaBase, /else if \(count == 1\)[\s\S]*NativeMediaXRandomBelow\(2\)/);
+  assert.match(mediaBase, /if \(tver\) NativeMediaCurrentXCyclePlan\(\) = NativeMediaDrawXCyclePlan\(\)/);
+  assert.match(mediaBase, /NativeMediaXSlotEnabled\(true\)/);
+  assert.match(mediaBase, /NativeMediaXSlotEnabled\(false\)/);
+});
+
+test('unused X slots keep the fixed cycle length by continuing the current media', () => {
+  assert.match(mediaBase, /return phaseDuration \+ 1000U/);
+  assert.match(mediaBase, /return kNativeMediaTverPhaseMs \+ 1000U/);
+  assert.match(mediaBase, /#define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs\(\)/);
+  assert.match(mediaBase, /#define kNativeMediaTverContentDurationMs NativeMediaTverContentIntervalMs\(\)/);
+  assert.match(mediaBase, /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\)/);
+});
+
+test('startup reserves the first X slot before a full YouTube hour when selected', () => {
   assert.match(mediaBase, /kNativeMediaStartupXPhaseMs = 1U \* 60U \* 1000U/);
   assert.match(mediaBase, /https:\/\/x\.com\/home\?homepanel=startup/);
   assert.match(mediaBase, /NativeMediaStartupYoutubePhaseActive/);
@@ -30,7 +48,7 @@ test('startup runs X for one minute before a full YouTube hour', () => {
   assert.match(xRuntime, /location\.assign\(youtubeStart\)/);
 });
 
-test('YouTube hands its final minute to X after 60 minutes', () => {
+test('YouTube can hand its final minute to the selected second X slot', () => {
   assert.match(mediaBase, /kNativeMediaYoutubeContentPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaXPhaseMs = 1U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaYoutubePhaseMs =[\s\S]*kNativeMediaYoutubeContentPhaseMs \+ kNativeMediaXPhaseMs/);
@@ -39,7 +57,7 @@ test('YouTube hands its final minute to X after 60 minutes', () => {
   assert.match(host, /Navigate\(L"https:\/\/x\.com\/home"\)/);
 });
 
-test('TVer runs 58 minutes and hands its final minute to X', () => {
+test('TVer runs 58 minutes before a selected first X slot', () => {
   assert.match(mediaBase, /kNativeMediaTverContentDurationMs = 58U \* 60U \* 1000U/);
   assert.match(mediaBase, /kNativeMediaTverPhaseMs =[\s\S]*kNativeMediaTverContentDurationMs \+ kNativeMediaXPhaseMs/);
   assert.match(tverQueue, /kNativeMediaTverContentPhaseMs = 58ULL \* 60ULL \* 1000ULL/);
@@ -69,21 +87,25 @@ test('X waits without interaction until the authenticated Following tab exists',
   assert.doesNotMatch(waiting, /scrollTo\(|scrollBy\(/);
 });
 
-test('X likes use the same DOM click style as the Following tab and retry until confirmed', () => {
+test('X likes use the same DOM click type as Following and randomize pre-click waits', () => {
   assert.match(xRuntime, /\^\(\?:Following\|フォロー中\)\$/);
   assert.match(xRuntime, /tab\.click\(\)/);
-  assert.match(xRuntime, /const clickLikeButton = button =>/);
   assert.match(xRuntime, /button\.click\(\)/);
-  assert.match(xRuntime, /const likeIntervalMs = 10 \* 1000/);
-  assert.match(xRuntime, /const likeRetryIntervalMs = 1800/);
-  assert.match(xRuntime, /const maxLikeAttemptsPerPost = 3/);
+  assert.match(xRuntime, /const likeWaitChoicesMs = \[5 \* 1000, 10 \* 1000, 15 \* 1000\]/);
+  assert.match(xRuntime, /Math\.floor\(Math\.random\(\) \* likeWaitChoicesMs\.length\)/);
+  assert.match(xRuntime, /state\.result = 'waiting-before-like'/);
+  assert.match(xRuntime, /await sleep\(waitMs\)/);
   assert.match(xRuntime, /querySelector\('\[data-testid="unlike"\]'\)/);
-  assert.match(xRuntime, /state\.result = 'like-clicked'/);
-  assert.match(xRuntime, /state\.result = 'like-confirmed'/);
-  assert.match(xRuntime, /state\.result = 'like-unconfirmed'/);
+  assert.match(xRuntime, /const maxLikeAttemptsPerPost = 3/);
   assert.match(xRuntime, /failedAttempts\.set\(candidate\.id, failures\)/);
-  assert.match(xRuntime, /failures >= maxLikeAttemptsPerPost/);
-  assert.doesNotMatch(xRuntime, /homepanel:x-like:/);
+});
+
+test('X scrolling is twice the previous targeted speed', () => {
+  assert.match(xRuntime, /const maxScrollStepPx = 56/);
+  assert.match(xRuntime, /const minScrollStepPx = 20/);
+  assert.match(xRuntime, /Math\.ceil\(Math\.abs\(distance\) \* 0\.70\)/);
+  assert.match(xRuntime, /state\.result = 'approaching-like'/);
+  assert.match(xRuntime, /window\.scrollBy\(\{ top: Math\.sign\(distance\) \* step, behavior: 'smooth' \}\)/);
 });
 
 test('X timeline CSS only hides classified repost/promotion rows and placement ads', () => {
