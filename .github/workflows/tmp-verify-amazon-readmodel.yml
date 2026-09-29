@@ -15,33 +15,33 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify browser-equivalent Amazon Music requests
+      - name: Inspect Amazon Music all-tracks action
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           (async()=>{
-          const domain='music.amazon.co.jp'; const origin=`https://${domain}`;
+          const domain='music.amazon.co.jp', origin=`https://${domain}`, artistId='B08P3RHP1P';
           const ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
-          const configRes=await fetch(`${origin}/config.json?skipToken=false&clientApplication=skyfire`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','user-agent':ua,referer:`${origin}/`}});
-          console.log('config',configRes.status);
-          const cfg=await configRes.json(); const csrf=cfg.csrf||{};
-          function headers(pageUrl){return {
-            'x-amzn-authentication':JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:cfg.accessToken||''}),
-            'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer','x-amzn-device-id':cfg.deviceId||'',
-            'x-amzn-user-agent':ua,'x-amzn-session-id':cfg.sessionId||'','x-amzn-device-height':'1080','x-amzn-request-id':crypto.randomUUID(),
-            'x-amzn-device-language':'ja_JP','x-amzn-currency-of-preference':'JPY','x-amzn-os-version':'1.0','x-amzn-application-version':cfg.version||'',
-            'x-amzn-device-time-zone':'UTC','x-amzn-timestamp':String(Date.now()),
-            'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),
-            'x-amzn-music-domain':domain,'x-amzn-referer':'','x-amzn-affiliate-tags':'','x-amzn-ref-marker':'','x-amzn-page-url':pageUrl,
-            'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''};}
+          const cfg=await (await fetch(`${origin}/config.json?skipToken=false&clientApplication=skyfire`,{method:'POST',headers:{accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','user-agent':ua,referer:`${origin}/`}})).json(); const csrf=cfg.csrf||{};
+          const page=`${origin}/artists/${artistId}`;
+          function h(){return {'x-amzn-authentication':JSON.stringify({interface:'ClientAuthenticationInterface.v1_0.ClientTokenElement',accessToken:cfg.accessToken||''}),'x-amzn-device-model':'WEBPLAYER','x-amzn-device-width':'1920','x-amzn-device-family':'WebPlayer','x-amzn-device-id':cfg.deviceId||'','x-amzn-user-agent':ua,'x-amzn-session-id':cfg.sessionId||'','x-amzn-device-height':'1080','x-amzn-request-id':crypto.randomUUID(),'x-amzn-device-language':'ja_JP','x-amzn-currency-of-preference':'JPY','x-amzn-os-version':'1.0','x-amzn-application-version':cfg.version||'','x-amzn-device-time-zone':'UTC','x-amzn-timestamp':String(Date.now()),'x-amzn-csrf':JSON.stringify({interface:'CSRFInterface.v1_0.CSRFHeaderElement',token:csrf.token||'',timestamp:csrf.ts==null?'':String(csrf.ts),rndNonce:csrf.rnd==null?'':String(csrf.rnd)}),'x-amzn-music-domain':domain,'x-amzn-referer':'','x-amzn-affiliate-tags':'','x-amzn-ref-marker':'','x-amzn-page-url':page,'x-amzn-weblab-id-overrides':'','x-amzn-video-player-token':'','x-amzn-feature-flags':'hd-supported,uhd-supported','x-amzn-has-profile-id':'','x-amzn-age-band':''};}
           const outer={accept:'*/*','accept-language':'ja-JP,ja;q=0.9,en;q=0.5','content-type':'text/plain;charset=UTF-8',origin,referer:`${origin}/`,'user-agent':ua};
-          async function post(host,path,body,page){const res=await fetch(`https://${host}/api${path}`,{method:'POST',headers:outer,body:JSON.stringify({...body,headers:JSON.stringify(headers(page))})}); const text=await res.text(); console.log(path,res.status,text.length,/櫻坂46/.test(text),/アクションを完了/.test(text),text.slice(0,120)); return text;}
-          const artistPage=`${origin}/artists/B08P3RHP1P`;
-          await post('fe.web.skill.music.a2z.com','/showHome',{deeplink:JSON.stringify({interface:'DeeplinkInterface.v1_0.DeeplinkClientInformation',deeplink:'/artists/B08P3RHP1P'})},artistPage);
-          const artist=await post('fe.mesk.skill.music.a2z.com','/explore/v1/showCatalogArtist',{id:'B08P3RHP1P',userHash:JSON.stringify({level:'LIBRARY_MEMBER'})},artistPage);
-          const tracks=await post('fe.mesk.skill.music.a2z.com','/showCatalogTracks',{id:'B08P3RHP1P',userHash:JSON.stringify({level:'LIBRARY_MEMBER'})},artistPage);
-          const top=await post('fe.mesk.skill.music.a2z.com','/showCatalogPlaylist',{id:'B088FYHTR4',userHash:JSON.stringify({level:'LIBRARY_MEMBER'})},`${origin}/playlists/B088FYHTR4`);
-          console.log('summary',JSON.stringify({artistBytes:artist.length,tracksBytes:tracks.length,topBytes:top.length,artistHas:/櫻坂46/.test(artist),tracksHas:/櫻坂46/.test(tracks),topHas:/櫻坂46/.test(top)}));
+          async function post(host,path,body){return (await fetch(`https://${host}/api${path}`,{method:'POST',headers:outer,body:JSON.stringify({...body,headers:JSON.stringify(h())})})).json();}
+          await post('fe.web.skill.music.a2z.com','/showHome',{deeplink:JSON.stringify({interface:'DeeplinkInterface.v1_0.DeeplinkClientInformation',deeplink:`/artists/${artistId}`})});
+          const artist=await post('fe.mesk.skill.music.a2z.com','/explore/v1/showCatalogArtist',{id:artistId,userHash:JSON.stringify({level:'LIBRARY_MEMBER'})});
+          const found=[]; const labels=[]; const follower=[];
+          function walk(v,path=[]){if(v==null||path.length>22)return;if(Array.isArray(v)){v.forEach((x,i)=>walk(x,[...path,i]));return;}if(typeof v!=='object')return;for(const [k,x] of Object.entries(v)){
+            if(typeof x==='string'){
+              if(/showCatalogTracks|SHOW_CATALOG_TRACKS|catalogTracks/i.test(x)) found.push({path:[...path,k].join('.'),value:x.slice(0,4000)});
+              if(/すべて表示|全て表示|人気の楽曲|楽曲|songs|tracks/i.test(x)&&x.length<160) labels.push({path:[...path,k].join('.'),value:x});
+            }
+            if(/follower/i.test(k)) follower.push({path:[...path,k].join('.'),value:x});
+            walk(x,[...path,k]);
+          }}
+          walk(artist);
+          console.log('ACTIONS',JSON.stringify(found.slice(0,30)));
+          console.log('LABELS',JSON.stringify(labels.slice(0,80)));
+          console.log('FOLLOWER',JSON.stringify(follower.slice(0,20)));
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
