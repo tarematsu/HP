@@ -1,13 +1,35 @@
 const INTERNAL_URL = 'https://pages-read-model.internal/_internal/pages-response?key=apple-music';
 
-function unavailable(message = 'Apple Music read model unavailable') {
-  return new Response(JSON.stringify({ ok: false, error: message }), {
-    status: 503,
+const EMPTY_READ_MODEL = Object.freeze({
+  ok: true,
+  version: 1,
+  source: null,
+  artist_id: null,
+  artist_name: '櫻坂46',
+  snapshot_date: null,
+  observed_at: null,
+  regions: [],
+  history: [],
+});
+
+function jsonResponse(payload, status, cacheControl) {
+  return new Response(JSON.stringify(payload), {
+    status,
     headers: {
       'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
+      'cache-control': cacheControl,
+      'x-content-type-options': 'nosniff',
+      vary: 'accept-encoding',
     },
   });
+}
+
+function unavailable(message = 'Apple Music read model unavailable') {
+  return jsonResponse({ ok: false, error: message }, 503, 'no-store');
+}
+
+function coldStart() {
+  return jsonResponse(EMPTY_READ_MODEL, 200, 'public, max-age=15, s-maxage=60');
 }
 
 export async function onRequestGet({ env }) {
@@ -19,6 +41,10 @@ export async function onRequestGet({ env }) {
       method: 'GET',
       headers: { accept: 'application/json' },
     }));
+    // Regional collection is generated out-of-band. Before the first object is
+    // available, publish an empty but valid view rather than surfacing a 503 in
+    // the browser. Binding failures and non-404 upstream failures stay errors.
+    if (response?.status === 404) return coldStart();
     if (!response?.ok) return unavailable(`Apple Music read model returned HTTP ${response?.status || 503}`);
 
     const headers = new Headers(response.headers);
