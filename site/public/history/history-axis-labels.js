@@ -6,47 +6,6 @@ const AXES_BY_MODE = Object.freeze({
   broadcasts: { left: '同接（人）', right: '', x: '' },
 });
 
-function installAxisStyles() {
-  if (document.getElementById('historyAxisLabelStyles')) return;
-  const style = document.createElement('style');
-  style.id = 'historyAxisLabelStyles';
-  style.textContent = `
-.history-axis-titles {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  min-height: 1em;
-  margin: 0 2px 4px;
-  color: var(--muted);
-  font-size: .66rem;
-  line-height: 1.3;
-  font-variant-numeric: tabular-nums;
-}
-.history-axis-titles > :last-child {
-  margin-left: auto;
-  text-align: right;
-}
-.history-axis-title-x {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: .66rem;
-  line-height: 1.3;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-#chartPanel .chart-axis {
-  display: none !important;
-}
-@media (max-width: 560px) {
-  .history-axis-titles,
-  .history-axis-title-x {
-    font-size: .62rem;
-  }
-}`;
-  document.head.append(style);
-}
-
 function ensureAxisNodes() {
   const canvas = document.getElementById('chart');
   if (!canvas) return;
@@ -95,7 +54,6 @@ export function syncHistoryAxisLabels(mode = activeHistoryMode()) {
   setAxisLabel('chartXAxisTitle', labels.x);
 }
 
-installAxisStyles();
 syncHistoryAxisLabels();
 
 window.addEventListener('history:data-loaded', (event) => {
