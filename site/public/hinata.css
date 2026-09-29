@@ -1,48 +1,12 @@
-.hinata-view {
-  display: grid;
-  gap: 16px;
-}
-
 .hinata-view[hidden] { display: none !important; }
-
-.hinata-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
 
 .hinata-metric {
   min-width: 0;
   text-align: center;
-  padding: 18px 12px;
-}
-
-.hinata-metric span {
-  display: block;
-  font-size: 0.78rem;
-  color: var(--muted, #666);
-  margin-bottom: 5px;
-}
-
-.hinata-metric strong {
-  display: block;
-  font-size: clamp(1.55rem, 5vw, 2.35rem);
-  line-height: 1.05;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .hinata-section-head {
   align-items: center;
-}
-
-.hinata-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  margin: 4px 0 10px;
-  font-size: 0.78rem;
-  color: var(--muted, #666);
 }
 
 .hinata-legend span {
@@ -81,8 +45,6 @@
 }
 
 .hinata-chart-detail {
-  margin: 8px 0 0;
-  min-height: 1.4em;
   text-align: center;
 }
 
@@ -99,19 +61,13 @@
 }
 
 .hinata-empty {
-  padding: 22px 8px;
   text-align: center !important;
   color: var(--muted, #666);
 }
 
-@media (max-width: 640px) {
-  .hinata-metrics { gap: 7px; }
-  .hinata-metric { padding: 14px 4px; }
-  .hinata-metric span { font-size: 0.68rem; }
-  .hinata-metric strong { font-size: clamp(1.15rem, 6vw, 1.75rem); }
-  .hinata-chart { min-height: 230px; }
-  .hinata-chart svg { min-height: 230px; }
-  .hinata-daily-table { font-size: 0.72rem; }
-  .hinata-daily-table th,
-  .hinata-daily-table td { padding-left: 4px; padding-right: 4px; }
+@media (max-width: 760px) {
+  .hinata-chart,
+  .hinata-chart svg {
+    min-height: 230px;
+  }
 }
