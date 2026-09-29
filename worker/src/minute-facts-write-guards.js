@@ -76,11 +76,13 @@ const WINNER_CONDITION = `
   OR (? = f.source_priority AND ? > f.quality_score_code)
   OR (? = f.source_priority AND ? = f.quality_score_code AND ? >= f.observed_at)`;
 
-function contextPresent(fact) {
-  return fact.queue_revision_id != null
+export function minuteFactContextPresent(fact) {
+  const hasQueueContext = fact.queue_revision_id != null
     || Number(fact.queue_available || 0) !== 0
-    || fact.queue_position != null
-    || fact.broadcast_session_id == null;
+    || fact.queue_position != null;
+  const hasSessionOverrideSource = fact.broadcast_session_id == null
+    && (fact.station_id != null || fact.host_id != null || fact.broadcast_start_time != null);
+  return hasQueueContext || hasSessionOverrideSource;
 }
 
 function compactScoreCode(fact) {
@@ -128,6 +130,6 @@ export function guardedMinuteFactContextUpsertStatement(db, fact) {
     fact.source_priority,
     compactScoreCode(fact),
     fact.observed_at,
-    contextPresent(fact) ? 1 : 0,
+    minuteFactContextPresent(fact) ? 1 : 0,
   );
 }

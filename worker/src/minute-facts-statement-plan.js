@@ -3,18 +3,12 @@ import { totalMemberDailyChangeStatement } from './minute-facts-daily-state.js';
 import {
   guardedMinuteFactContextUpsertStatement,
   guardedMinuteFactStatement,
+  minuteFactContextPresent,
 } from './minute-facts-write-guards.js';
 
 const DASHBOARD_BUCKET_MS = 5 * 60_000;
 const TOTAL_MEMBER_HOT_CACHE_MAX = 128;
 const totalMemberHotCache = new Map();
-
-function contextPresent(fact) {
-  return fact.queue_revision_id != null
-    || Number(fact.queue_available || 0) !== 0
-    || fact.queue_position != null
-    || fact.broadcast_session_id == null;
-}
 
 function fiveMinuteBoundary(minuteAt) {
   return Number.isFinite(minuteAt) && minuteAt % DASHBOARD_BUCKET_MS === 0;
@@ -118,7 +112,7 @@ export function minuteFactStatements(db, fact) {
     statements.push(totalMemberDailyChangeStatement(db, fact));
   }
   statements.push(
-    contextPresent(fact)
+    minuteFactContextPresent(fact)
       ? guardedMinuteFactContextUpsertStatement(db, fact)
       : minuteFactContextDeleteStatement(db, fact),
   );
