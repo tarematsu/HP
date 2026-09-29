@@ -227,7 +227,7 @@ async function followerInfo(client, artistDocument) {
 }
 
 function readModelPoint(snapshot) {
-  const popularRank = new Map((snapshot.popular_tracks || [])
+  const overallRank = new Map((snapshot.catalog_popular_hits || [])
     .map((track) => [track.amazon_music_id, Number(track.rank) || null]));
   return {
     snapshot_date: snapshot.snapshot_date,
@@ -236,8 +236,8 @@ function readModelPoint(snapshot) {
     tracks: (snapshot.all_tracks || []).map((track) => ({
       amazon_music_id: track.amazon_music_id,
       track_id: track.track_id ?? null,
-      amazon_rank: Number(track.rank) || null,
-      popular_rank: popularRank.get(track.amazon_music_id) ?? null,
+      amazon_rank: overallRank.get(track.amazon_music_id) ?? null,
+      popular_rank: Number(track.rank) || null,
     })),
   };
 }
@@ -260,7 +260,7 @@ export function buildAmazonMusicReadModel(snapshot, previousModel = null) {
       && Number.isSafeInteger(Number(previousFollower))
     ? Number(followerCount) - Number(previousFollower)
     : null;
-  const popularRank = new Map((snapshot.popular_tracks || [])
+  const overallRank = new Map((snapshot.catalog_popular_hits || [])
     .map((track) => [track.amazon_music_id, Number(track.rank) || null]));
   const tracks = (snapshot.all_tracks || []).map((track) => ({
     amazon_music_id: track.amazon_music_id,
@@ -268,8 +268,8 @@ export function buildAmazonMusicReadModel(snapshot, previousModel = null) {
     title: track.title || '曲名不明',
     album: track.album || null,
     image: track.image || null,
-    amazon_rank: Number(track.rank) || null,
-    popular_rank: popularRank.get(track.amazon_music_id) ?? null,
+    amazon_rank: overallRank.get(track.amazon_music_id) ?? null,
+    popular_rank: Number(track.rank) || null,
   }));
   return {
     version: 1,
@@ -323,11 +323,10 @@ export async function collectAmazonMusicSnapshot(
   const snapshotDate = amazonMusicJstDate(observedAt);
   const weekKey = amazonMusicWeekKey(observedAt);
 
-  const [artistDocument, rawArtistTracks, top50Document, popularHtml] = await Promise.all([
+  const [artistDocument, rawArtistTracks, top50Document] = await Promise.all([
     client.fetchArtist(AMAZON_MUSIC_ARTIST_ID),
     client.fetchArtistTracks(AMAZON_MUSIC_ARTIST_ID),
     client.fetchPlaylist(AMAZON_MUSIC_JAPAN_TOP50_ID),
-    client.fetchPopularPageHtml().catch(() => ''),
   ]);
 
   const artistPopular = rankTracks(extractAmazonMusicTracks(artistDocument));
@@ -343,8 +342,13 @@ export async function collectAmazonMusicSnapshot(
 
   const top50Ranking = rankTracks(extractAmazonMusicTracks(top50Document));
   const top50Hits = hitsFromRanking(top50Ranking, artistIds).map((track) => publicTrack(track, trackIdByAmazonId));
-  const catalogRanking = rankTracks(extractAmazonMusicTracks(popularHtml));
-  const catalogHits = hitsFromRanking(catalogRanking, artistIds).map((track) => publicTrack(track, trackIdByAmazonId));
+  const overallRanking = typeof client.fetchOverallTrackRanks === 'function'
+    ? await client.fetchOverallTrackRanks(artistIds)
+    : { hits: [], scanned_tracks: 0, exhausted: false };
+  const catalogHits = hitsFromRanking(
+    Array.isArray(overallRanking?.hits) ? overallRanking.hits : [],
+    artistIds,
+  ).map((track) => publicTrack(track, trackIdByAmazonId));
   const follower = await followerInfo(client, artistDocument);
 
   const snapshot = {
@@ -361,6 +365,8 @@ export async function collectAmazonMusicSnapshot(
     popular_tracks: artistPopular.map((track) => publicTrack(track, trackIdByAmazonId)),
     all_tracks: allArtistTracks.map((track) => publicTrack(track, trackIdByAmazonId)),
     catalog_popular_hits: catalogHits,
+    catalog_popular_scanned: Number(overallRanking?.scanned_tracks) || 0,
+    catalog_popular_exhausted: Boolean(overallRanking?.exhausted),
     japan_top_50: top50Hits.length ? { week_key: weekKey, hits: top50Hits } : null,
   };
 
@@ -398,6 +404,8 @@ export async function collectAmazonMusicSnapshot(
         source: 'amazon-music-jp-popular',
         snapshot_date: snapshotDate,
         observed_at: observedAt,
+        scanned_tracks: Number(overallRanking?.scanned_tracks) || 0,
+        exhausted: Boolean(overallRanking?.exhausted),
         hits: catalogHits,
       }, { snapshotDate, observedAt });
       catalogStored = true;
@@ -422,6 +430,8 @@ export async function collectAmazonMusicSnapshot(
     japan_top_50_hits: top50Hits.length,
     japan_top_50_stored: top50Stored,
     catalog_popular_hits: catalogHits.length,
+    catalog_popular_scanned: Number(overallRanking?.scanned_tracks) || 0,
+    catalog_popular_exhausted: Boolean(overallRanking?.exhausted),
     catalog_popular_stored: catalogStored,
     read_model_published: true,
     read_model_object_key: publicModel.objectKey,

@@ -244,8 +244,8 @@ function render(payload) {
   renderRankChart(payload, {
     containerId: 'amazonAllRankChart',
     metricKey: 'amazon_rank',
-    emptyText: 'Amazon Music順位の履歴はまだありません。',
-    ariaLabel: '櫻坂46全楽曲のAmazon Music内順位推移。1位が上。',
+    emptyText: 'Amazon Music総合順位の履歴はまだありません。',
+    ariaLabel: '櫻坂46全楽曲のAmazon Music総合順位推移。1位が上。',
   });
   renderRankChart(payload, {
     containerId: 'amazonPopularRankChart',
