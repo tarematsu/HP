@@ -1,4 +1,4 @@
-const HANDLES = Object.freeze([
+const DEFAULT_HANDLES = Object.freeze([
   'sakuramankai',
   'sakuramankai2',
   'sakurazaka46jp',
@@ -32,6 +32,36 @@ function fullDateLabel(value) {
   return `${year}/${Number(month)}/${Number(day)}`;
 }
 
+function normalizedHandle(value) {
+  const handle = String(value || '').trim().toLowerCase();
+  return handle && handle.length <= 128 ? handle : '';
+}
+
+function fixedHandleIndex(handle) {
+  const index = DEFAULT_HANDLES.indexOf(handle);
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function normalizeHandles(values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map(normalizedHandle)
+    .filter(Boolean))]
+    .sort((a, b) => {
+      const aFixed = fixedHandleIndex(a);
+      const bFixed = fixedHandleIndex(b);
+      if (aFixed !== bFixed) return aFixed - bFixed;
+      return a.localeCompare(b);
+    });
+}
+
+function payloadHandles(payload) {
+  return normalizeHandles([
+    ...DEFAULT_HANDLES,
+    ...(Array.isArray(payload?.handles) ? payload.handles : []),
+    ...(Array.isArray(payload?.accounts) ? payload.accounts.map((row) => row?.handle) : []),
+  ]);
+}
+
 function followerValue(value) {
   const parsed = integer(value);
   return parsed != null && parsed >= 0 ? parsed : null;
@@ -48,27 +78,29 @@ function formatDelta(value) {
   return `${parsed > 0 ? '+' : ''}${numberFormat.format(parsed)}`;
 }
 
-function normalizeRows(rows) {
+function normalizeRows(rows, handles) {
   const byDate = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!validDate(row?.date)) continue;
     const next = { date: row.date };
-    let valid = true;
-    for (const handle of HANDLES) {
+    let values = 0;
+    for (const handle of handles) {
       const value = followerValue(row?.[handle]);
-      if (value == null) {
-        valid = false;
-        break;
-      }
+      if (value == null) continue;
       next[handle] = value;
+      values += 1;
     }
-    if (valid) byDate.set(next.date, next);
+    if (!values) continue;
+    const previous = byDate.get(next.date) || { date: next.date };
+    byDate.set(next.date, { ...previous, ...next });
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function normalizeAccounts(accounts, rows) {
-  const provided = new Map((Array.isArray(accounts) ? accounts : []).map((row) => [row?.handle, row]));
+function normalizeAccounts(accounts, rows, handles) {
+  const provided = new Map((Array.isArray(accounts) ? accounts : [])
+    .map((row) => [normalizedHandle(row?.handle), row])
+    .filter(([handle]) => handle));
   const latest = rows.at(-1);
   const byDate = new Map(rows.map((row) => [row.date, row]));
   const offsetDate = (days) => {
@@ -78,16 +110,18 @@ function normalizeAccounts(accounts, rows) {
   };
   const previous = latest ? byDate.get(offsetDate(-1)) : null;
   const week = latest ? byDate.get(offsetDate(-7)) : null;
-  return HANDLES.map((handle) => {
+  return handles.map((handle) => {
     const row = provided.get(handle) || {};
     const current = followerValue(row.followers ?? latest?.[handle]);
+    const previousValue = followerValue(previous?.[handle]);
+    const weekValue = followerValue(week?.[handle]);
     return {
       handle,
       followers: current,
       previous_day_delta: integer(row.previous_day_delta)
-        ?? (latest && previous ? latest[handle] - previous[handle] : null),
+        ?? (current != null && previousValue != null ? current - previousValue : null),
       previous_week_delta: integer(row.previous_week_delta)
-        ?? (latest && week ? latest[handle] - week[handle] : null),
+        ?? (current != null && weekValue != null ? current - weekValue : null),
     };
   });
 }
@@ -115,11 +149,14 @@ function tickIndexes(length) {
   return [...indexes].sort((a, b) => a - b);
 }
 
-function renderChart(rows) {
+function renderChart(rows, handles) {
   const container = document.getElementById('followersChart');
   if (!container) return;
   container.replaceChildren();
-  if (!rows.length) {
+  const values = rows.flatMap((row) => handles
+    .map((handle) => followerValue(row[handle]))
+    .filter((value) => value != null));
+  if (!rows.length || !values.length) {
     const empty = document.createElement('div');
     empty.className = 'followers-empty';
     empty.textContent = '0時の初回収集後にグラフを表示します。';
@@ -132,7 +169,6 @@ function renderChart(rows) {
   const padding = { top: 18, right: 24, bottom: 44, left: 76 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const values = rows.flatMap((row) => HANDLES.map((handle) => row[handle]));
   let minimum = Math.min(...values);
   let maximum = Math.max(...values);
   if (minimum === maximum) {
@@ -150,7 +186,7 @@ function renderChart(rows) {
   const svg = createSvgNode('svg', {
     viewBox: `0 0 ${width} ${height}`,
     role: 'img',
-    'aria-label': '4アカウントのフォロワー数推移',
+    'aria-label': `${handles.length}アカウントのフォロワー数推移`,
   });
 
   for (let index = 0; index <= 4; index += 1) {
@@ -170,26 +206,33 @@ function renderChart(rows) {
     appendText(svg, dateLabel(rows[index].date), x(index), height - 13, 'followers-axis-label', 'middle');
   }
 
-  HANDLES.forEach((handle, seriesIndex) => {
-    const path = rows.map((row, index) => `${index === 0 ? 'M' : 'L'} ${x(index).toFixed(2)} ${y(row[handle]).toFixed(2)}`).join(' ');
+  handles.forEach((handle, seriesIndex) => {
+    const points = rows
+      .map((row, index) => ({ row, index, value: followerValue(row[handle]) }))
+      .filter(({ value }) => value != null);
+    if (!points.length) return;
+    const styleIndex = seriesIndex % 4;
+    const path = points.map(({ index, value }, pointIndex) => (
+      `${pointIndex === 0 ? 'M' : 'L'} ${x(index).toFixed(2)} ${y(value).toFixed(2)}`
+    )).join(' ');
     const line = createSvgNode('path', {
       d: path,
-      class: `followers-line followers-line-${seriesIndex}`,
+      class: `followers-line followers-line-${styleIndex}`,
     });
     const title = createSvgNode('title');
     title.textContent = handle;
     line.append(title);
     svg.append(line);
 
-    const latest = rows.at(-1);
+    const latest = points.at(-1);
     const point = createSvgNode('circle', {
-      cx: x(rows.length - 1),
-      cy: y(latest[handle]),
+      cx: x(latest.index),
+      cy: y(latest.value),
       r: 4,
-      class: `followers-endpoint followers-endpoint-${seriesIndex}`,
+      class: `followers-endpoint followers-endpoint-${styleIndex}`,
     });
     const pointTitle = createSvgNode('title');
-    pointTitle.textContent = `${handle} ${fullDateLabel(latest.date)} ${numberFormat.format(latest[handle])}`;
+    pointTitle.textContent = `${handle} ${fullDateLabel(latest.row.date)} ${numberFormat.format(latest.value)}`;
     point.append(pointTitle);
     svg.append(point);
   });
@@ -203,7 +246,7 @@ function renderLegend(accounts) {
   legend.replaceChildren();
   accounts.forEach((account, index) => {
     const item = document.createElement('div');
-    item.className = `followers-legend-item followers-series-${index}`;
+    item.className = `followers-legend-item followers-series-${index % 4}`;
     const swatch = document.createElement('span');
     swatch.className = 'followers-legend-swatch';
     swatch.setAttribute('aria-hidden', 'true');
@@ -249,12 +292,15 @@ function setNotice(message = '', error = false) {
 }
 
 function render(payload) {
-  const rows = normalizeRows(payload?.rows);
-  const accounts = normalizeAccounts(payload?.accounts, rows);
+  const handles = payloadHandles(payload);
+  const rows = normalizeRows(payload?.rows, handles);
+  const accounts = normalizeAccounts(payload?.accounts, rows, handles);
   const latestDate = document.getElementById('followersLatestDate');
   if (latestDate) latestDate.textContent = rows.length ? fullDateLabel(rows.at(-1).date) : '-';
+  const chart = document.getElementById('followersChart');
+  if (chart) chart.setAttribute('aria-label', `${handles.length}アカウントのフォロワー数推移`);
   renderLegend(accounts);
-  renderChart(rows);
+  renderChart(rows, handles);
   renderTable(accounts);
   if (!rows.length) setNotice('フォロワー履歴はまだありません。初回の0時収集後に表示されます。');
   else setNotice('');
@@ -282,7 +328,7 @@ export async function loadFollowersView() {
       })
       .catch((error) => {
         setNotice('フォロワーデータを取得できませんでした。', true);
-        renderChart([]);
+        renderChart([], DEFAULT_HANDLES);
         throw error;
       })
       .finally(() => {
@@ -296,7 +342,9 @@ if (!resizeObserver && typeof ResizeObserver === 'function') {
   const chart = document.getElementById('followersChart');
   if (chart) {
     resizeObserver = new ResizeObserver(() => {
-      if (currentPayload) renderChart(normalizeRows(currentPayload.rows));
+      if (!currentPayload) return;
+      const handles = payloadHandles(currentPayload);
+      renderChart(normalizeRows(currentPayload.rows, handles), handles);
     });
     resizeObserver.observe(chart);
   }

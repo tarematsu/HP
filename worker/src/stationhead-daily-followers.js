@@ -9,6 +9,8 @@ const JST_OFFSET_MS = 9 * 60 * 60_000;
 const DEFAULT_TIMEOUT_MS = 8_000;
 const FOLLOWERS_READ_MODEL_KEY = 'followers';
 const FOLLOWERS_READ_MODEL_CADENCE_SECONDS = 24 * 60 * 60;
+const FOLLOWER_SOURCE_FIXED = 1;
+const FOLLOWER_SOURCE_BUDDIES = 2;
 const JSON_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=30, s-maxage=300, stale-while-revalidate=600',
@@ -32,7 +34,25 @@ function positiveInteger(value) {
 }
 
 function normalizedHandle(value) {
-  return String(value || '').trim().toLowerCase();
+  const handle = String(value || '').trim().toLowerCase();
+  return handle && handle.length <= 128 ? handle : '';
+}
+
+function fixedHandleIndex(handle) {
+  const index = STATIONHEAD_DAILY_FOLLOWER_HANDLES.indexOf(handle);
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function orderedHandles(values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map(normalizedHandle)
+    .filter(Boolean))]
+    .sort((a, b) => {
+      const aFixed = fixedHandleIndex(a);
+      const bFixed = fixedHandleIndex(b);
+      if (aFixed !== bFixed) return aFixed - bFixed;
+      return a.localeCompare(b);
+    });
 }
 
 function findAccount(value, handle, depth = 0) {
@@ -70,70 +90,90 @@ function offsetDateKey(date, days) {
   return new Date(parsed + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-function normalizedFollowerRow(row) {
+function normalizedFollowerRow(row, handles) {
   if (!validDateKey(row?.date)) return null;
   const normalized = { date: row.date };
-  for (const handle of STATIONHEAD_DAILY_FOLLOWER_HANDLES) {
+  let values = 0;
+  for (const handle of handles) {
     const followers = nonNegativeInteger(row?.[handle]);
-    if (followers == null) return null;
+    if (followers == null) continue;
     normalized[handle] = followers;
+    values += 1;
   }
-  return normalized;
+  return values ? normalized : null;
 }
 
-function normalizeFollowerRows(rows) {
+function normalizeFollowerRows(rows, handles) {
   const byDate = new Map();
   for (const row of Array.isArray(rows) ? rows : []) {
-    const normalized = normalizedFollowerRow(row);
-    if (normalized) byDate.set(normalized.date, normalized);
+    const normalized = normalizedFollowerRow(row, handles);
+    if (!normalized) continue;
+    const previous = byDate.get(normalized.date) || { date: normalized.date };
+    byDate.set(normalized.date, { ...previous, ...normalized });
   }
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function followerSummary(rows) {
-  const latest = rows.at(-1);
-  if (!latest) return [];
+function followerSummary(rows, handles, latestDate) {
   const byDate = new Map(rows.map((row) => [row.date, row]));
-  const previous = byDate.get(offsetDateKey(latest.date, -1));
-  const previousWeek = byDate.get(offsetDateKey(latest.date, -7));
-  return STATIONHEAD_DAILY_FOLLOWER_HANDLES.map((handle) => ({
-    handle,
-    followers: latest[handle],
-    previous_day_delta: previous ? latest[handle] - previous[handle] : null,
-    previous_week_delta: previousWeek ? latest[handle] - previousWeek[handle] : null,
-  }));
+  const latest = byDate.get(latestDate) || null;
+  const previous = byDate.get(offsetDateKey(latestDate, -1));
+  const previousWeek = byDate.get(offsetDateKey(latestDate, -7));
+  return handles.map((handle) => {
+    const followers = nonNegativeInteger(latest?.[handle]);
+    const previousFollowers = nonNegativeInteger(previous?.[handle]);
+    const previousWeekFollowers = nonNegativeInteger(previousWeek?.[handle]);
+    return {
+      handle,
+      followers,
+      previous_day_delta: followers != null && previousFollowers != null
+        ? followers - previousFollowers
+        : null,
+      previous_week_delta: followers != null && previousWeekFollowers != null
+        ? followers - previousWeekFollowers
+        : null,
+    };
+  });
 }
 
-async function loadFollowerRows(r2) {
+async function loadFollowerModel(r2) {
   if (typeof r2?.get !== 'function') throw new Error('PAGES_RESPONSE_R2 binding is unavailable');
   const key = pagesR2ResponseKey(FOLLOWERS_READ_MODEL_KEY);
   const object = key ? await r2.get(key) : null;
-  if (!object) return [];
+  if (!object) return { handles: [...STATIONHEAD_DAILY_FOLLOWER_HANDLES], rows: [] };
   try {
     const payload = await object.json();
-    return normalizeFollowerRows(payload?.rows);
+    const handles = orderedHandles([
+      ...STATIONHEAD_DAILY_FOLLOWER_HANDLES,
+      ...(Array.isArray(payload?.handles) ? payload.handles : []),
+    ]);
+    return { handles, rows: normalizeFollowerRows(payload?.rows, handles) };
   } catch (error) {
     console.warn(JSON.stringify({
       event: 'stationhead_followers_r2_history_invalid',
       error: String(error?.message || error).slice(0, 300),
     }));
-    return [];
+    return { handles: [...STATIONHEAD_DAILY_FOLLOWER_HANDLES], rows: [] };
   }
 }
 
-async function publishFollowerReadModel(r2, date, followers, updatedAt) {
-  const rows = await loadFollowerRows(r2);
+async function publishFollowerReadModel(r2, date, handles, followers, updatedAt, failures = []) {
+  const existing = await loadFollowerModel(r2);
+  const allHandles = orderedHandles([...existing.handles, ...handles, ...Object.keys(followers)]);
+  const rows = normalizeFollowerRows(existing.rows, allHandles);
+  const previousToday = rows.find((row) => row.date === date) || { date };
   const next = normalizeFollowerRows([
-    ...rows,
-    { date, ...followers },
-  ]);
+    ...rows.filter((row) => row.date !== date),
+    { ...previousToday, ...followers, date },
+  ], allHandles);
   const body = JSON.stringify({
     ok: true,
     updated_at: updatedAt,
-    latest_date: next.at(-1)?.date || null,
-    handles: STATIONHEAD_DAILY_FOLLOWER_HANDLES,
+    latest_date: date,
+    handles: allHandles,
     rows: next,
-    accounts: followerSummary(next),
+    accounts: followerSummary(next, allHandles, date),
+    failures,
   });
   const saved = await saveMaterializedR2Response(
     r2,
@@ -152,6 +192,78 @@ function bearer(value) {
   const token = String(value || '').trim();
   if (!token) return '';
   return /^Bearer\s+/i.test(token) ? token : `Bearer ${token}`;
+}
+
+function resultRows(value) {
+  return Array.isArray(value?.results) ? value.results : [];
+}
+
+function addSource(map, handleValue, sourceMask) {
+  const handle = normalizedHandle(handleValue);
+  if (!handle) return;
+  map.set(handle, Number(map.get(handle) || 0) | sourceMask);
+}
+
+async function runStatements(db, statements) {
+  if (!statements.length) return 0;
+  if (typeof db.batch === 'function') {
+    const results = await db.batch(statements);
+    return results.reduce((sum, result) => sum + Number(result?.meta?.changes || 0), 0);
+  }
+  let changes = 0;
+  for (const statement of statements) {
+    const result = await statement.run();
+    changes += Number(result?.meta?.changes || 0);
+  }
+  return changes;
+}
+
+export async function discoverStationheadFollowerTargets(env, discoveredAt = Date.now()) {
+  if (typeof env?.OTHER_DB?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
+  if (typeof env?.BUDDIES_DB?.prepare !== 'function') throw new Error('BUDDIES_DB binding is unavailable');
+
+  const [existingResult, buddiesResult] = await Promise.all([
+    env.OTHER_DB.prepare(`SELECT handle,source_mask
+      FROM sh_stationhead_follower_targets ORDER BY handle`).all(),
+    env.BUDDIES_DB.prepare(`SELECT DISTINCT LOWER(TRIM(h.current_handle)) AS handle
+      FROM sh_broadcast_sessions AS s
+      JOIN sh_hosts AS h ON h.id=s.host_id
+      WHERE s.host_id IS NOT NULL
+        AND h.current_handle IS NOT NULL
+        AND TRIM(h.current_handle)<>''`).all(),
+  ]);
+
+  const existing = new Map();
+  for (const row of resultRows(existingResult)) {
+    const handle = normalizedHandle(row?.handle);
+    if (handle) existing.set(handle, Number(row?.source_mask || 0));
+  }
+
+  const desired = new Map(existing);
+  for (const handle of STATIONHEAD_DAILY_FOLLOWER_HANDLES) addSource(desired, handle, FOLLOWER_SOURCE_FIXED);
+  for (const row of resultRows(buddiesResult)) addSource(desired, row?.handle, FOLLOWER_SOURCE_BUDDIES);
+
+  const mutations = [];
+  for (const [handle, sourceMask] of desired) {
+    const previousMask = Number(existing.get(handle) || 0);
+    if ((previousMask & sourceMask) === sourceMask) continue;
+    mutations.push(env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_follower_targets(
+        handle,source_mask,first_seen_at
+      ) VALUES(?,?,?)
+      ON CONFLICT(handle) DO UPDATE SET
+        source_mask=(sh_stationhead_follower_targets.source_mask | excluded.source_mask)
+      WHERE (sh_stationhead_follower_targets.source_mask & excluded.source_mask)<>excluded.source_mask`)
+      .bind(handle, sourceMask, discoveredAt));
+  }
+
+  const targetWrites = await runStatements(env.OTHER_DB, mutations);
+  return {
+    handles: orderedHandles([...desired.keys()]),
+    target_writes: targetWrites,
+    buddies_discovered: resultRows(buddiesResult).length,
+    other_d1_reads: 1,
+    buddies_d1_reads: 1,
+  };
 }
 
 export async function loadBuddiesFollowerSession(env) {
@@ -237,8 +349,14 @@ export async function collectStationheadDailyFollowers(env, scheduledAt = Date.n
   const fetchFn = dependencies.fetchFn || globalThis.fetch;
   const timeoutMs = dependencies.timeoutMs;
   const loadSession = dependencies.loadSession || loadBuddiesFollowerSession;
-  const session = await loadSession(env);
-  const profiles = await Promise.all(STATIONHEAD_DAILY_FOLLOWER_HANDLES.map((handle) => (
+  const discoverTargets = dependencies.discoverTargets || discoverStationheadFollowerTargets;
+
+  const [session, targetState] = await Promise.all([
+    loadSession(env),
+    discoverTargets(env, observedAt),
+  ]);
+  const handles = orderedHandles(targetState?.handles || STATIONHEAD_DAILY_FOLLOWER_HANDLES);
+  const settled = await Promise.allSettled(handles.map((handle) => (
     fetchStationheadFollowerProfile(handle, {
       fetchFn,
       timeoutMs,
@@ -246,51 +364,62 @@ export async function collectStationheadDailyFollowers(env, scheduledAt = Date.n
       appVersion: env?.SH_APP_VERSION,
     })
   )));
+
+  const profiles = [];
+  const failures = [];
+  settled.forEach((result, index) => {
+    const handle = handles[index];
+    if (result.status === 'fulfilled') profiles.push(result.value);
+    else failures.push({ handle, error: String(result.reason?.message || result.reason).slice(0, 300) });
+  });
+  const criticalFailures = failures.filter(({ handle }) => STATIONHEAD_DAILY_FOLLOWER_HANDLES.includes(handle));
+  if (criticalFailures.length) {
+    throw new Error(`Stationhead fixed follower targets failed: ${criticalFailures.map(({ handle }) => handle).join(',')}`);
+  }
+
   const followers = Object.fromEntries(profiles.map((profile) => [profile.handle, profile.followers]));
   const date = jstDateKey(observedAt);
   const collectedAt = Number(now()) || Date.now();
-
   const historyRows = await publishFollowerReadModel(
     env.PAGES_RESPONSE_R2,
     date,
+    handles,
     followers,
     collectedAt,
+    failures,
   );
 
-  const result = await env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_daily_followers (
-      observed_date_jst,scheduled_at,collected_at,
-      sakuramankai,sakuramankai2,sakurazaka46jp,nogizaka46smej
-    ) VALUES (?,?,?,?,?,?,?)
+  const dailyResult = await env.OTHER_DB.prepare(`INSERT INTO sh_stationhead_daily_followers_v2 (
+      observed_date_jst,scheduled_at,collected_at,followers_json,failures_json
+    ) VALUES (?,?,?,?,?)
     ON CONFLICT(observed_date_jst) DO UPDATE SET
       scheduled_at=excluded.scheduled_at,
       collected_at=excluded.collected_at,
-      sakuramankai=excluded.sakuramankai,
-      sakuramankai2=excluded.sakuramankai2,
-      sakurazaka46jp=excluded.sakurazaka46jp,
-      nogizaka46smej=excluded.nogizaka46smej`)
-    .bind(
-      date,
-      observedAt,
-      collectedAt,
-      followers.sakuramankai,
-      followers.sakuramankai2,
-      followers.sakurazaka46jp,
-      followers.nogizaka46smej,
-    )
+      followers_json=excluded.followers_json,
+      failures_json=excluded.failures_json`)
+    .bind(date, observedAt, collectedAt, JSON.stringify(followers), JSON.stringify(failures))
     .run();
 
+  const dailyWrites = Number(dailyResult?.meta?.changes || 0);
+  const targetWrites = Number(targetState?.target_writes || 0);
   return {
     observed_date_jst: date,
     scheduled_at: observedAt,
     collected_at: collectedAt,
+    handles,
     followers,
+    failures,
     history_rows: historyRows,
-    inserted: Number(result?.meta?.changes || 0) > 0,
+    inserted: dailyWrites > 0,
     buddies_auth_d1_reads: 1,
-    other_d1_reads: 0,
-    d1_rows_written: Number(result?.meta?.changes || 0),
+    buddies_discovery_d1_reads: Number(targetState?.buddies_d1_reads || 0),
+    other_d1_reads: Number(targetState?.other_d1_reads || 0),
+    target_rows_written: targetWrites,
+    d1_rows_written: targetWrites + dailyWrites,
     r2_reads: 1,
     r2_writes: 1,
-    http_requests: STATIONHEAD_DAILY_FOLLOWER_HANDLES.length,
+    http_requests: handles.length,
+    http_successes: profiles.length,
+    http_failures: failures.length,
   };
 }

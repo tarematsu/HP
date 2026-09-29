@@ -2,7 +2,7 @@ function ensureStylesheet() {
   if (document.querySelector('link[data-followers-tab-styles]')) return;
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = '/followers.css?v=20260930.1';
+  link.href = '/followers.css?v=20260930.2';
   link.dataset.followersTabStyles = '1';
   document.head.append(link);
 }
@@ -36,7 +36,7 @@ function mountView() {
         <span id="followersLatestDate" class="pill">-</span>
       </div>
       <div id="followersLegend" class="followers-legend" aria-label="アカウント別の最新フォロワー数"></div>
-      <div id="followersChart" class="followers-chart" role="img" aria-label="4アカウントのフォロワー数推移"></div>
+      <div id="followersChart" class="followers-chart" role="img" aria-label="追跡アカウントのフォロワー数推移"></div>
     </section>
 
     <section class="card data-panel followers-data-panel">
