@@ -15,6 +15,14 @@ const chartIngest = read('../../cloud/src/spotify_artist_chart_ingest.ts');
 const cloudConfig = read('../../cloud/wrangler.jsonc');
 const deviceExchange = read('../../cloud/src/device_exchange_payload.ts');
 
+function section(source, start, end) {
+  const startIndex = source.indexOf(start);
+  assert.notEqual(startIndex, -1, `missing section start: ${start}`);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  assert.notEqual(endIndex, -1, `missing section end: ${end}`);
+  return source.slice(startIndex, endIndex);
+}
+
 test('Spotify Japan daily artist chart uses the authenticated Stationhead WebView2 profile without exporting credentials', () => {
   assert.match(collectorHeader, /profileName_\{L"spotify-v2-6"\}/);
   assert.match(collector, /charts\.spotify\.com\/charts\/view\/artist-jp-daily\/latest/);
@@ -27,12 +35,11 @@ test('Spotify Japan daily artist chart uses the authenticated Stationhead WebVie
   assert.match(collector, /capture\.Insert\(L"chart_date"/);
 });
 
-test('native app defers the visible Japan daily artist chart until staged media startup is complete', () => {
+test('native app starts the visible Japan daily artist chart at startup without relying on a delay workaround', () => {
   assert.match(appMessages, /#include "spotify_artist_chart_collector\.h"/);
-  assert.match(appMessages, /kSpotifyArtistChartInitialDelayMs = 4 \* 60 \* 1000/);
-  assert.match(appMessages, /kSpotifyArtistChartStartupRetryMs = 30 \* 1000/);
-  assert.match(appMessages, /!stationheadStarted_ \|\| !stationheadLeaderboardCollectorStarted_/);
-  assert.match(appMessages, /RearmSpotifyArtistChartAfterStartup\(window_\)/);
+  assert.match(appMessages, /kSpotifyArtistChartInitialDelayMs = 250/);
+  assert.doesNotMatch(appMessages, /kSpotifyArtistChartStartupRetryMs/);
+  assert.doesNotMatch(appMessages, /RearmSpotifyArtistChartAfterStartup/);
   assert.match(appMessages, /kSpotifyArtistChartIntervalMs = 60 \* 60 \* 1000/);
   assert.match(appMessages, /SetTimer\(window, kSpotifyArtistChartTimer, kSpotifyArtistChartIntervalMs, nullptr\)/);
   assert.match(appMessages, /collector\.EnsureStarted\(now\)/);
@@ -44,11 +51,44 @@ test('native app defers the visible Japan daily artist chart until staged media 
   assert.doesNotMatch(leaderboardHeader, /spotifyArtistChartCollector_/);
 });
 
-test('Spotify chart debug surface is startup-safe and avoids repeated full-screen compositor resizes', () => {
+test('Spotify chart controller teardown invalidates late callbacks and runs outside WebView callbacks', () => {
+  const complete = section(
+    collector,
+    'inline void SpotifyArtistChartCollector::CompleteCapture(',
+    'inline void SpotifyArtistChartCollector::FailCapture(',
+  );
+  const failure = section(
+    collector,
+    'inline void SpotifyArtistChartCollector::FailCapture(',
+    'inline void SpotifyArtistChartCollector::ScheduleControllerTeardown(',
+  );
+  const tick = section(
+    collector,
+    'inline void SpotifyArtistChartCollector::Tick(',
+    'inline void SpotifyArtistChartCollector::BeginCapture(',
+  );
+
+  assert.match(collectorHeader, /teardownPending_/);
+  assert.match(collectorHeader, /teardownAt_/);
+  assert.match(collectorHeader, /creating_ \|\| captureInFlight_ \|\| teardownPending_/);
+  assert.match(complete, /\+\+generation_/);
+  assert.match(complete, /ScheduleControllerTeardown\(nowMs\)/);
+  assert.doesNotMatch(complete, /CloseController\(\)/);
+  assert.match(failure, /\+\+generation_/);
+  assert.match(failure, /ScheduleControllerTeardown\(nowMs\)/);
+  assert.doesNotMatch(failure, /CloseController\(\)/);
+  assert.match(tick, /if \(teardownPending_\)/);
+  assert.match(tick, /CloseController\(\)/);
+  assert.match(tick, /environment_\.Reset\(\)/);
+  assert.match(collector, /include\(teardownAt_\)/);
+});
+
+test('Spotify chart debug surface is bounded and stops touching a controller pending teardown', () => {
   assert.match(collectorHeader, /void RequestCaptureNow\(int64_t nowMs\) noexcept/);
   assert.match(collectorHeader, /nextCaptureAt_ = nowMs/);
   assert.match(collectorHeader, /debugController_ = nullptr/);
   assert.match(collectorHeader, /void ShowForDebug\(\) noexcept/);
+  assert.match(collectorHeader, /if \(teardownPending_ \|\| !controller_/);
   assert.match(collectorHeader, /GetWindowThreadProcessId\(window_, &processId\)/);
   assert.match(collectorHeader, /processId != GetCurrentProcessId\(\)/);
   assert.match(collectorHeader, /constexpr LONG kDebugWidth = 720/);
