@@ -10,6 +10,7 @@ import {
   signedInteger,
   svgElement as createSvgNode,
 } from './dashboard-ui-common.js?v=20260930.1';
+import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const DEFAULT_HANDLES = Object.freeze([
   'sakuramankai',
@@ -237,19 +238,18 @@ function renderTable(accounts) {
   if (!body) return;
   body.replaceChildren();
   for (const account of accounts) {
-    const row = document.createElement('tr');
-    const handle = document.createElement('td');
-    handle.textContent = account.handle;
-    const current = document.createElement('td');
-    current.textContent = formatFollower(account.followers);
-    const day = document.createElement('td');
-    day.textContent = signedInteger(account.previous_day_delta);
-    if (integer(account.previous_day_delta) > 0) day.classList.add('followers-delta-positive');
-    const week = document.createElement('td');
-    week.textContent = signedInteger(account.previous_week_delta);
-    if (integer(account.previous_week_delta) > 0) week.classList.add('followers-delta-positive');
-    row.append(handle, current, day, week);
-    body.append(row);
+    appendTableRow(body, [
+      account.handle,
+      formatFollower(account.followers),
+      {
+        text: signedInteger(account.previous_day_delta),
+        className: integer(account.previous_day_delta) > 0 ? 'followers-delta-positive' : '',
+      },
+      {
+        text: signedInteger(account.previous_week_delta),
+        className: integer(account.previous_week_delta) > 0 ? 'followers-delta-positive' : '',
+      },
+    ]);
   }
 }
 
