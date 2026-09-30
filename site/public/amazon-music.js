@@ -251,7 +251,7 @@ export async function loadAmazonMusicView({ force = false } = {}) {
       render(payload);
       return payload;
     }).catch((error) => {
-      setNotice('Amazon Musicデータを取得できませんでした。', true);
+      setNotice('Amazon Musicデータの取得に失敗しました。', true);
       throw error;
     }).finally(() => {
       loadPromise = null;
