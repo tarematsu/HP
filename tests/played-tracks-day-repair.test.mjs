@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { TRACK_HISTORY_SQL } from '../site/functions/lib/track-history-restored-handler.js';
 import { defaultRepairDay } from '../worker/scripts/repair-track-history-day-actions.mjs';
+import { directRevisionTrackHistorySql } from '../worker/src/track-history-direct-revision-sql.js';
 
 const repair = readFileSync(
   new URL('../worker/scripts/repair-track-history-day-actions.mjs', import.meta.url),
@@ -27,11 +29,21 @@ test('played-tracks refresh defaults to the latest completed UTC day', () => {
 test('played-tracks refresh is bounded to one UTC day and publishes only after non-empty aggregation', () => {
   assert.match(repair, /fromTs = Date\.parse\(`\$\{targetDay\}T00:00:00Z`\)/);
   assert.match(repair, /toTs = fromTs \+ DAY_MS/);
-  assert.match(repair, /materializedTrackHistorySql\(\)/);
-  assert.match(repair, /loadTrackHistoryData\(/);
+  assert.match(repair, /loadDirectRevisionTrackHistoryData\(/);
   assert.match(repair, /track-history repair produced no playable rows/);
   assert.match(repair, /publishTrackHistoryR2DayRows/);
+  assert.doesNotMatch(repair, /materializedTrackHistorySql\(|loadTrackHistoryData\(/);
   assert.doesNotMatch(repair, /INSERT INTO sh_pages_track_history_read_model|DELETE FROM sh_pages_track_history_read_model/);
+});
+
+test('played-tracks daily query reads only materialized latest revision items', () => {
+  const sql = directRevisionTrackHistorySql();
+  assert.match(sql, /starts\.latest_revision_id/);
+  assert.match(sql, /JOIN sh_queue_revisions revisions ON revisions\.id=starts\.latest_revision_id/);
+  assert.match(sql, /JOIN sh_queue_revision_items items ON items\.revision_id=revisions\.id/);
+  assert.match(sql, /FROM sh_track_history_queue_starts starts/);
+  assert.doesNotMatch(sql, /sh_queue_items/);
+  assert.equal((sql.match(/\?/g) || []).length, (TRACK_HISTORY_SQL.match(/\?/g) || []).length);
 });
 
 test('played-tracks repair canonicalizes grouped and like rows in one pass', () => {
@@ -57,9 +69,9 @@ test('played-tracks repair no longer stages duplicate D1 row-model writes', () =
   assert.match(repair, /storage: 'r2-day'/);
 });
 
-test('played-tracks refresh workflow runs daily and still supports explicit manual days', () => {
+test('played-tracks refresh runs once daily or by explicit manual dispatch, never on main pushes', () => {
   assert.match(workflow, /schedule:\s*\n\s*- cron: '46 0 \* \* \*'/);
-  assert.match(workflow, /push:\s*\n\s*branches: \[main\]/);
+  assert.doesNotMatch(workflow, /\n\s*push:\s*\n/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /default: ''/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET: sh-pages-responses/);

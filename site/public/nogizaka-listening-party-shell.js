@@ -27,7 +27,7 @@ mountDashboardShell({
           <div><p class="kicker">TREND</p><h2>乃木坂 公式リスパ 同接推移</h2></div>
           <div id="nogizakaPartyLegend" class="chart-legend" aria-label="グラフ凡例"></div>
         </div>
-        <canvas id="nogizakaPartyChart" width="960" height="360" aria-label="乃木坂46公式リスパの同接推移"></canvas>
+        <canvas id="nogizakaPartyChart" width="960" height="360" style="height:20em" aria-label="乃木坂46公式リスパの同接推移"></canvas>
         <div class="chart-axis"><span>開始 0分</span><span id="nogizakaPartyChartEnd">-</span></div>
         <p class="chart-foot">横軸は放送開始からの経過時間です。開催中は自動更新します。</p>
       </section>

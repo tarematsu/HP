@@ -146,7 +146,7 @@ test('Runtime recovery refreshes an older failed observability diagnostic', asyn
   assert.match(posts[0].url, /refresh-cloudflare-observability\.yml\/dispatches$/);
 });
 
-test('maintenance workflows use published-revision drift dispatch and daily Pages fallback', () => {
+test('maintenance workflows use cadence-only Runtime, published-revision drift dispatch and daily Pages fallback', () => {
   const watchdog = read('.github/workflows/recover-maintenance-workflows.yml');
   const runtimeWorkflow = read('.github/workflows/run-runtime-offline-maintenance.yml');
   const pagesWorkflow = read('.github/workflows/run-pages-read-model-rebuild.yml');
@@ -156,7 +156,8 @@ test('maintenance workflows use published-revision drift dispatch and daily Page
   assert.match(watchdog, /- "Rebuild pages read models"/);
   assert.match(watchdog, /- "Run runtime offline maintenance"/);
   assert.doesNotMatch(watchdog, /run-local-minute-facts-rebuild\.yml/);
-  assert.match(runtimeWorkflow, /^\s*workflows: \["Deploy production"\]\s*$/m);
+  assert.doesNotMatch(runtimeWorkflow, /workflow_run:/);
+  assert.match(runtimeWorkflow, /cron: '11,41 \* \* \* \*'/);
   assert.match(runtimeWorkflow, /pages-revision-drift/);
   assert.match(runtimeWorkflow, /detect-pages-read-model-revision-drift-actions\.mjs/);
   assert.match(runtimeWorkflow, /run-minute-facts-gap-scan-actions\.mjs/);

@@ -15,7 +15,16 @@ function metadataDb(rows, calls, name) {
         },
         async all() {
           const wanted = new Set(call.bindings);
-          const key = sql.includes('WHERE isrc IN') ? 'isrc' : 'spotify_id';
+          if (/FROM sh_tracks/.test(sql)) {
+            return {
+              results: rows
+                .filter((row) => wanted.has(row.spotify_id))
+                .map((row) => ({ track_id: row.track_id, spotify_id: row.spotify_id })),
+            };
+          }
+          const key = sql.includes('WHERE track_id IN')
+            ? 'track_id'
+            : (sql.includes('WHERE isrc IN') ? 'isrc' : 'spotify_id');
           return { results: rows.filter((row) => wanted.has(row[key])) };
         },
       };
@@ -71,7 +80,11 @@ test('missing canonical metadata is not filled from BUDDIES_DB', async () => {
   }, ['sp1', 'sp2'], ['JPX1', 'JPX2']);
 
   assert.deepEqual(rows.map((row) => row.spotify_id), ['sp1']);
-  assert.deepEqual(calls.map((call) => call.name), ['minute', 'minute']);
+  assert.deepEqual(calls.map((call) => call.name), ['minute', 'minute', 'minute']);
+  assert.match(calls[1].sql, /FROM sh_tracks/);
+  assert.match(calls[2].sql, /FROM sh_track_canonical_metadata/);
+  assert.match(calls[2].sql, /WHERE spotify_id IN/);
+  assert.deepEqual(calls[2].bindings, ['sp2']);
 });
 
 test('incomplete canonical presentation remains authoritative instead of being patched by legacy cache', async () => {

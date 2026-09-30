@@ -129,7 +129,11 @@ test('canonical presentation migration repairs artwork caches and covers Spotify
 });
 
 test('metadata change repair canonicalizes both live queue and likes status payload', () => {
-  assert.match(repairSource, /canonicalizeTrackRows\(db, hydrated\.tracks\)/);
+  assert.match(repairSource, /const canonicalSeeds = metadataRows\.filter/);
+  assert.match(
+    repairSource,
+    /canonicalizeTrackRows\(\s*db,\s*hydrated\.tracks,\s*\{ seedRows: canonicalSeeds \},\s*\)/s,
+  );
   assert.match(repairSource, /model_key='track-history-status'/);
   assert.match(repairSource, /canonicalizeTrackRows\(db, status\.ranking\)/);
 });

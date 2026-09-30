@@ -29,6 +29,7 @@ ULONGLONG GetTickCount64() { return tick; }
 bool IsWindow(HWND h) { return h != 0; }
 void KillTimer(HWND, UINT_PTR id) { timers.erase(id); }
 bool gNativeMediaPowerSaving = false;
+bool NativeMediaXRuntimeAllowed() noexcept { return true; }
 ${section(base, 'constexpr wchar_t kNativeMediaYoutubeContentUrl', 'constexpr UINT kNativeMediaNavigationRetryMs')}
 ${section(base, 'struct NativeMediaXCyclePlan', 'constexpr const wchar_t* kNativeMediaPlayAllScript')}
 #define kNativeMediaYoutubeContentPhaseMs NativeMediaYoutubeContentIntervalMs()

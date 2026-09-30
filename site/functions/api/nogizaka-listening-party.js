@@ -24,6 +24,21 @@ function average(values) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
+export function formatNogizakaBroadcastContent(event) {
+  const raw = String(event?.event_name || event?.title || '')
+    .replace(/[「」]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  const underLive = raw.match(/(\d+(?:st|nd|rd|th))(?:SG)?\s*アンダーライブ/iu);
+  if (underLive) return `${underLive[1]} アンダーライブ セットリスト`;
+  const cleaned = raw
+    .replace(/\s*Stationhead\s*(?:リスニングパーティー|Listening Party)?.*$/iu, '')
+    .replace(/\s*リスニングパーティー.*$/u, '')
+    .replace(/\s*開催決定[！!。]?\s*$/u, '')
+    .trim();
+  return cleaned || '乃木坂46 公式リスパ';
+}
+
 async function loadEvent(env, start, end) {
   return env.OTHER_DB.prepare(`SELECT
       id,news_url,title,event_name,scheduled_at,first_broadcast_at,last_broadcast_at,status
@@ -99,7 +114,7 @@ function buildPayload(event, probes, summary, generatedAt, day) {
     distinct_tracks: distinctTracks,
     estimated_streams: estimatedStreams,
     host_handle: 'nogizaka46smej',
-    broadcast_content: null,
+    broadcast_content: formatNogizakaBroadcastContent(event),
     source_url: event.news_url || null,
     status: event.status || null,
   } : null;
@@ -113,7 +128,7 @@ function buildPayload(event, probes, summary, generatedAt, day) {
     event: event || null,
     row,
     series: row ? [{
-      event_name: row.event_name,
+      event_name: `${day.replaceAll('-', '')} ${row.broadcast_content}`,
       started_at: row.started_at,
       points,
       source: live ? 'official_news_live' : (summary ? 'official_broadcast_summary' : 'official_news_probes'),

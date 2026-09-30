@@ -1,9 +1,9 @@
 import {
-  publishedDate,
   scheduleTimes,
   stripHtml,
 } from './official-news-html.js';
 import { timedFetch } from './shared.js';
+import { parseNogizakaNewsArticle } from './nogizaka-news-html.js';
 
 export const NOGIZAKA_NEWS_LIST_URL = 'https://www.nogizaka46.com/s/n46/news/list';
 export const NOGIZAKA_NEWS_API_URL = 'https://www.nogizaka46.com/s/n46/api/list/news_v2?rw=400';
@@ -87,27 +87,6 @@ export function nogizakaNewsApiCandidates(payload, cfg = {}) {
   }
 
   return candidates;
-}
-
-function articleTitle(html, fallback) {
-  const fromTitle = stripHtml(String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '');
-  const heading = stripHtml(String(html || '').match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || '');
-  const value = heading || fromTitle || String(fallback || '');
-  return value
-    .replace(/\s*[|｜]\s*ニュース\s*[|｜]\s*乃木坂46公式サイト\s*$/iu, '')
-    .replace(/\s*[|｜]\s*乃木坂46公式サイト\s*$/iu, '')
-    .trim() || String(fallback || '').trim();
-}
-
-function articleContent(html, title) {
-  const text = stripHtml(html);
-  const titleIndex = title ? text.indexOf(title) : -1;
-  let area = titleIndex >= 0 ? text.slice(titleIndex, titleIndex + 24_000) : text.slice(-24_000);
-  for (const marker of ['\nPRODUCER', '\n乃木坂46合同会社 所属タレント一覧', '\nFAQ']) {
-    const end = area.indexOf(marker);
-    if (end >= 0) area = area.slice(0, end);
-  }
-  return area.trim();
 }
 
 export function nogizakaEventName(newsId, title) {
@@ -311,13 +290,16 @@ export async function runNogizakaNewsDetailStage(env, cfg, now, candidate, depen
       throw new Error(`Nogizaka official news detail ${candidate.newsId} HTTP ${response.status}`);
     }
     const html = await response.text();
-    const title = articleTitle(html, candidate.listTitle);
-    const text = articleContent(html, title);
-    if (!/station\s*head/i.test(text)) {
+    const { title, text, publishedDate: date } = parseNogizakaNewsArticle(html);
+    if (!/station\s*head/i.test(`${title}\n${text}`)) {
+      // Revalidate earlier false positives without removing collected history.
+      await env.OTHER_DB.prepare(`UPDATE ${ANNOUNCEMENTS} SET status='invalid',updated_at=?
+          WHERE news_id=? AND status IN ('scheduled','time_unknown','missed')
+            AND first_broadcast_at IS NULL AND last_broadcast_at IS NULL`)
+        .bind(now, candidate.newsId).run();
       return { skipped: true, failed: false, reason: 'not-stationhead', saved: 0 };
     }
 
-    const date = publishedDate(text);
     const year = Number(date?.slice(0, 4)) || new Date(now + 9 * 3_600_000).getUTCFullYear();
     const times = scheduleTimes(text, year, date);
     const article = {
