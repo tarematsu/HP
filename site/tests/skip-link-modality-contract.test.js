@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const runtime = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
-const css = readFileSync(new URL('../public/dashboard-fixes.css', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
 
 test('keyboard modality is established only for a real Tab focus transition', () => {
   assert.match(runtime, /KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation'/);
@@ -18,7 +18,7 @@ test('keyboard modality does not stay sticky after focus moves elsewhere', () =>
   assert.match(runtime, /document\.addEventListener\('pointerdown', clearKeyboardNavigation, \{ capture: true \}\)/);
 });
 
-test('programmatic skip-link focus stays invisible even when a later stylesheet defines focus visibility', () => {
-  assert.match(css, /html:not\(\.keyboard-navigation\) \.skip-link:focus\s*\{[\s\S]*opacity:\s*0[\s\S]*pointer-events:\s*none[\s\S]*translateY\(-150%\)/);
+test('programmatic skip-link focus stays invisible even when later presentation rules define focus visibility', () => {
+  assert.match(css, /html:not\(\.keyboard-navigation\) \.skip-link,[\s\S]*\.skip-link:focus\s*\{[\s\S]*opacity:\s*0[\s\S]*pointer-events:\s*none[\s\S]*translateY\(-150%\)/);
   assert.match(css, /html\.keyboard-navigation \.skip-link:focus\s*\{[\s\S]*opacity:\s*1[\s\S]*pointer-events:\s*auto/);
 });
