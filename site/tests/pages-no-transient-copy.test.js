@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+const html = read('../public/index.html');
+const header = read('../public/dashboard-header.js');
+const tabs = read('../public/dashboard-tabs.js');
+const shell = read('../public/history-shell.js');
+const history = read('../public/history/history-lite.js');
+const periodChart = read('../public/history/history-period-chart.js');
+const broadcasts = read('../public/history/history-broadcasts.js');
+const broadcastTable = read('../public/history/history-broadcast-table.js');
+
+test('dashboard title is final in HTML and is not rewritten after paint', () => {
+  assert.match(html, /<title>#櫻坂46_ステへ統計<\/title>/);
+  assert.match(html, /<h1 id="channelName"><a[^>]*>#櫻坂46_ステへ統計<\/a><\/h1>/);
+  assert.doesNotMatch(header, /document\.title|channelName\.replaceChildren|DASHBOARD_TITLE/);
+});
+
+test('history shell contains structure only and first reveal waits for runtime initialization', () => {
+  for (const copy of ['主要指標の推移', '集計一覧', '再生数増加', 'メンバー増加数']) {
+    assert.doesNotMatch(shell, new RegExp(`>${copy}<`));
+  }
+  assert.match(tabs, /const runtimeReady = historyRuntimeMode !== null;/);
+  assert.match(tabs, /setRoute\(mode, runtimeReady \? historyView : null/);
+  assert.match(tabs, /await loadOnce\('history-runtime',[\s\S]*showOnly\(historyView\);[\s\S]*markRouteReady\(\)/);
+});
+
+test('history static copy and tab state each have one owner', () => {
+  assert.match(history, /broadcasts: \{ title: '公式リスパ比較', table: '公式リスパ一覧', chart: '公式リスパ 同接推移（開始0分比較）' \}/);
+  assert.match(history, /querySelectorAll\('#modeTabs button'\)[\s\S]*classList\.toggle\('active'/);
+  assert.match(tabs, /function updateTabs\(mode\) \{\s*if \(HISTORY_MODES\.has\(mode\)\) return;/);
+  assert.doesNotMatch(broadcasts, /button\.textContent = '公式リスパ'/);
+  assert.doesNotMatch(broadcasts, /chartTitle'\)\.textContent|chartFoot'\)\.textContent/);
+  assert.doesNotMatch(broadcastTable, /tableTitle\.textContent/);
+  assert.doesNotMatch(periodChart, /chartTitle/);
+  assert.doesNotMatch(periodChart, /chartFoot/);
+});
