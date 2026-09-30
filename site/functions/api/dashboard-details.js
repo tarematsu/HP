@@ -1,7 +1,10 @@
 import { augmentDashboardChartData } from '../lib/dashboard-chart-support.js';
 import { loadDashboardDailySummaries } from '../lib/dashboard-daily-summaries.js';
 
-const CURRENT_HISTORY_SQL = `SELECT observed_at,online_member_count
+const CURRENT_HISTORY_SQL = `SELECT
+  bucket_at AS observed_at,
+  online_member_count,
+  current_stream_count
 FROM sh_dashboard_history_5m
 WHERE channel_id=? AND bucket_at>=?
 ORDER BY bucket_at ASC
@@ -42,11 +45,15 @@ export async function onRequestGet(context) {
 
   const now = Date.now();
   try {
-    const [history, chartPayload, summaries] = await Promise.all([
+    const [history, summaries] = await Promise.all([
       currentHistory(context.env?.MINUTE_DB, channelId, now),
-      augmentDashboardChartData(context.env, { ok: true, latest: { channel_id: channelId } }, now),
       dailySummaries(context.env, now),
     ]);
+    const chartPayload = await augmentDashboardChartData(
+      context.env,
+      { ok: true, latest: { channel_id: channelId }, history },
+      now,
+    );
     return new Response(JSON.stringify({
       ok: true,
       generated_at: now,

@@ -9,7 +9,9 @@ import {
 
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
 const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 60;
-const MATERIALIZED_CACHE_NAMESPACE = '20260924-1';
+const DASHBOARD_EDGE_TTL_MAX_SECONDS = 15;
+const MATERIALIZED_CACHE_NAMESPACE = '20260930-1';
+const DASHBOARD_MODEL_KEY = 'dashboard';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
 // Materialized Pages surfaces are storage-only on the public path. Falling back
@@ -91,7 +93,10 @@ function responseCacheTtl(origin, requestedTtl, modelKey, usedMaterialized, now)
   }
   const remainingSeconds = Math.floor((updatedAt + cadenceSeconds * 1000 - now) / 1000);
   if (remainingSeconds <= 0) return MATERIALIZED_RETRY_TTL_SECONDS;
-  const materializedTtl = Math.min(MATERIALIZED_EDGE_TTL_MAX_SECONDS, cadenceSeconds);
+  const edgeMaximum = modelKey === DASHBOARD_MODEL_KEY
+    ? DASHBOARD_EDGE_TTL_MAX_SECONDS
+    : MATERIALIZED_EDGE_TTL_MAX_SECONDS;
+  const materializedTtl = Math.min(edgeMaximum, cadenceSeconds);
   return Math.max(1, Math.min(requestedTtl, materializedTtl, remainingSeconds));
 }
 
@@ -250,7 +255,7 @@ export async function onRequest(context) {
       }));
       const serviceConfigured = typeof context.env?.PAGES_READ_MODEL_SERVICE?.fetch === 'function';
       const fallbackAllowed = LIVE_PAGES_FALLBACK_MODEL_KEYS.has(modelKey)
-        && (serviceConfigured || modelKey === 'dashboard');
+        && (serviceConfigured || modelKey === DASHBOARD_MODEL_KEY);
       if (!fallbackAllowed) return materializedUnavailable(modelKey);
 
       try {

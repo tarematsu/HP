@@ -83,14 +83,17 @@ test('dashboard daily summary loader uses one cached OTHER_DB read', async () =>
   assert.match(DAILY_SUMMARY_SQL, /listener_avg/);
 });
 
-test('dashboard details route composes daily summaries while the critical route stays lean', () => {
+test('dashboard materializer embeds daily summaries while the details route remains a rollout fallback', () => {
   const route = readFileSync(new URL('../functions/api/dashboard.js', import.meta.url), 'utf8');
   const details = readFileSync(new URL('../functions/api/dashboard-details.js', import.meta.url), 'utf8');
   const core = readFileSync(new URL('../functions/lib/dashboard-core.js', import.meta.url), 'utf8');
+  assert.match(route, /dashboardCore/);
+  assert.match(route, /loadDashboardDailySummaries/);
+  assert.match(route, /augmentDashboardChartData/);
+  assert.match(route, /daily_summaries/);
   assert.match(details, /loadDashboardDailySummaries/);
   assert.match(details, /daily_summaries/);
-  assert.match(route, /dashboardCore/);
-  assert.doesNotMatch(route, /loadDashboardDailySummaries|augmentDashboardChartData|daily_summaries/);
   assert.doesNotMatch(details, /FROM sh_daily_summary/);
   assert.match(core, /loadFactsDashboard/);
+  assert.doesNotMatch(core, /loadDashboardDailySummaries/);
 });

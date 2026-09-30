@@ -54,6 +54,13 @@ const dashboardRequest = () => new Request(
   'https://internal.test/_internal/pages-response?key=dashboard',
 );
 
+function materializedJson(source, now) {
+  const response = Response.json({ source });
+  response.headers.set('x-materialized-at', String(now));
+  response.headers.set('x-materialized-cadence-seconds', '300');
+  return response;
+}
+
 test('materialized responses publish once to KV and are served as streams', async () => {
   const kv = new FakeKv();
   const now = Date.UTC(2026, 6, 20, 0, 35);
@@ -104,39 +111,41 @@ test('dual storage failure never falls back to D1 response tables', async () => 
   ), /could not be persisted to KV or R2/);
 });
 
-test('dashboard endpoint returns a KV response or a closed fallback signal', async () => {
-  const now = Date.UTC(2026, 6, 20, 0, 35);
-  const hit = await runPagesResponseFetch(
+test('dashboard endpoint prefers the live R2 model before the legacy KV copy', async () => {
+  const calls = [];
+  const response = await runPagesResponseFetch(
     dashboardRequest(),
-    { PAGES_RESPONSE_KV: {} },
+    {},
     {
-      now: () => now,
-      loadResponse: async () => Response.json({ source: 'kv' }),
+      loadR2Response: async () => { calls.push('r2'); return Response.json({ source: 'r2' }); },
+      loadResponse: async () => { calls.push('kv'); return Response.json({ source: 'kv' }); },
     },
   );
-  assert.equal(hit.status, 200);
-  assert.deepEqual(await hit.json(), { source: 'kv' });
+  assert.deepEqual(calls, ['r2']);
+  assert.deepEqual(await response.json(), { source: 'r2' });
+});
 
+test('dashboard endpoint falls back to KV only when the live R2 model is absent', async () => {
+  const calls = [];
+  const response = await runPagesResponseFetch(
+    dashboardRequest(),
+    {},
+    {
+      loadR2Response: async () => { calls.push('r2'); return null; },
+      loadResponse: async () => { calls.push('kv'); return Response.json({ source: 'kv' }); },
+    },
+  );
+  assert.deepEqual(calls, ['r2', 'kv']);
+  assert.deepEqual(await response.json(), { source: 'kv' });
+});
+
+test('missing dashboard model returns a closed fallback signal', async () => {
   const miss = await runPagesResponseFetch(
     dashboardRequest(),
     {},
     { loadResponse: async () => null, loadR2Response: async () => null },
   );
   assert.equal(miss.status, 404);
-});
-
-test('dashboard endpoint uses R2 when the KV model is absent', async () => {
-  const calls = [];
-  const response = await runPagesResponseFetch(
-    dashboardRequest(),
-    {},
-    {
-      loadResponse: async () => { calls.push('kv'); return null; },
-      loadR2Response: async () => { calls.push('r2'); return Response.json({ source: 'r2' }); },
-    },
-  );
-  assert.deepEqual(calls, ['kv', 'r2']);
-  assert.deepEqual(await response.json(), { source: 'r2' });
 });
 
 test('completed history reads R2 without consulting KV', async () => {
@@ -167,33 +176,31 @@ test('track-history prefers R2 before the legacy KV fallback', async () => {
   assert.deepEqual(await response.json(), { source: 'r2' });
 });
 
-test('dashboard endpoint uses Cache API as a same-colo L1 before KV', async () => {
+test('dashboard endpoint uses Cache API as a same-colo L1 before R2', async () => {
   const cache = new FakeEdgeCache();
   const now = Date.UTC(2026, 6, 20, 0, 35);
   const first = await runPagesResponseFetch(dashboardRequest(), {}, {
     cache,
     now: () => now,
-    loadResponse: async () => {
-      const response = Response.json({ source: 'kv' });
-      response.headers.set('x-materialized-at', String(now));
-      return response;
-    },
+    loadR2Response: async () => materializedJson('r2', now),
+    loadResponse: async () => assert.fail('fresh dashboard R2 must win before KV'),
   });
   assert.equal(first.headers.get('x-api-source'), null);
   assert.equal(cache.puts, 1);
 
-  let kvReads = 0;
+  let r2Reads = 0;
   const second = await runPagesResponseFetch(dashboardRequest(), {}, {
     cache,
     now: () => now + 1_000,
-    loadResponse: async () => {
-      kvReads += 1;
+    loadR2Response: async () => {
+      r2Reads += 1;
       return null;
     },
+    loadResponse: async () => assert.fail('edge hit must not reach KV'),
   });
   assert.equal(second.headers.get('x-api-source'), 'edge-cache');
-  assert.equal(kvReads, 0);
-  assert.deepEqual(await second.json(), { source: 'kv' });
+  assert.equal(r2Reads, 0);
+  assert.deepEqual(await second.json(), { source: 'r2' });
 });
 
 test('dashboard endpoint schedules Cache API writes on the real execution context', async () => {
@@ -207,11 +214,8 @@ test('dashboard endpoint schedules Cache API writes on the real execution contex
     {
       cache,
       now: () => now,
-      loadResponse: async () => {
-        const result = Response.json({ source: 'kv' });
-        result.headers.set('x-materialized-at', String(now));
-        return result;
-      },
+      loadR2Response: async () => materializedJson('r2', now),
+      loadResponse: async () => assert.fail('fresh dashboard R2 must win before KV'),
     },
   );
   assert.equal(response.status, 200);

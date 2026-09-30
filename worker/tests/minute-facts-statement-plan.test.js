@@ -40,7 +40,7 @@ function fact(overrides = {}) {
 
 beforeEach(() => resetMinuteFactStatementPlanCacheForTests());
 
-test('boundary minute plan finalizes one dashboard bucket and checkpoints member state', () => {
+test('live five-minute fact upserts its own dashboard bucket and checkpoints changed member state', () => {
   const db = fakeDb();
   const statements = minuteFactStatements(db, fact({
     queue_revision_id: 44,
@@ -51,36 +51,36 @@ test('boundary minute plan finalizes one dashboard bucket and checkpoints member
 
   assert.equal(statements.length, 4);
   assert.ok(rollup);
-  assert.deepEqual(rollup.params.slice(1), [1_699_999_800_000, 1_700_000_100_000, 1_699_999_800_000]);
+  assert.deepEqual(rollup.params, [1_700_000_100_000, 318, 1_700_000_100_000]);
   assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_total_member_daily')), true);
   assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_minute_fact_context_v2')), true);
   assert.equal(statements.some(({ sql }) => sql.includes('DELETE FROM sh_minute_fact_context_v2')), false);
 });
 
-test('stable non-boundary live minute skips dashboard and member D1 work', () => {
+test('stable live fact still updates dashboard but skips unchanged member D1 work', () => {
   const db = fakeDb();
   minuteFactStatements(db, fact());
   const statements = minuteFactStatements(db, fact({
-    minute_at: 1_700_000_160_000,
-    observed_at: 1_700_000_161_000,
+    minute_at: 1_700_000_400_000,
+    observed_at: 1_700_000_401_000,
   }));
 
-  assert.equal(statements.length, 2);
-  assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_dashboard_history_5m')), false);
+  assert.equal(statements.length, 3);
+  assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_dashboard_history_5m')), true);
   assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_total_member_daily')), false);
   assert.equal(statements.some(({ sql }) => sql.includes('DELETE FROM sh_minute_fact_context_v2')), true);
 });
 
-test('member changes are persisted immediately even between five-minute checkpoints', () => {
+test('member changes are persisted immediately with the same direct dashboard point', () => {
   const db = fakeDb();
   minuteFactStatements(db, fact());
   const statements = minuteFactStatements(db, fact({
-    minute_at: 1_700_000_160_000,
-    observed_at: 1_700_000_161_000,
+    minute_at: 1_700_000_400_000,
+    observed_at: 1_700_000_401_000,
     total_member_count: 10_001,
   }));
 
-  assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_dashboard_history_5m')), false);
+  assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_dashboard_history_5m')), true);
   assert.equal(statements.some(({ sql }) => sql.includes('INSERT INTO sh_total_member_daily')), true);
 });
 

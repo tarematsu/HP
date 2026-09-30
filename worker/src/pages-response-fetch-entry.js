@@ -5,13 +5,15 @@ import {
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
+const DASHBOARD_MODEL_KEY = 'dashboard';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const DEFAULT_STALE_FALLBACK_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_EDGE_CACHE_MAX_AGE_MS = 60 * 1000;
+const DASHBOARD_EDGE_CACHE_MAX_AGE_MS = 15 * 1000;
 const R2_ONLY_MODEL_KEYS = new Set(
   MATERIALIZED_API_VARIANTS
     .map(({ key }) => key)
-    .filter((key) => key !== 'dashboard'),
+    .filter((key) => key !== DASHBOARD_MODEL_KEY),
 );
 
 let responseR2ModulePromise;
@@ -140,7 +142,10 @@ export async function runPagesResponseFetch(
   const cache = edgeCache(dependencies);
   const cacheKey = edgeCacheKey(request, dependencies);
   try {
-    const edgeMaximumAge = materializedEdgeCacheMaximumAge(env, maximumAge);
+    const configuredEdgeMaximumAge = materializedEdgeCacheMaximumAge(env, maximumAge);
+    const edgeMaximumAge = modelKey === DASHBOARD_MODEL_KEY
+      ? Math.min(configuredEdgeMaximumAge, DASHBOARD_EDGE_CACHE_MAX_AGE_MS)
+      : configuredEdgeMaximumAge;
     const edgeResponse = await loadEdgeCachedResponse(cache, cacheKey, now, edgeMaximumAge);
     if (edgeResponse) return edgeResponse;
 
@@ -172,6 +177,18 @@ export async function runPagesResponseFetch(
         now,
         materializedStaleMaximumAge(env, maximumAge),
       );
+    } else if (modelKey === DASHBOARD_MODEL_KEY) {
+      // Live minute-fact publication writes the dashboard Actions-R2 object
+      // immediately. Prefer it to any rollout-era KV copy so KV propagation or
+      // an old KV entry cannot hide the latest five-minute fact.
+      const loadR2 = dependencies.loadR2Response
+        || (await loadResponseR2Module()).loadMaterializedR2Response;
+      response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge);
+      if (!response) {
+        const loadKv = dependencies.loadResponse
+          || (await loadResponseStoreModule()).loadMaterializedResponse;
+        response = await loadKv(env?.PAGES_RESPONSE_KV, modelKey, now, maximumAge);
+      }
     } else {
       const loadKv = dependencies.loadResponse
         || (await loadResponseStoreModule()).loadMaterializedResponse;

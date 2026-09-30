@@ -4,18 +4,22 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import {
+  CURRENT_HISTORY_SQL,
   PREVIOUS_DAY_HISTORY_SQL,
-  STREAM_5M_HISTORY_SQL,
+  directFiveMinuteStreamHistory,
 } from '../functions/lib/dashboard-chart-support.js';
 
 const source = readFileSync(new URL('../functions/lib/dashboard-chart-support.js', import.meta.url), 'utf8');
 
-test('previous-day chart query reads the 5-minute dashboard rollup by channel', () => {
-  assert.match(PREVIOUS_DAY_HISTORY_SQL, /FROM sh_dashboard_history_5m AS r/);
-  assert.match(PREVIOUS_DAY_HISTORY_SQL, /r\.channel_id=\?/);
-  assert.match(PREVIOUS_DAY_HISTORY_SQL, /r\.bucket_at>=\? AND r\.bucket_at<\?/);
-  assert.match(PREVIOUS_DAY_HISTORY_SQL, /ORDER BY r\.bucket_at ASC/);
-  assert.match(PREVIOUS_DAY_HISTORY_SQL, /LIMIT 300/);
+test('current and previous-day chart queries use the compact 5-minute dashboard rollup', () => {
+  for (const sql of [CURRENT_HISTORY_SQL, PREVIOUS_DAY_HISTORY_SQL]) {
+    assert.match(sql, /FROM sh_dashboard_history_5m AS r/);
+    assert.match(sql, /r\.channel_id=\?/);
+    assert.match(sql, /r\.bucket_at>=\? AND r\.bucket_at<\?/);
+    assert.match(sql, /ORDER BY r\.bucket_at ASC/);
+    assert.match(sql, /LIMIT 300/);
+  }
+  assert.match(CURRENT_HISTORY_SQL, /r\.current_stream_count/);
 });
 
 test('previous-day chart ordering follows the primary-key range without a temporary sort', () => {
@@ -35,8 +39,6 @@ test('previous-day chart ordering follows the primary-key range without a tempor
       comment_velocity INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY(channel_id,bucket_at)
     ) WITHOUT ROWID;
-    CREATE INDEX idx_sh_dashboard_history_5m_recent
-      ON sh_dashboard_history_5m(bucket_at DESC,channel_id);
   `);
   const plan = db.prepare(`EXPLAIN QUERY PLAN ${PREVIOUS_DAY_HISTORY_SQL}`)
     .all(318, 0, 86_400_000)
@@ -48,21 +50,23 @@ test('previous-day chart ordering follows the primary-key range without a tempor
   assert.doesNotMatch(plan, /TEMP B-TREE/);
 });
 
-test('stream chart reads bounded precomputed five-minute averages including partial buckets', () => {
-  assert.match(STREAM_5M_HISTORY_SQL, /FROM sh_stream_5m_average_read_model AS d/);
-  assert.match(STREAM_5M_HISTORY_SQL, /d\.channel_id=\?/);
-  assert.match(STREAM_5M_HISTORY_SQL, /d\.bucket_at>=\? AND d\.bucket_at<\?/);
-  assert.match(STREAM_5M_HISTORY_SQL, /d\.stream_delta_avg AS stream_delta/);
-  assert.match(STREAM_5M_HISTORY_SQL, /d\.sample_count>=1/);
-  assert.match(STREAM_5M_HISTORY_SQL, /ORDER BY d\.bucket_at ASC/);
-  assert.match(STREAM_5M_HISTORY_SQL, /LIMIT 300/);
+test('stream chart uses direct differences between adjacent five-minute samples', () => {
+  const base = 1_800_000_000_000;
+  assert.deepEqual(directFiveMinuteStreamHistory([
+    { observed_at: base, current_stream_count: 10 },
+    { observed_at: base + 300_000, current_stream_count: 17 },
+    { observed_at: base + 600_000, current_stream_count: 29 },
+  ]), [
+    { observed_at: base + 300_000, stream_delta: 7, sample_count: 1 },
+    { observed_at: base + 600_000, stream_delta: 12, sample_count: 1 },
+  ]);
 });
 
-test('five-minute stream averages are not derived in the Pages request path', () => {
+test('Pages request path no longer reads or averages minute stream facts', () => {
+  assert.doesNotMatch(source, /sh_stream_5m_average_read_model/);
   assert.doesNotMatch(source, /reported_current_stream_count/);
   assert.doesNotMatch(source, /AVG\(|GROUP BY|FROM sh_minute_facts/);
-  assert.match(source, /payload\?\.latest\?\.channel_id/);
-  assert.match(source, /stream_5m_history: streamRows/);
+  assert.match(source, /directFiveMinuteStreamHistory\(history\)/);
 });
 
 test('current dashboard chart augmentation no longer queries comment velocity fallback storage', () => {

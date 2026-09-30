@@ -28,6 +28,22 @@ export {
   resolveTracksBulk,
 };
 
+let dashboardPublisherPromise = null;
+
+async function publishCurrentDashboard(env, input, fact) {
+  try {
+    const module = await (dashboardPublisherPromise ||= import('./pages-dashboard-live-publisher.js'));
+    return await module.publishDashboardFromMinuteFact(env, input, fact);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'pages_dashboard_live_publish_failed',
+      minute_at: fact?.minute_at ?? null,
+      error: String(error?.message || error).slice(0, 600),
+    }));
+    return { skipped: true, reason: 'publish-failed' };
+  }
+}
+
 function compactPlaybackQueue(queue) {
   if (!queue) return null;
   const tracks = Array.isArray(queue.tracks) ? queue.tracks : [];
@@ -239,6 +255,12 @@ export async function saveOptimizedLiveMinuteFact(env, input) {
       queue,
     });
   }
+
+  // The live five-minute fact is now durable.  Publish the current-tab read
+  // model immediately from this committed fact.  Publication failures are
+  // deliberately non-fatal: the minute fact remains authoritative and the
+  // existing watchdog/Actions path can rebuild the dashboard later.
+  const dashboardPublication = await publishCurrentDashboard(env, input, fact);
   return {
     skipped: false,
     fact,
@@ -247,6 +269,7 @@ export async function saveOptimizedLiveMinuteFact(env, input) {
     revision_materialized_count: revisionCoverage?.materializedCount ?? tracks?.length ?? 0,
     revision_total_count: revisionCoverage?.totalCount ?? integer(queue?.total_track_count) ?? tracks?.length ?? 0,
     enrichment_deferred: deferred,
+    dashboard_publication: dashboardPublication,
   };
 }
 
