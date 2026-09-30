@@ -8,9 +8,11 @@ import {
 
 const summary = dashboardSummary([
   dashboardSummaryItem({ label: '集計日', valueId: 'spotifySnapshotDate', valueClassName: 'summary-date' }),
-  dashboardSummaryItem({ label: '櫻坂46の楽曲数', valueId: 'spotifyTrackCount' }),
-  dashboardSummaryItem({ label: '櫻坂46の再生数前日比合計', valueId: 'spotifyTotalDelta' }),
-], { className: 'spotify-summary', ariaLabel: '櫻坂46 Spotify再生数概要' });
+  dashboardSummaryItem({ label: '櫻坂46の楽曲数', labelId: 'spotifyTrackCountLabel', valueId: 'spotifyTrackCount' }),
+  dashboardSummaryItem({ label: '櫻坂46の再生数前日比合計', labelId: 'spotifyTotalDeltaLabel', valueId: 'spotifyTotalDelta' }),
+], { className: 'spotify-summary', ariaLabel: 'Spotify再生数概要' });
+
+const artistTabs = '<div class="mode-tabs"><button type="button" data-spotify-artist="sakurazaka46" class="active">櫻坂46</button><button type="button" data-spotify-artist="nogizaka46">乃木坂46</button><button type="button" data-spotify-artist="hinatazaka46">日向坂46</button></div>';
 
 mountDashboardShell({
   tab: {
@@ -52,6 +54,7 @@ mountDashboardShell({
         title: '櫻坂46の再生数一覧',
         titleId: 'spotifyTableTitle',
         kicker: 'SPOTIFY PLAYCOUNTS',
+        trailingHtml: artistTabs,
         className: 'spotify-data-panel',
         bodyHtml: '<div class="table-wrap table-fit-mobile"><table class="spotify-table shared-numeric-table"><colgroup><col class="col-compact"><col><col class="col-number"><col class="col-delta"></colgroup><thead><tr><th>順位</th><th>曲名</th><th>累計再生数</th><th>前日比</th></tr></thead><tbody id="spotifyTbody"></tbody></table></div>',
       })}`,
