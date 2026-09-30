@@ -30,7 +30,8 @@ export function spotifyPlaycountSql() {
   SELECT
     'sakurazaka46' AS artist_key,
     d.snapshot_date,
-    d.track_id,
+    ref.track_id,
+    d.track_id AS spotify_track_id,
     track.name,
     d.playcount,
     d.delta,
@@ -41,6 +42,8 @@ export function spotifyPlaycountSql() {
   INNER JOIN sh_spotify_playcount_daily d
     ON d.snapshot_date=latest.snapshot_date AND d.track_id=target.track_id
   INNER JOIN sh_spotify_tracks track ON track.track_id=d.track_id
+  LEFT JOIN music_service_track_refs ref
+    ON ref.service='spotify' AND ref.source_track_id=d.track_id
   ORDER BY
     CASE WHEN d.delta IS NULL THEN 1 ELSE 0 END,
     d.delta DESC,
@@ -108,7 +111,10 @@ function normalizedTrackName(value) {
 function dedupeTrackRows(rows = []) {
   const unique = new Map();
   for (const row of rows) {
-    const key = normalizedTrackName(row?.name) || `track:${String(row?.track_id || '')}`;
+    const canonicalId = integer(row?.track_id);
+    const key = canonicalId != null
+      ? `track:${canonicalId}`
+      : normalizedTrackName(row?.name) || `spotify:${String(row?.spotify_track_id || '')}`;
     const current = unique.get(key);
     if (!current) {
       unique.set(key, { ...row });
@@ -119,6 +125,7 @@ function dedupeTrackRows(rows = []) {
     const nextPlaycount = Math.max(0, integer(row?.playcount) ?? 0);
     if (nextPlaycount > currentPlaycount) {
       current.track_id = row.track_id;
+      current.spotify_track_id = row.spotify_track_id;
       current.name = row.name;
       current.playcount = row.playcount;
     }
@@ -154,7 +161,8 @@ export function spotifyPayload(artist, rows = []) {
   const uniqueRows = dedupeTrackRows(rows).sort(compareTrackRows);
   const tracks = uniqueRows.map((row, index) => ({
     rank: index + 1,
-    track_id: String(row.track_id || ''),
+    track_id: integer(row.track_id),
+    spotify_track_id: String(row.spotify_track_id || ''),
     name: String(row.name || '').trim() || '曲名不明',
     playcount: Math.max(0, integer(row.playcount) ?? 0),
     delta: integer(row.delta),
@@ -169,6 +177,7 @@ export function spotifyPayload(artist, rows = []) {
     snapshot_date: snapshotDate,
     carried_forward: carriedForward,
     track_count: tracks.length,
+    unresolved_track_count: tracks.filter((track) => track.track_id == null).length,
     total_delta: deltas.length ? deltas.reduce((sum, value) => sum + value, 0) : null,
     tracks,
   };

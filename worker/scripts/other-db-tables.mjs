@@ -48,6 +48,11 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_spotify_collection_runs',
   'sh_spotify_collection_album_runs',
   'sh_spotify_maintenance_state',
+  'music_service_track_refs',
+  'apple_music_rank_snapshots',
+  'amazon_music_rank_snapshots',
+  'amazon_music_chart_change_events',
+  'amazon_music_group_rank_history',
 ]);
 
 export const OTHER_RETIRED_OBJECTS = Object.freeze([
