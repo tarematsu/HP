@@ -2,10 +2,11 @@ const INTERNAL_URL = 'https://pages-read-model.internal/_internal/pages-response
 
 const EMPTY_READ_MODEL = Object.freeze({
   ok: true,
-  version: 2,
+  version: 3,
   source: null,
   artist_id: null,
-  artist_name: '櫻坂46',
+  artist_name: '坂道3グループ',
+  artists: ['乃木坂46', '櫻坂46', '日向坂46'],
   snapshot_date: null,
   observed_at: null,
   follower: null,
