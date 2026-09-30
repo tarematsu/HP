@@ -169,6 +169,7 @@ const expectedMigrations = [
   'database/facts-migrations/066_pages_canonical_track_identity.sql',
   'database/facts-migrations/067_canonical_track_presentation_integrity.sql',
   'database/facts-migrations/068_retire_legacy_d1_materializations.sql',
+  'database/facts-migrations/069_title_identity_lookup_indexes.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
