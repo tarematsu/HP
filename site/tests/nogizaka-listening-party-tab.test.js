@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { formatNogizakaBroadcastContent } from '../functions/api/nogizaka-listening-party.js';
 
 const shell = readFileSync(new URL('../public/nogizaka-listening-party-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/nogizaka-listening-party.js', import.meta.url), 'utf8');
@@ -37,6 +38,15 @@ test('Nogizaka chart keeps an explicit CSS height so redraws cannot grow the can
   assert.match(shell, /id="nogizakaPartyChart"[^>]*style="height:20em"/);
 });
 
+test('Nogizaka listening-party labels are reusable for future Under Live events', () => {
+  assert.equal(formatNogizakaBroadcastContent({
+    event_name: '「42ndSG アンダーライブ」セットリスト Stationhead リスニングパーティー',
+  }), '42nd アンダーライブ セットリスト');
+  assert.equal(formatNogizakaBroadcastContent({
+    event_name: '「43rdSG アンダーライブ」セットリスト Stationhead リスニングパーティー',
+  }), '43rd アンダーライブ セットリスト');
+});
+
 test('Nogizaka live view reads the official-news probes and refreshes while open', () => {
   assert.match(runtime, /\/api\/nogizaka-listening-party/);
   assert.match(runtime, /MIN_REFRESH_MS = 15_000/);
@@ -47,7 +57,7 @@ test('Nogizaka live view reads the official-news probes and refreshes while open
   assert.match(api, /listener_avg/);
   assert.match(api, /listener_min/);
   assert.match(api, /listener_max/);
-  assert.match(api, /broadcast_content: '42nd アンダーライブ セットリスト'/);
+  assert.match(api, /broadcast_content: formatNogizakaBroadcastContent\(event\)/);
   assert.match(api, /event_name: `\$\{day\.replaceAll\('-', ''\)\} \$\{row\.broadcast_content\}`/);
   assert.match(api, /series:/);
 });
