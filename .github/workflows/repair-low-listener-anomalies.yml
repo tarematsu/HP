@@ -1,4 +1,5 @@
 name: Repair low listener anomalies
+# One-off v2: discover anomaly days directly from sh_minute_facts.
 
 on:
   push:
