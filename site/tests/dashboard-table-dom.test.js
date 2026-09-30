@@ -13,6 +13,8 @@ class FakeNode {
     this.children = [];
     this.textContent = '';
     this.scope = '';
+    this.className = '';
+    this.colSpan = 1;
   }
 
   append(...nodes) {
@@ -38,11 +40,19 @@ test('shared table DOM helper appends ordinary value rows', () => {
   assert.deepEqual(row.children.map((cell) => cell.textContent), ['a', '2', '']);
 });
 
-test('shared table DOM helper preserves custom nodes', () => {
+test('shared table DOM helper preserves custom nodes and cell presentation', () => {
   const container = new FakeNode('tbody');
   const button = new FakeNode('button');
-  const row = appendTableRow(container, [{ node: button }]);
+  const row = appendTableRow(container, [
+    { node: button, className: 'action-cell' },
+    { text: '42', className: 'number-cell', colSpan: 2 },
+  ], { className: 'summary-row' });
+  assert.equal(row.className, 'summary-row');
   assert.equal(row.children[0].children[0], button);
+  assert.equal(row.children[0].className, 'action-cell');
+  assert.equal(row.children[1].className, 'number-cell');
+  assert.equal(row.children[1].colSpan, 2);
+  assert.equal(row.children[1].textContent, '42');
 });
 
 test('shared table DOM helper replaces scoped table headers', () => {
