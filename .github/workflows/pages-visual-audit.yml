@@ -24,6 +24,15 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Read production Nogizaka Stationhead status
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            -H 'Accept: application/json' \
+            https://skrzk.pages.dev/api/nogizaka46smej-status
+          echo
+
       - name: Install Playwright
         run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
 
