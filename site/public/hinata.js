@@ -9,6 +9,7 @@ import {
   setText,
   svgElement,
 } from './dashboard-ui-common.js?v=20260930.1';
+import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 const HINATA_URL = '/api/hinata';
 const FIVE_MINUTES_MS = 5 * 60_000;
@@ -431,8 +432,7 @@ function renderDaily(value) {
   }
 
   for (const item of rows) {
-    const row = document.createElement('tr');
-    const values = [
+    appendTableRow(tbody, [
       String(item?.period_key || '—'),
       finite(item?.listener_avg) == null ? '—' : decimal.format(item.listener_avg),
       numberText(item?.listener_min),
@@ -443,13 +443,7 @@ function renderDaily(value) {
       numberText(item?.member_start),
       numberText(item?.member_end),
       signedText(item?.member_growth),
-    ];
-    for (const valueText of values) {
-      const cell = document.createElement('td');
-      cell.textContent = valueText;
-      row.append(cell);
-    }
-    tbody.append(row);
+    ]);
   }
 }
 
