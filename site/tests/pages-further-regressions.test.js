@@ -93,7 +93,7 @@ test('official series keeps distinct nearby events and reports missing summaries
   ], 4), 2);
 });
 
-test('active Pages archive runtimes are UTC-only except the official-party today highlight', () => {
+test('active Pages archive runtimes stay UTC except official-party display dates', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const dataClient = readFileSync(new URL('../public/history/history-data-client.js', import.meta.url), 'utf8');
   const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
@@ -117,8 +117,8 @@ test('active Pages archive runtimes are UTC-only except the official-party today
   assert.match(likes, /ranking_only=1/);
   assert.doesNotMatch(likes, /currentUtcWeekRange|completeTrackRows|week_play_count/);
   assert.match(likes, /else if \(!el\('likesView'\)\.hidden\) load\(\)/);
-  assert.match(broadcasts, /timeZone: 'UTC'/);
   assert.match(broadcasts, /timeZone: 'Asia\/Tokyo'/);
+  assert.match(broadcasts, /jstDay\.format\(new Date\(startedAt\)\)\.replaceAll\('-', ''\)/);
   assert.match(broadcasts, /isTodayEvent/);
   assert.doesNotMatch(dashboard, /timeZone: 'UTC'|最終取得 .* UTC/);
   assert.match(likesShell, /id: 'likesView'/);
