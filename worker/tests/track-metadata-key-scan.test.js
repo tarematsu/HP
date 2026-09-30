@@ -71,11 +71,12 @@ test('metadata hydration scans incomplete tracks once and preserves key order', 
   ]);
 
   assert.equal(await hydrateReadModelMetadata(metadataEnv(calls), model), model);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.deepEqual(canonicalCalls(calls).map((call) => call.bindings), [
     ['USA', 'GBB'],
     ['spotify-a', 'spotify-b'],
   ]);
+  assert.match(calls[1].sql, /FROM sh_tracks/);
   assert.ok(calls.every(({ sql }) => !/UNION ALL|\sOR\s/.test(sql)));
 });
 
@@ -107,8 +108,9 @@ test('metadata hydration keeps collecting the second key type after the first re
 
   const isrcs = Array.from({ length: 80 }, (_, index) => `ISRC${index}`);
   const spotify = Array.from({ length: 80 }, (_, index) => `spotify-${index}`);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.deepEqual(canonicalCalls(calls).map((call) => call.bindings), [isrcs, spotify]);
+  assert.match(calls[1].sql, /FROM sh_tracks/);
 });
 
 test('metadata hydration does not spend key capacity on duplicates', async () => {
@@ -131,6 +133,7 @@ test('metadata hydration does not spend key capacity on duplicates', async () =>
     'duplicate',
     ...Array.from({ length: 79 }, (_, index) => `spotify-${index}`),
   ];
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.deepEqual(canonicalCalls(calls).map((call) => call.bindings), [isrcs, spotify]);
+  assert.match(calls[1].sql, /FROM sh_tracks/);
 });
