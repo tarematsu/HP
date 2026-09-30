@@ -41,9 +41,11 @@ test('toolbars, controls, fitting tables and fitting charts use shared semantic 
   assert.match(css, /\.table-fit-mobile > table[\s\S]*table-layout:\s*fixed !important/);
   assert.match(css, /\.chart-fit > :is\(svg, canvas\)/);
   assert.doesNotMatch(firstWeekShell, /view-toolbar first-week-toolbar|data-first-week-metric/);
-  assert.match(playedTracksShell, /controls card played-tracks-controls/);
+  assert.match(playedTracksShell, /dashboardControls/);
+  assert.match(playedTracksShell, /className: 'played-tracks-controls'/);
   assert.doesNotMatch(playedTracksShell, /view-toolbar played-tracks-toolbar/);
   assert.match(spotifyShell, /table-wrap table-fit-mobile/);
+  assert.match(spotifyShell, /dashboardChartCard/);
 });
 
 test('history renderer assigns table meaning classes without injecting layout CSS', () => {

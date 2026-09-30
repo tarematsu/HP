@@ -1,4 +1,15 @@
-import { mountDashboardShell } from './dashboard-ui-common.js?v=20260930.1';
+import {
+  dashboardChartCard,
+  dashboardDataCard,
+  dashboardSummary,
+  dashboardSummaryItem,
+  mountDashboardShell,
+} from './dashboard-ui-common.js?v=20261001.1';
+
+const summary = dashboardSummary([
+  dashboardSummaryItem({ label: '取得地域数', valueId: 'appleRegionCount' }),
+  dashboardSummaryItem({ label: '集計日', valueId: 'appleSnapshotDate' }),
+], { className: 'apple-summary', ariaLabel: '櫻坂46 Apple Music 地域別順位概要' });
 
 mountDashboardShell({
   tab: {
@@ -13,28 +24,22 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-    <p id="appleMusicNotice" class="notice" role="status" hidden></p>
-
-    <section class="summary-cards apple-summary" aria-label="櫻坂46 Apple Music 地域別順位概要">
-      <article><span>取得地域数</span><strong id="appleRegionCount">-</strong></article>
-      <article><span>集計日</span><strong id="appleSnapshotDate">-</strong></article>
-    </section>
-
-    <section class="card apple-rank-panel" aria-labelledby="appleJapanRankTitle">
-      <div class="section-head">
-        <div><p class="kicker">APPLE MUSIC · JAPAN</p><h2 id="appleJapanRankTitle">日本の人気曲順位推移</h2></div>
-      </div>
-      <div id="appleRankChart" class="apple-rank-chart chart-fit shared-svg-chart" aria-label="日本のApple Music櫻坂46人気曲順位推移"></div>
-      <div id="appleRankLegend" class="apple-rank-legend" aria-label="日本の現在順位"></div>
-    </section>
-
-    <section class="card data-panel apple-data-panel" aria-labelledby="appleRegionCompareTitle">
-      <div class="section-head">
-        <div><p class="kicker">REGION COMPARISON</p><h2 id="appleRegionCompareTitle">地域別人気順位一覧</h2></div>
-      </div>
-      <div class="table-wrap apple-region-table-wrap">
-        <table id="appleRegionCompareTable" class="apple-table apple-region-table shared-numeric-table"></table>
-      </div>
-    </section>`,
+      <p id="appleMusicNotice" class="notice" role="status" hidden></p>
+      ${summary}
+      ${dashboardChartCard({
+        title: '日本の人気曲順位推移',
+        titleId: 'appleJapanRankTitle',
+        kicker: 'APPLE MUSIC · JAPAN',
+        className: 'apple-rank-panel',
+        chartHtml: '<div id="appleRankChart" class="apple-rank-chart chart-fit shared-svg-chart" aria-label="日本のApple Music櫻坂46人気曲順位推移"></div>',
+        legendHtml: '<div id="appleRankLegend" class="apple-rank-legend" aria-label="日本の現在順位"></div>',
+      })}
+      ${dashboardDataCard({
+        title: '地域別人気順位一覧',
+        titleId: 'appleRegionCompareTitle',
+        kicker: 'REGION COMPARISON',
+        className: 'apple-data-panel',
+        bodyHtml: '<div class="table-wrap apple-region-table-wrap"><table id="appleRegionCompareTable" class="apple-table apple-region-table shared-numeric-table"></table></div>',
+      })}`,
   },
 });
