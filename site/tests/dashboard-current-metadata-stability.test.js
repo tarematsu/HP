@@ -10,7 +10,7 @@ const rootPresentation = readFileSync(new URL('../public/dashboard-root-presenta
 const officialCopy = readFileSync(new URL('../public/official-listening-party-copy.js', import.meta.url), 'utf8');
 
 test('online, members and total streams use one initial bundled stylesheet rule', () => {
-  assert.match(html, /assets\/dashboard\.min\.css\?v=20260930\.2/);
+  assert.match(html, /assets\/dashboard\.min\.css\?v=20260930\.3/);
   assert.match(buildScript, /'dashboard-root-presentation\.css'/);
   assert.doesNotMatch(metrics, /dashboard-current-metric-style|ensureRootPresentationStylesheet|createElement\('link'\)/);
   assert.match(rootPresentation, /#currentView \.metrics #online,[\s\S]*#currentView \.metrics #members,[\s\S]*#currentView \.metrics #totalStreams/);
