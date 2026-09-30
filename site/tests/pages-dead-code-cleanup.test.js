@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const currentShell = readFileSync(new URL('../public/current-shell.js', import.meta.url), 'utf8');
 const layout = readFileSync(new URL('../public/dashboard-current-layout.js', import.meta.url), 'utf8');
 const client = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
@@ -49,13 +49,13 @@ test('unreferenced legacy and post-render correction assets are removed from the
 });
 
 test('current view ships its final DOM instead of deleting or moving it at startup', () => {
-  assert.match(page, /id="metricGoalCompact"/);
-  assert.match(page, /id="streamGoal"/);
-  assert.match(page, /id="goalEta"/);
-  assert.match(page, /href="https:\/\/stationhead\.com\/c\/buddies"/);
-  assert.ok(page.indexOf('class="card chart-card"') < page.indexOf('class="primary-grid"'));
-  assert.doesNotMatch(page, /goal-card|id="streamCount"|id="goalBar"|id="goalPercent"|id="goalRemaining"|id="goalRate"|id="goalMilestones"/);
-  assert.doesNotMatch(page, /id="description"|class="live-line"|class="app-launch"|class="dashboard-actions"|id="likesLoad"/);
+  assert.match(currentShell, /id="metricGoalCompact"/);
+  assert.match(currentShell, /id="streamGoal"/);
+  assert.match(currentShell, /id="goalEta"/);
+  assert.match(currentShell, /href="https:\/\/stationhead\.com\/c\/buddies"/);
+  assert.ok(currentShell.indexOf('class="card chart-card"') < currentShell.indexOf('class="primary-grid"'));
+  assert.doesNotMatch(currentShell, /goal-card|id="streamCount"|id="goalBar"|id="goalPercent"|id="goalRemaining"|id="goalRate"|id="goalMilestones"/);
+  assert.doesNotMatch(currentShell, /id="description"|class="live-line"|class="app-launch"|class="dashboard-actions"|id="likesLoad"/);
   assert.doesNotMatch(layout, /MutationObserver|querySelector\('\.goal-card'\)|ensureMetricLayout|enforceStationheadLink|\.remove\(|\.append\(/);
   assert.doesNotMatch(history, /createTreeWalker|history-page-fixes|history-table-cleanup|history-summary-average-labels/);
 });
