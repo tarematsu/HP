@@ -32,6 +32,7 @@ jobs:
             -H 'Accept: application/json' \
             https://skrzk.pages.dev/api/nogizaka46smej-status
           echo
+          exit 1
 
       - name: Install Playwright
         run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
