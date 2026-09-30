@@ -45,6 +45,22 @@ export function appendEmptyState(container, message, { className = 'shared-empty
   return node;
 }
 
+export function appendEmptyTableRow(container, message = 'データがありません。', colSpan = 1, {
+  className = '',
+  replace = false,
+} = {}) {
+  if (!container) return null;
+  const row = document.createElement('tr');
+  const cell = document.createElement('td');
+  cell.colSpan = Math.max(1, Number(colSpan) || 1);
+  if (className) cell.className = className;
+  cell.textContent = String(message || '');
+  row.append(cell);
+  if (replace) container.replaceChildren(row);
+  else container.append(row);
+  return row;
+}
+
 export function setText(id, value) {
   const node = byId(id);
   const text = String(value);
