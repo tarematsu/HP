@@ -111,8 +111,8 @@ test('station main raw save queues a separate D1 decode invocation', async () =>
   assert.equal(sent[0].after_news_check, true);
 });
 
-test('decoded station routes active and inactive collection independently', async () => {
-  for (const [active, stage] of [[true, 'station-chat'], [false, 'station-finalize']]) {
+test('decoded station always skips chat and proceeds to finalization', async () => {
+  for (const active of [true, false]) {
     const sent = [];
     const result = await processOfficialNewsStage({}, {
       stage: 'station-decode', scheduledAt: BASE, afterNewsCheck: true,
@@ -121,22 +121,22 @@ test('decoded station routes active and inactive collection independently', asyn
       decode: async () => ({ active, station_id: 123 }),
       send: async (message) => sent.push(message),
     });
-    assert.equal(result.next_stage, stage);
-    assert.equal(sent[0].stage, stage);
+    assert.equal(result.next_stage, 'station-finalize');
+    assert.equal(sent[0].stage, 'station-finalize');
     assert.equal(sent[0].after_news_check, true);
   }
 });
 
-test('raw chat save queues finalization without analyzing chat JSON', async () => {
+test('legacy queued station-chat work is skipped and forwarded to finalization', async () => {
   const sent = [];
   const result = await processOfficialNewsStage({}, {
     stage: 'station-chat', scheduledAt: BASE, afterNewsCheck: false,
   }, {
-    config: () => ({}),
-    chat: async () => ({ skipped: false }),
     send: async (message) => sent.push(message),
   });
   assert.equal(result.next_stage, 'station-finalize');
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, 'comment-collection-retired');
   assert.equal(sent[0].stage, 'station-finalize');
 });
 
@@ -180,7 +180,7 @@ test('legacy queued solo-monitor messages are redirected to raw materialization'
   assert.equal(officialNewsStageTask(messageStage('solo-monitor')).stage, 'raw-materialize');
 });
 
-test('task validation preserves raw collection stages without solo-monitor flags', () => {
+test('task validation preserves active raw collection stages and legacy station-chat compatibility', () => {
   assert.deepEqual(officialNewsStageTask(messageStage('probe')), {
     stage: 'probe', scheduledAt: BASE, candidates: [], candidateIndex: 0,
     afterNewsCheck: false,
