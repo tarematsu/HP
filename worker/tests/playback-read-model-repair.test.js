@@ -5,6 +5,7 @@ import { repairPlaybackReadModels } from '../src/buddies-facts-sync.js';
 
 function queueDb(canonicalMetadata, updates, metadataCalls = []) {
   return {
+    batch() {},
     prepare(sql) {
       const statement = {
         bindings: [],
@@ -26,7 +27,9 @@ function queueDb(canonicalMetadata, updates, metadataCalls = []) {
           if (/FROM sh_track_canonical_metadata/.test(sql)) {
             metadataCalls.push({ sql, bindings: this.bindings });
             const wanted = new Set(this.bindings);
-            const key = /WHERE isrc IN/.test(sql) ? 'isrc' : 'spotify_id';
+            const key = /WHERE track_id IN/.test(sql)
+              ? 'track_id'
+              : (/WHERE isrc IN/.test(sql) ? 'isrc' : 'spotify_id');
             return { results: canonicalMetadata.filter((row) => wanted.has(row[key])) };
           }
           return { results: [] };
@@ -52,6 +55,7 @@ function forbiddenDb(calls) {
 
 test('metadata sync repairs an already persisted sparse playback queue', async () => {
   const updates = [];
+  const metadataCalls = [];
   const db = queueDb([{
     track_id: 1,
     spotify_id: 'sp1',
@@ -60,12 +64,14 @@ test('metadata sync repairs an already persisted sparse playback queue', async (
     artist: 'Artist',
     thumbnail_url: 'https://img.example/cover.jpg',
     fetched_at: 10,
-  }], updates);
+  }], updates, metadataCalls);
 
   const result = await repairPlaybackReadModels({ MINUTE_DB: db });
 
   assert.deepEqual(result, { repaired: 1, skipped: false });
   assert.equal(updates.length, 1);
+  assert.equal(metadataCalls.length, 1);
+  assert.match(metadataCalls[0].sql, /WHERE isrc IN/);
   const saved = JSON.parse(updates[0].bindings[0]);
   assert.deepEqual(saved.tracks[0], {
     position: 0,
