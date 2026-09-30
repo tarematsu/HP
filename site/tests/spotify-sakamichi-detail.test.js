@@ -56,6 +56,6 @@ test('Spotify detail UI exposes all three Sakamichi buttons and fetches the shar
   assert.match(shell, /data-spotify-artist="nogizaka46"[^>]*>乃木坂46<\/button>/);
   assert.match(shell, /data-spotify-artist="hinatazaka46"[^>]*>日向坂46<\/button>/);
   assert.match(switcher, /fetch\('\/api\/spotify-playcounts\?artists=sakamichi'\)/);
-  assert.match(switcher, /model\?\.groups\?\.\[selectedArtistKey\]/);
-  assert.match(switcher, /title\.textContent = `\$\{artist\.name\} 再生数一覧`/);
+  assert.match(switcher, /\?\.groups\?\.\[key\]/);
+  assert.match(switcher, /`\$\{name\}の再生数一覧`/);
 });
