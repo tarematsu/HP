@@ -18,7 +18,8 @@ const playlistApi = readFileSync(new URL('../functions/api/apple-music-playlists
 test('Apple Music is a dashboard route backed only by Worker materialized read models', () => {
   assert.match(tabs, /'apple-music':\s*\{/);
   assert.match(tabs, /import\('\/apple-music-shell\.js\?v=20261001\.1'\)/);
-  assert.match(tabs, /import\('\/apple-music\.js\?v=20261001\.1'\)/);
+  assert.match(tabs, /import\(location\.origin \+ '\/apple-music\.js\?v=20261001\.1'\)/);
+  assert.doesNotMatch(tabs, /runtime:\s*\(\) => import\('\/apple-music\.js/);
   assert.match(tabs, /async function showLazyView/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /dashboardChartHost/);
