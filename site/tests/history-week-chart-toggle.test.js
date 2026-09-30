@@ -13,5 +13,5 @@ test('past weekly checkbox makes the period chart resolve the effective weekly d
 });
 
 test('period chart cache key is bumped with the weekly toggle fix', () => {
-  assert.match(entry, /history-period-chart\.js\?v=20260923\.6/);
+  assert.match(entry, /history-period-chart\.js\?v=20261001\.1/);
 });
