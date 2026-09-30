@@ -24,7 +24,7 @@ test('initial Top 20 includes all three Sakamichi groups at the agreed filtered 
   assert.equal(byKey.get('hinatazaka46')?.rank, 18);
 });
 
-test('explicit collection additions include Ebichu and Nearly Equal Joy with canonical Spotify IDs', () => {
+test('explicit collection additions include Ebichu, Nearly Equal Joy, and ILLIT with canonical Spotify IDs', () => {
   assert.deepEqual(SPOTIFY_ALWAYS_COLLECT_ARTISTS, [
     {
       artist_key: 'shiritsu-ebisu-chugaku',
@@ -36,12 +36,17 @@ test('explicit collection additions include Ebichu and Nearly Equal Joy with can
       artist_name: '≒JOY',
       spotify_artist_id: '0CXdxGaAia8vQLHVRFXW8a',
     },
+    {
+      artist_key: 'illit',
+      artist_name: 'ILLIT',
+      spotify_artist_id: '36cgvBn0aadzOijnjjwqMN',
+    },
   ]);
   const allIds = [
     ...SPOTIFY_CURRENT_TOP20_ARTISTS,
     ...SPOTIFY_ALWAYS_COLLECT_ARTISTS,
   ].map(({ spotify_artist_id }) => spotify_artist_id);
-  assert.equal(new Set(allIds).size, 22);
+  assert.equal(new Set(allIds).size, 23);
 });
 
 test('collection roster keeps ever-Top-20 artists and explicit always-collect artists', () => {
