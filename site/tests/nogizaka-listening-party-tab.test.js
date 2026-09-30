@@ -33,6 +33,10 @@ test('Nogizaka tab keeps the official listening-party presentation', () => {
   assert.match(runtime, /nogizakaPartyCsv/);
 });
 
+test('Nogizaka chart keeps an explicit CSS height so redraws cannot grow the canvas', () => {
+  assert.match(shell, /id="nogizakaPartyChart"[^>]*style="[^"]*height:clamp\(270px,36vw,330px\)/);
+});
+
 test('Nogizaka live view reads the official-news probes and refreshes while open', () => {
   assert.match(runtime, /\/api\/nogizaka-listening-party/);
   assert.match(runtime, /MIN_REFRESH_MS = 15_000/);
