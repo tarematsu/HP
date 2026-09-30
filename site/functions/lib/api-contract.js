@@ -20,6 +20,7 @@ export const API_GROUPS = Object.freeze({
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
     { path: '/api/first-week-comparison', methods: ['GET'], description: 'Title-track first-week comparison aligned to JST prerelease midnight' },
     { path: '/api/spotify-playcounts', methods: ['GET'], description: 'Latest finalized Spotify cumulative playcounts by Sakamichi group' },
+    { path: '/api/spotify-monthly-listeners', methods: ['GET'], description: 'Daily Spotify monthly-listener snapshots and SVG trend chart for tracked idols' },
     { path: '/api/amazon-music', methods: ['GET'], description: 'Latest Sakurazaka Amazon Music follower and track-rank read model' },
     { path: '/api/apple-music', methods: ['GET'], description: 'Latest Sakurazaka Apple Music regional artist-popularity read model' },
     { path: '/api/followers', methods: ['GET'], description: 'Daily Stationhead follower history and comparison for tracked accounts' },

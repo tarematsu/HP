@@ -1,3 +1,4 @@
+import { collectSpotifyMonthlyListeners } from './spotify-monthly-listeners.js';
 import { processSpotifyCatalogBatch } from './spotify-playcount-catalog-consumer.js';
 import { processSpotifyPlaycountBatch as processSpotifyAlbumBatch } from './spotify-playcount-consumer.js';
 import {
@@ -19,6 +20,7 @@ async function latestCompleteRevision(db) {
     LIMIT 1`).first();
   if (!row?.snapshot_date) return null;
   return {
+    snapshotDate: String(row.snapshot_date),
     revision: [
       String(row.snapshot_date),
       Number(row.tracks_collected || 0),
@@ -55,6 +57,13 @@ export async function processSpotifyPlaycountBatch(batch, env, dependencies = {}
     results.push(await processSpotifyAlbumBatch(batchWith(albums), env, dependencies));
     const after = await latestCompleteRevision(env?.OTHER_DB);
     if (after?.confirmed && after.revision !== before?.revision) {
+      const collectMonthlyListeners = dependencies.collectSpotifyMonthlyListeners
+        || collectSpotifyMonthlyListeners;
+      try {
+        await collectMonthlyListeners(env, after.snapshotDate, dependencies);
+      } catch (error) {
+        console.error('spotify monthly listener collection failed', error);
+      }
       await requestSpotifyReadModelRefresh(env, 'playcount-complete', { source_revision: after.revision });
     }
   }
