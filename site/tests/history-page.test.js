@@ -149,9 +149,10 @@ test('integrated likes view reads materialized current ranking without playback 
   assert.match(likesClient, /result\.data\.ranking_summary/);
   assert.doesNotMatch(likesClient, /likesLoad/);
   assert.doesNotMatch(likesClient, /week_play_count|play_count_excluded|currentUtcWeekRange/);
-  assert.match(trackHistoryApi, /ranking_only/);
-  assert.match(trackHistoryApi, /track-history-status/);
-  assert.doesNotMatch(trackHistoryApi, /loadTrackRanking|TRACK_RANKING_SQL|sh_track_ranking_current/);
+  assert.match(trackHistoryApi, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(trackHistoryApi, /url\.searchParams\.set\('key', TRACK_HISTORY_MODEL_KEY\)/);
+  assert.match(trackHistoryApi, /url\.searchParams\.set\('api', '1'\)/);
+  assert.doesNotMatch(trackHistoryApi, /MINUTE_DB|loadTrackRanking|TRACK_RANKING_SQL|sh_track_ranking_current|\.prepare\(/);
   assert.match(rankingLibrary, /FROM sh_track_ranking_current/);
   assert.doesNotMatch(rankingLibrary, /FROM sh_track_counter_current/);
 });
