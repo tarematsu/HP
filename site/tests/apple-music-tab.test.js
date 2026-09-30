@@ -7,6 +7,8 @@ import { onRequestGet as appleMusicApi } from '../functions/api/apple-music.js';
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../public/apple-music-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/apple-music.js', import.meta.url), 'utf8');
+const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
+const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/apple-music.css', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
@@ -109,13 +111,15 @@ test('Apple Music regional list is Japan-first and keeps other-region-only songs
   assert.match(runtime, /row\.ranks\.get\('jp'\) != null/);
   assert.match(runtime, /row\.ranks\.get\('jp'\) == null/);
   assert.match(runtime, /aBest - bBest \|\| aAverage - bAverage/);
-  assert.match(runtime, /rankHeader\.textContent = '順位'/);
-  assert.match(runtime, /songHeader\.textContent = '曲名'/);
-  assert.match(runtime, /cell\.textContent = rank == null \? '-' : String\(rank\)/);
+  assert.match(runtime, /replaceTableHeader\(thead, \['順位', '曲名'/);
+  assert.match(runtime, /appendTableRow\(tbody, \[/);
+  assert.match(runtime, /rank == null \? '-' : String\(rank\)/);
+  assert.match(tableDom, /export function replaceTableHeader\(/);
 });
 
 test('Apple Music Japan rank chart keeps first place at the top and exposes a current-rank legend', () => {
-  assert.match(runtime, /yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
+  assert.match(runtime, /renderRankHistoryChart\(/);
+  assert.match(rankChart, /const yFor = \(rank\) => margin\.top \+ \(rank - 1\)/);
   assert.match(runtime, /人気曲順位。1位が上、圏外が下。/);
   assert.match(runtime, /renderJapanLegend/);
   assert.match(shell, /className: 'apple-rank-chart chart-fit'/);
