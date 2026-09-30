@@ -121,18 +121,23 @@ function correctionFor(rows, index) {
   return { value: null, method: 'excluded', previousValue, nextValue };
 }
 
-async function candidateDays(otherDb, fromKey, toKey) {
-  const result = await otherDb.prepare(`SELECT period_key,listener_min,quality_flags
-    FROM sh_daily_summary
-    WHERE period_key>=? AND period_key<?
-      AND listener_min IS NOT NULL AND listener_min<=?
-    ORDER BY period_key ASC`).bind(fromKey, toKey, LOW_LISTENER_MAX).all();
+async function candidateDayChannels(minuteDb, from, to) {
+  const result = await minuteDb.prepare(`SELECT
+      channel_id,
+      CAST(minute_at/${DAY_MS} AS INTEGER)*${DAY_MS} AS day_at,
+      MIN(listener_count) AS listener_min,
+      COUNT(*) AS low_sample_count
+    FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time
+    WHERE minute_at>=? AND minute_at<?
+      AND listener_count IS NOT NULL AND listener_count<=?
+    GROUP BY channel_id,CAST(minute_at/${DAY_MS} AS INTEGER)
+    ORDER BY day_at ASC,channel_id ASC`).bind(from, to, LOW_LISTENER_MAX).all();
   return result.results || [];
 }
 
 async function dominantChannel(minuteDb, start, end) {
   return minuteDb.prepare(`SELECT channel_id,COUNT(*) AS sample_count
-    FROM sh_minute_facts
+    FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time
     WHERE minute_at>=? AND minute_at<?
     GROUP BY channel_id
     ORDER BY sample_count DESC,MAX(minute_at) DESC,channel_id ASC
@@ -141,7 +146,7 @@ async function dominantChannel(minuteDb, start, end) {
 
 async function dayRows(minuteDb, channelId, start, end) {
   const result = await minuteDb.prepare(`SELECT id,channel_id,minute_at,listener_count,source_priority,source_record_id
-    FROM sh_minute_facts
+    FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time
     WHERE channel_id=? AND minute_at>=? AND minute_at<?
     ORDER BY minute_at ASC,id ASC`).bind(channelId, start, end).all();
   return result.results || [];
@@ -170,11 +175,12 @@ async function recomputeDaily(otherDb, minuteDb, day, channelId, start, end, now
       COUNT(*) AS sample_count,COUNT(listener_count) AS reliable_sample_count,
       AVG(listener_count) AS listener_avg,MIN(listener_count) AS listener_min,
       MAX(listener_count) AS listener_max
-    FROM sh_minute_facts
+    FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time
     WHERE channel_id=? AND minute_at>=? AND minute_at<?`).bind(channelId, start, end).first();
   if (!aggregate || Number(aggregate.sample_count || 0) < 1) return null;
   const existing = await otherDb.prepare(`SELECT quality_flags FROM sh_daily_summary
     WHERE period_key=? LIMIT 1`).bind(day).first();
+  if (!existing) return aggregate;
   await otherDb.prepare(`UPDATE sh_daily_summary SET
       period_start=?,period_end=?,sample_count=?,reliable_sample_count=?,
       listener_avg=?,listener_min=?,listener_max=?,quality_flags=?,updated_at=?
@@ -182,7 +188,7 @@ async function recomputeDaily(otherDb, minuteDb, day, channelId, start, end, now
     finite(aggregate.period_start), finite(aggregate.period_end),
     Number(aggregate.sample_count || 0), Number(aggregate.reliable_sample_count || 0),
     finite(aggregate.listener_avg), finite(aggregate.listener_min), finite(aggregate.listener_max),
-    appendFlag(existing?.quality_flags), now, day,
+    appendFlag(existing.quality_flags), now, day,
   ).run();
   return aggregate;
 }
@@ -215,25 +221,31 @@ export async function repairLowListenerAnomalies({ minuteDb, otherDb, now = Date
   const from = threeCalendarMonthsAgoDay(now);
   const fromKey = isoDay(from);
   const toKey = isoDay(today);
-  const candidates = await candidateDays(otherDb, fromKey, toKey);
-  const repairedDays = [];
-  const affectedWeeks = new Map();
-  const affectedMonths = new Map();
+  const candidates = await candidateDayChannels(minuteDb, from, today);
+  const perDay = new Map();
 
   for (const candidate of candidates) {
-    const day = String(candidate.period_key);
-    const start = dayStart(day);
+    const start = integer(candidate.day_at);
+    const channelId = integer(candidate.channel_id);
+    if (start == null || channelId == null) continue;
+    const day = isoDay(start);
     const end = start + DAY_MS;
-    const channel = await dominantChannel(minuteDb, start, end);
-    const channelId = integer(channel?.channel_id);
-    if (channelId == null) {
-      repairedDays.push({ day, skipped: true, reason: 'minute-facts-missing' });
-      continue;
-    }
+    const report = perDay.get(day) || {
+      day,
+      before_min: finite(candidate.listener_min),
+      corrected: 0,
+      interpolated: 0,
+      excluded: 0,
+      channels: [],
+    };
+    report.before_min = report.before_min == null
+      ? finite(candidate.listener_min)
+      : Math.min(report.before_min, finite(candidate.listener_min) ?? report.before_min);
+
     const rows = await dayRows(minuteDb, channelId, start, end);
+    let corrected = 0;
     let interpolated = 0;
     let excluded = 0;
-    let corrected = 0;
     for (let index = 0; index < rows.length; index += 1) {
       const correction = correctionFor(rows, index);
       if (!correction) continue;
@@ -243,20 +255,39 @@ export async function repairLowListenerAnomalies({ minuteDb, otherDb, now = Date
         else excluded += 1;
       }
     }
-    const aggregate = await recomputeDaily(otherDb, minuteDb, day, channelId, start, end, now);
-    const weekStart = mondayStart(start);
-    const monthAt = monthStart(start);
-    affectedWeeks.set(isoDay(weekStart), { start: weekStart, end: weekStart + 7 * DAY_MS });
-    affectedMonths.set(monthKey(monthAt), { start: monthAt, end: nextMonthStart(monthAt) });
-    repairedDays.push({
-      day,
+    report.corrected += corrected;
+    report.interpolated += interpolated;
+    report.excluded += excluded;
+    report.channels.push({
       channel_id: channelId,
       before_min: finite(candidate.listener_min),
-      after_min: finite(aggregate?.listener_min),
+      low_samples: Number(candidate.low_sample_count || 0),
       corrected,
       interpolated,
       excluded,
     });
+    perDay.set(day, report);
+  }
+
+  const repairedDays = [];
+  const affectedWeeks = new Map();
+  const affectedMonths = new Map();
+  for (const [day, report] of perDay) {
+    const start = dayStart(day);
+    const end = start + DAY_MS;
+    const dominant = await dominantChannel(minuteDb, start, end);
+    const dominantChannelId = integer(dominant?.channel_id);
+    const aggregate = dominantChannelId == null
+      ? null
+      : await recomputeDaily(otherDb, minuteDb, day, dominantChannelId, start, end, now);
+    report.summary_channel_id = dominantChannelId;
+    report.after_min = finite(aggregate?.listener_min);
+    repairedDays.push(report);
+
+    const weekStart = mondayStart(start);
+    const monthAt = monthStart(start);
+    affectedWeeks.set(isoDay(weekStart), { start: weekStart, end: weekStart + 7 * DAY_MS });
+    affectedMonths.set(monthKey(monthAt), { start: monthAt, end: nextMonthStart(monthAt) });
   }
 
   const refreshedWeeks = [];
@@ -272,19 +303,22 @@ export async function repairLowListenerAnomalies({ minuteDb, otherDb, now = Date
     }
   }
 
-  const remaining = await candidateDays(otherDb, fromKey, toKey);
+  const remaining = await candidateDayChannels(minuteDb, from, today);
   return {
     ok: remaining.length === 0,
     from: fromKey,
     to_exclusive: toKey,
     protected_priority: PROTECTED_REPAIR_PRIORITY,
-    candidates: candidates.length,
+    candidate_day_channels: candidates.length,
+    candidate_days: perDay.size,
     repaired_days: repairedDays,
     refreshed_weeks: refreshedWeeks,
     refreshed_months: refreshedMonths,
-    remaining_anomaly_days: remaining.map((row) => ({
-      day: row.period_key,
+    remaining_anomalies: remaining.map((row) => ({
+      day: isoDay(Number(row.day_at)),
+      channel_id: integer(row.channel_id),
       listener_min: finite(row.listener_min),
+      low_samples: Number(row.low_sample_count || 0),
     })),
   };
 }
