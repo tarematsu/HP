@@ -10,7 +10,7 @@ const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', i
 const client = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 
 test('shared static presentation is bundled into the initial dashboard stylesheet', () => {
-  assert.match(html, /assets\/dashboard\.min\.css\?v=20261001\.1/);
+  assert.match(html, /assets\/dashboard\.min\.css\?v=\d{8}\.\d+/);
   assert.match(buildScript, /'dashboard-root-presentation\.css'/);
   assert.doesNotMatch(entry, /dashboard-root-presentation\.css|history-global-fixes|dashboard-current-metric-style/);
   assert.match(styles, /\.dashboard-view \.data-panel/);

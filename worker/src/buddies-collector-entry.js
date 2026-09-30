@@ -7,9 +7,12 @@ import {
 } from './buddies-collector-do-entry.js';
 import { BuddiesCollectorCoordinator } from './buddies-collector-coordinator-combined.js';
 import {
-  collectStationheadDailyFollowers,
-  isJstMidnightMinute,
-} from './stationhead-daily-followers.js';
+  collectStationheadDailyFollowersResilient,
+  isJstFollowerCollectionMinute,
+} from './stationhead-daily-followers-resilient.js';
+
+const JST_OFFSET_MS = 9 * 60 * 60_000;
+const ONE_TIME_FOLLOWER_BACKFILL_DATE = '2026-10-01';
 
 export {
   BUDDIES_COLLECTOR_CRON,
@@ -18,6 +21,18 @@ export {
   runBuddiesCollectorScheduled,
 };
 
+export function isOneTimeFollowerBackfillMinute(timestamp) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value)) return false;
+  const jst = new Date(value + JST_OFFSET_MS);
+  const date = `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}-${String(jst.getUTCDate()).padStart(2, '0')}`;
+  const hour = jst.getUTCHours();
+  return date === ONE_TIME_FOLLOWER_BACKFILL_DATE
+    && hour >= 2
+    && hour < 5
+    && jst.getUTCMinutes() !== 0;
+}
+
 export function runBuddiesCollectorScheduledWithFollowers(
   controller,
   env,
@@ -25,16 +40,21 @@ export function runBuddiesCollectorScheduledWithFollowers(
   dependencies = {},
 ) {
   const scheduledAt = Number(controller?.scheduledTime) || Date.now();
+  const followerMinute = isJstFollowerCollectionMinute(scheduledAt)
+    || isOneTimeFollowerBackfillMinute(scheduledAt);
 
-  // Reuse the already-authenticated Buddies collector once per JST day instead
-  // of launching a browser or maintaining a second Stationhead session.
-  if (String(controller?.cron || '') === BUDDIES_COLLECTOR_CRON && isJstMidnightMinute(scheduledAt)) {
-    const collectFollowers = dependencies.collectFollowers || collectStationheadDailyFollowers;
+  // Collect at 00:00 JST and automatically repair a missing daily snapshot at
+  // 00:05 / 00:10. On 2026-10-01 only, also allow the next non-hour minute from
+  // 02:00-04:59 JST so today's missed snapshot can be backfilled immediately.
+  if (String(controller?.cron || '') === BUDDIES_COLLECTOR_CRON && followerMinute) {
+    const collectFollowers = dependencies.collectFollowers || collectStationheadDailyFollowersResilient;
     const followersTask = Promise.resolve()
       .then(() => collectFollowers(env, scheduledAt))
       .then((result) => {
         console.log(JSON.stringify({
-          event: 'stationhead_daily_followers_collected',
+          event: result?.skipped
+            ? 'stationhead_daily_followers_skipped'
+            : 'stationhead_daily_followers_collected',
           ...result,
         }));
       })
@@ -55,7 +75,7 @@ export function runBuddiesCollectorScheduledWithFollowers(
 
 // Keep minute collection delegated to the Durable Object. The current-tab Pages
 // read model is published directly after each committed live minute fact, while
-// the midnight follower snapshot remains independent waitUntil work.
+// the daily follower snapshot remains independent waitUntil work.
 export default {
   ...collectorApp,
   scheduled: runBuddiesCollectorScheduledWithFollowers,

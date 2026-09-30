@@ -1,6 +1,8 @@
 import {
   dashboardChartCard,
+  dashboardChartHost,
   dashboardDataCard,
+  dashboardNotice,
   dashboardSummary,
   dashboardSummaryItem,
   mountDashboardShell,
@@ -24,14 +26,19 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-      <p id="appleMusicNotice" class="notice" role="status" hidden></p>
+      ${dashboardNotice({ id: 'appleMusicNotice' })}
       ${summary}
       ${dashboardChartCard({
         title: '日本の人気曲順位推移',
         titleId: 'appleJapanRankTitle',
         kicker: 'APPLE MUSIC · JAPAN',
         className: 'apple-rank-panel',
-        chartHtml: '<div id="appleRankChart" class="apple-rank-chart chart-fit shared-svg-chart" aria-label="日本のApple Music櫻坂46人気曲順位推移"></div>',
+        chartHtml: dashboardChartHost({
+          id: 'appleRankChart',
+          className: 'apple-rank-chart chart-fit',
+          ariaLabel: '日本のApple Music櫻坂46人気曲順位推移',
+          role: '',
+        }),
         legendHtml: '<div id="appleRankLegend" class="apple-rank-legend" aria-label="日本の現在順位"></div>',
       })}
       ${dashboardDataCard({

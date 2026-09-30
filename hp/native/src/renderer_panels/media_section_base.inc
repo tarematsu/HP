@@ -65,10 +65,6 @@ bool NativeMediaXRuntimeAllowed() noexcept {
   return NativeMediaXCanStartAtSecondOfDay(secondOfDay);
 }
 
-bool NativeMediaHostSuppressX() noexcept {
-  return gNativeMediaPowerSaving || !NativeMediaXRuntimeAllowed();
-}
-
 struct NativeMediaXCyclePlan {
   bool firstSlot = false;
   bool secondSlot = false;
@@ -156,7 +152,6 @@ void NativeMediaObserveXCyclePhase(bool tver) noexcept {
 }
 
 bool NativeMediaXSlotEnabled(bool firstSlot) noexcept {
-  if (!NativeMediaXRuntimeAllowed()) return false;
   const auto& plan = NativeMediaCurrentXCyclePlan();
   return firstSlot ? plan.firstSlot : plan.secondSlot;
 }
@@ -236,13 +231,27 @@ UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
 
 const wchar_t* NativeMediaYoutubeNavigationUrl() noexcept {
   NativeMediaObserveXCyclePhase(false);
-  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true)) {
+  if (gNativeMediaPowerSaving || !NativeMediaXSlotEnabled(true) ||
+      !NativeMediaXRuntimeAllowed()) {
     return kNativeMediaYoutubeContentUrl;
   }
   const ULONGLONG deadline = NativeMediaStartupXDeadlineTick();
   const ULONGLONG now = std::max<ULONGLONG>(1, GetTickCount64());
   if (deadline > now) return kNativeMediaStartupXUrl;
   return kNativeMediaYoutubeContentUrl;
+}
+
+bool NativeMediaHostSuppressX(
+    bool tver, bool phaseStarted, ULONGLONG phaseStartedAt,
+    bool xPhaseActive) noexcept {
+  if (gNativeMediaPowerSaving) return true;
+  if (xPhaseActive) return !NativeMediaXRuntimeAllowed();
+  if (!phaseStarted) return false;
+  const ULONGLONG now = GetTickCount64();
+  const UINT xStartMs = tver
+      ? NativeMediaTverContentIntervalMs()
+      : NativeMediaYoutubeContentIntervalMs();
+  return now - phaseStartedAt >= xStartMs && !NativeMediaXRuntimeAllowed();
 }
 
 constexpr const wchar_t* kNativeMediaPlayAllScript = kNativeMediaYoutubeReliablePlayAllScript;
@@ -261,10 +270,11 @@ LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 #define kNativeMediaPhaseMs NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)
 #define kNativeMediaTverForceFullscreenAdSafeScript \
   kNativeMediaTverForceFullscreenAnyMediaScript
-// media_host.inc uses this flag only to decide whether X may be active. During
-// the 01:00-06:00 quiet window, present that same suppression signal to the
-// host without changing the actual media power-saving cadence.
-#define gNativeMediaPowerSaving NativeMediaHostSuppressX()
+// Keep the random draw stable regardless of the wall clock. Quiet hours only
+// suppress X once its selected slot is actually due (or already active), while
+// ordinary media timers remain armed so a slot that starts after 06:00 can run.
+#define gNativeMediaPowerSaving NativeMediaHostSuppressX( \
+    phase_ == Phase::Tver, phaseStarted_, phaseStartedAt_, xPhaseActive_)
 #include "media_host.inc"
 #undef gNativeMediaPowerSaving
 #undef kNativeMediaTverForceFullscreenAdSafeScript

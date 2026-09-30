@@ -1,6 +1,8 @@
 import {
   dashboardChartCard,
+  dashboardChartHost,
   dashboardDataCard,
+  dashboardNotice,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 
@@ -17,7 +19,7 @@ mountDashboardShell({
     anchorId: 'historyView',
     position: 'afterend',
     html: `
-      <p id="followersNotice" class="notice" role="status" hidden></p>
+      ${dashboardNotice({ id: 'followersNotice' })}
       ${dashboardChartCard({
         title: 'フォロワー数推移',
         titleId: 'followersChartTitle',
@@ -25,7 +27,11 @@ mountDashboardShell({
         trailingHtml: '<span id="followersLatestDate" class="pill">-</span>',
         className: 'followers-chart-panel',
         legendHtml: '<div id="followersLegend" class="followers-legend" aria-label="アカウント別の最新フォロワー数"></div>',
-        chartHtml: '<div id="followersChart" class="followers-chart shared-svg-chart" role="img" aria-label="追跡アカウントのフォロワー数推移"></div>',
+        chartHtml: dashboardChartHost({
+          id: 'followersChart',
+          className: 'followers-chart',
+          ariaLabel: '追跡アカウントのフォロワー数推移',
+        }),
       })}
       ${dashboardDataCard({
         title: '最新フォロワー比較',

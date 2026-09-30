@@ -28,7 +28,13 @@
   min-height: var(--shared-chart-min-height, 220px);
 }
 
-.shared-empty {
+:is(
+  .shared-empty,
+  .apple-rank-empty,
+  .amazon-rank-empty,
+  .followers-empty,
+  .spotify-trend-empty
+) {
   margin: 0;
   min-height: var(--shared-empty-min-height, 0);
   padding: var(--shared-empty-padding, 48px 16px);
@@ -50,6 +56,7 @@
   white-space: nowrap;
 }
 
+/* Feature renderers keep their semantic classes; geometry and typography live here. */
 :is(
   .shared-rank-grid,
   .amazon-rank-grid,

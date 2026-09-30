@@ -29,11 +29,11 @@ test('Pages mounts a dedicated Hinata dashboard tab after Amazon Music', () => {
 });
 
 test('Hinata tab composes the same metrics, chart, table and data-card components as other tabs', () => {
-  for (const helper of ['dashboardMetric', 'dashboardMetrics', 'dashboardChartCard', 'dashboardLegend', 'dashboardTable', 'dashboardDataCard']) {
+  for (const helper of ['dashboardMetric', 'dashboardMetrics', 'dashboardChartCard', 'dashboardChartHost', 'dashboardLegend', 'dashboardTable', 'dashboardDataCard']) {
     assert.match(shell, new RegExp(helper));
     assert.match(sharedUi, new RegExp(`export function ${helper}\\(`));
   }
-  assert.match(shell, /shared-svg-chart/);
+  assert.match(sharedUi, /joinClasses\('shared-svg-chart', className\)/);
   assert.doesNotMatch(css, /\.hinata-metric|\.hinata-section-head|\.hinata-chart-detail/);
   assert.doesNotMatch(css, /font-size:/);
   assert.doesNotMatch(css, /padding:/);
@@ -75,15 +75,15 @@ test('Hinata UI includes the 24-hour online and playback graph plus daily metric
 });
 
 test('Hinata adds a daily listener and stream graph below the 24-hour graph', () => {
-  const liveChartIndex = shell.indexOf('id="hinataChart"');
-  const dailyChartIndex = shell.indexOf('id="hinataDailyChart"');
+  const liveChartIndex = shell.indexOf("id: 'hinataChart'");
+  const dailyChartIndex = shell.indexOf("id: 'hinataDailyChart'");
   const dailyDataIndex = shell.indexOf("title: '日次データ'");
   assert.ok(liveChartIndex >= 0);
   assert.ok(dailyChartIndex > liveChartIndex);
   assert.ok(dailyDataIndex > dailyChartIndex);
   assert.match(shell, /title: '同接・再生数増加の推移'/);
   assert.match(shell, /titleId: 'hinataDailyChartTitle'/);
-  assert.match(shell, /aria-label="日次の平均・最大・最小同接と再生数増加"/);
+  assert.match(shell, /ariaLabel: '日次の平均・最大・最小同接と再生数増加'/);
   assert.match(runtime, /function renderDailyChart\(value\)/);
   assert.match(runtime, /listener_avg/);
   assert.match(runtime, /listener_max/);
