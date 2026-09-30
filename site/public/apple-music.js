@@ -7,7 +7,7 @@ import {
   setNotice as setSharedNotice,
   shortDate as formatDate,
   svgElement,
-} from './dashboard-ui-common.js?v=20260930.1';
+} from './dashboard-ui-common.js?v=20261001.1';
 
 const REGION_ORDER = Object.freeze(['jp', 'tw', 'hk', 'kr', 'sg', 'th', 'us']);
 const JAPAN_RANK_LIMIT = 12;
@@ -39,11 +39,22 @@ function orderedRegions(payload) {
   ];
 }
 
+function playlistModel(payload) {
+  return payload?.playlist_model && typeof payload.playlist_model === 'object'
+    ? payload.playlist_model
+    : null;
+}
+
 function renderSummary(payload) {
   const count = element('appleRegionCount');
   const date = element('appleSnapshotDate');
+  const playlistCount = element('applePlaylistCount');
   if (count) count.textContent = `${regions(payload).length}地域`;
   if (date) date.textContent = formatFullDate(payload?.snapshot_date);
+  if (playlistCount) {
+    const matched = integer(playlistModel(payload)?.coverage?.matched_playlists);
+    playlistCount.textContent = matched == null ? '-' : `${matched}件`;
+  }
 }
 
 function rankLabel(rank) {
@@ -263,17 +274,105 @@ function renderRegionComparison(payload) {
   table.append(thead, tbody);
 }
 
+function safeAppleMusicUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' && url.hostname === 'music.apple.com' ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderPlaylistMemberships(payload) {
+  const table = element('applePlaylistTable');
+  if (!table) return;
+  table.replaceChildren();
+
+  const model = playlistModel(payload);
+  const tracks = Array.isArray(model?.tracks) ? model.tracks : [];
+  const thead = document.createElement('thead');
+  const header = document.createElement('tr');
+  for (const label of ['曲名', '掲載数', 'プレイリスト']) {
+    const th = document.createElement('th');
+    th.textContent = label;
+    header.append(th);
+  }
+  thead.append(header);
+
+  const tbody = document.createElement('tbody');
+  if (!tracks.length) {
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 3;
+    cell.textContent = model ? '対象曲を含む公開プレイリストはまだ検出されていません。' : 'プレイリスト情報はまだありません。';
+    row.append(cell);
+    tbody.append(row);
+  } else {
+    tracks.forEach((track) => {
+      const memberships = Array.isArray(track?.playlists) ? track.playlists : [];
+      const row = document.createElement('tr');
+      const title = document.createElement('td');
+      title.textContent = track?.title || '曲名不明';
+      title.className = 'apple-song-title';
+      const count = document.createElement('td');
+      count.textContent = String(memberships.length);
+      count.className = 'apple-rank-number';
+      const playlistCell = document.createElement('td');
+      const links = document.createElement('div');
+      links.className = 'apple-playlist-links';
+      for (const membership of memberships) {
+        const line = document.createElement('div');
+        const url = safeAppleMusicUrl(membership?.url);
+        if (url) {
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer';
+          anchor.textContent = membership?.name || membership?.id || 'プレイリスト';
+          line.append(anchor);
+        } else {
+          line.textContent = membership?.name || membership?.id || 'プレイリスト';
+        }
+        const position = integer(membership?.position);
+        if (position != null) line.append(document.createTextNode(`（${position}曲目）`));
+        links.append(line);
+      }
+      playlistCell.append(links);
+      row.append(title, count, playlistCell);
+      tbody.append(row);
+    });
+  }
+  table.append(thead, tbody);
+}
+
 function render(payload) {
   renderSummary(payload);
   renderRankChart(payload);
   renderRegionComparison(payload);
+  renderPlaylistMemberships(payload);
+}
+
+async function fetchJson(path, label) {
+  const response = await fetch(path, { headers: { accept: 'application/json' } });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.ok) throw new Error(payload?.error || `${label} HTTP ${response.status}`);
+  return payload;
 }
 
 async function fetchPayload() {
-  const response = await fetch('/api/apple-music', { headers: { accept: 'application/json' } });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Apple Music API HTTP ${response.status}`);
-  return payload;
+  const main = await fetchJson('/api/apple-music', 'Apple Music API');
+  let playlist = null;
+  let playlistError = null;
+  try {
+    playlist = await fetchJson('/api/apple-music-playlists', 'Apple Music playlist API');
+  } catch (error) {
+    playlistError = error;
+  }
+  return {
+    ...main,
+    playlist_model: playlist,
+    playlist_error: playlistError ? String(playlistError?.message || playlistError) : null,
+  };
 }
 
 export async function loadAppleMusicView({ force = false } = {}) {
@@ -285,7 +384,10 @@ export async function loadAppleMusicView({ force = false } = {}) {
     loadPromise = fetchPayload().then((payload) => {
       lastPayload = payload;
       const failed = Array.isArray(payload?.failed_regions) ? payload.failed_regions : [];
-      setNotice(failed.length ? `一部地域の取得に失敗しました：${failed.map((item) => item.label || item.code).join('、')}` : '');
+      const notices = [];
+      if (failed.length) notices.push(`一部地域の取得に失敗しました：${failed.map((item) => item.label || item.code).join('、')}`);
+      if (payload?.playlist_error) notices.push('プレイリスト情報の取得に失敗しました。');
+      setNotice(notices.join(' '), Boolean(payload?.playlist_error));
       render(payload);
       return payload;
     }).catch((error) => {
