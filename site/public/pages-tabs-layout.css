@@ -1,4 +1,4 @@
-/* Shared dashboard tab layout: cap each row at six equal-width tabs. */
+/* Shared dashboard tab layout: cap each row at seven equal-width tabs. */
 #modeTabs.mode-tabs.dashboard-tabs {
-  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
 }
