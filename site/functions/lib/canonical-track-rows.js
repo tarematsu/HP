@@ -135,19 +135,41 @@ export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT
   const spotifyIds = [...new Set(rows.map((row) => text(row?.spotify_id)).filter(Boolean))];
 
   try {
-    const [byTrack, byStationhead, byIsrc, bySpotify] = await Promise.all([
-      queryChunked(db, trackIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
-        FROM sh_track_canonical_metadata WHERE track_id IN (${placeholders(chunk.length)})`, boundedChunkSize),
-      queryChunked(db, stationheadIds, (chunk) => `SELECT c.track_id,t.stationhead_track_id,c.isrc,c.spotify_id,c.title,c.artist,c.thumbnail_url
-        FROM sh_tracks t
-        LEFT JOIN sh_track_canonical_metadata c ON c.track_id=t.id
-        WHERE t.stationhead_track_id IN (${placeholders(chunk.length)})`, boundedChunkSize),
+    // Resolve Stationhead aliases through the indexed sh_tracks column first.
+    // Joining sh_track_canonical_metadata directly from stationhead_track_id
+    // forces SQLite/D1 to expand the canonical UNION view before the small
+    // alias set is fully constrained, which has historically dominated rows
+    // read. Once the aliases are track_ids, the canonical view can use the
+    // narrow track_id predicate used by the already-cheap direct lookup path.
+    const [stationheadMappings, byIsrc, bySpotify] = await Promise.all([
+      queryChunked(db, stationheadIds, (chunk) => `SELECT id AS track_id,stationhead_track_id
+        FROM sh_tracks WHERE stationhead_track_id IN (${placeholders(chunk.length)})`, boundedChunkSize),
       queryChunked(db, isrcs, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
         FROM sh_track_canonical_metadata WHERE track_id IS NOT NULL AND isrc IN (${placeholders(chunk.length)})`, boundedChunkSize),
       queryChunked(db, spotifyIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
         FROM sh_track_canonical_metadata WHERE track_id IS NOT NULL AND spotify_id IN (${placeholders(chunk.length)})`, boundedChunkSize),
     ]);
-    const indexes = canonicalIndexes([...byTrack, ...byStationhead, ...byIsrc, ...bySpotify]);
+
+    const stationheadByTrackId = new Map();
+    for (const mapping of stationheadMappings) {
+      const mappedTrackId = positiveInteger(mapping?.track_id);
+      const stationheadTrackId = positiveInteger(mapping?.stationhead_track_id);
+      if (mappedTrackId != null && stationheadTrackId != null) {
+        stationheadByTrackId.set(mappedTrackId, stationheadTrackId);
+      }
+    }
+    const canonicalTrackIds = [...new Set([
+      ...trackIds,
+      ...stationheadByTrackId.keys(),
+    ])];
+    const byTrack = await queryChunked(db, canonicalTrackIds, (chunk) => `SELECT track_id,NULL AS stationhead_track_id,isrc,spotify_id,title,artist,thumbnail_url
+      FROM sh_track_canonical_metadata WHERE track_id IN (${placeholders(chunk.length)})`, boundedChunkSize);
+    const byTrackWithStationhead = byTrack.map((row) => ({
+      ...row,
+      stationhead_track_id: stationheadByTrackId.get(positiveInteger(row?.track_id)) || null,
+    }));
+
+    const indexes = canonicalIndexes([...byTrackWithStationhead, ...byIsrc, ...bySpotify]);
     return applyCanonicalIndexes(rows, indexes);
   } catch (error) {
     if (missingCanonicalSchema(error)) return rows;
