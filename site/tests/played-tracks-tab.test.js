@@ -6,11 +6,11 @@ const shell = readFileSync(new URL('../public/played-tracks-shell.js', import.me
 const runtime = readFileSync(new URL('../public/played-tracks.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
-const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 
 test('played tracks tab is visible immediately and shell mounts its view', () => {
-  assert.match(page, /data-view="played-tracks">再生履歴/);
+  assert.match(registry, /view: 'played-tracks', label: '再生履歴'/);
   assert.match(shell, /dashboard-ui-common\.js\?v=20260930\.1/);
   assert.match(shell, /mountDashboardShell/);
   assert.match(shell, /view: 'played-tracks'/);
