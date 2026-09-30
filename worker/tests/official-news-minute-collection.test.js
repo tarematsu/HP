@@ -47,7 +47,8 @@ test('raw-derived materialization is a separate Queue stage after every collecte
   for (const stage of ['station-auth', 'station-main', 'station-decode', 'station-finalize', 'raw-materialize']) {
     assert.match(source, new RegExp(`['"]${stage}['"]`));
   }
-  assert.doesNotMatch(source, /['"]station-chat['"]/);
+  assert.match(source, /runRetiredStationChat/);
+  assert.match(source, /comment-collection-retired/);
   assert.match(source, /runStationFinalize[\s\S]*sendStage\(env, 'raw-materialize'/);
 });
 
