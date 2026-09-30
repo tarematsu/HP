@@ -1,15 +1,14 @@
 import {
-  appendEmptyState,
   byId as element,
-  evenlySpacedIndexes,
   fullDate as formatFullDate,
   integerFormat as numberFormat,
   safeInteger as integer,
   setNotice as setSharedNotice,
   shortDate as formatDate,
   signedInteger,
-  svgElement,
 } from './dashboard-ui-common.js?v=20260930.1';
+import { renderRankHistoryChart } from './dashboard-rank-chart.js?v=20261001.1';
+import { appendTableRow } from './dashboard-table-dom.js?v=20261001.1';
 
 let loadPromise = null;
 let lastPayload = null;
@@ -119,95 +118,42 @@ function normalizeSeries(payload, metricKey) {
 function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel }) {
   const container = element(containerId);
   if (!container) return;
-  container.replaceChildren();
-
   const series = normalizeSeries(payload, metricKey);
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort();
   const ranks = series.flatMap((item) => item.points.map((point) => point.rank));
-  if (!series.length || !dates.length || !ranks.length) {
-    appendEmptyState(container, emptyText, { className: 'amazon-rank-empty' });
-    return;
-  }
-
-  const width = 960;
-  const height = 420;
-  const margin = { left: 58, right: 18, top: 18, bottom: 38 };
-  const plotWidth = width - margin.left - margin.right;
-  const plotHeight = height - margin.top - margin.bottom;
   const maxRank = Math.max(1, ...ranks);
   const yMax = Math.max(5, Math.ceil(maxRank / 5) * 5);
-  const dateIndex = new Map(dates.map((date, index) => [date, index]));
-  const xFor = (date) => {
-    const index = dateIndex.get(date) ?? 0;
-    return margin.left + (dates.length <= 1 ? plotWidth / 2 : index / (dates.length - 1) * plotWidth);
-  };
-  const yFor = (rank) => margin.top + (rank - 1) / Math.max(1, yMax - 1) * plotHeight;
-
-  const svg = svgElement('svg', {
-    viewBox: `0 0 ${width} ${height}`,
-    role: 'img',
-    'aria-label': ariaLabel,
-    class: 'amazon-rank-svg',
-  });
-
   const rankTicks = [...new Set([1, ...[0.25, 0.5, 0.75, 1]
     .map((ratio) => Math.max(1, Math.round(yMax * ratio)))])].sort((a, b) => a - b);
-  for (const rank of rankTicks) {
-    const y = yFor(rank);
-    svg.append(svgElement('line', {
-      x1: margin.left,
-      y1: y,
-      x2: width - margin.right,
-      y2: y,
-      class: 'amazon-rank-grid',
-    }));
-    svg.append(svgElement('text', {
-      x: margin.left - 8,
-      y: y + 4,
-      'text-anchor': 'end',
-      class: 'amazon-rank-axis-label',
-    }, `${rank}位`));
-  }
 
-  for (const index of evenlySpacedIndexes(dates.length, 5)) {
-    svg.append(svgElement('text', {
-      x: xFor(dates[index]),
-      y: height - 10,
-      'text-anchor': index === 0 ? 'start' : index === dates.length - 1 ? 'end' : 'middle',
-      class: 'amazon-rank-axis-label',
-    }, formatDate(dates[index])));
-  }
-
-  series.forEach((item, index) => {
-    let d = '';
-    let previousIndex = null;
-    for (const point of item.points) {
-      const currentIndex = dateIndex.get(point.date);
-      const x = xFor(point.date);
-      const y = yFor(point.rank);
-      const continues = previousIndex != null && currentIndex === previousIndex + 1;
-      d += `${continues ? ' L' : ' M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-      previousIndex = currentIndex;
-    }
-    if (d) {
-      const path = svgElement('path', { d: d.trim(), class: 'amazon-rank-line' });
-      path.style.setProperty('--amazon-rank-hue', String((index * 47) % 360));
-      path.append(svgElement('title', {}, `${item.title}${item.currentRank == null ? '' : ` 現在${item.currentRank}位`}`));
-      svg.append(path);
-    }
-    const latest = item.points.at(-1);
-    if (latest) {
-      const circle = svgElement('circle', {
-        cx: xFor(latest.date), cy: yFor(latest.rank), r: item.currentRank != null ? 2.5 : 1.8,
-        class: 'amazon-rank-point',
-      });
-      circle.style.setProperty('--amazon-rank-hue', String((index * 47) % 360));
-      circle.append(svgElement('title', {}, `${item.title} ${formatFullDate(latest.date)} ${latest.rank}位`));
-      svg.append(circle);
-    }
+  renderRankHistoryChart({
+    container,
+    series,
+    dates,
+    width: 960,
+    height: 420,
+    margin: { left: 58, right: 18, top: 18, bottom: 38 },
+    yMax,
+    rankTicks,
+    dateTickCount: 5,
+    ariaLabel,
+    svgClass: 'amazon-rank-svg',
+    gridClass: 'amazon-rank-grid',
+    axisClass: 'amazon-rank-axis-label',
+    lineClass: 'amazon-rank-line',
+    pointClass: 'amazon-rank-point',
+    emptyClass: 'amazon-rank-empty',
+    emptyText,
+    rankLabel: (rank) => `${rank}位`,
+    dateLabel: formatDate,
+    hueVariable: '--amazon-rank-hue',
+    hueStep: 47,
+    lineTitle: (item) => `${item.title}${item.currentRank == null ? '' : ` 現在${item.currentRank}位`}`,
+    latestPoint: {
+      radius: (item) => item.currentRank != null ? 2.5 : 1.8,
+      title: (item, latest) => `${item.title} ${formatFullDate(latest.date)} ${latest.rank}位`,
+    },
   });
-
-  container.append(svg);
 }
 
 function renderSummary(payload) {
@@ -225,19 +171,13 @@ function renderTable(payload) {
     return ar - br || String(a?.group_name || '').localeCompare(String(b?.group_name || ''), 'ja');
   });
   for (const track of tracks) {
-    const row = document.createElement('tr');
-    const amazonRank = row.insertCell();
-    const change = row.insertCell();
-    const artist = row.insertCell();
-    const title = row.insertCell();
     const amazon = integer(track?.amazon_rank);
-    amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
-    change.textContent = signedInteger(track?.rank_change);
-    artist.textContent = track?.group_name || '-';
-    title.textContent = track?.display_title || track?.title || '曲名不明';
-    amazonRank.className = change.className = 'amazon-rank-number';
-    artist.className = 'amazon-artist-name';
-    tbody.append(row);
+    appendTableRow(tbody, [
+      { text: amazon == null ? '-' : `${numberFormat.format(amazon)}位`, className: 'amazon-rank-number' },
+      { text: signedInteger(track?.rank_change), className: 'amazon-rank-number' },
+      { text: track?.group_name || '-', className: 'amazon-artist-name' },
+      track?.display_title || track?.title || '曲名不明',
+    ]);
   }
 }
 
