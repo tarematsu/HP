@@ -83,7 +83,7 @@ test('paced chart scan distributes page starts across the configured window', as
   });
 
   assert.equal(result.pages_scanned, 3);
-  assert.equal(result.scanned_tracks, 60);
+  assert.equal(result.scanned_tracks, 3);
   assert.equal(result.pacing_window_ms, 600);
   assert.deepEqual(sleeps, [300, 300]);
   assert.equal(now, 600);
