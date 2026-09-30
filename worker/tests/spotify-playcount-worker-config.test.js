@@ -8,11 +8,11 @@ function config() {
   );
 }
 
-test('Spotify collector is isolated, wakes hourly, and owns its event-driven Pages model', () => {
+test('Spotify collector is isolated behind the shared scheduler and owns its event-driven Pages model', () => {
   const value = config();
   assert.equal(value.name, 'sh-spotify-playcount-collector');
-  assert.equal(value.main, 'src/spotify-playcount-entry.js');
-  assert.deepEqual(value.triggers.crons, ['0 * * * *']);
+  assert.equal(value.main, 'src/spotify-playcount-service-entry.js');
+  assert.equal(value.triggers, undefined);
   assert.deepEqual(value.d1_databases.map(({ binding }) => binding), ['MINUTE_DB', 'OTHER_DB']);
   assert.deepEqual(value.r2_buckets, [
     {
@@ -32,6 +32,10 @@ test('Spotify collector is isolated, wakes hourly, and owns its event-driven Pag
   assert.equal(value.queues.consumers[0].max_concurrency, 2);
   assert.equal(value.queues.consumers[0].max_retries <= 4, true);
   assert.deepEqual(value.vars, { SPOTIFY_PLAYCOUNT_ENABLED: true });
+
+  const serviceEntry = readFileSync(new URL('../src/spotify-playcount-service-entry.js', import.meta.url), 'utf8');
+  assert.match(serviceEntry, /SPOTIFY_PLAYCOUNT_CRON = '0 \* \* \* \*'/);
+  assert.match(serviceEntry, /handleInternalScheduled/);
 });
 
 test('a stale day is carried forward at the next 05:00 and requests one read-model refresh', () => {
