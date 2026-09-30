@@ -8,7 +8,7 @@ const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', impo
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
 
 test('official listening party table uses clear read-model column labels with source at the right edge', () => {
-  assert.match(entry, /history-broadcast-table\.js\?v=20260924\.1/);
+  assert.match(entry, /history-broadcast-table\.js\?v=20261001\.1/);
   for (const label of [
     '日付', '時間帯', '所要時間', '平均同接', '最小同接', '最大同接',
     '楽曲数', '推定再生数', '放送内容', 'イベント名', '出典',
