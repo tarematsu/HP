@@ -1,17 +1,17 @@
 .spotify-trend-panel {
   display: grid;
-  gap: 14px;
+  gap: 0;
 }
 
 .spotify-trend-charts {
   display: grid;
-  gap: 14px;
+  gap: var(--pages-view-gap, 12px);
 }
 
 .spotify-trend-series {
   --spotify-trend-color: #777;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -23,7 +23,7 @@
 .spotify-trend-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 14px;
+  gap: 6px 12px;
   align-items: center;
 }
 
@@ -33,7 +33,7 @@
   align-items: baseline;
   gap: 6px;
   min-width: 0;
-  font-size: .88rem;
+  font-size: inherit;
 }
 
 .spotify-trend-name {
@@ -53,7 +53,7 @@
 }
 
 .spotify-trend-latest {
-  font-size: .86em;
+  font-size: inherit;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -61,7 +61,8 @@
 .spotify-trend-svg {
   display: block;
   width: 100%;
-  min-width: 720px;
+  min-width: 0;
+  max-width: 100%;
   height: auto;
   aspect-ratio: 960 / 340;
   overflow: visible;
@@ -79,7 +80,7 @@
 
 .spotify-trend-axis-label {
   fill: currentColor;
-  font-size: 11px;
+  font-size: var(--dashboard-axis-font-size, 11px);
   opacity: .68;
 }
 
@@ -102,6 +103,7 @@
 .spotify-trend-empty {
   margin: 0;
   color: var(--muted, #777);
+  font-size: var(--dashboard-copy-size, .72rem);
 }
 
 .spotify-table th:first-child,
@@ -126,12 +128,12 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 640px) {
-  .spotify-trend-legend {
-    gap: 6px 10px;
+@media (max-width: 760px) {
+  .spotify-trend-charts {
+    gap: var(--pages-view-gap-mobile, 8px);
   }
 
-  .spotify-trend-legend-item {
-    font-size: .8rem;
+  .spotify-trend-legend {
+    gap: 4px 9px;
   }
 }
