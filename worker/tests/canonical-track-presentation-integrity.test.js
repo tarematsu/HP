@@ -134,13 +134,9 @@ test('metadata change repair canonicalizes both live queue and likes status payl
   assert.match(repairSource, /canonicalizeTrackRows\(db, status\.ranking\)/);
 });
 
-test('MINUTE_DB descriptor registers migration 067 as schema tip', () => {
-  assert.equal(
-    factsDescriptor.schema,
-    'database/facts-migrations/067_canonical_track_presentation_integrity.sql',
-  );
-  assert.equal(
-    factsDescriptor.migrations.at(-1),
-    'database/facts-migrations/067_canonical_track_presentation_integrity.sql',
-  );
+test('MINUTE_DB keeps migration 067 registered before the current schema tip', () => {
+  const migrationPath = 'database/facts-migrations/067_canonical_track_presentation_integrity.sql';
+  assert.equal(factsDescriptor.migrations.filter((value) => value === migrationPath).length, 1);
+  assert.ok(factsDescriptor.migrations.indexOf(migrationPath) < factsDescriptor.migrations.length - 1);
+  assert.equal(factsDescriptor.schema, factsDescriptor.migrations.at(-1));
 });
