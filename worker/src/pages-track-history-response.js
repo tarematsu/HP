@@ -25,17 +25,16 @@ function dayText(timestamp) {
 export function createTrackHistoryPublication(stage, status, now = Date.now(), env = {}) {
   const generatedAt = integer(status?.generated_at) ?? integer(now) ?? Date.now();
   const from = '2024-05-01';
-  const r2Days = Boolean(env?.PAGES_RESPONSE_R2?.get && env?.PAGES_RESPONSE_R2?.put);
   return {
     model_key: TRACK_HISTORY_MODEL_KEY,
     generation: `${integer(stage?.generation) ?? generatedAt}:track-history:${generatedAt}`,
-    phase: r2Days ? 'r2-days' : 'rows',
+    phase: 'r2-days',
     from,
     to: dayText(generatedAt),
     limit: TRACK_HISTORY_RESPONSE_LIMIT,
     page_rows: positiveInteger(env?.PAGES_TRACK_HISTORY_ROWS_PER_STEP, DEFAULT_PAGE_ROWS, MAX_PAGE_ROWS),
     page_days: positiveInteger(env?.PAGES_TRACK_HISTORY_DAYS_PER_STEP, DEFAULT_PAGE_DAYS, MAX_PAGE_DAYS),
-    day_cursor: r2Days ? from : null,
+    day_cursor: from,
     days_written: 0,
     rows_written: 0,
     next_chunk_index: 1,
@@ -81,12 +80,14 @@ export function trackHistoryResponseSuffix(publication) {
     excluded_play_count_dates: excludedDates,
     excluded_play_count_date_count: excludedDates.length,
     generated_at: integer(publication.generated_at),
-    historical_recovery: 'worker_materialized_read_model',
-    method: 'precomputed_track_history_read_model',
+    historical_recovery: 'r2-day-read-model',
+    method: 'precomputed_track_history_r2_day_read_model',
   };
   return `],${JSON.stringify(tail).slice(1)}`;
 }
 
+// Compatibility-only helpers retained for tests/tools that assemble a response
+// in memory. Production no longer persists these chunks in D1.
 function validatedTrackHistoryRowJson(row) {
   const raw = String(row?.row_json || 'null');
   if (row?.row_json_valid == null) {
