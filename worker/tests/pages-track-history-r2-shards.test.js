@@ -112,7 +112,7 @@ test('scheduled Actions never invoke track-history R2 shard generation', async (
   assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
 });
 
-test('explicit maintenance keeps seven staging shards in R2 and writes a stable day model', async () => {
+test('explicit maintenance keeps seven staging shards in R2 and writes a stable R2 day model', async () => {
   const r2 = new FakeR2();
   const db = new FakeDb();
   const ranges = trackHistoryDayShardRanges({ fromTs: DAY_START, toTs: DAY_START + 3 * 60 * 60_000 });
@@ -136,7 +136,7 @@ test('explicit maintenance keeps seven staging shards in R2 and writes a stable 
       assert.equal(result.storage, 'r2-shard');
       assert.equal(db.batches.length, 0);
     } else {
-      assert.equal(result.storage, 'r2-day+d1-day');
+      assert.equal(result.storage, 'r2-day');
       assert.equal(result.rows, 1);
       assert.equal(result.stagedRows, 8);
     }
@@ -147,7 +147,6 @@ test('explicit maintenance keeps seven staging shards in R2 and writes a stable 
   assert.equal(day.payload.rows[0].play_count, 8);
   assert.equal(r2.puts, 10);
   assert.equal(r2.gets, 10);
-  assert.equal(db.batches.length, 1);
-  assert.equal(db.batches[0].length, 1);
-  assert.equal(db.deletes.length, 1);
+  assert.equal(db.batches.length, 0);
+  assert.equal(db.deletes.length, 0);
 });

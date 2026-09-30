@@ -24,33 +24,29 @@ test('played-tracks refresh defaults to the latest completed UTC day', () => {
   assert.match(repair, /TRACK_HISTORY_REPAIR_DAY \|\| ''/);
 });
 
-test('played-tracks refresh is bounded to one UTC day and writes the read model only after non-empty aggregation', () => {
+test('played-tracks refresh is bounded to one UTC day and publishes only after non-empty aggregation', () => {
   assert.match(repair, /fromTs = Date\.parse\(`\$\{targetDay\}T00:00:00Z`\)/);
   assert.match(repair, /toTs = fromTs \+ DAY_MS/);
   assert.match(repair, /materializedTrackHistorySql\(\)/);
   assert.match(repair, /loadTrackHistoryData\(/);
   assert.match(repair, /track-history repair produced no playable rows/);
-  assert.match(repair, /INSERT INTO sh_pages_track_history_read_model/);
-  assert.match(repair, /DELETE FROM sh_pages_track_history_read_model\s+WHERE play_date=\? AND updated_at<>\?/s);
+  assert.match(repair, /publishTrackHistoryR2DayRows/);
+  assert.doesNotMatch(repair, /INSERT INTO sh_pages_track_history_read_model|DELETE FROM sh_pages_track_history_read_model/);
 });
 
 test('played-tracks refresh publishes only the changed day and updates the R2 date index', () => {
-  assert.match(repair, /syncTrackHistoryR2Day/);
-  assert.match(repair, /const published = await sync\(\{ db, day: targetDay, now \}\)/);
-  assert.match(sync, /export async function syncTrackHistoryR2Day/);
-  assert.match(sync, /WHERE play_date=\?/);
+  assert.match(repair, /publishTrackHistoryR2DayRows/);
+  assert.match(repair, /const r2 = await publish\(\{ day: targetDay, rows: repaired\.rows, now: generation \}\)/);
+  assert.match(sync, /export async function publishTrackHistoryR2DayRows/);
   assert.match(sync, /trackHistoryDayObjectKey\(day\)/);
   assert.match(sync, /TRACK_HISTORY_DAY_INDEX_KEY/);
-  assert.match(sync, /run a full sync before incremental refresh/);
-  assert.match(sync, /Number\(existingIndex\.version\) !== 1/);
-  assert.match(sync, /!Array\.isArray\(existingIndex\.dates\)/);
-  assert.doesNotMatch(sync.slice(sync.indexOf('export async function syncTrackHistoryR2Day'), sync.indexOf('export async function syncTrackHistoryR2Days')), /GROUP BY play_date/);
+  assert.match(sync, /play_counts/);
+  assert.doesNotMatch(repair, /sh_pages_track_history_read_model/);
 });
 
-test('played-tracks repair uses file-backed script writes when the remote adapter supports them', () => {
-  assert.match(repair, /typeof db\.script === 'function'/);
-  assert.match(repair, /await db\.script\(statements\)/);
-  assert.match(repair, /await db\.batch\(statements\)/);
+test('played-tracks repair no longer stages duplicate D1 row-model writes', () => {
+  assert.doesNotMatch(repair, /typeof db\.script === 'function'|await db\.script\(statements\)|await db\.batch\(statements\)/);
+  assert.match(repair, /storage: 'r2-day'/);
 });
 
 test('played-tracks refresh workflow runs daily and still supports explicit manual days', () => {
