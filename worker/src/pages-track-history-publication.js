@@ -211,7 +211,7 @@ export async function advanceTrackHistoryR2Publication(
   }
 
   const publish = dependencies.publishR2 || publishTrackHistoryResponseFromR2Days;
-  const result = await publish(r2, publication, now, cadenceSeconds);
+  const result = await publish(r2, publication, now, cadenceSeconds, db);
   if (!result?.published) {
     publication.day_cursor = result?.missing_day || publication.from;
     return {
