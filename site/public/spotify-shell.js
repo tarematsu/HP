@@ -1,6 +1,6 @@
 import {
+  dashboardChartCard,
   dashboardDataCard,
-  dashboardSectionHead,
   dashboardSummary,
   dashboardSummaryItem,
   mountDashboardShell,
@@ -11,8 +11,6 @@ const summary = dashboardSummary([
   dashboardSummaryItem({ label: '櫻坂46の楽曲数', valueId: 'spotifyTrackCount' }),
   dashboardSummaryItem({ label: '櫻坂46の再生数前日比合計', valueId: 'spotifyTotalDelta' }),
 ], { className: 'spotify-summary', ariaLabel: '櫻坂46 Spotify再生数概要' });
-
-const trendPanel = (titleId, title, chartId, ariaLabel) => `<section class="card spotify-trend-panel" aria-labelledby="${titleId}">${dashboardSectionHead({ kicker: titleId === 'spotifyArtistRankTrendTitle' ? 'SPOTIFY CHARTS JAPAN' : 'FEMALE IDOLS', title, titleId })}<div id="${chartId}" class="spotify-trend-charts" aria-label="${ariaLabel}"></div></section>`;
 
 mountDashboardShell({
   tab: {
@@ -29,9 +27,27 @@ mountDashboardShell({
     html: `
       <p id="spotifyNotice" class="notice" role="status" hidden></p>
       ${summary}
-      ${trendPanel('spotifyTrendTitle', 'Spotify 全曲合計の再生数前日比推移（上位10組）', 'spotifyTrendCharts', '最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移')}
-      ${trendPanel('spotifyTop10YearTrendTitle', 'Spotify 今年リリース上位10曲合計の再生数前日比推移（上位10組）', 'spotifyTop10YearTrendCharts', '今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移')}
-      ${trendPanel('spotifyArtistRankTrendTitle', 'Spotify Daily Top Artist（日本）の順位推移', 'spotifyArtistRankTrendCharts', 'Spotify日本 Daily Top Artist における収集対象アーティストの順位推移')}
+      ${dashboardChartCard({
+        title: 'Spotify 全曲合計の再生数前日比推移（上位10組）',
+        titleId: 'spotifyTrendTitle',
+        kicker: 'FEMALE IDOLS',
+        className: 'spotify-trend-panel',
+        chartHtml: '<div id="spotifyTrendCharts" class="spotify-trend-charts" aria-label="最新日の全曲合計再生数前日比が大きい女性アイドル上位10組の推移"></div>',
+      })}
+      ${dashboardChartCard({
+        title: 'Spotify 今年リリース上位10曲合計の再生数前日比推移（上位10組）',
+        titleId: 'spotifyTop10YearTrendTitle',
+        kicker: 'FEMALE IDOLS',
+        className: 'spotify-trend-panel',
+        chartHtml: '<div id="spotifyTop10YearTrendCharts" class="spotify-trend-charts" aria-label="今年リリース曲のうち再生数前日比上位10曲の合計が最新日に大きい女性アイドル上位10組の推移"></div>',
+      })}
+      ${dashboardChartCard({
+        title: 'Spotify Daily Top Artist（日本）の順位推移',
+        titleId: 'spotifyArtistRankTrendTitle',
+        kicker: 'SPOTIFY CHARTS JAPAN',
+        className: 'spotify-trend-panel',
+        chartHtml: '<div id="spotifyArtistRankTrendCharts" class="spotify-trend-charts" aria-label="Spotify日本 Daily Top Artist における収集対象アーティストの順位推移"></div>',
+      })}
       ${dashboardDataCard({
         title: '櫻坂46の再生数一覧',
         titleId: 'spotifyTableTitle',
