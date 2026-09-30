@@ -52,7 +52,6 @@ function validateDeliveryTask(body) {
       observedAt,
       snapshot: minuteFact.payload.snapshot,
       queue: minuteFact.payload.queue ?? null,
-      comments: minuteFact.payload.comments || {},
       auth: objectValue(body.auth) || {
         authToken: collectorState.authToken,
         deviceUid: collectorState.deviceUid,
@@ -208,7 +207,6 @@ export async function processIngestFactTask(env, body, dependencies = {}) {
       observedAt: fact.observedAt,
       snapshot: fact.snapshot,
       queue: fact.queue ?? null,
-      comments: fact.comments || {},
     }, fact.options);
     await enqueueDelivery(env, fact, staged.message, dependencies);
     return {
@@ -229,7 +227,6 @@ export async function processIngestFactTask(env, body, dependencies = {}) {
     observedAt: fact.observedAt,
     snapshot: fact.snapshot,
     queue: fact.queue ?? null,
-    comments: fact.comments || {},
   }, fact.options);
   const minuteAt = integer(minuteFactJob?.minute_at);
   const envelope = capture.envelope || await recoverReadModelEnvelope(env, fact, minuteAt);
