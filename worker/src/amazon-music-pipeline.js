@@ -101,6 +101,27 @@ function historyPoint(snapshotDate, observedAt, tracks) {
   };
 }
 
+export function labelAmazonMusicVariants(tracks) {
+  const rows = Array.isArray(tracks) ? tracks : [];
+  const first = new Map();
+  for (const track of rows) {
+    const title = text(track?.title) || '曲名不明';
+    const id = text(track?.amazon_music_id);
+    const group = integer(track?.track_id) ?? title;
+    const current = first.get(group);
+    if (id && title !== '曲名不明' && (!current || id < current)) first.set(group, id);
+  }
+  return rows.map((track) => {
+    const title = text(track?.title) || '曲名不明';
+    const id = text(track?.amazon_music_id);
+    const group = integer(track?.track_id) ?? title;
+    return {
+      ...track,
+      display_title: id && first.has(group) && first.get(group) !== id ? `${title}(SE)` : title,
+    };
+  });
+}
+
 async function publishDeepProgress(env, deepState, observedAt, { resetRanks = false } = {}) {
   const r2 = env?.PAGES_RESPONSE_R2;
   if (!r2?.put) throw new Error('PAGES_RESPONSE_R2 binding is required');
@@ -145,7 +166,7 @@ async function publishDeepProgress(env, deepState, observedAt, { resetRanks = fa
     });
   }
 
-  const tracks = [...byId.values()].sort((a, b) => {
+  const tracks = labelAmazonMusicVariants([...byId.values()]).sort((a, b) => {
     const ar = integer(a.amazon_rank) ?? Number.MAX_SAFE_INTEGER;
     const br = integer(b.amazon_rank) ?? Number.MAX_SAFE_INTEGER;
     return ar - br || String(a.title || '').localeCompare(String(b.title || ''), 'ja');
