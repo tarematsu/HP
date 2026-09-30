@@ -22,6 +22,40 @@ function metadataEnv(calls) {
   };
 }
 
+function canonicalSeedEnv(calls) {
+  const canonical = {
+    track_id: 7,
+    spotify_id: 'sp1',
+    isrc: 'JP1',
+    title: 'Canonical Song',
+    artist: '櫻坂46',
+    thumbnail_url: 'https://example.test/cover.jpg',
+    fetched_at: 100,
+  };
+  return {
+    MINUTE_DB: {
+      batch() {},
+      prepare(sql) {
+        return {
+          bind(...bindings) {
+            calls.push({ sql, bindings });
+            return {
+              async all() {
+                if (/FROM sh_track_canonical_metadata/.test(sql)
+                    && /WHERE isrc IN/.test(sql)
+                    && bindings.includes('JP1')) {
+                  return { results: [canonical] };
+                }
+                return { results: [] };
+              },
+            };
+          },
+        };
+      },
+    },
+  };
+}
+
 function canonicalCalls(calls) {
   return calls.filter(({ sql }) => /FROM sh_track_canonical_metadata/.test(sql));
 }
@@ -43,6 +77,24 @@ test('metadata hydration scans incomplete tracks once and preserves key order', 
     ['spotify-a', 'spotify-b'],
   ]);
   assert.ok(calls.every(({ sql }) => !/UNION ALL|\sOR\s/.test(sql)));
+});
+
+test('hydrated canonical metadata is reused instead of rereading the same track id', async () => {
+  const calls = [];
+  const result = await hydrateReadModelMetadata(canonicalSeedEnv(calls), readModel([{
+    spotify_id: 'sp1',
+    isrc: 'JP1',
+  }]));
+
+  const track = result.queue.value.tracks[0];
+  assert.equal(track.track_id, 7);
+  assert.equal(track.title, 'Canonical Song');
+  assert.equal(track.artist, '櫻坂46');
+  assert.equal(track.thumbnail_url, 'https://example.test/cover.jpg');
+  const canonical = canonicalCalls(calls);
+  assert.equal(canonical.length, 1);
+  assert.match(canonical[0].sql, /WHERE isrc IN/);
+  assert.deepEqual(canonical[0].bindings, ['JP1']);
 });
 
 test('metadata hydration keeps collecting the second key type after the first reaches its cap', async () => {
