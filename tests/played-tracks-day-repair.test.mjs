@@ -57,9 +57,9 @@ test('played-tracks repair no longer stages duplicate D1 row-model writes', () =
   assert.match(repair, /storage: 'r2-day'/);
 });
 
-test('played-tracks refresh workflow runs daily and still supports explicit manual days', () => {
+test('played-tracks refresh runs once daily or by explicit manual dispatch, never on main pushes', () => {
   assert.match(workflow, /schedule:\s*\n\s*- cron: '46 0 \* \* \*'/);
-  assert.match(workflow, /push:\s*\n\s*branches: \[main\]/);
+  assert.doesNotMatch(workflow, /\n\s*push:\s*\n/);
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /default: ''/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET: sh-pages-responses/);

@@ -3,18 +3,9 @@ name: Refresh played tracks day
 on:
   schedule:
     - cron: '46 0 * * *'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/repair-played-tracks-day.yml'
-      - 'worker/scripts/repair-track-history-day-actions.mjs'
-      - 'worker/scripts/sync-track-history-r2-days-actions.mjs'
-      - 'worker/src/pages-track-history-r2-shards.js'
-      - 'worker/src/pages-track-history-day-index.js'
-      - 'site/functions/lib/track-history-restored-handler.js'
-      - 'site/functions/lib/track-history-merge.js'
-      - 'site/functions/lib/period-completeness.js'
-      - 'site/functions/lib/track-likes.js'
+  # Historical Track History reconstruction is a high-read D1 operation.
+  # Keep it on the once-daily schedule or explicit manual dispatch; ordinary
+  # main pushes must not rebuild the same completed day repeatedly.
   workflow_dispatch:
     inputs:
       day:
