@@ -68,6 +68,7 @@ function ensureLegend(hasPrevious, hasStreamAverages) {
 
   const stream = legend.querySelector('.stream-growth-key');
   if (stream) {
+    stream.textContent = '再生数';
     stream.hidden = !hasStreamAverages;
     stream.style.color = STREAM_BAR_COLOR;
   }
@@ -243,7 +244,7 @@ function drawComparison(payload) {
   context.fillStyle = '#667287';
   context.textAlign = 'left';
   context.fillText('オンライン数(人)', 4, 12);
-  context.fillText('再生数増加/分（5分平均）', 4, streamTop - 8);
+  context.fillText('再生数', 4, streamTop - 8);
   context.textAlign = 'center';
   context.fillText('時刻 (JST)', width / 2, height - 2);
 
@@ -308,5 +309,5 @@ function installCanvasResizeObserver() {
 }
 
 installCanvasResizeObserver();
-window.addEventListener('dashboard:details', (event) => scheduleDraw(event?.detail?.payload));
+window.addEventListener('dashboard:payload', (event) => scheduleDraw(event?.detail?.payload));
 window.addEventListener('resize', () => scheduleDraw(), { passive: true });
