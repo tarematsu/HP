@@ -140,6 +140,13 @@ test('projected D1 write breach is contained when recent read and write paces ar
     'VIOLATION (actual)',
     'VIOLATION (projected)',
   );
+  const paces = classifyDailyD1SnapshotPaces({
+    currentSummary,
+    previousIssueBody,
+    generatedAt,
+  });
+  assert.equal(paces.rowsWritten?.current.violationSource, 'projected');
+  assert.equal(paces.rowsWritten?.state, 'healthy');
   const triage = buildObservabilityTriage({
     outcomes,
     summaries: { ...summaries, daily: currentSummary },
@@ -148,7 +155,6 @@ test('projected D1 write breach is contained when recent read and write paces ar
     generatedAt,
   });
   assert.match(triage, /CONTAINED — 1 historical signal remains until the UTC counter resets/);
-  assert.match(triage, /D1 rows written remain projected above the UTC-day limit/);
   assert.match(triage, /\| Recent D1 rows read pace \| \*\*OK\*\*/);
   assert.match(triage, /\| Recent D1 rows written pace \| \*\*OK\*\*/);
   assert.match(triage, /\| Projected daily usage \| \*\*CONTAINED\*\*/);
