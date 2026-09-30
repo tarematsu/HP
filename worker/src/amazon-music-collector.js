@@ -17,6 +17,7 @@ const READ_MODEL_KEY = 'amazon-music/read-model/latest.json';
 const READ_MODEL_HISTORY_DAYS = 365;
 const MAX_ISRC_LOOKUPS = 240;
 const ISRC_LOOKUP_CONCURRENCY = 4;
+const CANONICAL_METADATA_CHUNK_SIZE = 80;
 const PUBLIC_HEADERS = Object.freeze({
   'content-type': 'application/json; charset=utf-8',
   'x-content-type-options': 'nosniff',
@@ -170,20 +171,47 @@ async function sharedTrackIds(db, client, tracks, observedAt) {
   return trackIdByAmazonId;
 }
 
-function publicTrack(track, trackIdByAmazonId) {
+export async function loadAmazonMusicCanonicalMetadata(db, trackIdByAmazonId) {
+  if (!db?.prepare || !(trackIdByAmazonId instanceof Map) || !trackIdByAmazonId.size) return new Map();
+  const trackIds = [...new Set([...trackIdByAmazonId.values()]
+    .map((value) => Number(value))
+    .filter((value) => Number.isSafeInteger(value) && value > 0))];
+  const metadata = new Map();
+  for (let offset = 0; offset < trackIds.length; offset += CANONICAL_METADATA_CHUNK_SIZE) {
+    const part = trackIds.slice(offset, offset + CANONICAL_METADATA_CHUNK_SIZE);
+    const placeholders = part.map(() => '?').join(',');
+    const rows = await db.prepare(`SELECT track_id,title,artist
+      FROM sh_track_canonical_metadata
+      WHERE track_id IN (${placeholders})`)
+      .bind(...part).all();
+    for (const row of rows?.results || []) {
+      const trackId = Number(row?.track_id);
+      if (!Number.isSafeInteger(trackId) || trackId <= 0) continue;
+      metadata.set(trackId, {
+        title: text(row?.title),
+        artist: text(row?.artist),
+      });
+    }
+  }
+  return metadata;
+}
+
+function publicTrack(track, trackIdByAmazonId, canonicalMetadata = new Map()) {
+  const trackId = trackIdByAmazonId.get(track.amazon_music_id) ?? null;
+  const canonical = trackId == null ? null : canonicalMetadata.get(trackId);
   return {
     rank: Number(track.rank) || null,
     amazon_music_id: track.amazon_music_id,
-    track_id: trackIdByAmazonId.get(track.amazon_music_id) ?? null,
-    title: track.title || null,
-    artist: track.artist || null,
+    track_id: trackId,
+    title: canonical?.title || track.title || null,
+    artist: canonical?.artist || track.artist || null,
     album: track.album || null,
     image: track.image || null,
   };
 }
 
-function publicCatalogTrack(track, trackIdByAmazonId) {
-  const item = publicTrack(track, trackIdByAmazonId);
+function publicCatalogTrack(track, trackIdByAmazonId, canonicalMetadata) {
+  const item = publicTrack(track, trackIdByAmazonId, canonicalMetadata);
   delete item.rank;
   return item;
 }
@@ -349,24 +377,29 @@ export async function collectAmazonMusicSnapshot(
 
   const artistPopular = rankTracks(extractAmazonMusicTracks(artistDocument));
   const allArtistTracks = rankTracks(mergeTracks(rawArtistTracks, artistPopular));
-  const allIdentityInputs = mergeTracks(allArtistTracks, artistPopular);
+  const artistIds = new Set(allArtistTracks.map((track) => track.amazon_music_id));
+  const top50Ranking = rankTracks(extractAmazonMusicTracks(top50Document));
+  const rawTop50Hits = hitsFromRanking(top50Ranking, artistIds);
+  const overallRanking = typeof client.fetchOverallTrackRanks === 'function'
+    ? await client.fetchOverallTrackRanks(artistIds)
+    : { hits: [], scanned_tracks: 0, exhausted: false };
+  const rawCatalogHits = hitsFromRanking(
+    Array.isArray(overallRanking?.hits) ? overallRanking.hits : [],
+    artistIds,
+  );
+  const allIdentityInputs = mergeTracks(
+    mergeTracks(allArtistTracks, artistPopular),
+    [...rawTop50Hits, ...rawCatalogHits],
+  );
   const trackIdByAmazonId = await sharedTrackIds(
     env.MINUTE_DB,
     client,
     allIdentityInputs,
     observedAt,
   );
-  const artistIds = new Set(allArtistTracks.map((track) => track.amazon_music_id));
-
-  const top50Ranking = rankTracks(extractAmazonMusicTracks(top50Document));
-  const top50Hits = hitsFromRanking(top50Ranking, artistIds).map((track) => publicTrack(track, trackIdByAmazonId));
-  const overallRanking = typeof client.fetchOverallTrackRanks === 'function'
-    ? await client.fetchOverallTrackRanks(artistIds)
-    : { hits: [], scanned_tracks: 0, exhausted: false };
-  const catalogHits = hitsFromRanking(
-    Array.isArray(overallRanking?.hits) ? overallRanking.hits : [],
-    artistIds,
-  ).map((track) => publicTrack(track, trackIdByAmazonId));
+  const canonicalMetadata = await loadAmazonMusicCanonicalMetadata(env.MINUTE_DB, trackIdByAmazonId);
+  const top50Hits = rawTop50Hits.map((track) => publicTrack(track, trackIdByAmazonId, canonicalMetadata));
+  const catalogHits = rawCatalogHits.map((track) => publicTrack(track, trackIdByAmazonId, canonicalMetadata));
   const follower = await followerInfo(client, artistDocument);
 
   const snapshot = {
@@ -380,7 +413,7 @@ export async function collectAmazonMusicSnapshot(
       exact: Boolean(follower.exact),
       label: follower.label || null,
     } : null,
-    all_tracks: allArtistTracks.map((track) => publicCatalogTrack(track, trackIdByAmazonId)),
+    all_tracks: allArtistTracks.map((track) => publicCatalogTrack(track, trackIdByAmazonId, canonicalMetadata)),
     catalog_popular_hits: catalogHits,
     catalog_popular_scanned: Number(overallRanking?.scanned_tracks) || 0,
     catalog_popular_exhausted: Boolean(overallRanking?.exhausted),
@@ -443,6 +476,7 @@ export async function collectAmazonMusicSnapshot(
     follower_delta: readModel.follower?.delta ?? null,
     all_tracks: allArtistTracks.length,
     resolved_track_ids: trackIdByAmazonId.size,
+    canonical_metadata_tracks: canonicalMetadata.size,
     japan_top_50_hits: top50Hits.length,
     japan_top_50_stored: top50Stored,
     catalog_popular_hits: catalogHits.length,
