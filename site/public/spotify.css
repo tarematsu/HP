@@ -1,163 +1,22 @@
-.spotify-trend-panel {
-  display: grid;
-  gap: 0;
-}
-
-.spotify-trend-charts {
-  display: grid;
-  gap: var(--pages-view-gap, 12px);
-}
-
-.spotify-trend-series {
-  --spotify-trend-color: #777;
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-
-.spotify-trend-combined {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.spotify-trend-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  align-items: center;
-}
-
-.spotify-trend-legend-item {
-  --spotify-trend-color: #777;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  font-size: inherit;
-}
-
-.spotify-trend-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 800;
-}
-
-.spotify-trend-name::before {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: var(--spotify-trend-color);
-  content: '';
-}
-
-.spotify-trend-latest {
-  font-size: inherit;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.spotify-trend-svg {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-  height: auto;
-  aspect-ratio: 960 / 340;
-  overflow: visible;
-}
-
-.spotify-trend-line {
-  stroke: var(--spotify-trend-color);
-}
-
-.spotify-trend-point {
-  fill: var(--spotify-trend-color);
-  stroke: var(--card, #fff);
-}
-
-.spotify-trend-empty {
-  margin: 0;
-  color: var(--muted, #777);
-  font-size: var(--dashboard-copy-size, .72rem);
-}
-
-.spotify-detail-head {
-  align-items: end;
-  gap: 10px;
-}
-
-.spotify-artist-switcher {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.spotify-artist-button {
-  min-height: 32px;
-  padding: 5px 10px;
-  border: 1px solid var(--line, #d5d5d5);
-  border-radius: 999px;
-  background: var(--card, #fff);
-  color: inherit;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.spotify-artist-button:hover {
-  border-color: currentColor;
-}
-
-.spotify-artist-button.is-active,
-.spotify-artist-button[aria-pressed="true"] {
-  background: var(--text, #111);
-  border-color: var(--text, #111);
-  color: var(--card, #fff);
-}
-
-.spotify-table th:first-child,
-.spotify-table td:first-child {
-  text-align: center;
-}
-
-.spotify-table th:nth-child(3),
-.spotify-table td:nth-child(3),
-.spotify-table th:nth-child(4),
-.spotify-table td:nth-child(4) {
-  text-align: right;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.spotify-table td:nth-child(2) {
-  font-weight: 650;
-}
-
-.spotify-number {
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 760px) {
-  .spotify-trend-charts {
-    gap: var(--pages-view-gap-mobile, 8px);
-  }
-
-  .spotify-trend-legend {
-    gap: 4px 9px;
-  }
-
-  .spotify-detail-head {
-    align-items: stretch;
-  }
-
-  .spotify-artist-switcher {
-    justify-content: flex-start;
-  }
-
-  .spotify-artist-button {
-    flex: 1 1 auto;
-  }
-}
+.spotify-trend-panel{display:grid;gap:0}
+.spotify-trend-charts{display:grid;gap:var(--pages-view-gap,12px)}
+.spotify-trend-series{--spotify-trend-color:#777;display:grid;gap:8px;min-width:0}
+.spotify-trend-combined{padding-top:0;border-top:0}
+.spotify-trend-legend{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.spotify-trend-legend-item{--spotify-trend-color:#777;display:inline-flex;align-items:baseline;gap:6px;min-width:0;font-size:inherit}
+.spotify-trend-name{display:inline-flex;align-items:center;gap:6px;font-weight:800}
+.spotify-trend-name::before{width:10px;height:10px;flex:0 0 auto;border-radius:999px;background:var(--spotify-trend-color);content:''}
+.spotify-trend-latest,.spotify-number{font-variant-numeric:tabular-nums}
+.spotify-trend-latest{font-size:inherit;white-space:nowrap}
+.spotify-trend-svg{display:block;width:100%;min-width:0;max-width:100%;height:auto;aspect-ratio:960/340;overflow:visible}
+.spotify-trend-line{stroke:var(--spotify-trend-color)}
+.spotify-trend-point{fill:var(--spotify-trend-color);stroke:var(--card,#fff)}
+.spotify-trend-empty{margin:0;color:var(--muted,#777);font-size:var(--dashboard-copy-size,.72rem)}
+.spotify-detail-head{align-items:end;gap:10px}
+.spotify-artist-switcher{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.spotify-artist-button{padding:5px 10px;border:1px solid var(--line,#d5d5d5);border-radius:999px;background:var(--card,#fff);color:inherit;font:inherit;font-weight:700;cursor:pointer}
+.spotify-artist-button.is-active{background:var(--text,#111);border-color:var(--text,#111);color:var(--card,#fff)}
+.spotify-table th:first-child,.spotify-table td:first-child{text-align:center}
+.spotify-table th:nth-child(3),.spotify-table td:nth-child(3),.spotify-table th:nth-child(4),.spotify-table td:nth-child(4){text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.spotify-table td:nth-child(2){font-weight:650}
+@media(max-width:760px){.spotify-trend-charts{gap:var(--pages-view-gap-mobile,8px)}.spotify-trend-legend{gap:4px 9px}.spotify-detail-head{align-items:stretch}.spotify-artist-switcher{justify-content:flex-start}.spotify-artist-button{flex:1 1 auto}}
