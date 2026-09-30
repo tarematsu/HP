@@ -7,6 +7,8 @@ const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.
 const tabRegistry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const staticUi = [currentShell, likesShell, tabRegistry].join('\n');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
+const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
+const spotify = readFileSync(new URL('../public/spotify.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const ranking = readFileSync(new URL('../public/history/history-ranking-all-host-table.js', import.meta.url), 'utf8');
@@ -53,6 +55,11 @@ test('likes runtime and CSV use the same likes terminology', () => {
   assert.match(likes, /likesTotalDelta/);
   assert.doesNotMatch(likes, /likesMaxLikes/);
   assert.doesNotMatch(likes, /metric\('最新いいね'/);
+});
+
+test('user-facing wording is stored at its source instead of rewritten during rendering', () => {
+  assert.doesNotMatch(sharedUi, /replace\(': ', '：'\)/);
+  assert.match(spotify, /Spotify再生数の取得に失敗しました：\$\{error\.message\}/);
 });
 
 test('legacy standalone goal card is absent from the current view', () => {
