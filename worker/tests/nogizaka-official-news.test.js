@@ -69,7 +69,7 @@ test('news-only due work enters the same staged official-news pipeline', async (
   assert.equal(sent[0].producer_worker, 'sh-nogizaka46smej');
 });
 
-test('Nogizaka Worker owns an isolated queue and raw tables', () => {
+test('Nogizaka Worker owns an isolated queue while scheduling is delegated', () => {
   const wrangler = JSON.parse(readFileSync(
     new URL('../wrangler.nogizaka46smej.jsonc', import.meta.url),
     'utf8',
@@ -79,10 +79,15 @@ test('Nogizaka Worker owns an isolated queue and raw tables', () => {
     'utf8',
   );
   assert.equal(wrangler.name, 'sh-nogizaka46smej');
-  assert.deepEqual(wrangler.triggers.crons, ['* * * * *']);
+  assert.equal(wrangler.main, 'src/nogizaka-service-entry.js');
+  assert.equal(wrangler.triggers, undefined);
   assert.equal(wrangler.queues.consumers[0].queue, 'stationhead-nogizaka46smej');
   assert.match(migration, /sh_nogizaka_official_news_announcements/);
   assert.match(migration, /sh_nogizaka46smej_main/);
   assert.match(migration, /sh_nogizaka46smej_chat/);
   assert.match(migration, /sh_nogizaka46smej_track_metadata/);
+
+  const serviceEntry = readFileSync(new URL('../src/nogizaka-service-entry.js', import.meta.url), 'utf8');
+  assert.match(serviceEntry, /handleInternalScheduled/);
+  assert.match(serviceEntry, /NOGIZAKA_CRON/);
 });
