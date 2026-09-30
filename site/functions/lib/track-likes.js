@@ -19,7 +19,7 @@ function likeIdentity(row) {
 export const TRACK_LIKE_REALTIME_SQL = `WITH prepared AS (
   SELECT
     id,strftime('%Y-%m-%d',observed_at/1000,'unixepoch') AS play_date,
-    spotify_id,isrc,stationhead_track_id,queue_track_id,
+    track_id,spotify_id,isrc,stationhead_track_id,queue_track_id,
     track_key,NULL AS title,NULL AS artist,like_count,observed_at,source
   FROM sh_track_like_observations
   WHERE observed_at>=? AND observed_at<?
@@ -33,19 +33,20 @@ export const TRACK_LIKE_REALTIME_SQL = `WITH prepared AS (
     ) AS row_rank
   FROM prepared
 )
-SELECT play_date,spotify_id,isrc,stationhead_track_id,queue_track_id,
+SELECT play_date,track_id,spotify_id,isrc,stationhead_track_id,queue_track_id,
   title,artist,like_count,observed_at,source
 FROM ranked WHERE row_rank=1`;
 
 export const TRACK_LIKE_QUEUE_SQL = `WITH ranked AS (
   SELECT
     strftime('%Y-%m-%d',q.start_time/1000,'unixepoch') AS play_date,
-    q.spotify_id,q.isrc,q.stationhead_track_id,q.queue_track_id,
+    q.track_id,q.spotify_id,q.isrc,q.stationhead_track_id,q.queue_track_id,
     m.title,m.artist,q.bite_count AS like_count,q.observed_at,'queue' AS source,
     ROW_NUMBER() OVER (
       PARTITION BY
         strftime('%Y-%m-%d',q.start_time/1000,'unixepoch'),
         CASE
+          WHEN q.track_id IS NOT NULL THEN 'track:'||CAST(q.track_id AS TEXT)
           WHEN q.isrc IS NOT NULL AND TRIM(q.isrc)<>'' THEN 'isrc:'||UPPER(TRIM(q.isrc))
           ELSE 'spotify:'||TRIM(q.spotify_id)
         END
@@ -56,16 +57,17 @@ export const TRACK_LIKE_QUEUE_SQL = `WITH ranked AS (
   WHERE q.start_time>=? AND q.start_time<?
     AND q.bite_count IS NOT NULL
     AND (
-      (q.isrc IS NOT NULL AND TRIM(q.isrc)<>'')
+      q.track_id IS NOT NULL
+      OR (q.isrc IS NOT NULL AND TRIM(q.isrc)<>'')
       OR (q.spotify_id IS NOT NULL AND TRIM(q.spotify_id)<>'')
     )
 )
-SELECT play_date,spotify_id,isrc,stationhead_track_id,queue_track_id,
+SELECT play_date,track_id,spotify_id,isrc,stationhead_track_id,queue_track_id,
   title,artist,like_count,observed_at,source
 FROM ranked WHERE row_rank=1`;
 
 export const TRACK_LIKE_HISTORY_SQL = `SELECT
-  NULL AS play_date,NULL AS spotify_id,NULL AS isrc,
+  NULL AS play_date,NULL AS track_id,NULL AS spotify_id,NULL AS isrc,
   NULL AS stationhead_track_id,NULL AS queue_track_id,
   NULL AS title,NULL AS artist,NULL AS like_count,NULL AS observed_at,
   'sheet' AS source
