@@ -17,10 +17,10 @@ const dashboard = readFileSync(
   'utf8',
 );
 
-test('direct five-minute stream migration is the current MINUTE_DB schema tip', () => {
+test('direct five-minute stream migration remains installed before the current MINUTE_DB schema tip', () => {
   const path = 'database/facts-migrations/065_direct_5m_stream_history.sql';
-  assert.equal(descriptor.schema, path);
-  assert.equal(descriptor.migrations.at(-1), path);
+  assert.ok(descriptor.migrations.includes(path));
+  assert.ok(descriptor.migrations.indexOf(path) < descriptor.migrations.length - 1);
   assert.equal(descriptor.migrations.filter((value) => value === path).length, 1);
 });
 
