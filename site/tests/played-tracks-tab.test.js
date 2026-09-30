@@ -8,6 +8,7 @@ const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
+const r2Api = readFileSync(new URL('../../worker/src/pages-track-history-r2-api.js', import.meta.url), 'utf8');
 
 test('played tracks tab is visible immediately and shell mounts its view', () => {
   assert.match(registry, /view: 'played-tracks', label: '再生履歴'/);
@@ -63,11 +64,13 @@ test('played tracks chart uses neon colors and limits labels further on narrow s
   assert.match(runtime, /上位\$\{labelLimit\}曲は曲名と再生数を表示/);
 });
 
-test('track history exposes a lightweight date index from the daily read model', () => {
-  assert.match(api, /url\.searchParams\.get\('dates_only'\) === '1'/);
-  assert.match(api, /FROM sh_pages_track_history_daily_read_model/);
-  assert.match(api, /WHERE row_count>0/);
-  assert.match(api, /latest_date: dates\.at\(-1\) \|\| null/);
+test('track history exposes a lightweight date index from the R2 day model', () => {
+  assert.match(api, /PAGES_READ_MODEL_SERVICE/);
+  assert.match(api, /url\.searchParams\.append\(name, value\)/);
+  assert.match(r2Api, /url\.searchParams\.get\('dates_only'\) === '1'/);
+  assert.match(r2Api, /loadTrackHistoryDayIndex/);
+  assert.match(r2Api, /latest_date: dates\.at\(-1\) \|\| null/);
+  assert.doesNotMatch(r2Api, /sh_pages_track_history_daily_read_model/);
 });
 
 test('played tracks shell and runtime are both lazy behind the shared router', () => {
