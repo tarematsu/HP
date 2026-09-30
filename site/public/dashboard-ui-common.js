@@ -75,8 +75,8 @@ export function dashboardMetrics(items = [], { className = '', ariaLabel = '' } 
   return `<section class="${joinClasses('metrics', className)}"${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}>${items.join('')}</section>`;
 }
 
-export function dashboardSummaryItem({ label = '', valueId = '', value = '-', className = '', valueClassName = '' } = {}) {
-  return `<article${className ? ` class="${className}"` : ''}><span>${label}</span><strong${valueId ? ` id="${valueId}"` : ''}${valueClassName ? ` class="${valueClassName}"` : ''}>${value}</strong></article>`;
+export function dashboardSummaryItem({ label = '', labelId = '', valueId = '', value = '-', className = '', valueClassName = '' } = {}) {
+  return `<article${className ? ` class="${className}"` : ''}><span${labelId ? ` id="${labelId}"` : ''}>${label}</span><strong${valueId ? ` id="${valueId}"` : ''}${valueClassName ? ` class="${valueClassName}"` : ''}>${value}</strong></article>`;
 }
 
 export function dashboardSummary(items = [], { id = '', className = '', ariaLabel = '' } = {}) {
