@@ -1,3 +1,7 @@
+import './dashboard-tab-registry.js?v=20260930.1';
+import './current-shell.js?v=20260930.1';
+import './history-shell.js?v=20260930.1';
+import './likes-shell.js?v=20260930.1';
 import './legacy-listening-party-route.js?v=20260926.1';
 import './dashboard-header.js?v=20260928.1';
 import './dashboard-tab-order.js?v=20260929.1';
@@ -47,7 +51,7 @@ function installImageState(id) {
       if (!image.hidden || canonicalImageSource(image.currentSrc || image.getAttribute('src') || image.src) !== source) return;
       image.removeAttribute('src');
       requestAnimationFrame(() => { image.src = source; });
-    }, IMAGE_RETRY_DELAYS[attempt]);
+    }, IMAGE_RETRY_DELAYS[attempt];
     imageRetryTimers.set(image, timer);
   };
   image.addEventListener('load', loaded);
