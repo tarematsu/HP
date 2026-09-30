@@ -486,7 +486,7 @@ export async function loadSpotifyView({ refresh = false } = {}) {
     render(payload, model?.trend || {}, model?.artist_chart || {});
   } catch (error) {
     if (sequence !== requestSequence) return;
-    setNotice(`Spotify再生数の取得に失敗しました: ${error.message}`, true);
+    setNotice(`Spotify再生数の取得に失敗しました：${error.message}`, true);
   }
 }
 
