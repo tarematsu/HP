@@ -20,22 +20,10 @@ function trackKey(track) {
   return trackId != null && trackId > 0 ? `track:${trackId}` : '';
 }
 
-export function trackTitleMap(payload) {
-  const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
-  const first = new Map();
-  for (const track of tracks) {
-    const title = String(track?.title || '曲名不明');
-    const id = String(track?.amazon_music_id || '');
-    const group = integer(track?.track_id) || title;
-    const current = first.get(group);
-    if (id && title !== '曲名不明' && (!current || id < current)) first.set(group, id);
-  }
-  return new Map(tracks.map((track) => {
-    const title = String(track?.title || '曲名不明');
-    const id = String(track?.amazon_music_id || '');
-    const group = integer(track?.track_id) || title;
-    return [trackKey(track), id && first.has(group) && first.get(group) !== id ? `${title}(SE)` : title];
-  }).filter(([key]) => key));
+function trackTitleMap(payload) {
+  return new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
+    .map((track) => [trackKey(track), String(track?.display_title || track?.title || '曲名不明')])
+    .filter(([key]) => key));
 }
 
 function latestRanks(payload, metricKey) {
@@ -197,7 +185,6 @@ function renderTable(payload) {
   const tbody = element('amazonMusicTbody');
   if (!tbody) return;
   tbody.replaceChildren();
-  const titles = trackTitleMap(payload);
   const tracks = [...(Array.isArray(payload?.tracks) ? payload.tracks : [])]
     .sort((a, b) => (integer(a?.amazon_rank) ?? Number.MAX_SAFE_INTEGER)
       - (integer(b?.amazon_rank) ?? Number.MAX_SAFE_INTEGER));
@@ -207,7 +194,7 @@ function renderTable(payload) {
     const title = document.createElement('td');
     const amazon = integer(track?.amazon_rank);
     amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
-    title.textContent = titles.get(trackKey(track)) || String(track?.title || '曲名不明');
+    title.textContent = String(track?.display_title || track?.title || '曲名不明');
     amazonRank.className = 'amazon-rank-number';
     row.append(amazonRank, title);
     tbody.append(row);
