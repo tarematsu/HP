@@ -10,47 +10,34 @@ import {
   signedInteger,
   svgElement,
 } from './dashboard-ui-common.js?v=20260930.1';
-import { isAmazonMusicTitleTrack } from './amazon-music-title-tracks.js?v=20261001.1';
 
 let loadPromise = null;
 let lastPayload = null;
 let activeMode = 'all';
 
-const MODE_GROUPS = Object.freeze({
-  nogizaka: '乃木坂46',
-  sakurazaka: '櫻坂46',
-  hinatazaka: '日向坂46',
-});
+const MODE_GROUPS = Object.freeze({ nogizaka: '乃木坂46', sakurazaka: '櫻坂46', hinatazaka: '日向坂46' });
+const GROUPS = new Set(Object.values(MODE_GROUPS));
+const isTitleTrack = (track) => track?.is_title_track === true;
+const setNotice = (message = '', error = false) => setSharedNotice('amazonMusicNotice', message, error);
 
-const MODE_COPY = Object.freeze({
-  all: {
+function modeCopy(mode) {
+  const group = MODE_GROUPS[mode];
+  if (group) return {
+    chartTitle: `${group} 表題曲 Amazon Music総合順位推移`,
+    tableTitle: `${group} 全楽曲順位`,
+    ariaLabel: `${group}表題曲のAmazon Music総合順位推移。1位が上。`,
+  };
+  if (mode === 'titles') return {
+    chartTitle: '表題曲 Amazon Music総合順位推移',
+    tableTitle: '表題曲比較',
+    ariaLabel: '坂道3グループ表題曲のAmazon Music総合順位推移。1位が上。',
+  };
+  return {
     chartTitle: 'Amazon Music総合順位推移',
     tableTitle: '全楽曲順位',
     ariaLabel: '坂道3グループ全楽曲のAmazon Music総合順位推移。1位が上。',
-  },
-  titles: {
-    chartTitle: '表題曲 Amazon Music総合順位推移',
-    tableTitle: '表題曲比較',
-    ariaLabel: '乃木坂46、櫻坂46、日向坂46の表題曲Amazon Music総合順位推移。1位が上。',
-  },
-  nogizaka: {
-    chartTitle: '乃木坂46 表題曲 Amazon Music総合順位推移',
-    tableTitle: '乃木坂46 全楽曲順位',
-    ariaLabel: '乃木坂46表題曲のAmazon Music総合順位推移。1位が上。',
-  },
-  sakurazaka: {
-    chartTitle: '櫻坂46 表題曲 Amazon Music総合順位推移',
-    tableTitle: '櫻坂46 全楽曲順位',
-    ariaLabel: '櫻坂46表題曲のAmazon Music総合順位推移。1位が上。',
-  },
-  hinatazaka: {
-    chartTitle: '日向坂46 表題曲 Amazon Music総合順位推移',
-    tableTitle: '日向坂46 全楽曲順位',
-    ariaLabel: '日向坂46表題曲のAmazon Music総合順位推移。1位が上。',
-  },
-});
-
-const setNotice = (message = '', error = false) => setSharedNotice('amazonMusicNotice', message, error);
+  };
+}
 
 function trackKey(track) {
   const amazonId = String(track?.amazon_music_id || '').trim();
@@ -62,30 +49,28 @@ function trackKey(track) {
 function filteredPayload(payload, predicate) {
   const tracks = (Array.isArray(payload?.tracks) ? payload.tracks : []).filter(predicate);
   const keys = new Set(tracks.map(trackKey).filter(Boolean));
-  const history = (Array.isArray(payload?.history) ? payload.history : []).map((point) => ({
-    ...point,
-    tracks: (Array.isArray(point?.tracks) ? point.tracks : [])
-      .filter((track) => keys.has(trackKey(track))),
-  }));
-  return { ...payload, tracks, history };
+  return {
+    ...payload,
+    tracks,
+    history: (Array.isArray(payload?.history) ? payload.history : []).map((point) => ({
+      ...point,
+      tracks: (Array.isArray(point?.tracks) ? point.tracks : []).filter((track) => keys.has(trackKey(track))),
+    })),
+  };
 }
 
 function tablePayload(payload, mode) {
-  if (mode === 'titles') return filteredPayload(payload, isAmazonMusicTitleTrack);
+  if (mode === 'titles') return filteredPayload(payload, isTitleTrack);
   const group = MODE_GROUPS[mode];
-  if (group) return filteredPayload(payload, (track) => track?.group_name === group);
-  return filteredPayload(payload, (track) => Boolean(MODE_GROUPS.nogizaka === track?.group_name
-    || MODE_GROUPS.sakurazaka === track?.group_name
-    || MODE_GROUPS.hinatazaka === track?.group_name));
+  return filteredPayload(payload, group
+    ? (track) => track?.group_name === group
+    : (track) => GROUPS.has(track?.group_name));
 }
 
 function chartPayload(payload, mode) {
-  if (mode === 'titles') return filteredPayload(payload, isAmazonMusicTitleTrack);
   const group = MODE_GROUPS[mode];
-  if (group) {
-    return filteredPayload(payload, (track) => track?.group_name === group && isAmazonMusicTitleTrack(track));
-  }
-  return tablePayload(payload, mode);
+  if (group) return filteredPayload(payload, (track) => track?.group_name === group && isTitleTrack(track));
+  return mode === 'titles' ? filteredPayload(payload, isTitleTrack) : tablePayload(payload, mode);
 }
 
 function trackTitleMap(payload) {
@@ -205,21 +190,15 @@ function renderRankChart(payload, { containerId, metricKey, emptyText, ariaLabel
       previousIndex = currentIndex;
     }
     if (d) {
-      const path = svgElement('path', {
-        d: d.trim(),
-        class: 'amazon-rank-line',
-      });
+      const path = svgElement('path', { d: d.trim(), class: 'amazon-rank-line' });
       path.style.setProperty('--amazon-rank-hue', String((index * 47) % 360));
-      const title = svgElement('title', {}, `${item.title}${item.currentRank == null ? '' : ` 現在${item.currentRank}位`}`);
-      path.append(title);
+      path.append(svgElement('title', {}, `${item.title}${item.currentRank == null ? '' : ` 現在${item.currentRank}位`}`));
       svg.append(path);
     }
     const latest = item.points.at(-1);
     if (latest) {
       const circle = svgElement('circle', {
-        cx: xFor(latest.date),
-        cy: yFor(latest.rank),
-        r: item.currentRank != null ? 2.5 : 1.8,
+        cx: xFor(latest.date), cy: yFor(latest.rank), r: item.currentRank != null ? 2.5 : 1.8,
         class: 'amazon-rank-point',
       });
       circle.style.setProperty('--amazon-rank-hue', String((index * 47) % 360));
@@ -240,14 +219,11 @@ function renderTable(payload) {
   const tbody = element('amazonMusicTbody');
   if (!tbody) return;
   tbody.replaceChildren();
-  const tracks = [...(Array.isArray(payload?.tracks) ? payload.tracks : [])]
-    .sort((a, b) => {
-      const ar = integer(a?.amazon_rank) ?? Number.MAX_SAFE_INTEGER;
-      const br = integer(b?.amazon_rank) ?? Number.MAX_SAFE_INTEGER;
-      return ar - br
-        || String(a?.group_name || '').localeCompare(String(b?.group_name || ''), 'ja')
-        || String(a?.title || '').localeCompare(String(b?.title || ''), 'ja');
-    });
+  const tracks = [...(Array.isArray(payload?.tracks) ? payload.tracks : [])].sort((a, b) => {
+    const ar = integer(a?.amazon_rank) ?? Number.MAX_SAFE_INTEGER;
+    const br = integer(b?.amazon_rank) ?? Number.MAX_SAFE_INTEGER;
+    return ar - br || String(a?.group_name || '').localeCompare(String(b?.group_name || ''), 'ja');
+  });
   for (const track of tracks) {
     const row = document.createElement('tr');
     const amazonRank = row.insertCell();
@@ -279,7 +255,7 @@ function bindModeButtons() {
     button.dataset.amazonBound = '1';
     button.addEventListener('click', () => {
       const mode = button.dataset.amazonMode;
-      if (!MODE_COPY[mode] || mode === activeMode) return;
+      if ((!MODE_GROUPS[mode] && !['all', 'titles'].includes(mode)) || mode === activeMode) return;
       activeMode = mode;
       if (lastPayload) render(lastPayload);
     });
@@ -290,30 +266,22 @@ function render(payload) {
   bindModeButtons();
   renderModeButtons();
   renderSummary(payload);
-
-  const copy = MODE_COPY[activeMode] || MODE_COPY.all;
+  const copy = modeCopy(activeMode);
   const chartTitle = element('amazonAllRankTitle');
   const tableTitle = element('amazonTracksTitle');
   if (chartTitle) chartTitle.textContent = copy.chartTitle;
   if (tableTitle) tableTitle.textContent = copy.tableTitle;
-
   renderRankChart(chartPayload(payload, activeMode), {
-    containerId: 'amazonAllRankChart',
-    metricKey: 'amazon_rank',
-    emptyText: 'Amazon Music総合順位の履歴はまだありません。',
-    ariaLabel: copy.ariaLabel,
+    containerId: 'amazonAllRankChart', metricKey: 'amazon_rank',
+    emptyText: 'Amazon Music総合順位の履歴はまだありません。', ariaLabel: copy.ariaLabel,
   });
   renderTable(tablePayload(payload, activeMode));
 }
 
 async function fetchPayload() {
-  const response = await fetch('/api/amazon-music', {
-    headers: { accept: 'application/json' },
-  });
+  const response = await fetch('/api/amazon-music', { headers: { accept: 'application/json' } });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.error || `Amazon Music API HTTP ${response.status}`);
-  }
+  if (!response.ok || !payload?.ok) throw new Error(payload?.error || `Amazon Music API HTTP ${response.status}`);
   return payload;
 }
 
@@ -331,9 +299,7 @@ export async function loadAmazonMusicView({ force = false } = {}) {
     }).catch((error) => {
       setNotice('Amazon Musicデータの取得に失敗しました。', true);
       throw error;
-    }).finally(() => {
-      loadPromise = null;
-    });
+    }).finally(() => { loadPromise = null; });
   }
   return loadPromise;
 }
