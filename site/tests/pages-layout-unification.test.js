@@ -44,7 +44,8 @@ test('toolbars, controls, fitting tables and fitting charts use shared semantic 
   assert.match(playedTracksShell, /dashboardControls/);
   assert.match(playedTracksShell, /className: 'played-tracks-controls'/);
   assert.doesNotMatch(playedTracksShell, /view-toolbar played-tracks-toolbar/);
-  assert.match(spotifyShell, /table-wrap table-fit-mobile/);
+  assert.match(spotifyShell, /dashboardTable/);
+  assert.match(spotifyShell, /wrapClassName: 'table-fit-mobile'/);
   assert.match(spotifyShell, /dashboardChartCard/);
 });
 

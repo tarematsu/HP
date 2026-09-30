@@ -21,7 +21,7 @@ const liveLegend = dashboardLegend({
 const dailyTable = dashboardTable({
   className: 'hinata-daily-table',
   wrapClassName: 'table-fit-mobile',
-  headHtml: '<thead><tr><th>日付</th><th>平均同接</th><th>最小同接</th><th>最大同接</th><th>再生数（開始）</th><th>再生数（終了）</th><th>再生数増加</th><th>メンバー数（開始）</th><th>メンバー数（終了）</th><th>メンバー増加数</th></tr></thead>',
+  headers: ['日付', '平均同接', '最小同接', '最大同接', '再生数（開始）', '再生数（終了）', '再生数増加', 'メンバー数（開始）', 'メンバー数（終了）', 'メンバー増加数'],
   bodyId: 'hinataDailyTbody',
 });
 
@@ -62,7 +62,11 @@ mountDashboardShell({
         title: '同接・再生数増加の推移',
         titleId: 'hinataDailyChartTitle',
         kicker: 'DAILY',
-        legendHtml: '<div id="hinataDailyChartLegend" class="legend hinata-legend" aria-label="日次グラフ凡例"></div>',
+        legendHtml: dashboardLegend({
+          id: 'hinataDailyChartLegend',
+          className: 'hinata-legend',
+          ariaLabel: '日次グラフ凡例',
+        }),
         chartHtml: dashboardChartHost({
           id: 'hinataDailyChart',
           className: 'hinata-chart chart-fit',

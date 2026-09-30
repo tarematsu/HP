@@ -1,7 +1,9 @@
 import {
   dashboardDataCard,
+  dashboardNotice,
   dashboardSummary,
   dashboardSummaryItem,
+  dashboardTable,
   mountDashboardShell,
 } from './dashboard-ui-common.js?v=20261001.1';
 
@@ -12,12 +14,19 @@ const summary = dashboardSummary([
   dashboardSummaryItem({ label: '合計いいね数（前日比）', valueId: 'likesTotalDelta' }),
 ], { className: 'likes-summary', ariaLabel: 'いいね集計概要' });
 
+const likesTable = dashboardTable({
+  wrapClassName: 'table-fit-mobile',
+  colgroupHtml: '<colgroup><col class="col-compact"><col><col class="col-artist"><col class="col-number"><col class="col-date"></colgroup>',
+  headers: ['順位', '曲名', 'アーティスト', '最新いいね数', '最終取得'],
+  bodyId: 'likesTbody',
+});
+
 mountDashboardShell({
   view: {
     id: 'likesView',
     className: 'likes-view',
     anchorId: 'historyView',
     position: 'afterend',
-    html: `<p id="likesNotice" class="notice" role="status" hidden></p>${summary}${dashboardDataCard({ title: '最新いいねランキング', kicker: 'TOP TRACKS', bodyHtml: '<ol id="likesRankingList" class="like-ranking"></ol>' })}${dashboardDataCard({ title: '楽曲別一覧', kicker: 'DATA', trailingHtml: '<button id="likesCsv" class="button" type="button">CSV</button>', bodyHtml: '<div class="table-wrap table-fit-mobile"><table class="shared-numeric-table"><colgroup><col class="col-compact"><col><col class="col-artist"><col class="col-number"><col class="col-date"></colgroup><thead><tr><th>順位</th><th>曲名</th><th>アーティスト</th><th>最新いいね数</th><th>最終取得</th></tr></thead><tbody id="likesTbody"></tbody></table></div>' })}`,
+    html: `${dashboardNotice({ id: 'likesNotice' })}${summary}${dashboardDataCard({ title: '最新いいねランキング', kicker: 'TOP TRACKS', bodyHtml: '<ol id="likesRankingList" class="like-ranking"></ol>' })}${dashboardDataCard({ title: '楽曲別一覧', kicker: 'DATA', trailingHtml: '<button id="likesCsv" class="button" type="button">CSV</button>', bodyHtml: likesTable })}`,
   },
 });

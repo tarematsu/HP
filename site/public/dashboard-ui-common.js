@@ -112,16 +112,37 @@ export function dashboardChartCard({
   return `<section${id ? ` id="${id}"` : ''} class="${joinClasses('card', 'chart-panel', className)}"${labelledBy ? ` aria-labelledby="${labelledBy}"` : ''}${hiddenAttribute(hidden)}>${dashboardSectionHead({ kicker, title, titleId, trailingHtml, className: 'chart-head' })}${legendHtml}${chartHtml}${detailHtml}${footerHtml}</section>`;
 }
 
+function dashboardTableHead({ headHtml = '', headId = '', headers = [] } = {}) {
+  if (headHtml) return headHtml;
+  if (!headId && !headers.length) return '';
+  const cells = headers.map((header) => {
+    if (typeof header === 'string') return `<th>${header}</th>`;
+    const item = header || {};
+    return `<th${item.className ? ` class="${item.className}"` : ''}${item.title ? ` title="${item.title}"` : ''}>${item.label || ''}</th>`;
+  }).join('');
+  return `<thead${headId ? ` id="${headId}"` : ''}>${cells ? `<tr>${cells}</tr>` : ''}</thead>`;
+}
+
 export function dashboardTable({
   id = '',
   className = '',
   colgroupHtml = '',
   headHtml = '',
+  headId = '',
+  headers = [],
   bodyId = '',
   bodyHtml = '',
   wrapClassName = '',
+  numeric = true,
 } = {}) {
-  return `<div class="${joinClasses('table-wrap', wrapClassName)}"><table${id ? ` id="${id}"` : ''} class="${joinClasses('shared-numeric-table', className)}">${colgroupHtml}${headHtml}<tbody${bodyId ? ` id="${bodyId}"` : ''}>${bodyHtml}</tbody></table></div>`;
+  const tableHead = dashboardTableHead({ headHtml, headId, headers });
+  return `<div class="${joinClasses('table-wrap', wrapClassName)}"><table${id ? ` id="${id}"` : ''} class="${joinClasses(numeric && 'shared-numeric-table', className)}">${colgroupHtml}${tableHead}<tbody${bodyId ? ` id="${bodyId}"` : ''}>${bodyHtml}</tbody></table></div>`;
+}
+
+export function dashboardModeTabs(items = [], { dataAttribute = 'mode', className = '', ariaLabel = '' } = {}) {
+  const attribute = String(dataAttribute || 'mode').replace(/[^a-z0-9-]/gi, '');
+  const buttons = items.map((item) => `<button type="button" data-${attribute}="${item.value}"${item.active ? ' class="active"' : ''}>${item.label}</button>`).join('');
+  return `<div class="${joinClasses('mode-tabs', className)}"${ariaLabel ? ` aria-label="${ariaLabel}"` : ''}>${buttons}</div>`;
 }
 
 export function dashboardDataCard({
