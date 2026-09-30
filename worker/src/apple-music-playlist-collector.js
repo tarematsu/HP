@@ -114,6 +114,25 @@ function jsonLdDocuments(html) {
   return documents;
 }
 
+function serializedServerDocuments(html) {
+  const source = String(html || '');
+  const documents = [];
+  const regex = /<script[^>]+id=["']serialized-server-data["'][^>]*>([\s\S]*?)<\/script>/giu;
+  for (const match of source.matchAll(regex)) {
+    const raw = String(match[1] || '').trim();
+    if (!raw) continue;
+    for (const candidate of [raw, decodeHtml(raw)]) {
+      try {
+        documents.push(JSON.parse(candidate));
+        break;
+      } catch {
+        // Try the HTML-decoded variant before giving up.
+      }
+    }
+  }
+  return documents;
+}
+
 function schemaTypes(value) {
   return Array.isArray(value) ? value.map(String) : [String(value || '')];
 }
@@ -148,19 +167,37 @@ function targetArtist(recording) {
   });
 }
 
+function normalizedTrackTitle(value) {
+  const valueText = text(value);
+  return valueText
+    ? valueText.normalize('NFKC').toLocaleLowerCase('ja-JP').replace(/[\s\u00a0]+/gu, '')
+    : null;
+}
+
+function pushTrackCandidate(tracks, seen, { appleMusicId, title, url, position }) {
+  const idKey = appleMusicId ? `id:${appleMusicId}` : null;
+  const normalizedTitle = normalizedTrackTitle(title);
+  const titleKey = normalizedTitle ? `title:${normalizedTitle}` : null;
+  if (!idKey && !titleKey) return;
+  if ((idKey && seen.has(idKey)) || (titleKey && seen.has(titleKey))) return;
+  if (idKey) seen.add(idKey);
+  if (titleKey) seen.add(titleKey);
+  tracks.push({
+    apple_music_id: appleMusicId || null,
+    title: text(title),
+    url: text(url),
+    position: Number.isInteger(Number(position)) && Number(position) > 0 ? Number(position) : tracks.length + 1,
+  });
+}
+
 function recordTrack(tracks, seen, recording, position = null) {
   if (!isMusicRecording(recording) || !targetArtist(recording)) return;
   const url = text(recording.url || recording['@id']);
-  const appleMusicId = songIdFromUrl(url);
-  const title = text(recording.name);
-  const key = appleMusicId ? `id:${appleMusicId}` : title ? `title:${title}` : null;
-  if (!key || seen.has(key)) return;
-  seen.add(key);
-  tracks.push({
-    apple_music_id: appleMusicId,
-    title,
+  pushTrackCandidate(tracks, seen, {
+    appleMusicId: songIdFromUrl(url),
+    title: text(recording.name),
     url,
-    position: Number.isInteger(Number(position)) && Number(position) > 0 ? Number(position) : tracks.length + 1,
+    position,
   });
 }
 
@@ -181,6 +218,87 @@ function collectRecordings(node, tracks, seen, inheritedPosition = null) {
     if (key === 'item' && isMusicRecording(value)) continue;
     collectRecordings(value, tracks, seen, inheritedPosition);
   }
+}
+
+function nestedStrings(value, depth = 0) {
+  if (depth > 4 || value === null || value === undefined) return [];
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap((item) => nestedStrings(item, depth + 1));
+  if (typeof value !== 'object') return [];
+  return Object.values(value).flatMap((item) => nestedStrings(item, depth + 1));
+}
+
+function targetArtistName(value) {
+  const normalized = String(value || '').normalize('NFKC').replace(/\s+/gu, '').toLocaleLowerCase('ja-JP');
+  return normalized === '櫻坂46' || normalized === 'sakurazaka46';
+}
+
+function serializedTrackIsTarget(item) {
+  if (!item || typeof item !== 'object') return false;
+  if (String(item.artistId || item.artistID || '') === TARGET_ARTIST_ID) return true;
+  const artistFields = Object.entries(item)
+    .filter(([key]) => /artist/iu.test(key))
+    .flatMap(([, value]) => nestedStrings(value));
+  return artistFields.some((value) => targetArtistName(value) || String(value).includes(`/${TARGET_ARTIST_ID}`));
+}
+
+function firstSerializedTrackUrl(item) {
+  const queue = [{ value: item, depth: 0 }];
+  while (queue.length) {
+    const { value, depth } = queue.shift();
+    if (depth > 5 || value === null || value === undefined) continue;
+    if (typeof value === 'string') {
+      if ((value.includes('music.apple.com') || value.startsWith('/')) && songIdFromUrl(value)) {
+        try {
+          return new URL(value, 'https://music.apple.com').toString();
+        } catch {
+          // Ignore malformed URLs.
+        }
+      }
+      continue;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((child) => queue.push({ value: child, depth: depth + 1 }));
+      continue;
+    }
+    if (typeof value === 'object') {
+      Object.values(value).forEach((child) => queue.push({ value: child, depth: depth + 1 }));
+    }
+  }
+  return null;
+}
+
+function serializedTrackId(item, url) {
+  const fromUrl = songIdFromUrl(url);
+  if (fromUrl) return fromUrl;
+  for (const key of ['songId', 'songID', 'adamId', 'adamID', 'contentId', 'id']) {
+    const value = text(item?.[key]);
+    if (/^\d+$/u.test(String(value || ''))) return value;
+  }
+  return null;
+}
+
+function recordSerializedTrack(tracks, seen, item, position) {
+  if (!serializedTrackIsTarget(item)) return;
+  const url = firstSerializedTrackUrl(item);
+  pushTrackCandidate(tracks, seen, {
+    appleMusicId: serializedTrackId(item, url),
+    title: text(item?.title || item?.name),
+    url,
+    position,
+  });
+}
+
+function collectSerializedTracks(node, tracks, seen) {
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectSerializedTracks(item, tracks, seen));
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+  if (node.itemKind === 'trackLockup' && Array.isArray(node.items)) {
+    node.items.forEach((item, index) => recordSerializedTrack(tracks, seen, item, index + 1));
+  }
+  for (const value of Object.values(node)) collectSerializedTracks(value, tracks, seen);
 }
 
 function firstSchemaValue(documents, keys) {
@@ -231,6 +349,9 @@ export function parseAppleMusicPlaylistPage(html, sourceUrl) {
   const tracks = [];
   const seen = new Set();
   collectRecordings(documents, tracks, seen);
+  for (const document of serializedServerDocuments(html)) {
+    collectSerializedTracks(document, tracks, seen);
+  }
 
   const name = cleanedPlaylistTitle(
     firstSchemaValue(documents, ['name'])
