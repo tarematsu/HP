@@ -2,6 +2,10 @@ import {
   checkAmazonUpdateAndQueue100k,
   continueQueuedAmazon100kScan,
 } from './amazon-music-pipeline.js';
+import {
+  captureAmazon150kBoundaryCheckpoint,
+  continueAmazon150kExtension,
+} from './amazon-music-150k-extension.js';
 import { recordAmazonTop500Check } from './amazon-music-top500-history.js';
 import { collectAppleMusicSnapshot } from './apple-music-collector.js';
 import { appleMusicFetch } from './apple-music-fetch.js';
@@ -61,9 +65,22 @@ async function checkAmazonMusic(env, scheduledTime) {
 }
 
 async function continueAmazonMusic(env, scheduledTime) {
-  const result = await continueQueuedAmazon100kScan(amazonMusicServiceEnv(env), scheduledTime);
+  const serviceEnv = amazonMusicServiceEnv(env);
+
+  // Once a 100k generation is complete, extend that same generation to 150k.
+  // The legacy 100k completion discarded its continuation token, so the first
+  // extension may need to re-seek the boundary internally. Existing 100k data
+  // remains published until the extension itself finishes.
+  const extension = await continueAmazon150kExtension(serviceEnv, scheduledTime);
+  if (extension?.handled) {
+    const persisted = await persistAmazonMusicModelToOther(env, scheduledTime);
+    return { ...extension, other_db: persisted };
+  }
+
+  const result = await continueQueuedAmazon100kScan(serviceEnv, scheduledTime);
+  const boundary = await captureAmazon150kBoundaryCheckpoint(serviceEnv, scheduledTime);
   const persisted = await persistAmazonMusicModelToOther(env, scheduledTime);
-  return { ...result, other_db: persisted };
+  return { ...result, ...boundary, other_db: persisted };
 }
 
 export function amazonMusicDueTasks(scheduledTime) {
@@ -92,7 +109,7 @@ function unifiedScheduledRuns(env, scheduledTime) {
   }
   if (due.deep100k) {
     runs.push(loggedRun(
-      'amazon-music-100k-scan',
+      'amazon-music-150k-scan',
       () => continueAmazonMusic(env, scheduledTime),
     ));
   }
@@ -119,7 +136,7 @@ export default {
       );
     } else if (cron === AMAZON_MUSIC_DEEP_SCAN_CRON) {
       run = loggedRun(
-        'amazon-music-100k-scan',
+        'amazon-music-150k-scan',
         () => continueAmazonMusic(env, scheduledTime),
       );
     } else {
