@@ -17,17 +17,26 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Verify month-scoped Nogizaka news list
+      - name: Inspect Nogizaka news client scripts
         shell: bash
         run: |
           set -euo pipefail
           ua='stationhead-monitor/1.0'
-          for dy in 202609 202608; do
-            file="/tmp/list-${dy}.html"
-            curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' "https://www.nogizaka46.com/s/n46/news/list?dy=${dy}" -o "$file"
-            echo "=== dy=${dy} bytes=$(wc -c <"$file") details=$(grep -Eo '/s/n46/news/detail/[0-9]+' "$file" | wc -l) ==="
-            grep -q '102280' "$file" && echo 'HAS_102280=yes' || echo 'HAS_102280=no'
-            grep -Eiq 'stationhead' "$file" && echo 'HAS_STATIONHEAD=yes' || echo 'HAS_STATIONHEAD=no'
-            grep -Eo '/s/n46/news/detail/[0-9]+' "$file" | head -5 || true
-          done
+          curl --fail --silent --show-error -A "$ua" -H 'Accept: text/html,application/xhtml+xml' 'https://www.nogizaka46.com/s/n46/news/list' -o /tmp/list.html
+          grep -Eo '<script[^>]+src=["'"'][^"'"']+["'"']' /tmp/list.html | sed -E 's/.*src=["'"']([^"'"']+).*/\1/' | sort -u > /tmp/scripts.txt
+          cat /tmp/scripts.txt
+          while IFS= read -r src; do
+            case "$src" in
+              http*) url="$src" ;;
+              //*) url="https:${src}" ;;
+              /*) url="https://www.nogizaka46.com${src}" ;;
+              *) continue ;;
+            esac
+            file="/tmp/$(basename "${src%%\?*}")"
+            curl --fail --silent --show-error -A "$ua" "$url" -o "$file" || continue
+            if grep -Eiq 'news|ajax|api|dy=' "$file"; then
+              echo "=== $url ==="
+              grep -Eio '.{0,180}(news|ajax|api|dy=).{0,260}' "$file" | head -40 || true
+            fi
+          done < /tmp/scripts.txt
           exit 1
