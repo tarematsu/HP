@@ -9,14 +9,14 @@
 }
 
 .first-week-metric-toggle button {
-  min-height: 32px;
+  min-height: var(--pages-control-height, 34px);
   padding: 0 14px;
   border: 0;
   border-radius: 7px;
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: .76rem;
+  font-size: var(--dashboard-label-size, .7rem);
   font-weight: 700;
   cursor: pointer;
 }
@@ -37,7 +37,7 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 5px 10px;
+  gap: 6px 12px;
   max-width: 72%;
 }
 
@@ -46,7 +46,7 @@
   align-items: center;
   min-width: 0;
   gap: 5px;
-  font-size: .68rem;
+  font-size: inherit;
   color: var(--muted, #667287);
   white-space: nowrap;
 }
@@ -99,9 +99,9 @@
   }
 
   .first-week-metric-toggle button {
-    min-height: 30px;
+    min-height: var(--pages-control-height-mobile, 32px);
     padding-inline: 8px;
-    font-size: 10px;
+    font-size: var(--dashboard-label-size, 10px);
   }
 
   #firstWeekChart {
@@ -118,6 +118,6 @@
     max-width: 48%;
     overflow: hidden;
     text-overflow: ellipsis;
-    font-size: 9px;
+    font-size: inherit;
   }
 }
