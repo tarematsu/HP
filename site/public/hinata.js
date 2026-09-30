@@ -1,4 +1,6 @@
 import {
+  appendEmptyState,
+  appendEmptyTableRow,
   byId,
   cssColor,
   decimalOneFormat as decimal,
@@ -95,10 +97,7 @@ function renderChart(value) {
   chartRows = normalizedHistory(value);
   host.replaceChildren();
   if (!chartRows.length) {
-    const empty = document.createElement('p');
-    empty.className = 'hinata-empty';
-    empty.textContent = 'グラフデータはまだありません。';
-    host.append(empty);
+    appendEmptyState(host, 'グラフデータはまだありません。', { className: 'hinata-empty' });
     return;
   }
 
@@ -247,10 +246,7 @@ function renderDailyChart(value) {
   const legend = byId('hinataDailyChartLegend');
   legend?.replaceChildren();
   if (!dailyChartRows.length) {
-    const empty = document.createElement('p');
-    empty.className = 'hinata-empty';
-    empty.textContent = '日次グラフデータはまだありません。';
-    host.append(empty);
+    appendEmptyState(host, '日次グラフデータはまだありません。', { className: 'hinata-empty' });
     return;
   }
 
@@ -430,13 +426,7 @@ function renderDaily(value) {
   const rows = Array.isArray(value?.daily) ? value.daily : [];
   tbody.replaceChildren();
   if (!rows.length) {
-    const row = document.createElement('tr');
-    const cell = document.createElement('td');
-    cell.colSpan = 10;
-    cell.className = 'hinata-empty';
-    cell.textContent = '日次データはまだありません。';
-    row.append(cell);
-    tbody.append(row);
+    appendEmptyTableRow(tbody, '日次データはまだありません。', 10, { className: 'hinata-empty' });
     return;
   }
 
