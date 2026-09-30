@@ -7,7 +7,7 @@ const spotify = readFileSync(new URL('../public/spotify.css', import.meta.url), 
 const firstWeek = readFileSync(new URL('../public/first-week-comparison.css', import.meta.url), 'utf8');
 const playedTracks = readFileSync(new URL('../public/played-tracks.css', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
-const presentation = readFileSync(new URL('../public/dashboard-root-presentation.css', import.meta.url), 'utf8');
+const presentation = readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
 
 test('canonical layout does not target individual dashboard view IDs', () => {
   assert.doesNotMatch(layout, /#(?:current|history|likes|spotify|firstWeek|playedTracks)View/);
