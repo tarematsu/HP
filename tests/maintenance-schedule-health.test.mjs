@@ -21,9 +21,10 @@ test('runtime rollups trigger revision-driven Pages publication with one daily r
   assert.equal(cron(repair), '23 4 * * *');
   assert.match(runtime, /^\s*workflows: \["Deploy production"\]\s*$/m);
   assert.doesNotMatch(runtime, /^\s*workflows: \[[^\]]*Rebuild pages read models/m);
-  assert.match(runtime, /pages-revisions-before\.json/);
-  assert.match(runtime, /pages-revisions-after\.json/);
-  assert.match(runtime, /steps\.pages-revision-diff\.outputs\.due_keys != ''/);
+  assert.match(runtime, /detect-pages-read-model-revision-drift-actions\.mjs/);
+  assert.match(runtime, /steps\.pages-revision-drift\.outputs\.due_keys != ''/);
+  assert.match(runtime, /PAGES_RESPONSE_BUCKET: sh-pages-responses/);
+  assert.doesNotMatch(runtime, /pages-revisions-before\.json|pages-revisions-after\.json/);
   assert.match(runtime, /due_keys/);
   assert.doesNotMatch(pages, /workflow_run:/);
   assert.match(runtime, /cancel-in-progress: false/);
