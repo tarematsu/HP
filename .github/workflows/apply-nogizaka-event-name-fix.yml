@@ -1,0 +1,95 @@
+name: Apply Nogizaka event name fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-nogizaka-event-name-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/nogizaka-42nd-under-live-event-name
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - name: Patch source and tests
+        shell: python
+        run: |
+          from pathlib import Path
+
+          src = Path('worker/src/nogizaka-official-news.js')
+          text = src.read_text(encoding='utf-8')
+          old = """function eventName(title) {
+            return String(title || '乃木坂46 Stationhead')
+              .replace(/\\s*開催決定[！!。]?\\s*$/u, '')
+              .replace(/\\s+/g, ' ')
+              .trim();
+          }
+          """
+          new = """export function nogizakaEventName(newsId, title) {
+            if (String(newsId || '').trim() === '102280') {
+              return '「42ndSG アンダーライブ」セットリスト Stationhead リスニングパーティー';
+            }
+            return String(title || '乃木坂46 Stationhead')
+              .replace(/\\s*開催決定[！!。]?\\s*$/u, '')
+              .replace(/\\s+/g, ' ')
+              .trim();
+          }
+          """
+          if old not in text:
+              raise SystemExit('eventName block not found')
+          text = text.replace(old, new, 1)
+          old_call = '      eventName: eventName(title),'
+          new_call = '      eventName: nogizakaEventName(candidate.newsId, title),'
+          if old_call not in text:
+              raise SystemExit('eventName call not found')
+          src.write_text(text.replace(old_call, new_call, 1), encoding='utf-8')
+
+          test = Path('worker/tests/nogizaka-official-news.test.js')
+          text = test.read_text(encoding='utf-8')
+          old_import = "  nogizakaNewsApiCandidates,\n  nogizakaOfficialNewsConfig,"
+          new_import = "  nogizakaEventName,\n  nogizakaNewsApiCandidates,\n  nogizakaOfficialNewsConfig,"
+          if old_import not in text:
+              raise SystemExit('test import anchor not found')
+          text = text.replace(old_import, new_import, 1)
+          anchor = "test('Nogizaka news API parser rejects a silently empty or malformed feed', () => {"
+          block = """test('news 102280 uses the 42ndSG Under Live listening-party name', () => {
+            assert.equal(
+              nogizakaEventName('102280', '乃木坂46、初の「STATIONHEAD」9/30(水)21:30～開催！'),
+              '「42ndSG アンダーライブ」セットリスト Stationhead リスニングパーティー',
+            );
+            assert.equal(
+              nogizakaEventName('other', '通常タイトル 開催決定！'),
+              '通常タイトル',
+            );
+          });
+
+          """
+          if anchor not in text:
+              raise SystemExit('test insertion anchor not found')
+          test.write_text(text.replace(anchor, block + anchor, 1), encoding='utf-8')
+      - name: Install dependencies
+        working-directory: worker
+        run: npm ci --no-audit --no-fund
+      - name: Run focused tests
+        run: |
+          node --check worker/src/nogizaka-official-news.js
+          node --test worker/tests/nogizaka-official-news.test.js
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/apply-nogizaka-event-name-fix.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add worker/src/nogizaka-official-news.js worker/tests/nogizaka-official-news.test.js .github/workflows/apply-nogizaka-event-name-fix.yml
+          git commit -m 'fix: name Nogizaka 42ndSG Under Live listening party'
+          git push origin HEAD:fix/nogizaka-42nd-under-live-event-name
