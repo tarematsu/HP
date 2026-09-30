@@ -118,11 +118,17 @@ function amazonCurrentRows(model) {
     const trackId = integer(track?.track_id);
     const amazonId = text(track?.amazon_music_id);
     const rank = integer(track?.amazon_rank);
-    if (trackId == null) continue;
-    if (amazonId) refs.push({ source_track_id: amazonId, track_id: trackId });
-    if (rank != null) ranks.push({ track_id: trackId, rank });
+    if (amazonId && trackId != null) refs.push({ source_track_id: amazonId, track_id: trackId });
+    // Amazon Music can expose multiple catalog-track IDs for the same canonical
+    // song (for example standard and Special Edition releases). Ranking facts
+    // therefore keep the provider identity and use sh_tracks.id only as the
+    // canonical-song foreign key. Unresolved provider tracks are retained too.
+    if (amazonId && rank != null) {
+      ranks.push({ source_track_id: amazonId, track_id: trackId, rank });
+    }
   }
-  ranks.sort((a, b) => a.rank - b.rank || a.track_id - b.track_id);
+  ranks.sort((a, b) => a.rank - b.rank
+    || String(a.source_track_id).localeCompare(String(b.source_track_id)));
   return { refs, ranks };
 }
 

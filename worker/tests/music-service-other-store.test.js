@@ -103,15 +103,17 @@ test('Apple model persists only sh_tracks.id ranks and source-id refs to other D
   assert.deepEqual(JSON.parse(snapshot.values[3]), [{ track_id: 41, rank: 1 }]);
 });
 
-test('Amazon completed model persists canonical refs and compact ranks', async () => {
+test('Amazon completed model preserves provider editions independently of canonical song ID', async () => {
   const db = fakeDb('other');
   const model = {
     snapshot_date: '2026-09-30',
     observed_at: 2000,
     scan: { complete: true },
     tracks: [
-      { amazon_music_id: 'AMZ1', track_id: 51, amazon_rank: 12 },
-      { amazon_music_id: 'AMZ2', track_id: 52, amazon_rank: null },
+      { amazon_music_id: 'AMZ_STANDARD', track_id: 51, amazon_rank: 12 },
+      { amazon_music_id: 'AMZ_SPECIAL', track_id: 51, amazon_rank: 34 },
+      { amazon_music_id: 'AMZ_UNRANKED', track_id: 52, amazon_rank: null },
+      { amazon_music_id: 'AMZ_UNRESOLVED', track_id: null, amazon_rank: 45 },
     ],
   };
   const result = await persistAmazonMusicModelToOther({
@@ -120,10 +122,20 @@ test('Amazon completed model persists canonical refs and compact ranks', async (
   }, 2000);
 
   assert.equal(result.persisted, true);
-  assert.equal(result.refs, 2);
-  assert.equal(result.ranked_tracks, 1);
+  assert.equal(result.refs, 3);
+  assert.equal(result.ranked_tracks, 3);
+  const refCalls = db.calls.filter((call) => call.sql.includes('music_service_track_refs'));
+  assert.deepEqual(refCalls.map((call) => call.values.slice(0, 3)), [
+    ['amazon_music', 'AMZ_STANDARD', 51],
+    ['amazon_music', 'AMZ_SPECIAL', 51],
+    ['amazon_music', 'AMZ_UNRANKED', 52],
+  ]);
   const snapshot = db.calls.find((call) => call.sql.includes('amazon_music_rank_snapshots'));
-  assert.deepEqual(JSON.parse(snapshot.values[2]), [{ track_id: 51, rank: 12 }]);
+  assert.deepEqual(JSON.parse(snapshot.values[2]), [
+    { source_track_id: 'AMZ_STANDARD', track_id: 51, rank: 12 },
+    { source_track_id: 'AMZ_SPECIAL', track_id: 51, rank: 34 },
+    { source_track_id: 'AMZ_UNRESOLVED', track_id: null, rank: 45 },
+  ]);
 });
 
 test('other DB migration makes sh_tracks.id the shared service reference', () => {

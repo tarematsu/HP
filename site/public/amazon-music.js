@@ -20,10 +20,10 @@ function formatDelta(value) {
 const setNotice = (message = '', error = false) => setSharedNotice('amazonMusicNotice', message, error);
 
 function trackKey(track) {
-  const trackId = integer(track?.track_id);
-  if (trackId != null && trackId > 0) return `track:${trackId}`;
   const amazonId = String(track?.amazon_music_id || '').trim();
-  return amazonId ? `amazon:${amazonId}` : '';
+  if (amazonId) return `amazon:${amazonId}`;
+  const trackId = integer(track?.track_id);
+  return trackId != null && trackId > 0 ? `track:${trackId}` : '';
 }
 
 function trackTitleMap(payload) {
