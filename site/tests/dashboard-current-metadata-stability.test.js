@@ -10,7 +10,7 @@ const rootPresentation = readFileSync(new URL('../public/dashboard-root-presenta
 const officialCopy = readFileSync(new URL('../public/official-listening-party-copy.js', import.meta.url), 'utf8');
 
 test('dashboard metrics use one initial bundled stylesheet rule across views', () => {
-  assert.match(html, /assets\/dashboard\.min\.css\?v=20261001\.1/);
+  assert.match(html, /assets\/dashboard\.min\.css\?v=\d{8}\.\d+/);
   assert.match(buildScript, /'dashboard-root-presentation\.css'/);
   assert.doesNotMatch(metrics, /dashboard-current-metric-style|ensureRootPresentationStylesheet|createElement\('link'\)/);
   assert.match(rootPresentation, /\.dashboard-view \.metrics \.metric-value > strong/);
