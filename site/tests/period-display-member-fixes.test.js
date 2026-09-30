@@ -27,12 +27,6 @@ test('header update formatter omits seconds and renders the dashboard materializ
   assert.doesNotMatch(header, /5分毎/);
 });
 
-test('mobile dashboard navigation stays on a four-column two-row grid', () => {
-  assert.match(responsive, /@media \(max-width: 760px\)[\s\S]*grid-template-columns:\s*repeat\(4,/);
-  assert.match(responsive, /@media \(max-width: 430px\)[\s\S]*grid-template-columns:\s*repeat\(4,/);
-  assert.match(responsive, /@media \(max-width: 430px\)[\s\S]*grid-column:\s*span 2/);
-});
-
 test('daily weekly and monthly stream growth uses black average listener line and replay bars', () => {
   assert.match(historyEntry, /history-period-chart\.js\?v=20261001\.1/);
   assert.match(historyLite, /chart: '同接・再生数増加の推移'/);

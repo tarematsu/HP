@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 const sharedCss = readFileSync(new URL('../public/dashboard-ui-common.css', import.meta.url), 'utf8');
-const sharedRoute = readFileSync(new URL('../public/dashboard-standalone-route.js', import.meta.url), 'utf8');
+const sharedRoute = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const rankChart = readFileSync(new URL('../public/dashboard-rank-chart.js', import.meta.url), 'utf8');
 const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const historyToggle = readFileSync(new URL('../public/history/history-past-toggle-shell.js', import.meta.url), 'utf8');
@@ -32,8 +32,6 @@ const runtimes = Object.fromEntries(runtimeFiles.map((file) => [
   readFileSync(new URL(`../public/${file}`, import.meta.url), 'utf8'),
 ]));
 
-const hinataRoute = readFileSync(new URL('../public/dashboard-hinata-route.js', import.meta.url), 'utf8');
-const followersRoute = readFileSync(new URL('../public/dashboard-followers-route.js', import.meta.url), 'utf8');
 const hinataCss = readFileSync(new URL('../public/hinata.css', import.meta.url), 'utf8');
 const followersCss = readFileSync(new URL('../public/followers.css', import.meta.url), 'utf8');
 const amazonCss = readFileSync(new URL('../public/amazon-music.css', import.meta.url), 'utf8');
@@ -136,15 +134,9 @@ test('dashboard shells reuse shared notices tables legends and mode tabs instead
   assert.doesNotMatch(shells['spotify-shell.js'], /<div class="mode-tabs">/);
 });
 
-test('standalone lazy tabs share route activation and navigation handling', () => {
-  assert.match(sharedRoute, /export function registerStandaloneDashboardRoute/);
-  for (const [name, source] of Object.entries({ hinataRoute, followersRoute })) {
-    assert.match(source, /dashboard-standalone-route\.js\?v=20260930\.1/, `${name} must import shared routing`);
-    assert.match(source, /registerStandaloneDashboardRoute\(/);
-    assert.doesNotMatch(source, /addEventListener\('popstate'/);
-    assert.doesNotMatch(source, /addEventListener\('hashchange'/);
-    assert.doesNotMatch(source, /document\.addEventListener\('click'/);
-  }
+test('Hinata and followers use the same lazy route registry as other tabs', () => {
+  for (const mode of ['hinata', 'followers']) assert.match(sharedRoute, new RegExp(`${mode}: \\{`));
+  assert.match(sharedRoute, /const VIEW_IDS = \['currentView', 'historyView', \.\.\.Object\.values\(LAZY_VIEWS\)/);
 });
 
 test('shared feature CSS owns generic SVG and numeric-table primitives', () => {

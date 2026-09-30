@@ -56,8 +56,6 @@ test('history renderer assigns table meaning classes without injecting layout CS
 });
 
 test('mobile navigation remains one row and shared layout handles wide-table exceptions by class', () => {
-  assert.match(css, /#modeTabs\.mode-tabs\.dashboard-tabs[\s\S]*repeat\(8, minmax\(0, 1fr\)\)/);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*grid-template-rows:\s*minmax\(44px, auto\)/);
   assert.match(css, /table\.compact-columns:not\(\.all-host-ranking-table\)[\s\S]*min-width:\s*760px !important/);
   assert.match(css, /table\.all-host-ranking-table\.compact-columns[\s\S]*min-width:\s*980px !important/);
   assert.match(css, /table\.weekly-ranking-table[\s\S]*min-width:\s*560px !important/);

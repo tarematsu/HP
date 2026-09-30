@@ -76,3 +76,20 @@ renderUpdatedLabel();
 window.addEventListener('dashboard:materialized-at', (event) => {
   setDashboardMaterializedAt(event?.detail?.updatedAt);
 });
+
+// Reveal only the selected tab, without moving the document vertically.
+function revealSelectedTab() {
+  requestAnimationFrame(() => {
+    const tabs = byId('modeTabs');
+    const selected = tabs?.querySelector('button.active');
+    if (!selected || tabs.scrollWidth <= tabs.clientWidth) return;
+    const strip = tabs.getBoundingClientRect();
+    const button = selected.getBoundingClientRect();
+    if (button.left < strip.left) tabs.scrollLeft += button.left - strip.left;
+    else if (button.right > strip.right) tabs.scrollLeft += button.right - strip.right;
+  });
+}
+byId('modeTabs')?.addEventListener('click', revealSelectedTab);
+window.addEventListener('dashboard:route-ready', revealSelectedTab);
+window.addEventListener('popstate', revealSelectedTab);
+window.addEventListener('hashchange', revealSelectedTab);

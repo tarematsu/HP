@@ -140,44 +140,7 @@ tbody tr:hover {
   box-shadow: none;
 }
 
-.top-card.dashboard-header {
-  grid-template-columns: minmax(120px, auto) minmax(0, 1fr);
-  gap: 12px;
-  padding: 6px 0 9px;
-  border-bottom: 1px solid #dddddd;
-}
-
-.dashboard-header .channel {
-  gap: 0;
-}
-
-.dashboard-header h1 {
-  margin: 0;
-  font-size: 1rem;
-  line-height: 1.15;
-  letter-spacing: -.015em;
-}
-
-.dashboard-header .channel-copy > .subtle {
-  max-width: 18ch;
-  margin-top: 3px;
-  font-size: .64rem;
-}
-
 .mode-tabs,
-.mode-tabs.dashboard-tabs {
-  gap: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.mode-tabs.dashboard-tabs {
-  grid-template-columns: repeat(9, minmax(0, 1fr));
-}
-
 .mode-tabs button,
 .mode-tabs a,
 .mode-tabs.dashboard-tabs button {
@@ -586,21 +549,6 @@ table {
 }
 
 @media (max-width: 430px) {
-  .top-card.dashboard-header {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dashboard-header .channel-copy {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .dashboard-header .channel-copy > .subtle {
-    margin-top: 0;
-  }
-
   .now-playing {
     grid-template-columns: 64px minmax(0, 1fr);
     min-height: 64px;

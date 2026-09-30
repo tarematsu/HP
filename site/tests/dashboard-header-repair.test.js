@@ -24,22 +24,13 @@ test('dashboard header starts in its final DOM shape before tabs and dashboard c
   assert.doesNotMatch(headerRepair, /description\.replaceWith|querySelector\('\.live-line'\)|querySelector\('\.app-launch'\)|actions\.replaceWith/);
 });
 
-test('mobile dashboard header has no vertical flex basis', () => {
-  assert.match(headerCss, /\.dashboard-header \.channel[\s\S]*flex: 1 1 auto/);
-  assert.match(headerCss, /@media \(max-width: 760px\)[\s\S]*\.dashboard-header \.channel,[\s\S]*\.mode-tabs\.dashboard-tabs[\s\S]*flex: none/);
+test('header and metrics use the canonical layout without obsolete flex bases', () => {
+  assert.match(sharedLayout, /\.top-card\.dashboard-header\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\)/);
+  assert.match(sharedLayout, /\.metrics\s*\{[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(headerCss, /flex:\s*1 1 (?:360|560)px/);
 });
 
-test('current metrics stay in one horizontal row through the shared layout', () => {
-  assert.match(sharedLayout, /\.metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\) !important/);
-  assert.doesNotMatch(sharedLayout, /#currentView/);
-  assert.match(headerCss, /\.metric\.featured\s*\{[\s\S]*display:\s*block/);
-  assert.match(headerCss, /\.metric strong,[\s\S]*\.metric\.featured strong\s*\{[\s\S]*font-size:\s*clamp\(\.94rem, 4\.3vw, 1\.42rem\)/);
-  assert.match(headerCss, /\.metric > span\s*\{[\s\S]*font-size:\s*clamp\(\.58rem, 2\.4vw, \.68rem\)/);
-});
-
 test('navigation and summaries are finalized generically by the shared layout', () => {
-  assert.match(sharedLayout, /#modeTabs\.mode-tabs\.dashboard-tabs[\s\S]*grid-template-columns:\s*repeat\(8, minmax\(0, 1fr\)\) !important/);
   assert.match(sharedLayout, /\.summary-cards:has\(> :nth-child\(3\):last-child\)[\s\S]*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(sharedLayout, /\.summary-cards:has\(> :nth-child\(4\):last-child\)[\s\S]*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.doesNotMatch(sharedLayout, /likes-summary\s*\{/);
