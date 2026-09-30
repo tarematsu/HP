@@ -47,8 +47,6 @@ import {
   let loadTimer = 0;
   let resizeTimer = 0;
 
-  button.textContent = '公式リスパ';
-
   const active = () => button.classList.contains('active');
   const escape = (value) => String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -166,8 +164,6 @@ import {
     context.clearRect(0, 0, width, height);
 
     const available = series.filter((item) => item.points.length);
-    byId('chartTitle').textContent = '公式リスパ 同接推移（開始0分比較）';
-    byId('chartFoot').textContent = '各線は1回の公式リスパです。横軸は各開催の開始からの経過時間です。';
     if (!available.length) {
       context.font = '14px system-ui';
       context.fillStyle = cssColor('--muted', '#667287');
