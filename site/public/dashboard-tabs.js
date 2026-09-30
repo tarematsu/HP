@@ -38,7 +38,7 @@ const LAZY_VIEWS = Object.freeze({
   'apple-music': {
     viewId: 'appleMusicView',
     shell: () => import('/apple-music-shell.js?v=20261001.1'),
-    runtime: () => import('/apple-music.js?v=20261001.1'),
+    runtime: () => import(location.origin + '/apple-music.js?v=20261001.1'),
     loadExport: 'loadAppleMusicView',
     noticeId: 'appleMusicNotice',
     errorLabel: 'apple music',
