@@ -2,14 +2,10 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 import { canonicalizeTrackRows } from '../../site/functions/lib/canonical-track-rows.js';
-import {
-  loadTrackHistoryData,
-  TRACK_HISTORY_SQL,
-} from '../../site/functions/lib/track-history-restored-handler.js';
 import { mergeTrackRows } from '../../site/functions/lib/track-history-merge.js';
 import { applyTrackPeriodCompleteness } from '../../site/functions/lib/period-completeness.js';
 import { attachCompactTrackLikes } from '../../site/functions/lib/track-likes.js';
-import { materializedTrackHistorySql } from '../src/pages-track-history-r2-shards.js';
+import { loadDirectRevisionTrackHistoryData } from '../src/track-history-direct-revision-sql.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 import { publishTrackHistoryR2DayRows } from './sync-track-history-r2-days-actions.mjs';
 
@@ -42,24 +38,11 @@ function remoteMinuteDatabase() {
   });
 }
 
-function boundedDatabase(db) {
-  const boundedSql = materializedTrackHistorySql();
-  return new Proxy(db, {
-    get(target, property) {
-      if (property === 'prepare') {
-        return (sql) => target.prepare(sql === TRACK_HISTORY_SQL ? boundedSql : sql);
-      }
-      const value = Reflect.get(target, property, target);
-      return typeof value === 'function' ? value.bind(target) : value;
-    },
-  });
-}
-
 async function repairedRows(db, targetDay, generation) {
   const fromTs = Date.parse(`${targetDay}T00:00:00Z`);
   const toTs = fromTs + DAY_MS;
-  const { result, likeRows } = await loadTrackHistoryData(
-    boundedDatabase(db),
+  const { result, likeRows } = await loadDirectRevisionTrackHistoryData(
+    db,
     fromTs,
     toTs,
     TRACK_HISTORY_LIMIT,
