@@ -305,7 +305,7 @@ export async function loadFollowersView() {
         return payload;
       })
       .catch((error) => {
-        setNotice('フォロワーデータを取得できませんでした。', true);
+        setNotice('フォロワーデータの取得に失敗しました。', true);
         renderChart([], DEFAULT_HANDLES);
         throw error;
       })
