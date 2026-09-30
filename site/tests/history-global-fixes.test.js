@@ -5,14 +5,14 @@ import test from 'node:test';
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
-const styles = readFileSync(new URL('../public/dashboard-root-presentation.css', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../public/dashboard-presentation.css', import.meta.url), 'utf8');
 const buildScript = readFileSync(new URL('../scripts/build-public-assets.mjs', import.meta.url), 'utf8');
 const client = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 
 test('shared static presentation is bundled into the initial dashboard stylesheet', () => {
   assert.match(html, /assets\/dashboard\.min\.css\?v=\d{8}\.\d+/);
-  assert.match(buildScript, /'dashboard-root-presentation\.css'/);
-  assert.doesNotMatch(entry, /dashboard-root-presentation\.css|history-global-fixes|dashboard-current-metric-style/);
+  assert.match(buildScript, /'dashboard-presentation\.css'/);
+  assert.doesNotMatch(entry, /dashboard-(?:root-)?presentation\.css|history-global-fixes|dashboard-current-metric-style/);
   assert.match(styles, /\.dashboard-view \.data-panel/);
   assert.match(styles, /\.dashboard-view \.summary-cards strong/);
   assert.match(styles, /\.dashboard-view \.metrics \.metric-value > strong/);
