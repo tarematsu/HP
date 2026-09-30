@@ -115,6 +115,7 @@ test('history runtime keeps table ownership consolidated while charts are mode-s
     'utf8',
   );
   const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../site/public/history-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../site/public/history/history-main.js', import.meta.url), 'utf8');
 
@@ -123,9 +124,9 @@ test('history runtime keeps table ownership consolidated while charts are mode-s
   assert.match(runtime, /state\.rows = Array\.isArray\(data\.rows\) \? data\.rows : \[\]/);
   assert.match(runtime, /history:data-loaded/);
   assert.doesNotMatch(runtime, /mondayJstKey|expectedStart|expectedEnd|prepareCanvas|drawSummaryChart/);
-  assert.match(html, /id="historyView"/);
+  assert.match(shell, /id: 'historyView'/);
   assert.match(tabs, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
   assert.match(entry, /history-period-chart\.js\?v=20260923\.\d+/);
   assert.doesNotMatch(entry, /history-ranking-missing-gap/);
-  assert.doesNotMatch(html, /history-period-completeness\.js|history-track-likes\.js/);
+  assert.doesNotMatch([html, shell].join('\n'), /history-period-completeness\.js|history-track-likes\.js/);
 });
