@@ -4,6 +4,8 @@ import test from 'node:test';
 
 const mediaBase = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
+const tverQueue = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url), 'utf8');
 const powerSavingSchedule = readFileSync(
   new URL('../../native/src/power_saving_schedule.inc', import.meta.url), 'utf8');
 
@@ -32,6 +34,10 @@ test('native X random draw is independent from quiet hours and runtime gating ha
   assert.match(
     mediaBase,
     /gNativeMediaPowerSaving \|\| !NativeMediaXRuntimeAllowed\(\) \|\|[\s\S]*!NativeMediaXSlotEnabled\(true\)/,
+  );
+  assert.match(
+    tverQueue,
+    /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\) \|\|\s*!NativeMediaXRuntimeAllowed\(\)/,
   );
   assert.match(mediaBase, /static_assert\(!NativeMediaXCanStartAtSecondOfDay\(1 \* 60 \* 60\)\)/);
   assert.match(mediaBase, /static_assert\(NativeMediaXCanStartAtSecondOfDay\(6 \* 60 \* 60\)\)/);
