@@ -20,10 +20,6 @@ function finite(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function average(values) {
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-}
-
 export function formatNogizakaBroadcastContent(event) {
   const raw = String(event?.event_name || event?.title || '')
     .replace(/[「」]/gu, ' ')
@@ -51,65 +47,151 @@ async function loadEvent(env, start, end) {
     LIMIT 1`).bind(start, end).first();
 }
 
-async function loadProbes(env, announcementId) {
-  const result = await env.OTHER_DB.prepare(`SELECT
-      observed_at,broadcast_id,broadcast_start_time,is_broadcasting,listener_count,total_listens
-    FROM sh_nogizaka_official_news_station_probes
-    WHERE announcement_id=?
-    ORDER BY observed_at ASC,id ASC
-    LIMIT 720`).bind(announcementId).all();
-  return result.results || [];
-}
-
 async function loadSummary(env, event) {
   if (!event?.event_name) return null;
   return env.OTHER_DB.prepare(`SELECT
       event_name,started_at,ended_at,sample_count,listener_avg,listener_min,listener_max,
-      likes_max,distinct_tracks,host_handle
+      likes_max,distinct_tracks,host_handle,refreshed_at
     FROM sh_official_broadcast_summary
     WHERE host_handle='nogizaka46smej' AND event_name=?
     ORDER BY started_at DESC LIMIT 1`).bind(event.event_name).first();
 }
 
-function buildPayload(event, probes, summary, generatedAt, day) {
+async function loadSeries(env, event) {
+  if (!event?.event_name) return null;
+  return env.OTHER_DB.prepare(`SELECT
+      event_name,started_at,points_json,source_ref,refreshed_at
+    FROM sh_official_broadcast_series
+    WHERE host_handle='nogizaka46smej' AND event_name=?
+    LIMIT 1`).bind(event.event_name).first();
+}
+
+async function loadLiveProbes(env, announcementId, observedAfter) {
+  const result = await env.OTHER_DB.prepare(`SELECT
+      observed_at,broadcast_id,broadcast_start_time,listener_count
+    FROM sh_nogizaka_official_news_station_probes
+    WHERE announcement_id=? AND is_broadcasting=1 AND listener_count IS NOT NULL
+      AND observed_at>=?
+    ORDER BY observed_at ASC,id ASC
+    LIMIT 180`).bind(announcementId, Math.max(0, Number(observedAfter) || 0)).all();
+  return result.results || [];
+}
+
+function materializedPoints(series) {
+  if (!series?.points_json) return [];
+  try {
+    const parsed = JSON.parse(series.points_json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((point) => {
+        const minute = finite(point?.[0]);
+        const listener = finite(point?.[1]);
+        const samples = Math.max(1, Math.trunc(finite(point?.[2]) ?? 1));
+        return minute == null || listener == null ? null : [minute, listener, samples];
+      })
+      .filter(Boolean)
+      .sort((left, right) => left[0] - right[0]);
+  } catch {
+    return [];
+  }
+}
+
+function liveProbePoints(probes, start) {
+  if (start == null) return [];
   const preferredBroadcastId = probes.slice().reverse().find((row) =>
-    Number(row?.is_broadcasting) === 1 && finite(row?.broadcast_id) != null)?.broadcast_id;
-  const start = finite(event?.first_broadcast_at)
-    ?? finite(probes.find((row) => finite(row?.broadcast_start_time) != null)?.broadcast_start_time)
-    ?? finite(event?.scheduled_at)
-    ?? finite(summary?.started_at);
-  const points = [];
-  const listeners = [];
+    finite(row?.broadcast_id) != null)?.broadcast_id;
+  const byMinute = new Map();
   for (const row of probes) {
-    if (preferredBroadcastId != null && (
-      Number(row?.is_broadcasting) !== 1
-      || Number(row?.broadcast_id) !== Number(preferredBroadcastId)
-    )) continue;
+    if (preferredBroadcastId != null
+        && Number(row?.broadcast_id) !== Number(preferredBroadcastId)) continue;
     const observedAt = finite(row?.observed_at);
     const listener = finite(row?.listener_count);
-    if (observedAt == null || listener == null || start == null || observedAt < start) continue;
+    if (observedAt == null || listener == null || observedAt < start) continue;
     const minute = Math.max(0, Math.floor((observedAt - start) / 60_000));
-    points.push([minute, listener]);
-    listeners.push(listener);
+    byMinute.set(minute, [minute, listener, 1]);
   }
-  const latestObservedAt = finite(probes.at(-1)?.observed_at);
-  const live = event?.status === 'active';
-  const endedAt = live ? null : (finite(event?.last_broadcast_at) ?? finite(summary?.ended_at) ?? latestObservedAt);
-  const listenerAvg = finite(summary?.listener_avg) ?? average(listeners);
-  const listenerMin = finite(summary?.listener_min) ?? (listeners.length ? Math.min(...listeners) : null);
-  const listenerMax = finite(summary?.listener_max) ?? (listeners.length ? Math.max(...listeners) : null);
-  const distinctTracks = finite(summary?.distinct_tracks);
-  const estimatedStreams = listenerAvg != null && distinctTracks != null
-    ? Math.round(listenerAvg * distinctTracks)
+  return [...byMinute.values()].sort((left, right) => left[0] - right[0]);
+}
+
+function mergePoints(basePoints, livePoints) {
+  const byMinute = new Map(basePoints.map((point) => [point[0], point]));
+  for (const point of livePoints) byMinute.set(point[0], point);
+  return [...byMinute.values()].sort((left, right) => left[0] - right[0]);
+}
+
+function pointStats(points) {
+  let sampleCount = 0;
+  let weightedTotal = 0;
+  let listenerMin = null;
+  let listenerMax = null;
+  for (const point of points) {
+    const listener = finite(point?.[1]);
+    const samples = Math.max(1, Math.trunc(finite(point?.[2]) ?? 1));
+    if (listener == null) continue;
+    sampleCount += samples;
+    weightedTotal += listener * samples;
+    listenerMin = listenerMin == null ? listener : Math.min(listenerMin, listener);
+    listenerMax = listenerMax == null ? listener : Math.max(listenerMax, listener);
+  }
+  return {
+    sampleCount,
+    listenerAvg: sampleCount ? weightedTotal / sampleCount : null,
+    listenerMin,
+    listenerMax,
+  };
+}
+
+function combinedStats(summary, basePoints, livePoints) {
+  const baseDerived = pointStats(basePoints);
+  const baseCount = finite(summary?.sample_count) ?? baseDerived.sampleCount;
+  const baseAverage = finite(summary?.listener_avg) ?? baseDerived.listenerAvg;
+  const baseMinimum = finite(summary?.listener_min) ?? baseDerived.listenerMin;
+  const baseMaximum = finite(summary?.listener_max) ?? baseDerived.listenerMax;
+  const lastBaseMinute = basePoints.length ? finite(basePoints.at(-1)?.[0]) : null;
+  const additions = lastBaseMinute == null
+    ? livePoints
+    : livePoints.filter((point) => finite(point?.[0]) > lastBaseMinute);
+  const tail = pointStats(additions);
+  const sampleCount = Math.max(0, Math.trunc(baseCount || 0)) + tail.sampleCount;
+  const listenerAvg = sampleCount
+    ? (((baseAverage ?? 0) * Math.max(0, Math.trunc(baseCount || 0)))
+      + ((tail.listenerAvg ?? 0) * tail.sampleCount)) / sampleCount
     : null;
+  const minimums = [baseMinimum, tail.listenerMin].filter((value) => value != null);
+  const maximums = [baseMaximum, tail.listenerMax].filter((value) => value != null);
+  return {
+    sampleCount,
+    listenerAvg,
+    listenerMin: minimums.length ? Math.min(...minimums) : null,
+    listenerMax: maximums.length ? Math.max(...maximums) : null,
+  };
+}
+
+function buildPayload(event, summary, readSeries, probes, generatedAt, day) {
+  const live = event?.status === 'active';
+  const basePoints = materializedPoints(readSeries);
+  const start = finite(readSeries?.started_at)
+    ?? finite(summary?.started_at)
+    ?? finite(event?.first_broadcast_at)
+    ?? finite(probes.find((row) => finite(row?.broadcast_start_time) != null)?.broadcast_start_time)
+    ?? finite(event?.scheduled_at);
+  const realtimePoints = live ? liveProbePoints(probes, start) : [];
+  const points = live ? mergePoints(basePoints, realtimePoints) : basePoints;
+  const stats = combinedStats(summary, basePoints, realtimePoints);
+  const endedAt = live ? null : (finite(summary?.ended_at) ?? finite(event?.last_broadcast_at));
+  const distinctTracks = finite(summary?.distinct_tracks);
+  const estimatedStreams = stats.listenerAvg != null && distinctTracks != null
+    ? Math.round(stats.listenerAvg * distinctTracks)
+    : null;
+  const finalized = event?.status !== 'ended' || Boolean(summary && readSeries);
   const row = event ? {
     event_name: event.event_name || event.title || '乃木坂46 公式リスパ',
     started_at: start,
     ended_at: endedAt,
-    sample_count: finite(summary?.sample_count) ?? listeners.length,
-    listener_avg: listenerAvg,
-    listener_min: listenerMin,
-    listener_max: listenerMax,
+    sample_count: stats.sampleCount,
+    listener_avg: stats.listenerAvg,
+    listener_min: stats.listenerMin,
+    listener_max: stats.listenerMax,
     likes_max: finite(summary?.likes_max),
     distinct_tracks: distinctTracks,
     estimated_streams: estimatedStreams,
@@ -118,20 +200,27 @@ function buildPayload(event, probes, summary, generatedAt, day) {
     source_url: event.news_url || null,
     status: event.status || null,
   } : null;
+  let source = 'official_read_model_pending';
+  if (live) {
+    if (basePoints.length && realtimePoints.length) source = 'official_broadcast_series+official_news_live';
+    else if (basePoints.length) source = 'official_broadcast_series';
+    else source = 'official_news_live';
+  } else if (readSeries) source = 'official_broadcast_series';
+  else if (summary) source = 'official_broadcast_summary';
   return {
     ok: true,
     handle: 'nogizaka46smej',
     date: day,
     generated_at: generatedAt,
     collection_active: live,
-    refresh_hint_ms: live ? 15_000 : 60_000,
+    refresh_hint_ms: live || !finalized ? 15_000 : 60_000,
     event: event || null,
     row,
     series: row ? [{
       event_name: `${day.replaceAll('-', '')} ${row.broadcast_content}`,
       started_at: row.started_at,
       points,
-      source: live ? 'official_news_live' : (summary ? 'official_broadcast_summary' : 'official_news_probes'),
+      source,
     }] : [],
   };
 }
@@ -155,11 +244,25 @@ export async function onRequestGet({ env }) {
         series: [],
       });
     }
-    const [probes, summary] = await Promise.all([
-      loadProbes(env, event.id),
+    const [summary, readSeries] = await Promise.all([
       loadSummary(env, event).catch(() => null),
+      loadSeries(env, event).catch(() => null),
     ]);
-    return json(buildPayload(event, probes, summary, generatedAt, day));
+    let probes = [];
+    if (event.status === 'active') {
+      const basePoints = materializedPoints(readSeries);
+      const readStart = finite(readSeries?.started_at)
+        ?? finite(summary?.started_at)
+        ?? finite(event.first_broadcast_at)
+        ?? finite(event.scheduled_at)
+        ?? 0;
+      const lastMinute = basePoints.length ? finite(basePoints.at(-1)?.[0]) : null;
+      const observedAfter = lastMinute == null
+        ? (finite(summary?.refreshed_at) ?? readStart)
+        : readStart + Math.max(0, lastMinute) * 60_000;
+      probes = await loadLiveProbes(env, event.id, observedAfter);
+    }
+    return json(buildPayload(event, summary, readSeries, probes, generatedAt, day));
   } catch (error) {
     const message = String(error?.message || error);
     if (/no such table|no such column/i.test(message)) {

@@ -13,7 +13,6 @@ import {
   nogizakaNewsCheckDue,
   nogizakaOfficialNewsConfig,
   nogizakaStationProbeDue,
-  reconcileNogizakaOfficialAnnouncements,
   runNogizakaNewsDetailStage,
   runNogizakaNewsListStage,
 } from './nogizaka-official-news.js';
@@ -23,6 +22,7 @@ import {
   finalizeNogizakaStationProbe,
 } from './nogizaka-official-news-probe.js';
 import { materializeNogizakaRawMinute } from './nogizaka-raw-materializer.js';
+import { reconcileNogizakaReadModels } from './nogizaka-read-model.js';
 
 export const NOGIZAKA_CRON = '* * * * *';
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
@@ -100,7 +100,7 @@ function stageDependencies() {
     decode: decodeNogizakaStationMain,
     finalize: finalizeNogizakaStationProbe,
     rawMaterialize: materializeNogizakaRawMinute,
-    reconcile: reconcileNogizakaOfficialAnnouncements,
+    reconcile: reconcileNogizakaReadModels,
   };
 }
 
