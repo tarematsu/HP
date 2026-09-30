@@ -17,6 +17,11 @@ const databaseName = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const BINDING = 'OTHER_DB';
 const APPLE_MUSIC_COMPATIBILITY_TABLE = 'sh_host_queue_items';
 const LEGACY_TRACK_METADATA_TABLE = 'sh_track_metadata';
+const OBSOLETE_COLLECTION_TABLES = Object.freeze([
+  'sh_host_raw_events',
+  'sh_host_profile_snapshots',
+  'sh_host_comments',
+]);
 const OFFICIAL_PARTY_SUMMARY_TABLE = 'sh_official_broadcast_summary';
 const OFFICIAL_PARTY_METRICS_MIGRATION = '039_official_party_materialized_metrics.sql';
 const SPOTIFY_COLLECTION_RUNS_TABLE = 'sh_spotify_collection_runs';
@@ -112,6 +117,43 @@ function tableColumns(tableName) {
     .map((row) => String(row?.name || '')));
 }
 
+function enabled(value) {
+  return /^(?:1|true|yes|on)$/i.test(String(value || '').trim());
+}
+
+function selectedDeploymentMigrations(migrationFiles, forceAll = false) {
+  if (forceAll || !enabled(process.env.D1_DEPLOY_CHANGED_ONLY)) return migrationFiles;
+  const baseSha = String(process.env.DEPLOY_BASE_SHA || '').trim();
+  const headSha = String(process.env.DEPLOY_HEAD_SHA || '').trim();
+  if (!baseSha || !headSha || /^0+$/.test(baseSha)) {
+    console.warn('Changed-only OTHER_DB deployment has no usable base/head; applying all migrations.');
+    return migrationFiles;
+  }
+  try {
+    const changedPaths = new Set(execFileSync('git', [
+      'diff', '--name-only', `${baseSha}..${headSha}`,
+    ], {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).split(/\r?\n/u).map((value) => value.trim()).filter(Boolean));
+    const selected = migrationFiles.filter((migrationFile) => (
+      changedPaths.has(`database/other-migrations/${migrationFile}`)
+    ));
+    console.log(JSON.stringify({
+      operation: 'other-db-migration-selection',
+      mode: 'changed-only',
+      base_sha: baseSha,
+      head_sha: headSha,
+      selected,
+    }));
+    return selected;
+  } catch (error) {
+    console.warn(`Could not resolve changed OTHER_DB migrations; applying all: ${String(error?.message || error)}`);
+    return migrationFiles;
+  }
+}
+
 function ensureOfficialPartyMetricColumns() {
   const columns = tableColumns(OFFICIAL_PARTY_SUMMARY_TABLE);
   const requiredColumns = [
@@ -167,8 +209,8 @@ function applyMigration(migrationFile) {
     return;
   }
   if (migrationFile === SPOTIFY_STATIONHEAD_IDENTITY_MIGRATION) {
-    // Provisioning intentionally replays every active migration. Add the new
-    // column only once, then replay the idempotent index + compaction statements.
+    // Add the new column only once. The remaining compaction SQL is executed
+    // only when this migration is part of the selected deployment diff.
     ensureSpotifyStationheadIdentityColumn();
     const remainderSql = readFileSync(migrationPath, 'utf8')
       .replace(/^[\s\S]*?ALTER TABLE sh_spotify_track_aliases\s+ADD COLUMN stationhead_track_id INTEGER;\s*/u, '');
@@ -236,6 +278,25 @@ function consolidateLegacyTrackMetadata() {
   });
 }
 
+function removeObsoleteCollectionTables() {
+  const existing = schemaObjects(OBSOLETE_COLLECTION_TABLES)
+    .filter((row) => String(row?.type || '') === 'table')
+    .map((row) => String(row?.name || ''))
+    .filter((name) => OBSOLETE_COLLECTION_TABLES.includes(name));
+  if (!existing.length) return;
+  const sql = existing.map((table) => `DROP TABLE IF EXISTS ${table};`).join('\n');
+  wrangler([
+    'd1', 'execute', databaseName,
+    '--remote', '--yes',
+    `--command=${sql}`,
+  ]);
+  console.log(JSON.stringify({
+    ok: true,
+    operation: 'retired-host-collection-cleanup',
+    removed: existing,
+  }));
+}
+
 function verifySchema() {
   const installed = new Map(schemaObjects(OTHER_REQUIRED_TABLES)
     .map((row) => [String(row.name), String(row.type)]));
@@ -254,6 +315,7 @@ function verifySchema() {
 }
 
 let database = listDatabases().find((item) => item.name === databaseName);
+const databaseExisted = Boolean(database);
 if (!database) {
   wrangler(['d1', 'create', databaseName]);
   database = listDatabases().find((item) => item.name === databaseName);
@@ -278,21 +340,24 @@ const retiredMigrationFiles = new Set(OTHER_RETIRED_MIGRATIONS);
 const migrationFiles = readdirSync(migrationsDir)
   .filter((name) => name.endsWith('.sql'))
   .sort();
-const activeMigrationFiles = migrationFiles.filter((name) => !retiredMigrationFiles.has(name));
+const availableMigrationFiles = migrationFiles.filter((name) => !retiredMigrationFiles.has(name));
+const activeMigrationFiles = selectedDeploymentMigrations(availableMigrationFiles, !databaseExisted);
 for (const migrationFile of activeMigrationFiles) applyMigration(migrationFile);
 removeAppleMusicCompatibilityColumn();
 consolidateLegacyTrackMetadata();
+removeObsoleteCollectionTables();
 verifySchema();
 
 writeFileSync(metadataPath, `${JSON.stringify({
   binding: BINDING,
   database_name: databaseName,
   database_id: databaseId,
-  schema: `database/other-migrations/${activeMigrationFiles.at(-1)}`,
+  schema: `database/other-migrations/${availableMigrationFiles.at(-1)}`,
 }, null, 2)}\n`);
 console.log(JSON.stringify({
   ok: true,
   database_name: databaseName,
   database_id: databaseId,
+  migrations_applied: activeMigrationFiles,
   tables: OTHER_REQUIRED_TABLES.length,
 }));

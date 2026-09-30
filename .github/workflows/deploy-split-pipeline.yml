@@ -167,6 +167,8 @@ jobs:
     uses: ./.github/workflows/database.yml
     with:
       operation: other-db
+      base_sha: ${{ github.event.before || github.sha }}
+      head_sha: ${{ github.sha }}
     secrets: inherit
 
   workers:

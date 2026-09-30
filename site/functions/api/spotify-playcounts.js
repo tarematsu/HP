@@ -1,4 +1,7 @@
 const SAKURAZAKA = Object.freeze({ key: 'sakurazaka46', name: '櫻坂46' });
+const NOGIZAKA = Object.freeze({ key: 'nogizaka46', name: '乃木坂46' });
+const HINATAZAKA = Object.freeze({ key: 'hinatazaka46', name: '日向坂46' });
+export const SPOTIFY_DETAIL_ARTISTS = Object.freeze([SAKURAZAKA, NOGIZAKA, HINATAZAKA]);
 const DEFAULT_ARTIST_KEY = SAKURAZAKA.key;
 export const SPOTIFY_TREND_START_DATE = '2026-09-28';
 const JSON_HEADERS = Object.freeze({
@@ -45,6 +48,40 @@ export function spotifyPlaycountSql() {
   LEFT JOIN music_service_track_refs ref
     ON ref.service='spotify' AND ref.source_track_id=d.track_id
   ORDER BY
+    CASE WHEN d.delta IS NULL THEN 1 ELSE 0 END,
+    d.delta DESC,
+    d.playcount DESC,
+    track.name COLLATE NOCASE ASC,
+    d.track_id ASC`;
+}
+
+export function spotifyPlaycountAllSql() {
+  return `WITH latest AS (
+    SELECT target.artist_key,MAX(d.snapshot_date) AS snapshot_date
+    FROM sh_spotify_playcount_daily d
+    INNER JOIN sh_spotify_track_targets target ON target.track_id=d.track_id
+    WHERE target.artist_key IN ('sakurazaka46','nogizaka46','hinatazaka46')
+    GROUP BY target.artist_key
+  )
+  SELECT
+    target.artist_key,
+    d.snapshot_date,
+    ref.track_id,
+    d.track_id AS spotify_track_id,
+    track.name,
+    d.playcount,
+    d.delta,
+    d.collected_at,
+    COALESCE(d.is_carried_forward,0) AS is_carried_forward
+  FROM latest
+  INNER JOIN sh_spotify_track_targets target ON target.artist_key=latest.artist_key
+  INNER JOIN sh_spotify_playcount_daily d
+    ON d.snapshot_date=latest.snapshot_date AND d.track_id=target.track_id
+  INNER JOIN sh_spotify_tracks track ON track.track_id=d.track_id
+  LEFT JOIN music_service_track_refs ref
+    ON ref.service='spotify' AND ref.source_track_id=d.track_id
+  ORDER BY
+    target.artist_key ASC,
     CASE WHEN d.delta IS NULL THEN 1 ELSE 0 END,
     d.delta DESC,
     d.playcount DESC,
@@ -235,6 +272,17 @@ export function spotifyArtistChart(rows = []) {
   };
 }
 
+function patchTrendTotals(trend, groups) {
+  for (const artist of SPOTIFY_DETAIL_ARTISTS) {
+    const payload = groups[artist.key];
+    const latestTrendPoint = (trend[artist.key] || [])
+      .find((point) => point.snapshot_date === payload?.snapshot_date);
+    if (latestTrendPoint && payload?.total_delta != null) {
+      latestTrendPoint.total_delta = payload.total_delta;
+    }
+  }
+}
+
 export function spotifyReadModel(latestRows = [], trendRows = [], artistChartRows = []) {
   const sakurazakaRows = latestRows.filter((row) => String(row?.artist_key || '') === DEFAULT_ARTIST_KEY);
   const payload = spotifyPayload(SAKURAZAKA, sakurazakaRows);
@@ -254,7 +302,26 @@ export function spotifyReadModel(latestRows = [], trendRows = [], artistChartRow
   };
 }
 
-export async function onRequestGet({ env }) {
+export function spotifyReadModelAll(latestRows = [], trendRows = [], artistChartRows = []) {
+  const groups = {};
+  for (const artist of SPOTIFY_DETAIL_ARTISTS) {
+    groups[artist.key] = spotifyPayload(
+      artist,
+      latestRows.filter((row) => String(row?.artist_key || '') === artist.key),
+    );
+  }
+  const trend = spotifyTrend(trendRows);
+  patchTrendTotals(trend, groups);
+  return {
+    default_artist: DEFAULT_ARTIST_KEY,
+    detail_artists: SPOTIFY_DETAIL_ARTISTS,
+    groups,
+    trend,
+    artist_chart: spotifyArtistChart(artistChartRows),
+  };
+}
+
+export async function onRequestGet({ env, request }) {
   if (!env?.OTHER_DB?.prepare) {
     return json({ ok: false, error: 'OTHER_DB binding missing' }, 503, {
       'cache-control': 'no-store',
@@ -262,18 +329,22 @@ export async function onRequestGet({ env }) {
   }
 
   try {
+    const includeSakamichi = request?.url
+      ? new URL(request.url).searchParams.get('artists') === 'sakamichi'
+      : false;
     const [latestResult, trendResult, artistChartResult] = await Promise.all([
-      env.OTHER_DB.prepare(spotifyPlaycountSql()).all(),
+      env.OTHER_DB.prepare(includeSakamichi ? spotifyPlaycountAllSql() : spotifyPlaycountSql()).all(),
       env.OTHER_DB.prepare(spotifyTrendSql()).all(),
       env.OTHER_DB.prepare(spotifyArtistChartSql()).all(),
     ]);
+    const latestRows = Array.isArray(latestResult?.results) ? latestResult.results : [];
+    const trendRows = Array.isArray(trendResult?.results) ? trendResult.results : [];
+    const artistChartRows = Array.isArray(artistChartResult?.results) ? artistChartResult.results : [];
     return json({
       ok: true,
-      ...spotifyReadModel(
-        Array.isArray(latestResult?.results) ? latestResult.results : [],
-        Array.isArray(trendResult?.results) ? trendResult.results : [],
-        Array.isArray(artistChartResult?.results) ? artistChartResult.results : [],
-      ),
+      ...(includeSakamichi
+        ? spotifyReadModelAll(latestRows, trendRows, artistChartRows)
+        : spotifyReadModel(latestRows, trendRows, artistChartRows)),
     });
   } catch (error) {
     console.error('spotify playcounts failed', error);
