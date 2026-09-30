@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const shell = readFileSync(new URL('../public/played-tracks-shell.js', import.meta.url), 'utf8');
 const runtime = readFileSync(new URL('../public/played-tracks.js', import.meta.url), 'utf8');
+const tableDom = readFileSync(new URL('../public/dashboard-table-dom.js', import.meta.url), 'utf8');
 const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
 const metrics = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const registry = readFileSync(new URL('../public/dashboard-tab-registry.js', import.meta.url), 'utf8');
@@ -46,7 +47,9 @@ test('played tracks removes manual refresh, hides successful aggregate status, a
   assert.match(shell, /総再生回数/);
   assert.match(shell, /楽曲数/);
   assert.match(shell, /楽曲別再生一覧/);
-  assert.match(runtime, /totalLabel\.textContent = '総再生回数'/);
+  assert.match(runtime, /appendTableRow\(tbody, \[/);
+  assert.match(runtime, /'総再生回数'/);
+  assert.match(tableDom, /export function appendTableRow\(/);
   assert.match(runtime, /再生履歴データ/);
   assert.doesNotMatch(shell, /延べ再生曲数|のべ再生曲数|<h2>再生曲一覧<\/h2>/);
   assert.doesNotMatch(runtime, /再生曲データ|再生曲の日付一覧|曲を集計/);
