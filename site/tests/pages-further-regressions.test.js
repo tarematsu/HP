@@ -101,6 +101,7 @@ test('active Pages archive runtimes are UTC-only except the official-party today
   const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
   const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const likesShell = readFileSync(new URL('../public/likes-shell.js', import.meta.url), 'utf8');
   const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const utcArchiveSources = [entry, dataClient, history, likes].join('\n');
 
@@ -120,7 +121,7 @@ test('active Pages archive runtimes are UTC-only except the official-party today
   assert.match(broadcasts, /timeZone: 'Asia\/Tokyo'/);
   assert.match(broadcasts, /isTodayEvent/);
   assert.doesNotMatch(dashboard, /timeZone: 'UTC'|最終取得 .* UTC/);
-  assert.match(mainPage, /id="likesView"/);
+  assert.match(likesShell, /id: 'likesView'/);
   assert.match(tabs, /import\('\/history\/history-likes\.js\?v=20260930\.1'\)/);
   assert.doesNotMatch(mainPage, /href="\/history/);
   assert.doesNotMatch(utcArchiveSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
