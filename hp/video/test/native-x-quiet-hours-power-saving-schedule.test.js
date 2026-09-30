@@ -16,10 +16,6 @@ test('native X random draw is independent from quiet hours and runtime gating ha
     mediaBase,
     /bool NativeMediaXSlotEnabled\(bool firstSlot\) noexcept \{\s*const auto& plan = NativeMediaCurrentXCyclePlan\(\);\s*return firstSlot \? plan\.firstSlot : plan\.secondSlot;\s*\}/,
   );
-  assert.doesNotMatch(
-    mediaBase,
-    /bool NativeMediaXSlotEnabled\(bool firstSlot\) noexcept \{[\s\S]*?NativeMediaXRuntimeAllowed\(\)[\s\S]*?\}/,
-  );
   assert.match(
     mediaBase,
     /bool NativeMediaHostSuppressX\([\s\S]*bool tver, bool phaseStarted, ULONGLONG phaseStartedAt,[\s\S]*bool xPhaseActive\) noexcept/,
@@ -33,11 +29,11 @@ test('native X random draw is independent from quiet hours and runtime gating ha
   );
   assert.match(
     mediaBase,
-    /gNativeMediaPowerSaving \|\| !NativeMediaXRuntimeAllowed\(\) \|\|[\s\S]*!NativeMediaXSlotEnabled\(true\)/,
+    /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\) \|\|[\s\S]*!NativeMediaXRuntimeAllowed\(\)/,
   );
   assert.match(
     tverQueue,
-    /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\) \|\|\s*!NativeMediaXRuntimeAllowed\(\)/,
+    /gNativeMediaPowerSaving \|\| !NativeMediaXSlotEnabled\(true\)\) return false;\s*if \(!NativeMediaXRuntimeAllowed\(\)\) return false/,
   );
   assert.match(mediaBase, /static_assert\(!NativeMediaXCanStartAtSecondOfDay\(1 \* 60 \* 60\)\)/);
   assert.match(mediaBase, /static_assert\(NativeMediaXCanStartAtSecondOfDay\(6 \* 60 \* 60\)\)/);
