@@ -13,7 +13,9 @@ function integer(value) {
 }
 
 function trackKey(track) {
-  return String(track?.song_key || track?.track_id || track?.apple_music_id || '');
+  const trackId = integer(track?.track_id);
+  if (trackId != null) return `track:${trackId}`;
+  return String(track?.song_key || track?.apple_music_id || '');
 }
 
 function formatDate(value) {
