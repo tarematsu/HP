@@ -18,7 +18,7 @@
     window.addEventListener('DOMContentLoaded', () => setTimeout(revealDashboard, 1200), { once: true });
   </script>
   <noscript><style>#content { visibility: visible !important; }</style></noscript>
-  <link rel="stylesheet" href="/assets/dashboard.min.css?v=20260930.1">
+  <link rel="stylesheet" href="/assets/dashboard.min.css?v=20260930.2">
 </head>
 <body>
   <a class="skip-link" href="#content">本文へ移動</a>
@@ -80,73 +80,32 @@
         <div id="currentChartDetail" class="chart-detail" data-current-chart-detail></div>
       </section>
 
-      <section class="primary-grid">
-        <article class="card now-card">
-          <div class="section-head now-head">
-            <div><p class="kicker">NOW PLAYING</p><h2>再生中の曲</h2></div>
-            <div id="host" class="host"></div>
-          </div>
-          <a id="nowPlayingLink" class="now-playing" href="https://stationhead.com/c/buddies" target="_blank" rel="noopener noreferrer" aria-disabled="false">
-            <span class="track-visual" aria-hidden="true">
-              <span id="trackFallback" class="track-fallback">♪</span>
-              <img id="trackImage" class="track-image" alt="" width="104" height="104" decoding="async" hidden>
-            </span>
-            <div class="track-copy">
-              <strong id="trackTitle"></strong>
-              <span id="trackArtist" class="subtle"></span>
-              <div class="time-row"><span id="trackTime">-</span><span id="trackBites" hidden></span><span id="spotifyHint">Stationheadを開く</span></div>
-              <div class="progress" aria-hidden="true"><i id="trackBar"></i></div>
-            </div>
-          </a>
-        </article>
-
-        <article class="card queue-card">
-          <div class="section-head queue-head">
-            <div><p class="kicker">UP NEXT</p><h2>今後の再生予定</h2></div>
-            <span id="queueCount" class="pill">-</span>
-          </div>
-          <div id="queue" class="queue" aria-live="polite"></div>
-        </article>
+      <section class="card chart-card">
+        <div class="section-head chart-head"><div><p class="kicker">STREAMS</p><h2>再生数増加</h2></div></div>
+        <canvas id="streamGrowthChart" width="960" height="320" aria-label="1分ごとの再生数増加"></canvas>
+        <div id="streamGrowthDetail" class="chart-detail" data-stream-growth-detail></div>
       </section>
 
-      <p id="statusMessage" class="status-message" role="status" hidden></p>
+      <section class="card data-panel">
+        <div class="section-head"><div><p class="kicker">NOW PLAYING</p><h2>現在の再生状況</h2></div></div>
+        <div id="nowPlaying" class="now-playing"></div>
+      </section>
     </div>
 
     <section id="historyView" class="dashboard-view history-view" hidden>
-      <div id="guide" hidden aria-hidden="true"><p class="kicker"></p><h2 id="guideTitle"></h2><p id="guideText"></p></div>
-
-      <section id="controls" class="controls card">
-        <div id="standardControls" class="control-group standard-controls">
-          <div id="rangePresets" class="range-presets" aria-label="期間プリセット">
-            <button type="button" data-days="30">1ヶ月</button>
-            <button type="button" data-days="90">半年</button>
-            <button type="button" data-days="365">1年</button>
-            <button type="button" data-days="all" class="active">全期間</button>
-          </div>
-          <input id="from" type="hidden" value="2024-05-01">
-          <input id="to" type="hidden">
+      <p id="notice" class="notice" role="status" hidden></p>
+      <div class="controls history-controls" id="historyControls">
+        <div class="history-control-row">
+          <div id="rangeButtons" class="range-buttons" aria-label="表示期間"></div>
+          <div id="historyNavigator" class="history-navigator"></div>
         </div>
+      </div>
 
-        <div id="rankingControls" class="control-group ranking-controls" hidden>
-          <label><span>対象</span><select id="rankingScope"><option value="featured">坂道</option><option value="all">全ホスト</option></select></label>
-          <label><span>検索</span><input id="rankingHost" type="search" maxlength="100" placeholder="ホスト名"></label>
-        </div>
+      <section class="summary-cards" id="summaryCards" aria-label="履歴集計概要"></section>
 
-        <button id="load" type="button" hidden aria-hidden="true" tabindex="-1"></button>
-      </section>
-
-      <p id="notice" class="notice" role="status"></p>
-
-      <section id="summaryCards" class="summary-cards" aria-label="集計概要">
-        <article><span id="periodLabel">期間数</span><strong id="periods">-</strong></article>
-        <article><span id="maxLabel">平均同接</span><strong id="maxListener">-</strong></article>
-        <article><span id="streamLabel">再生数増加</span><strong id="streamGrowth">-</strong></article>
-        <article><span id="memberLabel">メンバー増加数</span><strong id="memberGrowth">-</strong></article>
-      </section>
-
-      <section id="chartPanel" class="card chart-panel">
+      <section class="card chart-panel">
         <div class="section-head chart-head">
-          <div><p class="kicker">TREND</p><h2 id="chartTitle">主要指標の推移</h2></div>
+          <div><p class="kicker">TREND</p><h2 id="chartTitle">推移</h2></div>
           <div id="chartLegend" class="chart-legend" aria-label="グラフ凡例"></div>
         </div>
         <canvas id="chart" width="960" height="360" aria-label="履歴推移グラフ"></canvas>
@@ -206,6 +165,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/assets/dashboard.min.js?v=20260930.1"></script>
+  <script type="module" src="/assets/dashboard.min.js?v=20260930.2"></script>
 </body>
 </html>
