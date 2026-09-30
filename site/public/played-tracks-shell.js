@@ -13,16 +13,15 @@ mountDashboardShell({
     anchorId: 'likesView',
     position: 'beforebegin',
     html: `
-    <div class="view-toolbar played-tracks-toolbar">
+    <section class="controls card played-tracks-controls" aria-label="再生履歴の表示設定">
+      <div class="played-tracks-period-scroller" id="playedTracksPeriodScroller" aria-label="再生履歴の表示期間">
+        <div class="played-tracks-period-strip" id="playedTracksPeriodStrip" role="list"></div>
+      </div>
       <label class="played-tracks-week-toggle" for="playedTracksWeekMode">
         <input id="playedTracksWeekMode" type="checkbox">
         <span>週表示</span>
       </label>
-    </div>
-
-    <div class="played-tracks-period-scroller" id="playedTracksPeriodScroller" aria-label="再生履歴の表示期間">
-      <div class="played-tracks-period-strip" id="playedTracksPeriodStrip" role="list"></div>
-    </div>
+    </section>
 
     <p id="playedTracksNotice" class="notice" role="status" hidden></p>
 
