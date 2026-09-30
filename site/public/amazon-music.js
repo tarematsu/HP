@@ -14,7 +14,7 @@ let lastPayload = null;
 const setNotice = (message = '', error = false) => setSharedNotice('amazonMusicNotice', message, error);
 
 function trackKey(track) {
-  const amazonId = String(track?.amazon_music_id || '').trim();
+  const amazonId = String(track?.amazon_music_id || '');
   if (amazonId) return `amazon:${amazonId}`;
   const trackId = integer(track?.track_id);
   return trackId != null && trackId > 0 ? `track:${trackId}` : '';
@@ -22,7 +22,7 @@ function trackKey(track) {
 
 function trackTitleMap(payload) {
   return new Map((Array.isArray(payload?.tracks) ? payload.tracks : [])
-    .map((track) => [trackKey(track), String(track?.display_title || track?.title || '曲名不明')])
+    .map((track) => [trackKey(track), track?.label || track?.title || '曲名不明'])
     .filter(([key]) => key));
 }
 
@@ -194,7 +194,7 @@ function renderTable(payload) {
     const title = document.createElement('td');
     const amazon = integer(track?.amazon_rank);
     amazonRank.textContent = amazon == null ? '-' : `${numberFormat.format(amazon)}位`;
-    title.textContent = String(track?.display_title || track?.title || '曲名不明');
+    title.textContent = track?.label || track?.title || '曲名不明';
     amazonRank.className = 'amazon-rank-number';
     row.append(amazonRank, title);
     tbody.append(row);
