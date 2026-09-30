@@ -5,11 +5,15 @@ import { onRequestGet } from '../functions/api/sakurazaka46jp-status.js';
 
 const NOW = 1_700_000_000_000;
 
-function db({ active = true, statements = [] } = {}) {
+function db({ active = true, statements = [], boundValues = [] } = {}) {
   return {
     prepare(sql) {
       statements.push(sql);
       return {
+        bind(...values) {
+          boundValues.push(values);
+          return this;
+        },
         async all() {
           if (sql.includes('FROM sh_sakurazaka46jp_main')) {
             return {
@@ -29,17 +33,6 @@ function db({ active = true, statements = [] } = {}) {
                 channel_alias: 'sakurazaka46jp',
                 raw_valid: 1,
                 raw_bytes: 4096,
-              }],
-            };
-          }
-          if (sql.includes('FROM sh_sakurazaka46jp_chat')) {
-            return {
-              results: [{
-                observed_at: NOW - 55_000,
-                observed_minute: Math.floor((NOW - 55_000) / 60_000),
-                station_id: 777,
-                raw_valid: 1,
-                raw_bytes: 1024,
               }],
             };
           }
@@ -63,12 +56,13 @@ function db({ active = true, statements = [] } = {}) {
   };
 }
 
-test('Sakurazaka status keeps the 180-minute main series while collection is active', async () => {
+test('Sakurazaka status uses the shared 180-row active series without chat queries', async () => {
   const realDateNow = Date.now;
   const statements = [];
+  const boundValues = [];
   Date.now = () => NOW;
   try {
-    const response = await onRequestGet({ env: { OTHER_DB: db({ statements }) } });
+    const response = await onRequestGet({ env: { OTHER_DB: db({ statements, boundValues }) } });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('cache-control'), 'no-store');
     const payload = await response.json();
@@ -77,23 +71,24 @@ test('Sakurazaka status keeps the 180-minute main series while collection is act
     assert.equal(payload.collection_active, true);
     assert.equal(payload.active_event.status, 'active');
     assert.equal(payload.sample_count, 1);
-    assert.equal(payload.chat_sample_count, 1);
     assert.equal(payload.latest_main.station_id, 777);
     assert.equal(payload.latest_main.listener_count, 1234);
     assert.equal(payload.latest_main_age_ms, 60_000);
-    assert.equal(payload.latest_chat_age_ms, 55_000);
     assert.equal(payload.recent_limit, 180);
-    assert.equal(payload.chat_recent_limit, 1);
+    assert.equal('latest_chat' in payload, false);
+    assert.equal('chats' in payload, false);
+    assert.equal('chat_sample_count' in payload, false);
     const mainSql = statements.find((sql) => sql.includes('FROM sh_sakurazaka46jp_main'));
-    const chatSql = statements.find((sql) => sql.includes('FROM sh_sakurazaka46jp_chat'));
     assert.match(mainSql, /LIMIT 180$/);
-    assert.match(chatSql, /LIMIT 1$/);
+    assert.match(mainSql, /target_handle='sakurazaka46jp'/);
+    assert.doesNotMatch(statements.join('\n'), /sh_sakurazaka46jp_chat/);
+    assert.equal(boundValues[0][0], NOW - 90 * 60_000);
   } finally {
     Date.now = realDateNow;
   }
 });
 
-test('Sakurazaka status reads only the latest main and chat rows while collection is inactive', async () => {
+test('Sakurazaka status uses the shared idle limit and late-window announcement query', async () => {
   const statements = [];
   const response = await onRequestGet({ env: { OTHER_DB: db({ active: false, statements }) } });
   assert.equal(response.status, 200);
@@ -101,14 +96,12 @@ test('Sakurazaka status reads only the latest main and chat rows while collectio
   assert.equal(payload.collection_active, false);
   assert.equal(payload.active_event, null);
   assert.equal(payload.recent_limit, 1);
-  assert.equal(payload.chat_recent_limit, 1);
   const mainSql = statements.find((sql) => sql.includes('FROM sh_sakurazaka46jp_main'));
-  const chatSql = statements.find((sql) => sql.includes('FROM sh_sakurazaka46jp_chat'));
   assert.match(mainSql, /LIMIT 1$/);
-  assert.match(chatSql, /LIMIT 1$/);
+  assert.match(statements[0], /scheduled_at>=\?/);
 });
 
-test('Sakurazaka status checks active collection state before selecting bounded row limits', async () => {
+test('Sakurazaka status checks announcement state before selecting bounded row limits', async () => {
   const statements = [];
   await onRequestGet({ env: { OTHER_DB: db({ active: false, statements }) } });
   assert.match(statements[0], /FROM sh_official_news_announcements/);
