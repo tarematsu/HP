@@ -45,7 +45,7 @@ window.__ensureHistoryModeRuntime = ensureHistoryModeRuntime;
 const initialMode = VALID_MODES.has(requestedMode) ? requestedMode : 'weekly';
 if (initialMode !== requestedMode) history.replaceState(null, '', '/#weekly');
 
-await import('/history/history-past-toggle-shell.js?v=20260927.1');
+await import('/history/history-past-toggle-shell.js?v=20261001.2');
 await import('/history/history-axis-labels.js?v=20260923.6');
 await import('/history/history-chart-stability.js?v=20260925.1');
 await ensureHistoryModeRuntime(initialMode);
