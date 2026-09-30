@@ -19,14 +19,13 @@ import {
   const MAX_DRAW_POINTS = 2_400;
   const CACHE_REVISION = '9';
   const API_REVISION = '3';
-  const eventDate = new Intl.DateTimeFormat('ja-JP', {
-    timeZone: 'UTC', month: 'numeric', day: 'numeric',
+  const eventDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   });
   const jstDay = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
   });
-  const DATE_PREFIX = /^\s*\d{4}[./-]\d{1,2}[./-]\d{1,2}\b/;
-  const OFFICIAL_EVENT_DATE_GAP = /(\d{4}[./-]\d{1,2}[./-]\d{1,2})[ \u3000]+(?=『)/g;
+  const DATE_PREFIX = /^\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})\s*/u;
   const SERIES_COLORS = [
     ['--accent', '#d93f79'],
     ['--accent-2', '#6657d8'],
@@ -70,12 +69,17 @@ import {
   }
 
   function eventLabel(item) {
-    const name = String(item?.event_name || '公式リスパ').trim().replace(OFFICIAL_EVENT_DATE_GAP, '$1');
-    if (DATE_PREFIX.test(name)) return name;
+    const rawName = String(item?.event_name || '公式リスパ').trim();
+    const prefixedDate = DATE_PREFIX.exec(rawName);
+    const name = rawName.replace(DATE_PREFIX, '').trim() || '公式リスパ';
     const startedAt = Number(item?.started_at);
-    return Number.isFinite(startedAt)
-      ? `${eventDate.format(new Date(startedAt))} ${name}`
-      : name;
+    let date = Number.isFinite(startedAt)
+      ? eventDate.format(new Date(startedAt)).replaceAll('-', '')
+      : null;
+    if (!date && prefixedDate) {
+      date = `${prefixedDate[1]}${String(Number(prefixedDate[2])).padStart(2, '0')}${String(Number(prefixedDate[3])).padStart(2, '0')}`;
+    }
+    return date ? `${date} ${name}` : name;
   }
 
   function isTodayEvent(item) {
