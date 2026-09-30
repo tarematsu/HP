@@ -25,6 +25,7 @@ function missingCanonicalSchema(error) {
 
 async function queryRows(db, sql, bindings) {
   const statement = db.prepare(sql).bind(...bindings);
+  if (typeof statement?.all !== 'function') return [];
   const result = await statement.all();
   return Array.isArray(result?.results) ? result.results : [];
 }
@@ -82,19 +83,41 @@ function preferredCanonical(row, indexes) {
 
 function applyCanonical(row, canonical) {
   if (!canonical) return row;
+  const nextTrackId = canonical.track_id;
+  const nextTitle = canonical.title || row?.title || null;
+  const nextArtist = canonical.artist || row?.artist || null;
+  const nextThumbnailUrl = canonical.thumbnail_url || row?.thumbnail_url || null;
+  const nextIsrc = canonical.isrc || normalizedIsrc(row?.isrc) || null;
+  const nextSpotifyId = canonical.spotify_id || text(row?.spotify_id);
+  if (positiveInteger(row?.track_id) === nextTrackId
+      && (row?.title || null) === nextTitle
+      && (row?.artist || null) === nextArtist
+      && (row?.thumbnail_url || null) === nextThumbnailUrl
+      && normalizedIsrc(row?.isrc) === nextIsrc
+      && text(row?.spotify_id) === nextSpotifyId) return row;
   return {
     ...row,
-    track_id: canonical.track_id,
-    title: canonical.title || row?.title || null,
-    artist: canonical.artist || row?.artist || null,
-    thumbnail_url: canonical.thumbnail_url || row?.thumbnail_url || null,
-    isrc: canonical.isrc || normalizedIsrc(row?.isrc) || null,
-    spotify_id: canonical.spotify_id || text(row?.spotify_id),
+    track_id: nextTrackId,
+    title: nextTitle,
+    artist: nextArtist,
+    thumbnail_url: nextThumbnailUrl,
+    isrc: nextIsrc,
+    spotify_id: nextSpotifyId,
   };
 }
 
 function applyCanonicalIndexes(rows, indexes) {
-  return rows.map((row) => applyCanonical(row, preferredCanonical(row, indexes)));
+  let changed = false;
+  const resolved = rows.map((row) => {
+    const next = applyCanonical(row, preferredCanonical(row, indexes));
+    if (next !== row) changed = true;
+    return next;
+  });
+  return changed ? resolved : rows;
+}
+
+function supportsCanonicalQueries(db) {
+  return Boolean(db?.prepare && typeof db.batch === 'function');
 }
 
 /**
@@ -104,7 +127,7 @@ function applyCanonicalIndexes(rows, indexes) {
  * track_id.
  */
 export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT_CHUNK_SIZE } = {}) {
-  if (!db?.prepare || !Array.isArray(rows) || !rows.length) return rows;
+  if (!supportsCanonicalQueries(db) || !Array.isArray(rows) || !rows.length) return rows;
   const boundedChunkSize = Math.max(1, Math.min(80, Math.trunc(Number(chunkSize) || DEFAULT_CHUNK_SIZE)));
   const trackIds = [...new Set(rows.map((row) => positiveInteger(row?.track_id)).filter(Boolean))];
   const stationheadIds = [...new Set(rows.map((row) => positiveInteger(row?.stationhead_track_id)).filter(Boolean))];
@@ -139,13 +162,15 @@ export async function canonicalizeTrackRows(db, rows = [], { chunkSize = DEFAULT
  * request-time D1 join.
  */
 export async function canonicalizeTrackRowsFromCatalog(db, rows = []) {
-  if (!db?.prepare || !Array.isArray(rows) || !rows.length) return rows;
+  if (!supportsCanonicalQueries(db) || !Array.isArray(rows) || !rows.length) return rows;
   try {
-    const result = await db.prepare(`SELECT c.track_id,t.stationhead_track_id,
+    const statement = db.prepare(`SELECT c.track_id,t.stationhead_track_id,
         c.isrc,c.spotify_id,c.title,c.artist,c.thumbnail_url
       FROM sh_track_canonical_metadata c
       LEFT JOIN sh_tracks t ON t.id=c.track_id
-      WHERE c.track_id IS NOT NULL`).all();
+      WHERE c.track_id IS NOT NULL`);
+    if (typeof statement?.all !== 'function') return rows;
+    const result = await statement.all();
     const catalog = Array.isArray(result?.results) ? result.results : [];
     return applyCanonicalIndexes(rows, canonicalIndexes(catalog));
   } catch (error) {
