@@ -6,11 +6,13 @@ const likes = readFileSync(new URL('../public/history/history-likes.js', import.
 const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const table = readFileSync(new URL('../public/history/history-broadcast-table.js', import.meta.url), 'utf8');
 const historyApi = readFileSync(new URL('../functions/api/history.js', import.meta.url), 'utf8');
+const sharedUi = readFileSync(new URL('../public/dashboard-ui-common.js', import.meta.url), 'utf8');
 
 test('like ranking removes the redundant top-ten/cache status line after loading', () => {
   assert.doesNotMatch(likes, /上位10曲 · 対象/);
   assert.match(likes, /render\(\);\s*setNotice\(''\)/);
-  assert.match(likes, /node\.hidden = !text/);
+  assert.match(likes, /setNotice as setSharedNotice/);
+  assert.match(sharedUi, /node\.hidden = !text/);
 });
 
 test('official listening party lines do not recycle colors across dates', () => {
