@@ -27,6 +27,24 @@ const INSERT_DAILY_SUMMARY_SQL = `INSERT INTO sh_daily_summary(
   quality_score,quality_flags,updated_at
 ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(period_key) DO UPDATE SET
+  period_start=CASE
+    WHEN sh_daily_summary.period_start IS NULL THEN excluded.period_start
+    WHEN excluded.period_start IS NULL THEN sh_daily_summary.period_start
+    ELSE MIN(sh_daily_summary.period_start,excluded.period_start)
+  END,
+  period_end=CASE
+    WHEN sh_daily_summary.period_end IS NULL THEN excluded.period_end
+    WHEN excluded.period_end IS NULL THEN sh_daily_summary.period_end
+    ELSE MAX(sh_daily_summary.period_end,excluded.period_end)
+  END,
+  sample_count=COALESCE(sh_daily_summary.sample_count,excluded.sample_count),
+  reliable_sample_count=COALESCE(sh_daily_summary.reliable_sample_count,excluded.reliable_sample_count),
+  listener_avg=COALESCE(sh_daily_summary.listener_avg,excluded.listener_avg),
+  listener_min=COALESCE(sh_daily_summary.listener_min,excluded.listener_min),
+  listener_max=COALESCE(sh_daily_summary.listener_max,excluded.listener_max),
+  stream_start=COALESCE(sh_daily_summary.stream_start,excluded.stream_start),
+  stream_end=COALESCE(sh_daily_summary.stream_end,excluded.stream_end),
+  stream_growth=COALESCE(sh_daily_summary.stream_growth,excluded.stream_growth),
   member_start=COALESCE(excluded.member_start,sh_daily_summary.member_start),
   member_end=COALESCE(excluded.member_end,sh_daily_summary.member_end),
   member_growth=CASE
@@ -36,7 +54,25 @@ ON CONFLICT(period_key) DO UPDATE SET
   END,
   updated_at=excluded.updated_at
 WHERE
-  sh_daily_summary.member_start IS NOT COALESCE(excluded.member_start,sh_daily_summary.member_start)
+  sh_daily_summary.period_start IS NOT CASE
+    WHEN sh_daily_summary.period_start IS NULL THEN excluded.period_start
+    WHEN excluded.period_start IS NULL THEN sh_daily_summary.period_start
+    ELSE MIN(sh_daily_summary.period_start,excluded.period_start)
+  END
+  OR sh_daily_summary.period_end IS NOT CASE
+    WHEN sh_daily_summary.period_end IS NULL THEN excluded.period_end
+    WHEN excluded.period_end IS NULL THEN sh_daily_summary.period_end
+    ELSE MAX(sh_daily_summary.period_end,excluded.period_end)
+  END
+  OR sh_daily_summary.sample_count IS NOT COALESCE(sh_daily_summary.sample_count,excluded.sample_count)
+  OR sh_daily_summary.reliable_sample_count IS NOT COALESCE(sh_daily_summary.reliable_sample_count,excluded.reliable_sample_count)
+  OR sh_daily_summary.listener_avg IS NOT COALESCE(sh_daily_summary.listener_avg,excluded.listener_avg)
+  OR sh_daily_summary.listener_min IS NOT COALESCE(sh_daily_summary.listener_min,excluded.listener_min)
+  OR sh_daily_summary.listener_max IS NOT COALESCE(sh_daily_summary.listener_max,excluded.listener_max)
+  OR sh_daily_summary.stream_start IS NOT COALESCE(sh_daily_summary.stream_start,excluded.stream_start)
+  OR sh_daily_summary.stream_end IS NOT COALESCE(sh_daily_summary.stream_end,excluded.stream_end)
+  OR sh_daily_summary.stream_growth IS NOT COALESCE(sh_daily_summary.stream_growth,excluded.stream_growth)
+  OR sh_daily_summary.member_start IS NOT COALESCE(excluded.member_start,sh_daily_summary.member_start)
   OR sh_daily_summary.member_end IS NOT COALESCE(excluded.member_end,sh_daily_summary.member_end)
   OR sh_daily_summary.member_growth IS NOT CASE
     WHEN excluded.member_start IS NOT NULL AND excluded.member_end IS NOT NULL
@@ -210,7 +246,7 @@ export async function publishRecentDailySummaries(
 
   return {
     skipped: published.length === 0,
-    reason: published.length ? null : 'no-member-reconciliation-needed',
+    reason: published.length ? null : 'no-recent-summary-repairs-needed',
     published,
     unavailable,
     invalid,
