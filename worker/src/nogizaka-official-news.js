@@ -6,6 +6,7 @@ import {
 import { timedFetch } from './shared.js';
 
 export const NOGIZAKA_NEWS_LIST_URL = 'https://www.nogizaka46.com/s/n46/news/list';
+export const NOGIZAKA_NEWS_API_URL = 'https://www.nogizaka46.com/s/n46/api/list/news_v2?rw=400';
 export const NOGIZAKA_NEWS_ORIGIN = 'https://www.nogizaka46.com';
 export const NOGIZAKA_MONITOR_STATE_ID = 'official-news:nogizaka46smej';
 export const NOGIZAKA_HANDLE = 'nogizaka46smej';
@@ -14,6 +15,10 @@ const ANNOUNCEMENTS = 'sh_nogizaka_official_news_announcements';
 const PROBES = 'sh_nogizaka_official_news_station_probes';
 const NEWS_HEADERS = Object.freeze({
   accept: 'text/html,application/xhtml+xml',
+  'user-agent': 'stationhead-monitor/1.0',
+});
+const NEWS_API_HEADERS = Object.freeze({
+  accept: 'application/json',
   'user-agent': 'stationhead-monitor/1.0',
 });
 
@@ -42,23 +47,46 @@ export function nogizakaOfficialNewsConfig(env = {}) {
   };
 }
 
-function articleLinks(html, limit) {
-  const links = [];
+export function nogizakaNewsApiCandidates(payload, cfg = {}) {
+  if (!payload || !Array.isArray(payload.data)) {
+    throw new Error('Nogizaka official news API returned an unexpected payload');
+  }
+  if (!payload.data.length) {
+    throw new Error('Nogizaka official news API returned no news rows');
+  }
+
+  const articleLimit = Math.min(positive(cfg.articleLimit, 200), payload.data.length);
+  const bodyScanCount = Math.min(positive(cfg.bodyScanCount, 5), articleLimit);
+  const candidates = [];
   const seen = new Set();
-  const pattern = /<a\b[^>]*href=["']([^"']*\/news\/detail\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let match;
-  while ((match = pattern.exec(String(html || ''))) && links.length < limit) {
-    const href = new URL(match[1], NOGIZAKA_NEWS_ORIGIN).toString();
-    const newsId = href.match(/\/news\/detail\/([^/?#]+)/i)?.[1];
+
+  for (const [index, row] of payload.data.slice(0, articleLimit).entries()) {
+    const newsId = String(row?.code || '').trim();
+    const listTitle = stripHtml(row?.title || '');
+    const listText = stripHtml(row?.text || '');
     if (!newsId || seen.has(newsId)) continue;
+    if (index >= bodyScanCount && !/station\s*head/i.test(`${listTitle}\n${listText}`)) continue;
+
+    let href;
+    try {
+      href = new URL(
+        row?.link_url || `/s/n46/news/detail/${encodeURIComponent(newsId)}`,
+        NOGIZAKA_NEWS_ORIGIN,
+      );
+    } catch {
+      continue;
+    }
+    if (href.origin !== NOGIZAKA_NEWS_ORIGIN || !/\/news\/detail\//i.test(href.pathname)) continue;
+
     seen.add(newsId);
-    links.push({
-      newsId,
-      href,
-      listTitle: stripHtml(match[2]),
+    candidates.push({
+      newsId: newsId.slice(0, 100),
+      href: href.toString().slice(0, 1_000),
+      listTitle: listTitle.slice(0, 500),
     });
   }
-  return links;
+
+  return candidates;
 }
 
 function articleTitle(html, fallback) {
@@ -258,19 +286,12 @@ export async function runNogizakaNewsListStage(env, cfg, now, dependencies = {})
 
   await markMissedAnnouncements(env, cfg, now);
   try {
-    const response = await (dependencies.fetch || timedFetch)(NOGIZAKA_NEWS_LIST_URL, {
-      headers: NEWS_HEADERS,
-      cf: { cacheEverything: true, cacheTtl: Math.floor(cfg.checkIntervalMs / 1_000) },
+    const response = await (dependencies.fetch || timedFetch)(NOGIZAKA_NEWS_API_URL, {
+      headers: NEWS_API_HEADERS,
     }, cfg.requestTimeoutMs);
-    if (!response.ok) throw new Error(`Nogizaka official news list HTTP ${response.status}`);
-    const links = articleLinks(await response.text(), cfg.articleLimit);
-    const candidates = links
-      .filter((link, index) => index < cfg.bodyScanCount || /station\s*head/i.test(link.listTitle))
-      .map((link) => ({
-        newsId: String(link.newsId).slice(0, 100),
-        href: String(link.href).slice(0, 1_000),
-        listTitle: String(link.listTitle || '').slice(0, 500),
-      }));
+    if (!response.ok) throw new Error(`Nogizaka official news API HTTP ${response.status}`);
+    const payload = await response.json();
+    const candidates = nogizakaNewsApiCandidates(payload, cfg);
     return { skipped: false, failed: false, reason: null, candidates };
   } catch (error) {
     return recordFailure(env, now, error, 'nogizaka_official_news_list_failed');

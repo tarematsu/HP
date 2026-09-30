@@ -4,7 +4,9 @@ import test from 'node:test';
 
 import {
   NOGIZAKA_HANDLE,
+  NOGIZAKA_NEWS_API_URL,
   NOGIZAKA_NEWS_LIST_URL,
+  nogizakaNewsApiCandidates,
   nogizakaOfficialNewsConfig,
 } from '../src/nogizaka-official-news.js';
 import { scheduleTimes } from '../src/official-news-html.js';
@@ -22,9 +24,13 @@ function queueEnv() {
   };
 }
 
-test('Nogizaka official source points at the official news feed and Stationhead handle', () => {
+test('Nogizaka official source points at the official news API and Stationhead handle', () => {
   assert.equal(NOGIZAKA_HANDLE, 'nogizaka46smej');
   assert.equal(NOGIZAKA_NEWS_LIST_URL, 'https://www.nogizaka46.com/s/n46/news/list');
+  assert.equal(
+    NOGIZAKA_NEWS_API_URL,
+    'https://www.nogizaka46.com/s/n46/api/list/news_v2?rw=400',
+  );
   const config = nogizakaOfficialNewsConfig({});
   assert.equal(config.handle, 'nogizaka46smej');
   assert.equal(config.earlyWindowMs, 0);
@@ -32,11 +38,70 @@ test('Nogizaka official source points at the official news feed and Stationhead 
   assert.equal(config.checkIntervalMs, 60 * 60_000);
 });
 
+test('Nogizaka news API candidate parser finds the real Stationhead announcement', () => {
+  const payload = {
+    count: 2,
+    pages: 1,
+    data: [
+      {
+        code: '102281',
+        title: '通常のお知らせ',
+        text: '通常のお知らせ本文です。',
+        link_url: 'https://www.nogizaka46.com/s/n46/news/detail/102281?ima=4012',
+      },
+      {
+        code: '102280',
+        title: '乃木坂46、初の「STATIONHEAD」9/30(水)21:30～開催！',
+        date: '2026/09/29 22:00:00',
+        text: '■開催日時2026年9月30日（水）21:30～',
+        link_url: 'https://www.nogizaka46.com/s/n46/news/detail/102280?ima=4012&pri1=202609',
+      },
+    ],
+  };
+
+  const candidates = nogizakaNewsApiCandidates(payload, {
+    articleLimit: 200,
+    bodyScanCount: 1,
+  });
+
+  assert.deepEqual(candidates, [
+    {
+      newsId: '102281',
+      href: 'https://www.nogizaka46.com/s/n46/news/detail/102281?ima=4012',
+      listTitle: '通常のお知らせ',
+    },
+    {
+      newsId: '102280',
+      href: 'https://www.nogizaka46.com/s/n46/news/detail/102280?ima=4012&pri1=202609',
+      listTitle: '乃木坂46、初の「STATIONHEAD」9/30(水)21:30～開催！',
+    },
+  ]);
+});
+
+test('Nogizaka news API parser rejects a silently empty or malformed feed', () => {
+  assert.throws(
+    () => nogizakaNewsApiCandidates({}, { articleLimit: 200, bodyScanCount: 5 }),
+    /unexpected payload/,
+  );
+  assert.throws(
+    () => nogizakaNewsApiCandidates({ data: [] }, { articleLimit: 200, bodyScanCount: 5 }),
+    /no news rows/,
+  );
+});
+
 test('Nogizaka Japanese official-news time maps to the exact scheduled minute', () => {
   const text = '2026年10月3日（土）22時30分よりStationheadにて配信いたします。';
   assert.deepEqual(
     scheduleTimes(text, 2026, '2026-10-03'),
     [Date.UTC(2026, 9, 3, 13, 30)],
+  );
+});
+
+test('September 30 official announcement time maps to 21:30 JST', () => {
+  const text = '■開催日時2026年9月30日（水）21:30～※開始時間は前後する場合がございます。';
+  assert.deepEqual(
+    scheduleTimes(text, 2026, '2026-09-30'),
+    [Date.UTC(2026, 8, 30, 12, 30)],
   );
 });
 
