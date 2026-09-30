@@ -68,7 +68,7 @@ function ensureLegend(hasPrevious, hasStreamAverages) {
 
   const stream = legend.querySelector('.stream-growth-key');
   if (stream) {
-    stream.textContent = '再生数';
+    stream.textContent = '再生数増加';
     stream.hidden = !hasStreamAverages;
     stream.style.color = STREAM_BAR_COLOR;
   }
@@ -243,10 +243,10 @@ function drawComparison(payload) {
 
   context.fillStyle = '#667287';
   context.textAlign = 'left';
-  context.fillText('オンライン数(人)', 4, 12);
-  context.fillText('再生数', 4, streamTop - 8);
+  context.fillText('オンライン数（人）', 4, 12);
+  context.fillText('再生数増加', 4, streamTop - 8);
   context.textAlign = 'center';
-  context.fillText('時刻 (JST)', width / 2, height - 2);
+  context.fillText('時刻（JST）', width / 2, height - 2);
 
   if (currentOnline.length) {
     const currentMin = Math.min(...currentOnline);

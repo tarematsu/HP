@@ -322,8 +322,8 @@ import {
         loadedMeta = null;
         draw();
         notice.hidden = false;
-        const base = notice.textContent.replace(/・比較グラフ取得失敗:.*$/, '').trim();
-        notice.textContent = `${base}・比較グラフ取得失敗: ${error.message}`;
+        const base = notice.textContent.replace(/・比較グラフの取得に失敗しました：.*$/, '').trim();
+        notice.textContent = `${base}・比較グラフの取得に失敗しました：${error.message}`;
       }
     } finally {
       if (loadingKey === key) loadingKey = '';

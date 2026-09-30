@@ -189,7 +189,7 @@ function draw() {
   for (let day = 0; day <= 7; day += 1) {
     const x = xFor(day * 1440);
     context.textAlign = day === 0 ? 'left' : day === 7 ? 'right' : 'center';
-    context.fillText(day === 0 ? '0h' : `${day}日`, x, area.top + area.height + 17);
+    context.fillText(day === 0 ? '0時間' : `${day}日`, x, area.top + area.height + 17);
   }
 
   available.forEach((item) => {
@@ -283,7 +283,7 @@ async function load() {
     if (notice) {
       notice.hidden = false;
       notice.classList.add('error');
-      notice.textContent = `初週比較データの取得に失敗しました: ${error.message}`;
+      notice.textContent = `初週比較データの取得に失敗しました：${error.message}`;
     }
   } finally {
     loading = false;

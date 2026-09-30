@@ -409,7 +409,7 @@ function renderDailyChart(value) {
       `${selected.period_key}　平均同接 ${numberText(selected.listener_avg)}`
       + `　最大同接 ${numberText(selected.listener_max)}`
       + `　最小同接 ${numberText(selected.listener_min)}`
-      + `　再生数 ${numberText(selected.stream_growth)}`,
+      + `　再生数増加 ${numberText(selected.stream_growth)}`,
     );
   });
   svg.append(hit);
@@ -419,7 +419,7 @@ function renderDailyChart(value) {
     const items = listenerSeries
       .filter((series) => dailyChartRows.some((row) => row[series.key] != null))
       .map((series) => appendDailyLegend(series.label, series.color));
-    if (streamValues.length) items.push(appendDailyLegend('再生数', streamColor, true));
+    if (streamValues.length) items.push(appendDailyLegend('再生数増加', streamColor, true));
     legend.replaceChildren(...items);
   }
 }

@@ -200,6 +200,7 @@ function drawChart(payload) {
   const height = canvas.clientHeight || 360;
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
+  canvas.style.height = `${height}px`;
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, width, height);
   legend.replaceChildren();
@@ -323,7 +324,7 @@ export async function loadNogizakaListeningPartyView({ force = false } = {}) {
     if (error?.name === 'AbortError' || !active()) return;
     const notice = byId('nogizakaListeningPartyNotice');
     if (notice) {
-      notice.textContent = `データを取得できませんでした: ${error.message}`;
+      notice.textContent = `データの取得に失敗しました：${error.message}`;
       notice.hidden = false;
       notice.classList.add('error');
     }

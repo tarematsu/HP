@@ -218,7 +218,7 @@
   function clearTransientStatus() {
     const node = document.getElementById('statusMessage');
     if (!node) return;
-    if (!/^(?:データを取得できませんでした。|更新に失敗しました。保存済みの表示を継続します。)$/.test(node.textContent || '')) return;
+    if (!/^(?:データの取得に失敗しました。|更新に失敗しました。保存済みの表示を継続します。)$/.test(node.textContent || '')) return;
     node.textContent = '';
     node.hidden = true;
   }

@@ -29,7 +29,7 @@ mountDashboardShell({
       <div class="table-wrap table-fit-mobile">
         <table class="followers-table shared-numeric-table">
           <colgroup><col class="followers-account-col"><col><col><col></colgroup>
-          <thead><tr><th>アカウント名</th><th>現在</th><th>前日比</th><th>1週間比</th></tr></thead>
+          <thead><tr><th>アカウント名</th><th>フォロワー数</th><th>前日比</th><th>1週間前比</th></tr></thead>
           <tbody id="followersTbody"></tbody>
         </table>
       </div>

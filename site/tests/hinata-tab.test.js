@@ -61,7 +61,7 @@ test('Hinata graph is rendered as five-minute buckets with actual five-minute st
 });
 
 test('Hinata daily table matches history start and end cumulative columns', () => {
-  assert.match(shell, /<th>再生数（開始）<\/th><th>再生数（終了）<\/th><th>再生数増加<\/th><th>メンバー数（開始）<\/th><th>メンバー数（終了）<\/th><th>メンバー増加<\/th>/);
+  assert.match(shell, /<th>再生数（開始）<\/th><th>再生数（終了）<\/th><th>再生数増加<\/th><th>メンバー数（開始）<\/th><th>メンバー数（終了）<\/th><th>メンバー増加数<\/th>/);
   assert.match(runtime, /numberText\(item\?\.stream_start\)/);
   assert.match(runtime, /numberText\(item\?\.stream_end\)/);
   assert.match(runtime, /numberText\(item\?\.member_start\)/);
@@ -84,14 +84,14 @@ test('Hinata adds a daily listener and stream graph below the 24-hour graph', ()
   assert.ok(liveChartIndex >= 0);
   assert.ok(dailyChartIndex > liveChartIndex);
   assert.ok(dailyTableIndex > dailyChartIndex);
-  assert.match(shell, /id="hinataDailyChartTitle">同接・再生数の推移</);
+  assert.match(shell, /id="hinataDailyChartTitle">同接・再生数増加の推移/);
   assert.match(shell, /aria-label="日次の平均・最大・最小同接と再生数増加"/);
   assert.match(runtime, /function renderDailyChart\(value\)/);
   assert.match(runtime, /listener_avg/);
   assert.match(runtime, /listener_max/);
   assert.match(runtime, /listener_min/);
   assert.match(runtime, /stream_growth/);
-  assert.match(runtime, /appendDailyLegend\('再生数', streamColor, true\)/);
+  assert.match(runtime, /appendDailyLegend\('再生数増加', streamColor, true\)/);
   assert.match(runtime, /row\.timestamp - previousTime <= DAY_MS \* 1\.5/);
   assert.match(runtime, /renderDailyChart\(value\)/);
 });

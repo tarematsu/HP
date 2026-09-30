@@ -40,8 +40,8 @@ test('daily weekly and monthly stream growth uses black average listener line an
   assert.match(periodChart, /row\?\.stream_growth/);
   assert.match(periodChart, /fillRect\(/);
   assert.match(periodChart, /listener_avg'.*color: '#000000'/);
-  assert.match(periodChart, /appendLegend\('再生数'/);
-  assert.match(periodChart, /同接・再生数の推移/);
+  assert.match(periodChart, /appendLegend\('再生数増加'/);
+  assert.match(periodChart, /同接・再生数増加の推移/);
   assert.doesNotMatch(periodChart, /期間再生数/);
   assert.doesNotMatch(periodChart, /stream_end|previousFetch|response\.clone\(\)\.json/);
 });

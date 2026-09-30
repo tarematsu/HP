@@ -39,13 +39,13 @@ test('shared mobile layout owns tab count and current metric columns', () => {
 });
 
 test('current chart draws online axes, direct five-minute playback bars and JST labels from one renderer', () => {
-  assert.match(chart, /オンライン数\(人\)/);
-  assert.match(chart, /context\.fillText\('再生数'/);
-  assert.match(chart, /stream\.textContent = '再生数'/);
+  assert.match(chart, /オンライン数（人）/);
+  assert.match(chart, /context\.fillText\('再生数増加'/);
+  assert.match(chart, /stream\.textContent = '再生数増加'/);
   assert.match(chart, /stream_5m_history/);
   assert.match(chart, /drawStreamBars/);
   assert.doesNotMatch(chart, /再生数増加\/分（5分平均）|stream_minute_history|コメント\/2分|comment_velocity|commentVelocity|rgba\(22,139,115/);
-  assert.match(chart, /時刻 \(JST\)/);
+  assert.match(chart, /時刻（JST）/);
   assert.match(chart, /timeZone: 'Asia\/Tokyo'/);
   assert.match(chart, /drawSeries\(context, current, xFor, yOnline, '#111', 2\)/);
   assert.match(chart, /const EXTREMA_POINT_COLOR = '#888'/);
