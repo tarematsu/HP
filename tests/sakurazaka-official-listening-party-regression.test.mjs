@@ -106,8 +106,9 @@ test('Pages labels official Stationhead events as official listening parties', (
   assert.match(chart, /revision: API_REVISION/);
   assert.match(chart, /sakurazaka46jp:v1:r\$\{CACHE_REVISION\}:/);
   assert.match(chart, /DATE_PREFIX/);
-  assert.match(chart, /OFFICIAL_EVENT_DATE_GAP/);
-  assert.match(chart, /replace\(OFFICIAL_EVENT_DATE_GAP, '\$1'\)/);
+  assert.match(chart, /rawName\.replace\(DATE_PREFIX, ''\)/);
+  assert.match(chart, /jstDay\.format\(new Date\(startedAt\)\)\.replaceAll\('-', ''\)/);
+  assert.match(chart, /return date \? `\$\{date\} \$\{name\}` : name/);
   assert.match(table, /history:data-loaded/);
   assert.doesNotMatch(chart, /getElementById\('more'\)|history:data-loaded|host-history|enhanceBroadcastTable/);
   assert.doesNotMatch(chart, /MutationObserver/);
