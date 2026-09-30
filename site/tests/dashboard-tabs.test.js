@@ -52,8 +52,16 @@ test('dashboard hides the static page skeleton until the selected route shell is
 });
 
 test('archive and likes markup are owned by their shared shell modules', () => {
-  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) assert.match(historyShell, new RegExp(`id="${id}"`));
+  for (const id of ['controls', 'summaryCards', 'chartPanel', 'rankingWeeklyPanel']) {
+    assert.match(historyShell, new RegExp(`(?:id=\\"${id}\\"|id: '${id}')`));
+  }
   for (const id of ['likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) assert.match(likesShell, new RegExp(`id="${id}"`));
+  assert.match(historyShell, /dashboardControls/);
+  assert.match(historyShell, /dashboardSummary/);
+  assert.match(historyShell, /dashboardChartCard/);
+  assert.match(historyShell, /dashboardDataCard/);
+  assert.match(likesShell, /dashboardSummary/);
+  assert.match(likesShell, /dashboardDataCard/);
   assert.doesNotMatch(likesShell, /id="likesLoad"/);
   assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260930\.1'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js\?v=20260928\.1'\)/);
@@ -125,7 +133,7 @@ test('tab selection stays on the root document and never navigates to history pa
   assert.match(tabsClient, /mode === 'current' \? '\/' : `\/#\$\{mode\}`/);
   assert.match(tabsClient, /event\.preventDefault\(\)/);
   assert.doesNotMatch(page, /href="\/history/);
-  assert.doesNotMatch(tabsClient, /location\.(?:assign|replace)\([^)]*history/);
+  assert.doesNotMatch(tabsClient, /location\.(?:assign|replace\)\([^)]*history/);
   assert.doesNotMatch(historyEntry, /legacyHistoryRoute|location\.replace/);
 });
 
